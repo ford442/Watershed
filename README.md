@@ -1,111 +1,60 @@
-# Watershed — Architectural Recommendation
+# WATERSHED
 
-A concise guide for the Watershed project (hyper-realistic water, rigid-body physics, streaming world). This document explains recommended architecture choices and implementation notes for building a high-end WebGPU game while keeping TypeScript/React for UI and workflow.
+**WATERSHED** is a high-octane, photorealistic downhill action game. It blends the kinetic speed and flow of a linear runner (e.g., *Sonic the Hedgehog*) with the physics and grit of a survival simulation.
 
-## Summary
+## Core Philosophy: "Shedding"
 
-- Problem: The original React website stack struggles to meet performance and simulation requirements for hyper-realistic water, high-quality physics, and a streaming world.
-- Recommendation: Use a hybrid architecture — keep React for UI and high-level state, but move heavy simulation (physics, water) to Wasm/WebGPU and dedicated systems.
+The title "Watershed" has a double meaning for this project:
+1.  **Geographical:** We are traversing a massive, interconnected water system from alpine source to valley delta.
+2.  **Kinetic:** The player moves with such velocity that they are "shedding" the water as they traverse past it. The goal is flow, speed, and momentum.
 
-## High-level Recommendation
+## Getting Started
 
-Stay with TypeScript + React for structure and tooling, but "escape" the main thread for physics and run water on the GPU. Architect the project as a game loop (useFrame-like updates and refs), not a React UI loop.
+To get the project running locally, follow these steps:
 
-Key points:
-- Keep React for menus, UI, and orchestration.
-- Run rigid-body physics off the main thread (Web Worker + Rapier in Wasm).
-- Implement water simulation as GPU compute shaders (WGSL/WebGPU) and drive surface deformation with flow/height maps.
-- Manage streaming world with a treadmill/chunk system and object pooling — avoid allocating new meshes during active gameplay.
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+2.  **Start the development server:**
+    ```bash
+    npm start
+    ```
 
-## Stack Options (comparative breakdown)
+This will open the project in your default browser.
 
-1) The "Hybrid" Stack (Recommended)
-- Core: React Three Fiber (R3F) + Three.js with WebGPU renderer
-- Physics: Rapier (via @react-three/rapier) or another Wasm-based physics engine
-- Water: Custom WebGPU compute shaders (WGSL) — heightmap/flowmap + vertex displacement
+## Technical Architecture
 
-Why: You need custom GPU shaders for realistic water and Wasm physics for performance. This keeps the React ecosystem and fast iteration while offloading heavy work.
+The project uses a hybrid architecture to achieve high performance and realism while maintaining a fast development workflow.
 
-Pros:
-- Retains React tooling and hot-reload workflow
-- Can run physics in Wasm for better perf
+*   **UI and Orchestration:** [React](https://react.dev/) with [React Three Fiber (R3F)](https://docs.pmnd.rs/react-three-fiber/getting-started/introduction) for rendering 3D scenes.
+*   **Physics:** [Rapier](https://rapier.rs/) running in a Web Worker, compiled to Wasm for near-native performance. This keeps the main thread free from heavy physics calculations.
+*   **Water Simulation:** Custom [WebGPU](https://www.w3.org/TR/webgpu/) compute shaders (WGSL) for realistic water surface deformation, flow, and interaction.
+*   **Asset Streaming:** A "treadmill" or chunk-based system loads and unloads parts of the world as the player moves, with object pooling to minimize garbage collection.
 
-Cons:
-- Requires strict game-loop architecture (useFrame, refs)
-- Must avoid React re-renders every frame
+## Project Structure
 
+The codebase is organized as follows:
 
-2) The "Batteries Included" Stack (Babylon.js)
-- Core: Babylon.js
-- Physics: Havok (Wasm/native support)
+*   `public/`: Contains the main `index.html` file and other static assets.
+*   `src/`: The heart of the application, containing all React components, game logic, and styles.
+*   `assets/`: For storing 3D models, textures, and other game-specific assets.
+*   `AGENTS.md`: Provides the core creative and technical vision for AI agents working on this project. All agents should adhere to the guidelines within.
 
-Why: Babylon.js offers strong built-in optimizations for large scenes, streaming assets, and has good tooling (Inspector).
+## Roadmap
 
-Pros:
-- Better out-of-the-box handling of large/streamed scenes
-- Good tooling and stability for larger projects
-
-Cons:
-- Less idiomatic React integration; often more imperative code
-
-
-3) The "Native Speed" Stack (Rust / C++)
-- Core: Bevy (Rust) or a custom wgpu engine
-- Physics: Rapier native or other native physics
-
-Why: If you need the absolute maximum performance and low-level control (no GC), native engines are unmatched.
-
-Pros:
-- Maximum raw performance and determinism
-- No JS GC pauses
-
-Cons:
-- Much slower iteration and toolchain differences
-- Building engine-level systems and UI is more work
-
-
-## Architectural Blueprint for Watershed
-
-If you keep the TS/React approach, here is a focused blueprint to reach high realism while keeping development velocity.
-
-1. Off-main-thread physics
-- Run raft/player physics inside a Web Worker using Rapier compiled to Wasm.
-- Communicate a minimal, compact state between the worker and main thread (positions, orientations, collisions) to avoid main-thread stalls.
-
-2. Water as a compute shader
-- Use WebGPU compute shaders (WGSL) to update a flowmap/heightmap texture each frame.
-- Render water with vertex displacement and normal reconstruction from the heightmap.
-- Use flow maps to apply directional forces to nearby rigid bodies (e.g., drag the raft downstream).
-
-3. Terrain streaming (the "treadmill")
-- Stream world chunks in a treadmill fashion: load upcoming chunks ahead of the player and recycle/unload chunks behind them.
-- Use React for chunk-level orchestration: load/unload, request assets, and manage high-level state.
-- In the renderer, reuse mesh instances (object pooling) and teleport them as chunks move through the stream. Avoid calling new Mesh() during gameplay.
-
-## Decision Matrix
-
-Feature | React Three Fiber (R3F) | Babylon.js | Rust (Bevy / wgpu)
----|---:|---:|---:
-Realistic Water | Hard (requires custom WGSL) | Medium (node materials available) | Hard (requires WGSL/native shaders)
-Physics Speed | Fast (Wasm Rapier) | Fast (Wasm Havok) | Fastest (native)
-Dev Speed | Fastest (hot reload, JS ecosys.) | Fast | Slow (compile times)
-Streaming | Manual (you build chunking) | Good (built-in streaming tools) | Manual
-
-## Verdict
-
-Stick with React Three Fiber if you want to finish the game in a reasonable timeframe. The ecosystem is strong in 2025 and, combined with Wasm physics and WebGPU compute shaders for water, gives a practical balance between performance and developer productivity.
-
-## Next steps / Implementation checklist
+The current development priorities are:
 
 - [ ] Prototype a WebGPU compute shader that updates a small heightmap (flowmap + normal reconstruction).
 - [ ] Move a minimal Rapier physics example into a Web Worker and verify round-trip state updates.
 - [ ] Implement a simple treadmill/chunk streaming prototype and object pooling for static obstacles.
 - [ ] Integrate water flow forces to influence a rigid-body raft.
 
-## Notes & References
+## For AI Agents
 
-- The water simulation approach suggested here is focused on surface effects: heightmap / flowmap + vertex displacement and not a full Navier–Stokes solver.
-- Keep GPU and Wasm workloads minimal and compact for lower latency between subsystems.
+This project is designed to be worked on by AI agents. Please adhere to the following:
 
-
-(Original content condensed and reformatted for readability.)
+1.  **Read `AGENTS.md`:** Before making any changes, consult `AGENTS.md` for the project's core vision and technical guidelines.
+2.  **Verify Your Work:** After every code change, run the relevant tests and, if possible, visually inspect the changes in the browser.
+3.  **Keep it Performant:** Be mindful of the performance implications of your code. Avoid unnecessary re-renders and heavy computations on the main thread.
+4.  **Ask for Clarification:** If the task is ambiguous, ask for more details before proceeding.
