@@ -8,14 +8,17 @@ The title "Watershed" has a double meaning for this project:
 1.  **Geographical:** We are traversing a massive, interconnected water system from alpine source to valley delta.
 2.  **Kinetic:** The player moves with such velocity that they are "shedding" the water as they traverse past it. The goal is flow, speed, and momentum.
 
-## 2. Visual & Aesthetic Guidelines
-All generated assets, shaders, and UI elements must adhere to a **"Hyper-Realistic / Wet"** aesthetic.
-
-* **Atmosphere:** Indifferent nature. Beautiful but dangerous. High contrast lighting (blinding sun on wet rocks, deep dark canyons).
-* **Materials:** Everything is wet. Heavy use of specular highlights, normal maps for moss/lichen, and darkened textures to simulate saturation.
-* **The Water:** Volumetric and violent. It is not a flat plane; it is a physical force with white water, foam, eddies, and transparency.
-* **Camera:** Physical lens simulation. Water droplets on the lens, chromatic aberration at high speeds, shake during impacts.
-
+## 2. Visual & Aesthetic Guidelines (Alpine Edition)
+* **Biome:** High Alpine Tundra / Glacial Polish.
+* **Key Reference:** Yosemite High Sierra, Tenaya Canyon.
+* **Materials:**
+    * **Glacial Polish:** The primary surface is smooth, reflective granite. Use anisotropic roughness maps to simulate the direction of ancient glacial movement.
+    * **Meltwater:** Clear, thin films of water rather than murky deep rivers. Caustics are critical here.
+* **Lighting:** Harsh, high-altitude sunlight. High contrast.
+* **The "Rivulet" Tech:**
+    * Instead of a single large water volume, generate a "Flow Map" that dictates where the thin water flows over the rock.
+    * **Gameplay Mechanic:** The player travels faster on "wet" pixels (rivulets) and slows down/takes damage on "dry" pixels (raw granite).
+    * 
 ## 3. Gameplay Mechanics (The "Flow" State)
 The game is linear and downhill. The player is "trapped" by the river banks.
 
@@ -33,3 +36,4 @@ The game is linear and downhill. The player is "trapped" by the river banks.
 ## 5. Tone & Vibe
 * **Keywords:** Kinetic, Elemental, Unforgiving.
 * **Anti-Patterns:** Do not create "cartoony" or "arcade-style" UI. The UI should be minimal, diegetic, or industrial/clean.
+
