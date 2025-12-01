@@ -12,9 +12,6 @@ export default function Player() {
   const rb = useRef();
   const [, getKeys] = useKeyboardControls();
 
-  // Use ref for mouse state to avoid re-renders
-  const isRightMouseDown = useRef(false);
-
   const yaw = useRef(0);
   const pitch = useRef(0);
 
@@ -25,23 +22,13 @@ export default function Player() {
   }, [gl]);
 
   useEffect(() => {
-    const onMouseDown = (e) => {
-      if (e.button === 2) isRightMouseDown.current = true;
-    }
-    const onMouseUp = (e) => {
-      if (e.button === 2) isRightMouseDown.current = false;
-    }
     const onContextMenu = (e) => {
       e.preventDefault();
     }
 
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('contextmenu', onContextMenu);
 
     return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('contextmenu', onContextMenu);
     }
   }, []);
@@ -70,15 +57,17 @@ export default function Player() {
     camera.rotation.y = yaw.current;
     camera.rotation.x = pitch.current;
 
-    const { backward, left, right, jump } = getKeys();
+    const { forward, backward, left, right, jump } = getKeys();
 
     const direction = new THREE.Vector3(0, 0, 0);
     const frontVector = new THREE.Vector3(0, 0, 0);
     const sideVector = new THREE.Vector3(0, 0, 0);
 
-    if (isRightMouseDown.current) frontVector.z -= 1;
+    // W moves forward (negative Z), S moves backward (positive Z)
+    if (forward) frontVector.z -= 1;
     if (backward) frontVector.z += 1;
 
+    // A moves left (negative X), D moves right (positive X)
     if (left) sideVector.x -= 1;
     if (right) sideVector.x += 1;
 
@@ -86,6 +75,7 @@ export default function Player() {
 
     if (direction.lengthSq() > 0) {
       direction.normalize().multiplyScalar(SPEED);
+      // Apply yaw rotation so movement is relative to camera direction
       direction.applyEuler(new THREE.Euler(0, yaw.current, 0));
     }
 
