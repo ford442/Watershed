@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
@@ -14,7 +14,7 @@ export default function CreekCanyon() {
     ]);
 
     // Configure texture repeat for more detail
-    useMemo(() => {
+    useEffect(() => {
         [colorMap, normalMap, roughnessMap, aoMap, displacementMap].forEach(texture => {
             texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
             texture.repeat.set(4, 8);
