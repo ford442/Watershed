@@ -4,3 +4,6 @@ node_modules/
 # npm lockfile
 package-lock.json
 
+# Build output
+build/
+
