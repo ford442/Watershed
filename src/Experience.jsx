@@ -1,39 +1,24 @@
-import { OrbitControls, Sky, useTexture } from "@react-three/drei";
+import { OrbitControls, Sky } from "@react-three/drei";
 import { Physics, RigidBody } from "@react-three/rapier";
-import { Howl } from "howler";
 import React from "react";
+import CreekCanyon from "./components/CreekCanyon";
 
 const Experience = () => {
-  const collisionSound = new Howl({
-    src: ["collision.wav"],
-  });
-
-  const onCollisionEnter = () => {
-    collisionSound.play();
-  };
-
-  const [colorMap, normalMap] = useTexture([
-    "Rock031_1K-JPG_Color.jpg",
-    "Rock031_1K-JPG_NormalGL.jpg",
-  ]);
 
   return (
     <>
       <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
+      <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
       <OrbitControls />
-      <Sky />
-      <Physics>
-        <RigidBody onCollisionEnter={onCollisionEnter}>
-          <mesh>
+      <Sky sunPosition={[10, 10, 5]} />
+      <Physics debug>
+        <CreekCanyon />
+
+        {/* Falling box to test physics */}
+        <RigidBody position={[0, 10, 0]}>
+          <mesh castShadow>
             <boxGeometry />
-            <meshStandardMaterial map={colorMap} normalMap={normalMap} />
-          </mesh>
-        </RigidBody>
-        <RigidBody type="fixed">
-          <mesh position={[0, -2, 0]}>
-            <boxGeometry args={[10, 1, 10]} />
-            <meshStandardMaterial map={colorMap} normalMap={normalMap} />
+            <meshStandardMaterial color="orange" />
           </mesh>
         </RigidBody>
       </Physics>
