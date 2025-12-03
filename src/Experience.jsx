@@ -1,8 +1,8 @@
 import { KeyboardControls, Sky } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import React, { useMemo } from "react";
-import CreekCanyon from "./components/CreekCanyon";
-import Player from "./components/Player";
+import CreekCanyon from "./world/CreekCanyon/CreekCanyon";
+import Player from "./mechanics/Player";
 
 export const Controls = {
   forward: 'forward',
