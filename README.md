@@ -34,12 +34,61 @@ The project uses a hybrid architecture to achieve high performance and realism w
 
 ## Project Structure
 
-The codebase is organized as follows:
+The codebase is organized for scale and maintainability:
 
-*   `public/`: Contains the main `index.html` file and other static assets.
-*   `src/`: The heart of the application, containing all React components, game logic, and styles.
-*   `assets/`: For storing 3D models, textures, and other game-specific assets.
-*   `AGENTS.md`: Provides the core creative and technical vision for AI agents working on this project. All agents should adhere to the guidelines within.
+### Source Code (`src/`)
+*   **`mechanics/`** - Player abilities and controls
+    *   `Player.jsx` - First-person player controller with physics
+*   **`world/`** - Biome-specific components
+    *   `CreekCanyon/` - Creek canyon biome with procedural terrain
+*   **`systems/`** - Game loops and managers (future: ChunkSystem, AudioSystem)
+*   **`shaders/`** - Centralized shader code (WGSL/GLSL)
+    *   `sky.wgsl` - Sky rendering
+    *   `terrain.wgsl` - Terrain rendering
+    *   `tree.wgsl` - Vegetation rendering
+    *   `water.wgsl` - Water simulation
+*   **`store/`** - Global state management (Zustand)
+    *   `gameStore.ts` - Game state (score, health, speed, chunks)
+*   **`__tests__/`** - Smoke tests and unit tests
+*   **`Experience.jsx`** - Main 3D scene orchestrator
+*   **`App.tsx`** - Root application component
+
+### Assets
+*   **`assets/`** - Source assets (high-resolution, uncompressed)
+    *   `concepts/` - Concept art and design references
+    *   `textures/` - Source texture files
+    *   `models/` - Source 3D models (.blend, .fbx)
+*   **`public/`** - Production-ready, optimized assets
+    *   Compressed textures and models
+    *   Audio files
+    *   `index.html`
+
+### Documentation
+*   **`AGENTS.md`** - Core vision and technical guidelines for AI agents
+*   **`ASSET_WORKFLOW.md`** - Asset pipeline and optimization guide
+*   **`README.md`** - This file
+
+## State Management
+
+The project uses [Zustand](https://github.com/pmndrs/zustand) for global state management:
+
+```javascript
+import { useGameStore } from './store';
+
+function GameComponent() {
+  const score = useGameStore((state) => state.score);
+  const incrementScore = useGameStore((state) => state.incrementScore);
+  
+  return <div onClick={() => incrementScore(10)}>Score: {score}</div>;
+}
+```
+
+**State includes:**
+- Game metrics: score, health, game speed
+- Chunk data: active chunks, streaming state
+- Game state: pause, game over
+
+See `src/store/gameStore.ts` for the complete API.
 
 ## Roadmap
 
@@ -50,11 +99,50 @@ The current development priorities are:
 - [ ] Implement a simple treadmill/chunk streaming prototype and object pooling for static obstacles.
 - [ ] Integrate water flow forces to influence a rigid-body raft.
 
+## Testing
+
+Run the smoke test suite to verify core functionality:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm test -- --watch
+
+# Run tests with coverage
+npm test -- --coverage --watchAll=false
+```
+
+**Test coverage includes:**
+- Component smoke tests (App, Experience)
+- State management tests (game store)
+- Setup with WebGL and browser API mocks
+
+See `src/__tests__/README.md` for detailed testing guidelines.
+
+## Asset Pipeline
+
+When working with assets, follow the standardized workflow:
+
+1. **Source files** go in `assets/` (concepts, textures, models)
+2. **Optimize** for web (compress textures, Draco-compress models)
+3. **Production files** go in `public/`
+
+**Recommended formats:**
+- Textures: KTX2/Basis Universal (fallback: compressed JPEG)
+- Models: Draco-compressed glTF/GLB
+- Audio: OGG Vorbis
+
+See **[ASSET_WORKFLOW.md](./ASSET_WORKFLOW.md)** for complete guidelines.
+
 ## For AI Agents
 
 This project is designed to be worked on by AI agents. Please adhere to the following:
 
 1.  **Read `AGENTS.md`:** Before making any changes, consult `AGENTS.md` for the project's core vision and technical guidelines.
-2.  **Verify Your Work:** After every code change, run the relevant tests and, if possible, visually inspect the changes in the browser.
-3.  **Keep it Performant:** Be mindful of the performance implications of your code. Avoid unnecessary re-renders and heavy computations on the main thread.
-4.  **Ask for Clarification:** If the task is ambiguous, ask for more details before proceeding.
+2.  **Read `ASSET_WORKFLOW.md`:** When working with assets, follow the standardized pipeline.
+3.  **Run Tests:** Before and after code changes, run `npm test -- --watchAll=false` to verify nothing breaks.
+4.  **Verify Your Work:** After every code change, run the relevant tests and build (`npm run build`).
+5.  **Keep it Performant:** Be mindful of the performance implications of your code. Avoid unnecessary re-renders and heavy computations on the main thread.
+6.  **Ask for Clarification:** If the task is ambiguous, ask for more details before proceeding.
