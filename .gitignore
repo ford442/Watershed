@@ -7,3 +7,18 @@ package-lock.json
 # Build output
 build/
 
+# Temporary files
+*.tmp
+*.cache
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Asset optimization intermediates
+*.log
+npm_output.log
+npm_start.log
+
