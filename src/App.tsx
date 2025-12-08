@@ -6,7 +6,9 @@ import './style.css';
 function App() {
   return (
     <Canvas>
-      <Experience />
+      <React.Suspense fallback={null}>
+        <Experience />
+      </React.Suspense>
     </Canvas>
   );
 }

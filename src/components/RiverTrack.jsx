@@ -1,11 +1,10 @@
-
 import React, { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
 
 export default function RiverTrack() {
-    // 1. Load Textures
+    // 1. Load Textures with RELATIVE PATHS
     const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
         './Rock031_1K-JPG_NormalGL.jpg',
@@ -61,6 +60,11 @@ export default function RiverTrack() {
         return geo;
     }, [riverPath, riverShape]);
 
+    // 5. Water Geometry
+    const waterGeometry = useMemo(() => {
+        return new THREE.TubeGeometry(riverPath, 120, 5, 2, false);
+    }, [riverPath]);
+
     return (
         <group>
             {/* Physics Body: "trimesh" matches the complex shape exactly */}
@@ -77,28 +81,16 @@ export default function RiverTrack() {
             </RigidBody>
 
             {/* Visual Water Surface */}
-            <WaterSurface path={riverPath} />
+            <mesh geometry={waterGeometry} position={[0, 1, 0]} scale={[1, 0.05, 1]}>
+                <meshStandardMaterial
+                    color="#1a6b8a"
+                    transparent
+                    opacity={0.8}
+                    roughness={0.0}
+                    metalness={0.9}
+                    side={THREE.DoubleSide}
+                />
+            </mesh>
         </group>
-    );
-}
-
-// Simple ribbon mesh for water
-function WaterSurface({ path }) {
-    const geometry = useMemo(() => {
-        // Create a flatter tube/ribbon
-        return new THREE.TubeGeometry(path, 120, 5, 2, false);
-    }, [path]);
-
-    return (
-        <mesh geometry={geometry} position={[0, 1, 0]} scale={[1, 0.05, 1]}>
-            <meshStandardMaterial
-                color="#1a6b8a"
-                transparent
-                opacity={0.8}
-                roughness={0.0}
-                metalness={0.9}
-                side={THREE.DoubleSide}
-            />
-        </mesh>
     );
 }
