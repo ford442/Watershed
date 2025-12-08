@@ -1,7 +1,7 @@
 import { KeyboardControls, Sky } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import React, { useMemo } from "react";
-import CreekCanyon from "./components/CreekCanyon";
+import RiverTrack from "./components/RiverTrack";
 import Player from "./components/Player";
 
 export const Controls = {
@@ -13,7 +13,7 @@ export const Controls = {
 };
 
 const Experience = () => {
-  const map = useMemo(()=>[
+  const map = useMemo(() => [
     { name: Controls.forward, keys: ['KeyW'] },
     { name: Controls.backward, keys: ['KeyS'] },
     { name: Controls.left, keys: ['KeyA'] },
@@ -27,7 +27,7 @@ const Experience = () => {
       <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
       <Sky sunPosition={[10, 10, 5]} />
       <Physics debug>
-        <CreekCanyon />
+        <RiverTrack />
         <Player />
       </Physics>
     </KeyboardControls>
