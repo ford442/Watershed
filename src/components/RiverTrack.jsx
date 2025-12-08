@@ -26,10 +26,11 @@ export default function RiverTrack() {
     const riverPath = useMemo(() => {
         return new THREE.CatmullRomCurve3([
             new THREE.Vector3(0, 0, 0),        // Start
-            new THREE.Vector3(10, -5, -50),    // Slight right turn, drop
-            new THREE.Vector3(-20, -15, -100), // Hard left, steeper drop
-            new THREE.Vector3(0, -30, -150),   // Back to center
-            new THREE.Vector3(0, -40, -200)    // End
+            new THREE.Vector3(0, 0, -20),      // Straight section for spawn
+            new THREE.Vector3(10, -5, -70),    // Slight right turn, drop
+            new THREE.Vector3(-20, -15, -120), // Hard left, steeper drop
+            new THREE.Vector3(0, -30, -170),   // Back to center
+            new THREE.Vector3(0, -40, -220)    // End
         ], false, 'catmullrom', 0.5);
     }, []);
 
