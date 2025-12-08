@@ -90,7 +90,7 @@ export default function Player() {
   return (
     <RigidBody
       ref={rb}
-      position={[0, 5, -5]}
+      position={[0, 5, 0]}
       enabledRotations={[false, false, false]}
       colliders={false}
       friction={0}
