@@ -13,7 +13,7 @@ export default function Player() {
   const [, getKeys] = useKeyboardControls();
 
   const yaw = useRef(0);
-  const pitch = useRef(0);
+  const pitch = useRef(-0.2); // Start looking slightly down to see terrain
 
   useEffect(() => {
     const onClick = () => gl.domElement.requestPointerLock();
@@ -90,7 +90,7 @@ export default function Player() {
   return (
     <RigidBody
       ref={rb}
-      position={[0, 5, 0]}
+      position={[0, 2, -5]}
       enabledRotations={[false, false, false]}
       colliders={false}
       friction={0}
