@@ -1,13 +1,23 @@
-Prompts to Generate These Images (for your reference or to feed into an image generator):
+# Concept Art & References
 
-01_kinetic_flume.png:
+## Active Reference (Creek Canyon Prototype)
 
-First-person POV, hyper-realistic video game screenshot. The player's legs are visible, clad in wet technical gear, sliding feet-first down a narrow, natural rock flume filled with rushing white water. The rock walls are tight, covered in dripping emerald moss. Motion blur on the edges. The water is churning and realistic. 8k resolution, Unreal Engine 5 render.
+**`01_kinetic_flume.png`**:
+*   **Role:** Primary visual target for the current prototype.
+*   **Description:** First-person POV, sliding down a narrow, natural rock flume. Steep walls, mossy rock, rushing water.
+*   **Key Elements:** Narrow channel, high verticality, sense of speed/motion.
 
-02_waterfall_dive.png:
+---
 
-Third-person action shot from behind the character. The character is mid-air, diving off a high mossy cliff into a massive, thundering waterfall below. The camera is tilted down, inducing vertigo. The water below is a mix of deep blue and white foam. Mist and spray filling the air. Cinematic lighting, fast shutter speed.
+## Other Concepts
 
-03_raft_journey.png:
+**`02_waterfall_dive.png`**:
+Third-person action shot from behind the character. The character is mid-air, diving off a high mossy cliff into a massive, thundering waterfall below. Vertigo inducing.
 
-Wide angle landscape shot. A turbulent, wide river winding through a majestic mountain valley at sunset. A small, crude wooden raft with a lone figure is navigating the current. The water surface has complex ripples and eddies. Atmospheric fog, photorealistic, epic scale.
+**`03_raft_journey.png`**:
+Wide angle landscape shot. A turbulent, wide river winding through a majestic mountain valley at sunset. Epic scale.
+
+## Image Generation Prompts
+(These prompts were used to generate the reference images)
+
+*   **01_kinetic_flume.png:** First-person POV, hyper-realistic video game screenshot. The player's legs are visible, clad in wet technical gear, sliding feet-first down a narrow, natural rock flume filled with rushing white water. The rock walls are tight, covered in dripping emerald moss. Motion blur on the edges. The water is churning and realistic. 8k resolution, Unreal Engine 5 render.
