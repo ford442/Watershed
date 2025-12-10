@@ -1,7 +1,7 @@
-import { KeyboardControls, Sky, OrbitControls } from "@react-three/drei";
+import { KeyboardControls, Sky } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import React, { useMemo, useState } from "react";
-import TrackManager from "./components/TrackManager";
+import React, { useMemo } from "react";
+import RiverTrack from "./components/RiverTrack";
 import Player from "./components/Player";
 
 export const Controls = {
@@ -13,8 +13,6 @@ export const Controls = {
 };
 
 const Experience = () => {
-  const [debugMode] = useState(true); // Set to true for debugging
-  
   const map = useMemo(() => [
     { name: Controls.forward, keys: ['KeyW'] },
     { name: Controls.backward, keys: ['KeyS'] },
@@ -28,10 +26,9 @@ const Experience = () => {
       <ambientLight intensity={0.7} />
       <directionalLight position={[10, 20, 5]} intensity={1.5} castShadow />
       <Sky sunPosition={[100, 50, 100]} />
-      {debugMode && <OrbitControls target={[0, 0, -40]} />}
-      <Physics>
-        <TrackManager />
-        {!debugMode && <Player />}
+      <Physics gravity={[0, -9.81, 0]}>
+        <RiverTrack />
+        <Player />
       </Physics>
     </KeyboardControls>
   );
