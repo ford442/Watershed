@@ -90,6 +90,8 @@ export default function Player() {
   return (
     <RigidBody
       ref={rb}
+      // Spawn 3 units above canyon rim (Y=15) to avoid spawning inside geometry
+      // Player falls onto track surface at Z=-10 (within safe zone from 0 to -20)
       position={[0, 18, -10]}
       enabledRotations={[false, false, false]}
       colliders={false}

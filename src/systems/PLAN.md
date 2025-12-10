@@ -28,12 +28,21 @@ This directory contains the core game systems that manage state, streaming, perf
 
 **API:**
 ```typescript
+import { Vector3, BufferGeometry } from 'three';
+import { RigidBody } from '@react-three/rapier';
+
+interface Obstacle {
+  type: string;
+  position: Vector3;
+  mesh: THREE.Mesh;
+}
+
 interface Chunk {
   id: string;
   position: Vector3;
   geometry: BufferGeometry;
   collider: RigidBody;
-  obstacles: GameObject[];
+  obstacles: Obstacle[];
 }
 
 class ChunkManager {
@@ -73,6 +82,14 @@ class ChunkManager {
 interface IPoolable {
   reset(): void;
   isActive(): boolean;
+  destroy(): void; // For permanent cleanup when removing from pool
+}
+
+interface PoolStats {
+  totalObjects: number;
+  activeObjects: number;
+  inactiveObjects: number;
+  hitRate: number;
 }
 
 class ObjectPool<T extends IPoolable> {
@@ -81,6 +98,7 @@ class ObjectPool<T extends IPoolable> {
   release(obj: T): void;
   prewarm(count: number): void;
   getStats(): PoolStats;
+  clear(): void; // Destroy all objects in pool
 }
 ```
 
