@@ -23,10 +23,10 @@ const Experience = () => {
 
   return (
     <KeyboardControls map={map}>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-      <Sky sunPosition={[10, 10, 5]} />
-      <Physics>
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[10, 20, 5]} intensity={1.5} castShadow />
+      <Sky sunPosition={[100, 50, 100]} />
+      <Physics gravity={[0, -9.81, 0]}>
         <RiverTrack />
         <Player />
       </Physics>
