@@ -129,7 +129,7 @@ A high-octane, photorealistic downhill action game combining kinetic speed with 
 
 ### Medium Priority
 - [ ] Need better dev tools (debug view, performance overlay)
-- [ ] Texture paths inconsistent (public/ vs ./)
+- [x] Texture paths inconsistent (public/ vs ./)
 - [ ] No TypeScript in all components (jsx files)
 - [ ] Missing unit tests
 

@@ -1,6 +1,7 @@
 {
   "name": "webgpu-react-app",
   "version": "0.1.0",
+  "homepage": ".",
   "private": true,
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",
