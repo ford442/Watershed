@@ -2,6 +2,7 @@ import React, { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
+import FlowingWater from './FlowingWater';
 
 /**
  * TrackSegment - A single segment of the river track
@@ -160,17 +161,13 @@ export default function TrackSegment({ pathPoints, segmentId = 0 }) {
                 </mesh>
             </RigidBody>
 
-            {/* Water Surface */}
-            <mesh geometry={waterGeometry}>
-                <meshStandardMaterial
-                    color="#1a6b8a"
-                    transparent
-                    opacity={0.75}
-                    roughness={0.1}
-                    metalness={0.8}
-                    side={THREE.DoubleSide}
-                />
-            </mesh>
+            {/* Water Surface - Flowing Creek */}
+            <FlowingWater 
+                geometry={waterGeometry}
+                flowSpeed={1.5}
+                baseColor="#1a6b8a"
+                foamColor="#e8f4f8"
+            />
         </group>
     );
 }
