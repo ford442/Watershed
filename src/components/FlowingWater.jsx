@@ -162,7 +162,7 @@ export default function FlowingWater({
             transparent: true,
             side: THREE.DoubleSide,
         });
-    }, [flowSpeed, baseColor, foamColor]);
+    }, [geometry, flowSpeed, baseColor, foamColor]);
     
     // Animate the water by updating the time uniform
     useFrame((state) => {
