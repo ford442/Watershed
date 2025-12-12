@@ -2,6 +2,7 @@ import React, { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
+import FlowingWater from './FlowingWater';
 
 export default function RiverTrack() {
     // 1. Load Textures from public folder
@@ -239,17 +240,13 @@ export default function RiverTrack() {
                 </mesh>
             </RigidBody>
 
-            {/* Water Surface */}
-            <mesh geometry={waterGeometry}>
-                <meshStandardMaterial
-                    color="#1a7b9c"
-                    transparent
-                    opacity={0.7}
-                    roughness={0.1}
-                    metalness={0.8}
-                    side={THREE.DoubleSide}
-                />
-            </mesh>
+            {/* Water Surface - Flowing Creek */}
+            <FlowingWater 
+                geometry={waterGeometry}
+                flowSpeed={1.5}
+                baseColor="#1a7b9c"
+                foamColor="#e8f4f8"
+            />
         </group>
     );
 }
