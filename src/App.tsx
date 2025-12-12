@@ -5,7 +5,10 @@ import './style.css';
 
 function App() {
   return (
-    <Canvas>
+    <Canvas
+      camera={{ position: [0, 25, 10], fov: 75 }}
+      shadows
+    >
       <React.Suspense fallback={null}>
         <Experience />
       </React.Suspense>
