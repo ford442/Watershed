@@ -68,3 +68,96 @@ select, button {
     color: #e0e0e0;
     cursor: pointer;
 }
+
+/* Palette UI Overlay Styles */
+.ui-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+}
+
+.ui-card {
+    background: rgba(20, 20, 20, 0.9);
+    border: 1px solid #444;
+    padding: 40px 60px;
+    border-radius: 4px;
+    color: #e0e0e0;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    font-family: 'Courier New', Courier, monospace;
+    letter-spacing: 1px;
+}
+
+.ui-card h1 {
+    font-size: 2.5rem;
+    margin: 0 0 10px 0;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+}
+
+.start-prompt {
+    font-size: 1.2rem;
+    color: #61dafb;
+    margin-bottom: 40px;
+    text-transform: uppercase;
+    animation: pulse 2s infinite;
+}
+
+.controls-section {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+    width: 100%;
+}
+
+.control-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    justify-content: space-between;
+}
+
+.keys {
+    display: flex;
+    gap: 5px;
+}
+
+.key {
+    border: 1px solid #666;
+    background: #333;
+    padding: 6px 12px;
+    border-radius: 2px;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #fff;
+    min-width: 20px;
+    display: inline-block;
+}
+
+.key-wide {
+    padding: 6px 20px;
+}
+
+.action {
+    font-size: 0.9rem;
+    color: #aaa;
+    text-transform: uppercase;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
