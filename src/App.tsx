@@ -2,6 +2,7 @@ import React from 'react';
 import { Canvas } from '@react-three/fiber';
 import Experience from './Experience';
 import { UI } from './components/UI';
+import { Loader } from './components/Loader';
 import './style.css';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
         </React.Suspense>
       </Canvas>
       <UI />
+      <Loader />
     </>
   );
 }
