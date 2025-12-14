@@ -13,8 +13,15 @@ jest.mock('@react-three/drei', () => ({
 }));
 
 test('renders loader when active', () => {
-  const { getByText } = render(<Loader />);
+  const { getByText, getByRole } = render(<Loader />);
   expect(getByText(/SYSTEM INITIALIZATION/i)).toBeInTheDocument();
   expect(getByText(/LOADING ASSETS... 50%/i)).toBeInTheDocument();
   expect(getByText(/PROCESSING: test-asset.jpg/i)).toBeInTheDocument();
+
+  const progressbar = getByRole('progressbar');
+  expect(progressbar).toBeInTheDocument();
+  expect(progressbar).toHaveAttribute('aria-valuenow', '50');
+  expect(progressbar).toHaveAttribute('aria-valuemin', '0');
+  expect(progressbar).toHaveAttribute('aria-valuemax', '100');
+  expect(progressbar).toHaveAttribute('aria-label', 'Asset loading progress');
 });

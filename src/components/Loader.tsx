@@ -13,7 +13,14 @@ export const Loader = () => {
       <div className="loader-content">
         <div className="loader-header">SYSTEM INITIALIZATION</div>
         <div className="loader-text">LOADING ASSETS... {Math.round(progress)}%</div>
-        <div className="loader-bar">
+        <div
+          className="loader-bar"
+          role="progressbar"
+          aria-label="Asset loading progress"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div className="loader-bar-fill" style={{ width: `${progress}%` }} />
         </div>
         {item && <div className="loader-item">PROCESSING: {item}</div>}
