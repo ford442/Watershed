@@ -1,7 +1,7 @@
 import { KeyboardControls, Sky } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import React, { useMemo } from "react";
-import RiverTrack from "./components/RiverTrack";
+import TrackManager from "./components/TrackManager";
 import Player from "./components/Player";
 
 export const Controls = {
@@ -27,7 +27,7 @@ const Experience = () => {
       <directionalLight position={[10, 20, 5]} intensity={1.5} castShadow />
       <Sky sunPosition={[100, 50, 100]} />
       <Physics gravity={[0, -9.81, 0]}>
-        <RiverTrack />
+        <TrackManager />
         <Player />
       </Physics>
     </KeyboardControls>
