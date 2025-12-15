@@ -1,227 +1,143 @@
-# WATERSHED - Master Development Plan
+# WATERSHED Development Plan
 
-## Project Vision
-A high-octane, photorealistic downhill action game combining kinetic speed with rigorous physics simulation.
+## Current Status: Prototype Phase
 
-## Current Status
-**Phase:** Early Prototype - Creek Canyon Biome
-**Working:** Basic player movement, river track generation, physics integration
-**Issues:** Player spawn positioning (FIXED), camera preview
+The project has established a spline-based track system. The immediate focus is on implementing the core gameplay loop.
 
 ---
 
-## Development Phases
+## Phase 1: Core Engine (Current)
 
-### Phase 1: Core Mechanics Foundation ✓ (In Progress)
-- [x] Basic React Three Fiber setup
-- [x] Rapier physics integration
-- [x] Player capsule controller with FPS camera
-- [x] Procedural river track generation (ExtrudeGeometry)
-- [x] Basic texturing (rock materials)
-- [x] Keyboard controls (WASD + Space)
-- [x] Fix player spawn position
-- [ ] Camera preview mode for development
-- [ ] Player respawn system
-- [ ] Basic collision detection validation
+### Priority A: Treadmill/Chunking System ✅ In Progress
+- [x] Refactor track into reusable `TrackSegment` component
+- [x] Create `TrackManager` to orchestrate multiple segments
+- [ ] Implement dynamic segment loading based on player position
+- [ ] Add segment unloading for segments behind the player
+- [ ] Implement object pooling for performance
 
-### Phase 2: Creek Canyon Refinement
-**Goal:** Polish the initial biome into a complete, playable experience
+### Priority B: Physics Optimization
+- [ ] Create simplified collision geometry (low-poly walls)
+- [ ] Separate visual mesh from physics mesh
+- [ ] Profile and optimize Rapier physics performance
+- [ ] Consider convex decomposition vs trimesh
 
-#### Terrain & Environment
-- [ ] Enhance canyon wall detail with proper heightmap displacement
-- [ ] Add rock debris and obstacles (pooled instances)
-- [ ] Implement water flow visual effects
-- [ ] Add vegetation (moss, ferns) using instanced meshes
-- [ ] Lighting improvements (god rays, ambient occlusion)
-- [ ] Fog and atmospheric effects
-
-#### Water System
-- [ ] WebGPU compute shader for water surface deformation
-- [ ] Water flow forces affecting player physics
-- [ ] Splash particles when player impacts water
-- [ ] Water foam and spray effects
-- [ ] Normal map animation for water surface
-
-#### Gameplay
-- [ ] Momentum-based scoring system
-- [ ] Speed boost zones (rapids)
-- [ ] Hazards (rocks, fallen logs)
-- [ ] Checkpoint system
-- [ ] Game over condition (stopping/leaving track)
-- [ ] Basic UI overlay (speed, distance, score)
-
-### Phase 3: Performance & Optimization
-**Goal:** Achieve 60fps on target hardware
-
-#### Asset Streaming
-- [ ] Implement chunk-based "treadmill" system
-- [ ] Object pooling for reusable meshes
-- [ ] LOD (Level of Detail) for distant geometry
-- [ ] Frustum culling optimization
-- [ ] Texture streaming and compression
-
-#### Physics Optimization
-- [ ] Move Rapier to Web Worker
-- [ ] Implement physics prediction/interpolation
-- [ ] Optimize collision meshes (simplified convex hulls)
-- [ ] Reduce physics update frequency where possible
-
-#### Rendering
-- [ ] Instanced rendering for repeated objects
-- [ ] Occlusion culling
-- [ ] Shadow map optimization
-- [ ] Post-processing pipeline (motion blur, bloom)
-
-### Phase 4: Expanded Content
-**Goal:** Add variety and replayability
-
-#### New Biomes
-- [ ] Alpine Source (mountain springs)
-- [ ] Forest Rapids (dense vegetation, waterfalls)
-- [ ] Rocky Gorge (narrow, dangerous passages)
-- [ ] Valley Delta (wide, meandering channels)
-
-#### Procedural Generation
-- [ ] Seed-based track generation
-- [ ] Difficulty progression system
-- [ ] Random obstacle placement
-- [ ] Dynamic weather conditions
-
-#### Player Abilities
-- [ ] Slide mechanic (reduce friction)
-- [ ] Air control during jumps
-- [ ] Wall-ride technique
-- [ ] Quick-turn maneuver
-
-### Phase 5: Polish & Release
-**Goal:** Ship-ready product
-
-#### Audio
-- [ ] Rushing water ambient sound
-- [ ] Wind and environmental audio
-- [ ] Player movement sounds (splash, slide)
-- [ ] Impact and collision effects
-- [ ] Dynamic music system
-
-#### UI/UX
-- [ ] Main menu
-- [ ] Settings panel (graphics, audio, controls)
-- [ ] Tutorial/onboarding
-- [ ] Leaderboard system
-- [ ] Replay system
-
-#### Testing & QA
-- [ ] Performance profiling
-- [ ] Cross-browser testing
-- [ ] Mobile device testing
-- [ ] Accessibility improvements
-- [ ] User playtesting feedback
+### Priority C: Water Flow (WebGPU)
+- [ ] Design water flow vertex shader (WGSL)
+- [ ] Implement flowmap-based displacement
+- [ ] Add normal reconstruction for lighting
+- [ ] Apply water forces to player rigid body
 
 ---
 
-## Technical Debt & Known Issues
+## Phase 2: Gameplay Systems
 
-### High Priority
-- [ ] Player spawn position needs collision validation
-- [ ] Camera can clip through geometry
-- [ ] No error handling for texture loading failures
-- [ ] Physics performance degrades with complex trimesh
+### Player Mechanics
+- [ ] Implement momentum-based movement
+- [ ] Add slide/drift mechanics for turns
+- [ ] Create respawn system for out-of-bounds
+- [ ] Add velocity-based camera effects
 
-### Medium Priority
-- [ ] Need better dev tools (debug view, performance overlay)
-- [x] Texture paths inconsistent (public/ vs ./)
-- [ ] No TypeScript in all components (jsx files)
-- [ ] Missing unit tests
+### Track Generation
+- [ ] Design procedural spline generation algorithm
+- [ ] Create biome-specific track variations
+- [ ] Implement difficulty progression system
+- [ ] Add obstacle placement system
 
-### Low Priority
-- [ ] Code organization could be improved (separate folders for systems)
-- [ ] No ESLint configuration
-- [ ] Missing git hooks for pre-commit checks
+## Biomes & Journey — Prototype Concepts
+
+Based on the move from a static map to an infinite, procedural system (via `TrackManager` and the `FlowingWater` shader), we can structure the experience as a descending "Journey" from Alpine Source to Valley Delta. Below are four immediate biomes to prototype, with concrete implementation notes tied to the current codebase.
+
+1. The Glacial Melt (The Source)
+	 - Vibe: Blinding white/blue, translucent ice, extremely fast, narrow.
+	 - Scene: Start in a melting ice cave — walls are semi-transparent blue ice and water is slushy / low friction.
+	 - Technical:
+		 - Geometry: In `RiverTrack.jsx` or `TrackSegment.jsx` produce inward-curving walls (reduce track width and curve wall vertices inward) to form a tube/tunnel.
+		 - Shader: Extend `FlowingWater.jsx` to expose `baseColor` and `roughness` variants; use a white/blue base and higher roughness for slush.
+		 - Physics: In `TrackManager.jsx` bias generated segment control points to steeper Y drops (e.g., direction.y < -0.8) to create high acceleration sections.
+
+2. The Lumber Flume (Forest / Industrial)
+	 - Vibe: Mossy wood, dappled sunlight, claustrophobic U-shaped flume.
+	 - Scene: Wooden aqueducts that can break, launching the player.
+	 - Exciting Interaction — The Jump:
+		 - Code: Generate a "Gap" segment in `TrackManager.jsx` (break continuity in spline or emit an air segment with no floor physics). Optionally spawn an invisible collider in the air for bounce or let gravity handle the fall.
+		 - Props: Add wooden plank meshes and breakable colliders (simple kinematic rigid bodies).
+
+3. The Hydro-Dam (Obstacle Course)
+	 - Vibe: Concrete, rusty metal, calm pool then a violent overflow drain.
+	 - Scene: A hydro pool with a vortex that sucks the player into an overflow pipe.
+	 - Watery Interaction — The Vortex:
+		 - Physics: Add a `CylinderCollider` sensor (Rapier) at pool center and apply centripetal impulses to player rigid body when inside.
+		 - Shader: Update `FlowingWater.jsx` to accept a `center` uniform and apply a UV swirl around that center for visual feedback.
+
+4. The Slot Canyon (Tech Demo)
+	 - Vibe: Red rock, sharp shadows, extreme vertical walls.
+	 - Scene: Narrow channel just big enough for the player; tall walls allow for risky wall-riding.
+	 - Mechanic — Wall Riding:
+		 - Physics/Materials: Increase friction on wall materials in `RiverTrack.jsx` (`friction` param or material-specific damping) so players can ride walls during high-G turns.
+		 - Design: Tune spline curvature and wall profiles to create bankable turns.
+
+Summary: New Mechanics to Prototype
+- Waterfalls: Segment where a spline goes nearly vertical — create a special segment type and ensure physics/colliders handle vertical drops.
+- Obstacles: Place rocks/logs at `t` positions along splines (use `riverPath.getPoint(t)` during segment generation).
+- Currents: Invisible trigger volumes that apply `rb.applyImpulse()` or `rb.addForce()` to push or pull players.
+
+These changes leverage the existing spline-based generation and shader systems to tell a coherent environmental story from source to delta. Prioritize small, testable prototypes for each biome and iterate after playtesting.
+
+## Flow Forecast (Environmental Simulation & Risk)
+
+Introduce a `FlowForecast` tool that predicts how the channel will change hour-by-hour based on temperature, snowpack, and upstream dam releases. This is also a gameplay tool: players must scout portage routes and cache gear on high ground before the water rises. The primary tension is environmental change — e.g., returning to find your planned path now a Class V rapid where a bridge stood yesterday.
+
+Implementation notes:
+- Inputs: temperature, snowpack index, dam release schedule (prototype with simplified numeric model or CSV schedule).
+- Simulation: discrete hourly steps that map inputs to a `flowRate` value which in turn adjusts segment parameters (width, slope), obstacle density, and difficulty rating.
+- Track Effects: `TrackManager` flags segments as `Normal | HighFlow | Flooded | WashedOut`. When state changes occur, swap meshes/colliders, spawn rapids, or disable bridges.
+- Portage Mechanics: generate `portageRoute` waypoints and `cache` spawn points on high ground; allow player to pre-place caches (items persist) and mark planned routes; failure to portage yields loss/respawn or environmental penalties.
+- UI: add a preview tool for the next 24 hours with predicted hazards and alerts; optional player-facing map overlay for portage scouting.
+- Data & Authoring: support both procedural forecasts and authored schedules for set-pieces (dam releases, storm windows).
+
+Prototype Todo: Implement a minimal `FlowForecast` simulation, wire forecasted segment state changes into `TrackManager`, and add simple portage route markers and cache placement mechanics.
 
 ---
 
-## File Organization & Expansion Areas
+## Phase 3: Polish & Content
+
+### Visual Effects
+- [ ] Implement water spray particles
+- [ ] Add motion blur for speed sensation
+- [ ] Create environmental fog/atmosphere
+- [ ] Design lighting for canyon ambiance
+
+### Audio
+- [ ] Rushing water ambiance
+- [ ] Speed-based wind sounds
+- [ ] Collision/impact effects
+
+---
+
+## Technical Debt & Notes
+
+### Known Issues
+- Trimesh colliders are expensive for long tracks (solved by chunking)
+- Water currently static (needs shader implementation)
+
+### Architecture Decisions
+- **Spline-Based Tracks**: Chosen over heightmaps for explicit "beat" design
+- **Segment System**: Enables infinite track generation
+- **React Three Fiber**: Provides declarative 3D scene management
+
+---
+
+## File Structure Overview
 
 ```
-Watershed/
-├── src/
-│   ├── components/          [EXPAND: More game objects]
-│   │   ├── Player.jsx      ✓ Core player controller
-│   │   ├── RiverTrack.jsx  ✓ Main track generator
-│   │   ├── CreekCanyon.jsx ✓ Alternative track (not used)
-│   │   └── [TODO]
-│   │       ├── Obstacles/   → Rock, Log, Rapids components
-│   │       ├── Effects/     → Particles, Splashes, Foam
-│   │       ├── UI/          → HUD, Menu, Overlays
-│   │       └── Cameras/     → Debug camera, Cinematic camera
-│   │
-│   ├── systems/             [CREATE: Game systems]
-│   │   ├── ChunkManager.ts  → Treadmill/streaming system
-│   │   ├── ObjectPool.ts    → Reusable object pooling
-│   │   ├── ScoreSystem.ts   → Momentum-based scoring
-│   │   └── Physics/
-│   │       ├── PhysicsWorker.ts → Web Worker for Rapier
-│   │       └── WaterForces.ts   → Water flow calculations
-│   │
-│   ├── generators/          [CREATE: Procedural generation]
-│   │   ├── TrackGenerator.ts    → Seed-based track creation
-│   │   ├── TerrainGenerator.ts  → Heightmap generation
-│   │   └── ObstacleSpawner.ts   → Random obstacle placement
-│   │
-│   ├── shaders/             [CREATE: WebGPU shaders]
-│   │   ├── waterSurface.wgsl    → Water deformation compute
-│   │   ├── waterFlow.wgsl       → Flow simulation
-│   │   └── particleUpdate.wgsl  → Particle system
-│   │
-│   ├── utils/               [CREATE: Utilities]
-│   │   ├── MathHelpers.ts   → Vector math, curves
-│   │   ├── TextureLoader.ts → Async texture management
-│   │   └── DebugTools.ts    → Performance overlay, debug draw
-│   │
-│   ├── hooks/               [CREATE: React hooks]
-│   │   ├── useChunkStreaming.ts → Chunk management hook
-│   │   ├── useObjectPool.ts     → Object pooling hook
-│   │   └── useGameState.ts      → Global game state
-│   │
-│   └── config/              [CREATE: Configuration]
-│       ├── gameConfig.ts    → Game constants and settings
-│       ├── physicsConfig.ts → Physics parameters
-│       └── biomes.ts        → Biome definitions
-│
-├── assets/
-│   ├── concepts/            ✓ Reference images
-│   ├── textures/            [EXPAND: More materials]
-│   │   └── rock/            → Rock textures (in public/)
-│   ├── models/              [CREATE: 3D models]
-│   │   ├── obstacles/       → Rocks, logs, etc.
-│   │   └── props/           → Environmental details
-│   └── audio/               [CREATE: Sound assets]
-│       ├── ambient/         → Water, wind sounds
-│       ├── effects/         → Splash, impact sounds
-│       └── music/           → Dynamic soundtrack
-│
-└── public/                  ✓ Static assets
-    └── Rock031_1K-JPG_*     → Current rock textures
-
+src/
+├── components/
+│   ├── Player.jsx          # Player physics & controls
+│   ├── TrackManager.jsx    # Segment orchestration
+│   ├── TrackSegment.jsx    # Individual track piece
+│   ├── RiverTrack.jsx      # Legacy single-track (deprecated)
+│   └── CreekCanyon.jsx     # Legacy heightmap (deprecated)
+├── Experience.jsx          # Main scene composition
+├── App.tsx                 # Canvas setup
+└── index.tsx              # Entry point
 ```
-
----
-
-## Next Immediate Steps (Priority Order)
-
-1. **Test Player Spawn Fix** - Verify player spawns above track and falls correctly
-2. **Add Development Camera** - Implement free-fly camera for scene preview (toggle with 'C' key)
-3. **Player Respawn System** - Reset player if they fall off or get stuck
-4. **Create Basic Obstacles** - Add 3-5 rock obstacles to test collision
-5. **Implement Object Pooling** - Prepare for chunk streaming system
-
----
-
-## Notes for AI Agents
-
-- Always test changes by running `npm start` and visually verifying
-- Maintain the "kinetic flow" philosophy - speed and momentum are paramount
-- Performance is critical - profile before adding expensive features
-- Follow the existing code style (functional React components, hooks)
-- Consult AGENTS.md for aesthetic and technical guidelines
-- Keep physics on Rapier, rendering on R3F - don't mix paradigms
