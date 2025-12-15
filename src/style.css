@@ -113,6 +113,29 @@ select, button {
     animation: pulse 2s infinite;
 }
 
+button.start-button {
+    background: transparent;
+    border: 2px solid transparent;
+    font-family: inherit;
+    padding: 10px 20px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.2s ease;
+}
+
+button.start-button:hover {
+    text-shadow: 0 0 10px rgba(97, 218, 251, 0.5);
+    background: rgba(97, 218, 251, 0.05);
+    border-radius: 4px;
+}
+
+button.start-button:focus-visible {
+    outline: none;
+    border-color: #61dafb;
+    border-radius: 4px;
+    background: rgba(97, 218, 251, 0.1);
+}
+
 .controls-section {
     display: flex;
     flex-direction: column;

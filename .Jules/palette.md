@@ -9,3 +9,7 @@
 ## 2025-12-14 - WebGL Loader Accessibility
 **Learning:** WebGL loading screens are often implemented as simple divs, making them invisible to screen readers.
 **Action:** Always wrap visual progress bars in `role="progressbar"` with `aria-valuenow` attributes to ensure screen reader users aren't left in silence during load times.
+
+## 2025-05-22 - Accessible Pointer Lock Trigger
+**Learning:** Pointer lock requests require a user gesture. Using a semantic `<button>` instead of a generic clickable element ensures this gesture is accessible to keyboard users and screen readers, while maintaining the "click anywhere" fallback via overlay layering.
+**Action:** Use an explicit "Start" button for pointer-lock overlays, ensuring it has `pointer-events: auto` while the overlay remains `pointer-events: none` to allow pass-through clicks.

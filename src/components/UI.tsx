@@ -17,11 +17,24 @@ export const UI = () => {
 
   if (locked) return null;
 
+  const handleStart = () => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      canvas.requestPointerLock();
+    }
+  };
+
   return (
     <div className="ui-overlay">
       <div className="ui-card">
         <h1>WATERSHED</h1>
-        <p className="start-prompt">CLICK TO ENGAGE</p>
+        <button
+          className="start-button start-prompt"
+          onClick={handleStart}
+          aria-label="Start Game - Click to engage pointer lock"
+        >
+          CLICK TO ENGAGE
+        </button>
 
         <div className="controls-section">
           <div className="control-row">

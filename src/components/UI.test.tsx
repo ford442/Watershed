@@ -7,8 +7,9 @@ test('renders UI overlay with controls info', () => {
   render(<UI />);
 
   // The overlay should be visible initially (locked=false)
-  const startPrompt = screen.getByText(/CLICK TO ENGAGE/i);
-  expect(startPrompt).toBeInTheDocument();
+  const startButton = screen.getByRole('button', { name: /Start Game/i });
+  expect(startButton).toBeInTheDocument();
+  expect(startButton).toHaveTextContent(/CLICK TO ENGAGE/i);
 
   const moveControl = screen.getByText(/MOVE/i);
   expect(moveControl).toBeInTheDocument();
