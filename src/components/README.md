@@ -70,7 +70,7 @@ position={[0, -4.5, 5]}
 ```
 Side View (X=0, looking along Z-axis):
 
-Y=-4.5  →  👤 PLAYER SPAWN (rests inside corridor)
+Y=-4.5 →  👤 PLAYER SPAWN (rests inside corridor)
            ║
            ║  Canyon Walls (solid geometry)
            ║
