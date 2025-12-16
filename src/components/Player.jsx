@@ -14,6 +14,22 @@ export default function Player() {
 
   const yaw = useRef(0);
   const pitch = useRef(-0.2); // Start looking slightly down to see terrain
+  const isRightMouseDown = useRef(false);
+
+  useEffect(() => {
+    const onMouseDown = (e) => {
+      if (e.button === 2) isRightMouseDown.current = true;
+    };
+    const onMouseUp = (e) => {
+      if (e.button === 2) isRightMouseDown.current = false;
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   useEffect(() => {
     const onClick = () => gl.domElement.requestPointerLock();
@@ -63,8 +79,8 @@ export default function Player() {
     const frontVector = new THREE.Vector3(0, 0, 0);
     const sideVector = new THREE.Vector3(0, 0, 0);
 
-    // W moves forward (negative Z), S moves backward (positive Z)
-    if (forward) frontVector.z -= 1;
+    // Right click moves forward (negative Z), S moves backward (positive Z)
+    if (isRightMouseDown.current) frontVector.z -= 1;
     if (backward) frontVector.z += 1;
 
     // A moves left (negative X), D moves right (positive X)
@@ -90,9 +106,8 @@ export default function Player() {
   return (
     <RigidBody
       ref={rb}
-      // Spawn 3 units above canyon rim (Y=15) to avoid spawning inside geometry
-      // Player falls onto track surface at Z=-10 (within safe zone from 0 to -20)
-      position={[0, 18, -10]}
+      // Spawn closer to track surface at Z=-10 (track is at Y~0)
+      position={[0, 2, -10]}
       enabledRotations={[false, false, false]}
       colliders={false}
       friction={0}

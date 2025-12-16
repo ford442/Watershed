@@ -29,8 +29,8 @@ describe('UI Component', () => {
 
     // Verify accessible structure
     expect(screen.getByRole('list', { name: /Game Controls/i })).toBeInTheDocument();
-    expect(screen.getByRole('listitem', { name: /Move: W, A, S, D keys/i })).toBeInTheDocument();
-    expect(screen.getByRole('listitem', { name: /Jump: Space key/i })).toBeInTheDocument();
+    expect(screen.getByRole('listitem', { name: /Move: A, S, D keys and Right Click/i })).toBeInTheDocument();
+    expect(screen.getByRole('listitem', { name: /Jump: W key/i })).toBeInTheDocument();
     expect(screen.getByRole('listitem', { name: /Look: Mouse movement/i })).toBeInTheDocument();
   });
 
