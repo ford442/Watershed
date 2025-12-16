@@ -39,47 +39,42 @@ The river follows a CatmullRom curve:
 6. **[0, -50, -250]** - End
 
 ### Safe Starting Zone
-- **Z Range**: 0 to -20
-- **Characteristics**: Straight, flat, no curves
-- **Purpose**: Allow player to acclimate before challenges
+- **Z Range**: 30 to -25
+- **Characteristics**: Enclosed corridor with gentle drop
+- **Purpose**: Place the player inside canyon walls immediately
 
 ## Player Spawn Position
 
-### Original Position (BROKEN)
-```javascript
-position={[0, 2, -5]}
-```
-- X=0: Center of track ✓
-- Y=2: 2 units above riverbed ✗ (INSIDE canyon walls)
-- Z=-5: Within safe zone ✓
-
-**Problem**: Y=2 is well below the canyon rim (Y=15), placing the player capsule inside the extruded geometry walls.
-
-### Fixed Position
+### Original Position (FLOATING)
 ```javascript
 position={[0, 18, -10]}
 ```
 - X=0: Center of track ✓
-- Y=18: 3 units above canyon rim ✓ (CLEAR of geometry)
-- Z=-10: Within safe zone ✓
+- Y=18: Floating high above canyon ✗ (midair start)
+- Z=-10: Within corridor ✓
 
-**Solution**: Y=18 ensures player spawns in open air above the track. Gravity will pull them down onto the riverbed surface.
+**Problem**: Starting far above the canyon made the entry feel like a hovering platform.
+
+### Current Position
+```javascript
+position={[0, -4.5, 5]}
+```
+- X=0: Center of track ✓
+- Y=-4.5: Slightly above creek floor inside walls ✓
+- Z=5: Inside enclosed entry corridor ✓
+
+**Solution**: Spawn directly inside the canyon so the player begins grounded in the creek bed.
 
 ## Visual Diagram
 
 ```
 Side View (X=0, looking along Z-axis):
 
-Y=18  →  👤 PLAYER SPAWN (capsule floating in air)
-         ║
-         ║ (falls due to gravity)
-         ║
-Y=15  ═══╩═══  Canyon Rim
-      ║     ║
-      ║     ║  Canyon Walls (solid geometry)
-      ║     ║
-      ║     ║
-Y=0   ╚═════╝  Riverbed (collision surface)
+Y=-4.5 →  👤 PLAYER SPAWN (rests inside corridor)
+           ║
+           ║  Canyon Walls (solid geometry)
+           ║
+Y=-6   ╚═════╝  Riverbed (collision surface)
 
 ```
 
@@ -114,16 +109,15 @@ camera={{ position: [0, 25, 10], fov: 75 }}
 
 ### Gravity
 - Default: -9.81 m/s² (realistic Earth gravity)
-- Player falls from Y=18 to Y≈1 (lands on riverbed)
-- Fall time: ~1.9 seconds
+- Player starts just above the creek floor (Y≈-4.5) and settles onto the riverbed
 
 ## Testing Spawn Position
 
 To verify the spawn position is correct:
 
-1. **Visual Test**: Player should be visible falling onto track
-2. **Collision Test**: Player should land smoothly on riverbed
-3. **Position Test**: Final Y position should be ~1-2 units (standing on surface)
+1. **Visual Test**: Player should appear already inside the corridor (no long fall)
+2. **Collision Test**: Player should settle smoothly on the riverbed
+3. **Position Test**: Final Y position should be around -5 (standing on surface)
 4. **Camera Test**: View should not clip through geometry
 
 ## Common Issues
