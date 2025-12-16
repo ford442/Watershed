@@ -252,3 +252,19 @@ button.start-button:focus-visible {
     width: 100%;
     font-style: italic;
 }
+
+/* Crosshair - Palette UX Improvement */
+.crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    background-color: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 100;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    transition: width 0.2s, height 0.2s, background-color 0.2s;
+}
