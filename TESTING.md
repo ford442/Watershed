@@ -17,17 +17,16 @@ When the application loads, you should see:
 
 1. **Initial View**: An overhead camera view showing the canyon from above
    - Camera position: [0, 25, 10] (25 units high, 10 units back)
-   - You should see the canyon track extending forward
+   - You should see the canyon track enclosing the starting corridor
 
-2. **Player Falling**: Within 1-2 seconds of loading
-   - Player capsule should be visible falling from above
-   - Falls from Y=18 to Y≈1 (lands on riverbed surface)
-   - Fall takes approximately 1.9 seconds
+2. **Player Settled**: On load
+   - Player capsule should already be nestled in the creek corridor (around Z≈5)
+   - Capsule hovers slightly above the water before settling on the floor
 
-3. **Player Landed**: After falling
+3. **Player Ready**: After physics settles
    - Player should be standing on the track surface
    - Camera should be in first-person view
-   - Position should be approximately [0, 1-2, -10]
+   - Position should be approximately [0, -4 to -5, 5]
 
 #### What to Look For ✅
 - [ ] Scene renders with textures visible (rocky canyon walls)
@@ -48,7 +47,7 @@ When the application loads, you should see:
 
 **Camera Inside Geometry**
 - **Cause**: Player spawn position too low
-- **Solution**: Verify Player.jsx position is [0, 18, -10]
+- **Solution**: Verify Player.jsx position is [0, -4.5, 5]
 
 ### 3. Test Player Controls
 

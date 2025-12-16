@@ -8,24 +8,24 @@ const MAX_ACTIVE_SEGMENTS = 5;    // Keep last 5 segments
 
 // Define initial segments outside component to avoid recreation
 const INITIAL_SEGMENTS = [
-    // Segment 1: Start zone - gentle introduction
+    // Segment 1: Start zone - enclosed creek corridor
     {
         id: 0,
         points: [
-            new THREE.Vector3(0, 0, 0),       // START
-            new THREE.Vector3(0, 0, -20),     // SAFE ZONE
-            new THREE.Vector3(5, -2, -50),    // Gentle curve right
-            new THREE.Vector3(10, -5, -80),   // Continue drop
+            new THREE.Vector3(0, -6, 30),     // Upstream canyon approach
+            new THREE.Vector3(0, -6, 5),      // Entry corridor around spawn
+            new THREE.Vector3(2, -8, -25),    // Safe drop deeper into creek
+            new THREE.Vector3(8, -12, -60),   // Continue descent
         ],
     },
     // Segment 2: The big turn
     {
         id: 1,
         points: [
-            new THREE.Vector3(10, -5, -80),   // Connect from segment 1
-            new THREE.Vector3(5, -10, -100),  // Begin left turn
-            new THREE.Vector3(-10, -15, -130),// Hard left
-            new THREE.Vector3(-20, -20, -160),// Continue descent
+            new THREE.Vector3(8, -12, -60),   // Connect from segment 1
+            new THREE.Vector3(0, -16, -95),   // Begin left turn
+            new THREE.Vector3(-12, -20, -135),// Hard left
+            new THREE.Vector3(-18, -24, -175),// Continue descent
         ],
     },
 ];
