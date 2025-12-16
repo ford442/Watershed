@@ -13,3 +13,11 @@
 ## 2025-05-22 - Accessible Pointer Lock Trigger
 **Learning:** Pointer lock requests require a user gesture. Using a semantic `<button>` instead of a generic clickable element ensures this gesture is accessible to keyboard users and screen readers, while maintaining the "click anywhere" fallback via overlay layering.
 **Action:** Use an explicit "Start" button for pointer-lock overlays, ensuring it has `pointer-events: auto` while the overlay remains `pointer-events: none` to allow pass-through clicks.
+
+## 2025-01-28 - Crosshair & Accessibility
+**Learning:** First-person experiences using pointer lock can cause motion sickness or disorientation without a visual anchor (reticle/crosshair).
+**Action:** Always include a minimal crosshair when pointer lock is active.
+
+## 2025-01-28 - Semantic Control Overlays
+**Learning:** Control overlays often use visual-only cues (like key icons) which are invisible to screen readers.
+**Action:** Use `role="list"`/`listitem` and `aria-label` to describe control mappings semantically, while hiding purely decorative elements with `aria-hidden="true"`.
