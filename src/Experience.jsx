@@ -14,11 +14,11 @@ export const Controls = {
 
 const Experience = () => {
   const map = useMemo(() => [
-    { name: Controls.forward, keys: ['KeyW'] },
+    { name: Controls.forward, keys: [] },
     { name: Controls.backward, keys: ['KeyS'] },
     { name: Controls.left, keys: ['KeyA'] },
     { name: Controls.right, keys: ['KeyD'] },
-    { name: Controls.jump, keys: ['Space'] },
+    { name: Controls.jump, keys: ['KeyW'] },
   ], [])
 
   return (
