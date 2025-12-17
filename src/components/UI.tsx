@@ -39,18 +39,20 @@ export const UI = () => {
         </button>
 
         <div className="controls-section" role="list" aria-label="Game Controls">
-          <div className="control-row" role="listitem" aria-label="Move: A, S, D keys and Right Click">
+          <div className="control-row" role="listitem" aria-label="Move: A, S, D, Arrow keys, or Right Click">
             <div className="keys" aria-hidden="true">
               <span className="key">A</span>
               <span className="key">S</span>
               <span className="key">D</span>
+              <span className="key key-wide">ARROWS</span>
               <span className="key key-wide">R-CLICK</span>
             </div>
             <span className="action" aria-hidden="true">MOVE</span>
           </div>
-          <div className="control-row" role="listitem" aria-label="Jump: W key">
+          <div className="control-row" role="listitem" aria-label="Jump: W or Space key">
             <div className="keys" aria-hidden="true">
               <span className="key">W</span>
+              <span className="key key-wide">SPACE</span>
             </div>
             <span className="action" aria-hidden="true">JUMP</span>
           </div>
