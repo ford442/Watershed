@@ -21,3 +21,7 @@
 ## 2025-01-28 - Semantic Control Overlays
 **Learning:** Control overlays often use visual-only cues (like key icons) which are invisible to screen readers.
 **Action:** Use `role="list"`/`listitem` and `aria-label` to describe control mappings semantically, while hiding purely decorative elements with `aria-hidden="true"`.
+
+## 2025-05-23 - Keyboard Accessible Controls
+**Learning:** Non-standard control schemes (like "Right Click to Move") can completely block keyboard-only users.
+**Action:** Always map primary actions to standard keyboard inputs (Arrows/Space) in addition to mouse controls, and document them in the UI.

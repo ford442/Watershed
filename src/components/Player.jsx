@@ -79,8 +79,8 @@ export default function Player() {
     const frontVector = new THREE.Vector3(0, 0, 0);
     const sideVector = new THREE.Vector3(0, 0, 0);
 
-    // Right click moves forward (negative Z), S moves backward (positive Z)
-    if (isRightMouseDown.current) frontVector.z -= 1;
+    // Right click or forward key moves forward (negative Z), S moves backward (positive Z)
+    if (isRightMouseDown.current || forward) frontVector.z -= 1;
     if (backward) frontVector.z += 1;
 
     // A moves left (negative X), D moves right (positive X)
