@@ -185,6 +185,12 @@ button.start-button:focus-visible {
     100% { opacity: 0.6; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .start-prompt {
+        animation: none;
+    }
+}
+
 /* Loader Styles */
 .loader-overlay {
     position: fixed;
