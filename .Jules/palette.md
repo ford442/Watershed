@@ -25,3 +25,7 @@
 ## 2025-05-23 - Keyboard Accessible Controls
 **Learning:** Non-standard control schemes (like "Right Click to Move") can completely block keyboard-only users.
 **Action:** Always map primary actions to standard keyboard inputs (Arrows/Space) in addition to mouse controls, and document them in the UI.
+
+## 2025-02-18 - Reduced Motion & Keyboard Entry
+**Learning:** Pulsing animations on text can be problematic for users with vestibular disorders. Also, keyboard users expect `Enter` to work on "Start" screens without navigating to a specific button.
+**Action:** Always add `@media (prefers-reduced-motion: reduce)` to disable animations, and add a global `keydown` listener for `Enter` on overlay screens.

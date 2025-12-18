@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export const UI = () => {
   const [locked, setLocked] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleLockChange = () => {
@@ -15,10 +16,6 @@ export const UI = () => {
     return () => document.removeEventListener('pointerlockchange', handleLockChange);
   }, []);
 
-  if (locked) {
-    return <div className="crosshair" data-testid="crosshair" />;
-  }
-
   const handleStart = () => {
     const canvas = document.querySelector('canvas');
     if (canvas) {
@@ -26,16 +23,37 @@ export const UI = () => {
     }
   };
 
+  useEffect(() => {
+    if (!locked) {
+      buttonRef.current?.focus();
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!locked && e.key === 'Enter') {
+        e.preventDefault();
+        handleStart();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [locked]);
+
+  if (locked) {
+    return <div className="crosshair" data-testid="crosshair" />;
+  }
+
   return (
     <div className="ui-overlay">
       <div className="ui-card">
         <h1>WATERSHED</h1>
         <button
+          ref={buttonRef}
           className="start-button start-prompt"
           onClick={handleStart}
-          aria-label="Start Game - Click to engage pointer lock"
+          aria-label="Start Game - Click or Press Enter to engage pointer lock"
         >
-          CLICK TO ENGAGE
+          CLICK TO ENGAGE / PRESS ENTER
         </button>
 
         <div className="controls-section" role="list" aria-label="Game Controls">
