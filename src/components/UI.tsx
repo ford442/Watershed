@@ -2,11 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 
 export const UI = () => {
   const [locked, setLocked] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleLockChange = () => {
-      setLocked(!!document.pointerLockElement);
+      const isLocked = !!document.pointerLockElement;
+      setLocked(isLocked);
+      if (isLocked) {
+        setHasStarted(true);
+      }
     };
 
     document.addEventListener('pointerlockchange', handleLockChange);
@@ -47,13 +52,14 @@ export const UI = () => {
     <div className="ui-overlay">
       <div className="ui-card">
         <h1>WATERSHED</h1>
+        {hasStarted && <div className="loader-text">GAME PAUSED</div>}
         <button
           ref={buttonRef}
           className="start-button start-prompt"
           onClick={handleStart}
-          aria-label="Start Game - Click or Press Enter to engage pointer lock"
+          aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
         >
-          CLICK TO ENGAGE / PRESS ENTER
+          {hasStarted ? "RESUME GAME" : "CLICK TO ENGAGE / PRESS ENTER"}
         </button>
 
         <div className="controls-section" role="list" aria-label="Game Controls">
