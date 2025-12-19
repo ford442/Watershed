@@ -1,0 +1,72 @@
+
+> webgpu-react-app@0.1.0 start /app
+> react-scripts start
+
+(node:4226) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:4226) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+Starting the development server...
+
+Failed to compile.
+
+[eslint] Plugin "react" was conflicted between "package.json » eslint-config-react-app » /app/node_modules/eslint-config-react-app/base.js" and "BaseConfig » /app/node_modules/.pnpm/eslint-config-react-app@7.0.1_@babel+plugin-syntax-flow@7.27.1_@babel+core@7.28.5__@bab_2363a7302ab581949e898394dc2d3936/node_modules/eslint-config-react-app/base.js".
+WARNING in ./node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
+Module Warning (from ./node_modules/.pnpm/source-map-loader@3.0.2_webpack@5.103.0/node_modules/source-map-loader/dist/cjs.js):
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+ERROR in [eslint] Plugin "react" was conflicted between "package.json » eslint-config-react-app » /app/node_modules/eslint-config-react-app/base.js" and "BaseConfig » /app/node_modules/.pnpm/eslint-config-react-app@7.0.1_@babel+plugin-syntax-flow@7.27.1_@babel+core@7.28.5__@bab_2363a7302ab581949e898394dc2d3936/node_modules/eslint-config-react-app/base.js".
+
+webpack compiled with 1 error and 1 warning
+No issues found.
+Compiling...
+Failed to compile.
+
+[eslint] Plugin "react" was conflicted between "package.json » eslint-config-react-app » /app/node_modules/eslint-config-react-app/base.js" and "BaseConfig » /app/node_modules/.pnpm/eslint-config-react-app@7.0.1_@babel+plugin-syntax-flow@7.27.1_@babel+core@7.28.5__@bab_2363a7302ab581949e898394dc2d3936/node_modules/eslint-config-react-app/base.js".
+WARNING in ./node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
+Module Warning (from ./node_modules/.pnpm/source-map-loader@3.0.2_webpack@5.103.0/node_modules/source-map-loader/dist/cjs.js):
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+ERROR in [eslint] Plugin "react" was conflicted between "package.json » eslint-config-react-app » /app/node_modules/eslint-config-react-app/base.js" and "BaseConfig » /app/node_modules/.pnpm/eslint-config-react-app@7.0.1_@babel+plugin-syntax-flow@7.27.1_@babel+core@7.28.5__@bab_2363a7302ab581949e898394dc2d3936/node_modules/eslint-config-react-app/base.js".
+
+webpack compiled with 1 error and 1 warning
+No issues found.
+Compiling...
+Compiled with warnings.
+
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+WARNING in ./node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
+Module Warning (from ./node_modules/.pnpm/source-map-loader@3.0.2_webpack@5.103.0/node_modules/source-map-loader/dist/cjs.js):
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+webpack compiled with 1 warning
+No issues found.
+Compiling...
+Failed to compile.
+
+[eslint] Plugin "react" was conflicted between "package.json » eslint-config-react-app » /app/node_modules/eslint-config-react-app/base.js" and "BaseConfig » /app/node_modules/.pnpm/eslint-config-react-app@7.0.1_@babel+plugin-syntax-flow@7.27.1_@babel+core@7.28.5__@bab_2363a7302ab581949e898394dc2d3936/node_modules/eslint-config-react-app/base.js".
+WARNING in ./node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
+Module Warning (from ./node_modules/.pnpm/source-map-loader@3.0.2_webpack@5.103.0/node_modules/source-map-loader/dist/cjs.js):
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+ERROR in [eslint] Plugin "react" was conflicted between "package.json » eslint-config-react-app » /app/node_modules/eslint-config-react-app/base.js" and "BaseConfig » /app/node_modules/.pnpm/eslint-config-react-app@7.0.1_@babel+plugin-syntax-flow@7.27.1_@babel+core@7.28.5__@bab_2363a7302ab581949e898394dc2d3936/node_modules/eslint-config-react-app/base.js".
+
+webpack compiled with 1 error and 1 warning
+No issues found.
+Compiling...
+Compiled with warnings.
+
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+WARNING in ./node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
+Module Warning (from ./node_modules/.pnpm/source-map-loader@3.0.2_webpack@5.103.0/node_modules/source-map-loader/dist/cjs.js):
+Failed to parse source map from '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/.pnpm/@mediapipe+tasks-vision@0.10.17/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+
+webpack compiled with 1 warning
+No issues found.

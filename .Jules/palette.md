@@ -29,3 +29,7 @@
 ## 2025-02-18 - Reduced Motion & Keyboard Entry
 **Learning:** Pulsing animations on text can be problematic for users with vestibular disorders. Also, keyboard users expect `Enter` to work on "Start" screens without navigating to a specific button.
 **Action:** Always add `@media (prefers-reduced-motion: reduce)` to disable animations, and add a global `keydown` listener for `Enter` on overlay screens.
+
+## 2025-05-24 - Context-Aware Pause UI
+**Learning:** In pointer-lock games, the "Start" screen often doubles as the "Pause" screen. Users returning to the menu via ESC can be confused if the prompt still says "START" (implying a restart).
+**Action:** Implement state tracking to distinguish between "Start" (first load) and "Resume" (paused), providing clear text and visual cues like "GAME PAUSED".

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { UI } from './UI';
 
@@ -49,5 +49,41 @@ describe('UI Component', () => {
 
     // Overlay should be gone
     expect(screen.queryByText(/CLICK TO ENGAGE/i)).not.toBeInTheDocument();
+  });
+
+  test('displays resume options when game is paused', () => {
+    render(<UI />);
+
+    // Simulate engaging pointer lock (Game Start)
+    Object.defineProperty(document, 'pointerLockElement', {
+      value: document.body,
+      writable: true,
+      configurable: true
+    });
+
+    act(() => {
+      document.dispatchEvent(new Event('pointerlockchange'));
+    });
+
+    // Verify UI is hidden (playing state)
+    expect(screen.queryByText(/WATERSHED/i)).not.toBeInTheDocument();
+
+    // Simulate disengaging pointer lock (Game Pause)
+    Object.defineProperty(document, 'pointerLockElement', {
+      value: null,
+      writable: true,
+      configurable: true
+    });
+
+    act(() => {
+      document.dispatchEvent(new Event('pointerlockchange'));
+    });
+
+    // UI should reappear with Resume text
+    expect(screen.getByText(/GAME PAUSED/i)).toBeInTheDocument();
+
+    const resumeButton = screen.getByRole('button', { name: /Resume Game/i });
+    expect(resumeButton).toBeInTheDocument();
+    expect(resumeButton).toHaveTextContent(/RESUME GAME/i);
   });
 });
