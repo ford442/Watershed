@@ -205,6 +205,13 @@ button.start-button:focus-visible {
     align-items: center;
     font-family: 'Courier New', Courier, monospace;
     color: #e0e0e0;
+    opacity: 1;
+    transition: opacity 0.5s ease-out;
+}
+
+.loader-overlay.fade-out {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .loader-content {

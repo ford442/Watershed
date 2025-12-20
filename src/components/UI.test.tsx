@@ -2,12 +2,21 @@ import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { UI } from './UI';
+import { useProgress } from '@react-three/drei';
+
+jest.mock('@react-three/drei', () => ({
+  useProgress: jest.fn(),
+}));
 
 describe('UI Component', () => {
   let originalPointerLockElement: PropertyDescriptor | undefined;
 
   beforeAll(() => {
     originalPointerLockElement = Object.getOwnPropertyDescriptor(document, 'pointerLockElement');
+  });
+
+  beforeEach(() => {
+    (useProgress as unknown as jest.Mock).mockReturnValue({ active: false, progress: 100 });
   });
 
   afterEach(() => {
@@ -85,5 +94,13 @@ describe('UI Component', () => {
     const resumeButton = screen.getByRole('button', { name: /Resume Game/i });
     expect(resumeButton).toBeInTheDocument();
     expect(resumeButton).toHaveTextContent(/RESUME GAME/i);
+  });
+
+  test('disables start button when loading', () => {
+    (useProgress as unknown as jest.Mock).mockReturnValue({ active: true, progress: 50 });
+    render(<UI />);
+    const startButton = screen.getByRole('button');
+    expect(startButton).toBeDisabled();
+    expect(startButton).toHaveTextContent(/LOADING.../i);
   });
 });
