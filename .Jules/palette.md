@@ -33,3 +33,7 @@
 ## 2025-05-24 - Context-Aware Pause UI
 **Learning:** In pointer-lock games, the "Start" screen often doubles as the "Pause" screen. Users returning to the menu via ESC can be confused if the prompt still says "START" (implying a restart).
 **Action:** Implement state tracking to distinguish between "Start" (first load) and "Resume" (paused), providing clear text and visual cues like "GAME PAUSED".
+
+## 2025-05-25 - React Three Drei Loader Race Condition
+**Learning:** The `useProgress` hook from `@react-three/drei` may report `active: false` initially before assets are queued, causing a flicker where "loading" UI logic might fail.
+**Action:** When gating UI based on loading state, check both `active` and `progress < 100` (e.g., `isLoading = active || progress < 100`) to ensure the UI remains in a loading state until completion.

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useProgress } from '@react-three/drei';
 
 export const UI = () => {
+  const { active, progress } = useProgress();
+  const isLoading = active || progress < 100;
   const [locked, setLocked] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -29,12 +32,14 @@ export const UI = () => {
   };
 
   useEffect(() => {
-    if (!locked) {
+    // Only focus if not locked and not loading
+    if (!locked && !isLoading) {
       buttonRef.current?.focus();
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!locked && e.key === 'Enter') {
+      // Prevent starting if loading is active
+      if (!locked && !isLoading && e.key === 'Enter') {
         e.preventDefault();
         handleStart();
       }
@@ -42,7 +47,7 @@ export const UI = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [locked]);
+  }, [locked, isLoading]);
 
   if (locked) {
     return <div className="crosshair" data-testid="crosshair" />;
@@ -57,9 +62,11 @@ export const UI = () => {
           ref={buttonRef}
           className="start-button start-prompt"
           onClick={handleStart}
+          disabled={isLoading}
+          style={isLoading ? { opacity: 0.5, cursor: 'wait' } : {}}
           aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
         >
-          {hasStarted ? "RESUME GAME" : "CLICK TO ENGAGE / PRESS ENTER"}
+          {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
         </button>
 
         <div className="controls-section" role="list" aria-label="Game Controls">
