@@ -41,6 +41,9 @@ describe('UI Component', () => {
     expect(screen.getByRole('listitem', { name: /Move: A, S, D, Arrow keys, or Right Click/i })).toBeInTheDocument();
     expect(screen.getByRole('listitem', { name: /Jump: W or Space key/i })).toBeInTheDocument();
     expect(screen.getByRole('listitem', { name: /Look: Mouse movement/i })).toBeInTheDocument();
+
+    // Restart button should not be visible initially
+    expect(screen.queryByRole('button', { name: /Restart Game/i })).not.toBeInTheDocument();
   });
 
   test('renders crosshair when pointer is locked', () => {
@@ -94,6 +97,10 @@ describe('UI Component', () => {
     const resumeButton = screen.getByRole('button', { name: /Resume Game/i });
     expect(resumeButton).toBeInTheDocument();
     expect(resumeButton).toHaveTextContent(/RESUME GAME/i);
+
+    const restartButton = screen.getByRole('button', { name: /Restart Game/i });
+    expect(restartButton).toBeInTheDocument();
+    expect(restartButton).toHaveTextContent(/RESTART/i);
   });
 
   test('disables start button when loading', () => {

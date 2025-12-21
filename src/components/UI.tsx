@@ -31,6 +31,10 @@ export const UI = () => {
     }
   };
 
+  const handleRestart = () => {
+    window.location.reload();
+  };
+
   useEffect(() => {
     // Only focus if not locked and not loading
     if (!locked && !isLoading) {
@@ -58,16 +62,28 @@ export const UI = () => {
       <div className="ui-card">
         <h1>WATERSHED</h1>
         {hasStarted && <div className="loader-text">GAME PAUSED</div>}
-        <button
-          ref={buttonRef}
-          className="start-button start-prompt"
-          onClick={handleStart}
-          disabled={isLoading}
-          style={isLoading ? { opacity: 0.5, cursor: 'wait' } : {}}
-          aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
-        >
-          {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
-        </button>
+        <div className="button-group">
+          <button
+            ref={buttonRef}
+            className="start-button start-prompt"
+            onClick={handleStart}
+            disabled={isLoading}
+            style={isLoading ? { opacity: 0.5, cursor: 'wait' } : {}}
+            aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
+          >
+            {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
+          </button>
+
+          {hasStarted && (
+            <button
+              className="restart-button"
+              onClick={handleRestart}
+              aria-label="Restart Game - Reloads the page to start from the beginning"
+            >
+              RESTART
+            </button>
+          )}
+        </div>
 
         <div className="controls-section" role="list" aria-label="Game Controls">
           <div className="control-row" role="listitem" aria-label="Move: A, S, D, Arrow keys, or Right Click">
