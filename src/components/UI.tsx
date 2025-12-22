@@ -85,6 +85,17 @@ export const UI = () => {
           )}
         </div>
 
+        {hasStarted && (
+          <div className="controls">
+            <button
+              onClick={() => window.location.reload()}
+              aria-label="Restart Level - Reloads the page"
+            >
+              RESTART LEVEL
+            </button>
+          </div>
+        )}
+
         <div className="controls-section" role="list" aria-label="Game Controls">
           <div className="control-row" role="listitem" aria-label="Move: A, S, D, Arrow keys, or Right Click">
             <div className="keys" aria-hidden="true">
