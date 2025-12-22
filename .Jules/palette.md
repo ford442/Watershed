@@ -37,3 +37,6 @@
 ## 2025-05-25 - React Three Drei Loader Race Condition
 **Learning:** The `useProgress` hook from `@react-three/drei` may report `active: false` initially before assets are queued, causing a flicker where "loading" UI logic might fail.
 **Action:** When gating UI based on loading state, check both `active` and `progress < 100` (e.g., `isLoading = active || progress < 100`) to ensure the UI remains in a loading state until completion.
+## 2025-05-26 - Explicit Restart in Runner Games
+**Learning:** In linear "runner" games where stopping/failing is common but doesn't trigger a hard "Game Over" screen, users can feel soft-locked. A manual "Restart" button in the pause menu provides a necessary escape hatch.
+**Action:** Add a "Restart" or "Reset" button to the pause menu for linear or survival games to allow quick retries without browser refresh.
