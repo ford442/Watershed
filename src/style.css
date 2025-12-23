@@ -83,9 +83,25 @@ select, button {
     z-index: 1000;
     pointer-events: none;
     backdrop-filter: blur(4px);
+    opacity: 1;
+    transition: opacity 0.3s ease, backdrop-filter 0.3s ease, visibility 0.3s;
+}
+
+.ui-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    backdrop-filter: blur(0px);
+    pointer-events: none;
+}
+
+.ui-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    backdrop-filter: blur(4px);
 }
 
 .ui-card {
+    pointer-events: auto;
     background: rgba(20, 20, 20, 0.9);
     border: 1px solid #444;
     padding: 40px 60px;
@@ -121,6 +137,7 @@ select, button {
 }
 
 .restart-button {
+    pointer-events: auto;
     background: transparent;
     border: 1px solid #555;
     color: #888;
@@ -311,5 +328,12 @@ button.start-button:focus-visible {
     pointer-events: none;
     z-index: 100;
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-    transition: width 0.2s, height 0.2s, background-color 0.2s;
+    transition: width 0.2s, height 0.2s, background-color 0.2s, opacity 0.2s, visibility 0.2s;
+    opacity: 1;
+    visibility: visible;
+}
+
+.crosshair.hidden {
+    opacity: 0;
+    visibility: hidden;
 }

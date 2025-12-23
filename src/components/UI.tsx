@@ -53,14 +53,15 @@ export const UI = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [locked, isLoading]);
 
-  if (locked) {
-    return <div className="crosshair" data-testid="crosshair" />;
-  }
-
   return (
-    <div className="ui-overlay">
-      <div className="ui-card">
-        <h1>WATERSHED</h1>
+    <>
+      <div className={`crosshair ${locked ? 'visible' : 'hidden'}`} data-testid="crosshair" />
+      <div
+        className={`ui-overlay ${!locked ? 'visible' : 'hidden'}`}
+        aria-hidden={locked}
+      >
+        <div className="ui-card">
+          <h1>WATERSHED</h1>
         {hasStarted && <div className="loader-text">GAME PAUSED</div>}
         <div className="button-group">
           <button
@@ -84,17 +85,6 @@ export const UI = () => {
             </button>
           )}
         </div>
-
-        {hasStarted && (
-          <div className="controls">
-            <button
-              onClick={() => window.location.reload()}
-              aria-label="Restart Level - Reloads the page"
-            >
-              RESTART LEVEL
-            </button>
-          </div>
-        )}
 
         <div className="controls-section" role="list" aria-label="Game Controls">
           <div className="control-row" role="listitem" aria-label="Move: A, S, D, Arrow keys, or Right Click">
@@ -123,5 +113,6 @@ export const UI = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
