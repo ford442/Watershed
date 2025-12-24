@@ -6,7 +6,9 @@ export const UI = () => {
   const isLoading = active || progress < 100;
   const [locked, setLocked] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleLockChange = () => {
@@ -38,7 +40,11 @@ export const UI = () => {
   useEffect(() => {
     // Only focus if not locked and not loading
     if (!locked && !isLoading) {
-      buttonRef.current?.focus();
+      if (confirmRestart) {
+        confirmRef.current?.focus();
+      } else {
+        buttonRef.current?.focus();
+      }
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -51,7 +57,7 @@ export const UI = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [locked, isLoading]);
+  }, [locked, isLoading, confirmRestart]);
 
   return (
     <>
@@ -64,25 +70,51 @@ export const UI = () => {
           <h1>WATERSHED</h1>
         {hasStarted && <div className="loader-text">GAME PAUSED</div>}
         <div className="button-group">
-          <button
-            ref={buttonRef}
-            className="start-button start-prompt"
-            onClick={handleStart}
-            disabled={isLoading}
-            style={isLoading ? { opacity: 0.5, cursor: 'wait' } : {}}
-            aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
-          >
-            {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
-          </button>
+          {!confirmRestart ? (
+            <>
+              <button
+                ref={buttonRef}
+                className="start-button start-prompt"
+                onClick={handleStart}
+                disabled={isLoading}
+                style={isLoading ? { opacity: 0.5, cursor: 'wait' } : {}}
+                aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
+              >
+                {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
+              </button>
 
-          {hasStarted && (
-            <button
-              className="restart-button"
-              onClick={handleRestart}
-              aria-label="Restart Game - Reloads the page to start from the beginning"
-            >
-              RESTART
-            </button>
+              {hasStarted && (
+                <button
+                  className="restart-button"
+                  onClick={() => setConfirmRestart(true)}
+                  aria-label="Restart Game - Opens confirmation to reload the page"
+                >
+                  RESTART
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="confirm-group" role="alertdialog" aria-labelledby="confirm-label" aria-describedby="confirm-desc">
+              <div id="confirm-label" className="confirm-text">RESTART GAME?</div>
+              <div id="confirm-desc" className="confirm-subtext">PROGRESS WILL BE LOST</div>
+              <div className="confirm-buttons">
+                <button
+                  ref={confirmRef}
+                  className="confirm-yes"
+                  onClick={handleRestart}
+                  aria-label="Yes, Restart Game"
+                >
+                  YES
+                </button>
+                <button
+                  className="confirm-no"
+                  onClick={() => setConfirmRestart(false)}
+                  aria-label="No, Cancel Restart"
+                >
+                  NO
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

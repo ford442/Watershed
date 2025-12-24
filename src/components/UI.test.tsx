@@ -118,7 +118,7 @@ describe('UI Component', () => {
     expect(startButton).toHaveTextContent(/LOADING.../i);
   });
 
-  test('provides a restart button when paused', () => {
+  test('provides a restart button with confirmation when paused', () => {
     // Mock window.location.reload
     const reloadMock = jest.fn();
     const originalLocation = window.location;
@@ -148,11 +148,43 @@ describe('UI Component', () => {
       document.dispatchEvent(new Event('pointerlockchange'));
     });
 
-    // Use the main Restart Game button, as Restart Level is removed
+    // 1. Initial State: Restart button visible
     const restartButton = screen.getByRole('button', { name: /Restart Game/i });
     expect(restartButton).toBeInTheDocument();
 
-    restartButton.click();
+    // 2. Click Restart: Should trigger confirmation state
+    act(() => {
+      restartButton.click();
+    });
+
+    // Verify confirmation dialog appears
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByText('RESTART GAME?')).toBeInTheDocument();
+    expect(screen.getByText('PROGRESS WILL BE LOST')).toBeInTheDocument();
+
+    // Verify Restart button is gone
+    expect(screen.queryByRole('button', { name: "Restart Game - Opens confirmation to reload the page" })).not.toBeInTheDocument();
+
+    // 3. Click No (Cancel)
+    const noButton = screen.getByRole('button', { name: /No, Cancel/i });
+    act(() => {
+      noButton.click();
+    });
+
+    // Verify back to initial state
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Restart Game/i })).toBeInTheDocument();
+    expect(reloadMock).not.toHaveBeenCalled();
+
+    // 4. Click Restart again -> Click Yes
+    act(() => {
+      screen.getByRole('button', { name: /Restart Game/i }).click();
+    });
+
+    const yesButton = screen.getByRole('button', { name: /Yes, Restart/i });
+    yesButton.click();
+
     expect(reloadMock).toHaveBeenCalled();
 
     // Restore

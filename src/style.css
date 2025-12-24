@@ -337,3 +337,71 @@ button.start-button:focus-visible {
     opacity: 0;
     visibility: hidden;
 }
+
+/* Confirmation Dialog Styles */
+.confirm-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    animation: fadeIn 0.3s ease;
+}
+
+.confirm-text {
+    font-size: 1.2rem;
+    color: #e17055;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.confirm-subtext {
+    font-size: 0.8rem;
+    color: #888;
+    margin-bottom: 5px;
+}
+
+.confirm-buttons {
+    display: flex;
+    gap: 15px;
+}
+
+.confirm-yes, .confirm-no {
+    pointer-events: auto;
+    padding: 8px 20px;
+    font-family: inherit;
+    font-weight: bold;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+}
+
+.confirm-yes {
+    background: rgba(225, 112, 85, 0.2);
+    border-color: #e17055;
+    color: #e17055;
+}
+
+.confirm-yes:hover, .confirm-yes:focus-visible {
+    background: #e17055;
+    color: #fff;
+    outline: none;
+}
+
+.confirm-no {
+    background: transparent;
+    border-color: #666;
+    color: #888;
+}
+
+.confirm-no:hover, .confirm-no:focus-visible {
+    border-color: #aaa;
+    color: #e0e0e0;
+    outline: none;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
