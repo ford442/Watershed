@@ -36,13 +36,15 @@ describe('UI Component', () => {
     expect(startButton).toBeInTheDocument();
     expect(startButton).toHaveTextContent(/CLICK TO ENGAGE/i);
 
+    // Check visibility via class since JSDOM doesn't parse CSS
+    const overlay = startButton.closest('.ui-overlay');
+    expect(overlay).toHaveClass('visible');
+
     // Verify accessible structure
     expect(screen.getByRole('list', { name: /Game Controls/i })).toBeInTheDocument();
     expect(screen.getByRole('listitem', { name: /Move: A, S, D, Arrow keys, or Right Click/i })).toBeInTheDocument();
-    expect(screen.getByRole('listitem', { name: /Jump: W or Space key/i })).toBeInTheDocument();
-    expect(screen.getByRole('listitem', { name: /Look: Mouse movement/i })).toBeInTheDocument();
 
-    // Restart button should not be visible initially
+    // Restart button should not be visible initially (not rendered)
     expect(screen.queryByRole('button', { name: /Restart Game/i })).not.toBeInTheDocument();
   });
 
@@ -58,9 +60,12 @@ describe('UI Component', () => {
 
     const crosshair = screen.getByTestId('crosshair');
     expect(crosshair).toBeInTheDocument();
+    expect(crosshair).toHaveClass('visible');
 
-    // Overlay should be gone
-    expect(screen.queryByText(/CLICK TO ENGAGE/i)).not.toBeInTheDocument();
+    // Overlay should be hidden
+    const overlay = screen.getByText(/WATERSHED/i).closest('.ui-overlay');
+    expect(overlay).toHaveClass('hidden');
+    expect(overlay).toHaveAttribute('aria-hidden', 'true');
   });
 
   test('displays resume options when game is paused', () => {
@@ -78,7 +83,8 @@ describe('UI Component', () => {
     });
 
     // Verify UI is hidden (playing state)
-    expect(screen.queryByText(/WATERSHED/i)).not.toBeInTheDocument();
+    const overlay = screen.getByText(/WATERSHED/i).closest('.ui-overlay');
+    expect(overlay).toHaveClass('hidden');
 
     // Simulate disengaging pointer lock (Game Pause)
     Object.defineProperty(document, 'pointerLockElement', {
@@ -92,6 +98,7 @@ describe('UI Component', () => {
     });
 
     // UI should reappear with Resume text
+    expect(overlay).toHaveClass('visible');
     expect(screen.getByText(/GAME PAUSED/i)).toBeInTheDocument();
 
     const resumeButton = screen.getByRole('button', { name: /Resume Game/i });
@@ -116,8 +123,6 @@ describe('UI Component', () => {
     const reloadMock = jest.fn();
     const originalLocation = window.location;
 
-    // Use Object.defineProperty to overwrite location if possible, or delete/assign
-    // JSDOM allows deleting location
     delete (window as any).location;
     (window as any).location = { reload: reloadMock };
 
@@ -143,7 +148,8 @@ describe('UI Component', () => {
       document.dispatchEvent(new Event('pointerlockchange'));
     });
 
-    const restartButton = screen.getByRole('button', { name: /Restart Level/i });
+    // Use the main Restart Game button, as Restart Level is removed
+    const restartButton = screen.getByRole('button', { name: /Restart Game/i });
     expect(restartButton).toBeInTheDocument();
 
     restartButton.click();

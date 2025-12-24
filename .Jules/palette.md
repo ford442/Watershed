@@ -40,3 +40,7 @@
 ## 2025-05-26 - Explicit Restart in Runner Games
 **Learning:** In linear "runner" games where stopping/failing is common but doesn't trigger a hard "Game Over" screen, users can feel soft-locked. A manual "Restart" button in the pause menu provides a necessary escape hatch.
 **Action:** Add a "Restart" or "Reset" button to the pause menu for linear or survival games to allow quick retries without browser refresh.
+
+## 2025-06-03 - Smooth UI Transitions & Pointer Events
+**Learning:** Conditional rendering (unmounting) prevents CSS transitions on UI elements, making pause menus feel abrupt. Also, `pointer-events: none` on overlays can accidentally block clicks on child buttons if not explicitly reset to `auto`.
+**Action:** Use CSS classes (`.visible`/`.hidden`) with `opacity` and `visibility` transitions instead of unmounting components. Always verify `pointer-events: auto` on interactive children of non-interactive overlays.
