@@ -7,6 +7,7 @@ export const UI = () => {
   const [locked, setLocked] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
@@ -16,6 +17,14 @@ export const UI = () => {
       setLocked(isLocked);
       if (isLocked) {
         setHasStarted(true);
+        // Show hint 2 seconds after starting
+        setTimeout(() => {
+          setShowHint(true);
+          // Hide hint after 5 seconds
+          setTimeout(() => setShowHint(false), 5000);
+        }, 2000);
+      } else {
+        setShowHint(false);
       }
     };
 
@@ -62,6 +71,15 @@ export const UI = () => {
   return (
     <>
       <div className={`crosshair ${locked ? 'visible' : 'hidden'}`} data-testid="crosshair" />
+
+      <div
+        className={`game-hint ${showHint && locked ? 'visible' : 'hidden'}`}
+        role="status"
+        aria-live="polite"
+      >
+        PRESS SPACE TO JUMP
+      </div>
+
       <div
         className={`ui-overlay ${!locked ? 'visible' : 'hidden'}`}
         aria-hidden={locked}
