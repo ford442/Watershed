@@ -44,3 +44,7 @@
 ## 2025-06-03 - Smooth UI Transitions & Pointer Events
 **Learning:** Conditional rendering (unmounting) prevents CSS transitions on UI elements, making pause menus feel abrupt. Also, `pointer-events: none` on overlays can accidentally block clicks on child buttons if not explicitly reset to `auto`.
 **Action:** Use CSS classes (`.visible`/`.hidden`) with `opacity` and `visibility` transitions instead of unmounting components. Always verify `pointer-events: auto` on interactive children of non-interactive overlays.
+
+## 2025-12-25 - Timed Onboarding Cues
+**Learning:** In immersive games, controls are often forgotten immediately after the start screen. Persistent HUD elements break immersion, but purely "start screen" instructions are missed.
+**Action:** Use timed, context-aware "toast" hints that appear shortly after gameplay starts (e.g., "Press Space to Jump") and fade out automatically, using `aria-live="polite"` for accessibility.
