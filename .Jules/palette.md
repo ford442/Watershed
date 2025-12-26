@@ -44,3 +44,7 @@
 ## 2025-06-03 - Smooth UI Transitions & Pointer Events
 **Learning:** Conditional rendering (unmounting) prevents CSS transitions on UI elements, making pause menus feel abrupt. Also, `pointer-events: none` on overlays can accidentally block clicks on child buttons if not explicitly reset to `auto`.
 **Action:** Use CSS classes (`.visible`/`.hidden`) with `opacity` and `visibility` transitions instead of unmounting components. Always verify `pointer-events: auto` on interactive children of non-interactive overlays.
+
+## 2025-06-08 - Active Control Feedback
+**Learning:** In menu overlays, visual controls (like keys) can feel static and disconnected. Making them react to physical keyboard input (lighting up/pressing down) provides immediate delight and confirms input registration.
+**Action:** Implement active state listeners in the UI overlay to toggle CSS classes (e.g., `.pressed`) on visual key elements when the user presses the corresponding physical keys.
