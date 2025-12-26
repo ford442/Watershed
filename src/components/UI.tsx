@@ -7,6 +7,7 @@ export const UI = () => {
   const [locked, setLocked] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
+  const [activeKeys, setActiveKeys] = useState<Set<string>>(new Set());
   const buttonRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
@@ -16,6 +17,8 @@ export const UI = () => {
       setLocked(isLocked);
       if (isLocked) {
         setHasStarted(true);
+        // Clear active keys when game starts to prevent stuck visuals
+        setActiveKeys(new Set());
       }
     };
 
@@ -25,6 +28,55 @@ export const UI = () => {
 
     return () => document.removeEventListener('pointerlockchange', handleLockChange);
   }, []);
+
+  useEffect(() => {
+    const handleKeyActivity = (e: KeyboardEvent, isDown: boolean) => {
+      // Don't track keys if game is locked (playing)
+      if (locked) return;
+
+      setActiveKeys(prev => {
+        const next = new Set(prev);
+        if (isDown) next.add(e.code);
+        else next.delete(e.code);
+        return next;
+      });
+    };
+
+    const handleMouseActivity = (e: MouseEvent, isDown: boolean) => {
+      if (locked) return;
+
+      if (e.button === 2) { // Right Click
+        setActiveKeys(prev => {
+          const next = new Set(prev);
+          if (isDown) next.add('MouseRight');
+          else next.delete('MouseRight');
+          return next;
+        });
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => handleKeyActivity(e, true);
+    const onKeyUp = (e: KeyboardEvent) => handleKeyActivity(e, false);
+    const onMouseDown = (e: MouseEvent) => handleMouseActivity(e, true);
+    const onMouseUp = (e: MouseEvent) => handleMouseActivity(e, false);
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [locked]);
+
+  const getKeyClass = (codes: string[], baseClass = 'key') => {
+    const isActive = codes.some(code => activeKeys.has(code));
+    return `${baseClass} ${isActive ? 'pressed' : ''}`;
+  };
 
   const handleStart = () => {
     const canvas = document.querySelector('canvas');
@@ -121,18 +173,18 @@ export const UI = () => {
         <div className="controls-section" role="list" aria-label="Game Controls">
           <div className="control-row" role="listitem" aria-label="Move: A, S, D, Arrow keys, or Right Click">
             <div className="keys" aria-hidden="true">
-              <span className="key">A</span>
-              <span className="key">S</span>
-              <span className="key">D</span>
-              <span className="key key-wide">ARROWS</span>
-              <span className="key key-wide">R-CLICK</span>
+              <span className={getKeyClass(['KeyA', 'ArrowLeft'])}>A</span>
+              <span className={getKeyClass(['KeyS', 'ArrowDown'])}>S</span>
+              <span className={getKeyClass(['KeyD', 'ArrowRight'])}>D</span>
+              <span className={getKeyClass(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], 'key key-wide')}>ARROWS</span>
+              <span className={getKeyClass(['MouseRight'], 'key key-wide')}>R-CLICK</span>
             </div>
             <span className="action" aria-hidden="true">MOVE</span>
           </div>
           <div className="control-row" role="listitem" aria-label="Jump: W or Space key">
             <div className="keys" aria-hidden="true">
-              <span className="key">W</span>
-              <span className="key key-wide">SPACE</span>
+              <span className={getKeyClass(['KeyW', 'ArrowUp'])}>W</span>
+              <span className={getKeyClass(['Space'], 'key key-wide')}>SPACE</span>
             </div>
             <span className="action" aria-hidden="true">JUMP</span>
           </div>
