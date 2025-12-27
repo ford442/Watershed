@@ -183,7 +183,7 @@ export const UI = () => {
           </div>
           <div className="control-row" role="listitem" aria-label="Jump: W or Space key">
             <div className="keys" aria-hidden="true">
-              <span className={getKeyClass(['KeyW', 'ArrowUp'])}>W</span>
+              <span className={getKeyClass(['KeyW'])}>W</span>
               <span className={getKeyClass(['Space'], 'key key-wide')}>SPACE</span>
             </div>
             <span className="action" aria-hidden="true">JUMP</span>
