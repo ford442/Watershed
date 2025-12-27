@@ -4,6 +4,9 @@ import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
 import FlowingWater from './FlowingWater';
 
+// Default points to keep hooks happy when inactive
+const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
+
 /**
  * TrackSegment - A single segment of the river track
  * Generates an organic canyon shape using procedural noise and heightmaps,
@@ -11,8 +14,9 @@ import FlowingWater from './FlowingWater';
  * 
  * @param {THREE.Vector3[]} pathPoints - Array of Vector3 points defining the spline path
  * @param {number} segmentId - Unique identifier for this segment
+ * @param {boolean} active - Whether this segment is currently active/visible
  */
-export default function TrackSegment({ pathPoints, segmentId = 0 }) {
+export default function TrackSegment({ pathPoints, segmentId = 0, active = true }) {
     // Load Textures from public folder
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
@@ -28,13 +32,19 @@ export default function TrackSegment({ pathPoints, segmentId = 0 }) {
         });
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
+    // Use safe points if inactive or points are missing
+    const safePoints = (active && pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
+
     // Create the spline path from provided points
     const segmentPath = useMemo(() => {
-        return new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.5);
-    }, [pathPoints]);
+        if (!active) return null;
+        return new THREE.CatmullRomCurve3(safePoints, false, 'catmullrom', 0.5);
+    }, [safePoints, active]);
 
     // Calculate path length for proper sizing
-    const pathLength = useMemo(() => segmentPath.getLength(), [segmentPath]);
+    const pathLength = useMemo(() => {
+        return segmentPath ? segmentPath.getLength() : 1;
+    }, [segmentPath]);
 
     // Canyon dimensions
     const canyonWidth = 35; // Wide enough to include walls
@@ -42,6 +52,8 @@ export default function TrackSegment({ pathPoints, segmentId = 0 }) {
 
     // Generate unified canyon geometry (Walls + Floor)
     const canyonGeometry = useMemo(() => {
+        if (!segmentPath) return null;
+
         // High resolution for noise details
         // width segments: 30, height segments (length): based on length/2
         const segmentsX = 40;
@@ -112,6 +124,8 @@ export default function TrackSegment({ pathPoints, segmentId = 0 }) {
 
     // Generate water geometry
     const waterGeometry = useMemo(() => {
+        if (!segmentPath) return null;
+
         // Water is narrower than full canyon
         const waterWidth = 10;
         const segmentsZ = Math.floor(pathLength / 2); // Lower res than rock
@@ -146,6 +160,12 @@ export default function TrackSegment({ pathPoints, segmentId = 0 }) {
             side={THREE.DoubleSide}
         />
     );
+
+    // If inactive or missing data, render nothing
+    // This keeps the component mounted (retaining React state/hooks) but renders no 3D objects
+    if (!active || !segmentPath || !canyonGeometry || !waterGeometry) {
+        return null;
+    }
 
     return (
         <group name={`track-segment-${segmentId}`}>

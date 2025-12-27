@@ -4,7 +4,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import TrackSegment from './TrackSegment';
 
 const GENERATION_THRESHOLD = 100; // Distance from end to trigger generation
-const MAX_ACTIVE_SEGMENTS = 5;    // Keep last 5 segments
+const MAX_ACTIVE_SEGMENTS = 5;    // Keep last 5 segments active in logic
+const POOL_SIZE = 8;              // Total number of pooled components (buffer > MAX_ACTIVE)
 
 // Define initial segments outside component to avoid recreation
 const INITIAL_SEGMENTS = [
@@ -34,6 +35,7 @@ const INITIAL_SEGMENTS = [
  * TrackManager - Manages multiple track segments for the treadmill system
  * 
  * Dynamically generates and manages track segments based on player position.
+ * Implements object pooling to reuse React components.
  */
 export default function TrackManager() {
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
@@ -110,9 +112,6 @@ export default function TrackManager() {
 
         // Check distance in Z.
         // We assume the track moves primarily in -Z direction.
-        // camera.position.z > lastPoint.z (e.g., -150 > -200)
-        // Distance remaining = camera.position.z - lastPoint.z
-
         if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
             lastGeneratedFromId.current = lastSegment.id;
             const newSegment = generateNextSegment(lastSegment);
@@ -130,13 +129,25 @@ export default function TrackManager() {
 
     return (
         <group name="track-manager">
-            {segments.map((segment) => (
-                <TrackSegment
-                    key={segment.id}
-                    segmentId={segment.id}
-                    pathPoints={segment.points}
-                />
-            ))}
+            {/*
+                Render a fixed pool of TrackSegment components.
+                Each active segment is mapped to a pool slot based on id % POOL_SIZE.
+                This ensures stable React keys (0..POOL_SIZE-1) to prevent unmounting/remounting
+                of the component wrappers, optimizing React Fiber reconciliation.
+            */}
+            {Array.from({ length: POOL_SIZE }).map((_, index) => {
+                // Find if any active segment belongs in this pool slot
+                const segment = segments.find(s => (s.id % POOL_SIZE) === index);
+
+                return (
+                    <TrackSegment
+                        key={index} // Stable key based on pool index
+                        segmentId={segment ? segment.id : -1}
+                        pathPoints={segment ? segment.points : null}
+                        active={!!segment}
+                    />
+                );
+            })}
         </group>
     );
 }
