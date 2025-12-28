@@ -3,6 +3,14 @@ import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
 import FlowingWater from './FlowingWater';
+import Rock from './Obstacles/Rock';
+import Vegetation from './Environment/Vegetation';
+
+// Simple seeded random function
+const seededRandom = (seed) => {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+};
 
 // Default points to keep hooks happy when inactive
 const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
@@ -49,6 +57,128 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
     // Canyon dimensions
     const canyonWidth = 35; // Wide enough to include walls
     const waterLevel = 0.5; // Relative to the riverbed center
+
+    // Derived Placement Data
+    const placementData = useMemo(() => {
+        if (!segmentPath) return { rocks: [], trees: [], debris: [], walls: [] };
+
+        const rocks = [];
+        const trees = [];
+        const debris = [];
+
+        let seed = segmentId * 1000; // Base seed
+
+        const segmentsX = 40;
+        const segmentsZ = Math.floor(pathLength);
+        const geoWidth = canyonWidth;
+        const geoLength = pathLength;
+
+        // Iterate through simplified grid for placement
+        // We don't need to match vertex count exactly, just sample the space
+        const zSteps = 20; // Number of longitudinal slices to check
+
+        for(let z = 0; z < zSteps; z++) {
+            const t = z / zSteps;
+            // Map t back to local Z range [-length/2, length/2] for noise calc
+            const zLocal = (t - 0.5) * geoLength;
+
+            // Get path properties at this point
+            const pathPoint = segmentPath.getPoint(t);
+            const tangent = segmentPath.getTangent(t).normalize();
+            const up = new THREE.Vector3(0, 1, 0);
+            const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+
+            // Check left and right banks
+            const sides = [-1, 1];
+            sides.forEach(side => {
+                // Determine randomized offset from center
+                // Rocks closer (5-10), Trees farther (10-15)
+
+                // Sample 1: Rocks
+                if (seededRandom(seed++) > 0.4) { // 60% chance per slice/side
+                    const dist = 6 + seededRandom(seed++) * 4; // 6 to 10
+                    // Offset perpendicular to path
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const xLocal = side * dist; // Keep local X for noise consistency
+
+                    // Calc height at this spot (reusing logic from geometry)
+                    const normalizedDist = Math.abs(xLocal) / (geoWidth * 0.45);
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    if (Math.abs(xLocal) < 5) yHeight *= 0.1;
+
+                    const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 +
+                                      Math.sin(zLocal * 1.5 - xLocal * 0.8) * 0.2;
+                    yHeight += rockNoise * (0.5 + normalizedDist);
+
+                    if (Math.abs(xLocal) > 5) {
+                         const hillNoise = Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
+                         yHeight += hillNoise;
+                    }
+
+                    // Map to world using binormal offset
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    position.y += yHeight;
+
+                    // Add some random rotation/scale
+                    const rotation = new THREE.Euler(
+                        seededRandom(seed++) * Math.PI,
+                        seededRandom(seed++) * Math.PI,
+                        seededRandom(seed++) * Math.PI
+                    );
+                    const scale = 0.8 + seededRandom(seed++) * 0.8;
+
+                    rocks.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                }
+
+                // Sample 2: Trees (Higher up/further out)
+                if (seededRandom(seed++) > 0.7) { // 30% chance
+                    const dist = 12 + seededRandom(seed++) * 5; // 12 to 17
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const xLocal = side * dist;
+
+                    // Height calc (simplified reuse)
+                    const normalizedDist = Math.abs(xLocal) / (geoWidth * 0.45);
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    // ... simplify noise for tree placement height
+                     const hillNoise = Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
+                     yHeight += hillNoise;
+
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    position.y += yHeight - 0.5; // Embed slightly
+
+                    const scale = 1.5 + seededRandom(seed++) * 1.0;
+                    const rotation = new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0);
+
+                    trees.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                }
+
+                // Sample 3: Debris (Near water edge)
+                 if (seededRandom(seed++) > 0.5) {
+                    const dist = 5 + seededRandom(seed++) * 2; // 5 to 7
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const xLocal = side * dist;
+                    const normalizedDist = Math.abs(xLocal) / (geoWidth * 0.45);
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    if (Math.abs(xLocal) < 5) yHeight *= 0.1;
+
+                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                     position.y += yHeight;
+
+                    const scale = 0.2 + seededRandom(seed++) * 0.3;
+                    const rotation = new THREE.Euler(
+                        seededRandom(seed++) * Math.PI,
+                        seededRandom(seed++) * Math.PI,
+                        seededRandom(seed++) * Math.PI
+                    );
+
+                    debris.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                 }
+            });
+        }
+
+        return { rocks, trees, debris };
+    }, [segmentPath, pathLength, segmentId]);
+
 
     // Generate unified canyon geometry (Walls + Floor)
     const canyonGeometry = useMemo(() => {
@@ -122,6 +252,46 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
         return geo;
     }, [segmentPath, pathLength]);
 
+    // Generate Visual Shell for Higher Walls
+    const wallShellGeometry = useMemo(() => {
+        if (!segmentPath) return null;
+
+        // Similar to canyonGeometry but wider and higher
+        const shellWidth = canyonWidth * 1.5;
+        const segmentsX = 20;
+        const segmentsZ = Math.floor(pathLength / 2);
+
+        const geo = new THREE.PlaneGeometry(shellWidth, pathLength, segmentsX, segmentsZ);
+        geo.rotateX(-Math.PI / 2);
+
+        const positions = geo.attributes.position;
+        const vertex = new THREE.Vector3();
+
+        for (let i = 0; i < positions.count; i++) {
+            vertex.fromBufferAttribute(positions, i);
+            const xLocal = vertex.x;
+            const zLocal = vertex.z;
+
+            // Simple wall shape
+            const distFromCenter = Math.abs(xLocal);
+            // Only care about outer walls
+            let yHeight = Math.pow(distFromCenter / 8, 3) * 5;
+            yHeight += Math.sin(zLocal * 0.1) * 2; // Add some noise
+
+            const t = (zLocal + pathLength / 2) / pathLength;
+            const clampedT = Math.max(0, Math.min(1, t));
+            const point = segmentPath.getPoint(clampedT);
+
+            positions.setX(i, point.x + xLocal);
+            positions.setY(i, point.y + yHeight - 2); // Overlap slightly
+            positions.setZ(i, point.z);
+        }
+
+        geo.computeVertexNormals();
+        return geo;
+
+    }, [segmentPath, pathLength]);
+
     // Generate water geometry
     const waterGeometry = useMemo(() => {
         if (!segmentPath) return null;
@@ -175,6 +345,20 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
                     {rockMaterial}
                 </mesh>
             </RigidBody>
+
+            {/* Visual Wall Shell (No Physics) */}
+            <mesh geometry={wallShellGeometry} receiveShadow castShadow>
+                {rockMaterial}
+            </mesh>
+
+            {/* Rocks */}
+            <Rock transforms={placementData.rocks} />
+
+            {/* Debris (Small Rocks) */}
+            <Rock transforms={placementData.debris} />
+
+            {/* Vegetation */}
+            <Vegetation transforms={placementData.trees} />
 
             {/* Water Surface */}
             <FlowingWater 
