@@ -23,7 +23,7 @@ export const Loader = () => {
     <div className={`loader-overlay ${isFading ? 'fade-out' : ''}`}>
       <div className="loader-content">
         <div className="loader-header">SYSTEM INITIALIZATION</div>
-        <div className="loader-text">LOADING ASSETS... {Math.round(progress)}%</div>
+        <div className="loader-text" aria-live="polite">LOADING ASSETS... {Math.round(progress)}%</div>
         <div
           className="loader-bar"
           role="progressbar"
