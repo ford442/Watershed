@@ -131,6 +131,7 @@ export const UI = () => {
                 disabled={isLoading}
                 style={isLoading ? { opacity: 0.5, cursor: 'wait' } : {}}
                 aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
+                aria-keyshortcuts="Enter"
               >
                 {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
               </button>
@@ -146,7 +147,7 @@ export const UI = () => {
               )}
             </>
           ) : (
-            <div className="confirm-group" role="alertdialog" aria-labelledby="confirm-label" aria-describedby="confirm-desc">
+            <div className="confirm-group" role="alertdialog" aria-live="assertive" aria-labelledby="confirm-label" aria-describedby="confirm-desc">
               <div id="confirm-label" className="confirm-text">RESTART GAME?</div>
               <div id="confirm-desc" className="confirm-subtext">PROGRESS WILL BE LOST</div>
               <div className="confirm-buttons">
