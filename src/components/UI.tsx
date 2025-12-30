@@ -101,9 +101,21 @@ export const UI = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Prevent starting if loading is active
-      if (!locked && !isLoading && e.key === 'Enter') {
-        e.preventDefault();
-        handleStart();
+      if (!locked && !isLoading) {
+        if (confirmRestart) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setConfirmRestart(false);
+          }
+          // Don't handle Enter here if confirming restart,
+          // let the focused button handle it natively.
+          return;
+        }
+
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleStart();
+        }
       }
     };
 
@@ -156,6 +168,7 @@ export const UI = () => {
                   className="confirm-yes"
                   onClick={handleRestart}
                   aria-label="Yes, Restart Game"
+                  aria-keyshortcuts="Enter"
                 >
                   YES
                 </button>
@@ -163,6 +176,7 @@ export const UI = () => {
                   className="confirm-no"
                   onClick={() => setConfirmRestart(false)}
                   aria-label="No, Cancel Restart"
+                  aria-keyshortcuts="Escape"
                 >
                   NO
                 </button>
