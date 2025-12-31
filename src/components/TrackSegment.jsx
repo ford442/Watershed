@@ -5,6 +5,7 @@ import { useTexture } from '@react-three/drei';
 import FlowingWater from './FlowingWater';
 import Rock from './Obstacles/Rock';
 import Vegetation from './Environment/Vegetation';
+import FloatingDebris from './Environment/FloatingDebris';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -68,8 +69,6 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
         let seed = segmentId * 1000; // Base seed
 
-        const segmentsX = 40;
-        const segmentsZ = Math.floor(pathLength);
         const geoWidth = canyonWidth;
         const geoLength = pathLength;
 
@@ -90,7 +89,10 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
             // Check left and right banks
             const sides = [-1, 1];
-            sides.forEach(side => {
+            
+            // Process each side
+            for (let sideIdx = 0; sideIdx < sides.length; sideIdx++) {
+                const side = sides[sideIdx];
                 // Determine randomized offset from center
                 // Rocks closer (5-10), Trees farther (10-15)
 
@@ -173,7 +175,7 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
                     debris.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                  }
-            });
+            }
         }
 
         return { rocks, trees, debris };
@@ -321,6 +323,20 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
         return geo;
     }, [segmentPath, pathLength]);
 
+    // Calculate stream start position and direction for floating debris
+    const streamData = useMemo(() => {
+        if (!segmentPath) return null;
+        
+        const startPoint = segmentPath.getPoint(0);
+        const tangent = segmentPath.getTangent(0).normalize();
+        
+        return {
+            start: startPoint,
+            direction: tangent,
+            length: pathLength
+        };
+    }, [segmentPath, pathLength]);
+
     const rockMaterial = (
         <meshStandardMaterial
             map={colorMap}
@@ -367,6 +383,18 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
                 baseColor="#1a6b8a"
                 foamColor="#e8f4f8"
             />
+            
+            {/* Floating Pinecones */}
+            {streamData && (
+                <FloatingDebris
+                    streamStart={streamData.start}
+                    streamDirection={streamData.direction}
+                    streamLength={streamData.length}
+                    waterLevel={waterLevel}
+                    count={6}
+                    seed={segmentId * 1000}
+                />
+            )}
         </group>
     );
 }
