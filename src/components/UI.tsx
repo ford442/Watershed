@@ -113,6 +113,10 @@ export const UI = () => {
         }
 
         if (e.key === 'Enter') {
+          // If focus is on an interactive element (like the Restart button), don't hijack Enter
+          if (document.activeElement instanceof HTMLButtonElement) {
+            return;
+          }
           e.preventDefault();
           handleStart();
         }
@@ -129,10 +133,12 @@ export const UI = () => {
       <div
         className={`ui-overlay ${!locked ? 'visible' : 'hidden'}`}
         aria-hidden={locked}
+        aria-modal={!locked}
+        style={isLoading ? { cursor: 'wait' } : {}}
       >
         <div className="ui-card">
           <h1>WATERSHED</h1>
-        {hasStarted && <div className="loader-text">GAME PAUSED</div>}
+        {hasStarted && <div className="loader-text" role="status">GAME PAUSED</div>}
         <div className="button-group">
           {!confirmRestart ? (
             <>
