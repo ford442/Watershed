@@ -35,6 +35,7 @@ export default function FloatingDebris({
   const debrisData = useMemo(() => {
     const items = [];
     let currentSeed = seed;
+    const LATERAL_SPREAD = 3; // Maximum lateral offset from stream center (±1.5 units)
     
     for (let i = 0; i < count; i++) {
       // Spread debris along the stream
@@ -46,7 +47,7 @@ export default function FloatingDebris({
         .add(streamDirection.clone().multiplyScalar(distanceAlongStream));
       
       // Add some lateral variation (slight offset from center)
-      const lateralOffset = (seededRandom(currentSeed++) - 0.5) * 3; // ±1.5 units
+      const lateralOffset = (seededRandom(currentSeed++) - 0.5) * LATERAL_SPREAD;
       const lateral = new THREE.Vector3(-streamDirection.z, 0, streamDirection.x)
         .normalize()
         .multiplyScalar(lateralOffset);
