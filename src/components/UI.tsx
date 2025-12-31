@@ -215,6 +215,12 @@ export const UI = () => {
             </div>
             <span className="action" aria-hidden="true">LOOK</span>
           </div>
+          <div className="control-row" role="listitem" aria-label="Pause: Escape key">
+            <div className="keys" aria-hidden="true">
+              <span className={getKeyClass(['Escape'], 'key key-wide')}>ESC</span>
+            </div>
+            <span className="action" aria-hidden="true">PAUSE</span>
+          </div>
         </div>
       </div>
     </div>
