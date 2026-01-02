@@ -156,7 +156,7 @@ export const UI = () => {
                 aria-label={hasStarted ? "Resume Game - Click or Press Enter" : "Start Game - Click or Press Enter to engage pointer lock"}
                 aria-keyshortcuts="Enter"
               >
-                {hasStarted ? "RESUME GAME" : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
+                {hasStarted ? <>RESUME GAME <span className="mini-key" aria-hidden="true">ENTER</span></> : (isLoading ? "LOADING..." : "CLICK TO ENGAGE / PRESS ENTER")}
               </button>
 
               {hasStarted && (
@@ -166,7 +166,7 @@ export const UI = () => {
                   aria-label="Restart Game (Press R) - Opens confirmation to reload the page"
                   aria-keyshortcuts="r"
                 >
-                  RESTART <span className="shortcut-hint">[R]</span>
+                  RESTART <span className="mini-key" aria-hidden="true">R</span>
                 </button>
               )}
             </>
