@@ -112,6 +112,11 @@ export const UI = () => {
           return;
         }
 
+        // Shortcut to trigger restart confirmation
+        if ((e.key === 'r' || e.key === 'R') && hasStarted && !locked && !confirmRestart) {
+          setConfirmRestart(true);
+        }
+
         if (e.key === 'Enter') {
           // If focus is on an interactive element (like the Restart button), don't hijack Enter
           if (document.activeElement instanceof HTMLButtonElement) {
@@ -125,7 +130,7 @@ export const UI = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [locked, isLoading, confirmRestart]);
+  }, [locked, isLoading, confirmRestart, hasStarted]);
 
   return (
     <>
@@ -158,9 +163,10 @@ export const UI = () => {
                 <button
                   className="restart-button"
                   onClick={() => setConfirmRestart(true)}
-                  aria-label="Restart Game - Opens confirmation to reload the page"
+                  aria-label="Restart Game (Press R) - Opens confirmation to reload the page"
+                  aria-keyshortcuts="r"
                 >
-                  RESTART
+                  RESTART <span className="shortcut-hint">[R]</span>
                 </button>
               )}
             </>
