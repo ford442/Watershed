@@ -1,8 +1,9 @@
-import { KeyboardControls, Sky } from "@react-three/drei";
+import { KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import React, { useMemo } from "react";
 import TrackManager from "./components/TrackManager";
 import Player from "./components/Player";
+import EnhancedSky from "./components/EnhancedSky";
 
 export const Controls = {
   forward: 'forward',
@@ -23,9 +24,14 @@ const Experience = () => {
 
   return (
     <KeyboardControls map={map}>
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[10, 20, 5]} intensity={1.5} castShadow />
-      <Sky sunPosition={[100, 50, 100]} />
+      {/* Enhanced Sky with atmospheric effects */}
+      <EnhancedSky />
+      
+      {/* Main scene lighting - reduced since EnhancedSky adds its own */}
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
+      
+      {/* Physics simulation and game objects */}
       <Physics gravity={[0, -9.81, 0]}>
         <TrackManager />
         <Player />
