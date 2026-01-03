@@ -11,7 +11,7 @@ import * as THREE from 'three';
  * 
  * Uses instanced rendering for performance.
  * 
- * @param {THREE.CatmullRomCurve3} riverPath - The river curve from TrackSegment
+ * @param {THREE.CatmullRomCurve3} riverPath - The river curve (can also accept segmentPath from TrackSegment)
  * @param {number} trackWidth - Width of the river track
  * @param {number} wallHeight - Height of canyon walls
  */
@@ -170,7 +170,7 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
                     castShadow
                     receiveShadow
                 >
-                    <dodecahedronGeometry args={[1, 0]} />
+                    <dodecahedronGeometry args={[1, 1]} />
                     <meshStandardMaterial
                         color="#6b5a4a"
                         roughness={0.95}

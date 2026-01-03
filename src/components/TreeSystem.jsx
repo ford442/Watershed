@@ -7,10 +7,14 @@ import * as THREE from 'three';
  * Generates trees positioned along the river path with natural distribution.
  * Uses instanced rendering for performance with many trees.
  * 
- * @param {THREE.CatmullRomCurve3} riverPath - The river curve from TrackSegment
+ * @param {THREE.CatmullRomCurve3} riverPath - The river curve (can also accept segmentPath from TrackSegment)
  * @param {number} trackWidth - Width of the river track
  * @param {number} wallHeight - Height of canyon walls
  */
+
+// Geometry constants
+const TRUNK_ROTATION_X = Math.PI / 2; // Rotate cylinder to vertical orientation
+
 export default function TreeSystem({ riverPath, trackWidth = 16, wallHeight = 12 }) {
     // Generate tree positions along the riverbank
     const treeData = useMemo(() => {
@@ -76,7 +80,7 @@ export default function TreeSystem({ riverPath, trackWidth = 16, wallHeight = 12
             // Trunk (cylinder)
             const trunkHeight = 2 * treeScale;
             position.set(treePos.x, treePos.y + trunkHeight / 2, treePos.z);
-            quaternion.setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+            quaternion.setFromEuler(new THREE.Euler(TRUNK_ROTATION_X, 0, 0));
             scale.set(0.2 * treeScale, 0.2 * treeScale, trunkHeight);
             trunkMatrix.compose(position, quaternion, scale);
             trunkRef.current.setMatrixAt(i, trunkMatrix);
