@@ -99,16 +99,18 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
     
     // Update instance matrices
     useMemo(() => {
+        const matrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        
         // Update boulders
         if (bouldersRef.current && decorationData.boulders.length > 0) {
-            const matrix = new THREE.Matrix4();
             decorationData.boulders.forEach((boulder, i) => {
-                const { position, scale, rotation } = boulder;
-                matrix.compose(
-                    position,
-                    new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)),
-                    new THREE.Vector3(scale, scale * 0.8, scale) // Slightly flattened
-                );
+                position.copy(boulder.position);
+                quaternion.setFromEuler(new THREE.Euler(...boulder.rotation));
+                scale.set(boulder.scale, boulder.scale * 0.8, boulder.scale);
+                matrix.compose(position, quaternion, scale);
                 bouldersRef.current.setMatrixAt(i, matrix);
             });
             bouldersRef.current.instanceMatrix.needsUpdate = true;
@@ -116,14 +118,11 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
         
         // Update rocks
         if (rocksRef.current && decorationData.rocks.length > 0) {
-            const matrix = new THREE.Matrix4();
             decorationData.rocks.forEach((rock, i) => {
-                const { position, scale, rotation } = rock;
-                matrix.compose(
-                    position,
-                    new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)),
-                    new THREE.Vector3(scale, scale, scale)
-                );
+                position.copy(rock.position);
+                quaternion.setFromEuler(new THREE.Euler(...rock.rotation));
+                scale.set(rock.scale, rock.scale, rock.scale);
+                matrix.compose(position, quaternion, scale);
                 rocksRef.current.setMatrixAt(i, matrix);
             });
             rocksRef.current.instanceMatrix.needsUpdate = true;
@@ -131,13 +130,11 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
         
         // Update vegetation
         if (vegetationRef.current && decorationData.vegetation.length > 0) {
-            const matrix = new THREE.Matrix4();
             decorationData.vegetation.forEach((veg, i) => {
-                const { position, scale, rotation } = veg;
-                matrix.makeRotationY(rotation);
-                matrix.setPosition(position.x, position.y, position.z);
-                const scaleMatrix = new THREE.Matrix4().makeScale(scale, scale * 0.6, scale);
-                matrix.multiply(scaleMatrix);
+                position.copy(veg.position);
+                quaternion.setFromEuler(new THREE.Euler(0, veg.rotation, 0));
+                scale.set(veg.scale, veg.scale * 0.6, veg.scale);
+                matrix.compose(position, quaternion, scale);
                 vegetationRef.current.setMatrixAt(i, matrix);
             });
             vegetationRef.current.instanceMatrix.needsUpdate = true;

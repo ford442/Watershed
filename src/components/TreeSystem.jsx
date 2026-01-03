@@ -1,6 +1,5 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
 
 /**
  * TreeSystem - Instanced tree rendering along riverbanks
@@ -67,26 +66,26 @@ export default function TreeSystem({ riverPath, trackWidth = 16, wallHeight = 12
         
         const trunkMatrix = new THREE.Matrix4();
         const foliageMatrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
         
         treeData.forEach((tree, i) => {
-            const { position, scale, rotation } = tree;
+            const { position: treePos, scale: treeScale, rotation } = tree;
             
             // Trunk (cylinder)
-            const trunkHeight = 2 * scale;
-            const trunkPos = position.clone();
-            trunkMatrix.makeRotationX(Math.PI / 2);
-            trunkMatrix.setPosition(trunkPos.x, trunkPos.y + trunkHeight / 2, trunkPos.z);
-            const scaleMatrix = new THREE.Matrix4().makeScale(0.2 * scale, 0.2 * scale, trunkHeight);
-            trunkMatrix.multiply(scaleMatrix);
+            const trunkHeight = 2 * treeScale;
+            position.set(treePos.x, treePos.y + trunkHeight / 2, treePos.z);
+            quaternion.setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+            scale.set(0.2 * treeScale, 0.2 * treeScale, trunkHeight);
+            trunkMatrix.compose(position, quaternion, scale);
             trunkRef.current.setMatrixAt(i, trunkMatrix);
             
             // Foliage (cone)
-            const foliagePos = position.clone();
-            foliagePos.y += trunkHeight;
-            foliageMatrix.makeRotationY(rotation);
-            foliageMatrix.setPosition(foliagePos.x, foliagePos.y + 1.5 * scale, foliagePos.z);
-            const foliageScaleMatrix = new THREE.Matrix4().makeScale(scale, scale * 1.5, scale);
-            foliageMatrix.multiply(foliageScaleMatrix);
+            position.set(treePos.x, treePos.y + trunkHeight + 1.5 * treeScale, treePos.z);
+            quaternion.setFromEuler(new THREE.Euler(0, rotation, 0));
+            scale.set(treeScale, treeScale * 1.5, treeScale);
+            foliageMatrix.compose(position, quaternion, scale);
             foliageRef.current.setMatrixAt(i, foliageMatrix);
         });
         
