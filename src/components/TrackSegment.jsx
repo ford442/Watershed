@@ -5,6 +5,7 @@ import { useTexture } from '@react-three/drei';
 import FlowingWater from './FlowingWater';
 import Rock from './Obstacles/Rock';
 import Vegetation from './Environment/Vegetation';
+import Grass from './Environment/Grass';
 import FloatingDebris from './Environment/FloatingDebris';
 
 // Simple seeded random function
@@ -61,11 +62,12 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
     // Derived Placement Data
     const placementData = useMemo(() => {
-        if (!segmentPath) return { rocks: [], trees: [], debris: [], walls: [] };
+        if (!segmentPath) return { rocks: [], trees: [], debris: [], grass: [], walls: [] };
 
         const rocks = [];
         const trees = [];
         const debris = [];
+        const grass = [];
 
         let seed = segmentId * 1000; // Base seed
 
@@ -175,10 +177,39 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
                     debris.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                  }
+
+                 // Sample 4: Grass/Bushes (Banks and gaps)
+                 // Higher density than trees/rocks
+                 if (seededRandom(seed++) > 0.3) {
+                    const dist = 6 + seededRandom(seed++) * 8; // 6 to 14 (spread across banks)
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const xLocal = side * dist;
+
+                    const normalizedDist = Math.abs(xLocal) / (geoWidth * 0.45);
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    if (Math.abs(xLocal) < 5) yHeight *= 0.1;
+
+                    // Add some noise to height so they sit naturally on rough terrain
+                    const groundNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 +
+                                        Math.sin(zLocal * 1.5 - xLocal * 0.8) * 0.2;
+                    yHeight += groundNoise * (0.5 + normalizedDist);
+
+                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                     position.y += yHeight;
+
+                    const scale = 0.4 + seededRandom(seed++) * 0.4;
+                    const rotation = new THREE.Euler(
+                        0, // Mostly upright
+                        seededRandom(seed++) * Math.PI * 2,
+                        (seededRandom(seed++) - 0.5) * 0.2 // Slight tilt
+                    );
+
+                    grass.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                 }
             }
         }
 
-        return { rocks, trees, debris };
+        return { rocks, trees, debris, grass };
     }, [segmentPath, pathLength, segmentId]);
 
 
@@ -375,6 +406,9 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
             {/* Vegetation */}
             <Vegetation transforms={placementData.trees} />
+
+            {/* Grass / Bushes */}
+            <Grass transforms={placementData.grass} />
 
             {/* Water Surface */}
             <FlowingWater 
