@@ -7,6 +7,7 @@ import Rock from './Obstacles/Rock';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
 import FloatingDebris from './Environment/FloatingDebris';
+import Driftwood from './Environment/Driftwood';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -62,12 +63,13 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
     // Derived Placement Data
     const placementData = useMemo(() => {
-        if (!segmentPath) return { rocks: [], trees: [], debris: [], grass: [], walls: [] };
+        if (!segmentPath) return { rocks: [], trees: [], debris: [], grass: [], driftwood: [], walls: [] };
 
         const rocks = [];
         const trees = [];
         const debris = [];
         const grass = [];
+        const driftwood = [];
 
         let seed = segmentId * 1000; // Base seed
 
@@ -206,10 +208,62 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
                     grass.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                  }
+
+                 // Sample 5: Driftwood (Water edge / Banks)
+                 if (seededRandom(seed++) > 0.8) { // Rare (20%)
+                    // Place near water edge (approx 4-6 units from center)
+                    const dist = 4.5 + seededRandom(seed++) * 2.5;
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const xLocal = side * dist;
+
+                    const normalizedDist = Math.abs(xLocal) / (geoWidth * 0.45);
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    if (Math.abs(xLocal) < 5) yHeight *= 0.1;
+
+                    // Embed in ground slightly
+                    yHeight -= 0.2;
+
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    position.y += yHeight;
+
+                    const scaleY = 0.8 + seededRandom(seed++) * 0.5; // Length
+                    const scaleXZ = 0.6 + seededRandom(seed++) * 0.4; // Thickness
+
+                    const rotation = new THREE.Euler(
+                        seededRandom(seed++) * Math.PI * 0.2, // Slight tilt
+                        seededRandom(seed++) * Math.PI * 2,   // Random yaw
+                        seededRandom(seed++) * Math.PI * 0.2  // Slight roll
+                    );
+
+                    driftwood.push({
+                        position,
+                        rotation,
+                        scale: new THREE.Vector3(scaleXZ, scaleY, scaleXZ) // Cylinder is Y-up by default, but we rotated geometry in component?
+                        // Wait, Driftwood.jsx says: geo.rotateZ(Math.PI / 2); // Lay flat (along X axis)
+                        // So scale.x is length.
+                        // Let's swap scales in the push if we assume geometry is X-aligned.
+                        // Actually, let's keep it simple: scale uniform or just rely on geometry.
+                        // If geometry is X-aligned:
+                        // scale.x -> Length
+                        // scale.y, scale.z -> Thickness
+                    });
+                 }
             }
         }
 
-        return { rocks, trees, debris, grass };
+        // Fix Driftwood Scaling because I realized geometry is X-aligned
+        const correctedDriftwood = driftwood.map(d => {
+             // In component: geo.rotateZ(Math.PI / 2). Cylinder was Y-up. Now X-up.
+             // So X axis is length. Y and Z are thickness.
+             const length = 0.8 + seededRandom(seed++) * 0.8;
+             const thickness = 0.5 + seededRandom(seed++) * 0.5;
+             return {
+                 ...d,
+                 scale: new THREE.Vector3(length, thickness, thickness)
+             };
+        });
+
+        return { rocks, trees, debris, grass, driftwood: correctedDriftwood };
     }, [segmentPath, pathLength, segmentId]);
 
 
@@ -409,6 +463,9 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
 
             {/* Grass / Bushes */}
             <Grass transforms={placementData.grass} />
+
+            {/* Driftwood */}
+            <Driftwood transforms={placementData.driftwood} />
 
             {/* Water Surface */}
             <FlowingWater 

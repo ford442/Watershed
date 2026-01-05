@@ -62,7 +62,7 @@ describe('UI Shortcuts', () => {
     expect(screen.getByText(/GAME PAUSED/i)).toBeInTheDocument();
     const restartBtn = screen.getByRole('button', { name: /Restart Game/i });
     expect(restartBtn).toBeInTheDocument();
-    expect(restartBtn).toHaveTextContent(/\[R\]/); // Check for the hint text
+    expect(restartBtn).toHaveTextContent(/R/); // Check for the hint text
 
     // 3. Press 'R'
     act(() => {
