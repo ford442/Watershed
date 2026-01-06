@@ -1,49 +1,68 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
-def verify_visuals():
+def verify_environment():
+    print("Starting verification script...")
     with sync_playwright() as p:
-        # Launch with swiftshader for software WebGL to help with headless rendering
-        browser = p.chromium.launch(headless=True, args=['--use-gl=swiftshader', '--ignore-gpu-blocklist'])
-        context = browser.new_context(viewport={'width': 1280, 'height': 720})
-        page = context.new_page()
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--use-gl=swiftshader", "--ignore-gpu-blocklist"]
+        )
+        page = browser.new_page()
+        page.set_viewport_size({"width": 1280, "height": 720})
+        page.set_default_timeout(20000)
 
-        # Capture logs
-        page.on("console", lambda msg: print(f"Console: {msg.text}"))
-        page.on("pageerror", lambda exc: print(f"PageError: {exc}"))
+        # Inject mock for pointer lock
+        page.add_init_script("""
+            window.HTMLElement.prototype.requestPointerLock = function() {
+                console.log("Mock requestPointerLock called");
+                setTimeout(() => {
+                    Object.defineProperty(document, 'pointerLockElement', {
+                        get: () => document.body,
+                        configurable: true
+                    });
+                    document.dispatchEvent(new Event('pointerlockchange'));
+                }, 100);
+            };
+            document.exitPointerLock = function() {
+                console.log("Mock exitPointerLock called");
+                Object.defineProperty(document, 'pointerLockElement', {
+                    get: () => null,
+                    configurable: true
+                });
+                document.dispatchEvent(new Event('pointerlockchange'));
+            };
+        """)
 
-        print("Navigating...")
-        page.goto("http://localhost:8080")
+        page.on("console", lambda msg: print(f"Browser console: {msg.text}"))
+        page.on("pageerror", lambda err: print(f"Page Error: {err}"))
 
+        print("Navigating to app...")
+        page.goto("http://localhost:3000")
+
+        print("Waiting for start screen...")
         try:
-            # Wait for canvas (R3F root)
-            page.wait_for_selector("canvas", timeout=30000)
-            print("Canvas found.")
-
-            # Click center to ensure focus / dismiss any "Click to Start" overlay
-            page.mouse.click(640, 360)
-            page.wait_for_timeout(2000)
-
-            # Press Enter to start game (common pattern in this project)
-            print("Pressing Enter...")
-            page.keyboard.press("Enter")
-
-            # Wait for game to start/transition
-            page.wait_for_timeout(5000)
-
-            # Press 'W' briefly to move camera (might reveal grass if obstructed)
-            page.keyboard.down("w")
-            page.wait_for_timeout(500)
-            page.keyboard.up("w")
-
-            # Take screenshot
-            page.screenshot(path="verification_grass_2.png")
-            print("Screenshot taken: verification_grass_2.png")
-
+            expect(page.get_by_text("WATERSHED")).to_be_visible(timeout=10000)
         except Exception as e:
-            print(f"Error: {e}")
-            page.screenshot(path="verification_error_2.png")
+            print(f"Start screen not found: {e}")
+
+        print("Engaging game...")
+        # First try Enter as it's cleaner
+        page.keyboard.press("Enter")
+
+        # Also try clicking if Enter isn't enough (redundancy)
+        try:
+             page.get_by_text("CLICK TO ENGAGE", exact=False).click(timeout=2000)
+        except:
+             print("Click failed or not found, hoping Enter worked.")
+
+        print("Waiting for scene to load...")
+        page.wait_for_timeout(5000)
+
+        print("Taking screenshot...")
+        page.screenshot(path="verification_visuals_final.png")
 
         browser.close()
+        print("Done.")
 
 if __name__ == "__main__":
-    verify_visuals()
+    verify_environment()

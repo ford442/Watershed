@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Sky } from '@react-three/drei';
+import { Sky, Environment } from '@react-three/drei';
 
 /**
  * EnhancedSky - Improved atmospheric sky for canyon environments
@@ -12,6 +12,7 @@ import { Sky } from '@react-three/drei';
  * - Optimized sun position for dramatic canyon lighting
  * - Atmospheric fog for depth perception
  * - Warm color palette suitable for creek canyon biome
+ * - Environment map for realistic reflections
  */
 
 // Canyon atmosphere color constants
@@ -38,6 +39,9 @@ export default function EnhancedSky() {
                 rayleigh={0.5}
                 turbidity={10}
             />
+
+            {/* Environment Map for realistic reflections (Water, Wet Rocks) */}
+            <Environment preset="forest" />
             
             {/* Atmospheric fog for depth - warm desert tones */}
             <fog attach="fog" args={[CANYON_FOG_COLOR, 50, 300]} />
