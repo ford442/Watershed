@@ -43,6 +43,47 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
         });
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
+    // Create the custom Wet Rock Material
+    // This uses Vertex Colors to drive both Diffuse Darkening (Wetness) and Roughness
+    const rockMaterial = useMemo(() => {
+        const mat = new THREE.MeshStandardMaterial({
+            map: colorMap,
+            normalMap: normalMap,
+            roughnessMap: roughnessMap,
+            aoMap: aoMap,
+            side: THREE.DoubleSide,
+            vertexColors: true, // IMPORTANT: Enable vertex colors for wetness effect
+        });
+
+        mat.onBeforeCompile = (shader) => {
+            // Modify fragment shader to link roughness to vertex color intensity
+            // vColor.r comes from our geometry generation:
+            // Low value (dark) = Wet = Should be shiny (low roughness)
+            // High value (bright) = Dry = Should be rough
+
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <roughnessmap_fragment>',
+                `
+                #include <roughnessmap_fragment>
+
+                // PALETTE: Wet Rock Logic
+                // We use the red channel of vertex color as "dryness" factor (0.0 = soaked, 1.0 = dry)
+                // vColor is automatically available when vertexColors=true
+
+                float dryness = smoothstep(0.4, 0.8, vColor.r);
+
+                // Mix roughness:
+                // If wet (dryness -> 0), use low roughness (0.15) for shiny look
+                // If dry (dryness -> 1), use original map value
+
+                roughnessFactor = mix(0.15, roughnessFactor, dryness);
+                `
+            );
+        };
+
+        return mat;
+    }, [colorMap, normalMap, roughnessMap, aoMap]);
+
     // Use safe points if inactive or points are missing
     const safePoints = (active && pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
 
@@ -210,7 +251,8 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
                  }
 
                  // Sample 5: Driftwood (Water edge / Banks)
-                 if (seededRandom(seed++) > 0.8) { // Rare (20%)
+                 // Increased density for "Palette" visual upgrade
+                 if (seededRandom(seed++) > 0.4) { // Increased from 20% to 60% chance
                     // Place near water edge (approx 4-6 units from center)
                     const dist = 4.5 + seededRandom(seed++) * 2.5;
                     const offset = binormal.clone().multiplyScalar(side * dist);
@@ -238,23 +280,14 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
                     driftwood.push({
                         position,
                         rotation,
-                        scale: new THREE.Vector3(scaleXZ, scaleY, scaleXZ) // Cylinder is Y-up by default, but we rotated geometry in component?
-                        // Wait, Driftwood.jsx says: geo.rotateZ(Math.PI / 2); // Lay flat (along X axis)
-                        // So scale.x is length.
-                        // Let's swap scales in the push if we assume geometry is X-aligned.
-                        // Actually, let's keep it simple: scale uniform or just rely on geometry.
-                        // If geometry is X-aligned:
-                        // scale.x -> Length
-                        // scale.y, scale.z -> Thickness
+                        scale: new THREE.Vector3(scaleXZ, scaleY, scaleXZ)
                     });
                  }
             }
         }
 
-        // Fix Driftwood Scaling because I realized geometry is X-aligned
+        // Fix Driftwood Scaling because geometry is X-aligned
         const correctedDriftwood = driftwood.map(d => {
-             // In component: geo.rotateZ(Math.PI / 2). Cylinder was Y-up. Now X-up.
-             // So X axis is length. Y and Z are thickness.
              const length = 0.8 + seededRandom(seed++) * 0.8;
              const thickness = 0.5 + seededRandom(seed++) * 0.5;
              return {
@@ -282,14 +315,15 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
         const positions = geo.attributes.position;
         const vertex = new THREE.Vector3();
 
+        // Add Vertex Colors buffer
+        const colors = new Float32Array(positions.count * 3);
+        const color = new THREE.Color();
+
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
             
             // 1. Calculate Local Organic Shape (CreekCanyon logic)
             const xLocal = vertex.x; // Distance from center
-            // zLocal is vertex.z, but for noise continuity we might want global Z.
-            // For now, we use local Z relative to segment, which might cause seams in noise patterns.
-            // To fix noise seams, we'd need global offset. But let's stick to the requested port first.
             const zLocal = vertex.z;
 
             const distFromCenter = Math.abs(xLocal);
@@ -306,7 +340,6 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
             }
 
             // Add rocky texture variation (Simplex-like using sin/cos)
-            // Logic from CreekCanyon.jsx
             const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 +
                               Math.sin(zLocal * 1.5 - xLocal * 0.8) * 0.2 +
                               Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
@@ -320,21 +353,38 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
             }
 
             // 2. Map to Spline
-            // Normalize Z to t [0, 1]
             const t = (zLocal + pathLength / 2) / pathLength;
             const clampedT = Math.max(0, Math.min(1, t));
             
             const point = segmentPath.getPoint(clampedT);
             
-            // Naive deformation: Translate local shape to spline point
-            // This assumes the track doesn't rotate (bank) significantly.
-            //Ideally we'd use Frenet frames here, but starting simple as requested.
+            // Apply Wet Rock Coloring
+            // Determine how "wet" this vertex is based on yHeight (height above riverbed)
+            // Water is at ~0.5 height relative to bottom.
+            // Wet zone extends slightly above water level due to splash/capillary action.
+
+            // dryness: 0 (Wet) -> 1 (Dry)
+            // yHeight < 0.5 is underwater (Darkest)
+            // yHeight 0.5 - 2.5 transitions to dry
+            const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
+
+            // Darken the color based on dryness
+            // Wet (0) -> 0.4 intensity
+            // Dry (1) -> 1.0 intensity
+            const intensity = 0.4 + 0.6 * dryness;
+
+            color.setScalar(intensity);
+
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
 
             positions.setX(i, point.x + xLocal);
             positions.setY(i, point.y + yHeight);
             positions.setZ(i, point.z); // Z is largely driven by the spline point
         }
         
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geo.computeVertexNormals();
         return geo;
     }, [segmentPath, pathLength]);
@@ -422,18 +472,7 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
         };
     }, [segmentPath, pathLength]);
 
-    const rockMaterial = (
-        <meshStandardMaterial
-            map={colorMap}
-            normalMap={normalMap}
-            roughnessMap={roughnessMap}
-            aoMap={aoMap}
-            side={THREE.DoubleSide}
-        />
-    );
-
     // If inactive or missing data, render nothing
-    // This keeps the component mounted (retaining React state/hooks) but renders no 3D objects
     if (!active || !segmentPath || !canyonGeometry || !waterGeometry) {
         return null;
     }
@@ -442,15 +481,11 @@ export default function TrackSegment({ pathPoints, segmentId = 0, active = true 
         <group name={`track-segment-${segmentId}`}>
             {/* Unified Canyon Terrain */}
             <RigidBody type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
-                <mesh geometry={canyonGeometry} receiveShadow castShadow>
-                    {rockMaterial}
-                </mesh>
+                <mesh geometry={canyonGeometry} receiveShadow castShadow material={rockMaterial} />
             </RigidBody>
 
             {/* Visual Wall Shell (No Physics) */}
-            <mesh geometry={wallShellGeometry} receiveShadow castShadow>
-                {rockMaterial}
-            </mesh>
+            <mesh geometry={wallShellGeometry} receiveShadow castShadow material={rockMaterial} />
 
             {/* Rocks */}
             <Rock transforms={placementData.rocks} />
