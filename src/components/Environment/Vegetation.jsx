@@ -4,7 +4,13 @@ import { Instances, Instance } from '@react-three/drei';
 import { InstancedRigidBodies } from '@react-three/rapier';
 import { useTreeAssets } from './TreeAssets';
 
-export default function Vegetation({ transforms }) {
+// Color Palettes
+const PALETTES = {
+  summer: ['#2d4c1e', '#228b22', '#556b2f', '#1e3312'],
+  autumn: ['#d35400', '#e67e22', '#f1c40f', '#c0392b', '#8e44ad', '#dbc632']
+};
+
+export default function Vegetation({ transforms, biome = 'summer' }) {
   const { trunkGeometry, foliageGeometry } = useTreeAssets();
 
   // Materials
@@ -17,27 +23,24 @@ export default function Vegetation({ transforms }) {
 
   const foliageMaterial = useMemo(() =>
     new THREE.MeshStandardMaterial({
-      color: '#2d4c1e',
+      color: '#ffffff', // Use white so instance color tints it correctly
       roughness: 0.8,
-      flatShading: true // Low-poly look
+      flatShading: true
     }), []
   );
 
   const instances = useMemo(() => {
+    // Select palette based on biome, default to summer if invalid
+    const palette = PALETTES[biome] || PALETTES.summer;
+
     return transforms.map((t, i) => {
-      // Add random color variation to foliage
-      // We can't easily change material per instance efficiently without custom shader or Instance color prop.
-      // <Instance> supports 'color' prop if the material uses vertex colors.
-      // But standard material doesn't use vertex colors by default unless vertexColors={true}.
-      // Let's stick to global material for now for max performance,
-      // OR enable vertex colors.
+      // Pick a random color from the palette
+      const colorHex = palette[Math.floor(Math.random() * palette.length)];
+      const color = new THREE.Color(colorHex);
 
-      // Let's try simple color variation using Instance color prop.
-      // We need to clone the material and set vertexColors: true if we want it.
-      // But @react-three/drei Instances usually handles this.
-
-      const shade = 0.8 + Math.random() * 0.4; // 0.8 to 1.2 brightness
-      const color = new THREE.Color('#2d4c1e').multiplyScalar(shade);
+      // Add slight brightness variation
+      const shade = 0.8 + Math.random() * 0.4;
+      color.multiplyScalar(shade);
 
       return {
         key: `veg-${i}`,
@@ -47,17 +50,17 @@ export default function Vegetation({ transforms }) {
         color: color
       };
     });
-  }, [transforms]);
+  }, [transforms, biome]);
 
   if (transforms.length === 0) return null;
 
   return (
     <group>
-      {/* TRUNKS (Physics + Visuals) */}
+      {/* TRUNKS */}
       <InstancedRigidBodies
         instances={instances}
         type="fixed"
-        colliders="hull" // Hull of the cylinder
+        colliders="hull"
       >
         <Instances range={instances.length} geometry={trunkGeometry} material={trunkMaterial}>
           {instances.map((t) => (
@@ -71,8 +74,7 @@ export default function Vegetation({ transforms }) {
         </Instances>
       </InstancedRigidBodies>
 
-      {/* FOLIAGE (Visuals Only - No Physics) */}
-      {/* We reuse the same transforms */}
+      {/* FOLIAGE */}
       <Instances range={instances.length} geometry={foliageGeometry} material={foliageMaterial}>
         {instances.map((t) => (
           <Instance
@@ -80,7 +82,7 @@ export default function Vegetation({ transforms }) {
             position={t.position}
             rotation={t.rotation}
             scale={t.scale}
-            color={t.color} // Apply color variation
+            color={t.color}
           />
         ))}
       </Instances>

@@ -3,122 +3,152 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import TrackSegment from './TrackSegment';
 
-const GENERATION_THRESHOLD = 100; // Distance from end to trigger generation
-const MAX_ACTIVE_SEGMENTS = 5;    // Keep last 5 segments active in logic
-const POOL_SIZE = 8;              // Total number of pooled components (buffer > MAX_ACTIVE)
+const GENERATION_THRESHOLD = 100;
+const MAX_ACTIVE_SEGMENTS = 6;    // Increased slightly to see further
+const POOL_SIZE = 9;
 
-// Define initial segments outside component to avoid recreation
 const INITIAL_SEGMENTS = [
-    // Segment 1: Start zone - enclosed creek corridor
     {
         id: 0,
+        type: 'normal',
+        biome: 'summer',
         points: [
-            new THREE.Vector3(0, -6, 30),     // Upstream canyon approach
-            new THREE.Vector3(0, -6, 5),      // Entry corridor around spawn
-            new THREE.Vector3(2, -8, -25),    // Safe drop deeper into creek
-            new THREE.Vector3(8, -12, -60),   // Continue descent
+            new THREE.Vector3(0, -6, 30),
+            new THREE.Vector3(0, -6, 5),
+            new THREE.Vector3(2, -8, -25),
+            new THREE.Vector3(8, -12, -60),
         ],
     },
-    // Segment 2: The big turn
     {
         id: 1,
+        type: 'normal',
+        biome: 'summer',
         points: [
-            new THREE.Vector3(8, -12, -60),   // Connect from segment 1
-            new THREE.Vector3(0, -16, -95),   // Begin left turn
-            new THREE.Vector3(-12, -20, -135),// Hard left
-            new THREE.Vector3(-18, -24, -175),// Continue descent
+            new THREE.Vector3(8, -12, -60),
+            new THREE.Vector3(0, -16, -95),
+            new THREE.Vector3(-12, -20, -135),
+            new THREE.Vector3(-18, -24, -175),
         ],
     },
 ];
 
-/**
- * TrackManager - Manages multiple track segments for the treadmill system
- * 
- * Dynamically generates and manages track segments based on player position.
- * Implements object pooling to reuse React components.
- */
 export default function TrackManager() {
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
     const segmentsRef = useRef(INITIAL_SEGMENTS);
     const lastSegmentId = useRef(1);
-    // Ref to track which segment we last generated from to avoid duplicates
     const lastGeneratedFromId = useRef(-1);
     const { camera } = useThree();
 
-    // Keep ref in sync for useFrame
     useEffect(() => {
         segmentsRef.current = segments;
     }, [segments]);
 
-    // Helper to generate next segment
     const generateNextSegment = useCallback((lastSegment) => {
         const lastPoints = lastSegment.points;
         const lastPoint = lastPoints[lastPoints.length - 1];
         const prevPoint = lastPoints[lastPoints.length - 2];
+        const currentId = lastSegmentId.current + 1;
 
-        // Calculate tangent direction at the end of the last segment
+        // --- LEVEL DIRECTOR LOGIC ---
+        let nextType = 'normal';
+        let nextBiome = 'summer';
+        let verticalBias = -0.3; // Default slope
+        let curveRoughness = 0.8; // How much it turns left/right
+        let segmentLengthMult = 1.0;
+
+        // Phase 1: Summer Creek (Id 0-8)
+        if (currentId <= 8) {
+            nextType = 'normal';
+            nextBiome = 'summer';
+            verticalBias = -0.4; // Getting steeper
+        }
+        // Phase 2: Waterfall Approach (Id 9)
+        else if (currentId === 9) {
+            nextType = 'normal';
+            nextBiome = 'summer';
+            verticalBias = -0.8; // Very steep approach
+        }
+        // Phase 3: THE WATERFALL (Id 10)
+        else if (currentId === 10) {
+            nextType = 'waterfall';
+            nextBiome = 'summer';
+            verticalBias = -2.5; // Extreme drop
+            curveRoughness = 0.1; // Straight drop
+            segmentLengthMult = 0.6; // Shorter distance, all vertical
+        }
+        // Phase 4: THE POND (Id 11) - Transition to Autumn
+        else if (currentId === 11) {
+            nextType = 'pond';
+            nextBiome = 'autumn';
+            verticalBias = -0.05; // Almost flat
+            curveRoughness = 0.2; // Gentle curves
+            segmentLengthMult = 1.5; // Long pond
+        }
+        // Phase 5: Autumn Rapids (Id 12+)
+        else {
+            nextType = 'normal';
+            nextBiome = 'autumn';
+            verticalBias = -0.6; // Steep rapids
+            curveRoughness = 1.0; // Lots of twists
+        }
+
+        // --- GENERATION MATH ---
         const direction = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
-
-        // Start new segment points with the last point of the previous one (continuity)
         const newPoints = [lastPoint.clone()];
         let currentPos = lastPoint.clone();
 
-        // Generate 3 new control points for the segment
         for (let i = 0; i < 3; i++) {
-            // Apply some randomness to direction
-            // Bias towards going down (-Y)
+            // Randomness based on Level Director settings
+            const randomX = (Math.random() - 0.5) * curveRoughness;
+            const randomY = (Math.random() * verticalBias);
 
-            const randomX = (Math.random() - 0.5) * 0.8;
-            const randomY = (Math.random() * -0.3); // Always down or flat
-
-            // Perturb direction
             direction.x += randomX;
             direction.y += randomY;
-
-            // Re-normalize but ensure we are still moving generally forward (-Z)
             direction.normalize();
 
-            // Prevent turning back or going too steep
-            if (direction.z > -0.4) direction.z = -0.4;
-            if (direction.y < -0.6) direction.y = -0.6; // Not too steep drop
-            direction.normalize();
+            // Constraints
+            if (nextType !== 'waterfall') {
+                // Don't let normal segments loop back or drop TOO fast
+                if (direction.z > -0.4) direction.z = -0.4;
+                if (direction.y < -0.8 && nextType !== 'waterfall') direction.y = -0.8;
+            } else {
+                // Waterfall specific constraints
+                 if (direction.y > -0.9) direction.y = -0.9; // Force Down
+                 direction.z = -0.1; // Very little forward movement
+            }
 
-            // Move forward by a step distance
-            const dist = 30 + Math.random() * 20; // 30-50 units
+            const baseDist = 30 + Math.random() * 20;
+            const dist = baseDist * segmentLengthMult;
+
             const step = direction.clone().multiplyScalar(dist);
-
             currentPos.add(step);
             newPoints.push(currentPos.clone());
         }
 
-        lastSegmentId.current += 1;
+        lastSegmentId.current = currentId;
 
         return {
-            id: lastSegmentId.current,
-            points: newPoints
+            id: currentId,
+            points: newPoints,
+            type: nextType,
+            biome: nextBiome
         };
     }, []);
 
     useFrame(() => {
         const currentSegments = segmentsRef.current;
         if (currentSegments.length === 0) return;
-
         const lastSegment = currentSegments[currentSegments.length - 1];
-
-        // Prevent multiple generations from the same segment
         if (lastSegment.id === lastGeneratedFromId.current) return;
 
         const lastPoint = lastSegment.points[lastSegment.points.length - 1];
 
-        // Check distance in Z.
-        // We assume the track moves primarily in -Z direction.
         if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
             lastGeneratedFromId.current = lastSegment.id;
             const newSegment = generateNextSegment(lastSegment);
 
             setSegments(prev => {
                 const updated = [...prev, newSegment];
-                // Remove old segments if we have too many
                 if (updated.length > MAX_ACTIVE_SEGMENTS) {
                     return updated.slice(updated.length - MAX_ACTIVE_SEGMENTS);
                 }
@@ -129,22 +159,16 @@ export default function TrackManager() {
 
     return (
         <group name="track-manager">
-            {/*
-                Render a fixed pool of TrackSegment components.
-                Each active segment is mapped to a pool slot based on id % POOL_SIZE.
-                This ensures stable React keys (0..POOL_SIZE-1) to prevent unmounting/remounting
-                of the component wrappers, optimizing React Fiber reconciliation.
-            */}
             {Array.from({ length: POOL_SIZE }).map((_, index) => {
-                // Find if any active segment belongs in this pool slot
                 const segment = segments.find(s => (s.id % POOL_SIZE) === index);
-
                 return (
                     <TrackSegment
-                        key={index} // Stable key based on pool index
+                        key={index}
                         segmentId={segment ? segment.id : -1}
                         pathPoints={segment ? segment.points : null}
                         active={!!segment}
+                        type={segment ? segment.type : 'normal'}
+                        biome={segment ? segment.biome : 'summer'}
                     />
                 );
             })}
