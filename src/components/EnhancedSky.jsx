@@ -39,6 +39,9 @@ export default function EnhancedSky({ biome = 'summer' }) {
             cloudRef.current.rotation.y += delta * 0.02;
         }
 
+        // Guard clause to prevent crash on initial frames
+        if (!state.scene.fog) return;
+
         // Smoothly interpolate Fog
         const step = delta * 0.5; // Transition speed
 

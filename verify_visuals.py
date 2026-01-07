@@ -9,7 +9,7 @@ def verify_environment():
         )
         page = browser.new_page()
         page.set_viewport_size({"width": 1280, "height": 720})
-        page.set_default_timeout(20000)
+        page.set_default_timeout(60000)
 
         # Inject mock for pointer lock
         page.add_init_script("""

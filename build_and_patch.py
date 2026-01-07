@@ -10,7 +10,7 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
     import paramiko
 
-WEBGPU_TS_DIR = '/workspaces/webgpu-ts'
+WEBGPU_TS_DIR = '.'
 HTML_FILE_PATH = os.path.join(WEBGPU_TS_DIR, 'build', 'index.html')
 DEPLOY_SCRIPT = os.path.join(WEBGPU_TS_DIR, 'deploy.py')
 
@@ -27,7 +27,7 @@ def run_command(command, cwd=None):
 def patch_html(html_file_path):
     print(f"Attempting to patch {html_file_path}...")
     if not os.path.exists(html_file_path):
-        print(f"❌ ERROR: File not found at {html_file_path}. Did 'npm run build' complete successfully?")
+        print(f"❌ ERROR: File not found at {html_file_path}. Did 'pnpm run build' complete successfully?")
         return False
     try:
         with open(html_file_path, 'r', encoding='utf-8') as file:
@@ -43,9 +43,7 @@ def patch_html(html_file_path):
         return False
 
 def main():
-    if not run_command("git pull", cwd=WEBGPU_TS_DIR):
-        return
-    if not run_command("npm run build", cwd=WEBGPU_TS_DIR):
+    if not run_command("pnpm run build", cwd=WEBGPU_TS_DIR):
         return
     patch_html(HTML_FILE_PATH)
     if os.path.exists(DEPLOY_SCRIPT):
