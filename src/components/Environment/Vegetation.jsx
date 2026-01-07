@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { InstancedRigidBodies } from '@react-three/rapier';
@@ -21,13 +22,59 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
     }), []
   );
 
-  const foliageMaterial = useMemo(() =>
-    new THREE.MeshStandardMaterial({
+  const foliageMaterial = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
       color: '#ffffff', // Use white so instance color tints it correctly
       roughness: 0.8,
       flatShading: true
-    }), []
-  );
+    });
+
+    // Custom Shader for Wind Animation
+    mat.userData.uniforms = {
+        time: { value: 0 }
+    };
+
+    mat.onBeforeCompile = (shader) => {
+        shader.uniforms.time = mat.userData.uniforms.time;
+
+        shader.vertexShader = `
+            uniform float time;
+        ` + shader.vertexShader;
+
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `
+            #include <begin_vertex>
+
+            // Wind Animation
+            float windStrength = 0.15;
+            float windSpeed = 1.5;
+
+            // Apply wind only above a certain height (keep base attached)
+            // Foliage starts around Y=1.0
+            float heightFactor = max(0.0, transformed.y - 1.0);
+            float windFactor = heightFactor * heightFactor; // Non-linear bend
+
+            // Simple sway based on time and height
+            // Using local position Y for phase to make it ripple slightly
+            float swayX = sin(time * windSpeed + transformed.y * 0.5) * windStrength * windFactor;
+            float swayZ = cos(time * windSpeed * 0.7 + transformed.y * 0.5) * windStrength * windFactor;
+
+            transformed.x += swayX;
+            transformed.z += swayZ;
+            `
+        );
+    };
+
+    return mat;
+  }, []);
+
+  // Update time uniform
+  useFrame((state) => {
+    if (foliageMaterial.userData.uniforms) {
+        foliageMaterial.userData.uniforms.time.value = state.clock.elapsedTime;
+    }
+  });
 
   const instances = useMemo(() => {
     // Select palette based on biome, default to summer if invalid
