@@ -19,9 +19,9 @@ const seededRandom = (seed) => {
 // Default points to keep hooks happy when inactive
 const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
 
-export default function TrackSegment({
-    pathPoints,
-    segmentId = 0,
+export default function TrackSegment({ 
+    pathPoints, 
+    segmentId = 0, 
     active = true,
     type = 'normal',   // 'normal', 'waterfall', 'pond'
     biome = 'summer'   // 'summer', 'autumn'
@@ -49,7 +49,7 @@ export default function TrackSegment({
             roughnessMap: roughnessMap,
             aoMap: aoMap,
             side: THREE.DoubleSide,
-            vertexColors: true,
+            vertexColors: true, 
         });
 
         mat.onBeforeCompile = (shader) => {
@@ -81,9 +81,9 @@ export default function TrackSegment({
     }, [segmentPath]);
 
     // --- Dynamic Dimensions based on Type ---
-    const canyonWidth = type === 'pond' ? 70 : 35;
+    const canyonWidth = type === 'pond' ? 70 : 35; 
     const waterWidth  = type === 'pond' ? 45 : 10;
-    const waterLevel  = 0.5;
+    const waterLevel  = 0.5; 
 
     // Derived Placement Data (Rocks, Trees, etc.)
     const placementData = useMemo(() => {
@@ -97,14 +97,14 @@ export default function TrackSegment({
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
-        const zSteps = Math.ceil(pathLength / 2);
+        const zSteps = Math.ceil(pathLength / 2); 
 
         const bankStart = waterWidth / 2;
 
         for(let z = 0; z < zSteps; z++) {
             const t = z / zSteps;
             const zLocal = (t - 0.5) * geoLength;
-
+            
             const pathPoint = segmentPath.getPoint(t);
             const tangent = segmentPath.getTangent(t).normalize();
             const up = new THREE.Vector3(0, 1, 0);
@@ -119,13 +119,13 @@ export default function TrackSegment({
                 // 1. ROCKS (Large)
                 const rockChance = isPond ? 0.3 : 0.4;
                 if (seededRandom(seed++) > (1.0 - rockChance)) {
-                    const dist = bankStart + 1 + seededRandom(seed++) * 4;
+                    const dist = bankStart + 1 + seededRandom(seed++) * 4; 
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
-
+                    
                     const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12; 
+                    
                     if (Math.abs(xLocal) < bankStart + 2) yHeight *= 0.1;
 
                     const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3;
@@ -136,20 +136,20 @@ export default function TrackSegment({
 
                     const scale = 0.8 + seededRandom(seed++) * 0.8;
                     const rotation = new THREE.Euler(
-                        seededRandom(seed++)*Math.PI,
-                        seededRandom(seed++)*Math.PI,
+                        seededRandom(seed++)*Math.PI, 
+                        seededRandom(seed++)*Math.PI, 
                         seededRandom(seed++)*Math.PI
                     );
                     rocks.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                 }
 
                 // 2. TREES
-                const treeChance = (biome === 'autumn' || isPond) ? 0.6 : 0.3;
+                const treeChance = (biome === 'autumn' || isPond) ? 0.6 : 0.3; 
                 if (seededRandom(seed++) > (1.0 - treeChance)) {
                     const dist = bankStart + 4 + seededRandom(seed++) * 8;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
-
+                    
                     const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
                     let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
                     yHeight += Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
@@ -170,7 +170,7 @@ export default function TrackSegment({
                     const dist = bankStart + seededRandom(seed++) * 2;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += 0.5;
+                    position.y += 0.5; 
                     debris.push({ position, rotation: new THREE.Euler(), scale: new THREE.Vector3(0.3,0.3,0.3) });
                 }
 
@@ -193,7 +193,7 @@ export default function TrackSegment({
                 }
             }
         }
-
+        
         return { rocks, trees, debris, grass, driftwood };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome]);
 
@@ -213,15 +213,15 @@ export default function TrackSegment({
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
-            const xLocal = vertex.x;
+            const xLocal = vertex.x; 
             const zLocal = vertex.z;
             const distFromCenter = Math.abs(xLocal);
             const normalizedDist = distFromCenter / (canyonWidth * 0.45);
 
             let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-
+            
             if (distFromCenter < waterWidth / 2) {
-                yHeight *= 0.1;
+                yHeight *= 0.1; 
             }
 
             const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
@@ -262,16 +262,16 @@ export default function TrackSegment({
             const xLocal = vertex.x;
             const zLocal = vertex.z;
             const distFromCenter = Math.abs(xLocal);
-
+            
             // Capped height scaling
-            let yHeight = 15 + (distFromCenter * 0.5);
+            let yHeight = 15 + (distFromCenter * 0.5); 
             yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
 
             const t = (zLocal + pathLength / 2) / pathLength;
             const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
 
             positions.setX(i, point.x + xLocal);
-            positions.setY(i, point.y + yHeight - 2);
+            positions.setY(i, point.y + yHeight - 2); 
             positions.setZ(i, point.z);
         }
         geo.computeVertexNormals();
