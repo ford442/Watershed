@@ -14,9 +14,8 @@ body {
 }
 
 #app-container {
-    padding: 20px;
-    border-radius: 10px;
-    background-color: #282c34;
+    width: 100vw;
+    height: 100vh;
 }
 
 h1 {
@@ -24,9 +23,11 @@ h1 {
 }
 
 canvas {
-    border: 2px solid #61dafb;
-    border-radius: 8px;
-    margin-top: 20px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     cursor: crosshair;
 }
 
@@ -463,6 +464,7 @@ button.start-button:focus-visible {
 .game-hint.visible {
     opacity: 1;
     visibility: visible;
+}
 .shortcut-hint {
     opacity: 0.5;
     font-size: 0.8em;

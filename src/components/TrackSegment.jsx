@@ -26,6 +26,7 @@ export default function TrackSegment({
     type = 'normal',   // 'normal', 'waterfall', 'pond'
     biome = 'summer'   // 'summer', 'autumn'
 }) {
+    console.log(`TrackSegment ${segmentId}: active=${active}, type=${type}, biome=${biome}, pathPoints=${pathPoints ? pathPoints.length : 0}`);
     // Load Textures from public folder
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
@@ -313,7 +314,11 @@ export default function TrackSegment({
         return segmentPath.getPoint(0.5);
     }, [type, segmentPath]);
 
-    if (!active || !segmentPath || !canyonGeometry || !waterGeometry) return null;
+    if (!active || !segmentPath || !canyonGeometry || !waterGeometry) {
+        if (!active) console.log(`TrackSegment ${segmentId}: inactive, returning null`);
+        else console.log(`TrackSegment ${segmentId}: missing data, returning null`);
+        return null;
+    }
 
     return (
         <group name={`track-segment-${segmentId}`}>
