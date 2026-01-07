@@ -1,38 +1,50 @@
-# PROJECT IDENTITY: WATERSHED
+# AGENTS.md
 
-## 1. Core Concept & Philosophy
-**WATERSHED** is a high-octane, photorealistic downhill action game. It blends the kinetic speed and flow of a linear runner (e.g., *Sonic the Hedgehog*) with the physics and grit of a survival simulation.
+## Project Context
+**Watershed** is a high-fidelity 3D water simulation and exploration experience running in the browser.
+* **Core:** React (TypeScript) + Three.js (React Three Fiber).
+* **Rendering:** **WebGPU** (Primary) with specific WGSL shaders.
+* **Physics/Compute:** Hybrid architecture using **C++ (Emscripten)** and **AssemblyScript**.
+* **Build System:** Webpack + Custom Python scripts.
 
-**The "Shedding" Philosophy:**
-The title "Watershed" has a double meaning for this project:
-1.  **Geographical:** We are traversing a massive, interconnected water system from alpine source to valley delta.
-2.  **Kinetic:** The player moves with such velocity that they are "shedding" the water as they traverse past it. The goal is flow, speed, and momentum.
+## Key Directives
 
-## 2. Visual & Aesthetic Guidelines (Creek Canyon Prototype)
-* **Biome:** Creek Canyon. Narrow, steep-walled rock flumes with rushing water.
-* **Key Reference:** `assets/concepts/01_kinetic_flume.png`
-* **Materials:**
-    * **Rock:** Mossy, wet, dark stone. Steep canyon walls.
-    * **Water:** Rushing white water, churning and energetic. (represented by simple blue plane in early prototypes).
-* **Atmosphere:** Enclosed, claustrophobic but energetic. Sunlight filtering down from high above.
+### 1. Rendering Engine (WebGPU)
+* **Shaders:** We use WGSL (`.wgsl`) located in `public/shaders/`.
+* **Materials:** Use `MeshStandardMaterial` or custom `WebGPURenderer` compatible nodes.
+* **Constraint:** Do not use legacy WebGL techniques (like `gl_FragColor`) in WGSL shaders. Use proper WGSL syntax (`@vertex`, `@fragment`, `var<uniform>`).
 
-## 3. Gameplay Mechanics (The "Flow" State)
-The game is linear and downhill. The player is "trapped" by the river banks.
+### 2. The Hybrid Build Pipeline
+This project does NOT use a monolithic build command. You must build the specific subsystem you are modifying.
 
-* **Movement:** Sliding down flumes, diving off waterfalls.
-* **The Loop:** Maintain momentum. Stopping is failure.
-* **Physics:** Rigorous rigid body physics using **Rapier** (Wasm).
+* **Frontend (React/TS):**
+    * *Command:* `npm start` (Dev Server) or `npm run build` (Bundle).
+    * *Action:* Handles UI, Three.js scene graph, and game logic.
 
-## 4. Technical Constraints & Architecture
-* **Stack:** Hybrid Architecture.
-    * **UI & Logic:** TypeScript / React (React Three Fiber).
-    * **Simulation:** WebAssembly (Wasm) & WebGPU.
-    * **Physics:** Rapier (via `@react-three/rapier`).
-* **Map Generation:**
-    * Initial prototype uses a **Static Procedural Segment**.
-    * Heightmap-based geometry for the canyon walls and riverbed.
-* **Performance:** Code must be optimized for high velocity.
+* **Native Modules (C++ & AssemblyScript):**
+    * *Command:* `python3 build_and_patch.py`
+    * *Action:* Compiles C++ (`emscripten/`) and AssemblyScript (`assembly/`), then patches the glue code into the `src/` or `public/` directories.
+    * **Rule:** If you modify `.cpp` or `.ts` (in assembly/), you **MUST** run this script. Webpack will not pick up changes until you do.
 
-## 5. Tone & Vibe
-* **Keywords:** Kinetic, Elemental, Unforgiving.
-* **Anti-Patterns:** Do not create "cartoony" or "arcade-style" UI. The UI should be minimal, diegetic, or industrial/clean.
+### 3. Verification & Testing
+* **Visual Regression:** We use Python + Selenium to verify graphical fidelity.
+    * *Command:* `python3 verify_visuals.py`
+    * *Output:* Generates `verification/visuals.png`. Compare this against `verification/initial_state.png`.
+* **Deployment:**
+    * *Command:* `python3 deploy.py`
+    * *Constraint:* Only run after a successful build and visual verification.
+
+## Directory Structure
+* **`/src`**: React application source.
+    * **`components/`**: 3D objects (Rocks, Trees, Water).
+    * **`systems/`**: Game loops and state management.
+* **`/public`**: Static assets.
+    * **`shaders/`**: WGSL shader source files.
+* **`/emscripten`**: C++ source code for heavy compute tasks.
+* **`/assembly`**: AssemblyScript source for lighter compiled logic.
+* **`/verification`**: Reference images and test scripts.
+
+## Common Pitfalls
+1.  **"Shader errors on load":** You likely wrote GLSL syntax in a `.wgsl` file. WebGPU is strict.
+2.  **"My C++ changes aren't working":** You forgot to run `python3 build_and_patch.py`.
+3.  **"Module not found (WASM)":** The `build_and_patch.py` script ensures the `.wasm` files are moved to the correct public path. Run it to fix missing assets.
