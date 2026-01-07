@@ -8,12 +8,15 @@ import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
 import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
+import WaterfallParticles from './Environment/WaterfallParticles';
 
+// Simple seeded random function
 const seededRandom = (seed) => {
     const x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
 };
 
+// Default points to keep hooks happy when inactive
 const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
 
 export default function TrackSegment({
@@ -23,7 +26,7 @@ export default function TrackSegment({
     type = 'normal',   // 'normal', 'waterfall', 'pond'
     biome = 'summer'   // 'summer', 'autumn'
 }) {
-    // Load Textures
+    // Load Textures from public folder
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
         './Rock031_1K-JPG_NormalGL.jpg',
@@ -38,7 +41,7 @@ export default function TrackSegment({
         });
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
-    // Wet Rock Material
+    // Create the custom Wet Rock Material
     const rockMaterial = useMemo(() => {
         const mat = new THREE.MeshStandardMaterial({
             map: colorMap,
@@ -59,16 +62,17 @@ export default function TrackSegment({
                 `
             );
         };
+
         return mat;
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
     const safePoints = (active && pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
 
-    // Spline Path
+    // Create the spline path
     const segmentPath = useMemo(() => {
         if (!active) return null;
-        // Ponds use lower tension for smoother, wider curves
-        const tension = type === 'pond' ? 0.2 : 0.5;
+        // Ponds use lower tension for smoother, wider curves. Waterfalls use standard.
+        const tension = type === 'pond' ? 0.1 : 0.5;
         return new THREE.CatmullRomCurve3(safePoints, false, 'catmullrom', tension);
     }, [safePoints, active, type]);
 
@@ -77,11 +81,11 @@ export default function TrackSegment({
     }, [segmentPath]);
 
     // --- Dynamic Dimensions based on Type ---
-    const canyonWidth = type === 'pond' ? 80 : 35;
-    const waterWidth  = type === 'pond' ? 50 : 10;
+    const canyonWidth = type === 'pond' ? 70 : 35;
+    const waterWidth  = type === 'pond' ? 45 : 10;
     const waterLevel  = 0.5;
 
-    // Derived Placement Data
+    // Derived Placement Data (Rocks, Trees, etc.)
     const placementData = useMemo(() => {
         if (!segmentPath) return { rocks: [], trees: [], debris: [], grass: [], driftwood: [] };
 
@@ -93,9 +97,8 @@ export default function TrackSegment({
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
-        const zSteps = Math.ceil(pathLength / 2); // Adaptive sampling
+        const zSteps = Math.ceil(pathLength / 2);
 
-        // Helper to calculate bank positions relative to water width
         const bankStart = waterWidth / 2;
 
         for(let z = 0; z < zSteps; z++) {
@@ -114,20 +117,17 @@ export default function TrackSegment({
                 const isPond = type === 'pond';
 
                 // 1. ROCKS (Large)
-                const rockChance = isPond ? 0.3 : 0.4; // Less dense in ponds
+                const rockChance = isPond ? 0.3 : 0.4;
                 if (seededRandom(seed++) > (1.0 - rockChance)) {
-                    // Place rocks starting from the water's edge + random offset
                     const dist = bankStart + 1 + seededRandom(seed++) * 4;
-
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
 
-                    // Height calculation
                     const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+
                     if (Math.abs(xLocal) < bankStart + 2) yHeight *= 0.1;
 
-                    // Variation
                     const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3;
                     yHeight += rockNoise * (0.5 + normalizedDist);
 
@@ -144,18 +144,18 @@ export default function TrackSegment({
                 }
 
                 // 2. TREES
-                // Denser in Autumn or around Ponds
                 const treeChance = (biome === 'autumn' || isPond) ? 0.6 : 0.3;
                 if (seededRandom(seed++) > (1.0 - treeChance)) {
-                    // Trees are further up the bank
-                    const dist = bankStart + 5 + seededRandom(seed++) * 5;
-
+                    const dist = bankStart + 4 + seededRandom(seed++) * 8;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
 
                     const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
                     yHeight += Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
+
+                    // Clamp tree height to prevent floating/sky trees
+                    if (yHeight > 25) yHeight = 25 - seededRandom(seed++) * 2;
 
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
                     position.y += yHeight - 0.5;
@@ -165,81 +165,36 @@ export default function TrackSegment({
                     trees.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                 }
 
-                // 3. DEBRIS (Small Rocks)
+                // 3. DEBRIS
                 if (seededRandom(seed++) > 0.5) {
-                    // Near water edge
                     const dist = bankStart + seededRandom(seed++) * 2;
                     const offset = binormal.clone().multiplyScalar(side * dist);
-                    const xLocal = side * dist;
-
-                    const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
-                    if (Math.abs(xLocal) < bankStart + 2) yHeight *= 0.1;
-
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += yHeight;
-
-                    const scale = 0.2 + seededRandom(seed++) * 0.3;
-                    const rotation = new THREE.Euler(seededRandom(seed++)*Math.PI, seededRandom(seed++)*Math.PI, seededRandom(seed++)*Math.PI);
-                    debris.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                    position.y += 0.5;
+                    debris.push({ position, rotation: new THREE.Euler(), scale: new THREE.Vector3(0.3,0.3,0.3) });
                 }
 
                 // 4. GRASS
-                if (seededRandom(seed++) > 0.3) {
-                    const dist = bankStart + 1 + seededRandom(seed++) * 8;
+                if (seededRandom(seed++) > 0.6) {
+                    const dist = bankStart + seededRandom(seed++) * 4;
                     const offset = binormal.clone().multiplyScalar(side * dist);
-                    const xLocal = side * dist;
-
-                    const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
-                    if (Math.abs(xLocal) < bankStart + 2) yHeight *= 0.1;
-
-                    // Ground noise
-                    yHeight += (Math.sin(zLocal * 0.8) * 0.3) * (0.5 + normalizedDist);
-
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += yHeight;
-
-                    const scale = 0.4 + seededRandom(seed++) * 0.4;
-                    const rotation = new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0);
-                    grass.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                    position.y += 1.0;
+                    grass.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(0.5,0.5,0.5) });
                 }
 
                 // 5. DRIFTWOOD
-                if (seededRandom(seed++) > 0.4) {
-                    // Water edge / slightly submerged
-                    const dist = bankStart - 0.5 + seededRandom(seed++) * 2.5;
+                if (seededRandom(seed++) > 0.7) {
+                    const dist = bankStart + (Math.random()-0.5)*2;
                     const offset = binormal.clone().multiplyScalar(side * dist);
-                    const xLocal = side * dist;
-
-                    const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
-                    if (Math.abs(xLocal) < bankStart + 2) yHeight *= 0.1;
-                    yHeight -= 0.2;
-
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += yHeight;
-
-                    const scaleY = 0.8 + seededRandom(seed++) * 0.5;
-                    const scaleXZ = 0.6 + seededRandom(seed++) * 0.4;
-                    const rotation = new THREE.Euler(
-                        seededRandom(seed++) * 0.2,
-                        seededRandom(seed++) * Math.PI * 2,
-                        seededRandom(seed++) * 0.2
-                    );
-                    driftwood.push({ position, rotation, scale: new THREE.Vector3(scaleXZ, scaleY, scaleXZ) });
+                    position.y += 0.2;
+                    driftwood.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(1,0.5,0.5) });
                 }
             }
         }
 
-        // Fix Driftwood Scaling
-        const correctedDriftwood = driftwood.map(d => {
-             const length = 0.8 + seededRandom(seed++) * 0.8;
-             const thickness = 0.5 + seededRandom(seed++) * 0.5;
-             return { ...d, scale: new THREE.Vector3(length, thickness, thickness) };
-        });
-
-        return { rocks, trees, debris, grass, driftwood: correctedDriftwood };
+        return { rocks, trees, debris, grass, driftwood };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome]);
 
     // Canyon Geometry
@@ -256,8 +211,6 @@ export default function TrackSegment({
         const colors = new Float32Array(positions.count * 3);
         const color = new THREE.Color();
 
-        const flatBottomWidth = waterWidth; // Ensure riverbed is flat for the water
-
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
             const xLocal = vertex.x;
@@ -265,23 +218,18 @@ export default function TrackSegment({
             const distFromCenter = Math.abs(xLocal);
             const normalizedDist = distFromCenter / (canyonWidth * 0.45);
 
-            // Terrain shape
-            let yHeight = Math.pow(Math.max(0, normalizedDist), 3.0) * 14;
+            let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
 
-            // Flatten bottom for riverbed/pond
-            if (distFromCenter < flatBottomWidth / 2) {
+            if (distFromCenter < waterWidth / 2) {
                 yHeight *= 0.1;
             }
 
-            // Noise
             const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
             yHeight += rockNoise * (0.5 + normalizedDist);
             
-            // Map to Spline
             const t = (zLocal + pathLength / 2) / pathLength;
             const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
             
-            // Wetness/Coloring
             const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
             const intensity = 0.4 + 0.6 * dryness;
             color.setScalar(intensity);
@@ -296,7 +244,7 @@ export default function TrackSegment({
         return geo;
     }, [segmentPath, pathLength, canyonWidth, waterWidth]);
 
-    // Wall Shell Geometry (Visual Only, Higher)
+    // Wall Shell Geometry (Capped Height)
     const wallShellGeometry = useMemo(() => {
         if (!segmentPath) return null;
         const shellWidth = canyonWidth * 1.5;
@@ -315,9 +263,9 @@ export default function TrackSegment({
             const zLocal = vertex.z;
             const distFromCenter = Math.abs(xLocal);
 
-            // Simple high wall shape
-            let yHeight = Math.pow(distFromCenter / 8, 3) * 5;
-            yHeight += Math.sin(zLocal * 0.1) * 2;
+            // Capped height scaling
+            let yHeight = 15 + (distFromCenter * 0.5);
+            yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
 
             const t = (zLocal + pathLength / 2) / pathLength;
             const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
@@ -351,7 +299,7 @@ export default function TrackSegment({
         return geo;
     }, [segmentPath, pathLength, waterWidth]);
 
-    // Stream Data for Floating Debris
+    // Stream Data
     const streamData = useMemo(() => {
         if (!segmentPath) return null;
         const startPoint = segmentPath.getPoint(0);
@@ -359,42 +307,50 @@ export default function TrackSegment({
         return { start: startPoint, direction: tangent, length: pathLength };
     }, [segmentPath, pathLength]);
 
+    // Get position for waterfall particles (middle of segment)
+    const waterfallPos = useMemo(() => {
+        if (type !== 'waterfall' || !segmentPath) return null;
+        return segmentPath.getPoint(0.5);
+    }, [type, segmentPath]);
+
     if (!active || !segmentPath || !canyonGeometry || !waterGeometry) return null;
 
     return (
         <group name={`track-segment-${segmentId}`}>
-            {/* Unified Canyon Terrain */}
             <RigidBody type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
                 <mesh geometry={canyonGeometry} receiveShadow castShadow material={rockMaterial} />
             </RigidBody>
 
-            {/* Visual Wall Shell */}
             <mesh geometry={wallShellGeometry} receiveShadow castShadow material={rockMaterial} />
 
-            {/* Environment Objects */}
             <Rock transforms={placementData.rocks} />
-            <Rock transforms={placementData.debris} />
             <Vegetation transforms={placementData.trees} biome={biome} />
             <Grass transforms={placementData.grass} />
             <Driftwood transforms={placementData.driftwood} />
+            <Rock transforms={placementData.debris} />
 
-            {/* Water */}
             <FlowingWater 
                 geometry={waterGeometry}
-                flowSpeed={type === 'pond' ? 0.5 : 1.5}
+                flowSpeed={type === 'pond' ? 0.3 : 1.5}
                 baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
             />
             
-            {/* Floating Pinecones (Only if not a steep waterfall to prevent physics glitches) */}
-            {streamData && type !== 'waterfall' && (
-                <FloatingDebris
-                    streamStart={streamData.start}
-                    streamDirection={streamData.direction}
-                    streamLength={streamData.length}
-                    waterLevel={waterLevel}
-                    count={type === 'pond' ? 12 : 6} // More debris in pond
-                    seed={segmentId * 1000}
-                />
+            {/* Conditional Logic: Floating Debris vs Waterfall Particles */}
+            {type === 'waterfall' && waterfallPos ? (
+                <group position={waterfallPos}>
+                    <WaterfallParticles count={400} width={15} height={30} />
+                </group>
+            ) : (
+                streamData && (
+                    <FloatingDebris
+                        streamStart={streamData.start}
+                        streamDirection={streamData.direction}
+                        streamLength={streamData.length}
+                        waterLevel={waterLevel}
+                        count={type === 'pond' ? 12 : 6}
+                        seed={segmentId * 1000}
+                    />
+                )
             )}
         </group>
     );

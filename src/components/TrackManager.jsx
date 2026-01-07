@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import TrackSegment from './TrackSegment';
 
-const GENERATION_THRESHOLD = 150; // Generate sooner so we don't see the pop-in
+const GENERATION_THRESHOLD = 150;
 const MAX_ACTIVE_SEGMENTS = 7;
 const POOL_SIZE = 10;
 
@@ -32,15 +32,18 @@ const INITIAL_SEGMENTS = [
     },
 ];
 
-export default function TrackManager() {
+export default function TrackManager({ onBiomeChange }) {
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
     const segmentsRef = useRef(INITIAL_SEGMENTS);
     const lastSegmentId = useRef(1);
     const lastGeneratedFromId = useRef(-1);
     const { camera } = useThree();
 
-    // Track global meandering phase to make turns continuous across segments
+    // Track global meandering phase
     const meanderPhase = useRef(0);
+
+    // Track current biome to avoid unnecessary state updates
+    const lastReportedBiome = useRef('summer');
 
     useEffect(() => {
         segmentsRef.current = segments;
@@ -59,21 +62,21 @@ export default function TrackManager() {
         let meanderStrength = 0.5;
         let segmentLengthMult = 1.0;
 
-        // 1. Summer Creek (Winding)
+        // 1. Summer Creek
         if (currentId <= 12) {
             nextType = 'normal';
             nextBiome = 'summer';
             verticalBias = -0.5;
-            meanderStrength = 1.2; // High winding
+            meanderStrength = 1.2;
         }
-        // 2. Waterfall Approach (Straight & Steep)
+        // 2. Waterfall Approach
         else if (currentId === 13) {
             nextType = 'normal';
             nextBiome = 'summer';
             verticalBias = -1.2;
-            meanderStrength = 0.2; // Straighten out
+            meanderStrength = 0.2;
         }
-        // 3. THE WATERFALL (Vertical)
+        // 3. THE WATERFALL
         else if (currentId === 14) {
             nextType = 'waterfall';
             nextBiome = 'summer';
@@ -81,71 +84,53 @@ export default function TrackManager() {
             meanderStrength = 0.0;
             segmentLengthMult = 0.5;
         }
-        // 4. Recovery / Splash Pool
+        // 4. Recovery / Splash Pool (Biome Transition)
         else if (currentId === 15) {
-            nextType = 'normal'; // Transition
-            nextBiome = 'autumn'; // Season change!
+            nextType = 'normal';
+            nextBiome = 'autumn';
             verticalBias = -0.2;
             meanderStrength = 0.5;
         }
-        // 5. THE POND (Flat, Wide, Calm)
+        // 5. THE POND
         else if (currentId >= 16 && currentId <= 18) {
             nextType = 'pond';
             nextBiome = 'autumn';
-            verticalBias = -0.02; // Very slight flow
-            meanderStrength = 0.3; // Gentle curves
+            verticalBias = -0.02;
+            meanderStrength = 0.3;
             segmentLengthMult = 1.2;
         }
-        // 6. Autumn Rapids (Fast again)
+        // 6. Autumn Rapids
         else {
             nextType = 'normal';
             nextBiome = 'autumn';
             verticalBias = -0.7;
-            meanderStrength = 1.5; // Very twisty
+            meanderStrength = 1.5;
         }
 
         // --- GENERATION MATH ---
-        // 1. Get current heading
         const direction = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
-
         const newPoints = [lastPoint.clone()];
         let currentPos = lastPoint.clone();
 
-        // 2. Generate Control Points
         for (let i = 0; i < 3; i++) {
-            // A. Meandering (Sine Wave Steering)
-            // We advance the phase to create a continuous sine curve along the track
             meanderPhase.current += 0.5;
             const turnFactor = Math.sin(meanderPhase.current) * meanderStrength;
 
-            // Apply turn to X (Left/Right)
             direction.x += turnFactor * 0.3;
-
-            // Add some random noise so it's not a perfect sine wave
             direction.x += (Math.random() - 0.5) * 0.2;
-
-            // B. Gravity (Vertical)
-            // Add the bias
             direction.y += (Math.random() * 0.2 + verticalBias * 0.2);
 
-            // HARD CLAMP: Ensure we never point UP
-            // For Ponds, we allow essentially flat (-0.01). For others, ensure gravity.
             const maxUpward = nextType === 'pond' ? -0.01 : -0.1;
             if (direction.y > maxUpward) direction.y = maxUpward;
 
-            // C. Forward Momentum (Z)
-            // Ensure we don't turn 90 degrees and stop moving forward
             direction.normalize();
             if (nextType !== 'waterfall') {
-                if (direction.z > -0.5) direction.z = -0.5; // Keep moving forward
+                if (direction.z > -0.5) direction.z = -0.5;
             } else {
-                direction.z = -0.1; // Waterfalls drop, don't move forward much
+                direction.z = -0.1;
             }
-
-            // Re-normalize after constraints
             direction.normalize();
 
-            // D. Step Distance
             const baseDist = 30 + Math.random() * 10;
             const dist = baseDist * segmentLengthMult;
 
@@ -167,33 +152,56 @@ export default function TrackManager() {
     useFrame(() => {
         const currentSegments = segmentsRef.current;
         if (currentSegments.length === 0) return;
+
+        // 1. GENERATION LOGIC
         const lastSegment = currentSegments[currentSegments.length - 1];
+        if (lastSegment.id !== lastGeneratedFromId.current) {
+            const lastPoint = lastSegment.points[lastSegment.points.length - 1];
+            if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
+                lastGeneratedFromId.current = lastSegment.id;
+                const newSegment = generateNextSegment(lastSegment);
 
-        // Don't generate duplicates
-        if (lastSegment.id === lastGeneratedFromId.current) return;
+                setSegments(prev => {
+                    const updated = [...prev, newSegment];
+                    if (updated.length > MAX_ACTIVE_SEGMENTS) {
+                        return updated.slice(updated.length - MAX_ACTIVE_SEGMENTS);
+                    }
+                    return updated;
+                });
+            }
+        }
 
-        const lastPoint = lastSegment.points[lastSegment.points.length - 1];
+        // 2. BIOME DETECTION (Closest Segment)
+        if (onBiomeChange) {
+            let closestSegment = null;
+            let minDistance = Infinity;
+            const camZ = camera.position.z;
 
-        // Generate when player gets within range
-        // Note: Camera Z is negative, so we check if (CamZ - LastPointZ) is small
-        if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
-            lastGeneratedFromId.current = lastSegment.id;
-            const newSegment = generateNextSegment(lastSegment);
+            // Simple heuristic: check which segment center is closest to camera Z
+            for (const seg of currentSegments) {
+                if (!seg.points || seg.points.length === 0) continue;
 
-            setSegments(prev => {
-                const updated = [...prev, newSegment];
-                if (updated.length > MAX_ACTIVE_SEGMENTS) {
-                    return updated.slice(updated.length - MAX_ACTIVE_SEGMENTS);
+                const startZ = seg.points[0].z;
+                const endZ = seg.points[seg.points.length - 1].z;
+                const centerZ = (startZ + endZ) / 2;
+
+                const dist = Math.abs(camZ - centerZ);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestSegment = seg;
                 }
-                return updated;
-            });
+            }
+
+            if (closestSegment && closestSegment.biome !== lastReportedBiome.current) {
+                lastReportedBiome.current = closestSegment.biome;
+                onBiomeChange(closestSegment.biome);
+            }
         }
     });
 
     return (
         <group name="track-manager">
             {Array.from({ length: POOL_SIZE }).map((_, index) => {
-                // Map segment ID to pool index to maintain React keys
                 const segment = segments.find(s => (s.id % POOL_SIZE) === index);
                 return (
                     <TrackSegment
