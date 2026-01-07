@@ -33,3 +33,18 @@
 ## 2025-05-24 - Context-Aware Pause UI
 **Learning:** In pointer-lock games, the "Start" screen often doubles as the "Pause" screen. Users returning to the menu via ESC can be confused if the prompt still says "START" (implying a restart).
 **Action:** Implement state tracking to distinguish between "Start" (first load) and "Resume" (paused), providing clear text and visual cues like "GAME PAUSED".
+
+## 2025-05-25 - React Three Drei Loader Race Condition
+**Learning:** The `useProgress` hook from `@react-three/drei` may report `active: false` initially before assets are queued, causing a flicker where "loading" UI logic might fail.
+**Action:** When gating UI based on loading state, check both `active` and `progress < 100` (e.g., `isLoading = active || progress < 100`) to ensure the UI remains in a loading state until completion.
+## 2025-05-26 - Explicit Restart in Runner Games
+**Learning:** In linear "runner" games where stopping/failing is common but doesn't trigger a hard "Game Over" screen, users can feel soft-locked. A manual "Restart" button in the pause menu provides a necessary escape hatch.
+**Action:** Add a "Restart" or "Reset" button to the pause menu for linear or survival games to allow quick retries without browser refresh.
+
+## 2025-06-03 - Smooth UI Transitions & Pointer Events
+**Learning:** Conditional rendering (unmounting) prevents CSS transitions on UI elements, making pause menus feel abrupt. Also, `pointer-events: none` on overlays can accidentally block clicks on child buttons if not explicitly reset to `auto`.
+**Action:** Use CSS classes (`.visible`/`.hidden`) with `opacity` and `visibility` transitions instead of unmounting components. Always verify `pointer-events: auto` on interactive children of non-interactive overlays.
+
+## 2025-12-25 - Timed Onboarding Cues
+**Learning:** In immersive games, controls are often forgotten immediately after the start screen. Persistent HUD elements break immersion, but purely "start screen" instructions are missed.
+**Action:** Use timed, context-aware "toast" hints that appear shortly after gameplay starts (e.g., "Press Space to Jump") and fade out automatically, using `aria-live="polite"` for accessibility.
