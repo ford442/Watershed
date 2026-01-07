@@ -3,97 +3,149 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import TrackSegment from './TrackSegment';
 
-const GENERATION_THRESHOLD = 100; // Distance from end to trigger generation
-const MAX_ACTIVE_SEGMENTS = 5;    // Keep last 5 segments
+const GENERATION_THRESHOLD = 150;
+const MAX_ACTIVE_SEGMENTS = 7;
+const POOL_SIZE = 10;
 
-// Define initial segments outside component to avoid recreation
 const INITIAL_SEGMENTS = [
-    // Segment 1: Start zone - enclosed creek corridor
     {
         id: 0,
+        type: 'normal',
+        biome: 'summer',
         points: [
-            new THREE.Vector3(0, -6, 30),     // Upstream canyon approach
-            new THREE.Vector3(0, -6, 5),      // Entry corridor around spawn
-            new THREE.Vector3(2, -8, -25),    // Safe drop deeper into creek
-            new THREE.Vector3(8, -12, -60),   // Continue descent
+            new THREE.Vector3(0, -6, 30),
+            new THREE.Vector3(0, -6, 5),
+            new THREE.Vector3(2, -8, -25),
+            new THREE.Vector3(8, -12, -60),
         ],
     },
-    // Segment 2: The big turn
     {
         id: 1,
+        type: 'normal',
+        biome: 'summer',
         points: [
-            new THREE.Vector3(8, -12, -60),   // Connect from segment 1
-            new THREE.Vector3(0, -16, -95),   // Begin left turn
-            new THREE.Vector3(-12, -20, -135),// Hard left
-            new THREE.Vector3(-18, -24, -175),// Continue descent
+            new THREE.Vector3(8, -12, -60),
+            new THREE.Vector3(12, -15, -100),
+            new THREE.Vector3(5, -18, -140),
+            new THREE.Vector3(-5, -22, -180),
         ],
     },
 ];
 
-/**
- * TrackManager - Manages multiple track segments for the treadmill system
- * 
- * Dynamically generates and manages track segments based on player position.
- */
-export default function TrackManager() {
+export default function TrackManager({ onBiomeChange }) {
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
     const segmentsRef = useRef(INITIAL_SEGMENTS);
     const lastSegmentId = useRef(1);
-    // Ref to track which segment we last generated from to avoid duplicates
     const lastGeneratedFromId = useRef(-1);
     const { camera } = useThree();
 
-    // Keep ref in sync for useFrame
+    // Track global meandering phase
+    const meanderPhase = useRef(0);
+
+    // Track current biome to avoid unnecessary state updates
+    const lastReportedBiome = useRef('summer');
+
     useEffect(() => {
         segmentsRef.current = segments;
     }, [segments]);
 
-    // Helper to generate next segment
     const generateNextSegment = useCallback((lastSegment) => {
         const lastPoints = lastSegment.points;
         const lastPoint = lastPoints[lastPoints.length - 1];
         const prevPoint = lastPoints[lastPoints.length - 2];
+        const currentId = lastSegmentId.current + 1;
 
-        // Calculate tangent direction at the end of the last segment
+        // --- LEVEL DIRECTOR ---
+        let nextType = 'normal';
+        let nextBiome = 'summer';
+        let verticalBias = -0.4;
+        let meanderStrength = 0.5;
+        let segmentLengthMult = 1.0;
+
+        // 1. Summer Creek
+        if (currentId <= 12) {
+            nextType = 'normal';
+            nextBiome = 'summer';
+            verticalBias = -0.5;
+            meanderStrength = 1.2;
+        }
+        // 2. Waterfall Approach
+        else if (currentId === 13) {
+            nextType = 'normal';
+            nextBiome = 'summer';
+            verticalBias = -1.2;
+            meanderStrength = 0.2;
+        }
+        // 3. THE WATERFALL
+        else if (currentId === 14) {
+            nextType = 'waterfall';
+            nextBiome = 'summer';
+            verticalBias = -3.0;
+            meanderStrength = 0.0;
+            segmentLengthMult = 0.5;
+        }
+        // 4. Recovery / Splash Pool (Biome Transition)
+        else if (currentId === 15) {
+            nextType = 'normal';
+            nextBiome = 'autumn';
+            verticalBias = -0.2;
+            meanderStrength = 0.5;
+        }
+        // 5. THE POND
+        else if (currentId >= 16 && currentId <= 18) {
+            nextType = 'pond';
+            nextBiome = 'autumn';
+            verticalBias = -0.02;
+            meanderStrength = 0.3;
+            segmentLengthMult = 1.2;
+        }
+        // 6. Autumn Rapids
+        else {
+            nextType = 'normal';
+            nextBiome = 'autumn';
+            verticalBias = -0.7;
+            meanderStrength = 1.5;
+        }
+
+        // --- GENERATION MATH ---
         const direction = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
-
-        // Start new segment points with the last point of the previous one (continuity)
         const newPoints = [lastPoint.clone()];
         let currentPos = lastPoint.clone();
 
-        // Generate 3 new control points for the segment
         for (let i = 0; i < 3; i++) {
-            // Apply some randomness to direction
-            // Bias towards going down (-Y)
+            meanderPhase.current += 0.5;
+            const turnFactor = Math.sin(meanderPhase.current) * meanderStrength;
 
-            const randomX = (Math.random() - 0.5) * 0.8;
-            const randomY = (Math.random() * -0.3); // Always down or flat
+            direction.x += turnFactor * 0.3;
+            direction.x += (Math.random() - 0.5) * 0.2;
+            direction.y += (Math.random() * 0.2 + verticalBias * 0.2);
 
-            // Perturb direction
-            direction.x += randomX;
-            direction.y += randomY;
+            const maxUpward = nextType === 'pond' ? -0.01 : -0.1;
+            if (direction.y > maxUpward) direction.y = maxUpward;
 
-            // Re-normalize but ensure we are still moving generally forward (-Z)
+            direction.normalize();
+            if (nextType !== 'waterfall') {
+                if (direction.z > -0.5) direction.z = -0.5;
+            } else {
+                direction.z = -0.1;
+            }
             direction.normalize();
 
-            // Prevent turning back or going too steep
-            if (direction.z > -0.4) direction.z = -0.4;
-            if (direction.y < -0.6) direction.y = -0.6; // Not too steep drop
-            direction.normalize();
+            const baseDist = 30 + Math.random() * 10;
+            const dist = baseDist * segmentLengthMult;
 
-            // Move forward by a step distance
-            const dist = 30 + Math.random() * 20; // 30-50 units
             const step = direction.clone().multiplyScalar(dist);
-
             currentPos.add(step);
             newPoints.push(currentPos.clone());
         }
 
-        lastSegmentId.current += 1;
+        lastSegmentId.current = currentId;
 
         return {
-            id: lastSegmentId.current,
-            points: newPoints
+            id: currentId,
+            points: newPoints,
+            type: nextType,
+            biome: nextBiome
         };
     }, []);
 
@@ -101,42 +153,67 @@ export default function TrackManager() {
         const currentSegments = segmentsRef.current;
         if (currentSegments.length === 0) return;
 
+        // 1. GENERATION LOGIC
         const lastSegment = currentSegments[currentSegments.length - 1];
+        if (lastSegment.id !== lastGeneratedFromId.current) {
+            const lastPoint = lastSegment.points[lastSegment.points.length - 1];
+            if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
+                lastGeneratedFromId.current = lastSegment.id;
+                const newSegment = generateNextSegment(lastSegment);
 
-        // Prevent multiple generations from the same segment
-        if (lastSegment.id === lastGeneratedFromId.current) return;
+                setSegments(prev => {
+                    const updated = [...prev, newSegment];
+                    if (updated.length > MAX_ACTIVE_SEGMENTS) {
+                        return updated.slice(updated.length - MAX_ACTIVE_SEGMENTS);
+                    }
+                    return updated;
+                });
+            }
+        }
 
-        const lastPoint = lastSegment.points[lastSegment.points.length - 1];
+        // 2. BIOME DETECTION (Closest Segment)
+        if (onBiomeChange) {
+            let closestSegment = null;
+            let minDistance = Infinity;
+            const camZ = camera.position.z;
 
-        // Check distance in Z.
-        // We assume the track moves primarily in -Z direction.
-        // camera.position.z > lastPoint.z (e.g., -150 > -200)
-        // Distance remaining = camera.position.z - lastPoint.z
+            // Simple heuristic: check which segment center is closest to camera Z
+            for (const seg of currentSegments) {
+                if (!seg.points || seg.points.length === 0) continue;
 
-        if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
-            lastGeneratedFromId.current = lastSegment.id;
-            const newSegment = generateNextSegment(lastSegment);
+                const startZ = seg.points[0].z;
+                const endZ = seg.points[seg.points.length - 1].z;
+                const centerZ = (startZ + endZ) / 2;
 
-            setSegments(prev => {
-                const updated = [...prev, newSegment];
-                // Remove old segments if we have too many
-                if (updated.length > MAX_ACTIVE_SEGMENTS) {
-                    return updated.slice(updated.length - MAX_ACTIVE_SEGMENTS);
+                const dist = Math.abs(camZ - centerZ);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestSegment = seg;
                 }
-                return updated;
-            });
+            }
+
+            if (closestSegment && closestSegment.biome !== lastReportedBiome.current) {
+                lastReportedBiome.current = closestSegment.biome;
+                onBiomeChange(closestSegment.biome);
+            }
         }
     });
 
     return (
         <group name="track-manager">
-            {segments.map((segment) => (
-                <TrackSegment
-                    key={segment.id}
-                    segmentId={segment.id}
-                    pathPoints={segment.points}
-                />
-            ))}
+            {Array.from({ length: POOL_SIZE }).map((_, index) => {
+                const segment = segments.find(s => (s.id % POOL_SIZE) === index);
+                return (
+                    <TrackSegment
+                        key={index}
+                        segmentId={segment ? segment.id : -1}
+                        pathPoints={segment ? segment.points : null}
+                        active={!!segment}
+                        type={segment ? segment.type : 'normal'}
+                        biome={segment ? segment.biome : 'summer'}
+                    />
+                );
+            })}
         </group>
     );
 }

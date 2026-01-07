@@ -207,15 +207,30 @@ button.start-button:focus-visible {
 }
 
 .key {
-    border: 1px solid #666;
-    background: #333;
+    background: linear-gradient(to bottom, #444, #333);
+    border: 1px solid #222;
+    border-bottom: 4px solid #111;
+    border-radius: 4px;
     padding: 6px 12px;
-    border-radius: 2px;
     font-size: 1rem;
     font-weight: bold;
-    color: #fff;
+    color: #e0e0e0;
     min-width: 20px;
     display: inline-block;
+    transition: all 0.05s ease;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.4);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.5);
+    position: relative;
+    top: 0;
+}
+
+.key.pressed {
+    border-bottom: 1px solid #111;
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.4);
+    background: #333;
+    color: #61dafb;
+    border-color: #61dafb;
 }
 
 .key-wide {
@@ -320,17 +335,30 @@ button.start-button:focus-visible {
     position: fixed;
     top: 50%;
     left: 50%;
-    width: 6px;
-    height: 6px;
-    background-color: rgba(255, 255, 255, 0.8);
+    width: 8px;
+    height: 8px;
+    background-color: rgba(255, 255, 255, 0.6);
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
     border-radius: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
     z-index: 100;
-    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
     transition: width 0.2s, height 0.2s, background-color 0.2s, opacity 0.2s, visibility 0.2s;
     opacity: 1;
     visibility: visible;
+}
+
+.crosshair::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 2px;
+    background-color: #000;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .crosshair.hidden {
@@ -435,4 +463,31 @@ button.start-button:focus-visible {
 .game-hint.visible {
     opacity: 1;
     visibility: visible;
+.shortcut-hint {
+    opacity: 0.5;
+    font-size: 0.8em;
+    margin-left: 6px;
+}
+
+.mini-key {
+    background: linear-gradient(to bottom, #444, #333);
+    border: 1px solid #222;
+    border-bottom: 2px solid #111;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 0.7em;
+    font-weight: bold;
+    color: #e0e0e0;
+    display: inline-block;
+    margin-left: 8px;
+    vertical-align: middle;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.4);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.5);
+    line-height: 1;
+}
+
+.restart-button:hover .mini-key,
+.start-button:hover .mini-key {
+    color: #fff;
+    border-color: #555;
 }
