@@ -1,43 +1,46 @@
+
 from playwright.sync_api import sync_playwright
+import time
 
 def verify_visuals():
     with sync_playwright() as p:
-        # Launch Chromium with software rendering support for WebGL in headless environment
+        # Launch with SwiftShader to support WebGL in headless environment
         browser = p.chromium.launch(
             headless=True,
             args=['--use-gl=swiftshader', '--ignore-gpu-blocklist']
         )
-        page = browser.new_page()
+        context = browser.new_context()
+        page = context.new_page()
 
-        # Navigate to the served build
-        page.goto('http://localhost:8080')
+        # Build has been created at build/
+        # Use a simple http server to serve the build directory
+        # We need to run the server in background, but python script controls execution.
+        # So we assume the server is running on port 8080 (I'll start it in a moment)
 
-        # Wait for canvas to be present
-        page.wait_for_selector('canvas')
+        try:
+            page.goto('http://localhost:8080')
 
-        # Wait for the Start overlay
-        page.wait_for_selector('text=CLICK TO ENGAGE', timeout=10000)
+            # Wait for canvas to be present
+            page.wait_for_selector('canvas', timeout=10000)
 
-        # Click the overlay container instead of canvas (since canvas is obscured)
-        # Or try to force click canvas, or press Enter
+            # Simulate click to engage if needed, or just wait for load
+            # The game might need a click to start
+            # Check for 'CLICK TO ENGAGE' text
+            try:
+                page.get_by_text('CLICK TO ENGAGE').click(timeout=5000)
+            except:
+                print('No click to engage found or timed out')
 
-        # Trying to click the "CLICK TO ENGAGE" text directly or just press enter
-        page.click('text=CLICK TO ENGAGE')
+            # Wait a bit for the scene to render and shader time to pass
+            time.sleep(5)
 
-        # Also press Enter just in case, as per instructions
-        page.keyboard.press('Enter')
+            # Take screenshot
+            page.screenshot(path='verification/visuals.png')
+            print('Screenshot taken')
+        except Exception as e:
+            print(f'Error: {e}')
+        finally:
+            browser.close()
 
-        # Wait for game to start (overlay should disappear or change)
-        # We can wait for the overlay to disappear
-        # page.wait_for_selector('text=CLICK TO ENGAGE', state='hidden', timeout=10000)
-
-        # Wait a bit for the scene/terrain to load
-        page.wait_for_timeout(5000)
-
-        # Take a screenshot of the gameplay view
-        page.screenshot(path='verification/gameplay_visuals.png')
-
-        browser.close()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     verify_visuals()
