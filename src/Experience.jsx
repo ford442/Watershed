@@ -1,6 +1,6 @@
 import { KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import TrackManager from "./components/TrackManager";
 import Player from "./components/Player";
 import EnhancedSky from "./components/EnhancedSky";
@@ -20,20 +20,22 @@ const Experience = () => {
     { name: Controls.left, keys: ['KeyA', 'ArrowLeft'] },
     { name: Controls.right, keys: ['KeyD', 'ArrowRight'] },
     { name: Controls.jump, keys: ['KeyW', 'Space'] },
-  ], [])
+  ], []);
+
+  // Biome State (Lifted from TrackManager)
+  const [currentBiome, setCurrentBiome] = useState('summer');
 
   return (
     <KeyboardControls map={map}>
-      {/* Enhanced Sky with atmospheric effects */}
-      <EnhancedSky />
+      {/* Dynamic Sky that reacts to the biome */}
+      <EnhancedSky biome={currentBiome} />
       
-      {/* Main scene lighting - reduced since EnhancedSky adds its own */}
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
       
-      {/* Physics simulation and game objects */}
       <Physics gravity={[0, -9.81, 0]}>
-        <TrackManager />
+        {/* TrackManager reports biome changes based on player position */}
+        <TrackManager onBiomeChange={setCurrentBiome} />
         <Player />
       </Physics>
     </KeyboardControls>
