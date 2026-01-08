@@ -9,6 +9,7 @@ import Grass from './Environment/Grass';
 import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
 import WaterfallParticles from './Environment/WaterfallParticles';
+import FallingLeaves from './Environment/FallingLeaves';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -308,11 +309,11 @@ export default function TrackSegment({
         return { start: startPoint, direction: tangent, length: pathLength };
     }, [segmentPath, pathLength]);
 
-    // Get position for waterfall particles (middle of segment)
-    const waterfallPos = useMemo(() => {
-        if (type !== 'waterfall' || !segmentPath) return null;
+    // Get position for particles (middle of segment)
+    const centerPos = useMemo(() => {
+        if (!segmentPath) return null;
         return segmentPath.getPoint(0.5);
-    }, [type, segmentPath]);
+    }, [segmentPath]);
 
     if (!active || !segmentPath || !canyonGeometry || !waterGeometry) {
         if (!active) console.log(`TrackSegment ${segmentId}: inactive, returning null`);
@@ -334,6 +335,19 @@ export default function TrackSegment({
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
 
+            {/* Falling Leaves Particle System */}
+            {centerPos && (
+                <group position={centerPos}>
+                    <FallingLeaves
+                        count={50}
+                        width={canyonWidth}
+                        length={pathLength}
+                        height={25}
+                        biome={biome}
+                    />
+                </group>
+            )}
+
             <FlowingWater 
                 geometry={waterGeometry}
                 flowSpeed={type === 'pond' ? 0.3 : 1.5}
@@ -341,8 +355,8 @@ export default function TrackSegment({
             />
             
             {/* Conditional Logic: Floating Debris vs Waterfall Particles */}
-            {type === 'waterfall' && waterfallPos ? (
-                <group position={waterfallPos}>
+            {type === 'waterfall' && centerPos ? (
+                <group position={centerPos}>
                     <WaterfallParticles count={400} width={15} height={30} />
                 </group>
             ) : (
