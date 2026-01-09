@@ -9,6 +9,7 @@ import Grass from './Environment/Grass';
 import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
 import WaterfallParticles from './Environment/WaterfallParticles';
+import FallingLeaves from './Environment/FallingLeaves';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -98,6 +99,7 @@ export default function TrackSegment({
         const debris = [];
         const grass = [];
         const driftwood = [];
+        const leaves = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -197,10 +199,29 @@ export default function TrackSegment({
                     position.y += 0.2;
                     driftwood.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(1,0.5,0.5) });
                 }
+
+                // 6. FALLING LEAVES (Atmosphere)
+                // More leaves in autumn, fewer in summer
+                const leafDensity = biome === 'autumn' ? 0.8 : 0.2;
+                if (seededRandom(seed++) > (1.0 - leafDensity)) {
+                    // Spread across the whole width
+                    const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.8;
+                    const offset = binormal.clone().multiplyScalar(dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                    // Spawn high up
+                    position.y += 15 + seededRandom(seed++) * 10;
+
+                    leaves.push({
+                        position,
+                        rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                        scale: new THREE.Vector3(1, 1, 1)
+                    });
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, driftwood };
+        return { rocks, trees, debris, grass, driftwood, leaves };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity]);
 
     // Canyon Geometry
@@ -340,6 +361,8 @@ export default function TrackSegment({
             <Grass transforms={placementData.grass} />
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
+
+            <FallingLeaves transforms={placementData.leaves} biome={biome} />
 
             <FlowingWater 
                 geometry={waterGeometry}
