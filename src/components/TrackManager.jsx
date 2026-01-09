@@ -7,6 +7,82 @@ const GENERATION_THRESHOLD = 150;
 const MAX_ACTIVE_SEGMENTS = 7;
 const POOL_SIZE = 10;
 
+const getSegmentConfig = (id) => {
+    const base = {
+        type: 'normal',
+        biome: 'summer',
+        width: 35,
+        meanderStrength: 1.2,
+        verticalBias: -0.5,
+        segmentLengthMult: 1.0,
+        particleCount: 0,
+        cameraShake: 0,
+        forwardMomentum: 1.0,
+        transitionDuration: 0,
+        flowSpeed: 1.0,
+        fogDensity: 0,
+        treeDensity: 1.0,
+        rockDensity: 'low'
+    };
+
+    if (id <= 12) { // Phase 1: The Meander
+        return base;
+    }
+    if (id === 13) { // Approach
+        return { ...base, meanderStrength: 0.2, verticalBias: -1.2 };
+    }
+    if (id === 14) { // THE WATERFALL
+        return {
+            ...base,
+            type: 'waterfall',
+            biome: 'summer',
+            verticalBias: -3.0,
+            meanderStrength: 0.0,
+            segmentLengthMult: 0.5,
+            forwardMomentum: 0.15,
+            particleCount: 400,
+            cameraShake: 0.5
+        };
+    }
+    if (id === 15) { // Splash Pool (Biome Transition)
+        return {
+            ...base,
+            type: 'splash',
+            biome: 'autumn',
+            verticalBias: -0.2,
+            meanderStrength: 0.5,
+            transitionDuration: 2000,
+            width: 70,
+            flowSpeed: 0.3
+        };
+    }
+    if (id >= 16 && id <= 18) { // The Pond
+        return {
+            ...base,
+            type: 'pond',
+            biome: 'autumn',
+            verticalBias: -0.02,
+            meanderStrength: 0.3,
+            segmentLengthMult: 1.2,
+            width: 70,
+            fogDensity: 0.8,
+            treeDensity: 0.3
+        };
+    }
+    if (id >= 19) { // Autumn Rapids
+        return {
+            ...base,
+            type: 'normal',
+            biome: 'autumn',
+            verticalBias: -0.7,
+            meanderStrength: 1.5,
+            width: 35,
+            rockDensity: 'high'
+        };
+    }
+    return base; // Fallback
+};
+
 const INITIAL_SEGMENTS = [
     {
         id: 0,
@@ -56,56 +132,7 @@ export default function TrackManager({ onBiomeChange }) {
         const currentId = lastSegmentId.current + 1;
 
         // --- LEVEL DIRECTOR ---
-        let nextType = 'normal';
-        let nextBiome = 'summer';
-        let verticalBias = -0.4;
-        let meanderStrength = 0.5;
-        let segmentLengthMult = 1.0;
-
-        // 1. Summer Creek
-        if (currentId <= 12) {
-            nextType = 'normal';
-            nextBiome = 'summer';
-            verticalBias = -0.5;
-            meanderStrength = 1.2;
-        }
-        // 2. Waterfall Approach
-        else if (currentId === 13) {
-            nextType = 'normal';
-            nextBiome = 'summer';
-            verticalBias = -1.2;
-            meanderStrength = 0.2;
-        }
-        // 3. THE WATERFALL
-        else if (currentId === 14) {
-            nextType = 'waterfall';
-            nextBiome = 'summer';
-            verticalBias = -3.0;
-            meanderStrength = 0.0;
-            segmentLengthMult = 0.5;
-        }
-        // 4. Recovery / Splash Pool (Biome Transition)
-        else if (currentId === 15) {
-            nextType = 'normal';
-            nextBiome = 'autumn';
-            verticalBias = -0.2;
-            meanderStrength = 0.5;
-        }
-        // 5. THE POND
-        else if (currentId >= 16 && currentId <= 18) {
-            nextType = 'pond';
-            nextBiome = 'autumn';
-            verticalBias = -0.02;
-            meanderStrength = 0.3;
-            segmentLengthMult = 1.2;
-        }
-        // 6. Autumn Rapids
-        else {
-            nextType = 'normal';
-            nextBiome = 'autumn';
-            verticalBias = -0.7;
-            meanderStrength = 1.5;
-        }
+        const config = getSegmentConfig(currentId);
 
         // --- GENERATION MATH ---
         const direction = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
@@ -114,17 +141,17 @@ export default function TrackManager({ onBiomeChange }) {
 
         for (let i = 0; i < 3; i++) {
             meanderPhase.current += 0.5;
-            const turnFactor = Math.sin(meanderPhase.current) * meanderStrength;
+            const turnFactor = Math.sin(meanderPhase.current) * config.meanderStrength;
 
             direction.x += turnFactor * 0.3;
             direction.x += (Math.random() - 0.5) * 0.2;
-            direction.y += (Math.random() * 0.2 + verticalBias * 0.2);
+            direction.y += (Math.random() * 0.2 + config.verticalBias * 0.2);
 
-            const maxUpward = nextType === 'pond' ? -0.01 : -0.1;
+            const maxUpward = config.type === 'pond' ? -0.01 : -0.1;
             if (direction.y > maxUpward) direction.y = maxUpward;
 
             direction.normalize();
-            if (nextType !== 'waterfall') {
+            if (config.type !== 'waterfall') {
                 if (direction.z > -0.5) direction.z = -0.5;
             } else {
                 direction.z = -0.1;
@@ -132,7 +159,7 @@ export default function TrackManager({ onBiomeChange }) {
             direction.normalize();
 
             const baseDist = 30 + Math.random() * 10;
-            const dist = baseDist * segmentLengthMult;
+            const dist = baseDist * config.segmentLengthMult;
 
             const step = direction.clone().multiplyScalar(dist);
             currentPos.add(step);
@@ -144,8 +171,7 @@ export default function TrackManager({ onBiomeChange }) {
         return {
             id: currentId,
             points: newPoints,
-            type: nextType,
-            biome: nextBiome
+            ...config,
         };
     }, []);
 
@@ -206,11 +232,8 @@ export default function TrackManager({ onBiomeChange }) {
                 return (
                     <TrackSegment
                         key={index}
-                        segmentId={segment ? segment.id : -1}
-                        pathPoints={segment ? segment.points : null}
                         active={!!segment}
-                        type={segment ? segment.type : 'normal'}
-                        biome={segment ? segment.biome : 'summer'}
+                        {...segment}
                     />
                 );
             })}
