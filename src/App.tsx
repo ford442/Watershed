@@ -7,16 +7,17 @@ import './style.css';
 
 function App() {
   return (
-    <React.Suspense fallback={null}>
-      <Loader />
-      <Canvas
-        camera={{ position: [0, 25, 10], fov: 75 }}
-        shadows
-      >
-        <Experience />
-      </Canvas>
+    <>
+      <React.Suspense fallback={<Loader />}>
+        <Canvas
+          camera={{ position: [0, 25, 10], fov: 75 }}
+          shadows
+        >
+          <Experience />
+        </Canvas>
+      </React.Suspense>
       <UI />
-    </React.Suspense>
+    </>
   );
 }
 
