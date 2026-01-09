@@ -31,10 +31,7 @@ export default function TrackSegment({
     treeDensity = 1.0,
     rockDensity = 'low'
 }) {
-    // Early exit for inactive segments to avoid unnecessary processing
-    if (!active) {
-        return null;
-    }
+    // --- Hooks (must be called unconditionally) ---
 
     // Load Textures from public folder
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
@@ -59,7 +56,7 @@ export default function TrackSegment({
             roughnessMap: roughnessMap,
             aoMap: aoMap,
             side: THREE.DoubleSide,
-            vertexColors: true, 
+            vertexColors: true,
         });
 
         mat.onBeforeCompile = (shader) => {
@@ -76,18 +73,17 @@ export default function TrackSegment({
         return mat;
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
-    const safePoints = (active && pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
+    const safePoints = (pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
 
     // Create the spline path
     const segmentPath = useMemo(() => {
-        if (!active) return null;
         // Ponds use lower tension for smoother, wider curves. Waterfalls use standard.
         const tension = type === 'pond' ? 0.1 : 0.5;
         return new THREE.CatmullRomCurve3(safePoints, false, 'catmullrom', tension);
-    }, [safePoints, active, type]);
+    }, [safePoints, type]);
 
     const pathLength = useMemo(() => {
-        return segmentPath ? segmentPath.getLength() : 1;
+        return segmentPath.getLength();
     }, [segmentPath]);
 
     // --- Dynamic Dimensions based on Type ---
@@ -97,8 +93,6 @@ export default function TrackSegment({
 
     // Derived Placement Data (Rocks, Trees, etc.)
     const placementData = useMemo(() => {
-        if (!segmentPath) return { rocks: [], trees: [], debris: [], grass: [], driftwood: [] };
-
         const rocks = [];
         const trees = [];
         const debris = [];
@@ -107,7 +101,7 @@ export default function TrackSegment({
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
-        const zSteps = Math.ceil(pathLength / 2); 
+        const zSteps = Math.ceil(pathLength / 2);
 
         const bankStart = waterWidth / 2;
 
@@ -207,11 +201,10 @@ export default function TrackSegment({
         }
         
         return { rocks, trees, debris, grass, driftwood };
-    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome]);
+    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
-        if (!segmentPath) return null;
         const segmentsX = 40;
         const segmentsZ = Math.floor(pathLength);
 
@@ -258,7 +251,6 @@ export default function TrackSegment({
 
     // Wall Shell Geometry (Capped Height)
     const wallShellGeometry = useMemo(() => {
-        if (!segmentPath) return null;
         const shellWidth = canyonWidth * 1.5;
         const segmentsX = 20;
         const segmentsZ = Math.floor(pathLength / 2);
@@ -292,7 +284,6 @@ export default function TrackSegment({
 
     // Water Geometry
     const waterGeometry = useMemo(() => {
-        if (!segmentPath) return null;
         const segmentsZ = Math.floor(pathLength / 2);
         const geo = new THREE.PlaneGeometry(waterWidth, pathLength, 4, segmentsZ);
         geo.rotateX(-Math.PI / 2);
@@ -313,7 +304,6 @@ export default function TrackSegment({
 
     // Stream Data
     const streamData = useMemo(() => {
-        if (!segmentPath) return null;
         const startPoint = segmentPath.getPoint(0);
         const tangent = segmentPath.getTangent(0).normalize();
         return { start: startPoint, direction: tangent, length: pathLength };
@@ -321,13 +311,19 @@ export default function TrackSegment({
 
     // Get position for waterfall particles (middle of segment)
     const waterfallPos = useMemo(() => {
-        if (type !== 'waterfall' || !segmentPath) return null;
+        if (type !== 'waterfall') return null;
         return segmentPath.getPoint(0.5);
     }, [type, segmentPath]);
 
-    if (!active || !segmentPath || !canyonGeometry || !waterGeometry) {
-        if (!active) console.log(`TrackSegment ${segmentId}: inactive, returning null`);
-        else console.log(`TrackSegment ${segmentId}: missing data, returning null`);
+    // --- Early exit for inactive segments ---
+    // This must come AFTER all hooks have been called.
+    if (!active) {
+        return null;
+    }
+
+    // Final sanity check before rendering
+    if (!canyonGeometry || !waterGeometry) {
+        console.log(`TrackSegment ${segmentId}: missing geometry, returning null`);
         return null;
     }
 
