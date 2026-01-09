@@ -41,6 +41,10 @@ The codebase is organized as follows:
 *   `assets/`: For storing 3D models, textures, and other game-specific assets.
 *   `AGENTS.md`: Provides the core creative and technical vision for AI agents working on this project. All agents should adhere to the guidelines within.
 
+## Level Design
+
+For detailed information on the game's level design, including segment configurations, gameplay mechanics, and performance targets, please see [`src/LEVEL_DESIGN.md`](src/LEVEL_DESIGN.md).
+
 ## Roadmap
 
 The current development priorities are:

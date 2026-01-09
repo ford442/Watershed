@@ -19,14 +19,23 @@ const seededRandom = (seed) => {
 // Default points to keep hooks happy when inactive
 const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
 
-export default function TrackSegment({ 
-    pathPoints, 
-    segmentId = 0, 
-    active = true,
-    type = 'normal',   // 'normal', 'waterfall', 'pond'
-    biome = 'summer'   // 'summer', 'autumn'
+export default function TrackSegment({
+    active = false,
+    id: segmentId = -1,
+    points: pathPoints,
+    type = 'normal',
+    biome = 'summer',
+    width = 35,
+    particleCount = 0,
+    flowSpeed = 1.0,
+    treeDensity = 1.0,
+    rockDensity = 'low'
 }) {
-    console.log(`TrackSegment ${segmentId}: active=${active}, type=${type}, biome=${biome}, pathPoints=${pathPoints ? pathPoints.length : 0}`);
+    // Early exit for inactive segments to avoid unnecessary processing
+    if (!active) {
+        return null;
+    }
+
     // Load Textures from public folder
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
@@ -82,9 +91,9 @@ export default function TrackSegment({
     }, [segmentPath]);
 
     // --- Dynamic Dimensions based on Type ---
-    const canyonWidth = type === 'pond' ? 70 : 35; 
+    const canyonWidth = width;
     const waterWidth  = type === 'pond' ? 45 : 10;
-    const waterLevel  = 0.5; 
+    const waterLevel  = 0.5;
 
     // Derived Placement Data (Rocks, Trees, etc.)
     const placementData = useMemo(() => {
@@ -118,14 +127,15 @@ export default function TrackSegment({
                 const isPond = type === 'pond';
 
                 // 1. ROCKS (Large)
-                const rockChance = isPond ? 0.3 : 0.4;
+                const rockChanceMultipliers = { low: 0.4, high: 0.7 };
+                const rockChance = isPond ? 0.3 : rockChanceMultipliers[rockDensity] || 0.4;
                 if (seededRandom(seed++) > (1.0 - rockChance)) {
-                    const dist = bankStart + 1 + seededRandom(seed++) * 4; 
+                    const dist = bankStart + 1 + seededRandom(seed++) * 4;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
                     
                     const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
-                    let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12; 
+                    let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
                     
                     if (Math.abs(xLocal) < bankStart + 2) yHeight *= 0.1;
 
@@ -137,15 +147,16 @@ export default function TrackSegment({
 
                     const scale = 0.8 + seededRandom(seed++) * 0.8;
                     const rotation = new THREE.Euler(
-                        seededRandom(seed++)*Math.PI, 
-                        seededRandom(seed++)*Math.PI, 
+                        seededRandom(seed++)*Math.PI,
+                        seededRandom(seed++)*Math.PI,
                         seededRandom(seed++)*Math.PI
                     );
                     rocks.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                 }
 
                 // 2. TREES
-                const treeChance = (biome === 'autumn' || isPond) ? 0.6 : 0.3; 
+                const baseTreeChance = (biome === 'autumn' || isPond) ? 0.6 : 0.3;
+                const treeChance = baseTreeChance * treeDensity;
                 if (seededRandom(seed++) > (1.0 - treeChance)) {
                     const dist = bankStart + 4 + seededRandom(seed++) * 8;
                     const offset = binormal.clone().multiplyScalar(side * dist);
@@ -336,14 +347,14 @@ export default function TrackSegment({
 
             <FlowingWater 
                 geometry={waterGeometry}
-                flowSpeed={type === 'pond' ? 0.3 : 1.5}
+                flowSpeed={flowSpeed}
                 baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
             />
             
             {/* Conditional Logic: Floating Debris vs Waterfall Particles */}
             {type === 'waterfall' && waterfallPos ? (
                 <group position={waterfallPos}>
-                    <WaterfallParticles count={400} width={15} height={30} />
+                    <WaterfallParticles count={particleCount} width={15} height={30} />
                 </group>
             ) : (
                 streamData && (
