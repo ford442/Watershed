@@ -61,12 +61,85 @@ export default function TrackSegment({
         });
 
         mat.onBeforeCompile = (shader) => {
+            // Vertex Shader Modifications
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `
+                #include <common>
+                varying vec3 vWorldNormalPalette;
+                varying vec3 vWorldPositionPalette;
+                `
+            );
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <worldpos_vertex>',
+                `
+                #include <worldpos_vertex>
+                vWorldNormalPalette = normalize(mat3(modelMatrix) * objectNormal);
+                vWorldPositionPalette = (modelMatrix * vec4(transformed, 1.0)).xyz;
+                `
+            );
+
+            // Fragment Shader Modifications
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `
+                #include <common>
+                varying vec3 vWorldNormalPalette;
+                varying vec3 vWorldPositionPalette;
+
+                // Simple noise function
+                float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+                float noise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f*f*(3.0-2.0*f);
+                    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
+                               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+                }
+                `
+            );
+
+            // Inject moss color mixing before lighting
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <map_fragment>',
+                `
+                #include <map_fragment>
+                // Moss Logic
+                vec3 mossColor = vec3(0.18, 0.35, 0.12); // "National Park" Moss Green
+
+                // World space noise for moss pattern
+                float mossNoise = noise(vWorldPositionPalette.xz * 0.5) * 0.2;
+
+                // Moss grows on upward facing slopes (y > threshold)
+                float mossSlope = smoothstep(0.5, 0.8, vWorldNormalPalette.y + mossNoise);
+
+                // Moss grows near water line (Y ~= 0.5) up to Y=2.0
+                float waterDist = vWorldPositionPalette.y - 0.5;
+                float mossWater = smoothstep(2.5, 0.0, waterDist) * 0.6; // Fade out as we go up
+
+                // Combine slope and water proximity
+                float finalMoss = clamp(mossSlope + mossWater, 0.0, 1.0);
+
+                // Mix existing diffuseColor with mossColor
+                // vColor.r is dryness (0.4 to 1.0). Less dry areas could have more moss too?
+                // Let's stick to the geometric moss for now.
+
+                diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, finalMoss * 0.9);
+                `
+            );
+
+            // Existing Dryness/Roughness Logic
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <roughnessmap_fragment>',
                 `
                 #include <roughnessmap_fragment>
                 float dryness = smoothstep(0.4, 0.8, vColor.r);
                 roughnessFactor = mix(0.15, roughnessFactor, dryness);
+
+                // Make moss less shiny
+                if (finalMoss > 0.5) {
+                    roughnessFactor = mix(roughnessFactor, 1.0, (finalMoss - 0.5) * 2.0);
+                }
                 `
             );
         };
