@@ -461,6 +461,7 @@ export default function TrackSegment({
                 geometry={waterGeometry}
                 flowSpeed={flowSpeed}
                 baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
+                normalMap={normalMap} // Reuse the rock normal map for ripples
             />
             
             {/* Conditional Logic: Floating Debris vs Waterfall Particles */}

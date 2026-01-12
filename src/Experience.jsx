@@ -1,4 +1,4 @@
-import { KeyboardControls } from "@react-three/drei";
+import { KeyboardControls, Environment } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import React, { useMemo, useState } from "react";
 import TrackManager from "./components/TrackManager";
@@ -27,6 +27,9 @@ const Experience = () => {
 
   return (
     <KeyboardControls map={map}>
+      {/* Environment for realistic reflections */}
+      <Environment preset="park" background={false} />
+
       {/* Dynamic Sky that reacts to the biome */}
       <EnhancedSky biome={currentBiome} />
       
