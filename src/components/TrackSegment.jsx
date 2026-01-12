@@ -10,6 +10,7 @@ import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
 import WaterfallParticles from './Environment/WaterfallParticles';
 import FallingLeaves from './Environment/FallingLeaves';
+import Fireflies from './Environment/Fireflies';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -173,6 +174,7 @@ export default function TrackSegment({
         const grass = [];
         const driftwood = [];
         const leaves = [];
+        const fireflies = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -291,10 +293,27 @@ export default function TrackSegment({
                         scale: new THREE.Vector3(1, 1, 1)
                     });
                 }
+
+                // 7. FIREFLIES (Atmosphere)
+                // Small clusters of glowing bugs near water and banks
+                if (seededRandom(seed++) > 0.8) {
+                    const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.9;
+                    const offset = binormal.clone().multiplyScalar(dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                    // Hover 1 to 4 units above ground/water
+                    position.y += 1.0 + seededRandom(seed++) * 3.0;
+
+                    fireflies.push({
+                        position,
+                        rotation: new THREE.Euler(),
+                        scale: new THREE.Vector3(1, 1, 1)
+                    });
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, driftwood, leaves };
+        return { rocks, trees, debris, grass, driftwood, leaves, fireflies };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity]);
 
     // Canyon Geometry
@@ -436,6 +455,7 @@ export default function TrackSegment({
             <Rock transforms={placementData.debris} />
 
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
+            <Fireflies transforms={placementData.fireflies} />
 
             <FlowingWater 
                 geometry={waterGeometry}
