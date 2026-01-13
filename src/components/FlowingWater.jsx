@@ -119,7 +119,7 @@ export default function FlowingWater({
                 `
             );
 
-            // --- Fragment Shader: Foam Mixing ---
+            // --- Fragment Shader ---
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <common>',
                 `
@@ -142,16 +142,15 @@ export default function FlowingWater({
                 `
             );
 
-            // Inject Normal perturbation for ripples (if no normal map, or addition to it)
-            // Note: normalMap is handled by three.js automatically if we pass it to the material prop
-
-            // Mix Foam into diffuse Color
+            // 1. Calculate Foam at the start of main
             shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <dithering_fragment>',
+                '#include <begin_fragment>',
                 `
-                #include <dithering_fragment>
+                #include <begin_fragment>
 
-                // Foam Logic
+                // --- FLOWING WATER LOGIC ---
+
+                // Calculate Foam Factor
                 float foamFactor = smoothstep(0.05, 0.15, vElevation);
                 
                 // Animated foam noise
@@ -160,14 +159,50 @@ export default function FlowingWater({
 
                 float foam = foamFactor * foamNoise;
                 foam += step(0.7, foamNoise) * 0.3;
+                foam = clamp(foam, 0.0, 1.0);
+                `
+            );
 
-                // Mix foam color on top of the computed lighting (outgoingLight)
-                // Actually, physically, foam is diffuse reflection.
-                // We can mix it into the diffuse color before lighting, or add it after.
-                // Adding it after makes it look "emissive" or very bright white.
+            // 2. Animated Normal Map (Flowing Ripples)
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <normal_fragment_maps>',
+                `
+                #ifdef USE_NORMALMAP
+                    // Use vFlowUv to create animated texture coordinates
+                    // Apply the texture matrix (repeat/offset) to the flow UVs
+                    vec2 rippleUv = (normalMapTransform * vec3(vFlowUv, 1.0)).xy;
 
-                // Let's mix it into gl_FragColor to override everything
-                gl_FragColor.rgb = mix(gl_FragColor.rgb, foamColor, clamp(foam, 0.0, 1.0));
+                    vec3 mapN = texture2D( normalMap, rippleUv ).xyz * 2.0 - 1.0;
+                    mapN.xy *= normalScale;
+
+                    #ifdef USE_TANGENT
+                        normal = normalize( vTBN * mapN );
+                    #else
+                        normal = perturbNormal2Arb( - vViewPosition, normal, mapN, faceDirection );
+                    #endif
+                #endif
+                `
+            );
+
+            // 3. Roughness Modulation (Foam is rougher)
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <roughnessmap_fragment>',
+                `
+                #include <roughnessmap_fragment>
+
+                // Water is smooth (0.1), Foam is rough (0.8)
+                roughnessFactor = mix(roughnessFactor, 0.8, foam);
+                `
+            );
+
+            // 4. Mix Foam into Diffuse Color (Before Lighting)
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <map_fragment>',
+                `
+                #include <map_fragment>
+
+                // Mix foam color into diffuse (base) color
+                diffuseColor.rgb = mix(diffuseColor.rgb, foamColor, foam);
                 `
             );
 
