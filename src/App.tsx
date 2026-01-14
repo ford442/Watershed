@@ -41,14 +41,15 @@ function App() {
 
   return (
     <>
-      <React.Suspense fallback={<Loader />}>
-        <Canvas
-          camera={{ position: [0, 25, 10], fov: 75 }}
-          shadows
-        >
+      <Canvas
+        camera={{ position: [0, 25, 10], fov: 75 }}
+        shadows
+      >
+        <React.Suspense fallback={null}>
           <Experience />
-        </Canvas>
-      </React.Suspense>
+        </React.Suspense>
+      </Canvas>
+      <Loader />
       <UI />
     </>
   );
