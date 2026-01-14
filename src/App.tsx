@@ -14,7 +14,7 @@ function App() {
       try {
         // Initialize Rapier with the manually copied WASM file
         // Cast to any because the type definition incorrectly states init() takes no arguments
-        await (rapierInit as any)('./rapier.wasm');
+        await (rapierInit as any)({ module_or_path: './rapier.wasm' });
         console.log('Rapier Physics initialized successfully');
       } catch (e) {
         console.error('Failed to initialize Rapier Physics:', e);
