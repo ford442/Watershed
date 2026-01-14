@@ -11,6 +11,7 @@ import Driftwood from './Environment/Driftwood';
 import WaterfallParticles from './Environment/WaterfallParticles';
 import FallingLeaves from './Environment/FallingLeaves';
 import Fireflies from './Environment/Fireflies';
+import Birds from './Environment/Birds';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -175,6 +176,7 @@ export default function TrackSegment({
         const driftwood = [];
         const leaves = [];
         const fireflies = [];
+        const birds = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -310,10 +312,34 @@ export default function TrackSegment({
                         scale: new THREE.Vector3(1, 1, 1)
                     });
                 }
+
+                // 8. BIRDS (Flocks)
+                // Occasional flocks in open areas (summer/pond)
+                if (biome !== 'autumn' || isPond) {
+                    if (seededRandom(seed++) > 0.98) {
+                         const flockSize = 3 + Math.floor(seededRandom(seed++) * 5); // 3 to 7 birds
+                         const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.5;
+                         const offset = binormal.clone().multiplyScalar(dist);
+                         const flockCenter = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                         for(let b=0; b<flockSize; b++) {
+                             // Scatter slightly so they have different random seeds in shader
+                             const birdPos = flockCenter.clone();
+                             birdPos.x += (seededRandom(seed++) - 0.5) * 5.0;
+                             birdPos.z += (seededRandom(seed++) - 0.5) * 5.0;
+
+                             birds.push({
+                                 position: birdPos,
+                                 rotation: new THREE.Euler(),
+                                 scale: new THREE.Vector3(1,1,1)
+                             });
+                         }
+                    }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, driftwood, leaves, fireflies };
+        return { rocks, trees, debris, grass, driftwood, leaves, fireflies, birds };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity]);
 
     // Canyon Geometry
@@ -456,6 +482,7 @@ export default function TrackSegment({
 
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
             <Fireflies transforms={placementData.fireflies} />
+            <Birds transforms={placementData.birds} biome={biome} />
 
             <FlowingWater 
                 geometry={waterGeometry}

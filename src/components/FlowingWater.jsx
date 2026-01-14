@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -152,12 +152,18 @@ export default function FlowingWater({
 
                 // Calculate Foam Factor
                 float foamFactor = smoothstep(0.05, 0.15, vElevation);
-                
+
+                // Edge Foam logic (Shoreline interaction)
+                float edgeDist = min(vFlowUv.x, 1.0 - vFlowUv.x);
+                float edgeFoam = smoothstep(0.15, 0.0, edgeDist); // Foam within 15% of edge
+
                 // Animated foam noise
                 float foamNoise = noise(vFlowUv * 10.0 + time * flowSpeed);
                 foamNoise += noise(vFlowUv * 25.0 - time * flowSpeed * 0.5) * 0.5;
 
-                float foam = foamFactor * foamNoise;
+                // Combine wave foam and edge foam
+                float foam = max(foamFactor * foamNoise, edgeFoam * (foamNoise * 0.8 + 0.4));
+
                 foam += step(0.7, foamNoise) * 0.3;
                 foam = clamp(foam, 0.0, 1.0);
                 `
