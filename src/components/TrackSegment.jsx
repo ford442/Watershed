@@ -6,6 +6,7 @@ import FlowingWater from './FlowingWater';
 import Rock from './Obstacles/Rock';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
+import Reeds from './Environment/Reeds';
 import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
 import WaterfallParticles from './Environment/WaterfallParticles';
@@ -183,6 +184,7 @@ export default function TrackSegment({
         const trees = [];
         const debris = [];
         const grass = [];
+        const reeds = [];
         const driftwood = [];
         const leaves = [];
         const fireflies = [];
@@ -278,16 +280,59 @@ export default function TrackSegment({
                     grass.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(0.5,0.5,0.5) });
                 }
 
-                // 5. DRIFTWOOD
-                if (seededRandom(seed++) > 0.7) {
-                    const dist = bankStart + (Math.random()-0.5)*2;
+                // 5. REEDS (Riverbank Vegetation)
+                // Clumps of reeds right at the water edge
+                if (seededRandom(seed++) > 0.6) {
+                    // Place exactly at water edge (bankStart) with small variation
+                    const dist = bankStart + (seededRandom(seed++) - 0.2) * 1.5;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += 0.2;
-                    driftwood.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(1,0.5,0.5) });
+
+                    // Adjust height based on distance to water to ensure they aren't floating
+                    // Water level is at 0.5 relative to segment.
+                    // Ground height calculation:
+                    const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                    let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                    if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                    // Slightly submerged or on bank
+                    position.y += groundY - 0.2;
+
+                    const scale = 0.8 + seededRandom(seed++) * 0.4;
+                    reeds.push({
+                        position,
+                        rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                        scale: new THREE.Vector3(scale, scale, scale)
+                    });
                 }
 
-                // 6. FALLING LEAVES (Atmosphere)
+                // 6. DRIFTWOOD
+                if (seededRandom(seed++) > 0.8) { // Slightly rarer but more impactful
+                    // Can be partially in water or on bank
+                    const dist = bankStart + (seededRandom(seed++) - 0.4) * 3.0;
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                    // Calculate approx ground height
+                    const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                    let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                    if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                    position.y += groundY + 0.3; // Rest on ground
+
+                    // Random rotation including slight tilt to match bank slope
+                    driftwood.push({
+                        position,
+                        rotation: new THREE.Euler(
+                            (seededRandom(seed++) - 0.5) * 0.5, // Slight X tilt
+                            seededRandom(seed++) * Math.PI * 2, // Random Y
+                            (seededRandom(seed++) - 0.5) * 0.5  // Slight Z tilt
+                        ),
+                        scale: new THREE.Vector3(1, 1, 1) // Full scale now that geometry is better
+                    });
+                }
+
+                // 7. FALLING LEAVES (Atmosphere)
                 // More leaves in autumn, fewer in summer
                 const leafDensity = biome === 'autumn' ? 0.8 : 0.2;
                 if (seededRandom(seed++) > (1.0 - leafDensity)) {
@@ -306,7 +351,7 @@ export default function TrackSegment({
                     });
                 }
 
-                // 7. FIREFLIES (Atmosphere)
+                // 8. FIREFLIES (Atmosphere)
                 // Small clusters of glowing bugs near water and banks
                 if (seededRandom(seed++) > 0.8) {
                     const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.9;
@@ -323,7 +368,7 @@ export default function TrackSegment({
                     });
                 }
 
-                // 8. BIRDS (Flocks)
+                // 9. BIRDS (Flocks)
                 // Occasional flocks in open areas (summer/pond)
                 if (biome !== 'autumn' || isPond) {
                     if (seededRandom(seed++) > 0.98) {
@@ -349,7 +394,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, driftwood, leaves, fireflies, birds };
+        return { rocks, trees, debris, grass, reeds, driftwood, leaves, fireflies, birds };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -484,6 +529,7 @@ export default function TrackSegment({
             <Rock transforms={placementData.rocks} />
             <Vegetation transforms={placementData.trees} biome={biome} />
             <Grass transforms={placementData.grass} />
+            <Reeds transforms={placementData.reeds} />
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
 
