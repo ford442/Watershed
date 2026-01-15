@@ -19,8 +19,9 @@ const seededRandom = (seed) => {
     return x - Math.floor(x);
 };
 
-// Default points to keep hooks happy when inactive
-const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
+// Points to use when segment is inactive (hidden and far away)
+// This prevents physics collisions and keeps the segment instantiated but out of the way
+const HOLDING_CELL_POINTS = [new THREE.Vector3(0, -1000, 0), new THREE.Vector3(0, -1000, 1)];
 
 export default function TrackSegment({
     active = false,
@@ -149,7 +150,11 @@ export default function TrackSegment({
         return mat;
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
-    const safePoints = (pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
+    // Use holding cell points if not active to keep object pooled but out of way
+    const safePoints = useMemo(() => {
+        if (active && pathPoints && pathPoints.length > 0) return pathPoints;
+        return HOLDING_CELL_POINTS;
+    }, [active, pathPoints]);
 
     // Create the spline path
     const segmentPath = useMemo(() => {
@@ -169,6 +174,11 @@ export default function TrackSegment({
 
     // Derived Placement Data (Rocks, Trees, etc.)
     const placementData = useMemo(() => {
+        // Return empty data if inactive to save processing and avoid spawning assets
+        if (!active) {
+            return { rocks: [], trees: [], debris: [], grass: [], driftwood: [], leaves: [], fireflies: [], birds: [] };
+        }
+
         const rocks = [];
         const trees = [];
         const debris = [];
@@ -340,12 +350,13 @@ export default function TrackSegment({
         }
         
         return { rocks, trees, debris, grass, driftwood, leaves, fireflies, birds };
-    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity]);
+    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
         const segmentsX = 40;
-        const segmentsZ = Math.floor(pathLength);
+        // Ensure segmentsZ is at least 1 to avoid degenerate geometry which might crash physics/rendering
+        const segmentsZ = Math.max(1, Math.floor(pathLength));
 
         const geo = new THREE.PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ);
         geo.rotateX(-Math.PI / 2);
@@ -392,7 +403,8 @@ export default function TrackSegment({
     const wallShellGeometry = useMemo(() => {
         const shellWidth = canyonWidth * 1.5;
         const segmentsX = 20;
-        const segmentsZ = Math.floor(pathLength / 2);
+        // Ensure segmentsZ is at least 1
+        const segmentsZ = Math.max(1, Math.floor(pathLength / 2));
 
         const geo = new THREE.PlaneGeometry(shellWidth, pathLength, segmentsX, segmentsZ);
         geo.rotateX(-Math.PI / 2);
@@ -423,7 +435,8 @@ export default function TrackSegment({
 
     // Water Geometry
     const waterGeometry = useMemo(() => {
-        const segmentsZ = Math.floor(pathLength / 2);
+        // Ensure segmentsZ is at least 1
+        const segmentsZ = Math.max(1, Math.floor(pathLength / 2));
         const geo = new THREE.PlaneGeometry(waterWidth, pathLength, 4, segmentsZ);
         geo.rotateX(-Math.PI / 2);
         
@@ -454,12 +467,6 @@ export default function TrackSegment({
         return segmentPath.getPoint(0.5);
     }, [type, segmentPath]);
 
-    // --- Early exit for inactive segments ---
-    // This must come AFTER all hooks have been called.
-    if (!active) {
-        return null;
-    }
-
     // Final sanity check before rendering
     if (!canyonGeometry || !waterGeometry) {
         console.log(`TrackSegment ${segmentId}: missing geometry, returning null`);
@@ -467,7 +474,7 @@ export default function TrackSegment({
     }
 
     return (
-        <group name={`track-segment-${segmentId}`}>
+        <group name={`track-segment-${segmentId}`} visible={active}>
             <RigidBody type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
                 <mesh geometry={canyonGeometry} receiveShadow castShadow material={rockMaterial} />
             </RigidBody>
