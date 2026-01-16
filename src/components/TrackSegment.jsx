@@ -103,7 +103,7 @@ export default function TrackSegment({
                 `
             );
 
-            // Inject moss color mixing before lighting
+            // Inject moss AND Wet Band logic
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <map_fragment>',
                 `
@@ -124,21 +124,31 @@ export default function TrackSegment({
                 // Combine slope and water proximity
                 float finalMoss = clamp(mossSlope + mossWater, 0.0, 1.0);
 
-                // Mix existing diffuseColor with mossColor
-                // vColor.r is dryness (0.4 to 1.0). Less dry areas could have more moss too?
-                // Let's stick to the geometric moss for now.
+                // --- WET BAND LOGIC ---
+                // Darken rock near water line (0.5 to 1.5) to simulate splashing/wicking
+                float wetness = 1.0 - smoothstep(0.0, 1.0, waterDist); // 1.0 at water, 0.0 at 1.5m up
+                wetness = clamp(wetness, 0.0, 1.0);
 
+                // Darken diffuse color for wetness
+                diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.5, wetness);
+
+                // Mix existing diffuseColor with mossColor
                 diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, finalMoss * 0.9);
                 `
             );
 
-            // Existing Dryness/Roughness Logic
+            // Existing Dryness/Roughness Logic + Wetness
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <roughnessmap_fragment>',
                 `
                 #include <roughnessmap_fragment>
                 float dryness = smoothstep(0.4, 0.8, vColor.r);
                 roughnessFactor = mix(0.15, roughnessFactor, dryness);
+
+                // Make wet band very smooth (low roughness)
+                if (wetness > 0.0) {
+                     roughnessFactor = mix(roughnessFactor, 0.1, wetness);
+                }
 
                 // Make moss less shiny
                 if (finalMoss > 0.5) {
@@ -282,7 +292,8 @@ export default function TrackSegment({
 
                 // 5. REEDS (Riverbank Vegetation)
                 // Clumps of reeds right at the water edge
-                if (seededRandom(seed++) > 0.6) {
+                // Increased density: chance > 0.5 (was 0.6)
+                if (seededRandom(seed++) > 0.5) {
                     // Place exactly at water edge (bankStart) with small variation
                     const dist = bankStart + (seededRandom(seed++) - 0.2) * 1.5;
                     const offset = binormal.clone().multiplyScalar(side * dist);
@@ -307,7 +318,8 @@ export default function TrackSegment({
                 }
 
                 // 6. DRIFTWOOD
-                if (seededRandom(seed++) > 0.8) { // Slightly rarer but more impactful
+                // Increased density: chance > 0.7 (was 0.8)
+                if (seededRandom(seed++) > 0.7) {
                     // Can be partially in water or on bank
                     const dist = bankStart + (seededRandom(seed++) - 0.4) * 3.0;
                     const offset = binormal.clone().multiplyScalar(side * dist);
