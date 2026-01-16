@@ -7,16 +7,16 @@ import * as THREE from 'three';
  * Creates rushing white water effect for creek rapids
  * 
  * @param {THREE.BufferGeometry} geometry - Water surface geometry
- * @param {number} flowSpeed - Speed of water flow animation (default: 1.0)
+ * @param {number} flowSpeed - Speed of water flow animation (default: 1.2)
  * @param {string} baseColor - Base water color (default: #1a7b9c)
  * @param {string} foamColor - Foam/white water color (default: #ffffff)
  * @param {THREE.Texture} normalMap - Optional normal map for surface detail
  */
 export default function FlowingWater({ 
     geometry, 
-    flowSpeed = 1.5, 
+    flowSpeed = 1.2,
     baseColor = '#1a7b9c',
-    foamColor = '#ffffff',
+    foamColor = '#e0f7fa', // Slightly off-white for natural look
     normalMap = null
 }) {
     // Custom shader material for flowing water effect
@@ -26,7 +26,7 @@ export default function FlowingWater({
             roughness: 0.1, // Wet
             metalness: 0.1, // Stylized water
             transparent: true,
-            opacity: 0.85,
+            opacity: 0.9,
             side: THREE.DoubleSide,
             normalMap: normalMap,
             normalScale: new THREE.Vector2(0.5, 0.5), // Subtle ripple
@@ -36,6 +36,7 @@ export default function FlowingWater({
             shader.uniforms.time = { value: 0 };
             shader.uniforms.flowSpeed = { value: flowSpeed };
             shader.uniforms.foamColor = { value: new THREE.Color(foamColor) };
+            shader.uniforms.waterColor = { value: new THREE.Color(baseColor) };
 
             // Inject Uniforms
             shader.vertexShader = `
@@ -49,6 +50,7 @@ export default function FlowingWater({
                 uniform float time;
                 uniform float flowSpeed;
                 uniform vec3 foamColor;
+                uniform vec3 waterColor;
                 varying float vElevation;
                 varying vec2 vFlowUv;
             ` + shader.fragmentShader;
@@ -155,16 +157,15 @@ export default function FlowingWater({
 
                 // Edge Foam logic (Shoreline interaction)
                 float edgeDist = min(vFlowUv.x, 1.0 - vFlowUv.x);
-                float edgeFoam = smoothstep(0.15, 0.0, edgeDist); // Foam within 15% of edge
+                float edgeFoam = smoothstep(0.12, 0.02, edgeDist); // Foam within 12% of edge
 
                 // Animated foam noise
-                float foamNoise = noise(vFlowUv * 10.0 + time * flowSpeed);
+                float foamNoise = noise(vFlowUv * 12.0 + time * flowSpeed);
                 foamNoise += noise(vFlowUv * 25.0 - time * flowSpeed * 0.5) * 0.5;
 
                 // Combine wave foam and edge foam
                 float foam = max(foamFactor * foamNoise, edgeFoam * (foamNoise * 0.8 + 0.4));
-
-                foam += step(0.7, foamNoise) * 0.3;
+                foam += step(0.65, foamNoise) * 0.2; // Sparkles
                 foam = clamp(foam, 0.0, 1.0);
                 `
             );
@@ -202,13 +203,24 @@ export default function FlowingWater({
             );
 
             // 4. Mix Foam into Diffuse Color (Before Lighting)
+            // AND Implement Depth Color Gradient
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <map_fragment>',
                 `
                 #include <map_fragment>
 
+                // --- DEPTH GRADIENT ---
+                // Center of river (uv.x = 0.5) is deep, edges (uv.x = 0 or 1) are shallow
+                float centerDist = 1.0 - abs(vFlowUv.x - 0.5) * 2.0; // 0 at edge, 1 at center
+                centerDist = pow(centerDist, 0.4); // Bias towards deep color
+
+                vec3 deepColor = waterColor * 0.6; // Darker, richer
+                vec3 shallowColor = waterColor * 1.1; // Lighter
+
+                vec3 waterGradient = mix(shallowColor, deepColor, centerDist);
+
                 // Mix foam color into diffuse (base) color
-                diffuseColor.rgb = mix(diffuseColor.rgb, foamColor, foam);
+                diffuseColor.rgb = mix(waterGradient, foamColor, foam);
                 `
             );
 
