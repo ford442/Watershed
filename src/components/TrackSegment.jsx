@@ -13,6 +13,7 @@ import WaterfallParticles from './Environment/WaterfallParticles';
 import FallingLeaves from './Environment/FallingLeaves';
 import Fireflies from './Environment/Fireflies';
 import Birds from './Environment/Birds';
+import Fish from './Environment/Fish';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -199,6 +200,7 @@ export default function TrackSegment({
         const leaves = [];
         const fireflies = [];
         const birds = [];
+        const fish = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -403,10 +405,30 @@ export default function TrackSegment({
                          }
                     }
                 }
+
+                // 10. FISH (Ponds only)
+                // Jumping fish in deep water
+                if (type === 'pond') {
+                     if (seededRandom(seed++) > 0.6) { // 40% chance per step (high density for pond)
+                         const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
+                         // Center bias for fish
+                         const offset = binormal.clone().multiplyScalar(dist);
+                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                         // Set Y to water level (minus small offset so they start underwater)
+                         position.y += waterLevel - 0.5;
+
+                         fish.push({
+                             position,
+                             rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0), // Random jump direction
+                             scale: new THREE.Vector3(1, 1, 1)
+                         });
+                     }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, reeds, driftwood, leaves, fireflies, birds };
+        return { rocks, trees, debris, grass, reeds, driftwood, leaves, fireflies, birds, fish };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -548,6 +570,7 @@ export default function TrackSegment({
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
             <Fireflies transforms={placementData.fireflies} />
             <Birds transforms={placementData.birds} biome={biome} />
+            <Fish transforms={placementData.fish} />
 
             <FlowingWater 
                 geometry={waterGeometry}
