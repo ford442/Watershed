@@ -8,6 +8,7 @@ import Grass from './Environment/Grass';
 import Reeds from './Environment/Reeds';
 import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
+import Wildflowers from './Environment/Wildflowers';
 import WaterfallParticles from './Environment/WaterfallParticles';
 import FallingLeaves from './Environment/FallingLeaves';
 import Fireflies from './Environment/Fireflies';
@@ -66,6 +67,7 @@ export default function TrackSegment({
         const trees = [];
         const debris = [];
         const grass = [];
+        const wildflowers = [];
         const reeds = [];
         const driftwood = [];
         const leaves = [];
@@ -161,6 +163,23 @@ export default function TrackSegment({
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
                     position.y += 1.0;
                     grass.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(0.5,0.5,0.5) });
+                }
+
+                // 4.5 WILDFLOWERS (New: Pops of Color)
+                const flowerChance = biome === 'summer' ? 0.85 : 0.98; // Rare in autumn
+                if (seededRandom(seed++) > flowerChance) {
+                    const dist = bankStart + seededRandom(seed++) * 5;
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    position.y += 1.0; // Same ground level as grass approx
+
+                    // Slightly smaller than grass bushes
+                    const scale = 0.6 + seededRandom(seed++) * 0.4;
+                    wildflowers.push({
+                        position,
+                        rotation: new THREE.Euler(0, Math.random() * Math.PI, 0),
+                        scale: new THREE.Vector3(scale, scale, scale)
+                    });
                 }
 
                 // 5. REEDS
@@ -271,7 +290,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, reeds, driftwood, leaves, fireflies, birds, fish };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -407,6 +426,7 @@ export default function TrackSegment({
             <Rock transforms={placementData.rocks} />
             <Vegetation transforms={placementData.trees} biome={biome} />
             <Grass transforms={placementData.grass} />
+            <Wildflowers transforms={placementData.wildflowers} biome={biome} />
             <Reeds transforms={placementData.reeds} />
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
