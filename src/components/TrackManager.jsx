@@ -1,6 +1,7 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
+import { useTexture } from '@react-three/drei';
 import TrackSegment from './TrackSegment';
 
 const GENERATION_THRESHOLD = 150;
@@ -125,6 +126,131 @@ export default function TrackManager({ onBiomeChange }) {
         segmentsRef.current = segments;
     }, [segments]);
 
+    // --- SHARED MATERIAL ASSETS ---
+    // Load Textures from public folder
+    const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
+        '/Rock031_1K-JPG_Color.jpg',
+        '/Rock031_1K-JPG_NormalGL.jpg',
+        '/Rock031_1K-JPG_Roughness.jpg',
+        '/Rock031_1K-JPG_AmbientOcclusion.jpg',
+    ]);
+
+    useEffect(() => {
+        [colorMap, normalMap, roughnessMap, aoMap].forEach(t => {
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.repeat.set(4, 8);
+        });
+    }, [colorMap, normalMap, roughnessMap, aoMap]);
+
+    // Create the custom Wet Rock Material (Shared)
+    const rockMaterial = useMemo(() => {
+        const mat = new THREE.MeshStandardMaterial({
+            map: colorMap,
+            normalMap: normalMap,
+            roughnessMap: roughnessMap,
+            aoMap: aoMap,
+            side: THREE.DoubleSide,
+            vertexColors: true,
+        });
+
+        mat.onBeforeCompile = (shader) => {
+            // Vertex Shader Modifications
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <common>',
+                `
+                #include <common>
+                varying vec3 vWorldNormalPalette;
+                varying vec3 vWorldPositionPalette;
+                `
+            );
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <worldpos_vertex>',
+                `
+                #include <worldpos_vertex>
+                vWorldNormalPalette = normalize(mat3(modelMatrix) * objectNormal);
+                vWorldPositionPalette = (modelMatrix * vec4(transformed, 1.0)).xyz;
+                `
+            );
+
+            // Fragment Shader Modifications
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <common>',
+                `
+                #include <common>
+                varying vec3 vWorldNormalPalette;
+                varying vec3 vWorldPositionPalette;
+
+                // Simple noise function
+                float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+                float noise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f*f*(3.0-2.0*f);
+                    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
+                               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+                }
+                `
+            );
+
+            // Inject moss AND Wet Band logic
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <map_fragment>',
+                `
+                #include <map_fragment>
+                // Moss Logic
+                vec3 mossColor = vec3(0.18, 0.35, 0.12); // "National Park" Moss Green
+
+                // World space noise for moss pattern
+                float mossNoise = noise(vWorldPositionPalette.xz * 0.5) * 0.2;
+
+                // Moss grows on upward facing slopes (y > threshold)
+                float mossSlope = smoothstep(0.5, 0.8, vWorldNormalPalette.y + mossNoise);
+
+                // Moss grows near water line (Y ~= 0.5) up to Y=2.0
+                float waterDist = vWorldPositionPalette.y - 0.5;
+                float mossWater = smoothstep(2.5, 0.0, waterDist) * 0.6; // Fade out as we go up
+
+                // Combine slope and water proximity
+                float finalMoss = clamp(mossSlope + mossWater, 0.0, 1.0);
+
+                // --- WET BAND LOGIC ---
+                // Darken rock near water line (0.5 to 1.5) to simulate splashing/wicking
+                float wetness = 1.0 - smoothstep(0.0, 1.0, waterDist); // 1.0 at water, 0.0 at 1.5m up
+                wetness = clamp(wetness, 0.0, 1.0);
+
+                // Darken diffuse color for wetness
+                diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.5, wetness);
+
+                // Mix existing diffuseColor with mossColor
+                diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, finalMoss * 0.9);
+                `
+            );
+
+            // Existing Dryness/Roughness Logic + Wetness
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <roughnessmap_fragment>',
+                `
+                #include <roughnessmap_fragment>
+                float dryness = smoothstep(0.4, 0.8, vColor.r);
+                roughnessFactor = mix(0.15, roughnessFactor, dryness);
+
+                // Make wet band very smooth (low roughness)
+                if (wetness > 0.0) {
+                     roughnessFactor = mix(roughnessFactor, 0.1, wetness);
+                }
+
+                // Make moss less shiny
+                if (finalMoss > 0.5) {
+                    roughnessFactor = mix(roughnessFactor, 1.0, (finalMoss - 0.5) * 2.0);
+                }
+                `
+            );
+        };
+
+        return mat;
+    }, [colorMap, normalMap, roughnessMap, aoMap]);
+
+
     const generateNextSegment = useCallback((lastSegment) => {
         const lastPoints = lastSegment.points;
         const lastPoint = lastPoints[lastPoints.length - 1];
@@ -233,6 +359,8 @@ export default function TrackManager({ onBiomeChange }) {
                     <TrackSegment
                         key={index}
                         active={!!segment}
+                        rockMaterial={rockMaterial}
+                        rockNormalMap={normalMap}
                         {...segment}
                     />
                 );
