@@ -14,6 +14,7 @@ import FallingLeaves from './Environment/FallingLeaves';
 import Fireflies from './Environment/Fireflies';
 import Birds from './Environment/Birds';
 import Fish from './Environment/Fish';
+import Pebbles from './Environment/Pebbles';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -60,7 +61,7 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [] };
         }
 
         const rocks = [];
@@ -74,6 +75,7 @@ export default function TrackSegment({
         const fireflies = [];
         const birds = [];
         const fish = [];
+        const pebbles = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -156,6 +158,37 @@ export default function TrackSegment({
                     debris.push({ position, rotation: new THREE.Euler(), scale: new THREE.Vector3(0.3,0.3,0.3) });
                 }
 
+                // 3.5 PEBBLES (New: Shoreline scatter)
+                // High density, small objects along the water line
+                if (seededRandom(seed++) > 0.3) { // 70% chance per step
+                    // Spawn a cluster of 1-3 pebbles
+                    const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
+                    for (let p = 0; p < clusterSize; p++) {
+                         const dist = bankStart + seededRandom(seed++) * 1.5; // Very close to water
+                         const offset = binormal.clone().multiplyScalar(side * dist);
+                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                         // Determine height (shoreline slope)
+                         const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                         let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                         if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                         position.y += groundY + 0.1; // Slightly embedded
+
+                         // Randomize scale
+                         const scale = 0.5 + seededRandom(seed++) * 0.6;
+                         pebbles.push({
+                            position,
+                            rotation: new THREE.Euler(
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI
+                            ),
+                            scale: new THREE.Vector3(scale, scale, scale)
+                         });
+                    }
+                }
+
                 // 4. GRASS
                 if (seededRandom(seed++) > 0.6) {
                     const dist = bankStart + seededRandom(seed++) * 4;
@@ -203,26 +236,31 @@ export default function TrackSegment({
                 }
 
                 // 6. DRIFTWOOD
-                if (seededRandom(seed++) > 0.7) {
-                    const dist = bankStart + (seededRandom(seed++) - 0.4) * 3.0;
-                    const offset = binormal.clone().multiplyScalar(side * dist);
-                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                // INCREASED DENSITY: Lowered threshold from 0.7 to 0.4, and added chance for extra pieces
+                if (seededRandom(seed++) > 0.4) {
+                    const clusterSize = seededRandom(seed++) > 0.7 ? 2 : 1; // Chance for 2 pieces
 
-                    const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
-                    let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-                    if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+                    for(let d=0; d < clusterSize; d++) {
+                        const dist = bankStart + (seededRandom(seed++) - 0.2) * 3.5; // Widen scatter range
+                        const offset = binormal.clone().multiplyScalar(side * dist);
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset);
 
-                    position.y += groundY + 0.3;
+                        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                        let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                        if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
 
-                    driftwood.push({
-                        position,
-                        rotation: new THREE.Euler(
-                            (seededRandom(seed++) - 0.5) * 0.5,
-                            seededRandom(seed++) * Math.PI * 2,
-                            (seededRandom(seed++) - 0.5) * 0.5
-                        ),
-                        scale: new THREE.Vector3(1, 1, 1)
-                    });
+                        position.y += groundY + 0.3;
+
+                        driftwood.push({
+                            position,
+                            rotation: new THREE.Euler(
+                                (seededRandom(seed++) - 0.5) * 0.5,
+                                seededRandom(seed++) * Math.PI * 2,
+                                (seededRandom(seed++) - 0.5) * 0.5
+                            ),
+                            scale: new THREE.Vector3(1, 1, 1)
+                        });
+                    }
                 }
 
                 // 7. LEAVES
@@ -290,7 +328,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -430,6 +468,8 @@ export default function TrackSegment({
             <Reeds transforms={placementData.reeds} />
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
+            {/* New Shoreline Pebbles */}
+            <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
 
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
             <Fireflies transforms={placementData.fireflies} />
