@@ -15,6 +15,7 @@ import Fireflies from './Environment/Fireflies';
 import Birds from './Environment/Birds';
 import Fish from './Environment/Fish';
 import Pebbles from './Environment/Pebbles';
+import Mist from './Environment/Mist';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -76,6 +77,7 @@ export default function TrackSegment({
         const birds = [];
         const fish = [];
         const pebbles = [];
+        const mist = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -325,10 +327,32 @@ export default function TrackSegment({
                          });
                      }
                 }
+
+                // 11. MIST
+                // Patches of mist floating above the water
+                if (type !== 'waterfall') { // Waterfalls have their own particles
+                    if (seededRandom(seed++) > 0.6) { // 40% chance per step to start a cluster
+                        const clusterSize = 1 + Math.floor(seededRandom(seed++) * 2);
+                        for(let m=0; m < clusterSize; m++) {
+                            const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
+                            const offset = binormal.clone().multiplyScalar(dist);
+                            const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                            // Height: Just above water (0.5) to 2.5
+                            position.y = waterLevel + 0.2 + seededRandom(seed++) * 2.0;
+
+                            mist.push({
+                                position,
+                                rotation: new THREE.Euler(),
+                                scale: new THREE.Vector3(1, 1, 1)
+                            });
+                        }
+                    }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -475,6 +499,7 @@ export default function TrackSegment({
             <Fireflies transforms={placementData.fireflies} />
             <Birds transforms={placementData.birds} biome={biome} />
             <Fish transforms={placementData.fish} />
+            <Mist transforms={placementData.mist} />
 
             <FlowingWater 
                 geometry={waterGeometry}
