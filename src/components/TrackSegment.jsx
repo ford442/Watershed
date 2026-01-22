@@ -237,21 +237,37 @@ export default function TrackSegment({
                     });
                 }
 
-                // 6. DRIFTWOOD
-                // INCREASED DENSITY: Lowered threshold from 0.7 to 0.4, and added chance for extra pieces
-                if (seededRandom(seed++) > 0.4) {
-                    const clusterSize = seededRandom(seed++) > 0.7 ? 2 : 1; // Chance for 2 pieces
+                // 6. DRIFTWOOD (Enhanced Density)
+                // Scatter new Driftwood instances along the river edge
+                if (seededRandom(seed++) > 0.25) { // 75% chance per step (Significantly increased from 0.4)
+                    // Chance for a larger pile (Log Jam)
+                    const isPile = seededRandom(seed++) > 0.7;
+                    const clusterSize = isPile ? 3 + Math.floor(seededRandom(seed++) * 4) : 1 + Math.floor(seededRandom(seed++) * 2);
+
+                    // Center of the cluster for this step
+                    const baseDist = bankStart + (seededRandom(seed++) - 0.1) * 3.0;
 
                     for(let d=0; d < clusterSize; d++) {
-                        const dist = bankStart + (seededRandom(seed++) - 0.2) * 3.5; // Widen scatter range
-                        const offset = binormal.clone().multiplyScalar(side * dist);
-                        const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                        // Spread logic
+                        const offsetZ = (seededRandom(seed++) - 0.5) * (isPile ? 3.0 : 1.5);
+                        const offsetX = (seededRandom(seed++) - 0.5) * (isPile ? 2.5 : 1.0);
 
+                        const dist = baseDist + offsetX;
+
+                        // Calculate position: Start at path point, move along tangent (Z) and binormal (X)
+                        const position = new THREE.Vector3().copy(pathPoint);
+                        position.add(tangent.clone().multiplyScalar(offsetZ));
+                        position.add(binormal.clone().multiplyScalar(side * dist));
+
+                        // Height Calculation (Re-evaluate based on new dist)
                         const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
                         let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
                         if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
 
-                        position.y += groundY + 0.3;
+                        position.y += groundY + 0.3; // Slight float
+
+                        // Randomize scale for organic look
+                        const scaleMod = 0.7 + seededRandom(seed++) * 0.8;
 
                         driftwood.push({
                             position,
@@ -260,7 +276,7 @@ export default function TrackSegment({
                                 seededRandom(seed++) * Math.PI * 2,
                                 (seededRandom(seed++) - 0.5) * 0.5
                             ),
-                            scale: new THREE.Vector3(1, 1, 1)
+                            scale: new THREE.Vector3(scaleMod, scaleMod, scaleMod)
                         });
                     }
                 }
