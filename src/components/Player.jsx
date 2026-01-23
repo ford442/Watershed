@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider } from '@react-three/rapier';
 import { useKeyboardControls } from '@react-three/drei';
@@ -7,10 +7,13 @@ import { useKeyboardControls } from '@react-three/drei';
 const SPEED = 5;
 const JUMP_FORCE = 5;
 
-export default function Player() {
+const Player = forwardRef((props, ref) => {
   const { camera, gl } = useThree();
   const rb = useRef();
   const [, getKeys] = useKeyboardControls();
+
+  // Expose the RigidBody API to the parent via ref
+  useImperativeHandle(ref, () => rb.current);
 
   const yaw = useRef(0);
   const pitch = useRef(-0.2); // Start looking slightly down to see terrain
@@ -115,4 +118,6 @@ export default function Player() {
       <CapsuleCollider args={[0.4, 0.5]} />
     </RigidBody>
   );
-}
+});
+
+export default Player;
