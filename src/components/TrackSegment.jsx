@@ -16,6 +16,7 @@ import Birds from './Environment/Birds';
 import Fish from './Environment/Fish';
 import Pebbles from './Environment/Pebbles';
 import Mist from './Environment/Mist';
+import WaterLilies from './Environment/WaterLilies';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -78,6 +79,7 @@ export default function TrackSegment({
         const fish = [];
         const pebbles = [];
         const mist = [];
+        const waterLilies = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -365,10 +367,40 @@ export default function TrackSegment({
                         }
                     }
                 }
+
+                // 12. WATER LILIES (Pond Only)
+                if (type === 'pond') {
+                    if (seededRandom(seed++) > 0.85) { // Occasional clusters
+                        const clusterSize = 3 + Math.floor(seededRandom(seed++) * 5);
+                        const baseDist = (seededRandom(seed++) - 0.5) * waterWidth * 0.7; // Random spot on water
+
+                        for(let l=0; l<clusterSize; l++) {
+                            const offsetSpread = 2.0;
+                            const lx = baseDist + (seededRandom(seed++) - 0.5) * offsetSpread;
+                            const lz = (seededRandom(seed++) - 0.5) * offsetSpread; // Local Z relative to cluster center
+
+                            // Check bounds (roughly)
+                            if (Math.abs(lx) > waterWidth/2 - 2) continue; // Avoid bank clipping
+
+                            const offset = binormal.clone().multiplyScalar(lx);
+                            const zOffsetVec = tangent.clone().multiplyScalar(lz);
+
+                            const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+                            position.y = waterLevel; // Sit on water
+
+                            const scale = 0.8 + seededRandom(seed++) * 0.4;
+                            waterLilies.push({
+                                position,
+                                rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                                scale: new THREE.Vector3(scale, scale, scale)
+                            });
+                        }
+                    }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -516,6 +548,7 @@ export default function TrackSegment({
             <Birds transforms={placementData.birds} biome={biome} />
             <Fish transforms={placementData.fish} />
             <Mist transforms={placementData.mist} />
+            <WaterLilies transforms={placementData.waterLilies} />
 
             <FlowingWater 
                 geometry={waterGeometry}
