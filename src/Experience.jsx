@@ -1,9 +1,10 @@
 import { KeyboardControls, Environment } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import React, { useMemo, useState, Suspense } from "react";
+import React, { useMemo, useState, Suspense, useRef } from "react";
 import TrackManager from "./components/TrackManager";
 import Player from "./components/Player";
 import EnhancedSky from "./components/EnhancedSky";
+import SplashParticles from "./components/VFX/SplashParticles";
 
 export const Controls = {
   forward: 'forward',
@@ -26,6 +27,9 @@ const Experience = () => {
   // Biome State (Lifted from TrackManager)
   const [currentBiome, setCurrentBiome] = useState('summer');
 
+  // Reference to the Player's RigidBody
+  const playerRef = useRef();
+
   return (
     <KeyboardControls map={map}>
       {/* Environment for realistic reflections */}
@@ -41,8 +45,11 @@ const Experience = () => {
         <Physics gravity={[0, -9.81, 0]}>
             {/* TrackManager reports biome changes based on player position */}
             <TrackManager onBiomeChange={setCurrentBiome} />
-            <Player />
+            <Player ref={playerRef} />
         </Physics>
+
+        {/* Visual Effects */}
+        <SplashParticles target={playerRef} />
       </Suspense>
     </KeyboardControls>
   );
