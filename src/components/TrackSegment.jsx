@@ -17,6 +17,7 @@ import Fish from './Environment/Fish';
 import Pebbles from './Environment/Pebbles';
 import Mist from './Environment/Mist';
 import WaterLilies from './Environment/WaterLilies';
+import SunShafts from './Environment/SunShafts';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -63,7 +64,7 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [] };
         }
 
         const rocks = [];
@@ -80,6 +81,7 @@ export default function TrackSegment({
         const pebbles = [];
         const mist = [];
         const waterLilies = [];
+        const sunShafts = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -397,10 +399,38 @@ export default function TrackSegment({
                         }
                     }
                 }
+
+                // 13. SUN SHAFTS (Atmospheric)
+                // Rare rays of light piercing the canopy
+                if (biome !== 'autumn' || type === 'pond') { // More common in summer or open ponds
+                    if (seededRandom(seed++) > 0.92) { // Occasional
+                        const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.6;
+                        const offset = binormal.clone().multiplyScalar(dist);
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                        // Height: Start high up
+                        position.y = 12 + seededRandom(seed++) * 5;
+
+                        // Rotation: Align with generic light direction (10, 20, 5)
+                        const lightDir = new THREE.Vector3(10, 20, 5).normalize();
+                        const up = new THREE.Vector3(0, 1, 0);
+                        const q = new THREE.Quaternion().setFromUnitVectors(up, lightDir);
+                        const rotation = new THREE.Euler().setFromQuaternion(q);
+
+                        // Random scale for width/length variation
+                        const scaleMod = 0.8 + seededRandom(seed++) * 0.4;
+
+                        sunShafts.push({
+                            position,
+                            rotation,
+                            scale: new THREE.Vector3(scaleMod, scaleMod * 1.5, scaleMod) // Make them longer
+                        });
+                    }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -549,6 +579,7 @@ export default function TrackSegment({
             <Fish transforms={placementData.fish} />
             <Mist transforms={placementData.mist} />
             <WaterLilies transforms={placementData.waterLilies} />
+            <SunShafts transforms={placementData.sunShafts} />
 
             <FlowingWater 
                 geometry={waterGeometry}
