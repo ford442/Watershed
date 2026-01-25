@@ -8,22 +8,45 @@ import './style.css';
 
 function App() {
   const [physicsReady, setPhysicsReady] = useState(false);
+  const [physicsError, setPhysicsError] = useState(false);
 
   useEffect(() => {
     const initPhysics = async () => {
       try {
-        // Initialize Rapier with the manually copied WASM file
-        // Cast to any because the type definition incorrectly states init() takes no arguments
-        await (rapierInit as any)({ module_or_path: './rapier.wasm' });
+        // Create a timeout promise that rejects after 5 seconds
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Physics init timed out')), 5000)
+        );
+
+        // Race the init against the timeout
+        await Promise.race([
+          (rapierInit as any)({ module_or_path: './rapier.wasm' }),
+          timeoutPromise
+        ]);
+
         console.log('Rapier Physics initialized successfully');
+        setPhysicsReady(true);
       } catch (e) {
         console.error('Failed to initialize Rapier Physics:', e);
-      } finally {
-        setPhysicsReady(true);
+        setPhysicsError(true);
       }
     };
     initPhysics();
   }, []);
+
+  if (physicsError) {
+    return (
+      <div className="loader-overlay">
+        <div className="loader-content">
+          <div className="loader-header" style={{ color: '#ff4444' }}>SYSTEM FAILURE</div>
+          <div className="loader-text">PHYSICS ENGINE INITIALIZATION FAILED</div>
+          <div className="loader-text" style={{ fontSize: '0.8em', marginTop: '10px' }}>
+            Please refresh the page or check your connection.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!physicsReady) {
     return (
