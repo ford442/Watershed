@@ -18,6 +18,7 @@ import Pebbles from './Environment/Pebbles';
 import Mist from './Environment/Mist';
 import WaterLilies from './Environment/WaterLilies';
 import SunShafts from './Environment/SunShafts';
+import Ferns from './Environment/Ferns';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -64,7 +65,7 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [], ferns: [] };
         }
 
         const rocks = [];
@@ -82,6 +83,7 @@ export default function TrackSegment({
         const mist = [];
         const waterLilies = [];
         const sunShafts = [];
+        const ferns = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -219,6 +221,46 @@ export default function TrackSegment({
                         rotation: new THREE.Euler(0, Math.random() * Math.PI, 0),
                         scale: new THREE.Vector3(scale, scale, scale)
                     });
+                }
+
+                // 4.6 FERNS (New: Undergrowth clusters)
+                // Ferns like the "floor" of the forest, often near trees or walls
+                const fernChance = biome === 'autumn' ? 0.4 : 0.3; // More common in autumn (brown ferns) or summer (green)
+                if (seededRandom(seed++) > (1.0 - fernChance)) {
+                    // Spawn a cluster
+                    const clusterSize = 3 + Math.floor(seededRandom(seed++) * 3);
+
+                    // Placement: Between water edge and wall, leaning towards wall
+                    const baseDist = bankStart + 3 + seededRandom(seed++) * 5;
+
+                    for(let f=0; f<clusterSize; f++) {
+                        const spreadX = (seededRandom(seed++) - 0.5) * 3.0;
+                        const spreadZ = (seededRandom(seed++) - 0.5) * 3.0;
+
+                        const dist = baseDist + spreadX;
+                        const offset = binormal.clone().multiplyScalar(side * dist);
+                        // Add Z spread via tangent
+                        const zOffsetVec = tangent.clone().multiplyScalar(spreadZ);
+
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+
+                        // Height Calc
+                        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                        let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                        if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                        // Noise variation for ground
+                        groundY += Math.sin(zLocal * 0.8 + (side*dist) * 0.5) * 0.3;
+
+                        position.y += groundY + 0.1;
+
+                        const scale = 0.8 + seededRandom(seed++) * 0.6;
+                        ferns.push({
+                            position,
+                            rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                            scale: new THREE.Vector3(scale, scale, scale)
+                        });
+                    }
                 }
 
                 // 5. REEDS
@@ -430,7 +472,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
 
     // Canyon Geometry
@@ -567,6 +609,7 @@ export default function TrackSegment({
             <Vegetation transforms={placementData.trees} biome={biome} />
             <Grass transforms={placementData.grass} />
             <Wildflowers transforms={placementData.wildflowers} biome={biome} />
+            <Ferns transforms={placementData.ferns} biome={biome} />
             <Reeds transforms={placementData.reeds} />
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
