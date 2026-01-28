@@ -19,6 +19,7 @@ import Mist from './Environment/Mist';
 import WaterLilies from './Environment/WaterLilies';
 import SunShafts from './Environment/SunShafts';
 import Ferns from './Environment/Ferns';
+import Rapids from './Environment/Rapids';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -84,6 +85,7 @@ export default function TrackSegment({
         const waterLilies = [];
         const sunShafts = [];
         const ferns = [];
+        const rapids = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -469,11 +471,47 @@ export default function TrackSegment({
                         });
                     }
                 }
+
+                // 14. RAPIDS (Whitewater)
+                // Turbulent foam piles in fast water
+                if (flowSpeed > 0.8 && type !== 'pond') {
+                    // Density based on flow speed and rock density
+                    const rapidChance = rockDensity === 'high' ? 0.6 : 0.3;
+
+                    if (seededRandom(seed++) > (1.0 - rapidChance)) {
+                        const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
+                        // Place in center channel (avoid banks)
+                        const centerSpread = waterWidth * 0.4; // 40% of width
+
+                        for(let r=0; r<clusterSize; r++) {
+                            const dist = (seededRandom(seed++) - 0.5) * centerSpread;
+                            const offset = binormal.clone().multiplyScalar(dist);
+
+                            // Spread Z slightly
+                            const zOffsetVec = tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 2.0);
+
+                            const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+                            position.y = waterLevel - 0.1; // Sits in water
+
+                            const scale = 0.8 + seededRandom(seed++) * 0.8;
+
+                            rapids.push({
+                                position,
+                                rotation: new THREE.Euler(
+                                    seededRandom(seed++) * Math.PI,
+                                    seededRandom(seed++) * Math.PI,
+                                    seededRandom(seed++) * Math.PI
+                                ),
+                                scale: new THREE.Vector3(scale, scale, scale)
+                            });
+                        }
+                    }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns };
-    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active]);
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids };
+    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
@@ -623,6 +661,7 @@ export default function TrackSegment({
             <Mist transforms={placementData.mist} />
             <WaterLilies transforms={placementData.waterLilies} />
             <SunShafts transforms={placementData.sunShafts} />
+            <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
 
             <FlowingWater 
                 geometry={waterGeometry}
