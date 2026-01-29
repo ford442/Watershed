@@ -20,6 +20,7 @@ import WaterLilies from './Environment/WaterLilies';
 import SunShafts from './Environment/SunShafts';
 import Ferns from './Environment/Ferns';
 import Rapids from './Environment/Rapids';
+import Dragonflies from './Environment/Dragonflies';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -86,6 +87,7 @@ export default function TrackSegment({
         const sunShafts = [];
         const ferns = [];
         const rapids = [];
+        const dragonflies = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -507,10 +509,39 @@ export default function TrackSegment({
                         }
                     }
                 }
+
+                // 15. DRAGONFLIES (Daytime activity near water)
+                if (biome !== 'autumn' && type !== 'waterfall') {
+                     if (seededRandom(seed++) > 0.7) { // 30% chance per step
+                         const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
+
+                         // Place near banks
+                         const dist = bankStart + (seededRandom(seed++) - 0.5) * 4.0;
+                         const offset = binormal.clone().multiplyScalar(side * dist);
+                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                         // Height: Hovering 1-3m above
+                         position.y = waterLevel + 1.0 + seededRandom(seed++) * 2.0;
+
+                         for(let d=0; d<clusterSize; d++) {
+                             // Slight spread
+                             const dPos = position.clone();
+                             dPos.x += (seededRandom(seed++) - 0.5) * 1.0;
+                             dPos.z += (seededRandom(seed++) - 0.5) * 1.0;
+                             dPos.y += (seededRandom(seed++) - 0.5) * 0.5;
+
+                             dragonflies.push({
+                                 position: dPos,
+                                 rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                                 scale: new THREE.Vector3(1,1,1)
+                             });
+                         }
+                     }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
 
     // Canyon Geometry
@@ -662,6 +693,7 @@ export default function TrackSegment({
             <WaterLilies transforms={placementData.waterLilies} />
             <SunShafts transforms={placementData.sunShafts} />
             <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
+            <Dragonflies transforms={placementData.dragonflies} />
 
             <FlowingWater 
                 geometry={waterGeometry}
