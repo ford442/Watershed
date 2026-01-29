@@ -154,6 +154,8 @@ export default function TrackManager({ onBiomeChange }) {
         });
 
         mat.onBeforeCompile = (shader) => {
+            shader.uniforms.time = { value: 0 };
+
             // Vertex Shader Modifications
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <common>',
@@ -177,6 +179,7 @@ export default function TrackManager({ onBiomeChange }) {
                 '#include <common>',
                 `
                 #include <common>
+                uniform float time;
                 varying vec3 vWorldNormalPalette;
                 varying vec3 vWorldPositionPalette;
 
@@ -188,6 +191,21 @@ export default function TrackManager({ onBiomeChange }) {
                     f = f*f*(3.0-2.0*f);
                     return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
                                mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+                }
+
+                // Stylized Caustics
+                float caustic(vec2 uv, float time) {
+                    // Distort UVs
+                    vec2 p = uv * 3.0; // Scale
+                    float t = time * 0.8;
+
+                    float val = 0.0;
+                    val += sin(p.x + t + p.y * 0.5);
+                    val += sin(p.y - t * 0.5 + p.x * 0.5);
+                    val += sin(p.x + p.y + t * 0.2);
+
+                    // Sharpen peaks to create light bands
+                    return pow(0.5 + 0.5 * val / 1.5, 4.0);
                 }
                 `
             );
@@ -223,6 +241,27 @@ export default function TrackManager({ onBiomeChange }) {
 
                 // Mix existing diffuseColor with mossColor
                 diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, finalMoss * 0.9);
+
+                // --- CAUSTICS LOGIC ---
+                // Only on the riverbed (y < 0.6)
+                // waterDist is (y - 0.5). So waterDist < 0.1
+
+                if (waterDist < 0.1) {
+                    // Fade out as we approach the surface/bank
+                    // 1.0 deep (waterDist = -0.5), 0.0 at surface (waterDist = 0.0)
+                    float causticMask = 1.0 - smoothstep(-0.5, 0.0, waterDist);
+
+                    // Calculate caustics
+                    float cPattern = caustic(vWorldPositionPalette.xz, time);
+
+                    // Add light (additive blending simulation)
+                    vec3 causticColor = vec3(1.0, 1.0, 0.9); // Slight warm/sun tint
+
+                    // Intensity falloff with depth? Maybe slight.
+                    // But caustics are usually bright in shallow water.
+
+                    diffuseColor.rgb += causticColor * cPattern * causticMask * 0.4; // 0.4 Intensity
+                }
                 `
             );
 
@@ -301,7 +340,12 @@ export default function TrackManager({ onBiomeChange }) {
         };
     }, []);
 
-    useFrame(() => {
+    useFrame((state) => {
+        // Update Rock Material Time
+        if (rockMaterial.userData.shader) {
+            rockMaterial.userData.shader.uniforms.time.value = state.clock.elapsedTime;
+        }
+
         const currentSegments = segmentsRef.current;
         if (currentSegments.length === 0) return;
 
