@@ -648,14 +648,6 @@ export default function TrackSegment({
         return geo;
     }, [segmentPath, pathLength, waterWidth, active]);
 
-    // Stream Data
-    const streamData = useMemo(() => {
-        if (!active || !segmentPath) return null;
-        const startPoint = segmentPath.getPoint(0);
-        const tangent = segmentPath.getTangent(0).normalize();
-        return { start: startPoint, direction: tangent, length: pathLength };
-    }, [segmentPath, pathLength, active]);
-
     // Waterfall position
     const waterfallPos = useMemo(() => {
         if (!active || type !== 'waterfall' || !segmentPath) return null;
@@ -707,13 +699,11 @@ export default function TrackSegment({
                     <WaterfallParticles count={particleCount} width={15} height={30} />
                 </group>
             ) : (
-                streamData && (
+                segmentPath && (
                     <FloatingDebris
-                        streamStart={streamData.start}
-                        streamDirection={streamData.direction}
-                        streamLength={streamData.length}
+                        path={segmentPath}
                         waterLevel={waterLevel}
-                        count={type === 'pond' ? 12 : 6}
+                        count={type === 'pond' ? 15 : 8}
                         seed={segmentId * 1000}
                     />
                 )
