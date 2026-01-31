@@ -21,6 +21,7 @@ import SunShafts from './Environment/SunShafts';
 import Ferns from './Environment/Ferns';
 import Rapids from './Environment/Rapids';
 import Dragonflies from './Environment/Dragonflies';
+import Pinecone from './Environment/Pinecone';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -67,7 +68,7 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [], ferns: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [] };
         }
 
         const rocks = [];
@@ -88,6 +89,7 @@ export default function TrackSegment({
         const ferns = [];
         const rapids = [];
         const dragonflies = [];
+        const pinecones = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -159,6 +161,47 @@ export default function TrackSegment({
                     const scale = 1.5 + seededRandom(seed++) * 1.0;
                     const rotation = new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0);
                     trees.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+
+                    // 2.1 PINECONES (Under trees)
+                    // Scatter 2-5 pinecones around the tree base
+                    const numPinecones = 2 + Math.floor(seededRandom(seed++) * 4);
+                    for(let pc=0; pc<numPinecones; pc++) {
+                        const pcDist = 0.5 + seededRandom(seed++) * 1.5; // 0.5m to 2m radius
+                        const pcAngle = seededRandom(seed++) * Math.PI * 2;
+
+                        const pcPos = position.clone();
+                        pcPos.x += Math.cos(pcAngle) * pcDist;
+                        pcPos.z += Math.sin(pcAngle) * pcDist;
+
+                        // Re-calculate Height for this specific spot to adhere to terrain
+                        // Convert world pos back to local relative to path?
+                        // Simplified: Assume close enough to tree that height delta is minimal,
+                        // OR re-run height logic. Let's re-run a simplified height logic or just use tree height - offset?
+                        // Better: Use the same logic as debris/pebbles.
+                        // We need 'normalizedDist' for this new point.
+
+                        // Approximating X distance from center for height:
+                        // This is tricky because we are working in world space now.
+                        // However, we can just use the tree's Y as a base and add noise.
+                        // But if the slope is steep, they might float or clip.
+
+                        // Safe approach: Use tree position Y + small random noise + raycast simulation?
+                        // Since we don't have raycasting here, let's just use tree Y + 0.1
+                        // and assume flat-ish ground around the tree.
+                        pcPos.y = position.y + 0.1; // Slightly above tree pivot
+
+                        const pcScale = 0.15 + seededRandom(seed++) * 0.1; // Small!
+
+                        pinecones.push({
+                            position: pcPos,
+                            rotation: new THREE.Euler(
+                                seededRandom(seed++) * Math.PI, // Random tumble
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI
+                            ),
+                            scale: new THREE.Vector3(pcScale, pcScale, pcScale)
+                        });
+                    }
                 }
 
                 // 3. DEBRIS
@@ -541,7 +584,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
 
     // Canyon Geometry
@@ -684,6 +727,8 @@ export default function TrackSegment({
             <Rock transforms={placementData.debris} />
             {/* New Shoreline Pebbles */}
             <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
+
+            <Pinecone transforms={placementData.pinecones} />
 
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
             <Fireflies transforms={placementData.fireflies} />
