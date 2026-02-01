@@ -9,7 +9,7 @@ const LEAF_PALETTES = {
 
 const DUMMY_OBJ = new THREE.Object3D();
 
-export default function FallingLeaves({ transforms, biome = 'summer' }) {
+export default function FallingLeaves({ transforms, biome = 'summer', floating = false }) {
   const meshRef = useRef();
 
   // Create a simple leaf geometry (low poly diamond shape)
@@ -27,22 +27,26 @@ export default function FallingLeaves({ transforms, biome = 'summer' }) {
       color: '#ffffff',
       roughness: 0.8,
       side: THREE.DoubleSide,
-      transparent: true, // Need transparency if we wanted alpha, but here mostly for softness?
-      // Actually standard opaque is better for performance, but leaves might need alpha test
-      // Let's stick to opaque for performance unless needed
+      transparent: false,
     });
 
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.time = { value: 0 };
+      shader.uniforms.uFloating = { value: floating ? 1.0 : 0.0 };
 
-      // Inject uniforms
-      shader.vertexShader = `
+      // Inject uniforms and helpers safely
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        `
+        #include <common>
         uniform float time;
+        uniform float uFloating;
 
         // Hash for randomness
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
         float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-      ` + shader.vertexShader;
+        `
+      );
 
       // Inject position logic
       shader.vertexShader = shader.vertexShader.replace(
@@ -51,75 +55,80 @@ export default function FallingLeaves({ transforms, biome = 'summer' }) {
         #include <begin_vertex>
 
         // Get instance randomness based on initial position (instanceMatrix)
-        // We use the instance's translation from the matrix
         vec3 instancePos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
 
         float rand = hash(instancePos.xz);
         float rand2 = hash(instancePos.zx);
 
-        // Falling Animation
-        float fallSpeed = 1.5 + rand * 2.0;
-        float fallHeight = 25.0; // Total vertical loop distance
+        vec3 worldOffset = vec3(0.0);
 
-        // Calculate vertical offset
-        // We subtract time to fall down
-        float yOffset = -mod(time * fallSpeed + rand * 10.0, fallHeight);
+        if (uFloating > 0.5) {
+             // --- FLOATING MODE ---
+             // Bobbing up and down
+             float bobSpeed = 2.0 + rand;
+             float bobAmp = 0.05;
+             float bob = sin(time * bobSpeed + rand * 10.0) * bobAmp;
 
-        // Add tumble and sway
-        float swayFreq = 1.0 + rand;
-        float swayAmp = 1.0 + rand2 * 1.5;
+             // Slight drift (Eddy motion)
+             float driftSpeed = 0.5;
+             float driftX = sin(time * driftSpeed + rand * 10.0) * 0.3;
+             float driftZ = cos(time * driftSpeed * 0.8 + rand2 * 10.0) * 0.3;
 
-        float swayX = sin(time * swayFreq + rand * 10.0) * swayAmp;
-        float swayZ = cos(time * swayFreq * 0.8 + rand2 * 10.0) * swayAmp;
+             // Rotation (Slow spin)
+             float spinSpeed = 0.5 + rand;
+             float angle = time * spinSpeed;
+             float c = cos(angle);
+             float s = sin(angle);
 
-        // Tumble rotation (modifying local position)
-        float tumbleSpeed = 2.0 + rand * 3.0;
-        float tumbleAngle = time * tumbleSpeed;
+             // Rotate around Y (Flat spin)
+             vec3 p = transformed;
+             vec3 pRot = p;
+             pRot.x = p.x * c - p.z * s;
+             pRot.z = p.x * s + p.z * c;
+             transformed = pRot;
 
-        float c = cos(tumbleAngle);
-        float s = sin(tumbleAngle);
+             worldOffset = vec3(driftX, bob, driftZ);
 
-        // Rotate around X and Z for chaotic tumble
-        // Simple 2D rotation matrix application on local coords
-        // Rotate X
-        vec3 p = transformed;
-        vec3 pRot = p;
-        pRot.y = p.y * c - p.z * s;
-        pRot.z = p.y * s + p.z * c;
-        p = pRot;
+        } else {
+             // --- FALLING MODE ---
+             // Falling Animation
+             float fallSpeed = 1.5 + rand * 2.0;
+             float fallHeight = 25.0; // Total vertical loop distance
 
-        // Rotate Z
-        pRot.x = p.x * c - p.y * s;
-        pRot.y = p.x * s + p.y * c;
-        p = pRot;
+             // Calculate vertical offset
+             float yOffset = -mod(time * fallSpeed + rand * 10.0, fallHeight);
 
-        transformed = p;
+             // Add tumble and sway
+             float swayFreq = 1.0 + rand;
+             float swayAmp = 1.0 + rand2 * 1.5;
 
-        // Apply Global Offset
-        // We apply this to the transformed vertex, effectively moving the instance
-        // Note: This moves the mesh RELATIVE to the instance matrix position.
-        // Since we want the leaves to fall FROM the sky, the 'transforms' passed in
-        // should be the "center" or "spawn" point.
+             float swayX = sin(time * swayFreq + rand * 10.0) * swayAmp;
+             float swayZ = cos(time * swayFreq * 0.8 + rand2 * 10.0) * swayAmp;
 
-        // Start high up (relative to placement)
-        // If placement is at Y=15, we want to fall from say +5 to -20 relative to that
-        float startBias = 5.0;
+             // Tumble rotation
+             float tumbleSpeed = 2.0 + rand * 3.0;
+             float tumbleAngle = time * tumbleSpeed;
 
-        vec3 worldOffset = vec3(swayX, yOffset + startBias, swayZ);
+             float c = cos(tumbleAngle);
+             float s = sin(tumbleAngle);
 
-        // Transform is applied in local space of instance, but before View Matrix
-        // Ideally we want to offset in World Space.
-        // Standard material: transformed -> instanceMatrix -> modelViewMatrix
-        // So if we add to transformed, it gets rotated by instanceMatrix.
-        // Since we pass identity rotation mostly (or simple Y rot), this is fine.
-        // If instances have random rotation, the 'down' direction would change!
-        // We must correct for this if inputs have rotation.
+             // Rotate around X and Z for chaotic tumble
+             vec3 p = transformed;
+             vec3 pRot = p;
+             pRot.y = p.y * c - p.z * s;
+             pRot.z = p.y * s + p.z * c;
+             p = pRot;
 
-        // Assuming inputs have random Y rotation only:
-        // Then local Y is world Y.
-        // Local X/Z are rotated.
-        // If we want absolute world Sway, we need to inverse rotate or just accept local sway.
-        // Local sway is fine, it just means they sway in different directions.
+             pRot.x = p.x * c - p.y * s;
+             pRot.y = p.x * s + p.y * c;
+             p = pRot;
+
+             transformed = p;
+
+             // Start high up
+             float startBias = 5.0;
+             worldOffset = vec3(swayX, yOffset + startBias, swayZ);
+        }
 
         transformed += worldOffset;
         `
@@ -129,7 +138,7 @@ export default function FallingLeaves({ transforms, biome = 'summer' }) {
     };
 
     return mat;
-  }, []);
+  }, [floating]);
 
   useFrame((state) => {
     if (material.userData.shader) {
@@ -147,11 +156,8 @@ export default function FallingLeaves({ transforms, biome = 'summer' }) {
 
     transforms.forEach((t, i) => {
       DUMMY_OBJ.position.copy(t.position);
-      // We force rotation to be identity or just Y rotation to ensure 'down' is down
-      // But TrackSegment passes full Euler.
-      // If TrackSegment passes random rotations, our "Y down" logic in shader will be wrong
-      // if the instance is rotated 90deg or 180deg on X/Z.
-      // So we should OVERRIDE rotation here to be simple Y axis rotation.
+      // For floating leaves, we might want flat rotation, but FallingLeaves shader handles rotation.
+      // We pass the base transform.
       DUMMY_OBJ.rotation.set(0, t.rotation.y, 0);
       DUMMY_OBJ.scale.copy(t.scale || new THREE.Vector3(1,1,1));
       DUMMY_OBJ.updateMatrix();
@@ -178,7 +184,8 @@ export default function FallingLeaves({ transforms, biome = 'summer' }) {
     <instancedMesh
       ref={meshRef}
       args={[geometry, material, transforms.length]}
-      castShadow // Leaves cast shadows!
+      castShadow
+      receiveShadow
     />
   );
 }
