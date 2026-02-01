@@ -722,6 +722,18 @@ export default function TrackSegment({
 
             <Pinecone transforms={placementData.pinecones} />
 
+            {/* Falling Leaves Particle System */}
+            {centerPos && (
+                <group position={centerPos}>
+                    <FallingLeaves
+                        count={50}
+                        width={canyonWidth}
+                        length={pathLength}
+                        height={25}
+                        biome={biome}
+                    />
+                </group>
+            )}
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
             <Fireflies transforms={placementData.fireflies} />
             <Birds transforms={placementData.birds} biome={biome} />
