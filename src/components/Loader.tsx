@@ -6,20 +6,23 @@ export const Loader = () => {
   const [finished, setFinished] = useState(false);
 
   useEffect(() => {
-    // If progress is 100% OR active is false (finished loading or nothing to load), hide loader
-    if (!active && (progress === 100 || total === 0)) {
+    // FIX: Relaxed condition. If !active, we are done, regardless of math rounding.
+    // If not active, we are effectively done.
+    if (!active) {
       const timer = setTimeout(() => setFinished(true), 500);
       return () => clearTimeout(timer);
     }
+
     if (active) {
       setFinished(false);
     }
-  }, [active, progress, total]);
+  }, [active]);
 
   if (finished) return null;
 
   // Fade out if finished loading
-  const isFading = !active && (progress === 100 || total === 0);
+  // Match the logic above: if !active, start fading
+  const isFading = !active;
 
   // Show 100% if total is 0 to avoid "0%" confusion
   const displayProgress = total === 0 ? 100 : Math.round(progress);

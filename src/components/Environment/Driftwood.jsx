@@ -1,26 +1,9 @@
 import React, { useMemo } from 'react';
-import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
+import { useDriftwoodAssets } from './DebrisAssets';
 
 export default function Driftwood({ transforms }) {
-  // Geometry: Low poly log (Cylinder with low radial segments)
-  const geometry = useMemo(() => {
-    // Top radius 0.15, bottom 0.25, length 4, 5 segments
-    const geo = new THREE.CylinderGeometry(0.15, 0.25, 4, 5);
-    geo.rotateZ(Math.PI / 2); // Lay flat (along X axis initially)
-    // Add some random noise to vertices? Can't do easily in useMemo without a seeded random or complexity.
-    // Keeping it simple low-poly.
-
-    geo.computeVertexNormals();
-    return geo;
-  }, []);
-
-  // Material: Bleached wood
-  const material = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#8c8c7a', // Greyish brown (bleached wood)
-    roughness: 0.9,
-    flatShading: true,
-  }), []);
+  const { geometry, material } = useDriftwoodAssets();
 
   const instances = useMemo(() => {
     if (!transforms) return [];

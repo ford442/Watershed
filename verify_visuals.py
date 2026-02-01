@@ -4,56 +4,54 @@ import time
 
 def verify_visuals():
     with sync_playwright() as p:
-        # Launch Chromium with SwiftShader enabled for software WebGL rendering
+        # Launch Chromium with WebGL support (software rendering via SwiftShader)
         browser = p.chromium.launch(
             headless=True,
-            args=['--use-gl=swiftshader', '--ignore-gpu-blocklist']
+            args=[
+                "--use-gl=swiftshader",
+                "--ignore-gpu-blocklist",
+                "--allow-file-access-from-files",
+                "--enable-webgl",
+                "--enable-features=WebGPU"
+            ]
         )
-        context = browser.new_context()
-        page = context.new_page()
+        page = browser.new_page()
 
-        print("Navigating to application...")
-        # Use http://localhost:3000 assuming the build is served there
+        # Navigate to the app
+        print("Navigating to app...")
         page.goto("http://localhost:3000")
 
-        # Wait for the canvas to load.
-        # The game usually has a "Click to Start" or loading screen.
+        # Wait for canvas to load
         print("Waiting for canvas...")
         try:
-            page.wait_for_selector('canvas', timeout=30000)
+            page.wait_for_selector("canvas", timeout=60000)
             print("Canvas found.")
         except Exception as e:
-            print("Canvas not found:", e)
-            page.screenshot(path="verification_error.png")
-            browser.close()
-            return
+            print(f"Error waiting for canvas: {e}")
 
-        # Wait a bit for the 3D scene to initialize/render
-        # Since we are checking visuals (water, reflections), we need the scene to be active.
-        # Often there is a "Click to Engage" overlay.
+        # Wait for "CLICK TO ENGAGE" or similar start screen text
+        print("Waiting for start screen...")
+        time.sleep(10) # Give it time to load assets (shaders compilation etc)
 
-        # Check for start button/overlay
-        try:
-            # Look for common start indicators based on memory/context
-            start_overlay = page.locator('text=CLICK TO ENGAGE')
-            if start_overlay.is_visible():
-                print("Clicking start overlay...")
-                start_overlay.click()
-                # Wait for transition
-                time.sleep(2)
-        except:
-            print("No start overlay found, assuming auto-start or different flow.")
+        # Take screenshot of the start screen (should show river background)
+        print("Taking screenshot...")
+        page.screenshot(path="verification/verification_visuals.png")
 
-        # Allow time for shaders and environment to compile/render
-        print("Waiting for scene to render...")
-        time.sleep(10)
+        # Try to start the game to see the river more clearly
+        # Simulate click on center of screen
+        print("Clicking to start...")
+        page.mouse.click(400, 300)
 
-        # Take a screenshot
-        screenshot_path = "verification_visuals.png"
-        page.screenshot(path=screenshot_path)
-        print(f"Screenshot saved to {screenshot_path}")
+        time.sleep(2)
+        page.keyboard.press("Enter") # Try enter key if click doesn't work
+
+        time.sleep(5) # Wait for transition
+
+        print("Taking in-game screenshot...")
+        page.screenshot(path="verification/verification_visuals_ingame.png")
 
         browser.close()
+        print("Done.")
 
 if __name__ == "__main__":
     verify_visuals()

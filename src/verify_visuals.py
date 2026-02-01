@@ -26,7 +26,7 @@ def verify_visuals():
             time.sleep(5)
 
             # Take screenshot of the "Summer" state (start of game)
-            page.screenshot(path="/home/jules/verification/summer_start.png")
+            page.screenshot(path="./verification/summer_start.png")
             print("Captured summer_start.png")
 
         except Exception as e:

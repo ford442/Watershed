@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProgress } from '@react-three/drei';
 
 export const UI = () => {
-  const { active, progress } = useProgress();
-  const isLoading = active || progress < 100;
+  const { active } = useProgress();
+  const isLoading = active;
   const [locked, setLocked] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);

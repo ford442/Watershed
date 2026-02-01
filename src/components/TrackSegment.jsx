@@ -1,26 +1,33 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
-import { useTexture } from '@react-three/drei';
 import FlowingWater from './FlowingWater';
 import Rock from './Obstacles/Rock';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
+import Reeds from './Environment/Reeds';
 import FloatingDebris from './Environment/FloatingDebris';
 import Driftwood from './Environment/Driftwood';
+import Wildflowers from './Environment/Wildflowers';
 import WaterfallParticles from './Environment/WaterfallParticles';
 import FallingLeaves from './Environment/FallingLeaves';
 import Fireflies from './Environment/Fireflies';
 import Birds from './Environment/Birds';
+import Fish from './Environment/Fish';
+import Pebbles from './Environment/Pebbles';
+import Mist from './Environment/Mist';
+import WaterLilies from './Environment/WaterLilies';
+import SunShafts from './Environment/SunShafts';
+import Ferns from './Environment/Ferns';
+import Rapids from './Environment/Rapids';
+import Dragonflies from './Environment/Dragonflies';
+import Pinecone from './Environment/Pinecone';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
     const x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
 };
-
-// Default points to keep hooks happy when inactive
-const DEFAULT_POINTS = [new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,1)];
 
 export default function TrackSegment({
     active = false,
@@ -32,133 +39,23 @@ export default function TrackSegment({
     particleCount = 0,
     flowSpeed = 1.0,
     treeDensity = 1.0,
-    rockDensity = 'low'
+    rockDensity = 'low',
+    rockMaterial,
+    rockNormalMap
 }) {
-    // --- Hooks (must be called unconditionally) ---
+    // --- Hooks ---
 
-    // Load Textures from public folder
-    const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
-        '/Rock031_1K-JPG_Color.jpg',
-        '/Rock031_1K-JPG_NormalGL.jpg',
-        '/Rock031_1K-JPG_Roughness.jpg',
-        '/Rock031_1K-JPG_AmbientOcclusion.jpg',
-    ]);
-
-    useEffect(() => {
-        [colorMap, normalMap, roughnessMap, aoMap].forEach(t => {
-            t.wrapS = t.wrapT = THREE.RepeatWrapping;
-            t.repeat.set(4, 8);
-        });
-    }, [colorMap, normalMap, roughnessMap, aoMap]);
-
-    // Create the custom Wet Rock Material
-    const rockMaterial = useMemo(() => {
-        const mat = new THREE.MeshStandardMaterial({
-            map: colorMap,
-            normalMap: normalMap,
-            roughnessMap: roughnessMap,
-            aoMap: aoMap,
-            side: THREE.DoubleSide,
-            vertexColors: true,
-        });
-
-        mat.onBeforeCompile = (shader) => {
-            // Vertex Shader Modifications
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <common>',
-                `
-                #include <common>
-                varying vec3 vWorldNormalPalette;
-                varying vec3 vWorldPositionPalette;
-                `
-            );
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <worldpos_vertex>',
-                `
-                #include <worldpos_vertex>
-                vWorldNormalPalette = normalize(mat3(modelMatrix) * objectNormal);
-                vWorldPositionPalette = (modelMatrix * vec4(transformed, 1.0)).xyz;
-                `
-            );
-
-            // Fragment Shader Modifications
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <common>',
-                `
-                #include <common>
-                varying vec3 vWorldNormalPalette;
-                varying vec3 vWorldPositionPalette;
-
-                // Simple noise function
-                float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-                float noise(vec2 p) {
-                    vec2 i = floor(p);
-                    vec2 f = fract(p);
-                    f = f*f*(3.0-2.0*f);
-                    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
-                               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
-                }
-                `
-            );
-
-            // Inject moss color mixing before lighting
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <map_fragment>',
-                `
-                #include <map_fragment>
-                // Moss Logic
-                vec3 mossColor = vec3(0.18, 0.35, 0.12); // "National Park" Moss Green
-
-                // World space noise for moss pattern
-                float mossNoise = noise(vWorldPositionPalette.xz * 0.5) * 0.2;
-
-                // Moss grows on upward facing slopes (y > threshold)
-                float mossSlope = smoothstep(0.5, 0.8, vWorldNormalPalette.y + mossNoise);
-
-                // Moss grows near water line (Y ~= 0.5) up to Y=2.0
-                float waterDist = vWorldPositionPalette.y - 0.5;
-                float mossWater = smoothstep(2.5, 0.0, waterDist) * 0.6; // Fade out as we go up
-
-                // Combine slope and water proximity
-                float finalMoss = clamp(mossSlope + mossWater, 0.0, 1.0);
-
-                // Mix existing diffuseColor with mossColor
-                // vColor.r is dryness (0.4 to 1.0). Less dry areas could have more moss too?
-                // Let's stick to the geometric moss for now.
-
-                diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, finalMoss * 0.9);
-                `
-            );
-
-            // Existing Dryness/Roughness Logic
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <roughnessmap_fragment>',
-                `
-                #include <roughnessmap_fragment>
-                float dryness = smoothstep(0.4, 0.8, vColor.r);
-                roughnessFactor = mix(0.15, roughnessFactor, dryness);
-
-                // Make moss less shiny
-                if (finalMoss > 0.5) {
-                    roughnessFactor = mix(roughnessFactor, 1.0, (finalMoss - 0.5) * 2.0);
-                }
-                `
-            );
-        };
-
-        return mat;
-    }, [colorMap, normalMap, roughnessMap, aoMap]);
-
-    const safePoints = (pathPoints && pathPoints.length > 0) ? pathPoints : DEFAULT_POINTS;
-
-    // Create the spline path
+    // Create the spline path (Only if active)
     const segmentPath = useMemo(() => {
+        if (!active || !pathPoints || pathPoints.length === 0) return null;
+
         // Ponds use lower tension for smoother, wider curves. Waterfalls use standard.
         const tension = type === 'pond' ? 0.1 : 0.5;
-        return new THREE.CatmullRomCurve3(safePoints, false, 'catmullrom', tension);
-    }, [safePoints, type]);
+        return new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', tension);
+    }, [active, pathPoints, type]);
 
     const pathLength = useMemo(() => {
+        if (!segmentPath) return 0;
         return segmentPath.getLength();
     }, [segmentPath]);
 
@@ -169,14 +66,30 @@ export default function TrackSegment({
 
     // Derived Placement Data (Rocks, Trees, etc.)
     const placementData = useMemo(() => {
+        // Return empty data if inactive to save processing and avoid spawning assets
+        if (!active || !segmentPath) {
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [] };
+        }
+
         const rocks = [];
         const trees = [];
         const debris = [];
         const grass = [];
+        const wildflowers = [];
+        const reeds = [];
         const driftwood = [];
         const leaves = [];
         const fireflies = [];
         const birds = [];
+        const fish = [];
+        const pebbles = [];
+        const mist = [];
+        const waterLilies = [];
+        const sunShafts = [];
+        const ferns = [];
+        const rapids = [];
+        const dragonflies = [];
+        const pinecones = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -248,6 +161,47 @@ export default function TrackSegment({
                     const scale = 1.5 + seededRandom(seed++) * 1.0;
                     const rotation = new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0);
                     trees.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+
+                    // 2.1 PINECONES (Under trees)
+                    // Scatter 2-5 pinecones around the tree base
+                    const numPinecones = 2 + Math.floor(seededRandom(seed++) * 4);
+                    for(let pc=0; pc<numPinecones; pc++) {
+                        const pcDist = 0.5 + seededRandom(seed++) * 1.5; // 0.5m to 2m radius
+                        const pcAngle = seededRandom(seed++) * Math.PI * 2;
+
+                        const pcPos = position.clone();
+                        pcPos.x += Math.cos(pcAngle) * pcDist;
+                        pcPos.z += Math.sin(pcAngle) * pcDist;
+
+                        // Re-calculate Height for this specific spot to adhere to terrain
+                        // Convert world pos back to local relative to path?
+                        // Simplified: Assume close enough to tree that height delta is minimal,
+                        // OR re-run height logic. Let's re-run a simplified height logic or just use tree height - offset?
+                        // Better: Use the same logic as debris/pebbles.
+                        // We need 'normalizedDist' for this new point.
+
+                        // Approximating X distance from center for height:
+                        // This is tricky because we are working in world space now.
+                        // However, we can just use the tree's Y as a base and add noise.
+                        // But if the slope is steep, they might float or clip.
+
+                        // Safe approach: Use tree position Y + small random noise + raycast simulation?
+                        // Since we don't have raycasting here, let's just use tree Y + 0.1
+                        // and assume flat-ish ground around the tree.
+                        pcPos.y = position.y + 0.1; // Slightly above tree pivot
+
+                        const pcScale = 0.15 + seededRandom(seed++) * 0.1; // Small!
+
+                        pinecones.push({
+                            position: pcPos,
+                            rotation: new THREE.Euler(
+                                seededRandom(seed++) * Math.PI, // Random tumble
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI
+                            ),
+                            scale: new THREE.Vector3(pcScale, pcScale, pcScale)
+                        });
+                    }
                 }
 
                 // 3. DEBRIS
@@ -259,6 +213,37 @@ export default function TrackSegment({
                     debris.push({ position, rotation: new THREE.Euler(), scale: new THREE.Vector3(0.3,0.3,0.3) });
                 }
 
+                // 3.5 PEBBLES (New: Shoreline scatter)
+                // High density, small objects along the water line
+                if (seededRandom(seed++) > 0.3) { // 70% chance per step
+                    // Spawn a cluster of 1-3 pebbles
+                    const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
+                    for (let p = 0; p < clusterSize; p++) {
+                         const dist = bankStart + seededRandom(seed++) * 1.5; // Very close to water
+                         const offset = binormal.clone().multiplyScalar(side * dist);
+                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                         // Determine height (shoreline slope)
+                         const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                         let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                         if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                         position.y += groundY + 0.1; // Slightly embedded
+
+                         // Randomize scale
+                         const scale = 0.5 + seededRandom(seed++) * 0.6;
+                         pebbles.push({
+                            position,
+                            rotation: new THREE.Euler(
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI
+                            ),
+                            scale: new THREE.Vector3(scale, scale, scale)
+                         });
+                    }
+                }
+
                 // 4. GRASS
                 if (seededRandom(seed++) > 0.6) {
                     const dist = bankStart + seededRandom(seed++) * 4;
@@ -268,27 +253,134 @@ export default function TrackSegment({
                     grass.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(0.5,0.5,0.5) });
                 }
 
-                // 5. DRIFTWOOD
-                if (seededRandom(seed++) > 0.7) {
-                    const dist = bankStart + (Math.random()-0.5)*2;
+                // 4.5 WILDFLOWERS (New: Pops of Color)
+                const flowerChance = biome === 'summer' ? 0.85 : 0.98; // Rare in autumn
+                if (seededRandom(seed++) > flowerChance) {
+                    const dist = bankStart + seededRandom(seed++) * 5;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += 0.2;
-                    driftwood.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(1,0.5,0.5) });
+                    position.y += 1.0; // Same ground level as grass approx
+
+                    // Slightly smaller than grass bushes
+                    const scale = 0.6 + seededRandom(seed++) * 0.4;
+                    wildflowers.push({
+                        position,
+                        rotation: new THREE.Euler(0, Math.random() * Math.PI, 0),
+                        scale: new THREE.Vector3(scale, scale, scale)
+                    });
                 }
 
-                // 6. FALLING LEAVES (Atmosphere)
-                // More leaves in autumn, fewer in summer
+                // 4.6 FERNS (New: Undergrowth clusters)
+                // Ferns like the "floor" of the forest, often near trees or walls
+                const fernChance = biome === 'autumn' ? 0.4 : 0.3; // More common in autumn (brown ferns) or summer (green)
+                if (seededRandom(seed++) > (1.0 - fernChance)) {
+                    // Spawn a cluster
+                    const clusterSize = 3 + Math.floor(seededRandom(seed++) * 3);
+
+                    // Placement: Between water edge and wall, leaning towards wall
+                    const baseDist = bankStart + 3 + seededRandom(seed++) * 5;
+
+                    for(let f=0; f<clusterSize; f++) {
+                        const spreadX = (seededRandom(seed++) - 0.5) * 3.0;
+                        const spreadZ = (seededRandom(seed++) - 0.5) * 3.0;
+
+                        const dist = baseDist + spreadX;
+                        const offset = binormal.clone().multiplyScalar(side * dist);
+                        // Add Z spread via tangent
+                        const zOffsetVec = tangent.clone().multiplyScalar(spreadZ);
+
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+
+                        // Height Calc
+                        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                        let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                        if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                        // Noise variation for ground
+                        groundY += Math.sin(zLocal * 0.8 + (side*dist) * 0.5) * 0.3;
+
+                        position.y += groundY + 0.1;
+
+                        const scale = 0.8 + seededRandom(seed++) * 0.6;
+                        ferns.push({
+                            position,
+                            rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                            scale: new THREE.Vector3(scale, scale, scale)
+                        });
+                    }
+                }
+
+                // 5. REEDS
+                if (seededRandom(seed++) > 0.5) {
+                    const dist = bankStart + (seededRandom(seed++) - 0.2) * 1.5;
+                    const offset = binormal.clone().multiplyScalar(side * dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                    const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                    let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                    if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                    position.y += groundY - 0.2;
+
+                    const scale = 0.8 + seededRandom(seed++) * 0.4;
+                    reeds.push({
+                        position,
+                        rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                        scale: new THREE.Vector3(scale, scale, scale)
+                    });
+                }
+
+                // 6. DRIFTWOOD (Enhanced Density)
+                // Scatter new Driftwood instances along the river edge
+                if (seededRandom(seed++) > 0.25) { // 75% chance per step (Significantly increased from 0.4)
+                    // Chance for a larger pile (Log Jam)
+                    const isPile = seededRandom(seed++) > 0.7;
+                    const clusterSize = isPile ? 3 + Math.floor(seededRandom(seed++) * 4) : 1 + Math.floor(seededRandom(seed++) * 2);
+
+                    // Center of the cluster for this step
+                    const baseDist = bankStart + (seededRandom(seed++) - 0.1) * 3.0;
+
+                    for(let d=0; d < clusterSize; d++) {
+                        // Spread logic
+                        const offsetZ = (seededRandom(seed++) - 0.5) * (isPile ? 3.0 : 1.5);
+                        const offsetX = (seededRandom(seed++) - 0.5) * (isPile ? 2.5 : 1.0);
+
+                        const dist = baseDist + offsetX;
+
+                        // Calculate position: Start at path point, move along tangent (Z) and binormal (X)
+                        const position = new THREE.Vector3().copy(pathPoint);
+                        position.add(tangent.clone().multiplyScalar(offsetZ));
+                        position.add(binormal.clone().multiplyScalar(side * dist));
+
+                        // Height Calculation (Re-evaluate based on new dist)
+                        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                        let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                        if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+
+                        position.y += groundY + 0.3; // Slight float
+
+                        // Randomize scale for organic look
+                        const scaleMod = 0.7 + seededRandom(seed++) * 0.8;
+
+                        driftwood.push({
+                            position,
+                            rotation: new THREE.Euler(
+                                (seededRandom(seed++) - 0.5) * 0.5,
+                                seededRandom(seed++) * Math.PI * 2,
+                                (seededRandom(seed++) - 0.5) * 0.5
+                            ),
+                            scale: new THREE.Vector3(scaleMod, scaleMod, scaleMod)
+                        });
+                    }
+                }
+
+                // 7. LEAVES
                 const leafDensity = biome === 'autumn' ? 0.8 : 0.2;
                 if (seededRandom(seed++) > (1.0 - leafDensity)) {
-                    // Spread across the whole width
                     const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.8;
                     const offset = binormal.clone().multiplyScalar(dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-
-                    // Spawn high up
                     position.y += 15 + seededRandom(seed++) * 10;
-
                     leaves.push({
                         position,
                         rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
@@ -296,16 +388,12 @@ export default function TrackSegment({
                     });
                 }
 
-                // 7. FIREFLIES (Atmosphere)
-                // Small clusters of glowing bugs near water and banks
+                // 8. FIREFLIES
                 if (seededRandom(seed++) > 0.8) {
                     const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.9;
                     const offset = binormal.clone().multiplyScalar(dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
-
-                    // Hover 1 to 4 units above ground/water
                     position.y += 1.0 + seededRandom(seed++) * 3.0;
-
                     fireflies.push({
                         position,
                         rotation: new THREE.Euler(),
@@ -313,21 +401,18 @@ export default function TrackSegment({
                     });
                 }
 
-                // 8. BIRDS (Flocks)
-                // Occasional flocks in open areas (summer/pond)
+                // 9. BIRDS
                 if (biome !== 'autumn' || isPond) {
                     if (seededRandom(seed++) > 0.98) {
-                         const flockSize = 3 + Math.floor(seededRandom(seed++) * 5); // 3 to 7 birds
+                         const flockSize = 3 + Math.floor(seededRandom(seed++) * 5);
                          const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.5;
                          const offset = binormal.clone().multiplyScalar(dist);
                          const flockCenter = new THREE.Vector3().copy(pathPoint).add(offset);
 
                          for(let b=0; b<flockSize; b++) {
-                             // Scatter slightly so they have different random seeds in shader
                              const birdPos = flockCenter.clone();
                              birdPos.x += (seededRandom(seed++) - 0.5) * 5.0;
                              birdPos.z += (seededRandom(seed++) - 0.5) * 5.0;
-
                              birds.push({
                                  position: birdPos,
                                  rotation: new THREE.Euler(),
@@ -336,16 +421,178 @@ export default function TrackSegment({
                          }
                     }
                 }
+
+                // 10. FISH
+                if (type === 'pond') {
+                     if (seededRandom(seed++) > 0.6) {
+                         const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
+                         const offset = binormal.clone().multiplyScalar(dist);
+                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                         position.y += waterLevel - 0.5;
+                         fish.push({
+                             position,
+                             rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                             scale: new THREE.Vector3(1, 1, 1)
+                         });
+                     }
+                }
+
+                // 11. MIST
+                // Patches of mist floating above the water
+                if (type !== 'waterfall') { // Waterfalls have their own particles
+                    if (seededRandom(seed++) > 0.6) { // 40% chance per step to start a cluster
+                        const clusterSize = 1 + Math.floor(seededRandom(seed++) * 2);
+                        for(let m=0; m < clusterSize; m++) {
+                            const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
+                            const offset = binormal.clone().multiplyScalar(dist);
+                            const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                            // Height: Just above water (0.5) to 2.5
+                            position.y = waterLevel + 0.2 + seededRandom(seed++) * 2.0;
+
+                            mist.push({
+                                position,
+                                rotation: new THREE.Euler(),
+                                scale: new THREE.Vector3(1, 1, 1)
+                            });
+                        }
+                    }
+                }
+
+                // 12. WATER LILIES (Pond Only)
+                if (type === 'pond') {
+                    if (seededRandom(seed++) > 0.85) { // Occasional clusters
+                        const clusterSize = 3 + Math.floor(seededRandom(seed++) * 5);
+                        const baseDist = (seededRandom(seed++) - 0.5) * waterWidth * 0.7; // Random spot on water
+
+                        for(let l=0; l<clusterSize; l++) {
+                            const offsetSpread = 2.0;
+                            const lx = baseDist + (seededRandom(seed++) - 0.5) * offsetSpread;
+                            const lz = (seededRandom(seed++) - 0.5) * offsetSpread; // Local Z relative to cluster center
+
+                            // Check bounds (roughly)
+                            if (Math.abs(lx) > waterWidth/2 - 2) continue; // Avoid bank clipping
+
+                            const offset = binormal.clone().multiplyScalar(lx);
+                            const zOffsetVec = tangent.clone().multiplyScalar(lz);
+
+                            const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+                            position.y = waterLevel; // Sit on water
+
+                            const scale = 0.8 + seededRandom(seed++) * 0.4;
+                            waterLilies.push({
+                                position,
+                                rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                                scale: new THREE.Vector3(scale, scale, scale)
+                            });
+                        }
+                    }
+                }
+
+                // 13. SUN SHAFTS (Atmospheric)
+                // Rare rays of light piercing the canopy
+                if (biome !== 'autumn' || type === 'pond') { // More common in summer or open ponds
+                    if (seededRandom(seed++) > 0.92) { // Occasional
+                        const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.6;
+                        const offset = binormal.clone().multiplyScalar(dist);
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                        // Height: Start high up
+                        position.y = 12 + seededRandom(seed++) * 5;
+
+                        // Rotation: Align with generic light direction (10, 20, 5)
+                        const lightDir = new THREE.Vector3(10, 20, 5).normalize();
+                        const up = new THREE.Vector3(0, 1, 0);
+                        const q = new THREE.Quaternion().setFromUnitVectors(up, lightDir);
+                        const rotation = new THREE.Euler().setFromQuaternion(q);
+
+                        // Random scale for width/length variation
+                        const scaleMod = 0.8 + seededRandom(seed++) * 0.4;
+
+                        sunShafts.push({
+                            position,
+                            rotation,
+                            scale: new THREE.Vector3(scaleMod, scaleMod * 1.5, scaleMod) // Make them longer
+                        });
+                    }
+                }
+
+                // 14. RAPIDS (Whitewater)
+                // Turbulent foam piles in fast water
+                if (flowSpeed > 0.8 && type !== 'pond') {
+                    // Density based on flow speed and rock density
+                    const rapidChance = rockDensity === 'high' ? 0.6 : 0.3;
+
+                    if (seededRandom(seed++) > (1.0 - rapidChance)) {
+                        const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
+                        // Place in center channel (avoid banks)
+                        const centerSpread = waterWidth * 0.4; // 40% of width
+
+                        for(let r=0; r<clusterSize; r++) {
+                            const dist = (seededRandom(seed++) - 0.5) * centerSpread;
+                            const offset = binormal.clone().multiplyScalar(dist);
+
+                            // Spread Z slightly
+                            const zOffsetVec = tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 2.0);
+
+                            const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+                            position.y = waterLevel - 0.1; // Sits in water
+
+                            const scale = 0.8 + seededRandom(seed++) * 0.8;
+
+                            rapids.push({
+                                position,
+                                rotation: new THREE.Euler(
+                                    seededRandom(seed++) * Math.PI,
+                                    seededRandom(seed++) * Math.PI,
+                                    seededRandom(seed++) * Math.PI
+                                ),
+                                scale: new THREE.Vector3(scale, scale, scale)
+                            });
+                        }
+                    }
+                }
+
+                // 15. DRAGONFLIES (Daytime activity near water)
+                if (biome !== 'autumn' && type !== 'waterfall') {
+                     if (seededRandom(seed++) > 0.7) { // 30% chance per step
+                         const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
+
+                         // Place near banks
+                         const dist = bankStart + (seededRandom(seed++) - 0.5) * 4.0;
+                         const offset = binormal.clone().multiplyScalar(side * dist);
+                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                         // Height: Hovering 1-3m above
+                         position.y = waterLevel + 1.0 + seededRandom(seed++) * 2.0;
+
+                         for(let d=0; d<clusterSize; d++) {
+                             // Slight spread
+                             const dPos = position.clone();
+                             dPos.x += (seededRandom(seed++) - 0.5) * 1.0;
+                             dPos.z += (seededRandom(seed++) - 0.5) * 1.0;
+                             dPos.y += (seededRandom(seed++) - 0.5) * 0.5;
+
+                             dragonflies.push({
+                                 position: dPos,
+                                 rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                                 scale: new THREE.Vector3(1,1,1)
+                             });
+                         }
+                     }
+                }
             }
         }
         
-        return { rocks, trees, debris, grass, driftwood, leaves, fireflies, birds };
-    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity]);
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones };
+    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
+        if (!active || !segmentPath) return null;
+
         const segmentsX = 40;
-        const segmentsZ = Math.floor(pathLength);
+        const segmentsZ = Math.max(1, Math.floor(pathLength));
 
         const geo = new THREE.PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ);
         geo.rotateX(-Math.PI / 2);
@@ -386,13 +633,15 @@ export default function TrackSegment({
         geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geo.computeVertexNormals();
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, waterWidth]);
+    }, [segmentPath, pathLength, canyonWidth, waterWidth, active]);
 
-    // Wall Shell Geometry (Capped Height)
+    // Wall Shell Geometry
     const wallShellGeometry = useMemo(() => {
+        if (!active || !segmentPath) return null;
+
         const shellWidth = canyonWidth * 1.5;
         const segmentsX = 20;
-        const segmentsZ = Math.floor(pathLength / 2);
+        const segmentsZ = Math.max(1, Math.floor(pathLength / 2));
 
         const geo = new THREE.PlaneGeometry(shellWidth, pathLength, segmentsX, segmentsZ);
         geo.rotateX(-Math.PI / 2);
@@ -406,7 +655,6 @@ export default function TrackSegment({
             const zLocal = vertex.z;
             const distFromCenter = Math.abs(xLocal);
             
-            // Capped height scaling
             let yHeight = 15 + (distFromCenter * 0.5); 
             yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
 
@@ -419,11 +667,13 @@ export default function TrackSegment({
         }
         geo.computeVertexNormals();
         return geo;
-    }, [segmentPath, pathLength, canyonWidth]);
+    }, [segmentPath, pathLength, canyonWidth, active]);
 
     // Water Geometry
     const waterGeometry = useMemo(() => {
-        const segmentsZ = Math.floor(pathLength / 2);
+        if (!active || !segmentPath) return null;
+
+        const segmentsZ = Math.max(1, Math.floor(pathLength / 2));
         const geo = new THREE.PlaneGeometry(waterWidth, pathLength, 4, segmentsZ);
         geo.rotateX(-Math.PI / 2);
         
@@ -439,39 +689,21 @@ export default function TrackSegment({
         }
         geo.computeVertexNormals();
         return geo;
-    }, [segmentPath, pathLength, waterWidth]);
+    }, [segmentPath, pathLength, waterWidth, active]);
 
-    // Stream Data
-    const streamData = useMemo(() => {
-        const startPoint = segmentPath.getPoint(0);
-        const tangent = segmentPath.getTangent(0).normalize();
-        return { start: startPoint, direction: tangent, length: pathLength };
-    }, [segmentPath, pathLength]);
-
-    // Get position for particles (middle of segment)
-    const centerPos = useMemo(() => {
-        if (!segmentPath) return null;
-    // Get position for waterfall particles (middle of segment)
+    // Waterfall position
     const waterfallPos = useMemo(() => {
-        if (type !== 'waterfall') return null;
+        if (!active || type !== 'waterfall' || !segmentPath) return null;
         return segmentPath.getPoint(0.5);
-    }, [segmentPath]);
+    }, [type, segmentPath, active]);
 
-    // --- Early exit for inactive segments ---
-    // This must come AFTER all hooks have been called.
-    if (!active) {
-        return null;
-    }
-
-    // Final sanity check before rendering
-    if (!canyonGeometry || !waterGeometry) {
-        console.log(`TrackSegment ${segmentId}: missing geometry, returning null`);
+    if (!active || !canyonGeometry || !waterGeometry || !rockMaterial) {
         return null;
     }
 
     return (
-        <group name={`track-segment-${segmentId}`}>
-            <RigidBody type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
+        <group name={`track-segment-${segmentId}`} visible={true}>
+            <RigidBody key={`rb-${segmentId}`} type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
                 <mesh geometry={canyonGeometry} receiveShadow castShadow material={rockMaterial} />
             </RigidBody>
 
@@ -480,8 +712,15 @@ export default function TrackSegment({
             <Rock transforms={placementData.rocks} />
             <Vegetation transforms={placementData.trees} biome={biome} />
             <Grass transforms={placementData.grass} />
+            <Wildflowers transforms={placementData.wildflowers} biome={biome} />
+            <Ferns transforms={placementData.ferns} biome={biome} />
+            <Reeds transforms={placementData.reeds} />
             <Driftwood transforms={placementData.driftwood} />
             <Rock transforms={placementData.debris} />
+            {/* New Shoreline Pebbles */}
+            <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
+
+            <Pinecone transforms={placementData.pinecones} />
 
             {/* Falling Leaves Particle System */}
             {centerPos && (
@@ -498,27 +737,30 @@ export default function TrackSegment({
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
             <Fireflies transforms={placementData.fireflies} />
             <Birds transforms={placementData.birds} biome={biome} />
+            <Fish transforms={placementData.fish} />
+            <Mist transforms={placementData.mist} />
+            <WaterLilies transforms={placementData.waterLilies} />
+            <SunShafts transforms={placementData.sunShafts} />
+            <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
+            <Dragonflies transforms={placementData.dragonflies} />
 
             <FlowingWater 
                 geometry={waterGeometry}
                 flowSpeed={flowSpeed}
                 baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
-                normalMap={normalMap} // Reuse the rock normal map for ripples
+                normalMap={rockNormalMap}
             />
             
-            {/* Conditional Logic: Floating Debris vs Waterfall Particles */}
             {type === 'waterfall' && waterfallPos ? (
                 <group position={waterfallPos}>
                     <WaterfallParticles count={particleCount} width={15} height={30} />
                 </group>
             ) : (
-                streamData && (
+                segmentPath && (
                     <FloatingDebris
-                        streamStart={streamData.start}
-                        streamDirection={streamData.direction}
-                        streamLength={streamData.length}
+                        path={segmentPath}
                         waterLevel={waterLevel}
-                        count={type === 'pond' ? 12 : 6}
+                        count={type === 'pond' ? 15 : 8}
                         seed={segmentId * 1000}
                     />
                 )
