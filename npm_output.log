@@ -2,31 +2,23 @@
 > webgpu-react-app@0.1.0 start
 > react-scripts start
 
-(node:3659) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+(node:3349) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
 (Use `node --trace-deprecation ...` to show where the warning was created)
-(node:3659) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+(node:3349) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
 Starting the development server...
 
-Failed to compile.
+Compiled with warnings.
 
-[eslint]
-src/components/TrackSegment.jsx
-  Line 194:25:   'pinecones' is not defined  no-undef
-  Line 586:177:  'pinecones' is not defined  no-undef
+Failed to parse source map from '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
 
-Search for the keywords to learn more about each error.
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
 WARNING in ./node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
 Module Warning (from ./node_modules/source-map-loader/dist/cjs.js):
 Failed to parse source map from '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
 
-ERROR in [eslint]
-src/components/TrackSegment.jsx
-  Line 194:25:   'pinecones' is not defined  no-undef
-  Line 586:177:  'pinecones' is not defined  no-undef
-
-Search for the keywords to learn more about each error.
-
-webpack compiled with 1 error and 1 warning
+webpack compiled with 1 warning
 No issues found.
 Compiling...
 Compiled with warnings.
@@ -41,4 +33,6 @@ Module Warning (from ./node_modules/source-map-loader/dist/cjs.js):
 Failed to parse source map from '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
 
 webpack compiled with 1 warning
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
 No issues found.

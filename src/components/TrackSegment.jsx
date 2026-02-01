@@ -68,7 +68,7 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], fireflies: [], birds: [], fish: [], pebbles: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [] };
         }
 
         const rocks = [];
@@ -79,6 +79,7 @@ export default function TrackSegment({
         const reeds = [];
         const driftwood = [];
         const leaves = [];
+        const floatingLeaves = []; // New
         const fireflies = [];
         const birds = [];
         const fish = [];
@@ -173,21 +174,6 @@ export default function TrackSegment({
                         pcPos.x += Math.cos(pcAngle) * pcDist;
                         pcPos.z += Math.sin(pcAngle) * pcDist;
 
-                        // Re-calculate Height for this specific spot to adhere to terrain
-                        // Convert world pos back to local relative to path?
-                        // Simplified: Assume close enough to tree that height delta is minimal,
-                        // OR re-run height logic. Let's re-run a simplified height logic or just use tree height - offset?
-                        // Better: Use the same logic as debris/pebbles.
-                        // We need 'normalizedDist' for this new point.
-
-                        // Approximating X distance from center for height:
-                        // This is tricky because we are working in world space now.
-                        // However, we can just use the tree's Y as a base and add noise.
-                        // But if the slope is steep, they might float or clip.
-
-                        // Safe approach: Use tree position Y + small random noise + raycast simulation?
-                        // Since we don't have raycasting here, let's just use tree Y + 0.1
-                        // and assume flat-ish ground around the tree.
                         pcPos.y = position.y + 0.1; // Slightly above tree pivot
 
                         const pcScale = 0.15 + seededRandom(seed++) * 0.1; // Small!
@@ -374,18 +360,54 @@ export default function TrackSegment({
                     }
                 }
 
-                // 7. LEAVES
-                const leafDensity = biome === 'autumn' ? 0.8 : 0.2;
-                if (seededRandom(seed++) > (1.0 - leafDensity)) {
-                    const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.8;
-                    const offset = binormal.clone().multiplyScalar(dist);
-                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += 15 + seededRandom(seed++) * 10;
-                    leaves.push({
-                        position,
-                        rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
-                        scale: new THREE.Vector3(1, 1, 1)
-                    });
+                // 7. LEAVES (Falling - Enhanced)
+                const baseLeafChance = biome === 'autumn' ? 0.8 : 0.2;
+                if (seededRandom(seed++) > (1.0 - baseLeafChance)) {
+                     // Determine count - More in autumn
+                     const count = biome === 'autumn' ? 3 + Math.floor(seededRandom(seed++) * 5) : 1;
+
+                     for(let l=0; l<count; l++) {
+                        const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.9; // Wide spread
+                        const offset = binormal.clone().multiplyScalar(dist);
+
+                        // Add some random Z spread too
+                        const zOffset = (seededRandom(seed++) - 0.5) * 5.0;
+                        const zVec = tangent.clone().multiplyScalar(zOffset);
+
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zVec);
+                        position.y += 15 + seededRandom(seed++) * 10;
+
+                        leaves.push({
+                            position,
+                            rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                            scale: new THREE.Vector3(1, 1, 1)
+                        });
+                     }
+                }
+
+                // 7.5 FLOATING LEAVES (Pond Only)
+                // Static/Drifting leaves on the water surface
+                if (type === 'pond') {
+                     if (seededRandom(seed++) > 0.4) { // 60% chance per step
+                         const count = 1 + Math.floor(seededRandom(seed++) * 3);
+                         for(let fl=0; fl<count; fl++) {
+                             const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.9;
+                             const offset = binormal.clone().multiplyScalar(dist);
+
+                             // Spread Z
+                             const zOffset = (seededRandom(seed++) - 0.5) * 4.0;
+                             const zVec = tangent.clone().multiplyScalar(zOffset);
+
+                             const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zVec);
+                             position.y = waterLevel; // Exact water level
+
+                             floatingLeaves.push({
+                                 position,
+                                 rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                                 scale: new THREE.Vector3(1, 1, 1)
+                             });
+                         }
+                     }
                 }
 
                 // 8. FIREFLIES
@@ -584,7 +606,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
 
     // Canyon Geometry
@@ -722,19 +744,12 @@ export default function TrackSegment({
 
             <Pinecone transforms={placementData.pinecones} />
 
-            {/* Falling Leaves Particle System */}
-            {centerPos && (
-                <group position={centerPos}>
-                    <FallingLeaves
-                        count={50}
-                        width={canyonWidth}
-                        length={pathLength}
-                        height={25}
-                        biome={biome}
-                    />
-                </group>
-            )}
+            {/* Falling Leaves (Raining) */}
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
+
+            {/* Floating Leaves (Pond Scum/Surface Detail) */}
+            <FallingLeaves transforms={placementData.floatingLeaves} biome={biome} floating={true} />
+
             <Fireflies transforms={placementData.fireflies} />
             <Birds transforms={placementData.birds} biome={biome} />
             <Fish transforms={placementData.fish} />
