@@ -23,6 +23,7 @@ import Rapids from './Environment/Rapids';
 import Dragonflies from './Environment/Dragonflies';
 import Pinecone from './Environment/Pinecone';
 import Mushrooms from './Environment/Mushrooms';
+import RockFoam from './Environment/RockFoam';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -69,10 +70,11 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [], mushrooms: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [], mushrooms: [], rockFoam: [] };
         }
 
         const rocks = [];
+        const rockFoam = [];
         const trees = [];
         const debris = [];
         const grass = [];
@@ -141,6 +143,20 @@ export default function TrackSegment({
                         seededRandom(seed++)*Math.PI
                     );
                     rocks.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+
+                    // 1.1 ROCK FOAM (Wake effect)
+                    if (Math.abs(xLocal) < (waterWidth / 2) - 1.0) {
+                         const foamRot = new THREE.Euler(-Math.PI / 2, Math.atan2(tangent.x, tangent.z), 0);
+                         const foamScale = scale * 3.0;
+                         const foamPos = position.clone();
+                         foamPos.y = pathPoint.y + waterLevel + 0.05;
+
+                         rockFoam.push({
+                             position: foamPos,
+                             rotation: foamRot,
+                             scale: new THREE.Vector3(foamScale, foamScale, 1.0)
+                         });
+                    }
                 }
 
                 // 2. TREES
@@ -646,8 +662,8 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms };
-    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
+    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed, waterLevel]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
@@ -799,6 +815,7 @@ export default function TrackSegment({
             <SunShafts transforms={placementData.sunShafts} />
             <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
             <Dragonflies transforms={placementData.dragonflies} />
+            <RockFoam transforms={placementData.rockFoam} flowSpeed={flowSpeed} />
 
             <FlowingWater 
                 geometry={waterGeometry}
