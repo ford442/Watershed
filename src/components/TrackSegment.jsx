@@ -22,6 +22,7 @@ import Ferns from './Environment/Ferns';
 import Rapids from './Environment/Rapids';
 import Dragonflies from './Environment/Dragonflies';
 import Pinecone from './Environment/Pinecone';
+import Mushrooms from './Environment/Mushrooms';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -68,7 +69,7 @@ export default function TrackSegment({
     const placementData = useMemo(() => {
         // Return empty data if inactive to save processing and avoid spawning assets
         if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [] };
+            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [], mushrooms: [] };
         }
 
         const rocks = [];
@@ -91,6 +92,7 @@ export default function TrackSegment({
         const rapids = [];
         const dragonflies = [];
         const pinecones = [];
+        const mushrooms = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -291,6 +293,44 @@ export default function TrackSegment({
                         ferns.push({
                             position,
                             rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                            scale: new THREE.Vector3(scale, scale, scale)
+                        });
+                    }
+                }
+
+                // 4.7 MUSHROOMS (New: Forest floor detail)
+                const mushroomChance = biome === 'autumn' ? 0.6 : 0.3;
+                if (seededRandom(seed++) > (1.0 - mushroomChance)) {
+                    // Cluster
+                    const clusterSize = 3 + Math.floor(seededRandom(seed++) * 5);
+                    // Placement: Near trees or damp spots (between bank and wall)
+                    const baseDist = bankStart + 2 + seededRandom(seed++) * 5;
+
+                    for(let m=0; m<clusterSize; m++) {
+                        const spreadX = (seededRandom(seed++) - 0.5) * 1.5;
+                        const spreadZ = (seededRandom(seed++) - 0.5) * 1.5;
+
+                        const dist = baseDist + spreadX;
+                        const offset = binormal.clone().multiplyScalar(side * dist);
+                        const zOffsetVec = tangent.clone().multiplyScalar(spreadZ);
+
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset).add(zOffsetVec);
+
+                        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+                        let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                        if (Math.abs(side * dist) < bankStart + 2) groundY *= 0.1;
+                        groundY += Math.sin(zLocal * 0.8 + (side*dist) * 0.5) * 0.3;
+
+                        position.y += groundY; // Sit on ground
+
+                        const scale = 0.8 + seededRandom(seed++) * 0.6;
+                        mushrooms.push({
+                            position,
+                            rotation: new THREE.Euler(
+                                (seededRandom(seed++) - 0.5) * 0.2,
+                                seededRandom(seed++) * Math.PI * 2,
+                                (seededRandom(seed++) - 0.5) * 0.2
+                            ),
                             scale: new THREE.Vector3(scale, scale, scale)
                         });
                     }
@@ -606,7 +646,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones };
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms };
     }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed]);
 
     // Canyon Geometry
@@ -743,6 +783,7 @@ export default function TrackSegment({
             <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
 
             <Pinecone transforms={placementData.pinecones} />
+            <Mushrooms transforms={placementData.mushrooms} biome={biome} />
 
             {/* Falling Leaves (Raining) */}
             <FallingLeaves transforms={placementData.leaves} biome={biome} />
