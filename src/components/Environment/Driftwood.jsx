@@ -20,7 +20,7 @@ export default function Driftwood({ transforms }) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <Instances range={instances.length} geometry={geometry} material={material}>
+    <Instances range={instances.length} geometry={geometry} material={material} castShadow receiveShadow>
       {instances.map((data) => (
         <Instance
           key={data.key}

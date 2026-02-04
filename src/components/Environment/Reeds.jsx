@@ -144,7 +144,7 @@ export default function Reeds({ transforms }) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-      <Instances range={instances.length} geometry={geometry} material={reedsMaterial}>
+      <Instances range={instances.length} geometry={geometry} material={reedsMaterial} castShadow receiveShadow>
           {instances.map((data) => (
               <Instance
                   key={data.key}
