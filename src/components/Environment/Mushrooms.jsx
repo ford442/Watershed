@@ -69,7 +69,7 @@ export default function Mushrooms({ transforms, biome = 'summer' }) {
     return (
         <group>
             {/* Stems */}
-            <Instances range={instances.length} geometry={stemGeometry} material={stemMaterial}>
+            <Instances range={instances.length} geometry={stemGeometry} material={stemMaterial} castShadow receiveShadow>
                  {instances.map(d => (
                      <Instance
                         key={`stem-${d.key}`}
@@ -81,7 +81,7 @@ export default function Mushrooms({ transforms, biome = 'summer' }) {
             </Instances>
 
             {/* Caps (Tinted) */}
-            <Instances range={instances.length} geometry={capGeometry} material={capMaterial}>
+            <Instances range={instances.length} geometry={capGeometry} material={capMaterial} castShadow receiveShadow>
                 {instances.map(d => (
                     <Instance
                         key={`cap-${d.key}`}

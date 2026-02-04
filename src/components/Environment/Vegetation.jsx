@@ -109,7 +109,7 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
         type="fixed"
         colliders="hull"
       >
-        <Instances range={instances.length} geometry={trunkGeometry} material={trunkMaterial}>
+        <Instances range={instances.length} geometry={trunkGeometry} material={trunkMaterial} castShadow receiveShadow>
           {instances.map((t) => (
             <Instance
               key={t.key}
@@ -122,7 +122,7 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
       </InstancedRigidBodies>
 
       {/* FOLIAGE */}
-      <Instances range={instances.length} geometry={foliageGeometry} material={foliageMaterial}>
+      <Instances range={instances.length} geometry={foliageGeometry} material={foliageMaterial} castShadow receiveShadow>
         {instances.map((t) => (
           <Instance
             key={t.key}

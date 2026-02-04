@@ -23,7 +23,7 @@ export default function Pebbles({ transforms, material }) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <Instances range={instances.length} geometry={geometry} material={material || defaultMaterial}>
+    <Instances range={instances.length} geometry={geometry} material={material || defaultMaterial} castShadow receiveShadow>
       {instances.map((data) => (
         <Instance
           key={data.key}
