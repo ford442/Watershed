@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
+import { extendRiverMaterial } from '../utils/RiverShader';
 import TrackSegment from './TrackSegment';
 
 const GENERATION_THRESHOLD = 150;
@@ -153,135 +154,24 @@ export default function TrackManager({ onBiomeChange }) {
             vertexColors: true,
         });
 
+        // Apply shared River Wetness/Moss/Caustics logic
+        extendRiverMaterial(mat);
+        const riverOnBeforeCompile = mat.onBeforeCompile;
+
         mat.onBeforeCompile = (shader) => {
-            shader.uniforms.time = { value: 0 };
+            // Run shared river logic first
+            riverOnBeforeCompile(shader);
 
-            // Vertex Shader Modifications
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <common>',
-                `
-                #include <common>
-                varying vec3 vWorldNormalPalette;
-                varying vec3 vWorldPositionPalette;
-                `
-            );
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <worldpos_vertex>',
-                `
-                #include <worldpos_vertex>
-                vWorldNormalPalette = normalize(mat3(modelMatrix) * objectNormal);
-                vWorldPositionPalette = (modelMatrix * vec4(transformed, 1.0)).xyz;
-                `
-            );
-
-            // Fragment Shader Modifications
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <common>',
-                `
-                #include <common>
-                uniform float time;
-                varying vec3 vWorldNormalPalette;
-                varying vec3 vWorldPositionPalette;
-
-                // Simple noise function
-                float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-                float noise(vec2 p) {
-                    vec2 i = floor(p);
-                    vec2 f = fract(p);
-                    f = f*f*(3.0-2.0*f);
-                    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
-                               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
-                }
-
-                // Stylized Caustics
-                float caustic(vec2 uv, float time) {
-                    // Distort UVs
-                    vec2 p = uv * 3.0; // Scale
-                    float t = time * 0.8;
-
-                    float val = 0.0;
-                    val += sin(p.x + t + p.y * 0.5);
-                    val += sin(p.y - t * 0.5 + p.x * 0.5);
-                    val += sin(p.x + p.y + t * 0.2);
-
-                    // Sharpen peaks to create light bands
-                    return pow(0.5 + 0.5 * val / 1.5, 4.0);
-                }
-                `
-            );
-
-            // Inject moss AND Wet Band logic
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <map_fragment>',
-                `
-                #include <map_fragment>
-                // Moss Logic
-                vec3 mossColor = vec3(0.18, 0.35, 0.12); // "National Park" Moss Green
-
-                // World space noise for moss pattern
-                float mossNoise = noise(vWorldPositionPalette.xz * 0.5) * 0.2;
-
-                // Moss grows on upward facing slopes (y > threshold)
-                float mossSlope = smoothstep(0.5, 0.8, vWorldNormalPalette.y + mossNoise);
-
-                // Moss grows near water line (Y ~= 0.5) up to Y=2.0
-                float waterDist = vWorldPositionPalette.y - 0.5;
-                float mossWater = smoothstep(2.5, 0.0, waterDist) * 0.6; // Fade out as we go up
-
-                // Combine slope and water proximity
-                float finalMoss = clamp(mossSlope + mossWater, 0.0, 1.0);
-
-                // --- WET BAND LOGIC ---
-                // Darken rock near water line (0.5 to 1.5) to simulate splashing/wicking
-                float wetness = 1.0 - smoothstep(0.0, 1.0, waterDist); // 1.0 at water, 0.0 at 1.5m up
-                wetness = clamp(wetness, 0.0, 1.0);
-
-                // Darken diffuse color for wetness
-                diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.5, wetness);
-
-                // Mix existing diffuseColor with mossColor
-                diffuseColor.rgb = mix(diffuseColor.rgb, mossColor, finalMoss * 0.9);
-
-                // --- CAUSTICS LOGIC ---
-                // Only on the riverbed (y < 0.6)
-                // waterDist is (y - 0.5). So waterDist < 0.1
-
-                if (waterDist < 0.1) {
-                    // Fade out as we approach the surface/bank
-                    // 1.0 deep (waterDist = -0.5), 0.0 at surface (waterDist = 0.0)
-                    float causticMask = 1.0 - smoothstep(-0.5, 0.0, waterDist);
-
-                    // Calculate caustics
-                    float cPattern = caustic(vWorldPositionPalette.xz, time);
-
-                    // Add light (additive blending simulation)
-                    vec3 causticColor = vec3(1.0, 1.0, 0.9); // Slight warm/sun tint
-
-                    // Intensity falloff with depth? Maybe slight.
-                    // But caustics are usually bright in shallow water.
-
-                    diffuseColor.rgb += causticColor * cPattern * causticMask * 0.4; // 0.4 Intensity
-                }
-                `
-            );
-
-            // Existing Dryness/Roughness Logic + Wetness
+            // Inject Track-Specific Dryness Logic (based on Vertex Color)
+            // This runs BEFORE the river wetness overrides in the shader string order
+            // ensuring that if something is WET, it stays WET (smooth), overriding dryness.
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <roughnessmap_fragment>',
                 `
                 #include <roughnessmap_fragment>
+                // Vertex color R channel encodes height/dryness from TrackSegment generation
                 float dryness = smoothstep(0.4, 0.8, vColor.r);
                 roughnessFactor = mix(0.15, roughnessFactor, dryness);
-
-                // Make wet band very smooth (low roughness)
-                if (wetness > 0.0) {
-                     roughnessFactor = mix(roughnessFactor, 0.1, wetness);
-                }
-
-                // Make moss less shiny
-                if (finalMoss > 0.5) {
-                    roughnessFactor = mix(roughnessFactor, 1.0, (finalMoss - 0.5) * 2.0);
-                }
                 `
             );
         };

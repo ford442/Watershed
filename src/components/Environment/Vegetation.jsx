@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { InstancedRigidBodies } from '@react-three/rapier';
 import { useTreeAssets } from './TreeAssets';
+import { extendRiverMaterial } from '../../utils/RiverShader';
 
 // Color Palettes
 const PALETTES = {
@@ -15,12 +16,14 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
   const { trunkGeometry, foliageGeometry } = useTreeAssets();
 
   // Materials
-  const trunkMaterial = useMemo(() =>
-    new THREE.MeshStandardMaterial({
+  const trunkMaterial = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
       color: '#4a3c31',
       roughness: 0.9
-    }), []
-  );
+    });
+    extendRiverMaterial(mat);
+    return mat;
+  }, []);
 
   const foliageMaterial = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
@@ -73,6 +76,9 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
   useFrame((state) => {
     if (foliageMaterial.userData.uniforms) {
         foliageMaterial.userData.uniforms.time.value = state.clock.elapsedTime;
+    }
+    if (trunkMaterial.userData.shader) {
+        trunkMaterial.userData.shader.uniforms.time.value = state.clock.elapsedTime;
     }
   });
 
