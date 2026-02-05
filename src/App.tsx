@@ -20,7 +20,7 @@ function App() {
 
         // Race the init against the timeout
         await Promise.race([
-          (rapierInit as any)({ module_or_path: './rapier.wasm' }),
+          (rapierInit as any)(),
           timeoutPromise
         ]);
 
