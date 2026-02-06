@@ -33,8 +33,8 @@ const FrameDebugger = () => {
 };
 
 // Physics error handler wrapper
-const PhysicsWithErrorHandler = ({ children }: { children: React.ReactNode }) => {
-  const [physicsError, setPhysicsError] = useState<string | null>(null);
+const PhysicsWithErrorHandler = ({ children }) => {
+  const [physicsError, setPhysicsError] = useState(null);
 
   useEffect(() => {
     console.log('[Physics] Initializing Rapier physics engine...');
