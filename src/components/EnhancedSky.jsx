@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Sky, Stars, Cloud } from '@react-three/drei';
+import { Sky, Stars, Cloud, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Atmospheric presets
@@ -77,6 +77,9 @@ export default function EnhancedSky({ biome = 'summer' }) {
             <group position={[0, 40, -100]} ref={cloudRef}>
                  <Cloud opacity={0.5} speed={0.4} width={50} depth={5} segments={20} />
             </group>
+
+            {/* Global Lighting & Reflections */}
+            <Environment preset="forest" />
 
             {/* Fog is attached to the scene via <fog /> primitive in React Three Fiber */}
             <fog attach="fog" args={['#cce0ff', 0.015]} />
