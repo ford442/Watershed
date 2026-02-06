@@ -32,14 +32,9 @@ const Experience = () => {
 
   return (
     <>
-      {/* Set background color to avoid blank screen */}
-      <color attach="background" args={['#87CEEB']} />
 
-      {/* Debug: Simple box to confirm rendering */}
-      <mesh position={[0, 0, -5]}>
-        <boxGeometry args={[2, 2, 2]} />
-        <meshBasicMaterial color="green" />
-      </mesh>
+
+      <color attach="background" args={['#87CEEB']} />
 
       <KeyboardControls map={map}>
       {/* Environment/Sky in Suspense */}

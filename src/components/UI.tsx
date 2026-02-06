@@ -88,9 +88,14 @@ export const UI = () => {
   };
 
   const handleStart = () => {
-    const canvas = document.querySelector('canvas');
-    if (canvas) {
-      canvas.requestPointerLock();
+    if (window.location.search.includes('no-pointer-lock')) {
+      setLocked(true);
+      setHasStarted(true);
+    } else {
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        canvas.requestPointerLock();
+      }
     }
   };
 

@@ -17,9 +17,26 @@ def verify_visuals():
         )
         page = browser.new_page()
 
+        # Log console messages
+        def handle_console(msg):
+            print(f"Console [{msg.type}]: {msg.text}")
+        page.on("console", handle_console)
+
         # Navigate to the app
         print("Navigating to app...")
-        page.goto("http://localhost:3000")
+        page.goto("http://localhost:3000?no-pointer-lock")
+
+        # Debug screenshot immediately after load
+        page.screenshot(path="verification/debug_page.png")
+        print("Debug page screenshot saved.")
+
+        # Wait for UI overlay first
+        print("Waiting for UI...")
+        try:
+            page.wait_for_selector(".ui-overlay", timeout=30000)
+            print("UI found.")
+        except:
+            print("UI not found, continuing.")
 
         # Wait for canvas to load
         print("Waiting for canvas...")
@@ -31,7 +48,7 @@ def verify_visuals():
 
         # Wait for "CLICK TO ENGAGE" or similar start screen text
         print("Waiting for start screen...")
-        time.sleep(10) # Give it time to load assets (shaders compilation etc)
+        time.sleep(30) # Give it time to load assets (shaders compilation etc)
 
         # Take screenshot of the start screen (should show river background)
         print("Taking screenshot...")
@@ -45,7 +62,7 @@ def verify_visuals():
         time.sleep(2)
         page.keyboard.press("Enter") # Try enter key if click doesn't work
 
-        time.sleep(5) # Wait for transition
+        time.sleep(30) # Wait for transition
 
         print("Taking in-game screenshot...")
         page.screenshot(path="verification/verification_visuals_ingame.png")

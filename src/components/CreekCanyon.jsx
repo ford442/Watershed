@@ -6,11 +6,11 @@ import { useTexture } from '@react-three/drei';
 export default function CreekCanyon() {
     // Load rock textures
     const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
-        './Rock031_1K-JPG_Color.jpg',
-        './Rock031_1K-JPG_NormalGL.jpg',
-        './Rock031_1K-JPG_Roughness.jpg',
-        './Rock031_1K-JPG_AmbientOcclusion.jpg',
-        './Rock031_1K-JPG_Displacement.jpg',
+        '/Rock031_1K-JPG_Color.jpg',
+        '/Rock031_1K-JPG_NormalGL.jpg',
+        '/Rock031_1K-JPG_Roughness.jpg',
+        '/Rock031_1K-JPG_AmbientOcclusion.jpg',
+        '/Rock031_1K-JPG_Displacement.jpg',
     ]);
 
     // Configure texture repeat for more detail
