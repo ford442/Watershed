@@ -25,7 +25,10 @@ console.log('[index.tsx] React version:', React.version);
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   console.error('[index.tsx] FATAL: Root element not found!');
-  document.body.innerHTML = '<div style="color: red; font-size: 20px; padding: 20px;">ERROR: Root element #root not found in DOM</div>';
+  const errorDiv = document.createElement('div');
+  errorDiv.style.cssText = 'color: red; font-size: 20px; padding: 20px;';
+  errorDiv.textContent = 'ERROR: Root element #root not found in DOM';
+  document.body.appendChild(errorDiv);
 } else {
   console.log('[index.tsx] Root element found, creating React root...');
   const root = ReactDOM.createRoot(rootElement as HTMLElement);

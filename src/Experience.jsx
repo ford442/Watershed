@@ -16,6 +16,8 @@ export const Controls = {
 };
 
 // Debug component to verify useFrame is working
+const LOG_INTERVAL_MS = 5000;
+
 const FrameDebugger = () => {
   const frameCount = useRef(0);
   const lastLog = useRef(0);
@@ -23,7 +25,7 @@ const FrameDebugger = () => {
   useFrame(() => {
     frameCount.current++;
     const now = Date.now();
-    if (now - lastLog.current > 5000) { // Log every 5 seconds
+    if (now - lastLog.current > LOG_INTERVAL_MS) {
       console.log(`[FrameDebugger] Frames rendered: ${frameCount.current}`);
       lastLog.current = now;
     }

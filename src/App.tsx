@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
+import type { RootState } from '@react-three/fiber';
 import Experience from './Experience';
 import { UI } from './components/UI';
 import { Loader } from './components/Loader';
@@ -30,7 +31,7 @@ function App() {
     };
   }, []);
 
-  const handleCanvasCreated = (state: any) => {
+  const handleCanvasCreated = (state: RootState) => {
     console.log('[Canvas] Created successfully');
     console.log('[Canvas] Renderer:', state.gl.constructor.name);
     console.log('[Canvas] WebGL Version:', state.gl.capabilities?.isWebGL2 ? 'WebGL2' : 'WebGL1');
