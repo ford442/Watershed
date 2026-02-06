@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
+import { useTexture } from '@react-three/drei';
 import { extendRiverMaterial } from '../utils/RiverShader';
 import TrackSegment from './TrackSegment';
 

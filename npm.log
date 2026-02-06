@@ -1,22 +1,20 @@
 
 > webgpu-react-app@0.1.0 start
-> react-scripts start
+> vite
 
-(node:4367) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-(node:4367) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
-Starting the development server...
 
-Compiled with warnings.
+  VITE v7.3.1  ready in 585 ms
 
-Failed to parse source map from '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: use --host to expose
+(!) Failed to run dependency scan. Skipping dependency pre-bundling. Error: The following dependencies are imported but could not be resolved:
 
-Search for the keywords to learn more about each warning.
-To ignore, add // eslint-disable-next-line to the line before.
+  loader.mjs (imported by /app/emsdk/upstream/emscripten/test/pthread/main_js_with_loader.html)
 
-WARNING in ./node_modules/@mediapipe/tasks-vision/vision_bundle.mjs
-Module Warning (from ./node_modules/source-map-loader/dist/cjs.js):
-Failed to parse source map from '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map' file: Error: ENOENT: no such file or directory, open '/app/node_modules/@mediapipe/tasks-vision/vision_bundle_mjs.js.map'
-
-webpack compiled with 1 warning
-No issues found.
+Are they installed?
+    at file:///app/node_modules/vite/dist/node/chunks/config.js:31903:33
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///app/node_modules/vite/dist/node/chunks/config.js:34111:15
+1:41:23 PM [vite] (client) page reload index.html
+1:41:35 PM [vite] (client) ✨ new dependencies optimized: react-dom/client, @react-three/fiber, @react-three/drei, @react-three/rapier, three, three-stdlib
+1:41:35 PM [vite] (client) ✨ optimized dependencies changed. reloading
