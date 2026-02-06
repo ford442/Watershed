@@ -2,6 +2,7 @@ import { KeyboardControls, Environment, Html } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import React, { useMemo, useState, Suspense, useRef, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import * as THREE from 'three';
 import TrackManager from "./components/TrackManager";
 import Player from "./components/Player";
 import EnhancedSky from "./components/EnhancedSky";
@@ -15,72 +16,71 @@ export const Controls = {
   jump: 'jump',
 };
 
-// Debug component to verify useFrame is working
-const LOG_INTERVAL_MS = 5000;
-
-const FrameDebugger = () => {
-  const frameCount = useRef(0);
-  const lastLog = useRef(0);
-
-  useFrame(() => {
-    frameCount.current++;
-    const now = Date.now();
-    if (now - lastLog.current > LOG_INTERVAL_MS) {
-      console.log(`[FrameDebugger] Frames rendered: ${frameCount.current}`);
-      lastLog.current = now;
-    }
-  });
-
-  return null;
-};
-
-// Physics error handler wrapper
-const PhysicsWithErrorHandler = ({ children }) => {
-  const [physicsError, setPhysicsError] = useState(null);
-
+// Simple debug mesh to verify rendering is working
+const DebugScene = () => {
+  const { camera } = useThree();
+  
   useEffect(() => {
-    console.log('[Physics] Initializing Rapier physics engine...');
-  }, []);
-
-  if (physicsError) {
-    console.error('[Physics] Failed to initialize:', physicsError);
-    return (
-      <Html center>
-        <div style={{ color: 'red', background: 'white', padding: '20px', borderRadius: '8px' }}>
-          <h3>Physics Engine Error</h3>
-          <p>{physicsError}</p>
-        </div>
-      </Html>
+    console.log('[DebugScene] Mounted');
+    console.log('[DebugScene] Camera position:', camera.position.toArray());
+  }, [camera]);
+  
+  useFrame((state) => {
+    // Rotate the debug cube
+    state.scene.getObjectByName('debug-cube')?.rotation.set(
+      state.clock.elapsedTime * 0.5,
+      state.clock.elapsedTime * 0.3,
+      0
     );
-  }
-
+  });
+  
   return (
-    <Physics 
-      gravity={[0, -9.81, 0]}
-      debug={false}
-    >
-      {children}
-    </Physics>
-  );
-};
-
-// TrackManager wrapper with its own Suspense
-const TrackManagerWithSuspense = ({ onBiomeChange }) => {
-  return (
-    <Suspense fallback={
-      <Html center>
-        <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px', borderRadius: '4px' }}>
-          Loading Track Textures...
+    <>
+      {/* A bright red cube at origin */}
+      <mesh name="debug-cube" position={[0, 0, 0]}>
+        <boxGeometry args={[2, 2, 2]} />
+        <meshBasicMaterial color="red" wireframe />
+      </mesh>
+      
+      {/* A green cube at player spawn */}
+      <mesh position={[0, -7, -10]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial color="green" />
+      </mesh>
+      
+      {/* A blue cube at track start */}
+      <mesh position={[0, -6, 30]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial color="blue" />
+      </mesh>
+      
+      {/* Grid helper at track level */}
+      <gridHelper args={[100, 50, 'white', 'gray']} position={[0, -6, 0]} />
+      
+      {/* Axes helper */}
+      <axesHelper args={[5]} position={[0, -6, 0]} />
+      
+      {/* Some text */}
+      <Html center position={[0, 5, 0]}>
+        <div style={{ 
+          color: 'white', 
+          background: 'rgba(0,0,0,0.7)', 
+          padding: '10px 20px',
+          borderRadius: '4px',
+          fontFamily: 'sans-serif',
+          fontSize: '18px',
+          whiteSpace: 'nowrap'
+        }}>
+          Debug View - If you see this, React Three Fiber is working!
         </div>
       </Html>
-    }>
-      <TrackManager onBiomeChange={onBiomeChange} />
-    </Suspense>
+    </>
   );
 };
 
 const Experience = () => {
   console.log("[Experience] Component rendering...");
+  
   const map = useMemo(() => [
     { name: Controls.forward, keys: ['ArrowUp'] },
     { name: Controls.backward, keys: ['KeyS', 'ArrowDown'] },
@@ -89,36 +89,30 @@ const Experience = () => {
     { name: Controls.jump, keys: ['KeyW', 'Space'] },
   ], []);
 
-  // Biome State (Lifted from TrackManager)
   const [currentBiome, setCurrentBiome] = useState('summer');
-
-  // Reference to the Player's RigidBody
   const playerRef = useRef();
-
-  // useThree hook to verify context
-  const { gl, scene, camera } = useThree();
+  const { scene, camera } = useThree();
   
   useEffect(() => {
-    console.log('[Experience] Scene setup complete');
-    console.log('[Experience] Scene children count:', scene.children.length);
-    console.log('[Experience] Camera position:', camera.position);
-    return () => {
-      console.log('[Experience] Component unmounting');
-    };
-  }, [scene, camera]);
+    console.log('[Experience] Mounted');
+    console.log('[Experience] Scene children:', scene.children.length);
+    console.log('[Experience] Camera:', camera.position.toArray());
+  }, []);
 
   return (
     <>
-      <color attach="background" args={['#87CEEB']} />
+      <color attach="background" args={['#1a1a2e']} />
       
-      {/* Add frame debugger to verify rendering loop */}
-      <FrameDebugger />
+      {/* Always render debug scene first */}
+      <DebugScene />
 
       <KeyboardControls map={map}>
-        {/* Environment/Sky in Suspense */}
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
+
         <Suspense fallback={
           <Html center>
-            <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px', borderRadius: '4px' }}>
+            <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px' }}>
               Loading Environment...
             </div>
           </Html>
@@ -127,19 +121,13 @@ const Experience = () => {
           <EnhancedSky biome={currentBiome} />
         </Suspense>
 
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
-
-        {/* Main Game Physics Loop - Player loads independently */}
-        <PhysicsWithErrorHandler>
-          {/* TrackManager with its own Suspense for texture loading */}
-          <TrackManagerWithSuspense onBiomeChange={setCurrentBiome} />
-          
-          {/* Player loads immediately, no Suspense blocking */}
+        <Physics gravity={[0, -9.81, 0]}>
+          <Suspense fallback={null}>
+            <TrackManager onBiomeChange={setCurrentBiome} />
+          </Suspense>
           <Player ref={playerRef} />
-        </PhysicsWithErrorHandler>
+        </Physics>
 
-        {/* Visual Effects */}
         <SplashParticles target={playerRef} />
       </KeyboardControls>
     </>

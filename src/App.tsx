@@ -11,10 +11,13 @@ import { useProgress } from '@react-three/drei';
 function App() {
   const [skipLoader, setSkipLoader] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
-  const { active } = useProgress();
+  const [forceHideLoading, setForceHideLoading] = useState(false);
+  const { active, progress, item, total } = useProgress();
 
   useEffect(() => {
     console.log('[App] Component mounted');
+    console.log('[App] useProgress:', { active, progress, item, total });
+    
     if (window.location.search.includes('no-pointer-lock')) {
       setSkipLoader(true);
     }
@@ -26,10 +29,22 @@ function App() {
       console.warn('[App] WebGPU not supported, falling back to WebGL');
     }
     
+    // Force hide loading screen after 5 seconds to prevent stuck state
+    const timeout = setTimeout(() => {
+      console.log('[App] Force hiding loading screen after timeout');
+      setForceHideLoading(true);
+    }, 5000);
+    
     return () => {
       console.log('[App] Component unmounting');
+      clearTimeout(timeout);
     };
   }, []);
+  
+  // Log progress changes
+  useEffect(() => {
+    console.log('[App] Progress update:', { active, progress: Math.round(progress), item, total });
+  }, [active, progress, item, total]);
 
   const handleCanvasCreated = (state: RootState) => {
     console.log('[Canvas] Created successfully');
@@ -47,9 +62,11 @@ function App() {
     }
   }, [canvasReady]);
 
+  const showLoading = active && !forceHideLoading;
+
   return (
     <ErrorBoundary>
-      {active && (
+      {showLoading && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -63,9 +80,29 @@ function App() {
           color: 'white',
           fontSize: '24px',
           fontFamily: 'sans-serif',
-          zIndex: 9999
+          zIndex: 9999,
+          flexDirection: 'column',
+          gap: '20px'
         }}>
-          Loading Watershed... (shaders compiling)
+          <div>Loading Watershed... (shaders compiling)</div>
+          <div style={{ fontSize: '14px', opacity: 0.8 }}>
+            Progress: {Math.round(progress)}% | Items: {total} | Current: {item || 'none'}
+          </div>
+          {forceHideLoading && (
+            <button 
+              onClick={() => setForceHideLoading(true)}
+              style={{
+                padding: '10px 20px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                background: 'white',
+                border: 'none',
+                borderRadius: '4px'
+              }}
+            >
+              Skip Loading
+            </button>
+          )}
         </div>
       )}
       <Canvas
@@ -86,4 +123,3 @@ function App() {
 }
 
 export default App;
-

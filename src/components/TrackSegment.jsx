@@ -45,6 +45,7 @@ export default function TrackSegment({
     rockMaterial,
     rockNormalMap
 }) {
+    console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
 
     // Create the spline path (Only if active)
@@ -776,8 +777,10 @@ export default function TrackSegment({
     }, [type, segmentPath, active]);
 
     if (!active || !canyonGeometry || !waterGeometry || !rockMaterial) {
+        console.log(`[TrackSegment ${segmentId}] Returning null - active: ${active}, canyonGeometry: ${!!canyonGeometry}, waterGeometry: ${!!waterGeometry}, rockMaterial: ${!!rockMaterial}`);
         return null;
     }
+    console.log(`[TrackSegment ${segmentId}] Rendering full segment`);
 
     return (
         <group name={`track-segment-${segmentId}`} visible={true}>

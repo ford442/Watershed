@@ -111,6 +111,7 @@ const INITIAL_SEGMENTS = [
 ];
 
 export default function TrackManager({ onBiomeChange }) {
+    console.log('[TrackManager] Rendering...');
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
     const segmentsRef = useRef(INITIAL_SEGMENTS);
     const lastSegmentId = useRef(1);
@@ -129,12 +130,14 @@ export default function TrackManager({ onBiomeChange }) {
 
     // --- SHARED MATERIAL ASSETS ---
     // UPDATED: Added '/' to start of paths to ensure they load from public root
+    console.log('[TrackManager] Loading textures...');
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         '/Rock031_1K-JPG_Color.jpg',
         '/Rock031_1K-JPG_NormalGL.jpg',
         '/Rock031_1K-JPG_Roughness.jpg',
         '/Rock031_1K-JPG_AmbientOcclusion.jpg',
     ]);
+    console.log('[TrackManager] Textures loaded:', { colorMap: !!colorMap, normalMap: !!normalMap, roughnessMap: !!roughnessMap, aoMap: !!aoMap });
 
     // Configure texture wrapping once loaded
     useEffect(() => {
@@ -148,11 +151,14 @@ export default function TrackManager({ onBiomeChange }) {
 
     // Create the custom Wet Rock Material (Shared)
     const rockMaterial = useMemo(() => {
+        console.log('[TrackManager] Creating rock material...');
         // Wait for textures to load before creating material
         if (!colorMap || !normalMap || !roughnessMap || !aoMap) {
+            console.log('[TrackManager] Textures not ready yet, returning null');
             return null;
         }
         
+        console.log('[TrackManager] All textures ready, creating material');
         const mat = new THREE.MeshStandardMaterial({
             map: colorMap,
             normalMap: normalMap,
