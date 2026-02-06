@@ -9,12 +9,14 @@ function App() {
   return (
     <>
       <Canvas
+        gl={{ 
+          powerPreference: 'high-performance',
+          antialias: false 
+        }}
         camera={{ position: [0, 25, 10], fov: 75 }}
-        shadows
+        // shadows={false}  // Temp disable
       >
-        <React.Suspense fallback={null}>
-          <Experience />
-        </React.Suspense>
+        <Experience />
       </Canvas>
       <Loader />
       <UI />

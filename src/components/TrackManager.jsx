@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useTexture } from '@react-three/drei';
 import { extendRiverMaterial } from '../utils/RiverShader';
 import TrackSegment from './TrackSegment';
 
@@ -128,20 +127,20 @@ export default function TrackManager({ onBiomeChange }) {
     }, [segments]);
 
     // --- SHARED MATERIAL ASSETS ---
-    // Load Textures from public folder
+    // UPDATED: Added '/' to start of paths to ensure they load from public root
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
-        './Rock031_1K-JPG_Color.jpg',
-        './Rock031_1K-JPG_NormalGL.jpg',
-        './Rock031_1K-JPG_Roughness.jpg',
-        './Rock031_1K-JPG_AmbientOcclusion.jpg',
+        '/Rock031_1K-JPG_Color.jpg',
+        '/Rock031_1K-JPG_NormalGL.jpg',
+        '/Rock031_1K-JPG_Roughness.jpg',
+        '/Rock031_1K-JPG_AmbientOcclusion.jpg',
     ]);
 
-    useEffect(() => {
-        [colorMap, normalMap, roughnessMap, aoMap].forEach(t => {
-            t.wrapS = t.wrapT = THREE.RepeatWrapping;
-            t.repeat.set(4, 8);
-        });
-    }, [colorMap, normalMap, roughnessMap, aoMap]);
+    // useEffect(() => {
+    //     [colorMap, normalMap, roughnessMap, aoMap].forEach(t => {
+    //         t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    //         t.repeat.set(4, 8);
+    //     });
+    // }, [colorMap, normalMap, roughnessMap, aoMap]);
 
     // Create the custom Wet Rock Material (Shared)
     const rockMaterial = useMemo(() => {
@@ -175,9 +174,9 @@ export default function TrackManager({ onBiomeChange }) {
                 `
             );
         };
-
+colorMap, normalMap, roughnessMap, aoMap]);
         return mat;
-    }, [colorMap, normalMap, roughnessMap, aoMap]);
+    }, []);  // No texture deps
 
 
     const generateNextSegment = useCallback((lastSegment) => {

@@ -31,17 +31,33 @@ const Experience = () => {
   const playerRef = useRef();
 
   return (
-    <KeyboardControls map={map}>
-      {/* Environment for realistic reflections */}
-      <Environment preset="park" background={false} />
+    <>
+      {/* Set background color to avoid blank screen */}
+      <color attach="background" args={['#87CEEB']} />
 
-      {/* Dynamic Sky that reacts to the biome */}
-      <EnhancedSky biome={currentBiome} />
-      
+      {/* Debug: Simple box to confirm rendering */}
+      <mesh position={[0, 0, -5]}>
+        <boxGeometry args={[2, 2, 2]} />
+        <meshBasicMaterial color="green" />
+      </mesh>
+
+      <KeyboardControls map={map}>
+      {/* Environment/Sky in Suspense */}
+      <Suspense fallback={null}>
+        <Environment preset="park" background={false} />
+        <EnhancedSky biome={currentBiome} />
+      </Suspense>
+
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
-      
-      <Suspense fallback={<mesh><boxGeometry /><meshBasicMaterial color="red" /></mesh>}>
+
+        {/* 2. Main Game Physics Loop */}
+        <Suspense fallback={
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[5, 5, 5]} />
+            <meshBasicMaterial color="red" wireframe />
+          </mesh>
+        }>
         <Physics gravity={[0, -9.81, 0]}>
             {/* TrackManager reports biome changes based on player position */}
             <TrackManager onBiomeChange={setCurrentBiome} />
@@ -51,7 +67,8 @@ const Experience = () => {
         {/* Visual Effects */}
         <SplashParticles target={playerRef} />
       </Suspense>
-    </KeyboardControls>
+      </KeyboardControls>
+    </>
   );
 };
 
