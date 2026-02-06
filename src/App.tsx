@@ -8,10 +8,20 @@ import ErrorBoundary from './components/ErrorBoundary';
 import './style.css';
 import { useProgress } from '@react-three/drei';
 
+// Simple fallback scene if Experience fails
+const FallbackScene = () => {
+  return (
+    <mesh>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshBasicMaterial color="hotpink" wireframe />
+    </mesh>
+  );
+};
+
 function App() {
   const [skipLoader, setSkipLoader] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
-  const [forceHideLoading, setForceHideLoading] = useState(false);
+  const [experienceError, setExperienceError] = useState<Error | null>(null);
   const { active, progress, item, total } = useProgress();
 
   useEffect(() => {
@@ -29,19 +39,13 @@ function App() {
       console.warn('[App] WebGPU not supported, falling back to WebGL');
     }
     
-    // Force hide loading screen after 5 seconds to prevent stuck state
-    const timeout = setTimeout(() => {
-      console.log('[App] Force hiding loading screen after timeout');
-      setForceHideLoading(true);
-    }, 5000);
+    // Check WebGL
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    console.log('[App] WebGL context test:', gl ? 'SUCCESS' : 'FAILED');
     
-    return () => {
-      console.log('[App] Component unmounting');
-      clearTimeout(timeout);
-    };
   }, []);
   
-  // Log progress changes
   useEffect(() => {
     console.log('[App] Progress update:', { active, progress: Math.round(progress), item, total });
   }, [active, progress, item, total]);
@@ -52,70 +56,57 @@ function App() {
     console.log('[Canvas] WebGL Version:', state.gl.capabilities?.isWebGL2 ? 'WebGL2' : 'WebGL1');
     console.log('[Canvas] Pixel Ratio:', state.gl.getPixelRatio());
     console.log('[Canvas] Viewport:', state.viewport);
-    console.log('[Canvas] Camera:', state.camera.type);
+    console.log('[Canvas] Camera:', state.camera.type, 'pos:', state.camera.position.toArray());
     setCanvasReady(true);
   };
-
-  useEffect(() => {
-    if (canvasReady) {
-      console.log('[Canvas] Ready to render');
-    }
-  }, [canvasReady]);
-
-  const showLoading = active && !forceHideLoading;
+  
+  const handleCanvasError = (error: any) => {
+    console.error('[Canvas] Error:', error);
+  };
 
   return (
     <ErrorBoundary>
-      {showLoading && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'white',
-          fontSize: '24px',
-          fontFamily: 'sans-serif',
-          zIndex: 9999,
-          flexDirection: 'column',
-          gap: '20px'
-        }}>
-          <div>Loading Watershed... (shaders compiling)</div>
-          <div style={{ fontSize: '14px', opacity: 0.8 }}>
-            Progress: {Math.round(progress)}% | Items: {total} | Current: {item || 'none'}
-          </div>
-          {forceHideLoading && (
-            <button 
-              onClick={() => setForceHideLoading(true)}
-              style={{
-                padding: '10px 20px',
-                fontSize: '16px',
-                cursor: 'pointer',
-                background: 'white',
-                border: 'none',
-                borderRadius: '4px'
-              }}
-            >
-              Skip Loading
-            </button>
-          )}
-        </div>
-      )}
+      <div style={{
+        position: 'fixed',
+        top: 10,
+        left: 10,
+        zIndex: 10000,
+        background: 'rgba(0,0,0,0.8)',
+        color: '#0f0',
+        padding: '10px',
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        maxWidth: '400px',
+        maxHeight: '200px',
+        overflow: 'auto'
+      }}>
+        <div>Canvas Ready: {canvasReady ? 'YES' : 'NO'}</div>
+        <div>Loading Active: {active ? 'YES' : 'NO'}</div>
+        <div>Progress: {Math.round(progress)}%</div>
+        <div>Experience Error: {experienceError ? experienceError.message : 'None'}</div>
+      </div>
+      
       <Canvas
         gl={{ 
           powerPreference: 'high-performance',
           antialias: false 
         }}
-        camera={{ position: [0, 25, 10], fov: 75 }}
+        camera={{ position: [0, 5, 10], fov: 75 }}
         shadows
         onCreated={handleCanvasCreated}
+        onError={handleCanvasError}
+        frameloop="always"
       >
-        <Experience />
+        <React.Suspense fallback={
+          <mesh>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshBasicMaterial color="orange" />
+          </mesh>
+        }>
+          <Experience />
+        </React.Suspense>
       </Canvas>
+      
       {!skipLoader && <Loader />}
       <UI />
     </ErrorBoundary>

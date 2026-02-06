@@ -1,12 +1,8 @@
-import { KeyboardControls, Environment, Html } from "@react-three/drei";
-import { Physics } from "@react-three/rapier";
-import React, { useMemo, useState, Suspense, useRef, useEffect } from "react";
+import { KeyboardControls, Html } from "@react-three/drei";
+import { Physics, RigidBody } from "@react-three/rapier";
+import React, { useMemo, useRef, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from 'three';
-import TrackManager from "./components/TrackManager";
-import Player from "./components/Player";
-import EnhancedSky from "./components/EnhancedSky";
-import SplashParticles from "./components/VFX/SplashParticles";
 
 export const Controls = {
   forward: 'forward',
@@ -16,62 +12,46 @@ export const Controls = {
   jump: 'jump',
 };
 
-// Simple debug mesh to verify rendering is working
-const DebugScene = () => {
-  const { camera } = useThree();
+// Absolute minimal scene to test rendering
+const MinimalScene = () => {
+  const { camera, gl } = useThree();
   
   useEffect(() => {
-    console.log('[DebugScene] Mounted');
-    console.log('[DebugScene] Camera position:', camera.position.toArray());
-  }, [camera]);
+    console.log('[MinimalScene] Mounted');
+    console.log('[MinimalScene] Camera pos:', camera.position.toArray());
+    console.log('[MinimalScene] Canvas size:', gl.domElement.width, 'x', gl.domElement.height);
+    console.log('[MinimalScene] Canvas visible:', gl.domElement.style.display !== 'none');
+  }, [camera, gl]);
   
   useFrame((state) => {
-    // Rotate the debug cube
-    state.scene.getObjectByName('debug-cube')?.rotation.set(
-      state.clock.elapsedTime * 0.5,
-      state.clock.elapsedTime * 0.3,
-      0
-    );
+    // Rotate the cube
+    state.scene.getObjectByName('test-cube').rotation.y = state.clock.elapsedTime;
   });
   
   return (
     <>
-      {/* A bright red cube at origin */}
-      <mesh name="debug-cube" position={[0, 0, 0]}>
+      <color attach="background" args={['#000033']} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[5, 10, 5]} intensity={1} />
+      
+      {/* Simple rotating cube at origin */}
+      <mesh name="test-cube" position={[0, 0, 0]}>
         <boxGeometry args={[2, 2, 2]} />
-        <meshBasicMaterial color="red" wireframe />
+        <meshStandardMaterial color="red" />
       </mesh>
       
-      {/* A green cube at player spawn */}
-      <mesh position={[0, -7, -10]}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial color="green" />
-      </mesh>
-      
-      {/* A blue cube at track start */}
-      <mesh position={[0, -6, 30]}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial color="blue" />
-      </mesh>
-      
-      {/* Grid helper at track level */}
-      <gridHelper args={[100, 50, 'white', 'gray']} position={[0, -6, 0]} />
-      
-      {/* Axes helper */}
-      <axesHelper args={[5]} position={[0, -6, 0]} />
-      
-      {/* Some text */}
-      <Html center position={[0, 5, 0]}>
-        <div style={{ 
-          color: 'white', 
-          background: 'rgba(0,0,0,0.7)', 
+      {/* Text label */}
+      <Html center position={[0, 2, 0]}>
+        <div style={{
+          color: 'white',
+          background: 'rgba(0,0,0,0.7)',
           padding: '10px 20px',
           borderRadius: '4px',
           fontFamily: 'sans-serif',
-          fontSize: '18px',
-          whiteSpace: 'nowrap'
+          fontSize: '16px',
+          pointerEvents: 'none'
         }}>
-          Debug View - If you see this, React Three Fiber is working!
+          If you see this text and a red cube,<br/>React Three Fiber is working!
         </div>
       </Html>
     </>
@@ -79,7 +59,7 @@ const DebugScene = () => {
 };
 
 const Experience = () => {
-  console.log("[Experience] Component rendering...");
+  console.log("[Experience] Rendering...");
   
   const map = useMemo(() => [
     { name: Controls.forward, keys: ['ArrowUp'] },
@@ -88,49 +68,18 @@ const Experience = () => {
     { name: Controls.right, keys: ['KeyD', 'ArrowRight'] },
     { name: Controls.jump, keys: ['KeyW', 'Space'] },
   ], []);
-
-  const [currentBiome, setCurrentBiome] = useState('summer');
-  const playerRef = useRef();
-  const { scene, camera } = useThree();
+  
+  const { scene } = useThree();
   
   useEffect(() => {
     console.log('[Experience] Mounted');
     console.log('[Experience] Scene children:', scene.children.length);
-    console.log('[Experience] Camera:', camera.position.toArray());
-  }, []);
+  }, [scene]);
 
   return (
-    <>
-      <color attach="background" args={['#1a1a2e']} />
-      
-      {/* Always render debug scene first */}
-      <DebugScene />
-
-      <KeyboardControls map={map}>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
-
-        <Suspense fallback={
-          <Html center>
-            <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px' }}>
-              Loading Environment...
-            </div>
-          </Html>
-        }>
-          <Environment preset="park" background={false} />
-          <EnhancedSky biome={currentBiome} />
-        </Suspense>
-
-        <Physics gravity={[0, -9.81, 0]}>
-          <Suspense fallback={null}>
-            <TrackManager onBiomeChange={setCurrentBiome} />
-          </Suspense>
-          <Player ref={playerRef} />
-        </Physics>
-
-        <SplashParticles target={playerRef} />
-      </KeyboardControls>
-    </>
+    <KeyboardControls map={map}>
+      <MinimalScene />
+    </KeyboardControls>
   );
 };
 
