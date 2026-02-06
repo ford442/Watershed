@@ -64,6 +64,21 @@ const PhysicsWithErrorHandler = ({ children }) => {
   );
 };
 
+// TrackManager wrapper with its own Suspense
+const TrackManagerWithSuspense = ({ onBiomeChange }) => {
+  return (
+    <Suspense fallback={
+      <Html center>
+        <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px', borderRadius: '4px' }}>
+          Loading Track Textures...
+        </div>
+      </Html>
+    }>
+      <TrackManager onBiomeChange={onBiomeChange} />
+    </Suspense>
+  );
+};
+
 const Experience = () => {
   console.log("[Experience] Component rendering...");
   const map = useMemo(() => [
@@ -100,44 +115,32 @@ const Experience = () => {
       <FrameDebugger />
 
       <KeyboardControls map={map}>
-      {/* Environment/Sky in Suspense */}
-      <Suspense fallback={
-        <Html center>
-          <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px', borderRadius: '4px' }}>
-            Loading Environment...
-          </div>
-        </Html>
-      }>
-        <Environment preset="park" background={false} />
-        <EnhancedSky biome={currentBiome} />
-      </Suspense>
-
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
-
-        {/* 2. Main Game Physics Loop */}
+        {/* Environment/Sky in Suspense */}
         <Suspense fallback={
-          <>
-            <Html center>
-              <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px', borderRadius: '4px' }}>
-                Loading Physics...
-              </div>
-            </Html>
-            <mesh position={[0, 0, 0]}>
-              <boxGeometry args={[5, 5, 5]} />
-              <meshBasicMaterial color="red" wireframe />
-            </mesh>
-          </>
+          <Html center>
+            <div style={{ color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px', borderRadius: '4px' }}>
+              Loading Environment...
+            </div>
+          </Html>
         }>
+          <Environment preset="park" background={false} />
+          <EnhancedSky biome={currentBiome} />
+        </Suspense>
+
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 20, 5]} intensity={1.2} castShadow />
+
+        {/* Main Game Physics Loop - Player loads independently */}
         <PhysicsWithErrorHandler>
-            {/* TrackManager reports biome changes based on player position */}
-            <TrackManager onBiomeChange={setCurrentBiome} />
-            <Player ref={playerRef} />
+          {/* TrackManager with its own Suspense for texture loading */}
+          <TrackManagerWithSuspense onBiomeChange={setCurrentBiome} />
+          
+          {/* Player loads immediately, no Suspense blocking */}
+          <Player ref={playerRef} />
         </PhysicsWithErrorHandler>
 
         {/* Visual Effects */}
         <SplashParticles target={playerRef} />
-      </Suspense>
       </KeyboardControls>
     </>
   );

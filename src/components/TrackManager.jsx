@@ -130,20 +130,29 @@ export default function TrackManager({ onBiomeChange }) {
     // --- SHARED MATERIAL ASSETS ---
     // UPDATED: Added '/' to start of paths to ensure they load from public root
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
-
         '/Rock031_1K-JPG_Color.jpg',
         '/Rock031_1K-JPG_NormalGL.jpg',
         '/Rock031_1K-JPG_Roughness.jpg',
         '/Rock031_1K-JPG_AmbientOcclusion.jpg',
     ]);
 
-    // useEffect(() => {
-    //         t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    //         t.repeat.set(4, 8);
-    //     });
+    // Configure texture wrapping once loaded
+    useEffect(() => {
+        [colorMap, normalMap, roughnessMap, aoMap].forEach(texture => {
+            if (texture) {
+                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(4, 8);
+            }
+        });
+    }, [colorMap, normalMap, roughnessMap, aoMap]);
 
     // Create the custom Wet Rock Material (Shared)
     const rockMaterial = useMemo(() => {
+        // Wait for textures to load before creating material
+        if (!colorMap || !normalMap || !roughnessMap || !aoMap) {
+            return null;
+        }
+        
         const mat = new THREE.MeshStandardMaterial({
             map: colorMap,
             normalMap: normalMap,
@@ -175,7 +184,7 @@ export default function TrackManager({ onBiomeChange }) {
             );
         };
         return mat;
-    }, []);  // No texture deps
+    }, [colorMap, normalMap, roughnessMap, aoMap]);  // FIX: Added texture dependencies
 
 
     const generateNextSegment = useCallback((lastSegment) => {
