@@ -8,6 +8,7 @@ const SPEED = 5;
 const JUMP_FORCE = 5;
 
 // Fallback camera position when physics isn't ready
+// Matches player spawn position so camera is in correct location from frame 1
 const FALLBACK_POS = new THREE.Vector3(0, -4, -10);
 
 const Player = forwardRef((props, ref) => {
