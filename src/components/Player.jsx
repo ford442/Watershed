@@ -8,7 +8,8 @@ const SPEED = 5;
 const JUMP_FORCE = 5;
 
 // Fallback camera position when physics isn't ready
-const FALLBACK_POS = new THREE.Vector3(0, -6, 20);
+// Matches player spawn position so camera is in correct location from frame 1
+const FALLBACK_POS = new THREE.Vector3(0, -4, -10);
 
 const Player = forwardRef((props, ref) => {
   const { camera, gl } = useThree();
@@ -122,16 +123,16 @@ const Player = forwardRef((props, ref) => {
   return (
     <>
       {/* Visible player mesh for debugging */}
-      <mesh position={[0, -7, -10]}>
+      <mesh position={[0, -4, -10]}>
         <capsuleGeometry args={[0.5, 1, 4, 8]} />
         <meshBasicMaterial color="yellow" wireframe />
       </mesh>
       
       <RigidBody
         ref={rb}
-        // Spawn at track level - track starts at Y=-6 at Z=30, Y=-12 at Z=-60
-        // Player spawns at Z=-10, so interpolate: roughly Y=-7
-        position={[0, -7, -10]}
+        // Spawn above track level - track is at Y=-6 at Z=30 and nearby
+        // Player spawns at Z=-10 (near start), Y=-4 puts player above track to fall onto surface
+        position={[0, -4, -10]}
         enabledRotations={[false, false, false]}
         colliders={false}
         friction={0}
