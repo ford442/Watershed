@@ -6,16 +6,13 @@ export const Loader = () => {
   const [finished, setFinished] = useState(false);
 
   useEffect(() => {
-    // FIX: Relaxed condition. If !active, we are done, regardless of math rounding.
-    // If not active, we are effectively done.
     if (!active) {
-      const timer = setTimeout(() => setFinished(true), 500);
+      console.log('[Loader] Assets done, fading...');
+      const timer = setTimeout(() => setFinished(true), 200);
       return () => clearTimeout(timer);
     }
 
-    if (active) {
-      setFinished(false);
-    }
+    setFinished(false);
   }, [active]);
 
   if (finished) return null;
@@ -25,7 +22,8 @@ export const Loader = () => {
   const isFading = !active;
 
   // Show 100% if total is 0 to avoid "0%" confusion
-  const displayProgress = total === 0 ? 100 : Math.round(progress);
+  // Updated to avoid 0%
+  const displayProgress = Math.max(1, Math.round(progress));
 
   return (
     <div className={`loader-overlay ${isFading ? 'fade-out' : ''}`}>
