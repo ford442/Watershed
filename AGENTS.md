@@ -10,16 +10,18 @@ The title has a double meaning:
 1. **Geographical:** Traversing an interconnected water system from source to delta
 2. **Kinetic:** Moving with such velocity that the player "sheds" water as they traverse past it
 
+---
+
 ## Technology Stack
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | UI/Framework | React 19 + TypeScript | Component architecture, state management |
-| 3D Rendering | Three.js + React Three Fiber | 3D scene graph, rendering |
-| Physics | Rapier (WASM) | Rigid body physics, collisions |
+| 3D Rendering | Three.js 0.182 + React Three Fiber 9.4 | 3D scene graph, rendering |
+| Physics | Rapier 0.19 (WASM) via @react-three/rapier | Rigid body physics, collisions |
 | Build Tool | Vite 7 | Development server, bundling |
-| Shaders | WGSL (WebGPU) | High-performance GPU compute |
-| Package Manager | pnpm/npm | Dependency management |
+| Shaders | GLSL (injected) + WGSL (WebGPU future) | GPU effects and compute |
+| Package Manager | npm/pnpm | Dependency management |
 
 ### Key Dependencies
 
@@ -29,9 +31,12 @@ The title has a double meaning:
   "@react-three/drei": "^10.7.7",
   "@react-three/rapier": "^2.2.0",
   "three": "^0.182.0",
+  "@dimforge/rapier3d-compat": "^0.19.3",
   "@webgpu/types": "^0.1.64"
 }
 ```
+
+---
 
 ## Directory Structure
 
@@ -40,78 +45,93 @@ The title has a double meaning:
 ├── src/                          # React application source
 │   ├── components/               # 3D components and game objects
 │   │   ├── Player.jsx           # Player physics & first-person controls
-│   │   ├── TrackManager.jsx     # Procedural segment generation
+│   │   ├── TrackManager.jsx     # Procedural segment generation orchestration
 │   │   ├── TrackSegment.jsx     # Individual track piece with decorations
-│   │   ├── FlowingWater.jsx     # Animated water surface shader
-│   │   ├── Environment/         # Biome decorations (trees, rocks, particles)
+│   │   ├── FlowingWater.jsx     # Animated water surface shader material
+│   │   ├── UI.tsx               # Game UI overlay (React + TypeScript)
+│   │   ├── Loader.tsx           # Asset loading screen
+│   │   ├── ErrorBoundary.tsx    # React error boundary
+│   │   ├── Environment/         # Biome decorations (21 components)
+│   │   │   ├── Vegetation.jsx   # Trees with wind animation
+│   │   │   ├── Grass.jsx        # Grass patches
+│   │   │   ├── Birds.jsx        # Bird flocks
+│   │   │   ├── Fish.jsx         # Underwater fish
+│   │   │   ├── Fireflies.jsx    # Night lighting effects
+│   │   │   ├── Mist.jsx         # Atmospheric fog patches
+│   │   │   ├── WaterfallParticles.jsx  # Waterfall spray VFX
+│   │   │   └── ... (14 more environment components)
 │   │   ├── Obstacles/           # Collision objects
-│   │   ├── VFX/                 # Visual effects
-│   │   ├── UI.tsx               # Game UI overlay
-│   │   └── Loader.tsx           # Asset loading screen
-│   ├── systems/                 # Game systems (planned)
+│   │   │   └── Rock.jsx         # Procedural rock formations
+│   │   └── VFX/                 # Visual effects
+│   │       └── SplashParticles.jsx  # Player movement splash
 │   ├── utils/                   # Utility functions
 │   │   └── RiverShader.js       # Material extensions for wetness/moss/caustics
 │   ├── Experience.jsx           # Main scene composition
-│   ├── App.tsx                  # Canvas setup
-│   ├── index.tsx                # Entry point
-│   └── style.css                # Global styles
+│   ├── App.tsx                  # Canvas setup, error boundaries
+│   ├── index.tsx                # Entry point with global error handlers
+│   └── style.css                # Global styles, UI, loader, crosshair
 ├── public/                      # Static assets
-│   ├── shaders/                 # WGSL shader files
+│   ├── shaders/                 # WGSL shader files (WebGPU migration path)
 │   │   ├── water.wgsl          # Water surface shader
-│   │   ├── sky.wgsl            # Skybox/equirectangular shader
 │   │   ├── terrain.wgsl        # Terrain displacement shader
-│   │   └── tree.wgsl           # Instanced tree shader with wind
+│   │   ├── sky.wgsl            # Skybox shader
+│   │   └── tree.wgsl           # Instanced tree shader
 │   ├── Rock031_1K-JPG_*.jpg    # PBR texture set (color, normal, roughness, AO)
 │   └── rapier.wasm             # Physics engine WASM
-├── assembly/                    # AssemblyScript (future WASM optimizations)
-│   └── index.ts                # Placeholder for terrain generation
-├── emscripten/                  # C++ Emscripten (future physics migration)
-│   ├── main.cpp                # Placeholder for water simulation
-│   └── build.sh                # Build script
-├── build/                       # Production build output
-├── build_and_patch.py          # Build + path patching script
+├── build/                       # Production build output (Vite)
+├── build_and_patch.py          # Build + relative path patching script
 ├── deploy.py                   # SFTP deployment script
-├── verify_visuals.py           # Visual regression testing
-├── verify_visuals_playwright.py # Playwright-based verification
+├── verify_visuals_playwright.py # Visual regression testing
 ├── vite.config.ts              # Vite configuration
 ├── tsconfig.json               # TypeScript configuration
-└── package.json                # Dependencies and scripts
+├── package.json                # Dependencies and scripts
+├── plan.md                     # Development roadmap
+├── TESTING.md                  # Testing procedures and QA
+└── CHANGES_SUMMARY.md          # Recent changes log
 ```
 
-## Build Commands
+---
+
+## Build and Development Commands
 
 ### Development
+
 ```bash
 # Start development server (port 3000)
 npm start
 # or
 npm run dev
+# or
+pnpm dev
 ```
 
 ### Production Build
-```bash
-# Build and patch for relative paths
-python3 build_and_patch.py
 
-# This script:
-# 1. Runs `pnpm run build` (outputs to build/)
-# 2. Patches index.html to use relative paths (src="./" instead of src="/")
-# 3. Runs deploy.py if available
+```bash
+# Build for production (outputs to build/)
+npm run build
+
+# Full build + path patching + optional deploy
+python3 build_and_patch.py
 ```
 
+The `build_and_patch.py` script:
+1. Runs `pnpm run build` (outputs to `build/`)
+2. Patches `index.html` to use relative paths (`src="./"` instead of `src="/"`)
+3. Runs `deploy.py` if available
+
 ### Testing
+
 ```bash
 # Run unit tests (Jest/React Testing Library)
 npm test
 
 # Visual regression test (requires dev server running)
 python3 verify_visuals_playwright.py
-
-# Alternative visual test
-python3 verify_visuals.py
 ```
 
 ### Deployment
+
 ```bash
 # Deploy build/ directory to server via SFTP
 python3 deploy.py
@@ -119,23 +139,37 @@ python3 deploy.py
 # Configured for: test.1ink.us/watershed
 ```
 
-## Key Technical Details
+---
 
-### 1. Track System Architecture
+## Key Technical Architecture
 
-The game uses a **chunk-based treadmill system** for infinite procedural generation:
+### 1. Track System (Chunk-Based Treadmill)
 
-- **TrackManager.jsx**: Orchestrates segments, handles generation/unloading
-  - `GENERATION_THRESHOLD = 150`: Distance before generating new segment
-  - `MAX_ACTIVE_SEGMENTS = 7`: Pool size for active segments
-  - Segments are defined by CatmullRom curves with 4 control points each
+The game uses an infinite procedural generation system:
 
-- **TrackSegment.jsx**: Renders individual track pieces
-  - U-shaped canyon cross-section with water at bottom
-  - Procedural decoration placement (rocks, trees, vegetation)
-  - Biome-specific configurations
+**TrackManager.jsx:**
+- `GENERATION_THRESHOLD = 150`: Distance before generating new segment
+- `MAX_ACTIVE_SEGMENTS = 7`: Pool size for active segments
+- `POOL_SIZE = 10`: Object pool size for recycling
+- Segments are defined by CatmullRom curves with 4 control points each
 
-### 2. Player Controls
+**TrackSegment.jsx:**
+- U-shaped canyon cross-section with water at bottom
+- Procedural decoration placement (25+ environment types)
+- Biome-specific configurations (summer/autumn)
+
+### 2. Level Progression
+
+| Segment ID(s) | Phase | Type | Biome | Key Features |
+|--------------|-------|------|-------|--------------|
+| 0-12 | The Meander | normal | summer | Gentle river, width 35 |
+| 13 | Approach | normal | summer | Steepens toward waterfall |
+| 14 | The Waterfall | waterfall | summer | 400 particles, camera shake |
+| 15 | Splash Pool | splash | autumn | 70 width, biome transition |
+| 16-18 | The Pond | pond | autumn | 70 width, fog, reduced trees |
+| 19+ | Autumn Rapids | normal | autumn | High rock density |
+
+### 3. Player Controls
 
 ```javascript
 // Movement (relative to camera view)
@@ -151,31 +185,25 @@ Move                        = Look around
 Click                       = Engage pointer lock
 ```
 
-### 3. Shader Systems
+Player spawn: `[0, -7, -10]` (center, above water, downstream)
 
-**FlowingWater.jsx**: Custom material with shader injection
+### 4. Shader Systems
+
+**FlowingWater.jsx:** Custom material with shader injection
 - Simplex noise for wave displacement
 - Flowing foam effect with animated UVs
 - Depth-based color gradient (deep vs shallow)
 - Edge foam for shoreline interaction
 
-**RiverShader.js**: Material extension utility
-- Wetness: Darkens surfaces near water (Y=0.5)
-- Moss: Green tint on upward-facing slopes near water
-- Caustics: Animated light patterns below water surface
+**RiverShader.js:** Material extension utility
+- `extendRiverMaterial(mat)` adds:
+  - **Wetness:** Darkens surfaces near water (Y=0.5)
+  - **Moss:** Green tint on upward-facing slopes near water
+  - **Caustics:** Animated light patterns below water surface
 
-**WGSL Shaders** (in public/shaders/):
-- Used for future WebGPU-native rendering
-- Currently placeholders for migration path
-
-### 4. Biome System
-
-Segments support different biome types with visual and gameplay variations:
-
-| Biome | Characteristics |
-|-------|-----------------|
-| summer | Default green, full tree density |
-| autumn | Orange/red foliage, reduced density, falling leaves |
+**WGSL Shaders** (in `public/shaders/`):
+- Future WebGPU-native rendering path
+- Currently placeholders for migration
 
 ### 5. Coordinate System
 
@@ -191,45 +219,80 @@ Y (Up)
 └──────────────────────→ Z (Forward/downstream)
      │
      ↓ X (Left/Right)
-
-Player Spawn: [0, 2, -10] (center, above water, downstream)
 ```
 
-## Development Conventions
+---
 
-### Code Style
+## Code Style Guidelines
 
-1. **Components**: Use functional components with hooks
-2. **Imports**: Group by external → internal → relative
-3. **Physics**: Always use RigidBody with custom colliders (not auto-generated)
-4. **Materials**: Extend via `onBeforeCompile` for shader injection
-5. **Memory**: Use object pooling for frequently created/destroyed objects
+### Component Structure
 
-### File Naming
+1. **Functional components with hooks** - No class components
+2. **Forward refs for physics objects** - Expose RigidBody API to parents
+3. **useMemo for expensive calculations** - Geometry, materials, instance data
+4. **useFrame for animations** - Update uniforms, positions, rotations
 
-- Components: PascalCase (e.g., `TrackManager.jsx`)
-- Utilities: camelCase (e.g., `riverShader.js`)
-- Shaders: lowercase with extension (e.g., `water.wgsl`)
+### Import Order
+
+```javascript
+// 1. React and external libraries
+import React, { useRef, useMemo } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+
+// 2. React Three Fiber ecosystem
+import { useTexture } from '@react-three/drei';
+import { RigidBody } from '@react-three/rapier';
+
+// 3. Internal utilities
+import { extendRiverMaterial } from '../utils/RiverShader';
+
+// 4. Relative component imports
+import FlowingWater from './FlowingWater';
+```
+
+### File Naming Conventions
+
+- **Components:** PascalCase (e.g., `TrackManager.jsx`, `UI.tsx`)
+- **Utilities:** camelCase (e.g., `riverShader.js`)
+- **Shaders:** lowercase with extension (e.g., `water.wgsl`)
+- **Tests:** `ComponentName.test.tsx` alongside source
 
 ### Shader Injection Pattern
 
 ```javascript
-material.onBeforeCompile = (shader) => {
-    // Add uniforms
-    shader.uniforms.time = { value: 0 };
+const material = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+        map: colorMap,
+        normalMap: normalMap,
+        roughnessMap: roughnessMap,
+    });
+
+    mat.onBeforeCompile = (shader) => {
+        // Add uniforms
+        shader.uniforms.time = { value: 0 };
+        
+        // Inject vertex shader
+        shader.vertexShader = `
+            uniform float time;
+            varying vec3 vWorldPos;
+        ` + shader.vertexShader;
+        
+        // Inject fragment shader
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <map_fragment>',
+            `
+            #include <map_fragment>
+            // Custom color logic here
+            `
+        );
+        
+        // Store for updates
+        mat.userData.shader = shader;
+    };
     
-    // Inject vertex shader
-    shader.vertexShader = shader.vertexShader.replace(
-        '#include <common>',
-        `
-        #include <common>
-        uniform float time;
-        `
-    );
-    
-    // Store for updates
-    material.userData.shader = shader;
-};
+    return mat;
+}, [colorMap, normalMap]);
 
 // Update in useFrame
 useFrame((state) => {
@@ -239,16 +302,26 @@ useFrame((state) => {
 });
 ```
 
+---
+
 ## Testing Strategy
+
+### Unit Tests
+
+Located in `src/components/*.test.tsx`:
+- `UI.test.tsx` - UI component behavior, pointer lock, restart flow
+- `Loader.test.tsx` - Loading state transitions
+
+Run with: `npm test`
 
 ### Manual Testing Checklist
 
 Before committing changes, verify:
-- [ ] Player spawns correctly (not in geometry)
+- [ ] Player spawns correctly at `[0, -7, -10]` (not in geometry)
 - [ ] Movement controls work (WASD + mouse look)
 - [ ] Jump and physics respond correctly
-- [ ] Track generates as player moves forward
-- [ ] Textures load and display properly
+- [ ] Track generates as player moves forward (negative Z)
+- [ ] Textures load and display properly (Rock031 PBR set)
 - [ ] Performance stays above 30 FPS
 - [ ] No console errors
 
@@ -256,17 +329,27 @@ Before committing changes, verify:
 
 The `verify_visuals_playwright.py` script:
 1. Launches headless Chromium
-2. Navigates to localhost:3000
-3. Waits for assets to load
+2. Navigates to `localhost:3000`
+3. Waits for assets to load (`.start-button:not([disabled])`)
 4. Hides UI overlay
 5. Captures screenshot to `verification_visuals.png`
 
+Requirements:
+```bash
+pip install playwright
+playwright install chromium
+```
+
 ### Performance Targets
 
-- **FPS**: 60 (locked to refresh rate)
-- **Frame Time**: <16.67ms
-- **Memory**: <300MB after initial load
-- **Load Time**: <3 seconds (with caching)
+| Metric | Target |
+|--------|--------|
+| FPS | 60 (locked to refresh rate) |
+| Frame Time | <16.67ms |
+| Memory | <300MB after initial load |
+| Load Time | <3 seconds (with caching) |
+
+---
 
 ## Common Issues and Solutions
 
@@ -290,6 +373,8 @@ The `verify_visuals_playwright.py` script:
 - Check for syntax errors in shader injection
 - Verify uniforms are properly declared
 
+---
+
 ## Browser Requirements
 
 - **Chrome 90+** (recommended)
@@ -303,39 +388,56 @@ Required features:
 - WebAssembly
 - ES6+ JavaScript
 
-## Planned Migrations (Future Work)
+---
 
-### AssemblyScript (assembly/)
+## Future Migrations
+
+### AssemblyScript (`assembly/`)
+Planned for:
 - Terrain generation
 - Noise functions
 - Procedural decoration placement
 - LOD calculations
 
-### C++ Emscripten (emscripten/)
+### C++ Emscripten (`emscripten/`)
+Planned for:
 - Water simulation (shallow water equations)
 - Advanced physics calculations
 - Particle systems
 - Raycast optimization
 
+---
+
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `src/App.tsx` | Canvas configuration, error boundaries |
-| `src/Experience.jsx` | Scene composition, physics wrapper |
-| `src/components/Player.jsx` | First-person controls, camera |
+| `src/App.tsx` | Canvas configuration, error boundaries, progress tracking |
+| `src/Experience.jsx` | Scene composition, keyboard controls setup |
+| `src/components/Player.jsx` | First-person controls, camera, physics |
 | `src/components/TrackManager.jsx` | Procedural generation orchestration |
-| `src/components/TrackSegment.jsx` | Canyon geometry, decorations |
+| `src/components/TrackSegment.jsx` | Canyon geometry, decorations, segment lifecycle |
 | `src/components/FlowingWater.jsx` | Water surface shader material |
-| `src/utils/RiverShader.js` | Material extension utilities |
-| `src/style.css` | UI styles, loader, crosshair |
-| `public/shaders/*.wgsl` | WebGPU shader source |
+| `src/components/UI.tsx` | Game menu, pause screen, controls display |
+| `src/utils/RiverShader.js` | Material extension for wetness/moss/caustics |
+| `src/style.css` | UI styles, loader, crosshair, responsive design |
+
+---
 
 ## Documentation
 
 Additional documentation files in the project:
 - `README.md` - High-level project overview
-- `PLAN.md` - Development roadmap and phase planning
+- `plan.md` - Development roadmap and phase planning
+- `src/LEVEL_DESIGN.md` - Track configuration and level design specifications
 - `TESTING.md` - Detailed testing procedures
 - `CHANGES_SUMMARY.md` - Recent changes log
-- `src/LEVEL_DESIGN.md` - Track configuration and level design
+
+---
+
+## Security Considerations
+
+1. **No sensitive data in client code** - The deploy.py contains server credentials but is not bundled into the app
+2. **WASM integrity** - Rapier WASM is loaded from a known source (`@dimforge/rapier3d-compat`)
+3. **Pointer lock requires user gesture** - Browser security prevents programmatic pointer lock
+4. **CORS for textures** - Ensure textures load from same origin or proper CORS headers
