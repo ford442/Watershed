@@ -5,10 +5,10 @@ import { InstancedRigidBodies } from '@react-three/rapier';
 
 export default function Rock({ transforms }) {
   const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
-    '/Rock031_1K-JPG_Color.jpg',
-    '/Rock031_1K-JPG_NormalGL.jpg',
-    '/Rock031_1K-JPG_Roughness.jpg',
-    '/Rock031_1K-JPG_AmbientOcclusion.jpg',
+    './Rock031_1K-JPG_Color.jpg', // NOTE: Relative path for static hosting compatibility. Keep FTP structure in mind.
+    './Rock031_1K-JPG_NormalGL.jpg',
+    './Rock031_1K-JPG_Roughness.jpg',
+    './Rock031_1K-JPG_AmbientOcclusion.jpg',
   ]);
 
   const geometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);

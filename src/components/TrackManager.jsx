@@ -129,13 +129,13 @@ export default function TrackManager({ onBiomeChange }) {
     }, [segments]);
 
     // --- SHARED MATERIAL ASSETS ---
-    // UPDATED: Added '/' to start of paths to ensure they load from public root
+    // UPDATED: Use relative paths for static hosting compatibility
     console.log('[TrackManager] Loading textures...');
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
-        '/Rock031_1K-JPG_Color.jpg',
-        '/Rock031_1K-JPG_NormalGL.jpg',
-        '/Rock031_1K-JPG_Roughness.jpg',
-        '/Rock031_1K-JPG_AmbientOcclusion.jpg',
+        './Rock031_1K-JPG_Color.jpg', // NOTE: Relative path for static hosting compatibility. Keep FTP structure in mind.
+        './Rock031_1K-JPG_NormalGL.jpg',
+        './Rock031_1K-JPG_Roughness.jpg',
+        './Rock031_1K-JPG_AmbientOcclusion.jpg',
     ]);
     console.log('[TrackManager] Textures loaded:', { colorMap: !!colorMap, normalMap: !!normalMap, roughnessMap: !!roughnessMap, aoMap: !!aoMap });
 
