@@ -33,10 +33,11 @@ export default function FlowingWater({
         });
 
         mat.onBeforeCompile = (shader) => {
-            shader.uniforms.time = { value: 0 };
-            shader.uniforms.flowSpeed = { value: flowSpeed };
-            shader.uniforms.foamColor = { value: new THREE.Color(foamColor) };
-            shader.uniforms.waterColor = { value: new THREE.Color(baseColor) };
+            try {
+                shader.uniforms.time = { value: 0 };
+                shader.uniforms.flowSpeed = { value: flowSpeed };
+                shader.uniforms.foamColor = { value: new THREE.Color(foamColor) };
+                shader.uniforms.waterColor = { value: new THREE.Color(baseColor) };
 
             // Inject Uniforms
             shader.vertexShader = `
@@ -56,6 +57,7 @@ export default function FlowingWater({
             ` + shader.fragmentShader;
 
             // --- Vertex Shader: Wave Displacement ---
+            const originalVertexShader = shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <common>',
                 `
@@ -104,6 +106,10 @@ export default function FlowingWater({
                 }
                 `
             );
+            
+            if (shader.vertexShader === originalVertexShader) {
+                console.warn('[FlowingWater] Failed to inject #include <common> in vertex shader');
+            }
 
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <begin_vertex>',
@@ -120,6 +126,10 @@ export default function FlowingWater({
                 vFlowUv.y -= time * flowSpeed * 0.3;
                 `
             );
+            
+            if (!shader.vertexShader.includes('getWaveHeight')) {
+                console.warn('[FlowingWater] Failed to inject wave height logic in vertex shader');
+            }
 
             // --- Fragment Shader ---
             shader.fragmentShader = shader.fragmentShader.replace(
@@ -144,7 +154,13 @@ export default function FlowingWater({
                 `
             );
 
+            // Validate common injection
+            if (!shader.fragmentShader.includes('float hash(vec2 p)')) {
+                console.warn('[FlowingWater] Failed to inject noise functions in fragment shader');
+            }
+
             // 1. Calculate Foam at the start of main
+            const originalFragmentShader = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <begin_fragment>',
                 `
@@ -169,8 +185,13 @@ export default function FlowingWater({
                 foam = clamp(foam, 0.0, 1.0);
                 `
             );
+            
+            if (shader.fragmentShader === originalFragmentShader) {
+                console.warn('[FlowingWater] Failed to inject #include <begin_fragment>');
+            }
 
             // 2. Animated Normal Map (Flowing Ripples)
+            const beforeNormalMap = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <normal_fragment_maps>',
                 `
@@ -190,8 +211,13 @@ export default function FlowingWater({
                 #endif
                 `
             );
+            
+            if (shader.fragmentShader === beforeNormalMap) {
+                console.warn('[FlowingWater] Failed to inject #include <normal_fragment_maps>');
+            }
 
             // 3. Roughness Modulation (Foam is rougher)
+            const beforeRoughness = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <roughnessmap_fragment>',
                 `
@@ -201,9 +227,14 @@ export default function FlowingWater({
                 roughnessFactor = mix(roughnessFactor, 0.8, foam);
                 `
             );
+            
+            if (shader.fragmentShader === beforeRoughness) {
+                console.warn('[FlowingWater] Failed to inject #include <roughnessmap_fragment>');
+            }
 
             // 4. Mix Foam into Diffuse Color (Before Lighting)
             // AND Implement Depth Color Gradient
+            const beforeMapFragment = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <map_fragment>',
                 `
@@ -223,8 +254,17 @@ export default function FlowingWater({
                 diffuseColor.rgb = mix(waterGradient, foamColor, foam);
                 `
             );
+            
+            if (shader.fragmentShader === beforeMapFragment) {
+                console.warn('[FlowingWater] Failed to inject #include <map_fragment>');
+            }
 
-            mat.userData.shader = shader;
+                mat.userData.shader = shader;
+            } catch (error) {
+                console.error('[FlowingWater] Shader compilation error:', error);
+                console.error('Shader vertex (first 500 chars):', shader.vertexShader?.substring(0, 500));
+                console.error('Shader fragment (first 500 chars):', shader.fragmentShader?.substring(0, 500));
+            }
         };
 
         return mat;

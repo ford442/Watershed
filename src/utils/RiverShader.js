@@ -13,6 +13,7 @@ export function extendRiverMaterial(material) {
             shader.uniforms.time = { value: 0 };
 
             // --- Vertex Shader ---
+            const originalVertexShader = shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <common>',
                 `
@@ -21,9 +22,14 @@ export function extendRiverMaterial(material) {
                 varying vec3 vPosRiver;
                 `
             );
+            
+            if (shader.vertexShader === originalVertexShader) {
+                console.warn('[RiverShader] Failed to inject #include <common> in vertex shader');
+            }
 
             // Calculate World Position and Normal
             // Compatible with InstancedMesh (where modelMatrix * transformed includes instance transform)
+            const beforeWorldPos = shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <worldpos_vertex>',
                 `
@@ -32,8 +38,13 @@ export function extendRiverMaterial(material) {
                 vNormRiver = normalize(mat3(modelMatrix) * objectNormal);
                 `
             );
+            
+            if (shader.vertexShader === beforeWorldPos) {
+                console.warn('[RiverShader] Failed to inject #include <worldpos_vertex>');
+            }
 
             // --- Fragment Shader ---
+            const originalFragmentShader = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <common>',
                 `
@@ -64,8 +75,13 @@ export function extendRiverMaterial(material) {
                 }
                 `
             );
+            
+            if (shader.fragmentShader === originalFragmentShader) {
+                console.warn('[RiverShader] Failed to inject #include <common> in fragment shader');
+            }
 
             // Inject Color Logic (Wetness + Moss + Caustics)
+            const beforeMapFragment = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <map_fragment>',
                 `
@@ -108,8 +124,13 @@ export function extendRiverMaterial(material) {
                 }
                 `
             );
+            
+            if (shader.fragmentShader === beforeMapFragment) {
+                console.warn('[RiverShader] Failed to inject #include <map_fragment>');
+            }
 
             // Inject Roughness Logic
+            const beforeRoughness = shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <roughnessmap_fragment>',
                 `
@@ -138,6 +159,10 @@ export function extendRiverMaterial(material) {
                 }
                 `
             );
+            
+            if (shader.fragmentShader === beforeRoughness) {
+                console.warn('[RiverShader] Failed to inject #include <roughnessmap_fragment>');
+            }
         } catch (e) {
             console.error('RiverShader compile error:', e);
         }

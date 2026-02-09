@@ -670,10 +670,17 @@ export default function TrackSegment({
     const canyonGeometry = useMemo(() => {
         if (!active || !segmentPath) return null;
 
-        const segmentsX = 40;
-        const segmentsZ = Math.max(1, Math.floor(pathLength));
+        // DEFENSIVE CHECK: Ensure valid path length
+        const len = segmentPath.getLength();
+        if (!len || len <= 0 || !isFinite(len)) {
+            console.warn(`[TrackSegment ${segmentId}] Invalid pathLength: ${len}`);
+            return null;
+        }
 
-        const geo = new THREE.PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ);
+        const segmentsX = 40;
+        const segmentsZ = Math.max(2, Math.floor(len)); // At least 2 segments
+
+        const geo = new THREE.PlaneGeometry(canyonWidth, len, segmentsX, segmentsZ);
         geo.rotateX(-Math.PI / 2);
         
         const positions = geo.attributes.position;
@@ -697,7 +704,7 @@ export default function TrackSegment({
             const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
             yHeight += rockNoise * (0.5 + normalizedDist);
             
-            const t = (zLocal + pathLength / 2) / pathLength;
+            const t = (zLocal + len / 2) / len;
             const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
             
             const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
@@ -712,17 +719,24 @@ export default function TrackSegment({
         geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geo.computeVertexNormals();
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, waterWidth, active]);
+    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId]);
 
     // Wall Shell Geometry
     const wallShellGeometry = useMemo(() => {
         if (!active || !segmentPath) return null;
 
+        // DEFENSIVE CHECK: Ensure valid path length
+        const len = segmentPath.getLength();
+        if (!len || len <= 0 || !isFinite(len)) {
+            console.warn(`[TrackSegment ${segmentId}] Invalid pathLength for wall: ${len}`);
+            return null;
+        }
+
         const shellWidth = canyonWidth * 1.5;
         const segmentsX = 20;
-        const segmentsZ = Math.max(1, Math.floor(pathLength / 2));
+        const segmentsZ = Math.max(2, Math.floor(len / 2));
 
-        const geo = new THREE.PlaneGeometry(shellWidth, pathLength, segmentsX, segmentsZ);
+        const geo = new THREE.PlaneGeometry(shellWidth, len, segmentsX, segmentsZ);
         geo.rotateX(-Math.PI / 2);
 
         const positions = geo.attributes.position;
@@ -737,7 +751,7 @@ export default function TrackSegment({
             let yHeight = 15 + (distFromCenter * 0.5); 
             yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
 
-            const t = (zLocal + pathLength / 2) / pathLength;
+            const t = (zLocal + len / 2) / len;
             const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
 
             positions.setX(i, point.x + xLocal);
@@ -746,21 +760,28 @@ export default function TrackSegment({
         }
         geo.computeVertexNormals();
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, active]);
+    }, [segmentPath, pathLength, canyonWidth, active, segmentId]);
 
     // Water Geometry
     const waterGeometry = useMemo(() => {
         if (!active || !segmentPath) return null;
 
-        const segmentsZ = Math.max(1, Math.floor(pathLength / 2));
-        const geo = new THREE.PlaneGeometry(waterWidth, pathLength, 4, segmentsZ);
+        // DEFENSIVE CHECK: Ensure valid path length
+        const len = segmentPath.getLength();
+        if (!len || len <= 0 || !isFinite(len)) {
+            console.warn(`[TrackSegment ${segmentId}] Invalid pathLength for water: ${len}`);
+            return null;
+        }
+
+        const segmentsZ = Math.max(2, Math.floor(len / 2));
+        const geo = new THREE.PlaneGeometry(waterWidth, len, 4, segmentsZ);
         geo.rotateX(-Math.PI / 2);
         
         const positions = geo.attributes.position;
         for (let i = 0; i < positions.count; i++) {
             const x = positions.getX(i);
             const z = positions.getZ(i);
-            const t = (z + pathLength / 2) / pathLength;
+            const t = (z + len / 2) / len;
             const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
             positions.setX(i, point.x + x);
             positions.setY(i, point.y + waterLevel);
@@ -768,7 +789,7 @@ export default function TrackSegment({
         }
         geo.computeVertexNormals();
         return geo;
-    }, [segmentPath, pathLength, waterWidth, active]);
+    }, [segmentPath, pathLength, waterWidth, active, segmentId]);
 
     // Waterfall position
     const waterfallPos = useMemo(() => {
