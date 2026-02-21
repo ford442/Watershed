@@ -24,17 +24,23 @@ const Experience = () => {
       <EnhancedSky biome={biome} />
       
       {/* Lighting */}
-      <ambientLight intensity={0.3} />
+      <ambientLight intensity={0.4} />
+      <hemisphereLight 
+        skyColor="#a0d8ff" 
+        groundColor="#4a3f2f" 
+        intensity={0.8} 
+      />
       <directionalLight 
-        position={[100, 50, 100]} 
-        intensity={1.5} 
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={500}
-        shadow-camera-left={-100}
-        shadow-camera-right={100}
-        shadow-camera-top={100}
-        shadow-camera-bottom={-100}
+        position={[10, 30, 15]} 
+        intensity={1.2} 
+        castShadow 
+        shadow-mapSize={[2048, 2048]} 
+        shadow-camera-near={1}
+        shadow-camera-far={200}
+        shadow-camera-left={-60}
+        shadow-camera-right={60}
+        shadow-camera-top={60}
+        shadow-camera-bottom={-60}
       />
       
       {/* Physics world */}

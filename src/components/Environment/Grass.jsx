@@ -1,8 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
 
 export default function Grass({ transforms }) {
+  const grassRef = useRef(null);
+  
   // Geometry: Low poly bush (Icosahedron)
   const geometry = useMemo(() => {
     // Create a slightly irregular bush shape by merging 2 shapes or just one
@@ -21,8 +24,10 @@ export default function Grass({ transforms }) {
 
   // Material: Stylized green
   const material = useMemo(() => {
-    const mat = new THREE.MeshBasicMaterial({
-        color: '#5a7d38' // Muted organic green
+    const mat = new THREE.MeshStandardMaterial({
+        color: '#5a7d38', // Muted organic green
+        roughness: 0.9,
+        metalness: 0
     });
     return mat;
   }, []);
@@ -43,10 +48,20 @@ export default function Grass({ transforms }) {
     });
   }, [transforms]);
 
+  // Grass sway animation
+  useFrame((state) => {
+    if (grassRef.current) {
+      const time = state.clock.getElapsedTime();
+      // Subtle grass movement
+      grassRef.current.rotation.z = Math.sin(time * 2) * 0.01;
+      grassRef.current.rotation.x = Math.cos(time * 1.8) * 0.008;
+    }
+  });
+
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <Instances range={instances.length} geometry={geometry} material={material} receiveShadow>
+    <Instances ref={grassRef} range={instances.length} geometry={geometry} material={material} receiveShadow>
       {instances.map((data) => (
         <Instance
           key={data.key}

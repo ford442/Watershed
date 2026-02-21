@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import FlowingWater from './FlowingWater';
+import Vegetation from './Environment/Vegetation';
+import Grass from './Environment/Grass';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -45,12 +47,11 @@ export default function TrackSegment({
     const waterWidth  = type === 'pond' ? 45 : 10;
     const waterLevel  = 0.5;
 
-    // Derived Placement Data - DISABLED
+    // Derived Placement Data - Trees and foliage enabled
     const placementData = useMemo(() => {
-        // Skip all decoration generation for now to avoid errors
-        return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [], mushrooms: [], rockFoam: [] };
 
-        /* DISABLED DECORATION LOGIC - const rocks = []; */
+        /* DISABLED DECORATION LOGIC */
+        const rocks = []; // Empty but defined to prevent reference errors
         const rockFoam = [];
         const trees = [];
         const debris = [];
@@ -639,8 +640,8 @@ export default function TrackSegment({
             }
         }
         
-        /* DISABLED - See early return above */
-    }, []); // No dependencies - decorations disabled
+        return { rocks: [], trees, debris, grass, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
+    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
@@ -884,6 +885,12 @@ export default function TrackSegment({
                 flowSpeed={flowSpeed}
                 baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
             />
+
+            {/* Vegetation - Trees with Sway */}
+            <Vegetation transforms={placementData.trees} biome={biome} />
+
+            {/* Grass Bushes */}
+            <Grass transforms={placementData.grass} />
         </group>
     );
 }

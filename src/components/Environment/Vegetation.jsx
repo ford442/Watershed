@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { InstancedRigidBodies } from '@react-three/rapier';
 import { useTreeAssets } from './TreeAssets';
+import { useFrame } from '@react-three/fiber';
 
 // Color Palettes
 const PALETTES = {
@@ -12,18 +13,23 @@ const PALETTES = {
 
 export default function Vegetation({ transforms, biome = 'summer' }) {
   const { trunkGeometry, foliageGeometry } = useTreeAssets();
+  const foliageRef = useRef(null);
 
   // Materials
   const trunkMaterial = useMemo(() => {
-    const mat = new THREE.MeshBasicMaterial({
-      color: '#4a3c31'
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#4a3c31',
+      roughness: 0.9,
+      metalness: 0
     });
     return mat;
   }, []);
 
   const foliageMaterial = useMemo(() => {
-    const mat = new THREE.MeshBasicMaterial({
-      color: '#ffffff' // Use white so instance color tints it correctly
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#ffffff', // Use white so instance color tints it correctly
+      roughness: 0.8,
+      metalness: 0
     });
     return mat;
   }, []);
@@ -53,6 +59,13 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
     });
   }, [transforms, biome]);
 
+  // Tree sway animation
+  useFrame((state) => {
+    if (!foliageRef.current) return;
+    // Gentle wind sway - stronger like original deployed version
+    foliageRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 1.5) * 0.04;
+  });
+
   if (!transforms || transforms.length === 0) return null;
 
   return (
@@ -76,7 +89,7 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
       </InstancedRigidBodies>
 
       {/* FOLIAGE */}
-      <Instances range={instances.length} geometry={foliageGeometry} material={foliageMaterial} castShadow receiveShadow>
+      <Instances ref={foliageRef} range={instances.length} geometry={foliageGeometry} material={foliageMaterial} castShadow receiveShadow>
         {instances.map((t) => (
           <Instance
             key={t.key}
