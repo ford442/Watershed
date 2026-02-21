@@ -25,8 +25,8 @@ function App() {
   const { active, progress, item, total } = useProgress();
 
   useEffect(() => {
-    console.log('[App] Component mounted');
-    console.log('[App] useProgress:', { active, progress, item, total });
+    // console.log('[App] Component mounted');
+    // console.log('[App] useProgress:', { active, progress, item, total });
     
     if (window.location.search.includes('no-pointer-lock')) {
       setSkipLoader(true);
@@ -34,7 +34,7 @@ function App() {
     
     // Check WebGPU support
     if ('gpu' in navigator) {
-      console.log('[App] WebGPU is available');
+      // console.log('[App] WebGPU is available');
     } else {
       console.warn('[App] WebGPU not supported, falling back to WebGL');
     }
@@ -42,21 +42,21 @@ function App() {
     // Check WebGL
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    console.log('[App] WebGL context test:', gl ? 'SUCCESS' : 'FAILED');
+    // console.log('[App] WebGL context test:', gl ? 'SUCCESS' : 'FAILED');
     
   }, []);
   
   useEffect(() => {
-    console.log('[App] Progress update:', { active, progress: Math.round(progress), item, total });
+    // console.log('[App] Progress update:', { active, progress: Math.round(progress), item, total });
   }, [active, progress, item, total]);
 
   const handleCanvasCreated = (state: RootState) => {
-    console.log('[Canvas] Created successfully');
-    console.log('[Canvas] Renderer:', state.gl.constructor.name);
-    console.log('[Canvas] WebGL Version:', state.gl.capabilities?.isWebGL2 ? 'WebGL2' : 'WebGL1');
-    console.log('[Canvas] Pixel Ratio:', state.gl.getPixelRatio());
-    console.log('[Canvas] Viewport:', state.viewport);
-    console.log('[Canvas] Camera:', state.camera.type, 'pos:', state.camera.position.toArray());
+    // console.log('[Canvas] Created successfully');
+    // console.log('[Canvas] Renderer:', state.gl.constructor.name);
+    // console.log('[Canvas] WebGL Version:', state.gl.capabilities?.isWebGL2 ? 'WebGL2' : 'WebGL1');
+    // console.log('[Canvas] Pixel Ratio:', state.gl.getPixelRatio());
+    // console.log('[Canvas] Viewport:', state.viewport);
+    // console.log('[Canvas] Camera:', state.camera.type, 'pos:', state.camera.position.toArray());
     setCanvasReady(true);
   };
   

@@ -4,5 +4,5 @@
  */
 export function extendRiverMaterial(material) {
     // No-op - shader injection disabled
-    console.log('[RiverShader] Shader injection disabled for stability');
+    // console.log('[RiverShader] Shader injection disabled for stability');
 }

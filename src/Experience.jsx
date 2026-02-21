@@ -6,7 +6,7 @@ import EnhancedSky from "./components/EnhancedSky";
 import Player from "./components/Player";
 
 const Experience = () => {
-  console.log("[Experience] Rendering...");
+  // console.log("[Experience] Rendering...");
   
   const [biome, setBiome] = useState('summer');
 
@@ -43,7 +43,7 @@ const Experience = () => {
         <PointerLockControls 
           makeDefault 
           lockOnClick
-          onLock={() => console.log("Locked—WASD to slide, SPACE to jump!")} 
+          onLock={() => {/* console.log("Locked—WASD to slide, SPACE to jump!") */}} 
         />
         
         {/* Sonic-style downhill player */}

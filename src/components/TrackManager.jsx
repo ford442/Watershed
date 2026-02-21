@@ -111,7 +111,7 @@ const INITIAL_SEGMENTS = [
 ];
 
 export default function TrackManager({ onBiomeChange, raftRef }) {
-    console.log('[TrackManager] Rendering...');
+    // console.log('[TrackManager] Rendering...');
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
     const segmentsRef = useRef(INITIAL_SEGMENTS);
     const lastSegmentId = useRef(1);
@@ -130,14 +130,14 @@ export default function TrackManager({ onBiomeChange, raftRef }) {
 
     // --- SHARED MATERIAL ASSETS ---
     // UPDATED: Use relative paths for static hosting compatibility
-    console.log('[TrackManager] Loading textures...');
+    // console.log('[TrackManager] Loading textures...');
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg', // NOTE: Relative path for static hosting compatibility. Keep FTP structure in mind.
         './Rock031_1K-JPG_NormalGL.jpg',
         './Rock031_1K-JPG_Roughness.jpg',
         './Rock031_1K-JPG_AmbientOcclusion.jpg',
     ]);
-    console.log('[TrackManager] Textures loaded:', { colorMap: !!colorMap, normalMap: !!normalMap, roughnessMap: !!roughnessMap, aoMap: !!aoMap });
+    // console.log('[TrackManager] Textures loaded:', { colorMap: !!colorMap, normalMap: !!normalMap, roughnessMap: !!roughnessMap, aoMap: !!aoMap });
 
     // Configure texture wrapping once loaded
     useEffect(() => {
