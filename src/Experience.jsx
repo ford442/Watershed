@@ -1,33 +1,25 @@
-import { KeyboardControls } from "@react-three/drei";
+import { PointerLockControls, KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import React, { useMemo, useState } from "react";
-import Player from "./components/Player";
+import React, { useState } from "react";
 import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
-
-export const Controls = {
-  forward: 'forward',
-  backward: 'backward',
-  left: 'left',
-  right: 'right',
-  jump: 'jump',
-};
+import Player from "./components/Player";
 
 const Experience = () => {
   console.log("[Experience] Rendering...");
   
   const [biome, setBiome] = useState('summer');
-  
-  const map = useMemo(() => [
-    { name: Controls.forward, keys: ['ArrowUp'] },
-    { name: Controls.backward, keys: ['KeyS', 'ArrowDown'] },
-    { name: Controls.left, keys: ['KeyA', 'ArrowLeft'] },
-    { name: Controls.right, keys: ['KeyD', 'ArrowRight'] },
-    { name: Controls.jump, keys: ['KeyW', 'Space'] },
-  ], []);
 
   return (
-    <KeyboardControls map={map}>
+    <KeyboardControls
+      map={[
+        { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
+        { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
+        { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
+        { name: 'rightward', keys: ['ArrowRight', 'KeyD'] },
+        { name: 'jump', keys: ['Space'] },
+      ]}
+    >
       {/* Sky and environment */}
       <EnhancedSky biome={biome} />
       
@@ -46,8 +38,15 @@ const Experience = () => {
       />
       
       {/* Physics world */}
-      <Physics gravity={[0, -9.81, 0]}>
-        {/* Player with first-person controls */}
+      <Physics gravity={[0, -20, 0]}>
+        {/* First-person controls */}
+        <PointerLockControls 
+          makeDefault 
+          lockOnClick
+          onLock={() => console.log("Locked—WASD to slide, SPACE to jump!")} 
+        />
+        
+        {/* Sonic-style downhill player */}
         <Player />
         
         {/* Procedural track generation */}

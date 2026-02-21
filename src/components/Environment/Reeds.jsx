@@ -1,6 +1,4 @@
-
 import React, { useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
@@ -66,62 +64,11 @@ export default function Reeds({ transforms }) {
 
   // Material: Green/Brown with Wind
   const reedsMaterial = useMemo(() => {
-    const mat = new THREE.MeshStandardMaterial({
-        color: '#4a6b3c', // Swampy green
-        roughness: 0.9,
-        flatShading: true,
-        side: THREE.DoubleSide
+    const mat = new THREE.MeshBasicMaterial({
+        color: '#4a6b3c' // Swampy green
     });
-
-    mat.userData.uniforms = {
-        time: { value: 0 }
-    };
-
-    mat.onBeforeCompile = (shader) => {
-        shader.uniforms.time = mat.userData.uniforms.time;
-
-        shader.vertexShader = `
-            uniform float time;
-        ` + shader.vertexShader;
-
-        shader.vertexShader = shader.vertexShader.replace(
-            '#include <begin_vertex>',
-            `
-            #include <begin_vertex>
-
-            // Reeds Wind Animation
-            // Slower and heavier than grass
-            float windStrength = 0.15;
-            float windSpeed = 1.2;
-
-            // Height factor: anchor at bottom (near 0)
-            // Reeds are tall, so we want the sway to increase with height
-            float heightFactor = max(0.0, transformed.y);
-
-            // Non-linear bend (more bend at top)
-            float bendFactor = pow(heightFactor, 1.5);
-
-            // Complex sway (2 waves)
-            float swayX = sin(time * windSpeed + transformed.x * 0.5) * windStrength * bendFactor;
-            float swayZ = cos(time * windSpeed * 0.8 + transformed.z * 0.5) * windStrength * bendFactor;
-
-            // Add some turbulence
-            swayX += sin(time * 2.0 + transformed.y) * 0.02 * bendFactor;
-
-            transformed.x += swayX;
-            transformed.z += swayZ;
-            `
-        );
-    };
-
     return mat;
   }, []);
-
-  useFrame((state) => {
-      if (reedsMaterial && reedsMaterial.userData && reedsMaterial.userData.uniforms) {
-          reedsMaterial.userData.uniforms.time.value = state.clock.elapsedTime;
-      }
-  });
 
   const instances = useMemo(() => {
       if (!transforms) return [];

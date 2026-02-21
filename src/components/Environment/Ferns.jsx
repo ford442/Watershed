@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
@@ -60,60 +59,11 @@ export default function Ferns({ transforms, biome = 'summer' }) {
 
     // 2. Material with Wind
     const material = useMemo(() => {
-        const mat = new THREE.MeshStandardMaterial({
-            color: '#2d5a27', // Deep forest green
-            roughness: 0.8,
-            side: THREE.DoubleSide,
-            flatShading: true,
+        const mat = new THREE.MeshBasicMaterial({
+            color: '#2d5a27' // Deep forest green
         });
-
-        mat.userData.uniforms = {
-            time: { value: 0 }
-        };
-
-        mat.onBeforeCompile = (shader) => {
-            shader.uniforms.time = mat.userData.uniforms.time;
-
-            shader.vertexShader = `
-                uniform float time;
-            ` + shader.vertexShader;
-
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <begin_vertex>',
-                `
-                #include <begin_vertex>
-
-                // Wind Animation for Ferns (Bouncy/Springy)
-                float windStrength = 0.12;
-                float windSpeed = 2.5;
-
-                // Height factor: anchor at bottom
-                float heightFactor = max(0.0, transformed.y);
-                float bendFactor = pow(heightFactor, 2.0); // Tip moves much more
-
-                // Multi-frequency sway
-                float swayX = sin(time * windSpeed + transformed.x * 2.0) * windStrength * bendFactor;
-                float swayZ = cos(time * windSpeed * 0.8 + transformed.z * 2.0) * windStrength * bendFactor;
-
-                // Vertical bounce
-                float bounce = sin(time * windSpeed * 2.0) * 0.05 * bendFactor;
-
-                transformed.x += swayX;
-                transformed.z += swayZ;
-                transformed.y += bounce;
-                `
-            );
-        };
-
         return mat;
     }, []);
-
-    // Animate Uniforms
-    useFrame((state) => {
-        if (material.userData.uniforms) {
-            material.userData.uniforms.time.value = state.clock.elapsedTime;
-        }
-    });
 
     const instances = useMemo(() => {
         if (!transforms) return [];

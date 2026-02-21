@@ -2,28 +2,6 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import FlowingWater from './FlowingWater';
-import Rock from './Obstacles/Rock';
-import Vegetation from './Environment/Vegetation';
-import Grass from './Environment/Grass';
-import Reeds from './Environment/Reeds';
-import FloatingDebris from './Environment/FloatingDebris';
-import Driftwood from './Environment/Driftwood';
-import Wildflowers from './Environment/Wildflowers';
-import WaterfallParticles from './Environment/WaterfallParticles';
-import FallingLeaves from './Environment/FallingLeaves';
-import Fireflies from './Environment/Fireflies';
-import Birds from './Environment/Birds';
-import Fish from './Environment/Fish';
-import Pebbles from './Environment/Pebbles';
-import Mist from './Environment/Mist';
-import WaterLilies from './Environment/WaterLilies';
-import SunShafts from './Environment/SunShafts';
-import Ferns from './Environment/Ferns';
-import Rapids from './Environment/Rapids';
-import Dragonflies from './Environment/Dragonflies';
-import Pinecone from './Environment/Pinecone';
-import Mushrooms from './Environment/Mushrooms';
-import RockFoam from './Environment/RockFoam';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -67,14 +45,12 @@ export default function TrackSegment({
     const waterWidth  = type === 'pond' ? 45 : 10;
     const waterLevel  = 0.5;
 
-    // Derived Placement Data (Rocks, Trees, etc.)
+    // Derived Placement Data - DISABLED
     const placementData = useMemo(() => {
-        // Return empty data if inactive to save processing and avoid spawning assets
-        if (!active || !segmentPath) {
-            return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [], mushrooms: [], rockFoam: [] };
-        }
+        // Skip all decoration generation for now to avoid errors
+        return { rocks: [], trees: [], debris: [], grass: [], reeds: [], driftwood: [], leaves: [], floatingLeaves: [], fireflies: [], birds: [], fish: [], pebbles: [], mist: [], waterLilies: [], sunShafts: [], ferns: [], rapids: [], dragonflies: [], pinecones: [], mushrooms: [], rockFoam: [] };
 
-        const rocks = [];
+        /* DISABLED DECORATION LOGIC - const rocks = []; */
         const rockFoam = [];
         const trees = [];
         const debris = [];
@@ -663,8 +639,8 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
-    }, [segmentPath, pathLength, segmentId, canyonWidth, waterWidth, type, biome, rockDensity, treeDensity, active, flowSpeed, waterLevel]);
+        /* DISABLED - See early return above */
+    }, []); // No dependencies - decorations disabled
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
@@ -705,19 +681,52 @@ export default function TrackSegment({
             yHeight += rockNoise * (0.5 + normalizedDist);
             
             const t = (zLocal + len / 2) / len;
-            const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
+            const safeT = Math.max(0, Math.min(1, t));
+            
+            // GUARD: Check if getPoint returns valid result
+            let point;
+            try {
+                point = segmentPath.getPoint(safeT);
+                // Check for NaN
+                if (!point || !isFinite(point.x) || !isFinite(point.y) || !isFinite(point.z)) {
+                    console.warn(`[TrackSegment ${segmentId}] NaN in path point at t=${safeT}`);
+                    point = new THREE.Vector3(0, 0, 0); // fallback
+                }
+            } catch (e) {
+                console.warn(`[TrackSegment ${segmentId}] Error getting path point:`, e);
+                point = new THREE.Vector3(0, 0, 0);
+            }
             
             const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
             const intensity = 0.4 + 0.6 * dryness;
             color.setScalar(intensity);
             colors[i*3] = color.r; colors[i*3+1] = color.g; colors[i*3+2] = color.b;
 
-            positions.setX(i, point.x + xLocal);
-            positions.setY(i, point.y + yHeight);
-            positions.setZ(i, point.z);
+            // GUARD: Check values before setting
+            const finalX = point.x + xLocal;
+            const finalY = point.y + yHeight;
+            const finalZ = point.z;
+            
+            if (isFinite(finalX) && isFinite(finalY) && isFinite(finalZ)) {
+                positions.setXYZ(i, finalX, finalY, finalZ);
+            } else {
+                positions.setXYZ(i, 0, 0, 0);
+            }
         }
         geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geo.computeVertexNormals();
+        
+        // GUARD: Don't compute normals if positions have NaN
+        const posArray = positions.array;
+        let hasNaN = false;
+        for (let i = 0; i < posArray.length; i++) {
+            if (!isFinite(posArray[i])) {
+                hasNaN = true;
+                posArray[i] = 0;
+            }
+        }
+        if (!hasNaN) {
+            geo.computeVertexNormals();
+        }
         return geo;
     }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId]);
 
@@ -752,13 +761,43 @@ export default function TrackSegment({
             yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
 
             const t = (zLocal + len / 2) / len;
-            const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
+            const safeT = Math.max(0, Math.min(1, t));
+            
+            // GUARD: Check if getPoint returns valid result
+            let point;
+            try {
+                point = segmentPath.getPoint(safeT);
+                if (!point || !isFinite(point.x) || !isFinite(point.y) || !isFinite(point.z)) {
+                    point = new THREE.Vector3(0, 0, 0);
+                }
+            } catch (e) {
+                point = new THREE.Vector3(0, 0, 0);
+            }
 
-            positions.setX(i, point.x + xLocal);
-            positions.setY(i, point.y + yHeight - 2); 
-            positions.setZ(i, point.z);
+            // GUARD: Check values before setting
+            const finalX = point.x + xLocal;
+            const finalY = point.y + yHeight - 2;
+            const finalZ = point.z;
+            
+            if (isFinite(finalX) && isFinite(finalY) && isFinite(finalZ)) {
+                positions.setXYZ(i, finalX, finalY, finalZ);
+            } else {
+                positions.setXYZ(i, 0, 10, 0); // high fallback
+            }
         }
-        geo.computeVertexNormals();
+        
+        // GUARD: Don't compute normals if positions have NaN
+        const posArray = positions.array;
+        let hasNaN = false;
+        for (let i = 0; i < posArray.length; i++) {
+            if (!isFinite(posArray[i])) {
+                hasNaN = true;
+                posArray[i] = 0;
+            }
+        }
+        if (!hasNaN) {
+            geo.computeVertexNormals();
+        }
         return geo;
     }, [segmentPath, pathLength, canyonWidth, active, segmentId]);
 
@@ -782,12 +821,41 @@ export default function TrackSegment({
             const x = positions.getX(i);
             const z = positions.getZ(i);
             const t = (z + len / 2) / len;
-            const point = segmentPath.getPoint(Math.max(0, Math.min(1, t)));
-            positions.setX(i, point.x + x);
-            positions.setY(i, point.y + waterLevel);
-            positions.setZ(i, point.z);
+            const safeT = Math.max(0, Math.min(1, t));
+            
+            let point;
+            try {
+                point = segmentPath.getPoint(safeT);
+                if (!point || !isFinite(point.x) || !isFinite(point.y) || !isFinite(point.z)) {
+                    point = new THREE.Vector3(0, 0, 0);
+                }
+            } catch (e) {
+                point = new THREE.Vector3(0, 0, 0);
+            }
+            
+            const finalX = point.x + x;
+            const finalY = point.y + waterLevel;
+            const finalZ = point.z;
+            
+            if (isFinite(finalX) && isFinite(finalY) && isFinite(finalZ)) {
+                positions.setXYZ(i, finalX, finalY, finalZ);
+            } else {
+                positions.setXYZ(i, 0, waterLevel, 0);
+            }
         }
-        geo.computeVertexNormals();
+        
+        // GUARD: Don't compute normals if positions have NaN
+        const posArray = positions.array;
+        let hasNaN = false;
+        for (let i = 0; i < posArray.length; i++) {
+            if (!isFinite(posArray[i])) {
+                hasNaN = true;
+                posArray[i] = 0;
+            }
+        }
+        if (!hasNaN) {
+            geo.computeVertexNormals();
+        }
         return geo;
     }, [segmentPath, pathLength, waterWidth, active, segmentId]);
 
@@ -806,62 +874,16 @@ export default function TrackSegment({
     return (
         <group name={`track-segment-${segmentId}`} visible={true}>
             <RigidBody key={`rb-${segmentId}`} type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
-                <mesh geometry={canyonGeometry} receiveShadow castShadow material={rockMaterial} />
+                <mesh geometry={canyonGeometry} material={rockMaterial} />
             </RigidBody>
 
-            <mesh geometry={wallShellGeometry} receiveShadow castShadow material={rockMaterial} />
-
-            <Rock transforms={placementData.rocks} />
-            <Vegetation transforms={placementData.trees} biome={biome} />
-            <Grass transforms={placementData.grass} />
-            <Wildflowers transforms={placementData.wildflowers} biome={biome} />
-            <Ferns transforms={placementData.ferns} biome={biome} />
-            <Reeds transforms={placementData.reeds} />
-            <Driftwood transforms={placementData.driftwood} />
-            <Rock transforms={placementData.debris} />
-            {/* New Shoreline Pebbles */}
-            <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
-
-            <Pinecone transforms={placementData.pinecones} />
-            <Mushrooms transforms={placementData.mushrooms} biome={biome} />
-
-            {/* Falling Leaves (Raining) */}
-            <FallingLeaves transforms={placementData.leaves} biome={biome} />
-
-            {/* Floating Leaves (Pond Scum/Surface Detail) */}
-            <FallingLeaves transforms={placementData.floatingLeaves} biome={biome} floating={true} />
-
-            <Fireflies transforms={placementData.fireflies} />
-            <Birds transforms={placementData.birds} biome={biome} />
-            <Fish transforms={placementData.fish} />
-            <Mist transforms={placementData.mist} />
-            <WaterLilies transforms={placementData.waterLilies} />
-            <SunShafts transforms={placementData.sunShafts} />
-            <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
-            <Dragonflies transforms={placementData.dragonflies} />
-            <RockFoam transforms={placementData.rockFoam} flowSpeed={flowSpeed} />
+            <mesh geometry={wallShellGeometry} material={rockMaterial} />
 
             <FlowingWater 
                 geometry={waterGeometry}
                 flowSpeed={flowSpeed}
                 baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
-                normalMap={rockNormalMap}
             />
-            
-            {type === 'waterfall' && waterfallPos ? (
-                <group position={waterfallPos}>
-                    <WaterfallParticles count={particleCount} width={15} height={30} />
-                </group>
-            ) : (
-                segmentPath && (
-                    <FloatingDebris
-                        path={segmentPath}
-                        waterLevel={waterLevel}
-                        count={type === 'pond' ? 15 : 8}
-                        seed={segmentId * 1000}
-                    />
-                )
-            )}
         </group>
     );
 }

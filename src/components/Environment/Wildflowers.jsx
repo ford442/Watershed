@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 
@@ -38,54 +37,11 @@ export default function Wildflowers({ transforms, biome = 'summer' }) {
 
   // Material: Vibrant Colors
   const material = useMemo(() => {
-    const mat = new THREE.MeshStandardMaterial({
-        color: '#ffffff', // Use white so instance color tints it
-        roughness: 1.0,
-        flatShading: true,
+    const mat = new THREE.MeshBasicMaterial({
+        color: '#ffffff' // Use white so instance color tints it
     });
-
-    mat.userData.uniforms = {
-        time: { value: 0 }
-    };
-
-    mat.onBeforeCompile = (shader) => {
-        shader.uniforms.time = mat.userData.uniforms.time;
-
-        shader.vertexShader = `
-            uniform float time;
-        ` + shader.vertexShader;
-
-        shader.vertexShader = shader.vertexShader.replace(
-            '#include <begin_vertex>',
-            `
-            #include <begin_vertex>
-
-            // Wind Animation (Slightly faster/lighter than grass)
-            float windStrength = 0.15;
-            float windSpeed = 3.0;
-
-            // Height factor: anchor at bottom
-            float heightFactor = max(0.0, transformed.y - 0.1);
-            float windFactor = heightFactor;
-
-            // Complex sway for flowers
-            float swayX = sin(time * windSpeed + transformed.y * 4.0) * windStrength * windFactor;
-            float swayZ = cos(time * windSpeed * 1.2 + transformed.y * 4.0) * windStrength * windFactor;
-
-            transformed.x += swayX;
-            transformed.z += swayZ;
-            `
-        );
-    };
-
     return mat;
   }, []);
-
-  useFrame((state) => {
-      if (material.userData.uniforms) {
-          material.userData.uniforms.time.value = state.clock.elapsedTime;
-      }
-  });
 
   const instances = useMemo(() => {
     if (!transforms) return [];

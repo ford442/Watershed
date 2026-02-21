@@ -8,7 +8,7 @@ export default function Pebbles({ transforms, material }) {
   const geometry = useMemo(() => new THREE.IcosahedronGeometry(0.2, 0), []);
 
   // Fallback material if none provided (though we expect rockMaterial)
-  const defaultMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#555555' }), []);
+  const defaultMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#555555' }), []);
 
   const instances = useMemo(() => {
     if (!transforms) return [];

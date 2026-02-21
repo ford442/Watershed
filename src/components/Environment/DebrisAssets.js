@@ -30,10 +30,8 @@ export function useDriftwoodAssets() {
         return merged;
     }, []);
 
-    const material = useMemo(() => new THREE.MeshStandardMaterial({
-        color: '#8c8c7a', // Greyish brown (bleached wood)
-        roughness: 1.0,
-        flatShading: true,
+    const material = useMemo(() => new THREE.MeshBasicMaterial({
+        color: '#8c8c7a' // Greyish brown (bleached wood)
     }), []);
 
     return { geometry, material };
@@ -70,10 +68,8 @@ export function usePineconeAssets() {
     }, []);
 
     const material = useMemo(() =>
-        new THREE.MeshStandardMaterial({
-          color: '#5a4a3a', // Brown pinecone color
-          roughness: 0.9,
-          metalness: 0.1,
+        new THREE.MeshBasicMaterial({
+          color: '#5a4a3a' // Brown pinecone color
         }),
     []);
 

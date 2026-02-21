@@ -110,7 +110,7 @@ const INITIAL_SEGMENTS = [
     },
 ];
 
-export default function TrackManager({ onBiomeChange }) {
+export default function TrackManager({ onBiomeChange, raftRef }) {
     console.log('[TrackManager] Rendering...');
     const [segments, setSegments] = useState(INITIAL_SEGMENTS);
     const segmentsRef = useRef(INITIAL_SEGMENTS);
@@ -150,47 +150,18 @@ export default function TrackManager({ onBiomeChange }) {
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
     // Create the custom Wet Rock Material (Shared)
+    // TEMP: Simplified to meshBasicMaterial to avoid shader errors
     const rockMaterial = useMemo(() => {
-        console.log('[TrackManager] Creating rock material...');
-        // Wait for textures to load before creating material
-        if (!colorMap || !normalMap || !roughnessMap || !aoMap) {
-            console.log('[TrackManager] Textures not ready yet, returning null');
-            return null;
-        }
+        console.log('[TrackManager] Creating SIMPLE rock material...');
         
-        console.log('[TrackManager] All textures ready, creating material');
-        const mat = new THREE.MeshStandardMaterial({
-            map: colorMap,
-            normalMap: normalMap,
-            roughnessMap: roughnessMap,
-            aoMap: aoMap,
+        // Use basic material - no shader compilation issues
+        const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0.4, 0.35, 0.3), // Brownish rock color
             side: THREE.DoubleSide,
-            vertexColors: true,
         });
-
-        // Apply shared River Wetness/Moss/Caustics logic
-        extendRiverMaterial(mat);
-        const riverOnBeforeCompile = mat.onBeforeCompile;
-
-        mat.onBeforeCompile = (shader) => {
-            // Run shared river logic first
-            riverOnBeforeCompile(shader);
-
-            // Inject Track-Specific Dryness Logic (based on Vertex Color)
-            // This runs BEFORE the river wetness overrides in the shader string order
-            // ensuring that if something is WET, it stays WET (smooth), overriding dryness.
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <roughnessmap_fragment>',
-                `
-                #include <roughnessmap_fragment>
-                // Vertex color R channel encodes height/dryness from TrackSegment generation
-                float dryness = smoothstep(0.4, 0.8, vColor.r);
-                roughnessFactor = mix(0.15, roughnessFactor, dryness);
-                `
-            );
-        };
+        
         return mat;
-    }, [colorMap, normalMap, roughnessMap, aoMap]);  // FIX: Added texture dependencies
+    }, []);  // No texture dependencies for now
 
 
     const generateNextSegment = useCallback((lastSegment) => {
@@ -308,6 +279,7 @@ export default function TrackManager({ onBiomeChange }) {
                         active={!!segment}
                         rockMaterial={rockMaterial}
                         rockNormalMap={normalMap}
+                        raftRef={raftRef}
                         {...segment}
                     />
                 );
