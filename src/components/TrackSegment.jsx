@@ -4,6 +4,7 @@ import { RigidBody } from '@react-three/rapier';
 import FlowingWater from './FlowingWater';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
+import Foliage from './Environment/Foliage';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -891,6 +892,9 @@ export default function TrackSegment({
 
             {/* Grass Bushes */}
             <Grass transforms={placementData.grass} />
+
+            {/* Foliage Variety - Bushes, Grass Blades, Ground Plants */}
+            <Foliage transforms={placementData.grass} biome={biome} density={1.2} />
         </group>
     );
 }
