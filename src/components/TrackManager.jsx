@@ -149,19 +149,28 @@ export default function TrackManager({ onBiomeChange, raftRef }) {
         });
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
-    // Create the custom Wet Rock Material (Shared)
-    // TEMP: Simplified to meshBasicMaterial to avoid shader errors
+    // Create the Wet Rock Material (Shared) using PBR textures
     const rockMaterial = useMemo(() => {
-        console.log('[TrackManager] Creating SIMPLE rock material...');
-        
-        // Use basic material - no shader compilation issues
-        const mat = new THREE.MeshBasicMaterial({
-            color: new THREE.Color(0.4, 0.35, 0.3), // Brownish rock color
+        if (!colorMap || !normalMap) {
+            return new THREE.MeshStandardMaterial({
+                color: new THREE.Color(0.4, 0.35, 0.3),
+                roughness: 0.9,
+                metalness: 0,
+                vertexColors: true,
+                side: THREE.DoubleSide,
+            });
+        }
+        return new THREE.MeshStandardMaterial({
+            map: colorMap,
+            normalMap: normalMap,
+            roughnessMap: roughnessMap || undefined,
+            aoMap: aoMap || undefined,
+            roughness: 0.85,
+            metalness: 0.05,
+            vertexColors: true,
             side: THREE.DoubleSide,
         });
-        
-        return mat;
-    }, []);  // No texture dependencies for now
+    }, [colorMap, normalMap, roughnessMap, aoMap]);
 
 
     const generateNextSegment = useCallback((lastSegment) => {

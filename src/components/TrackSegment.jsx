@@ -5,6 +5,24 @@ import FlowingWater from './FlowingWater';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
 import Foliage from './Environment/Foliage';
+import Reeds from './Environment/Reeds';
+import Driftwood from './Environment/Driftwood';
+import FallingLeaves from './Environment/FallingLeaves';
+import Fireflies from './Environment/Fireflies';
+import Birds from './Environment/Birds';
+import Fish from './Environment/Fish';
+import Pebbles from './Environment/Pebbles';
+import Mist from './Environment/Mist';
+import WaterLilies from './Environment/WaterLilies';
+import SunShafts from './Environment/SunShafts';
+import Ferns from './Environment/Ferns';
+import Rapids from './Environment/Rapids';
+import Dragonflies from './Environment/Dragonflies';
+import Pinecone from './Environment/Pinecone';
+import Mushrooms from './Environment/Mushrooms';
+import RockFoam from './Environment/RockFoam';
+import Wildflowers from './Environment/Wildflowers';
+import WaterfallParticles from './Environment/WaterfallParticles';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
@@ -641,7 +659,7 @@ export default function TrackSegment({
             }
         }
         
-        return { rocks: [], trees, debris, grass, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
+        return { rocks: [], trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
     }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed]);
 
     // Canyon Geometry
@@ -665,6 +683,11 @@ export default function TrackSegment({
         const vertex = new THREE.Vector3();
         const colors = new Float32Array(positions.count * 3);
         const color = new THREE.Color();
+
+        // Biome-based color palette for the canyon floor
+        const dryColor  = biome === 'autumn' ? new THREE.Color('#b09070') : new THREE.Color('#a09080');
+        const wetColor  = biome === 'autumn' ? new THREE.Color('#7a5c44') : new THREE.Color('#607060');
+        const mossColor = biome === 'autumn' ? new THREE.Color('#8a7050') : new THREE.Color('#708060');
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
@@ -700,8 +723,10 @@ export default function TrackSegment({
             }
             
             const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
-            const intensity = 0.4 + 0.6 * dryness;
-            color.setScalar(intensity);
+            // Blend between wet/mossy near water and dry rock higher up
+            color.copy(wetColor).lerp(mossColor, Math.min(1, dryness * 0.6)).lerp(dryColor, Math.min(1, dryness));
+            const intensity = 0.65 + 0.35 * dryness;
+            color.multiplyScalar(intensity);
             colors[i*3] = color.r; colors[i*3+1] = color.g; colors[i*3+2] = color.b;
 
             // GUARD: Check values before setting
@@ -730,7 +755,7 @@ export default function TrackSegment({
             geo.computeVertexNormals();
         }
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId]);
+    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId, biome]);
 
     // Wall Shell Geometry
     const wallShellGeometry = useMemo(() => {
@@ -752,6 +777,8 @@ export default function TrackSegment({
 
         const positions = geo.attributes.position;
         const vertex = new THREE.Vector3();
+        const colors = new Float32Array(positions.count * 3);
+        const wallColor = biome === 'autumn' ? new THREE.Color('#a08060') : new THREE.Color('#909090');
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
@@ -761,6 +788,11 @@ export default function TrackSegment({
             
             let yHeight = 15 + (distFromCenter * 0.5); 
             yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
+
+            // Vertex color: slightly varied rock tone for the cliff face
+            const variation = 0.7 + 0.3 * Math.abs(Math.sin(zLocal * 0.4 + xLocal * 0.3));
+            const c = wallColor.clone().multiplyScalar(variation);
+            colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
 
             const t = (zLocal + len / 2) / len;
             const safeT = Math.max(0, Math.min(1, t));
@@ -787,6 +819,7 @@ export default function TrackSegment({
                 positions.setXYZ(i, 0, 10, 0); // high fallback
             }
         }
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         
         // GUARD: Don't compute normals if positions have NaN
         const posArray = positions.array;
@@ -801,7 +834,7 @@ export default function TrackSegment({
             geo.computeVertexNormals();
         }
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, active, segmentId]);
+    }, [segmentPath, pathLength, canyonWidth, active, segmentId, biome]);
 
     // Water Geometry
     const waterGeometry = useMemo(() => {
@@ -895,6 +928,67 @@ export default function TrackSegment({
 
             {/* Foliage Variety - Bushes, Grass Blades, Ground Plants */}
             <Foliage transforms={placementData.grass} biome={biome} density={1.2} />
+
+            {/* Wildflowers - Pops of color on the banks */}
+            <Wildflowers transforms={placementData.wildflowers} biome={biome} />
+
+            {/* Ferns - Forest floor undergrowth */}
+            <Ferns transforms={placementData.ferns} biome={biome} />
+
+            {/* Mushrooms - Forest floor detail */}
+            <Mushrooms transforms={placementData.mushrooms} biome={biome} />
+
+            {/* Reeds - Shoreline cattails */}
+            <Reeds transforms={placementData.reeds} />
+
+            {/* Pebbles - Shoreline scatter */}
+            <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
+
+            {/* Driftwood - Along river banks */}
+            <Driftwood transforms={placementData.driftwood} />
+
+            {/* Pinecones - Under trees */}
+            <Pinecone transforms={placementData.pinecones} />
+
+            {/* Falling Leaves */}
+            <FallingLeaves transforms={placementData.leaves} biome={biome} />
+
+            {/* Floating Leaves on water surface (ponds) */}
+            <FallingLeaves transforms={placementData.floatingLeaves} biome={biome} floating={true} />
+
+            {/* Water Lilies (ponds) */}
+            <WaterLilies transforms={placementData.waterLilies} />
+
+            {/* Mist - Atmospheric patches over water */}
+            <Mist transforms={placementData.mist} />
+
+            {/* Fireflies */}
+            <Fireflies transforms={placementData.fireflies} />
+
+            {/* Dragonflies */}
+            <Dragonflies transforms={placementData.dragonflies} />
+
+            {/* Birds */}
+            <Birds transforms={placementData.birds} biome={biome} />
+
+            {/* Fish (ponds/deep water) */}
+            <Fish transforms={placementData.fish} />
+
+            {/* Rapids - Whitewater foam */}
+            <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
+
+            {/* Rock Foam - Wake effects around rocks */}
+            <RockFoam transforms={placementData.rockFoam} flowSpeed={flowSpeed} />
+
+            {/* Sun Shafts - Atmospheric light rays */}
+            <SunShafts transforms={placementData.sunShafts} />
+
+            {/* Waterfall Particles */}
+            {type === 'waterfall' && waterfallPos && (
+                <group position={waterfallPos}>
+                    <WaterfallParticles count={particleCount || 300} width={waterWidth} height={20} />
+                </group>
+            )}
         </group>
     );
 }

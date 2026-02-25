@@ -38,14 +38,7 @@ export default function EnhancedSky({ biome = 'summer' }) {
         // Smoothly interpolate Fog
         const step = delta * 0.5; // Transition speed
 
-        // Lerp density
-        state.scene.fog.density = THREE.MathUtils.lerp(
-            state.scene.fog.density,
-            target.fogDensity,
-            step
-        );
-
-        // Lerp color
+        // Lerp color (works for both Fog and FogExp2)
         current.current.fogColor.lerp(new THREE.Color(target.fogColor), step);
         state.scene.fog.color.copy(current.current.fogColor);
         state.scene.background = current.current.fogColor; // Match background to fog
@@ -69,7 +62,7 @@ export default function EnhancedSky({ biome = 'summer' }) {
             {/* Cloud and Environment components removed - were causing asset loading errors */}
 
             {/* Fog is attached to the scene via <fog /> primitive in React Three Fiber */}
-            <fog attach="fog" args={['#cce0ff', 0.015]} />
+            <fog attach="fog" args={['#cce0ff', 80, 400]} />
         </group>
     );
 }
