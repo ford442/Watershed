@@ -1,9 +1,13 @@
 import { PointerLockControls, KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
-import Player from "./components/Player";
+
+// NEW: Import vehicle system
+import { VehicleType } from "./systems/VehicleSystem";
+import RunnerVehicle from "./vehicles/RunnerVehicle";
+import RaftVehicle from "./vehicles/RaftVehicle";
 
 const BIOME_LIGHTING = {
   summer: {
@@ -32,6 +36,9 @@ const BIOME_LIGHTING = {
 
 const Experience = () => {
   const [biome, setBiome] = useState('summer');
+  const [vehicleType, setVehicleType] = useState('runner'); // CHANGE THIS TO SWITCH VEHICLES: 'runner' | 'raft'
+  const vehicleRef = useRef(null);
+  
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
 
   return (
@@ -83,8 +90,12 @@ const Experience = () => {
           onLock={() => {/* console.log("Locked—WASD to slide, SPACE to jump!") */}} 
         />
         
-        {/* Sonic-style downhill player */}
-        <Player />
+        {/* Vehicle - ONE LINE SWAP */}
+        {vehicleType === 'runner' ? (
+          <RunnerVehicle ref={vehicleRef} />
+        ) : (
+          <RaftVehicle ref={vehicleRef} />
+        )}
         
         {/* Procedural track generation */}
         <TrackManager onBiomeChange={setBiome} />
