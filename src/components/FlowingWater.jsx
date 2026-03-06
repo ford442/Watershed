@@ -46,6 +46,7 @@ export default function FlowingWater({
                         float wave4 = sin(pos.x * 1.3  + pos.z * 0.8 + time * flowSpeed * 1.5) * 0.025;
                         pos.y += wave1 + wave2 + wave3 + wave4;
                         vWave = (wave1 + wave2 + wave3 + wave4 + 0.215) / 0.43;
+                        // Normalized current intensity (0..1) from layered wave amplitude.
                         vCurrent = clamp((abs(wave1) + abs(wave2) + abs(wave3) + abs(wave4)) * 2.3, 0.0, 1.0);
 
                         // Approximate view direction for fresnel
@@ -100,11 +101,13 @@ export default function FlowingWater({
                         float n2 = noise(flowUv  * 12.0 + vec2(1.3, 0.7));
                         float n3 = noise(flowUv2 * 5.0  + vec2(0.5, 1.1));
                         float n4 = fbm(flowUv2 * 8.0 + vec2(time * flowSpeed * 0.03, -time * flowSpeed * 0.14));
+                        // Bands FBM into directional streaks to make downstream current easier to read.
                         float currentStreak = smoothstep(0.48, 0.72, fbm(currentUv));
 
                         // Two-layer foam: coarse patches + fine detail
                         float foamCoarse = smoothstep(0.52, 0.72, n1 * 0.45 + n3 * 0.35 + n4 * 0.2 + vCurrent * 0.28);
                         float foamFine   = smoothstep(0.62, 0.8, n2 * 0.55  + n1 * 0.35 + currentStreak * 0.2 + vWave * 0.1);
+                        // Bias extra foam toward shoreline edges (~outer quarter of water width).
                         float bankFoamMask = smoothstep(0.24, 0.04, abs(vUv.x - 0.5));
                         float bankFoam = bankFoamMask * (0.32 + n4 * 0.45) * (0.6 + vCurrent * 0.4);
                         float foam = foamCoarse * 0.48 + foamFine * 0.34 + bankFoam;
