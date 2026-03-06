@@ -35,10 +35,12 @@ export default function Wildflowers({ transforms, biome = 'summer' }) {
     return geo;
   }, []);
 
-  // Material: Vibrant Colors
+  // Material: Vibrant Colors with lighting
   const material = useMemo(() => {
-    const mat = new THREE.MeshLambertMaterial({
+    const mat = new THREE.MeshStandardMaterial({
         color: '#ffffff', // Use white so instance color tints it
+        roughness: 0.85,
+        metalness: 0,
     });
     return mat;
   }, []);

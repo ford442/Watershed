@@ -57,10 +57,12 @@ export default function Ferns({ transforms, biome = 'summer' }) {
         return merged;
     }, []);
 
-    // 2. Material with Wind
+    // 2. Material with lighting response
     const material = useMemo(() => {
-        const mat = new THREE.MeshLambertMaterial({
+        const mat = new THREE.MeshStandardMaterial({
             color: '#2d5a27', // Deep forest green
+            roughness: 0.90,
+            metalness: 0,
             side: THREE.DoubleSide,
         });
         return mat;

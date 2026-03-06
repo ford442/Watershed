@@ -20,7 +20,7 @@ export default function Mist({ transforms }) {
       blending: THREE.NormalBlending, // Soft blending
       uniforms: {
         time: { value: 0 },
-        colorBase: { value: new THREE.Color('#e0f7fa') }, // White-ish blue
+        colorBase: { value: new THREE.Color('#d8eaf0') }, // Cool blue-grey matching scene fog
       },
       vertexShader: `
         uniform float time;
@@ -64,7 +64,7 @@ export default function Mist({ transforms }) {
 
           // Alpha Animation (Pulse)
           float pulse = sin(time * 0.5 + rand * 10.0);
-          vAlpha = 0.3 + 0.2 * pulse; // 0.1 to 0.5 opacity
+          vAlpha = 0.22 + 0.15 * pulse; // Softer opacity range for atmospheric subtlety
         }
       `,
       fragmentShader: `

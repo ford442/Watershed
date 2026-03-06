@@ -11,8 +11,12 @@ export default function Rapids({ transforms, flowSpeed = 1.0 }) {
   const geometry = useMemo(() => new THREE.IcosahedronGeometry(0.3, 0), []);
 
   const material = useMemo(() => {
-    const mat = new THREE.MeshBasicMaterial({
-      color: '#ffffff'
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#e8f4f8',       // Slightly blue-tinted white foam
+      roughness: 0.4,         // Wet/shiny foam
+      metalness: 0,
+      transparent: true,
+      opacity: 0.85,
     });
     return mat;
   }, [flowSpeed]);

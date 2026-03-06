@@ -3,25 +3,25 @@ import { useFrame } from '@react-three/fiber';
 import { Sky, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
-// Atmospheric presets
+// Atmospheric presets – tuned to complement the improved water surface
 const BIOME_SETTINGS = {
     summer: {
-        sunPosition: [100, 20, 100],
-        fogColor: '#b8d4f0',
-        fogDensity: 0.012,
-        turbidity: 7,
-        rayleigh: 5,
-        mieCoefficient: 0.005,
-        mieDirectionalG: 0.8,
+        sunPosition: [100, 28, 100],    // Slightly higher sun for crisper canyon light
+        fogColor: '#b0cfea',             // Cooler blue-grey haze, closer to water palette
+        fogDensity: 0.010,               // Slightly lighter fog for better depth readability
+        turbidity: 6,                    // Less haze – cleaner alpine sky
+        rayleigh: 4,                     // Balanced sky scattering
+        mieCoefficient: 0.004,
+        mieDirectionalG: 0.82,
     },
     autumn: {
-        sunPosition: [100, 10, 50], // Lower sun, golden hour
-        fogColor: '#e8c89a',        // Warm amber haze
-        fogDensity: 0.018,          // Thicker, duskier atmosphere
-        turbidity: 12,
-        rayleigh: 2,
-        mieCoefficient: 0.008,
-        mieDirectionalG: 0.85,
+        sunPosition: [100, 12, 50],      // Low golden-hour sun
+        fogColor: '#dfc08e',             // Warm amber haze, less saturated to sit with water
+        fogDensity: 0.016,               // Slight reduction for better canyon readability
+        turbidity: 10,                   // Reduced from 12 – less muddy sky
+        rayleigh: 2.5,
+        mieCoefficient: 0.007,
+        mieDirectionalG: 0.86,
     }
 };
 

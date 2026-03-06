@@ -16,13 +16,13 @@ import * as THREE from 'three';
  * onBeforeCompile block in a try/catch and gate it behind a feature flag.
  */
 
-// Wet stone absorbs ~18% more light than dry stone (Hapke reflectance model approx)
-const WETNESS_DARKEN_FACTOR = 0.82;
+// Wet stone absorbs ~20% more light than dry stone (Hapke reflectance model approx)
+const WETNESS_DARKEN_FACTOR = 0.80;
 // Damp surfaces near running water have lower roughness (higher specular reflection)
-const WETNESS_ROUGHNESS_REDUCTION = 0.25;
+const WETNESS_ROUGHNESS_REDUCTION = 0.28;
 // Moss tint: desaturated green-grey matching lichened creek stone
-const MOSS_TINT = new THREE.Color('#607860');
-const MOSS_BLEND = 0.12; // 12% blend toward moss keeps the effect subtle
+const MOSS_TINT = new THREE.Color('#556e54');
+const MOSS_BLEND = 0.15; // 15% blend toward moss for slightly stronger shore cohesion
 
 export function extendRiverMaterial(material) {
     if (!material) return;
