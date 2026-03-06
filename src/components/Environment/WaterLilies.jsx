@@ -19,8 +19,11 @@ export default function WaterLilies({ transforms }) {
   }, []);
 
   const material = useMemo(() => {
-    const mat = new THREE.MeshBasicMaterial({
-      color: '#4caf50' // Nature Green
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#3a8c40', // Vivid lily pad green
+      roughness: 0.8,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
     });
     return mat;
   }, []);
