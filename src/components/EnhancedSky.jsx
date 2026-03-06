@@ -7,46 +7,56 @@ import * as THREE from 'three';
 const BIOME_SETTINGS = {
     summer: {
         sunPosition: [100, 20, 100],
-        fogColor: '#cce0ff',
-        fogDensity: 0.015,
-        turbidity: 8,
-        rayleigh: 6
+        fogColor: '#b8d4f0',
+        fogDensity: 0.012,
+        turbidity: 7,
+        rayleigh: 5,
+        mieCoefficient: 0.005,
+        mieDirectionalG: 0.8,
     },
     autumn: {
-        sunPosition: [100, 10, 50], // Lower sun, more golden hour
-        fogColor: '#ffebd6', // Warm haze
-        fogDensity: 0.02,    // Thicker atmosphere
-        turbidity: 10,
-        rayleigh: 3
+        sunPosition: [100, 10, 50], // Lower sun, golden hour
+        fogColor: '#e8c89a',        // Warm amber haze
+        fogDensity: 0.018,          // Thicker, duskier atmosphere
+        turbidity: 12,
+        rayleigh: 2,
+        mieCoefficient: 0.008,
+        mieDirectionalG: 0.85,
     }
 };
 
 export default function EnhancedSky({ biome = 'summer' }) {
-    // Get target settings based on current biome
     const target = BIOME_SETTINGS[biome] || BIOME_SETTINGS.summer;
+    const fogRef = useRef();
 
-    // We use a ref to store current values for smooth interpolation
+    // Store smoothly interpolated state
     const current = useRef({
         fogColor: new THREE.Color(target.fogColor),
-        fogDensity: target.fogDensity
+        fogDensity: target.fogDensity,
     });
 
     useFrame((state, delta) => {
-        // Guard clause to prevent crash on initial frames
-        if (!state.scene.fog) return;
+        const step = Math.min(1.0, delta * 0.8); // Smooth biome transition
 
-        // Smoothly interpolate Fog
-        const step = delta * 0.5; // Transition speed
-
-        // Lerp color (works for both Fog and FogExp2)
+        // Lerp fog color and density toward target
         current.current.fogColor.lerp(new THREE.Color(target.fogColor), step);
-        state.scene.fog.color.copy(current.current.fogColor);
-        state.scene.background = current.current.fogColor; // Match background to fog
+        current.current.fogDensity += (target.fogDensity - current.current.fogDensity) * step;
+
+        // Update the fog object directly to avoid recreating the component
+        if (fogRef.current) {
+            fogRef.current.color.copy(current.current.fogColor);
+            fogRef.current.density = current.current.fogDensity;
+        }
+
+        // Keep scene background in sync with fog horizon color
+        if (state.scene.background instanceof THREE.Color) {
+            state.scene.background.copy(current.current.fogColor);
+        }
     });
 
     return (
         <group>
-            {/* Dynamic Sky */}
+            {/* Physically-based sky */}
             <Sky
                 distance={450000}
                 sunPosition={target.sunPosition}
@@ -54,15 +64,18 @@ export default function EnhancedSky({ biome = 'summer' }) {
                 azimuth={0.25}
                 turbidity={target.turbidity}
                 rayleigh={target.rayleigh}
+                mieCoefficient={target.mieCoefficient}
+                mieDirectionalG={target.mieDirectionalG}
             />
-            
-            {/* Stars for depth (mostly visible if we darkened the sky) */}
-            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-            
+
+            {/* Stars - subtle backdrop depth */}
+            <Stars radius={150} depth={60} count={3000} factor={3} saturation={0} fade speed={0.5} />
+
             {/* Cloud and Environment components removed - were causing asset loading errors */}
 
-            {/* Fog is attached to the scene via <fog /> primitive in React Three Fiber */}
-            <fog attach="fog" args={['#cce0ff', 80, 400]} />
+            {/* Exponential fog: ref allows density/color to be updated each frame without
+                recreating the scene fog object. Initial args match the starting biome. */}
+            <fogExp2 ref={fogRef} attach="fog" args={[target.fogColor, target.fogDensity]} />
         </group>
     );
 }

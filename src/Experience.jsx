@@ -5,10 +5,34 @@ import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
 import Player from "./components/Player";
 
+const BIOME_LIGHTING = {
+  summer: {
+    ambientIntensity: 0.45,
+    hemiSky: '#a8d8ff',
+    hemiGround: '#3a3020',
+    hemiIntensity: 0.9,
+    dirColor: '#fff8e8',
+    dirIntensity: 1.3,
+    dirPosition: [10, 30, 15],
+    fillColor: '#a8c8ff',
+    fillIntensity: 0.25,
+  },
+  autumn: {
+    ambientIntensity: 0.35,
+    hemiSky: '#f0c878',
+    hemiGround: '#3a2810',
+    hemiIntensity: 0.7,
+    dirColor: '#ffa840',
+    dirIntensity: 1.0,
+    dirPosition: [30, 20, 10],
+    fillColor: '#ffd0a0',
+    fillIntensity: 0.2,
+  },
+};
+
 const Experience = () => {
-  // console.log("[Experience] Rendering...");
-  
   const [biome, setBiome] = useState('summer');
+  const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
 
   return (
     <KeyboardControls
@@ -23,16 +47,17 @@ const Experience = () => {
       {/* Sky and environment */}
       <EnhancedSky biome={biome} />
       
-      {/* Lighting */}
-      <ambientLight intensity={0.4} />
+      {/* Lighting - biome responsive */}
+      <ambientLight intensity={L.ambientIntensity} />
       <hemisphereLight 
-        skyColor="#a0d8ff" 
-        groundColor="#4a3f2f" 
-        intensity={0.8} 
+        skyColor={L.hemiSky}
+        groundColor={L.hemiGround}
+        intensity={L.hemiIntensity}
       />
       <directionalLight 
-        position={[10, 30, 15]} 
-        intensity={1.2} 
+        color={L.dirColor}
+        position={L.dirPosition}
+        intensity={L.dirIntensity}
         castShadow 
         shadow-mapSize={[2048, 2048]} 
         shadow-camera-near={1}
@@ -41,6 +66,12 @@ const Experience = () => {
         shadow-camera-right={60}
         shadow-camera-top={60}
         shadow-camera-bottom={-60}
+      />
+      {/* Soft fill light from opposite side to reduce harsh shadows */}
+      <directionalLight
+        color={L.fillColor}
+        position={[-10, 15, -20]}
+        intensity={L.fillIntensity}
       />
       
       {/* Physics world */}
