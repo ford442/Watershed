@@ -684,11 +684,13 @@ export default function TrackSegment({
         const colors = new Float32Array(positions.count * 3);
         const color = new THREE.Color();
 
-        // Biome-based color palette for the canyon floor (richer 4-stop gradient)
-        const dryColor    = biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#a09078');
-        const wetColor    = biome === 'autumn' ? new THREE.Color('#5a4030') : new THREE.Color('#485840');
-        const mossColor   = biome === 'autumn' ? new THREE.Color('#7a6640') : new THREE.Color('#567048');
-        const bankColor   = biome === 'autumn' ? new THREE.Color('#907850') : new THREE.Color('#7a8868');
+        // Biome-based color palette for the canyon floor (richer 5-stop gradient)
+        // Tuned to bridge smoothly from water-edge to dry bank
+        const dryColor      = biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#9a8e78');
+        const wetColor      = biome === 'autumn' ? new THREE.Color('#4a3828') : new THREE.Color('#3e5038');
+        const shoreColor    = biome === 'autumn' ? new THREE.Color('#685840') : new THREE.Color('#4a5c44');
+        const mossColor     = biome === 'autumn' ? new THREE.Color('#7a6640') : new THREE.Color('#587248');
+        const bankColor     = biome === 'autumn' ? new THREE.Color('#907850') : new THREE.Color('#788860');
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
@@ -724,18 +726,21 @@ export default function TrackSegment({
             }
             
             const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
-            // 4-stop blend: wet → moss → bank → dry for richer terrain coloring
-            if (dryness < 0.35) {
-                color.copy(wetColor).lerp(mossColor, dryness / 0.35);
+            // 5-stop blend: wet → shore → moss → bank → dry for smoother waterline transition
+            if (dryness < 0.20) {
+                color.copy(wetColor).lerp(shoreColor, dryness / 0.20);
+            } else if (dryness < 0.42) {
+                color.copy(shoreColor).lerp(mossColor, (dryness - 0.20) / 0.22);
             } else if (dryness < 0.65) {
-                color.copy(mossColor).lerp(bankColor, (dryness - 0.35) / 0.30);
+                color.copy(mossColor).lerp(bankColor, (dryness - 0.42) / 0.23);
             } else {
                 color.copy(bankColor).lerp(dryColor, (dryness - 0.65) / 0.35);
             }
             // Subtle noise-based intensity variation for natural-looking surface.
-            // Frequencies 1.3/0.9 give medium-scale variation; amplitude 0.12 keeps it gentle.
-            const noiseVar = (Math.sin(zLocal * 1.3 + xLocal * 0.9) * 0.5 + 0.5) * 0.12;
-            const intensity = 0.70 + 0.22 * dryness + noiseVar;
+            // Two frequency bands avoid obvious repetition; amplitude 0.10 keeps it gentle.
+            const noiseVar = (Math.sin(zLocal * 1.3 + xLocal * 0.9) * 0.5 + 0.5) * 0.10
+                           + (Math.sin(zLocal * 3.1 + xLocal * 2.3) * 0.5 + 0.5) * 0.04;
+            const intensity = 0.72 + 0.20 * dryness + noiseVar;
             color.multiplyScalar(intensity);
             colors[i*3] = color.r; colors[i*3+1] = color.g; colors[i*3+2] = color.b;
 
@@ -788,8 +793,9 @@ export default function TrackSegment({
         const positions = geo.attributes.position;
         const vertex = new THREE.Vector3();
         const colors = new Float32Array(positions.count * 3);
-        const wallColor     = biome === 'autumn' ? new THREE.Color('#9c7850') : new THREE.Color('#8a8880');
-        const wallDarkColor = biome === 'autumn' ? new THREE.Color('#604830') : new THREE.Color('#606468');
+        const wallColor     = biome === 'autumn' ? new THREE.Color('#9c7850') : new THREE.Color('#888880');
+        const wallDarkColor = biome === 'autumn' ? new THREE.Color('#584028') : new THREE.Color('#585c60');
+        const wallMossColor = biome === 'autumn' ? new THREE.Color('#6a5838') : new THREE.Color('#5a6858');
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
@@ -804,6 +810,9 @@ export default function TrackSegment({
             const blend = Math.abs(Math.sin(zLocal * 0.4 + xLocal * 0.3));
             const variation = 0.72 + 0.28 * blend;
             const c = wallDarkColor.clone().lerp(wallColor, blend).multiplyScalar(variation);
+            // Add subtle moss tint to lower cliff faces near water
+            const lowerBlend = Math.max(0, 1.0 - (yHeight - 15) / 6.0) * 0.18;
+            c.lerp(wallMossColor, lowerBlend);
             colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
 
             const t = (zLocal + len / 2) / len;

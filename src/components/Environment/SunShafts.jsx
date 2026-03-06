@@ -27,7 +27,7 @@ export default function SunShafts({ transforms }) {
       side: THREE.DoubleSide, // See from inside too
       uniforms: {
         time: { value: 0 },
-        colorBase: { value: new THREE.Color('#fffbe6') }, // Warm sunlight
+        colorBase: { value: new THREE.Color('#fff6d8') }, // Slightly warmer golden sunlight
       },
       vertexShader: `
         uniform float time;

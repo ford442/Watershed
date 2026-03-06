@@ -15,7 +15,7 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }) {
       uniforms: {
         time: { value: 0 },
         flowSpeed: { value: flowSpeed },
-        colorBase: { value: new THREE.Color('#e0f7fa') },
+        colorBase: { value: new THREE.Color('#d8f0f4') }, // Cool white-blue matching water foam
       },
       vertexShader: `
         varying vec2 vUv;

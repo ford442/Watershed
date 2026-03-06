@@ -18,8 +18,8 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
   // Materials
   const trunkMaterial = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
-      color: '#4a3c31',
-      roughness: 0.9,
+      color: '#4a3a2e',    // Slightly warmer bark tone
+      roughness: 0.92,
       metalness: 0
     });
     return mat;
@@ -28,7 +28,7 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
   const foliageMaterial = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
       color: '#ffffff', // Use white so instance color tints it correctly
-      roughness: 0.8,
+      roughness: 0.82,
       metalness: 0
     });
     return mat;

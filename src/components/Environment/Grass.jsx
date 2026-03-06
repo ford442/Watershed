@@ -25,8 +25,8 @@ export default function Grass({ transforms }) {
   // Material: Stylized green
   const material = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
-        color: '#5a7d38', // Muted organic green
-        roughness: 0.9,
+        color: '#4e7336', // Slightly muted organic green for cohesion with terrain
+        roughness: 0.88,
         metalness: 0
     });
     return mat;
@@ -37,7 +37,7 @@ export default function Grass({ transforms }) {
     return transforms.map((t, i) => {
         // Random shade variation per bush
         const shade = 0.8 + Math.random() * 0.4;
-        const color = new THREE.Color('#5a7d38').multiplyScalar(shade);
+        const color = new THREE.Color('#4e7336').multiplyScalar(shade);
         return {
             key: `grass-${i}`,
             position: t.position,

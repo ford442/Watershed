@@ -28,12 +28,16 @@ export default function Mushrooms({ transforms, biome = 'summer' }) {
     }, []);
 
     // 2. Materials
-    const capMaterial = useMemo(() => new THREE.MeshLambertMaterial({
+    const capMaterial = useMemo(() => new THREE.MeshStandardMaterial({
         color: '#ffffff', // Will be tinted by instance color
+        roughness: 0.85,
+        metalness: 0,
     }), []);
 
-    const stemMaterial = useMemo(() => new THREE.MeshLambertMaterial({
+    const stemMaterial = useMemo(() => new THREE.MeshStandardMaterial({
         color: '#e8e8d8', // Off-white stem
+        roughness: 0.90,
+        metalness: 0,
     }), []);
 
     // 3. Instance Data

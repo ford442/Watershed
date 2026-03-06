@@ -62,10 +62,12 @@ export default function Reeds({ transforms }) {
     }
   }, []);
 
-  // Material: Green/Brown with Wind
+  // Material: Green/Brown with lighting response
   const reedsMaterial = useMemo(() => {
-    const mat = new THREE.MeshLambertMaterial({
+    const mat = new THREE.MeshStandardMaterial({
         color: '#4a6b3c', // Swampy green
+        roughness: 0.88,
+        metalness: 0,
         side: THREE.DoubleSide,
     });
     return mat;
