@@ -1,0 +1,153 @@
+{
+  "metadata": {
+    "name": "Devil's Gorge",
+    "author": "Watershed Team",
+    "description": "An extreme challenge through dark canyons, treacherous rapids, and massive waterfalls. For expert players only.",
+    "difficulty": "expert",
+    "estimatedDuration": 300,
+    "version": "1.0.0",
+    "tags": ["extreme", "night", "waterfall", "challenge", "dark"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, 0, 0],
+        [12, -5, -30],
+        [-15, -12, -70],
+        [20, -20, -120],
+        [-18, -35, -180],
+        [15, -50, -250],
+        [0, -70, -330]
+      ],
+      "segmentLength": 28,
+      "totalSegments": 12,
+      "width": 28
+    },
+    "biome": {
+      "baseType": "midnight-mist",
+      "sky": { "color": "#1a2030", "cloudDensity": 0.8 },
+      "fog": { "color": "#2a3040", "near": 20, "far": 120 },
+      "lighting": { "sunIntensity": 0.6, "sunAngle": 20, "ambientIntensity": 0.2 },
+      "water": { "tint": "#0a3a4a", "flowSpeed": 2.0, "opacity": 0.7 }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "name": "Dark Entry",
+      "type": "normal",
+      "difficulty": 0.6,
+      "meanderStrength": 1.5,
+      "decorations": { "trees": 10, "fireflies": 15, "rocks": 10, "mist": 5 }
+    },
+    {
+      "index": 1,
+      "name": "First Trial",
+      "type": "rapids",
+      "difficulty": 0.7,
+      "meanderStrength": 2.2,
+      "verticalBias": -0.8,
+      "physics": { "waterFlowIntensity": 1.8, "gravityMultiplier": 1.1 },
+      "decorations": { "rocks": 15, "rapids": 18, "mist": 8, "pebbles": 25 }
+    },
+    {
+      "index": 2,
+      "name": "Rock Garden",
+      "type": "normal",
+      "difficulty": 0.8,
+      "meanderStrength": 1.8,
+      "decorations": { "rocks": 25, "pebbles": 40, "ferns": 10, "fireflies": 10 }
+    },
+    {
+      "index": 3,
+      "name": "Tight Squeeze",
+      "type": "normal",
+      "difficulty": 0.85,
+      "width": 22,
+      "meanderStrength": 2.5,
+      "verticalBias": -1.0,
+      "decorations": { "trees": 8, "rocks": 20, "fallingLeaves": 10, "mushrooms": 6 }
+    },
+    {
+      "index": 4,
+      "name": "Whitewater",
+      "type": "rapids",
+      "difficulty": 0.9,
+      "forwardMomentum": 1.8,
+      "physics": { "waterFlowIntensity": 2.5, "gravityMultiplier": 1.2 },
+      "decorations": { "rapids": 25, "rocks": 18, "mist": 12, "pebbles": 30 }
+    },
+    {
+      "index": 5,
+      "name": "Calm Deception",
+      "type": "normal",
+      "difficulty": 0.7,
+      "meanderStrength": 1.0,
+      "decorations": { "trees": 12, "fireflies": 20, "mushrooms": 15, "ferns": 15 }
+    },
+    {
+      "index": 6,
+      "name": "The Crux",
+      "type": "normal",
+      "difficulty": 0.95,
+      "width": 24,
+      "meanderStrength": 3.0,
+      "verticalBias": -1.5,
+      "physics": { "gravityMultiplier": 1.3, "waterFlowIntensity": 2.0 },
+      "decorations": { "rocks": 22, "pebbles": 30, "sunShafts": 5, "mist": 10 }
+    },
+    {
+      "index": 7,
+      "name": "Upper Falls",
+      "type": "waterfall",
+      "difficulty": 0.9,
+      "verticalBias": -2.5,
+      "effects": { "particleCount": 500, "cameraShake": 0.6, "fogDensity": 0.4 },
+      "decorations": { "rocks": 8, "mist": 15, "fireflies": 12 }
+    },
+    {
+      "index": 8,
+      "name": "Middle Chamber",
+      "type": "pond",
+      "difficulty": 0.6,
+      "width": 50,
+      "forwardMomentum": 0.2,
+      "decorations": { "trees": 6, "waterLilies": 8, "fish": 5, "fireflies": 18 }
+    },
+    {
+      "index": 9,
+      "name": "Lower Falls",
+      "type": "waterfall",
+      "difficulty": 0.95,
+      "verticalBias": -3.0,
+      "effects": { "particleCount": 450, "cameraShake": 0.7, "fogDensity": 0.5 },
+      "decorations": { "rocks": 10, "mist": 12, "sunShafts": 4 }
+    },
+    {
+      "index": 10,
+      "name": "Final Rapids",
+      "type": "rapids",
+      "difficulty": 0.9,
+      "meanderStrength": 2.0,
+      "physics": { "waterFlowIntensity": 2.2, "gravityMultiplier": 1.2 },
+      "decorations": { "rapids": 20, "rocks": 15, "driftwood": 15, "pebbles": 25 }
+    },
+    {
+      "index": 11,
+      "name": "Exit Pool",
+      "type": "pond",
+      "difficulty": 0.4,
+      "width": 60,
+      "forwardMomentum": 0.3,
+      "decorations": { "trees": 10, "fireflies": 25, "grass": 20, "waterLilies": 10 }
+    }
+  ],
+  "spawns": {
+    "start": { "position": [0, -4, 5], "rotation": [0, 180, 0] },
+    "checkpoints": [
+      { "segment": 4, "position": [0, -15, -100], "radius": 10 },
+      { "segment": 7, "position": [0, -35, -200], "radius": 12 },
+      { "segment": 10, "position": [0, -55, -280], "radius": 10 }
+    ]
+  }
+}

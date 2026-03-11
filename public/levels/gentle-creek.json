@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "name": "Gentle Creek",
+    "author": "Watershed Team",
+    "description": "A gentle introduction to Watershed with wide banks and calm waters. Perfect for beginners learning the controls.",
+    "difficulty": "beginner",
+    "estimatedDuration": 90,
+    "version": "1.0.0",
+    "tags": ["tutorial", "calm", "summer"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, 0, 0],
+        [5, -2, -40],
+        [-5, -5, -90],
+        [0, -8, -150]
+      ],
+      "segmentLength": 35,
+      "totalSegments": 5,
+      "width": 45
+    },
+    "biome": {
+      "baseType": "creek-summer",
+      "sky": { "color": "#87CEEB", "cloudDensity": 0.3 },
+      "fog": { "color": "#D4E9F7", "near": 60, "far": 250 },
+      "lighting": { "sunIntensity": 1.4, "sunAngle": 50, "ambientIntensity": 0.4 },
+      "water": { "tint": "#1a7b9c", "flowSpeed": 0.5, "opacity": 0.6 }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "name": "Starting Pool",
+      "type": "normal",
+      "difficulty": 0.1,
+      "meanderStrength": 0.5,
+      "verticalBias": -0.2,
+      "decorations": { "trees": 8, "grass": 20, "rocks": 3, "fireflies": 5, "birds": 2 }
+    },
+    {
+      "index": 1,
+      "name": "Easy Meander",
+      "type": "normal",
+      "difficulty": 0.2,
+      "meanderStrength": 1.0,
+      "verticalBias": -0.3,
+      "decorations": { "trees": 10, "grass": 25, "rocks": 5, "birds": 2, "dragonflies": 3 }
+    },
+    {
+      "index": 2,
+      "name": "Gentle Bend",
+      "type": "normal",
+      "difficulty": 0.25,
+      "meanderStrength": 1.2,
+      "verticalBias": -0.4,
+      "decorations": { "trees": 12, "grass": 22, "rocks": 6, "wildflowers": 10, "ferns": 8 }
+    },
+    {
+      "index": 3,
+      "name": "Final Stretch",
+      "type": "normal",
+      "difficulty": 0.3,
+      "meanderStrength": 0.8,
+      "verticalBias": -0.5,
+      "decorations": { "trees": 10, "grass": 18, "rocks": 4, "fireflies": 8, "mushrooms": 5 }
+    },
+    {
+      "index": 4,
+      "name": "Delta Pool",
+      "type": "pond",
+      "difficulty": 0.1,
+      "width": 60,
+      "meanderStrength": 0.3,
+      "forwardMomentum": 0.3,
+      "decorations": { "trees": 6, "waterLilies": 15, "fish": 8, "birds": 4, "dragonflies": 5 }
+    }
+  ],
+  "spawns": {
+    "start": { "position": [0, -4, 10], "rotation": [0, 180, 0] },
+    "checkpoints": [
+      { "segment": 2, "position": [0, -5, -80], "radius": 8 }
+    ]
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "metadata": {
+    "name": "Autumn Rapids",
+    "author": "Watershed Team",
+    "description": "Navigate through golden autumn foliage, challenging rapids, and a dramatic waterfall drop. Intermediate difficulty.",
+    "difficulty": "intermediate",
+    "estimatedDuration": 180,
+    "version": "1.0.0",
+    "tags": ["autumn", "waterfall", "rapids"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, 0, 0],
+        [8, -3, -35],
+        [-10, -8, -85],
+        [15, -15, -140],
+        [-8, -25, -200],
+        [0, -35, -270]
+      ],
+      "segmentLength": 32,
+      "totalSegments": 8,
+      "width": 35
+    },
+    "biome": {
+      "baseType": "creek-autumn",
+      "sky": { "color": "#E8C070", "cloudDensity": 0.5 },
+      "fog": { "color": "#B89868", "near": 40, "far": 180 },
+      "lighting": { "sunIntensity": 1.1, "sunAngle": 35, "ambientIntensity": 0.32 },
+      "water": { "tint": "#2a5a6a", "flowSpeed": 1.2, "opacity": 0.65 }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "name": "Autumn Entry",
+      "type": "normal",
+      "difficulty": 0.3,
+      "meanderStrength": 1.0,
+      "decorations": { "trees": 15, "fallingLeaves": 20, "rocks": 8, "ferns": 12 }
+    },
+    {
+      "index": 1,
+      "name": "First Rapids",
+      "type": "rapids",
+      "difficulty": 0.5,
+      "meanderStrength": 1.5,
+      "verticalBias": -0.6,
+      "physics": { "waterFlowIntensity": 1.5, "gravityMultiplier": 1.0 },
+      "decorations": { "trees": 10, "rapids": 15, "rocks": 12, "ferns": 15, "mist": 5 }
+    },
+    {
+      "index": 2,
+      "name": "Calm Before Storm",
+      "type": "normal",
+      "difficulty": 0.4,
+      "meanderStrength": 0.8,
+      "decorations": { "trees": 18, "mushrooms": 12, "ferns": 20, "fallingLeaves": 15 }
+    },
+    {
+      "index": 3,
+      "name": "Twisting Gorge",
+      "type": "normal",
+      "difficulty": 0.6,
+      "meanderStrength": 2.0,
+      "verticalBias": -0.8,
+      "decorations": { "trees": 12, "rocks": 15, "fallingLeaves": 25, "pebbles": 20 }
+    },
+    {
+      "index": 4,
+      "name": "Waterfall Approach",
+      "type": "normal",
+      "difficulty": 0.7,
+      "meanderStrength": 0.3,
+      "verticalBias": -1.2,
+      "decorations": { "trees": 8, "rocks": 10, "mist": 10 }
+    },
+    {
+      "index": 5,
+      "name": "The Drop",
+      "type": "waterfall",
+      "difficulty": 0.8,
+      "verticalBias": -3.0,
+      "forwardMomentum": 0.15,
+      "physics": { "gravityMultiplier": 1.2, "waterFlowIntensity": 0.5 },
+      "effects": { "particleCount": 400, "cameraShake": 0.5, "fogDensity": 0.3 },
+      "decorations": { "rocks": 5, "mist": 8, "sunShafts": 3 }
+    },
+    {
+      "index": 6,
+      "name": "Splash Pool",
+      "type": "splash",
+      "difficulty": 0.4,
+      "width": 70,
+      "forwardMomentum": 0.3,
+      "decorations": { "trees": 5, "waterLilies": 12, "fish": 10, "driftwood": 8 }
+    },
+    {
+      "index": 7,
+      "name": "Final Run",
+      "type": "normal",
+      "difficulty": 0.6,
+      "meanderStrength": 1.8,
+      "decorations": { "trees": 14, "rocks": 10, "fallingLeaves": 15, "mushrooms": 8 }
+    }
+  ],
+  "spawns": {
+    "start": { "position": [0, -4, 5], "rotation": [0, 180, 0] },
+    "checkpoints": [
+      { "segment": 3, "position": [0, -10, -120], "radius": 10 },
+      { "segment": 6, "position": [0, -25, -200], "radius": 12 }
+    ]
+  }
+}

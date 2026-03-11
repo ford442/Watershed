@@ -9,6 +9,9 @@ const GENERATION_THRESHOLD = 150;
 const MAX_ACTIVE_SEGMENTS = 7;
 const POOL_SIZE = 10;
 
+/**
+ * Default segment configuration (fallback when no level data provided)
+ */
 const getSegmentConfig = (id) => {
     const base = {
         type: 'normal',
@@ -110,11 +113,73 @@ const INITIAL_SEGMENTS = [
     },
 ];
 
-export default function TrackManager({ onBiomeChange, raftRef }) {
-    // console.log('[TrackManager] Rendering...');
-    const [segments, setSegments] = useState(INITIAL_SEGMENTS);
-    const segmentsRef = useRef(INITIAL_SEGMENTS);
-    const lastSegmentId = useRef(1);
+/**
+ * Convert level state segment config to TrackManager format
+ */
+function convertLevelSegmentToTrackSegment(segmentConfig, index, totalSegments, curve) {
+    // Calculate points along the curve for this segment
+    const tStart = index / totalSegments;
+    const tEnd = (index + 1) / totalSegments;
+    
+    const points = [];
+    const numPoints = 4;
+    for (let i = 0; i < numPoints; i++) {
+        const t = tStart + (tEnd - tStart) * (i / (numPoints - 1));
+        points.push(curve.getPoint(Math.min(1, t)));
+    }
+
+    // Map biome type
+    const biomeMap = {
+        'creek-summer': 'summer',
+        'creek-autumn': 'autumn',
+        'alpine-spring': 'summer',
+        'canyon-sunset': 'autumn',
+        'midnight-mist': 'autumn',
+    };
+
+    return {
+        id: index,
+        type: segmentConfig.type || 'normal',
+        biome: biomeMap[segmentConfig.biomeOverride] || biomeMap['creek-summer'] || 'summer',
+        points,
+        // Pass through all config for TrackSegment to use
+        width: segmentConfig.width,
+        flowSpeed: segmentConfig.physics?.waterFlowIntensity || 1.0,
+        particleCount: segmentConfig.effects?.particleCount || 0,
+        cameraShake: segmentConfig.effects?.cameraShake || 0,
+        treeDensity: segmentConfig.decorations?.trees ? segmentConfig.decorations.trees / 20 : 1.0,
+        rockDensity: segmentConfig.difficulty > 0.6 ? 'high' : 'low',
+        // Store full config for advanced usage
+        levelConfig: segmentConfig,
+    };
+}
+
+/**
+ * TrackManager Component
+ * 
+ * Manages procedural track generation and segment lifecycle.
+ * Now supports loading from LevelLoader levelState.
+ * 
+ * Props:
+ * - onBiomeChange: Callback when player enters different biome
+ * - raftRef: Reference to player raft for position tracking
+ * - levelState: Optional level data from LevelLoader (enables custom maps)
+ */
+export default function TrackManager({ onBiomeChange, raftRef, levelState }) {
+    // Determine if we're using level data or fallback to defaults
+    const useLevelData = levelState != null;
+    
+    // Initialize segments based on mode
+    const initialSegments = useMemo(() => {
+        if (useLevelData && levelState.initialSegments) {
+            return levelState.initialSegments;
+        }
+        return INITIAL_SEGMENTS;
+    }, [useLevelData, levelState]);
+
+    const [segments, setSegments] = useState(initialSegments);
+    const segmentsRef = useRef(initialSegments);
+    const lastSegmentId = useRef(useLevelData ? initialSegments.length - 1 : 1);
     const lastGeneratedFromId = useRef(-1);
     const { camera } = useThree();
 
@@ -124,20 +189,24 @@ export default function TrackManager({ onBiomeChange, raftRef }) {
     // Track current biome to avoid unnecessary state updates
     const lastReportedBiome = useRef('summer');
 
+    // Store level state for generation
+    const levelStateRef = useRef(levelState);
+    
     useEffect(() => {
         segmentsRef.current = segments;
     }, [segments]);
 
+    useEffect(() => {
+        levelStateRef.current = levelState;
+    }, [levelState]);
+
     // --- SHARED MATERIAL ASSETS ---
-    // UPDATED: Use relative paths for static hosting compatibility
-    // console.log('[TrackManager] Loading textures...');
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
-        './Rock031_1K-JPG_Color.jpg', // NOTE: Relative path for static hosting compatibility. Keep FTP structure in mind.
+        './Rock031_1K-JPG_Color.jpg',
         './Rock031_1K-JPG_NormalGL.jpg',
         './Rock031_1K-JPG_Roughness.jpg',
         './Rock031_1K-JPG_AmbientOcclusion.jpg',
     ]);
-    // console.log('[TrackManager] Textures loaded:', { colorMap: !!colorMap, normalMap: !!normalMap, roughnessMap: !!roughnessMap, aoMap: !!aoMap });
 
     // Configure texture wrapping once loaded
     useEffect(() => {
@@ -172,8 +241,36 @@ export default function TrackManager({ onBiomeChange, raftRef }) {
         });
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
-
+    /**
+     * Generate next segment based on mode (level data or procedural)
+     */
     const generateNextSegment = useCallback((lastSegment) => {
+        // If using level data, generate from level configuration
+        if (useLevelData && levelStateRef.current) {
+            const nextId = lastSegment.id + 1;
+            const { segments: segmentConfigs, track } = levelStateRef.current;
+            
+            // Check if we've exceeded the defined segments
+            if (nextId >= track.totalSegments) {
+                // Loop back or stop generating
+                return null;
+            }
+            
+            // Find segment config
+            const segmentConfig = segmentConfigs.find(s => s.index === nextId);
+            if (segmentConfig) {
+                const converted = convertLevelSegmentToTrackSegment(
+                    segmentConfig,
+                    nextId,
+                    track.totalSegments,
+                    levelStateRef.current.curve
+                );
+                lastSegmentId.current = nextId;
+                return converted;
+            }
+        }
+        
+        // Fallback to procedural generation
         const lastPoints = lastSegment.points;
         const lastPoint = lastPoints[lastPoints.length - 1];
         const prevPoint = lastPoints[lastPoints.length - 2];
@@ -221,7 +318,7 @@ export default function TrackManager({ onBiomeChange, raftRef }) {
             points: newPoints,
             ...config,
         };
-    }, []);
+    }, [useLevelData]);
 
     useFrame((state) => {
         // Update Rock Material Time
@@ -234,11 +331,22 @@ export default function TrackManager({ onBiomeChange, raftRef }) {
 
         // 1. GENERATION LOGIC
         const lastSegment = currentSegments[currentSegments.length - 1];
+        
+        // Check if we should stop generating (level data mode)
+        if (useLevelData && levelStateRef.current) {
+            if (lastSegment.id >= levelStateRef.current.track.totalSegments - 1) {
+                // Don't generate beyond defined level
+            }
+        }
+        
         if (lastSegment.id !== lastGeneratedFromId.current) {
             const lastPoint = lastSegment.points[lastSegment.points.length - 1];
             if (camera.position.z - lastPoint.z < GENERATION_THRESHOLD) {
                 lastGeneratedFromId.current = lastSegment.id;
                 const newSegment = generateNextSegment(lastSegment);
+                
+                // Don't add null segments (end of level data)
+                if (!newSegment) return;
 
                 setSegments(prev => {
                     const updated = [...prev, newSegment];

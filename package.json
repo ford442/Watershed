@@ -17,6 +17,8 @@
     "@types/react-dom": "^19.1.8",
     "@webgpu/types": "^0.1.64",
     "@xenova/transformers": "latest",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "gl-matrix": "^3.4.4",
     "howler": "^2.2.4",
     "react": "^19.1.1",
