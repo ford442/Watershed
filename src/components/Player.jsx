@@ -122,12 +122,6 @@ const Player = forwardRef((props, ref) => {
 
   return (
     <>
-      {/* Visible player mesh for debugging */}
-      <mesh position={[0, -4, -10]}>
-        <capsuleGeometry args={[0.5, 1, 4, 8]} />
-        <meshBasicMaterial color="yellow" wireframe />
-      </mesh>
-      
       <RigidBody
         ref={rb}
         // Spawn above track level - track is at Y=-6 at Z=30 and nearby

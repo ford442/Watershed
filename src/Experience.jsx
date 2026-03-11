@@ -1,61 +1,69 @@
 import { PointerLockControls, KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
 
-// NEW: Import vehicle system
-import { VehicleType } from "./systems/VehicleSystem";
+// Vehicle system
 import RunnerVehicle from "./vehicles/RunnerVehicle";
 import RaftVehicle from "./vehicles/RaftVehicle";
 
-// NEW: Import LevelLoader for custom maps
+// Level loading
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
 
+// NEW: Visual enhancement systems
+import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
+import { LODProvider, PerformanceMonitor } from "./systems/LODManager";
+import { SplashSystem } from "./systems/SplashSystem";
+import WaterReflection from "./components/WaterReflection";
+import { PostProcessingEffects } from "./components/PostProcessingEffects";
+
+// Base lighting configuration
 const BIOME_LIGHTING = {
   summer: {
-    ambientIntensity: 0.40,       // Slightly reduced to let directional light pop more
-    hemiSky: '#9ad0f0',           // Cooler blue-white, closer to water/fog palette
-    hemiGround: '#3a3828',        // Warmer ground bounce for wet-rock look
+    ambientIntensity: 0.40,
+    hemiSky: '#9ad0f0',
+    hemiGround: '#3a3828',
     hemiIntensity: 0.85,
-    dirColor: '#fff4e0',          // Warm sunlight, slightly less yellow
-    dirIntensity: 1.4,            // Stronger key light for sharper canyon shadows
-    dirPosition: [12, 35, 18],    // Higher sun for better canyon illumination
-    fillColor: '#a0c4e8',         // Cool-blue fill matching water tones
+    dirColor: '#fff4e0',
+    dirIntensity: 1.4,
+    dirPosition: [12, 35, 18],
+    fillColor: '#a0c4e8',
     fillIntensity: 0.22,
   },
   autumn: {
-    ambientIntensity: 0.32,       // Slightly darker mood
-    hemiSky: '#e8c070',           // Muted gold, less saturated
-    hemiGround: '#382818',        // Deeper earthy ground bounce
+    ambientIntensity: 0.32,
+    hemiSky: '#e8c070',
+    hemiGround: '#382818',
     hemiIntensity: 0.65,
-    dirColor: '#ffa040',          // Warm amber key
-    dirIntensity: 1.1,            // Slightly stronger for better readability
-    dirPosition: [30, 22, 12],    // Small lift for better reach into canyon
-    fillColor: '#ffc888',         // Warm fill, less intense
+    dirColor: '#ffa040',
+    dirIntensity: 1.1,
+    dirPosition: [30, 22, 12],
+    fillColor: '#ffc888',
     fillIntensity: 0.18,
   },
 };
 
 /**
- * Experience Component
- * 
- * Main game scene that handles:
- * - Level loading (from URL params or default)
- * - Biome switching
- * - Vehicle selection
- * - Physics and controls
+ * InnerExperience - The actual game scene
+ * Wrapped in providers for context access
  */
-const Experience = () => {
+const InnerExperience = () => {
   const [biome, setBiome] = useState('summer');
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
   
-  // NEW: Level loading state
+  // Level loading state
   const [levelUrl, setLevelUrl] = useState(null);
   const [levelLoadError, setLevelLoadError] = useState(null);
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState(null);
+  
+  // Get LOD config
+  const { config: lodConfig } = useLOD();
+  
+  // Get biome materials config
+  const biomeMaterials = useBiomeMaterials();
   
   // Check for level URL parameter on mount
   useEffect(() => {
@@ -64,22 +72,19 @@ const Experience = () => {
     const levelUrlParam = params.get('levelUrl');
     
     if (levelParam) {
-      // Load from public/levels/ directory
       setLevelUrl(`./levels/${levelParam}`);
       setIsLoadingLevel(true);
     } else if (levelUrlParam) {
-      // Load from custom URL
       setLevelUrl(levelUrlParam);
       setIsLoadingLevel(true);
     }
   }, []);
   
-  // Apply biome from loaded level
+  // Handle level load
   const handleLevelLoad = useCallback((levelState) => {
     setLoadedLevelState(levelState);
     setIsLoadingLevel(false);
     
-    // Set initial biome from level
     if (levelState?.biome?.baseType) {
       const biomeMap = {
         'creek-summer': 'summer',
@@ -98,53 +103,27 @@ const Experience = () => {
     setIsLoadingLevel(false);
   }, []);
 
+  // Use lighting from biome system or fallback
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
-  
-  // Use level lighting if available
-  const lightingConfig = useMemo(() => {
-    if (loadedLevelState?.biome?.lighting) {
-      const levelLighting = loadedLevelState.biome.lighting;
-      return {
-        ambientIntensity: levelLighting.ambientIntensity ?? L.ambientIntensity,
-        hemiSky: loadedLevelState.biome.sky?.color ?? L.hemiSky,
-        hemiGround: L.hemiGround,
-        hemiIntensity: 0.85,
-        dirColor: levelLighting.sunColor ?? L.dirColor,
-        dirIntensity: levelLighting.sunIntensity ?? L.dirIntensity,
-        dirPosition: L.dirPosition,
-        fillColor: L.fillColor,
-        fillIntensity: L.fillIntensity,
-      };
-    }
-    return L;
-  }, [loadedLevelState, L]);
 
   return (
-    <KeyboardControls
-      map={[
-        { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
-        { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
-        { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
-        { name: 'rightward', keys: ['ArrowRight', 'KeyD'] },
-        { name: 'jump', keys: ['Space'] },
-      ]}
-    >
-      {/* Sky and environment - use level biome if available */}
+    <>
+      {/* Sky and environment */}
       <EnhancedSky biome={biome} />
       
       {/* Lighting - biome responsive */}
-      <ambientLight intensity={lightingConfig.ambientIntensity} />
+      <ambientLight intensity={L.ambientIntensity} />
       <hemisphereLight 
-        skyColor={lightingConfig.hemiSky}
-        groundColor={lightingConfig.hemiGround}
-        intensity={lightingConfig.hemiIntensity}
+        skyColor={L.hemiSky}
+        groundColor={L.hemiGround}
+        intensity={L.hemiIntensity}
       />
       <directionalLight 
-        color={lightingConfig.dirColor}
-        position={lightingConfig.dirPosition}
-        intensity={lightingConfig.dirIntensity}
+        color={L.dirColor}
+        position={L.dirPosition}
+        intensity={L.dirIntensity}
         castShadow 
-        shadow-mapSize={[2048, 2048]} 
+        shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
         shadow-camera-near={1}
         shadow-camera-far={200}
         shadow-camera-left={-60}
@@ -152,32 +131,46 @@ const Experience = () => {
         shadow-camera-top={60}
         shadow-camera-bottom={-60}
       />
-      {/* Soft fill light from opposite side to reduce harsh shadows */}
       <directionalLight
-        color={lightingConfig.fillColor}
+        color={L.fillColor}
         position={[-10, 15, -20]}
-        intensity={lightingConfig.fillIntensity}
+        intensity={L.fillIntensity}
       />
+      
+      {/* Water reflections (if enabled) */}
+      {lodConfig.enableReflections && (
+        <WaterReflection 
+          waterLevel={0.5}
+          resolution={1024}
+          updateInterval={2}
+        />
+      )}
       
       {/* Physics world */}
       <Physics gravity={[0, -20, 0]}>
-        {/* First-person controls */}
         <PointerLockControls 
           makeDefault 
           lockOnClick
-          onLock={() => {/* console.log("Locked—WASD to slide, SPACE to jump!") */}} 
+          onLock={() => {}} 
         />
         
-        {/* Vehicle - ONE LINE SWAP */}
+        {/* Vehicle */}
         {vehicleType === 'runner' ? (
           <RunnerVehicle ref={vehicleRef} />
         ) : (
           <RaftVehicle ref={vehicleRef} />
         )}
         
-        {/* Track Generation with Level Loading Support */}
+        {/* Splash system for water interactions */}
+        <SplashSystem 
+          playerRef={vehicleRef}
+          waterLevel={0.5}
+          waterWidth={12}
+          flowSpeed={biomeMaterials.water.flowSpeed}
+        />
+        
+        {/* Track Generation */}
         {levelUrl ? (
-          // Load custom level from URL
           <LevelLoader
             levelUrl={levelUrl}
             onLoad={handleLevelLoad}
@@ -187,10 +180,19 @@ const Experience = () => {
             onBiomeChange={setBiome}
           />
         ) : (
-          // Default procedural generation
           <TrackManager onBiomeChange={setBiome} raftRef={vehicleRef} />
         )}
       </Physics>
+      
+      {/* Post-processing effects - Bloom, Vignette, SSAO */}
+      <PostProcessingEffects 
+        bloomIntensity={0.6}
+        bloomThreshold={0.75}
+        vignetteOffset={0.35}
+        vignetteDarkness={0.6}
+        ssaoIntensity={1.2}
+        ssaoRadius={0.8}
+      />
       
       {/* Loading overlay */}
       {isLoadingLevel && (
@@ -205,11 +207,37 @@ const Experience = () => {
           onRetry={() => {
             setLevelLoadError(null);
             setIsLoadingLevel(true);
-            // Trigger reload by clearing and resetting
             setLoadedLevelState(null);
           }}
         />
       )}
+    </>
+  );
+};
+
+/**
+ * Experience Component
+ * 
+ * Wraps the game in provider contexts for biome and LOD management
+ */
+const Experience = () => {
+  return (
+    <KeyboardControls
+      map={[
+        { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
+        { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
+        { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
+        { name: 'rightward', keys: ['ArrowRight', 'KeyD'] },
+        { name: 'jump', keys: ['Space'] },
+      ]}
+    >
+      <LODProvider initialQuality="high" enableAdaptive={true} targetFPS={60}>
+        <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
+          <BiomeTransition />
+          <InnerExperience />
+          <PerformanceMonitor visible={process.env.NODE_ENV === 'development'} />
+        </BiomeProvider>
+      </LODProvider>
     </KeyboardControls>
   );
 };

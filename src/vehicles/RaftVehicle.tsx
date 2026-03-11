@@ -56,11 +56,6 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         <boxGeometry args={[2, 0.3, 3]} />
         <meshStandardMaterial color="saddlebrown" />
       </mesh>
-      {/* Debug marker */}
-      <mesh position={[0, 1, 0]}>
-        <boxGeometry args={[0.3, 0.3, 0.3]} />
-        <meshStandardMaterial color="hotpink" />
-      </mesh>
     </RigidBody>
   );
 });
