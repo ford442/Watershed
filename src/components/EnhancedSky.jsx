@@ -68,8 +68,8 @@ export default function EnhancedSky({ biome = 'summer' }) {
                 mieDirectionalG={target.mieDirectionalG}
             />
 
-            {/* Stars - subtle backdrop depth */}
-            <Stars radius={150} depth={60} count={3000} factor={3} saturation={0} fade speed={0.5} />
+            {/* Stars - only visible during autumn (low sun) */}
+            {biome === 'autumn' && <Stars radius={150} depth={60} count={3000} factor={3} saturation={0} fade speed={0.5} />}
 
             {/* Cloud and Environment components removed - were causing asset loading errors */}
 

@@ -5,12 +5,64 @@
  * - Define common vehicle interface (runner, raft, future vehicles)
  * - Handle vehicle switching
  * - Coordinate with physics and input systems
+ * - Surface material detection and collision feedback
  * 
  * SWARM: Extend BaseVehicle for new vehicle types (skis, kayak, etc.)
  */
 
 import * as THREE from 'three';
 import type { RigidBody } from '@react-three/rapier';
+
+// =============================================================================
+// MATERIAL ENUMS & CONFIGURATION
+// =============================================================================
+
+export enum SurfaceMaterial {
+  MOSS = 'moss',
+  ROCK = 'rock',
+  WOOD = 'wood',
+  CONCRETE = 'concrete',
+  WATER = 'water',
+}
+
+export const MATERIAL_FRICTION: Record<SurfaceMaterial, number> = {
+  [SurfaceMaterial.MOSS]: 0.4,      // Slippery
+  [SurfaceMaterial.WOOD]: 0.4,      // Slippery
+  [SurfaceMaterial.ROCK]: 0.6,      // Medium
+  [SurfaceMaterial.CONCRETE]: 0.8,  // Sticky
+  [SurfaceMaterial.WATER]: 0.1,     // Sliding
+};
+
+export const MATERIAL_FROM_BIOME: Record<string, SurfaceMaterial> = {
+  'summer': SurfaceMaterial.ROCK,
+  'autumn': SurfaceMaterial.MOSS,
+  'creek-summer': SurfaceMaterial.ROCK,
+  'creek-autumn': SurfaceMaterial.MOSS,
+  'alpine-spring': SurfaceMaterial.ROCK,
+  'canyon-sunset': SurfaceMaterial.CONCRETE,
+  'midnight-mist': SurfaceMaterial.MOSS,
+};
+
+// =============================================================================
+// COLLISION INTERFACES
+// =============================================================================
+
+export interface CollisionEvent {
+  /** Material of surface hit */
+  material: SurfaceMaterial;
+  /** Impact force magnitude */
+  force: number;
+  /** Contact point in world space */
+  point: THREE.Vector3;
+  /** Relative velocity at contact */
+  velocity: THREE.Vector3;
+  /** Timestamp */
+  timestamp: number;
+  /** Is this a high-impact collision */
+  isHighImpact: boolean;
+}
+
+export type CollisionCallback = (event: CollisionEvent) => void;
 
 // =============================================================================
 // CORE INTERFACES
@@ -82,6 +134,13 @@ export abstract class BaseVehicle {
   protected lastPosition: THREE.Vector3;
   /** Ground check raycast */
   protected isGrounded: boolean = false;
+  
+  // Collision & Material tracking
+  protected currentMaterial: SurfaceMaterial = SurfaceMaterial.ROCK;
+  protected lastCollisionTime: number = 0;
+  protected collisionCooldown: number = 0.1; // Minimum time between collision events
+  protected collisionCallbacks: CollisionCallback[] = [];
+  protected highImpactThreshold: number = 5; // Impact force for particle effects
   
   constructor(config: Partial<VehicleConfig> = {}) {
     this.config = this.getDefaultConfig();
@@ -203,9 +262,107 @@ export abstract class BaseVehicle {
     return { ...this.config };
   }
   
+  // =============================================================================
+  // COLLISION & MATERIAL HANDLING
+  // =============================================================================
+  
+  /** Register a collision event callback */
+  onCollision(callback: CollisionCallback): () => void {
+    this.collisionCallbacks.push(callback);
+    return () => {
+      const idx = this.collisionCallbacks.indexOf(callback);
+      if (idx >= 0) this.collisionCallbacks.splice(idx, 1);
+    };
+  }
+  
+  /** Emit collision event to all registered callbacks */
+  protected emitCollision(event: CollisionEvent): void {
+    // Dispatch global event for audio system
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('vehicle-collision', {
+        detail: event
+      }));
+    }
+    
+    // Call registered callbacks
+    this.collisionCallbacks.forEach(cb => {
+      try { cb(event); } catch (e) { console.error('Collision callback error:', e); }
+    });
+  }
+  
+  /** 
+   * Process a collision with surface
+   * Call this from vehicle components when collision detected
+   */
+  processCollision(
+    material: SurfaceMaterial,
+    impactForce: number,
+    contactPoint: THREE.Vector3,
+    relativeVelocity: THREE.Vector3
+  ): void {
+    const now = Date.now() / 1000;
+    
+    // Rate limiting to prevent event spam
+    if (now - this.lastCollisionTime < this.collisionCooldown) {
+      return;
+    }
+    this.lastCollisionTime = now;
+    
+    // Update current material
+    this.currentMaterial = material;
+    
+    // Create collision event
+    const event: CollisionEvent = {
+      material,
+      force: impactForce,
+      point: contactPoint.clone(),
+      velocity: relativeVelocity.clone(),
+      timestamp: now,
+      isHighImpact: impactForce > this.highImpactThreshold,
+    };
+    
+    this.emitCollision(event);
+    
+    // F1: Trigger collision sound via global event
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('collision-sound', {
+        detail: { material, force: impactForce, point: contactPoint }
+      }));
+    }
+  }
+  
+  /** Update friction based on current surface material */
+  updateFrictionForMaterial(material?: SurfaceMaterial): void {
+    if (!this.body) return;
+    
+    const mat = material || this.currentMaterial;
+    const friction = MATERIAL_FRICTION[mat];
+    
+    // Apply friction to body's colliders
+    // Note: This requires access to the Rapier body's colliders
+    const bodyAny = this.body as any;
+    if (bodyAny.colliders) {
+      bodyAny.colliders.forEach((collider: any) => {
+        collider.setFriction(friction);
+      });
+    }
+  }
+  
+  /** Set current surface material and update friction */
+  setSurfaceMaterial(material: SurfaceMaterial): void {
+    this.currentMaterial = material;
+    this.updateFrictionForMaterial(material);
+  }
+  
+  /** Get current surface material */
+  getSurfaceMaterial(): SurfaceMaterial {
+    return this.currentMaterial;
+  }
+  
   /** Cleanup resources */
   destroy(): void {
     this.body = null;
+    this.collisionCallbacks = [];
   }
 }
 

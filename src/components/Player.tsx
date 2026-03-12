@@ -66,12 +66,6 @@ export default function Player() {
       restitution={0.15}
       linearDamping={0.35}
       angularDamping={0.9}
-    >
-      {/* TEMPORARY VISIBLE PLAYER so you can see where you are */}
-      <mesh>
-        <capsuleGeometry args={[0.55, 1.3]} />
-        <meshBasicMaterial color="lime" wireframe />
-      </mesh>
-    </RigidBody>
+    />
   );
 }

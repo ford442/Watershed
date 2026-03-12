@@ -1,5 +1,6 @@
 import { PointerLockControls, KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
+import { useFrame } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
@@ -16,7 +17,9 @@ import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from
 import { LODProvider, PerformanceMonitor } from "./systems/LODManager";
 import { SplashSystem } from "./systems/SplashSystem";
 import WaterReflection from "./components/WaterReflection";
+import WaterInteraction from "./components/WaterInteraction";
 import { PostProcessingEffects } from "./components/PostProcessingEffects";
+import { useCameraShake } from "./hooks/useCameraShake";
 
 // Base lighting configuration
 const BIOME_LIGHTING = {
@@ -59,11 +62,31 @@ const InnerExperience = () => {
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState(null);
   
-  // Get LOD config
-  const { config: lodConfig } = useLOD();
+  // Get LOD config and quality level
+  const { config: lodConfig, quality } = useLOD();
   
   // Get biome materials config
   const biomeMaterials = useBiomeMaterials();
+  
+  // Camera shake system
+  const cameraShake = useCameraShake();
+  
+  // Velocity tracking for speed-based effects (E3)
+  const [playerVelocity, setPlayerVelocity] = useState(0);
+  
+  // Update camera shake and track velocity each frame
+  useFrame((state, delta) => {
+    cameraShake.update(delta);
+    
+    // Track player velocity for post-processing effects
+    if (vehicleRef.current) {
+      const vel = vehicleRef.current.linvel?.();
+      if (vel) {
+        const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        setPlayerVelocity(speed);
+      }
+    }
+  });
   
   // Check for level URL parameter on mount
   useEffect(() => {
@@ -169,6 +192,14 @@ const InnerExperience = () => {
           flowSpeed={biomeMaterials.water.flowSpeed}
         />
         
+        {/* Enhanced water interaction effects */}
+        <WaterInteraction 
+          target={vehicleRef}
+          isRaft={vehicleType === 'raft'}
+          waterLevel={0.5}
+          maxVelocity={15}
+        />
+        
         {/* Track Generation */}
         {levelUrl ? (
           <LevelLoader
@@ -184,14 +215,11 @@ const InnerExperience = () => {
         )}
       </Physics>
       
-      {/* Post-processing effects - Bloom, Vignette, SSAO */}
+      {/* Post-processing effects - Bloom, Vignette, SSAO, Speed Effects */}
       <PostProcessingEffects 
-        bloomIntensity={0.6}
-        bloomThreshold={0.75}
-        vignetteOffset={0.35}
-        vignetteDarkness={0.6}
-        ssaoIntensity={1.2}
-        ssaoRadius={0.8}
+        quality={quality}
+        velocity={playerVelocity}
+        maxVelocity={25}
       />
       
       {/* Loading overlay */}

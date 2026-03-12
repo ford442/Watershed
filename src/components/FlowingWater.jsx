@@ -1,6 +1,6 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 
 /**
  * FlowingWater - Animated water surface with enhanced wave, foam, and depth shader
@@ -13,6 +13,7 @@ export default function FlowingWater({
     edgeHighlightColor = '#8be8ff',
 }) {
     const materialRef = useRef(null);
+    const { camera } = useThree();
 
     const material = useMemo(() => {
         try {
@@ -23,6 +24,7 @@ export default function FlowingWater({
                 uniforms: {
                     time: { value: 0 },
                     flowSpeed: { value: flowSpeed },
+                    cameraPos: { value: new THREE.Vector3() },
                     waterColor: { value: new THREE.Color(baseColor) },
                     deepColor: { value: new THREE.Color(baseColor).multiplyScalar(0.55) },
                     foamColor: { value: new THREE.Color(foamColor) },
@@ -31,26 +33,37 @@ export default function FlowingWater({
                 vertexShader: `
                     uniform float time;
                     uniform float flowSpeed;
+                    uniform vec3 cameraPos;
                     varying vec2 vUv;
                     varying float vWave;
                     varying float vCurrent;
                     varying vec3 vNormal;
                     varying vec3 vViewDir;
+                    varying float vCameraProximity;
 
                     void main() {
                         vUv = uv;
                         vec3 pos = position;
-                        float wave1 = sin(pos.x * 0.5  + time * flowSpeed * 1.2) * 0.09;
-                        float wave2 = sin(pos.z * 0.4  + time * flowSpeed * 0.9 + 1.57) * 0.07;
-                        float wave3 = sin((pos.x + pos.z) * 0.3 + time * flowSpeed * 0.7) * 0.05;
-                        float wave4 = sin(pos.x * 1.3  + pos.z * 0.8 + time * flowSpeed * 1.5) * 0.025;
+                        
+                        // Calculate world position for camera distance
+                        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+                        
+                        // Camera proximity: waves amplify when camera is close (0-20 units)
+                        float distToCamera = distance(worldPos.xyz, cameraPos);
+                        vCameraProximity = 1.0 - smoothstep(5.0, 25.0, distToCamera);
+                        float proxAmp = 1.0 + vCameraProximity * 0.35;
+                        
+                        // Layered waves with proximity amplification
+                        float wave1 = sin(pos.x * 0.5  + time * flowSpeed * 1.2) * 0.09 * proxAmp;
+                        float wave2 = sin(pos.z * 0.4  + time * flowSpeed * 0.9 + 1.57) * 0.07 * proxAmp;
+                        float wave3 = sin((pos.x + pos.z) * 0.3 + time * flowSpeed * 0.7) * 0.05 * proxAmp;
+                        float wave4 = sin(pos.x * 1.3  + pos.z * 0.8 + time * flowSpeed * 1.5) * 0.025 * proxAmp;
                         pos.y += wave1 + wave2 + wave3 + wave4;
                         vWave = (wave1 + wave2 + wave3 + wave4 + 0.215) / 0.43;
                         // Normalized current intensity (0..1) from layered wave amplitude.
                         vCurrent = clamp((abs(wave1) + abs(wave2) + abs(wave3) + abs(wave4)) * 2.3, 0.0, 1.0);
 
                         // Approximate view direction for fresnel
-                        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
                         vViewDir = normalize(cameraPosition - worldPos.xyz);
                         vNormal = normalMatrix * normal;
 
@@ -60,6 +73,7 @@ export default function FlowingWater({
                 fragmentShader: `
                     uniform float time;
                     uniform float flowSpeed;
+                    uniform vec3 cameraPos;
                     uniform vec3 waterColor;
                     uniform vec3 deepColor;
                     uniform vec3 foamColor;
@@ -69,6 +83,7 @@ export default function FlowingWater({
                     varying float vCurrent;
                     varying vec3 vNormal;
                     varying vec3 vViewDir;
+                    varying float vCameraProximity;
 
                     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
                     float noise(vec2 p) {
@@ -107,10 +122,21 @@ export default function FlowingWater({
                         // Two-layer foam: coarse patches + fine detail
                         float foamCoarse = smoothstep(0.52, 0.72, n1 * 0.45 + n3 * 0.35 + n4 * 0.2 + vCurrent * 0.28);
                         float foamFine   = smoothstep(0.62, 0.8, n2 * 0.55  + n1 * 0.35 + currentStreak * 0.2 + vWave * 0.1);
-                        // Bias extra foam toward shoreline edges (~outer quarter of water width).
-                        float bankFoamMask = smoothstep(0.24, 0.04, abs(vUv.x - 0.5));
-                        float bankFoam = bankFoamMask * (0.32 + n4 * 0.45) * (0.6 + vCurrent * 0.4);
-                        float foam = foamCoarse * 0.48 + foamFine * 0.34 + bankFoam;
+                        
+                        // Enhanced bank foam: denser, more turbulent near canyon walls
+                        float edgeDist = abs(vUv.x - 0.5);
+                        // Inner foam line (very close to shore)
+                        float shoreFoamMask = smoothstep(0.22, 0.03, edgeDist);
+                        // Secondary foam band (mid-near shore turbulence)
+                        float midFoamMask = smoothstep(0.35, 0.15, edgeDist) * (1.0 - shoreFoamMask);
+                        
+                        // Shore foam: choppy white water at the very edge
+                        float shoreFoam = shoreFoamMask * (0.55 + n4 * 0.55 + vCurrent * 0.35) * (0.8 + vWave * 0.4);
+                        // Mid foam: turbulent wake slightly away from wall
+                        float midFoam = midFoamMask * (0.25 + n3 * 0.35) * (0.5 + vCurrent * 0.3);
+                        
+                        float bankFoam = shoreFoam + midFoam * 0.6;
+                        float foam = foamCoarse * 0.42 + foamFine * 0.28 + bankFoam;
                         foam = clamp(foam, 0.0, 1.0);
 
                         // Depth gradient: center (v~0.5) is deeper
@@ -152,6 +178,7 @@ export default function FlowingWater({
     useFrame((state) => {
         if (material.uniforms) {
             material.uniforms.time.value = state.clock.elapsedTime;
+            material.uniforms.cameraPos.value.copy(camera.position);
         }
     });
 

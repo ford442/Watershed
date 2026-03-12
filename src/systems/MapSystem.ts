@@ -5,12 +5,99 @@
  * - Define base chunk interface for all biomes
  * - Handle chunk lifecycle (load/update/unload)
  * - Coordinate chunk treadmill based on player position
+ * - Load and parse JSON level files
  * 
  * SWARM: Extend BaseMapChunk for new biome-specific data
  */
 
 import * as THREE from 'three';
 import type { RigidBody } from '@react-three/rapier';
+
+// =============================================================================
+// JSON LEVEL FORMAT INTERFACES
+// =============================================================================
+
+export interface LevelMetadata {
+  name: string;
+  author: string;
+  description?: string;
+  difficulty: 'beginner' | 'intermediate' | 'expert' | 'custom';
+  estimatedDuration: number;
+  version: string;
+  tags?: string[];
+}
+
+export interface LevelWorld {
+  track: {
+    waypoints: number[][];
+    segmentLength: number;
+    totalSegments: number;
+    width?: number;
+    wallHeight?: number;
+  };
+  biome: {
+    baseType: string;
+    sky: { color: string; cloudDensity?: number; cloudColor?: string };
+    fog: { color: string; near: number; far: number; density?: number };
+    lighting: {
+      sunIntensity: number;
+      sunAngle: number;
+      sunColor?: string;
+      ambientIntensity?: number;
+      hemiSkyColor?: string;
+      hemiGroundColor?: string;
+    };
+    water: { tint: string; flowSpeed: number; opacity?: number; surfaceRoughness?: number };
+  };
+}
+
+export interface LevelSegment {
+  index: number;
+  name?: string;
+  type?: 'normal' | 'waterfall' | 'pond' | 'splash' | 'rapids';
+  biomeOverride?: string;
+  difficulty: number;
+  width?: number;
+  lengthMultiplier?: number;
+  meanderStrength?: number;
+  verticalBias?: number;
+  forwardMomentum?: number;
+  decorations?: Record<string, number>;
+  physics?: {
+    gravityMultiplier?: number;
+    waterFlowIntensity?: number;
+    friction?: number;
+    restitution?: number;
+  };
+  safeZone?: { yMin: number; yMax: number; respawnAt?: number };
+  effects?: {
+    particleCount?: number;
+    cameraShake?: number;
+    fogDensity?: number;
+    transitionDuration?: number;
+  };
+}
+
+export interface LevelSpawns {
+  start: {
+    position: number[];
+    rotation?: number[];
+    velocity?: number[];
+  };
+  checkpoints?: Array<{
+    segment: number;
+    position: number[];
+    radius?: number;
+  }>;
+}
+
+export interface LevelData {
+  metadata: LevelMetadata;
+  world: LevelWorld;
+  segments: LevelSegment[];
+  spawns: LevelSpawns;
+  decorationPools?: Record<string, string[]>;
+}
 
 // =============================================================================
 // CORE INTERFACES
@@ -365,6 +452,288 @@ export class DefaultMapManager implements MapManager {
     // Note: getUtoTmapping is expensive, consider caching
     const tangent = chunk.curve.getTangent(0.5); // Simplified
     return tangent;
+  }
+}
+
+// =============================================================================
+// JSON LEVEL LOADER
+// =============================================================================
+
+/**
+ * Loads and parses JSON level files into MapSystem-compatible format
+ */
+export class JSONLevelLoader {
+  /**
+   * Fetch and parse a level from URL
+   */
+  static async loadFromUrl(url: string): Promise<LevelData> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to load level: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    return this.validateAndNormalize(data);
+  }
+
+  /**
+   * Parse level data from object (already loaded JSON)
+   */
+  static loadFromObject(data: any): LevelData {
+    return this.validateAndNormalize(data);
+  }
+
+  /**
+   * Validate and normalize level data
+   */
+  private static validateAndNormalize(data: any): LevelData {
+    if (!data.metadata || !data.world || !data.segments || !data.spawns) {
+      throw new Error('Invalid level data: missing required sections (metadata, world, segments, spawns)');
+    }
+
+    // Ensure segments are sorted by index
+    const segments = [...data.segments].sort((a: LevelSegment, b: LevelSegment) => a.index - b.index);
+
+    // Normalize waypoints to Vector3
+    const waypoints = data.world.track.waypoints.map((wp: number[]) => 
+      new THREE.Vector3(wp[0], wp[1], wp[2])
+    );
+
+    // Create the main curve from waypoints
+    const mainCurve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.5);
+
+    return {
+      metadata: data.metadata,
+      world: {
+        ...data.world,
+        track: {
+          ...data.world.track,
+          waypoints,
+        },
+      },
+      segments,
+      spawns: data.spawns,
+      decorationPools: data.decorationPools,
+    } as LevelData;
+  }
+}
+
+// =============================================================================
+// JSON-DRIVEN MAP MANAGER
+// =============================================================================
+
+/**
+ * MapManager that loads chunks from JSON level data
+ * Replaces inline generation with JSON-driven authoring
+ */
+export class JSONMapManager implements MapManager {
+  chunks: BaseMapChunk[] = [];
+  currentChunkIndex = 0;
+  levelData: LevelData | null = null;
+  private mainCurve: THREE.CatmullRomCurve3 | null = null;
+  private nextChunkId = 0;
+
+  constructor(levelData?: LevelData) {
+    if (levelData) {
+      this.loadLevel(levelData);
+    }
+  }
+
+  /**
+   * Load a new level
+   */
+  loadLevel(levelData: LevelData): void {
+    this.levelData = levelData;
+    this.chunks = [];
+    this.currentChunkIndex = 0;
+    this.nextChunkId = 0;
+
+    // Create main curve from waypoints
+    const waypoints = levelData.world.track.waypoints as unknown as THREE.Vector3[];
+    this.mainCurve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.5);
+
+    // Generate initial chunks
+    const initialCount = Math.min(3, levelData.world.track.totalSegments);
+    for (let i = 0; i < initialCount; i++) {
+      this.chunks.push(this.generateChunk(i));
+    }
+  }
+
+  /**
+   * Load level from URL
+   */
+  async loadFromUrl(url: string): Promise<void> {
+    const levelData = await JSONLevelLoader.loadFromUrl(url);
+    this.loadLevel(levelData);
+  }
+
+  getChunkAtPosition(position: THREE.Vector3): BaseMapChunk | null {
+    return this.chunks.find(chunk => {
+      if (!chunk.curve) return false;
+      const dist = chunk.position.distanceTo(position);
+      return dist < chunk.length * 0.6;
+    }) || null;
+  }
+
+  generateChunk(index: number): BaseMapChunk {
+    if (!this.levelData || !this.mainCurve) {
+      throw new Error('No level loaded');
+    }
+
+    const segmentConfig = this.levelData.segments.find(s => s.index === index);
+    const totalSegments = this.levelData.world.track.totalSegments;
+    
+    if (!segmentConfig && index < totalSegments) {
+      console.warn(`[MapSystem] No config for segment ${index}, using defaults`);
+    }
+
+    const config = segmentConfig || {
+      index,
+      difficulty: 0.5,
+      type: 'normal' as const,
+    };
+
+    // Calculate segment bounds along the main curve
+    const tStart = index / totalSegments;
+    const tEnd = (index + 1) / totalSegments;
+
+    // Sample points along curve for this segment
+    const pathPoints: THREE.Vector3[] = [];
+    const numPoints = 4;
+    for (let i = 0; i < numPoints; i++) {
+      const t = tStart + (tEnd - tStart) * (i / (numPoints - 1));
+      pathPoints.push(this.mainCurve!.getPoint(Math.min(1, t)));
+    }
+
+    // Create segment curve
+    const curve = new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.5);
+    const pathLength = curve.getLength();
+    const centerPoint = curve.getPoint(0.5);
+
+    // Calculate spawns based on segment config
+    const spawns = this.calculateSegmentSpawns(curve, config, index);
+
+    // Map biome type
+    const biomeOverride = config.biomeOverride || this.levelData.world.biome.baseType;
+    const biomeMap: Record<string, string> = {
+      'creek-summer': 'summer',
+      'creek-autumn': 'autumn',
+      'alpine-spring': 'summer',
+      'canyon-sunset': 'autumn',
+      'midnight-mist': 'autumn',
+    };
+
+    const chunk: BaseMapChunk = {
+      id: `chunk-${this.nextChunkId++}`,
+      index,
+      position: centerPoint,
+      pathPoints,
+      curve,
+      length: pathLength,
+      biome: biomeMap[biomeOverride] || 'summer',
+      flowSpeed: config.physics?.waterFlowIntensity || this.levelData.world.biome.water.flowSpeed,
+      waterLevel: 0.5,
+      waterWidth: this.levelData.world.track.waterWidth || 10,
+      canyonWidth: config.width || this.levelData.world.track.width || 35,
+      spawns,
+      active: true,
+    };
+
+    return chunk;
+  }
+
+  private calculateSegmentSpawns(
+    curve: THREE.CatmullRomCurve3,
+    config: LevelSegment,
+    index: number
+  ): SpawnData[] {
+    const spawns: SpawnData[] = [];
+    const rng = new SeededRandom(index * 1000);
+    const decorations = config.decorations || {};
+    const pathLength = curve.getLength();
+    const steps = Math.floor(pathLength / 2);
+
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps;
+      const point = curve.getPoint(t);
+      const tangent = curve.getTangent(t).normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+      const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+
+      const canyonWidth = config.width || 35;
+      const waterWidth = 10;
+
+      for (const side of [-1, 1]) {
+        // Trees
+        const treeCount = decorations.trees || 0;
+        const treeChance = treeCount / steps;
+        if (rng.next() < treeChance) {
+          const dist = waterWidth / 2 + 4 + rng.next() * 8;
+          const offset = binormal.clone().multiplyScalar(side * dist);
+          const pos = point.clone().add(offset);
+          const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+          const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+          pos.y += height - 0.5;
+
+          spawns.push({
+            type: 'tree',
+            position: pos,
+            rotation: new THREE.Euler(0, rng.next() * Math.PI * 2, 0),
+            scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng.next() * 0.5),
+            meta: { variant: rng.nextInt(0, 3) }
+          });
+        }
+
+        // Rocks
+        const rockCount = decorations.rocks || 0;
+        const rockChance = rockCount / steps;
+        if (rng.next() < rockChance) {
+          const dist = waterWidth / 2 + 1 + rng.next() * 4;
+          const offset = binormal.clone().multiplyScalar(side * dist);
+          const pos = point.clone().add(offset);
+          const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+          const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+          pos.y += height;
+
+          spawns.push({
+            type: 'rock',
+            position: pos,
+            rotation: new THREE.Euler(rng.next() * Math.PI, rng.next() * Math.PI, rng.next() * Math.PI),
+            scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.8),
+            meta: { collider: true }
+          });
+        }
+      }
+    }
+
+    return spawns;
+  }
+
+  update(playerPosition: THREE.Vector3): void {
+    const currentChunk = this.getChunkAtPosition(playerPosition);
+    if (currentChunk) {
+      this.currentChunkIndex = currentChunk.index;
+    }
+
+    // Generate ahead if needed and within level bounds
+    if (this.levelData) {
+      const maxIndex = Math.max(...this.chunks.map(c => c.index), 0);
+      const totalSegments = this.levelData.world.track.totalSegments;
+      
+      if (maxIndex < this.currentChunkIndex + 3 && maxIndex < totalSegments - 1) {
+        this.chunks.push(this.generateChunk(maxIndex + 1));
+      }
+    }
+
+    // Remove far behind chunks
+    this.chunks = this.chunks.filter(chunk =>
+      chunk.index >= this.currentChunkIndex - 1
+    );
+  }
+
+  getFlowAtPosition(position: THREE.Vector3): THREE.Vector3 {
+    const chunk = this.getChunkAtPosition(position);
+    if (!chunk?.curve) return new THREE.Vector3(0, 0, -1);
+    return chunk.curve.getTangent(0.5);
   }
 }
 

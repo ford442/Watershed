@@ -12,7 +12,7 @@ const FallbackScene = () => {
   return (
     <mesh>
       <boxGeometry args={[1, 1, 1]} />
-      <meshBasicMaterial color="hotpink" wireframe />
+      <meshBasicMaterial color="#444444" />
     </mesh>
   );
 };
@@ -38,12 +38,7 @@ function App() {
         shadows
         frameloop="always"
       >
-        <React.Suspense fallback={
-          <mesh>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshBasicMaterial color="orange" />
-          </mesh>
-        }>
+        <React.Suspense fallback={null}>
           <Experience />
         </React.Suspense>
       </Canvas>

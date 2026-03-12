@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
+import { useFrame } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
+import { extendRiverMaterial, updateRiverMaterial } from '../utils/RiverShader';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
 import Foliage from './Environment/Foliage';
@@ -38,11 +40,13 @@ export default function TrackSegment({
     biome = 'summer',
     width = 35,
     particleCount = 0,
+    particleDensity = 1.0, // 0.0-1.0 for E4 scaling
     flowSpeed = 1.0,
     treeDensity = 1.0,
     rockDensity = 'low',
     rockMaterial,
-    rockNormalMap
+    rockNormalMap,
+    raftRef, // For tracking player velocity (E4)
 }) {
     // console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
@@ -784,7 +788,7 @@ export default function TrackSegment({
         }
 
         const shellWidth = canyonWidth * 1.5;
-        const segmentsX = 20;
+        const segmentsX = 24;
         const segmentsZ = Math.max(2, Math.floor(len / 2));
 
         const geo = new THREE.PlaneGeometry(shellWidth, len, segmentsX, segmentsZ);
@@ -793,9 +797,18 @@ export default function TrackSegment({
         const positions = geo.attributes.position;
         const vertex = new THREE.Vector3();
         const colors = new Float32Array(positions.count * 3);
-        const wallColor     = biome === 'autumn' ? new THREE.Color('#9c7850') : new THREE.Color('#888880');
-        const wallDarkColor = biome === 'autumn' ? new THREE.Color('#584028') : new THREE.Color('#585c60');
-        const wallMossColor = biome === 'autumn' ? new THREE.Color('#6a5838') : new THREE.Color('#5a6858');
+        const mossMask = new Float32Array(positions.count); // Moss/lichen mask channel
+        
+        // Color palette - waterline (dark) to rim (light)
+        const waterlineColor = biome === 'autumn' ? new THREE.Color('#3a2820') : new THREE.Color('#3a4038');
+        const wallDarkColor  = biome === 'autumn' ? new THREE.Color('#584028') : new THREE.Color('#485058');
+        const wallMidColor   = biome === 'autumn' ? new THREE.Color('#7a6040') : new THREE.Color('#788088');
+        const wallLightColor = biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#b0b8a8');
+        const rimColor       = biome === 'autumn' ? new THREE.Color('#d8c898') : new THREE.Color('#d0d8c8');
+        
+        // Moss/lichen colors for vertex color bands
+        const mossColor      = biome === 'autumn' ? new THREE.Color('#5a6840') : new THREE.Color('#4a6848');
+        const lichenColor    = biome === 'autumn' ? new THREE.Color('#7a8860') : new THREE.Color('#6a8870');
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
@@ -806,13 +819,50 @@ export default function TrackSegment({
             let yHeight = 15 + (distFromCenter * 0.5); 
             yHeight += Math.sin(zLocal * 0.1) * 3 + Math.cos(xLocal * 0.2) * 2;
 
-            // Richer cliff coloring: blend between two tones based on noise
-            const blend = Math.abs(Math.sin(zLocal * 0.4 + xLocal * 0.3));
-            const variation = 0.72 + 0.28 * blend;
-            const c = wallDarkColor.clone().lerp(wallColor, blend).multiplyScalar(variation);
-            // Add subtle moss tint to lower cliff faces near water
-            const lowerBlend = Math.max(0, 1.0 - (yHeight - 15) / 6.0) * 0.18;
-            c.lerp(wallMossColor, lowerBlend);
+            // Height relative to water (water is at ~13 after -2 offset)
+            const waterY = 13;
+            const rimY = waterY + 15;
+            const heightAboveWater = Math.max(0, Math.min(1, (yHeight - 2 - waterY) / (rimY - waterY)));
+            
+            // Multi-band gradient from waterline to rim
+            const c = new THREE.Color();
+            if (heightAboveWater < 0.15) {
+                // Waterline zone: dark wet rock
+                c.copy(waterlineColor).lerp(wallDarkColor, heightAboveWater / 0.15);
+            } else if (heightAboveWater < 0.40) {
+                // Lower wall: transitioning to mid tones
+                c.copy(wallDarkColor).lerp(wallMidColor, (heightAboveWater - 0.15) / 0.25);
+            } else if (heightAboveWater < 0.70) {
+                // Mid wall: main wall color
+                c.copy(wallMidColor).lerp(wallLightColor, (heightAboveWater - 0.40) / 0.30);
+            } else {
+                // Upper wall to rim: light, weathered stone
+                c.copy(wallLightColor).lerp(rimColor, (heightAboveWater - 0.70) / 0.30);
+            }
+            
+            // Noise variation for natural look
+            const noise1 = Math.sin(zLocal * 0.5 + xLocal * 0.3) * 0.5 + 0.5;
+            const noise2 = Math.sin(zLocal * 1.2 + xLocal * 0.8) * 0.5 + 0.5;
+            const detailNoise = noise1 * 0.08 + noise2 * 0.04;
+            c.multiplyScalar(0.92 + detailNoise);
+            
+            // Moss/lichen bands at waterline - use sine waves for organic bands
+            const bandNoise = Math.sin(zLocal * 0.3 + xLocal * 0.5) * 0.5 + 0.5;
+            const bandNoise2 = Math.cos(zLocal * 0.7 - xLocal * 0.4) * 0.5 + 0.5;
+            const mossBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.08) / 0.12) * bandNoise;
+            const lichenBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.25) / 0.10) * bandNoise2;
+            
+            // Apply moss/lichen vertex color tinting
+            if (mossBand > 0.3) {
+                c.lerp(mossColor, mossBand * 0.35);
+            }
+            if (lichenBand > 0.3) {
+                c.lerp(lichenColor, lichenBand * 0.25);
+            }
+            
+            // Store moss mask for shader use (0-1 range)
+            mossMask[i] = Math.max(mossBand, lichenBand * 0.7);
+            
             colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
 
             const t = (zLocal + len / 2) / len;
@@ -841,6 +891,34 @@ export default function TrackSegment({
             }
         }
         geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geo.setAttribute('mossMask', new THREE.BufferAttribute(mossMask, 1));
+        
+        // Compute triplanar UVs (secondary UV channel) to break up texture tiling
+        const uv2 = new Float32Array(positions.count * 2);
+        const worldPos = new THREE.Vector3();
+        
+        for (let i = 0; i < positions.count; i++) {
+            worldPos.fromBufferAttribute(positions, i);
+            
+            // Triplanar UV projection using world-space XZ and XY
+            // Scale factor to control texture density
+            const scale = 0.08;
+            const triplanarBlend = Math.abs(worldPos.y - 13) / 15; // Blend based on height
+            
+            // Primary triplanar: side projection (XZ plane with Y variation)
+            const u1 = worldPos.x * scale;
+            const v1 = worldPos.z * scale * 0.5; // Compress Z to reduce stretch
+            
+            // Secondary: top-down variation for rim areas
+            const u2 = (worldPos.x + worldPos.z) * scale * 0.7;
+            const v2 = worldPos.y * scale * 0.3;
+            
+            // Blend based on height above water
+            const blend = Math.min(1, Math.max(0, triplanarBlend));
+            uv2[i*2] = u1 * (1 - blend) + u2 * blend;
+            uv2[i*2+1] = v1 * (1 - blend) + v2 * blend;
+        }
+        geo.setAttribute('uv2', new THREE.BufferAttribute(uv2, 2));
         
         // GUARD: Don't compute normals if positions have NaN
         const posArray = positions.array;
@@ -928,12 +1006,101 @@ export default function TrackSegment({
     // console.log(`[TrackSegment ${segmentId}] Rendering full segment`);
 
     return (
+        <TrackSegmentMeshes
+            segmentId={segmentId}
+            canyonGeometry={canyonGeometry}
+            wallShellGeometry={wallShellGeometry}
+            waterGeometry={waterGeometry}
+            rockMaterial={rockMaterial}
+            waterLevel={waterLevel}
+            flowSpeed={flowSpeed}
+            type={type}
+            placementData={placementData}
+            biome={biome}
+            waterfallPos={waterfallPos}
+            particleCount={particleCount}
+            particleDensity={particleDensity}
+            waterWidth={waterWidth}
+            raftRef={raftRef}
+        />
+    );
+}
+
+// Inner component to handle material effects with hooks
+function TrackSegmentMeshes({
+    segmentId,
+    canyonGeometry,
+    wallShellGeometry,
+    waterGeometry,
+    rockMaterial,
+    waterLevel,
+    flowSpeed,
+    type,
+    placementData,
+    biome,
+    waterfallPos,
+    particleCount,
+    particleDensity,
+    waterWidth,
+    raftRef,
+}) {
+    // Clone material for wall to apply RiverShader effects
+    const wallMaterialRef = useRef(null);
+    
+    // Track player velocity for particle scaling (E4)
+    const [playerVelocity, setPlayerVelocity] = useState(0);
+    
+    // Update velocity each frame
+    useFrame(() => {
+        if (raftRef?.current) {
+            const vel = raftRef.current.linvel?.();
+            if (vel) {
+                const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+                setPlayerVelocity(speed);
+            }
+        }
+    });
+    
+    const wallMaterial = useMemo(() => {
+        // Clone the rock material so we can apply shader effects
+        const mat = rockMaterial.clone();
+        mat.vertexColors = true;
+        // Apply RiverShader with moss and wetness
+        extendRiverMaterial(mat, {
+            enableWetness: true,
+            enableMoss: true,
+            enableTriplanar: true,
+            waterLevel: 13.0,
+            wetnessRange: 4.0
+        });
+        return mat;
+    }, [rockMaterial]);
+    
+    wallMaterialRef.current = wallMaterial;
+    
+    // Update shader uniforms each frame
+    useFrame((state) => {
+        if (wallMaterialRef.current) {
+            updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime);
+        }
+    });
+    
+    // Cleanup cloned material on unmount
+    useMemo(() => {
+        return () => {
+            if (wallMaterialRef.current) {
+                wallMaterialRef.current.dispose();
+            }
+        };
+    }, []);
+
+    return (
         <group name={`track-segment-${segmentId}`} visible={true}>
             <RigidBody key={`rb-${segmentId}`} type="fixed" colliders="trimesh" friction={1} restitution={0.1}>
                 <mesh geometry={canyonGeometry} material={rockMaterial} />
             </RigidBody>
 
-            <mesh geometry={wallShellGeometry} material={rockMaterial} />
+            <mesh geometry={wallShellGeometry} material={wallMaterial} />
 
             <FlowingWater 
                 geometry={waterGeometry}
@@ -1004,10 +1171,16 @@ export default function TrackSegment({
             {/* Sun Shafts - Atmospheric light rays */}
             <SunShafts transforms={placementData.sunShafts} />
 
-            {/* Waterfall Particles */}
+            {/* Waterfall Particles - with dynamic scaling (E4) */}
             {type === 'waterfall' && waterfallPos && (
                 <group position={waterfallPos}>
-                    <WaterfallParticles count={particleCount || 300} width={waterWidth} height={20} />
+                    <WaterfallParticles 
+                        count={particleCount || 300} 
+                        width={waterWidth} 
+                        height={20}
+                        playerVelocity={playerVelocity}
+                        particleDensity={particleDensity}
+                    />
                 </group>
             )}
         </group>
