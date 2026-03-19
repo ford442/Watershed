@@ -51,8 +51,9 @@ export default function TrackSegment({
     rockMaterial,
     rockNormalMap,
     segmentState = 'Normal',
-    raftRef, // For tracking player velocity (E4)
-) {
+    raftRef // For tracking player velocity (E4)
+}) {
+    // console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
 
     // Create the spline path (Only if active)
