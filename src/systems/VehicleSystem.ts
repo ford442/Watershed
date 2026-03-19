@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import type { RigidBody } from '@react-three/rapier';
+import { Ray } from '@dimforge/rapier3d-compat';
 
 // =============================================================================
 // MATERIAL ENUMS & CONFIGURATION
@@ -239,8 +240,8 @@ export abstract class BaseVehicle {
     
     // Access Rapier world through body
     const world = (this.body as any).getWorld?.();
-    if (world && window.RAPIER) {
-      const ray = new window.RAPIER.Ray(rayOrigin, rayDir);
+    if (world) {
+      const ray = new Ray(rayOrigin, rayDir);
       const hit = world.castRay(ray, 1.5, true);
       this.isGrounded = !!hit;
     } else {
