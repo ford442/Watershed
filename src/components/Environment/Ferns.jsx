@@ -25,9 +25,15 @@ export default function Ferns({ transforms, biome = 'summer' }) {
              for(let k=0; k < positions.count; k++){
                  vertex.fromBufferAttribute(positions, k);
 
+                 // Skip invalid vertices
+                 if (!isFinite(vertex.x) || !isFinite(vertex.y) || !isFinite(vertex.z)) {
+                     positions.setXYZ(k, 0, 0, 0);
+                     continue;
+                 }
+
                  // Taper width based on height (Y)
                  // Y is 0 to 1.2
-                 const normalizedY = vertex.y / 1.2;
+                 const normalizedY = Math.max(0, Math.min(1, vertex.y / 1.2));
                  const widthFactor = 1.0 - Math.pow(normalizedY, 0.5); // Taper to tip
                  vertex.x *= widthFactor;
 
@@ -53,6 +59,21 @@ export default function Ferns({ transforms, biome = 'summer' }) {
         if (frondGeos.length === 0) return new THREE.BufferGeometry();
 
         const merged = mergeBufferGeometries(frondGeos);
+        if (!merged) return new THREE.BufferGeometry();
+        
+        // Validate positions before computing normals
+        const pos = merged.attributes.position;
+        if (pos) {
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const y = pos.getY(i);
+                const z = pos.getZ(i);
+                if (!isFinite(x) || !isFinite(y) || !isFinite(z)) {
+                    pos.setXYZ(i, 0, 0, 0);
+                }
+            }
+        }
+        
         merged.computeVertexNormals();
         return merged;
     }, []);
