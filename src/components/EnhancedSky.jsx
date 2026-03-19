@@ -25,9 +25,10 @@ const BIOME_SETTINGS = {
     }
 };
 
-export default function EnhancedSky({ biome = 'summer' }) {
+export default function EnhancedSky({ biome = 'summer', timeOfDay = 0.25 }) {
     const target = BIOME_SETTINGS[biome] || BIOME_SETTINGS.summer;
     const fogRef = useRef();
+    const showStars = biome === 'autumn' ? (timeOfDay < 0.18 || timeOfDay > 0.82) : timeOfDay < 0.12;
 
     // Store smoothly interpolated state
     const current = useRef({
@@ -57,19 +58,18 @@ export default function EnhancedSky({ biome = 'summer' }) {
     return (
         <group>
             {/* Physically-based sky */}
-            <Sky
-                distance={450000}
-                sunPosition={target.sunPosition}
-                inclination={0}
-                azimuth={0.25}
-                turbidity={target.turbidity}
-                rayleigh={target.rayleigh}
-                mieCoefficient={target.mieCoefficient}
-                mieDirectionalG={target.mieDirectionalG}
-            />
-
-            {/* Stars - only visible during autumn (low sun) */}
-            {biome === 'autumn' && <Stars radius={150} depth={60} count={3000} factor={3} saturation={0} fade speed={0.5} />}
+            {showStars && (
+                <Stars
+                    ref={fogRef}
+                    radius={100}
+                    depth={40}
+                    count={biome === 'summer' ? 600 : 1200}
+                    factor={biome === 'summer' ? 3.5 : 4.5}
+                    saturation={0}
+                    fade
+                    speed={0.8}
+                />
+            )}
 
             {/* Cloud and Environment components removed - were causing asset loading errors */}
 

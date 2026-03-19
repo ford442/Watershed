@@ -7,7 +7,6 @@ export const Loader = () => {
 
   useEffect(() => {
     if (!active) {
-      console.log('[Loader] Assets done, fading...');
       const timer = setTimeout(() => setFinished(true), 200);
       return () => clearTimeout(timer);
     }

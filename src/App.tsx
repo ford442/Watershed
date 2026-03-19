@@ -5,7 +5,6 @@ import { UI } from './components/UI';
 import { Loader } from './components/Loader';
 import ErrorBoundary from './components/ErrorBoundary';
 import './style.css';
-import { useProgress } from '@react-three/drei';
 
 // Simple fallback scene if Experience fails
 const FallbackScene = () => {
@@ -19,7 +18,6 @@ const FallbackScene = () => {
 
 function App() {
   const [skipLoader, setSkipLoader] = useState(false);
-  const { progress } = useProgress();
 
   useEffect(() => {
     if (window.location.search.includes('no-pointer-lock')) {
@@ -30,9 +28,9 @@ function App() {
   return (
     <ErrorBoundary>
       <Canvas
-        gl={{ 
+        gl={{
           powerPreference: 'high-performance',
-          antialias: true 
+          antialias: true
         }}
         camera={{ position: [0, 5, 10], fov: 75 }}
         shadows
@@ -42,7 +40,7 @@ function App() {
           <Experience />
         </React.Suspense>
       </Canvas>
-      
+
       {!skipLoader && <Loader />}
       <UI />
     </ErrorBoundary>

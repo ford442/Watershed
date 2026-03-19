@@ -1,16 +1,17 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
+import { SHADERS, WATER_LEVEL } from '../constants/game';
 
 /**
  * FlowingWater - Animated water surface with enhanced wave, foam, and depth shader
  */
-export default function FlowingWater({ 
-    geometry, 
+export default function FlowingWater({
+    geometry,
     flowSpeed = 1.2,
-    baseColor = '#1a7b9c',
-    foamColor = '#dff4ff',
-    edgeHighlightColor = '#8be8ff',
+    baseColor = SHADERS.WATER_COLOR,
+    foamColor = SHADERS.WATER_FOAM_COLOR,
+    edgeHighlightColor = SHADERS.WATER_EDGE_COLOR,
 }) {
     const materialRef = useRef(null);
     const { camera } = useThree();
@@ -162,6 +163,23 @@ export default function FlowingWater({
                     }
                 `,
             });
+            mat.onBeforeCompile = (shader) => {
+                shader.uniforms.uWaterLevel = { value: WATER_LEVEL };
+                shader.uniforms.uFlowSpeed = { value: flowSpeed };
+                mat.userData.onBeforeCompileShader = shader;
+            };
+            mat.userData.waterFlowField = {
+                waterLevel: WATER_LEVEL,
+                flowSpeed,
+                sampleAt: (position, time) => {
+                    const x = position.x * 0.35;
+                    const z = position.z * 0.28 - time * flowSpeed * 0.15;
+                    return {
+                        direction: new THREE.Vector3(Math.sin(z) * 0.25, 0, -1).normalize(),
+                        speed: flowSpeed * (1 + Math.sin(x + z) * 0.12),
+                    };
+                },
+            };
             materialRef.current = mat;
             return mat;
         } catch (e) {

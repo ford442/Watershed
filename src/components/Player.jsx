@@ -3,13 +3,14 @@ import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider } from '@react-three/rapier';
 import { useKeyboardControls } from '@react-three/drei';
+import { PHYSICS, PLAYER, PLAYER_SPAWN } from '../constants/game';
 
-const SPEED = 5;
-const JUMP_FORCE = 5;
+const SPEED = PLAYER.SPEED;
+const JUMP_FORCE = PLAYER.JUMP_FORCE;
 
 // Fallback camera position when physics isn't ready
 // Matches player spawn position so camera is in correct location from frame 1
-const FALLBACK_POS = new THREE.Vector3(0, -4, -10);
+const FALLBACK_POS = new THREE.Vector3(...PLAYER_SPAWN.fallbackCamera);
 
 const Player = forwardRef((props, ref) => {
   const { camera, gl } = useThree();
@@ -22,7 +23,7 @@ const Player = forwardRef((props, ref) => {
   const yaw = useRef(0);
   const pitch = useRef(-0.3); // Start looking slightly down to see terrain
   const isRightMouseDown = useRef(false);
-  
+
   // Track if physics is ready
   const physicsReady = useRef(false);
 
@@ -82,7 +83,7 @@ const Player = forwardRef((props, ref) => {
     if (rb.current) {
       physicsReady.current = true;
       const pos = rb.current.translation();
-      camera.position.set(pos.x, pos.y + 0.8, pos.z);
+      camera.position.set(pos.x, pos.y + PLAYER.CAMERA_HEIGHT, pos.z);
 
       const { forward, backward, left, right, jump } = getKeys();
 
@@ -126,7 +127,7 @@ const Player = forwardRef((props, ref) => {
         ref={rb}
         // Spawn above track level - track is at Y=-6 at Z=30 and nearby
         // Player spawns at Z=-10 (near start), Y=-4 puts player above track to fall onto surface
-        position={[0, -4, -10]}
+        position={PLAYER_SPAWN.position}
         enabledRotations={[false, false, false]}
         colliders={false}
         friction={0}

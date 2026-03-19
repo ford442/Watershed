@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WALL_WATERLINE_Y, SHADERS } from '../constants/game';
 
 /**
  * RiverShader - Enhanced wetness, moss, and triplanar texture effects
@@ -17,12 +18,12 @@ import * as THREE from 'three';
 // Wetness parameters
 const WETNESS_DARKEN_FACTOR = 0.75;
 const WETNESS_ROUGHNESS_REDUCTION = 0.30;
-const WATER_LEVEL_Y = 13.0;
+const WATER_LEVEL_Y = WALL_WATERLINE_Y;
 const WETNESS_RANGE = 4.0;
 
 // Moss/Lichen colors
-const MOSS_COLOR = new THREE.Color('#4a6b44');      // Deep moss green
-const LICHEN_COLOR = new THREE.Color('#7a9a78');    // Lighter lichen
+const MOSS_COLOR = new THREE.Color(SHADERS.MOSS_COLOR);      // Deep moss green
+const LICHEN_COLOR = new THREE.Color(SHADERS.LICHEN_COLOR);    // Lighter lichen
 const MOSS_INTENSITY = 0.6;
 
 /**
@@ -32,7 +33,7 @@ const MOSS_INTENSITY = 0.6;
  */
 export function extendRiverMaterial(material, options = {}) {
     if (!material) return;
-    
+
     const {
         enableWetness = true,
         enableMoss = true,
@@ -40,7 +41,7 @@ export function extendRiverMaterial(material, options = {}) {
         waterLevel = WATER_LEVEL_Y,
         wetnessRange = WETNESS_RANGE
     } = options;
-    
+
     try {
         // Store shader reference for updates
         material.userData.riverShader = {
@@ -48,7 +49,7 @@ export function extendRiverMaterial(material, options = {}) {
             wetnessRange,
             time: 0
         };
-        
+
         material.onBeforeCompile = (shader) => {
             // Add custom uniforms
             shader.uniforms.uWaterLevel = { value: waterLevel };
@@ -57,7 +58,7 @@ export function extendRiverMaterial(material, options = {}) {
             shader.uniforms.uMossColor = { value: MOSS_COLOR };
             shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
             shader.uniforms.uMossIntensity = { value: MOSS_INTENSITY };
-            
+
             // Add vertex shader headers
             shader.vertexShader = `
                 // RiverShader vertex attributes
@@ -71,7 +72,7 @@ export function extendRiverMaterial(material, options = {}) {
                 
                 uniform float uWaterLevel;
             ` + shader.vertexShader;
-            
+
             // Inject vertex calculations
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <begin_vertex>',
@@ -87,7 +88,7 @@ export function extendRiverMaterial(material, options = {}) {
                 vUv2 = uv2;
                 `
             );
-            
+
             // Add fragment shader headers
             shader.fragmentShader = `
                 // RiverShader uniforms and varyings
@@ -108,7 +109,7 @@ export function extendRiverMaterial(material, options = {}) {
                     return sin(p.x * 3.0) * sin(p.y * 3.0) * 0.5 + 0.5;
                 }
             ` + shader.fragmentShader;
-            
+
             // Inject color modifications after map_fragment
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <map_fragment>',
@@ -134,7 +135,7 @@ export function extendRiverMaterial(material, options = {}) {
                 #endif
                 `
             );
-            
+
             // Inject moss/lichen coloring before color_fragment
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <color_fragment>',
@@ -172,14 +173,14 @@ export function extendRiverMaterial(material, options = {}) {
                 ` : ''}
                 `
             );
-            
+
             // Store shader reference for animation updates
             material.userData.shader = shader;
         };
-        
+
         // Mark material for updates
         material.needsUpdate = true;
-        
+
     } catch (e) {
         console.warn('RiverShader: Error setting up shader injection:', e);
         // Fallback to property-based approach
@@ -212,7 +213,7 @@ function fallbackExtend(material) {
  */
 export function updateRiverMaterial(material, time, waterLevel) {
     if (!material || !material.userData.shader) return;
-    
+
     const shader = material.userData.shader;
     if (shader.uniforms) {
         shader.uniforms.uTime.value = time;
@@ -233,7 +234,7 @@ export function createRiverMaterial(parameters = {}) {
         metalness: 0.1,
         ...parameters
     });
-    
+
     extendRiverMaterial(material);
     return material;
 }

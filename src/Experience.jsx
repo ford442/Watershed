@@ -4,6 +4,9 @@ import { useFrame } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
+import FlowForecast from "./components/FlowForecast";
+import ForecastHUD from "./components/ForecastHUD";
+import { WATER_LEVEL } from "./constants/game";
 
 // Vehicle system
 import RunnerVehicle from "./vehicles/RunnerVehicle";
@@ -55,29 +58,30 @@ const InnerExperience = () => {
   const [biome, setBiome] = useState('summer');
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
-  
+
   // Level loading state
   const [levelUrl, setLevelUrl] = useState(null);
   const [levelLoadError, setLevelLoadError] = useState(null);
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState(null);
-  
+  const [forecastSamples, setForecastSamples] = useState([]);
+
   // Get LOD config and quality level
   const { config: lodConfig, quality } = useLOD();
-  
+
   // Get biome materials config
   const biomeMaterials = useBiomeMaterials();
-  
+
   // Camera shake system
   const cameraShake = useCameraShake();
-  
+
   // Velocity tracking for speed-based effects (E3)
   const [playerVelocity, setPlayerVelocity] = useState(0);
-  
+
   // Update camera shake and track velocity each frame
   useFrame((state, delta) => {
     cameraShake.update(delta);
-    
+
     // Track player velocity for post-processing effects
     if (vehicleRef.current) {
       const vel = vehicleRef.current.linvel?.();
@@ -87,13 +91,13 @@ const InnerExperience = () => {
       }
     }
   });
-  
+
   // Check for level URL parameter on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const levelParam = params.get('level');
     const levelUrlParam = params.get('levelUrl');
-    
+
     if (levelParam) {
       setLevelUrl(`./levels/${levelParam}`);
       setIsLoadingLevel(true);
@@ -102,12 +106,12 @@ const InnerExperience = () => {
       setIsLoadingLevel(true);
     }
   }, []);
-  
+
   // Handle level load
   const handleLevelLoad = useCallback((levelState) => {
     setLoadedLevelState(levelState);
     setIsLoadingLevel(false);
-    
+
     if (levelState?.biome?.baseType) {
       const biomeMap = {
         'creek-summer': 'summer',
@@ -120,7 +124,7 @@ const InnerExperience = () => {
       setBiome(newBiome);
     }
   }, []);
-  
+
   const handleLevelError = useCallback((error) => {
     setLevelLoadError(error);
     setIsLoadingLevel(false);
@@ -133,19 +137,19 @@ const InnerExperience = () => {
     <>
       {/* Sky and environment */}
       <EnhancedSky biome={biome} />
-      
+
       {/* Lighting - biome responsive */}
       <ambientLight intensity={L.ambientIntensity} />
-      <hemisphereLight 
+      <hemisphereLight
         skyColor={L.hemiSky}
         groundColor={L.hemiGround}
         intensity={L.hemiIntensity}
       />
-      <directionalLight 
+      <directionalLight
         color={L.dirColor}
         position={L.dirPosition}
         intensity={L.dirIntensity}
-        castShadow 
+        castShadow
         shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
         shadow-camera-near={1}
         shadow-camera-far={200}
@@ -159,47 +163,57 @@ const InnerExperience = () => {
         position={[-10, 15, -20]}
         intensity={L.fillIntensity}
       />
-      
+
       {/* Water reflections (if enabled) */}
       {lodConfig.enableReflections && (
-        <WaterReflection 
-          waterLevel={0.5}
+        <WaterReflection
+          waterLevel={WATER_LEVEL}
           resolution={1024}
           updateInterval={2}
         />
       )}
-      
+
       {/* Physics world */}
       <Physics gravity={[0, -20, 0]}>
-        <PointerLockControls 
-          makeDefault 
+        <PointerLockControls
+          makeDefault
           lockOnClick
-          onLock={() => {}} 
+          onLock={() => { }}
         />
-        
+
         {/* Vehicle */}
         {vehicleType === 'runner' ? (
           <RunnerVehicle ref={vehicleRef} />
         ) : (
           <RaftVehicle ref={vehicleRef} />
         )}
-        
+
         {/* Splash system for water interactions */}
-        <SplashSystem 
+        <SplashSystem
           playerRef={vehicleRef}
-          waterLevel={0.5}
+          waterLevel={WATER_LEVEL}
           waterWidth={12}
           flowSpeed={biomeMaterials.water.flowSpeed}
         />
-        
+
         {/* Enhanced water interaction effects */}
-        <WaterInteraction 
+        <WaterInteraction
           target={vehicleRef}
           isRaft={vehicleType === 'raft'}
-          waterLevel={0.5}
+          waterLevel={WATER_LEVEL}
           maxVelocity={15}
         />
-        
+
+        <FlowForecast
+          temperature={8}
+          snowpackIndex={0.65}
+          damReleaseSchedule={[
+            { hour: 6, release: 0.08 },
+            { hour: 14, release: 0.12 },
+          ]}
+          onForecastChange={setForecastSamples}
+        />
+
         {/* Track Generation */}
         {levelUrl ? (
           <LevelLoader
@@ -209,27 +223,30 @@ const InnerExperience = () => {
             showLoader={false}
             raftRef={vehicleRef}
             onBiomeChange={setBiome}
+            forecastSamples={forecastSamples}
           />
         ) : (
-          <TrackManager onBiomeChange={setBiome} raftRef={vehicleRef} />
+          <TrackManager onBiomeChange={setBiome} raftRef={vehicleRef} forecastSamples={forecastSamples} />
         )}
       </Physics>
-      
+
       {/* Post-processing effects - Bloom, Vignette, SSAO, Speed Effects */}
-      <PostProcessingEffects 
+      <PostProcessingEffects
         quality={quality}
         velocity={playerVelocity}
         maxVelocity={25}
       />
-      
+
+      <ForecastHUD samples={forecastSamples} />
+
       {/* Loading overlay */}
       {isLoadingLevel && (
         <LoadingDisplay message="Loading custom level..." />
       )}
-      
+
       {/* Error overlay */}
       {levelLoadError && (
-        <ErrorDisplay 
+        <ErrorDisplay
           error={levelLoadError}
           onDismiss={() => setLevelLoadError(null)}
           onRetry={() => {

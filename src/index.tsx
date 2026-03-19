@@ -19,9 +19,6 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('[Promise]', event.promise);
 });
 
-// console.log('[index.tsx] Starting application...');
-// console.log('[index.tsx] React version:', React.version);
-
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   console.error('[index.tsx] FATAL: Root element not found!');
@@ -30,9 +27,6 @@ if (!rootElement) {
   errorDiv.textContent = 'ERROR: Root element #root not found in DOM';
   document.body.appendChild(errorDiv);
 } else {
-  // console.log('[index.tsx] Root element found, creating React root...');
   const root = ReactDOM.createRoot(rootElement as HTMLElement);
-  // console.log('[index.tsx] Rendering App component...');
   root.render(<App />);
-  // console.log('[index.tsx] App render initiated');
 }
