@@ -63,13 +63,17 @@ export function extendRiverMaterial(material, options = {}) {
             shader.vertexShader = `
                 // RiverShader vertex attributes
                 attribute float mossMask;
+                // uv2 is already declared by Three.js when USE_AOMAP or USE_LIGHTMAP is set;
+                // only declare it here when those defines are absent to avoid GLSL redeclaration.
+                #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 attribute vec2 uv2;
-                
+                varying vec2 vUv2;
+                #endif
+
                 varying float vHeightAboveWater;
                 varying float vMossMask;
-                varying vec2 vUv2;
                 varying vec3 vWorldPos;
-                
+
                 uniform float uWaterLevel;
             ` + shader.vertexShader;
 
@@ -98,10 +102,13 @@ export function extendRiverMaterial(material, options = {}) {
                 uniform vec3 uMossColor;
                 uniform vec3 uLichenColor;
                 uniform float uMossIntensity;
-                
+
                 varying float vHeightAboveWater;
                 varying float vMossMask;
+                // vUv2 is declared by Three.js when USE_AOMAP/USE_LIGHTMAP; only declare otherwise.
+                #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 varying vec2 vUv2;
+                #endif
                 varying vec3 vWorldPos;
                 
                 // Noise function for organic variation
