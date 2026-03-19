@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, SSAO, HueSaturation } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, Vignette, ChromaticAberration, SSAO, HueSaturation, NormalPass } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
 
@@ -123,8 +123,10 @@ export function PostProcessingEffects({
     <EffectComposer
       multisampling={quality === 'low' ? 2 : 4}
       enabled={true}
-      normalPass={enableSSAO} // Required for SSAO (E1)
     >
+      {/* NormalPass - Required for SSAO (E1) */}
+      {enableSSAO && <NormalPass />}
+      
       {/* SSAO - Ambient occlusion for depth (high quality only) */}
       {enableSSAO && (
         <SSAO
