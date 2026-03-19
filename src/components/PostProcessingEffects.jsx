@@ -123,6 +123,7 @@ export function PostProcessingEffects({
     <EffectComposer
       multisampling={quality === 'low' ? 2 : 4}
       enabled={true}
+      normalPass={enableSSAO} // Required for SSAO (E1)
     >
       {/* SSAO - Ambient occlusion for depth (high quality only) */}
       {enableSSAO && (
