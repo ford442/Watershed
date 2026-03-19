@@ -1,12 +1,13 @@
 import React, { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { RigidBody } from '@react-three/rapier';
+import { RigidBody, useRapier } from '@react-three/rapier';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 export default function Player() {
   const bodyRef = useRef(null);
   const { camera } = useThree();
+  const { world } = useRapier();
 
   const [sub, get] = useKeyboardControls();
   const isGrounded = useRef(false);
@@ -46,9 +47,11 @@ export default function Player() {
     }
 
     // ── GROUND CHECK ──
-    const ray = new window.RAPIER.Ray({ x: pos.x, y: pos.y + 0.2, z: pos.z }, { x: 0, y: -1, z: 0 });
-    const hit = body.getWorld().castRay(ray, 1.5, true);
-    isGrounded.current = !!hit;
+    if (world) {
+      const ray = new world.Ray({ x: pos.x, y: pos.y + 0.2, z: pos.z }, { x: 0, y: -1, z: 0 });
+      const hit = world.castRay(ray, 1.5, true);
+      isGrounded.current = !!hit;
+    }
 
     // ── SMOOTH CAMERA FOLLOW (no fighting PointerLockControls) ──
     const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
