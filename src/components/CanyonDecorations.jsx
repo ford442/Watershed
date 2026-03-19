@@ -28,6 +28,12 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
         for (let i = 0; i < numSamples; i++) {
             const t = i / numSamples;
             const point = riverPath.getPoint(t);
+            
+            // Skip if point has invalid values
+            if (!point || !isFinite(point.x) || !isFinite(point.y) || !isFinite(point.z)) {
+                continue;
+            }
+            
             const tangent = riverPath.getTangent(t).normalize();
             
             const up = new THREE.Vector3(0, 1, 0);
@@ -103,10 +109,14 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
         const position = new THREE.Vector3();
         const quaternion = new THREE.Quaternion();
         const scale = new THREE.Vector3();
-        
+
+        // Helper to check if position is valid
+        const isValidPosition = (pos) => pos && isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z);
+
         // Update boulders
         if (bouldersRef.current && decorationData.boulders.length > 0) {
             decorationData.boulders.forEach((boulder, i) => {
+                if (!isValidPosition(boulder.position)) return;
                 position.copy(boulder.position);
                 quaternion.setFromEuler(new THREE.Euler(...boulder.rotation));
                 scale.set(boulder.scale, boulder.scale * 0.8, boulder.scale);
@@ -115,10 +125,11 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
             });
             bouldersRef.current.instanceMatrix.needsUpdate = true;
         }
-        
+
         // Update rocks
         if (rocksRef.current && decorationData.rocks.length > 0) {
             decorationData.rocks.forEach((rock, i) => {
+                if (!isValidPosition(rock.position)) return;
                 position.copy(rock.position);
                 quaternion.setFromEuler(new THREE.Euler(...rock.rotation));
                 scale.set(rock.scale, rock.scale, rock.scale);
@@ -127,10 +138,11 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
             });
             rocksRef.current.instanceMatrix.needsUpdate = true;
         }
-        
+
         // Update vegetation
         if (vegetationRef.current && decorationData.vegetation.length > 0) {
             decorationData.vegetation.forEach((veg, i) => {
+                if (!isValidPosition(veg.position)) return;
                 position.copy(veg.position);
                 quaternion.setFromEuler(new THREE.Euler(0, veg.rotation, 0));
                 scale.set(veg.scale, veg.scale * 0.6, veg.scale);
