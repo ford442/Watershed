@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
+import { WATER_LEVEL } from '../constants/game';
 
 // Slope detection configuration
 const RAYCAST_ORIGIN_OFFSET = 0.5;
@@ -97,7 +98,7 @@ const triggerCameraShake = (intensity: number, duration: number = 0.3) => {
 const RunnerVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef(null);
   const { camera } = useThree();
-  const { world } = useRapier();
+  const { world, rapier } = useRapier();
   const [, getKeys] = useKeyboardControls();
 
   const vehicle = useRef(new RunnerVehicleClass());
@@ -181,7 +182,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         y: pos.y + RAYCAST_ORIGIN_OFFSET,
         z: pos.z + offsetZ
       };
-      const ray = new world.Ray(origin, { x: 0, y: -1, z: 0 });
+      const ray = new rapier.Ray(origin, { x: 0, y: -1, z: 0 });
       const hit = world.castRay(ray, rayLength, true);
       
       if (hit) {
@@ -266,7 +267,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // === SLOPE DETECTION ===
     const slopeAngle = calculateSlopeAngle();
     
-    const groundRay = new world.Ray(
+    const groundRay = new rapier.Ray(
       { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z },
       { x: 0, y: -1, z: 0 }
     );
@@ -424,7 +425,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           
           // Determine material and wetness
           const material = collisionState.current.currentBiome.includes('autumn') ? 'moss' : 'rock';
-          const isWet = pos.y < waterLevel + 0.5;
+          const isWet = pos.y < WATER_LEVEL + 0.5;
           
           playFootstep(material, isWet);
         }
