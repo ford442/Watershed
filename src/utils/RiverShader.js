@@ -63,8 +63,9 @@ export function extendRiverMaterial(material, options = {}) {
             shader.vertexShader = `
                 // RiverShader vertex attributes
                 attribute float mossMask;
-                // uv2 is already declared by Three.js when USE_AOMAP or USE_LIGHTMAP is set;
-                // only declare it here when those defines are absent to avoid GLSL redeclaration.
+                // When USE_AOMAP or USE_LIGHTMAP is defined Three.js uses its own UV channel
+                // (uv1 in r152+). Skip declaring our custom uv2 attribute in that case to avoid
+                // conflicts; the triplanar blend will fall back to the primary UV channel.
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 attribute vec2 uv2;
                 varying vec2 vUv2;
@@ -89,7 +90,9 @@ export function extendRiverMaterial(material, options = {}) {
                 
                 // Pass moss mask and secondary UVs
                 vMossMask = mossMask;
+                #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 vUv2 = uv2;
+                #endif
                 `
             );
 
@@ -105,7 +108,7 @@ export function extendRiverMaterial(material, options = {}) {
 
                 varying float vHeightAboveWater;
                 varying float vMossMask;
-                // vUv2 is declared by Three.js when USE_AOMAP/USE_LIGHTMAP; only declare otherwise.
+                // vUv2 is only declared when neither USE_AOMAP nor USE_LIGHTMAP is active.
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 varying vec2 vUv2;
                 #endif
@@ -126,15 +129,18 @@ export function extendRiverMaterial(material, options = {}) {
                 // Sample texture with triplanar UV blend if available
                 #ifdef USE_MAP
                     vec4 texelColor1 = texture2D(map, vMapUv);
-                    vec4 texelColor2 = texture2D(map, vUv2);
-                    
+                    #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                     // Blend between standard UV and triplanar based on height
+                    vec4 texelColor2 = texture2D(map, vUv2);
                     float triplanarBlend = smoothstep(0.0, 8.0, vHeightAboveWater);
                     vec4 blendedTexel = mix(texelColor2, texelColor1, triplanarBlend * 0.6 + 0.2);
-                    
+                    #else
+                    vec4 blendedTexel = texelColor1;
+                    #endif
+
                     // Apply vertex color tint
                     blendedTexel.rgb *= vColor.rgb;
-                    
+
                     diffuseColor *= blendedTexel;
                 #else
                     // No texture - use vertex colors directly
