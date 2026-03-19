@@ -17,7 +17,7 @@ import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader
 
 // NEW: Visual enhancement systems
 import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
-import { LODProvider, PerformanceMonitor } from "./systems/LODManager";
+import { LODProvider, PerformanceMonitor, useLOD } from "./systems/LODManager";
 import { SplashSystem } from "./systems/SplashSystem";
 import WaterReflection from "./components/WaterReflection";
 import WaterInteraction from "./components/WaterInteraction";
