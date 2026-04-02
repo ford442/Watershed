@@ -51,7 +51,8 @@ export default function TrackSegment({
     rockMaterial,
     rockNormalMap,
     segmentState = 'Normal',
-    raftRef // For tracking player velocity (E4)
+    raftRef, // For tracking player velocity (E4)
+    isNight = false,
 }) {
     // console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
@@ -1152,6 +1153,7 @@ function TrackSegmentMeshes({
                 geometry={waterGeometry}
                 flowSpeed={flowSpeed}
                 biome={biome}
+                isNight={isNight}
                 baseColor={type === 'pond' ? "#1a4b6a" : undefined}
             />
 

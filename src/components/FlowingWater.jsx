@@ -1,5 +1,5 @@
 // src/components/FlowingWater.jsx
-// FlowingWater with biome-aware color tints
+// FlowingWater with biome-aware color tints + Night Mode bioluminescence
 
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
@@ -17,6 +17,7 @@ export default function FlowingWater({
   shaderId = null,
   onShaderLoad,
   biome = 'river',
+  isNight = false,
 }) {
   const materialRef = useRef(null);
   const { camera } = useThree();
@@ -28,7 +29,7 @@ export default function FlowingWater({
   const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
   const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0);
 
-  // Built-in fallback shader
+  // Built-in fallback shader with bioluminescence
   const builtinFragmentShader = useMemo(() => `
     uniform float time;
     uniform float flowSpeed;
@@ -37,6 +38,8 @@ export default function FlowingWater({
     uniform vec3 deepColor;
     uniform vec3 foamColor;
     uniform vec3 edgeHighlight;
+    uniform float bioLuminescence;
+    uniform float timeOfDay;
     varying vec2 vUv;
     varying float vWave;
     varying float vCurrent;
@@ -102,6 +105,14 @@ export default function FlowingWater({
       glint += currentStreak * (0.05 + vCurrent * 0.12);
       col += vec3(glint);
 
+      // Bioluminescence glow for glacial at night
+      float bioGlow = bioLuminescence * (1.0 - depthFactor) * (0.6 + sin(time * 3.0) * 0.4);
+      col += vec3(0.3, 0.8, 1.0) * bioGlow * 1.8;
+
+      // Darken at night
+      float nightDim = 1.0 - (timeOfDay * 0.4);
+      col *= nightDim;
+
       float alpha = 0.7 + vWave * 0.1 + foam * 0.08 + vCurrent * 0.06;
       gl_FragColor = vec4(col, clamp(alpha, 0.62, 0.94));
     }
@@ -120,7 +131,7 @@ export default function FlowingWater({
 
   const fragmentShader = dynamicShaderCode || builtinFragmentShader;
 
-  // Create material with biome colors
+  // Create material with biome colors + night uniforms
   const material = useMemo(() => {
     try {
       const deepColor = new THREE.Color(effectiveWaterColor).multiplyScalar(0.55);
@@ -137,6 +148,8 @@ export default function FlowingWater({
           deepColor: { value: deepColor },
           foamColor: { value: new THREE.Color(effectiveFoamColor) },
           edgeHighlight: { value: new THREE.Color(effectiveEdgeColor) },
+          bioLuminescence: { value: 0 },
+          timeOfDay: { value: 0 },
         },
         vertexShader: `
           uniform float time;
@@ -202,13 +215,22 @@ export default function FlowingWater({
     }
   }, [effectiveWaterColor, effectiveFoamColor, effectiveEdgeColor, effectiveFlowSpeed, fragmentShader]);
 
-  // Update uniforms with strong guard
+  // Update uniforms with strong guard + night mode
   useFrame((state) => {
     const mat = materialRef.current;
     if (!mat?.uniforms?.time || !mat?.uniforms?.cameraPos) return;
 
     mat.uniforms.time.value = state.clock.elapsedTime;
     mat.uniforms.cameraPos.value.copy(camera.position);
+    
+    // Night mode uniforms
+    if (mat.uniforms.bioLuminescence) {
+      const isGlacial = biome === 'glacial';
+      mat.uniforms.bioLuminescence.value = (isNight && isGlacial) ? 1.0 : 0.0;
+    }
+    if (mat.uniforms.timeOfDay) {
+      mat.uniforms.timeOfDay.value = isNight ? 1.0 : 0.0;
+    }
   });
 
   return (

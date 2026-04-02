@@ -14,3 +14,5 @@ export { useRiverAudio } from './useRiverAudio';
 export { useVortexForce } from './useVortexForce';
 export { useShaderBrowser } from './useShaderBrowser';
 export type { Shader as ShaderBrowserShader } from './useShaderBrowser';
+export { useNightMode } from './useNightMode';
+export type { NightModeState } from './useNightMode';

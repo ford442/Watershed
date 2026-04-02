@@ -7,6 +7,7 @@ import WaterForces from './WaterForces';
 import { extendRiverMaterial } from '../utils/RiverShader';
 import { GENERATION, WATER_LEVEL } from '../constants/game';
 import { BIOMES, getNextBiome } from '../constants/biomes';
+import { useNightMode } from '../hooks/useNightMode';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
 
 const POOL_SIZE = GENERATION.POOL_SIZE;
@@ -207,9 +208,10 @@ function cloneForRender(segment, slotIndex, active) {
 }
 
 export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [] }) {
-    const { camera } = useThree();
+    const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
     const [currentBiome, setCurrentBiome] = useState('river');
+    const { isNight } = useNightMode();
     const poolRef = useRef(Array.from({ length: POOL_SIZE }, (_, slotIndex) => ({ slotIndex, segment: null })));
     const activeOrderRef = useRef([]);
     const nextSegmentIdRef = useRef(0);
@@ -344,6 +346,21 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         initializePool();
     }, [initializePool, rockMaterial]);
 
+    // Night mode: update scene fog and background
+    useEffect(() => {
+        if (!scene) return;
+        
+        const skyColor = isNight ? '#0a1428' : '#87ceeb';
+        const fogColor = isNight ? '#1a2a4a' : '#a5d6ff';
+        const fogNear = isNight ? 10 : 20;
+        const fogFar = isNight ? 100 : 150;
+        
+        scene.background = new THREE.Color(skyColor);
+        scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
+        
+        console.log(`[TrackManager] ${isNight ? '🌙 Night' : '☀️ Day'} mode activated`);
+    }, [isNight, scene]);
+
     useFrame(() => {
         if (!initializedRef.current) return;
 
@@ -449,6 +466,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                     segmentState={segment?.segmentState || 'Normal'}
                     waterWidth={segment?.waterWidth}
                     biome={currentBiome}
+                    isNight={isNight}
                     {...(segment || {})}
                 />
             ))}
