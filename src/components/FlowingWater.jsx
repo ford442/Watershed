@@ -217,10 +217,10 @@ export default function FlowingWater({
   // Update uniforms
   useFrame((state) => {
     const mat = materialRef.current;
-    if (mat?.uniforms?.time && mat?.uniforms?.cameraPos) {
-      mat.uniforms.time.value = state.clock.elapsedTime;
-      mat.uniforms.cameraPos.value.copy(camera.position);
-    }
+    if (!mat?.uniforms?.time || !mat?.uniforms?.cameraPos) return;
+
+    mat.uniforms.time.value = state.clock.elapsedTime;
+    mat.uniforms.cameraPos.value.copy(camera.position);
   });
 
   return (
