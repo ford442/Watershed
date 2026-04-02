@@ -10,3 +10,4 @@ export { useCameraShake } from './useCameraShake';
 export { useShaderLoader, useShaderList, preloadShader, clearShaderCache } from './useShaderLoader';
 export type { ShaderLoadResult, ShaderMetadata } from './useShaderLoader';
 export { useWaterFlowField } from './useWaterFlowField';
+export { useRiverAudio } from './useRiverAudio';
