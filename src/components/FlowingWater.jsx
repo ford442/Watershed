@@ -199,7 +199,7 @@ export default function FlowingWater({
     // Update uniforms safely (avoid stale closure)
     useFrame((state) => {
         const mat = materialRef.current;
-        if (mat?.uniforms) {
+        if (mat?.uniforms?.time && mat?.uniforms?.cameraPos) {
             mat.uniforms.time.value = state.clock.elapsedTime;
             mat.uniforms.cameraPos.value.copy(camera.position);
         }
