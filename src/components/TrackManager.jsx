@@ -90,7 +90,39 @@ function createSpline(points, type) {
     return new THREE.CatmullRomCurve3(points, false, 'catmullrom', tension);
 }
 
-function createSegmentData(index, previousSegment, forecastState) {
+/**
+ * ensureTangentContinuity — forces the new segment's start tangent to match 
+ * the previous segment's end tangent. This eliminates NaNs in Catmull-Rom 
+ * derivative math at segment joints.
+ */
+function ensureTangentContinuity(prevPoints, newPoints) {
+    if (!prevPoints || prevPoints.length < 2 || newPoints.length < 2) {
+        return newPoints;
+    }
+
+    const lastTwo = prevPoints.slice(-2);
+    const prevTangent = new THREE.Vector3()
+        .subVectors(lastTwo[1], lastTwo[0])
+        .normalize();
+    
+    // If previous tangent is zero or NaN, skip correction
+    if (!prevTangent.lengthSq() || !isFinite(prevTangent.x)) {
+        console.warn('[ensureTangentContinuity] Invalid previous tangent, skipping');
+        return newPoints;
+    }
+
+    // Calculate the new first point to align with previous tangent
+    const desiredStart = newPoints[0].clone().add(
+        prevTangent.multiplyScalar(0.01) // tiny epsilon offset
+    );
+    
+    // Override the start point of the new segment
+    newPoints[0] = desiredStart;
+    
+    return newPoints;
+}
+
+function createSegmentData(index, previousSegment, forecastState, ensureContinuity = false) {
     const config = getProgressionConfig(index);
     const biomeProfile = getTrackBiomeProfile(config.biome);
     const seed = 12345 + index * 1000;
@@ -131,14 +163,19 @@ function createSegmentData(index, previousSegment, forecastState) {
         points.push(currentPos.clone());
     }
 
-    const segmentPath = createSpline(points, config.type);
+    // Apply tangent continuity fix if requested (for segment recycling)
+    const continuousPoints = ensureContinuity && previousSegment?.points
+        ? ensureTangentContinuity(previousSegment.points, points)
+        : points;
+
+    const segmentPath = createSpline(continuousPoints, config.type);
     const forecastBoost = forecastState === 'Flooded' ? 1.45 : forecastState === 'HighFlow' ? 1.2 : 1;
 
     return {
         id: index,
         type: forecastState === 'Flooded' && config.type === 'normal' ? 'pond' : config.type,
         biome: biomeProfile.id === 'slotCanyon' ? 'slotCanyon' : config.biome,
-        points,
+        points: continuousPoints,
         segmentPath,
         width: config.width,
         waterWidth: config.waterWidth,
@@ -183,10 +220,39 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         './Rock031_1K-JPG_NormalGL.jpg',
         './Rock031_1K-JPG_Roughness.jpg',
         './Rock031_1K-JPG_AmbientOcclusion.jpg',
-    ]);
+    ], (textures) => {
+        // Success callback - textures loaded
+        console.log('[TrackManager] PBR textures loaded successfully');
+    }, (error) => {
+        // Error callback - textures failed to load
+        console.warn('[TrackManager] Texture loading failed, using fallback colors:', error);
+    });
+
+    // Fallback texture generator - creates solid color textures when PBR set fails
+    const fallbackTextures = useMemo(() => {
+        const createFallbackTexture = (colorHex) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2;
+            canvas.height = 2;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = colorHex;
+            ctx.fillRect(0, 0, 2, 2);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        };
+
+        return {
+            colorMap: createFallbackTexture('#8B7355'),
+            normalMap: createFallbackTexture('#8080FF'), // Flat normal
+            roughnessMap: createFallbackTexture('#D9D9D9'), // ~85% roughness
+            aoMap: createFallbackTexture('#FFFFFF'), // No AO
+        };
+    }, []);
 
     useEffect(() => {
-        [colorMap, normalMap, roughnessMap, aoMap].forEach((texture) => {
+        const textures = [colorMap, normalMap, roughnessMap, aoMap];
+        textures.forEach((texture) => {
             if (!texture) return;
             texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
             texture.repeat.set(4, 8);
@@ -194,16 +260,28 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     }, [colorMap, normalMap, roughnessMap, aoMap]);
 
     const rockMaterial = useMemo(() => {
+        // Use loaded textures if available, otherwise fallbacks
+        const effectiveColorMap = colorMap || fallbackTextures.colorMap;
+        const effectiveNormalMap = normalMap || fallbackTextures.normalMap;
+        const effectiveRoughnessMap = roughnessMap || fallbackTextures.roughnessMap;
+        const effectiveAoMap = aoMap || fallbackTextures.aoMap;
+
+        const hasRealTextures = !!(colorMap && normalMap);
+        
+        if (!hasRealTextures) {
+            console.log('[TrackManager] Using fallback textures for rock material');
+        }
+
         const material = new THREE.MeshStandardMaterial({
-            map: colorMap || undefined,
-            normalMap: normalMap || undefined,
-            roughnessMap: roughnessMap || undefined,
-            aoMap: aoMap || undefined,
+            map: effectiveColorMap,
+            normalMap: effectiveNormalMap,
+            roughnessMap: effectiveRoughnessMap,
+            aoMap: effectiveAoMap,
             roughness: 0.85,
             metalness: 0.05,
             vertexColors: true,
             side: THREE.DoubleSide,
-            color: colorMap ? new THREE.Color('#ffffff') : new THREE.Color('#4a4038'),
+            color: hasRealTextures ? new THREE.Color('#ffffff') : new THREE.Color('#8B7355'),
         });
 
         extendRiverMaterial(material, {
@@ -211,7 +289,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         });
 
         return material;
-    }, [aoMap, colorMap, normalMap, roughnessMap]);
+    }, [aoMap, colorMap, fallbackTextures, normalMap, roughnessMap]);
 
     useEffect(() => {
         const nextForecastMap = new Map();
@@ -235,9 +313,9 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         setPoolVersion((value) => value + 1);
     }, [forecastSamples]);
 
-    const buildSegment = useRef((index, previousSegment) => {
+    const buildSegment = useRef((index, previousSegment, ensureContinuity = false) => {
         const forecastState = forecastByIndexRef.current.get(index) || 'Normal';
-        return createSegmentData(index, previousSegment, forecastState);
+        return createSegmentData(index, previousSegment, forecastState, ensureContinuity);
     }).current;
 
     const initializePool = useRef(() => {
@@ -277,20 +355,41 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         const cameraPos = camera.position;
 
         if (cameraPos.z - newestEndPoint.z < GENERATION.THRESHOLD) {
-            const slotToRecycle = activeOrder.length >= MAX_ACTIVE_SEGMENTS ? activeOrder.shift() : activeOrder.length;
-            const previousSegment = activeSegments[activeSegments.length - 1];
-            const nextIndex = nextSegmentIdRef.current;
-            const nextSegment = buildSegment(nextIndex, previousSegment);
+            // 1. Snapshot the current state BEFORE any mutation (prevents race conditions)
+            const currentActive = [...activeOrder]; // ← copy, no more race
+            const slotToRecycle = currentActive.length >= MAX_ACTIVE_SEGMENTS
+                ? currentActive.shift() // safe because we copied
+                : currentActive.length;
 
             if (slotToRecycle === undefined) {
                 return;
             }
 
+            const previousSegment = activeSegments[activeSegments.length - 1];
+
+            // Defensive epsilon guard: check for gaps between segments
+            if (previousSegment) {
+                const prevEnd = previousSegment.segmentPath.getPoint(1);
+                const gap = prevEnd.distanceTo(newestEndPoint);
+                if (gap > 0.001) {
+                    console.warn(`[TrackManager] Handoff gap detected: ${gap.toFixed(4)} — proceeding with caution`);
+                }
+            }
+
+            // 2. Build the next segment with EXPLICIT tangent continuity
+            const nextIndex = nextSegmentIdRef.current;
+            const nextSegment = buildSegment(nextIndex, previousSegment, true); // ← continuity flag
+
+            // 3. Atomic pool swap
             pool[slotToRecycle] = {
                 slotIndex: slotToRecycle,
                 segment: nextSegment,
             };
-            activeOrder.push(slotToRecycle);
+
+            // 4. Update order safely (only one state update)
+            activeOrder.splice(0, 1); // remove front
+            activeOrder.push(slotToRecycle); // push new to back
+
             nextSegmentIdRef.current += 1;
             setPoolVersion((value) => value + 1);
         }
