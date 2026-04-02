@@ -1,33 +1,25 @@
 // src/components/FlowingWater.jsx
-// FINAL VERSION: Dynamic shader loading + fallback + hot-swap support
+// FINAL + POLISHED: Dynamic shader loading + fallback + hot-swap + flow-field prep
 
-import React, { useMemo, useRef, useCallback } from 'react';
+import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { SHADERS, WATER_LEVEL } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 
-/**
- * FlowingWater - Animated water surface with dynamic shader loading
- * 
- * Supports hot-swapping shaders from FastAPI backend:
- *   <FlowingWater shaderId="water-test-v1" ... />
- * 
- * Falls back to built-in shader if fetch fails or no shaderId provided.
- */
 export default function FlowingWater({
     geometry,
     flowSpeed = 1.2,
     baseColor = SHADERS.WATER_COLOR,
     foamColor = SHADERS.WATER_FOAM_COLOR,
     edgeHighlightColor = SHADERS.WATER_EDGE_COLOR,
-    shaderId = null, // Set to load dynamic shader from backend
-    onShaderLoad = null, // Callback when shader loads: (code, error) => {}
+    shaderId = null,
+    onShaderLoad = null,
 }) {
     const materialRef = useRef(null);
     const { camera } = useThree();
 
-    // Built-in fallback shader (always available)
+    // Built-in fallback shader
     const builtinFragmentShader = useMemo(() => `
         uniform float time;
         uniform float flowSpeed;
@@ -106,25 +98,18 @@ export default function FlowingWater({
         }
     `, []);
 
-    // Load custom shader from backend
-    const { code: dynamicShaderCode, loading: shaderLoading, error: shaderError } = useShaderLoader(
-        shaderId,
-        builtinFragmentShader,
-        { enabled: !!shaderId }
-    );
+    // Load dynamic shader from FastAPI backend
+    const { code: dynamicShaderCode, loading: shaderLoading, error: shaderError } =
+        useShaderLoader(shaderId, builtinFragmentShader);
 
-    // Notify parent of load status
     React.useEffect(() => {
         if (onShaderLoad && !shaderLoading) {
             onShaderLoad(dynamicShaderCode, shaderError);
         }
     }, [dynamicShaderCode, shaderError, shaderLoading, onShaderLoad]);
 
-    // Use dynamic shader if available, else fallback
     const fragmentShader = dynamicShaderCode || builtinFragmentShader;
-    const isUsingDynamicShader = !!dynamicShaderCode && dynamicShaderCode !== builtinFragmentShader;
 
-    // Create shader material
     const material = useMemo(() => {
         try {
             const mat = new THREE.ShaderMaterial({
@@ -175,17 +160,10 @@ export default function FlowingWater({
                         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
                     }
                 `,
-                fragmentShader: fragmentShader,
+                fragmentShader,
             });
 
-            // Expose uniforms for flow field sampling (used by useWaterFlowField)
-            mat.onBeforeCompile = (shader) => {
-                shader.uniforms.uWaterLevel = { value: WATER_LEVEL };
-                shader.uniforms.uFlowSpeed = { value: flowSpeed };
-                mat.userData.onBeforeCompileShader = shader;
-            };
-
-            // Flow field sampler for physics sync
+            // Expose flow field sampler for physics (used by useWaterFlowField)
             mat.userData.waterFlowField = {
                 waterLevel: WATER_LEVEL,
                 flowSpeed,
@@ -200,16 +178,15 @@ export default function FlowingWater({
             };
 
             materialRef.current = mat;
-            
             console.log(
-                isUsingDynamicShader 
-                    ? '[FlowingWater] Using dynamic shader from backend'
-                    : '[FlowingWater] Using built-in shader'
+                dynamicShaderCode && dynamicShaderCode !== builtinFragmentShader
+                    ? '[FlowingWater] 🔥 Using dynamic shader from backend'
+                    : '[FlowingWater] ✅ Using built-in shader'
             );
-            
+
             return mat;
         } catch (e) {
-            console.warn('[FlowingWater] Shader error, falling back to basic material:', e);
+            console.warn('[FlowingWater] Shader compile failed, using basic fallback');
             return new THREE.MeshBasicMaterial({
                 color: new THREE.Color(baseColor),
                 transparent: true,
@@ -217,41 +194,31 @@ export default function FlowingWater({
                 side: THREE.DoubleSide,
             });
         }
-    }, [baseColor, edgeHighlightColor, flowSpeed, foamColor, fragmentShader, isUsingDynamicShader]);
+    }, [baseColor, edgeHighlightColor, flowSpeed, foamColor, fragmentShader, dynamicShaderCode, builtinFragmentShader]);
 
-    // Update uniforms each frame
+    // Update uniforms safely (avoid stale closure)
     useFrame((state) => {
-        if (material.uniforms) {
-            material.uniforms.time.value = state.clock.elapsedTime;
-            material.uniforms.cameraPos.value.copy(camera.position);
+        const mat = materialRef.current;
+        if (mat?.uniforms) {
+            mat.uniforms.time.value = state.clock.elapsedTime;
+            mat.uniforms.cameraPos.value.copy(camera.position);
         }
     });
 
     return (
         <>
             <mesh geometry={geometry} material={material} />
-            
-            {/* Loading indicator while fetching shader */}
-            {shaderLoading && (
+
+            {/* Loading overlay while fetching from backend */}
+            {shaderLoading && shaderId && (
                 <mesh geometry={geometry}>
-                    <meshBasicMaterial 
-                        color="#1a6b8a" 
-                        transparent 
-                        opacity={0.4} 
-                        side={THREE.DoubleSide} 
+                    <meshBasicMaterial
+                        color="#1a6b8a"
+                        transparent
+                        opacity={0.35}
+                        side={THREE.DoubleSide}
                     />
                 </mesh>
-            )}
-            
-            {/* Error indicator if shader failed */}
-            {shaderError && !shaderLoading && (
-                <group>
-                    {/* Invisible marker for debugging */}
-                    <mesh visible={false}>
-                        <boxGeometry args={[0.1, 0.1, 0.1]} />
-                        <meshBasicMaterial />
-                    </mesh>
-                </group>
             )}
         </>
     );

@@ -33,44 +33,36 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 export const useShaderLoader = (
   shaderId: string | null,
-  fallbackCode: string = '',
-  options?: {
-    enabled?: boolean;
-    refetchOnMount?: boolean;
-  }
+  fallbackCode: string = ''
 ): ShaderLoadResult => {
-  const { enabled = true, refetchOnMount = false } = options || {};
-  
   const [result, setResult] = useState<ShaderLoadResult>({
     code: null,
-    loading: enabled && !!shaderId,
+    loading: !!shaderId,
     error: null,
   });
 
   const shaderIdRef = useRef(shaderId);
 
   useEffect(() => {
-    if (!enabled || !shaderId) {
+    if (!shaderId) {
       setResult({ 
-        code: shaderId ? null : fallbackCode, 
+        code: fallbackCode, 
         loading: false, 
-        error: shaderId ? null : 'No shaderId provided' 
+        error: null 
       });
       return;
     }
 
-    // Check cache first (unless forcing refetch)
-    if (!refetchOnMount) {
-      const cached = shaderCache.get(shaderId);
-      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-        console.log(`[useShaderLoader] Cache hit for ${shaderId}`);
-        setResult({
-          code: cached.code,
-          loading: false,
-          error: null,
-        });
-        return;
-      }
+    // Check cache first
+    const cached = shaderCache.get(shaderId);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log(`[useShaderLoader] Cache hit for ${shaderId}`);
+      setResult({
+        code: cached.code,
+        loading: false,
+        error: null,
+      });
+      return;
     }
 
     let mounted = true;
@@ -86,7 +78,6 @@ export const useShaderLoader = (
             'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
-          // credentials: 'include' // Uncomment if you add auth later
         });
 
         if (!res.ok) {
@@ -130,7 +121,7 @@ export const useShaderLoader = (
     return () => { 
       mounted = false; 
     };
-  }, [shaderId, fallbackCode, enabled, refetchOnMount]);
+  }, [shaderId, fallbackCode]);
 
   return result;
 };
