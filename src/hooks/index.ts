@@ -12,3 +12,5 @@ export type { ShaderLoadResult, ShaderMetadata } from './useShaderLoader';
 export { useWaterFlowField } from './useWaterFlowField';
 export { useRiverAudio } from './useRiverAudio';
 export { useVortexForce } from './useVortexForce';
+export { useShaderBrowser } from './useShaderBrowser';
+export type { Shader as ShaderBrowserShader } from './useShaderBrowser';
