@@ -6,6 +6,7 @@ import TrackSegment from './TrackSegment';
 import WaterForces from './WaterForces';
 import { extendRiverMaterial } from '../utils/RiverShader';
 import { GENERATION, WATER_LEVEL } from '../constants/game';
+import { BIOMES, getNextBiome } from '../constants/biomes';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
 
 const POOL_SIZE = GENERATION.POOL_SIZE;
@@ -208,6 +209,7 @@ function cloneForRender(segment, slotIndex, active) {
 export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [] }) {
     const { camera } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
+    const [currentBiome, setCurrentBiome] = useState('river');
     const poolRef = useRef(Array.from({ length: POOL_SIZE }, (_, slotIndex) => ({ slotIndex, segment: null })));
     const activeOrderRef = useRef([]);
     const nextSegmentIdRef = useRef(0);
@@ -367,6 +369,11 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
 
             const previousSegment = activeSegments[activeSegments.length - 1];
 
+            // Occasionally switch biome (~22% chance every 4th segment)
+            if (Math.random() < 0.22 && nextSegmentIdRef.current % 4 === 0) {
+                setCurrentBiome(getNextBiome(currentBiome));
+            }
+
             // Defensive epsilon guard: check for gaps between segments
             if (previousSegment) {
                 const prevEnd = previousSegment.segmentPath.getPoint(1);
@@ -441,6 +448,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                     segmentPath={segment?.segmentPath}
                     segmentState={segment?.segmentState || 'Normal'}
                     waterWidth={segment?.waterWidth}
+                    biome={currentBiome}
                     {...(segment || {})}
                 />
             ))}

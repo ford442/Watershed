@@ -1151,7 +1151,8 @@ function TrackSegmentMeshes({
             <FlowingWater
                 geometry={waterGeometry}
                 flowSpeed={flowSpeed}
-                baseColor={type === 'pond' ? "#1a4b6a" : "#1a6b8a"}
+                biome={biome}
+                baseColor={type === 'pond' ? "#1a4b6a" : undefined}
             />
 
             {/* Vegetation - Trees with Sway */}
