@@ -1,4 +1,4 @@
-// src/components/FlowingWater-Biome.jsx
+// src/components/FlowingWater.jsx
 // FlowingWater with biome-aware color tints
 
 import React, { useMemo, useRef, useEffect } from 'react';
@@ -6,19 +6,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { SHADERS, WATER_LEVEL } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
-import { BIOMES, type BiomeKey } from '../constants/biomes';
-
-interface FlowingWaterProps {
-  geometry: THREE.BufferGeometry;
-  flowSpeed?: number;
-  baseColor?: string;
-  foamColor?: string;
-  edgeHighlightColor?: string;
-  shaderId?: string | null;
-  onShaderLoad?: (code: string | null, error: string | null) => void;
-  /** Biome key for automatic color tints */
-  biome?: BiomeKey;
-}
+import { BIOMES } from '../constants/biomes';
 
 export default function FlowingWater({
   geometry,
@@ -29,18 +17,18 @@ export default function FlowingWater({
   shaderId = null,
   onShaderLoad,
   biome = 'river',
-}: FlowingWaterProps) {
-  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+}) {
+  const materialRef = useRef(null);
   const { camera } = useThree();
 
   // Get biome colors (override props if biome provided)
-  const biomeData = BIOMES[biome];
+  const biomeData = BIOMES[biome] || BIOMES.river;
   const effectiveWaterColor = baseColor || biomeData.waterColor;
   const effectiveFoamColor = foamColor || biomeData.foamColor;
   const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
-  const effectiveFlowSpeed = flowSpeed * biomeData.flowMultiplier;
+  const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0);
 
-  // Built-in fallback shader (same as before)
+  // Built-in fallback shader
   const builtinFragmentShader = useMemo(() => `
     uniform float time;
     uniform float flowSpeed;
@@ -214,7 +202,7 @@ export default function FlowingWater({
     }
   }, [effectiveWaterColor, effectiveFoamColor, effectiveEdgeColor, effectiveFlowSpeed, fragmentShader]);
 
-  // Update uniforms
+  // Update uniforms with strong guard
   useFrame((state) => {
     const mat = materialRef.current;
     if (!mat?.uniforms?.time || !mat?.uniforms?.cameraPos) return;
