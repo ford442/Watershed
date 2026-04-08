@@ -1,6 +1,25 @@
 export const WATER_LEVEL = 0.5;
 export const WALL_WATERLINE_Y = 13;
 
+// =============================================================================
+// SCIENTIFIC PHYSICS CONSTANTS (from Wolfram Alpha)
+// =============================================================================
+
+/** Fresh water density at typical temperatures (kg/m³) */
+export const WATER_DENSITY = 1000;
+
+/** Human body density - humans barely sink (kg/m³) */
+export const HUMAN_DENSITY = 1038;
+
+/** Air density at sea level, 15°C (kg/m³) */
+export const AIR_DENSITY = 1.226;
+
+/** Water dynamic viscosity at 25°C (Pa·s) */
+export const WATER_VISCOSITY = 8.9e-4;
+
+/** Gravitational acceleration (m/s²) */
+export const GRAVITY = 9.80665;
+
 export const PLAYER_SPAWN = {
     position: [0, -4, -10] as const,
     fallbackCamera: [0, 5, 10] as const,
@@ -17,8 +36,10 @@ export const PHYSICS = {
     GRAVITY: -20,
     RIVER_FLOW_FORCE: 14,
     WATER_IMPULSE_SCALE: 1,
-    RAFT_BUOYANCY: 50,
-    RAFT_DRAG: 0.3,
+    // Buoyancy: ρ_water * V_displaced * g = 1000 * 0.3 * 9.8 ≈ 2940 N (scaled for gameplay)
+    RAFT_BUOYANCY: 2940,
+    // Drag coefficient: ~0.47 for turbulent flow around blunt body
+    RAFT_DRAG: 0.47,
 } as const;
 
 export const PLAYER = {
@@ -29,11 +50,24 @@ export const PLAYER = {
 
 export const RAFT = {
     WATER_LEVEL: WATER_LEVEL,
-    HEIGHT: 0.3,
-    WIDTH: 2,
-    LENGTH: 3,
-    BUOYANCY_MAX_FORCE: 50,
-    DRAG_COEFFICIENT: 0.3,
+    HEIGHT: 0.3,           // 0.3m raft height
+    WIDTH: 2,              // 2m width  
+    LENGTH: 3,             // 3m length
+    VOLUME: 1.8,           // Total volume: 2 * 3 * 0.3 = 1.8 m³
+    MASS: 150,             // Raft mass (kg) - gives slight positive buoyancy
+    
+    // Buoyancy: ρ_water * V_displaced * g = 1000 * 1.8 * 9.8 ≈ 17640 N max
+    // Scaled for gameplay balance: 2940 N
+    BUOYANCY_MAX_FORCE: 2940,
+    
+    // Drag coefficient: ~0.47 for turbulent flow around blunt body
+    // Water drag is ~800x higher than air drag due to density ratio
+    DRAG_COEFFICIENT: 0.47,
+    
+    // Cross-sectional area for drag calculation (m²)
+    DRAG_AREA_FRONT: 0.6,  // HEIGHT * WIDTH = 0.3 * 2
+    DRAG_AREA_SIDE: 0.9,   // HEIGHT * LENGTH = 0.3 * 3
+    
     TURBULENCE_FREQ: 2.0,
     TURBULENCE_AMP: 0.15,
     TIP_THRESHOLD_SPEED: 3,

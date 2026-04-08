@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import type { BaseMapChunk } from './MapSystem';
+import { WATER_DENSITY, AIR_DENSITY, WATER_VISCOSITY, GRAVITY } from '../constants/game';
 
 // =============================================================================
 // CORE INTERFACES
@@ -222,10 +223,77 @@ export class WaterFlowComponent {
     return this.activeSplashes;
   }
   
-  /** Apply water drag to velocity */
+  /** Apply water drag to velocity
+   * 
+   * Physics basis: Drag force in water is approximately 800x higher than in air
+   * due to the density difference (ρ_water ≈ 1000 kg/m³ vs ρ_air ≈ 1.2 kg/m³).
+   * 
+   * Formula: F_drag = 0.5 * ρ * v² * Cd * A
+   * - ρ (rho): fluid density
+   * - v: velocity magnitude
+   * - Cd: drag coefficient (raft ≈ 0.47, human ≈ 1.0)
+   * - A: cross-sectional area
+   * 
+   * This simplified version applies a drag factor that simulates the 
+   * high-resistance feel of moving through water without full physics calc.
+   * 
+   * @param velocity - Current velocity vector
+   * @param delta - Time step in seconds
+   * @returns Velocity with drag applied
+   */
   applyDrag(velocity: THREE.Vector3, delta: number): THREE.Vector3 {
-    const dragFactor = 1 - (0.5 * delta); // 50% drag per second
+    // 50% drag per second - tuned for game feel
+    // In reality, water drag would be much more severe, but this provides
+    // better playability while maintaining the "water resistance" feel
+    const dragFactor = 1 - (0.5 * delta);
     return velocity.multiplyScalar(dragFactor);
+  }
+  
+  /** Get water density for physics calculations (kg/m³) */
+  getDensity(): number {
+    return WATER_DENSITY;
+  }
+  
+  /** Get air density for above-water physics (kg/m³) */
+  getAirDensity(): number {
+    return AIR_DENSITY;
+  }
+  
+  /** Calculate drag force magnitude using F_d = 0.5 * ρ * v² * C_d * A
+   * @param velocity - Object velocity (m/s)
+   * @param dragCoefficient - Shape-dependent drag coefficient
+   * @param crossSectionalArea - Frontal area (m²)
+   * @param inWater - Whether object is in water (true) or air (false)
+   * @returns Drag force magnitude (N)
+   */
+  calculateDragForce(
+    velocity: THREE.Vector3, 
+    dragCoefficient: number, 
+    crossSectionalArea: number,
+    inWater: boolean = true
+  ): number {
+    const rho = inWater ? WATER_DENSITY : AIR_DENSITY;
+    const speed = velocity.length();
+    return 0.5 * rho * speed * speed * dragCoefficient * crossSectionalArea;
+  }
+  
+  /** Calculate buoyancy force: F_b = ρ_water * V_displaced * g
+   * @param submergedVolume - Volume displaced (m³)
+   * @returns Buoyancy force (N)
+   */
+  calculateBuoyancyForce(submergedVolume: number): number {
+    return WATER_DENSITY * submergedVolume * GRAVITY;
+  }
+  
+  /** Get Reynolds number for flow characterization
+   * Re = (ρ * v * L) / μ
+   * Re < 2300: Laminar flow
+   * Re > 4000: Turbulent flow
+   * @param velocity - Flow velocity (m/s)
+   * @param characteristicLength - Object length scale (m)
+   */
+  calculateReynoldsNumber(velocity: number, characteristicLength: number): number {
+    return (WATER_DENSITY * velocity * characteristicLength) / WATER_VISCOSITY;
   }
   
   /** Get water surface height at position */

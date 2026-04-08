@@ -39,7 +39,7 @@ const Raft = forwardRef((props, forwardedRef) => {
       ref={raftRef} 
       name="raft-body"
       type="dynamic" 
-      mass={5} 
+      mass={150} 
       restitution={0.3}
       linearDamping={2.5}
       angularDamping={3}

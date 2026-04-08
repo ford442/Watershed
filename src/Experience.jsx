@@ -174,7 +174,7 @@ const InnerExperience = () => {
       )}
 
       {/* Physics world */}
-      <Physics gravity={[0, -20, 0]}>
+      <Physics gravity={[0, -9.8, 0]}>
         <PointerLockControls
           makeDefault
           lockOnClick

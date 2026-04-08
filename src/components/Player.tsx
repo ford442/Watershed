@@ -64,7 +64,7 @@ export default function Player() {
       type="dynamic"
       colliders="capsule"
       position={[0, 5, 0]}        // ← SAFE START (track should be right here)
-      mass={1}
+      mass={75}
       friction={0.04}
       restitution={0.15}
       linearDamping={0.35}

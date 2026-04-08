@@ -15,8 +15,8 @@ const SMOOTHING_FACTOR = 5.0;
 
 // Jump state machine configuration
 const JUMP_CONFIG = {
-  FORCE: 22,
-  DOUBLE_JUMP_FORCE: 18,
+  FORCE: 44.9,
+  DOUBLE_JUMP_FORCE: 36.7,
   COMMIT_DURATION: 0.1,      // 0.1s strafe disable on jump
   RECOVERY_DURATION: 0.3,    // 0.3s recovery after landing
   HIGH_IMPACT_THRESHOLD: 5,  // units/s vertical velocity for camera shake
@@ -519,7 +519,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         type="dynamic"
         colliders="capsule"
         position={[0, 5, 0]}
-        mass={1}
+        mass={75}
         friction={0.04}
         restitution={0.15}
         linearDamping={0.35}
@@ -541,3 +541,4 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 });
 
 export default RunnerVehicle;
+e;

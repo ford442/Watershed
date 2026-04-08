@@ -374,14 +374,20 @@ export abstract class BaseVehicle {
 export class RunnerVehicle extends BaseVehicle {
   protected getDefaultConfig(): VehicleConfig {
     return {
-      mass: 1,
+      mass: 75,
+      // LINEAR_DAMPING: Simulates air resistance on runner
+      // Scientific basis: Human Cd ≈ 1.0-1.3 (standing), ~0.7 (streamlined)
+      // Air density ρ ≈ 1.225 kg/m³ at sea level
+      // Formula: F_drag = 0.5 * ρ * v² * Cd * A
+      // At 10 m/s: F ≈ 0.5 * 1.225 * 100 * 1.0 * 0.5 ≈ 30 N
+      // This is a game-tuned value for feel rather than strict physics
       linearDamping: 0.35,
       angularDamping: 0.9,
       friction: 0.04,
       restitution: 0.15,
       baseSpeed: 32,
       sprintMultiplier: 1.5,
-      jumpForce: 22,
+      jumpForce: 44.9,
       flowResponsiveness: 14, // Strong auto-flow
     };
   }
@@ -460,7 +466,15 @@ export class RunnerVehicle extends BaseVehicle {
 export class RaftVehicle extends BaseVehicle {
   protected getDefaultConfig(): VehicleConfig {
     return {
-      mass: 5,
+      mass: 150,
+      // LINEAR_DAMPING: Water resistance on raft (much higher than air)
+      // Scientific basis: Water drag is ~800x higher than air drag at same velocity
+      // due to density difference (ρ_water = 1000 kg/m³ vs ρ_air = 1.225 kg/m³)
+      // Raft Cd ≈ 0.9 (bluff body in water)
+      // Formula: F_drag = 0.5 * ρ * v² * Cd * A
+      // At 5 m/s: F ≈ 0.5 * 1000 * 25 * 0.9 * 1.5 ≈ 16,875 N (substantial!)
+      // Game-tuned value: 2.5 (provides good "water feel" while maintaining playability)
+      // Note: This is higher than runner (0.35) to simulate water vs air resistance
       linearDamping: 2.5,
       angularDamping: 3.0,
       friction: 0.1,
