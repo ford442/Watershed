@@ -26,6 +26,14 @@ const MOSS_COLOR = new THREE.Color(SHADERS.MOSS_COLOR);      // Deep moss green
 const LICHEN_COLOR = new THREE.Color(SHADERS.LICHEN_COLOR);    // Lighter lichen
 const MOSS_INTENSITY = 0.6;
 
+function injectShaderChunk(source, marker, replacement, label) {
+    if (!source.includes(marker)) {
+        throw new Error(`RiverShader: Missing shader marker "${marker}" in ${label}`);
+    }
+
+    return source.replace(marker, replacement);
+}
+
 /**
  * Extends a material with river-aware shader effects
  * @param {THREE.Material} material - The material to extend
@@ -51,16 +59,16 @@ export function extendRiverMaterial(material, options = {}) {
         };
 
         material.onBeforeCompile = (shader) => {
-            // Add custom uniforms
-            shader.uniforms.uWaterLevel = { value: waterLevel };
-            shader.uniforms.uWetnessRange = { value: wetnessRange };
-            shader.uniforms.uTime = { value: 0 };
-            shader.uniforms.uMossColor = { value: MOSS_COLOR };
-            shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
-            shader.uniforms.uMossIntensity = { value: MOSS_INTENSITY };
+            try {
+                shader.uniforms.uWaterLevel = { value: waterLevel };
+                shader.uniforms.uWetnessRange = { value: wetnessRange };
+                shader.uniforms.uTime = { value: 0 };
+                shader.uniforms.uMossColor = { value: MOSS_COLOR };
+                shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
+                shader.uniforms.uMossIntensity = { value: MOSS_INTENSITY };
 
-            // Add vertex shader headers
-            shader.vertexShader = `
+                const nextVertexShader = injectShaderChunk(
+                    `
                 // RiverShader vertex attributes
                 attribute float mossMask;
                 // When USE_AOMAP or USE_LIGHTMAP is defined Three.js uses its own UV channel
@@ -76,12 +84,9 @@ export function extendRiverMaterial(material, options = {}) {
                 varying vec3 vWorldPos;
 
                 uniform float uWaterLevel;
-            ` + shader.vertexShader;
-
-            // Inject vertex calculations
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <begin_vertex>',
-                `
+            ` + shader.vertexShader,
+                    '#include <begin_vertex>',
+                    `
                 #include <begin_vertex>
                 
                 // Calculate height above water for wetness gradient
@@ -93,11 +98,13 @@ export function extendRiverMaterial(material, options = {}) {
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 vUv2 = uv2;
                 #endif
-                `
-            );
+                `,
+                    'vertex shader'
+                );
 
-            // Add fragment shader headers
-            shader.fragmentShader = `
+                const nextFragmentShader = injectShaderChunk(
+                    injectShaderChunk(
+                        `
                 // RiverShader uniforms and varyings
                 uniform float uWaterLevel;
                 uniform float uWetnessRange;
@@ -118,12 +125,9 @@ export function extendRiverMaterial(material, options = {}) {
                 float riverNoise(vec2 p) {
                     return sin(p.x * 3.0) * sin(p.y * 3.0) * 0.5 + 0.5;
                 }
-            ` + shader.fragmentShader;
-
-            // Inject color modifications after map_fragment
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <map_fragment>',
-                `
+            ` + shader.fragmentShader,
+                        '#include <map_fragment>',
+                        `
                 #include <map_fragment>
                 
                 // Sample texture with triplanar UV blend if available
@@ -138,21 +142,21 @@ export function extendRiverMaterial(material, options = {}) {
                     vec4 blendedTexel = texelColor1;
                     #endif
 
-                    // Apply vertex color tint
+                    #ifdef USE_COLOR
                     blendedTexel.rgb *= vColor.rgb;
+                    #endif
 
                     diffuseColor *= blendedTexel;
                 #else
-                    // No texture - use vertex colors directly
+                    #ifdef USE_COLOR
                     diffuseColor.rgb *= vColor.rgb;
+                    #endif
                 #endif
-                `
-            );
-
-            // Inject moss/lichen coloring before color_fragment
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <color_fragment>',
-                `
+                `,
+                        'fragment shader'
+                    ),
+                    '#include <color_fragment>',
+                    `
                 #include <color_fragment>
                 
                 ${enableMoss ? `
@@ -184,11 +188,20 @@ export function extendRiverMaterial(material, options = {}) {
                 float wetDarken = 1.0 - (wetnessFactor * (1.0 - ${WETNESS_DARKEN_FACTOR.toFixed(2)}));
                 diffuseColor.rgb *= wetDarken;
                 ` : ''}
-                `
-            );
+                `,
+                    'fragment shader'
+                );
 
-            // Store shader reference for animation updates
-            material.userData.shader = shader;
+                shader.vertexShader = nextVertexShader;
+                shader.fragmentShader = nextFragmentShader;
+                material.userData.shader = shader;
+                material.userData.shaderFailed = false;
+            } catch (error) {
+                material.userData.shader = null;
+                material.userData.shaderFailed = true;
+                console.error('RiverShader: Error compiling shader injection:', error);
+                fallbackExtend(material);
+            }
         };
 
         // Mark material for updates

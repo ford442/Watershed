@@ -34,6 +34,13 @@ const seededRandom = (seed) => {
     return x - Math.floor(x);
 };
 
+const hasFiniteCoordinates = (point) => (
+    point
+    && Number.isFinite(point.x)
+    && Number.isFinite(point.y)
+    && Number.isFinite(point.z)
+);
+
 export default function TrackSegment({
     active = false,
     id: segmentId = -1,
@@ -63,17 +70,30 @@ export default function TrackSegment({
     const segmentPath = useMemo(() => {
         if (!active) return null;
         if (providedSegmentPath) return providedSegmentPath;
-        if (!pathPoints || pathPoints.length === 0) return null;
+        if (!pathPoints || pathPoints.length < 2) return null;
+        if (!pathPoints.every(hasFiniteCoordinates)) {
+            const invalidIndexes = pathPoints
+                .map((point, index) => (hasFiniteCoordinates(point) ? null : index))
+                .filter((index) => index !== null);
+            console.warn(`[TrackSegment ${segmentId}] Invalid path points supplied at indices: ${invalidIndexes.join(', ')}`);
+            return null;
+        }
 
         // Ponds use lower tension for smoother, wider curves. Waterfalls use standard.
         const tension = type === 'pond' ? 0.1 : 0.5;
         return new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', tension);
-    }, [active, pathPoints, providedSegmentPath, type]);
+    }, [active, pathPoints, providedSegmentPath, segmentId, type]);
 
     const pathLength = useMemo(() => {
         if (!segmentPath) return 0;
-        return segmentPath.getLength();
-    }, [segmentPath]);
+        try {
+            const len = segmentPath.getLength();
+            return Number.isFinite(len) && len > 0 ? len : 0;
+        } catch (error) {
+            console.warn(`[TrackSegment ${segmentId}] Failed to measure segment path`, error);
+            return 0;
+        }
+    }, [segmentId, segmentPath]);
 
     // --- Dynamic Dimensions based on Type ---
     const canyonWidth = biomeProfile.id === 'slotCanyon' ? biomeProfile.canyonWidth : width;
@@ -1037,8 +1057,14 @@ export default function TrackSegment({
     // Waterfall position
     const waterfallPos = useMemo(() => {
         if (!active || type !== 'waterfall' || !segmentPath) return null;
-        return segmentPath.getPoint(0.5);
-    }, [type, segmentPath, active]);
+        try {
+            const point = segmentPath.getPoint(0.5);
+            return hasFiniteCoordinates(point) ? point : null;
+        } catch (error) {
+            console.warn(`[TrackSegment ${segmentId}] Failed to compute waterfall position`, error);
+            return null;
+        }
+    }, [type, segmentPath, active, segmentId]);
 
     if (!active || !canyonGeometry || !waterGeometry || !rockMaterial) {
         return null;

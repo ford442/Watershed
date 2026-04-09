@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { usePineconeAssets } from './DebrisAssets';
-import { extendRiverMaterial } from '../../utils/RiverShader';
+import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 
 /**
  * Pinecone - Realistic pinecone geometry for creek environment
@@ -18,9 +18,7 @@ export default function Pinecone({ transforms }) {
   }, [material]);
 
   useFrame((state) => {
-    if (material.userData.shader) {
-      material.userData.shader.uniforms.time.value = state.clock.elapsedTime;
-    }
+    updateRiverMaterial(material, state.clock.elapsedTime);
   });
 
   if (!transforms || transforms.length === 0) return null;

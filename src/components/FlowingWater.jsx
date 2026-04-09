@@ -8,6 +8,15 @@ import { SHADERS, WATER_LEVEL } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
 
+const isUsableFragmentShader = (source) => {
+  if (typeof source !== 'string' || source.trim().length === 0) {
+    return false;
+  }
+
+  return source.includes('void main')
+    && source.includes('gl_FragColor');
+};
+
 export default function FlowingWater({
   geometry,
   flowSpeed = 1.2,
@@ -129,13 +138,20 @@ export default function FlowingWater({
     }
   }, [dynamicShaderCode, shaderError, shaderLoading, onShaderLoad]);
 
-  const fragmentShader = dynamicShaderCode || builtinFragmentShader;
+  const fragmentShader = useMemo(() => {
+    const candidateShader = dynamicShaderCode || builtinFragmentShader;
+
+    if (isUsableFragmentShader(candidateShader)) {
+      return candidateShader;
+    }
+
+    console.warn('[FlowingWater] Invalid fragment shader, using built-in fallback');
+    return builtinFragmentShader;
+  }, [builtinFragmentShader, dynamicShaderCode]);
 
   // Create material with biome colors + night uniforms
   const material = useMemo(() => {
-    // Validate fragment shader
-    if (!fragmentShader || typeof fragmentShader !== 'string') {
-      console.warn('[FlowingWater] Invalid fragment shader, using fallback');
+    if (!isUsableFragmentShader(fragmentShader)) {
       return new THREE.MeshBasicMaterial({
         color: new THREE.Color(effectiveWaterColor),
         transparent: true,

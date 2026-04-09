@@ -280,7 +280,7 @@ const Experience = () => {
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
           <BiomeTransition />
           <InnerExperience />
-          <PerformanceMonitor visible={process.env.NODE_ENV === 'development'} />
+          <PerformanceMonitor visible={import.meta.env.DEV} />
         </BiomeProvider>
       </LODProvider>
     </KeyboardControls>

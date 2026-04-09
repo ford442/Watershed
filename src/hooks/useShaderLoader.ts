@@ -29,7 +29,7 @@ export interface ShaderMetadata {
 const shaderCache = new Map<string, { code: string; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const useShaderLoader = (
   shaderId: string | null,

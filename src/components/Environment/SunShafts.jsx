@@ -37,6 +37,7 @@ export default function SunShafts({ transforms }) {
 
         // Hash for randomness
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453123); }
 
         void main() {
           vUv = uv;
