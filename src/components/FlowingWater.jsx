@@ -13,11 +13,7 @@ const isUsableFragmentShader = (source) => {
     return false;
   }
 
-  const openBraces = (source.match(/\{/g) || []).length;
-  const closeBraces = (source.match(/\}/g) || []).length;
-
-  return openBraces === closeBraces
-    && source.includes('void main')
+  return source.includes('void main')
     && source.includes('gl_FragColor');
 };
 

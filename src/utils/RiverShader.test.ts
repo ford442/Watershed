@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { extendRiverMaterial } from './RiverShader';
 
 describe('extendRiverMaterial', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   test('guards vertex color tinting when USE_COLOR is disabled', () => {
     const material = new THREE.MeshStandardMaterial();
     extendRiverMaterial(material);
