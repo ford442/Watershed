@@ -152,7 +152,6 @@ export default function FlowingWater({
   // Create material with biome colors + night uniforms
   const material = useMemo(() => {
     if (!isUsableFragmentShader(fragmentShader)) {
-      console.warn('[FlowingWater] Invalid fragment shader, using fallback material');
       return new THREE.MeshBasicMaterial({
         color: new THREE.Color(effectiveWaterColor),
         transparent: true,

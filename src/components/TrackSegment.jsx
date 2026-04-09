@@ -72,7 +72,10 @@ export default function TrackSegment({
         if (providedSegmentPath) return providedSegmentPath;
         if (!pathPoints || pathPoints.length < 2) return null;
         if (!pathPoints.every(hasFiniteCoordinates)) {
-            console.warn(`[TrackSegment ${segmentId}] Invalid path points supplied`);
+            const invalidIndexes = pathPoints
+                .map((point, index) => (hasFiniteCoordinates(point) ? null : index))
+                .filter((index) => index !== null);
+            console.warn(`[TrackSegment ${segmentId}] Invalid path points supplied at indices: ${invalidIndexes.join(', ')}`);
             return null;
         }
 
