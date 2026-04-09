@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { useDriftwoodAssets } from './DebrisAssets';
-import { extendRiverMaterial } from '../../utils/RiverShader';
+import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 
 export default function Driftwood({ transforms }) {
   const { geometry, material } = useDriftwoodAssets();
@@ -13,9 +13,7 @@ export default function Driftwood({ transforms }) {
   }, [material]);
 
   useFrame((state) => {
-    if (material.userData.shader) {
-      material.userData.shader.uniforms.time.value = state.clock.elapsedTime;
-    }
+    updateRiverMaterial(material, state.clock.elapsedTime);
   });
 
   const instances = useMemo(() => {

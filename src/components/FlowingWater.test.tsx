@@ -4,10 +4,15 @@ import '@testing-library/jest-dom';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
+import { useShaderLoader } from '../hooks/useShaderLoader';
 
 jest.mock('@react-three/fiber', () => ({
   useFrame: jest.fn(),
   useThree: jest.fn(),
+}));
+
+jest.mock('../hooks/useShaderLoader', () => ({
+  useShaderLoader: jest.fn(),
 }));
 
 describe('FlowingWater', () => {
@@ -16,6 +21,11 @@ describe('FlowingWater', () => {
       camera: {
         position: new THREE.Vector3(),
       },
+    });
+    (useShaderLoader as jest.Mock).mockReturnValue({
+      code: null,
+      loading: false,
+      error: null,
     });
   });
 
@@ -58,5 +68,26 @@ describe('FlowingWater', () => {
       expect.any(Error)
     );
     expect(container.querySelector('mesh')).toBeInTheDocument();
+  });
+
+  test('uses built-in shader when loaded fragment shader is invalid', () => {
+    (useShaderLoader as jest.Mock).mockReturnValue({
+      code: 'void broken() {',
+      loading: false,
+      error: 'invalid shader',
+    });
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const shaderMaterialSpy = jest
+      .spyOn(THREE, 'ShaderMaterial')
+      .mockImplementation((params: any) => ({ uniforms: params.uniforms, userData: {} } as any));
+
+    render(<FlowingWater geometry={new THREE.BufferGeometry()} />);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[FlowingWater] Invalid fragment shader, using built-in fallback'
+    );
+    expect(shaderMaterialSpy).toHaveBeenCalledTimes(1);
+    expect(shaderMaterialSpy.mock.calls[0][0].fragmentShader).toContain('gl_FragColor = vec4');
+    expect(shaderMaterialSpy.mock.calls[0][0].fragmentShader).not.toBe('void broken() {');
   });
 });
