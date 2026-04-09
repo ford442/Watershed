@@ -11,6 +11,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 
 // Quality levels
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
@@ -264,7 +265,7 @@ interface PerformanceMonitorProps {
 }
 
 export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
-  visible = process.env.NODE_ENV === 'development',
+  visible = import.meta.env.DEV,
 }) => {
   const { fps, quality, config } = useLOD();
   const [memory, setMemory] = useState(0);
@@ -281,26 +282,28 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
   if (!visible) return null;
   
   return (
-    <div style={{
-      position: 'fixed',
-      top: 10,
-      right: 10,
-      background: 'rgba(0,0,0,0.8)',
-      color: '#0f0',
-      padding: '12px',
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      borderRadius: '4px',
-      zIndex: 10000,
-      minWidth: '150px',
-    }}>
-      <div>FPS: {fps}</div>
-      <div>Quality: {quality}</div>
-      <div>Particles: {config.maxParticles}</div>
-      <div>Reflections: {config.enableReflections ? 'ON' : 'OFF'}</div>
-      <div>God Rays: {config.enableGodRays ? 'ON' : 'OFF'}</div>
-      <div>Memory: {memory}MB</div>
-    </div>
+    <Html fullscreen>
+      <div style={{
+        position: 'fixed',
+        top: 10,
+        right: 10,
+        background: 'rgba(0,0,0,0.8)',
+        color: '#0f0',
+        padding: '12px',
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        borderRadius: '4px',
+        zIndex: 10000,
+        minWidth: '150px',
+        pointerEvents: 'none',
+      }}>
+        <div>FPS: {fps}</div>
+        <div>Quality: {quality}</div>
+        <div>Particles: {config.maxParticles}</div>
+        <div>Reflections: {config.enableReflections ? 'ON' : 'OFF'}</div>
+        <div>God Rays: {config.enableGodRays ? 'ON' : 'OFF'}</div>
+        <div>Memory: {memory}MB</div>
+      </div>
+    </Html>
   );
 };
-
