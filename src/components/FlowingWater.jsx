@@ -206,6 +206,7 @@ export default function FlowingWater({
       materialRef.current = mat;
       return mat;
     } catch (e) {
+      console.warn('[FlowingWater] Shader error, falling back to basic material:', e);
       return new THREE.MeshBasicMaterial({
         color: new THREE.Color(effectiveWaterColor),
         transparent: true,
