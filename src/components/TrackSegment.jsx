@@ -1062,6 +1062,7 @@ export default function TrackSegment({
             particleDensity={particleDensity}
             waterWidth={waterWidth}
             raftRef={raftRef}
+            isNight={isNight}
         />
     );
 }
@@ -1084,6 +1085,7 @@ function TrackSegmentMeshes({
     particleDensity,
     waterWidth,
     raftRef,
+    isNight = false,
 }) {
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
     // Clone material for wall to apply RiverShader effects
