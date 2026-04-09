@@ -102,7 +102,7 @@ export function validateLevel(levelData: any): ValidationResult {
   if (!schemaValid && validateSchema.errors) {
     for (const err of validateSchema.errors) {
       errors.push({
-        field: err.instancePath || 'root',
+        field: getErrorField(err),
         error: err.message || 'Invalid value',
         value: err.data,
         suggestion: getSuggestionForError(err),
@@ -414,6 +414,23 @@ function getSuggestionForError(error: any): string | undefined {
   }
 
   return undefined;
+}
+
+function getErrorField(error: any): string {
+  const path = error.instancePath
+    ? error.instancePath
+        .replace(/^\//, '')
+        .replace(/\//g, '.')
+    : '';
+
+  if (error.keyword === 'required') {
+    const missingProp = error.params?.missingProperty;
+    if (missingProp) {
+      return path ? `${path}.${missingProp}` : missingProp;
+    }
+  }
+
+  return path || 'root';
 }
 
 /**

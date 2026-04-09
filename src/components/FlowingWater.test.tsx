@@ -2,13 +2,23 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import * as THREE from 'three';
+import { useThree } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
 
 jest.mock('@react-three/fiber', () => ({
   useFrame: jest.fn(),
+  useThree: jest.fn(),
 }));
 
 describe('FlowingWater', () => {
+  beforeEach(() => {
+    (useThree as jest.Mock).mockReturnValue({
+      camera: {
+        position: new THREE.Vector3(),
+      },
+    });
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -16,7 +26,7 @@ describe('FlowingWater', () => {
   test('passes custom foam and highlight colors into shader uniforms', () => {
     const shaderMaterialSpy = jest
       .spyOn(THREE, 'ShaderMaterial')
-      .mockImplementation((params: any) => ({ uniforms: params.uniforms } as any));
+      .mockImplementation((params: any) => ({ uniforms: params.uniforms, userData: {} } as any));
 
     render(
       <FlowingWater
