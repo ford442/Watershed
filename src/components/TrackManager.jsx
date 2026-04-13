@@ -288,8 +288,14 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
             color: hasRealTextures ? new THREE.Color('#ffffff') : new THREE.Color('#8B7355'),
         });
 
+        // The canyon floor geometry only has position/normal/uv/color attributes.
+        // Disable moss and triplanar so the shader doesn't declare mossMask or
+        // uv2 attributes that are absent from this geometry, which can cause
+        // WebGL program validation failures on some GPU drivers.
         extendRiverMaterial(material, {
             waterLevel: WATER_LEVEL,
+            enableMoss: false,
+            enableTriplanar: false,
         });
 
         return material;

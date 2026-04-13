@@ -27,7 +27,9 @@ describe('extendRiverMaterial', () => {
     };
 
     expect(() => material.onBeforeCompile(shader as any)).not.toThrow();
-    expect(shader.fragmentShader).toContain('#ifdef USE_COLOR');
+    // Vertex colour handling stays in #include <color_fragment> (the proper
+    // Three.js chunk) rather than being duplicated in our custom injection.
+    expect(shader.fragmentShader).toContain('#include <color_fragment>');
     expect(material.userData.shader).toBe(shader);
     expect(material.userData.shaderFailed).toBe(false);
   });

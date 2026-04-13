@@ -63,96 +63,104 @@ export function extendRiverMaterial(material, options = {}) {
                 shader.uniforms.uWaterLevel = { value: waterLevel };
                 shader.uniforms.uWetnessRange = { value: wetnessRange };
                 shader.uniforms.uTime = { value: 0 };
-                shader.uniforms.uMossColor = { value: MOSS_COLOR };
-                shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
-                shader.uniforms.uMossIntensity = { value: MOSS_INTENSITY };
+                if (enableMoss) {
+                    shader.uniforms.uMossColor = { value: MOSS_COLOR };
+                    shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
+                    shader.uniforms.uMossIntensity = { value: MOSS_INTENSITY };
+                }
 
-                const nextVertexShader = injectShaderChunk(
-                    `
-                // RiverShader vertex attributes
-                attribute float mossMask;
-                // When USE_AOMAP or USE_LIGHTMAP is defined Three.js uses its own UV channel
-                // (uv1 in r152+). Skip declaring our custom uv2 attribute in that case to avoid
-                // conflicts; the triplanar blend will fall back to the primary UV channel.
+                // Build vertex shader preamble conditionally to avoid declaring
+                // attributes that are not present on every geometry.
+                const vertexPreamble = [
+                    enableMoss ? 'attribute float mossMask;' : '',
+                    // Only declare custom uv2 attribute when triplanar blending is
+                    // active and Three.js is not already using its own second UV
+                    // channel (USE_AOMAP / USE_LIGHTMAP both reserve uv1 in r152+).
+                    enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 attribute vec2 uv2;
                 varying vec2 vUv2;
-                #endif
+                #endif` : '',
+                    enableMoss ? 'varying float vMossMask;' : '',
+                    'varying float vHeightAboveWater;',
+                    'varying vec3 vWorldPos;',
+                    'uniform float uWaterLevel;',
+                ].filter(Boolean).join('\n') + '\n';
 
-                varying float vHeightAboveWater;
-                varying float vMossMask;
-                varying vec3 vWorldPos;
-
-                uniform float uWaterLevel;
-            ` + shader.vertexShader,
+                const nextVertexShader = injectShaderChunk(
+                    vertexPreamble + shader.vertexShader,
                     '#include <begin_vertex>',
                     `
                 #include <begin_vertex>
                 
-                // Calculate height above water for wetness gradient
+                // Calculate height above water for wetness / moss gradients
                 vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                 vHeightAboveWater = vWorldPos.y - uWaterLevel;
                 
-                // Pass moss mask and secondary UVs
-                vMossMask = mossMask;
+                ${enableMoss ? 'vMossMask = mossMask;' : ''}
+                ${enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 vUv2 = uv2;
-                #endif
+                #endif` : ''}
                 `,
                     'vertex shader'
                 );
 
-                const nextFragmentShader = injectShaderChunk(
-                    injectShaderChunk(
-                        `
-                // RiverShader uniforms and varyings
-                uniform float uWaterLevel;
-                uniform float uWetnessRange;
-                uniform float uTime;
-                uniform vec3 uMossColor;
-                uniform vec3 uLichenColor;
-                uniform float uMossIntensity;
-
-                varying float vHeightAboveWater;
-                varying float vMossMask;
-                // vUv2 is only declared when neither USE_AOMAP nor USE_LIGHTMAP is active.
+                // Build fragment shader preamble conditionally.
+                const fragmentPreamble = [
+                    'uniform float uWaterLevel;',
+                    'uniform float uWetnessRange;',
+                    'uniform float uTime;',
+                    enableMoss ? 'uniform vec3 uMossColor;' : '',
+                    enableMoss ? 'uniform vec3 uLichenColor;' : '',
+                    enableMoss ? 'uniform float uMossIntensity;' : '',
+                    'varying float vHeightAboveWater;',
+                    enableMoss ? 'varying float vMossMask;' : '',
+                    enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 varying vec2 vUv2;
-                #endif
-                varying vec3 vWorldPos;
-                
-                // Noise function for organic variation
+                #endif` : '',
+                    'varying vec3 vWorldPos;',
+                    enableMoss ? `
+                // Noise helper for organic moss variation
                 float riverNoise(vec2 p) {
                     return sin(p.x * 3.0) * sin(p.y * 3.0) * 0.5 + 0.5;
-                }
-            ` + shader.fragmentShader,
-                        '#include <map_fragment>',
-                        `
-                #include <map_fragment>
-                
-                // Sample texture with triplanar UV blend if available
+                }` : '',
+                ].filter(Boolean).join('\n') + '\n';
+
+                // Replace map_fragment entirely so the texture is applied exactly
+                // once.  When triplanar blending is active we mix a secondary UV
+                // sample (vUv2) with the standard UV sample based on height above
+                // the waterline.  When it is inactive we reproduce the standard
+                // Three.js map_fragment behaviour without the extra sample.
+                const mapFragmentReplacement = `
                 #ifdef USE_MAP
-                    vec4 texelColor1 = texture2D(map, vMapUv);
+                    vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+                    #ifdef DECODE_VIDEO_TEXTURE
+                        // sRGB EOTF (Electro-Optical Transfer Function) constants from
+                        // Three.js map_fragment chunk – decode video textures from sRGB.
+                        sampledDiffuseColor = vec4( mix(
+                            pow( sampledDiffuseColor.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ),
+                            sampledDiffuseColor.rgb * 0.0773993808,
+                            vec3( lessThanEqual( sampledDiffuseColor.rgb, vec3( 0.04045 ) ) )
+                        ), sampledDiffuseColor.w );
+                    #endif
+                    ${enableTriplanar ? `
                     #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
-                    // Blend between standard UV and triplanar based on height
-                    vec4 texelColor2 = texture2D(map, vUv2);
-                    float triplanarBlend = smoothstep(0.0, 8.0, vHeightAboveWater);
-                    vec4 blendedTexel = mix(texelColor2, texelColor1, triplanarBlend * 0.6 + 0.2);
-                    #else
-                    vec4 blendedTexel = texelColor1;
-                    #endif
-
-                    #ifdef USE_COLOR
-                    blendedTexel.rgb *= vColor.rgb;
-                    #endif
-
-                    diffuseColor *= blendedTexel;
-                #else
-                    #ifdef USE_COLOR
-                    diffuseColor.rgb *= vColor.rgb;
-                    #endif
+                        // Triplanar blend: waterline uses secondary UV, rim uses standard UV
+                        vec4 triplanarSample = texture2D( map, vUv2 );
+                        float triplanarBlend = smoothstep( 0.0, 8.0, vHeightAboveWater );
+                        sampledDiffuseColor = mix( triplanarSample, sampledDiffuseColor, triplanarBlend * 0.6 + 0.2 );
+                    #endif` : ''}
+                    diffuseColor *= sampledDiffuseColor;
                 #endif
-                `,
+                `;
+
+                const nextFragmentShader = injectShaderChunk(
+                    injectShaderChunk(
+                        fragmentPreamble + shader.fragmentShader,
+                        '#include <map_fragment>',
+                        mapFragmentReplacement,
                         'fragment shader'
                     ),
                     '#include <color_fragment>',
