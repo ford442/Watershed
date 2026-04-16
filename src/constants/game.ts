@@ -32,6 +32,10 @@ export const GENERATION = {
     RECYCLE_MARGIN: 70,
 } as const;
 
+export const REACH_API_BASE = '/api/reaches';
+
+export const TRANSITION_SEGMENT_TYPES = ['waterfall', 'splash'] as const;
+
 export const PHYSICS = {
     GRAVITY: -20,
     RIVER_FLOW_FORCE: 14,

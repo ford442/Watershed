@@ -207,7 +207,7 @@ function cloneForRender(segment, slotIndex, active) {
     };
 }
 
-export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [] }) {
+export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null }) {
     const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
     const [currentBiome, setCurrentBiome] = useState('river');
@@ -218,6 +218,19 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     const lastReportedBiome = useRef('summer');
     const initializedRef = useRef(false);
     const forecastByIndexRef = useRef(new Map());
+    const reachSegmentsRef = useRef(reachSegments);
+
+    useEffect(() => {
+        reachSegmentsRef.current = reachSegments;
+        // If reachSegments changes after initialization, reset so we can re-seed the pool
+        if (reachSegments && initializedRef.current) {
+            initializedRef.current = false;
+            nextSegmentIdRef.current = 0;
+            activeOrderRef.current = [];
+            poolRef.current = Array.from({ length: POOL_SIZE }, (_, slotIndex) => ({ slotIndex, segment: null }));
+            setPoolVersion((v) => v + 1);
+        }
+    }, [reachSegments]);
 
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
@@ -324,6 +337,19 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     }, [forecastSamples]);
 
     const buildSegment = useRef((index, previousSegment, ensureContinuity = false) => {
+        const segments = reachSegmentsRef.current;
+        if (segments && segments[index]) {
+            const seg = segments[index];
+            if (ensureContinuity && previousSegment?.points) {
+                const continuousPoints = ensureTangentContinuity(previousSegment.points, seg.points.map((p) => p.clone()));
+                return {
+                    ...seg,
+                    points: continuousPoints,
+                    segmentPath: createSpline(continuousPoints, seg.type),
+                };
+            }
+            return seg;
+        }
         const forecastState = forecastByIndexRef.current.get(index) || 'Normal';
         return createSegmentData(index, previousSegment, forecastState, ensureContinuity);
     }).current;
@@ -332,9 +358,12 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         const pool = Array.from({ length: POOL_SIZE }, (_, slotIndex) => ({ slotIndex, segment: null }));
         let previousSegment = null;
         const activeOrder = [];
+        const segments = reachSegmentsRef.current;
 
         for (let index = 0; index < MAX_ACTIVE_SEGMENTS; index += 1) {
-            const segment = buildSegment(index, previousSegment);
+            const segment = segments && segments[index]
+                ? segments[index]
+                : buildSegment(index, previousSegment);
             pool[index] = { slotIndex: index, segment };
             activeOrder.push(index);
             previousSegment = segment;
@@ -350,7 +379,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     useEffect(() => {
         if (!rockMaterial || initializedRef.current) return;
         initializePool();
-    }, [initializePool, rockMaterial]);
+    }, [initializePool, rockMaterial, reachSegments]);
 
     // Night mode: update scene fog and background
     useEffect(() => {

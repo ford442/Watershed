@@ -2,7 +2,6 @@ import { PointerLockControls, KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import { useFrame } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import TrackManager from "./components/TrackManager";
 import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
 import ForecastHUD from "./components/ForecastHUD";
@@ -14,6 +13,7 @@ import RaftVehicle from "./vehicles/RaftVehicle";
 
 // Level loading
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
+import ReachManager from "./systems/ReachManager";
 
 // NEW: Visual enhancement systems
 import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
@@ -228,7 +228,7 @@ const InnerExperience = () => {
             forecastSamples={forecastSamples}
           />
         ) : (
-          <TrackManager onBiomeChange={setBiome} raftRef={vehicleRef} forecastSamples={forecastSamples} />
+          <ReachManager playerRef={vehicleRef} onBiomeChange={setBiome} forecastSamples={forecastSamples} />
         )}
       </Physics>
 

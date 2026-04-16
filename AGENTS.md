@@ -284,6 +284,35 @@ Forward gameplay movement is in the **negative Z** direction.
 
 Level JSON format definitions are in `src/formats/`.
 
+### 8. River Reach System (Single-Reach v1)
+
+The game is transitioning from pure procedural generation to structured **River Reaches** — authored 8–18 minute river segments loaded from a backend.
+
+**Architecture:**
+- `ReachStreamer.ts` — Background asset manager that fetches manifest + assets **outside React Suspense** to prevent frame hitches.
+- `ReachNormalizer.ts` — Converts a Reach manifest into `TrackManager`-ready segment data.
+- `ReachManager.tsx` — Orchestrates loading and feeds `TrackManager` with manifest-driven segments.
+
+**Backend Contract:**
+All manifest and asset requests route through the FastAPI storage manager:
+- `GET /api/reaches/{reachId}/manifest` — Reach JSON manifest
+- `GET /api/reaches/{reachId}/assets/{filename}` — Individual assets (textures, models, audio, shaders, flow maps)
+
+**Reach Manifest Schema:** `src/formats/reach.schema.json`
+Key additions over the legacy level format:
+- `requiredAssets.textures[]` — PBR textures
+- `requiredAssets.models[]` — GLTF models
+- `requiredAssets.audio[]` — Audio stems
+- `requiredAssets.shaders[]` — WGSL/GLSL shaders with `category: "generative" | "reactive" | "transition" | "filter"`
+- `requiredAssets.flowMaps[]` — Water flow data (`png` | `raw` | `json`)
+- `transition` — Defines the bottleneck segment (waterfall / slot canyon / splash) that masks Reach handoffs
+
+**Transition Philosophy:** Waterfall Bottleneck
+Each Reach ends in a constrained transition segment. This provides a natural pacing reset and masks asset swaps when multi-Reach campaign mode is enabled later.
+
+**Memory Management:**
+`ReachStreamer.evictReach(reachId)` recursively disposes geometries, materials, textures, audio buffers, and shaders to keep GPU/CPU memory bounded.
+
 ---
 
 ## Code Style Guidelines
