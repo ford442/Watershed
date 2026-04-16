@@ -10,6 +10,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import TrackManager from '../components/TrackManager';
+import ReactiveAudio from '../components/ReactiveAudio';
+import WeatherSystem from '../components/WeatherSystem';
 import { ReachStreamer, ReachManifest } from './ReachStreamer';
 import { normalizeReachManifest, NormalizedSegment } from './ReachNormalizer';
 import { ErrorDisplay, LoadingDisplay } from './LevelLoader';
@@ -146,11 +148,24 @@ export default function ReachManager({
   }
 
   return (
-    <TrackManager
-      reachSegments={reachSegments}
-      onBiomeChange={onBiomeChange}
-      raftRef={playerRef}
-      forecastSamples={forecastSamples}
-    />
+    <>
+      <TrackManager
+        reachSegments={reachSegments}
+        onBiomeChange={onBiomeChange}
+        raftRef={playerRef}
+        forecastSamples={forecastSamples}
+        reachId={reachId}
+      />
+      <ReactiveAudio
+        targetRef={playerRef}
+        reachId={reachId}
+        manifest={manifest}
+        reachSegments={reachSegments}
+      />
+      <WeatherSystem
+        targetRef={playerRef}
+        weather={manifest?.weather || { type: 'clear', intensity: 0.5 }}
+      />
+    </>
   );
 }

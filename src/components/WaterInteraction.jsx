@@ -15,6 +15,7 @@ export default function WaterInteraction({
     isRaft = false,      // Enable raft-specific effects
     waterLevel = 0.5,
     maxVelocity = 10,    // For scaling effects
+    flowSpeed = 1.0,
 }) {
     const splashMeshRef = useRef();
     const mistMeshRef = useRef();
@@ -60,12 +61,34 @@ export default function WaterInteraction({
         geo.translate(0, 0, -2);   // Position in front of raft
         return geo;
     }, []);
-    const bowWaveMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-        color: '#aaddff',
+    const bowWaveMaterial = useMemo(() => new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+        },
+        vertexShader: `
+            uniform float time;
+            varying vec2 vUv;
+            varying float vNoise;
+            void main() {
+                vUv = uv;
+                vec3 pos = position;
+                float noise = sin(pos.x * 2.0 + time * 2.0) * cos(pos.z * 1.5 + time * 1.5);
+                pos.y += noise * 0.05;
+                vNoise = noise;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            varying vec2 vUv;
+            varying float vNoise;
+            void main() {
+                float alpha = 0.5 + vNoise * 0.2;
+                vec3 color = vec3(0.667, 0.867, 1.0);
+                gl_FragColor = vec4(color, alpha * 0.6);
+            }
+        `,
         transparent: true,
-        opacity: 0.5,
-        roughness: 0.1,
-        metalness: 0.1,
         side: THREE.DoubleSide,
     }), []);
     
@@ -100,7 +123,7 @@ export default function WaterInteraction({
         const positions = mesh.geometry.attributes.position;
         
         // Wave parameters scale with speed
-        const waveHeight = 0.1 * (speed / maxVelocity);
+        const waveHeight = 0.1 * (speed / maxVelocity) * (0.8 + flowSpeed * 0.4);
         const frequency = speed * 0.5;
         const time = timeRef.current * 2;
         
@@ -125,7 +148,7 @@ export default function WaterInteraction({
         if (!isRaft || submergedRatio < 0.6 || speed <= 2) return;
         
         const opacity = Math.min(1, Math.max(0, (speed - 2) / 5));
-        const spawnCount = Math.floor(opacity * 2);
+        const spawnCount = Math.floor(opacity * 2 * flowSpeed);
         let spawned = 0;
         
         for (let p of mistParticles) {
@@ -157,7 +180,7 @@ export default function WaterInteraction({
         
         // Scale particle count with velocity
         const t = Math.min(1, (speed - SPLASH_CONFIG.minSpeed) / (maxVelocity - SPLASH_CONFIG.minSpeed));
-        const targetCount = Math.floor(SPLASH_CONFIG.baseCount + t * (SPLASH_CONFIG.maxCount - SPLASH_CONFIG.baseCount));
+        const targetCount = Math.floor((SPLASH_CONFIG.baseCount + t * (SPLASH_CONFIG.maxCount - SPLASH_CONFIG.baseCount)) * (0.5 + flowSpeed * 0.5));
         const clampedCount = Math.min(targetCount, MAX_SPLASH_PARTICLES);
         
         let spawned = 0;
@@ -236,6 +259,7 @@ export default function WaterInteraction({
                     pos.z + forward.z * 1.5
                 );
                 bowWaveMeshRef.current.rotation.y = Math.atan2(forward.x, forward.z);
+                bowWaveMeshRef.current.material.uniforms.time.value = timeRef.current;
             }
             
             // === SPAWN MIST ===

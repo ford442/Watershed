@@ -1,47 +1,11 @@
 import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { sampleSegmentFlow } from '../utils/segmentSampler';
 
 const tmpPoint = new THREE.Vector3();
-const tmpTangent = new THREE.Vector3();
 const tmpForward = new THREE.Vector3();
-const tmpLateral = new THREE.Vector3();
 const tmpCross = new THREE.Vector3();
-
-function sampleSegmentFlow(segment, worldPosition) {
-    if (!segment?.segmentPath) {
-        return null;
-    }
-
-    const curve = segment.segmentPath;
-    const steps = 24;
-    let bestT = 0;
-    let bestDistance = Infinity;
-
-    for (let index = 0; index <= steps; index += 1) {
-        const t = index / steps;
-        const point = curve.getPoint(t, tmpPoint.clone());
-        const distance = point.distanceTo(worldPosition);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestT = t;
-        }
-    }
-
-    const point = curve.getPoint(bestT, tmpPoint.clone());
-    const tangent = curve.getTangent(bestT, tmpTangent.clone()).normalize();
-    const lateral = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-
-    return {
-        point,
-        tangent,
-        lateral,
-        distance: bestDistance,
-        flowSpeed: segment.flowSpeed ?? 1,
-        canyonWidth: segment.width ?? 35,
-        state: segment.segmentState ?? 'Normal',
-    };
-}
 
 export default function WaterForces({
     targetRef,

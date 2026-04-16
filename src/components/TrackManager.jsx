@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import TrackSegment from './TrackSegment';
-import WaterForces from './WaterForces';
+import WaterFlowForces from './WaterFlowForces';
+import VehicleTuner from './VehicleTuner';
 import { extendRiverMaterial } from '../utils/RiverShader';
-import { GENERATION, WATER_LEVEL } from '../constants/game';
+import { GENERATION, WATER_LEVEL, REACH_API_BASE } from '../constants/game';
+import { AssetCache } from '../systems/ReachStreamer';
 import { BIOMES, getNextBiome } from '../constants/biomes';
 import { useNightMode } from '../hooks/useNightMode';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
@@ -207,7 +209,7 @@ function cloneForRender(segment, slotIndex, active) {
     };
 }
 
-export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null }) {
+export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null, reachId = null }) {
     const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
     const [currentBiome, setCurrentBiome] = useState('river');
@@ -219,6 +221,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     const initializedRef = useRef(false);
     const forecastByIndexRef = useRef(new Map());
     const reachSegmentsRef = useRef(reachSegments);
+    const weatherWetnessRef = useRef(0);
 
     useEffect(() => {
         reachSegmentsRef.current = reachSegments;
@@ -232,11 +235,20 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         }
     }, [reachSegments]);
 
-    const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
+    useEffect(() => {
+        const onWeatherUpdate = (e) => {
+            weatherWetnessRef.current = e.detail?.rippleStrength || 0;
+        };
+        window.addEventListener('weather-update', onWeatherUpdate);
+        return () => window.removeEventListener('weather-update', onWeatherUpdate);
+    }, []);
+
+    const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg',
         './Rock031_1K-JPG_NormalGL.jpg',
         './Rock031_1K-JPG_Roughness.jpg',
         './Rock031_1K-JPG_AmbientOcclusion.jpg',
+        './Rock031_1K-JPG_Displacement.jpg',
     ], (textures) => {
         // Success callback - textures loaded
         console.log('[TrackManager] PBR textures loaded successfully');
@@ -264,26 +276,47 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
             normalMap: createFallbackTexture('#8080FF'), // Flat normal
             roughnessMap: createFallbackTexture('#D9D9D9'), // ~85% roughness
             aoMap: createFallbackTexture('#FFFFFF'), // No AO
+            displacementMap: createFallbackTexture('#FFFFFF'), // No displacement
         };
     }, []);
 
     useEffect(() => {
-        const textures = [colorMap, normalMap, roughnessMap, aoMap];
+        const textures = [colorMap, normalMap, roughnessMap, aoMap, displacementMap];
         textures.forEach((texture) => {
             if (!texture) return;
             texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
             texture.repeat.set(4, 8);
         });
-    }, [colorMap, normalMap, roughnessMap, aoMap]);
+    }, [colorMap, normalMap, roughnessMap, aoMap, displacementMap]);
 
     const rockMaterial = useMemo(() => {
-        // Use loaded textures if available, otherwise fallbacks
-        const effectiveColorMap = colorMap || fallbackTextures.colorMap;
-        const effectiveNormalMap = normalMap || fallbackTextures.normalMap;
-        const effectiveRoughnessMap = roughnessMap || fallbackTextures.roughnessMap;
-        const effectiveAoMap = aoMap || fallbackTextures.aoMap;
+        // Check for per-reach rock texture overrides
+        let effectiveColorMap = colorMap || fallbackTextures.colorMap;
+        let effectiveNormalMap = normalMap || fallbackTextures.normalMap;
+        let effectiveRoughnessMap = roughnessMap || fallbackTextures.roughnessMap;
+        let effectiveAoMap = aoMap || fallbackTextures.aoMap;
+        let effectiveDisplacementMap = displacementMap || fallbackTextures.displacementMap;
 
-        const hasRealTextures = !!(colorMap && normalMap);
+        if (reachId) {
+            const manifest = AssetCache.reaches.get(reachId);
+            const rt = manifest?.requiredAssets?.rockTextures;
+            if (rt) {
+                const resolveTexture = (filename) => {
+                    if (!filename) return null;
+                    const url = filename.startsWith('http://') || filename.startsWith('https://') || filename.startsWith('/')
+                        ? filename
+                        : `${REACH_API_BASE}/${reachId}/assets/${filename}`;
+                    return AssetCache.textures.get(url) || null;
+                };
+                effectiveColorMap = resolveTexture(rt.color) || effectiveColorMap;
+                effectiveNormalMap = resolveTexture(rt.normal) || effectiveNormalMap;
+                effectiveRoughnessMap = resolveTexture(rt.roughness) || effectiveRoughnessMap;
+                effectiveAoMap = resolveTexture(rt.ao) || effectiveAoMap;
+                effectiveDisplacementMap = resolveTexture(rt.displacement) || effectiveDisplacementMap;
+            }
+        }
+
+        const hasRealTextures = !!(effectiveColorMap && effectiveNormalMap);
         
         if (!hasRealTextures) {
             console.log('[TrackManager] Using fallback textures for rock material');
@@ -300,6 +333,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
             side: THREE.DoubleSide,
             color: hasRealTextures ? new THREE.Color('#ffffff') : new THREE.Color('#8B7355'),
         });
+        material.displacementMap = effectiveDisplacementMap;
 
         // The canyon floor geometry only has position/normal/uv/color attributes.
         // Disable moss and triplanar so the shader doesn't declare mossMask or
@@ -312,7 +346,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         });
 
         return material;
-    }, [aoMap, colorMap, fallbackTextures, normalMap, roughnessMap]);
+    }, [aoMap, colorMap, displacementMap, fallbackTextures, normalMap, reachId, roughnessMap]);
 
     useEffect(() => {
         const nextForecastMap = new Map();
@@ -502,11 +536,13 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                     waterWidth={segment?.waterWidth}
                     biome={currentBiome}
                     isNight={isNight}
+                    weatherWetnessRef={weatherWetnessRef}
                     {...(segment || {})}
                 />
             ))}
 
-            <WaterForces targetRef={raftRef} segments={activeSegments} />
+            <WaterFlowForces targetRef={raftRef} segments={activeSegments} reachId={reachId} />
+            <VehicleTuner targetRef={raftRef} segments={activeSegments} />
         </group>
     );
 }

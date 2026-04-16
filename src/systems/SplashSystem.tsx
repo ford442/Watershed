@@ -5,7 +5,7 @@
  * creating tactile feedback and visual richness.
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle, FoamParticle } from './ParticlePool';
@@ -19,13 +19,12 @@ interface SplashSystemProps {
   flowSpeed?: number;
 }
 
+const MAX_INSTANCES = 200;
+
 // Splash particle factory
 const createSplashParticle = (): VFXParticle => new VFXParticle();
 const createFoamParticle = (): FoamParticle => new FoamParticle();
 
-/**
- * SplashSystem - Manages water splash and foam effects
- */
 export const SplashSystem: React.FC<SplashSystemProps> = ({
   playerRef,
   waterLevel = 0.5,
@@ -39,6 +38,10 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   const splashPoolRef = useRef<ParticlePool<VFXParticle>>();
   const foamPoolRef = useRef<ParticlePool<FoamParticle>>();
   
+  // Instanced mesh refs
+  const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useRef(new THREE.Object3D());
+  
   // Player state tracking
   const wasInWaterRef = useRef(false);
   const lastSplashTimeRef = useRef(0);
@@ -48,6 +51,13 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     splashPoolRef.current = new ParticlePool(createSplashParticle, 300, 1000);
     foamPoolRef.current = new ParticlePool(createFoamParticle, 200, 800);
   }, []);
+  
+  const geometry = useMemo(() => new THREE.BoxGeometry(0.15, 0.15, 0.15), []);
+  const material = useMemo(() => new THREE.MeshBasicMaterial({
+    color: water.foamColor,
+    transparent: true,
+    opacity: 0.9,
+  }), [water.foamColor]);
   
   // Spawn splash effect
   const spawnSplash = useCallback((position: THREE.Vector3, intensity: number) => {
@@ -156,12 +166,39 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
         foamPoolRef.current!.release(p);
       }
     });
+    
+    // Update instanced mesh
+    if (!instancedMeshRef.current) return;
+    
+    const allParticles = [...splashParticles, ...foamParticles];
+    const renderCount = Math.min(allParticles.length, MAX_INSTANCES);
+    
+    for (let i = 0; i < renderCount; i++) {
+      const p = allParticles[i];
+      dummy.current.position.copy(p.position);
+      dummy.current.scale.setScalar(p.scale);
+      dummy.current.updateMatrix();
+      instancedMeshRef.current.setMatrixAt(i, dummy.current.matrix);
+    }
+    
+    // Hide unused instances
+    for (let i = renderCount; i < MAX_INSTANCES; i++) {
+      dummy.current.scale.setScalar(0);
+      dummy.current.updateMatrix();
+      instancedMeshRef.current.setMatrixAt(i, dummy.current.matrix);
+    }
+    
+    instancedMeshRef.current.instanceMatrix.needsUpdate = true;
   });
   
-  // Visual representation would go here
-  // For now, particles are tracked in pools but not rendered
-  // Integration with existing particle components would happen here
-  return null;
+  return (
+    <group>
+      <instancedMesh
+        ref={instancedMeshRef}
+        args={[geometry, material, MAX_INSTANCES]}
+      />
+    </group>
+  );
 };
 
 export default SplashSystem;

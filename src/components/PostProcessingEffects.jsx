@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { EffectComposer, Bloom, Vignette, ChromaticAberration, SSAO, HueSaturation } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
@@ -50,6 +50,19 @@ export function PostProcessingEffects({
     saturation: 1.0,
     vignetteBoost: 0,
   });
+
+  // Boost visual spike state
+  const boostRef = useRef({ active: 0, intensity: 0 });
+
+  useEffect(() => {
+    const onBoost = (e) => {
+      const detail = e.detail || {};
+      boostRef.current.active = detail.duration ?? 0.8;
+      boostRef.current.intensity = detail.intensity ?? 1.5;
+    };
+    window.addEventListener('boost-triggered', onBoost);
+    return () => window.removeEventListener('boost-triggered', onBoost);
+  }, []);
   
   // Enable SSAO only at high quality (E1 requirement)
   const enableSSAO = quality === 'high' || quality === 'ultra';
@@ -82,20 +95,29 @@ export function PostProcessingEffects({
   
   // E3: Vignette boost at max velocity (brief flare effect)
   const targetVignetteBoost = velocity > maxVelocity * 0.9 ? 0.3 : 0;
-  
+
+  // Decay boost spike
+  const boostDecay = delta * 1.2; // approximate per-frame decay
+  boostRef.current.active = Math.max(0, boostRef.current.active - boostDecay);
+  const boostScale = boostRef.current.active > 0 ? boostRef.current.intensity : 0;
+
   // Smooth all transitions with 0.3s lerp (E3 requirement)
   const lerpFactor = 0.3; // Approximate for 0.3s at 60fps
-  smoothedValues.current.chromaticOffset += (targetChromaticOffset - smoothedValues.current.chromaticOffset) * lerpFactor;
-  smoothedValues.current.saturation += (targetSaturation - smoothedValues.current.saturation) * lerpFactor;
-  smoothedValues.current.vignetteBoost += (targetVignetteBoost - smoothedValues.current.vignetteBoost) * lerpFactor;
+  const targetChromaticWithBoost = targetChromaticOffset + boostScale * 0.0025;
+  const targetSaturationWithBoost = Math.min(1, targetSaturation + boostScale * 0.15);
+  const targetVignetteWithBoost = targetVignetteBoost + boostScale * 0.25;
+
+  smoothedValues.current.chromaticOffset += (targetChromaticWithBoost - smoothedValues.current.chromaticOffset) * lerpFactor;
+  smoothedValues.current.saturation += (targetSaturationWithBoost - smoothedValues.current.saturation) * lerpFactor;
+  smoothedValues.current.vignetteBoost += (targetVignetteWithBoost - smoothedValues.current.vignetteBoost) * lerpFactor;
   
   // Memoize effect parameters
   const bloomParams = useMemo(() => ({
-    intensity: bloomIntensity,
-    threshold: bloomThreshold,
+    intensity: bloomIntensity + boostScale * 0.4,
+    threshold: Math.max(0.2, bloomThreshold - boostScale * 0.15),
     smoothing: bloomSmoothing,
-    radius: bloomRadius,
-  }), [bloomIntensity, bloomThreshold, bloomSmoothing, bloomRadius]);
+    radius: bloomRadius + boostScale * 0.2,
+  }), [bloomIntensity, bloomThreshold, bloomSmoothing, bloomRadius, boostScale]);
 
   const vignetteParams = useMemo(() => ({
     offset: vignetteOffset,

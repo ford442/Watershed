@@ -1,13 +1,17 @@
 import * as THREE from 'three';
-import { WALL_WATERLINE_Y, SHADERS } from '../constants/game';
+import { WALL_WATERLINE_Y, SHADERS, ROCK_SHADER } from '../constants/game';
 
 /**
- * RiverShader - Enhanced wetness, moss, and triplanar texture effects
+ * RiverShader - Enhanced wetness, moss, triplanar texture, parallax, cracks, and weather effects
  *
  * This version uses shader injection via onBeforeCompile for:
  *   - Wetness: Darkens surfaces near water (Y=13), reduces roughness
- *   - Moss/Lichen: Uses vertex color mossMask for organic growth bands
+ *   - Weather wetness: Shares uWeatherWetness with the water shader for seamless blending
+ *   - Moss/Lichen: Uses vertex color mossMask for organic growth bands, faded by height
  *   - Triplanar blending: Mixes primary and secondary UVs for texture variety
+ *   - Cheap parallax offset: Uses displacement map for depth on near walls
+ *   - Procedural cracks: FBM-based dark fissures
+ *   - Stratification & color variation: Horizontal bands and height-based tint (secondary)
  *
  * Effects are driven by vertex attributes:
  *   - color: Base vertex colors with gradient from waterline to rim
@@ -16,7 +20,7 @@ import { WALL_WATERLINE_Y, SHADERS } from '../constants/game';
  */
 
 // Wetness parameters
-const WETNESS_DARKEN_FACTOR = 0.75;
+const WETNESS_DARKEN_FACTOR = 0.70; // aligns with ROCK_SHADER.WETNESS_DARKEN = 0.30
 const WETNESS_ROUGHNESS_REDUCTION = 0.30;
 const WATER_LEVEL_Y = WALL_WATERLINE_Y;
 const WETNESS_RANGE = 4.0;
@@ -25,6 +29,13 @@ const WETNESS_RANGE = 4.0;
 const MOSS_COLOR = new THREE.Color(SHADERS.MOSS_COLOR);      // Deep moss green
 const LICHEN_COLOR = new THREE.Color(SHADERS.LICHEN_COLOR);    // Lighter lichen
 const MOSS_INTENSITY = 0.6;
+
+// Shared 1x1 white texture for missing displacement maps
+const WHITE_TEXTURE = (() => {
+    const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+    tex.needsUpdate = true;
+    return tex;
+})();
 
 function injectShaderChunk(source, marker, replacement, label) {
     if (!source.includes(marker)) {
@@ -63,6 +74,17 @@ export function extendRiverMaterial(material, options = {}) {
                 shader.uniforms.uWaterLevel = { value: waterLevel };
                 shader.uniforms.uWetnessRange = { value: wetnessRange };
                 shader.uniforms.uTime = { value: 0 };
+                shader.uniforms.uWeatherWetness = { value: 0 };
+                shader.uniforms.uDisplacementMap = { value: material.displacementMap || WHITE_TEXTURE };
+                shader.uniforms.uDisplacementScale = { value: ROCK_SHADER.DISPLACEMENT_SCALE };
+                shader.uniforms.uCrackIntensity = { value: ROCK_SHADER.CRACK_INTENSITY };
+                shader.uniforms.uCrackScale = { value: ROCK_SHADER.CRACK_SCALE };
+                shader.uniforms.uStratificationStrength = { value: ROCK_SHADER.STRATIFICATION_STRENGTH };
+                shader.uniforms.uStratificationScale = { value: ROCK_SHADER.STRATIFICATION_SCALE };
+                shader.uniforms.uWarmColor = { value: new THREE.Color(ROCK_SHADER.WARM_COLOR) };
+                shader.uniforms.uCoolColor = { value: new THREE.Color(ROCK_SHADER.COOL_COLOR) };
+                shader.uniforms.uColorVariationStrength = { value: ROCK_SHADER.COLOR_VARIATION_STRENGTH };
+
                 if (enableMoss) {
                     shader.uniforms.uMossColor = { value: MOSS_COLOR };
                     shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
@@ -73,9 +95,6 @@ export function extendRiverMaterial(material, options = {}) {
                 // attributes that are not present on every geometry.
                 const vertexPreamble = [
                     enableMoss ? 'attribute float mossMask;' : '',
-                    // Only declare custom uv2 attribute when triplanar blending is
-                    // active and Three.js is not already using its own second UV
-                    // channel (USE_AOMAP / USE_LIGHTMAP both reserve uv1 in r152+).
                     enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 attribute vec2 uv2;
@@ -84,6 +103,7 @@ export function extendRiverMaterial(material, options = {}) {
                     enableMoss ? 'varying float vMossMask;' : '',
                     'varying float vHeightAboveWater;',
                     'varying vec3 vWorldPos;',
+                    'varying vec3 vViewDir;',
                     'uniform float uWaterLevel;',
                 ].filter(Boolean).join('\n') + '\n';
 
@@ -96,6 +116,7 @@ export function extendRiverMaterial(material, options = {}) {
                 // Calculate height above water for wetness / moss gradients
                 vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                 vHeightAboveWater = vWorldPos.y - uWaterLevel;
+                vViewDir = normalize(cameraPosition - vWorldPos);
                 
                 ${enableMoss ? 'vMossMask = mossMask;' : ''}
                 ${enableTriplanar ? `
@@ -111,9 +132,16 @@ export function extendRiverMaterial(material, options = {}) {
                     'uniform float uWaterLevel;',
                     'uniform float uWetnessRange;',
                     'uniform float uTime;',
-                    enableMoss ? 'uniform vec3 uMossColor;' : '',
-                    enableMoss ? 'uniform vec3 uLichenColor;' : '',
-                    enableMoss ? 'uniform float uMossIntensity;' : '',
+                    'uniform float uWeatherWetness;',
+                    'uniform sampler2D uDisplacementMap;',
+                    'uniform float uDisplacementScale;',
+                    'uniform float uCrackIntensity;',
+                    'uniform float uCrackScale;',
+                    'uniform float uStratificationStrength;',
+                    'uniform float uStratificationScale;',
+                    'uniform vec3 uWarmColor;',
+                    'uniform vec3 uCoolColor;',
+                    'uniform float uColorVariationStrength;',
                     'varying float vHeightAboveWater;',
                     enableMoss ? 'varying float vMossMask;' : '',
                     enableTriplanar ? `
@@ -121,21 +149,44 @@ export function extendRiverMaterial(material, options = {}) {
                 varying vec2 vUv2;
                 #endif` : '',
                     'varying vec3 vWorldPos;',
+                    'varying vec3 vViewDir;',
                     enableMoss ? `
                 // Noise helper for organic moss variation
                 float riverNoise(vec2 p) {
                     return sin(p.x * 3.0) * sin(p.y * 3.0) * 0.5 + 0.5;
                 }` : '',
+                    `
+                // Fast hash/noise for cracks, stratification, and fallback height
+                float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+                float noise(vec2 p) {
+                    vec2 i = floor(p); vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+                }
+                float fbm2(vec2 p) {
+                    float value = 0.0;
+                    float amp = 0.5;
+                    for(int i = 0; i < 2; i++) {
+                        value += noise(p) * amp;
+                        p *= 2.0;
+                        amp *= 0.5;
+                    }
+                    return value;
+                }
+                `,
                 ].filter(Boolean).join('\n') + '\n';
 
-                // Replace map_fragment entirely so the texture is applied exactly
-                // once.  When triplanar blending is active we mix a secondary UV
-                // sample (vUv2) with the standard UV sample based on height above
-                // the waterline.  When it is inactive we reproduce the standard
-                // Three.js map_fragment behaviour without the extra sample.
+                // Parallax offset is computed once at the top of the fragment shader
+                const parallaxPreamble = `
+                // Cheap parallax offset using displacement map or fallback hash height
+                float dispHeight = texture2D(uDisplacementMap, vMapUv).r;
+                vec2 parallaxOffset = vViewDir.xy * dispHeight * uDisplacementScale;
+                `;
+
                 const mapFragmentReplacement = `
                 #ifdef USE_MAP
-                    vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+                    vec4 sampledDiffuseColor = texture2D( map, vMapUv + parallaxOffset );
                     #ifdef DECODE_VIDEO_TEXTURE
                         // sRGB EOTF (Electro-Optical Transfer Function) constants from
                         // Three.js map_fragment chunk – decode video textures from sRGB.
@@ -148,7 +199,7 @@ export function extendRiverMaterial(material, options = {}) {
                     ${enableTriplanar ? `
                     #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                         // Triplanar blend: waterline uses secondary UV, rim uses standard UV
-                        vec4 triplanarSample = texture2D( map, vUv2 );
+                        vec4 triplanarSample = texture2D( map, vUv2 + parallaxOffset );
                         float triplanarBlend = smoothstep( 0.0, 8.0, vHeightAboveWater );
                         sampledDiffuseColor = mix( triplanarSample, sampledDiffuseColor, triplanarBlend * 0.6 + 0.2 );
                     #endif` : ''}
@@ -156,13 +207,15 @@ export function extendRiverMaterial(material, options = {}) {
                 #endif
                 `;
 
-                const nextFragmentShader = injectShaderChunk(
-                    injectShaderChunk(
-                        fragmentPreamble + shader.fragmentShader,
-                        '#include <map_fragment>',
-                        mapFragmentReplacement,
-                        'fragment shader'
-                    ),
+                let nextFragmentShader = injectShaderChunk(
+                    fragmentPreamble + parallaxPreamble + shader.fragmentShader,
+                    '#include <map_fragment>',
+                    mapFragmentReplacement,
+                    'fragment shader'
+                );
+
+                nextFragmentShader = injectShaderChunk(
+                    nextFragmentShader,
                     '#include <color_fragment>',
                     `
                 #include <color_fragment>
@@ -182,23 +235,58 @@ export function extendRiverMaterial(material, options = {}) {
                     float intensity = vMossMask * uMossIntensity * (0.7 + mossNoise * 0.3);
                     intensity *= (0.8 + mossNoise2 * 0.2);
                     
+                    // Height-based fade: moss thins out as wall rises
+                    float mossHeightFade = 1.0 - smoothstep(0.0, 8.0, vHeightAboveWater);
+                    intensity *= mossHeightFade;
+                    
                     // Apply moss color
                     diffuseColor.rgb = mix(diffuseColor.rgb, growthColor, intensity);
                 }
                 ` : ''}
                 
                 ${enableWetness ? `
-                // Wetness effect - darker near waterline
-                float wetnessFactor = 1.0 - smoothstep(0.0, uWetnessRange, vHeightAboveWater);
-                wetnessFactor = clamp(wetnessFactor, 0.0, 1.0);
+                // Wetness effect - darker near waterline, boosted by weather
+                float baseWetness = 1.0 - smoothstep(0.0, uWetnessRange, vHeightAboveWater);
+                float weatherWetnessFactor = uWeatherWetness * (1.0 - smoothstep(0.0, uWetnessRange * 1.5, vHeightAboveWater));
+                float combinedWetness = clamp(baseWetness + weatherWetnessFactor, 0.0, 1.0);
                 
                 // Darken wet areas
-                float wetDarken = 1.0 - (wetnessFactor * (1.0 - ${WETNESS_DARKEN_FACTOR.toFixed(2)}));
+                float wetDarken = 1.0 - (combinedWetness * ${(1.0 - ROCK_SHADER.WETNESS_DARKEN).toFixed(2)});
                 diffuseColor.rgb *= wetDarken;
                 ` : ''}
+                
+                // Procedural cracks
+                float crackNoise = fbm2(vWorldPos.xz * uCrackScale + parallaxOffset * 2.0);
+                float crackMask = smoothstep(0.55, 0.65, crackNoise);
+                diffuseColor.rgb *= (1.0 - crackMask * uCrackIntensity);
+                
+                // Stratification (secondary)
+                float strat = sin(vWorldPos.y * uStratificationScale + hash(vWorldPos.xz) * 2.0) * 0.5 + 0.5;
+                diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * (0.85 + strat * 0.15), uStratificationStrength * 0.5);
+                
+                // Color variation (secondary)
+                float heightRatio = clamp(vHeightAboveWater / 12.0, 0.0, 1.0);
+                vec3 heightTint = mix(uWarmColor, uCoolColor, heightRatio);
+                diffuseColor.rgb = mix(diffuseColor.rgb, heightTint, uColorVariationStrength * heightRatio);
                 `,
                     'fragment shader'
                 );
+
+                // Roughness reduction in wet areas
+                if (nextFragmentShader.includes('#include <roughnessmap_fragment>')) {
+                    nextFragmentShader = injectShaderChunk(
+                        nextFragmentShader,
+                        '#include <roughnessmap_fragment>',
+                        `
+                    #include <roughnessmap_fragment>
+                    float baseWetnessR = 1.0 - smoothstep(0.0, uWetnessRange, vHeightAboveWater);
+                    float weatherWetnessR = uWeatherWetness * (1.0 - smoothstep(0.0, uWetnessRange * 1.5, vHeightAboveWater));
+                    float combinedWetnessR = clamp(baseWetnessR + weatherWetnessR, 0.0, 1.0);
+                    roughnessFactor *= 1.0 - (combinedWetnessR * 0.35);
+                    `,
+                        'fragment shader roughness'
+                    );
+                }
 
                 shader.vertexShader = nextVertexShader;
                 shader.fragmentShader = nextFragmentShader;
@@ -245,16 +333,26 @@ function fallbackExtend(material) {
  * Update shader uniforms (call in useFrame)
  * @param {THREE.Material} material - The material to update
  * @param {number} time - Current elapsed time
- * @param {number} waterLevel - Optional water level override
+ * @param {Object|number} options - Options object or legacy waterLevel number
  */
-export function updateRiverMaterial(material, time, waterLevel) {
+export function updateRiverMaterial(material, time, options = {}) {
     if (!material || !material.userData.shader) return;
 
     const shader = material.userData.shader;
     if (shader.uniforms) {
         shader.uniforms.uTime.value = time;
-        if (waterLevel !== undefined && shader.uniforms.uWaterLevel) {
-            shader.uniforms.uWaterLevel.value = waterLevel;
+        if (typeof options === 'number') {
+            // backward compatibility: third arg used to be waterLevel
+            if (shader.uniforms.uWaterLevel) {
+                shader.uniforms.uWaterLevel.value = options;
+            }
+        } else if (options && typeof options === 'object') {
+            if (options.waterLevel !== undefined && shader.uniforms.uWaterLevel) {
+                shader.uniforms.uWaterLevel.value = options.waterLevel;
+            }
+            if (options.weatherWetness !== undefined && shader.uniforms.uWeatherWetness) {
+                shader.uniforms.uWeatherWetness.value = options.weatherWetness;
+            }
         }
     }
 }

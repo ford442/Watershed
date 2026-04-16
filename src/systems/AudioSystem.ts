@@ -67,6 +67,12 @@ const SOUND_LIBRARY: Record<string, SoundDef> = {
   'paddle_right': { url: '/sounds/paddle_right.mp3', category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
   'raft_creak': { url: '/sounds/raft_creak.mp3', category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
   'water_crash': { url: '/sounds/water_crash.mp3', category: SoundCategory.COLLISION, baseVolume: 1.0, basePitch: 0.9, maxConcurrent: 1 },
+
+  // Vehicle tuning — boost
+  'boost': { url: '/sounds/boost.mp3', category: SoundCategory.UI, baseVolume: 0.9, basePitch: 1.0, maxConcurrent: 1 },
+
+  // Water flow — rapids ambience
+  'rapids_roar': { url: '/sounds/rapids_roar.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 1 },
   
   // Ambient
   'ambient_water': { url: '/sounds/ambient_water.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.3, basePitch: 1.0, maxConcurrent: 1 },
@@ -112,6 +118,13 @@ export class AudioManager {
    */
   getListener(): THREE.AudioListener {
     return this.listener;
+  }
+
+  /**
+   * Get a loaded audio buffer by sound name
+   */
+  getBuffer(name: string): AudioBuffer | undefined {
+    return this.sounds.get(name);
   }
   
   /**

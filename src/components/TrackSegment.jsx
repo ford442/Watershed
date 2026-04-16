@@ -4,7 +4,8 @@ import { RigidBody } from '@react-three/rapier';
 import { useFrame } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
 import { extendRiverMaterial, updateRiverMaterial } from '../utils/RiverShader';
-import { WATER_LEVEL, WALL_WATERLINE_Y, SHADERS } from '../constants/game';
+import { WATER_LEVEL, WALL_WATERLINE_Y, SHADERS, REACH_API_BASE } from '../constants/game';
+import { AssetCache } from '../systems/ReachStreamer';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
@@ -60,6 +61,8 @@ export default function TrackSegment({
     segmentState = 'Normal',
     raftRef, // For tracking player velocity (E4)
     isNight = false,
+    reachId,
+    weatherWetnessRef,
 }) {
     // console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
@@ -94,6 +97,18 @@ export default function TrackSegment({
             return 0;
         }
     }, [segmentId, segmentPath]);
+
+    // Resolve flowMap texture for this reach (if available)
+    const flowMap = useMemo(() => {
+        if (!reachId) return null;
+        const manifest = AssetCache.reaches.get(reachId);
+        const flowMapAsset = manifest?.requiredAssets?.flowMaps?.[0];
+        if (!flowMapAsset) return null;
+        const url = flowMapAsset.url.startsWith('http://') || flowMapAsset.url.startsWith('https://') || flowMapAsset.url.startsWith('/')
+            ? flowMapAsset.url
+            : `${REACH_API_BASE}/${reachId}/assets/${flowMapAsset.url}`;
+        return AssetCache.flowMaps.get(url) || null;
+    }, [reachId]);
 
     // --- Dynamic Dimensions based on Type ---
     const canyonWidth = biomeProfile.id === 'slotCanyon' ? biomeProfile.canyonWidth : width;
@@ -1089,6 +1104,8 @@ export default function TrackSegment({
             waterWidth={waterWidth}
             raftRef={raftRef}
             isNight={isNight}
+            flowMap={flowMap}
+            weatherWetnessRef={weatherWetnessRef}
         />
     );
 }
@@ -1112,6 +1129,8 @@ function TrackSegmentMeshes({
     waterWidth,
     raftRef,
     isNight = false,
+    flowMap,
+    weatherWetnessRef,
 }) {
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
     // Clone material for wall to apply RiverShader effects
@@ -1120,13 +1139,20 @@ function TrackSegmentMeshes({
     // Track player velocity for particle scaling (E4)
     const [playerVelocity, setPlayerVelocity] = useState(0);
 
+    // Vehicle position/velocity for FlowingWater
+    const vehiclePos = useMemo(() => new THREE.Vector3(), []);
+    const vehicleVelocity = useMemo(() => new THREE.Vector3(), []);
+
     // Update velocity each frame
     useFrame(() => {
         if (raftRef?.current) {
+            const t = raftRef.current.translation();
+            vehiclePos.set(t.x, t.y, t.z);
             const vel = raftRef.current.linvel?.();
             if (vel) {
                 const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
                 setPlayerVelocity(speed);
+                vehicleVelocity.set(vel.x, vel.y, vel.z);
             }
         }
     });
@@ -1156,7 +1182,10 @@ function TrackSegmentMeshes({
     // Update shader uniforms each frame
     useFrame((state) => {
         if (wallMaterialRef.current) {
-            updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime);
+            updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime, {
+                waterLevel: WALL_WATERLINE_Y,
+                weatherWetness: weatherWetnessRef?.current || 0,
+            });
         }
     });
 
@@ -1183,6 +1212,9 @@ function TrackSegmentMeshes({
                 biome={biome}
                 isNight={isNight}
                 baseColor={type === 'pond' ? "#1a4b6a" : undefined}
+                flowMap={flowMap}
+                vehiclePos={vehiclePos}
+                vehicleVelocity={vehicleVelocity}
             />
 
             {/* Vegetation - Trees with Sway */}

@@ -370,6 +370,24 @@
         }
       }
     },
+    "weather": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["clear", "rain", "fog", "storm"],
+          "description": "Current weather condition"
+        },
+        "intensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "Weather intensity 0-1"
+        }
+      }
+    },
     "spawns": {
       "type": "object",
       "required": ["start"],
@@ -437,6 +455,18 @@
             }
           }
         },
+        "noiseTextures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "url"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "url": { "type": "string", "minLength": 1 },
+              "type": { "type": "string" }
+            }
+          }
+        },
         "models": {
           "type": "array",
           "items": {
@@ -489,6 +519,17 @@
                 "default": "png"
               }
             }
+          }
+        },
+        "rockTextures": {
+          "type": "object",
+          "description": "Optional per-reach rock PBR texture overrides",
+          "properties": {
+            "color": { "type": "string", "description": "URL or filename for albedo map" },
+            "normal": { "type": "string", "description": "URL or filename for normal map" },
+            "roughness": { "type": "string", "description": "URL or filename for roughness map" },
+            "displacement": { "type": "string", "description": "URL or filename for displacement/height map" },
+            "ao": { "type": "string", "description": "URL or filename for ambient occlusion map" }
           }
         }
       }

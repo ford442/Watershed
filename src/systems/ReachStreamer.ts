@@ -29,6 +29,7 @@ export interface ReachRequiredAssets {
   audio: AssetRef[];
   shaders: AssetRef[];
   flowMaps?: AssetRef[];
+  noiseTextures?: AssetRef[];
 }
 
 export interface ReachTransition {
@@ -60,6 +61,7 @@ export interface StreamResult {
   manifest: ReachManifest;
   loaded: {
     textures: number;
+    noiseTextures: number;
     models: number;
     audio: number;
     shaders: number;
@@ -74,6 +76,7 @@ export interface StreamResult {
 
 export const AssetCache = {
   textures: new Map<string, THREE.Texture>(),
+  noiseTextures: new Map<string, THREE.Texture>(),
   models: new Map<string, THREE.Group>(),
   audioBuffers: new Map<string, AudioBuffer>(),
   shaders: new Map<string, string>(),
@@ -186,6 +189,30 @@ function preloadTexture(reachId: string, url: string): Promise<THREE.Texture> {
   });
 }
 
+function preloadNoiseTexture(reachId: string, url: string): Promise<THREE.Texture> {
+  const fullUrl = resolveAssetUrl(reachId, url);
+
+  return new Promise((resolve, reject) => {
+    if (AssetCache.noiseTextures.has(fullUrl)) {
+      return resolve(AssetCache.noiseTextures.get(fullUrl)!);
+    }
+
+    textureLoader.load(
+      fullUrl,
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        AssetCache.noiseTextures.set(fullUrl, texture);
+        resolve(texture);
+      },
+      undefined,
+      (err) => {
+        console.error(`[ReachStreamer] Failed to load noise texture: ${fullUrl}`, err);
+        reject(new Error(`Noise texture load failed: ${fullUrl}`));
+      }
+    );
+  });
+}
+
 function preloadModel(reachId: string, url: string): Promise<THREE.Group> {
   const fullUrl = resolveAssetUrl(reachId, url);
 
@@ -249,6 +276,30 @@ async function preloadShader(reachId: string, url: string): Promise<string> {
   return source;
 }
 
+function extractPngFlowMapData(texture: THREE.Texture): FlowMapData {
+  const image = texture.image as HTMLImageElement;
+  const width = image.width || 256;
+  const height = image.height || 256;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(image, 0, 0);
+  const imageData = ctx.getImageData(0, 0, width, height);
+
+  // Store RG channels as normalized float vectors [-1, 1]
+  const data = new Float32Array(width * height * 2);
+  for (let i = 0; i < width * height; i++) {
+    const r = imageData.data[i * 4] / 255;
+    const g = imageData.data[i * 4 + 1] / 255;
+    data[i * 2] = r * 2 - 1;
+    data[i * 2 + 1] = g * 2 - 1;
+  }
+
+  return { data, width, height };
+}
+
 async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.Texture | THREE.DataTexture> {
   const fullUrl = resolveAssetUrl(reachId, asset.url);
 
@@ -264,6 +315,12 @@ async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.T
         fullUrl,
         (texture) => {
           AssetCache.flowMaps.set(fullUrl, texture);
+          try {
+            const flowData = extractPngFlowMapData(texture);
+            AssetCache.flowMapData.set(fullUrl, flowData);
+          } catch (err) {
+            console.warn(`[ReachStreamer] Failed to extract CPU flowMap data for ${fullUrl}:`, err);
+          }
           resolve(texture);
         },
         undefined,
@@ -295,6 +352,14 @@ async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.T
     const arrayBuffer = await response.arrayBuffer();
     data = new Float32Array(arrayBuffer);
   }
+
+  // For CPU sampling, extract RG from RGBA DataTexture
+  const cpuData = new Float32Array(width * height * 2);
+  for (let i = 0; i < width * height; i++) {
+    cpuData[i * 2] = data[i * 4];
+    cpuData[i * 2 + 1] = data[i * 4 + 1];
+  }
+  AssetCache.flowMapData.set(fullUrl, { data: cpuData, width, height });
 
   const dataTexture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
   dataTexture.needsUpdate = true;
@@ -335,6 +400,7 @@ export const ReachStreamer = {
 
       // Parse required assets
       const textures = manifest.requiredAssets?.textures || [];
+      const noiseTextures = manifest.requiredAssets?.noiseTextures || [];
       const models = manifest.requiredAssets?.models || [];
       const audio = manifest.requiredAssets?.audio || [];
       const shaders = manifest.requiredAssets?.shaders || [];
@@ -343,6 +409,13 @@ export const ReachStreamer = {
       // Download everything concurrently, catching individual failures
       const texturePromises = textures.map((asset) =>
         preloadTexture(reachId, asset.url).catch((err) => {
+          errors.push(err.message);
+          return null;
+        })
+      );
+
+      const noiseTexturePromises = noiseTextures.map((asset) =>
+        preloadNoiseTexture(reachId, asset.url).catch((err) => {
           errors.push(err.message);
           return null;
         })
@@ -376,9 +449,10 @@ export const ReachStreamer = {
         })
       );
 
-      const [textureResults, modelResults, audioResults, shaderResults, flowMapResults] =
+      const [textureResults, noiseTextureResults, modelResults, audioResults, shaderResults, flowMapResults] =
         await Promise.all([
           Promise.all(texturePromises),
+          Promise.all(noiseTexturePromises),
           Promise.all(modelPromises),
           Promise.all(audioPromises),
           Promise.all(shaderPromises),
@@ -392,6 +466,7 @@ export const ReachStreamer = {
         manifest,
         loaded: {
           textures: textureResults.filter(Boolean).length,
+          noiseTextures: noiseTextureResults.filter(Boolean).length,
           models: modelResults.filter(Boolean).length,
           audio: audioResults.filter(Boolean).length,
           shaders: shaderResults.filter(Boolean).length,
@@ -427,6 +502,7 @@ export const ReachStreamer = {
     }
 
     const textures = manifest.requiredAssets?.textures || [];
+    const noiseTextures = manifest.requiredAssets?.noiseTextures || [];
     const models = manifest.requiredAssets?.models || [];
     const audio = manifest.requiredAssets?.audio || [];
     const shaders = manifest.requiredAssets?.shaders || [];
@@ -439,6 +515,16 @@ export const ReachStreamer = {
       if (tex) {
         tex.dispose();
         AssetCache.textures.delete(fullUrl);
+      }
+    }
+
+    // Dispose noise textures
+    for (const asset of noiseTextures) {
+      const fullUrl = resolveAssetUrl(reachId, asset.url);
+      const tex = AssetCache.noiseTextures.get(fullUrl);
+      if (tex) {
+        tex.dispose();
+        AssetCache.noiseTextures.delete(fullUrl);
       }
     }
 
@@ -472,6 +558,7 @@ export const ReachStreamer = {
         flow.dispose();
         AssetCache.flowMaps.delete(fullUrl);
       }
+      AssetCache.flowMapData.delete(fullUrl);
     }
 
     // Remove manifest

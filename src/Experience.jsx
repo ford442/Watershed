@@ -23,6 +23,7 @@ import WaterReflection from "./components/WaterReflection";
 import WaterInteraction from "./components/WaterInteraction";
 import { PostProcessingEffects } from "./components/PostProcessingEffects";
 import { useCameraShake } from "./hooks/useCameraShake";
+import { initAudio } from "./systems/AudioSystem";
 
 const DAM_RELEASE_SCHEDULE = [
   { hour: 6, release: 0.08 },
@@ -63,6 +64,12 @@ const InnerExperience = () => {
   const [biome, setBiome] = useState('summer');
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
+  const { camera } = useThree();
+
+  // Initialize Three.js audio listener on camera
+  useEffect(() => {
+    initAudio(camera);
+  }, [camera]);
 
   // Level loading state
   const [levelUrl, setLevelUrl] = useState(null);
