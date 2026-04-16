@@ -1,6 +1,6 @@
 import { PointerLockControls, KeyboardControls } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
