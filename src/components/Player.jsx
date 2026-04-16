@@ -83,6 +83,19 @@ const Player = forwardRef((props, ref) => {
     if (rb.current) {
       physicsReady.current = true;
       const pos = rb.current.translation();
+
+      // --- NEW: DEVELOPMENT KILL PLANE ---
+      // If the player falls through the world or off the track, reset them.
+      if (pos.y < -20) {
+        // Teleport back to safe spawn
+        rb.current.setTranslation({ x: 0, y: 18, z: -10 }, true);
+        // Kill all momentum so they drop cleanly
+        rb.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        rb.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        return; // Early exit this frame
+      }
+      // -----------------------------------
+
       camera.position.set(pos.x, pos.y + PLAYER.CAMERA_HEIGHT, pos.z);
 
       const { forward, backward, left, right, jump } = getKeys();

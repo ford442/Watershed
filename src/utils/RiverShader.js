@@ -208,6 +208,8 @@ export function extendRiverMaterial(material, options = {}) {
                 material.userData.shader = null;
                 material.userData.shaderFailed = true;
                 console.error('RiverShader: Error compiling shader injection:', error);
+                console.error('RiverShader: Vertex shader:', shader?.vertexShader?.substring?.(0, 500));
+                console.error('RiverShader: Fragment shader:', shader?.fragmentShader?.substring?.(0, 500));
                 fallbackExtend(material);
             }
         };

@@ -40,6 +40,10 @@ export default function FlowingWater({
 
   // Built-in fallback shader with bioluminescence
   const builtinFragmentShader = useMemo(() => `
+    #ifdef GL_ES
+    precision mediump float;
+    #endif
+
     uniform float time;
     uniform float flowSpeed;
     uniform vec3 cameraPos;
@@ -213,7 +217,12 @@ export default function FlowingWater({
             gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
           }
         `,
-        fragmentShader,
+        fragmentShader: `
+          #ifdef GL_ES
+          precision mediump float;
+          #endif
+          ${fragmentShader}
+        `,
       });
 
       // Expose flow field sampler
@@ -233,7 +242,8 @@ export default function FlowingWater({
       materialRef.current = mat;
       return mat;
     } catch (e) {
-      console.warn('[FlowingWater] Shader error, falling back to basic material:', e);
+      console.error('[FlowingWater] Shader compilation error:', e);
+      console.error('[FlowingWater] Fragment shader source:', fragmentShader);
       return new THREE.MeshBasicMaterial({
         color: new THREE.Color(effectiveWaterColor),
         transparent: true,
