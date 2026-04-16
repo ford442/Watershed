@@ -40,10 +40,6 @@ export default function FlowingWater({
 
   // Built-in fallback shader with bioluminescence
   const builtinFragmentShader = useMemo(() => `
-    #ifdef GL_ES
-    precision mediump float;
-    #endif
-
     uniform float time;
     uniform float flowSpeed;
     uniform vec3 cameraPos;
@@ -217,12 +213,7 @@ export default function FlowingWater({
             gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
           }
         `,
-        fragmentShader: `
-          #ifdef GL_ES
-          precision mediump float;
-          #endif
-          ${fragmentShader}
-        `,
+        fragmentShader,
       });
 
       // Expose flow field sampler
