@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { RAFT, WATER_DENSITY, GRAVITY, HUMAN_DENSITY } from '../constants/game';
+import { RAFT, WATER_DENSITY, GRAVITY, HUMAN_DENSITY, PLAYER_SPAWN } from '../constants/game';
 
 // Buoyancy and water physics configuration
 // Uses scientifically accurate densities from Wolfram Alpha:
@@ -195,7 +195,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
   useEffect(() => {
     if (bodyRef.current) {
-      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(0, 5, 0));
+      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
       vehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
       bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
       tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
@@ -633,7 +633,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         restitution={0.3}
         linearDamping={2.5}
         angularDamping={3}
-        position={[0, 5, 0]}
+        position={PLAYER_SPAWN.position}
       >
         {/* Raft deck */}
         <mesh castShadow receiveShadow>

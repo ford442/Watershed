@@ -1,0 +1,42 @@
+[    1168ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[    1785ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:3002/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=f03c0fdd:20102
+[    2154ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://127.0.0.1:3002/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=f03c0fdd:2518
+[    2179ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3002/favicon.ico:0
+[    2528ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://127.0.0.1:3002/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=f03c0fdd:2516
+[    2713ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[    2882ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://127.0.0.1:3002/src/components/TrackManager.jsx:307
+[    3814ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[    4088ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   10017ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   10017ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   14450ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   14450ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   16325ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   16325ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   18479ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   18479ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   20480ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   20480ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   23234ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   23234ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   25493ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   25493ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   29147ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   29148ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   30955ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   30955ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   33048ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   33048ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   35544ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   37667ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3002/:0
+[   37668ms] [WARNING] [.WebGL-0x1dbc000f4e00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3002/:0
+[   38345ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   43646ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   46880ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   50958ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   55176ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   58411ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   61819ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   66683ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   68485ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193
+[   70689ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3002/src/components/TrackManager.jsx:193

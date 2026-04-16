@@ -24,6 +24,11 @@ import WaterInteraction from "./components/WaterInteraction";
 import { PostProcessingEffects } from "./components/PostProcessingEffects";
 import { useCameraShake } from "./hooks/useCameraShake";
 
+const DAM_RELEASE_SCHEDULE = [
+  { hour: 6, release: 0.08 },
+  { hour: 14, release: 0.12 },
+];
+
 // Base lighting configuration
 const BIOME_LIGHTING = {
   summer: {
@@ -207,10 +212,7 @@ const InnerExperience = () => {
         <FlowForecast
           temperature={8}
           snowpackIndex={0.65}
-          damReleaseSchedule={[
-            { hour: 6, release: 0.08 },
-            { hour: 14, release: 0.12 },
-          ]}
+          damReleaseSchedule={DAM_RELEASE_SCHEDULE}
           onForecastChange={setForecastSamples}
         />
 

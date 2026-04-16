@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { WATER_LEVEL } from '../constants/game';
+import { WATER_LEVEL, PLAYER_SPAWN } from '../constants/game';
 
 // Slope detection configuration
 const RAYCAST_ORIGIN_OFFSET = 0.5;
@@ -152,7 +152,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
   useEffect(() => {
     if (bodyRef.current) {
-      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(0, 5, 0));
+      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
       // Set initial material
       vehicle.current.setSurfaceMaterial(SurfaceMaterial.ROCK);
     }
@@ -518,7 +518,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         ref={bodyRef}
         type="dynamic"
         colliders="capsule"
-        position={[0, 5, 0]}
+        position={PLAYER_SPAWN.position}
         mass={75}
         friction={0.04}
         restitution={0.15}

@@ -1,0 +1,411 @@
+[     643ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=f03c0fdd:20102
+[    1115ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://127.0.0.1:3001/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=f03c0fdd:2518
+[    1212ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3001/favicon.ico:0
+[    1492ms] [WARNING] [.WebGL-0x1dbc000f2a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:3001/:0
+[    1524ms] [WARNING] [.WebGL-0x1dbc000f2a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:3001/:0
+[    1614ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=f03c0fdd:2516
+[    1798ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[    2011ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://127.0.0.1:3001/src/components/TrackManager.jsx:307
+[    3082ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[    3435ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   10926ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   15472ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   15473ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   15473ms] [WARNING] [.WebGL-0x1dbc000f2a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:3001/:0
+[   15483ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   15483ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   15483ms] [WARNING] [.WebGL-0x1dbc000f2a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://127.0.0.1:3001/:0
+[   17642ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   19987ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   19987ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   20568ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   22113ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   22113ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   22649ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   24432ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   24432ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   24988ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   27183ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   27183ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   27726ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   29801ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   29801ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   30313ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   31895ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   31895ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   32443ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   34397ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   34397ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   34934ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   36546ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   36546ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   37006ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   38751ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[   38751ms] [WARNING] [.WebGL-0x1dbc000f2a00] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[   39269ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   41451ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   43117ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   44769ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   46477ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   48500ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   50405ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   52460ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   54295ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   56127ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   58015ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   59870ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   61758ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   63621ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   65390ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   67162ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   68893ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   71006ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   72780ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   74493ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   76152ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   77888ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   79446ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   81103ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   82939ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   84519ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   86405ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   94050ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   96473ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[   99051ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  101661ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  104610ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  107273ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  110436ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  113533ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  116038ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  120293ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  125432ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  128216ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  130660ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  133904ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  136171ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  136186ms] [ERROR] Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:1870
+[  138570ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  140794ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  145160ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  149417ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  151883ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  154077ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  156791ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  158883ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  160851ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  162885ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  165114ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  167597ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  170266ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  172951ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  176071ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  178384ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  181701ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  184897ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  190010ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  192702ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  195446ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  198344ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  201074ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  204468ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  210814ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  212645ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  214736ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  216904ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  219079ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  221084ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  222995ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  225165ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  227002ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  229106ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  231058ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  233413ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  235537ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  237920ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  239959ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  242486ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  244649ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  246422ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  248494ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  250646ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  252486ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  254603ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  256453ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  258545ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  260372ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  262513ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  264483ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  266957ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  267003ms] [ERROR] Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:1870
+[  270819ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  272657ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  274624ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  276533ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  278390ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  280618ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  282619ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  284685ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  286432ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  289840ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  292040ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  294523ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  296316ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  298297ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  300051ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  302334ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  304269ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  305981ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  307727ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  309509ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  311284ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  313302ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  315299ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  317072ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  318854ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  320865ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  322729ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  324593ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  327871ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  330339ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  332276ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  334164ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  336085ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  338297ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  340266ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  342792ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  344683ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  346675ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  348510ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  350493ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  352478ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  354320ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  356452ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  358263ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  360355ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  362456ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  366019ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  367861ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  369865ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  371672ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  373431ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  375171ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  375201ms] [ERROR] Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:1870
+[  377106ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  379107ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  381117ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  383174ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  384843ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  388049ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  390792ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  393219ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  395680ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  397868ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  399887ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  401962ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  404059ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  405873ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  407619ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  409386ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  411256ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  412946ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  414887ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  416750ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  418325ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  420060ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  421643ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  423274ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  425234ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  426919ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  428675ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  430596ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  432536ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  434302ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  436254ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  438052ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  439996ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  441721ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  443615ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  445385ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  447571ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  450438ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  452405ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  454505ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  456359ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  457906ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  459699ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  461388ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  462910ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  464627ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  466407ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  468164ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  470151ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  472541ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  474572ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  476007ms] [ERROR] Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:1870
+[  476093ms] [ERROR] [Global Error Handler] {message: Uncaught ReferenceError: DAM_RELEASE_SCHEDULE is not defined, source: http://127.0.0.1:3001/src/Experience.jsx?t=1776326771415, lineno: 251, colno: 31, error: ReferenceError: DAM_RELEASE_SCHEDULE is not defined
+    at InnerExperience (http://127.0.0.1:3001/s…} @ http://127.0.0.1:3001/src/index.tsx:5
+[  476102ms] ReferenceError: DAM_RELEASE_SCHEDULE is not defined
+    at InnerExperience (http://127.0.0.1:3001/src/Experience.jsx?t=1776326771415:251:31)
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateFunctionComponent (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4850:22)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:5859:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46)
+[  476131ms] [ERROR] [ErrorBoundary] Error caught: ReferenceError: DAM_RELEASE_SCHEDULE is not defined
+    at InnerExperience (http://127.0.0.1:3001/src/Experience.jsx?t=1776326771415:251:31)
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateFunctionComponent (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4850:22)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:5859:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:12
+[  476136ms] [ERROR] [ErrorBoundary] Error caught: ReferenceError: DAM_RELEASE_SCHEDULE is not defined
+    at InnerExperience (http://127.0.0.1:3001/src/Experience.jsx?t=1776326771415:251:31)
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateFunctionComponent (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4850:22)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:5859:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:12
+[  476144ms] [ERROR] %o
+
+%s
+
+%s
+ ReferenceError: DAM_RELEASE_SCHEDULE is not defined
+    at InnerExperience (http://127.0.0.1:3001/src/Experience.jsx?t=1776326771415:251:31)
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateFunctionComponent (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4850:22)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:5859:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) The above error occurred in the <CanvasImpl> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=f03c0fdd:7000
+[  476144ms] [ERROR] [ErrorBoundary] Component stack: 
+    at CanvasImpl (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:14437:3)
+    at m (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:12349:9)
+    at Canvas (<anonymous>)
+    at ErrorBoundary (http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:5:5)
+    at App (http://127.0.0.1:3001/src/App.tsx:31:39) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:20
+[  476145ms] [ERROR] [ErrorBoundary] Error details: ReferenceError: DAM_RELEASE_SCHEDULE is not defined
+    at InnerExperience (http://127.0.0.1:3001/src/Experience.jsx?t=1776326771415:251:31)
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateFunctionComponent (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4850:22)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:5859:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:21
+[  476832ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=f03c0fdd:17742
+[  478998ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  480792ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://127.0.0.1:3001/src/components/TrackManager.jsx:307
+[  481705ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  482372ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  488291ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  488291ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  488294ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  488294ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  489872ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  489872ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  493592ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  493593ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  495709ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  495709ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  497832ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  497832ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  499831ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  499831ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  502200ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  502200ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  504064ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  504064ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  506323ms] [ERROR] [Global Error Handler] {message: Uncaught ReferenceError: PLAYER_SPAWN is not defined, source: http://127.0.0.1:3001/src/vehicles/RunnerVehicle.tsx?t=1776326805378, lineno: 384, colno: 19, error: ReferenceError: PLAYER_SPAWN is not defined
+    at http://127.0.0.1:3001/src/vehicles/RunnerVehicle…} @ http://127.0.0.1:3001/src/index.tsx:5
+[  506332ms] ReferenceError: PLAYER_SPAWN is not defined
+    at http://127.0.0.1:3001/src/vehicles/RunnerVehicle.tsx?t=1776326805378:384:19
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateForwardRef (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4691:21)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:6057:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46)
+[  506350ms] [ERROR] [ErrorBoundary] Error caught: ReferenceError: PLAYER_SPAWN is not defined
+    at http://127.0.0.1:3001/src/vehicles/RunnerVehicle.tsx?t=1776326805378:384:19
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateForwardRef (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4691:21)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:6057:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:12
+[  506352ms] [ERROR] [ErrorBoundary] Error caught: ReferenceError: PLAYER_SPAWN is not defined
+    at http://127.0.0.1:3001/src/vehicles/RunnerVehicle.tsx?t=1776326805378:384:19
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateForwardRef (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4691:21)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:6057:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:12
+[  506355ms] [ERROR] %o
+
+%s
+
+%s
+ ReferenceError: PLAYER_SPAWN is not defined
+    at http://127.0.0.1:3001/src/vehicles/RunnerVehicle.tsx?t=1776326805378:384:19
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateForwardRef (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4691:21)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:6057:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) The above error occurred in the <CanvasImpl> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=f03c0fdd:7000
+[  506356ms] [ERROR] [ErrorBoundary] Component stack: 
+    at CanvasImpl (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:14437:3)
+    at m (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:12349:9)
+    at Canvas (<anonymous>)
+    at ErrorBoundary (http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:5:5)
+    at App (http://127.0.0.1:3001/src/App.tsx:31:39) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:20
+[  506356ms] [ERROR] [ErrorBoundary] Error details: ReferenceError: PLAYER_SPAWN is not defined
+    at http://127.0.0.1:3001/src/vehicles/RunnerVehicle.tsx?t=1776326805378:384:19
+    at react-stack-bottom-frame (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:10484:20)
+    at renderWithHooks (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:3272:24)
+    at updateForwardRef (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:4691:21)
+    at beginWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:6057:20)
+    at runWithFiberInDEV (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:915:18)
+    at performUnitOfWork (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9391:88)
+    at workLoopSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9252:43)
+    at renderRootSync (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:9235:13)
+    at performWorkOnRoot (http://127.0.0.1:3001/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=f03c0fdd:8879:46) @ http://127.0.0.1:3001/src/components/ErrorBoundary.tsx:21
+[  506359ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image. @ http://127.0.0.1:3001/:0
+[  506360ms] [WARNING] [.WebGL-0x1dbc000f3000] GL_INVALID_OPERATION: glBlitFramebuffer: Depth/stencil buffer format combination not allowed for blit. @ http://127.0.0.1:3001/:0
+[  506943ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://127.0.0.1:3001/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=f03c0fdd:17742
+[  538556ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  540178ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://127.0.0.1:3001/src/components/TrackManager.jsx:307
+[  541160ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193
+[  541875ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://127.0.0.1:3001/src/components/TrackManager.jsx:193

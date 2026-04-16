@@ -1,0 +1,29 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - generic: SYSTEM INITIALIZATION
+      - generic: LOADING ASSETS... 1%
+      - progressbar "Asset loading progress"
+  - generic [ref=e7]:
+    - heading "WATERSHED" [level=1] [ref=e8]
+    - button "Start Game - Click or Press Enter to engage pointer lock" [active] [ref=e10] [cursor=pointer]: CLICK TO ENGAGE / PRESS ENTER
+    - list "Game Controls" [ref=e11]:
+      - 'listitem "Move: A, S, D, Arrow keys, or Right Click" [ref=e12]':
+        - generic [ref=e13]:
+          - generic [ref=e14]: A
+          - generic [ref=e15]: S
+          - generic [ref=e16]: D
+          - generic [ref=e17]: ARROWS
+          - generic [ref=e18]: R-CLICK
+        - generic [ref=e19]: MOVE
+      - 'listitem "Jump: W or Space key" [ref=e20]':
+        - generic [ref=e21]:
+          - generic [ref=e22]: W
+          - generic [ref=e23]: SPACE
+        - generic [ref=e24]: JUMP
+      - 'listitem "Look: Mouse movement" [ref=e25]':
+        - generic [ref=e27]: MOUSE
+        - generic [ref=e28]: LOOK
+      - 'listitem "Pause: Escape key" [ref=e29]':
+        - generic [ref=e31]: ESC
+        - generic [ref=e32]: PAUSE

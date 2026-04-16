@@ -1,0 +1,66 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic: Flow Forecast
+            - generic:
+              - generic: Flooded
+            - generic: Peak flow 1.48x, 24 risky hours in the next 24h
+            - generic:
+              - generic:
+                - generic: H0
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H1
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H2
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H3
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H4
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H5
+                - generic: Flooded
+                - generic: 1.44x
+    - generic [ref=e33]:
+      - generic:
+        - generic: "FPS: 60"
+        - generic: "Quality: high"
+        - generic: "Particles: 1000"
+        - generic: "Reflections: ON"
+        - generic: "God Rays: ON"
+        - generic: "Memory: 0MB"
+  - generic [ref=e7]:
+    - heading "WATERSHED" [level=1] [ref=e8]
+    - button "Start Game - Click or Press Enter to engage pointer lock" [active] [ref=e10] [cursor=pointer]: CLICK TO ENGAGE / PRESS ENTER
+    - list "Game Controls" [ref=e11]:
+      - 'listitem "Move: A, S, D, Arrow keys, or Right Click" [ref=e12]':
+        - generic [ref=e13]:
+          - generic [ref=e14]: A
+          - generic [ref=e15]: S
+          - generic [ref=e16]: D
+          - generic [ref=e17]: ARROWS
+          - generic [ref=e18]: R-CLICK
+        - generic [ref=e19]: MOVE
+      - 'listitem "Jump: W or Space key" [ref=e20]':
+        - generic [ref=e21]:
+          - generic [ref=e22]: W
+          - generic [ref=e23]: SPACE
+        - generic [ref=e24]: JUMP
+      - 'listitem "Look: Mouse movement" [ref=e25]':
+        - generic [ref=e27]: MOUSE
+        - generic [ref=e28]: LOOK
+      - 'listitem "Pause: Escape key" [ref=e29]':
+        - generic [ref=e31]: ESC
+        - generic [ref=e32]: PAUSE
