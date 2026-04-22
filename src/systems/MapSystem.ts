@@ -182,6 +182,55 @@ export const DEFAULT_MAP_CONFIG: MapConfig = {
 };
 
 // =============================================================================
+// SEGMENT PROGRESSION CONFIG
+// =============================================================================
+
+/**
+ * Per-segment configuration consumed by TrackManager to drive treadmill generation.
+ * This is intentionally separate from BaseMapChunk: it is a lightweight config
+ * object that describes HOW a segment should be built, not the built geometry.
+ */
+export interface SegmentProgressionConfig {
+  biome: string;
+  type: 'normal' | 'waterfall' | 'splash' | 'pond';
+  width: number;
+  waterWidth: number;
+  meanderStrength: number;
+  verticalBias: number;
+  flowSpeed: number;
+  treeDensity: number;
+  rockDensity: 'low' | 'high';
+  forwardMomentum?: number;
+  particleCount?: number;
+  cameraShake?: number;
+}
+
+export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
+  biome: 'summer',
+  type: 'normal',
+  width: 35,
+  waterWidth: 10,
+  meanderStrength: 1.2,
+  verticalBias: -0.5,
+  flowSpeed: 1,
+  treeDensity: 1,
+  rockDensity: 'low',
+};
+
+/**
+ * A single entry in a segment-progression override table.
+ * Ranges are inclusive on both ends. If `indexTo` is omitted, the entry
+ * matches all indices >= indexFrom (open-ended catch-all).
+ * getChunkConfig uses "first match wins" — place more-specific ranges before
+ * broader ones in the array.
+ */
+export interface SegmentRange {
+  indexFrom: number;
+  indexTo?: number;
+  config: Partial<SegmentProgressionConfig>;
+}
+
+// =============================================================================
 // CHUNK GENERATION UTILITIES
 // =============================================================================
 
@@ -348,6 +397,12 @@ export interface MapManager {
   update(playerPosition: THREE.Vector3): void;
   /** Get flow direction at position */
   getFlowAtPosition(position: THREE.Vector3): THREE.Vector3;
+  /**
+   * Return the lightweight progression config for a given segment index.
+   * TrackManager uses this instead of inline getProgressionConfig() to determine
+   * biome, type, width, meander, etc. for each generated segment.
+   */
+  getChunkConfig(index: number): SegmentProgressionConfig;
 }
 
 // =============================================================================
@@ -359,14 +414,32 @@ export class DefaultMapManager implements MapManager {
   currentChunkIndex = 0;
   private config: MapConfig;
   private nextChunkId = 0;
+  private progression: SegmentRange[];
 
-  constructor(config: Partial<MapConfig> = {}) {
+  constructor(config: Partial<MapConfig> = {}, progression: SegmentRange[] = []) {
     this.config = { ...DEFAULT_MAP_CONFIG, ...config };
+    this.progression = progression;
 
     // Generate initial chunks
     for (let i = 0; i < this.config.chunksAhead + 1; i++) {
       this.chunks.push(this.generateChunk(i));
     }
+  }
+
+  /**
+   * Return the lightweight SegmentProgressionConfig for the given index.
+   * Iterates the progression array with "first match wins" semantics, so
+   * callers should place more-specific ranges before broader catch-alls.
+   */
+  getChunkConfig(index: number): SegmentProgressionConfig {
+    const base: SegmentProgressionConfig = { ...DEFAULT_SEGMENT_PROGRESSION };
+    for (const range of this.progression) {
+      const to = range.indexTo ?? Infinity;
+      if (index >= range.indexFrom && index <= to) {
+        return { ...base, ...range.config };
+      }
+    }
+    return base;
   }
 
   getChunkAtPosition(position: THREE.Vector3): BaseMapChunk | null {
@@ -734,6 +807,29 @@ export class JSONMapManager implements MapManager {
     const chunk = this.getChunkAtPosition(position);
     if (!chunk?.curve) return new THREE.Vector3(0, 0, -1);
     return chunk.curve.getTangent(0.5);
+  }
+
+  /**
+   * Map a LevelSegment entry to SegmentProgressionConfig.
+   * Returns default values for any field not specified in the JSON.
+   */
+  getChunkConfig(index: number): SegmentProgressionConfig {
+    const base: SegmentProgressionConfig = { ...DEFAULT_SEGMENT_PROGRESSION };
+    if (!this.levelData) return base;
+    const seg = this.levelData.segments.find(s => s.index === index);
+    if (!seg) return base;
+    return {
+      ...base,
+      biome: seg.biomeOverride ?? base.biome,
+      type: seg.type ?? base.type,
+      width: seg.width ?? base.width,
+      meanderStrength: seg.meanderStrength ?? base.meanderStrength,
+      verticalBias: seg.verticalBias ?? base.verticalBias,
+      flowSpeed: seg.physics?.waterFlowIntensity ?? base.flowSpeed,
+      forwardMomentum: seg.forwardMomentum,
+      particleCount: seg.effects?.particleCount,
+      cameraShake: seg.effects?.cameraShake,
+    };
   }
 }
 
