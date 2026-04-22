@@ -873,16 +873,10 @@ export default function TrackSegment({
         const colors = new Float32Array(positions.count * 3);
         const mossMask = new Float32Array(positions.count); // Moss/lichen mask channel
 
-        // Color palette - waterline (dark) to rim (light)
-        const waterlineColor = biome === 'autumn' ? new THREE.Color('#3a2820') : new THREE.Color('#3a4038');
-        const wallDarkColor = biome === 'autumn' ? new THREE.Color('#584028') : new THREE.Color('#485058');
-        const wallMidColor = biome === 'autumn' ? new THREE.Color('#7a6040') : new THREE.Color('#788088');
-        const wallLightColor = biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#b0b8a8');
-        const rimColor = biome === 'autumn' ? new THREE.Color('#d8c898') : new THREE.Color('#d0d8c8');
-
-        // Moss/lichen colors for vertex color bands
-        const mossColor = biome === 'autumn' ? new THREE.Color('#5a6840') : new THREE.Color('#4a6848');
-        const lichenColor = biome === 'autumn' ? new THREE.Color('#7a8860') : new THREE.Color('#6a8870');
+        // Color palette - three-stop gradient from waterline to rim
+        const waterlineColor = new THREE.Color(0.08, 0.10, 0.07);
+        const midWallColor = new THREE.Color(0.25, 0.22, 0.18);
+        const rimColor = new THREE.Color(0.55, 0.48, 0.38);
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
@@ -900,20 +894,12 @@ export default function TrackSegment({
             const rimY = waterY + (isSlotCanyon ? 22 : 15);
             const heightAboveWater = Math.max(0, Math.min(1, (yHeight - 2 - waterY) / (rimY - waterY)));
 
-            // Multi-band gradient from waterline to rim
+            // Three-stop linear gradient from waterline to rim
             const c = new THREE.Color();
-            if (heightAboveWater < 0.15) {
-                // Waterline zone: dark wet rock
-                c.copy(waterlineColor).lerp(wallDarkColor, heightAboveWater / 0.15);
-            } else if (heightAboveWater < 0.40) {
-                // Lower wall: transitioning to mid tones
-                c.copy(wallDarkColor).lerp(wallMidColor, (heightAboveWater - 0.15) / 0.25);
-            } else if (heightAboveWater < 0.70) {
-                // Mid wall: main wall color
-                c.copy(wallMidColor).lerp(wallLightColor, (heightAboveWater - 0.40) / 0.30);
+            if (heightAboveWater < 0.5) {
+                c.copy(waterlineColor).lerp(midWallColor, heightAboveWater / 0.5);
             } else {
-                // Upper wall to rim: light, weathered stone
-                c.copy(wallLightColor).lerp(rimColor, (heightAboveWater - 0.70) / 0.30);
+                c.copy(midWallColor).lerp(rimColor, (heightAboveWater - 0.5) / 0.5);
             }
 
             // Noise variation for natural look
@@ -922,19 +908,11 @@ export default function TrackSegment({
             const detailNoise = noise1 * 0.08 + noise2 * 0.04;
             c.multiplyScalar(0.92 + detailNoise);
 
-            // Moss/lichen bands at waterline - use sine waves for organic bands
+            // Organic band masks for shader-driven moss/lichen
             const bandNoise = Math.sin(zLocal * 0.3 + xLocal * 0.5) * 0.5 + 0.5;
             const bandNoise2 = Math.cos(zLocal * 0.7 - xLocal * 0.4) * 0.5 + 0.5;
             const mossBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.08) / 0.12) * bandNoise;
             const lichenBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.25) / 0.10) * bandNoise2;
-
-            // Apply moss/lichen vertex color tinting
-            if (mossBand > 0.3) {
-                c.lerp(mossColor, mossBand * 0.35);
-            }
-            if (lichenBand > 0.3) {
-                c.lerp(lichenColor, lichenBand * 0.25);
-            }
 
             // Store moss mask for shader use (0-1 range)
             mossMask[i] = Math.max(mossBand, lichenBand * 0.7);

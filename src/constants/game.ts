@@ -94,7 +94,7 @@ export const SHADERS = {
     WATER_DEEP_COLOR: '#0d4a5a',
     WATER_FOAM_COLOR: '#dff4ff',
     WATER_EDGE_COLOR: '#8be8ff',
-    MOSS_COLOR: '#4a6b44',
+    MOSS_COLOR: '#2d471f',
     LICHEN_COLOR: '#7a9a78',
     SLOT_ROCK_BASE: '#a35f39',
     SLOT_ROCK_SHADOW: '#4c2314',

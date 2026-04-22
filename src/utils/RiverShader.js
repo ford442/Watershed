@@ -101,6 +101,7 @@ export function extendRiverMaterial(material, options = {}) {
                 varying vec2 vUv2;
                 #endif` : '',
                     enableMoss ? 'varying float vMossMask;' : '',
+                    enableMoss ? 'varying vec3 vWorldNormal;' : '',
                     'varying float vHeightAboveWater;',
                     'varying vec3 vWorldPos;',
                     'varying vec3 vViewDir;',
@@ -117,6 +118,7 @@ export function extendRiverMaterial(material, options = {}) {
                 vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                 vHeightAboveWater = vWorldPos.y - uWaterLevel;
                 vViewDir = normalize(cameraPosition - vWorldPos);
+                ${enableMoss ? 'vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);' : ''}
                 
                 ${enableMoss ? 'vMossMask = mossMask;' : ''}
                 ${enableTriplanar ? `
@@ -144,6 +146,7 @@ export function extendRiverMaterial(material, options = {}) {
                     'uniform float uColorVariationStrength;',
                     'varying float vHeightAboveWater;',
                     enableMoss ? 'varying float vMossMask;' : '',
+                    enableMoss ? 'varying vec3 vWorldNormal;' : '',
                     enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 varying vec2 vUv2;
@@ -200,7 +203,7 @@ export function extendRiverMaterial(material, options = {}) {
                     #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                         // Triplanar blend: waterline uses secondary UV, rim uses standard UV
                         vec4 triplanarSample = texture2D( map, vUv2 + parallaxOffset );
-                        float triplanarBlend = smoothstep( 0.0, 8.0, vHeightAboveWater );
+                        float triplanarBlend = smoothstep( 6.0, 14.0, vHeightAboveWater );
                         sampledDiffuseColor = mix( triplanarSample, sampledDiffuseColor, triplanarBlend * 0.6 + 0.2 );
                     #endif` : ''}
                     diffuseColor *= sampledDiffuseColor;
@@ -235,9 +238,13 @@ export function extendRiverMaterial(material, options = {}) {
                     float intensity = vMossMask * uMossIntensity * (0.7 + mossNoise * 0.3);
                     intensity *= (0.8 + mossNoise2 * 0.2);
                     
-                    // Height-based fade: moss thins out as wall rises
-                    float mossHeightFade = 1.0 - smoothstep(0.0, 8.0, vHeightAboveWater);
+                    // Height-based fade: tight 2-4 unit band above waterline
+                    float mossHeightFade = 1.0 - smoothstep(2.0, 4.0, vHeightAboveWater);
                     intensity *= mossHeightFade;
+                    
+                    // Normal-based mask: prefer vertical/side-facing wall surfaces
+                    float normalFactor = 1.0 - smoothstep(0.2, 0.7, vWorldNormal.y);
+                    intensity *= normalFactor;
                     
                     // Apply moss color
                     diffuseColor.rgb = mix(diffuseColor.rgb, growthColor, intensity);
