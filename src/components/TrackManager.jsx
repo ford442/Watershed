@@ -11,6 +11,8 @@ import { AssetCache } from '../systems/ReachStreamer';
 import { BIOMES, getNextBiome } from '../constants/biomes';
 import { useNightMode } from '../hooks/useNightMode';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
+import { DefaultMapManager } from '../systems/MapSystem';
+import { MEANDER_TO_WATERFALL_PROGRESSION } from '../maps/meander_to_waterfall';
 
 const POOL_SIZE = GENERATION.POOL_SIZE;
 const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
@@ -21,73 +23,6 @@ const INITIAL_POINTS = [
     new THREE.Vector3(2, -8, -25),
     new THREE.Vector3(8, -12, -60),
 ];
-
-function getProgressionConfig(index) {
-    const base = {
-        biome: 'summer',
-        type: 'normal',
-        width: 35,
-        waterWidth: 10,
-        meanderStrength: 1.2,
-        verticalBias: -0.5,
-        flowSpeed: 1,
-        treeDensity: 1,
-        rockDensity: 'low',
-    };
-
-    if (index <= 12) return base;
-    if (index === 13) return { ...base, meanderStrength: 0.2, verticalBias: -1.2, flowSpeed: 1.15 };
-    if (index === 14) return {
-        ...base,
-        type: 'waterfall',
-        verticalBias: -3,
-        meanderStrength: 0,
-        forwardMomentum: 0.15,
-        particleCount: 400,
-        cameraShake: 0.5,
-        flowSpeed: 1.6,
-    };
-    if (index === 15) return {
-        ...base,
-        type: 'splash',
-        biome: 'autumn',
-        verticalBias: -0.2,
-        meanderStrength: 0.5,
-        width: 70,
-        waterWidth: 18,
-        flowSpeed: 0.3,
-    };
-    if (index >= 16 && index <= 18) return {
-        ...base,
-        type: 'pond',
-        biome: 'autumn',
-        verticalBias: -0.02,
-        meanderStrength: 0.3,
-        width: 70,
-        waterWidth: 28,
-        treeDensity: 0.3,
-        flowSpeed: 0.45,
-    };
-    if (index >= 20 && index <= 22) return {
-        ...base,
-        biome: 'slotCanyon',
-        width: 24,
-        waterWidth: 8,
-        meanderStrength: 0.55,
-        verticalBias: -0.95,
-        flowSpeed: 1.3,
-        treeDensity: 0.08,
-        rockDensity: 'high',
-    };
-    return {
-        ...base,
-        biome: 'autumn',
-        verticalBias: -0.7,
-        meanderStrength: 1.5,
-        rockDensity: 'high',
-        flowSpeed: 1.15,
-    };
-}
 
 function createSpline(points, type) {
     const tension = type === 'pond' ? 0.1 : 0.5;
@@ -126,8 +61,8 @@ function ensureTangentContinuity(prevPoints, newPoints) {
     return newPoints;
 }
 
-function createSegmentData(index, previousSegment, forecastState, ensureContinuity = false) {
-    const config = getProgressionConfig(index);
+function createSegmentData(index, previousSegment, forecastState, mapManager, ensureContinuity = false) {
+    const config = mapManager.getChunkConfig(index);
     const biomeProfile = getTrackBiomeProfile(config.biome);
     const seed = 12345 + index * 1000;
 
@@ -222,6 +157,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     const forecastByIndexRef = useRef(new Map());
     const reachSegmentsRef = useRef(reachSegments);
     const weatherWetnessRef = useRef(0);
+    const mapManagerRef = useRef(new DefaultMapManager({}, MEANDER_TO_WATERFALL_PROGRESSION));
 
     useEffect(() => {
         reachSegmentsRef.current = reachSegments;
@@ -385,7 +321,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
             return seg;
         }
         const forecastState = forecastByIndexRef.current.get(index) || 'Normal';
-        return createSegmentData(index, previousSegment, forecastState, ensureContinuity);
+        return createSegmentData(index, previousSegment, forecastState, mapManagerRef.current, ensureContinuity);
     }).current;
 
     const initializePool = useRef(() => {
