@@ -11,7 +11,7 @@ import { AssetCache } from '../systems/ReachStreamer';
 import { BIOMES, getNextBiome } from '../constants/biomes';
 import { useNightMode } from '../hooks/useNightMode';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
-import { DefaultMapManager } from '../systems/MapSystem';
+import { DefaultMapManager, JSONMapManager } from '../systems/MapSystem';
 import { MEANDER_TO_WATERFALL_PROGRESSION } from '../maps/meander_to_waterfall';
 
 const POOL_SIZE = GENERATION.POOL_SIZE;
@@ -144,7 +144,7 @@ function cloneForRender(segment, slotIndex, active) {
     };
 }
 
-export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null, reachId = null }) {
+export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null, reachId = null, mapData = null }) {
     const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
     const [currentBiome, setCurrentBiome] = useState('river');
@@ -157,7 +157,9 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     const forecastByIndexRef = useRef(new Map());
     const reachSegmentsRef = useRef(reachSegments);
     const weatherWetnessRef = useRef(0);
-    const mapManagerRef = useRef(new DefaultMapManager({}, MEANDER_TO_WATERFALL_PROGRESSION));
+    const mapManagerRef = useRef(
+        mapData ? new JSONMapManager(mapData) : new DefaultMapManager({}, MEANDER_TO_WATERFALL_PROGRESSION)
+    );
 
     useEffect(() => {
         reachSegmentsRef.current = reachSegments;

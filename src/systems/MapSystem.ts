@@ -58,6 +58,7 @@ export interface LevelSegment {
   biomeOverride?: string;
   difficulty: number;
   width?: number;
+  waterWidth?: number;
   lengthMultiplier?: number;
   meanderStrength?: number;
   verticalBias?: number;
@@ -529,6 +530,23 @@ export class DefaultMapManager implements MapManager {
 }
 
 // =============================================================================
+// BIOME NAME MAPPING
+// =============================================================================
+
+/**
+ * Maps JSON-authored long-form biome names to the short TrackBiomeId values
+ * used internally by TrackManager. Shared by both JSONMapManager.generateChunk
+ * and JSONMapManager.getChunkConfig to keep naming consistent.
+ */
+export const JSON_BIOME_NAME_MAP: Record<string, string> = {
+  'creek-summer': 'summer',
+  'creek-autumn': 'autumn',
+  'alpine-spring': 'summer',
+  'canyon-sunset': 'slotCanyon',
+  'midnight-mist': 'autumn',
+};
+
+// =============================================================================
 // JSON LEVEL LOADER
 // =============================================================================
 
@@ -604,8 +622,10 @@ export class JSONMapManager implements MapManager {
   levelData: LevelData | null = null;
   private mainCurve: THREE.CatmullRomCurve3 | null = null;
   private nextChunkId = 0;
+  private fallbackManager: DefaultMapManager;
 
   constructor(levelData?: LevelData) {
+    this.fallbackManager = new DefaultMapManager();
     if (levelData) {
       this.loadLevel(levelData);
     }
@@ -687,13 +707,6 @@ export class JSONMapManager implements MapManager {
 
     // Map biome type
     const biomeOverride = config.biomeOverride || this.levelData.world.biome.baseType;
-    const biomeMap: Record<string, string> = {
-      'creek-summer': 'summer',
-      'creek-autumn': 'autumn',
-      'alpine-spring': 'summer',
-      'canyon-sunset': 'autumn',
-      'midnight-mist': 'autumn',
-    };
 
     const chunk: BaseMapChunk = {
       id: `chunk-${this.nextChunkId++}`,
@@ -702,10 +715,10 @@ export class JSONMapManager implements MapManager {
       pathPoints,
       curve,
       length: pathLength,
-      biome: biomeMap[biomeOverride] || 'summer',
+      biome: JSON_BIOME_NAME_MAP[biomeOverride] || 'summer',
       flowSpeed: config.physics?.waterFlowIntensity || this.levelData.world.biome.water.flowSpeed,
       waterLevel: 0.5,
-      waterWidth: this.levelData.world.track.waterWidth || 10,
+      waterWidth: config.waterWidth ?? this.levelData.world.track.waterWidth ?? 10,
       canyonWidth: config.width || this.levelData.world.track.width || 35,
       spawns,
       active: true,
@@ -815,17 +828,41 @@ export class JSONMapManager implements MapManager {
    */
   getChunkConfig(index: number): SegmentProgressionConfig {
     const base: SegmentProgressionConfig = { ...DEFAULT_SEGMENT_PROGRESSION };
-    if (!this.levelData) return base;
+    if (!this.levelData) return this.fallbackManager.getChunkConfig(index);
+
+    const totalSegments = this.levelData.world.track.totalSegments;
     const seg = this.levelData.segments.find(s => s.index === index);
-    if (!seg) return base;
+
+    // Segments beyond the authored range fall back to procedural generation
+    if (!seg) {
+      if (index >= totalSegments) {
+        return this.fallbackManager.getChunkConfig(index);
+      }
+      // Segment within authored range but no explicit entry — use defaults
+      return base;
+    }
+
+    // Map JSON long-form biome name to internal short-form (e.g. 'creek-autumn' → 'autumn')
+    const rawBiome = seg.biomeOverride ?? this.levelData.world.biome.baseType;
+    const mappedBiome = JSON_BIOME_NAME_MAP[rawBiome] ?? rawBiome;
+
+    // Derive rockDensity from decoration counts: >= 15 rocks → 'high'
+    let rockDensity: 'low' | 'high' = base.rockDensity;
+    if (seg.decorations?.rocks !== undefined) {
+      rockDensity = seg.decorations.rocks >= 15 ? 'high' : 'low';
+    }
+
     return {
       ...base,
-      biome: seg.biomeOverride ?? base.biome,
+      biome: mappedBiome,
       type: seg.type ?? base.type,
       width: seg.width ?? base.width,
+      waterWidth: seg.waterWidth ?? base.waterWidth,
       meanderStrength: seg.meanderStrength ?? base.meanderStrength,
       verticalBias: seg.verticalBias ?? base.verticalBias,
       flowSpeed: seg.physics?.waterFlowIntensity ?? base.flowSpeed,
+      treeDensity: seg.decorations?.treeDensity ?? base.treeDensity,
+      rockDensity,
       forwardMomentum: seg.forwardMomentum,
       particleCount: seg.effects?.particleCount,
       cameraShake: seg.effects?.cameraShake,
