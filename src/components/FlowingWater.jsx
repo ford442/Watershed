@@ -109,7 +109,7 @@ export default function FlowingWater({
       float edgeDist = abs(vUv.x - 0.5);
       float edgeFoam = smoothstep(EDGE_FOAM_WIDTH, 0.0, edgeDist) * (0.6 + streakNoise * 0.4);
       float normalSteep = 1.0 - abs(dot(normalize(vNormal), vec3(0.0, 1.0, 0.0)));
-      edgeFoam *= (1.0 + normalSteep * 2.0);
+      edgeFoam *= (1.0 + normalSteep * 3.5);
 
       // Shader-only vehicle wake
       vec3 toVehicle = vehiclePos - vWorldPos;
@@ -227,11 +227,13 @@ export default function FlowingWater({
           vehiclePos: { value: vehiclePos ? new THREE.Vector3().copy(vehiclePos) : new THREE.Vector3(99999.0, 99999.0, 99999.0) },
           vehicleVelocity: { value: vehicleVelocity ? new THREE.Vector3().copy(vehicleVelocity) : new THREE.Vector3() },
           flowMap: { value: flowMap || null },
+          cameraHeight: { value: 0.0 },
         },
         vertexShader: `
           uniform float time;
           uniform float flowSpeed;
           uniform float weatherRipple;
+          uniform float cameraHeight;
           uniform sampler2D flowMap;
 
           varying vec2 vUv;
@@ -260,7 +262,11 @@ export default function FlowingWater({
                          * cos(p.y * 7.5 * RIPPLE_SCALE + time * 3.5)
                          * weatherRipple * 0.08;
 
-            return (swell1 + swell2 + detail + ripple) * scale;
+            float waterLevel = 0.5;
+            float heightDiff = abs(cameraHeight - waterLevel);
+            float heightProx = 1.0 - smoothstep(0.0, 6.0, heightDiff);
+            float proximityScale = 1.0 + heightProx * 0.35;
+            return (swell1 + swell2 + detail + ripple) * scale * proximityScale;
           }
 
           void main() {
@@ -378,6 +384,9 @@ export default function FlowingWater({
     }
     if (mat.uniforms.timeOfDay) {
       mat.uniforms.timeOfDay.value = isNight ? 1.0 : 0.0;
+    }
+    if (mat.uniforms.cameraHeight) {
+      mat.uniforms.cameraHeight.value = camera.position.y;
     }
   });
 
