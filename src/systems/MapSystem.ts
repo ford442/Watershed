@@ -718,8 +718,8 @@ export class JSONMapManager implements MapManager {
       biome: JSON_BIOME_NAME_MAP[biomeOverride] || 'summer',
       flowSpeed: config.physics?.waterFlowIntensity || this.levelData.world.biome.water.flowSpeed,
       waterLevel: 0.5,
-      waterWidth: config.waterWidth ?? this.levelData.world.track.waterWidth ?? 10,
-      canyonWidth: config.width || this.levelData.world.track.width || 35,
+      waterWidth: config.waterWidth ?? this.levelData.world.track.waterWidth ?? DEFAULT_MAP_CONFIG.waterWidth,
+      canyonWidth: config.width || this.levelData.world.track.width || DEFAULT_MAP_CONFIG.canyonWidth,
       spawns,
       active: true,
     };

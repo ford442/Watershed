@@ -6,15 +6,15 @@
  * (indices 0–22), as required by the "Authored Map Validation" issue.
  */
 
-import { JSONMapManager, DEFAULT_SEGMENT_PROGRESSION } from '../MapSystem';
+import { JSONMapManager, DEFAULT_SEGMENT_PROGRESSION, type LevelData } from '../MapSystem';
 import mapData from '../../maps/meander_to_waterfall.json';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Cast the raw JSON import to the expected LevelData shape. */
-const level = mapData as any;
+/** Cast the raw JSON import to LevelData for type-safe usage. */
+const level = mapData as unknown as LevelData;
 
 describe('JSONMapManager — meander_to_waterfall', () => {
   let manager: JSONMapManager;
