@@ -22,7 +22,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // Pre-initialize Rapier with the modern single-object API before @react-three/rapier
 // mounts its Physics component, suppressing the "deprecated parameters" warning.
-RAPIER.init().then(() => {
+RAPIER.init({}).then(() => {
   const rootElement = document.getElementById('root');
   if (!rootElement) {
     console.error('[index.tsx] FATAL: Root element not found!');

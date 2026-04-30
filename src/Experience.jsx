@@ -87,8 +87,8 @@ const InnerExperience = () => {
   // Camera shake system
   const cameraShake = useCameraShake();
 
-  // Velocity tracking for speed-based effects (E3)
-  const [playerVelocity, setPlayerVelocity] = useState(0);
+  // Velocity tracking for speed-based effects (E3) — use ref to avoid per-frame re-renders
+  const playerVelocityRef = useRef(0);
 
   // Update camera shake and track velocity each frame
   useFrame((state, delta) => {
@@ -99,7 +99,7 @@ const InnerExperience = () => {
       const vel = vehicleRef.current.linvel?.();
       if (vel) {
         const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        setPlayerVelocity(speed);
+        playerVelocityRef.current = speed;
       }
     }
   });
@@ -242,7 +242,7 @@ const InnerExperience = () => {
       {/* Post-processing effects - Bloom, Vignette, SSAO, Speed Effects */}
       <PostProcessingEffects
         quality={quality}
-        velocity={playerVelocity}
+        velocityRef={playerVelocityRef}
         maxVelocity={25}
       />
 
