@@ -1,8 +1,11 @@
+<!-- From: /root/watershed/AGENTS.md -->
 # AGENTS.md - Watershed Project Guide
 
 ## Project Overview
 
 **Watershed** is a high-fidelity 3D downhill action game that blends kinetic speed with survival simulation mechanics. The player navigates a river canyon from alpine source to valley delta, experiencing different biomes and environmental challenges.
+
+The project is packaged as `webgpu-react-app` (v0.1.0) in `package.json`.
 
 ### Core Philosophy: "Shedding"
 
@@ -20,11 +23,13 @@ The title has a double meaning:
 | 3D Rendering | Three.js 0.168.0 + React Three Fiber 9.4.0 | 3D scene graph, rendering |
 | Post-processing | @react-three/postprocessing 3.0.4, postprocessing 6.38.3 | Visual effects pipeline |
 | Physics | Rapier 0.19.3 (WASM) via @react-three/rapier 2.2.0 | Rigid body physics, collisions |
-| Build Tool | Vite 7.3.1 | Development server, bundling |
+| Build Tool | Vite 7.3.1 | Development server, bundling, production builds |
+| Test Runner | react-scripts 5.0.1 (Jest + React Testing Library) | Unit and component tests |
 | Audio | Howler 2.2.4 | Sound effects and ambient audio |
 | ML | @xenova/transformers | Client-side ML features |
 | Shaders | GLSL (injected) + WGSL (WebGPU future) | GPU effects and compute |
-| Package Manager | npm/pnpm | Dependency management |
+| Package Manager | pnpm (lockfile: `pnpm-lock.yaml`) | Dependency management |
+| Validation | ajv + ajv-formats | JSON schema validation for levels and reaches |
 
 ### Key Dependencies
 
@@ -37,9 +42,20 @@ The title has a double meaning:
   "three": "^0.168.0",
   "@dimforge/rapier3d-compat": "^0.19.3",
   "howler": "^2.2.4",
-  "@webgpu/types": "^0.1.64"
+  "@webgpu/types": "^0.1.64",
+  "ajv": "^8.18.0",
+  "postprocessing": "^6.38.3"
 }
 ```
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `vite.config.ts` | Primary build config. Dev server on port 3000, `base: './'`, manual chunks for `vendor-three`, `vendor-post`, `vendor-rapier`. Output dir: `build/`. |
+| `tsconfig.json` | TypeScript config: `target: es5`, `jsx: react-jsx`, `strict: true`, includes `src/`. |
+| `package.json` | Dependencies and npm scripts. Uses pnpm. |
+| `webpack.config.js` | **Legacy/unused.** Leftover from earlier toolchain; Vite is the active bundler. |
 
 ---
 
@@ -49,81 +65,193 @@ The title has a double meaning:
 /root/watershed/
 ├── src/                          # React application source
 │   ├── components/               # 3D components and game objects
-│   │   ├── Player.jsx           # Player physics & first-person controls
-│   │   ├── TrackManager.jsx     # Procedural segment generation orchestration
-│   │   ├── TrackSegment.jsx     # Individual track piece with decorations
-│   │   ├── FlowingWater.jsx     # Animated water surface shader material
-│   │   ├── UI.tsx               # Game UI overlay (React + TypeScript)
-│   │   ├── Loader.tsx           # Asset loading screen
-│   │   ├── ErrorBoundary.tsx    # React error boundary
-│   │   ├── Environment/         # Biome decorations (24+ components)
-│   │   │   ├── Vegetation.jsx   # Trees with wind animation
-│   │   │   ├── Grass.jsx        # Grass patches
-│   │   │   ├── Birds.jsx        # Bird flocks
-│   │   │   ├── Fish.jsx         # Underwater fish
-│   │   │   ├── Fireflies.jsx    # Night lighting effects
-│   │   │   ├── Mist.jsx         # Atmospheric fog patches
+│   │   ├── Player.jsx            # Player physics & first-person controls
+│   │   ├── Player.tsx            # TypeScript stub/legacy for Player
+│   │   ├── TrackManager.jsx      # Procedural segment generation orchestration
+│   │   ├── TrackSegment.jsx      # Individual track piece with decorations
+│   │   ├── FlowingWater.jsx      # Animated water surface shader material
+│   │   ├── FlowingWater.test.tsx # Unit tests for water component
+│   │   ├── UI.tsx                # Game UI overlay
+│   │   ├── UI.test.tsx           # UI unit tests
+│   │   ├── UI_new_features.test.tsx
+│   │   ├── UI_shortcuts.test.tsx
+│   │   ├── Loader.tsx            # Asset loading screen
+│   │   ├── Loader.test.tsx       # Loader unit tests
+│   │   ├── ErrorBoundary.tsx     # React error boundary
+│   │   ├── GameHUD.tsx           # In-game HUD overlay
+│   │   ├── VehicleTuner.tsx      # Vehicle tuning UI
+│   │   ├── WeatherSystem.tsx     # Weather state and effects
+│   │   ├── FlowForecast.tsx      # River flow forecast logic
+│   │   ├── ForecastHUD.tsx       # Forecast display overlay
+│   │   ├── PostProcessingEffects.jsx / .tsx # Bloom, vignette, SSAO, speed effects
+│   │   ├── EnhancedSky.jsx       # Sky dome with biome coloring
+│   │   ├── WaterReflection.jsx   # Planar water reflections
+│   │   ├── WaterInteraction.jsx  # Player-water interaction FX
+│   │   ├── ShaderBrowserPanel.tsx # In-game shader browser UI
+│   │   ├── CanyonDecorations.jsx # Canyon-specific decorations
+│   │   ├── CreekCanyon.jsx       # Canyon geometry component
+│   │   ├── RiverTrack.jsx        # River track visualization
+│   │   ├── TreeSystem.jsx        # Procedural tree placement
+│   │   ├── InstancedRiverProps.tsx # Instanced props along river
+│   │   ├── LumberProps.tsx       # Lumber/debris props
+│   │   ├── CollisionParticles.tsx # Collision particle FX
+│   │   ├── VortexVisual.tsx      # Vortex visual effect
+│   │   ├── ReactiveAudio.tsx     # Reactive audio visualization
+│   │   ├── Raft.jsx              # Legacy raft component stub
+│   │   ├── WaterFlowForce.jsx / WaterFlowForces.tsx / WaterForces.jsx # Flow forces
+│   │   ├── Environment/          # Biome decorations (25+ components)
+│   │   │   ├── Vegetation.jsx    # Trees with wind animation
+│   │   │   ├── Grass.jsx         # Grass patches
+│   │   │   ├── Birds.jsx         # Bird flocks
+│   │   │   ├── Fish.jsx          # Underwater fish
+│   │   │   ├── Fireflies.jsx     # Night lighting effects
+│   │   │   ├── Mist.jsx          # Atmospheric fog patches
 │   │   │   ├── WaterfallParticles.jsx  # Waterfall spray VFX
-│   │   │   └── ... (17 more environment components)
-│   │   ├── Obstacles/           # Collision objects
-│   │   │   └── Rock.jsx         # Procedural rock formations
-│   │   ├── VFX/                 # Visual effects
+│   │   │   ├── SunShafts.jsx     # Volumetric sun shafts
+│   │   │   ├── Foliage.jsx       # Generic foliage system
+│   │   │   ├── Ferns.jsx         # Fern plants
+│   │   │   ├── Mushrooms.jsx     # Mushroom clusters
+│   │   │   ├── Reeds.jsx         # Reed plants
+│   │   │   ├── Wildflowers.jsx   # Wildflower patches
+│   │   │   ├── WaterLilies.jsx   # Water lily pads
+│   │   │   ├── Driftwood.jsx     # Driftwood debris
+│   │   │   ├── FloatingDebris.jsx # Floating trash/debris
+│   │   │   ├── Rapids.jsx        # Rapid water FX
+│   │   │   ├── RockFoam.jsx      # Foam around rocks
+│   │   │   ├── FallingLeaves.jsx # Autumn leaf particles
+│   │   │   ├── Dragonflies.jsx   # Dragonfly swarms
+│   │   │   ├── Pebbles.jsx       # Scattered pebbles
+│   │   │   ├── Pinecone.jsx      # Pinecone debris
+│   │   │   ├── TreeAssets.js     # Tree geometry assets
+│   │   │   └── DebrisAssets.js   # Debris geometry assets
+│   │   ├── Obstacles/            # Collision objects
+│   │   │   └── Rock.jsx          # Procedural rock formations
+│   │   ├── VFX/                  # Visual effects
 │   │   │   └── SplashParticles.jsx  # Player movement splash
-│   │   └── LevelEditor/         # BiomeSelector, SegmentInspector, LevelEditor, etc.
-│   ├── systems/                 # Core game systems
-│   │   ├── AudioSystem.ts       # Sound management
-│   │   ├── BiomeSystem.ts       # Biome state and transitions
-│   │   ├── LODManager.ts        # Level-of-detail optimization
-│   │   ├── SplashSystem.ts      # Splash particle management
-│   │   ├── VehicleSystem.ts     # Vehicle state orchestration
-│   │   └── WaterSystem.ts       # Water simulation state
-│   ├── vehicles/                # Vehicle implementations
-│   │   ├── RunnerVehicle.tsx    # On-foot player vehicle
-│   │   └── RaftVehicle.tsx      # Water raft with buoyancy physics
-│   ├── hooks/                   # Custom React hooks
-│   │   ├── useCameraShake.ts
-│   │   ├── useLevel.ts
-│   │   └── useRiverAudio.ts
-│   ├── materials/               # Custom shader materials
-│   │   ├── CausticsMaterial.js
-│   │   ├── CanyonMaterial.js
-│   │   └── EnhancedWaterMaterial.js
-│   ├── utils/                   # Utility functions
-│   │   ├── RiverShader.js       # Material extensions for wetness/moss/caustics
-│   │   └── levelValidator.ts    # Level JSON validation
-│   ├── constants/               # Game constants
-│   │   ├── game.ts              # Physics, spawn, generation constants
-│   │   ├── biomes.ts            # Biome configuration
-│   │   └── nightMode.ts         # Night mode settings
-│   ├── configs/                 # Track and biome configs
-│   │   ├── BiomePalettes.ts
-│   │   └── TrackBiomes.ts
-│   ├── biomes/                  # Biome components
-│   │   └── CanyonBiome.tsx
-│   ├── formats/                 # Level format definitions
-│   ├── Experience.jsx           # Main scene composition, keyboard controls, lighting
-│   ├── App.tsx                  # Canvas setup, error boundaries, progress tracking
-│   ├── index.tsx                # Entry point with Rapier pre-init, global error handlers
-│   └── style.css                # Global styles, UI, loader, crosshair
-├── public/                      # Static assets
-│   ├── shaders/                 # WGSL shader files (WebGPU migration path)
-│   │   ├── water.wgsl          # Water surface shader
-│   │   ├── terrain.wgsl        # Terrain displacement shader
-│   │   ├── sky.wgsl            # Skybox shader
-│   │   └── tree.wgsl           # Instanced tree shader
-│   ├── levels/                  # Custom level JSON files
-│   ├── Rock031_1K-JPG_*.jpg    # PBR texture set (color, normal, roughness, AO)
-│   └── rapier.wasm             # Physics engine WASM
-├── build/                       # Production build output (Vite)
-├── build_and_patch.py          # Build + relative path patching script
-├── deploy.py                   # SFTP deployment script
-├── verify_visuals_playwright.py # Visual regression testing
-├── vite.config.ts              # Vite configuration
-├── tsconfig.json               # TypeScript configuration
-├── package.json                # Dependencies and scripts
-├── plan.md                     # Development roadmap
-├── TESTING.md                  # Testing procedures and QA
-└── CHANGES_SUMMARY.md          # Recent changes log
+│   │   └── LevelEditor/          # In-game level editing tools
+│   │       ├── BiomeSelector.tsx
+│   │       ├── SegmentInspector.tsx
+│   │       ├── LevelEditor.tsx
+│   │       ├── PathVisualizer.tsx
+│   │       └── ErrorPanel.tsx
+│   ├── systems/                  # Core game systems
+│   │   ├── AudioSystem.ts        # Sound management and Howler orchestration
+│   │   ├── BiomeSystem.tsx       # Biome state, transitions, material switching
+│   │   ├── LODManager.tsx        # Level-of-detail optimization
+│   │   ├── SplashSystem.tsx      # Splash particle management
+│   │   ├── VehicleSystem.ts      # Vehicle state orchestration and switching
+│   │   ├── WaterSystem.ts        # Water simulation state
+│   │   ├── LevelLoader.tsx       # External level JSON loader
+│   │   ├── ReachStreamer.ts      # Reach asset streaming (outside Suspense)
+│   │   ├── ReachNormalizer.ts    # Reach manifest → TrackManager data
+│   │   ├── ReachManager.tsx      # Reach loading orchestration
+│   │   ├── MapSystem.ts          # Map/mini-map data management
+│   │   ├── ObjectSystem.ts       # Object pooling and lifecycle
+│   │   ├── ParticlePool.ts       # Reusable particle pool
+│   │   ├── PostProcessing.tsx    # Post-processing pipeline setup
+│   │   ├── index.ts              # Systems barrel export
+│   │   ├── __tests__/            # System-level tests
+│   │   └── volumetric/           # Volumetric effect systems
+│   ├── vehicles/                 # Vehicle implementations
+│   │   ├── RunnerVehicle.tsx     # On-foot player vehicle
+│   │   └── RaftVehicle.tsx       # Water raft with buoyancy physics
+│   ├── hooks/                    # Custom React hooks
+│   │   ├── useCameraShake.ts     # Camera shake effect hook
+│   │   ├── useLevel.ts           # Level loading state hook
+│   │   ├── useRiverAudio.ts      # River ambient audio hook
+│   │   ├── useNightMode.ts       # Night/day cycle hook
+│   │   ├── useShaderBrowser.ts   # Shader browser state hook
+│   │   ├── useShaderLoader.ts    # Dynamic shader loading hook
+│   │   ├── useVortexForce.ts     # Vortex physics force hook
+│   │   ├── useWaterFlowField.ts  # Water flow field data hook
+│   │   └── index.ts              # Hooks barrel export
+│   ├── materials/                # Custom shader materials
+│   │   ├── CausticsMaterial.js   # Underwater light caustics
+│   │   ├── CanyonMaterial.js     # Canyon wall surface shaders
+│   │   └── EnhancedWaterMaterial.js # Advanced water rendering
+│   ├── utils/                    # Utility functions
+│   │   ├── RiverShader.js        # Material extensions for wetness/moss/caustics
+│   │   ├── RiverShader.test.ts   # RiverShader unit tests
+│   │   ├── levelValidator.ts     # Level JSON schema validation
+│   │   ├── levelValidator.test.ts # Level validator unit tests
+│   │   ├── reachValidator.ts     # Reach manifest schema validation
+│   │   └── segmentSampler.ts     # Segment curve sampling utilities
+│   ├── constants/                # Game constants
+│   │   ├── game.ts               # Physics, spawn, generation constants
+│   │   ├── biomes.ts             # Biome configuration
+│   │   ├── nightMode.ts          # Night mode settings
+│   │   ├── audioConfig.ts        # Audio configuration
+│   │   ├── vehicleTuning.ts      # Vehicle tuning parameters
+│   │   ├── waterFlow.ts          # Water flow constants
+│   │   └── weather.ts            # Weather state constants
+│   ├── configs/                  # Track and biome configs
+│   │   ├── BiomePalettes.ts      # Biome color/material palettes
+│   │   └── TrackBiomes.ts        # Track-to-biome mappings
+│   ├── biomes/                   # Biome components
+│   │   └── CanyonBiome.tsx       # Canyon biome renderer
+│   ├── formats/                  # Level format definitions
+│   │   ├── LevelFormat.md        # Level format documentation
+│   │   ├── README.md             # Formats directory readme
+│   │   ├── level.schema.json     # Level JSON schema
+│   │   └── reach.schema.json     # Reach manifest JSON schema
+│   ├── maps/                     # Map data files
+│   │   ├── meander_to_waterfall.json
+│   │   └── meander_to_waterfall.ts
+│   ├── Experience.jsx            # Main scene composition, keyboard controls, lighting
+│   ├── App.tsx                   # Canvas setup, error boundaries, progress tracking
+│   ├── index.tsx                 # Entry point with Rapier pre-init, global error handlers
+│   ├── style.css                 # Global styles, UI, loader, crosshair
+│   ├── LEVEL_DESIGN.md           # Level design specifications
+│   └── PLAN.md                   # Component-level planning
+├── public/                       # Static assets
+│   ├── shaders/                  # WGSL shader files (WebGPU migration path)
+│   │   ├── water.wgsl            # Water surface shader
+│   │   ├── terrain.wgsl          # Terrain displacement shader
+│   │   ├── sky.wgsl              # Skybox shader
+│   │   └── tree.wgsl             # Instanced tree shader
+│   ├── levels/                   # Custom level JSON files
+│   │   ├── autumn-rapids.json
+│   │   ├── devils-gorge.json
+│   │   └── gentle-creek.json
+│   ├── Rock031_1K-JPG_*.jpg     # PBR texture set (color, normal, roughness, AO, displacement)
+│   ├── Rock031.png               # Rock texture atlas
+│   ├── collision.wav             # Collision sound effect
+│   ├── rapier.wasm               # Physics engine WASM
+│   └── index.html                # HTML entry point
+├── build/                        # Production build output (Vite)
+├── assembly/                     # AssemblyScript future migration
+│   └── index.ts                  # AssemblyScript entry
+├── emscripten/                   # C++ Emscripten future migration
+│   ├── build.sh                  # Emscripten build script
+│   └── main.cpp                  # C++ entry point
+├── build_and_patch.py            # Build + relative path patching script
+├── deploy.py                     # SFTP deployment script
+├── verify_visuals_playwright.py  # Visual regression testing (Playwright)
+├── test-browser.js               # Browser test helper
+├── diagnose.js                   # Startup diagnostics script
+├── vite.config.ts                # Vite configuration
+├── tsconfig.json                 # TypeScript configuration
+├── package.json                  # Dependencies and scripts
+├── pnpm-lock.yaml                # pnpm lockfile
+├── webpack.config.js             # Legacy webpack config (unused)
+├── plan.md                       # Development roadmap
+├── weekly_plan.md                # Weekly planning
+├── river_plan.md                 # River system planning
+├── plan-dec-25.md                # December 2025 planning
+├── TESTING.md                    # Testing procedures and QA
+├── CODE_HEALTH_GUIDE.md          # Defensive coding patterns and red flags
+├── STARTUP_DIAGNOSTICS.md        # Startup issue diagnostics
+├── QUICK_TROUBLESHOOTING.md      # Quick troubleshooting guide
+├── INVESTIGATION_SUMMARY.md      # Investigation summaries
+├── CHANGES_SUMMARY.md            # Recent changes log
+├── VISUAL_ENHANCEMENT_SUMMARY.md # Visual enhancement log
+├── LEVEL_AUTHORING_SUMMARY.md    # Level authoring summary
+├── IMPROVEMENT_PLAN.md           # Improvement planning
+├── DOCUMENTATION_INDEX.md        # Documentation index
+├── PHYSICS_CONSTANTS.md          # Physics constants reference
+├── CLAUDE.md                     # Claude-specific context
+├── AGENTS.md                     # This file
+└── README.md                     # Human-facing project overview
 ```
 
 ---
@@ -167,6 +295,12 @@ npm test
 
 # Visual regression test (requires dev server running)
 python3 verify_visuals_playwright.py
+```
+
+**Visual Regression Requirements:**
+```bash
+pip install playwright
+playwright install chromium
 ```
 
 ### Deployment
@@ -234,6 +368,8 @@ The game supports two vehicle types:
 
 - **RunnerVehicle (`src/vehicles/RunnerVehicle.tsx`)**: Default on-foot movement with first-person controls.
 - **RaftVehicle (`src/vehicles/RaftVehicle.tsx`)**: Water raft with buoyancy physics, drag, paddle thrust, and tipping mechanics.
+
+Vehicle switching is orchestrated by `src/systems/VehicleSystem.ts`.
 
 ### 5. Shader Systems
 
@@ -313,16 +449,45 @@ Each Reach ends in a constrained transition segment. This provides a natural pac
 **Memory Management:**
 `ReachStreamer.evictReach(reachId)` recursively disposes geometries, materials, textures, audio buffers, and shaders to keep GPU/CPU memory bounded.
 
+### 9. Physics Constants
+
+`src/constants/game.ts` defines scientifically-grounded constants:
+- `WATER_DENSITY = 1000` (kg/m³)
+- `HUMAN_DENSITY = 1038` (kg/m³)
+- `AIR_DENSITY = 1.226` (kg/m³)
+- `WATER_VISCOSITY = 8.9e-4` (Pa·s)
+- `GRAVITY = 9.80665` (m/s²)
+- `PHYSICS.GRAVITY = -20` (in-game scaled gravity)
+- `PHYSICS.RAFT_BUOYANCY = 2940` (scaled for gameplay)
+- `PHYSICS.RAFT_DRAG = 0.47` (turbulent flow around blunt body)
+
+### 10. Audio System
+
+`src/systems/AudioSystem.ts` manages Howler-based audio:
+- Ambient river sounds
+- Collision SFX (`collision.wav`)
+- Reactive audio visualization
+- Integration with `src/hooks/useRiverAudio.ts`
+
+### 11. Post-Processing Pipeline
+
+`src/components/PostProcessingEffects.jsx` (and `.tsx`) provides:
+- Bloom
+- Vignette
+- SSAO
+- Speed-based effects (motion blur intensity tied to player velocity)
+- Quality tiers managed by `src/systems/LODManager.tsx`
+
 ---
 
 ## Code Style Guidelines
 
 ### Component Structure
 
-1. **Functional components with hooks** - No class components
-2. **Forward refs for physics objects** - Expose RigidBody API to parents
-3. **useMemo for expensive calculations** - Geometry, materials, instance data
-4. **useFrame for animations** - Update uniforms, positions, rotations
+1. **Functional components with hooks** — No class components
+2. **Forward refs for physics objects** — Expose RigidBody API to parents
+3. **useMemo for expensive calculations** — Geometry, materials, instance data
+4. **useFrame for animations** — Update uniforms, positions, rotations
 
 ### Import Order
 
@@ -345,10 +510,11 @@ import FlowingWater from './FlowingWater';
 
 ### File Naming Conventions
 
-- **Components:** PascalCase (e.g., `TrackManager.jsx`, `UI.tsx`)
-- **Utilities:** camelCase (e.g., `riverShader.js`)
+- **Components:** PascalCase with `.jsx` or `.tsx` (e.g., `TrackManager.jsx`, `UI.tsx`)
+- **Utilities:** camelCase with `.js` or `.ts` (e.g., `riverShader.js`)
 - **Shaders:** lowercase with extension (e.g., `water.wgsl`)
 - **Tests:** `ComponentName.test.tsx` alongside source
+- **Constants:** camelCase, often grouped in objects with `as const` (e.g., `game.ts`)
 
 ### Shader Injection Pattern
 
@@ -396,10 +562,12 @@ useFrame((state) => {
 
 ### Code Health Conventions
 
-Enforced by `CODE_HEALTH_GUIDE.md`:
+See `CODE_HEALTH_GUIDE.md` for the full defensive coding standard. Critical rules:
 - **Shader injection wrapped in try-catch** to prevent runtime shader compilation crashes.
 - **Geometry validation before creation** — check for `NaN`, zero/negative lengths.
 - **Staged rendering** — return `null` until all dependencies (textures, paths) are ready.
+- **Null-safe material creation** — verify textures exist before creating materials.
+- **Safe buffer attribute access** — validate `positions.count` before iterating vertices.
 
 ---
 
@@ -428,6 +596,7 @@ Before committing changes, verify:
 - [ ] Textures load and display properly (Rock031 PBR set)
 - [ ] Performance stays above 30 FPS
 - [ ] No console errors
+- [ ] `npm run build` succeeds without errors
 
 ### Visual Regression
 
@@ -466,6 +635,7 @@ playwright install chromium
 - Check browser console for WebGL errors
 - Verify textures are loading (network tab)
 - Try disabling browser extensions
+- Check for shader compilation errors in console
 
 ### "Track not generating"
 - Check TrackManager generation threshold
@@ -476,6 +646,12 @@ playwright install chromium
 - Ensure THREE.js version compatibility
 - Check for syntax errors in shader injection
 - Verify uniforms are properly declared
+- Wrap shader modifications in try-catch and log errors
+
+### "NaN in buffer geometry"
+- Validate path lengths and curve calculations before geometry creation
+- Check for division by zero or invalid Math operations
+- Use safe fallbacks (e.g., `Math.max(2, Math.floor(pathLen))`)
 
 ---
 
@@ -517,18 +693,38 @@ Planned for:
 | File | Purpose |
 |------|---------|
 | `src/App.tsx` | Canvas configuration, error boundaries, progress tracking |
-| `src/Experience.jsx` | Scene composition, keyboard controls setup, lighting |
+| `src/Experience.jsx` | Scene composition, keyboard controls setup, lighting, biome/LOD providers |
 | `src/components/Player.jsx` | First-person controls, camera, physics |
 | `src/components/TrackManager.jsx` | Procedural generation orchestration |
 | `src/components/TrackSegment.jsx` | Canyon geometry, decorations, segment lifecycle |
 | `src/components/FlowingWater.jsx` | Water surface shader material |
 | `src/components/UI.tsx` | Game menu, pause screen, controls display |
+| `src/components/GameHUD.tsx` | In-game HUD overlay |
+| `src/components/PostProcessingEffects.jsx` | Bloom, vignette, SSAO, speed effects |
+| `src/components/WeatherSystem.tsx` | Weather state and effects |
 | `src/utils/RiverShader.js` | Material extension for wetness/moss/caustics |
+| `src/utils/levelValidator.ts` | Level JSON schema validation |
 | `src/vehicles/RunnerVehicle.tsx` | On-foot player movement vehicle |
 | `src/vehicles/RaftVehicle.tsx` | Raft buoyancy physics vehicle |
 | `src/systems/VehicleSystem.ts` | Vehicle switching and state orchestration |
+| `src/systems/AudioSystem.ts` | Howler-based audio management |
+| `src/systems/BiomeSystem.tsx` | Biome state, transitions, material switching |
+| `src/systems/LODManager.tsx` | Level-of-detail optimization, adaptive quality |
+| `src/systems/ReachStreamer.ts` | Reach asset streaming (outside Suspense) |
+| `src/systems/ReachManager.tsx` | Reach loading orchestration |
+| `src/systems/WaterSystem.ts` | Water simulation state |
+| `src/systems/LevelLoader.tsx` | External level JSON loading |
+| `src/hooks/useCameraShake.ts` | Camera shake effect hook |
+| `src/hooks/useLevel.ts` | Level loading state hook |
+| `src/hooks/useRiverAudio.ts` | River ambient audio hook |
 | `src/constants/game.ts` | Physics constants, spawn positions, generation params |
+| `src/constants/vehicleTuning.ts` | Vehicle tuning parameters |
+| `src/constants/waterFlow.ts` | Water flow constants |
+| `src/constants/weather.ts` | Weather state constants |
 | `src/style.css` | UI styles, loader, crosshair, responsive design |
+| `vite.config.ts` | Vite build configuration |
+| `build_and_patch.py` | Build + relative path patching script |
+| `verify_visuals_playwright.py` | Visual regression testing |
 
 ---
 
@@ -539,14 +735,23 @@ Additional documentation files in the project:
 - `plan.md` - Development roadmap and phase planning
 - `src/LEVEL_DESIGN.md` - Track configuration and level design specifications
 - `TESTING.md` - Detailed testing procedures
-- `CODE_HEALTH_GUIDE.md` - Code quality and health conventions
+- `CODE_HEALTH_GUIDE.md` - Defensive coding patterns, shader/geometry validation, red flags
+- `STARTUP_DIAGNOSTICS.md` - Startup issue diagnostics
+- `QUICK_TROUBLESHOOTING.md` - Quick troubleshooting guide
 - `CHANGES_SUMMARY.md` - Recent changes log
+- `VISUAL_ENHANCEMENT_SUMMARY.md` - Visual enhancement log
+- `LEVEL_AUTHORING_SUMMARY.md` - Level authoring summary
+- `IMPROVEMENT_PLAN.md` - Improvement planning
+- `DOCUMENTATION_INDEX.md` - Documentation index
+- `PHYSICS_CONSTANTS.md` - Physics constants reference
+- `CLAUDE.md` - Claude-specific context
 
 ---
 
 ## Security Considerations
 
-1. **No sensitive data in client code** - The `deploy.py` contains server credentials but is not bundled into the app
-2. **WASM integrity** - Rapier WASM is loaded from a known source (`@dimforge/rapier3d-compat`)
-3. **Pointer lock requires user gesture** - Browser security prevents programmatic pointer lock
-4. **CORS for textures** - Ensure textures load from same origin or proper CORS headers
+1. **No sensitive data in client code** — The `deploy.py` script contains hardcoded SFTP credentials. It is **not** bundled into the app, but keep it out of version control if the repo becomes public.
+2. **WASM integrity** — Rapier WASM is loaded from a known source (`@dimforge/rapier3d-compat`).
+3. **Pointer lock requires user gesture** — Browser security prevents programmatic pointer lock.
+4. **CORS for textures** — Ensure textures load from same origin or proper CORS headers.
+5. **External level loading** — `?levelUrl=` parameter loads arbitrary URLs; validate origins if deploying in untrusted environments.
