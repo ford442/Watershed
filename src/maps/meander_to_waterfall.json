@@ -56,6 +56,19 @@
     }
   },
   "segments": [
+    { "index": 0,  "difficulty": 0.10, "meanderStrength": 0.15, "verticalBias": -0.10, "waterWidth": 25, "decorations": { "trees": 15, "rocks": 0 } },
+    { "index": 1,  "difficulty": 0.12, "meanderStrength": 0.18, "verticalBias": -0.10, "waterWidth": 24, "decorations": { "trees": 14, "rocks": 1 } },
+    { "index": 2,  "difficulty": 0.15, "meanderStrength": 0.20, "verticalBias": -0.15, "waterWidth": 23, "decorations": { "trees": 15, "rocks": 1 } },
+    { "index": 3,  "difficulty": 0.18, "meanderStrength": 0.22, "verticalBias": -0.15, "waterWidth": 22, "decorations": { "trees": 12, "rocks": 2 } },
+    { "index": 4,  "difficulty": 0.20, "meanderStrength": 0.25, "verticalBias": -0.20, "waterWidth": 21, "decorations": { "trees": 10, "rocks": 2 } },
+    { "index": 5,  "difficulty": 0.30, "meanderStrength": 0.40, "verticalBias": -0.30, "waterWidth": 19, "decorations": { "trees": 10, "rocks": 3 } },
+    { "index": 6,  "difficulty": 0.42, "meanderStrength": 0.55, "verticalBias": -0.45, "waterWidth": 18, "decorations": { "trees": 8,  "rocks": 4 } },
+    { "index": 7,  "difficulty": 0.32, "meanderStrength": 0.35, "verticalBias": -0.40, "waterWidth": 17, "decorations": { "trees": 8,  "rocks": 5 } },
+    { "index": 8,  "difficulty": 0.35, "meanderStrength": 0.30, "verticalBias": -0.50, "waterWidth": 16, "decorations": { "trees": 7,  "rocks": 5 } },
+    { "index": 9,  "difficulty": 0.48, "meanderStrength": 0.65, "verticalBias": -0.70, "waterWidth": 15, "decorations": { "trees": 6,  "rocks": 6 } },
+    { "index": 10, "difficulty": 0.58, "meanderStrength": 0.75, "verticalBias": -0.85, "waterWidth": 13, "decorations": { "trees": 5,  "rocks": 7 } },
+    { "index": 11, "difficulty": 0.62, "meanderStrength": 0.50, "verticalBias": -1.00, "waterWidth": 11, "decorations": { "trees": 3,  "rocks": 8 } },
+    { "index": 12, "difficulty": 0.65, "meanderStrength": 0.30, "verticalBias": -1.10, "waterWidth": 10, "decorations": { "trees": 2,  "rocks": 10 } },
     { "index": 13, "difficulty": 0.3, "meanderStrength": 0.2, "verticalBias": -1.2, "waterWidth": 10, "physics": { "waterFlowIntensity": 1.15 } },
     {
       "index": 14,
