@@ -1,4 +1,4 @@
-import { PointerLockControls, KeyboardControls } from "@react-three/drei";
+import { PointerLockControls, KeyboardControls, Html } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import { useFrame, useThree } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -246,25 +246,31 @@ const InnerExperience = () => {
         maxVelocity={25}
       />
 
-      <ForecastHUD samples={forecastSamples} />
+      {/* --- DOM UI overlays: must be wrapped in <Html> inside R3F Canvas --- */}
+      <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
+        <ForecastHUD samples={forecastSamples} />
 
-      {/* Loading overlay */}
-      {isLoadingLevel && (
-        <LoadingDisplay message="Loading custom level..." />
-      )}
+        {/* Loading overlay */}
+        {isLoadingLevel && (
+          <LoadingDisplay message="Loading custom level..." />
+        )}
 
-      {/* Error overlay */}
-      {levelLoadError && (
-        <ErrorDisplay
-          error={levelLoadError}
-          onDismiss={() => setLevelLoadError(null)}
-          onRetry={() => {
-            setLevelLoadError(null);
-            setIsLoadingLevel(true);
-            setLoadedLevelState(null);
-          }}
-        />
-      )}
+        {/* Error overlay */}
+        {levelLoadError && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <ErrorDisplay
+              error={levelLoadError}
+              onDismiss={() => setLevelLoadError(null)}
+              onRetry={() => {
+                setLevelLoadError(null);
+                setIsLoadingLevel(true);
+                setLoadedLevelState(null);
+              }}
+            />
+          </div>
+        )}
+      </Html>
+      {/* ------------------------------------------------------------------ */}
     </>
   );
 };

@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { Html } from '@react-three/drei';
 import { FLOW_FORECAST_STATES, type FlowForecastState } from '../constants/game';
 
 type ForecastSample = {
@@ -44,10 +43,9 @@ export default function ForecastHUD({ samples }: ForecastHUDProps) {
     const nextWindow = samples.slice(0, 6);
 
     return (
-        <Html fullscreen transform={false} style={{ pointerEvents: 'none' }}>
-            <div
-                style={{
-                    position: 'absolute',
+        <div
+            style={{
+                position: 'absolute',
                     top: 16,
                     left: 16,
                     zIndex: 20,
@@ -105,6 +103,5 @@ export default function ForecastHUD({ samples }: ForecastHUDProps) {
                     </div>
                 </div>
             </div>
-        </Html>
     );
 }

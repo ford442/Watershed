@@ -22,6 +22,7 @@ Routine maintains this automatically — you can add items too.
 -->
 - [ ] Step 6 — Author maps as JSON arrays in src/maps/ (Step 5 done; JSONMapManager exists but meander_to_waterfall.json is a stub — needs full waypoint sequence matching progression config, and end-to-end validation that JSONMapManager drives TrackManager correctly)
 - [ ] Verify RiverShader.js moss effect receives correct world normals from TrackSegment.jsx terrain mesh (visual check needed post-Step-2 commit)
+- [ ] Replace stub MP3s in public/sounds/ with real foley/audio assets (current files are silent 477-byte placeholders generated from a base64 minimal MP3)
 
 ## Done
 <!--
