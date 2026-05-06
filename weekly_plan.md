@@ -2,8 +2,8 @@
 
 ## Today's focus
 <!-- Routine writes here each run. You can delete after day ends, or keep as history. -->
-**2026-04-29 — Step 3: Water Visual Quality**
-Tune bank/edge foam density near canyon walls (EDGE_FOAM_WIDTH + foam multiplier in FlowingWater.jsx); wire camera-height turbulence so wave amplitude scales with how close the camera is to the water surface (vCameraProximity is computed but never consumed in the fragment shader — add cameraHeight uniform + scale displacement accordingly).
+**2026-05-06 — Wire GameHUD into the gameplay loop**
+GameHUD.tsx (speedometer, distance counter, wipeout screen) is a complete, export-ready component that is not rendered anywhere. Wire it into Experience.jsx by passing `vehicleRef` as `rigidBodyRef`; forward wipeout state from Player.jsx/RunnerVehicle.tsx; confirm speed reads from Rapier velocity in real time. This is the single change that transforms the prototype into something that reads like a game.
 
 ## Ideas
 <!--
@@ -12,23 +12,26 @@ Routine prioritizes these over generated ideas.
 Format: - [ ] Short description (optional: more context on next line indented)
 Routine will mark picked items as "[in progress — YYYY-MM-DD]".
 -->
-- [in progress — 2026-04-29] Step 3 — Water quality: tune bankFoamMask threshold near canyon walls; add camera-height turbulence (wave amplitude scales with proximity to water surface)
-- [x] Step 5 — Wire MapSystem.ts into TrackManager: replace inline getSegmentConfig with DefaultMapManager from MapSystem.ts; move segment config to JSON; create src/maps/meander_to_waterfall.json as first authored map
+- [in progress — 2026-05-06] Wire GameHUD into Experience.jsx — GameHUD.tsx (speed, distance, wipeout) is complete but unwired; connect rigidBodyRef + wipeout state forwarding from Player/RunnerVehicle
+- [ ] Author segments 0–12 waypoints in meander_to_waterfall.json — The Meander opener is fully procedural; explicit waypoints + environment hints would make the first impression deliberate (half-day)
+- [ ] Reactive audio validation — confirm public/sounds/ files are real foley (not 477-byte stubs); test ReactiveAudio crossfades in browser; AudioSystem + ReactiveAudio are wired but silent until verified (half-day sourcing + smoke test)
 
 ## Backlog
 <!--
 Unfinished items, known bugs, deferred ideas.
 Routine maintains this automatically — you can add items too.
 -->
-- [ ] Step 6 — Author maps as JSON arrays in src/maps/ (Step 5 done; JSONMapManager exists but meander_to_waterfall.json is a stub — needs full waypoint sequence matching progression config, and end-to-end validation that JSONMapManager drives TrackManager correctly)
-- [ ] Verify RiverShader.js moss effect receives correct world normals from TrackSegment.jsx terrain mesh (visual check needed post-Step-2 commit)
-- [ ] Replace stub MP3s in public/sounds/ with real foley/audio assets (current files are silent 477-byte placeholders generated from a base64 minimal MP3)
+- [ ] Verify RiverShader.js moss effect receives correct world normals from TrackSegment.jsx terrain mesh (visual check needed)
+- [ ] Replace stub MP3s in public/sounds/ with real foley/audio assets (current files may be silent 477-byte placeholders — verify first)
+- [ ] ReachManager architecture not documented in CLAUDE.md — significant new systems (ReachStreamer, ReachNormalizer, BiomeSystem, LODManager, SplashSystem, WaterReflection, WaterInteraction) need doc pass before onboarding new contributors
 
 ## Done
 <!--
 Completed items, routine archives here with date.
 Prune occasionally when this gets long.
 -->
+- [x] 2026-05-06 — Step 3 — Water Visual Quality: bankFoam via EDGE_FOAM_WIDTH + cameraHeight uniform + proximityScale wave turbulence confirmed in FlowingWater.jsx (commit 80fe84d)
+- [x] 2026-05-06 — Step 6 — meander_to_waterfall.json validated end-to-end (PR #125): segments 13–22 fully authored with waypoints, biome overrides, checkpoints; JSONMapManager drives TrackManager
 - [x] 2026-04-29 — Step 2 — Terrain Visual Quality: 3-stop vertex color gradient on canyon walls (waterline charcoal → mid grey-brown → rim tan/cream), triplanar UV smoothstep tuned from (0,8) to (6,14), worldNormal varying + moss band tightened to smoothstep(2,4) with normal-based mask in RiverShader.js — committed 7266e6d
 - [x] 2026-04-29 — Step 5 — Wire MapSystem.ts into TrackManager (PR #122): DefaultMapManager drives TrackManager via getChunkConfig(), MEANDER_TO_WATERFALL_PROGRESSION config in meander_to_waterfall.ts, JSON stub in meander_to_waterfall.json
 - [x] 2026-04-13 — Fix WebGL shader compilation errors (PR #119): double-texture in RiverShader.js, unconditional vertex attribute declarations, floor material missing enableMoss/enableTriplanar flags
@@ -41,7 +44,7 @@ Prune occasionally when this gets long.
 
 ## Last run
 <!-- Routine writes summary here each run. Overwrites previous. -->
-Date: 2026-04-29
-Mode: User Idea — Step 3 (Water Quality) is the only remaining Ideas item; Step 5 completed last week via PR #122.
-Focus: Step 3 — Water Visual Quality (bank foam density + camera-height wave turbulence)
-Outcome: Dispatch produced. weekly_plan.md updated (Step 2 + Step 5 → Done; Step 6 backlog added).
+Date: 2026-05-06
+Mode: New Idea — Ideas section exhausted (Step 3 water quality confirmed done in code; Step 5 already done); three new ideas generated
+Focus: Wire GameHUD (speedometer / distance / wipeout) into Experience.jsx — component is complete but unrendered
+Outcome: Dispatch produced. weekly_plan.md updated: Step 3 + Step 6 → Done; GameHUD wiring set as Today's focus; 2 unpicked ideas (authored Meander waypoints, audio validation) appended to Ideas.
