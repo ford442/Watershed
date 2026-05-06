@@ -51,6 +51,13 @@ export interface LevelWorld {
   };
 }
 
+export interface DecorationPlacement {
+  localX: number;
+  localZ: number;
+  scale?: number;
+  rotation?: number;
+}
+
 export interface LevelSegment {
   index: number;
   name?: string;
@@ -63,7 +70,7 @@ export interface LevelSegment {
   meanderStrength?: number;
   verticalBias?: number;
   forwardMomentum?: number;
-  decorations?: Record<string, number>;
+  decorations?: Record<string, number | DecorationPlacement[]>;
   physics?: {
     gravityMultiplier?: number;
     waterFlowIntensity?: number;

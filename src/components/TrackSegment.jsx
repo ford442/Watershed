@@ -7,6 +7,7 @@ import { extendRiverMaterial, updateRiverMaterial } from '../utils/RiverShader';
 import { WATER_LEVEL, WALL_WATERLINE_Y, SHADERS, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
+import { SeededRandom } from '../systems/MapSystem';
 import Vegetation from './Environment/Vegetation';
 import Grass from './Environment/Grass';
 import Foliage from './Environment/Foliage';
@@ -63,6 +64,7 @@ export default function TrackSegment({
     isNight = false,
     reachId,
     weatherWetnessRef,
+    config,
 }) {
     // console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
@@ -145,6 +147,8 @@ export default function TrackSegment({
             };
         }
 
+        const rng = new SeededRandom(segmentId);
+
         /* DISABLED DECORATION LOGIC */
         const rocks = []; // Empty but defined to prevent reference errors
         const rockFoam = [];
@@ -175,6 +179,54 @@ export default function TrackSegment({
 
         const bankStart = waterWidth / 2;
 
+        // --- Array-path: explicit authored decoration positions ---
+        const treeDef = config?.decorations?.trees;
+        const rockDef = config?.decorations?.rocks;
+
+        if (Array.isArray(treeDef)) {
+            treeDef.forEach(({ localX, localZ, scale: sc, rotation: rot }) => {
+                const treeT = Math.max(0, Math.min(1, 0.5 + localZ / geoLength));
+                const pp = segmentPath.getPoint(treeT);
+                const tang = segmentPath.getTangent(treeT).normalize();
+                const up = new THREE.Vector3(0, 1, 0);
+                const bn = new THREE.Vector3().crossVectors(tang, up).normalize();
+                const pos = pp.clone().add(bn.clone().multiplyScalar(localX));
+
+                const normalizedDist = Math.abs(localX) / (canyonWidth * 0.45);
+                let yH = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                yH += Math.sin(localZ * 0.15) * Math.cos(localX * 0.3) * 1.5;
+                if (yH > 25) yH = 25;
+                pos.y += yH - 0.5;
+
+                const scaleMod = sc ?? 2.0;
+                const rotEuler = new THREE.Euler(0, rot ?? 0, 0);
+                trees.push({ position: pos, rotation: rotEuler, scale: new THREE.Vector3(scaleMod, scaleMod, scaleMod) });
+            });
+        }
+
+        if (Array.isArray(rockDef)) {
+            rockDef.forEach(({ localX, localZ, scale: sc, rotation: rot }) => {
+                const rockT = Math.max(0, Math.min(1, 0.5 + localZ / geoLength));
+                const pp = segmentPath.getPoint(rockT);
+                const tang = segmentPath.getTangent(rockT).normalize();
+                const up = new THREE.Vector3(0, 1, 0);
+                const bn = new THREE.Vector3().crossVectors(tang, up).normalize();
+                const pos = pp.clone().add(bn.clone().multiplyScalar(localX));
+
+                const normalizedDist = Math.abs(localX) / (canyonWidth * 0.45);
+                let yH = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                if (Math.abs(localX) < bankStart + 2) yH *= 0.1;
+                pos.y += yH;
+
+                const scaleMod = sc ?? 1.0;
+                const rotEuler = rot != null
+                    ? new THREE.Euler(0, rot, 0)
+                    : new THREE.Euler(rng.next() * Math.PI, rng.next() * Math.PI, rng.next() * Math.PI);
+                rocks.push({ position: pos, rotation: rotEuler, scale: new THREE.Vector3(scaleMod, scaleMod, scaleMod) });
+            });
+        }
+        // ---------------------------------------------------------
+
         for (let z = 0; z < zSteps; z++) {
             const t = z / zSteps;
             const zLocal = (t - 0.5) * geoLength;
@@ -190,7 +242,8 @@ export default function TrackSegment({
                 const side = sides[sideIdx];
                 const isPond = type === 'pond';
 
-                // 1. ROCKS (Large)
+                // 1. ROCKS (Large) — skip if explicit authored positions provided
+                if (!Array.isArray(rockDef)) {
                 const rockChanceMultipliers = { low: 0.4, high: 0.7 };
                 const rockChance = isPond ? 0.3 : (isSlotCanyon ? 0.8 : rockChanceMultipliers[rockDensity] || 0.4);
                 if (seededRandom(seed++) > (1.0 - rockChance)) {
@@ -231,8 +284,10 @@ export default function TrackSegment({
                         });
                     }
                 }
+                } // end if (!Array.isArray(rockDef))
 
-                // 2. TREES
+                // 2. TREES (skip if explicit authored positions provided)
+                if (!Array.isArray(treeDef)) {
                 const baseTreeChance = isSlotCanyon ? 0.08 : ((biome === 'autumn' || isPond) ? 0.6 : 0.3);
                 const treeChance = baseTreeChance * treeDensity;
                 if (seededRandom(seed++) > (1.0 - treeChance)) {
@@ -280,6 +335,7 @@ export default function TrackSegment({
                         });
                     }
                 }
+                } // end if (!Array.isArray(treeDef))
 
                 // 3. DEBRIS
                 if (seededRandom(seed++) > 0.5) {
@@ -327,7 +383,7 @@ export default function TrackSegment({
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
                     position.y += 1.0;
-                    grass.push({ position, rotation: new THREE.Euler(0, Math.random(), 0), scale: new THREE.Vector3(0.5, 0.5, 0.5) });
+                    grass.push({ position, rotation: new THREE.Euler(0, rng.next(), 0), scale: new THREE.Vector3(0.5, 0.5, 0.5) });
                 }
 
                 // 4.5 WILDFLOWERS (New: Pops of Color)
@@ -342,7 +398,7 @@ export default function TrackSegment({
                     const scale = 0.6 + seededRandom(seed++) * 0.4;
                     wildflowers.push({
                         position,
-                        rotation: new THREE.Euler(0, Math.random() * Math.PI, 0),
+                        rotation: new THREE.Euler(0, rng.next() * Math.PI, 0),
                         scale: new THREE.Vector3(scale, scale, scale)
                     });
                 }
@@ -735,8 +791,8 @@ export default function TrackSegment({
             }
         }
 
-        return { rocks: [], trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
-    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed]);
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
+    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed, config]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
