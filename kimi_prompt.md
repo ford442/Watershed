@@ -43,12 +43,58 @@
 
 ## OVERALL WORKFLOW (Do one goal at a time)
 
-1. Create a new branch: `git checkout -b feature/goal-1-player-movement` (or similar).
+1. Create a new branch: `git checkout -b feature/goal-0-fix-live-build` (or similar).
 2. Implement **only** the files for that goal.
 3. Run full test suite + manual QA checklist after every major change.
 4. Update `src/PLAN.md`, `src/LEVEL_DESIGN.md`, and any relevant docs.
 5. Commit with clear message referencing the goal.
 6. Open a GitHub Issue or PR with screenshots/FPS numbers.
+
+---
+
+## GOAL 0: Fix Live Build Issues (HIGHEST PRIORITY - Current Blockers)
+
+**Current Problems on https://test.1ink.us/watershed/index.html**:
+- Multiple audio 404 errors (jump, land_soft, step_rock, collide_rock)
+- WebGL `glBlitFramebuffer` errors (depth/stencil conflicts)
+- Aggressive LOD downgrading (FPS dropping to 31–42, quality going high → medium → low)
+
+**Files to create/edit**:
+- `src/systems/AudioManager.ts` (or equivalent sound loading file)
+- `src/systems/PostProcessing.tsx`
+- `src/systems/LODManager.tsx`
+- Possibly `src/Experience.jsx` or render pipeline
+
+**Specific Tasks**:
+
+### 0.1 Audio Fixes (Quick Win)
+- Add placeholder silent `.mp3` files for: `jump.mp3`, `land_soft.mp3`, `step_rock.mp3`, `collide_rock.mp3` in the `public/sounds/` folder (or wherever deployed).
+- Or disable loading of these specific sounds gracefully.
+- Update AudioManager to wrap sound loading in try-catch and log warnings instead of hard errors.
+- Goal: Zero audio 404s in console.
+
+### 0.2 Fix glBlitFramebuffer Errors
+- Locate the source of the blit operation (most likely in `PostProcessing.tsx`, custom render targets, or shadow map setup).
+- Common fixes:
+  - Ensure read and write depth/stencil attachments are **different** textures.
+  - Avoid using the same render target for both source and destination in `glBlitFramebuffer`.
+  - Check WebGL2 / WebGPU compatibility for depth formats.
+  - Temporarily disable post-processing effects to isolate the issue.
+- Goal: No more `GL_INVALID_OPERATION` errors related to blit.
+
+### 0.3 Improve Baseline Performance & LOD Behavior
+- Raise initial quality settings or reduce starting scene complexity (fewer particles, lower shadow resolution, lighter post-processing).
+- Make LOD downgrading less aggressive (e.g., only downgrade after sustained low FPS for several seconds).
+- Add better FPS monitoring and automatic quality recovery when FPS improves.
+- Optimize initial load (staged asset loading, reduce draw calls on startup).
+- Goal: Game stays at **"high" or "medium"** quality for at least 60 seconds on the test build without dropping below 45 FPS.
+
+**Verification for Goal 0**:
+- Open https://test.1ink.us/watershed/index.html in Chrome
+- Console should show **zero** audio 404 errors
+- No WebGL `glBlitFramebuffer` errors
+- FPS stays ≥ 45 for extended play (no aggressive downgrading)
+- Update `src/PLAN.md` with "Live build issues resolved"
 
 ---
 
@@ -198,10 +244,10 @@ When generating code:
 - At the end of each goal, provide a short "How to test this goal" section.
 - Suggest the exact Git commit message.
 
-**Start with Goal 2 (Player Movement + Floating Objects)** unless the user says otherwise.
+**Start with Goal 0** (Fix Live Build Issues) unless the user specifies otherwise.
 
 ---
 
-**End of Prompt** — Let's build fast, varied, skill-focused downhill runs with beautiful biome variety! 🚀
+**End of Prompt** — Let's fix the live build first, then build the fast, varied, skill-focused downhill runs! 🚀
 
 (You can re-update this file anytime by telling me what to change or add.)

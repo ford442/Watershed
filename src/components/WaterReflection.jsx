@@ -29,6 +29,7 @@ export default function WaterReflection({
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
+      depthBuffer: false,
     });
     
     reflectionCameraRef.current = new THREE.PerspectiveCamera(
@@ -76,16 +77,30 @@ export default function WaterReflection({
     // Update projection
     reflectCam.projectionMatrix.copy(camera.projectionMatrix);
     
+    // Snapshot GL state
+    const currentRenderTarget = gl.getRenderTarget();
+    const currentAutoClear = gl.autoClear;
+    const currentScissorTest = gl.getScissorTest();
+    const currentViewport = gl.getViewport(new THREE.Vector4());
+    const currentScissor = gl.getScissor(new THREE.Vector4());
+
     // Clip plane to only render above water
     const clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -waterLevel);
     gl.clippingPlanes = [clipPlane];
-    
+
     // Render
-    const currentRenderTarget = gl.getRenderTarget();
+    gl.autoClear = true;
     gl.setRenderTarget(renderTarget);
+    gl.clear();
     gl.render(scene, reflectCam);
+
+    // Restore GL state
     gl.setRenderTarget(currentRenderTarget);
-    
+    gl.autoClear = currentAutoClear;
+    gl.setViewport(currentViewport.x, currentViewport.y, currentViewport.z, currentViewport.w);
+    gl.setScissor(currentScissor.x, currentScissor.y, currentScissor.z, currentScissor.w);
+    gl.setScissorTest(currentScissorTest);
+
     // Clear clip planes
     gl.clippingPlanes = [];
   });

@@ -39,48 +39,50 @@ interface ActiveSound {
 }
 
 // Default sound library
+const BASE_SOUND_URL = import.meta.env.BASE_URL || '/';
+
 const SOUND_LIBRARY: Record<string, SoundDef> = {
   // Footsteps
-  'step_rock': { url: '/sounds/footstep_rock.mp3', category: SoundCategory.FOOTSTEP, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 2 },
-  'step_moss': { url: '/sounds/footstep_moss.mp3', category: SoundCategory.FOOTSTEP, baseVolume: 0.4, basePitch: 0.9, maxConcurrent: 2 },
-  'step_wood': { url: '/sounds/footstep_wood.mp3', category: SoundCategory.FOOTSTEP, baseVolume: 0.5, basePitch: 1.1, maxConcurrent: 2 },
-  'step_wet': { url: '/sounds/footstep_wet.mp3', category: SoundCategory.FOOTSTEP, baseVolume: 0.6, basePitch: 0.8, maxConcurrent: 2 },
-  
+  'step_rock': { url: `${BASE_SOUND_URL}sounds/footstep_rock.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 2 },
+  'step_moss': { url: `${BASE_SOUND_URL}sounds/footstep_moss.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.4, basePitch: 0.9, maxConcurrent: 2 },
+  'step_wood': { url: `${BASE_SOUND_URL}sounds/footstep_wood.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.5, basePitch: 1.1, maxConcurrent: 2 },
+  'step_wet': { url: `${BASE_SOUND_URL}sounds/footstep_wet.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.6, basePitch: 0.8, maxConcurrent: 2 },
+
   // Jumps
-  'jump': { url: '/sounds/jump.mp3', category: SoundCategory.JUMP, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
-  'double_jump': { url: '/sounds/jump_double.mp3', category: SoundCategory.JUMP, baseVolume: 0.6, basePitch: 1.2, maxConcurrent: 1 },
-  
+  'jump': { url: `${BASE_SOUND_URL}sounds/jump.mp3`, category: SoundCategory.JUMP, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
+  'double_jump': { url: `${BASE_SOUND_URL}sounds/jump_double.mp3`, category: SoundCategory.JUMP, baseVolume: 0.6, basePitch: 1.2, maxConcurrent: 1 },
+
   // Landings
-  'land_soft': { url: '/sounds/land_soft.mp3', category: SoundCategory.LAND, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 1 },
-  'land_hard': { url: '/sounds/land_hard.mp3', category: SoundCategory.LAND, baseVolume: 0.8, basePitch: 0.9, maxConcurrent: 1 },
-  'land_impact': { url: '/sounds/land_impact.mp3', category: SoundCategory.LAND, baseVolume: 1.0, basePitch: 0.8, maxConcurrent: 1 },
-  
+  'land_soft': { url: `${BASE_SOUND_URL}sounds/land_soft.mp3`, category: SoundCategory.LAND, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 1 },
+  'land_hard': { url: `${BASE_SOUND_URL}sounds/land_hard.mp3`, category: SoundCategory.LAND, baseVolume: 0.8, basePitch: 0.9, maxConcurrent: 1 },
+  'land_impact': { url: `${BASE_SOUND_URL}sounds/land_impact.mp3`, category: SoundCategory.LAND, baseVolume: 1.0, basePitch: 0.8, maxConcurrent: 1 },
+
   // Collisions
-  'collide_rock': { url: '/sounds/collide_rock.mp3', category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 2 },
-  'collide_wood': { url: '/sounds/collide_wood.mp3', category: SoundCategory.COLLISION, baseVolume: 0.6, basePitch: 0.9, maxConcurrent: 2 },
-  'collide_moss': { url: '/sounds/collide_moss.mp3', category: SoundCategory.COLLISION, baseVolume: 0.4, basePitch: 1.1, maxConcurrent: 2 },
-  'collide_water': { url: '/sounds/splash.mp3', category: SoundCategory.COLLISION, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 3 },
-  'collide_concrete': { url: '/sounds/collide_concrete.mp3', category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 0.95, maxConcurrent: 2 },
-  
+  'collide_rock': { url: `${BASE_SOUND_URL}sounds/collide_rock.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 2 },
+  'collide_wood': { url: `${BASE_SOUND_URL}sounds/collide_wood.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.6, basePitch: 0.9, maxConcurrent: 2 },
+  'collide_moss': { url: `${BASE_SOUND_URL}sounds/collide_moss.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.4, basePitch: 1.1, maxConcurrent: 2 },
+  'collide_water': { url: `${BASE_SOUND_URL}sounds/splash.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 3 },
+  'collide_concrete': { url: `${BASE_SOUND_URL}sounds/collide_concrete.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 0.95, maxConcurrent: 2 },
+
   // Raft
-  'paddle_left': { url: '/sounds/paddle_left.mp3', category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
-  'paddle_right': { url: '/sounds/paddle_right.mp3', category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
-  'raft_creak': { url: '/sounds/raft_creak.mp3', category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
-  'water_crash': { url: '/sounds/water_crash.mp3', category: SoundCategory.COLLISION, baseVolume: 1.0, basePitch: 0.9, maxConcurrent: 1 },
+  'paddle_left': { url: `${BASE_SOUND_URL}sounds/paddle_left.mp3`, category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
+  'paddle_right': { url: `${BASE_SOUND_URL}sounds/paddle_right.mp3`, category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
+  'raft_creak': { url: `${BASE_SOUND_URL}sounds/raft_creak.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
+  'water_crash': { url: `${BASE_SOUND_URL}sounds/water_crash.mp3`, category: SoundCategory.COLLISION, baseVolume: 1.0, basePitch: 0.9, maxConcurrent: 1 },
 
   // Vehicle tuning — boost
-  'boost': { url: '/sounds/boost.mp3', category: SoundCategory.UI, baseVolume: 0.9, basePitch: 1.0, maxConcurrent: 1 },
+  'boost': { url: `${BASE_SOUND_URL}sounds/boost.mp3`, category: SoundCategory.UI, baseVolume: 0.9, basePitch: 1.0, maxConcurrent: 1 },
 
-  // Goal 2: Dodge / dash
-  'dodge': { url: '/sounds/whoosh.mp3', category: SoundCategory.UI, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 2 },
+  // Goal 2: Dodge / dash (mapped to an existing sound to avoid 404; load gracefully)
+  'dodge': { url: `${BASE_SOUND_URL}sounds/boost.mp3`, category: SoundCategory.UI, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 2 },
 
   // Water flow — rapids ambience
-  'rapids_roar': { url: '/sounds/rapids_roar.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 1 },
-  
+  'rapids_roar': { url: `${BASE_SOUND_URL}sounds/rapids_roar.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 1 },
+
   // Ambient
-  'ambient_water': { url: '/sounds/ambient_water.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.3, basePitch: 1.0, maxConcurrent: 1 },
-  'ambient_wind': { url: '/sounds/ambient_wind.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.2, basePitch: 1.0, maxConcurrent: 1 },
-  'ambient_canyon': { url: '/sounds/ambient_canyon.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.25, basePitch: 1.0, maxConcurrent: 1 },
+  'ambient_water': { url: `${BASE_SOUND_URL}sounds/ambient_water.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.3, basePitch: 1.0, maxConcurrent: 1 },
+  'ambient_wind': { url: `${BASE_SOUND_URL}sounds/ambient_wind.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.2, basePitch: 1.0, maxConcurrent: 1 },
+  'ambient_canyon': { url: `${BASE_SOUND_URL}sounds/ambient_canyon.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.25, basePitch: 1.0, maxConcurrent: 1 },
 };
 
 // Fallback sound URLs (will be synthesized if files don't exist)
@@ -131,12 +133,14 @@ export class AudioManager {
   }
   
   /**
-   * Pre-load essential sounds
+   * Pre-load essential sounds (fire-and-forget so one failure doesn't stall init)
    */
-  private async preloadCriticalSounds(): Promise<void> {
+  private preloadCriticalSounds(): void {
     const critical = ['jump', 'land_soft', 'step_rock', 'collide_rock'];
     for (const name of critical) {
-      await this.loadSound(name);
+      this.loadSound(name).catch(() => {
+        // Warning already logged inside loadSound
+      });
     }
   }
   

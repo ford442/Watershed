@@ -60,6 +60,12 @@ src/
     └── biomes.ts
 ```
 
+## Goal 0: Live Build Issues Resolved
+
+- **Audio paths**: Switched `AudioSystem.ts` to use `import.meta.env.BASE_URL` so sounds load correctly under subdirectory deployments (e.g. `/watershed/`).
+- **glBlitFramebuffer fix**: Disabled `enableNormalPass` on `EffectComposer` and restricted `SSAO` to `ultra` quality only. `WaterReflection` now saves/restores full GL state and uses `depthBuffer: false` on its render target.
+- **LOD hysteresis**: Added sustained-history gating — downgrade requires 3 consecutive seconds below threshold, upgrade requires 2 consecutive seconds above. Reduced `high` preset cost (`shadowMapSize` 1024, motion blur off, 700 max particles) to improve baseline FPS.
+
 ## Migration Notes
 
 - Keep `Experience.jsx` as the main scene orchestrator

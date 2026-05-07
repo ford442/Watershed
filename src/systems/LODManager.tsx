@@ -57,14 +57,14 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   },
   high: {
     particleDensity: 1.0,
-    shadowMapSize: 2048,
+    shadowMapSize: 1024,
     enableReflections: true,
     enableCaustics: true,
     enableGodRays: true,
-    enableMotionBlur: true,
+    enableMotionBlur: false,
     enableBloom: true,
     volumetricSamples: 32,
-    maxParticles: 1000,
+    maxParticles: 700,
     viewDistance: 200,
   },
   ultra: {
@@ -141,6 +141,8 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   const lowFpsFrames = useRef(0);
   const warnedFps = useRef(false);
   const warnedMemory = useRef(false);
+  const consecutiveLowSeconds = useRef(0);
+  const consecutiveHighSeconds = useRef(0);
 
   useFrame(() => {
     const now = performance.now();
@@ -186,19 +188,43 @@ export const LODProvider: React.FC<LODProviderProps> = ({
         }
       }
 
-      // Adaptive quality
+      // Adaptive quality with sustained-history hysteresis
       if (enableAdaptive) {
         const qualities: QualityLevel[] = ['low', 'medium', 'high', 'ultra'];
         const currentIndex = qualities.indexOf(quality);
+        const downgradeThreshold = targetFPS - 10;
+        const upgradeThreshold = targetFPS + 5;
 
-        if (currentFPS < targetFPS - 10 && currentIndex > 0) {
-          const newQ = qualities[currentIndex - 1];
-          console.warn(`[LODManager] FPS ${currentFPS} < target ${targetFPS - 10}. Downgrading quality: ${quality} → ${newQ}`);
-          setQuality(newQ);
-        } else if (currentFPS > targetFPS + 15 && currentIndex < qualities.length - 1) {
-          const newQ = qualities[currentIndex + 1];
-          console.log(`[LODManager] FPS ${currentFPS} > target ${targetFPS + 15}. Upgrading quality: ${quality} → ${newQ}`);
-          setQuality(newQ);
+        if (currentFPS < downgradeThreshold && currentIndex > 0) {
+          consecutiveLowSeconds.current += 1;
+          consecutiveHighSeconds.current = 0;
+
+          if (consecutiveLowSeconds.current >= 3) {
+            const newQ = qualities[currentIndex - 1];
+            console.warn(
+              `[LODManager] Sustained low FPS detected: ${currentFPS} (threshold ${downgradeThreshold}). ` +
+              `Downgrading quality: ${quality} → ${newQ}`
+            );
+            setQuality(newQ);
+            consecutiveLowSeconds.current = 0;
+          }
+        } else if (currentFPS > upgradeThreshold && currentIndex < qualities.length - 1) {
+          consecutiveHighSeconds.current += 1;
+          consecutiveLowSeconds.current = 0;
+
+          if (consecutiveHighSeconds.current >= 2) {
+            const newQ = qualities[currentIndex + 1];
+            console.log(
+              `[LODManager] Sustained high FPS detected: ${currentFPS} (threshold ${upgradeThreshold}). ` +
+              `Upgrading quality: ${quality} → ${newQ}`
+            );
+            setQuality(newQ);
+            consecutiveHighSeconds.current = 0;
+          }
+        } else {
+          // FPS is in the stable band — decay counters slowly so momentary spikes don't reset history
+          consecutiveLowSeconds.current = Math.max(0, consecutiveLowSeconds.current - 1);
+          consecutiveHighSeconds.current = Math.max(0, consecutiveHighSeconds.current - 1);
         }
       }
 
