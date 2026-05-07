@@ -249,6 +249,15 @@ function validateSemantics(levelData: any, errors: ValidationError[], warnings: 
       suggestion: 'Consider reducing to 15-20 segments for better performance',
     });
   }
+
+  // Goal 5: Performance budget checks
+  validatePerformanceBudget(levelData, errors, warnings);
+
+  // Goal 5: Segment type sequence validation
+  validateSegmentSequence(segments, errors, warnings);
+
+  // Goal 5: Spawn point validation
+  validateSpawnPoints(spawns, errors, warnings);
 }
 
 /**
@@ -414,6 +423,106 @@ function getSuggestionForError(error: any): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Goal 5: Validate performance budget (decorations + particles)
+ */
+function validatePerformanceBudget(levelData: any, errors: ValidationError[], warnings: ValidationError[]): void {
+  const segments = levelData.segments || [];
+  let totalDecorations = 0;
+  let totalParticles = 0;
+
+  for (const seg of segments) {
+    if (seg.decorations) {
+      for (const [type, count] of Object.entries(seg.decorations)) {
+        if (typeof count === 'number') {
+          totalDecorations += count;
+        }
+      }
+    }
+    if (seg.effects?.particleCount) {
+      totalParticles += seg.effects.particleCount;
+    }
+  }
+
+  if (totalDecorations > 500) {
+    warnings.push({
+      field: 'segments.decorations',
+      error: `High total decoration count (${totalDecorations}) may impact frame time`,
+      suggestion: 'Reduce decoration density or use instanced meshes',
+    });
+  }
+
+  if (totalParticles > 1000) {
+    warnings.push({
+      field: 'segments.effects.particleCount',
+      error: `High total particle count (${totalParticles}) may drop FPS below 55`,
+      suggestion: 'Cap waterfall particles at 400 and reduce others',
+    });
+  }
+}
+
+/**
+ * Goal 5: Validate segment type sequence
+ * Waterfall must be followed by splash, then pond
+ */
+function validateSegmentSequence(segments: any[] | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
+  if (!segments) return;
+
+  const sorted = [...segments].sort((a, b) => a.index - b.index);
+  for (let i = 0; i < sorted.length; i++) {
+    const seg = sorted[i];
+    const next = sorted[i + 1];
+
+    if (seg.type === 'waterfall') {
+      if (!next) {
+        warnings.push({
+          field: `segments[${seg.index}]`,
+          error: 'Waterfall is the final segment — no splash pool for landing',
+          suggestion: 'Add a splash or pond segment after the waterfall',
+        });
+      } else if (next.type !== 'splash' && next.type !== 'pond') {
+        warnings.push({
+          field: `segments[${next.index}]`,
+          error: `Segment after waterfall is "${next.type}" instead of splash/pond`,
+          suggestion: 'Place a splash or pond segment immediately after the waterfall',
+        });
+      }
+    }
+
+    if (seg.type === 'splash' && next && next.type !== 'pond') {
+      warnings.push({
+        field: `segments[${next.index}]`,
+        error: `Segment after splash is "${next.type}" instead of pond`,
+        suggestion: 'Consider placing a pond segment after the splash pool',
+      });
+    }
+  }
+}
+
+/**
+ * Goal 5: Validate spawn points are above water and within bounds
+ */
+function validateSpawnPoints(spawns: any, errors: ValidationError[], warnings: ValidationError[]): void {
+  if (!spawns?.start?.position) return;
+
+  const [x, y, z] = spawns.start.position;
+  if (y < 0.5) {
+    warnings.push({
+      field: 'spawns.start.position.y',
+      error: `Player spawn Y (${y}) is below or near water level (0.5)`,
+      suggestion: 'Raise spawn Y to at least 1.0 to avoid immediate submersion',
+    });
+  }
+
+  if (Math.abs(x) > 50 || Math.abs(z) > 200) {
+    warnings.push({
+      field: 'spawns.start.position',
+      error: `Spawn position [${x}, ${y}, ${z}] is far from origin`,
+      suggestion: 'Keep spawn near [0, -4, -10] for consistent player start',
+    });
+  }
 }
 
 function getErrorField(error: any): string {

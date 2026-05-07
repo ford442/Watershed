@@ -14,7 +14,7 @@ import ReactiveAudio from '../components/ReactiveAudio';
 import WeatherSystem from '../components/WeatherSystem';
 import { ReachStreamer, ReachManifest } from './ReachStreamer';
 import { normalizeReachManifest, NormalizedSegment } from './ReachNormalizer';
-import { ErrorDisplay, LoadingDisplay } from './LevelLoader';
+// Removed DOM UI imports — overlays are lifted to Experience.jsx
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */
@@ -25,6 +25,12 @@ interface ReachManagerProps {
   forecastSamples?: any[];
   /** Reach identifier to load */
   reachId?: string;
+  /** Called when loading state changes */
+  onLoadingChange?: (loading: boolean) => void;
+  /** Called when an error occurs or is cleared */
+  onError?: (error: string | null) => void;
+  /** Increment to trigger a retry */
+  retryKey?: number;
 }
 
 export default function ReachManager({
@@ -32,13 +38,24 @@ export default function ReachManager({
   onBiomeChange,
   forecastSamples = [],
   reachId = 'reach_01_alpine_source',
+  onLoadingChange,
+  onError,
+  retryKey = 0,
 }: ReachManagerProps) {
   const [reachSegments, setReachSegments] = useState<NormalizedSegment[] | null>(null);
   const [manifest, setManifest] = useState<ReachManifest | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
   const transitionLoggedRef = useRef(false);
+
+  // Notify parent of loading / error state changes
+  useEffect(() => {
+    onLoadingChange?.(loading);
+  }, [loading, onLoadingChange]);
+
+  useEffect(() => {
+    onError?.(error);
+  }, [error, onError]);
 
   // Load the Reach on mount / reachId change
   useEffect(() => {
@@ -126,21 +143,11 @@ export default function ReachManager({
   });
 
   if (loading) {
-    return (
-      <LoadingDisplay message={`Loading Reach: ${reachId}...`} />
-    );
+    return null;
   }
 
   if (error) {
-    return (
-      <ErrorDisplay
-        error={error}
-        onRetry={() => {
-          setError(null);
-          setRetryKey((k) => k + 1);
-        }}
-      />
-    );
+    return null;
   }
 
   if (!reachSegments) {

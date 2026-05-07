@@ -135,3 +135,45 @@ export const FLOW_FORECAST_STATES = {
 } as const;
 
 export type FlowForecastState = typeof FLOW_FORECAST_STATES[keyof typeof FLOW_FORECAST_STATES];
+
+// =============================================================================
+// PLAYER MOVEMENT CONSTANTS (Goal 2)
+// =============================================================================
+
+export const MOVEMENT = {
+    /** Grace period after leaving ground where jump still works (seconds) */
+    COYOTE_TIME: 0.08,
+    /** Multiplier applied to upward velocity when jump key is released early */
+    JUMP_CUT_MULTIPLIER: 0.4,
+    /** Lateral dodge impulse strength */
+    DODGE_FORCE: 28,
+    /** How long the dodge impulse lasts (seconds) */
+    DODGE_DURATION: 0.25,
+    /** Minimum time between dodges (seconds) */
+    DODGE_COOLDOWN: 0.8,
+    /** How long player is invulnerable during dodge (seconds) */
+    DODGE_I_FRAMES: 0.15,
+    /** Speed multiplier when sliding on steep downslope */
+    SLIDE_SPEED_BOOST: 1.4,
+    /** Reduced friction during slide */
+    SLIDE_FRICTION: 0.02,
+    /** Maximum slope angle (degrees) for slide activation */
+    SLIDE_MIN_SLOPE: 35,
+} as const;
+
+export const FLOATING_OBJECT = {
+    /** Density of floating debris (kg/m³) — less than water = floats */
+    DEBRIS_DENSITY: 600,
+    /** Approximate volume of a debris piece (m³) */
+    DEBRIS_VOLUME: 0.5,
+    /** How much river current affects debris (0-1) */
+    FLOW_INFLUENCE: 0.6,
+    /** How much platform velocity transfers to player per frame */
+    PLAYER_MOMENTUM_TRANSFER: 0.3,
+    /** Max floating objects per active segment (performance budget) */
+    MAX_PER_SEGMENT: 8,
+    /** Drag coefficient for debris in water */
+    DRAG_COEFFICIENT: 0.7,
+    /** Cross-sectional area for drag (m²) */
+    DRAG_AREA: 0.4,
+} as const;

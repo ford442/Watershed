@@ -1,9 +1,9 @@
 // src/components/GameHUD.tsx
-// Heads-up display: speed, distance, wipeout
+// Heads-up display: speed, distance, biome, momentum, wipeout
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
+import { usePlayerBiome } from '../systems/GameState';
 
 interface GameHUDProps {
   /** Rapier rigid body ref for velocity/position */
@@ -16,15 +16,23 @@ interface GameHUDProps {
   initialBestDistance?: number;
 }
 
+/** Biome display names and accent colors */
+const BIOME_STYLES: Record<string, { name: string; color: string; bg: string }> = {
+  summer: { name: 'Summer Creek', color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+  autumn: { name: 'Autumn Canyon', color: '#fb923c', bg: 'rgba(251,146,60,0.15)' },
+  slotCanyon: { name: 'Slot Canyon', color: '#f87171', bg: 'rgba(248,113,113,0.15)' },
+};
+
 /**
- * GameHUD — Speedometer, distance counter, and wipeout screen
- * 
+ * GameHUD — Speedometer, distance counter, biome badge, momentum bar, and wipeout screen
+ *
  * Features:
  * - Real-time speed display (km/h, game-scaled)
  * - Distance tracker (meters downstream)
+ * - Biome name badge with seasonal color
+ * - "Water Shed %" momentum bar (velocity-based)
  * - Best distance persistence
  * - Wipeout screen with respawn
- * - Shader browser hint
  */
 export const GameHUD: React.FC<GameHUDProps> = ({
   rigidBodyRef,
@@ -36,6 +44,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [distance, setDistance] = useState(0);
   const [bestDistance, setBestDistance] = useState(initialBestDistance);
   const [showShaderHint, setShowShaderHint] = useState(true);
+  const [momentum, setMomentum] = useState(0);
+
+  const currentBiome = usePlayerBiome();
+  const biomeStyle = BIOME_STYLES[currentBiome] ?? BIOME_STYLES.summer;
 
   // Load best distance from localStorage on mount
   useEffect(() => {
@@ -59,7 +71,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
-  // Update speed and distance every frame
+  // Update speed, distance, and momentum every frame
   useFrame(() => {
     if (!rigidBodyRef.current || isWipeout) return;
 
@@ -68,15 +80,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const pos = rb.translation();
 
     // Calculate speed in km/h (arbitrary scale for "fun" numbers)
-    // Adjust multiplier (12) to get desired speed feel
     const rawSpeed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
     const kmh = Math.round(rawSpeed * 12);
     setSpeed(Math.max(0, kmh));
 
     // Distance = how far downstream (negative Z is forward)
     const downstream = Math.abs(pos.z);
-    const meters = Math.floor(downstream * 0.5); // Scale world units to meters
+    const meters = Math.floor(downstream * 0.5);
     setDistance(meters);
+
+    // Water Shed % — momentum based on speed (0-100%)
+    // Scale: 0 m/s = 0%, 25 m/s = 100%
+    const shedPct = Math.min(100, Math.round((rawSpeed / 25) * 100));
+    setMomentum(shedPct);
   });
 
   // Wipeout screen
@@ -87,28 +103,28 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="text-7xl md:text-9xl font-black text-red-500 mb-6 tracking-tighter">
             WIPEOUT
           </div>
-          
+
           <div className="text-2xl md:text-4xl text-white mb-4">
             Distance: <span className="font-mono font-bold">{distance}m</span>
           </div>
-          
+
           {distance >= bestDistance && distance > 0 && (
             <div className="text-emerald-400 text-xl md:text-2xl mb-8 font-bold">
               🎉 NEW BEST!
             </div>
           )}
-          
+
           <div className="text-zinc-500 text-lg mb-12">
             Best: <span className="font-mono text-emerald-400">{bestDistance}m</span>
           </div>
-          
+
           <button
             onClick={onRespawn}
             className="px-12 py-5 bg-white text-black text-2xl md:text-3xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
           >
             RESPAWN
           </button>
-          
+
           <p className="mt-8 text-zinc-600 text-sm">
             Press SPACE to respawn
           </p>
@@ -119,8 +135,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   return (
     <>
-      {/* Top-left: Speedometer */}
-      <div className="fixed top-4 left-4 md:top-6 md:left-6 bg-black/60 backdrop-blur-md text-white px-4 py-3 md:px-6 md:py-4 rounded-2xl border border-white/10 shadow-lg">
+      {/* Top-left: Speedometer + Momentum */}
+      <div className="fixed top-4 left-4 md:top-6 md:left-6 bg-black/60 backdrop-blur-md text-white px-4 py-3 md:px-6 md:py-4 rounded-2xl border border-white/10 shadow-lg min-w-[180px]">
         <div className="flex items-baseline gap-2">
           <span className="font-mono text-4xl md:text-5xl font-bold text-emerald-400">
             {speed}
@@ -130,11 +146,37 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </span>
         </div>
         <div className="mt-1 h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
-          <div 
+          <div
             className="h-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-150"
             style={{ width: `${Math.min(100, (speed / 80) * 100)}%` }}
           />
         </div>
+
+        {/* Water Shed % Momentum Bar (Goal 4) */}
+        <div className="mt-3 pt-3 border-t border-white/10">
+          <div className="flex items-center justify-between text-xs text-white/50 mb-1">
+            <span>Water Shed</span>
+            <span className="font-mono text-sky-400">{momentum}%</span>
+          </div>
+          <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-sky-600 to-sky-300 transition-all duration-150"
+              style={{ width: `${momentum}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Top-center: Biome Badge (Goal 4) */}
+      <div
+        className="fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border shadow-lg backdrop-blur-md text-sm font-semibold tracking-wide uppercase transition-colors duration-500"
+        style={{
+          color: biomeStyle.color,
+          borderColor: biomeStyle.color,
+          background: biomeStyle.bg,
+        }}
+      >
+        {biomeStyle.name}
       </div>
 
       {/* Top-right: Distance */}

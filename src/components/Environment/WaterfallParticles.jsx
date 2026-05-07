@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { useLOD } from '../../systems/LODManager';
 
 /**
  * WaterfallParticles - High performance falling water effect with dynamic scaling
@@ -18,13 +19,14 @@ export default function WaterfallParticles({
     playerVelocity = 0,
     particleDensity = 1.0, // 0.0-1.0 from segment config
 }) {
+    const { config: lodConfig } = useLOD();
     const meshRef = useRef();
     const lightRef = useRef();
     const currentCountRef = useRef(baseCount);
     const targetCountRef = useRef(baseCount);
     const fadeAlphaRef = useRef(1.0);
 
-    // Calculate dynamic particle count based on velocity and density (E4)
+    // Calculate dynamic particle count based on velocity, density, and LOD (E4 + Goal 3)
     const calculatedCount = useMemo(() => {
         // Base count from density (100-400 range)
         const densityBase = 100 + (particleDensity * 300);
@@ -35,14 +37,24 @@ export default function WaterfallParticles({
             velocityMultiplier = 1.5;
         }
         
-        // Calculate final count
-        let finalCount = Math.floor(densityBase * velocityMultiplier);
+        // LOD reduction: on low quality, cap at 100 particles (Goal 3)
+        let lodMultiplier = 1.0;
+        const maxParticles = lodConfig?.maxParticles ?? 500;
+        if (maxParticles <= 200) {
+            lodMultiplier = 0.25; // ~100 particles max
+        } else if (maxParticles <= 500) {
+            lodMultiplier = 0.6;
+        }
         
-        // Cap at 500 particles max (E4 requirement)
-        finalCount = Math.min(500, finalCount);
+        // Calculate final count
+        let finalCount = Math.floor(densityBase * velocityMultiplier * lodMultiplier);
+        
+        // Hard cap: 500 absolute max, 100 on low quality (Goal 3)
+        const absoluteMax = maxParticles <= 200 ? 100 : 500;
+        finalCount = Math.min(absoluteMax, finalCount);
         
         return finalCount;
-    }, [baseCount, particleDensity, playerVelocity]);
+    }, [baseCount, particleDensity, playerVelocity, lodConfig]);
 
     // Update target count when calculated count changes
     useEffect(() => {

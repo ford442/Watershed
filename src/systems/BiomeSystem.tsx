@@ -59,7 +59,7 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   const previousBiome = useRef(currentBiome);
   
   // Start biome transition
-  const setBiome = useCallback((biomeId: string) => {
+  const setBiome = useCallback((biomeId: string, durationOverride?: number) => {
     const newTarget = getBiomePalette(biomeId);
     if (newTarget.id === targetBiome.id) return;
     
@@ -68,13 +68,19 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     setIsTransitioning(true);
     setTransitionProgress(0);
     transitionStartTime.current = performance.now();
+    
+    // Store duration override on the target for the transition effect to read
+    if (durationOverride !== undefined) {
+      (newTarget as any).__durationOverride = durationOverride;
+    }
   }, [currentBiome, targetBiome]);
   
   // Update transition progress
   useEffect(() => {
     if (!isTransitioning) return;
     
-    const duration = targetBiome.transitionDuration * 1000;
+    const durationOverride = (targetBiome as any).__durationOverride;
+    const duration = (durationOverride !== undefined ? durationOverride : targetBiome.transitionDuration) * 1000;
     
     const updateTransition = () => {
       const elapsed = performance.now() - transitionStartTime.current;

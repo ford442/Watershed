@@ -5,7 +5,8 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
 import ForecastHUD from "./components/ForecastHUD";
-import { WATER_LEVEL } from "./constants/game";
+import GameHUD from "./components/GameHUD";
+import { WATER_LEVEL, PLAYER_SPAWN } from "./constants/game";
 
 // Vehicle system
 import RunnerVehicle from "./vehicles/RunnerVehicle";
@@ -23,7 +24,12 @@ import WaterReflection from "./components/WaterReflection";
 import WaterInteraction from "./components/WaterInteraction";
 import { PostProcessingEffects } from "./components/PostProcessingEffects";
 import { useCameraShake } from "./hooks/useCameraShake";
+import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio } from "./systems/AudioSystem";
+
+// Goal 1: Zustand game state
+import { useGameStore, batchFrameUpdate } from "./systems/GameState";
+import { useChunkLoader } from "./hooks/useChunkLoader";
 
 const DAM_RELEASE_SCHEDULE = [
   { hour: 6, release: 0.08 },
@@ -61,10 +67,24 @@ const BIOME_LIGHTING = {
  * Wrapped in providers for context access
  */
 const InnerExperience = () => {
-  const [biome, setBiome] = useState('summer');
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
   const { camera } = useThree();
+
+  // Goal 1: Zustand game state selectors
+  const biome = useGameStore((s) => s.currentBiome);
+  const setBiome = useGameStore((s) => s.setCurrentBiome);
+  const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  const isWipeout = useGameStore((s) => s.isWipeout);
+  const setIsWipeout = useGameStore((s) => s.setIsWipeout);
+  const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
+  const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
+  const setWaterfallGravityMultiplier = useGameStore((s) => s.setWaterfallGravityMultiplier);
+  const setCurrentSpeed = useGameStore((s) => s.setCurrentSpeed);
+  const setDistanceTraveled = useGameStore((s) => s.setDistanceTraveled);
+  const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
+  const spawnPoints = useGameStore((s) => s.spawnPoints);
+  const respawnSegmentIndex = useGameStore((s) => s.respawnSegmentIndex);
 
   // Initialize Three.js audio listener on camera
   useEffect(() => {
@@ -77,6 +97,9 @@ const InnerExperience = () => {
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState(null);
   const [forecastSamples, setForecastSamples] = useState([]);
+  const [reachLoading, setReachLoading] = useState(false);
+  const [reachError, setReachError] = useState(null);
+  const [reachRetryKey, setReachRetryKey] = useState(0);
 
   // Get LOD config and quality level
   const { config: lodConfig, quality } = useLOD();
@@ -90,16 +113,85 @@ const InnerExperience = () => {
   // Velocity tracking for speed-based effects (E3) — use ref to avoid per-frame re-renders
   const playerVelocityRef = useRef(0);
 
+  // Goal 3: Segment-aware ambient audio
+  useSegmentAudio(currentSegmentIndex);
+
+  // Track segment enter events for respawn bookkeeping
+  useEffect(() => {
+    const handleSegmentEnter = (e) => {
+      const index = e.detail?.segmentIndex ?? 0;
+      setCurrentSegmentIndex(index);
+      setRespawnSegmentIndex(index);
+
+      // Waterfall gravity shift for segment 14
+      if (index === 14) {
+        setWaterfallGravityMultiplier(1.45);
+      } else if (index === 15) {
+        // Reset gravity after waterfall
+        setWaterfallGravityMultiplier(1.0);
+      }
+    };
+
+    const handleSegmentSpawn = (e) => {
+      const { segmentIndex, spawnPoint } = e.detail ?? {};
+      if (segmentIndex !== undefined && spawnPoint) {
+        setSpawnPoint(segmentIndex, spawnPoint);
+      }
+    };
+
+    window.addEventListener('segment-enter', handleSegmentEnter);
+    window.addEventListener('segment-spawn', handleSegmentSpawn);
+    return () => {
+      window.removeEventListener('segment-enter', handleSegmentEnter);
+      window.removeEventListener('segment-spawn', handleSegmentSpawn);
+    };
+  }, [setCurrentSegmentIndex, setRespawnSegmentIndex, setWaterfallGravityMultiplier, setSpawnPoint]);
+
+  // Goal 5: Performance regression tracking
+  const slowFrameCount = useRef(0);
+  const warnedSlowFrames = useRef(false);
+
   // Update camera shake and track velocity each frame
   useFrame((state, delta) => {
     cameraShake.update(delta);
 
-    // Track player velocity for post-processing effects
+    // Goal 5: Warn if frame time exceeds 16.67ms (60 FPS) consistently
+    if (delta > 0.025) { // > 25ms = < 40 FPS
+      slowFrameCount.current += 1;
+      if (slowFrameCount.current > 60 && !warnedSlowFrames.current) {
+        warnedSlowFrames.current = true;
+        console.warn(
+          `[Experience] Sustained slow frames detected: ${Math.round(delta * 1000)}ms ` +
+          `(${Math.round(1 / delta)} FPS). Target is <17ms (60 FPS).`
+        );
+      }
+    } else {
+      slowFrameCount.current = Math.max(0, slowFrameCount.current - 1);
+    }
+
     if (vehicleRef.current) {
       const vel = vehicleRef.current.linvel?.();
+      const pos = vehicleRef.current.translation?.();
+
       if (vel) {
         const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         playerVelocityRef.current = speed;
+
+        // Throttled batch update into Zustand (position + speed + distance)
+        const downstream = pos ? Math.abs(pos.z) : 0;
+        const meters = Math.floor(downstream * 0.5);
+        batchFrameUpdate(
+          { x: pos?.x ?? 0, y: pos?.y ?? 0, z: pos?.z ?? 0 },
+          speed,
+          useGameStore.getState().currentSegmentIndex
+        );
+        setDistanceTraveled(meters);
+        setCurrentSpeed(speed);
+      }
+
+      // Minimal wipeout detection
+      if (pos && pos.y < -80 && !isWipeout) {
+        setIsWipeout(true);
       }
     }
   });
@@ -135,12 +227,38 @@ const InnerExperience = () => {
       const newBiome = biomeMap[levelState.biome.baseType] || 'summer';
       setBiome(newBiome);
     }
-  }, []);
+  }, [setBiome]);
+
+  // Goal 3: Biome transition with segment-aware duration
+  const handleBiomeChange = useCallback((newBiome, segmentIndex) => {
+    // Summer → autumn at segment 15 uses 2000ms lerp (LEVEL_DESIGN.md)
+    const isTransitionSegment = segmentIndex === 15;
+    const duration = isTransitionSegment ? 2.0 : undefined;
+    setBiome(newBiome, duration);
+  }, [setBiome]);
 
   const handleLevelError = useCallback((error) => {
     setLevelLoadError(error);
     setIsLoadingLevel(false);
   }, []);
+
+  const handleRespawn = useCallback(() => {
+    setIsWipeout(false);
+    if (vehicleRef.current) {
+      // Segment-aware respawn: use stored spawn point if available
+      const spawn = spawnPoints[respawnSegmentIndex];
+      const fallback = {
+        x: PLAYER_SPAWN.position[0],
+        y: PLAYER_SPAWN.position[1],
+        z: PLAYER_SPAWN.position[2],
+      };
+      const target = spawn ?? fallback;
+
+      vehicleRef.current.setTranslation(target, true);
+      vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+  }, [setIsWipeout, spawnPoints, respawnSegmentIndex]);
 
   // Use lighting from biome system or fallback
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
@@ -230,12 +348,20 @@ const InnerExperience = () => {
             onLoad={handleLevelLoad}
             onError={handleLevelError}
             showLoader={false}
+            showError={false}
             raftRef={vehicleRef}
-            onBiomeChange={setBiome}
+            onBiomeChange={handleBiomeChange}
             forecastSamples={forecastSamples}
           />
         ) : (
-          <ReachManager playerRef={vehicleRef} onBiomeChange={setBiome} forecastSamples={forecastSamples} />
+          <ReachManager
+            playerRef={vehicleRef}
+            onBiomeChange={handleBiomeChange}
+            forecastSamples={forecastSamples}
+            onLoadingChange={setReachLoading}
+            onError={setReachError}
+            retryKey={reachRetryKey}
+          />
         )}
       </Physics>
 
@@ -250,9 +376,22 @@ const InnerExperience = () => {
       <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
         <ForecastHUD samples={forecastSamples} />
 
+        <div style={{ pointerEvents: isWipeout ? 'auto' : 'none' }}>
+          <GameHUD
+            rigidBodyRef={vehicleRef}
+            isWipeout={isWipeout}
+            onRespawn={handleRespawn}
+          />
+        </div>
+
         {/* Loading overlay */}
         {isLoadingLevel && (
           <LoadingDisplay message="Loading custom level..." />
+        )}
+
+        {/* Reach loading overlay */}
+        {reachLoading && (
+          <LoadingDisplay message="Loading Reach..." />
         )}
 
         {/* Error overlay */}
@@ -269,6 +408,20 @@ const InnerExperience = () => {
             />
           </div>
         )}
+
+        {/* Reach error overlay */}
+        {reachError && (
+          <div style={{ pointerEvents: 'auto' }}>
+            <ErrorDisplay
+              error={reachError}
+              onDismiss={() => setReachError(null)}
+              onRetry={() => {
+                setReachError(null);
+                setReachRetryKey((k) => k + 1);
+              }}
+            />
+          </div>
+        )}
       </Html>
       {/* ------------------------------------------------------------------ */}
     </>
@@ -277,7 +430,7 @@ const InnerExperience = () => {
 
 /**
  * Experience Component
- * 
+ *
  * Wraps the game in provider contexts for biome and LOD management
  */
 const Experience = () => {
@@ -289,6 +442,9 @@ const Experience = () => {
         { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
         { name: 'rightward', keys: ['ArrowRight', 'KeyD'] },
         { name: 'jump', keys: ['Space'] },
+        { name: 'sprint', keys: ['ShiftLeft', 'ShiftRight'] },
+        { name: 'brake', keys: ['ControlLeft', 'ControlRight'] },
+        { name: 'dodge', keys: ['AltLeft', 'AltRight'] },
       ]}
     >
       <LODProvider initialQuality="high" enableAdaptive={true} targetFPS={60}>

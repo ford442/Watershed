@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { RigidBody } from '@react-three/rapier';
-import { useFrame } from '@react-three/fiber';
+import { RigidBody, CuboidCollider } from '@react-three/rapier';
+import { useFrame, useThree } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
 import { extendRiverMaterial, updateRiverMaterial } from '../utils/RiverShader';
 import { WATER_LEVEL, WALL_WATERLINE_Y, SHADERS, REACH_API_BASE } from '../constants/game';
@@ -29,12 +29,63 @@ import Mushrooms from './Environment/Mushrooms';
 import RockFoam from './Environment/RockFoam';
 import Wildflowers from './Environment/Wildflowers';
 import WaterfallParticles from './Environment/WaterfallParticles';
+import FloatingObjectManager from './Environment/FloatingObjectManager';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
     const x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
 };
+
+/**
+ * PondFog — Temporary dense fog when camera is inside a pond segment (Goal 3)
+ */
+function PondFog({ segmentCenter }) {
+    const { camera, scene } = useThree();
+    const originalFogRef = useRef(null);
+    const isActiveRef = useRef(false);
+
+    useEffect(() => {
+        // Store original fog on mount
+        originalFogRef.current = scene.fog ? {
+            color: scene.fog.color.clone(),
+            near: scene.fog.near,
+            far: scene.fog.far,
+        } : null;
+        return () => {
+            // Restore original fog on unmount
+            if (originalFogRef.current && scene.fog) {
+                scene.fog.color.set(originalFogRef.current.color);
+                scene.fog.near = originalFogRef.current.near;
+                scene.fog.far = originalFogRef.current.far;
+            }
+        };
+    }, [scene]);
+
+    useFrame(() => {
+        if (!scene.fog) return;
+        const dist = camera.position.distanceTo(segmentCenter);
+        const shouldBeActive = dist < 40; // Fog radius
+
+        if (shouldBeActive && !isActiveRef.current) {
+            isActiveRef.current = true;
+            // Dense pond fog: near=15, far=50 (Goal 3: fog 0.8 feel)
+            scene.fog.color.set('#c8d8d0');
+            scene.fog.near = 15;
+            scene.fog.far = 50;
+        } else if (!shouldBeActive && isActiveRef.current) {
+            isActiveRef.current = false;
+            // Restore original
+            if (originalFogRef.current) {
+                scene.fog.color.set(originalFogRef.current.color);
+                scene.fog.near = originalFogRef.current.near;
+                scene.fog.far = originalFogRef.current.far;
+            }
+        }
+    });
+
+    return null;
+}
 
 const hasFiniteCoordinates = (point) => (
     point
@@ -1136,6 +1187,8 @@ export default function TrackSegment({
             particleCount={particleCount}
             particleDensity={particleDensity}
             waterWidth={waterWidth}
+            pathLength={pathLength}
+            segmentPath={segmentPath}
             raftRef={raftRef}
             isNight={isNight}
             flowMap={flowMap}
@@ -1161,6 +1214,8 @@ function TrackSegmentMeshes({
     particleCount,
     particleDensity,
     waterWidth,
+    pathLength,
+    segmentPath,
     raftRef,
     isNight = false,
     flowMap,
@@ -1177,6 +1232,19 @@ function TrackSegmentMeshes({
     const vehiclePos = useMemo(() => new THREE.Vector3(), []);
     const vehicleVelocity = useMemo(() => new THREE.Vector3(), []);
 
+    // Pond draw distance culling (Goal 3)
+    const vegetationGroupRef = useRef();
+    const { camera, scene } = useThree();
+    const segmentCenterRef = useRef(new THREE.Vector3());
+
+    // Compute segment center from geometry for draw-distance culling
+    useMemo(() => {
+        if (canyonGeometry) {
+            canyonGeometry.computeBoundingBox();
+            canyonGeometry.boundingBox?.getCenter(segmentCenterRef.current);
+        }
+    }, [canyonGeometry]);
+
     // Update velocity each frame
     useFrame(() => {
         if (raftRef?.current) {
@@ -1188,6 +1256,12 @@ function TrackSegmentMeshes({
                 setPlayerVelocity(speed);
                 vehicleVelocity.set(vel.x, vel.y, vel.z);
             }
+        }
+
+        // Goal 3: Pond draw distance — hide vegetation beyond 50m
+        if (type === 'pond' && vegetationGroupRef.current) {
+            const dist = camera.position.distanceTo(segmentCenterRef.current);
+            vegetationGroupRef.current.visible = dist < 50;
         }
     });
 
@@ -1238,6 +1312,21 @@ function TrackSegmentMeshes({
                 <mesh geometry={canyonGeometry} material={rockMaterial} />
             </RigidBody>
 
+            {/* Goal 3: Splash pool invisible catch collider */}
+            {(type === 'splash' || type === 'pond') && (
+                <RigidBody type="fixed" colliders={false}>
+                    <CuboidCollider
+                        args={[60, 0.5, 60]}
+                        position={[segmentCenterRef.current.x, -8, segmentCenterRef.current.z]}
+                        friction={0.9}
+                        restitution={0.1}
+                    />
+                </RigidBody>
+            )}
+
+            {/* Goal 3: Pond fog override */}
+            {type === 'pond' && <PondFog segmentCenter={segmentCenterRef.current} />}
+
             <mesh geometry={wallShellGeometry} material={wallMaterial} />
 
             <FlowingWater
@@ -1251,8 +1340,9 @@ function TrackSegmentMeshes({
                 vehicleVelocity={vehicleVelocity}
             />
 
-            {/* Vegetation - Trees with Sway */}
-            <Vegetation transforms={placementData.trees} biome={biome} />
+            {/* Vegetation - Trees with Sway (ref for draw-distance culling) */}
+            <group ref={vegetationGroupRef}>
+                <Vegetation transforms={placementData.trees} biome={biome} />
 
             {/* Grass Bushes */}
             <Grass transforms={placementData.grass} />
@@ -1313,6 +1403,19 @@ function TrackSegmentMeshes({
 
             {/* Sun Shafts - Atmospheric light rays */}
             <SunShafts transforms={placementData.sunShafts} />
+            </group>
+
+            {/* Goal 2: Dynamic floating objects (logs, tires, boats, debris) */}
+            {segmentPath && (
+                <FloatingObjectManager
+                    path={segmentPath}
+                    waterWidth={waterWidth}
+                    flowSpeed={flowSpeed}
+                    waterLevel={waterLevel}
+                    count={Math.min(8, Math.floor(pathLength / 5))}
+                    segmentId={segmentId}
+                />
+            )}
 
             {/* Waterfall Particles - with dynamic scaling (E4) */}
             {type === 'waterfall' && waterfallPos && (

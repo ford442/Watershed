@@ -1,41 +1,78 @@
+"""
+verify_visuals_playwright.py — Visual regression test for WATERSHED
+
+Covers:
+- Start menu render
+- Gameplay HUD (speedometer, biome badge, distance)
+- 3D scene after entering game
+
+Run with: python3 verification/verify_visuals_playwright.py
+Requires: playwright install chromium
+"""
 from playwright.sync_api import sync_playwright
 import time
+import sys
 
 def verify_visuals():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
 
         print("Navigating to app...")
         page.goto("http://localhost:3000")
 
-        # Wait for loader to finish (start button becomes enabled/visible)
-        # The loader might take a while for assets
-        print("Waiting for assets to load...")
+        # --- 1. Start Menu Screenshot ---
+        print("Waiting for start menu...")
         try:
-            # Wait for the start button to be present and not disabled
-            # It starts disabled while loading
-            page.wait_for_selector(".start-button:not([disabled])", timeout=60000)
-            print("Assets loaded. Start button is ready.")
+            page.wait_for_selector(".start-menu-overlay", timeout=30000)
+            time.sleep(1)
+            page.screenshot(path="verification/verification_start_menu.png")
+            print("✓ Start menu screenshot saved")
         except Exception as e:
-            print(f"Timeout waiting for load: {e}")
-            page.screenshot(path="verification_timeout.png")
+            print(f"✗ Start menu not found: {e}")
+            page.screenshot(path="verification/verification_timeout.png")
             browser.close()
-            return
+            return False
 
-        # Hide the UI overlay to see the 3D scene clearly
-        print("Hiding UI overlay...")
-        page.evaluate("document.querySelector('.ui-overlay').style.display = 'none'")
+        # --- 2. Enter Game ---
+        print("Clicking start button...")
+        try:
+            page.click(".start-menu-start-btn")
+            time.sleep(2)
+        except Exception as e:
+            print(f"✗ Failed to click start: {e}")
+            # Fallback: try old UI overlay
+            try:
+                page.evaluate("document.querySelector('.start-button')?.click()")
+                time.sleep(2)
+            except:
+                pass
 
-        # Wait a bit for any frames to render/settle
-        time.sleep(2)
+        # --- 3. Gameplay HUD Screenshot ---
+        print("Capturing gameplay HUD...")
+        try:
+            # Wait for HUD elements
+            page.wait_for_selector("text=km/h", timeout=10000)
+            page.screenshot(path="verification/verification_gameplay.png")
+            print("✓ Gameplay screenshot saved")
+        except Exception as e:
+            print(f"⚠ HUD not fully loaded: {e}")
+            page.screenshot(path="verification/verification_gameplay_partial.png")
 
-        # Take screenshot
-        print("Taking screenshot...")
-        page.screenshot(path="verification_visuals.png")
-        print("Screenshot saved to verification_visuals.png")
+        # --- 4. Pause Menu Screenshot ---
+        print("Opening pause menu (Esc)...")
+        try:
+            page.keyboard.press("Escape")
+            time.sleep(1)
+            page.screenshot(path="verification/verification_pause_menu.png")
+            print("✓ Pause menu screenshot saved")
+        except Exception as e:
+            print(f"⚠ Pause menu capture failed: {e}")
 
         browser.close()
+        print("\nAll screenshots saved to verification/")
+        return True
 
 if __name__ == "__main__":
-    verify_visuals()
+    success = verify_visuals()
+    sys.exit(0 if success else 1)

@@ -1,12 +1,13 @@
 import React, { useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, useRapier } from '@react-three/rapier';
-import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
 import { RAFT, WATER_DENSITY, GRAVITY, HUMAN_DENSITY, PLAYER_SPAWN } from '../constants/game';
+import { calculateFlowForce, applyWaterForce } from '../physics/WaterForces';
+import { usePlayerControls } from '../hooks/usePlayerControls';
 
 // Buoyancy and water physics configuration
 // Uses scientifically accurate densities from Wolfram Alpha:
@@ -20,19 +21,19 @@ const WATER_PHYSICS = {
   RAFT_LENGTH: RAFT.LENGTH,
   RAFT_VOLUME: RAFT.VOLUME,
   RAFT_MASS: RAFT.MASS,
-  
+
   // Scientific buoyancy: max force when fully submerged
   // F_b = 1000 kg/m³ * 1.8 m³ * 9.8 m/s² = 17640 N
   // Scaled for gameplay physics: 2940 N
   BUOYANCY_MAX_FORCE: RAFT.BUOYANCY_MAX_FORCE,
-  
+
   // Drag coefficient for blunt body in turbulent flow (~0.47)
   DRAG_COEFFICIENT: RAFT.DRAG_COEFFICIENT,
-  
+
   // Cross-sectional areas for drag calculation (m²)
   DRAG_AREA_FRONT: RAFT.DRAG_AREA_FRONT,
   DRAG_AREA_SIDE: RAFT.DRAFT_AREA_SIDE,
-  
+
   TURBULENCE_FREQ: RAFT.TURBULENCE_FREQ,
   TURBULENCE_AMP: RAFT.TURBULENCE_AMP,
   TIP_THRESHOLD_SPEED: RAFT.TIP_THRESHOLD_SPEED,
@@ -65,6 +66,16 @@ const PADDLE = {
   FOAM_LIFETIME: RAFT.PADDLE_FOAM_LIFETIME,
 };
 
+// Water shedding particle config
+const SHED = {
+  EMISSION_RATE: 0.08,      // seconds between particle spawns
+  MIN_SPEED: 2.0,           // min raft speed to emit
+  MIN_SUBMERGED: 0.15,      // min submerged ratio to emit
+  LIFETIME: 0.8,
+  SIZE: 0.06,
+  COUNT_LIMIT: 24,          // max active shed particles
+};
+
 interface BuoyancyState {
   submergedRatio: number;
   buoyancyForce: number;
@@ -91,7 +102,14 @@ interface PaddleState {
   }>;
 }
 
-// Custom hook for paddle keys (Q/E)
+interface ShedParticle {
+  id: number;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  life: number;
+  scale: number;
+}
+
 // Audio manager reference
 let audioManager: AudioManager | null = null;
 
@@ -106,7 +124,6 @@ const playPaddleSound = (side: 'left' | 'right') => {
   if (!audioManager) return;
 
   const sound = side === 'left' ? 'paddle_left' : 'paddle_right';
-  // Slight pitch variation for natural feel
   const pitch = 0.95 + Math.random() * 0.1;
   audioManager.playSound(sound, 0.8, pitch);
 };
@@ -115,44 +132,19 @@ const playRaftTipSound = () => {
   initAudio();
   if (!audioManager) return;
 
-  // Play creaking sound
   audioManager.playSound('raft_creak', 0.7, 1.0);
-  // Play water crash
   setTimeout(() => {
     audioManager?.playSound('water_crash', 1.0, 0.9);
   }, 100);
 };
 
-const usePaddleKeys = () => {
-  const [keys, setKeys] = useState({ q: false, e: false });
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'q') setKeys(k => ({ ...k, q: true }));
-      if (e.key.toLowerCase() === 'e') setKeys(k => ({ ...k, e: true }));
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'q') setKeys(k => ({ ...k, q: false }));
-      if (e.key.toLowerCase() === 'e') setKeys(k => ({ ...k, e: false }));
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
-
-  return keys;
-};
-
 const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
-  const { camera, scene } = useThree();
+  const { camera } = useThree();
   const { world } = useRapier();
-  const [, getKeys] = useKeyboardControls();
-  const paddleKeys = usePaddleKeys();
+
+  // Goal 2: Unified player controls hook
+  const controls = usePlayerControls();
 
   const vehicle = useRef(new RaftVehicleClass());
 
@@ -175,6 +167,11 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     rightPaddle: false,
     foamParticles: [],
   });
+
+  // Goal 2: Water-shedding particle trail
+  const shedParticles = useRef<ShedParticle[]>([]);
+  const nextShedId = useRef(0);
+  const shedTimer = useRef(0);
 
   const timeRef = useRef(0);
   const nextParticleId = useRef(0);
@@ -227,21 +224,11 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     return Math.max(0, Math.min(1, submergedHeight / WATER_PHYSICS.RAFT_HEIGHT));
   };
 
-  /** Apply scientifically accurate buoyancy force
-   * Formula: F_buoyancy = ρ_water * V_displaced * g
-   * For a 150kg raft with volume 1.8m³:
-   * - Fully submerged: 1000 * 1.8 * 9.8 = 17640 N upward
-   * - Raft weight: 150 * 9.8 = 1470 N downward
-   * - Net buoyancy: ~16170 N upward (raft floats high)
-   */
+  /** Apply scientifically accurate buoyancy force */
   const applyBuoyancy = (body: any, submergedRatio: number, delta: number) => {
     if (submergedRatio <= 0) return;
 
-    // Calculate displaced volume based on submerged ratio
     const displacedVolume = WATER_PHYSICS.RAFT_VOLUME * submergedRatio;
-    
-    // Apply Archimedes' principle: F_b = ρ_water * V_displaced * g
-    // Using gameplay-scaled value from constants
     const maxBuoyancy = WATER_PHYSICS.BUOYANCY_MAX_FORCE;
     const buoyancyForce = maxBuoyancy * submergedRatio;
 
@@ -255,30 +242,30 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     buoyancyState.current.isFloating = submergedRatio > 0.1;
   };
 
-  /** Apply scientifically accurate water drag
-   * Formula: F_drag = 0.5 * ρ * v² * C_d * A
-   * Where:
-   *   ρ = 1000 kg/m³ (water density - 800x higher than air)
-   *   v = velocity magnitude
-   *   C_d = 0.47 (drag coefficient for blunt body)
-   *   A = cross-sectional area (~0.6 m² frontal)
-   * 
-   * Water drag is significantly higher than air drag due to density.
-   * This is why movement in water feels much more resistant.
-   */
+  /** Apply scientifically accurate water drag */
   const applyDrag = (body: any, delta: number) => {
     const vel = body.linvel();
     const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
 
     if (speed < 0.1) return;
 
-    // Calculate dynamic drag using F = 0.5 * ρ * v² * C_d * A
-    // Note: Using simplified calculation scaled for gameplay
     const dragMagnitude = WATER_PHYSICS.DRAG_COEFFICIENT * speed * speed * WATER_DENSITY / 1000;
     const dragX = -(vel.x / speed) * dragMagnitude * delta;
     const dragZ = -(vel.z / speed) * dragMagnitude * delta;
 
     body.applyImpulse({ x: dragX, y: 0, z: dragZ }, true);
+  };
+
+  /** Goal 2: Apply flow-map-based water current force */
+  const applyFlowForce = (body: any, delta: number) => {
+    const pos = body.translation();
+    const flowForce = calculateFlowForce(
+      new THREE.Vector3(pos.x, pos.y, pos.z),
+      null, // No CPU flow map yet; downstream default is used
+      { flowSpeed: 1.2, maxForce: 8, turbulence: 0.1, turbulenceFreq: 2.0 },
+      timeRef.current
+    );
+    applyWaterForce(body, flowForce, delta, true);
   };
 
   const applyTurbulence = (body: any, time: number, delta: number) => {
@@ -363,7 +350,6 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       tippingState.current.dangerTime += delta;
 
       if (tippingState.current.dangerTime > TIPPING.DANGER_TIME) {
-        // TIPPED! Reset to safe position
         tippingState.current.isTipped = true;
         return true;
       }
@@ -383,18 +369,17 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
    * Apply paddle forces based on Q/E input
    */
   const applyPaddleForces = (body: any, delta: number) => {
-    const { q: leftPaddle, e: rightPaddle } = paddleKeys;
-    const { forward } = getKeys();
+    const { paddleLeft, paddleRight, forward } = controls.getControls();
 
-    paddleState.current.leftPaddle = leftPaddle;
-    paddleState.current.rightPaddle = rightPaddle;
+    paddleState.current.leftPaddle = paddleLeft;
+    paddleState.current.rightPaddle = paddleRight;
 
     const rot = body.rotation();
     const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
     const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
 
     // Both paddles or W key = straight forward
-    if ((leftPaddle && rightPaddle) || forward) {
+    if ((paddleLeft && paddleRight) || forward) {
       body.applyImpulse({
         x: forwardDir.x * PADDLE.THRUST_FORCE * delta,
         y: 0,
@@ -410,63 +395,53 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     }
 
     // Left paddle (Q) - thrust right, rotate left
-    if (leftPaddle) {
-      // Forward thrust
+    if (paddleLeft) {
       body.applyImpulse({
         x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * delta,
         y: 0,
         z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * delta
       }, true);
 
-      // Lateral thrust to the right
       body.applyImpulse({
         x: rightDir.x * PADDLE.THRUST_FORCE * 0.5 * delta,
         y: 0,
         z: rightDir.z * PADDLE.THRUST_FORCE * 0.5 * delta
       }, true);
 
-      // Torque to rotate left
       body.applyTorqueImpulse({
         x: 0,
         y: -PADDLE.TORQUE_FORCE * delta,
         z: 0
       }, true);
 
-      // Spawn foam and play sound
       if (Math.random() > 0.6) {
         spawnFoamParticle(body, 'left');
-        // F1: Play paddle sound
         playPaddleSound('left');
       }
     }
 
     // Right paddle (E) - thrust left, rotate right
-    if (rightPaddle) {
-      // Forward thrust
+    if (paddleRight) {
       body.applyImpulse({
         x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * delta,
         y: 0,
         z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * delta
       }, true);
 
-      // Lateral thrust to the left
       body.applyImpulse({
         x: -rightDir.x * PADDLE.THRUST_FORCE * 0.5 * delta,
         y: 0,
         z: -rightDir.z * PADDLE.THRUST_FORCE * 0.5 * delta
       }, true);
 
-      // Torque to rotate right
       body.applyTorqueImpulse({
         x: 0,
         y: PADDLE.TORQUE_FORCE * delta,
         z: 0
       }, true);
 
-      // Spawn foam and play sound
       if (Math.random() > 0.6) {
         spawnFoamParticle(body, 'right');
-        // F1: Play paddle sound
         playPaddleSound('right');
       }
     }
@@ -501,10 +476,45 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   };
 
   /**
+   * Goal 2: Spawn a water-shedding particle trailing the raft
+   */
+  const spawnShedParticle = (body: any) => {
+    const pos = body.translation();
+    const rot = body.rotation();
+
+    // Spawn at the stern (raft moves -Z, so stern is +Z relative to raft)
+    const sternOffset = new THREE.Vector3(0, -0.1, 1.6).applyQuaternion(rot);
+    const spread = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.8,
+      Math.random() * 0.2,
+      (Math.random() - 0.5) * 0.4
+    );
+
+    // Velocity opposes raft motion + slight upward arc
+    const vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.6,
+      0.3 + Math.random() * 0.4,
+      0.5 + Math.random() * 0.5
+    ).applyQuaternion(rot);
+
+    shedParticles.current.push({
+      id: nextShedId.current++,
+      position: new THREE.Vector3(pos.x + sternOffset.x, pos.y + sternOffset.y, pos.z + sternOffset.z).add(spread),
+      velocity: vel,
+      life: SHED.LIFETIME,
+      scale: SHED.SIZE + Math.random() * 0.03,
+    });
+
+    // Trim excess particles
+    if (shedParticles.current.length > SHED.COUNT_LIMIT) {
+      shedParticles.current.shift();
+    }
+  };
+
+  /**
    * Reset raft to safe position after tipping
    */
   const resetRaft = (body: any) => {
-    // F1: Play tip sound when raft capsizes
     playRaftTipSound();
 
     const safePos = tippingState.current.lastSafePosition.clone();
@@ -518,7 +528,6 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     tippingState.current.dangerTime = 0;
     tippingState.current.isTipped = false;
 
-    // Dispatch event for UI feedback
     window.dispatchEvent(new CustomEvent('raft-tipped', {
       detail: { resetPosition: safePos }
     }));
@@ -549,6 +558,11 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       applyDrag(body, delta);
     }
 
+    // Goal 2: Apply flow-map-based water force
+    if (submergedRatio > 0.1) {
+      applyFlowForce(body, delta);
+    }
+
     applyTurbulence(body, timeRef.current, delta);
     applyTippingForce(body, submergedRatio, delta);
     dampenRotation(body, delta);
@@ -564,11 +578,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     applyPaddleForces(body, delta);
 
     // Fallback WASD (strafing) if no paddle input
-    const { leftward, rightward } = getKeys();
-    const { q: leftPaddle, e: rightPaddle } = paddleKeys;
+    const { leftward, rightward, forward, paddleLeft, paddleRight } = controls.getControls();
 
-    if (!leftPaddle && !rightPaddle && !getKeys().forward) {
-      // Small strafe for fine adjustment
+    if (!paddleLeft && !paddleRight && !forward) {
       if (leftward || rightward) {
         vehicle.current.setInput({
           moveX: rightward ? 1 : leftward ? -1 : 0,
@@ -587,6 +599,27 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       .map(p => ({
         ...p,
         position: p.position.clone().add(p.velocity.clone().multiplyScalar(delta)),
+        life: p.life - delta,
+      }))
+      .filter(p => p.life > 0);
+
+    // Goal 2: Update water-shedding particles
+    const speed = Math.sqrt(
+      body.linvel().x ** 2 + body.linvel().z ** 2
+    );
+    if (speed > SHED.MIN_SPEED && submergedRatio > SHED.MIN_SUBMERGED) {
+      shedTimer.current += delta;
+      if (shedTimer.current > SHED.EMISSION_RATE) {
+        shedTimer.current = 0;
+        spawnShedParticle(body);
+      }
+    }
+
+    shedParticles.current = shedParticles.current
+      .map(p => ({
+        ...p,
+        position: p.position.clone().add(p.velocity.clone().multiplyScalar(delta)),
+        velocity: p.velocity.clone().add(new THREE.Vector3(0, -1.5 * delta, 0)), // gravity
         life: p.life - delta,
       }))
       .filter(p => p.life > 0);
@@ -667,6 +700,21 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
             color="white"
             transparent
             opacity={particle.life / PADDLE.FOAM_LIFETIME * 0.7}
+          />
+        </mesh>
+      ))}
+
+      {/* Goal 2: Water-shedding trail particles */}
+      {shedParticles.current.map(particle => (
+        <mesh
+          key={`shed-${particle.id}`}
+          position={[particle.position.x, particle.position.y, particle.position.z]}
+        >
+          <sphereGeometry args={[particle.scale * (particle.life / SHED.LIFETIME)]} />
+          <meshBasicMaterial
+            color="#dff4ff"
+            transparent
+            opacity={(particle.life / SHED.LIFETIME) * 0.5}
           />
         </mesh>
       ))}

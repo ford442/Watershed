@@ -121,6 +121,27 @@ export class ParticlePool<T extends PoolableParticle> {
     }
     this.active.length = 0;
   }
+
+  /**
+   * Dispose all particles and free memory (Goal 5)
+   */
+  dispose(): void {
+    this.clear();
+    this.pool = [];
+  }
+
+  /**
+   * Warn if pool utilization exceeds threshold (Goal 5)
+   */
+  warnIfExhausted(threshold = 0.95): void {
+    const stats = this.getStats();
+    if (stats.utilization >= threshold) {
+      console.warn(
+        `[ParticlePool] Pool near exhaustion: ${Math.round(stats.utilization * 100)}% ` +
+        `(${stats.active}/${stats.total}). Consider increasing maxSize.`
+      );
+    }
+  }
 }
 
 /**

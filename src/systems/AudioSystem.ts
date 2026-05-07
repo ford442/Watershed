@@ -71,6 +71,9 @@ const SOUND_LIBRARY: Record<string, SoundDef> = {
   // Vehicle tuning — boost
   'boost': { url: '/sounds/boost.mp3', category: SoundCategory.UI, baseVolume: 0.9, basePitch: 1.0, maxConcurrent: 1 },
 
+  // Goal 2: Dodge / dash
+  'dodge': { url: '/sounds/whoosh.mp3', category: SoundCategory.UI, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 2 },
+
   // Water flow — rapids ambience
   'rapids_roar': { url: '/sounds/rapids_roar.mp3', category: SoundCategory.AMBIENT, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 1 },
   

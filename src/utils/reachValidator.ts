@@ -263,6 +263,15 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
       suggestion: 'Consider reducing to 20-25 segments per Reach',
     });
   }
+
+  // Goal 5: Performance budget checks
+  validateReachPerformanceBudget(reachData, errors, warnings);
+
+  // Goal 5: Segment type sequence validation
+  validateReachSegmentSequence(segments, errors, warnings);
+
+  // Goal 5: Required assets validation
+  validateRequiredAssets(reachData.requiredAssets, errors, warnings);
 }
 
 /**
@@ -362,6 +371,108 @@ function validateWaypoints(waypoints: number[][], errors: ValidationError[], war
       suggestion: 'Check that all waypoints are valid 3D coordinates',
     });
   }
+}
+
+/**
+ * Goal 5: Validate performance budget for Reaches
+ */
+function validateReachPerformanceBudget(reachData: any, errors: ValidationError[], warnings: ValidationError[]): void {
+  const segments = reachData.segments || [];
+  let totalDecorations = 0;
+  let totalParticles = 0;
+
+  for (const seg of segments) {
+    if (seg.decorations) {
+      for (const [type, count] of Object.entries(seg.decorations)) {
+        if (typeof count === 'number') {
+          totalDecorations += count;
+        }
+      }
+    }
+    if (seg.effects?.particleCount) {
+      totalParticles += seg.effects.particleCount;
+    }
+  }
+
+  if (totalDecorations > 600) {
+    warnings.push({
+      field: 'segments.decorations',
+      error: `High total decoration count (${totalDecorations}) may impact streaming`,
+      suggestion: 'Reduce decoration density or stream decorations per-segment',
+    });
+  }
+
+  if (totalParticles > 1000) {
+    warnings.push({
+      field: 'segments.effects.particleCount',
+      error: `High total particle count (${totalParticles}) may drop FPS below 55`,
+      suggestion: 'Cap waterfall particles at 400 and reduce others',
+    });
+  }
+}
+
+/**
+ * Goal 5: Validate segment type sequence for Reaches
+ */
+function validateReachSegmentSequence(segments: any[] | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
+  if (!segments) return;
+
+  const sorted = [...segments].sort((a, b) => a.index - b.index);
+  for (let i = 0; i < sorted.length; i++) {
+    const seg = sorted[i];
+    const next = sorted[i + 1];
+
+    if (seg.type === 'waterfall') {
+      if (!next) {
+        warnings.push({
+          field: `segments[${seg.index}]`,
+          error: 'Waterfall is the final segment — no splash pool for landing',
+          suggestion: 'Add a splash or pond segment after the waterfall',
+        });
+      } else if (next.type !== 'splash' && next.type !== 'pond') {
+        warnings.push({
+          field: `segments[${next.index}]`,
+          error: `Segment after waterfall is "${next.type}" instead of splash/pond`,
+          suggestion: 'Place a splash or pond segment immediately after the waterfall',
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Goal 5: Validate required assets have valid URLs/paths
+ */
+function validateRequiredAssets(requiredAssets: any, errors: ValidationError[], warnings: ValidationError[]): void {
+  if (!requiredAssets) return;
+
+  const validateAssetList = (items: any[] | undefined, category: string) => {
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.url && !item.path) {
+        errors.push({
+          field: `requiredAssets.${category}[${i}]`,
+          error: `Asset missing url or path`,
+          suggestion: 'Provide either a url or path for every asset',
+        });
+      }
+      if (item.url && typeof item.url === 'string' && item.url.startsWith('http')) {
+        // External URL — warn about CORS
+        warnings.push({
+          field: `requiredAssets.${category}[${i}].url`,
+          error: `External URL may cause CORS issues: ${item.url}`,
+          suggestion: 'Host assets on the same origin or configure CORS headers',
+        });
+      }
+    }
+  };
+
+  validateAssetList(requiredAssets.textures, 'textures');
+  validateAssetList(requiredAssets.models, 'models');
+  validateAssetList(requiredAssets.audio, 'audio');
+  validateAssetList(requiredAssets.shaders, 'shaders');
+  validateAssetList(requiredAssets.flowMaps, 'flowMaps');
 }
 
 /**

@@ -95,6 +95,8 @@ export interface VehicleInput {
   sprint: boolean;
   /** Brake input */
   brake: boolean;
+  /** Dodge/dash input */
+  dodge: boolean;
 }
 
 export interface VehicleConfig {
@@ -162,6 +164,7 @@ export abstract class BaseVehicle {
       jump: false,
       sprint: false,
       brake: false,
+      dodge: false,
     };
     
     this.lastPosition = new THREE.Vector3();

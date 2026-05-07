@@ -4,6 +4,10 @@ import { RigidBody } from '@react-three/rapier';
 import { useTexture } from '@react-three/drei';
 
 export default function CreekCanyon() {
+    // DEPRECATED: CreekCanyon is a legacy heightmap-based component.
+    // Use TrackManager + TrackSegment for new levels.
+    console.warn('[CreekCanyon] This component is deprecated. Use TrackManager for new levels.');
+
     // Load rock textures
     const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg', // NOTE: Relative path for static hosting compatibility. Keep FTP structure in mind.

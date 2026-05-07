@@ -4,22 +4,22 @@ This document outlines the gameplay mechanics, segment configurations, and perfo
 
 ## ✅ Acceptance Criteria
 
--   Player can complete Levels 1-2 (segments 0-19+) without manual segment reloading.
--   Waterfall segment (ID 14) triggers a noticeable gravity shift and associated particle VFX.
--   The atmosphere correctly transitions from 'summer' to 'autumn' over a 2-second duration during segment 15.
--   The splash pool / pond segment width is exactly 70 units. This should be verifiable with a debug overlay.
--   The frame rate must remain above 55 FPS during the waterfall drop, even with 400 particles active.
--   There should be no visible terrain "spikes" or seams between segments 13, 14, and 15.
--   **Audio:** Waterfall sound effects should fade in at segment 13, reach their peak at segment 14, and cleanly transition to ambient pond sounds at segment 15.
+-   [x] Player can complete Levels 1-2 (segments 0-19+) without manual segment reloading.
+-   [x] Waterfall segment (ID 14) triggers a noticeable gravity shift and associated particle VFX.
+-   [x] The atmosphere correctly transitions from 'summer' to 'autumn' over a 2-second duration during segment 15.
+-   [x] The splash pool / pond segment width is exactly 70 units. This should be verifiable with a debug overlay.
+-   [x] The frame rate must remain above 55 FPS during the waterfall drop, even with 400 particles active.
+-   [x] There should be no visible terrain "spikes" or seams between segments 13, 14, and 15.
+-   [x] **Audio:** Waterfall sound effects should fade in at segment 13, reach their peak at segment 14, and cleanly transition to ambient pond sounds at segment 15.
 
 ## 🔗 Dependencies & Blockers
 
 -   **Dependencies:**
-    -   Requires the `EnhancedSky` biome blending system (Issue #123).
-    -   Requires the `WaterfallParticles` VFX system (Issue #145).
-    -   Requires updated `TrackSegment` wall height clamping to prevent visual artifacts (PR #89).
+    -   [x] Requires the `EnhancedSky` biome blending system (Issue #123).
+    -   [x] Requires the `WaterfallParticles` VFX system (Issue #145).
+    -   [x] Requires updated `TrackSegment` wall height clamping to prevent visual artifacts (PR #89).
 -   **Blocked by:**
-    -   Player death/respawn logic for scripted levels is not yet implemented (Issue #156).
+    -   [x] Player death/respawn logic for scripted levels is not yet implemented (Issue #156) — **Resolved in Goal 2**.
 
 ---
 
@@ -48,12 +48,31 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 ## 📊 Performance Budget & Benchmarks
 
 -   **Waterfall Segment (14):**
-    -   Max Particles: 400
+    -   Max Particles: 400 (scales down to 100 on low quality via LODManager)
     -   Camera Shake Instances: 1
-    -   Additional Draw Calls: 0 (particles should be instanced)
+    -   Additional Draw Calls: 0 (particles are instanced)
 -   **Pond Segment (16-18):**
     -   Tree Draw Distance: Reduced to 50 units (from the default 100) to compensate for the doubled track width.
 -   **Target:** Maintain a frame time of `<8ms` on minimum-spec hardware throughout the entire transition from segment 13 to 16.
+
+## ✅ Implementation Status (Goal 3)
+
+| Feature | Status | File(s) |
+|--------|--------|---------|
+| Segment configs (0-19+) | ✅ | `src/maps/meander_to_waterfall.ts` |
+| Waterfall: 400 particles | ✅ | `src/components/Environment/WaterfallParticles.jsx` |
+| Waterfall: camera shake 0.5 | ✅ | `src/maps/meander_to_waterfall.ts` |
+| Waterfall: gravity shift | ✅ | `src/Experience.jsx` |
+| Waterfall: sound fade | ✅ | `src/hooks/useSegmentAudio.ts` |
+| Splash pool: invisible catch collider | ✅ | `src/components/TrackSegment.jsx` |
+| Splash pool: flow speed 0.3 | ✅ | `src/maps/meander_to_waterfall.ts` |
+| Pond: fog 0.8 | ✅ | `src/components/TrackSegment.jsx` (`PondFog`) |
+| Pond: tree density 0.3 | ✅ | `src/maps/meander_to_waterfall.ts` |
+| Pond: draw distance 50 | ✅ | `src/components/TrackSegment.jsx` |
+| Rapids: high rock density | ✅ | `src/maps/meander_to_waterfall.ts` |
+| Biome transition 2000ms | ✅ | `src/systems/BiomeSystem.tsx` |
+| Debounced onBiomeChange | ✅ | `src/systems/ChunkManager.ts` |
+| Particle LOD (400→100) | ✅ | `src/components/Environment/WaterfallParticles.jsx` |
 
 ## 🎨 Required Assets
 

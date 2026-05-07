@@ -5,6 +5,10 @@ import { useTexture } from '@react-three/drei';
 import FlowingWater from './FlowingWater';
 
 export default function RiverTrack() {
+    // DEPRECATED: RiverTrack is a legacy single-track component.
+    // Use TrackManager + TrackSegment for new levels.
+    console.warn('[RiverTrack] This component is deprecated. Use TrackManager for new levels.');
+
     // 1. Load Textures from public folder
     const [colorMap, normalMap, roughnessMap, aoMap] = useTexture([
         './Rock031_1K-JPG_Color.jpg', // NOTE: Relative path for static hosting compatibility. Keep FTP structure in mind.

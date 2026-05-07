@@ -8,10 +8,11 @@
  * - Performance monitoring and reporting
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
+import { useGameStore } from './GameState';
 
 // Quality levels
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
@@ -112,48 +113,99 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   enableAdaptive: initialAdaptive = true,
   targetFPS = 60,
 }) => {
-  const [quality, setQuality] = useState<QualityLevel>(initialQuality);
+  // Sync with Zustand store so menu settings affect LOD
+  const storeQuality = useGameStore((s) => s.settings.quality);
+  const storeSetSettings = useGameStore((s) => s.setSettings);
+
+  const [quality, setQualityState] = useState<QualityLevel>(storeQuality || initialQuality);
   const [fps, setFps] = useState(60);
   const [enableAdaptive, setEnableAdaptive] = useState(initialAdaptive);
-  
+
   const config = QUALITY_SETTINGS[quality];
-  
+
+  // Keep local quality in sync with store
+  useEffect(() => {
+    if (storeQuality !== quality) {
+      setQualityState(storeQuality);
+    }
+  }, [storeQuality]);
+
+  const setQuality = (q: QualityLevel) => {
+    setQualityState(q);
+    storeSetSettings({ quality: q });
+  };
+
   // Adaptive quality based on FPS
-  const fpsHistory = useRef<number[]>([]);
-  const lastAdjustment = useRef(0);
-  
+  const frameTimes = useRef<number[]>([]);
+  const lastFrameTime = useRef(performance.now());
+  const lowFpsFrames = useRef(0);
+  const warnedFps = useRef(false);
+  const warnedMemory = useRef(false);
+
   useFrame(() => {
-    if (!enableAdaptive) return;
-    
-    // Calculate FPS
     const now = performance.now();
-    const delta = now - lastAdjustment.current;
-    
-    if (delta > 500) { // Check every 500ms
-      const currentFPS = 1000 / (delta / 60); // Approximate
-      fpsHistory.current.push(currentFPS);
-      
-      if (fpsHistory.current.length > 10) {
-        fpsHistory.current.shift();
-        
-        const avgFPS = fpsHistory.current.reduce((a, b) => a + b) / fpsHistory.current.length;
-        setFps(Math.round(avgFPS));
-        
-        // Adjust quality
-        const qualities: QualityLevel[] = ['low', 'medium', 'high', 'ultra'];
-        const currentIndex = qualities.indexOf(quality);
-        
-        if (avgFPS < targetFPS - 10 && currentIndex > 0) {
-          setQuality(qualities[currentIndex - 1]);
-        } else if (avgFPS > targetFPS + 15 && currentIndex < qualities.length - 1) {
-          setQuality(qualities[currentIndex + 1]);
+    const delta = now - lastFrameTime.current;
+    lastFrameTime.current = now;
+
+    // Track frame times for accurate FPS
+    frameTimes.current.push(delta);
+    if (frameTimes.current.length > 60) {
+      frameTimes.current.shift();
+    }
+
+    // Check every ~1 second (60 frames)
+    if (frameTimes.current.length >= 60) {
+      const avgDelta = frameTimes.current.reduce((a, b) => a + b) / frameTimes.current.length;
+      const currentFPS = Math.round(1000 / avgDelta);
+      setFps(currentFPS);
+
+      // Goal 5: Performance regression warning — sustained <30 FPS
+      if (currentFPS < 30) {
+        lowFpsFrames.current += 1;
+        if (lowFpsFrames.current > 120 && !warnedFps.current) {
+          warnedFps.current = true;
+          console.warn(
+            `[LODManager] Sustained low FPS detected: ${currentFPS}. ` +
+            `Consider lowering graphics quality in settings.`
+          );
+        }
+      } else {
+        lowFpsFrames.current = 0;
+      }
+
+      // Goal 5: Memory warning — JS heap > 300MB (AGENTS.md target)
+      const perf = performance as any;
+      if (perf.memory && perf.memory.usedJSHeapSize > 300 * 1048576) {
+        if (!warnedMemory.current) {
+          warnedMemory.current = true;
+          const mb = Math.round(perf.memory.usedJSHeapSize / 1048576);
+          console.warn(
+            `[LODManager] High memory usage: ${mb}MB. ` +
+            `Target is <300MB. Consider lowering quality or restarting.`
+          );
         }
       }
-      
-      lastAdjustment.current = now;
+
+      // Adaptive quality
+      if (enableAdaptive) {
+        const qualities: QualityLevel[] = ['low', 'medium', 'high', 'ultra'];
+        const currentIndex = qualities.indexOf(quality);
+
+        if (currentFPS < targetFPS - 10 && currentIndex > 0) {
+          const newQ = qualities[currentIndex - 1];
+          console.warn(`[LODManager] FPS ${currentFPS} < target ${targetFPS - 10}. Downgrading quality: ${quality} → ${newQ}`);
+          setQuality(newQ);
+        } else if (currentFPS > targetFPS + 15 && currentIndex < qualities.length - 1) {
+          const newQ = qualities[currentIndex + 1];
+          console.log(`[LODManager] FPS ${currentFPS} > target ${targetFPS + 15}. Upgrading quality: ${quality} → ${newQ}`);
+          setQuality(newQ);
+        }
+      }
+
+      frameTimes.current = [];
     }
   });
-  
+
   return (
     <LODContext.Provider value={{
       quality,

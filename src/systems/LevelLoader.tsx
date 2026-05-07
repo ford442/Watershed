@@ -24,6 +24,8 @@ interface LevelLoaderProps {
   onError?: (error: string) => void;
   /** Whether to show the default loader UI */
   showLoader?: boolean;
+  /** Whether to show the default error UI */
+  showError?: boolean;
   /** Whether to use legacy RiverTrack (default: false) */
   useLegacyTrack?: boolean;
   /** Children components (will be rendered after level loads) */
@@ -164,6 +166,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
   onLoad,
   onError,
   showLoader = true,
+  showError = true,
   useLegacyTrack = false,
   children,
   raftRef,
@@ -226,7 +229,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
   }
 
   // Render error state
-  if (loadingState === 'error' && error) {
+  if (loadingState === 'error' && error && showError) {
     return (
       <ErrorDisplay 
         error={error} 

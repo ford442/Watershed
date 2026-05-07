@@ -21,25 +21,32 @@ src/
 ├── index.tsx
 │
 ├── components/           # 3D Components (see components/PLAN.md)
+│   ├── GameHUD.tsx       # ✅ Speed, distance, biome, momentum, wipeout (Goal 4)
+│   ├── StartMenu.tsx     # ✅ Pre-game title screen (Goal 4)
+│   ├── PauseMenu.tsx     # ✅ Pause overlay + settings (Goal 4)
+│   ├── RiverTrack.jsx    # ⚠️ Legacy — deprecation warning (Goal 5)
+│   ├── CreekCanyon.jsx   # ⚠️ Legacy — deprecation warning (Goal 5)
 │   └── ...
 │
-├── systems/              # TODO: Game Systems
-│   ├── ChunkManager.ts   # Dynamic loading/unloading
-│   ├── ObjectPool.ts     # Reusable object pool
-│   └── GameState.ts      # Global game state
+├── systems/              # Game Systems
+│   ├── ChunkManager.ts   # ✅ Dynamic loading/unloading (Goal 1)
+│   ├── ObjectPool.ts     # ✅ Reusable object pool (ParticlePool.ts + ObjectSystem.ts)
+│   └── GameState.ts      # ✅ Global game state — Zustand (Goal 1)
 │
-├── physics/              # TODO: Physics Utilities
-│   ├── WaterForces.ts    # Water current calculations
-│   └── CollisionLayers.ts
+├── physics/              # Physics Utilities
+│   ├── WaterForces.ts    # ✅ Water current calculations (Goal 1)
+│   └── CollisionLayers.ts # TODO: Future
 │
-├── shaders/              # TODO: WebGPU/WGSL Shaders
-│   ├── water.wgsl        # Water displacement shader
-│   └── flowmap.wgsl      # Flow simulation
+├── shaders/              # WebGPU/WGSL Shaders
+│   ├── water.wgsl        # ✅ Water displacement compute shader (Goal 1)
+│   └── flowmap.wgsl      # ✅ Flow simulation compute shader (Goal 1)
 │
-├── hooks/                # TODO: Custom React Hooks
-│   ├── usePlayerPosition.ts
-│   ├── useChunkLoader.ts
-│   └── useGameLoop.ts
+├── hooks/                # Custom React Hooks
+│   ├── usePlayerPosition.ts # TODO: Future
+│   ├── useChunkLoader.ts  # ✅ Chunk loading state hook (Goal 1)
+│   ├── usePlayerControls.ts # ✅ Unified input hook — runner + raft (Goal 2)
+│   ├── useSegmentAudio.ts # ✅ Segment-aware ambient audio (Goal 3)
+│   └── useGameLoop.ts     # TODO: Future
 │
 ├── utils/                # TODO: Utility Functions
 │   ├── splineHelpers.ts  # Spline math utilities
