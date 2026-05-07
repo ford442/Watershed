@@ -25,7 +25,9 @@ export default function WaterReflection({
   
   // Create reflection camera and render target
   useEffect(() => {
-    renderTargetRef.current = new THREE.WebGLRenderTarget(resolution, resolution, {
+    renderTargetRef.current = new THREE.WebGLRenderTarget({
+      width: resolution,
+      height: resolution,
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
