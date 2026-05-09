@@ -146,18 +146,16 @@ export default function ReachManager({
     return null;
   }
 
-  if (error) {
-    return null;
-  }
-
-  if (!reachSegments) {
-    return null;
-  }
+  // If the Reach manifest failed to load (e.g. 404), fall back to procedural
+  // generation by rendering TrackManager without reachSegments. ChunkManager
+  // will use createSegmentData() instead of adaptReachSegment().
+  const segmentsForTrack = error ? undefined : reachSegments ?? undefined;
+  const fallbackWeather = { type: 'clear', intensity: 0.5 };
 
   return (
     <>
       <TrackManager
-        reachSegments={reachSegments}
+        reachSegments={segmentsForTrack}
         onBiomeChange={onBiomeChange}
         raftRef={playerRef}
         forecastSamples={forecastSamples}
@@ -167,11 +165,11 @@ export default function ReachManager({
         targetRef={playerRef}
         reachId={reachId}
         manifest={manifest}
-        reachSegments={reachSegments}
+        reachSegments={reachSegments ?? []}
       />
       <WeatherSystem
         targetRef={playerRef}
-        weather={manifest?.weather || { type: 'clear', intensity: 0.5 }}
+        weather={manifest?.weather || fallbackWeather}
       />
     </>
   );

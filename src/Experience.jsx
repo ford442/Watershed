@@ -22,7 +22,7 @@ import { LODProvider, PerformanceMonitor, useLOD } from "./systems/LODManager";
 import { SplashSystem } from "./systems/SplashSystem";
 import WaterReflection from "./components/WaterReflection";
 import WaterInteraction from "./components/WaterInteraction";
-import { PostProcessingEffects } from "./components/PostProcessingEffects";
+import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio } from "./systems/AudioSystem";
@@ -366,11 +366,12 @@ const InnerExperience = () => {
       </Physics>
 
       {/* Post-processing effects - Bloom, Vignette, SSAO, Speed Effects */}
-      <PostProcessingEffects
-        quality={quality}
-        velocityRef={playerVelocityRef}
-        maxVelocity={25}
-      />
+      {quality !== 'minimal' && (
+        <PostProcessingPipeline
+          quality={quality}
+          velocityRef={playerVelocityRef}
+        />
+      )}
 
       {/* --- DOM UI overlays: must be wrapped in <Html> inside R3F Canvas --- */}
       <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
@@ -409,17 +410,56 @@ const InnerExperience = () => {
           </div>
         )}
 
-        {/* Reach error overlay */}
+        {/* Reach error toast — non-blocking because we fall back to procedural */}
         {reachError && (
-          <div style={{ pointerEvents: 'auto' }}>
-            <ErrorDisplay
-              error={reachError}
-              onDismiss={() => setReachError(null)}
-              onRetry={() => {
+          <div style={{
+            position: 'fixed',
+            bottom: '80px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(40, 40, 40, 0.9)',
+            color: '#ffcc00',
+            padding: '10px 18px',
+            borderRadius: '6px',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: '14px',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            pointerEvents: 'auto',
+          }}>
+            <span>⚠ Reach unavailable — playing procedural track</span>
+            <button
+              onClick={() => {
                 setReachError(null);
                 setReachRetryKey((k) => k + 1);
               }}
-            />
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                color: '#fff',
+                padding: '4px 10px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => setReachError(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#aaa',
+                cursor: 'pointer',
+                fontSize: '16px',
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
           </div>
         )}
       </Html>
