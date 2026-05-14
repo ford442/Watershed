@@ -183,8 +183,12 @@ export function extendRiverMaterial(material, options = {}) {
                 // Parallax offset is computed once at the top of the fragment shader
                 const parallaxPreamble = `
                 // Cheap parallax offset using displacement map or fallback hash height
-                float dispHeight = texture2D(uDisplacementMap, vMapUv).r;
-                vec2 parallaxOffset = vViewDir.xy * dispHeight * uDisplacementScale;
+                #ifdef USE_MAP
+                  float dispHeight = texture2D(uDisplacementMap, vMapUv).r;
+                  vec2 parallaxOffset = vViewDir.xy * dispHeight * uDisplacementScale;
+                #else
+                  vec2 parallaxOffset = vec2(0.0);
+                #endif
                 `;
 
                 const mapFragmentReplacement = `
