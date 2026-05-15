@@ -358,6 +358,7 @@ const InnerExperience = () => {
             playerRef={vehicleRef}
             onBiomeChange={handleBiomeChange}
             forecastSamples={forecastSamples}
+            reachId={undefined}
             onLoadingChange={setReachLoading}
             onError={setReachError}
             retryKey={reachRetryKey}
