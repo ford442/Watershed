@@ -161,7 +161,7 @@ export default function ReactiveAudio({
         if (tSeg?.segmentPath) {
           const center = tSeg.segmentPath.getPoint(0.5);
           const tBuf = resolveAudioBuffer(reachId, 'sfx_transition', AUDIO_CONFIG.defaultSfxTracks.transition);
-          if (tBuf) {
+          if (tBuf && isFinite(center.x) && isFinite(center.y) && isFinite(center.z)) {
             posTransitionRef.current = new THREE.PositionalAudio(listener);
             posTransitionRef.current.setBuffer(tBuf);
             posTransitionRef.current.setLoop(true);
