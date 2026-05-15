@@ -50,7 +50,9 @@ function App() {
     if (!window.location.search.includes('no-pointer-lock')) {
       const canvas = document.querySelector('canvas');
       if (canvas) {
-        canvas.requestPointerLock();
+        canvas.requestPointerLock().catch((err) => {
+          console.warn('[App] Pointer lock failed:', err);
+        });
       }
     }
   }, []);
@@ -60,7 +62,9 @@ function App() {
     if (!window.location.search.includes('no-pointer-lock')) {
       const canvas = document.querySelector('canvas');
       if (canvas) {
-        canvas.requestPointerLock();
+        canvas.requestPointerLock().catch((err) => {
+          console.warn('[App] Pointer lock failed:', err);
+        });
       }
     }
   }, []);
