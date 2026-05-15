@@ -225,8 +225,11 @@ export default function WaterFlowForces({
     // ========================================================================
     // 7. Apply all forces
     // ========================================================================
+    const impulseX = alongFlow.x + flowMapForce.x * delta + sideSlip.x + turbulence.x;
+    const impulseZ = alongFlow.z + flowMapForce.z * delta + sideSlip.z + turbulence.z;
+    if (!isFinite(impulseX) || !isFinite(impulseZ) || !isFinite(downwardImpulse)) return;
     body.applyImpulse(
-      { x: alongFlow.x + flowMapForce.x * delta + sideSlip.x + turbulence.x, y: downwardImpulse, z: alongFlow.z + flowMapForce.z * delta + sideSlip.z + turbulence.z },
+      { x: impulseX, y: downwardImpulse, z: impulseZ },
       true
     );
 
@@ -236,12 +239,12 @@ export default function WaterFlowForces({
     const alignment = tmpForward.dot(closestSample.tangent);
     const shedFactor = 1 - Math.max(-1, Math.min(1, alignment));
     tmpCross.crossVectors(tmpForward, closestSample.tangent);
+    const torqueX = tmpCross.x * shedFactor * impulseStrength * delta * 0.8 * WATER_FLOW_CONFIG.alignmentTorque;
+    const torqueY = tmpCross.y * shedFactor * impulseStrength * delta * 1.1 * WATER_FLOW_CONFIG.alignmentTorque;
+    const torqueZ = tmpCross.z * shedFactor * impulseStrength * delta * 0.8 * WATER_FLOW_CONFIG.alignmentTorque;
+    if (!isFinite(torqueX) || !isFinite(torqueY) || !isFinite(torqueZ)) return;
     body.applyTorqueImpulse(
-      {
-        x: tmpCross.x * shedFactor * impulseStrength * delta * 0.8 * WATER_FLOW_CONFIG.alignmentTorque,
-        y: tmpCross.y * shedFactor * impulseStrength * delta * 1.1 * WATER_FLOW_CONFIG.alignmentTorque,
-        z: tmpCross.z * shedFactor * impulseStrength * delta * 0.8 * WATER_FLOW_CONFIG.alignmentTorque,
-      },
+      { x: torqueX, y: torqueY, z: torqueZ },
       true
     );
 

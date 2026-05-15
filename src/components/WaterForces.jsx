@@ -62,14 +62,19 @@ export default function WaterForces({
         const alongFlow = closestSample.tangent.clone().multiplyScalar(impulseStrength * delta * 2.0);
         const sideSlip = closestSample.lateral.clone().multiplyScalar((closestDistance / Math.max(closestSample.canyonWidth, 1)) * 0.15 * delta);
 
+        if (!isFinite(alongFlow.x) || !isFinite(alongFlow.z) || !isFinite(sideSlip.x) || !isFinite(sideSlip.z)) return;
         body.applyImpulse({ x: alongFlow.x, y: -0.18 * impulseStrength * delta, z: alongFlow.z }, true);
         body.applyImpulse({ x: sideSlip.x, y: 0, z: sideSlip.z }, true);
 
         tmpCross.crossVectors(tmpForward, closestSample.tangent);
+        const torqueX = tmpCross.x * shedFactor * impulseStrength * delta * 0.8;
+        const torqueY = tmpCross.y * shedFactor * impulseStrength * delta * 1.1;
+        const torqueZ = tmpCross.z * shedFactor * impulseStrength * delta * 0.8;
+        if (!isFinite(torqueX) || !isFinite(torqueY) || !isFinite(torqueZ)) return;
         body.applyTorqueImpulse({
-            x: tmpCross.x * shedFactor * impulseStrength * delta * 0.8,
-            y: tmpCross.y * shedFactor * impulseStrength * delta * 1.1,
-            z: tmpCross.z * shedFactor * impulseStrength * delta * 0.8,
+            x: torqueX,
+            y: torqueY,
+            z: torqueZ,
         }, true);
 
         flowFieldRef.current.sample = {

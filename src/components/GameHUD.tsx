@@ -2,12 +2,9 @@
 // Heads-up display: speed, distance, biome, momentum, wipeout
 
 import React, { useEffect, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { usePlayerBiome } from '../systems/GameState';
+import { usePlayerBiome, useGameStore } from '../systems/GameState';
 
 interface GameHUDProps {
-  /** Rapier rigid body ref for velocity/position */
-  rigidBodyRef: React.MutableRefObject<any>;
   /** Wipeout trigger */
   isWipeout?: boolean;
   /** Respawn callback */
@@ -35,19 +32,23 @@ const BIOME_STYLES: Record<string, { name: string; color: string; bg: string }> 
  * - Wipeout screen with respawn
  */
 export const GameHUD: React.FC<GameHUDProps> = ({
-  rigidBodyRef,
   isWipeout = false,
   onRespawn,
   initialBestDistance = 0,
 }) => {
-  const [speed, setSpeed] = useState(0);
-  const [distance, setDistance] = useState(0);
   const [bestDistance, setBestDistance] = useState(initialBestDistance);
   const [showShaderHint, setShowShaderHint] = useState(true);
-  const [momentum, setMomentum] = useState(0);
 
   const currentBiome = usePlayerBiome();
   const biomeStyle = BIOME_STYLES[currentBiome] ?? BIOME_STYLES.summer;
+
+  // Read speed and distance from the Zustand store (updated by InnerExperience.useFrame
+  // inside Canvas, avoiding R3F hook usage inside the <Html> portal).
+  const rawSpeed = useGameStore((s) => s.currentSpeed);
+  const distance = useGameStore((s) => s.distanceTraveled);
+
+  const speed = Math.max(0, Math.round(rawSpeed * 12));
+  const momentum = Math.min(100, Math.round((rawSpeed / 25) * 100));
 
   // Load best distance from localStorage on mount
   useEffect(() => {
@@ -70,30 +71,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const timer = setTimeout(() => setShowShaderHint(false), 10000);
     return () => clearTimeout(timer);
   }, []);
-
-  // Update speed, distance, and momentum every frame
-  useFrame(() => {
-    if (!rigidBodyRef.current || isWipeout) return;
-
-    const rb = rigidBodyRef.current;
-    const vel = rb.linvel();
-    const pos = rb.translation();
-
-    // Calculate speed in km/h (arbitrary scale for "fun" numbers)
-    const rawSpeed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
-    const kmh = Math.round(rawSpeed * 12);
-    setSpeed(Math.max(0, kmh));
-
-    // Distance = how far downstream (negative Z is forward)
-    const downstream = Math.abs(pos.z);
-    const meters = Math.floor(downstream * 0.5);
-    setDistance(meters);
-
-    // Water Shed % — momentum based on speed (0-100%)
-    // Scale: 0 m/s = 0%, 25 m/s = 100%
-    const shedPct = Math.min(100, Math.round((rawSpeed / 25) * 100));
-    setMomentum(shedPct);
-  });
 
   // Wipeout screen
   if (isWipeout) {
