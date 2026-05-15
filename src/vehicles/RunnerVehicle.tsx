@@ -717,8 +717,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     }
 
     // Camera follow (first-person, smooth)
-    const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
-    camera.position.lerp(targetPos, 0.12);
+    // Guard against NaN from Rapier during physics init — lerping NaN permanently corrupts camera matrix
+    if (isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z)) {
+      const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
+      camera.position.lerp(targetPos, 0.12);
+    }
   });
 
   // Remove completed particles
