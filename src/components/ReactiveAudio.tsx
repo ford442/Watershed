@@ -224,9 +224,12 @@ export default function ReactiveAudio({
 
     const body = targetRef.current;
     const vel = body.linvel();
-    const playerSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-    const flowSpeed = flowRef.current.flowSpeed;
-    const turbulence = flowRef.current.turbulence;
+    const velX = isFinite(vel.x) ? vel.x : 0;
+    const velZ = isFinite(vel.z) ? vel.z : 0;
+    const playerSpeed = Math.sqrt(velX * velX + velZ * velZ);
+    const rawFlowSpeed = flowRef.current.flowSpeed;
+    const flowSpeed = isFinite(rawFlowSpeed) ? rawFlowSpeed : 1;
+    const turbulence = isFinite(flowRef.current.turbulence) ? flowRef.current.turbulence : 0;
 
     // Compute overall intensity 0-1
     const rawIntensity =
