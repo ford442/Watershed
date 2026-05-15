@@ -144,6 +144,9 @@ export function extendRiverMaterial(material, options = {}) {
                     'uniform vec3 uWarmColor;',
                     'uniform vec3 uCoolColor;',
                     'uniform float uColorVariationStrength;',
+                    enableMoss ? 'uniform vec3 uMossColor;' : '',
+                    enableMoss ? 'uniform vec3 uLichenColor;' : '',
+                    enableMoss ? 'uniform float uMossIntensity;' : '',
                     'varying float vHeightAboveWater;',
                     enableMoss ? 'varying float vMossMask;' : '',
                     enableMoss ? 'varying vec3 vWorldNormal;' : '',
@@ -180,14 +183,11 @@ export function extendRiverMaterial(material, options = {}) {
                 `,
                 ].filter(Boolean).join('\n') + '\n';
 
-                // Parallax offset is computed once at the top of the fragment shader
-                const parallaxPreamble = `
-                // Cheap parallax offset using displacement map or fallback hash height
+                const mapFragmentReplacement = `
+                // Parallax offset — computed once inside void main() where texture2D() is valid
                 float dispHeight = texture2D(uDisplacementMap, vMapUv).r;
                 vec2 parallaxOffset = vViewDir.xy * dispHeight * uDisplacementScale;
-                `;
 
-                const mapFragmentReplacement = `
                 #ifdef USE_MAP
                     vec4 sampledDiffuseColor = texture2D( map, vMapUv + parallaxOffset );
                     #ifdef DECODE_VIDEO_TEXTURE
@@ -211,7 +211,7 @@ export function extendRiverMaterial(material, options = {}) {
                 `;
 
                 let nextFragmentShader = injectShaderChunk(
-                    fragmentPreamble + parallaxPreamble + shader.fragmentShader,
+                    fragmentPreamble + shader.fragmentShader,
                     '#include <map_fragment>',
                     mapFragmentReplacement,
                     'fragment shader'
