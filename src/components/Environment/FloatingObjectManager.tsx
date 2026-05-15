@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { InstancedRigidBodies } from '@react-three/rapier';
+import { InstancedRigidBodies, useRapier } from '@react-three/rapier';
 import {
   calculateBuoyancyForce,
   calculateDragForce,
@@ -78,6 +78,7 @@ export default function FloatingObjectManager({
 }: FloatingObjectManagerProps) {
   const bodiesRef = useRef<(any | null)[]>([]);
   const timeRef = useRef(0);
+  const { world } = useRapier();
 
   // Generate object instances deterministically
   const instances = useMemo(() => {
@@ -182,13 +183,26 @@ export default function FloatingObjectManager({
 
     if (!path) return;
 
+    // Step 1: collect handles only — calling translation()/linvel() inside
+    // bodiesRef.current.forEach triggers world.forEachRigidBody internally,
+    // and any borrow of the body inside that callback causes a Rapier WASM
+    // "recursive use / unsafe aliasing" error.
+    const entries: Array<{ handle: number; index: number }> = [];
     bodiesRef.current.forEach((api, i) => {
-      if (!api) return;
+      if (api?.handle !== undefined) {
+        entries.push({ handle: api.handle, index: i });
+      }
+    });
+
+    // Step 2: query and mutate each body outside the forEach callback
+    for (const { handle, index: i } of entries) {
+      const body = world.getRigidBody(handle);
+      if (!body) continue;
 
       try {
-        const pos = api.translation();
-        const vel = api.linvel();
-        if (!pos || !vel) return;
+        const pos = body.translation();
+        const vel = body.linvel();
+        if (!pos || !vel) continue;
 
         // === BUOYANCY ===
         const submergedDepth = waterLevel - pos.y;
@@ -200,7 +214,7 @@ export default function FloatingObjectManager({
             1000,
             9.80665
           );
-          api.applyImpulse({ x: 0, y: buoyancy * dt, z: 0 }, true);
+          body.applyImpulse({ x: 0, y: buoyancy * dt, z: 0 }, true);
         }
 
         // === DRAG ===
@@ -211,7 +225,7 @@ export default function FloatingObjectManager({
           FLOATING_OBJECT.DRAG_AREA,
           1000
         );
-        api.applyImpulse(
+        body.applyImpulse(
           {
             x: dragForce.x * dt,
             y: dragForce.y * dt,
@@ -233,7 +247,7 @@ export default function FloatingObjectManager({
           },
           timeRef.current
         );
-        api.applyImpulse(
+        body.applyImpulse(
           {
             x: flowForce.x * dt,
             y: flowForce.y * dt,
@@ -250,12 +264,12 @@ export default function FloatingObjectManager({
         const distFromCenter = Math.sqrt(toCenter.x * toCenter.x + toCenter.z * toCenter.z);
         if (distFromCenter > waterWidth * 0.4) {
           toCenter.normalize().multiplyScalar(2.0 * dt);
-          api.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
+          body.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
         }
       } catch (e) {
         // Ignore physics errors for individual instances
       }
-    });
+    }
   });
 
   if (!path || instances.length === 0) return null;

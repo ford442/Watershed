@@ -43,7 +43,9 @@ const Player = forwardRef((props, ref) => {
   }, []);
 
   useEffect(() => {
-    const onClick = () => gl.domElement.requestPointerLock();
+    const onClick = () => gl.domElement.requestPointerLock().catch((err) => {
+      console.warn('[Player] Pointer lock failed:', err);
+    });
     gl.domElement.addEventListener('click', onClick);
     return () => gl.domElement.removeEventListener('click', onClick);
   }, [gl]);

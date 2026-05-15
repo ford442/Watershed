@@ -94,7 +94,9 @@ export const UI = () => {
     } else {
       const canvas = document.querySelector('canvas');
       if (canvas) {
-        canvas.requestPointerLock();
+        canvas.requestPointerLock().catch((err) => {
+          console.warn('[UI] Pointer lock failed:', err);
+        });
       }
     }
   };
