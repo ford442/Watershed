@@ -2,8 +2,8 @@
 
 ## Today's focus
 <!-- Routine writes here each run. You can delete after day ends, or keep as history. -->
-**2026-05-06 — Wire GameHUD into the gameplay loop**
-GameHUD.tsx (speedometer, distance counter, wipeout screen) is a complete, export-ready component that is not rendered anywhere. Wire it into Experience.jsx by passing `vehicleRef` as `rigidBodyRef`; forward wipeout state from Player.jsx/RunnerVehicle.tsx; confirm speed reads from Rapier velocity in real time. This is the single change that transforms the prototype into something that reads like a game.
+**2026-05-13 — Reactive audio validation: replace 477-byte stubs + verify pipeline end-to-end**
+All 23 `public/sounds/` files are confirmed 477-byte silent placeholders. AudioSystem.ts, `useSegmentAudio`, and ReactiveAudio are fully wired (initAudio called in Experience.jsx, crossfade logic complete) but completely silent in-game. Today: synthesize minimal-valid PCM tones for each sound slot so the pipeline can be tested without real foley, audit the full init → preload → crossfade chain for timing issues, and add a dev-mode audio diagnostics overlay to make system state visible.
 
 ## Ideas
 <!--
@@ -12,9 +12,9 @@ Routine prioritizes these over generated ideas.
 Format: - [ ] Short description (optional: more context on next line indented)
 Routine will mark picked items as "[in progress — YYYY-MM-DD]".
 -->
-- [in progress — 2026-05-06] Wire GameHUD into Experience.jsx — GameHUD.tsx (speed, distance, wipeout) is complete but unwired; connect rigidBodyRef + wipeout state forwarding from Player/RunnerVehicle
-- [ ] Author segments 0–12 waypoints in meander_to_waterfall.json — The Meander opener is fully procedural; explicit waypoints + environment hints would make the first impression deliberate (half-day)
-- [ ] Reactive audio validation — confirm public/sounds/ files are real foley (not 477-byte stubs); test ReactiveAudio crossfades in browser; AudioSystem + ReactiveAudio are wired but silent until verified (half-day sourcing + smoke test)
+- [x] Wire GameHUD into Experience.jsx — done 2026-05-06; all acceptance criteria met per .swarm-state.md
+- [x] Author segments 0–12 waypoints in meander_to_waterfall.json — done 2026-05-13; PR #130 merged (deterministic decoration placement + authored waypoints)
+- [in progress — 2026-05-13] Reactive audio validation — confirm public/sounds/ files are real foley (not 477-byte stubs); test ReactiveAudio crossfades in browser; AudioSystem + ReactiveAudio are wired but silent until verified (half-day sourcing + smoke test)
 
 ## Backlog
 <!--
@@ -30,6 +30,9 @@ Routine maintains this automatically — you can add items too.
 Completed items, routine archives here with date.
 Prune occasionally when this gets long.
 -->
+- [x] 2026-05-13 — GameHUD wiring: speedometer, distance counter, wipeout overlay, respawn handler — all criteria met per .swarm-state.md; Experience.jsx renders GameHUD via vehicleRef + isWipeout
+- [x] 2026-05-13 — Author segments 0–12: deterministic decoration placement + authored waypoints in meander_to_waterfall.json (PR #130 merged)
+- [x] 2026-05-13 — Fix deprecated WebGLRenderTarget constructor for Three.js 0.168+ (PR #131)
 - [x] 2026-05-06 — Step 3 — Water Visual Quality: bankFoam via EDGE_FOAM_WIDTH + cameraHeight uniform + proximityScale wave turbulence confirmed in FlowingWater.jsx (commit 80fe84d)
 - [x] 2026-05-06 — Step 6 — meander_to_waterfall.json validated end-to-end (PR #125): segments 13–22 fully authored with waypoints, biome overrides, checkpoints; JSONMapManager drives TrackManager
 - [x] 2026-04-29 — Step 2 — Terrain Visual Quality: 3-stop vertex color gradient on canyon walls (waterline charcoal → mid grey-brown → rim tan/cream), triplanar UV smoothstep tuned from (0,8) to (6,14), worldNormal varying + moss band tightened to smoothstep(2,4) with normal-based mask in RiverShader.js — committed 7266e6d
@@ -44,7 +47,7 @@ Prune occasionally when this gets long.
 
 ## Last run
 <!-- Routine writes summary here each run. Overwrites previous. -->
-Date: 2026-05-06
-Mode: New Idea — Ideas section exhausted (Step 3 water quality confirmed done in code; Step 5 already done); three new ideas generated
-Focus: Wire GameHUD (speedometer / distance / wipeout) into Experience.jsx — component is complete but unrendered
-Outcome: Dispatch produced. weekly_plan.md updated: Step 3 + Step 6 → Done; GameHUD wiring set as Today's focus; 2 unpicked ideas (authored Meander waypoints, audio validation) appended to Ideas.
+Date: 2026-05-13
+Mode: User Idea — last remaining Ideas item (reactive audio validation) picked; GameHUD + authored segments confirmed done
+Focus: Replace 477-byte audio stubs with synthesized PCM tones; audit AudioSystem init → crossfade chain; add dev-mode audio diagnostics overlay
+Outcome: Dispatch produced. weekly_plan.md updated: GameHUD wiring + authored segments 0-12 + WebGLRenderTarget fix → Done; audio validation marked in progress; Today's focus set.
