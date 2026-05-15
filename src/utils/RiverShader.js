@@ -184,11 +184,13 @@ export function extendRiverMaterial(material, options = {}) {
                 ].filter(Boolean).join('\n') + '\n';
 
                 const mapFragmentReplacement = `
-                // Parallax offset — computed once inside void main() where texture2D() is valid
-                float dispHeight = texture2D(uDisplacementMap, vMapUv).r;
-                vec2 parallaxOffset = vViewDir.xy * dispHeight * uDisplacementScale;
+                // Parallax offset — vMapUv is only defined when USE_MAP is active, so
+                // we initialise parallaxOffset here and compute it inside the #ifdef block.
+                vec2 parallaxOffset = vec2(0.0);
 
                 #ifdef USE_MAP
+                    float dispHeight = texture2D(uDisplacementMap, vMapUv).r;
+                    parallaxOffset = vViewDir.xy * dispHeight * uDisplacementScale;
                     vec4 sampledDiffuseColor = texture2D( map, vMapUv + parallaxOffset );
                     #ifdef DECODE_VIDEO_TEXTURE
                         // sRGB EOTF (Electro-Optical Transfer Function) constants from

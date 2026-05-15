@@ -380,7 +380,6 @@ const InnerExperience = () => {
 
         <div style={{ pointerEvents: isWipeout ? 'auto' : 'none' }}>
           <GameHUD
-            rigidBodyRef={vehicleRef}
             isWipeout={isWipeout}
             onRespawn={handleRespawn}
           />

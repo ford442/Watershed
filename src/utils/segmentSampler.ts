@@ -33,8 +33,13 @@ export function sampleSegmentFlow(segment: any, worldPosition: THREE.Vector3): S
   }
 
   const point = curve.getPoint(bestT, _tmpPoint).clone();
-  const tangent = curve.getTangent(bestT, _tmpTangent).normalize();
-  const lateral = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+  const rawTangent = curve.getTangent(bestT, _tmpTangent);
+  if (rawTangent.lengthSq() < 1e-6) return null; // degenerate curve — skip
+  const tangent = rawTangent.normalize();
+  const rawLateral = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0));
+  const lateral = rawLateral.lengthSq() < 1e-6
+    ? new THREE.Vector3(1, 0, 0) // fallback when tangent is vertical
+    : rawLateral.normalize();
 
   return {
     point,
