@@ -37,7 +37,7 @@ export default function ReachManager({
   playerRef,
   onBiomeChange,
   forecastSamples = [],
-  reachId = 'reach_01_alpine_source',
+  reachId = undefined,
   onLoadingChange,
   onError,
   retryKey = 0,
@@ -59,6 +59,15 @@ export default function ReachManager({
 
   // Load the Reach on mount / reachId change
   useEffect(() => {
+    // Skip loading if no reachId provided
+    if (!reachId) {
+      setLoading(false);
+      setError(null);
+      setReachSegments(null);
+      setManifest(null);
+      return;
+    }
+
     let cancelled = false;
 
     const load = async () => {
@@ -149,6 +158,7 @@ export default function ReachManager({
   // If the Reach manifest failed to load (e.g. 404), fall back to procedural
   // generation by rendering TrackManager without reachSegments. ChunkManager
   // will use createSegmentData() instead of adaptReachSegment().
+  // Do NOT render ReactiveAudio/WeatherSystem on error to avoid hook errors.
   const segmentsForTrack = error ? undefined : reachSegments ?? undefined;
   const fallbackWeather = { type: 'clear', intensity: 0.5 };
 
@@ -161,16 +171,20 @@ export default function ReachManager({
         forecastSamples={forecastSamples}
         reachId={reachId}
       />
-      <ReactiveAudio
-        targetRef={playerRef}
-        reachId={reachId}
-        manifest={manifest}
-        reachSegments={reachSegments ?? []}
-      />
-      <WeatherSystem
-        targetRef={playerRef}
-        weather={manifest?.weather || fallbackWeather}
-      />
+      {!error && (
+        <>
+          <ReactiveAudio
+            targetRef={playerRef}
+            reachId={reachId}
+            manifest={manifest}
+            reachSegments={reachSegments ?? []}
+          />
+          <WeatherSystem
+            targetRef={playerRef}
+            weather={manifest?.weather || fallbackWeather}
+          />
+        </>
+      )}
     </>
   );
 }
