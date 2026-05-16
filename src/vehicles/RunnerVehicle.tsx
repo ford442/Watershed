@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { RigidBody, useRapier } from '@react-three/rapier';
+import { RigidBody, CapsuleCollider, useRapier } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
@@ -734,14 +734,16 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       <RigidBody
         ref={bodyRef}
         type="dynamic"
-        colliders="capsule"
+        colliders={false}
         position={PLAYER_SPAWN.position}
         mass={75}
         friction={0.04}
         restitution={0.15}
         linearDamping={0.35}
         angularDamping={0.9}
-      />
+      >
+        <CapsuleCollider args={[0.4, 0.5]} />
+      </RigidBody>
       
       {/* Collision particle effects */}
       {collisionState.current.activeParticles.map(particle => (

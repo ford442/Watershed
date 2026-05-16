@@ -169,7 +169,7 @@ export default function FloatingObjectManager({
 
   useFrame(() => {
     bodiesRef.current.forEach((api) => {
-      if (api && api.handle && !registeredHandlesRef.current.has(api.handle)) {
+      if (api && api.handle !== undefined && !registeredHandlesRef.current.has(api.handle)) {
         registerFloatingPlatform(api.handle);
         registeredHandlesRef.current.add(api.handle);
       }

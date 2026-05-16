@@ -1,6 +1,5 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import RAPIER from '@dimforge/rapier3d-compat';
 import App from './App';
 
 // Global error handlers to catch silent failures
@@ -20,19 +19,16 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('[Promise]', event.promise);
 });
 
-// Pre-initialize Rapier before @react-three/rapier mounts its Physics component.
-// Using the same 0.19.2 version as @react-three/rapier prevents duplicate init
-// and suppresses the "deprecated parameters" warning.
-RAPIER.init().then(() => {
-  const rootElement = document.getElementById('root');
-  if (!rootElement) {
-    console.error('[index.tsx] FATAL: Root element not found!');
-    const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'color: red; font-size: 20px; padding: 20px;';
-    errorDiv.textContent = 'ERROR: Root element #root not found in DOM';
-    document.body.appendChild(errorDiv);
-  } else {
-    const root = ReactDOM.createRoot(rootElement as HTMLElement);
-    root.render(<App />);
-  }
-});
+// @react-three/rapier's Physics component initialises Rapier via its own
+// suspend() call, so no separate pre-init is needed here.
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  console.error('[index.tsx] FATAL: Root element not found!');
+  const errorDiv = document.createElement('div');
+  errorDiv.style.cssText = 'color: red; font-size: 20px; padding: 20px;';
+  errorDiv.textContent = 'ERROR: Root element #root not found in DOM';
+  document.body.appendChild(errorDiv);
+} else {
+  const root = ReactDOM.createRoot(rootElement as HTMLElement);
+  root.render(<App />);
+}
