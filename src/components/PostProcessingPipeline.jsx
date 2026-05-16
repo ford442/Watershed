@@ -165,8 +165,10 @@ export function PostProcessingPipeline({
     boostRef.current.active = Math.max(0, boostRef.current.active - delta * 1.2);
     const boostScale = boostRef.current.active > 0 ? boostRef.current.intensity : 0;
 
-    // Read velocity
-    const velocity = velocityRef?.current ?? 0;
+    // Read velocity — guard NaN (?? only catches null/undefined) so the
+    // smoothed lerps below don't get stuck at NaN forever.
+    const rawVel = velocityRef?.current;
+    const velocity = isFinite(rawVel) ? rawVel : 0;
     const speedFactor = Math.min(1, velocity / 25);
 
     // Chromatic aberration target
