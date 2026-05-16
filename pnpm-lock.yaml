@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@dimforge/rapier3d-compat':
-        specifier: ^0.19.3
-        version: 0.19.3
+        specifier: 0.19.2
+        version: 0.19.2
       '@react-three/drei':
         specifier: ^10.7.7
         version: 10.7.7(@react-three/fiber@9.4.2(@types/react@19.2.7)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.168.0))(@types/react@19.2.7)(@types/three@0.168.0)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.168.0)
@@ -992,9 +992,6 @@ packages:
 
   '@dimforge/rapier3d-compat@0.19.2':
     resolution: {integrity: sha512-AZHL1jqUF55QJkJyU1yKeh4ImX2J93bVLIezT1+o0FZqTix6O06MOaqpKoJ4MmbDCsoZmwO+qc471/SDMDm2AA==}
-
-  '@dimforge/rapier3d-compat@0.19.3':
-    resolution: {integrity: sha512-mMVdSj1PRTT108s9Swbu2GQOmHbn8kbJANRV5xfczL3s0T4vkgZAuoMRgvBzQcHanpKusbC0ZJj6z3mC3aj3vg==}
 
   '@esbuild/aix-ppc64@0.27.7':
     resolution: {integrity: sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg==}
@@ -7816,8 +7813,6 @@ snapshots:
       postcss-selector-parser: 6.1.2
 
   '@dimforge/rapier3d-compat@0.19.2': {}
-
-  '@dimforge/rapier3d-compat@0.19.3': {}
 
   '@esbuild/aix-ppc64@0.27.7':
     optional: true
