@@ -203,8 +203,8 @@ export const PostProcessing: React.FC<PostProcessingProps> = ({
   
   // Create render targets
   useEffect(() => {
-    renderTargetRef.current = new THREE.WebGLRenderTarget({ width: size.width, height: size.height });
-    bloomTargetRef.current = new THREE.WebGLRenderTarget({ width: size.width / 2, height: size.height / 2 });
+    renderTargetRef.current = new THREE.WebGLRenderTarget(size.width, size.height);
+    bloomTargetRef.current = new THREE.WebGLRenderTarget(size.width / 2, size.height / 2);
     
     return () => {
       renderTargetRef.current?.dispose();

@@ -173,15 +173,19 @@ const InnerExperience = () => {
       const vel = vehicleRef.current.linvel?.();
       const pos = vehicleRef.current.translation?.();
 
-      if (vel) {
+      // Guard against NaN from Rapier during physics init — NaN here
+      // propagates into Zustand, PostProcessingPipeline uniforms, and HUD.
+      const velOk = vel && isFinite(vel.x) && isFinite(vel.z);
+      const posOk = pos && isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z);
+
+      if (velOk) {
         const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         playerVelocityRef.current = speed;
 
-        // Throttled batch update into Zustand (position + speed + distance)
-        const downstream = pos ? Math.abs(pos.z) : 0;
+        const downstream = posOk ? Math.abs(pos.z) : 0;
         const meters = Math.floor(downstream * 0.5);
         batchFrameUpdate(
-          { x: pos?.x ?? 0, y: pos?.y ?? 0, z: pos?.z ?? 0 },
+          { x: posOk ? pos.x : 0, y: posOk ? pos.y : 0, z: posOk ? pos.z : 0 },
           speed,
           useGameStore.getState().currentSegmentIndex
         );
@@ -190,7 +194,7 @@ const InnerExperience = () => {
       }
 
       // Minimal wipeout detection
-      if (pos && pos.y < -80 && !isWipeout) {
+      if (posOk && pos.y < -80 && !isWipeout) {
         setIsWipeout(true);
       }
     }

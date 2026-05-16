@@ -140,9 +140,7 @@ export const VolumetricGodRays: React.FC<VolumetricGodRaysProps> = ({
   
   // Create render target for scene capture
   const renderTarget = useMemo(() => {
-    return new THREE.WebGLRenderTarget({
-      width: size.width,
-      height: size.height,
+    return new THREE.WebGLRenderTarget(size.width, size.height, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
