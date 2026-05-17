@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { useDebugStages } from './debugStages';
+import { DebugStageController, DEBUG_STAGES, useDebugStages } from './debugStages';
 import { DebugPanel } from '../components/DebugPanel';
 
 const STORAGE_KEY = 'watershed.debug.stages';
@@ -42,24 +42,41 @@ describe('debug stage system', () => {
   });
 
   it('shows debug panel only when debug mode is enabled', () => {
+    const mockController: DebugStageController = {
+      debugEnabled: false,
+      stageConfig: DEBUG_STAGES,
+      enabledStages: Object.keys(DEBUG_STAGES).reduce((acc, key) => {
+        acc[key as keyof typeof DEBUG_STAGES] = true;
+        return acc;
+      }, {} as DebugStageController['enabledStages']),
+      stageRuntime: Object.keys(DEBUG_STAGES).reduce((acc, key) => {
+        acc[key as keyof typeof DEBUG_STAGES] = { status: 'idle' };
+        return acc;
+      }, {} as DebugStageController['stageRuntime']),
+      isStageEnabled: jest.fn(() => true),
+      setStageEnabled: jest.fn(),
+      runStage: jest.fn(),
+      setStageLoading: jest.fn(),
+      setStageSuccess: jest.fn(),
+      setStageFailure: jest.fn(),
+    };
+
     const disabledPanel = render(
-      <DebugPanel
-        debug={{
-          debugEnabled: false,
-          stageConfig: {} as any,
-          enabledStages: {} as any,
-          stageRuntime: {} as any,
-          isStageEnabled: jest.fn(),
-          setStageEnabled: jest.fn(),
-          runStage: jest.fn(),
-          setStageLoading: jest.fn(),
-          setStageSuccess: jest.fn(),
-          setStageFailure: jest.fn(),
-        }}
-      />
+      <DebugPanel debug={mockController} />
     );
 
     expect(disabledPanel.queryByLabelText('Debug Stages Panel')).not.toBeInTheDocument();
   });
-});
 
+  it('renders debug panel with stage labels when enabled', () => {
+    const Harness = () => {
+      const debug = useDebugStages();
+      return <DebugPanel debug={debug} />;
+    };
+
+    render(<Harness />);
+    expect(screen.getByLabelText('Debug Stages Panel')).toBeInTheDocument();
+    expect(screen.getByText('App Bootstrap')).toBeInTheDocument();
+    expect(screen.getByText('Physics')).toBeInTheDocument();
+  });
+});

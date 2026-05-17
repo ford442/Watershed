@@ -96,7 +96,7 @@ const normalizeError = (error: unknown): string => {
 };
 
 export function useDebugStages(): DebugStageController {
-  const debugEnabled = parseDebugEnabled();
+  const debugEnabled = useMemo(() => parseDebugEnabled(), []);
   const [enabledStages, setEnabledStages] = useState<Record<DebugStageId, boolean>>(() => {
     const defaults = getDefaultEnabledStages();
     if (!debugEnabled) return defaults;
@@ -224,4 +224,3 @@ export function useDebugStages(): DebugStageController {
     ]
   );
 }
-
