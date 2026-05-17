@@ -27,6 +27,7 @@ import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio } from "./systems/AudioSystem";
 import { DEBUG_STAGES } from "./debug/debugStages";
+import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 
 // Goal 1: Zustand game state
 import { useGameStore, batchFrameUpdate } from "./systems/GameState";
@@ -80,7 +81,7 @@ const NOOP_DEBUG = {
  * InnerExperience - The actual game scene
  * Wrapped in providers for context access
  */
-const InnerExperience = ({ debug = NOOP_DEBUG }) => {
+const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
   const { camera } = useThree();
@@ -388,7 +389,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics gravity={[0, -9.8, 0]}>
+        <Physics debug={physicsDebug} gravity={[0, -9.8, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick
@@ -566,7 +567,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG }) => {
  *
  * Wraps the game in provider contexts for biome and LOD management
  */
-const Experience = ({ debug = NOOP_DEBUG }) => {
+const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   return (
     <KeyboardControls
       map={[
@@ -583,8 +584,9 @@ const Experience = ({ debug = NOOP_DEBUG }) => {
       <LODProvider initialQuality="high" enableAdaptive={true} targetFPS={60}>
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
           <BiomeTransition />
-          <InnerExperience debug={debug} />
+          <InnerExperience debug={debug} physicsDebug={physicsDebug} />
           <PerformanceMonitor visible={import.meta.env.DEV} />
+          {debug.debugEnabled && <PerfCheckpointMonitor />}
         </BiomeProvider>
       </LODProvider>
     </KeyboardControls>

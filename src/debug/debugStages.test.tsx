@@ -76,6 +76,9 @@ describe('debug stage system', () => {
 
     render(<Harness />);
     expect(screen.getByLabelText('Debug Stages Panel')).toBeInTheDocument();
+
+    // Stages are in a collapsible section — expand it first
+    fireEvent.click(screen.getByRole('button', { name: /load stages/i }));
     expect(screen.getByText('App Bootstrap')).toBeInTheDocument();
     expect(screen.getByText('Physics')).toBeInTheDocument();
   });

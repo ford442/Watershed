@@ -26,6 +26,9 @@ function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
+  const [physicsDebug, setPhysicsDebug] = useState(() =>
+    window.location.search.includes('physicsDebug=1')
+  );
 
   useEffect(() => {
     debug.runStage('appBootstrap', () => {
@@ -108,7 +111,7 @@ function App() {
         }}
       >
         <React.Suspense fallback={null}>
-          <Experience debug={debug} />
+          <Experience debug={debug} physicsDebug={physicsDebug} />
         </React.Suspense>
       </Canvas>
 
@@ -126,7 +129,7 @@ function App() {
           onQuit={handleQuit}
         />
       )}
-      <DebugPanel debug={debug} />
+      <DebugPanel debug={debug} physicsDebug={physicsDebug} onTogglePhysicsDebug={setPhysicsDebug} />
     </ErrorBoundary>
   );
 }
