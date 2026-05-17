@@ -26,6 +26,7 @@ import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio } from "./systems/AudioSystem";
+import { DEBUG_STAGES } from "./debug/debugStages";
 
 // Goal 1: Zustand game state
 import { useGameStore, batchFrameUpdate } from "./systems/GameState";
@@ -62,11 +63,24 @@ const BIOME_LIGHTING = {
   },
 };
 
+const NOOP_DEBUG = {
+  debugEnabled: false,
+  stageConfig: DEBUG_STAGES,
+  enabledStages: Object.keys(DEBUG_STAGES).reduce((acc, key) => ({ ...acc, [key]: true }), {}),
+  stageRuntime: {},
+  isStageEnabled: () => true,
+  setStageEnabled: () => {},
+  runStage: async (_stageId, stageFn) => stageFn(),
+  setStageLoading: () => {},
+  setStageSuccess: () => {},
+  setStageFailure: () => {},
+};
+
 /**
  * InnerExperience - The actual game scene
  * Wrapped in providers for context access
  */
-const InnerExperience = () => {
+const InnerExperience = ({ debug = NOOP_DEBUG }) => {
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
   const { camera } = useThree();
@@ -88,8 +102,10 @@ const InnerExperience = () => {
 
   // Initialize Three.js audio listener on camera
   useEffect(() => {
-    initAudio(camera);
-  }, [camera]);
+    debug.runStage('audio', () => {
+      initAudio(camera);
+    });
+  }, [camera, debug.runStage]);
 
   // Level loading state
   const [levelUrl, setLevelUrl] = useState(null);
@@ -118,34 +134,50 @@ const InnerExperience = () => {
 
   // Track segment enter events for respawn bookkeeping
   useEffect(() => {
-    const handleSegmentEnter = (e) => {
-      const index = e.detail?.segmentIndex ?? 0;
-      setCurrentSegmentIndex(index);
-      setRespawnSegmentIndex(index);
+    if (!debug.isStageEnabled('stateManagement')) return;
+    try {
+      debug.setStageLoading('stateManagement');
+      const handleSegmentEnter = (e) => {
+        const index = e.detail?.segmentIndex ?? 0;
+        setCurrentSegmentIndex(index);
+        setRespawnSegmentIndex(index);
 
-      // Waterfall gravity shift for segment 14
-      if (index === 14) {
-        setWaterfallGravityMultiplier(1.45);
-      } else if (index === 15) {
-        // Reset gravity after waterfall
-        setWaterfallGravityMultiplier(1.0);
-      }
-    };
+        // Waterfall gravity shift for segment 14
+        if (index === 14) {
+          setWaterfallGravityMultiplier(1.45);
+        } else if (index === 15) {
+          // Reset gravity after waterfall
+          setWaterfallGravityMultiplier(1.0);
+        }
+      };
 
-    const handleSegmentSpawn = (e) => {
-      const { segmentIndex, spawnPoint } = e.detail ?? {};
-      if (segmentIndex !== undefined && spawnPoint) {
-        setSpawnPoint(segmentIndex, spawnPoint);
-      }
-    };
+      const handleSegmentSpawn = (e) => {
+        const { segmentIndex, spawnPoint } = e.detail ?? {};
+        if (segmentIndex !== undefined && spawnPoint) {
+          setSpawnPoint(segmentIndex, spawnPoint);
+        }
+      };
 
-    window.addEventListener('segment-enter', handleSegmentEnter);
-    window.addEventListener('segment-spawn', handleSegmentSpawn);
-    return () => {
-      window.removeEventListener('segment-enter', handleSegmentEnter);
-      window.removeEventListener('segment-spawn', handleSegmentSpawn);
-    };
-  }, [setCurrentSegmentIndex, setRespawnSegmentIndex, setWaterfallGravityMultiplier, setSpawnPoint]);
+      window.addEventListener('segment-enter', handleSegmentEnter);
+      window.addEventListener('segment-spawn', handleSegmentSpawn);
+      debug.setStageSuccess('stateManagement');
+      return () => {
+        window.removeEventListener('segment-enter', handleSegmentEnter);
+        window.removeEventListener('segment-spawn', handleSegmentSpawn);
+      };
+    } catch (error) {
+      debug.setStageFailure('stateManagement', error);
+    }
+  }, [
+    debug.isStageEnabled,
+    debug.setStageFailure,
+    debug.setStageLoading,
+    debug.setStageSuccess,
+    setCurrentSegmentIndex,
+    setRespawnSegmentIndex,
+    setWaterfallGravityMultiplier,
+    setSpawnPoint
+  ]);
 
   // Goal 5: Performance regression tracking
   const slowFrameCount = useRef(0);
@@ -153,7 +185,9 @@ const InnerExperience = () => {
 
   // Update camera shake and track velocity each frame
   useFrame((state, delta) => {
-    cameraShake.update(delta);
+    if (!debug.isStageEnabled('stateManagement')) return;
+    try {
+      cameraShake.update(delta);
 
     // Goal 5: Warn if frame time exceeds 16.67ms (60 FPS) consistently
     if (delta > 0.025) { // > 25ms = < 40 FPS
@@ -169,18 +203,18 @@ const InnerExperience = () => {
       slowFrameCount.current = Math.max(0, slowFrameCount.current - 1);
     }
 
-    if (vehicleRef.current) {
-      const vel = vehicleRef.current.linvel?.();
-      const pos = vehicleRef.current.translation?.();
+      if (vehicleRef.current) {
+        const vel = vehicleRef.current.linvel?.();
+        const pos = vehicleRef.current.translation?.();
 
       // Guard against NaN from Rapier during physics init — NaN here
       // propagates into Zustand, PostProcessingPipeline uniforms, and HUD.
       const velOk = vel && isFinite(vel.x) && isFinite(vel.z);
       const posOk = pos && isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z);
 
-      if (velOk) {
-        const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        playerVelocityRef.current = speed;
+        if (velOk) {
+          const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+          playerVelocityRef.current = speed;
 
         const downstream = posOk ? Math.abs(pos.z) : 0;
         const meters = Math.floor(downstream * 0.5);
@@ -194,44 +228,71 @@ const InnerExperience = () => {
       }
 
       // Minimal wipeout detection
-      if (posOk && pos.y < -80 && !isWipeout) {
-        setIsWipeout(true);
+        if (posOk && pos.y < -80 && !isWipeout) {
+          setIsWipeout(true);
+        }
       }
+    } catch (error) {
+      debug.setStageFailure('stateManagement', error);
     }
   });
 
   // Check for level URL parameter on mount
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const levelParam = params.get('level');
-    const levelUrlParam = params.get('levelUrl');
+    debug.runStage('dataProcessing', () => {
+      const params = new URLSearchParams(window.location.search);
+      const levelParam = params.get('level');
+      const levelUrlParam = params.get('levelUrl');
 
-    if (levelParam) {
-      setLevelUrl(`./levels/${levelParam}`);
-      setIsLoadingLevel(true);
-    } else if (levelUrlParam) {
-      setLevelUrl(levelUrlParam);
-      setIsLoadingLevel(true);
+      if (levelParam) {
+        setLevelUrl(`./levels/${levelParam}`);
+        setIsLoadingLevel(true);
+      } else if (levelUrlParam) {
+        setLevelUrl(levelUrlParam);
+        setIsLoadingLevel(true);
+      }
+    });
+  }, [debug.runStage]);
+
+  useEffect(() => {
+    if (!debug.isStageEnabled('dataProcessing')) return;
+    if (isLoadingLevel || reachLoading) {
+      debug.setStageLoading('dataProcessing');
+    } else {
+      debug.setStageSuccess('dataProcessing');
     }
-  }, []);
+  }, [debug.isStageEnabled, debug.setStageLoading, debug.setStageSuccess, isLoadingLevel, reachLoading]);
+
+  useEffect(() => {
+    if (!debug.isStageEnabled('reachStreaming')) return;
+    if (reachLoading) {
+      debug.setStageLoading('reachStreaming');
+    } else if (reachError) {
+      debug.setStageFailure('reachStreaming', reachError);
+    } else {
+      debug.setStageSuccess('reachStreaming');
+    }
+  }, [debug.isStageEnabled, debug.setStageFailure, debug.setStageLoading, debug.setStageSuccess, reachError, reachLoading]);
 
   // Handle level load
   const handleLevelLoad = useCallback((levelState) => {
-    setLoadedLevelState(levelState);
-    setIsLoadingLevel(false);
+    debug.runStage('dataProcessing', () => {
+      setLoadedLevelState(levelState);
+      setIsLoadingLevel(false);
 
-    if (levelState?.biome?.baseType) {
-      const biomeMap = {
-        'creek-summer': 'summer',
-        'creek-autumn': 'autumn',
-        'alpine-spring': 'summer',
-        'canyon-sunset': 'autumn',
-        'midnight-mist': 'autumn',
-      };
-      const newBiome = biomeMap[levelState.biome.baseType] || 'summer';
-      setBiome(newBiome);
-    }
-  }, [setBiome]);
+      if (levelState?.biome?.baseType) {
+        const biomeMap = {
+          'creek-summer': 'summer',
+          'creek-autumn': 'autumn',
+          'alpine-spring': 'summer',
+          'canyon-sunset': 'autumn',
+          'midnight-mist': 'autumn',
+        };
+        const newBiome = biomeMap[levelState.biome.baseType] || 'summer';
+        setBiome(newBiome);
+      }
+    });
+  }, [debug.runStage, setBiome]);
 
   // Goal 3: Biome transition with segment-aware duration
   const handleBiomeChange = useCallback((newBiome, segmentIndex) => {
@@ -242,64 +303,82 @@ const InnerExperience = () => {
   }, [setBiome]);
 
   const handleLevelError = useCallback((error) => {
+    debug.setStageFailure('dataProcessing', error);
     setLevelLoadError(error);
     setIsLoadingLevel(false);
-  }, []);
+  }, [debug.setStageFailure]);
 
   const handleRespawn = useCallback(() => {
-    setIsWipeout(false);
-    if (vehicleRef.current) {
-      // Segment-aware respawn: use stored spawn point if available
-      const spawn = spawnPoints[respawnSegmentIndex];
-      const fallback = {
-        x: PLAYER_SPAWN.position[0],
-        y: PLAYER_SPAWN.position[1],
-        z: PLAYER_SPAWN.position[2],
-      };
-      const target = spawn ?? fallback;
+    try {
+      setIsWipeout(false);
+      if (vehicleRef.current) {
+        // Segment-aware respawn: use stored spawn point if available
+        const spawn = spawnPoints[respawnSegmentIndex];
+        const fallback = {
+          x: PLAYER_SPAWN.position[0],
+          y: PLAYER_SPAWN.position[1],
+          z: PLAYER_SPAWN.position[2],
+        };
+        const target = spawn ?? fallback;
 
-      vehicleRef.current.setTranslation(target, true);
-      vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        vehicleRef.current.setTranslation(target, true);
+        vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      }
+    } catch (error) {
+      debug.setStageFailure('stateManagement', error);
     }
-  }, [setIsWipeout, spawnPoints, respawnSegmentIndex]);
+  }, [debug.setStageFailure, setIsWipeout, spawnPoints, respawnSegmentIndex]);
 
   // Use lighting from biome system or fallback
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
 
+  useEffect(() => {
+    const trackedStages = ['physics', 'visualization', 'worldSystems', 'postProcessing', 'uiOverlay'];
+    trackedStages.forEach((stageId) => {
+      if (debug.isStageEnabled(stageId)) {
+        debug.setStageSuccess(stageId);
+      }
+    });
+  }, [debug.isStageEnabled, debug.setStageSuccess]);
+
   return (
     <>
       {/* Sky and environment */}
-      <EnhancedSky biome={biome} />
+      {debug.isStageEnabled('visualization') && <EnhancedSky biome={biome} />}
 
       {/* Lighting - biome responsive */}
-      <ambientLight intensity={L.ambientIntensity} />
-      <hemisphereLight
-        skyColor={L.hemiSky}
-        groundColor={L.hemiGround}
-        intensity={L.hemiIntensity}
-      />
-      <directionalLight
-        color={L.dirColor}
-        position={L.dirPosition}
-        intensity={L.dirIntensity}
-        castShadow
-        shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
-        shadow-camera-near={1}
-        shadow-camera-far={200}
-        shadow-camera-left={-60}
-        shadow-camera-right={60}
-        shadow-camera-top={60}
-        shadow-camera-bottom={-60}
-      />
-      <directionalLight
-        color={L.fillColor}
-        position={[-10, 15, -20]}
-        intensity={L.fillIntensity}
-      />
+      {debug.isStageEnabled('visualization') && (
+        <>
+          <ambientLight intensity={L.ambientIntensity} />
+          <hemisphereLight
+            skyColor={L.hemiSky}
+            groundColor={L.hemiGround}
+            intensity={L.hemiIntensity}
+          />
+          <directionalLight
+            color={L.dirColor}
+            position={L.dirPosition}
+            intensity={L.dirIntensity}
+            castShadow
+            shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
+            shadow-camera-near={1}
+            shadow-camera-far={200}
+            shadow-camera-left={-60}
+            shadow-camera-right={60}
+            shadow-camera-top={60}
+            shadow-camera-bottom={-60}
+          />
+          <directionalLight
+            color={L.fillColor}
+            position={[-10, 15, -20]}
+            intensity={L.fillIntensity}
+          />
+        </>
+      )}
 
       {/* Water reflections (if enabled) */}
-      {lodConfig.enableReflections && (
+      {debug.isStageEnabled('worldSystems') && lodConfig.enableReflections && (
         <WaterReflection
           waterLevel={WATER_LEVEL}
           resolution={1024}
@@ -308,70 +387,78 @@ const InnerExperience = () => {
       )}
 
       {/* Physics world */}
-      <Physics gravity={[0, -9.8, 0]}>
-        <PointerLockControls
-          makeDefault
-          lockOnClick
-          onLock={() => { }}
-        />
-
-        {/* Vehicle */}
-        {vehicleType === 'runner' ? (
-          <RunnerVehicle ref={vehicleRef} />
-        ) : (
-          <RaftVehicle ref={vehicleRef} />
-        )}
-
-        {/* Splash system for water interactions */}
-        <SplashSystem
-          playerRef={vehicleRef}
-          waterLevel={WATER_LEVEL}
-          waterWidth={12}
-          flowSpeed={biomeMaterials.water.flowSpeed}
-        />
-
-        {/* Enhanced water interaction effects */}
-        <WaterInteraction
-          target={vehicleRef}
-          isRaft={vehicleType === 'raft'}
-          waterLevel={WATER_LEVEL}
-          maxVelocity={15}
-        />
-
-        <FlowForecast
-          temperature={8}
-          snowpackIndex={0.65}
-          damReleaseSchedule={DAM_RELEASE_SCHEDULE}
-          onForecastChange={setForecastSamples}
-        />
-
-        {/* Track Generation */}
-        {levelUrl ? (
-          <LevelLoader
-            levelUrl={levelUrl}
-            onLoad={handleLevelLoad}
-            onError={handleLevelError}
-            showLoader={false}
-            showError={false}
-            raftRef={vehicleRef}
-            onBiomeChange={handleBiomeChange}
-            forecastSamples={forecastSamples}
+      {debug.isStageEnabled('physics') && (
+        <Physics gravity={[0, -9.8, 0]}>
+          <PointerLockControls
+            makeDefault
+            lockOnClick
+            onLock={() => { }}
           />
-        ) : (
-          <ReachManager
-            playerRef={vehicleRef}
-            onBiomeChange={handleBiomeChange}
-            forecastSamples={forecastSamples}
-            reachId={undefined}
-            onLoadingChange={setReachLoading}
-            onError={setReachError}
-            retryKey={reachRetryKey}
+
+          {/* Vehicle */}
+          {vehicleType === 'runner' ? (
+            <RunnerVehicle ref={vehicleRef} />
+          ) : (
+            <RaftVehicle ref={vehicleRef} />
+          )}
+
+          {/* Splash system for water interactions */}
+          {debug.isStageEnabled('worldSystems') && (
+            <SplashSystem
+              playerRef={vehicleRef}
+              waterLevel={WATER_LEVEL}
+              waterWidth={12}
+              flowSpeed={biomeMaterials.water.flowSpeed}
+            />
+          )}
+
+          {/* Enhanced water interaction effects */}
+          {debug.isStageEnabled('worldSystems') && (
+            <WaterInteraction
+              target={vehicleRef}
+              isRaft={vehicleType === 'raft'}
+              waterLevel={WATER_LEVEL}
+              maxVelocity={15}
+            />
+          )}
+
+          <FlowForecast
+            temperature={8}
+            snowpackIndex={0.65}
+            damReleaseSchedule={DAM_RELEASE_SCHEDULE}
+            onForecastChange={setForecastSamples}
           />
-        )}
-      </Physics>
+
+          {/* Track Generation */}
+          {debug.isStageEnabled('dataProcessing') && (levelUrl ? (
+            <LevelLoader
+              levelUrl={levelUrl}
+              onLoad={handleLevelLoad}
+              onError={handleLevelError}
+              showLoader={false}
+              showError={false}
+              raftRef={vehicleRef}
+              onBiomeChange={handleBiomeChange}
+              forecastSamples={forecastSamples}
+            />
+          ) : (
+            debug.isStageEnabled('reachStreaming') && (
+              <ReachManager
+                playerRef={vehicleRef}
+                onBiomeChange={handleBiomeChange}
+                forecastSamples={forecastSamples}
+                reachId={undefined}
+                onLoadingChange={setReachLoading}
+                onError={setReachError}
+                retryKey={reachRetryKey}
+              />
+            )
+          ))}
+        </Physics>
+      )}
 
       {/* Post-processing effects - Bloom, Vignette, SSAO, Speed Effects */}
-      {quality !== 'minimal' && (
+      {debug.isStageEnabled('postProcessing') && quality !== 'minimal' && (
         <PostProcessingPipeline
           quality={quality}
           velocityRef={playerVelocityRef}
@@ -379,7 +466,8 @@ const InnerExperience = () => {
       )}
 
       {/* --- DOM UI overlays: must be wrapped in <Html> inside R3F Canvas --- */}
-      <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
+      {debug.isStageEnabled('uiOverlay') && (
+        <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
         <ForecastHUD samples={forecastSamples} />
 
         <div style={{ pointerEvents: isWipeout ? 'auto' : 'none' }}>
@@ -466,7 +554,8 @@ const InnerExperience = () => {
             </button>
           </div>
         )}
-      </Html>
+        </Html>
+      )}
       {/* ------------------------------------------------------------------ */}
     </>
   );
@@ -477,7 +566,7 @@ const InnerExperience = () => {
  *
  * Wraps the game in provider contexts for biome and LOD management
  */
-const Experience = () => {
+const Experience = ({ debug = NOOP_DEBUG }) => {
   return (
     <KeyboardControls
       map={[
@@ -494,7 +583,7 @@ const Experience = () => {
       <LODProvider initialQuality="high" enableAdaptive={true} targetFPS={60}>
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
           <BiomeTransition />
-          <InnerExperience />
+          <InnerExperience debug={debug} />
           <PerformanceMonitor visible={import.meta.env.DEV} />
         </BiomeProvider>
       </LODProvider>

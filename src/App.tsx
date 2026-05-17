@@ -4,6 +4,8 @@ import Experience from './Experience';
 import { Loader } from './components/Loader';
 import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
+import DebugPanel from './components/DebugPanel';
+import { useDebugStages } from './debug/debugStages';
 import ErrorBoundary from './components/ErrorBoundary';
 import './style.css';
 
@@ -23,27 +25,41 @@ const FallbackScene = () => {
 function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
+  const debug = useDebugStages();
 
   useEffect(() => {
-    if (window.location.search.includes('no-pointer-lock')) {
-      setSkipLoader(true);
-    }
-  }, []);
+    debug.runStage('appBootstrap', () => {
+      if (window.location.search.includes('no-pointer-lock')) {
+        setSkipLoader(true);
+      }
+    });
+  }, [debug.runStage]);
 
   // Detect pointer lock loss as pause trigger
   useEffect(() => {
-    const handlePointerLockChange = () => {
-      const locked = !!document.pointerLockElement;
-      setPhase((prev) => {
-        if (locked && prev === 'paused') return 'playing';
-        if (!locked && prev === 'playing') return 'paused';
-        return prev;
-      });
-    };
+    if (!debug.isStageEnabled('uiOverlay')) return;
+    debug.setStageLoading('uiOverlay');
+    try {
+      const handlePointerLockChange = () => {
+        try {
+          const locked = !!document.pointerLockElement;
+          setPhase((prev) => {
+            if (locked && prev === 'paused') return 'playing';
+            if (!locked && prev === 'playing') return 'paused';
+            return prev;
+          });
+        } catch (error) {
+          debug.setStageFailure('uiOverlay', error);
+        }
+      };
 
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
-    return () => document.removeEventListener('pointerlockchange', handlePointerLockChange);
-  }, []);
+      document.addEventListener('pointerlockchange', handlePointerLockChange);
+      debug.setStageSuccess('uiOverlay');
+      return () => document.removeEventListener('pointerlockchange', handlePointerLockChange);
+    } catch (error) {
+      debug.setStageFailure('uiOverlay', error);
+    }
+  }, [debug.isStageEnabled, debug.setStageFailure, debug.setStageLoading, debug.setStageSuccess]);
 
   const handleStart = useCallback(() => {
     setPhase('playing');
@@ -87,26 +103,30 @@ function App() {
         camera={{ position: [0, 5, 10], fov: 75 }}
         shadows
         frameloop="always"
+        onCreated={() => {
+          debug.runStage('visualization', () => undefined);
+        }}
       >
         <React.Suspense fallback={null}>
-          <Experience />
+          <Experience debug={debug} />
         </React.Suspense>
       </Canvas>
 
       {/* Asset loading overlay */}
-      {!skipLoader && <Loader />}
+      {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
 
       {/* Goal 4: Start Menu — shown before first run */}
-      {phase === 'menu' && <StartMenu onStart={handleStart} />}
+      {debug.isStageEnabled('uiOverlay') && phase === 'menu' && <StartMenu onStart={handleStart} />}
 
       {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
-      {phase === 'paused' && (
+      {debug.isStageEnabled('uiOverlay') && phase === 'paused' && (
         <PauseMenu
           onResume={handleResume}
           onRestart={handleRestart}
           onQuit={handleQuit}
         />
       )}
+      <DebugPanel debug={debug} />
     </ErrorBoundary>
   );
 }
