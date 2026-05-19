@@ -74,7 +74,7 @@ export default function Vegetation({ transforms, biome = 'summer' }) {
       <InstancedRigidBodies
         instances={instances}
         type="fixed"
-        colliders="hull"
+        colliders={false}
       >
         <Instances range={instances.length} geometry={trunkGeometry} material={trunkMaterial} castShadow receiveShadow>
           {instances.map((t) => (
