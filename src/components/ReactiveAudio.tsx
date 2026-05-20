@@ -222,6 +222,9 @@ export default function ReactiveAudio({
   useFrame((_, delta) => {
     if (!audioReady || !targetRef?.current) return;
 
+    // Guard against non-finite delta values (first frame, tab background/foreground)
+    if (!isFinite(delta) || delta <= 0) return;
+
     const body = targetRef.current;
     const vel = body.linvel();
     const velX = isFinite(vel.x) ? vel.x : 0;
@@ -249,28 +252,51 @@ export default function ReactiveAudio({
 
     // Smooth interpolation
     const lerp = AUDIO_CONFIG.ambient.crossfadeSpeed * delta;
+    // Guard lerp against non-finite values
+    if (!isFinite(lerp) || lerp < 0) return;
+
     const v = volumesRef.current;
+    
+    // Update volume states
     v.low += (targetLow - v.low) * lerp;
     v.mid += (targetMid - v.mid) * lerp;
     v.high += (targetHigh - v.high) * lerp;
     v.rapids += (targetRapids - v.rapids) * lerp;
 
+    // Harden: reset any NaN values back to 0
+    if (!isFinite(v.low)) v.low = 0;
+    if (!isFinite(v.mid)) v.mid = 0;
+    if (!isFinite(v.high)) v.high = 0;
+    if (!isFinite(v.rapids)) v.rapids = 0;
+
     const master = AUDIO_CONFIG.masterVolume;
 
+    // Set ambient layer volumes with guards
     if (ambientLowRef.current) {
-      ambientLowRef.current.setVolume(v.low * AUDIO_CONFIG.ambient.lowVolume * master);
+      const lowVol = v.low * AUDIO_CONFIG.ambient.lowVolume * master;
+      if (isFinite(lowVol)) {
+        ambientLowRef.current.setVolume(lowVol);
+      }
     }
     if (ambientMidRef.current) {
-      ambientMidRef.current.setVolume(v.mid * AUDIO_CONFIG.ambient.midVolume * master);
+      const midVol = v.mid * AUDIO_CONFIG.ambient.midVolume * master;
+      if (isFinite(midVol)) {
+        ambientMidRef.current.setVolume(midVol);
+      }
     }
     if (ambientHighRef.current) {
-      ambientHighRef.current.setVolume(v.high * AUDIO_CONFIG.ambient.highVolume * master);
+      const highVol = v.high * AUDIO_CONFIG.ambient.highVolume * master;
+      if (isFinite(highVol)) {
+        ambientHighRef.current.setVolume(highVol);
+      }
     }
     if (sfxRapidsRef.current) {
       const rapidsVol =
         v.rapids *
         THREE.MathUtils.lerp(AUDIO_CONFIG.sfx.rapidsBaseVolume, AUDIO_CONFIG.sfx.rapidsMaxVolume, intensity);
-      sfxRapidsRef.current.setVolume(rapidsVol * master);
+      if (isFinite(rapidsVol)) {
+        sfxRapidsRef.current.setVolume(rapidsVol * master);
+      }
     }
 
     // Positional transition volume based on distance
@@ -285,7 +311,14 @@ export default function ReactiveAudio({
         );
       const targetTransition = fade * AUDIO_CONFIG.positional.transitionMaxVolume;
       v.transition += (targetTransition - v.transition) * lerp;
-      posTransitionRef.current.setVolume(v.transition * master);
+      
+      // Harden: reset any NaN values back to 0
+      if (!isFinite(v.transition)) v.transition = 0;
+      
+      const transitionVol = v.transition * master;
+      if (isFinite(transitionVol)) {
+        posTransitionRef.current.setVolume(transitionVol);
+      }
     }
 
     // Splash one-shots
