@@ -22,7 +22,7 @@ export const GRAVITY = 9.80665;
 
 export const PLAYER_SPAWN = {
     position: [0, -4, -10] as const,
-    fallbackCamera: [0, 10, -10] as const,
+    fallbackCamera: [0, -3.2, -10] as const,
 };
 
 export const GENERATION = {

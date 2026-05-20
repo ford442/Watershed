@@ -79,11 +79,15 @@ const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
 const GENERATION_THRESHOLD = GENERATION.THRESHOLD;
 const RECYCLE_MARGIN = GENERATION.RECYCLE_MARGIN;
 
+// Seed points used to derive the direction of segment 0. The LAST point becomes
+// segment 0's starting position, so it must sit at/near the player spawn (0, -4, -10)
+// — earlier values placed the first chunk ~50m downstream, leaving the player floating
+// in empty space behind the canyon.
 const INITIAL_POINTS = [
-  new THREE.Vector3(0, -6, 30),
-  new THREE.Vector3(0, -6, 5),
-  new THREE.Vector3(2, -8, -25),
-  new THREE.Vector3(8, -12, -60),
+  new THREE.Vector3(0, -6, 80),
+  new THREE.Vector3(0, -6, 50),
+  new THREE.Vector3(0, -6, 20),
+  new THREE.Vector3(0, -6, 0),
 ];
 
 // =============================================================================
