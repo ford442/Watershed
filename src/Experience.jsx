@@ -27,6 +27,7 @@ import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio } from "./systems/AudioSystem";
+import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 
@@ -511,6 +512,9 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
             />
           </div>
         )}
+
+        {/* DEV-only audio diagnostics overlay */}
+        {import.meta.env.DEV && <AudioDiagnosticsOverlay />}
 
         {/* Reach error toast — non-blocking because we fall back to procedural */}
         {reachError && (

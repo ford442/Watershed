@@ -101,6 +101,12 @@ export class AudioManager {
   // Category limits tracking
   private categoryCounts: Map<SoundCategory, number> = new Map();
   
+  // Load status tracking
+  private failedSounds: Set<string> = new Set();
+  
+  // Reactive audio volumes (populated by ReactiveAudio if mounted)
+  private reactiveVolumes = { low: 0, mid: 0, high: 0, rapids: 0 };
+  
   constructor(camera: THREE.Camera) {
     // Create audio listener and attach to camera
     this.listener = new THREE.AudioListener();
@@ -108,6 +114,9 @@ export class AudioManager {
     
     // Create audio loader
     this.loader = new THREE.AudioLoader();
+    
+    // Cache the underlying Web Audio context for introspection
+    this.audioContext = this.listener.context as AudioContext;
     
     // Initialize category counts
     Object.values(SoundCategory).forEach(cat => {
@@ -161,9 +170,11 @@ export class AudioManager {
     try {
       const buffer = await this.loader.loadAsync(def.url);
       this.sounds.set(name, buffer);
+      this.failedSounds.delete(name);
       return buffer;
     } catch (e) {
       console.warn(`[AudioManager] Failed to load sound: ${name}`, e);
+      this.failedSounds.add(name);
       return null;
     }
   }
@@ -392,6 +403,57 @@ export class AudioManager {
   setMuted(muted: boolean): void {
     this.isMuted = muted;
     this.listener.setMasterVolume(muted ? 0 : this.masterVolume);
+  }
+  
+  /**
+   * Get load status for diagnostics overlay
+   */
+  getLoadStatus(): { loaded: number; total: number; failed: string[]; soundNames: string[] } {
+    const soundNames = Object.keys(SOUND_LIBRARY);
+    return {
+      loaded: this.sounds.size,
+      total: soundNames.length,
+      failed: Array.from(this.failedSounds),
+      soundNames,
+    };
+  }
+  
+  /**
+   * Get currently playing sounds with elapsed time
+   */
+  getActiveSounds(): { name: string; elapsed: number }[] {
+    const now = Date.now();
+    const result: { name: string; elapsed: number }[] = [];
+    this.activeSounds.forEach((sounds) => {
+      sounds.forEach((s) => {
+        result.push({
+          name: s.name,
+          elapsed: (now - s.startTime) / 1000,
+        });
+      });
+    });
+    return result;
+  }
+  
+  /**
+   * Get the Web Audio context state
+   */
+  getAudioContextState(): string {
+    return this.audioContext?.state ?? 'unknown';
+  }
+  
+  /**
+   * Set reactive audio crossfade volumes (called by ReactiveAudio)
+   */
+  setReactiveVolumes(volumes: { low: number; mid: number; high: number; rapids: number }): void {
+    this.reactiveVolumes = { ...volumes };
+  }
+  
+  /**
+   * Get reactive audio crossfade volumes
+   */
+  getReactiveVolumes(): { low: number; mid: number; high: number; rapids: number } {
+    return { ...this.reactiveVolumes };
   }
   
   /**
