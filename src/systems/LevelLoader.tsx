@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { Html } from '@react-three/drei';
 import { useLevel, NormalizedLevelState } from '../hooks/useLevel';
 import TrackManager from '../components/TrackManager';
 import RiverTrack from '../components/RiverTrack';
@@ -225,17 +226,23 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
 
   // Render loading state
   if (loadingState === 'loading' && showLoader) {
-    return <LoadingDisplay message="Loading level data..." />;
+    return (
+      <Html fullscreen zIndexRange={[100, 0]}>
+        <LoadingDisplay message="Loading level data..." />
+      </Html>
+    );
   }
 
   // Render error state
   if (loadingState === 'error' && error && showError) {
     return (
-      <ErrorDisplay 
-        error={error} 
-        onRetry={handleRetry}
-        onDismiss={handleDismiss}
-      />
+      <Html fullscreen zIndexRange={[100, 0]}>
+        <ErrorDisplay 
+          error={error} 
+          onRetry={handleRetry}
+          onDismiss={handleDismiss}
+        />
+      </Html>
     );
   }
 
