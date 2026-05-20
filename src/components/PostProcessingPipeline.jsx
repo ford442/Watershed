@@ -59,7 +59,7 @@ const CHROMATIC_ABERRATION_SHADER = {
  */
 export function PostProcessingPipeline({
   quality = 'high',
-  velocityRef,
+  vehicleRef,
 
   bloomIntensity = 0.5,
   bloomThreshold = 0.8,
@@ -165,10 +165,12 @@ export function PostProcessingPipeline({
     boostRef.current.active = Math.max(0, boostRef.current.active - delta * 1.2);
     const boostScale = boostRef.current.active > 0 ? boostRef.current.intensity : 0;
 
-    // Read velocity — guard NaN (?? only catches null/undefined) so the
-    // smoothed lerps below don't get stuck at NaN forever.
-    const rawVel = velocityRef?.current;
-    const velocity = isFinite(rawVel) ? rawVel : 0;
+    // Read velocity from vehicle RigidBody — guard NaN
+    const bodyVel = vehicleRef?.current?.linvel?.();
+    let velocity = 0;
+    if (bodyVel && isFinite(bodyVel.x) && isFinite(bodyVel.z)) {
+      velocity = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.z * bodyVel.z);
+    }
     const speedFactor = Math.min(1, velocity / 25);
 
     // Chromatic aberration target

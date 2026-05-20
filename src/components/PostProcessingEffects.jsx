@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette, ChromaticAberration, SSAO, HueSaturation } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
@@ -22,8 +22,8 @@ export function PostProcessingEffects({
   // Quality level determines which effects are enabled
   quality = 'high',
 
-  // Velocity ref for speed-triggered effects (E3)
-  velocityRef,
+  // Vehicle ref for speed-triggered effects (E3)
+  vehicleRef,
 
   // Bloom settings (E1 spec)
   bloomIntensity = 0.5,
@@ -68,16 +68,17 @@ export function PostProcessingEffects({
   const enableSSAO = quality === 'high' || quality === 'ultra';
   const enableSpeedEffects = quality !== 'low' && quality !== 'minimal';
 
-  // Dummy state to trigger re-render after useFrame updates refs
-  const [, setTick] = useState(0);
-
   useFrame((state, delta) => {
     // Decay boost spike using real delta time
     boostRef.current.active = Math.max(0, boostRef.current.active - delta * 1.2);
     const boostScale = boostRef.current.active > 0 ? boostRef.current.intensity : 0;
 
-    // Read velocity from ref (avoids per-frame parent re-renders)
-    const velocity = velocityRef?.current ?? 0;
+    // Read velocity from vehicle RigidBody — guard NaN
+    const bodyVel = vehicleRef?.current?.linvel?.();
+    let velocity = 0;
+    if (bodyVel && isFinite(bodyVel.x) && isFinite(bodyVel.z)) {
+      velocity = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.z * bodyVel.z);
+    }
     const speedFactor = Math.min(1, velocity / 25);
 
     // E3: Chromatic aberration intensity scales with velocity

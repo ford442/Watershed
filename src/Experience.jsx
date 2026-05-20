@@ -1,4 +1,4 @@
-import { PointerLockControls, KeyboardControls, Html } from "@react-three/drei";
+import { PointerLockControls, KeyboardControls, Html, Stats } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import { useFrame, useThree } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -15,6 +15,7 @@ import RaftVehicle from "./vehicles/RaftVehicle";
 // Level loading
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
 import ReachManager from "./systems/ReachManager";
+import TrackManager from "./components/TrackManager";
 
 // NEW: Visual enhancement systems
 import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
@@ -85,6 +86,9 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const [vehicleType, setVehicleType] = useState('runner');
   const vehicleRef = useRef(null);
   const { camera } = useThree();
+
+  // Check for debug flag in URL for physics visualization
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
 
   // Goal 1: Zustand game state selectors
   const biome = useGameStore((s) => s.currentBiome);
@@ -389,7 +393,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics debug={physicsDebug} gravity={[0, -9.8, 0]}>
+        <Physics debug={isDebug} gravity={[0, -9.8, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick
@@ -442,18 +446,23 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
               onBiomeChange={handleBiomeChange}
               forecastSamples={forecastSamples}
             />
+          ) : reachId ? (
+            <ReachManager
+              playerRef={vehicleRef}
+              onBiomeChange={handleBiomeChange}
+              forecastSamples={forecastSamples}
+              reachId={reachId}
+              onLoadingChange={setReachLoading}
+              onError={setReachError}
+              retryKey={reachRetryKey}
+            />
           ) : (
-            debug.isStageEnabled('reachStreaming') && (
-              <ReachManager
-                playerRef={vehicleRef}
-                onBiomeChange={handleBiomeChange}
-                forecastSamples={forecastSamples}
-                reachId={undefined}
-                onLoadingChange={setReachLoading}
-                onError={setReachError}
-                retryKey={reachRetryKey}
-              />
-            )
+            // Default to procedural TrackManager if no levelUrl or reachId
+            <TrackManager
+              onBiomeChange={handleBiomeChange}
+              raftRef={vehicleRef}
+              forecastSamples={forecastSamples}
+            />
           ))}
         </Physics>
       )}
@@ -462,7 +471,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       {debug.isStageEnabled('postProcessing') && quality !== 'minimal' && (
         <PostProcessingPipeline
           quality={quality}
-          velocityRef={playerVelocityRef}
+          vehicleRef={vehicleRef}
         />
       )}
 
@@ -568,8 +577,13 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
  * Wraps the game in provider contexts for biome and LOD management
  */
 const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
+  // Check for debug flag in URL
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  
   return (
-    <KeyboardControls
+    <>
+      {isDebug && <Stats />}
+      <KeyboardControls
       map={[
         { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
         { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
@@ -590,6 +604,7 @@ const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         </BiomeProvider>
       </LODProvider>
     </KeyboardControls>
+    </>
   );
 };
 
