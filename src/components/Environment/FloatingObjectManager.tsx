@@ -183,19 +183,14 @@ export default function FloatingObjectManager({
 
     if (!path) return;
 
-    // Step 1: collect handles only — calling translation()/linvel() inside
-    // bodiesRef.current.forEach triggers world.forEachRigidBody internally,
-    // and any borrow of the body inside that callback causes a Rapier WASM
-    // "recursive use / unsafe aliasing" error.
-    const entries: Array<{ handle: number; index: number }> = [];
-    bodiesRef.current.forEach((api, i) => {
-      if (api?.handle !== undefined) {
-        entries.push({ handle: api.handle, index: i });
-      }
-    });
-
-    // Step 2: query and mutate each body outside the forEach callback
-    for (const { handle, index: i } of entries) {
+    // Iterate the pre-collected handle list (populated in the registration
+    // useFrame above). Touching bodiesRef.current.forEach in a per-frame
+    // physics loop can race with Rapier's internal RigidBodySet iteration
+    // across multiple FloatingObjectManager instances (one per segment),
+    // triggering "recursive use of an object" WASM panics.
+    let i = 0;
+    for (const handle of registeredHandlesRef.current) {
+      i += 1;
       const body = world.getRigidBody(handle);
       if (!body) continue;
 
