@@ -97,4 +97,45 @@ describe('ReactiveAudio', () => {
     // Check that flow speed is guarded
     expect(sourceFile).toContain('isFinite(rawFlowSpeed) ? rawFlowSpeed : 1');
   });
+
+  describe('Math validation', () => {
+    it('should correctly evaluate isFinite for NaN values', () => {
+      // Unit test to verify isFinite behavior with non-finite values
+      expect(isFinite(NaN)).toBe(false);
+      expect(isFinite(Infinity)).toBe(false);
+      expect(isFinite(-Infinity)).toBe(false);
+      expect(isFinite(0)).toBe(true);
+      expect(isFinite(1.5)).toBe(true);
+      expect(isFinite(-0)).toBe(true);
+    });
+
+    it('should correctly evaluate guards with computed non-finite values', () => {
+      // Test the actual math operations that could produce NaN
+      const crossfadeSpeed = 2.5;
+      const nanDelta = NaN;
+      const zeroDelta = 0;
+      const positiveDelta = 0.016; // ~60fps
+
+      // NaN case
+      const lerp1 = crossfadeSpeed * nanDelta;
+      expect(isFinite(lerp1)).toBe(false);
+
+      // Zero delta case
+      const lerp2 = crossfadeSpeed * zeroDelta;
+      expect(isFinite(lerp2)).toBe(true);
+      expect(lerp2).toBe(0);
+
+      // Valid case
+      const lerp3 = crossfadeSpeed * positiveDelta;
+      expect(isFinite(lerp3)).toBe(true);
+      expect(lerp3).toBeGreaterThan(0);
+
+      // Volume accumulation with NaN
+      let v = { low: 0.5 };
+      v.low += (1 - v.low) * lerp1; // lerp1 is NaN
+      expect(isFinite(v.low)).toBe(false);
+      v.low = isFinite(v.low) ? v.low : 0;
+      expect(v.low).toBe(0);
+    });
+  });
 });
