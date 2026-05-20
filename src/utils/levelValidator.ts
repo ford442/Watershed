@@ -520,7 +520,7 @@ function validateSpawnPoints(spawns: any, errors: ValidationError[], warnings: V
     warnings.push({
       field: 'spawns.start.position',
       error: `Spawn position [${x}, ${y}, ${z}] is far from origin`,
-      suggestion: 'Keep spawn near [0, -4, -10] for consistent player start',
+      suggestion: 'Keep spawn near [0, 10, -10] for consistent player start',
     });
   }
 }

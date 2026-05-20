@@ -103,7 +103,7 @@ function App() {
           powerPreference: 'high-performance',
           antialias: true,
         }}
-        camera={{ position: [0, 5, 10], fov: 75 }}
+        camera={{ position: [0, 10, -10], fov: 75 }}
         shadows
         frameloop="always"
         onCreated={() => {

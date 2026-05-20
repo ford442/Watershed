@@ -140,8 +140,8 @@ const Player = forwardRef((props, ref) => {
     <>
       <RigidBody
         ref={rb}
-        // Spawn above track level - track is at Y=-6 at Z=30 and nearby
-        // Player spawns at Z=-10 (near start), Y=-4 puts player above track to fall onto surface
+        // Spawn at canyon rim above track level
+        // Player spawns at [0, 10, -10] and falls onto track
         position={PLAYER_SPAWN.position}
         enabledRotations={[false, false, false]}
         colliders={false}

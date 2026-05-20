@@ -359,7 +359,7 @@ Move                        = Look around
 Click                       = Engage pointer lock
 ```
 
-Player spawn: `[0, -4, -10]` (center, above water, downstream)  
+Player spawn: `[0, 10, -10]` (center, above canyon rim, downstream)  
 Camera height offset: `0.8`
 
 ### 4. Vehicles
@@ -589,7 +589,7 @@ Run with: `npm test`
 ### Manual Testing Checklist
 
 Before committing changes, verify:
-- [ ] Player spawns correctly at `[0, -4, -10]` (not in geometry)
+- [ ] Player spawns correctly at `[0, 10, -10]` (on canyon rim)
 - [ ] Movement controls work (WASD + mouse look)
 - [ ] Jump and physics respond correctly
 - [ ] Track generates as player moves forward (negative Z)

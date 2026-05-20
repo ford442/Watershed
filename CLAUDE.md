@@ -122,7 +122,7 @@ Y (up)
 X (left/right)
 ```
 
-Player spawns at `[0, -4, -10]`. The initial river centerline is around Y = -6 to -22 over the first two segments.
+Player spawns at `[0, 10, -10]`. The initial river centerline is around Y = -6 to -22 over the first two segments.
 
 ### Vehicle Swap
 

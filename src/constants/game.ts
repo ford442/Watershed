@@ -21,8 +21,8 @@ export const WATER_VISCOSITY = 8.9e-4;
 export const GRAVITY = 9.80665;
 
 export const PLAYER_SPAWN = {
-    position: [0, -4, -10] as const,
-    fallbackCamera: [0, 5, 10] as const,
+    position: [0, 10, -10] as const,
+    fallbackCamera: [0, 10, -10] as const,
 };
 
 export const GENERATION = {
