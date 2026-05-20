@@ -1,0 +1,63 @@
+[  638697ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/src/components/DebugPanel.tsx?t=1779250303732:0
+[  638801ms] [ERROR] [vite] Failed to reload /src/components/DebugPanel.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:808
+[  640259ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://localhost:3000/src/components/TrackManager.jsx?t=1779250303686:187
+[  647408ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/src/debug/PerfCheckpointMonitor.tsx?t=1779250303733:0
+[  651177ms] [ERROR] [vite] Failed to reload /src/debug/PerfCheckpointMonitor.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:808
+[  651191ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=cc878b04:17742
+[  654011ms] [ERROR] [Global Error Handler] {message: Uncaught RuntimeError: unreachable, source: wasm://wasm/005fc9d6, lineno: 1, colno: 1376853, error: RuntimeError: unreachable
+    at wasm://wasm/005fc9d6:wasm-function[1156]:0x150254
+    at wasm://wa…} @ http://localhost:3000/src/index.tsx?t=1779249530957:4
+[  654037ms] RuntimeError: unreachable
+    at wasm://wasm/005fc9d6:wasm-function[1156]:0x150254
+    at wasm://wasm/005fc9d6:wasm-function[1720]:0x16931b
+    at wasm://wasm/005fc9d6:wasm-function[1416]:0x162634
+    at wasm://wasm/005fc9d6:wasm-function[58]:0x60a33
+    at wasm://wasm/005fc9d6:wasm-function[58]:0x60c28
+    at wasm://wasm/005fc9d6:wasm-function[58]:0x60f3b
+    at wasm://wasm/005fc9d6:wasm-function[339]:0xefe98
+    at wasm://wasm/005fc9d6:wasm-function[37]:0x25a63
+    at wasm://wasm/005fc9d6:wasm-function[184]:0xba52a
+    at KA.stepWithEvents (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:1671:124)
+[  654020ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:3000/@vite/client:864
+[  654045ms] [ERROR] [Global Error Handler] {message: Uncaught Error: recursive use of an object detected which would lead to unsafe aliasing in rust, source: http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04, lineno: 2597, colno: 13, error: Error: recursive use of an object detected which would lead to unsafe aliasing in rust
+    at I3.wb…} @ http://localhost:3000/src/index.tsx?t=1779249530957:4
+[  654088ms] Error: recursive use of an object detected which would lead to unsafe aliasing in rust
+    at I3.wbg.__wbindgen_throw (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:2597:13)
+    at wasm://wasm/005fc9d6:wasm-function[1946]:0x16c647
+    at wasm://wasm/005fc9d6:wasm-function[1948]:0x16c663
+    at wasm://wasm/005fc9d6:wasm-function[788]:0x134a24
+    at _LA.rbTranslation (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:1891:18)
+    at GI.translation (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:2773:26)
+    at http://localhost:3000/node_modules/.vite/deps/@react-three_rapier.js?v=cc878b04:786:30
+    at KI.forEach (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:3080:47)
+    at hI.forEach (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:3121:14)
+    at Proxy.forEachRigidBody (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:4466:17)
+[  654632ms] [ERROR] [Global Error Handler] {message: Uncaught Error: recursive use of an object detected which would lead to unsafe aliasing in rust, source: http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04, lineno: 2597, colno: 13, error: Error: recursive use of an object detected which would lead to unsafe aliasing in rust
+    at I3.wb…} @ http://localhost:3000/src/index.tsx?t=1779249530957:4
+[  654645ms] Error: recursive use of an object detected which would lead to unsafe aliasing in rust
+    at I3.wbg.__wbindgen_throw (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:2597:13)
+    at wasm://wasm/005fc9d6:wasm-function[1946]:0x16c647
+    at wasm://wasm/005fc9d6:wasm-function[1948]:0x16c663
+    at wasm://wasm/005fc9d6:wasm-function[788]:0x134a24
+    at _LA.rbTranslation (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:1891:18)
+    at GI.translation (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:2773:26)
+    at http://localhost:3000/node_modules/.vite/deps/@react-three_rapier.js?v=cc878b04:786:30
+    at KI.forEach (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:3080:47)
+    at hI.forEach (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:3121:14)
+    at Proxy.forEachRigidBody (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:4466:17)
+[  654942ms] [ERROR] [Global Error Handler] {message: Uncaught Error: recursive use of an object detected which would lead to unsafe aliasing in rust, source: http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04, lineno: 2597, colno: 13, error: Error: recursive use of an object detected which would lead to unsafe aliasing in rust
+    at I3.wb…} @ http://localhost:3000/src/index.tsx?t=1779249530957:4
+[  654945ms] Error: recursive use of an object detected which would lead to unsafe aliasing in rust
+    at I3.wbg.__wbindgen_throw (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:2597:13)
+    at wasm://wasm/005fc9d6:wasm-function[1946]:0x16c647
+    at wasm://wasm/005fc9d6:wasm-function[1948]:0x16c663
+    at wasm://wasm/005fc9d6:wasm-function[788]:0x134a24
+    at _LA.rbTranslation (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:1891:18)
+    at GI.translation (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:2773:26)
+    at http://localhost:3000/node_modules/.vite/deps/@react-three_rapier.js?v=cc878b04:786:30
+    at KI.forEach (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:3080:47)
+    at hI.forEach (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:3121:14)
+    at Proxy.forEachRigidBody (http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=cc878b04:4466:17)
+[  655043ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://localhost:3000/rb338/styles/rebirth-theme.css:0
+[  655045ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://localhost:3000/rb338/_assets/index@_@astro.DTZc7iwa.css:0
+[  655051ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://localhost:3000/rb338/_assets/RbsPlayer.astro_astro_type_script_index_0_lang.BdlBJBVT.js:0

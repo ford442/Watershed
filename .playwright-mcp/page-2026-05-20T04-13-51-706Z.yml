@@ -1,0 +1,391 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link "ReBirth RB-338 Archive home" [ref=e5] [cursor=pointer]:
+        - /url: /rb338/
+        - text: RB -338 ARCHIVE
+      - button "Toggle menu" [ref=e6]:
+        - generic [ref=e7]: MENU
+      - navigation "Primary navigation" [ref=e8]:
+        - list [ref=e9]:
+          - listitem [ref=e10]:
+            - link "Home" [ref=e11] [cursor=pointer]:
+              - /url: /rb338/
+          - listitem [ref=e12]:
+            - link "Songs" [ref=e13] [cursor=pointer]:
+              - /url: /rb338/archive/songs/index.html
+          - listitem [ref=e14]:
+            - link "Mods" [ref=e15] [cursor=pointer]:
+              - /url: /rb338/archive/mods/index.html
+          - listitem [ref=e16]:
+            - link "History" [ref=e17] [cursor=pointer]:
+              - /url: /rb338/history/index.html
+          - listitem [ref=e18]:
+            - link "Docs" [ref=e19] [cursor=pointer]:
+              - /url: /rb338/docs
+  - main [ref=e20]:
+    - region "Archive master header" [ref=e21]:
+      - generic [ref=e22]:
+        - heading "COMMUNITY ARCHIVE ReBirth RB-338 Legacy Software Synthesizer" [level=1] [ref=e23]
+        - generic [ref=e24]:
+          - generic "ARCHIVE ONLINE" [ref=e25]: ARCHIVE ONLINE
+          - generic "WASM PENDING" [ref=e26]: WASM PENDING
+        - generic [ref=e27]:
+          - generic [ref=e28]: 2000+ Songs
+          - generic [ref=e29]: 500+ Mods
+          - generic [ref=e30]: v2.0.1 Latest
+    - region "Instrument control strip" [ref=e31]:
+      - generic [ref=e32]: REBIRTH RB-338
+      - status "System status" [ref=e33]:
+        - generic "ARCHIVE ONLINE" [ref=e34]: ARCHIVE ONLINE
+        - generic "WASM PENDING" [ref=e35]: WASM PENDING
+        - generic "MIDI OFFLINE" [ref=e36]: MIDI OFFLINE
+      - navigation "Transport controls" [ref=e37]:
+        - link "Browse Songs" [ref=e38] [cursor=pointer]:
+          - /url: /rb338/archive/songs/index.html
+          - text: ▶
+        - link "Browse Mods" [ref=e39] [cursor=pointer]:
+          - /url: /rb338/archive/mods/index.html
+          - text: ●
+        - link "Docs" [ref=e40] [cursor=pointer]:
+          - /url: /rb338/docs
+          - text: ■
+    - region "System status and terminal readout" [ref=e41]:
+      - generic [ref=e42]:
+        - text: SYSTEM STATUS
+        - generic [ref=e43]: LIVE
+      - generic [ref=e45]:
+        - generic [ref=e47]:
+          - generic "Songs count" [ref=e48]:
+            - generic [ref=e49]: SONGS
+            - generic [ref=e50]: 2000+
+          - generic "Mods count" [ref=e51]:
+            - generic [ref=e52]: MODS
+            - generic [ref=e53]: 500+
+          - generic "Version" [ref=e54]:
+            - generic [ref=e55]: VERSION
+            - generic [ref=e56]: 2.0.1
+          - generic "Artists" [ref=e57]:
+            - generic [ref=e58]: ARTISTS
+            - generic [ref=e59]: "8"
+        - complementary "System readout" [ref=e60]:
+          - heading "ReBirth RB-338 Community Archive" [level=2] [ref=e61]
+          - generic [ref=e62]:
+            - generic [ref=e63]: rb338_archive.sh
+            - generic "System status terminal" [ref=e64]:
+              - code [ref=e65]: "$ rb338 --status ▶ ARCHIVE ONLINE est : 1997 songs : 2000+ mods : 500+ version: 2.0.1 wasm : pending $ rb338 --formats *.rbs — ReBirth Song file *.rbm — ReBirth Mod file $ rb338 --about Propellerhead ReBirth RB-338 TB-303 · TR-808 · TR-909 emulation Released 1997 · Abandonware 2005 $ _█"
+    - region "303 synthesizer controls and archive actions" [ref=e66]:
+      - generic [ref=e67]:
+        - text: 303 — CONTROLS
+        - generic [ref=e68]: ACTIVE
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e71]: TUNE
+          - generic [ref=e73]: CUT OFF
+          - generic [ref=e75]: RES
+          - generic [ref=e77]: ENV MOD
+          - generic [ref=e79]: DECAY
+          - generic [ref=e81]: ACCENT
+        - generic [ref=e83]:
+          - link "Browse Songs" [ref=e84] [cursor=pointer]:
+            - /url: /rb338/archive/songs/index.html
+          - link "Browse Mods" [ref=e85] [cursor=pointer]:
+            - /url: /rb338/archive/mods/index.html
+    - region "Step sequencer display" [ref=e86]:
+      - generic [ref=e87]:
+        - text: TB-303 — STEP SEQUENCER
+        - generic [ref=e88]: SONG BASS KICK
+        - generic [ref=e89]: 16 STEPS
+      - generic [ref=e90]:
+        - generic [ref=e91]:
+          - group "Song pattern" [ref=e92]:
+            - text: SONG
+            - generic [ref=e93]:
+              - button [ref=e94]
+              - button [ref=e95]
+              - button [ref=e96]
+              - button [ref=e97]
+              - button [ref=e98]
+              - button [ref=e99]
+              - button [ref=e100]
+              - button [ref=e101]
+              - button [ref=e102]
+              - button [ref=e103]
+              - button [ref=e104]
+              - button [ref=e105]
+              - button [ref=e106]
+              - button [ref=e107]
+              - button [ref=e108]
+              - button [ref=e109]
+          - group "Bass pattern" [ref=e110]:
+            - text: BASS
+            - generic [ref=e111]:
+              - button [ref=e112]
+              - button [ref=e113]
+              - button [ref=e114]
+              - button [ref=e115]
+              - button [ref=e116]
+              - button [ref=e117]
+              - button [ref=e118]
+              - button [ref=e119]
+              - button [ref=e120]
+              - button [ref=e121]
+              - button [ref=e122]
+              - button [ref=e123]
+              - button [ref=e124]
+              - button [ref=e125]
+              - button [ref=e126]
+              - button [ref=e127]
+          - group "Kick pattern" [ref=e128]:
+            - text: KICK
+            - generic [ref=e129]:
+              - button [ref=e130]
+              - button [ref=e131]
+              - button [ref=e132]
+              - button [ref=e133]
+              - button [ref=e134]
+              - button [ref=e135]
+              - button [ref=e136]
+              - button [ref=e137]
+              - button [ref=e138]
+              - button [ref=e139]
+              - button [ref=e140]
+              - button [ref=e141]
+              - button [ref=e142]
+              - button [ref=e143]
+              - button [ref=e144]
+              - button [ref=e145]
+        - generic [ref=e147]: "12345678910111213141516"
+    - separator [ref=e148]
+    - region "About the Archive" [ref=e149]:
+      - generic [ref=e150]:
+        - text: INFORMATION MODULES
+        - generic [ref=e151]: OK
+      - generic [ref=e152]:
+        - heading "About the Archive" [level=2] [ref=e153]
+        - generic [ref=e155]:
+          - article [ref=e156]:
+            - generic [ref=e157]: WHAT IS REBIRTH?
+            - paragraph [ref=e158]:
+              - text: Released by Propellerhead Software in
+              - strong [ref=e159]: "1997"
+              - text: ","
+              - strong [ref=e160]: ReBirth RB-338
+              - text: was one of the first software synthesizers to faithfully emulate the
+              - strong [ref=e161]: Roland TB-303
+              - text: Bass Line and the Roland TR-808 / TR-909 drum machines. It became a cornerstone of electronic music production and is now freely available as abandonware.
+          - article [ref=e162]:
+            - generic [ref=e163]: WHAT IS THIS SITE?
+            - paragraph [ref=e164]:
+              - text: This community archive preserves
+              - code [ref=e165]: .rbs
+              - text: song files and
+              - code [ref=e166]: .rbm
+              - text: mod files contributed by enthusiasts worldwide. It also hosts historical documentation spanning versions
+              - code [ref=e167]: "1.0"
+              - text: through
+              - code [ref=e168]: 2.0.1
+              - text: and lays the groundwork for in-browser
+              - code [ref=e169]: .rbs
+              - text: preview via WebAssembly.
+          - article [ref=e170]:
+            - generic [ref=e171]: HOW TO CONTRIBUTE?
+            - paragraph [ref=e172]:
+              - text: Open a pull request on the
+              - link "GitHub repository" [ref=e173] [cursor=pointer]:
+                - /url: https://github.com/ford442/rebirth_website
+              - text: . Place song files in
+              - code [ref=e174]: public/archive/rbs-songs/
+              - text: and mod files in
+              - code [ref=e175]: public/archive/rbm-mods/
+              - text: . See the
+              - link "documentation" [ref=e176] [cursor=pointer]:
+                - /url: /rb338/docs
+              - text: for naming conventions and metadata requirements.
+    - separator [ref=e177]
+    - region [ref=e178]:
+      - generic [ref=e179]:
+        - text: FEATURED SONGS — .RBS
+        - generic [ref=e180]: 4 FILES
+      - generic [ref=e181]:
+        - link "All Songs →" [ref=e183] [cursor=pointer]:
+          - /url: /rb338/archive/songs/index.html
+        - generic [ref=e184]:
+          - article ".rbs — Cavey — Acid Lockdown" [ref=e185]:
+            - generic [ref=e186]:
+              - text: .rbs
+              - heading "Cavey — Acid Lockdown" [level=3] [ref=e187]
+            - paragraph [ref=e188]: Razor-sharp 303 lines locked into a hypnotic groove. From the legendary Cavey artist collection.
+            - generic [ref=e189]:
+              - generic [ref=e190]:
+                - generic [ref=e191]: "Author:"
+                - text: Cavey
+              - list "Tags" [ref=e192]:
+                - listitem [ref=e193]: acid
+                - listitem [ref=e194]: "303"
+                - listitem [ref=e195]: lockgroove
+              - link "View / Download" [ref=e196] [cursor=pointer]:
+                - /url: http://test.1ink.us/rb338/archive/rbs-songs/Artists/Cavey
+                - text: View / Download →
+          - article ".rbs — DJ Knightmare — Factory Sequence" [ref=e197]:
+            - generic [ref=e198]:
+              - text: .rbs
+              - heading "DJ Knightmare — Factory Sequence" [level=3] [ref=e199]
+            - paragraph [ref=e200]: Dark industrial percussion and distorted synth stabs built for warehouse playback.
+            - generic [ref=e201]:
+              - generic [ref=e202]:
+                - generic [ref=e203]: "Author:"
+                - text: DJ Knightmare
+              - list "Tags" [ref=e204]:
+                - listitem [ref=e205]: industrial
+                - listitem [ref=e206]: techno
+                - listitem [ref=e207]: dark
+              - link "View / Download" [ref=e208] [cursor=pointer]:
+                - /url: http://test.1ink.us/rb338/archive/rbs-songs/Artists/DJ%20Knightmare
+                - text: View / Download →
+          - article ".rbs — Noah Cohn — Euro Acid Line" [ref=e209]:
+            - generic [ref=e210]:
+              - text: .rbs
+              - heading "Noah Cohn — Euro Acid Line" [level=3] [ref=e211]
+            - paragraph [ref=e212]: Extended acid journey through European rave aesthetics. One of the most complete artist archives on the site.
+            - generic [ref=e213]:
+              - generic [ref=e214]:
+                - generic [ref=e215]: "Author:"
+                - text: Noah Cohn
+              - list "Tags" [ref=e216]:
+                - listitem [ref=e217]: acid
+                - listitem [ref=e218]: euro
+                - listitem [ref=e219]: classic
+              - link "View / Download" [ref=e220] [cursor=pointer]:
+                - /url: http://test.1ink.us/rb338/archive/rbs-songs/Artists/Noah_Cohn_Complete
+                - text: View / Download →
+          - article ".rbs — Fanatic — Saturday Morning Sessions" [ref=e221]:
+            - generic [ref=e222]:
+              - text: .rbs
+              - heading "Fanatic — Saturday Morning Sessions" [level=3] [ref=e223]
+            - paragraph [ref=e224]: Eclectic breaks and melodic hooks that channel retro cartoon energy into ReBirth patterns.
+            - generic [ref=e225]:
+              - generic [ref=e226]:
+                - generic [ref=e227]: "Author:"
+                - text: Fanatic
+              - list "Tags" [ref=e228]:
+                - listitem [ref=e229]: breaks
+                - listitem [ref=e230]: eclectic
+                - listitem [ref=e231]: melodic
+              - link "View / Download" [ref=e232] [cursor=pointer]:
+                - /url: http://test.1ink.us/rb338/archive/rbs-songs/Artists/Fanatic
+                - text: View / Download →
+    - region [ref=e233]:
+      - generic [ref=e234]:
+        - text: FEATURED MODS — .RBM
+        - generic [ref=e235]: 4 FILES
+      - generic [ref=e236]:
+        - link "All Mods →" [ref=e238] [cursor=pointer]:
+          - /url: /rb338/archive/mods/index.html
+        - generic [ref=e239]:
+          - article ".rbm — Metallicon" [ref=e240]:
+            - generic [ref=e241]:
+              - text: .rbm
+              - heading "Metallicon" [level=3] [ref=e242]
+            - paragraph [ref=e243]: One of the four official default mods from the original ReBirth 2.0.1 CD-ROM. Classic metal drums and aggressive bass.
+            - generic [ref=e244]:
+              - generic [ref=e245]:
+                - generic [ref=e246]: "Author:"
+                - text: Propellerhead
+              - list "Tags" [ref=e247]:
+                - listitem [ref=e248]: official
+                - listitem [ref=e249]: classic
+                - listitem [ref=e250]: metal
+              - link "View / Download" [ref=e251] [cursor=pointer]:
+                - /url: https://storage.1ink.us/rebirth_mods/Metallicon.rbm
+                - text: View / Download →
+          - article ".rbm — Red Stripe" [ref=e252]:
+            - generic [ref=e253]:
+              - text: .rbm
+              - heading "Red Stripe" [level=3] [ref=e254]
+            - paragraph [ref=e255]: Official UK campaign mod built for a branding push. Run it at 338 BPM for full drum-roll chaos.
+            - generic [ref=e256]:
+              - generic [ref=e257]:
+                - generic [ref=e258]: "Author:"
+                - text: Thomas & Wolfgang Merkle
+              - list "Tags" [ref=e259]:
+                - listitem [ref=e260]: official
+                - listitem [ref=e261]: dnb
+                - listitem [ref=e262]: fast
+              - link "View / Download" [ref=e263] [cursor=pointer]:
+                - /url: https://storage.1ink.us/rebirth_mods/Red_Stripe_a6.rbm
+                - text: View / Download →
+          - article ".rbm — Infernalizer" [ref=e264]:
+            - generic [ref=e265]:
+              - text: .rbm
+              - heading "Infernalizer" [level=3] [ref=e266]
+            - paragraph [ref=e267]: Hailed historically as "The Most Beautiful Mod Ever." Church organ, sharp drums, and dark synths.
+            - generic [ref=e268]:
+              - generic [ref=e269]:
+                - generic [ref=e270]: "Author:"
+                - text: Jesuspark
+              - list "Tags" [ref=e271]:
+                - listitem [ref=e272]: dark
+                - listitem [ref=e273]: organ
+                - listitem [ref=e274]: award-winning
+              - link "View / Download" [ref=e275] [cursor=pointer]:
+                - /url: https://storage.1ink.us/rebirth_mods/INFERNALIZER.rbm
+                - text: View / Download →
+          - article ".rbm — AnokhaV2" [ref=e276]:
+            - generic [ref=e277]:
+              - text: .rbm
+              - heading "AnokhaV2" [level=3] [ref=e278]
+            - paragraph [ref=e279]: Sitar loops, tabla samples, and Indian deity artwork. A world-music mod unlike anything else in the archive.
+            - generic [ref=e280]:
+              - generic [ref=e281]:
+                - generic [ref=e282]: "Author:"
+                - text: Sam Laleo Singh
+              - list "Tags" [ref=e283]:
+                - listitem [ref=e284]: ethnic
+                - listitem [ref=e285]: world
+                - listitem [ref=e286]: sitar
+              - link "View / Download" [ref=e287] [cursor=pointer]:
+                - /url: https://storage.1ink.us/rebirth_mods/AnokhaV2.rbm
+                - text: View / Download →
+    - separator [ref=e288]
+    - region [ref=e289]:
+      - generic [ref=e290]: BROWSER PLAYBACK ENGINE
+      - generic [ref=e292]:
+        - generic [ref=e293]:
+          - 'generic "STATUS: IDLE" [ref=e294]':
+            - generic [ref=e295]: STATUS
+            - generic [ref=e296]: IDLE
+          - 'generic "BPM: ---" [ref=e297]':
+            - generic [ref=e298]: BPM
+            - generic [ref=e299]: "---"
+          - 'generic "BAR: --" [ref=e300]':
+            - generic [ref=e301]: BAR
+            - generic [ref=e302]: "--"
+          - generic "WASM PENDING" [ref=e303]: WASM PENDING
+        - generic [ref=e304]:
+          - text: 📂
+          - paragraph [ref=e305]: Drop an .rbs file here, or click to browse
+          - button "Select .rbs file" [ref=e306]
+        - generic [ref=e307]: — —
+        - img "Step sequencer visualiser"
+        - navigation "Playback transport controls" [ref=e308]:
+          - button "Play" [disabled] [ref=e309]: ▶
+          - button "Stop" [disabled] [ref=e310]: ■
+          - button "Load file" [ref=e311]: ●
+        - generic [ref=e312]:
+          - paragraph [ref=e313]: Your browser doesn't support the in-browser player.
+          - paragraph [ref=e314]:
+            - link "Download ReBirth RB-338 (free abandonware) →" [ref=e315] [cursor=pointer]:
+              - /url: https://www.rebirthmuseum.com/
+  - contentinfo [ref=e316]:
+    - generic [ref=e317]:
+      - paragraph [ref=e318]: ReBirth RB-338 Archive — Community-maintained. Not affiliated with Propellerhead Software.
+      - paragraph [ref=e319]:
+        - text: Built with
+        - link "Astro" [ref=e320] [cursor=pointer]:
+          - /url: https://astro.build
+        - text: —
+        - link "Contribute on GitHub" [ref=e321] [cursor=pointer]:
+          - /url: https://github.com/ford442/rebirth_website

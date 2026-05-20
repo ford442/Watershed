@@ -1,0 +1,3 @@
+[      70ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/rb338/_assets/RbsPlayer.astro_astro_type_script_index_0_lang.BdlBJBVT.js:0
+[     301ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[    7137ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/rb338/_assets/RbsPlayer.astro_astro_type_script_index_0_lang.BdlBJBVT.js:0

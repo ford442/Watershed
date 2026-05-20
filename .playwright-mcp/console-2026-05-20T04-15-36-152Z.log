@@ -1,0 +1,158 @@
+[      84ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/rb338/_assets/RbsPlayer.astro_astro_type_script_index_0_lang.BdlBJBVT.js:0
+[   35663ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=4e848265:20102
+[   36399ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=4e848265:2518
+[   36770ms] [WARNING] [.WebGL-0x13cc0010b400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:3000/:0
+[   36810ms] [WARNING] [.WebGL-0x13cc0010b400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:3000/:0
+[   36896ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=4e848265:2516
+[   37100ms] [LOG] [ReachStreamer] Initiating background stream for Reach: reach_01_alpine_source @ http://localhost:3000/src/systems/ReachStreamer.ts:248
+[   37245ms] [ERROR] [Global Error Handler] {message: Uncaught Error: R3F: Div is not part of the THREE …api/objects#using-3rd-party-objects-declaratively, source: http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265, lineno: 13450, colno: 46, error: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmn…} @ http://localhost:3000/src/index.tsx:5
+[   37249ms] Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9)
+[   37256ms] [ERROR] [ErrorBoundary] Error caught: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) @ http://localhost:3000/src/components/ErrorBoundary.tsx:12
+[   37259ms] [ERROR] [ErrorBoundary] Error caught: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) @ http://localhost:3000/src/components/ErrorBoundary.tsx:12
+[   37262ms] [ERROR] %o
+
+%s
+
+%s
+ Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) The above error occurred in the <CanvasImpl> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=4e848265:7000
+[   37263ms] [ERROR] [ErrorBoundary] Component stack: 
+    at CanvasImpl (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:14437:3)
+    at m (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:12349:9)
+    at Canvas (<anonymous>)
+    at ErrorBoundary (http://localhost:3000/src/components/ErrorBoundary.tsx:5:5)
+    at App (http://localhost:3000/src/App.tsx:31:39) @ http://localhost:3000/src/components/ErrorBoundary.tsx:20
+[   37264ms] [ERROR] [ErrorBoundary] Error details: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) @ http://localhost:3000/src/components/ErrorBoundary.tsx:21
+[   37331ms] [ERROR] [ReachStreamer] Failed to preload Reach reach_01_alpine_source: SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON @ http://localhost:3000/src/systems/ReachStreamer.ts:333
+[   37786ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=4e848265:17742
+[   41624ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=4e848265:20102
+[   41815ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=4e848265:2518
+[   42181ms] [WARNING] [.WebGL-0x13cc0010ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:3000/:0
+[   42198ms] [WARNING] [.WebGL-0x13cc0010ba00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://localhost:3000/:0
+[   42212ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=4e848265:2516
+[   42490ms] [LOG] [ReachStreamer] Initiating background stream for Reach: reach_01_alpine_source @ http://localhost:3000/src/systems/ReachStreamer.ts:248
+[   42520ms] [ERROR] [Global Error Handler] {message: Uncaught Error: R3F: Div is not part of the THREE …api/objects#using-3rd-party-objects-declaratively, source: http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265, lineno: 13450, colno: 46, error: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmn…} @ http://localhost:3000/src/index.tsx:5
+[   42527ms] Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9)
+[   42523ms] [ERROR] [ErrorBoundary] Error caught: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) @ http://localhost:3000/src/components/ErrorBoundary.tsx:12
+[   42524ms] [ERROR] [ErrorBoundary] Error caught: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) @ http://localhost:3000/src/components/ErrorBoundary.tsx:12
+[   42525ms] [ERROR] %o
+
+%s
+
+%s
+ Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) The above error occurred in the <CanvasImpl> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=4e848265:7000
+[   42526ms] [ERROR] [ErrorBoundary] Component stack: 
+    at CanvasImpl (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:14437:3)
+    at m (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:12349:9)
+    at Canvas (<anonymous>)
+    at ErrorBoundary (http://localhost:3000/src/components/ErrorBoundary.tsx:5:5)
+    at App (http://localhost:3000/src/App.tsx:31:39) @ http://localhost:3000/src/components/ErrorBoundary.tsx:20
+[   42526ms] [ERROR] [ErrorBoundary] Error details: Error: R3F: Div is not part of the THREE namespace! Did you forget to extend? See: https://docs.pmnd.rs/react-three-fiber/api/objects#using-3rd-party-objects-declaratively
+    at validateInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13450:46)
+    at createInstance (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:13457:3)
+    at completeWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:6661:33)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:915:18)
+    at completeUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9499:22)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9405:29)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9252:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:9235:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:8879:46)
+    at performSyncWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-ZZS7EONS.js?v=4e848265:2045:9) @ http://localhost:3000/src/components/ErrorBoundary.tsx:21
+[   42535ms] [ERROR] [ReachStreamer] Failed to preload Reach reach_01_alpine_source: SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON @ http://localhost:3000/src/systems/ReachStreamer.ts:333
+[   43049ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=4e848265:17742
+[   70978ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:3000/@vite/client:864
+[  103356ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=4e848265:20102
+[  103636ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=4e848265:2518
+[  103891ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=4e848265:2516
+[  104267ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://localhost:3000/src/components/TrackManager.jsx:193
+[  106745ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://localhost:3000/src/components/TrackManager.jsx:307
+[  107868ms] [LOG] [TrackManager] PBR textures loaded successfully @ http://localhost:3000/src/components/TrackManager.jsx:193
