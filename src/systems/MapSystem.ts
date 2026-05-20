@@ -466,7 +466,7 @@ export class DefaultMapManager implements MapManager {
     const rng = new SeededRandom(seed);
 
     const startPoint = index === 0
-      ? new THREE.Vector3(0, -6, 30)
+      ? new THREE.Vector3(0, -6, -10)
       : this.chunks[this.chunks.length - 1]?.pathPoints.slice(-1)[0] || new THREE.Vector3(0, -6, -index * this.config.chunkLength);
 
     const pathPoints = generateRiverPath(
