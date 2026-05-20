@@ -2,8 +2,8 @@
 
 ## Today's focus
 <!-- Routine writes here each run. You can delete after day ends, or keep as history. -->
-**2026-05-13 — Reactive audio validation: replace 477-byte stubs + verify pipeline end-to-end**
-All 23 `public/sounds/` files are confirmed 477-byte silent placeholders. AudioSystem.ts, `useSegmentAudio`, and ReactiveAudio are fully wired (initAudio called in Experience.jsx, crossfade logic complete) but completely silent in-game. Today: synthesize minimal-valid PCM tones for each sound slot so the pipeline can be tested without real foley, audit the full init → preload → crossfade chain for timing issues, and add a dev-mode audio diagnostics overlay to make system state visible.
+**2026-05-20 — Complete reactive audio validation: synthesize valid PCM tones for all 23 public/sounds/ stubs + add dev-mode AudioDiagnosticsOverlay**
+All 23 `public/sounds/` files remain 477-byte ID3v2 stubs. ReactiveAudio NaN volume is fixed (PR #144), spawn/physics are stable (PRs #145–147), and the AudioSystem init → crossfade chain is wired. Today: generate minimal valid MP3/WAV files for each sound slot (synthesized tones via ffmpeg or pure Python) so the audio pipeline can be smoke-tested in-game, then add `AudioDiagnosticsOverlay.tsx` gated behind `import.meta.env.DEV` showing AudioContext state, buffer load status, active sounds, and crossfade volumes.
 
 ## Ideas
 <!--
@@ -14,7 +14,8 @@ Routine will mark picked items as "[in progress — YYYY-MM-DD]".
 -->
 - [x] Wire GameHUD into Experience.jsx — done 2026-05-06; all acceptance criteria met per .swarm-state.md
 - [x] Author segments 0–12 waypoints in meander_to_waterfall.json — done 2026-05-13; PR #130 merged (deterministic decoration placement + authored waypoints)
-- [in progress — 2026-05-13] Reactive audio validation — confirm public/sounds/ files are real foley (not 477-byte stubs); test ReactiveAudio crossfades in browser; AudioSystem + ReactiveAudio are wired but silent until verified (half-day sourcing + smoke test)
+- [in progress — 2026-05-20] Reactive audio validation — all 23 public/sounds/ stubs still 477 bytes; ReactiveAudio NaN volume fixed (PR #144), spawn/physics bugs fixed (PRs #143–147); pipeline now stable enough to synthesize PCM tones and smoke-test full audio chain; diagnostics overlay still needed
+- [ ] In-scene Level Editor — wire LevelEditor scaffold (PathVisualizer, SegmentInspector, BiomeSelector in src/components/LevelEditor/) into dev-mode; LevelEditor.tsx currently has its own standalone Canvas — needs architectural decision (overlay on game Canvas vs. full editor mode swap); PathVisualizer already implements CatmullRom line + difficulty gradient; SegmentInspector has full property editor; BiomeSelector has biome grid; just needs wiring + dev gate + JSON export textarea
 
 ## Backlog
 <!--
@@ -30,6 +31,9 @@ Routine maintains this automatically — you can add items too.
 Completed items, routine archives here with date.
 Prune occasionally when this gets long.
 -->
+- [x] 2026-05-20 — ReactiveAudio NaN volume fix: comprehensive isFinite guards on all volume paths (PR #144)
+- [x] 2026-05-20 — R3F Html namespace fix: LoadingDisplay/ErrorDisplay wrapped with drei `<Html>` to prevent "Div is not part of THREE namespace" error (PR #143)
+- [x] 2026-05-20 — Player spawn alignment: spawn position aligned to first canyon chunk, strafe keys mapped to KeyboardControls leftward/rightward, Rapier handle Set iteration fixed (PRs #145–147)
 - [x] 2026-05-13 — GameHUD wiring: speedometer, distance counter, wipeout overlay, respawn handler — all criteria met per .swarm-state.md; Experience.jsx renders GameHUD via vehicleRef + isWipeout
 - [x] 2026-05-13 — Author segments 0–12: deterministic decoration placement + authored waypoints in meander_to_waterfall.json (PR #130 merged)
 - [x] 2026-05-13 — Fix deprecated WebGLRenderTarget constructor for Three.js 0.168+ (PR #131)
@@ -47,7 +51,7 @@ Prune occasionally when this gets long.
 
 ## Last run
 <!-- Routine writes summary here each run. Overwrites previous. -->
-Date: 2026-05-13
-Mode: User Idea — last remaining Ideas item (reactive audio validation) picked; GameHUD + authored segments confirmed done
-Focus: Replace 477-byte audio stubs with synthesized PCM tones; audit AudioSystem init → crossfade chain; add dev-mode audio diagnostics overlay
-Outcome: Dispatch produced. weekly_plan.md updated: GameHUD wiring + authored segments 0-12 + WebGLRenderTarget fix → Done; audio validation marked in progress; Today's focus set.
+Date: 2026-05-20
+Mode: User Idea — audio validation item still in progress (stubs unresolved, pipeline fixed); audio picked as primary kimi-cli target; Level Editor wiring added to Ideas as routine-generated parallel idea for Copilot
+Focus: Synthesize valid PCM tones for 23 public/sounds/ stubs; add AudioDiagnosticsOverlay; smoke-test full audio pipeline in-game
+Outcome: Dispatch produced. Done section updated with PRs #143–147. Audio validation re-dated + clarified in Ideas. Level Editor wiring added to Ideas. weekly_plan.md updated.
