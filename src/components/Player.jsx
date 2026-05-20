@@ -100,7 +100,7 @@ const Player = forwardRef((props, ref) => {
 
       camera.position.set(pos.x, pos.y + PLAYER.CAMERA_HEIGHT, pos.z);
 
-      const { forward, backward, left, right, jump } = getKeys();
+      const { forward, backward, leftward: left, rightward: right, jump } = getKeys();
 
       const direction = new THREE.Vector3(0, 0, 0);
       const frontVector = new THREE.Vector3(0, 0, 0);
