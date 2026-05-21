@@ -118,6 +118,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState(null);
   const [forecastSamples, setForecastSamples] = useState([]);
+  const [reachId, setReachId] = useState(null);
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState(null);
   const [reachRetryKey, setReachRetryKey] = useState(0);
@@ -248,6 +249,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       const params = new URLSearchParams(window.location.search);
       const levelParam = params.get('level');
       const levelUrlParam = params.get('levelUrl');
+      const reachIdParam = params.get('reachId');
 
       if (levelParam) {
         setLevelUrl(`./levels/${levelParam}`);
@@ -255,6 +257,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       } else if (levelUrlParam) {
         setLevelUrl(levelUrlParam);
         setIsLoadingLevel(true);
+      } else if (reachIdParam) {
+        setReachId(reachIdParam);
       }
     });
   }, [debug.runStage]);
