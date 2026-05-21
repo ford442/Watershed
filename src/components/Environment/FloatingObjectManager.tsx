@@ -17,7 +17,6 @@ import { FLOATING_OBJECT } from '../../constants/game';
 // =============================================================================
 // TYPES
 // =============================================================================
-
 export type FloatingObjectType = 'log' | 'tire' | 'boat' | 'debris';
 
 export interface FloatingObjectConfig {
@@ -30,7 +29,6 @@ export interface FloatingObjectConfig {
 // =============================================================================
 // GEOMETRY & MATERIAL
 // =============================================================================
-
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 const material = new THREE.MeshStandardMaterial({
   color: '#8B7355',
@@ -41,7 +39,6 @@ const material = new THREE.MeshStandardMaterial({
 // =============================================================================
 // FORCE CONFIG
 // =============================================================================
-
 const FORCE_CONFIG = {
   flowSpeed: 2.0,
   maxForce: 8,
@@ -52,7 +49,6 @@ const FORCE_CONFIG = {
 // =============================================================================
 // COMPONENT
 // =============================================================================
-
 interface FloatingObjectManagerProps {
   /** The CatmullRomCurve3 for this segment */
   path: THREE.CatmullRomCurve3 | null;
@@ -110,9 +106,7 @@ export default function FloatingObjectManager({
       const lateralRange = waterWidth * 0.35;
       const lateralOffset = (seededRandom(seed++) - 0.5) * 2 * lateralRange;
 
-      const position = point
-        .clone()
-        .add(binormal.multiplyScalar(lateralOffset));
+      const position = point.clone().add(binormal.multiplyScalar(lateralOffset));
       position.y = waterLevel - 0.2;
 
       // Randomize type
@@ -125,10 +119,18 @@ export default function FloatingObjectManager({
         scale = [0.35, 0.35, 1.8 + seededRandom(seed++) * 0.4];
       } else if (typeRoll < 0.55) {
         type = 'tire';
-        scale = [0.7 + seededRandom(seed++) * 0.2, 0.25, 0.7 + seededRandom(seed++) * 0.2];
+        scale = [
+          0.7 + seededRandom(seed++) * 0.2,
+          0.25,
+          0.7 + seededRandom(seed++) * 0.2,
+        ];
       } else if (typeRoll < 0.75) {
         type = 'boat';
-        scale = [0.9 + seededRandom(seed++) * 0.3, 0.35, 1.4 + seededRandom(seed++) * 0.4];
+        scale = [
+          0.9 + seededRandom(seed++) * 0.3,
+          0.35,
+          1.4 + seededRandom(seed++) * 0.4,
+        ];
       } else {
         type = 'debris';
         const s = 0.25 + seededRandom(seed++) * 0.35;
@@ -153,11 +155,7 @@ export default function FloatingObjectManager({
     return items;
   }, [path, waterWidth, waterLevel, count, segmentId]);
 
-  // Lazy registration: store handle → api mapping to avoid world.getRigidBody()
-  // in the physics loop. Calling getRigidBody() across multiple concurrent
-  // FloatingObjectManager instances (one per segment) creates simultaneous Rapier
-  // WASM borrows that trigger "recursive use of object" panics. Using the @react-three/rapier
-  // api objects directly is safe because they are internally synchronized.
+  // Lazy registration to avoid Rapier WASM borrow panics across segments
   const registeredHandlesRef = useRef<Set<number>>(new Set());
   const handleToApiRef = useRef<Map<number, any>>(new Map());
 
@@ -171,11 +169,8 @@ export default function FloatingObjectManager({
     };
   }, [instances]);
 
+  // Discover newly-available handles safely
   useFrame(() => {
-    // Discover newly-available handles via plain index access — calling
-    // bodiesRef.current.forEach internally invokes world.forEachRigidBody,
-    // which borrows the Rapier RigidBodySet and races with translation()
-    // calls from sibling FOM instances ("recursive use of an object" panic).
     const arr = bodiesRef.current;
     for (let i = 0; i < instances.length; i += 1) {
       const api = arr[i];
@@ -187,13 +182,10 @@ export default function FloatingObjectManager({
     }
   });
 
-  // Per-frame physics: buoyancy, drag, flow force
-  // PHYSICS_SCALE: body mass = density * volume * 0.001 (gameplay scaling).
-  // Forces computed in real SI units (N) must be scaled by the same factor so
-  // impulse = force * dt stays proportional to the scaled mass. Without this,
-  // a 4903 N buoyancy impulse on a 0.3 kg body would accelerate it ~260 m/s
-  // per frame, causing Rapier's numerical solver to panic with "unreachable".
+  // Physics scaling: mass is scaled by 0.001, so forces must match
   const PHYSICS_SCALE = 0.001;
+
+  // Per-frame physics: buoyancy, drag, flow force + centering
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     timeRef.current += dt;
@@ -203,14 +195,28 @@ export default function FloatingObjectManager({
     let i = 0;
     for (const [, api] of handleToApiRef.current) {
       i += 1;
+
       try {
         const pos = api.translation();
         const vel = api.linvel();
+
         if (!pos || !vel) continue;
+
+        // Guard against runaway / NaN state (prevents Rapier "unreachable" panic)
+        if (
+          !isFinite(pos.x) || !isFinite(pos.y) || !isFinite(pos.z) ||
+          !isFinite(vel.x) || !isFinite(vel.y) || !isFinite(vel.z)
+        ) {
+          api.setTranslation({ x: 0, y: waterLevel + 2, z: 0 }, true);
+          api.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          api.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          continue;
+        }
 
         // === BUOYANCY ===
         const submergedDepth = waterLevel - pos.y;
         const submergedRatio = THREE.MathUtils.clamp(submergedDepth / 0.5, 0, 1);
+
         if (submergedRatio > 0) {
           const buoyancy = calculateBuoyancyForce(
             submergedRatio,
@@ -229,15 +235,20 @@ export default function FloatingObjectManager({
           FLOATING_OBJECT.DRAG_AREA,
           1000
         );
+
         api.applyImpulse(
-          { x: dragForce.x * dt * PHYSICS_SCALE, y: dragForce.y * dt * PHYSICS_SCALE, z: dragForce.z * dt * PHYSICS_SCALE },
+          {
+            x: dragForce.x * dt * PHYSICS_SCALE,
+            y: dragForce.y * dt * PHYSICS_SCALE,
+            z: dragForce.z * dt * PHYSICS_SCALE,
+          },
           true
         );
 
         // === FLOW FORCE ===
-        const position = new THREE.Vector3(pos.x, pos.y, pos.z);
+        const positionVec = new THREE.Vector3(pos.x, pos.y, pos.z);
         const flowForce = calculateFlowForce(
-          position,
+          positionVec,
           null,
           {
             flowSpeed: FORCE_CONFIG.flowSpeed * flowSpeed * FLOATING_OBJECT.FLOW_INFLUENCE,
@@ -247,19 +258,32 @@ export default function FloatingObjectManager({
           },
           timeRef.current
         );
-        // Flow force uses empirical scale (0.01) so objects drift visibly downstream
-        // while remaining physically stable with the 0.001-scaled mass.
+
+        // Empirical extra scale so objects visibly drift downstream while staying stable
         const FLOW_SCALE = 0.01;
         api.applyImpulse(
-          { x: flowForce.x * dt * FLOW_SCALE, y: flowForce.y * dt * FLOW_SCALE, z: flowForce.z * dt * FLOW_SCALE },
+          {
+            x: flowForce.x * dt * FLOW_SCALE,
+            y: flowForce.y * dt * FLOW_SCALE,
+            z: flowForce.z * dt * FLOW_SCALE,
+          },
           true
         );
 
-        // === CENTERING FORCE ===
+        // === CENTERING FORCE (keep objects in channel) ===
         const tNearest = Math.max(0, Math.min(1, i / instances.length));
         const pathPoint = path.getPointAt(tNearest);
-        const toCenter = new THREE.Vector3(pathPoint.x - pos.x, 0, pathPoint.z - pos.z);
-        const distFromCenter = Math.sqrt(toCenter.x * toCenter.x + toCenter.z * toCenter.z);
+
+        const toCenter = new THREE.Vector3(
+          pathPoint.x - pos.x,
+          0,
+          pathPoint.z - pos.z
+        );
+
+        const distFromCenter = Math.sqrt(
+          toCenter.x * toCenter.x + toCenter.z * toCenter.z
+        );
+
         if (distFromCenter > waterWidth * 0.4) {
           toCenter.normalize().multiplyScalar(2.0 * dt);
           api.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
@@ -278,7 +302,7 @@ export default function FloatingObjectManager({
       instances={instances}
       type="dynamic"
       colliders="cuboid"
-      mass={FLOATING_OBJECT.DEBRIS_DENSITY * FLOATING_OBJECT.DEBRIS_VOLUME * 0.001} // Scale mass for gameplay
+      mass={FLOATING_OBJECT.DEBRIS_DENSITY * FLOATING_OBJECT.DEBRIS_VOLUME * 0.001}
       linearDamping={0.8}
       angularDamping={0.6}
       friction={0.3}
