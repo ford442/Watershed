@@ -26,7 +26,7 @@ import WaterInteraction from "./components/WaterInteraction";
 import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
-import { initAudio } from "./systems/AudioSystem";
+import { initAudio, getAudioManager } from "./systems/AudioSystem";
 import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
@@ -154,6 +154,22 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         } else if (index === 15) {
           // Reset gravity after waterfall
           setWaterfallGravityMultiplier(1.0);
+        }
+
+        // Audio cues for the downhill-creek → waterfall progression (segments 23–30)
+        const audio = getAudioManager();
+        if (audio) {
+          if (index >= 23 && index <= 27) {
+            audio.setAmbient('ambient_water', 1500);
+          } else if (index === 28) {
+            audio.playSound('rapids_roar', 0.8);
+            audio.playSound('water_crash', 0.3);
+          } else if (index === 29) {
+            audio.playSound('water_crash', 1.0);
+            window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.7 } }));
+          } else if (index === 30) {
+            audio.setAmbient('ambient_water', 1500);
+          }
         }
       };
 

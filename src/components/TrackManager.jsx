@@ -189,7 +189,11 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                 onBiomeChange?.(biome, segmentIndex);
             },
             onSegmentEnter: (index) => {
-                window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index } }));
+                const activeSegments = chunkManagerRef.current?.getActiveSegments?.() ?? [];
+                const entered = activeSegments.find((s) => s?.id === index);
+                const flowSpeed = entered?.flowSpeed ?? 1.0;
+                window.__watershedFlowSpeed = flowSpeed;
+                window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index, flowSpeed } }));
             },
         };
 

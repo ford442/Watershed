@@ -106,6 +106,7 @@ export default function TrackSegment({
     particleCount = 0,
     particleDensity = 1.0, // 0.0-1.0 for E4 scaling
     flowSpeed = 1.0,
+    verticalBias = 0,
     treeDensity = 1.0,
     rockDensity = 'low',
     rockMaterial,
@@ -1192,6 +1193,7 @@ export default function TrackSegment({
             raftRef={raftRef}
             isNight={isNight}
             flowMap={flowMap}
+            verticalBias={verticalBias}
             weatherWetnessRef={weatherWetnessRef}
         />
     );
@@ -1219,8 +1221,11 @@ function TrackSegmentMeshes({
     raftRef,
     isNight = false,
     flowMap,
+    verticalBias = 0,
     weatherWetnessRef,
 }) {
+    const waterSurfaceOffset = (segmentState === 'downhill' || verticalBias <= -1.2) ? 0.6 : 0;
+    const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef(null);
@@ -1338,6 +1343,7 @@ function TrackSegmentMeshes({
                 flowMap={flowMap}
                 vehiclePos={vehiclePos}
                 vehicleVelocity={vehicleVelocity}
+                waterSurfaceOffset={waterSurfaceOffset}
             />
 
             {/* Vegetation - Trees with Sway (ref for draw-distance culling) */}
@@ -1426,6 +1432,7 @@ function TrackSegmentMeshes({
                         height={20}
                         playerVelocity={playerVelocity}
                         particleDensity={particleDensity}
+                        fanAngle={waterfallFanAngle}
                     />
                 </group>
             )}
