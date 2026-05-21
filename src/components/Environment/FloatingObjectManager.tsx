@@ -205,6 +205,19 @@ export default function FloatingObjectManager({
         const vel = body.linvel();
         if (!pos || !vel) continue;
 
+        // Guard against runaway / NaN state — if a dynamic body has drifted
+        // into a non-finite position or velocity, Rapier's next step() panics
+        // with "unreachable" in WASM. Reset the body to a safe state instead.
+        if (
+          !isFinite(pos.x) || !isFinite(pos.y) || !isFinite(pos.z) ||
+          !isFinite(vel.x) || !isFinite(vel.y) || !isFinite(vel.z)
+        ) {
+          body.setTranslation({ x: 0, y: waterLevel + 2, z: 0 }, true);
+          body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          continue;
+        }
+
         // === BUOYANCY ===
         const submergedDepth = waterLevel - pos.y;
         const submergedRatio = THREE.MathUtils.clamp(submergedDepth / 0.5, 0, 1);
@@ -215,7 +228,9 @@ export default function FloatingObjectManager({
             1000,
             9.80665
           );
-          body.applyImpulse({ x: 0, y: buoyancy * dt, z: 0 }, true);
+          if (isFinite(buoyancy)) {
+            body.applyImpulse({ x: 0, y: buoyancy * dt, z: 0 }, true);
+          }
         }
 
         // === DRAG ===
@@ -226,14 +241,16 @@ export default function FloatingObjectManager({
           FLOATING_OBJECT.DRAG_AREA,
           1000
         );
-        body.applyImpulse(
-          {
-            x: dragForce.x * dt,
-            y: dragForce.y * dt,
-            z: dragForce.z * dt,
-          },
-          true
-        );
+        if (isFinite(dragForce.x) && isFinite(dragForce.y) && isFinite(dragForce.z)) {
+          body.applyImpulse(
+            {
+              x: dragForce.x * dt,
+              y: dragForce.y * dt,
+              z: dragForce.z * dt,
+            },
+            true
+          );
+        }
 
         // === FLOW FORCE ===
         const position = new THREE.Vector3(pos.x, pos.y, pos.z);
@@ -248,24 +265,30 @@ export default function FloatingObjectManager({
           },
           timeRef.current
         );
-        body.applyImpulse(
-          {
-            x: flowForce.x * dt,
-            y: flowForce.y * dt,
-            z: flowForce.z * dt,
-          },
-          true
-        );
+        if (isFinite(flowForce.x) && isFinite(flowForce.y) && isFinite(flowForce.z)) {
+          body.applyImpulse(
+            {
+              x: flowForce.x * dt,
+              y: flowForce.y * dt,
+              z: flowForce.z * dt,
+            },
+            true
+          );
+        }
 
         // === CENTERING FORCE ===
         // Keep objects from drifting into canyon walls
         const tNearest = Math.max(0, Math.min(1, i / instances.length));
         const pathPoint = path.getPointAt(tNearest);
-        const toCenter = new THREE.Vector3(pathPoint.x - pos.x, 0, pathPoint.z - pos.z);
-        const distFromCenter = Math.sqrt(toCenter.x * toCenter.x + toCenter.z * toCenter.z);
-        if (distFromCenter > waterWidth * 0.4) {
-          toCenter.normalize().multiplyScalar(2.0 * dt);
-          body.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
+        if (pathPoint && isFinite(pathPoint.x) && isFinite(pathPoint.z)) {
+          const toCenter = new THREE.Vector3(pathPoint.x - pos.x, 0, pathPoint.z - pos.z);
+          const distFromCenter = Math.sqrt(toCenter.x * toCenter.x + toCenter.z * toCenter.z);
+          if (distFromCenter > waterWidth * 0.4 && distFromCenter > 1e-4) {
+            toCenter.normalize().multiplyScalar(2.0 * dt);
+            if (isFinite(toCenter.x) && isFinite(toCenter.z)) {
+              body.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
+            }
+          }
         }
       } catch (e) {
         // Ignore physics errors for individual instances
