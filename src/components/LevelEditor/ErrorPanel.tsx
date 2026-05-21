@@ -6,13 +6,13 @@
  */
 
 import React from 'react';
-import { ValidationError } from '../../utils/levelValidator';
+import { EditorValidationError } from '../../utils/levelEditorValidator';
 
 interface ErrorPanelProps {
-  errors: ValidationError[];
-  warnings: ValidationError[];
+  errors: EditorValidationError[];
+  warnings: EditorValidationError[];
   onNavigateToField?: (field: string) => void;
-  onAutoFix?: (error: ValidationError) => void;
+  onAutoFix?: (error: EditorValidationError) => void;
   onDismissError?: (index: number) => void;
   onDismissWarning?: (index: number) => void;
 }
@@ -25,14 +25,6 @@ const ErrorIcon = () => (
 const WarningIcon = () => (
   <span style={{ color: '#f59e0b', fontSize: '14px' }}>●</span>
 );
-
-// Auto-fixable error patterns
-const AUTO_FIXABLE_PATTERNS = [
-  { pattern: /must be >= (\d+\.?\d*)/, type: 'min' },
-  { pattern: /must be <= (\d+\.?\d*)/, type: 'max' },
-  { pattern: /must match pattern/, type: 'pattern' },
-  { pattern: /must have required property/, type: 'required' },
-];
 
 export const ErrorPanel: React.FC<ErrorPanelProps> = ({
   errors,
@@ -64,15 +56,11 @@ export const ErrorPanel: React.FC<ErrorPanelProps> = ({
     );
   }
 
-  const canAutoFix = (error: ValidationError): boolean => {
-    return AUTO_FIXABLE_PATTERNS.some(p => p.pattern.test(error.error));
-  };
-
-  const getFixLabel = (error: ValidationError): string => {
-    if (error.error.includes('must be >=')) return 'Set to minimum';
-    if (error.error.includes('must be <=')) return 'Set to maximum';
-    if (error.error.includes('must match pattern')) return 'Fix format';
-    if (error.error.includes('must have required property')) return 'Add field';
+  const getFixLabel = (error: EditorValidationError): string => {
+    if (error.message.includes('must be >=')) return 'Set to minimum';
+    if (error.message.includes('must be <=')) return 'Set to maximum';
+    if (error.message.includes('must match pattern')) return 'Fix format';
+    if (error.message.includes('must have required property')) return 'Add field';
     return 'Fix';
   };
 
@@ -138,15 +126,15 @@ export const ErrorPanel: React.FC<ErrorPanelProps> = ({
                     style={{ 
                       fontSize: '11px', 
                       color: '#888',
-                      cursor: onNavigateToField ? 'pointer' : 'default',
-                      textDecoration: onNavigateToField ? 'underline' : 'none',
+                      cursor: (onNavigateToField && error.field) ? 'pointer' : 'default',
+                      textDecoration: (onNavigateToField && error.field) ? 'underline' : 'none',
                     }}
-                    onClick={() => onNavigateToField?.(error.field)}
+                    onClick={() => error.field && onNavigateToField?.(error.field)}
                   >
-                    {error.field}
+                    {error.field ?? error.code}
                   </div>
                   <div style={{ color: '#fff', marginTop: '2px' }}>
-                    {error.error}
+                    {error.message}
                   </div>
                   {error.suggestion && (
                     <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
@@ -154,7 +142,7 @@ export const ErrorPanel: React.FC<ErrorPanelProps> = ({
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                    {canAutoFix(error) && onAutoFix && (
+                    {error.autoFixable && onAutoFix && (
                       <button
                         onClick={() => onAutoFix(error)}
                         style={{
@@ -223,15 +211,15 @@ export const ErrorPanel: React.FC<ErrorPanelProps> = ({
                     style={{ 
                       fontSize: '11px', 
                       color: '#888',
-                      cursor: onNavigateToField ? 'pointer' : 'default',
-                      textDecoration: onNavigateToField ? 'underline' : 'none',
+                      cursor: (onNavigateToField && warning.field) ? 'pointer' : 'default',
+                      textDecoration: (onNavigateToField && warning.field) ? 'underline' : 'none',
                     }}
-                    onClick={() => onNavigateToField?.(warning.field)}
+                    onClick={() => warning.field && onNavigateToField?.(warning.field)}
                   >
-                    {warning.field}
+                    {warning.field ?? warning.code}
                   </div>
                   <div style={{ color: '#ccc', marginTop: '2px' }}>
-                    {warning.error}
+                    {warning.message}
                   </div>
                   {warning.suggestion && (
                     <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>

@@ -16,8 +16,8 @@ import { SegmentInspector } from './SegmentInspector';
 import { BiomeSelector } from './BiomeSelector';
 import { ErrorPanel } from './ErrorPanel';
 import { PathVisualizer } from './PathVisualizer';
-import { useLevel, SegmentConfig, NormalizedLevelState } from '../../hooks/useLevel';
-import { ValidationError } from '../../utils/levelValidator';
+import { useLevelEditor, EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import { validateEditorLevel, EditorValidationError } from '../../utils/levelEditorValidator';
 
 interface LevelEditorProps {
   initialLevelData?: any;
@@ -110,89 +110,46 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
   onPlay,
   onExport,
 }) => {
-  const {
-    levelData,
-    normalizedState,
-    validationResult,
-    loadingState,
-    error,
-    loadFromJSON,
-    loadFromFile,
-  } = useLevel();
+  const hook = useLevelEditor();
 
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState(0);
   const [showErrors, setShowErrors] = useState(true);
   const [viewportMode, setViewportMode] = useState<'3d' | 'top' | 'side'>('3d');
+  /** Non-null value shows the export modal */
+  const [exportJson, setExportJson] = useState<string | null>(null);
 
-  // Load initial data
+  // Load initial data once
   useEffect(() => {
-    if (initialLevelData && loadingState === 'idle') {
-      loadFromJSON(initialLevelData, 'editor');
+    if (initialLevelData && !hook.isLoaded) {
+      hook.loadFromJSON(initialLevelData);
     }
-  }, [initialLevelData, loadingState, loadFromJSON]);
+  }, [initialLevelData, hook.isLoaded, hook.loadFromJSON]);
+
+  // Compute validation from current segments
+  const validationResult = validateEditorLevel(hook.segments);
 
   // Handle segment update
-  const handleSegmentChange = useCallback((updatedSegment: SegmentConfig) => {
-    if (!levelData) return;
+  const handleSegmentChange = useCallback((updatedSegment: EditorSegmentConfig) => {
+    hook.updateSegment(updatedSegment.id, updatedSegment);
+  }, [hook.updateSegment]);
 
-    const newSegments = [...levelData.segments];
-    const index = newSegments.findIndex(s => s.index === updatedSegment.index);
-    if (index >= 0) {
-      newSegments[index] = updatedSegment;
-      loadFromJSON({
-        ...levelData,
-        segments: newSegments,
-      }, 'editor');
-    }
-  }, [levelData, loadFromJSON]);
-
-  // Handle biome change
+  // Handle biome change (world biome)
   const handleBiomeChange = useCallback((biomeId: string) => {
-    if (!levelData) return;
-    loadFromJSON({
-      ...levelData,
-      world: {
-        ...levelData.world,
-        biome: {
-          ...levelData.world.biome,
-          baseType: biomeId,
-        },
-      },
-    }, 'editor');
-  }, [levelData, loadFromJSON]);
+    hook.setWorldBiome(biomeId);
+  }, [hook.setWorldBiome]);
 
-  // Apply biome to all segments
+  // Apply world biome to all segments (re-triggers the update)
   const handleApplyBiomeToAll = useCallback(() => {
-    if (!levelData || !normalizedState) return;
-    
-    const newSegments = levelData.segments.map((seg: any) => ({
-      ...seg,
-      biomeOverride: undefined,
-    }));
-    
-    loadFromJSON({
-      ...levelData,
-      segments: newSegments,
-    }, 'editor');
-  }, [levelData, normalizedState, loadFromJSON]);
+    hook.setWorldBiome(hook.worldBiome);
+  }, [hook.worldBiome, hook.setWorldBiome]);
 
-  // Apply biome to current segment
+  // Apply world biome to current segment
   const handleApplyBiomeToSegment = useCallback(() => {
-    if (!levelData || !normalizedState) return;
-    
-    const newSegments = [...levelData.segments];
-    const index = newSegments.findIndex((s: any) => s.index === selectedSegmentIndex);
-    if (index >= 0) {
-      newSegments[index] = {
-        ...newSegments[index],
-        biomeOverride: normalizedState.biome.baseType,
-      };
-      loadFromJSON({
-        ...levelData,
-        segments: newSegments,
-      }, 'editor');
+    const seg = hook.segments.find(s => s.index === selectedSegmentIndex);
+    if (seg) {
+      hook.updateSegment(seg.id, { biomeOverride: hook.worldBiome, biome: hook.worldBiome });
     }
-  }, [levelData, normalizedState, selectedSegmentIndex, loadFromJSON]);
+  }, [hook.segments, hook.worldBiome, hook.updateSegment, selectedSegmentIndex]);
 
   // Navigate to field from error
   const handleNavigateToField = useCallback((field: string) => {
@@ -212,63 +169,45 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        await loadFromFile(file);
+        try {
+          const text = await file.text();
+          const json = JSON.parse(text);
+          hook.loadFromJSON(json);
+        } catch (err) {
+          console.error('[LevelEditor] Failed to parse file:', err);
+        }
       }
     };
     input.click();
-  }, [loadFromFile]);
+  }, [hook.loadFromJSON]);
 
   // Handle new level
   const handleNew = useCallback(() => {
     const template = createDefaultLevel();
-    loadFromJSON(template, 'editor');
-  }, [loadFromJSON]);
+    hook.loadFromJSON(template);
+  }, [hook.loadFromJSON]);
 
-  // Get current segment
-  const currentSegment = normalizedState?.segments.find(s => s.index === selectedSegmentIndex) || null;
+  // Handle export — show modal with JSON string
+  const handleExport = useCallback(() => {
+    const json = hook.exportAsJSON();
+    setExportJson(json);
+    onExport?.(json);
+  }, [hook.exportAsJSON, onExport]);
 
-  // Loading state
-  if (loadingState === 'loading') {
-    return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#0a0a0a',
-        color: '#fff',
-      }}>
-        Loading editor...
-      </div>
-    );
-  }
+  // Handle play — navigate to game root
+  const handlePlay = useCallback(() => {
+    if (onPlay) {
+      onPlay(null);
+    } else {
+      window.location.href = window.location.origin;
+    }
+  }, [onPlay]);
 
-  // Error state
-  if (loadingState === 'error' && error) {
-    return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#0a0a0a',
-        color: '#fff',
-        padding: '20px',
-      }}>
-        <h2 style={{ color: '#ef4444' }}>Error Loading Level</h2>
-        <pre style={{ color: '#888', maxWidth: '600px' }}>{error}</pre>
-        <button onClick={handleNew} style={toolbarButtonStyle}>
-          Create New Level
-        </button>
-      </div>
-    );
-  }
+  // Get current segment by integer index
+  const currentSegment = hook.segments.find(s => s.index === selectedSegmentIndex) || null;
 
-  // No level loaded
-  if (!normalizedState || !levelData) {
+  // No level loaded yet
+  if (!hook.isLoaded) {
     return (
       <div style={{
         width: '100vw',
@@ -293,7 +232,7 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
     );
   }
 
-  const hasErrors = (validationResult?.errors.length || 0) > 0;
+  const hasErrors = validationResult.errors.length > 0;
 
   return (
     <div style={{
@@ -306,9 +245,9 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
     }}>
       {/* Toolbar */}
       <Toolbar
-        onSave={() => onSave?.(levelData)}
-        onPlay={() => onPlay?.(levelData)}
-        onExport={() => onExport?.(levelData)}
+        onSave={() => onSave?.(null)}
+        onPlay={handlePlay}
+        onExport={handleExport}
         onLoadFile={handleLoadFile}
         onNew={handleNew}
         hasErrors={hasErrors}
@@ -319,10 +258,10 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
         {/* Left panel: Segment Inspector */}
         <SegmentInspector
           segment={currentSegment}
-          totalSegments={normalizedState.track.totalSegments}
+          totalSegments={hook.segments.length}
           onChange={handleSegmentChange}
           onSelectSegment={setSelectedSegmentIndex}
-          errors={validationResult?.errors || []}
+          errors={validationResult.errors}
         />
 
         {/* Center: 3D Viewport */}
@@ -356,7 +295,7 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
               </button>
             ))}
             <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#666' }}>
-              {normalizedState.metadata.name} • {normalizedState.track.totalSegments} segments
+              {hook.levelName} • {hook.segments.length} segments
             </span>
           </div>
 
@@ -390,8 +329,8 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
 
               {/* Path visualization */}
               <PathVisualizer
-                waypoints={normalizedState.track.waypoints}
-                segments={normalizedState.segments}
+                waypoints={hook.waypoints}
+                segments={hook.segments}
                 selectedSegment={selectedSegmentIndex}
                 onSelectSegment={setSelectedSegmentIndex}
               />
@@ -439,8 +378,8 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
                 </button>
               </div>
               <ErrorPanel
-                errors={validationResult?.errors || []}
-                warnings={validationResult?.warnings || []}
+                errors={validationResult.errors}
+                warnings={validationResult.warnings}
                 onNavigateToField={handleNavigateToField}
               />
             </div>
@@ -449,12 +388,86 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
 
         {/* Right panel: Biome Selector */}
         <BiomeSelector
-          selectedBiome={normalizedState.biome.baseType}
+          selectedBiome={hook.worldBiome}
           onSelect={handleBiomeChange}
           onApplyToAll={handleApplyBiomeToAll}
           onApplyToSegment={handleApplyBiomeToSegment}
         />
       </div>
+
+      {/* Export JSON modal */}
+      {exportJson !== null && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            background: '#1a1a1a',
+            border: '1px solid #444',
+            borderRadius: '8px',
+            padding: '24px',
+            width: '640px',
+            maxWidth: '90vw',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>Export JSON</h3>
+              <button
+                onClick={() => setExportJson(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <textarea
+              value={exportJson}
+              readOnly
+              style={{
+                flex: 1,
+                minHeight: '320px',
+                background: '#0a0a0a',
+                color: '#4ade80',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                padding: '12px',
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                resize: 'vertical',
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => navigator.clipboard?.writeText(exportJson)}
+                style={toolbarButtonStyle}
+              >
+                Copy to Clipboard
+              </button>
+              <button
+                onClick={() => setExportJson(null)}
+                style={toolbarButtonStyle}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -511,3 +524,4 @@ function createDefaultLevel(): any {
 }
 
 export default LevelEditor;
+

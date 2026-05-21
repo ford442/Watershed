@@ -6,7 +6,8 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { SegmentConfig } from '../../hooks/useLevel';
+import { EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import type { EditorValidationError } from '../../utils/levelEditorValidator';
 
 // Segment type options
 const SEGMENT_TYPES = [
@@ -51,11 +52,11 @@ const DECORATION_TYPES: Array<{ key: string; label: string; max: number; categor
 ];
 
 interface SegmentInspectorProps {
-  segment: SegmentConfig | null;
+  segment: EditorSegmentConfig | null;
   totalSegments: number;
-  onChange: (segment: SegmentConfig) => void;
+  onChange: (segment: EditorSegmentConfig) => void;
   onSelectSegment: (index: number) => void;
-  errors?: Array<{ field: string; error: string }>;
+  errors?: EditorValidationError[];
 }
 
 // Collapsible section component
@@ -171,7 +172,7 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
   onSelectSegment,
   errors = [],
 }) => {
-  const [localSegment, setLocalSegment] = useState<SegmentConfig | null>(segment);
+  const [localSegment, setLocalSegment] = useState<EditorSegmentConfig | null>(segment);
   const [hasChanges, setHasChanges] = useState(false);
 
   // Sync with parent
@@ -192,9 +193,9 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
     return () => clearTimeout(timer);
   }, [localSegment, hasChanges, onChange]);
 
-  const updateField = useCallback(<K extends keyof SegmentConfig>(
+  const updateField = useCallback(<K extends keyof EditorSegmentConfig>(
     field: K,
-    value: SegmentConfig[K]
+    value: EditorSegmentConfig[K]
   ) => {
     if (!localSegment) return;
     setLocalSegment({ ...localSegment, [field]: value });
@@ -243,7 +244,7 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
       ...localSegment,
       type: 'normal',
       difficulty: 0.3,
-      meanderStrength: 1.2,
+      meanderAmount: 1.2,
       verticalBias: -0.5,
       forwardMomentum: 1.0,
       decorations: {},
@@ -254,7 +255,7 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
   }, [localSegment]);
 
   // Get errors for this segment
-  const segmentErrors = errors.filter(e => e.field.includes(`segments[${segment?.index}]`));
+  const segmentErrors = errors.filter(e => e.field?.includes(`segments[${segment?.index}]`));
   const hasErrors = segmentErrors.length > 0;
 
   if (!segment || !localSegment) {
@@ -438,11 +439,11 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
         <Section title="Flow Characteristics">
           <SliderInput
             label="Meander Strength"
-            value={localSegment.meanderStrength ?? 1.2}
+            value={localSegment.meanderAmount ?? 1.2}
             min={0}
             max={3}
             step={0.1}
-            onChange={(v) => updateField('meanderStrength', v)}
+            onChange={(v) => updateField('meanderAmount', v)}
           />
           <SliderInput
             label="Vertical Bias"
