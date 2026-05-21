@@ -74,7 +74,72 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
             rockDensity: 'high',
         },
     },
-    // Segments 19+ catch-all — Autumn Rapids (open-ended, covers 19 and 23+)
+    // Segments 23–27 — Downhill Creek Run (fast mossy slot creek)
+    {
+        indexFrom: 23,
+        indexTo: 27,
+        config: {
+            biome: 'summer',
+            type: 'normal',
+            width: 28,
+            waterWidth: 9,
+            verticalBias: -1.5,
+            meanderStrength: 0.6,
+            flowSpeed: 1.4,
+            treeDensity: 0.6,
+            rockDensity: 'high',
+        },
+    },
+    // Segment 28 — Drop-off Ledge (pre-waterfall steepening)
+    {
+        indexFrom: 28,
+        indexTo: 28,
+        config: {
+            biome: 'summer',
+            type: 'normal',
+            width: 22,
+            waterWidth: 7,
+            verticalBias: -2.2,
+            meanderStrength: 0.1,
+            flowSpeed: 1.5,
+            rockDensity: 'high',
+            cameraShake: 0.2,
+        },
+    },
+    // Segment 29 — Second Waterfall (wide fanning curtain)
+    {
+        indexFrom: 29,
+        indexTo: 29,
+        config: {
+            biome: 'summer',
+            type: 'waterfall',
+            width: 40,
+            waterWidth: 14,
+            verticalBias: -3.0,
+            meanderStrength: 0,
+            forwardMomentum: 0.12,
+            particleCount: 600,
+            cameraShake: 0.7,
+            flowSpeed: 2.0,
+        },
+    },
+    // Segment 30 — Plunge Pool (autumn transition, calm swirl)
+    {
+        indexFrom: 30,
+        indexTo: 30,
+        config: {
+            biome: 'autumn',
+            type: 'splash',
+            width: 75,
+            waterWidth: 22,
+            verticalBias: -0.1,
+            meanderStrength: 0.4,
+            flowSpeed: 0.25,
+            treeDensity: 0.8,
+            rockDensity: 'low',
+        },
+    },
+    // Segments 19+ catch-all — Autumn Rapids (open-ended, covers 19 and 31+)
     {
         indexFrom: 19,
         config: {

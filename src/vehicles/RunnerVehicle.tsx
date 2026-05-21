@@ -602,7 +602,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           
           // Determine material and wetness
           const material = collisionState.current.currentBiome.includes('autumn') ? 'moss' : 'rock';
-          const isWet = pos.y < WATER_LEVEL + 0.5;
+          const isWet = pos.y < WATER_LEVEL + 1.0;
           
           playFootstep(material, isWet);
         }
@@ -719,6 +719,29 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         y: (pVel.y - vel.y) * transfer * 0.5, // Less vertical transfer
         z: (pVel.z - vel.z) * transfer
       }, true);
+    }
+
+    // === IN-WATER PHYSICS ===
+    // Shallow-water running: lower damping, lateral current push.
+    const inShallowWater = pos.y < WATER_LEVEL + 1.0;
+    if (inShallowWater) {
+      try {
+        body.setLinearDamping(0.35 * 0.85);
+      } catch (_e) { /* damping setter unavailable */ }
+      const w = window as unknown as { __watershedFlowSpeed?: number };
+      const segFlow = (typeof window !== 'undefined' && Number.isFinite(w.__watershedFlowSpeed))
+        ? (w.__watershedFlowSpeed as number)
+        : 1.0;
+      const currentPush = 0.3 * segFlow * dt;
+      body.applyImpulse({
+        x: forwardDir.x * currentPush,
+        y: 0,
+        z: forwardDir.z * currentPush,
+      }, true);
+    } else {
+      try {
+        body.setLinearDamping(0.35);
+      } catch (_e) { /* damping setter unavailable */ }
     }
 
     // Camera follow (first-person, smooth)

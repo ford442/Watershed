@@ -30,6 +30,7 @@ export default function FlowingWater({
   vehicleVelocity = null,
   weatherRipple = 0,
   wetness = 0,
+  waterSurfaceOffset = 0,
 }) {
   const materialRef = useRef(null);
   const { camera } = useThree();
@@ -392,9 +393,9 @@ export default function FlowingWater({
 
   return (
     <>
-      <mesh geometry={geometry} material={material} />
+      <mesh geometry={geometry} material={material} position={[0, -waterSurfaceOffset, 0]} />
       {shaderLoading && effectiveShaderId && (
-        <mesh geometry={geometry}>
+        <mesh geometry={geometry} position={[0, -waterSurfaceOffset, 0]}>
           <meshBasicMaterial color="#1a6b8a" transparent opacity={0.35} side={THREE.DoubleSide} />
         </mesh>
       )}
