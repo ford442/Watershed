@@ -7,7 +7,19 @@ import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
 import { useDebugStages } from './debug/debugStages';
 import ErrorBoundary from './components/ErrorBoundary';
+import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import './style.css';
+
+// ---------------------------------------------------------------------------
+// Editor mode — ?editor=1 in dev only
+// ---------------------------------------------------------------------------
+// NOTE: URLSearchParams is evaluated at module load time (static), so
+// isEditorMode is a constant for the lifetime of the page.
+const urlParams = new URLSearchParams(window.location.search);
+const isEditorMode =
+  typeof import.meta !== 'undefined' &&
+  (import.meta as any).env?.DEV === true &&
+  urlParams.get('editor') === '1';
 
 /** Game phase determines which overlays are visible */
 type GamePhase = 'menu' | 'playing' | 'paused';
@@ -29,6 +41,18 @@ function App() {
   const [physicsDebug, setPhysicsDebug] = useState(() =>
     window.location.search.includes('physicsDebug=1')
   );
+
+  // Dynamic import for editor — keeps LevelEditor out of the production bundle.
+  const [EditorComponent, setEditorComponent] =
+    useState<React.ComponentType<{ initialLevelData?: any }> | null>(null);
+
+  useEffect(() => {
+    if (isEditorMode) {
+      import('./components/LevelEditor')      // resolves via index.ts barrel
+        .then((m) => setEditorComponent(() => m.LevelEditor))
+        .catch((err) => console.error('[App] Failed to load LevelEditor:', err));
+    }
+  }, []);
 
   useEffect(() => {
     debug.runStage('appBootstrap', () => {
@@ -98,38 +122,55 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <Canvas
-        gl={{
-          powerPreference: 'high-performance',
-          antialias: true,
-        }}
-        camera={{ position: [0, 10, -10], fov: 75 }}
-        shadows
-        frameloop="always"
-        onCreated={() => {
-          debug.runStage('visualization', () => undefined);
-        }}
-      >
-        <React.Suspense fallback={null}>
-          <Experience debug={debug} physicsDebug={physicsDebug} />
-        </React.Suspense>
-      </Canvas>
+      {/* Editor mode: full-page swap, own Canvas, own lifecycle */}
+      {isEditorMode ? (
+        EditorComponent ? (
+          <EditorComponent initialLevelData={meadowToWaterfall} />
+        ) : (
+          <div style={{
+            width: '100vw', height: '100vh',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#0a0a0a', color: '#fff', fontFamily: 'system-ui',
+          }}>
+            Loading editor…
+          </div>
+        )
+      ) : (
+        <>
+          <Canvas
+            gl={{
+              powerPreference: 'high-performance',
+              antialias: true,
+            }}
+            camera={{ position: [0, 10, -10], fov: 75 }}
+            shadows
+            frameloop="always"
+            onCreated={() => {
+              debug.runStage('visualization', () => undefined);
+            }}
+          >
+            <React.Suspense fallback={null}>
+              <Experience debug={debug} physicsDebug={physicsDebug} />
+            </React.Suspense>
+          </Canvas>
 
-      {/* Asset loading overlay */}
-      {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
+          {/* Asset loading overlay */}
+          {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
 
-      {/* Goal 4: Start Menu — shown before first run */}
-      {debug.isStageEnabled('uiOverlay') && phase === 'menu' && <StartMenu onStart={handleStart} />}
+          {/* Goal 4: Start Menu — shown before first run */}
+          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && <StartMenu onStart={handleStart} />}
 
-      {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
-      {debug.isStageEnabled('uiOverlay') && phase === 'paused' && (
-        <PauseMenu
-          onResume={handleResume}
-          onRestart={handleRestart}
-          onQuit={handleQuit}
-        />
+          {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
+          {debug.isStageEnabled('uiOverlay') && phase === 'paused' && (
+            <PauseMenu
+              onResume={handleResume}
+              onRestart={handleRestart}
+              onQuit={handleQuit}
+            />
+          )}
+          <DebugPanel debug={debug} physicsDebug={physicsDebug} onTogglePhysicsDebug={setPhysicsDebug} />
+        </>
       )}
-      <DebugPanel debug={debug} physicsDebug={physicsDebug} onTogglePhysicsDebug={setPhysicsDebug} />
     </ErrorBoundary>
   );
 }

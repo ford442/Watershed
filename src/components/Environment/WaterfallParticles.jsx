@@ -18,7 +18,9 @@ export default function WaterfallParticles({
     height = 25,
     playerVelocity = 0,
     particleDensity = 1.0, // 0.0-1.0 from segment config
+    fanAngle = 0, // degrees of horizontal spread; 0 = straight down
 }) {
+    const fanSpreadRad = (fanAngle * Math.PI) / 180;
     const { config: lodConfig } = useLOD();
     const meshRef = useRef();
     const lightRef = useRef();
@@ -71,13 +73,18 @@ export default function WaterfallParticles({
             const speed = 0.2 + Math.random() * 0.3;
             const scale = 0.5 + Math.random() * 0.5;
 
-            temp.push({ 
-                x, y, z, speed, scale, initialY: y,
+            // Fan spread: assign each particle a randomised lateral velocity
+            const randomAngle = (Math.random() - 0.5) * fanSpreadRad;
+            const vx = fanSpreadRad > 0 ? Math.sin(randomAngle) * speed * 1.5 : 0;
+            const vz = fanSpreadRad > 0 ? Math.cos(randomAngle) * speed * 0.3 : 0;
+
+            temp.push({
+                x, y, z, speed, scale, initialY: y, vx, vz,
                 active: i < baseCount // Only active particles are rendered
             });
         }
         return temp;
-    }, [width, height, baseCount]);
+    }, [width, height, baseCount, fanSpreadRad]);
 
     // Reusable dummy object for matrix calculations
     const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -114,13 +121,16 @@ export default function WaterfallParticles({
         particles.forEach((p, i) => {
             // Only process active particles
             if (i < currentCount) {
-                // Move particle down
+                // Move particle down (and outward for fan-shaped falls)
                 p.y -= p.speed;
+                if (p.vx) p.x += p.vx;
+                if (p.vz) p.z += p.vz;
 
                 // Reset to top if it hits bottom
                 if (p.y < 0) {
                     p.y = height;
                     p.x = (Math.random() - 0.5) * width;
+                    p.z = (Math.random() - 0.5) * 5;
                 }
 
                 // Update transform

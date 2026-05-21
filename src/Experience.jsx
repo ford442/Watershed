@@ -1,4 +1,4 @@
-import { PointerLockControls, KeyboardControls, Html } from "@react-three/drei";
+import { PointerLockControls, KeyboardControls, Html, Stats } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import { useFrame, useThree } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -15,6 +15,7 @@ import RaftVehicle from "./vehicles/RaftVehicle";
 // Level loading
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
 import ReachManager from "./systems/ReachManager";
+import TrackManager from "./components/TrackManager";
 
 // NEW: Visual enhancement systems
 import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
@@ -25,7 +26,8 @@ import WaterInteraction from "./components/WaterInteraction";
 import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
-import { initAudio } from "./systems/AudioSystem";
+import { initAudio, getAudioManager } from "./systems/AudioSystem";
+import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 
@@ -86,6 +88,9 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const vehicleRef = useRef(null);
   const { camera } = useThree();
 
+  // Check for debug flag in URL for physics visualization
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+
   // Goal 1: Zustand game state selectors
   const biome = useGameStore((s) => s.currentBiome);
   const setBiome = useGameStore((s) => s.setCurrentBiome);
@@ -114,6 +119,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState(null);
   const [forecastSamples, setForecastSamples] = useState([]);
+  const [reachId, setReachId] = useState(null);
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState(null);
   const [reachRetryKey, setReachRetryKey] = useState(0);
@@ -149,6 +155,22 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         } else if (index === 15) {
           // Reset gravity after waterfall
           setWaterfallGravityMultiplier(1.0);
+        }
+
+        // Audio cues for the downhill-creek → waterfall progression (segments 23–30)
+        const audio = getAudioManager();
+        if (audio) {
+          if (index >= 23 && index <= 27) {
+            audio.setAmbient('ambient_water', 1500);
+          } else if (index === 28) {
+            audio.playSound('rapids_roar', 0.8);
+            audio.playSound('water_crash', 0.3);
+          } else if (index === 29) {
+            audio.playSound('water_crash', 1.0);
+            window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.7 } }));
+          } else if (index === 30) {
+            audio.setAmbient('ambient_water', 1500);
+          }
         }
       };
 
@@ -244,6 +266,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       const params = new URLSearchParams(window.location.search);
       const levelParam = params.get('level');
       const levelUrlParam = params.get('levelUrl');
+      const reachIdParam = params.get('reachId');
 
       if (levelParam) {
         setLevelUrl(`./levels/${levelParam}`);
@@ -251,6 +274,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       } else if (levelUrlParam) {
         setLevelUrl(levelUrlParam);
         setIsLoadingLevel(true);
+      } else if (reachIdParam) {
+        setReachId(reachIdParam);
       }
     });
   }, [debug.runStage]);
@@ -389,7 +414,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics debug={physicsDebug} gravity={[0, -9.8, 0]}>
+        <Physics debug={isDebug} gravity={[0, -9.8, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick
@@ -442,18 +467,23 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
               onBiomeChange={handleBiomeChange}
               forecastSamples={forecastSamples}
             />
+          ) : reachId ? (
+            <ReachManager
+              playerRef={vehicleRef}
+              onBiomeChange={handleBiomeChange}
+              forecastSamples={forecastSamples}
+              reachId={reachId}
+              onLoadingChange={setReachLoading}
+              onError={setReachError}
+              retryKey={reachRetryKey}
+            />
           ) : (
-            debug.isStageEnabled('reachStreaming') && (
-              <ReachManager
-                playerRef={vehicleRef}
-                onBiomeChange={handleBiomeChange}
-                forecastSamples={forecastSamples}
-                reachId={undefined}
-                onLoadingChange={setReachLoading}
-                onError={setReachError}
-                retryKey={reachRetryKey}
-              />
-            )
+            // Default to procedural TrackManager if no levelUrl or reachId
+            <TrackManager
+              onBiomeChange={handleBiomeChange}
+              raftRef={vehicleRef}
+              forecastSamples={forecastSamples}
+            />
           ))}
         </Physics>
       )}
@@ -462,7 +492,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       {debug.isStageEnabled('postProcessing') && quality !== 'minimal' && (
         <PostProcessingPipeline
           quality={quality}
-          velocityRef={playerVelocityRef}
+          vehicleRef={vehicleRef}
         />
       )}
 
@@ -502,6 +532,9 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
             />
           </div>
         )}
+
+        {/* DEV-only audio diagnostics overlay */}
+        {import.meta.env.DEV && <AudioDiagnosticsOverlay />}
 
         {/* Reach error toast — non-blocking because we fall back to procedural */}
         {reachError && (
@@ -568,8 +601,13 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
  * Wraps the game in provider contexts for biome and LOD management
  */
 const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
+  // Check for debug flag in URL
+  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  
   return (
-    <KeyboardControls
+    <>
+      {isDebug && <Stats />}
+      <KeyboardControls
       map={[
         { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
         { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
@@ -590,6 +628,7 @@ const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         </BiomeProvider>
       </LODProvider>
     </KeyboardControls>
+    </>
   );
 };
 
