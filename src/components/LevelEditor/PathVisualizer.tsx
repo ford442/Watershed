@@ -9,11 +9,11 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Line, Html } from '@react-three/drei';
-import { SegmentConfig } from '../../hooks/useLevel';
+import { EditorSegmentConfig } from '../../hooks/useLevelEditor';
 
 interface PathVisualizerProps {
   waypoints: [number, number, number][];
-  segments: SegmentConfig[];
+  segments: EditorSegmentConfig[];
   selectedSegment?: number;
   onSelectSegment?: (index: number) => void;
   showSegmentBoundaries?: boolean;
