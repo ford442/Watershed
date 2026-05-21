@@ -172,13 +172,19 @@ export default function FloatingObjectManager({
   }, [instances]);
 
   useFrame(() => {
-    bodiesRef.current.forEach((api) => {
+    // Discover newly-available handles via plain index access — calling
+    // bodiesRef.current.forEach internally invokes world.forEachRigidBody,
+    // which borrows the Rapier RigidBodySet and races with translation()
+    // calls from sibling FOM instances ("recursive use of an object" panic).
+    const arr = bodiesRef.current;
+    for (let i = 0; i < instances.length; i += 1) {
+      const api = arr[i];
       if (api && api.handle !== undefined && !registeredHandlesRef.current.has(api.handle)) {
         registerFloatingPlatform(api.handle);
         registeredHandlesRef.current.add(api.handle);
         handleToApiRef.current.set(api.handle, api);
       }
-    });
+    }
   });
 
   // Per-frame physics: buoyancy, drag, flow force
