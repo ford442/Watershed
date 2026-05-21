@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { InstancedRigidBodies, useRapier } from '@react-three/rapier';
+import { InstancedRigidBodies } from '@react-three/rapier';
 import {
   calculateBuoyancyForce,
   calculateDragForce,
@@ -78,7 +78,6 @@ export default function FloatingObjectManager({
 }: FloatingObjectManagerProps) {
   const bodiesRef = useRef<(any | null)[]>([]);
   const timeRef = useRef(0);
-  const { world } = useRapier();
 
   // Generate object instances deterministically
   const instances = useMemo(() => {
@@ -154,16 +153,21 @@ export default function FloatingObjectManager({
     return items;
   }, [path, waterWidth, waterLevel, count, segmentId]);
 
-  // Lazy registration: useFrame checks for newly available bodies and registers them
+  // Lazy registration: store handle → api mapping to avoid world.getRigidBody()
+  // in the physics loop. Calling getRigidBody() across multiple concurrent
+  // FloatingObjectManager instances (one per segment) creates simultaneous Rapier
+  // WASM borrows that trigger "recursive use of object" panics. Using the @react-three/rapier
+  // api objects directly is safe because they are internally synchronized.
   const registeredHandlesRef = useRef<Set<number>>(new Set());
+  const handleToApiRef = useRef<Map<number, any>>(new Map());
 
   useEffect(() => {
     return () => {
-      // Unmount: unregister all handles
       registeredHandlesRef.current.forEach((handle) => {
         unregisterFloatingPlatform(handle);
       });
       registeredHandlesRef.current.clear();
+      handleToApiRef.current.clear();
     };
   }, [instances]);
 
@@ -172,31 +176,30 @@ export default function FloatingObjectManager({
       if (api && api.handle !== undefined && !registeredHandlesRef.current.has(api.handle)) {
         registerFloatingPlatform(api.handle);
         registeredHandlesRef.current.add(api.handle);
+        handleToApiRef.current.set(api.handle, api);
       }
     });
   });
 
   // Per-frame physics: buoyancy, drag, flow force
+  // PHYSICS_SCALE: body mass = density * volume * 0.001 (gameplay scaling).
+  // Forces computed in real SI units (N) must be scaled by the same factor so
+  // impulse = force * dt stays proportional to the scaled mass. Without this,
+  // a 4903 N buoyancy impulse on a 0.3 kg body would accelerate it ~260 m/s
+  // per frame, causing Rapier's numerical solver to panic with "unreachable".
+  const PHYSICS_SCALE = 0.001;
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     timeRef.current += dt;
 
     if (!path) return;
 
-    // Iterate the pre-collected handle list (populated in the registration
-    // useFrame above). Touching bodiesRef.current.forEach in a per-frame
-    // physics loop can race with Rapier's internal RigidBodySet iteration
-    // across multiple FloatingObjectManager instances (one per segment),
-    // triggering "recursive use of an object" WASM panics.
     let i = 0;
-    for (const handle of registeredHandlesRef.current) {
+    for (const [, api] of handleToApiRef.current) {
       i += 1;
-      const body = world.getRigidBody(handle);
-      if (!body) continue;
-
       try {
-        const pos = body.translation();
-        const vel = body.linvel();
+        const pos = api.translation();
+        const vel = api.linvel();
         if (!pos || !vel) continue;
 
         // === BUOYANCY ===
@@ -209,7 +212,7 @@ export default function FloatingObjectManager({
             1000,
             9.80665
           );
-          body.applyImpulse({ x: 0, y: buoyancy * dt, z: 0 }, true);
+          api.applyImpulse({ x: 0, y: buoyancy * dt * PHYSICS_SCALE, z: 0 }, true);
         }
 
         // === DRAG ===
@@ -220,12 +223,8 @@ export default function FloatingObjectManager({
           FLOATING_OBJECT.DRAG_AREA,
           1000
         );
-        body.applyImpulse(
-          {
-            x: dragForce.x * dt,
-            y: dragForce.y * dt,
-            z: dragForce.z * dt,
-          },
+        api.applyImpulse(
+          { x: dragForce.x * dt * PHYSICS_SCALE, y: dragForce.y * dt * PHYSICS_SCALE, z: dragForce.z * dt * PHYSICS_SCALE },
           true
         );
 
@@ -242,27 +241,25 @@ export default function FloatingObjectManager({
           },
           timeRef.current
         );
-        body.applyImpulse(
-          {
-            x: flowForce.x * dt,
-            y: flowForce.y * dt,
-            z: flowForce.z * dt,
-          },
+        // Flow force uses empirical scale (0.01) so objects drift visibly downstream
+        // while remaining physically stable with the 0.001-scaled mass.
+        const FLOW_SCALE = 0.01;
+        api.applyImpulse(
+          { x: flowForce.x * dt * FLOW_SCALE, y: flowForce.y * dt * FLOW_SCALE, z: flowForce.z * dt * FLOW_SCALE },
           true
         );
 
         // === CENTERING FORCE ===
-        // Keep objects from drifting into canyon walls
         const tNearest = Math.max(0, Math.min(1, i / instances.length));
         const pathPoint = path.getPointAt(tNearest);
         const toCenter = new THREE.Vector3(pathPoint.x - pos.x, 0, pathPoint.z - pos.z);
         const distFromCenter = Math.sqrt(toCenter.x * toCenter.x + toCenter.z * toCenter.z);
         if (distFromCenter > waterWidth * 0.4) {
           toCenter.normalize().multiplyScalar(2.0 * dt);
-          body.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
+          api.applyImpulse({ x: toCenter.x, y: 0, z: toCenter.z }, true);
         }
-      } catch (e) {
-        // Ignore physics errors for individual instances
+      } catch {
+        // skip this body this frame
       }
     }
   });

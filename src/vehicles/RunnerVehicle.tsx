@@ -225,12 +225,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       };
       const ray = new rapier.Ray(origin, { x: 0, y: -1, z: 0 });
       const hit = world.castRay(ray, rayLength, true);
-      
-      if (hit) {
-        const hitPoint = ray.pointAt(hit.timeOfImpact);
-        return hitPoint.y;
-      }
-      return null;
+      const toi = hit ? (typeof (hit as any).timeOfImpact === 'function' ? (hit as any).timeOfImpact() : hit.timeOfImpact) : null;
+      if (hit && typeof (hit as any).free === 'function') (hit as any).free();
+      if (typeof (ray as any).free === 'function') (ray as any).free();
+      if (toi === null) return null;
+      return origin.y - toi;
     };
     
     const sampleDist = 0.5;
@@ -314,24 +313,30 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       { x: 0, y: -1, z: 0 }
     );
     const groundHit = world.castRay(groundRay, RAYCAST_DISTANCE, true);
+    if (typeof (groundRay as any).free === 'function') (groundRay as any).free();
     const isGrounded = !!groundHit;
     slopeState.current.isGrounded = isGrounded;
-    
+
     // Goal 2: Platform detection via raycast handle registry
     platformState.current.isOnPlatform = false;
     platformState.current.platformBody = null;
-    if (groundHit && groundHit.collider) {
+    if (groundHit) {
       try {
-        const parent = groundHit.collider.parent();
-        if (parent && isFloatingPlatform(parent.handle)) {
-          platformState.current.isOnPlatform = true;
-          platformState.current.platformBody = parent;
-          const pVel = parent.linvel();
-          platformState.current.platformVelocity.set(pVel.x, pVel.y, pVel.z);
+        const collider = groundHit.collider;
+        const parent = collider?.parent?.();
+        if (parent) {
+          if (isFloatingPlatform(parent.handle)) {
+            platformState.current.isOnPlatform = true;
+            platformState.current.platformBody = true; // used only as boolean at line 709
+            const pVel = parent.linvel();
+            platformState.current.platformVelocity.set(pVel.x, pVel.y, pVel.z);
+          }
+          if (typeof (parent as any).free === 'function') (parent as any).free();
         }
-      } catch (e) {
+      } catch {
         // Ignore colliders without parent
       }
+      if (typeof (groundHit as any).free === 'function') (groundHit as any).free();
     }
     
     if (isGrounded) {
