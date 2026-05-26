@@ -46,6 +46,7 @@ if(EMSCRIPTEN)
         -ffast-math
         -fno-exceptions
         -fno-rtti
+        -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0
         -funroll-loops
         -mbulk-memory
     )

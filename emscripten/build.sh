@@ -82,7 +82,7 @@ INITIAL_MEMORY_BYTES=67108864  # 64 * 1024 * 1024
 if [ "$DEBUG_BUILD" -eq 1 ]; then
     COMPILE_FLAGS="-O0 -g3 -msimd128 -mbulk-memory"
 else
-    COMPILE_FLAGS="-O3 -msimd128 -ffast-math -fno-exceptions -fno-rtti -funroll-loops -mbulk-memory"
+    COMPILE_FLAGS="-O3 -msimd128 -ffast-math -fno-exceptions -fno-rtti -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0 -funroll-loops -mbulk-memory"
 fi
 
 if [ "$USE_THREADS" -eq 1 ]; then
