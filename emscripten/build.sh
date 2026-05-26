@@ -14,6 +14,7 @@
 # Requires: Emscripten SDK (em++ in PATH or auto-located via emsdk_env.sh)
 
 set -euo pipefail
+source /content/buil*/emsdk/emsdk_env.sh
 
 # ---------------------------------------------------------------------------
 # Parse flags
