@@ -112,10 +112,10 @@ if [ "$USE_THREADS" -eq 1 ]; then
     LINK_FLAGS="$LINK_FLAGS \
   -s USE_PTHREADS=1 \
   -s PTHREAD_POOL_SIZE=4 \
-  -s ENVIRONMENT='web,worker'"
+  -s ENVIRONMENT=web,worker"
 else
     LINK_FLAGS="$LINK_FLAGS \
-  -s ENVIRONMENT='web'"
+  -s ENVIRONMENT=web"
 fi
 
 # ---------------------------------------------------------------------------
