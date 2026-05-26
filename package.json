@@ -38,7 +38,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "build:wasm": "cd emscripten && bash build.sh",
+    "build:wasm:threads": "cd emscripten && bash build.sh --threads",
+    "build:wasm:debug": "cd emscripten && bash build.sh --debug"
   },
   "eslintConfig": {
     "extends": [
