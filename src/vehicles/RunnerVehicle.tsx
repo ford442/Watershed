@@ -458,7 +458,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const dt = Math.min(delta, 0.05); // Cap delta for stability
     const now = performance.now();
     const frameImpulses = new Map<string, { x: number; y: number; z: number }>();
-    const applyImpulseTracked = (tag: string, impulse: { x: number; y: number; z: number }) => {
+    const applyImpulseWithDebugTracking = (tag: string, impulse: { x: number; y: number; z: number }) => {
       body.applyImpulse(impulse, true);
       const prev = frameImpulses.get(tag);
       if (prev) {
@@ -570,7 +570,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       const speedFactor = 1.0 + speed2D * BANK_CONFIG.SPEED_ASSIST_SCALE;
       const plantMag = BANK_CONFIG.ASSIST_STRENGTH * bankT * speedFactor * dt;
       // Push player into bank face (negate horizontal normal → toward wall surface)
-      applyImpulseTracked('bankAssist', { x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag });
+      applyImpulseWithDebugTracking('bankAssist', { x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag });
       // Damp capsule angular velocity on X and Z to prevent tumbling on steep walls
       const angVel = body.angvel();
       const antiRoll = BANK_CONFIG.ANTI_ROLL_STRENGTH * bankT * dt;
@@ -585,11 +585,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // Apply waterfallGravityMultiplier from Zustand to the Rapier world without
     // subscribing to the store (avoiding a React re-render every frame).
     const gravMultCurrent = useGameStore.getState().waterfallGravityMultiplier;
-    if (gravMult !== appliedGravMultRef.current) {
-      appliedGravMultRef.current = gravMult;
+    if (gravMultCurrent !== appliedGravMultRef.current) {
+      appliedGravMultRef.current = gravMultCurrent;
       // Mutate in-place to avoid an unnecessary object allocation
       world.gravity.x = 0;
-      world.gravity.y = PHYSICS.GRAVITY * gravMult;
+      world.gravity.y = PHYSICS.GRAVITY * gravMultCurrent;
       world.gravity.z = 0;
     }
 
@@ -635,7 +635,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           // so the player bounces away from the wall rather than straight up.
           const gn = slopeState.current.lastGroundNormal;
           const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
-          applyImpulseTracked('jump', {
+          applyImpulseWithDebugTracking('jump', {
             x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
             z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
@@ -679,7 +679,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           // Apply same bank kick-off bias as regular jump
           const gn = slopeState.current.lastGroundNormal;
           const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
-          applyImpulseTracked('coyoteJump', {
+          applyImpulseWithDebugTracking('coyoteJump', {
             x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
             z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
@@ -778,7 +778,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           ds.direction.normalize();
           
           // Apply dodge impulse
-          applyImpulseTracked('dodge', {
+          applyImpulseWithDebugTracking('dodge', {
             x: ds.direction.x * MOVEMENT.DODGE_FORCE,
             y: 2.0, // Slight upward lift
             z: ds.direction.z * MOVEMENT.DODGE_FORCE
@@ -905,20 +905,20 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       ? 0.5  // 50% speed during recovery
       : 1.0;
 
-    applyImpulseTracked('flow', { x: 0, y: 0, z: -flowResponsiveness * flowMultiplier * dt });
+    applyImpulseWithDebugTracking('flow', { x: 0, y: 0, z: -flowResponsiveness * flowMultiplier * dt });
 
     const baseSpeed = VEHICLE_TUNING.baseSpeed;
     const speed = baseSpeed * flowMultiplier * recoveryFactor;
 
     if (forward) {
-      applyImpulseTracked('forwardInput', {
+      applyImpulseWithDebugTracking('forwardInput', {
         x: forwardDir.x * speed * dt,
         y: 0,
         z: forwardDir.z * speed * dt
       });
     }
     if (backward) {
-      applyImpulseTracked('backwardInput', {
+      applyImpulseWithDebugTracking('backwardInput', {
         x: forwardDir.x * -speed * 0.6 * dt,
         y: 0,
         z: forwardDir.z * -speed * 0.6 * dt
@@ -931,14 +931,14 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
     if (canStrafe) {
       if (leftward) {
-        applyImpulseTracked('leftwardInput', {
+        applyImpulseWithDebugTracking('leftwardInput', {
           x: rightDir.x * -speed * 0.8 * dt,
           y: 0,
           z: rightDir.z * -speed * 0.8 * dt
         });
       }
       if (rightward) {
-        applyImpulseTracked('rightwardInput', {
+        applyImpulseWithDebugTracking('rightwardInput', {
           x: rightDir.x * speed * 0.8 * dt,
           y: 0,
           z: rightDir.z * speed * 0.8 * dt
@@ -979,7 +979,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       // Reduce friction during slide for speed boost; on a bank the slide runs along the wall
       setBodyFriction(MOVEMENT.SLIDE_FRICTION);
       const slideBoost = MOVEMENT.SLIDE_SPEED_BOOST;
-      applyImpulseTracked('slideBoost', {
+      applyImpulseWithDebugTracking('slideBoost', {
         x: forwardDir.x * speed * (slideBoost - 1.0) * dt,
         y: 0,
         z: forwardDir.z * speed * (slideBoost - 1.0) * dt
@@ -1004,7 +1004,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (platformState.current.isOnPlatform && platformState.current.platformBody) {
       const pVel = platformState.current.platformVelocity;
       const transfer = MOVEMENT.PLAYER_MOMENTUM_TRANSFER ?? 0.3;
-      applyImpulseTracked('platformTransfer', {
+      applyImpulseWithDebugTracking('platformTransfer', {
         x: (pVel.x - vel.x) * transfer,
         y: (pVel.y - vel.y) * transfer * 0.5, // Less vertical transfer
         z: (pVel.z - vel.z) * transfer
@@ -1023,7 +1023,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         ? (w.__watershedFlowSpeed as number)
         : 1.0;
       const currentPush = 0.3 * segFlow * dt;
-      applyImpulseTracked('waterCurrent', {
+      applyImpulseWithDebugTracking('waterCurrent', {
         x: forwardDir.x * currentPush,
         y: 0,
         z: forwardDir.z * currentPush,

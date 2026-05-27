@@ -34,6 +34,21 @@ const FallbackScene = () => {
   );
 };
 
+const isTypingTarget = (target: EventTarget | null) => {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  const role = el.getAttribute('role');
+  return (
+    el.isContentEditable ||
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    role === 'textbox' ||
+    role === 'searchbox'
+  );
+};
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
@@ -76,12 +91,6 @@ function App() {
   }, [physicsDebug]);
 
   useEffect(() => {
-    const isTypingTarget = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null;
-      if (!el) return false;
-      const tag = el.tagName;
-      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.repeat) return;

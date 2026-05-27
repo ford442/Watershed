@@ -8,6 +8,39 @@ interface PhysicsDebugOverlayProps {
   vehicleRef: React.MutableRefObject<any>;
 }
 
+interface DebugImpulse {
+  tag: string;
+  impulse: { x: number; y: number; z: number };
+}
+
+interface DebugContact {
+  point: { x: number; y: number; z: number };
+}
+
+interface PhysicsDebugSnapshot {
+  position: { x: number; y: number; z: number };
+  linearVelocity: { x: number; y: number; z: number };
+  angularVelocity: { x: number; y: number; z: number };
+  speed: number;
+  slopeAngle: number;
+  bankAngle: number;
+  isGrounded: boolean;
+  jumpState: string;
+  friction: number;
+  waterfallGravityMultiplier: number;
+  effectiveG: number;
+  extraGravity: number;
+  currentSegmentIndex: number;
+  groundRay: {
+    origin: { x: number; y: number; z: number };
+    hitPoint: { x: number; y: number; z: number } | null;
+    distance: number | null;
+  };
+  groundNormal: { x: number; y: number; z: number };
+  recentImpulses: DebugImpulse[];
+  recentContacts: DebugContact[];
+}
+
 const MAX_CONTACT_MARKERS = 8;
 
 const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) => {
@@ -97,7 +130,7 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
     if (hudRef.current) hudRef.current.style.display = 'block';
 
     const body = vehicleRef.current;
-    const snapshot = body?.userData?.physicsDebug ?? (window as any).__watershedPhysicsDebug;
+    const snapshot = (body?.userData?.physicsDebug ?? (window as any).__watershedPhysicsDebug) as PhysicsDebugSnapshot | undefined;
     if (!snapshot || !body) return;
 
     const pos = snapshot.position;
@@ -172,7 +205,7 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
     if (hudRef.current) {
       const recentImpulses = snapshot.recentImpulses
         .slice(-4)
-        .map((entry: any) => `${entry.tag}:${Math.sqrt(entry.impulse.x ** 2 + entry.impulse.y ** 2 + entry.impulse.z ** 2).toFixed(2)}`)
+        .map((entry) => `${entry.tag}:${Math.sqrt(entry.impulse.x ** 2 + entry.impulse.y ** 2 + entry.impulse.z ** 2).toFixed(2)}`)
         .join(', ');
       hudRef.current.textContent = [
         `speed ${snapshot.speed.toFixed(2)} m/s`,
