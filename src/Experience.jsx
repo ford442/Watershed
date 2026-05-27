@@ -155,6 +155,12 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         } else if (index === 15) {
           // Reset gravity after waterfall
           setWaterfallGravityMultiplier(1.0);
+        } else if (index >= 23 && index <= 29) {
+          // Steep rapids: boost gravity for high-verticalBias sections
+          setWaterfallGravityMultiplier(1.2);
+        } else if (index === 30) {
+          // Reset gravity after steep rapids
+          setWaterfallGravityMultiplier(1.0);
         }
 
         // Audio cues for the downhill-creek → waterfall progression (segments 23–30)

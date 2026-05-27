@@ -152,6 +152,9 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     platformBody: null as any,
   });
 
+  // Track last applied gravity multiplier to avoid redundant world.gravity mutations
+  const appliedGravMultRef = useRef(1.0);
+
   // Footstep tracking
   const footstepState = useRef({
     distanceTraveled: 0,
@@ -236,6 +239,9 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const hCenter = castRay(0, 0);
     const hForward = castRay(0, -sampleDist);
     const hBack = castRay(0, sampleDist);
+    // Also sample lateral direction for full 3D surface normal (banked canyon walls)
+    const hLeft = castRay(-sampleDist, 0);
+    const hRight = castRay(sampleDist, 0);
     
     if (hCenter === null) return 0;
     
@@ -254,7 +260,24 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (samples === 0) return 0;
     
     slopeZ /= samples;
-    
+
+    // Compute lateral (X-axis) slope for full surface normal
+    let slopeX = 0;
+    let samplesX = 0;
+    if (hLeft !== null) { slopeX += (hLeft - hCenter) / sampleDist; samplesX++; }
+    if (hRight !== null) { slopeX += (hCenter - hRight) / sampleDist; samplesX++; }
+    if (samplesX > 0) slopeX /= samplesX;
+
+    // Compute and store the full 3D surface normal from height gradients:
+    // For height field h(x,z), the outward normal ∝ (-∂h/∂x, 1, -∂h/∂z)
+    const nx = -slopeX;
+    const ny = 1.0;
+    const nz = -slopeZ;
+    const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (nLen > 0.001) {
+      slopeState.current.lastGroundNormal.set(nx / nLen, ny / nLen, nz / nLen);
+    }
+
     const angleRad = Math.atan(slopeZ);
     let angleDeg = (angleRad * 180) / Math.PI;
     angleDeg = Math.max(-60, Math.min(60, angleDeg));
@@ -356,6 +379,21 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       Math.min(1.0, dt * SMOOTHING_FACTOR)
     );
 
+    // === GRAVITY MULTIPLIER (waterfall / steep rapids) ===
+    // Apply waterfallGravityMultiplier from Zustand to the Rapier world without
+    // subscribing to the store (avoiding a React re-render every frame).
+    const gravMult = useGameStore.getState().waterfallGravityMultiplier;
+    if (gravMult !== appliedGravMultRef.current) {
+      appliedGravMultRef.current = gravMult;
+      world.gravity = { x: 0, y: -9.8 * gravMult, z: 0 };
+    }
+
+    // === CAMERA FORWARD DIRECTION (used for slope-biased jump and dodge) ===
+    const jumpForwardDir = new THREE.Vector3();
+    camera.getWorldDirection(jumpForwardDir);
+    jumpForwardDir.y = 0;
+    if (jumpForwardDir.lengthSq() > 0.001) jumpForwardDir.normalize();
+
     // === JUMP STATE MACHINE ===
     const js = jumpState.current;
     const { jump, leftward, rightward, dodge, sprint } = controls.getControls();
@@ -380,9 +418,16 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           js.verticalVelocityOnLeave = vel.y;
           js.lastGroundY = pos.y;
         } else if (jumpJustPressed) {
-          // Initiate jump
+          // Initiate jump with forward slope bias so downhill jumps carry momentum
           const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
-          body.applyImpulse({ x: 0, y: jumpForce, z: 0 }, true);
+          // Add a forward component proportional to slope steepness (sin of angle)
+          const slopeRad = Math.abs(slopeState.current.currentAngle) * Math.PI / 180;
+          const forwardBias = jumpForce * Math.sin(slopeRad) * 0.45;
+          body.applyImpulse({
+            x: jumpForwardDir.x * forwardBias,
+            y: jumpForce,
+            z: jumpForwardDir.z * forwardBias
+          }, true);
           
           js.state = 'airborne';
           js.hasDoubleJumped = false;
@@ -418,7 +463,13 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         // Goal 2: Coyote time jump - if we just left ground, still allow jump
         if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
           const jumpForce = JUMP_CONFIG.FORCE * 0.9;
-          body.applyImpulse({ x: 0, y: jumpForce, z: 0 }, true);
+          const slopeRad = Math.abs(slopeState.current.currentAngle) * Math.PI / 180;
+          const forwardBias = jumpForce * Math.sin(slopeRad) * 0.45;
+          body.applyImpulse({
+            x: jumpForwardDir.x * forwardBias,
+            y: jumpForce,
+            z: jumpForwardDir.z * forwardBias
+          }, true);
           js.hasDoubleJumped = false;
           js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
           js.jumpReleased = false;
