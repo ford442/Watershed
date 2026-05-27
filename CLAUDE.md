@@ -40,10 +40,12 @@ src/
 ├── style.css                  # UI, loader, crosshair, overlay styles
 │
 ├── components/
-│   ├── TrackManager.jsx       # ★ Chunk treadmill orchestrator (generation + biome detection)
+│   ├── TrackManager.jsx       # ★ Chunk treadmill orchestrator (wrapped by ReachManager)
 │   ├── TrackSegment.jsx       # ★ One canyon chunk: geometry + PBR terrain + 25 env types
 │   ├── FlowingWater.jsx       # ★ Animated water surface (ShaderMaterial, GLSL)
 │   ├── EnhancedSky.jsx        # Biome-responsive sky (drei Sky + fogExp2)
+│   ├── WaterReflection.jsx    # Water reflection render pass (wired in Experience.jsx)
+│   ├── WaterInteraction.jsx   # Water-contact interaction effects (wired in Experience.jsx)
 │   ├── Player.jsx             # First-person capsule controller (Rapier RigidBody)
 │   ├── Raft.jsx               # (legacy) raft mesh
 │   ├── UI.tsx                 # Pause/start overlay, pointer lock, controls display
@@ -81,18 +83,76 @@ src/
 │   └── RaftVehicle.tsx        # Third-person raft (switch via vehicleType in Experience.jsx)
 │
 ├── systems/
-│   ├── MapSystem.ts           # ★ BaseMapChunk interface, SeededRandom, chunk pool (not yet wired to TrackManager)
+│   ├── AudioSystem.ts
+│   ├── BiomeSystem.tsx
+│   ├── ChunkManager.ts
+│   ├── FloatingObjectRegistry.ts
+│   ├── GameState.ts           # Zustand shared-state backbone
+│   ├── LODManager.tsx
+│   ├── LevelLoader.tsx
+│   ├── MapSystem.ts           # ★ BaseMapChunk interface, SeededRandom, chunk pool
+│   ├── ObjectSystem.ts
+│   ├── ParticlePool.ts
+│   ├── PLAN.md
+│   ├── PostProcessing.tsx
+│   ├── ReachManager.tsx       # Reach orchestration layer (wraps TrackManager)
+│   ├── ReachNormalizer.ts
+│   ├── ReachStreamer.ts
+│   ├── SplashSystem.tsx
 │   ├── VehicleSystem.ts       # Vehicle base classes
 │   ├── WaterSystem.ts         # Water force/flow utilities
-│   └── ObjectSystem.ts        # Object lifecycle
+│   ├── WatershedWasm.ts
+│   └── index.ts
+│
+├── hooks/
+│   ├── index.ts
+│   ├── useCameraShake.ts
+│   ├── useChunkLoader.ts
+│   ├── useLevel.ts
+│   ├── useLevelEditor.ts
+│   ├── useNightMode.ts
+│   ├── usePlayerControls.ts
+│   ├── useRiverAudio.ts
+│   ├── useSegmentAudio.ts
+│   ├── useShaderBrowser.ts
+│   ├── useShaderLoader.ts
+│   ├── useVortexForce.ts
+│   └── useWaterFlowField.ts
+│
+├── configs/
+│   ├── BiomePalettes.ts
+│   └── TrackBiomes.ts
+│
+├── constants/
+│   ├── audioConfig.ts
+│   ├── biomes.ts
+│   ├── game.ts
+│   ├── nightMode.ts
+│   ├── vehicleTuning.ts
+│   ├── waterFlow.ts
+│   └── weather.ts
+│
+├── maps/
+│   ├── meander_to_waterfall.json
+│   └── meander_to_waterfall.ts
+│
+├── materials/
+│   ├── CausticsMaterial.js
+│   ├── CanyonMaterial.js
+│   └── EnhancedWaterMaterial.js
 │
 └── utils/
+    ├── reachValidator.ts
     └── RiverShader.js         # extendRiverMaterial(): adds wetness, moss, caustics via onBeforeCompile
 ```
 
 ---
 
 ## Core Systems
+
+### Reach / Biome / LOD Systems
+
+Watershed now runs a live orchestration stack in `Experience.jsx`: `LODProvider` wraps `BiomeProvider`, which wraps scene systems including `ReachManager` (which wraps `TrackManager`, not replaces it) and `SplashSystem`. These systems, their contracts, and known constraints/pain points are documented in **[`SYSTEMS.md`](./SYSTEMS.md)** to keep this file readable and keep architecture details centralized.
 
 ### Track Treadmill (`TrackManager.jsx`)
 
