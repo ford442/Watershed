@@ -81,7 +81,7 @@ const DEFAULT_SETTINGS: GameSettings = {
 const INITIAL_STATE: GameState = {
   playerPosition: { x: 0, y: -4, z: -10 },
   currentSpeed: 0,
-  currentBiome: 'summer',
+  currentBiome: 'canyonSummer',
   isPaused: false,
   distanceTraveled: 0,
   currentSegmentIndex: 0,

@@ -43,13 +43,14 @@ Player velocity/contacts ──> SplashSystem ──> ParticlePool ──> VFX
 **Known Pain:** Uses heuristic biome mapping and runtime defaults; malformed manifests can still produce “valid enough” segments that are visually inconsistent.
 
 ### `src/systems/BiomeSystem.tsx`
-**Purpose:** Provide biome context and interpolate palette/light/fog state over time.  
+**Purpose:** Single authoritative source of biome state. Provides biome context and interpolates palette/light/fog state over time.  
 **Runs in:** React context provider + `useFrame` components.  
 **Exports:** `useBiome`, `BiomeProvider`, `BiomeTransition`, `BiomeDetector`, `useBiomeMaterials`.  
-**Consumes:** `BiomePalette`, `getBiomePalette`, `lerpBiomePalettes`, `applyBiomeToLighting` (`src/configs/BiomePalettes.ts`), `useThree`, `useFrame`.  
-**Produces:** Biome context (`currentBiome`, transitions, time-of-day controls), scene lighting/fog/background updates, derived material settings via `useBiomeMaterials`.  
-**Boundaries (Do NOT):** Do not assume biome state is fully centralized yet; changing context alone does not update all legacy biome-prop consumers.  
-**Known Pain:** `EnhancedSky` still uses a legacy `biome` prop (`EnhancedSky({ biome = 'summer' })`) instead of `useBiome()`, so biome authority is currently split between context and prop-drilled state.
+**Consumes:** `BiomePalette`, `getBiomePalette`, `normalizeBiomeId`, `lerpBiomePalettes`, `applyBiomeToLighting` (`src/configs/BiomePalettes.ts`), `useGameStore` (`src/systems/GameState.ts`), `useThree`, `useFrame`.  
+**Produces:** Biome context (`currentBiome`, transitions, time-of-day controls), scene lighting/fog/background updates, derived material settings via `useBiomeMaterials`. On every `setBiome` call the canonical `BiomePalette.id` is mirrored to `useGameStore.currentBiome` so legacy consumers stay in sync.  
+**Canonical vocabulary:** `canyonSummer` / `canyonAutumn` / `alpineSpring` / `cavern` / `delta` / `midnightMist` (keys of `BiomePalettes` in `src/configs/BiomePalettes.ts`).  
+**Vocabulary normalisation:** `getBiomePalette` and `normalizeBiomeId` in `BiomePalettes.ts` transparently map legacy (`summer`, `autumn`) and JSON-authored (`creek-summer`, `canyon-sunset` …) IDs to the canonical vocabulary; callers do not need to pre-translate.  
+**Boundaries (Do NOT):** Do not write `useGameStore.currentBiome` directly from any component other than `BiomeProvider`; that field is a read-only mirror of context state. Do not read `useGameStore.currentBiome` if you need palette-level detail — use `useBiome()` instead.
 
 ### `src/systems/LODManager.tsx`
 **Purpose:** Manage quality presets/adaptive performance policy and expose runtime LOD config to scene systems.  
