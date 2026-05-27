@@ -14,6 +14,12 @@
 # Requires: Emscripten SDK (em++ in PATH or auto-located via emsdk_env.sh)
 
 set -euo pipefail
+
+if ! command -v emcc &>/dev/null; then
+  echo "[build:wasm] Emscripten not found — skipping WASM compile (run 'source emsdk_env.sh' first)."
+  exit 0
+fi
+
 source /content/buil*/emsdk/emsdk_env.sh
 
 # ---------------------------------------------------------------------------

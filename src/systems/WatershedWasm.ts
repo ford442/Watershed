@@ -161,7 +161,10 @@ export async function getWasm(): Promise<WatershedNativeModule> {
     // Dynamic import keeps the glue JS out of the main bundle.
     // webpackIgnore comment is harmless with Vite but prevents bundler errors
     // if the project is ever processed by webpack.
-    const mod = await import(/* webpackIgnore: true */ '/watershed_native.js') as {
+    // Use eval-like dynamic import to prevent bundlers from trying to resolve
+    // the WASM glue JS at build time (the file is produced by Emscripten).
+    const dynamicImport = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
+    const mod = await dynamicImport('/watershed_native.js') as {
       default: WatershedNativeFactory;
     };
 
