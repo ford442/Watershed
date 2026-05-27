@@ -26,6 +26,8 @@ const JUMP_CONFIG = {
   GROUND_CHECK_DIST: 1.5,
   /** Forward impulse fraction added per unit of sin(slopeAngle) on downhill jumps */
   SLOPE_FORWARD_BIAS: 0.45,
+  /** Consecutive ungrounded frames required before switching to airborne (smooths bumpy surfaces) */
+  GROUNDED_HYSTERESIS_FRAMES: 3,
 };
 
 // Acceleration multipliers based on slope angle
@@ -35,6 +37,26 @@ const SLOPE_RANGES = {
   STEEP_DOWNSLOPE: { min: 45, max: 90, multiplier: 1.5 },
   UPSLOPE: { min: -45, max: 0, minMult: 0.6, maxMult: 0.8 },
   STEEP_UPSLOPE: { min: -90, max: -45, multiplier: 0.6 },
+};
+
+// Canyon bank riding configuration
+const BANK_CONFIG = {
+  /** Lateral bank angle (°) above which assist forces engage */
+  ASSIST_THRESHOLD: 20,
+  /** Strength of the per-frame "plant" impulse that keeps the player on the bank face */
+  ASSIST_STRENGTH: 22.0,
+  /** Full-assist bank angle (°) – force is linearly interpolated from threshold to here */
+  MAX_BANK_DEG: 70,
+  /** Speed scaling coefficient: plant force grows with velocity (prevents flying off at speed) */
+  SPEED_ASSIST_SCALE: 0.08,
+  /** Anti-roll torque factor applied against X/Z angular velocity on steep banks */
+  ANTI_ROLL_STRENGTH: 6.0,
+  /** Additive speed-multiplier bonus at full bank (gravity-assist on steep canyon walls) */
+  BANK_SPEED_BONUS: 0.3,
+  /** Bank angle (°) at which the jump kick-off XZ bias reaches its maximum (0.5× jump force) */
+  KICKOFF_MAX_BANK_DEG: 60,
+  /** Multiplier applied to SLIDE_FRICTION on steep banks to allow smooth wall-riding */
+  BANK_FRICTION_MULTIPLIER: 2,
 };
 
 // Jump states
@@ -124,6 +146,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     currentMultiplier: 1.0,
     lastGroundNormal: new THREE.Vector3(0, 1, 0),
     isGrounded: false,
+    /** Lateral bank angle in degrees; positive = leaning left, negative = leaning right */
+    bankAngle: 0,
   });
 
   // Jump state machine
@@ -140,6 +164,9 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // Goal 2: Variable jump height
     jumpReleased: true,
   });
+
+  // Grounded hysteresis: counts frames without ground contact before switching to ungrounded
+  const ungroundedFramesRef = useRef(0);
   
   // Goal 2: Dodge state machine
   const dodgeState = useRef({
@@ -224,8 +251,40 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (!bodyRef.current || !world) return 0;
     
     const pos = bodyRef.current.translation();
-    const rayLength = RAYCAST_DISTANCE;
     
+    // Primary path: use castRayAndGetNormal to obtain the true trimesh face normal.
+    // This gives accurate per-triangle surface orientation on the canyon walls and U-banks,
+    // which the height-gradient fallback cannot capture for near-vertical faces.
+    // Note: castRayAndGetNormal exists in rapier3d-compat 0.19+ but @react-three/rapier's
+    // TypeScript types may not declare it, hence the runtime presence check via `as any`.
+    const centerOrigin = { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z };
+    const centerNormalRay = new rapier.Ray(centerOrigin, { x: 0, y: -1, z: 0 });
+    const normalHit = (world as any).castRayAndGetNormal
+      ? (world as any).castRayAndGetNormal(centerNormalRay, RAYCAST_DISTANCE, true)
+      : null;
+    if (typeof (centerNormalRay as any).free === 'function') (centerNormalRay as any).free();
+
+    if (normalHit) {
+      const n = normalHit.normal ?? normalHit;
+      const nLen = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
+      if (nLen > 0.001) {
+        slopeState.current.lastGroundNormal.set(n.x / nLen, n.y / nLen, n.z / nLen);
+      }
+      if (typeof (normalHit as any).free === 'function') (normalHit as any).free();
+
+      const gn = slopeState.current.lastGroundNormal;
+      // Bank angle: atan2(gn.x, gn.y) gives the lateral tilt of the surface normal.
+      // Positive = normal leans toward +X (left wall tilts toward player from right side),
+      // negative = normal leans toward -X.
+      slopeState.current.bankAngle = (Math.atan2(gn.x, gn.y) * 180) / Math.PI;
+      // Pitch angle: forward/back slope; keep existing sign convention (negative = downhill forward)
+      const pitchAngleRad = Math.atan2(-gn.z, gn.y);
+      let angleDeg = (pitchAngleRad * 180) / Math.PI;
+      return Math.max(-60, Math.min(60, angleDeg));
+    }
+
+    // Fallback: five-point height-gradient sampling when castRayAndGetNormal unavailable
+    const rayLength = RAYCAST_DISTANCE;
     const castRay = (offsetX: number, offsetZ: number): number | null => {
       const origin = {
         x: pos.x + offsetX,
@@ -248,7 +307,6 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     
     if (hCenter === null) return 0;
 
-    // Sample lateral direction after null-guard (avoids wasted rays when center misses)
     const hLeft = castRay(-sampleDist, 0);
     const hRight = castRay(sampleDist, 0);
 
@@ -268,18 +326,15 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     
     slopeZ /= samples;
 
-    // Compute lateral (X-axis) slope for full surface normal
     let slopeX = 0;
     let samplesX = 0;
     if (hLeft !== null) { slopeX += (hLeft - hCenter) / sampleDist; samplesX++; }
     if (hRight !== null) { slopeX += (hCenter - hRight) / sampleDist; samplesX++; }
     if (samplesX > 0) slopeX /= samplesX;
 
-    // Compute and store the full 3D surface normal from height gradients.
-    // For a height field h(x,z), the outward surface normal is proportional to
-    // (-∂h/∂x, 1, -∂h/∂z): the gradient (∂h/∂x, ∂h/∂z) points in the direction
-    // of steepest ascent across the surface, so negating it and combining with
-    // an upward Y component gives the vector that points away from the surface.
+    // Store bank angle from height gradient
+    slopeState.current.bankAngle = (Math.atan(slopeX) * 180) / Math.PI;
+
     const nx = -slopeX;
     const ny = 1.0;
     const nz = -slopeZ;
@@ -347,7 +402,20 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     );
     const groundHit = world.castRay(groundRay, RAYCAST_DISTANCE, true);
     if (typeof (groundRay as any).free === 'function') (groundRay as any).free();
-    const isGrounded = !!groundHit;
+
+    // Hysteresis: require GROUNDED_HYSTERESIS_FRAMES consecutive misses before going airborne.
+    // This prevents spurious state changes when the player skims over small rocks/lips.
+    const rawGrounded = !!groundHit;
+    if (rawGrounded) {
+      ungroundedFramesRef.current = 0;
+    } else {
+      // Cap at threshold so the counter doesn't grow unbounded while airborne
+      ungroundedFramesRef.current = Math.min(
+        ungroundedFramesRef.current + 1,
+        JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES
+      );
+    }
+    const isGrounded = rawGrounded || ungroundedFramesRef.current < JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES;
     slopeState.current.isGrounded = isGrounded;
 
     // Goal 2: Platform detection via raycast handle registry
@@ -374,7 +442,16 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     
     if (isGrounded) {
       slopeState.current.currentAngle = slopeAngle;
-      slopeState.current.targetMultiplier = calculateSlopeMultiplier(slopeAngle);
+      // Base pitch multiplier
+      let baseMult = calculateSlopeMultiplier(slopeAngle);
+      // Bank bonus: steep canyon walls contribute an additional flow/speed boost
+      const absBankDeg = Math.abs(slopeState.current.bankAngle);
+      if (absBankDeg > BANK_CONFIG.ASSIST_THRESHOLD) {
+        const bankT = Math.min(1.0, (absBankDeg - BANK_CONFIG.ASSIST_THRESHOLD) /
+                                     (BANK_CONFIG.MAX_BANK_DEG - BANK_CONFIG.ASSIST_THRESHOLD));
+        baseMult = Math.min(1.5, baseMult + bankT * BANK_CONFIG.BANK_SPEED_BONUS);
+      }
+      slopeState.current.targetMultiplier = baseMult;
     } else {
       slopeState.current.targetMultiplier = THREE.MathUtils.lerp(
         slopeState.current.targetMultiplier,
@@ -388,6 +465,32 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       slopeState.current.targetMultiplier,
       Math.min(1.0, dt * SMOOTHING_FACTOR)
     );
+
+    // === BANK ASSIST (canyon U-wall riding) ===
+    // When the player is on a steep lateral bank, apply two forces:
+    //  1. A "plant" impulse directed into the bank face (opposite horizontal normal component)
+    //     that acts like centripetal force and grows with speed so the player stays planted.
+    //  2. Anti-roll torque impulses that damp capsule tumbling around the X and Z world axes.
+    const bankAngle = slopeState.current.bankAngle;
+    const absBankDeg = Math.abs(bankAngle);
+    if (isGrounded && absBankDeg > BANK_CONFIG.ASSIST_THRESHOLD) {
+      const bankT = Math.min(1.0, (absBankDeg - BANK_CONFIG.ASSIST_THRESHOLD) /
+                                   (BANK_CONFIG.MAX_BANK_DEG - BANK_CONFIG.ASSIST_THRESHOLD));
+      const gn = slopeState.current.lastGroundNormal;
+      const speed2D = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+      const speedFactor = 1.0 + speed2D * BANK_CONFIG.SPEED_ASSIST_SCALE;
+      const plantMag = BANK_CONFIG.ASSIST_STRENGTH * bankT * speedFactor * dt;
+      // Push player into bank face (negate horizontal normal → toward wall surface)
+      body.applyImpulse({ x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag }, true);
+      // Damp capsule angular velocity on X and Z to prevent tumbling on steep walls
+      const angVel = body.angvel();
+      const antiRoll = BANK_CONFIG.ANTI_ROLL_STRENGTH * bankT * dt;
+      body.applyTorqueImpulse({
+        x: -angVel.x * antiRoll,
+        y: 0,
+        z: -angVel.z * antiRoll,
+      }, true);
+    }
 
     // === GRAVITY MULTIPLIER (waterfall / steep rapids) ===
     // Apply waterfallGravityMultiplier from Zustand to the Rapier world without
@@ -439,10 +542,14 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
           // Add a forward component proportional to slope steepness
           const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
+          // On steep banks, blend a kick-off component along the surface normal's XZ plane
+          // so the player bounces away from the wall rather than straight up.
+          const gn = slopeState.current.lastGroundNormal;
+          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
           body.applyImpulse({
-            x: jumpForwardDir.x * forwardBias,
+            x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
-            z: jumpForwardDir.z * forwardBias
+            z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
           }, true);
           
           js.state = 'airborne';
@@ -480,10 +587,13 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
           const jumpForce = JUMP_CONFIG.FORCE * 0.9;
           const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
+          // Apply same bank kick-off bias as regular jump
+          const gn = slopeState.current.lastGroundNormal;
+          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
           body.applyImpulse({
-            x: jumpForwardDir.x * forwardBias,
+            x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
-            z: jumpForwardDir.z * forwardBias
+            z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
           }, true);
           js.hasDoubleJumped = false;
           js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
@@ -758,10 +868,12 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       }
     };
 
-    // Goal 2: Slide mechanic
-    const isSlideInput = controls.getControls().brake && slopeAngle > MOVEMENT.SLIDE_MIN_SLOPE;
+    // Goal 2: Slide mechanic — activate on steep forward pitch OR steep lateral bank
+    const isSlideInput = controls.getControls().brake &&
+      (slopeAngle > MOVEMENT.SLIDE_MIN_SLOPE ||
+       Math.abs(slopeState.current.bankAngle) > MOVEMENT.SLIDE_MIN_SLOPE);
     if (isSlideInput && isGrounded) {
-      // Reduce friction during slide for speed boost
+      // Reduce friction during slide for speed boost; on a bank the slide runs along the wall
       setBodyFriction(MOVEMENT.SLIDE_FRICTION);
       const slideBoost = MOVEMENT.SLIDE_SPEED_BOOST;
       body.applyImpulse({
@@ -771,8 +883,17 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       }, true);
     } else {
       // Restore friction based on current material
-      const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
-      const friction = vehicle.current.getConfig().friction;
+      // On steep banks, use lower friction to allow smooth wall-riding
+      const baseFriction = vehicle.current.getConfig().friction;
+      const absBankForFriction = Math.abs(slopeState.current.bankAngle);
+      const friction = absBankForFriction > BANK_CONFIG.ASSIST_THRESHOLD
+        ? THREE.MathUtils.lerp(
+            baseFriction,
+            MOVEMENT.SLIDE_FRICTION * BANK_CONFIG.BANK_FRICTION_MULTIPLIER,
+            Math.min(1.0, (absBankForFriction - BANK_CONFIG.ASSIST_THRESHOLD) /
+                          (BANK_CONFIG.MAX_BANK_DEG - BANK_CONFIG.ASSIST_THRESHOLD))
+          )
+        : baseFriction;
       setBodyFriction(friction);
     }
 
