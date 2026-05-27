@@ -6,7 +6,7 @@ import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
 import ForecastHUD from "./components/ForecastHUD";
 import GameHUD from "./components/GameHUD";
-import { WATER_LEVEL, PLAYER_SPAWN } from "./constants/game";
+import { WATER_LEVEL, PLAYER_SPAWN, PHYSICS } from "./constants/game";
 
 // Vehicle system
 import RunnerVehicle from "./vehicles/RunnerVehicle";
@@ -149,8 +149,13 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         setCurrentSegmentIndex(index);
         setRespawnSegmentIndex(index);
 
-        // Waterfall gravity shift for segment 14
-        if (index === 14) {
+        // Prefer per-segment gravityMultiplier from level data (JSON-loaded levels).
+        // Fall back to hardcoded values for procedurally-generated segments that
+        // don't carry an explicit physics.gravityMultiplier.
+        if (e.detail?.gravityMultiplier !== undefined) {
+          setWaterfallGravityMultiplier(e.detail.gravityMultiplier);
+        } else if (index === 14) {
+          // Waterfall gravity shift (procedural / default map)
           setWaterfallGravityMultiplier(1.45);
         } else if (index === 15) {
           // Reset gravity after waterfall
@@ -420,7 +425,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics debug={isDebug} gravity={[0, -9.8, 0]}>
+        <Physics debug={isDebug} gravity={[0, PHYSICS.GRAVITY, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick

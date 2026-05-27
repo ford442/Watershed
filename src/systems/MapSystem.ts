@@ -211,6 +211,8 @@ export interface SegmentProgressionConfig {
   forwardMomentum?: number;
   particleCount?: number;
   cameraShake?: number;
+  /** Per-segment gravity scale applied to the Rapier world (1.0 = normal). */
+  gravityMultiplier?: number;
 }
 
 export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
@@ -873,6 +875,7 @@ export class JSONMapManager implements MapManager {
       forwardMomentum: seg.forwardMomentum,
       particleCount: seg.effects?.particleCount,
       cameraShake: seg.effects?.cameraShake,
+      gravityMultiplier: seg.physics?.gravityMultiplier,
     };
   }
 }

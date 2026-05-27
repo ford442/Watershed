@@ -42,6 +42,8 @@ export interface SegmentData {
   forwardMomentum?: number;
   meanderStrength?: number;
   verticalBias?: number;
+  /** Per-segment gravity scale from level data (undefined = use world default). */
+  gravityMultiplier?: number;
 }
 
 export interface RenderedSlot {
@@ -209,6 +211,7 @@ function createSegmentData(
     forwardMomentum: config.forwardMomentum,
     meanderStrength: config.meanderStrength,
     verticalBias: config.verticalBias,
+    gravityMultiplier: config.gravityMultiplier,
   };
 }
 

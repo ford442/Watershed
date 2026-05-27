@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, GRAVITY } from '../constants/game';
+import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../constants/game';
 import { isFloatingPlatform } from '../systems/FloatingObjectRegistry';
 import { useGameStore } from '../systems/GameState';
 
@@ -397,7 +397,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       appliedGravMultRef.current = gravMult;
       // Mutate in-place to avoid an unnecessary object allocation
       world.gravity.x = 0;
-      world.gravity.y = -GRAVITY * gravMult;
+      world.gravity.y = PHYSICS.GRAVITY * gravMult;
       world.gravity.z = 0;
     }
 
