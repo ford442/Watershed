@@ -407,6 +407,10 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     jumpForwardDir.y = 0;
     if (jumpForwardDir.lengthSq() > 0.001) jumpForwardDir.normalize();
 
+    // Pre-compute slope trig used by both grounded and coyote-time jump paths
+    const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
+    const sinSlope = Math.sin(slopeRad);
+
     // === JUMP STATE MACHINE ===
     const js = jumpState.current;
     const { jump, leftward, rightward, dodge, sprint } = controls.getControls();
@@ -433,9 +437,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         } else if (jumpJustPressed) {
           // Initiate jump with forward slope bias so downhill jumps carry momentum
           const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
-          // Add a forward component proportional to slope steepness (sin of angle)
-          const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
-          const forwardBias = jumpForce * Math.sin(slopeRad) * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
+          // Add a forward component proportional to slope steepness
+          const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias,
             y: jumpForce,
@@ -476,8 +479,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         // Goal 2: Coyote time jump - if we just left ground, still allow jump
         if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
           const jumpForce = JUMP_CONFIG.FORCE * 0.9;
-          const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
-          const forwardBias = jumpForce * Math.sin(slopeRad) * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
+          const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias,
             y: jumpForce,
