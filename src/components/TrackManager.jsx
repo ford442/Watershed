@@ -192,8 +192,9 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                 const activeSegments = chunkManagerRef.current?.getActiveSegments?.() ?? [];
                 const entered = activeSegments.find((s) => s?.id === index);
                 const flowSpeed = entered?.flowSpeed ?? 1.0;
+                const gravityMultiplier = entered?.gravityMultiplier;
                 window.__watershedFlowSpeed = flowSpeed;
-                window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index, flowSpeed } }));
+                window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index, flowSpeed, gravityMultiplier } }));
             },
         };
 

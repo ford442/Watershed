@@ -176,6 +176,14 @@ export function useQualityPreset(): QualityPreset {
   return useGameStore((s) => s.settings.quality);
 }
 
+/**
+ * Subscribe to the current gravity multiplier.
+ * Useful for camera-shake intensity scaling, VFX, and particle behaviour.
+ */
+export function useGravityMultiplier(): number {
+  return useGameStore((s) => s.waterfallGravityMultiplier);
+}
+
 // =============================================================================
 // THROTTLED BATCH UPDATE (for useFrame callers)
 // =============================================================================
