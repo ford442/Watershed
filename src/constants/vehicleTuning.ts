@@ -9,10 +9,59 @@ export const VEHICLE_TUNING = {
   // ===========================================================================
   // 1. Momentum & General Feel
   // ===========================================================================
+
+  /**
+   * Per-frame impulse strength for player directional input.
+   * Governs how quickly the player accelerates; works in conjunction with
+   * linearDampingAir to determine effective top speed on flat terrain.
+   * Increase to feel more responsive; decrease to feel heavier/floatier.
+   */
+  baseSpeed: 32,
+
+  /**
+   * River-current "pull" applied each frame along -Z (downstream) direction.
+   * Higher values = stronger always-on downstream push.
+   * Works with slopeMultiplier so steep sections feel faster automatically.
+   */
+  flowResponsiveness: 14,
+
+  /**
+   * Primary jump impulse magnitude (kg·m/s applied as a single frame impulse).
+   * Tuned for PHYSICS.GRAVITY = -20; if gravity changes, scale proportionally.
+   * Approximately sqrt(2 * |gravity| * desiredJumpHeight) * mass.
+   */
+  jumpForce: 44.9,
+
+  /**
+   * Double-jump impulse magnitude.  Slightly lower than jumpForce so the
+   * second jump feels like a controlled boost rather than a full re-jump.
+   */
+  doubleJumpForce: 36.7,
+
+  /**
+   * Hard cap on horizontal speed (m/s) before the slope bonus is applied.
+   * The effective cap on steep terrain = maxHorizontalSpeed * slopeMultiplier.
+   * Prevents physics explosions on extreme slopes while still rewarding them.
+   */
+  maxHorizontalSpeed: 28.0,
+
+  /**
+   * How strongly slope multiplier raises the horizontal speed cap.
+   * Effective max = maxHorizontalSpeed * (1 + slopeBonusScale * (mult - 1)).
+   * At multiplier 1.5 (steepest slope) the cap rises by 50% of slopeBonusScale.
+   */
+  slopeBonusScale: 1.0,
+
   linearDampingAir: 0.35,
   linearDampingWater: 2.2,
   angularDampingAir: 0.9,
   angularDampingWater: 2.5,
+
+  /** Reduced linear damping while the player is in shallow water.
+   *  = linearDampingAir * 0.85 — slightly less drag in water to allow the
+   *  current push to build speed without fighting the damping too hard.
+   */
+  linearDampingShallowWater: 0.35 * 0.85,
 
   /** How quickly damping interpolates when entering/leaving water */
   dampingLerpSpeed: 4.0,

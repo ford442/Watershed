@@ -7,6 +7,7 @@ import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIO
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../constants/game';
+import { VEHICLE_TUNING } from '../constants/vehicleTuning';
 import { isFloatingPlatform } from '../systems/FloatingObjectRegistry';
 import { useGameStore } from '../systems/GameState';
 
@@ -18,8 +19,8 @@ const DEG_TO_RAD = Math.PI / 180;
 
 // Jump state machine configuration
 const JUMP_CONFIG = {
-  FORCE: 44.9,
-  DOUBLE_JUMP_FORCE: 36.7,
+  FORCE: VEHICLE_TUNING.jumpForce,
+  DOUBLE_JUMP_FORCE: VEHICLE_TUNING.doubleJumpForce,
   COMMIT_DURATION: 0.1,      // 0.1s strafe disable on jump
   RECOVERY_DURATION: 0.3,    // 0.3s recovery after landing
   HIGH_IMPACT_THRESHOLD: 5,  // units/s vertical velocity for camera shake
@@ -804,7 +805,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     rightDir.crossVectors(forwardDir, camera.up).normalize();
 
     // === APPLY FORCES ===
-    const flowResponsiveness = 14;
+    const flowResponsiveness = VEHICLE_TUNING.flowResponsiveness;
     const flowMultiplier = slopeState.current.currentMultiplier;
     
     // Recovery state: reduced turn speed
@@ -817,7 +818,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       true
     );
 
-    const baseSpeed = 32;
+    const baseSpeed = VEHICLE_TUNING.baseSpeed;
     const speed = baseSpeed * flowMultiplier * recoveryFactor;
 
     if (forward) {
@@ -868,6 +869,18 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       }
     };
 
+    // === SLOPE-AWARE HORIZONTAL SPEED CAP ===
+    // Reward momentum on steep downhill terrain while preventing physics explosions.
+    // Effective cap = maxHorizontalSpeed * (1 + slopeBonusScale * (flowMultiplier - 1))
+    // so steep sections scale the limit proportionally to slopeBonusScale.
+    const effectiveMaxH = VEHICLE_TUNING.maxHorizontalSpeed *
+      (1 + VEHICLE_TUNING.slopeBonusScale * (flowMultiplier - 1));
+    const horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+    if (horizSpeed > effectiveMaxH) {
+      const scale = effectiveMaxH / horizSpeed;
+      body.setLinvel({ x: vel.x * scale, y: vel.y, z: vel.z * scale }, true);
+    }
+
     // Goal 2: Slide mechanic — activate on steep forward pitch OR steep lateral bank
     const isSlideInput = controls.getControls().brake &&
       (slopeAngle > MOVEMENT.SLIDE_MIN_SLOPE ||
@@ -913,7 +926,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const inShallowWater = pos.y < WATER_LEVEL + 1.0;
     if (inShallowWater) {
       try {
-        body.setLinearDamping(0.35 * 0.85);
+        body.setLinearDamping(VEHICLE_TUNING.linearDampingShallowWater);
       } catch (_e) { /* damping setter unavailable */ }
       const w = window as unknown as { __watershedFlowSpeed?: number };
       const segFlow = (typeof window !== 'undefined' && Number.isFinite(w.__watershedFlowSpeed))
@@ -927,7 +940,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       }, true);
     } else {
       try {
-        body.setLinearDamping(0.35);
+        body.setLinearDamping(VEHICLE_TUNING.linearDampingAir);
       } catch (_e) { /* damping setter unavailable */ }
     }
 

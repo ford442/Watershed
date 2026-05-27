@@ -47,7 +47,17 @@ export const PHYSICS = {
 } as const;
 
 export const PLAYER = {
+    /**
+     * @deprecated  Movement speed is controlled by VEHICLE_TUNING.baseSpeed in
+     *              src/constants/vehicleTuning.ts.  This value is not read by
+     *              RunnerVehicle and is retained only for reference.
+     */
     SPEED: 5,
+    /**
+     * @deprecated  Jump force is controlled by VEHICLE_TUNING.jumpForce in
+     *              src/constants/vehicleTuning.ts.  This value is not read by
+     *              RunnerVehicle and is retained only for reference.
+     */
     JUMP_FORCE: 5,
     CAMERA_HEIGHT: 0.8,
 } as const;
