@@ -14,6 +14,7 @@ import { useGameStore } from '../systems/GameState';
 const RAYCAST_ORIGIN_OFFSET = 0.5;
 const RAYCAST_DISTANCE = 5.0;
 const SMOOTHING_FACTOR = 5.0;
+const DEG_TO_RAD = Math.PI / 180;
 
 // Jump state machine configuration
 const JUMP_CONFIG = {
@@ -244,12 +245,13 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const hCenter = castRay(0, 0);
     const hForward = castRay(0, -sampleDist);
     const hBack = castRay(0, sampleDist);
-    // Also sample lateral direction for full 3D surface normal (banked canyon walls)
-    const hLeft = castRay(-sampleDist, 0);
-    const hRight = castRay(sampleDist, 0);
     
     if (hCenter === null) return 0;
-    
+
+    // Sample lateral direction after null-guard (avoids wasted rays when center misses)
+    const hLeft = castRay(-sampleDist, 0);
+    const hRight = castRay(sampleDist, 0);
+
     let slopeZ = 0;
     let samples = 0;
     
@@ -393,7 +395,10 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const gravMult = useGameStore.getState().waterfallGravityMultiplier;
     if (gravMult !== appliedGravMultRef.current) {
       appliedGravMultRef.current = gravMult;
-      world.gravity = { x: 0, y: -GRAVITY * gravMult, z: 0 };
+      // Mutate in-place to avoid an unnecessary object allocation
+      world.gravity.x = 0;
+      world.gravity.y = -GRAVITY * gravMult;
+      world.gravity.z = 0;
     }
 
     // === CAMERA FORWARD DIRECTION (used for slope-biased jump and dodge) ===
@@ -429,7 +434,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           // Initiate jump with forward slope bias so downhill jumps carry momentum
           const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
           // Add a forward component proportional to slope steepness (sin of angle)
-          const slopeRad = Math.abs(slopeState.current.currentAngle) * Math.PI / 180;
+          const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
           const forwardBias = jumpForce * Math.sin(slopeRad) * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias,
@@ -471,7 +476,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         // Goal 2: Coyote time jump - if we just left ground, still allow jump
         if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
           const jumpForce = JUMP_CONFIG.FORCE * 0.9;
-          const slopeRad = Math.abs(slopeState.current.currentAngle) * Math.PI / 180;
+          const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
           const forwardBias = jumpForce * Math.sin(slopeRad) * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias,
