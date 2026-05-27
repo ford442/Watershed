@@ -38,9 +38,11 @@ function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
-  const [physicsDebug, setPhysicsDebug] = useState(() =>
-    window.location.search.includes('physicsDebug=1')
-  );
+  const [physicsDebug, setPhysicsDebug] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('physicsDebug');
+    return raw === '1' || raw === 'true';
+  });
 
   // Dynamic import for editor — keeps LevelEditor out of the production bundle.
   const [EditorComponent, setEditorComponent] =
@@ -61,6 +63,41 @@ function App() {
       }
     });
   }, [debug.runStage]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (physicsDebug) {
+      params.set('physicsDebug', '1');
+    } else {
+      params.delete('physicsDebug');
+    }
+    const next = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  }, [physicsDebug]);
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.repeat) return;
+      if (e.code === 'KeyF') {
+        setPhysicsDebug((prev) => !prev);
+      }
+      if (e.code === 'KeyP') {
+        const snapshot = (window as any).__watershedPhysicsDebug;
+        if (snapshot) {
+          console.info('[PhysicsDebug] Snapshot', snapshot);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Detect pointer lock loss as pause trigger
   useEffect(() => {

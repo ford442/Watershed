@@ -66,6 +66,41 @@ type JumpState = 'grounded' | 'airborne' | 'landing' | 'recovering';
 // Dodge states
 type DodgeState = 'ready' | 'dodging' | 'cooldown';
 
+interface DebugImpulse {
+  tag: string;
+  at: number;
+  impulse: { x: number; y: number; z: number };
+}
+
+interface DebugContact {
+  at: number;
+  point: { x: number; y: number; z: number };
+}
+
+interface PhysicsDebugSnapshot {
+  position: { x: number; y: number; z: number };
+  linearVelocity: { x: number; y: number; z: number };
+  angularVelocity: { x: number; y: number; z: number };
+  speed: number;
+  slopeAngle: number;
+  bankAngle: number;
+  isGrounded: boolean;
+  jumpState: JumpState;
+  friction: number;
+  waterfallGravityMultiplier: number;
+  effectiveG: number;
+  extraGravity: number;
+  currentSegmentIndex: number;
+  groundRay: {
+    origin: { x: number; y: number; z: number };
+    hitPoint: { x: number; y: number; z: number } | null;
+    distance: number | null;
+  };
+  groundNormal: { x: number; y: number; z: number };
+  recentImpulses: DebugImpulse[];
+  recentContacts: DebugContact[];
+}
+
 // Audio manager reference
 let audioManager: AudioManager | null = null;
 
@@ -217,6 +252,34 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
   // Goal 2: Collision groups for i-frames
   const defaultCollisionGroups = useRef(0);
+  const debugState = useRef({
+    recentImpulses: [] as DebugImpulse[],
+    recentContacts: [] as DebugContact[],
+    friction: 0.04,
+  });
+  const debugSnapshotRef = useRef<PhysicsDebugSnapshot>({
+    position: { x: 0, y: 0, z: 0 },
+    linearVelocity: { x: 0, y: 0, z: 0 },
+    angularVelocity: { x: 0, y: 0, z: 0 },
+    speed: 0,
+    slopeAngle: 0,
+    bankAngle: 0,
+    isGrounded: false,
+    jumpState: 'grounded',
+    friction: 0.04,
+    waterfallGravityMultiplier: 1,
+    effectiveG: PHYSICS.GRAVITY,
+    extraGravity: 0,
+    currentSegmentIndex: 0,
+    groundRay: {
+      origin: { x: 0, y: 0, z: 0 },
+      hitPoint: null,
+      distance: null,
+    },
+    groundNormal: { x: 0, y: 1, z: 0 },
+    recentImpulses: [],
+    recentContacts: [],
+  });
 
   useImperativeHandle(forwardedRef, () => bodyRef.current);
 
@@ -393,6 +456,19 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const pos = body.translation();
     const vel = body.linvel();
     const dt = Math.min(delta, 0.05); // Cap delta for stability
+    const now = performance.now();
+    const frameImpulses = new Map<string, { x: number; y: number; z: number }>();
+    const applyImpulseTracked = (tag: string, impulse: { x: number; y: number; z: number }) => {
+      body.applyImpulse(impulse, true);
+      const prev = frameImpulses.get(tag);
+      if (prev) {
+        prev.x += impulse.x;
+        prev.y += impulse.y;
+        prev.z += impulse.z;
+      } else {
+        frameImpulses.set(tag, { x: impulse.x, y: impulse.y, z: impulse.z });
+      }
+    };
 
     // === SLOPE DETECTION ===
     const slopeAngle = calculateSlopeAngle();
@@ -402,6 +478,18 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       { x: 0, y: -1, z: 0 }
     );
     const groundHit = world.castRay(groundRay, RAYCAST_DISTANCE, true);
+    const groundRayDistance = groundHit
+      ? (typeof (groundHit as any).timeOfImpact === 'function'
+          ? (groundHit as any).timeOfImpact()
+          : groundHit.timeOfImpact)
+      : null;
+    const groundRayHitPoint = groundRayDistance !== null
+      ? {
+          x: pos.x,
+          y: pos.y + RAYCAST_ORIGIN_OFFSET - groundRayDistance,
+          z: pos.z,
+        }
+      : null;
     if (typeof (groundRay as any).free === 'function') (groundRay as any).free();
 
     // Hysteresis: require GROUNDED_HYSTERESIS_FRAMES consecutive misses before going airborne.
@@ -482,7 +570,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       const speedFactor = 1.0 + speed2D * BANK_CONFIG.SPEED_ASSIST_SCALE;
       const plantMag = BANK_CONFIG.ASSIST_STRENGTH * bankT * speedFactor * dt;
       // Push player into bank face (negate horizontal normal → toward wall surface)
-      body.applyImpulse({ x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag }, true);
+      applyImpulseTracked('bankAssist', { x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag });
       // Damp capsule angular velocity on X and Z to prevent tumbling on steep walls
       const angVel = body.angvel();
       const antiRoll = BANK_CONFIG.ANTI_ROLL_STRENGTH * bankT * dt;
@@ -496,7 +584,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // === GRAVITY MULTIPLIER (waterfall / steep rapids) ===
     // Apply waterfallGravityMultiplier from Zustand to the Rapier world without
     // subscribing to the store (avoiding a React re-render every frame).
-    const gravMult = useGameStore.getState().waterfallGravityMultiplier;
+    const gravMultCurrent = useGameStore.getState().waterfallGravityMultiplier;
     if (gravMult !== appliedGravMultRef.current) {
       appliedGravMultRef.current = gravMult;
       // Mutate in-place to avoid an unnecessary object allocation
@@ -547,11 +635,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           // so the player bounces away from the wall rather than straight up.
           const gn = slopeState.current.lastGroundNormal;
           const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
-          body.applyImpulse({
+          applyImpulseTracked('jump', {
             x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
             z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
-          }, true);
+          });
           
           js.state = 'airborne';
           js.hasDoubleJumped = false;
@@ -591,11 +679,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           // Apply same bank kick-off bias as regular jump
           const gn = slopeState.current.lastGroundNormal;
           const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
-          body.applyImpulse({
+          applyImpulseTracked('coyoteJump', {
             x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
             z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
-          }, true);
+          });
           js.hasDoubleJumped = false;
           js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
           js.jumpReleased = false;
@@ -690,11 +778,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           ds.direction.normalize();
           
           // Apply dodge impulse
-          body.applyImpulse({
+          applyImpulseTracked('dodge', {
             x: ds.direction.x * MOVEMENT.DODGE_FORCE,
             y: 2.0, // Slight upward lift
             z: ds.direction.z * MOVEMENT.DODGE_FORCE
-          }, true);
+          });
           
           // I-frames: temporarily disable collision with obstacles (not ground)
           // We achieve this by applying a collision group mask if supported
@@ -765,6 +853,10 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           intensity: Math.min(1, impactForce / 20),
         };
         collisionState.current.activeParticles.push(newParticle);
+        debugState.current.recentContacts.push({
+          at: now,
+          point: { x: contactPoint.x, y: contactPoint.y, z: contactPoint.z },
+        });
       }
     }
 
@@ -813,27 +905,24 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       ? 0.5  // 50% speed during recovery
       : 1.0;
 
-    body.applyImpulse(
-      { x: 0, y: 0, z: -flowResponsiveness * flowMultiplier * dt },
-      true
-    );
+    applyImpulseTracked('flow', { x: 0, y: 0, z: -flowResponsiveness * flowMultiplier * dt });
 
     const baseSpeed = VEHICLE_TUNING.baseSpeed;
     const speed = baseSpeed * flowMultiplier * recoveryFactor;
 
     if (forward) {
-      body.applyImpulse({
+      applyImpulseTracked('forwardInput', {
         x: forwardDir.x * speed * dt,
         y: 0,
         z: forwardDir.z * speed * dt
-      }, true);
+      });
     }
     if (backward) {
-      body.applyImpulse({
+      applyImpulseTracked('backwardInput', {
         x: forwardDir.x * -speed * 0.6 * dt,
         y: 0,
         z: forwardDir.z * -speed * 0.6 * dt
-      }, true);
+      });
     }
 
     // Strafe with commit/recovery restrictions
@@ -842,23 +931,24 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
     if (canStrafe) {
       if (leftward) {
-        body.applyImpulse({
+        applyImpulseTracked('leftwardInput', {
           x: rightDir.x * -speed * 0.8 * dt,
           y: 0,
           z: rightDir.z * -speed * 0.8 * dt
-        }, true);
+        });
       }
       if (rightward) {
-        body.applyImpulse({
+        applyImpulseTracked('rightwardInput', {
           x: rightDir.x * speed * 0.8 * dt,
           y: 0,
           z: rightDir.z * speed * 0.8 * dt
-        }, true);
+        });
       }
     }
 
     // Goal 2: Helper to set friction on all colliders
     const setBodyFriction = (frictionValue: number) => {
+      debugState.current.friction = frictionValue;
       try {
         const n = body.numColliders();
         for (let i = 0; i < n; i++) {
@@ -889,11 +979,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       // Reduce friction during slide for speed boost; on a bank the slide runs along the wall
       setBodyFriction(MOVEMENT.SLIDE_FRICTION);
       const slideBoost = MOVEMENT.SLIDE_SPEED_BOOST;
-      body.applyImpulse({
+      applyImpulseTracked('slideBoost', {
         x: forwardDir.x * speed * (slideBoost - 1.0) * dt,
         y: 0,
         z: forwardDir.z * speed * (slideBoost - 1.0) * dt
-      }, true);
+      });
     } else {
       // Restore friction based on current material
       // On steep banks, use lower friction to allow smooth wall-riding
@@ -914,11 +1004,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (platformState.current.isOnPlatform && platformState.current.platformBody) {
       const pVel = platformState.current.platformVelocity;
       const transfer = MOVEMENT.PLAYER_MOMENTUM_TRANSFER ?? 0.3;
-      body.applyImpulse({
+      applyImpulseTracked('platformTransfer', {
         x: (pVel.x - vel.x) * transfer,
         y: (pVel.y - vel.y) * transfer * 0.5, // Less vertical transfer
         z: (pVel.z - vel.z) * transfer
-      }, true);
+      });
     }
 
     // === IN-WATER PHYSICS ===
@@ -933,11 +1023,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         ? (w.__watershedFlowSpeed as number)
         : 1.0;
       const currentPush = 0.3 * segFlow * dt;
-      body.applyImpulse({
+      applyImpulseTracked('waterCurrent', {
         x: forwardDir.x * currentPush,
         y: 0,
         z: forwardDir.z * currentPush,
-      }, true);
+      });
     } else {
       try {
         body.setLinearDamping(VEHICLE_TUNING.linearDampingAir);
@@ -949,6 +1039,53 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z)) {
       const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
       camera.position.lerp(targetPos, 0.12);
+    }
+
+    frameImpulses.forEach((impulse, tag) => {
+      const mag = Math.sqrt(impulse.x * impulse.x + impulse.y * impulse.y + impulse.z * impulse.z);
+      if (mag < 0.001) return;
+      debugState.current.recentImpulses.push({ tag, at: now, impulse });
+    });
+    debugState.current.recentImpulses = debugState.current.recentImpulses
+      .filter((entry) => now - entry.at <= 2000)
+      .slice(-16);
+    debugState.current.recentContacts = debugState.current.recentContacts
+      .filter((entry) => now - entry.at <= 2500)
+      .slice(-8);
+
+    const gravMult = useGameStore.getState().waterfallGravityMultiplier;
+    const snapshot = debugSnapshotRef.current;
+    snapshot.position = { x: pos.x, y: pos.y, z: pos.z };
+    snapshot.linearVelocity = { x: vel.x, y: vel.y, z: vel.z };
+    const angVel = body.angvel();
+    snapshot.angularVelocity = { x: angVel.x, y: angVel.y, z: angVel.z };
+    snapshot.speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+    snapshot.slopeAngle = slopeState.current.currentAngle;
+    snapshot.bankAngle = slopeState.current.bankAngle;
+    snapshot.isGrounded = isGrounded;
+    snapshot.jumpState = js.state;
+    snapshot.friction = debugState.current.friction;
+    snapshot.waterfallGravityMultiplier = gravMultCurrent;
+    snapshot.effectiveG = PHYSICS.GRAVITY * gravMultCurrent;
+    snapshot.extraGravity = PHYSICS.GRAVITY * (gravMultCurrent - 1);
+    snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
+    snapshot.groundRay = {
+      origin: { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z },
+      hitPoint: groundRayHitPoint,
+      distance: groundRayDistance,
+    };
+    snapshot.groundNormal = {
+      x: slopeState.current.lastGroundNormal.x,
+      y: slopeState.current.lastGroundNormal.y,
+      z: slopeState.current.lastGroundNormal.z,
+    };
+    snapshot.recentImpulses = debugState.current.recentImpulses;
+    snapshot.recentContacts = debugState.current.recentContacts;
+
+    const bodyUserData = (body.userData ??= {});
+    bodyUserData.physicsDebug = snapshot;
+    if (typeof window !== 'undefined') {
+      (window as any).__watershedPhysicsDebug = snapshot;
     }
   });
 
