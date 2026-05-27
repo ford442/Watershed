@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT } from '../constants/game';
+import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, GRAVITY } from '../constants/game';
 import { isFloatingPlatform } from '../systems/FloatingObjectRegistry';
 import { useGameStore } from '../systems/GameState';
 
@@ -14,6 +14,7 @@ import { useGameStore } from '../systems/GameState';
 const RAYCAST_ORIGIN_OFFSET = 0.5;
 const RAYCAST_DISTANCE = 5.0;
 const SMOOTHING_FACTOR = 5.0;
+const DEG_TO_RAD = Math.PI / 180;
 
 // Jump state machine configuration
 const JUMP_CONFIG = {
@@ -23,6 +24,8 @@ const JUMP_CONFIG = {
   RECOVERY_DURATION: 0.3,    // 0.3s recovery after landing
   HIGH_IMPACT_THRESHOLD: 5,  // units/s vertical velocity for camera shake
   GROUND_CHECK_DIST: 1.5,
+  /** Forward impulse fraction added per unit of sin(slopeAngle) on downhill jumps */
+  SLOPE_FORWARD_BIAS: 0.45,
 };
 
 // Acceleration multipliers based on slope angle
@@ -152,6 +155,12 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     platformBody: null as any,
   });
 
+  // Track last applied gravity multiplier to avoid redundant world.gravity mutations
+  const appliedGravMultRef = useRef(1.0);
+
+  // Reusable Vector3 for camera forward direction (avoids per-frame heap allocations)
+  const jumpForwardDirRef = useRef(new THREE.Vector3());
+
   // Footstep tracking
   const footstepState = useRef({
     distanceTraveled: 0,
@@ -238,7 +247,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const hBack = castRay(0, sampleDist);
     
     if (hCenter === null) return 0;
-    
+
+    // Sample lateral direction after null-guard (avoids wasted rays when center misses)
+    const hLeft = castRay(-sampleDist, 0);
+    const hRight = castRay(sampleDist, 0);
+
     let slopeZ = 0;
     let samples = 0;
     
@@ -254,7 +267,27 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (samples === 0) return 0;
     
     slopeZ /= samples;
-    
+
+    // Compute lateral (X-axis) slope for full surface normal
+    let slopeX = 0;
+    let samplesX = 0;
+    if (hLeft !== null) { slopeX += (hLeft - hCenter) / sampleDist; samplesX++; }
+    if (hRight !== null) { slopeX += (hCenter - hRight) / sampleDist; samplesX++; }
+    if (samplesX > 0) slopeX /= samplesX;
+
+    // Compute and store the full 3D surface normal from height gradients.
+    // For a height field h(x,z), the outward surface normal is proportional to
+    // (-∂h/∂x, 1, -∂h/∂z): the gradient (∂h/∂x, ∂h/∂z) points in the direction
+    // of steepest ascent across the surface, so negating it and combining with
+    // an upward Y component gives the vector that points away from the surface.
+    const nx = -slopeX;
+    const ny = 1.0;
+    const nz = -slopeZ;
+    const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (nLen > 0.001) {
+      slopeState.current.lastGroundNormal.set(nx / nLen, ny / nLen, nz / nLen);
+    }
+
     const angleRad = Math.atan(slopeZ);
     let angleDeg = (angleRad * 180) / Math.PI;
     angleDeg = Math.max(-60, Math.min(60, angleDeg));
@@ -356,6 +389,28 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       Math.min(1.0, dt * SMOOTHING_FACTOR)
     );
 
+    // === GRAVITY MULTIPLIER (waterfall / steep rapids) ===
+    // Apply waterfallGravityMultiplier from Zustand to the Rapier world without
+    // subscribing to the store (avoiding a React re-render every frame).
+    const gravMult = useGameStore.getState().waterfallGravityMultiplier;
+    if (gravMult !== appliedGravMultRef.current) {
+      appliedGravMultRef.current = gravMult;
+      // Mutate in-place to avoid an unnecessary object allocation
+      world.gravity.x = 0;
+      world.gravity.y = -GRAVITY * gravMult;
+      world.gravity.z = 0;
+    }
+
+    // === CAMERA FORWARD DIRECTION (used for slope-biased jump and dodge) ===
+    const jumpForwardDir = jumpForwardDirRef.current;
+    camera.getWorldDirection(jumpForwardDir);
+    jumpForwardDir.y = 0;
+    if (jumpForwardDir.lengthSq() > 0.001) jumpForwardDir.normalize();
+
+    // Pre-compute slope trig used by both grounded and coyote-time jump paths
+    const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
+    const sinSlope = Math.sin(slopeRad);
+
     // === JUMP STATE MACHINE ===
     const js = jumpState.current;
     const { jump, leftward, rightward, dodge, sprint } = controls.getControls();
@@ -380,9 +435,15 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           js.verticalVelocityOnLeave = vel.y;
           js.lastGroundY = pos.y;
         } else if (jumpJustPressed) {
-          // Initiate jump
+          // Initiate jump with forward slope bias so downhill jumps carry momentum
           const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
-          body.applyImpulse({ x: 0, y: jumpForce, z: 0 }, true);
+          // Add a forward component proportional to slope steepness
+          const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
+          body.applyImpulse({
+            x: jumpForwardDir.x * forwardBias,
+            y: jumpForce,
+            z: jumpForwardDir.z * forwardBias
+          }, true);
           
           js.state = 'airborne';
           js.hasDoubleJumped = false;
@@ -418,7 +479,12 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         // Goal 2: Coyote time jump - if we just left ground, still allow jump
         if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
           const jumpForce = JUMP_CONFIG.FORCE * 0.9;
-          body.applyImpulse({ x: 0, y: jumpForce, z: 0 }, true);
+          const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
+          body.applyImpulse({
+            x: jumpForwardDir.x * forwardBias,
+            y: jumpForce,
+            z: jumpForwardDir.z * forwardBias
+          }, true);
           js.hasDoubleJumped = false;
           js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
           js.jumpReleased = false;
