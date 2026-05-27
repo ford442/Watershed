@@ -4,8 +4,9 @@ import { Sky, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Atmospheric presets – tuned to complement the improved water surface
+// Keys use the canonical BiomePalette vocabulary (canyonSummer / canyonAutumn).
 const BIOME_SETTINGS = {
-    summer: {
+    canyonSummer: {
         sunPosition: [100, 28, 100],    // Slightly higher sun for crisper canyon light
         fogColor: '#b0cfea',             // Cooler blue-grey haze, closer to water palette
         fogDensity: 0.010,               // Slightly lighter fog for better depth readability
@@ -14,7 +15,7 @@ const BIOME_SETTINGS = {
         mieCoefficient: 0.004,
         mieDirectionalG: 0.82,
     },
-    autumn: {
+    canyonAutumn: {
         sunPosition: [100, 12, 50],      // Low golden-hour sun
         fogColor: '#dfc08e',             // Warm amber haze, less saturated to sit with water
         fogDensity: 0.016,               // Slight reduction for better canyon readability
@@ -25,10 +26,10 @@ const BIOME_SETTINGS = {
     }
 };
 
-export default function EnhancedSky({ biome = 'summer', timeOfDay = 0.25 }) {
-    const target = BIOME_SETTINGS[biome] || BIOME_SETTINGS.summer;
+export default function EnhancedSky({ biome = 'canyonSummer', timeOfDay = 0.25 }) {
+    const target = BIOME_SETTINGS[biome] || BIOME_SETTINGS.canyonSummer;
     const fogRef = useRef();
-    const showStars = biome === 'autumn' ? (timeOfDay < 0.18 || timeOfDay > 0.82) : timeOfDay < 0.12;
+    const showStars = biome === 'canyonAutumn' ? (timeOfDay < 0.18 || timeOfDay > 0.82) : timeOfDay < 0.12;
 
     // Store smoothly interpolated state
     const current = useRef({
@@ -63,8 +64,8 @@ export default function EnhancedSky({ biome = 'summer', timeOfDay = 0.25 }) {
                     ref={fogRef}
                     radius={100}
                     depth={40}
-                    count={biome === 'summer' ? 600 : 1200}
-                    factor={biome === 'summer' ? 3.5 : 4.5}
+                    count={biome === 'canyonSummer' ? 600 : 1200}
+                    factor={biome === 'canyonSummer' ? 3.5 : 4.5}
                     saturation={0}
                     fade
                     speed={0.8}

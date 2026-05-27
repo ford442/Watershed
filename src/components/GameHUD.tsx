@@ -13,11 +13,14 @@ interface GameHUDProps {
   initialBestDistance?: number;
 }
 
-/** Biome display names and accent colors */
+/** Biome display names and accent colors — keyed by canonical BiomePalette id */
 const BIOME_STYLES: Record<string, { name: string; color: string; bg: string }> = {
-  summer: { name: 'Summer Creek', color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
-  autumn: { name: 'Autumn Canyon', color: '#fb923c', bg: 'rgba(251,146,60,0.15)' },
-  slotCanyon: { name: 'Slot Canyon', color: '#f87171', bg: 'rgba(248,113,113,0.15)' },
+  canyonSummer:  { name: 'Canyon Summer',  color: '#4ade80', bg: 'rgba(74,222,128,0.15)' },
+  canyonAutumn:  { name: 'Canyon Autumn',  color: '#fb923c', bg: 'rgba(251,146,60,0.15)' },
+  alpineSpring:  { name: 'Alpine Spring',  color: '#93c5fd', bg: 'rgba(147,197,253,0.15)' },
+  cavern:        { name: 'Mystic Cavern',  color: '#a78bfa', bg: 'rgba(167,139,250,0.15)' },
+  delta:         { name: 'River Delta',    color: '#34d399', bg: 'rgba(52,211,153,0.15)' },
+  midnightMist:  { name: 'Midnight Mist',  color: '#818cf8', bg: 'rgba(129,140,248,0.15)' },
 };
 
 /**
@@ -40,7 +43,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [showShaderHint, setShowShaderHint] = useState(true);
 
   const currentBiome = usePlayerBiome();
-  const biomeStyle = BIOME_STYLES[currentBiome] ?? BIOME_STYLES.summer;
+  const biomeStyle = BIOME_STYLES[currentBiome] ?? BIOME_STYLES.canyonSummer;
 
   // Read speed and distance from the Zustand store (updated by InnerExperience.useFrame
   // inside Canvas, avoiding R3F hook usage inside the <Html> portal).

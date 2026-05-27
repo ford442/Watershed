@@ -363,10 +363,39 @@ export const BiomePalettes: Record<string, BiomePalette> = {
 };
 
 /**
- * Get biome palette by ID
+ * Maps legacy/track vocabulary and JSON-authored biome names to canonical
+ * BiomePalette IDs. Any ID already in the canonical vocabulary passes through
+ * unchanged (the `?? id` fallback in normalizeBiomeId).
+ */
+export const BIOME_ID_MAP: Record<string, string> = {
+  // Track geometry vocabulary (src/configs/TrackBiomes.ts TrackBiomeId)
+  summer: 'canyonSummer',
+  autumn: 'canyonAutumn',
+  slotCanyon: 'canyonSummer',
+  // JSON authored vocabulary (src/formats/LevelFormat.md BiomeType)
+  'creek-summer': 'canyonSummer',
+  'creek-autumn': 'canyonAutumn',
+  'alpine-spring': 'alpineSpring',
+  'canyon-sunset': 'canyonAutumn',
+  'midnight-mist': 'midnightMist',
+};
+
+/**
+ * Normalise any biome identifier to a canonical BiomePalette key.
+ * IDs already in the canonical vocabulary (e.g. 'canyonSummer') are returned
+ * as-is so callers do not need to know which vocabulary is in use.
+ */
+export function normalizeBiomeId(id: string): string {
+  return BIOME_ID_MAP[id] ?? id;
+}
+
+/**
+ * Get biome palette by ID.
+ * Accepts both the canonical BiomePalette vocabulary and legacy/track IDs —
+ * normalizeBiomeId converts them to the canonical key before lookup.
  */
 export function getBiomePalette(biomeId: string): BiomePalette {
-  return BiomePalettes[biomeId] || BiomePalettes.canyonSummer;
+  return BiomePalettes[normalizeBiomeId(biomeId)] || BiomePalettes.canyonSummer;
 }
 
 /**

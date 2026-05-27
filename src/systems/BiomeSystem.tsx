@@ -12,6 +12,7 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../configs/BiomePalettes';
+import { useGameStore } from './GameState';
 
 // Context for biome state
 type BiomeContextType = {
@@ -57,8 +58,18 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   
   const transitionStartTime = useRef(0);
   const previousBiome = useRef(currentBiome);
+
+  // Sync initial biome id to Zustand store so all consumers start in agreement.
+  useEffect(() => {
+    useGameStore.setState({ currentBiome: getBiomePalette(initialBiome).id });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
-  // Start biome transition
+  // Start biome transition.
+  // BiomeProvider is the single source of truth for biome state; after updating
+  // the internal transition target we immediately mirror the canonical palette id
+  // to the Zustand store so legacy consumers (EnhancedSky, GameHUD, BIOME_LIGHTING)
+  // stay in sync without any extra wiring.
   const setBiome = useCallback((biomeId: string, durationOverride?: number) => {
     const newTarget = getBiomePalette(biomeId);
     if (newTarget.id === targetBiome.id) return;
@@ -68,6 +79,9 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     setIsTransitioning(true);
     setTransitionProgress(0);
     transitionStartTime.current = performance.now();
+
+    // Mirror canonical biome id to Zustand store (single point of write).
+    useGameStore.setState({ currentBiome: newTarget.id });
     
     // Store duration override on the target for the transition effect to read
     if (durationOverride !== undefined) {
