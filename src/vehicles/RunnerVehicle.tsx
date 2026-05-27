@@ -53,6 +53,10 @@ const BANK_CONFIG = {
   ANTI_ROLL_STRENGTH: 6.0,
   /** Additive speed-multiplier bonus at full bank (gravity-assist on steep canyon walls) */
   BANK_SPEED_BONUS: 0.3,
+  /** Bank angle (°) at which the jump kick-off XZ bias reaches its maximum (0.5× jump force) */
+  KICKOFF_MAX_BANK_DEG: 60,
+  /** Multiplier applied to SLIDE_FRICTION on steep banks to allow smooth wall-riding */
+  BANK_FRICTION_MULTIPLIER: 2,
 };
 
 // Jump states
@@ -251,6 +255,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // Primary path: use castRayAndGetNormal to obtain the true trimesh face normal.
     // This gives accurate per-triangle surface orientation on the canyon walls and U-banks,
     // which the height-gradient fallback cannot capture for near-vertical faces.
+    // Note: castRayAndGetNormal exists in rapier3d-compat 0.19+ but @react-three/rapier's
+    // TypeScript types may not declare it, hence the runtime presence check via `as any`.
     const centerOrigin = { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z };
     const centerNormalRay = new rapier.Ray(centerOrigin, { x: 0, y: -1, z: 0 });
     const normalHit = (world as any).castRayAndGetNormal
@@ -267,7 +273,9 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       if (typeof (normalHit as any).free === 'function') (normalHit as any).free();
 
       const gn = slopeState.current.lastGroundNormal;
-      // Bank angle: lateral tilt (positive = leaning left, i.e. right bank riding)
+      // Bank angle: atan2(gn.x, gn.y) gives the lateral tilt of the surface normal.
+      // Positive = normal leans toward +X (left wall tilts toward player from right side),
+      // negative = normal leans toward -X.
       slopeState.current.bankAngle = (Math.atan2(gn.x, gn.y) * 180) / Math.PI;
       // Pitch angle: forward/back slope; keep existing sign convention (negative = downhill forward)
       const pitchAngleRad = Math.atan2(-gn.z, gn.y);
@@ -401,9 +409,10 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (rawGrounded) {
       ungroundedFramesRef.current = 0;
     } else {
+      // Cap at threshold so the counter doesn't grow unbounded while airborne
       ungroundedFramesRef.current = Math.min(
         ungroundedFramesRef.current + 1,
-        JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES + 1
+        JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES
       );
     }
     const isGrounded = rawGrounded || ungroundedFramesRef.current < JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES;
@@ -536,7 +545,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           // On steep banks, blend a kick-off component along the surface normal's XZ plane
           // so the player bounces away from the wall rather than straight up.
           const gn = slopeState.current.lastGroundNormal;
-          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / 60.0);
+          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
@@ -580,7 +589,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           // Apply same bank kick-off bias as regular jump
           const gn = slopeState.current.lastGroundNormal;
-          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / 60.0);
+          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
             y: jumpForce,
@@ -880,7 +889,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       const friction = absBankForFriction > BANK_CONFIG.ASSIST_THRESHOLD
         ? THREE.MathUtils.lerp(
             baseFriction,
-            MOVEMENT.SLIDE_FRICTION * 2,
+            MOVEMENT.SLIDE_FRICTION * BANK_CONFIG.BANK_FRICTION_MULTIPLIER,
             Math.min(1.0, (absBankForFriction - BANK_CONFIG.ASSIST_THRESHOLD) /
                           (BANK_CONFIG.MAX_BANK_DEG - BANK_CONFIG.ASSIST_THRESHOLD))
           )
