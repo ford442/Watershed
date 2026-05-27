@@ -28,6 +28,7 @@ import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio, getAudioManager } from "./systems/AudioSystem";
 import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
+import PhysicsDebugOverlay from "./components/PhysicsDebugOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 
@@ -90,6 +91,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
   // Check for debug flag in URL for physics visualization
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const physicsDebugEnabled = debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
 
   // Goal 1: Zustand game state selectors
   const biome = useGameStore((s) => s.currentBiome);
@@ -425,7 +427,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics debug={isDebug} gravity={[0, PHYSICS.GRAVITY, 0]}>
+        <Physics debug={isDebug || physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick
@@ -437,6 +439,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
             <RunnerVehicle ref={vehicleRef} />
           ) : (
             <RaftVehicle ref={vehicleRef} />
+          )}
+
+          {physicsDebugEnabled && (
+            <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
           )}
 
           {/* Splash system for water interactions */}
