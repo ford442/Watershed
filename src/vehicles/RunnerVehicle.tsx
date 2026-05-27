@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT } from '../constants/game';
+import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, GRAVITY } from '../constants/game';
 import { isFloatingPlatform } from '../systems/FloatingObjectRegistry';
 import { useGameStore } from '../systems/GameState';
 
@@ -23,6 +23,8 @@ const JUMP_CONFIG = {
   RECOVERY_DURATION: 0.3,    // 0.3s recovery after landing
   HIGH_IMPACT_THRESHOLD: 5,  // units/s vertical velocity for camera shake
   GROUND_CHECK_DIST: 1.5,
+  /** Forward impulse fraction added per unit of sin(slopeAngle) on downhill jumps */
+  SLOPE_FORWARD_BIAS: 0.45,
 };
 
 // Acceleration multipliers based on slope angle
@@ -155,6 +157,9 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
   // Track last applied gravity multiplier to avoid redundant world.gravity mutations
   const appliedGravMultRef = useRef(1.0);
 
+  // Reusable Vector3 for camera forward direction (avoids per-frame heap allocations)
+  const jumpForwardDirRef = useRef(new THREE.Vector3());
+
   // Footstep tracking
   const footstepState = useRef({
     distanceTraveled: 0,
@@ -268,8 +273,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (hRight !== null) { slopeX += (hCenter - hRight) / sampleDist; samplesX++; }
     if (samplesX > 0) slopeX /= samplesX;
 
-    // Compute and store the full 3D surface normal from height gradients:
-    // For height field h(x,z), the outward normal ∝ (-∂h/∂x, 1, -∂h/∂z)
+    // Compute and store the full 3D surface normal from height gradients.
+    // For a height field h(x,z), the outward surface normal is proportional to
+    // (-∂h/∂x, 1, -∂h/∂z): the gradient (∂h/∂x, ∂h/∂z) points in the direction
+    // of steepest ascent across the surface, so negating it and combining with
+    // an upward Y component gives the vector that points away from the surface.
     const nx = -slopeX;
     const ny = 1.0;
     const nz = -slopeZ;
@@ -385,11 +393,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const gravMult = useGameStore.getState().waterfallGravityMultiplier;
     if (gravMult !== appliedGravMultRef.current) {
       appliedGravMultRef.current = gravMult;
-      world.gravity = { x: 0, y: -9.8 * gravMult, z: 0 };
+      world.gravity = { x: 0, y: -GRAVITY * gravMult, z: 0 };
     }
 
     // === CAMERA FORWARD DIRECTION (used for slope-biased jump and dodge) ===
-    const jumpForwardDir = new THREE.Vector3();
+    const jumpForwardDir = jumpForwardDirRef.current;
     camera.getWorldDirection(jumpForwardDir);
     jumpForwardDir.y = 0;
     if (jumpForwardDir.lengthSq() > 0.001) jumpForwardDir.normalize();
@@ -422,7 +430,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
           // Add a forward component proportional to slope steepness (sin of angle)
           const slopeRad = Math.abs(slopeState.current.currentAngle) * Math.PI / 180;
-          const forwardBias = jumpForce * Math.sin(slopeRad) * 0.45;
+          const forwardBias = jumpForce * Math.sin(slopeRad) * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias,
             y: jumpForce,
@@ -464,7 +472,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
           const jumpForce = JUMP_CONFIG.FORCE * 0.9;
           const slopeRad = Math.abs(slopeState.current.currentAngle) * Math.PI / 180;
-          const forwardBias = jumpForce * Math.sin(slopeRad) * 0.45;
+          const forwardBias = jumpForce * Math.sin(slopeRad) * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
           body.applyImpulse({
             x: jumpForwardDir.x * forwardBias,
             y: jumpForce,
