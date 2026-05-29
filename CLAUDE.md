@@ -47,6 +47,10 @@ src/
 │   ├── WaterReflection.jsx    # Water reflection render pass (wired in Experience.jsx)
 │   ├── WaterInteraction.jsx   # Water-contact interaction effects (wired in Experience.jsx)
 │   ├── Player.jsx             # First-person capsule controller (Rapier RigidBody)
+│   ├── ReactiveAudio.tsx      # Biome/speed-reactive audio, rendered by ReachManager
+│   ├── WeatherSystem.tsx      # Weather particle/fog system, rendered by ReachManager
+│   ├── WaterReflection.jsx    # Water reflection plane, wired in Experience.jsx
+│   ├── WaterInteraction.jsx   # Player–water interaction events, wired in Experience.jsx
 │   ├── Raft.jsx               # (legacy) raft mesh
 │   ├── UI.tsx                 # Pause/start overlay, pointer lock, controls display
 │   ├── Loader.tsx             # Asset loading screen
@@ -141,6 +145,41 @@ src/
 │   ├── CanyonMaterial.js
 │   └── EnhancedWaterMaterial.js
 │
+├── hooks/                     # 13 custom React hooks
+│   ├── useCameraShake.ts
+│   ├── useChunkLoader.ts
+│   ├── useLevel.ts
+│   ├── useLevelEditor.ts
+│   ├── useNightMode.ts
+│   ├── usePlayerControls.ts
+│   ├── useRiverAudio.ts
+│   ├── useSegmentAudio.ts
+│   ├── useShaderBrowser.ts
+│   ├── useShaderLoader.ts
+│   ├── useVortexForce.ts
+│   ├── useWaterFlowField.ts
+│   └── index.ts
+│
+├── configs/
+│   ├── BiomePalettes.ts       # Biome color/fog/lighting palettes + lerp helpers
+│   └── TrackBiomes.ts         # Wall profiles (canyon width, rock density, vegetation) per biome
+│
+├── constants/
+│   ├── audioConfig.ts
+│   ├── biomes.ts
+│   ├── game.ts                # REACH_API_BASE and other game-wide constants
+│   ├── nightMode.ts
+│   ├── vehicleTuning.ts
+│   ├── waterFlow.ts
+│   └── weather.ts
+│
+├── maps/
+│   ├── meander_to_waterfall.json   # Authored segment sequence (JSON)
+│   └── meander_to_waterfall.ts     # TypeScript wrapper for the map data
+│
+├── materials/
+│   └── EnhancedWaterMaterial.js    # Extended water ShaderMaterial
+│
 └── utils/
     ├── reachValidator.ts
     └── RiverShader.js         # extendRiverMaterial(): adds wetness, moss, caustics via onBeforeCompile
@@ -152,6 +191,19 @@ src/
 
 ### Reach / Biome / LOD Systems
 
+Since April 2026, an orchestration layer wraps the track treadmill with streaming reaches,
+biome-context transitions, and adaptive LOD. The live wiring runs:
+`LODProvider` → `BiomeProvider` → `ReachManager` (wraps `TrackManager`) + `SplashSystem`.
+Shared state flows through a Zustand store (`GameState.ts`).
+
+**All details, contract cards, dependency graph, and architectural constraints are in
+[`SYSTEMS.md`](./SYSTEMS.md).**
+
+> ⚠️ **Known split:** `BiomeProvider` context is live, but `EnhancedSky.jsx` still reads
+> a legacy `biome` string prop — it does **not** call `useBiome()`. Changing one source
+> does not update the other. See `SYSTEMS.md → BiomeSystem → Known Pain`.
+
+---
 Watershed now runs a live orchestration stack in `Experience.jsx`: `LODProvider` wraps `BiomeProvider`, which wraps scene systems including `ReachManager` (which wraps `TrackManager`, not replaces it) and `SplashSystem`. These systems, their contracts, and known constraints/pain points are documented in **[`SYSTEMS.md`](./SYSTEMS.md)** to keep this file readable and keep architecture details centralized.
 
 ### Track Treadmill (`TrackManager.jsx`)
