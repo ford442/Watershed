@@ -182,12 +182,12 @@ export function DebugPanel({ debug, physicsDebug = false, onTogglePhysicsDebug }
           onChange={(e) => onTogglePhysicsDebug?.(e.target.checked)}
         />
         <span style={{ color: physicsDebug ? '#6dde7a' : '#d0d0d0' }}>
-          Show collider wireframes
+          Show physics HUD + collider wireframes (F)
         </span>
       </label>
       {physicsDebug && (
         <div style={{ color: '#f5c542', fontSize: 10, marginBottom: 4 }}>
-          ↳ Look for dense trimesh canyon walls → replace with low-poly proxy mesh
+          ↳ Press P to log current physics snapshot in the console
         </div>
       )}
 
@@ -293,4 +293,3 @@ export function DebugPanel({ debug, physicsDebug = false, onTogglePhysicsDebug }
 }
 
 export default DebugPanel;
-

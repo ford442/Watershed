@@ -18,7 +18,7 @@ import ReachManager from "./systems/ReachManager";
 import TrackManager from "./components/TrackManager";
 
 // NEW: Visual enhancement systems
-import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
+import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials, useBiome } from "./systems/BiomeSystem";
 import { LODProvider, PerformanceMonitor, useLOD } from "./systems/LODManager";
 import { SplashSystem } from "./systems/SplashSystem";
 import WaterReflection from "./components/WaterReflection";
@@ -28,6 +28,7 @@ import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio, getAudioManager } from "./systems/AudioSystem";
 import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
+import PhysicsDebugOverlay from "./components/PhysicsDebugOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 
@@ -40,9 +41,9 @@ const DAM_RELEASE_SCHEDULE = [
   { hour: 14, release: 0.12 },
 ];
 
-// Base lighting configuration
+// Base lighting configuration (keyed by canonical BiomePalette id)
 const BIOME_LIGHTING = {
-  summer: {
+  canyonSummer: {
     ambientIntensity: 0.40,
     hemiSky: '#9ad0f0',
     hemiGround: '#3a3828',
@@ -53,7 +54,7 @@ const BIOME_LIGHTING = {
     fillColor: '#a0c4e8',
     fillIntensity: 0.22,
   },
-  autumn: {
+  canyonAutumn: {
     ambientIntensity: 0.32,
     hemiSky: '#e8c070',
     hemiGround: '#382818',
@@ -90,10 +91,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
   // Check for debug flag in URL for physics visualization
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const physicsDebugEnabled = debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
 
   // Goal 1: Zustand game state selectors
   const biome = useGameStore((s) => s.currentBiome);
-  const setBiome = useGameStore((s) => s.setCurrentBiome);
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   const isWipeout = useGameStore((s) => s.isWipeout);
   const setIsWipeout = useGameStore((s) => s.setIsWipeout);
@@ -105,6 +106,11 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
   const spawnPoints = useGameStore((s) => s.spawnPoints);
   const respawnSegmentIndex = useGameStore((s) => s.respawnSegmentIndex);
+
+  // BiomeProvider is the single authoritative source of biome state.
+  // Calling setBiomeContext normalizes legacy IDs, triggers smooth palette
+  // interpolation, and mirrors the canonical id to the Zustand store.
+  const { setBiome: setBiomeContext } = useBiome();
 
   // Initialize Three.js audio listener on camera
   useEffect(() => {
@@ -318,26 +324,20 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       setIsLoadingLevel(false);
 
       if (levelState?.biome?.baseType) {
-        const biomeMap = {
-          'creek-summer': 'summer',
-          'creek-autumn': 'autumn',
-          'alpine-spring': 'summer',
-          'canyon-sunset': 'autumn',
-          'midnight-mist': 'autumn',
-        };
-        const newBiome = biomeMap[levelState.biome.baseType] || 'summer';
-        setBiome(newBiome);
+        // normalizeBiomeId (inside getBiomePalette via setBiomeContext) converts
+        // authored names like 'creek-summer' to canonical 'canyonSummer'.
+        setBiomeContext(levelState.biome.baseType);
       }
     });
-  }, [debug.runStage, setBiome]);
+  }, [debug.runStage, setBiomeContext]);
 
   // Goal 3: Biome transition with segment-aware duration
   const handleBiomeChange = useCallback((newBiome, segmentIndex) => {
     // Summer → autumn at segment 15 uses 2000ms lerp (LEVEL_DESIGN.md)
     const isTransitionSegment = segmentIndex === 15;
     const duration = isTransitionSegment ? 2.0 : undefined;
-    setBiome(newBiome, duration);
-  }, [setBiome]);
+    setBiomeContext(newBiome, duration);
+  }, [setBiomeContext]);
 
   const handleLevelError = useCallback((error) => {
     debug.setStageFailure('dataProcessing', error);
@@ -368,7 +368,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   }, [debug.setStageFailure, setIsWipeout, spawnPoints, respawnSegmentIndex]);
 
   // Use lighting from biome system or fallback
-  const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
+  const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.canyonSummer;
 
   useEffect(() => {
     const trackedStages = ['physics', 'visualization', 'worldSystems', 'postProcessing', 'uiOverlay'];
@@ -425,7 +425,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics debug={isDebug} gravity={[0, PHYSICS.GRAVITY, 0]}>
+        <Physics debug={isDebug || physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick
@@ -437,6 +437,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
             <RunnerVehicle ref={vehicleRef} />
           ) : (
             <RaftVehicle ref={vehicleRef} />
+          )}
+
+          {physicsDebugEnabled && (
+            <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
           )}
 
           {/* Splash system for water interactions */}

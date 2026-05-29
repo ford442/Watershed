@@ -82,4 +82,37 @@ describe('debug stage system', () => {
     expect(screen.getByText('App Bootstrap')).toBeInTheDocument();
     expect(screen.getByText('Physics')).toBeInTheDocument();
   });
+
+  it('toggles physics debug checkbox through callback', () => {
+    const mockController: DebugStageController = {
+      debugEnabled: true,
+      stageConfig: DEBUG_STAGES,
+      enabledStages: Object.keys(DEBUG_STAGES).reduce((acc, key) => {
+        acc[key as keyof typeof DEBUG_STAGES] = true;
+        return acc;
+      }, {} as DebugStageController['enabledStages']),
+      stageRuntime: Object.keys(DEBUG_STAGES).reduce((acc, key) => {
+        acc[key as keyof typeof DEBUG_STAGES] = { status: 'idle' };
+        return acc;
+      }, {} as DebugStageController['stageRuntime']),
+      isStageEnabled: jest.fn(() => true),
+      setStageEnabled: jest.fn(),
+      runStage: jest.fn(),
+      setStageLoading: jest.fn(),
+      setStageSuccess: jest.fn(),
+      setStageFailure: jest.fn(),
+    };
+    const onTogglePhysicsDebug = jest.fn();
+
+    render(
+      <DebugPanel
+        debug={mockController}
+        physicsDebug={false}
+        onTogglePhysicsDebug={onTogglePhysicsDebug}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /show physics hud/i }));
+    expect(onTogglePhysicsDebug).toHaveBeenCalledWith(true);
+  });
 });
