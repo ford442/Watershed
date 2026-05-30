@@ -699,7 +699,7 @@ export default function TrackSegment({
                 // 11. MIST
                 // Patches of mist floating above the water
                 if (type !== 'waterfall') { // Waterfalls have their own particles
-                    const mistChance = isSlotCanyon ? 0.35 : 0.6; // More mist in narrow canyons
+                    const mistChance = isSlotCanyon ? 0.35 : 0.6; // Lower threshold = more frequent mist spawns
                     if (seededRandom(seed++) > mistChance) {
                         const clusterSize = isSlotCanyon
                             ? 2 + Math.floor(seededRandom(seed++) * 3) // Denser mist in slot canyon
