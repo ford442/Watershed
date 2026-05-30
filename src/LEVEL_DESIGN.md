@@ -34,7 +34,13 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 | **14** | The Waterfall | `waterfall` | `summer` | 35 | 0.0 | -3.0 | **Particle Count: 400**, `forwardMomentum: 0.15`, **Camera Shake: 0.5**. |
 | **15** | Splash Pool | `splash` | `autumn` | 70 | 0.5 | -0.2 | **Transition Duration: 2000ms**, `flowSpeed: 0.3`. |
 | **16-18** | The Pond | `pond` | `autumn` | 70 | 0.3 | -0.02 | Wider, calmer area. **Fog: 0.8**, **Tree Density: 0.3**. |
-| **19+** | Rapids | `normal` | `autumn` | 35 | 1.5 | -0.7 | More aggressive rapids. **Rock Density: 'high'**. |
+| **19** | Autumn Rapids | `normal` | `autumn` | 35 | 1.5 | -0.7 | More aggressive rapids. **Rock Density: 'high'**. |
+| **20-22** | Slot Canyon | `normal` | `slotCanyon` | 24 | 0.55 | -0.95 | Narrow high-walled canyon. **Rock Density: 'high'**, `waterWidth: 8`, `flowSpeed: 1.3`, **Tree Density: 0.08**. God rays from above, enhanced mist, wall height 26. |
+| **23-27** | Downhill Creek Run | `normal` | `summer` | 28 | 0.6 | -1.5 | Fast mossy slot creek. **Rock Density: 'high'**, `flowSpeed: 1.4`. |
+| **28** | Drop-off Ledge | `normal` | `summer` | 22 | 0.1 | -2.2 | Pre-waterfall steepening. **Camera Shake: 0.2**. |
+| **29** | Second Waterfall | `waterfall` | `summer` | 40 | 0.0 | -3.0 | Wide fanning curtain. **Particle Count: 600**, **Camera Shake: 0.7**. |
+| **30** | Plunge Pool | `splash` | `autumn` | 75 | 0.4 | -0.1 | Calm swirl. `flowSpeed: 0.25`, **Tree Density: 0.8**. |
+| **31+** | Autumn Rapids | `normal` | `autumn` | 35 | 1.5 | -0.7 | Open-ended. **Rock Density: 'high'**. |
 
 ---
 
@@ -96,3 +102,42 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 -   Add a dynamic music crossfade that aligns with the biome transition.
 -   Introduce fish jumping VFX in the pond segments to make the environment feel more alive.
 -   Add a secret cave entrance along the bank of segment 17.
+
+---
+
+## 🏜️ Slot Canyon (Segments 20–22)
+
+### Visual & Atmosphere Targets
+- Tall, flowing sandstone walls (height 26) with warm orange/red stratified layers and realistic PBR materials.
+- Dramatic god ray light shafts piercing from the narrow opening above, with volumetric mist trapped between walls.
+- Fast, churning turquoise water (flowSpeed 1.3) in a narrow channel (waterWidth 8).
+- High density rock debris creating natural slaloms and choke points.
+- Minimal vegetation (treeDensity 0.08) — sparse desert canyon feel.
+
+### Technical Implementation
+| Component | File(s) | Notes |
+|-----------|---------|-------|
+| Biome profile | `src/configs/TrackBiomes.ts` (`slotCanyon`) | Width 24, wallHeight 26, wallTightness 0.78 |
+| Segment progression | `src/maps/meander_to_waterfall.ts` (indices 20–22) | Also in `meander_to_waterfall.json` as `canyon-sunset` |
+| Wall geometry | `src/components/TrackSegment.jsx` | `isSlotCanyon` path: higher walls (22+), power 1.8 curve |
+| Wall material | `src/materials/CanyonMaterial.js` | Triplanar mapping, geological layering shader |
+| Biome mapping | `src/systems/ReachNormalizer.ts` | `canyon-sunset` → `slotCanyon` |
+| God rays | `src/systems/volumetric/VolumetricGodRays.tsx` | Screen-space ray marching |
+| Sun shafts | `src/components/TrackSegment.jsx` (placement) | Narrow vertical beams from above |
+| Mist/spray | `src/components/TrackSegment.jsx` (placement) | Enhanced density, taller mist columns |
+| Floating debris | `src/components/Environment/FloatingDebris.jsx` | Physics-enabled driftwood/pinecones |
+| Rock decorations | `src/components/CanyonDecorations.jsx` | Instanced boulders with colliders |
+| Canyon biome component | `src/biomes/CanyonBiome.tsx` | Procedural canyon floor geometry |
+
+### Performance Budget
+- Wall height 26 with LOD: frustum culling via existing treadmill system.
+- Rock colliders: convex hull via Rapier `InstancedRigidBodies`.
+- Mist particles: bounded per segment via `MAX_PER_SEGMENT` constant.
+- Target: >55 FPS on mid-spec hardware with all effects active.
+
+### QA Test Cases
+1. **Seamless Transition:** Verify segments 19→20 and 22→23 load without visible seams or popping.
+2. **Physics Collision:** Raft collides correctly with canyon walls and scattered boulders (no tunneling).
+3. **God Ray Visibility:** Sun shafts are visible from within the narrow canyon looking up.
+4. **Mist Density:** Enhanced mist is visible between walls but does not obscure navigation.
+5. **Performance:** Maintain >55 FPS with all canyon effects active on mid-spec hardware.

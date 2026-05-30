@@ -32,8 +32,10 @@ export interface NormalizedSegment {
 
 function mapManifestBiomeToTrackBiome(baseType: string): string {
   switch (baseType) {
-    case 'creek-autumn':
     case 'canyon-sunset':
+    case 'slot-canyon':
+      return 'slotCanyon';
+    case 'creek-autumn':
     case 'midnight-mist':
       return 'autumn';
     case 'alpine-spring':
