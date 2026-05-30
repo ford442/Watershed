@@ -72,3 +72,29 @@ src/
 - Move complex logic to dedicated `systems/` directory
 - Shaders go in `shaders/` with `.wgsl` extension for WebGPU
 - Use `hooks/` for shared React Three Fiber patterns
+
+## Q2 Epic: Movement Polish + Canyon Expansion (Issue #178)
+
+**Status:** ✅ Complete (sub-issues #176 and #177 closed)
+
+### Implementation Order (Completed)
+1. **Movement polish first** (#176) — Vehicle tuning, drift, wall riding, camera dynamics
+2. **Canyon content second** (#177) — Slot Canyon geometry, materials, god rays, debris
+
+### Key Files Added/Modified
+| Area | Files |
+|------|-------|
+| Vehicle tuning | `src/constants/vehicleTuning.ts`, `src/constants/game.ts` |
+| Raft physics | `src/systems/VehicleSystem.ts` (RaftVehicle class) |
+| Slope/bank detection | `src/vehicles/RunnerVehicle.tsx` (BANK_CONFIG, castRayAndGetNormal) |
+| Canyon biome | `src/configs/TrackBiomes.ts` (`slotCanyon`), `src/biomes/CanyonBiome.tsx` |
+| Canyon material | `src/materials/CanyonMaterial.js` (triplanar, geological layering) |
+| God rays | `src/systems/volumetric/VolumetricGodRays.tsx` |
+| Reach mapping | `src/systems/ReachNormalizer.ts` (`canyon-sunset` → `slotCanyon`) |
+| Rock decorations | `src/components/CanyonDecorations.jsx` |
+
+### Performance Targets
+- Movement: 60 FPS in canyon test segment
+- Canyon visuals: >55 FPS on mid-spec with all effects active
+- Wall height 26 with LOD via existing treadmill frustum culling
+- Rock colliders: convex hull via Rapier `InstancedRigidBodies`

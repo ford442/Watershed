@@ -107,6 +107,9 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 
 ## 🏜️ Slot Canyon (Segments 20–22)
 
+> **Epic:** Movement Polish + Canyon Expansion (Q2 Focus) — Issue #178
+> **Related:** Raft Movement & Controls (#176 ✅), Slot Canyon Implementation (#177 ✅)
+
 ### Visual & Atmosphere Targets
 - Tall, flowing sandstone walls (height 26) with warm orange/red stratified layers and realistic PBR materials.
 - Dramatic god ray light shafts piercing from the narrow opening above, with volumetric mist trapped between walls.
@@ -141,3 +144,33 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 3. **God Ray Visibility:** Sun shafts are visible from within the narrow canyon looking up.
 4. **Mist Density:** Enhanced mist is visible between walls but does not obscure navigation.
 5. **Performance:** Maintain >55 FPS with all canyon effects active on mid-spec hardware.
+
+---
+
+## 🚀 Movement Polish (Q2 — Issue #176 ✅)
+
+Enhanced raft movement and controls for superior velocity feel and precise canyon maneuvering.
+
+### Implemented Systems
+
+| System | File(s) | Description |
+|--------|---------|-------------|
+| Vehicle tuning config | `src/constants/vehicleTuning.ts` | Centralized tunable parameters: baseSpeed 32, flowResponsiveness 14, drift, wall riding, boost |
+| Paddle thrust & steering | `src/systems/VehicleSystem.ts` (`RaftVehicle`) | Impulse-based lateral steering, torque on turns, speed cap 20 m/s |
+| Wall riding / wall boost | `src/constants/vehicleTuning.ts` | wallRayDistance 3.5, wallBoostImpulse 9.0, friction-based wall interaction |
+| Drift mechanics | `src/constants/vehicleTuning.ts` | driftFlowScale 0.18, driftTorqueScale 2.0, driftLateralRetention 0.92 |
+| Camera dynamics | `src/constants/game.ts` | Velocity lag 0.15, lean factor 0.3, FOV speed scale 8 (75→90) |
+| Collision response | `src/constants/game.ts` | Elastic bounce (force 8), spin on impact (force 3), stun 0.3s |
+| Bank angle / slope detection | `src/vehicles/RunnerVehicle.tsx` | castRayAndGetNormal for trimesh normals, BANK_CONFIG for wall assist |
+
+### Success Criteria
+- [x] Player can intuitively navigate a narrow slalom of rocks at speed without frustration.
+- [x] Movement feels "arcade-satisfying" yet grounded in physics (per grok.md / AGENTS.md).
+- [x] No main-thread blocking; all input/physics updates efficient.
+- [x] 60fps maintained in canyon test segment.
+- [x] Follows AGENTS.md: functional components, hooks, performance-first, object pooling for particles.
+
+### Coordination Notes
+- Movement polish was implemented **before** the canyon segment to ensure controls were tuned for tight navigation.
+- Canyon segment (#177) serves as the primary testbed for validating movement feel at speed.
+- Vehicle tuning values in `src/constants/vehicleTuning.ts` should be iterated on via playtesting in canyon segments 20–22.
