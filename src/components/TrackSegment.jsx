@@ -699,20 +699,28 @@ export default function TrackSegment({
                 // 11. MIST
                 // Patches of mist floating above the water
                 if (type !== 'waterfall') { // Waterfalls have their own particles
-                    if (seededRandom(seed++) > 0.6) { // 40% chance per step to start a cluster
-                        const clusterSize = 1 + Math.floor(seededRandom(seed++) * 2);
+                    const mistChance = isSlotCanyon ? 0.35 : 0.6; // Lower threshold = more frequent mist spawns
+                    if (seededRandom(seed++) > mistChance) {
+                        const clusterSize = isSlotCanyon
+                            ? 2 + Math.floor(seededRandom(seed++) * 3) // Denser mist in slot canyon
+                            : 1 + Math.floor(seededRandom(seed++) * 2);
                         for (let m = 0; m < clusterSize; m++) {
                             const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
                             const offset = binormal.clone().multiplyScalar(dist);
                             const position = new THREE.Vector3().copy(pathPoint).add(offset);
 
-                            // Height: Just above water (0.5) to 2.5
-                            position.y = waterLevel + 0.2 + seededRandom(seed++) * 2.0;
+                            // Height: Slot canyons trap mist higher between walls
+                            const mistHeight = isSlotCanyon
+                                ? waterLevel + 0.3 + seededRandom(seed++) * 4.0
+                                : waterLevel + 0.2 + seededRandom(seed++) * 2.0;
+                            position.y = mistHeight;
 
                             mist.push({
                                 position,
                                 rotation: new THREE.Euler(),
-                                scale: new THREE.Vector3(1, 1, 1)
+                                scale: isSlotCanyon
+                                    ? new THREE.Vector3(0.8, 1.5, 0.8) // Taller, compressed mist
+                                    : new THREE.Vector3(1, 1, 1)
                             });
                         }
                     }
@@ -750,7 +758,32 @@ export default function TrackSegment({
 
                 // 13. SUN SHAFTS (Atmospheric)
                 // Rare rays of light piercing the canopy
-                if (!isSlotCanyon && (biome !== 'autumn' || type === 'pond')) { // More common in summer or open ponds
+                if (isSlotCanyon) {
+                    // Slot canyon: dramatic narrow god rays from above
+                    if (seededRandom(seed++) > 0.75) { // More frequent in narrows
+                        const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.6;
+                        const offset = binormal.clone().multiplyScalar(dist);
+                        const position = new THREE.Vector3().copy(pathPoint).add(offset);
+
+                        // Height: Start very high (tall canyon walls)
+                        position.y = 20 + seededRandom(seed++) * 8;
+
+                        // Rotation: Nearly vertical to simulate light from narrow opening
+                        const lightDir = new THREE.Vector3(0.1, 1, 0.05).normalize();
+                        const up = new THREE.Vector3(0, 1, 0);
+                        const q = new THREE.Quaternion().setFromUnitVectors(up, lightDir);
+                        const rotation = new THREE.Euler().setFromQuaternion(q);
+
+                        // Narrow, tall beams for slot canyon
+                        const scaleMod = 0.4 + seededRandom(seed++) * 0.3;
+
+                        sunShafts.push({
+                            position,
+                            rotation,
+                            scale: new THREE.Vector3(scaleMod * 0.5, scaleMod * 2.5, scaleMod * 0.5)
+                        });
+                    }
+                } else if (biome !== 'autumn' || type === 'pond') { // More common in summer or open ponds
                     if (seededRandom(seed++) > 0.92) { // Occasional
                         const dist = (seededRandom(seed++) - 0.5) * canyonWidth * 0.6;
                         const offset = binormal.clone().multiplyScalar(dist);
