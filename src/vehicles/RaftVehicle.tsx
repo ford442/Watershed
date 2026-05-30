@@ -74,6 +74,7 @@ const STAMINA = {
   REGEN_DELAY: RAFT.STAMINA_REGEN_DELAY,
   EXHAUSTED_THRESHOLD: RAFT.STAMINA_EXHAUSTED_THRESHOLD,
   POWER_CURVE: RAFT.STAMINA_POWER_CURVE,
+  EXHAUSTED_RECOVERY_MULTIPLIER: 3, // must recover to threshold * this before usable
 };
 
 // Brake configuration
@@ -87,6 +88,11 @@ const COLLISION = {
   BOUNCE_FORCE: RAFT.COLLISION_BOUNCE_FORCE,
   SPIN_FORCE: RAFT.COLLISION_SPIN_FORCE,
   STUN_DURATION: RAFT.COLLISION_STUN_DURATION,
+  STUN_EFFECTIVENESS: 0.3,    // multiplier on input while stunned
+  STUN_IMPACT_THRESHOLD: 10,  // min impact force to trigger stun
+  IMPACT_FORCE_SCALE: 20,     // normalization for bounce strength
+  SPIN_IMPACT_THRESHOLD: 15,  // normalization for spin strength
+  BOUNCE_VERTICAL_DAMPING: 0.3, // vertical bounce reduction factor
 };
 
 // Camera dynamics configuration
@@ -100,6 +106,7 @@ const CAMERA = {
   FOV_SPEED_SCALE: RAFT.CAMERA_FOV_SPEED_SCALE,
   FOV_MAX: RAFT.CAMERA_FOV_MAX,
   FOV_LERP: RAFT.CAMERA_FOV_LERP,
+  FOV_SPEED_REFERENCE: 15,   // speed at which FOV reaches max increase
 };
 
 // Water shedding particle config
@@ -449,7 +456,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     }
 
     // Clear exhaustion when recovered enough
-    if (st.isExhausted && st.current > STAMINA.EXHAUSTED_THRESHOLD * 3) {
+    if (st.isExhausted && st.current > STAMINA.EXHAUSTED_THRESHOLD * STAMINA.EXHAUSTED_RECOVERY_MULTIPLIER) {
       st.isExhausted = false;
     }
   };
@@ -512,7 +519,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     paddleState.current.rightPaddle = paddleRight;
 
     // If stunned, reduce input effectiveness
-    const stunMultiplier = stunState.current.active ? 0.3 : 1.0;
+    const stunMultiplier = stunState.current.active ? COLLISION.STUN_EFFECTIVENESS : 1.0;
 
     const rot = body.rotation();
     const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
@@ -788,7 +795,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     // Speed-dependent FOV
     const targetFov = Math.min(
       CAMERA.FOV_MAX,
-      CAMERA.FOV_BASE + (speed / 15) * CAMERA.FOV_SPEED_SCALE
+      CAMERA.FOV_BASE + (speed / CAMERA.FOV_SPEED_REFERENCE) * CAMERA.FOV_SPEED_SCALE
     );
     currentFov.current += (targetFov - currentFov.current) * CAMERA.FOV_LERP;
     if ('fov' in camera) {
@@ -843,20 +850,20 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       );
 
       // Elastic bounce: reflect velocity away from impact
-      const bounceScale = Math.min(1, impactForce / 20) * COLLISION.BOUNCE_FORCE;
+      const bounceScale = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE) * COLLISION.BOUNCE_FORCE;
       const bounceDir = velocityDelta.normalize().multiplyScalar(-bounceScale);
-      body.applyImpulse({ x: bounceDir.x, y: Math.abs(bounceDir.y) * 0.3, z: bounceDir.z }, true);
+      body.applyImpulse({ x: bounceDir.x, y: Math.abs(bounceDir.y) * COLLISION.BOUNCE_VERTICAL_DAMPING, z: bounceDir.z }, true);
 
       // Spin on impact (adds satisfying rotation)
       const spinDir = Math.sign(vel.x) || 1;
       body.applyTorqueImpulse({
         x: 0,
-        y: spinDir * COLLISION.SPIN_FORCE * Math.min(1, impactForce / 15),
+        y: spinDir * COLLISION.SPIN_FORCE * Math.min(1, impactForce / COLLISION.SPIN_IMPACT_THRESHOLD),
         z: 0,
       }, true);
 
       // Trigger stun (reduced controls briefly)
-      if (impactForce > 10) {
+      if (impactForce > COLLISION.STUN_IMPACT_THRESHOLD) {
         stunState.current.active = true;
         stunState.current.timer = COLLISION.STUN_DURATION;
       }
@@ -867,7 +874,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
           id: Date.now(),
           material,
           position: contactPoint.clone(),
-          intensity: Math.min(1, impactForce / 20),
+          intensity: Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE),
         };
         collisionState.current.activeParticles.push(newParticle);
       }
