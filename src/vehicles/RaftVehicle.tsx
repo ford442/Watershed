@@ -104,12 +104,15 @@ const CAMERA = {
 
 // Water shedding particle config
 const SHED = {
-  EMISSION_RATE: 0.08,      // seconds between particle spawns
-  MIN_SPEED: 2.0,           // min raft speed to emit
-  MIN_SUBMERGED: 0.15,      // min submerged ratio to emit
+  EMISSION_RATE_BASE: 0.08,   // seconds between particle spawns at min speed
+  EMISSION_RATE_FAST: 0.03,   // seconds between particle spawns at max speed
+  MIN_SPEED: 2.0,             // min raft speed to emit
+  MIN_SUBMERGED: 0.15,        // min submerged ratio to emit
   LIFETIME: 0.8,
-  SIZE: 0.06,
-  COUNT_LIMIT: 24,          // max active shed particles
+  SIZE_BASE: 0.06,
+  SIZE_SPEED_SCALE: 0.02,     // additional size per m/s above MIN_SPEED
+  COUNT_LIMIT: 40,            // max active shed particles (increased for higher speed)
+  SPEED_REF: 12,              // reference speed for max emission rate
 };
 
 interface BuoyancyState {
@@ -626,32 +629,39 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
   /**
    * Goal 2: Spawn a water-shedding particle trailing the raft
+   * Particle size and spread scale with current speed for velocity-reactive VFX
    */
   const spawnShedParticle = (body: any) => {
     const pos = body.translation();
     const rot = body.rotation();
+    const bodyVel = body.linvel();
+    const speed = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.z * bodyVel.z);
+    const speedFactor = Math.min(1, (speed - SHED.MIN_SPEED) / (SHED.SPEED_REF - SHED.MIN_SPEED));
 
     // Spawn at the stern (raft moves -Z, so stern is +Z relative to raft)
     const sternOffset = new THREE.Vector3(0, -0.1, 1.6).applyQuaternion(rot);
+    // Wider spread at higher speeds
     const spread = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.8,
+      (Math.random() - 0.5) * (0.8 + speedFactor * 0.6),
       Math.random() * 0.2,
-      (Math.random() - 0.5) * 0.4
+      (Math.random() - 0.5) * (0.4 + speedFactor * 0.3)
     );
 
-    // Velocity opposes raft motion + slight upward arc
+    // Velocity opposes raft motion + slight upward arc, stronger at speed
     const vel = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.6,
-      0.3 + Math.random() * 0.4,
-      0.5 + Math.random() * 0.5
+      (Math.random() - 0.5) * (0.6 + speedFactor * 0.8),
+      0.3 + Math.random() * (0.4 + speedFactor * 0.4),
+      0.5 + Math.random() * (0.5 + speedFactor * 0.5)
     ).applyQuaternion(rot);
+
+    const particleSize = SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + Math.random() * 0.03;
 
     shedParticles.current.push({
       id: nextShedId.current++,
       position: new THREE.Vector3(pos.x + sternOffset.x, pos.y + sternOffset.y, pos.z + sternOffset.z).add(spread),
       velocity: vel,
       life: SHED.LIFETIME,
-      scale: SHED.SIZE + Math.random() * 0.03,
+      scale: particleSize,
     });
 
     // Trim excess particles
@@ -795,10 +805,12 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       }))
       .filter(p => p.life > 0);
 
-    // Goal 2: Update water-shedding particles
+    // Goal 2: Update water-shedding particles (velocity-reactive emission rate)
     if (speed > SHED.MIN_SPEED && submergedRatio > SHED.MIN_SUBMERGED) {
+      const speedRatio = Math.min(1, (speed - SHED.MIN_SPEED) / (SHED.SPEED_REF - SHED.MIN_SPEED));
+      const emissionRate = SHED.EMISSION_RATE_BASE - speedRatio * (SHED.EMISSION_RATE_BASE - SHED.EMISSION_RATE_FAST);
       shedTimer.current += delta;
-      if (shedTimer.current > SHED.EMISSION_RATE) {
+      if (shedTimer.current > emissionRate) {
         shedTimer.current = 0;
         spawnShedParticle(body);
       }
