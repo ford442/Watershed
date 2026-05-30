@@ -32,7 +32,7 @@ const WATER_PHYSICS = {
 
   // Cross-sectional areas for drag calculation (m²)
   DRAG_AREA_FRONT: RAFT.DRAG_AREA_FRONT,
-  DRAG_AREA_SIDE: RAFT.DRAFT_AREA_SIDE,
+  DRAG_AREA_SIDE: RAFT.DRAG_AREA_SIDE,
 
   TURBULENCE_FREQ: RAFT.TURBULENCE_FREQ,
   TURBULENCE_AMP: RAFT.TURBULENCE_AMP,
@@ -66,14 +66,60 @@ const PADDLE = {
   FOAM_LIFETIME: RAFT.PADDLE_FOAM_LIFETIME,
 };
 
+// Stamina system configuration
+const STAMINA = {
+  MAX: RAFT.STAMINA_MAX,
+  COST: RAFT.STAMINA_COST_PER_STROKE,
+  REGEN_RATE: RAFT.STAMINA_REGEN_RATE,
+  REGEN_DELAY: RAFT.STAMINA_REGEN_DELAY,
+  EXHAUSTED_THRESHOLD: RAFT.STAMINA_EXHAUSTED_THRESHOLD,
+  POWER_CURVE: RAFT.STAMINA_POWER_CURVE,
+  EXHAUSTED_RECOVERY_MULTIPLIER: 3, // must recover to threshold * this before usable
+};
+
+// Brake configuration
+const BRAKE = {
+  DRAG_MULTIPLIER: RAFT.BRAKE_DRAG_MULTIPLIER,
+  ANGULAR_DRAG: RAFT.BRAKE_ANGULAR_DRAG,
+};
+
+// Collision response configuration
+const COLLISION = {
+  BOUNCE_FORCE: RAFT.COLLISION_BOUNCE_FORCE,
+  SPIN_FORCE: RAFT.COLLISION_SPIN_FORCE,
+  STUN_DURATION: RAFT.COLLISION_STUN_DURATION,
+  STUN_EFFECTIVENESS: 0.3,    // multiplier on input while stunned
+  STUN_IMPACT_THRESHOLD: 10,  // min impact force to trigger stun
+  IMPACT_FORCE_SCALE: 20,     // normalization for bounce strength
+  SPIN_IMPACT_THRESHOLD: 15,  // normalization for spin strength
+  BOUNCE_VERTICAL_DAMPING: 0.3, // vertical bounce reduction factor
+};
+
+// Camera dynamics configuration
+const CAMERA = {
+  BASE_OFFSET_Y: RAFT.CAMERA_BASE_OFFSET_Y,
+  BASE_OFFSET_Z: RAFT.CAMERA_BASE_OFFSET_Z,
+  VELOCITY_LAG: RAFT.CAMERA_VELOCITY_LAG,
+  LEAN_FACTOR: RAFT.CAMERA_LEAN_FACTOR,
+  LERP_SPEED: RAFT.CAMERA_LERP_SPEED,
+  FOV_BASE: RAFT.CAMERA_FOV_BASE,
+  FOV_SPEED_SCALE: RAFT.CAMERA_FOV_SPEED_SCALE,
+  FOV_MAX: RAFT.CAMERA_FOV_MAX,
+  FOV_LERP: RAFT.CAMERA_FOV_LERP,
+  FOV_SPEED_REFERENCE: 15,   // speed at which FOV reaches max increase
+};
+
 // Water shedding particle config
 const SHED = {
-  EMISSION_RATE: 0.08,      // seconds between particle spawns
-  MIN_SPEED: 2.0,           // min raft speed to emit
-  MIN_SUBMERGED: 0.15,      // min submerged ratio to emit
+  EMISSION_RATE_BASE: 0.08,   // seconds between particle spawns at min speed
+  EMISSION_RATE_FAST: 0.03,   // seconds between particle spawns at max speed
+  MIN_SPEED: 2.0,             // min raft speed to emit
+  MIN_SUBMERGED: 0.15,        // min submerged ratio to emit
   LIFETIME: 0.8,
-  SIZE: 0.06,
-  COUNT_LIMIT: 24,          // max active shed particles
+  SIZE_BASE: 0.06,
+  SIZE_SPEED_SCALE: 0.02,     // additional size per m/s above MIN_SPEED
+  COUNT_LIMIT: 40,            // max active shed particles (increased for higher speed)
+  SPEED_REF: 12,              // reference speed for max emission rate
 };
 
 interface BuoyancyState {
@@ -100,6 +146,17 @@ interface PaddleState {
     life: number;
     side: 'left' | 'right';
   }>;
+}
+
+interface StaminaState {
+  current: number;
+  regenDelay: number;
+  isExhausted: boolean;
+}
+
+interface StunState {
+  active: boolean;
+  timer: number;
 }
 
 interface ShedParticle {
@@ -167,6 +224,22 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     rightPaddle: false,
     foamParticles: [],
   });
+
+  // Stamina system state
+  const staminaState = useRef<StaminaState>({
+    current: STAMINA.MAX,
+    regenDelay: 0,
+    isExhausted: false,
+  });
+
+  // Collision stun state
+  const stunState = useRef<StunState>({
+    active: false,
+    timer: 0,
+  });
+
+  // Camera FOV tracking
+  const currentFov = useRef(CAMERA.FOV_BASE);
 
   // Goal 2: Water-shedding particle trail
   const shedParticles = useRef<ShedParticle[]>([]);
@@ -366,7 +439,78 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   };
 
   /**
-   * Apply paddle forces based on Q/E input
+   * Update stamina state each frame (regen, exhaustion tracking)
+   */
+  const updateStamina = (delta: number) => {
+    const st = staminaState.current;
+
+    // Regen delay countdown
+    if (st.regenDelay > 0) {
+      st.regenDelay -= delta;
+      return;
+    }
+
+    // Regenerate stamina
+    if (st.current < STAMINA.MAX) {
+      st.current = Math.min(STAMINA.MAX, st.current + STAMINA.REGEN_RATE * delta);
+    }
+
+    // Clear exhaustion when recovered enough
+    if (st.isExhausted && st.current > STAMINA.EXHAUSTED_THRESHOLD * STAMINA.EXHAUSTED_RECOVERY_MULTIPLIER) {
+      st.isExhausted = false;
+    }
+  };
+
+  /**
+   * Consume stamina for a paddle stroke; returns effective power multiplier (0-1)
+   */
+  const consumeStamina = (): number => {
+    const st = staminaState.current;
+
+    if (st.isExhausted || st.current < STAMINA.EXHAUSTED_THRESHOLD) {
+      st.isExhausted = true;
+      return 0;
+    }
+
+    st.current = Math.max(0, st.current - STAMINA.COST);
+    st.regenDelay = STAMINA.REGEN_DELAY;
+
+    if (st.current < STAMINA.EXHAUSTED_THRESHOLD) {
+      st.isExhausted = true;
+    }
+
+    // Power scales with remaining stamina (power curve makes it forgiving)
+    const ratio = st.current / STAMINA.MAX;
+    return Math.pow(ratio, STAMINA.POWER_CURVE);
+  };
+
+  /**
+   * Apply brake forces (broadside drag) when S/backward is held
+   */
+  const applyBrake = (body: any, delta: number) => {
+    const vel = body.linvel();
+    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+    if (speed < 0.1) return;
+
+    // Extra linear drag
+    const brakeDrag = BRAKE.DRAG_MULTIPLIER * speed * delta;
+    body.applyImpulse({
+      x: -(vel.x / speed) * brakeDrag,
+      y: 0,
+      z: -(vel.z / speed) * brakeDrag,
+    }, true);
+
+    // Extra angular damping (stabilizes rotation while braking)
+    const angVel = body.angvel();
+    body.setAngvel({
+      x: angVel.x * Math.max(0, 1 - BRAKE.ANGULAR_DRAG * delta),
+      y: angVel.y * Math.max(0, 1 - BRAKE.ANGULAR_DRAG * delta),
+      z: angVel.z * Math.max(0, 1 - BRAKE.ANGULAR_DRAG * delta),
+    }, true);
+  };
+
+  /**
+   * Apply paddle forces based on Q/E input with stamina-gated power
    */
   const applyPaddleForces = (body: any, delta: number) => {
     const { paddleLeft, paddleRight, forward } = controls.getControls();
@@ -374,43 +518,55 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     paddleState.current.leftPaddle = paddleLeft;
     paddleState.current.rightPaddle = paddleRight;
 
+    // If stunned, reduce input effectiveness
+    const stunMultiplier = stunState.current.active ? COLLISION.STUN_EFFECTIVENESS : 1.0;
+
     const rot = body.rotation();
     const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
     const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
 
     // Both paddles or W key = straight forward
     if ((paddleLeft && paddleRight) || forward) {
+      const power = consumeStamina() * stunMultiplier;
+      if (power <= 0) return;
+
       body.applyImpulse({
-        x: forwardDir.x * PADDLE.THRUST_FORCE * delta,
+        x: forwardDir.x * PADDLE.THRUST_FORCE * power * delta,
         y: 0,
-        z: forwardDir.z * PADDLE.THRUST_FORCE * delta
+        z: forwardDir.z * PADDLE.THRUST_FORCE * power * delta
       }, true);
 
       // Spawn foam on both sides
-      if (forward && Math.random() > 0.7) {
+      if (Math.random() > 0.7) {
         spawnFoamParticle(body, 'left');
         spawnFoamParticle(body, 'right');
       }
       return;
     }
 
-    // Left paddle (Q) - thrust right, rotate left
+    // Left paddle (Q) - apply force at left attachment point, rotate left
     if (paddleLeft) {
+      const power = consumeStamina() * stunMultiplier;
+      if (power <= 0) return;
+
+      // Forward thrust component
       body.applyImpulse({
-        x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * delta,
+        x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
         y: 0,
-        z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * delta
+        z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * power * delta
       }, true);
 
+      // Lateral push from paddle attachment point
       body.applyImpulse({
-        x: rightDir.x * PADDLE.THRUST_FORCE * 0.5 * delta,
+        x: rightDir.x * PADDLE.THRUST_FORCE * 0.5 * power * delta,
         y: 0,
-        z: rightDir.z * PADDLE.THRUST_FORCE * 0.5 * delta
+        z: rightDir.z * PADDLE.THRUST_FORCE * 0.5 * power * delta
       }, true);
 
+      // Torque for rotation (paddle acts as lever)
       body.applyTorqueImpulse({
         x: 0,
-        y: -PADDLE.TORQUE_FORCE * delta,
+        y: -PADDLE.TORQUE_FORCE * power * delta,
         z: 0
       }, true);
 
@@ -420,23 +576,26 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       }
     }
 
-    // Right paddle (E) - thrust left, rotate right
+    // Right paddle (E) - apply force at right attachment point, rotate right
     if (paddleRight) {
+      const power = consumeStamina() * stunMultiplier;
+      if (power <= 0) return;
+
       body.applyImpulse({
-        x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * delta,
+        x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
         y: 0,
-        z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * delta
+        z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * power * delta
       }, true);
 
       body.applyImpulse({
-        x: -rightDir.x * PADDLE.THRUST_FORCE * 0.5 * delta,
+        x: -rightDir.x * PADDLE.THRUST_FORCE * 0.5 * power * delta,
         y: 0,
-        z: -rightDir.z * PADDLE.THRUST_FORCE * 0.5 * delta
+        z: -rightDir.z * PADDLE.THRUST_FORCE * 0.5 * power * delta
       }, true);
 
       body.applyTorqueImpulse({
         x: 0,
-        y: PADDLE.TORQUE_FORCE * delta,
+        y: PADDLE.TORQUE_FORCE * power * delta,
         z: 0
       }, true);
 
@@ -477,32 +636,39 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
   /**
    * Goal 2: Spawn a water-shedding particle trailing the raft
+   * Particle size and spread scale with current speed for velocity-reactive VFX
    */
   const spawnShedParticle = (body: any) => {
     const pos = body.translation();
     const rot = body.rotation();
+    const bodyVel = body.linvel();
+    const speed = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.z * bodyVel.z);
+    const speedFactor = Math.min(1, (speed - SHED.MIN_SPEED) / (SHED.SPEED_REF - SHED.MIN_SPEED));
 
     // Spawn at the stern (raft moves -Z, so stern is +Z relative to raft)
     const sternOffset = new THREE.Vector3(0, -0.1, 1.6).applyQuaternion(rot);
+    // Wider spread at higher speeds
     const spread = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.8,
+      (Math.random() - 0.5) * (0.8 + speedFactor * 0.6),
       Math.random() * 0.2,
-      (Math.random() - 0.5) * 0.4
+      (Math.random() - 0.5) * (0.4 + speedFactor * 0.3)
     );
 
-    // Velocity opposes raft motion + slight upward arc
+    // Velocity opposes raft motion + slight upward arc, stronger at speed
     const vel = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.6,
-      0.3 + Math.random() * 0.4,
-      0.5 + Math.random() * 0.5
+      (Math.random() - 0.5) * (0.6 + speedFactor * 0.8),
+      0.3 + Math.random() * (0.4 + speedFactor * 0.4),
+      0.5 + Math.random() * (0.5 + speedFactor * 0.5)
     ).applyQuaternion(rot);
+
+    const particleSize = SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + Math.random() * 0.03;
 
     shedParticles.current.push({
       id: nextShedId.current++,
       position: new THREE.Vector3(pos.x + sternOffset.x, pos.y + sternOffset.y, pos.z + sternOffset.z).add(spread),
       velocity: vel,
       life: SHED.LIFETIME,
-      scale: SHED.SIZE + Math.random() * 0.03,
+      scale: particleSize,
     });
 
     // Trim excess particles
@@ -547,6 +713,18 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     timeRef.current += delta;
 
+    // Update stamina regeneration
+    updateStamina(delta);
+
+    // Update stun timer
+    if (stunState.current.active) {
+      stunState.current.timer -= delta;
+      if (stunState.current.timer <= 0) {
+        stunState.current.active = false;
+        stunState.current.timer = 0;
+      }
+    }
+
     // Calculate submersion
     const submergedRatio = calculateSubmergedRatio(pos.y);
     buoyancyState.current.submergedRatio = submergedRatio;
@@ -578,7 +756,12 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     applyPaddleForces(body, delta);
 
     // Fallback WASD (strafing) if no paddle input
-    const { leftward, rightward, forward, paddleLeft, paddleRight } = controls.getControls();
+    const { leftward, rightward, backward, forward, paddleLeft, paddleRight } = controls.getControls();
+
+    // Brake mechanic: S/backward key applies broadside drag
+    if (backward) {
+      applyBrake(body, delta);
+    }
 
     if (!paddleLeft && !paddleRight && !forward) {
       if (leftward || rightward) {
@@ -589,10 +772,36 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       }
     }
 
-    // Camera follow
-    const targetPos = new THREE.Vector3(pos.x, pos.y + 2.5, pos.z + 5);
-    camera.position.lerp(targetPos, 0.1);
+    // === DYNAMIC CAMERA ===
+    const vel = body.linvel();
+    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+
+    // Velocity-based lag: camera trails behind motion direction
+    const velLagX = -vel.x * CAMERA.VELOCITY_LAG;
+    const velLagZ = -vel.z * CAMERA.VELOCITY_LAG;
+
+    // Lean into turns based on angular velocity
+    const angVel = body.angvel();
+    const leanOffset = -angVel.y * CAMERA.LEAN_FACTOR;
+
+    const targetPos = new THREE.Vector3(
+      pos.x + velLagX + leanOffset,
+      pos.y + CAMERA.BASE_OFFSET_Y,
+      pos.z + CAMERA.BASE_OFFSET_Z + velLagZ
+    );
+    camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
     camera.lookAt(pos.x, pos.y, pos.z);
+
+    // Speed-dependent FOV
+    const targetFov = Math.min(
+      CAMERA.FOV_MAX,
+      CAMERA.FOV_BASE + (speed / CAMERA.FOV_SPEED_REFERENCE) * CAMERA.FOV_SPEED_SCALE
+    );
+    currentFov.current += (targetFov - currentFov.current) * CAMERA.FOV_LERP;
+    if ('fov' in camera) {
+      (camera as THREE.PerspectiveCamera).fov = currentFov.current;
+      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+    }
 
     // Update foam particles
     paddleState.current.foamParticles = paddleState.current.foamParticles
@@ -603,13 +812,12 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       }))
       .filter(p => p.life > 0);
 
-    // Goal 2: Update water-shedding particles
-    const speed = Math.sqrt(
-      body.linvel().x ** 2 + body.linvel().z ** 2
-    );
+    // Goal 2: Update water-shedding particles (velocity-reactive emission rate)
     if (speed > SHED.MIN_SPEED && submergedRatio > SHED.MIN_SUBMERGED) {
+      const speedRatio = Math.min(1, (speed - SHED.MIN_SPEED) / (SHED.SPEED_REF - SHED.MIN_SPEED));
+      const emissionRate = SHED.EMISSION_RATE_BASE - speedRatio * (SHED.EMISSION_RATE_BASE - SHED.EMISSION_RATE_FAST);
       shedTimer.current += delta;
-      if (shedTimer.current > SHED.EMISSION_RATE) {
+      if (shedTimer.current > emissionRate) {
         shedTimer.current = 0;
         spawnShedParticle(body);
       }
@@ -624,8 +832,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       }))
       .filter(p => p.life > 0);
 
-    // === COLLISION DETECTION ===
-    const vel = body.linvel();
+    // === COLLISION DETECTION WITH ELASTIC BOUNCE ===
     const prevVel = collisionState.current.prevVelocity;
     const velocityDelta = new THREE.Vector3(vel.x - prevVel.x, vel.y - prevVel.y, vel.z - prevVel.z);
     const impactForce = velocityDelta.length() / delta;
@@ -642,19 +849,47 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         new THREE.Vector3(vel.x, vel.y, vel.z)
       );
 
+      // Elastic bounce: reflect velocity away from impact
+      const bounceScale = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE) * COLLISION.BOUNCE_FORCE;
+      const bounceDir = velocityDelta.normalize().multiplyScalar(-bounceScale);
+      body.applyImpulse({ x: bounceDir.x, y: Math.abs(bounceDir.y) * COLLISION.BOUNCE_VERTICAL_DAMPING, z: bounceDir.z }, true);
+
+      // Spin on impact (adds satisfying rotation)
+      const spinDir = Math.sign(vel.x) || 1;
+      body.applyTorqueImpulse({
+        x: 0,
+        y: spinDir * COLLISION.SPIN_FORCE * Math.min(1, impactForce / COLLISION.SPIN_IMPACT_THRESHOLD),
+        z: 0,
+      }, true);
+
+      // Trigger stun (reduced controls briefly)
+      if (impactForce > COLLISION.STUN_IMPACT_THRESHOLD) {
+        stunState.current.active = true;
+        stunState.current.timer = COLLISION.STUN_DURATION;
+      }
+
       // Add visual particles for high impact
       if (impactForce > vehicle.current['highImpactThreshold']) {
         const newParticle = {
           id: Date.now(),
           material,
           position: contactPoint.clone(),
-          intensity: Math.min(1, impactForce / 20),
+          intensity: Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE),
         };
         collisionState.current.activeParticles.push(newParticle);
       }
     }
 
     collisionState.current.prevVelocity.set(vel.x, vel.y, vel.z);
+
+    // Dispatch stamina state for UI consumption
+    window.dispatchEvent(new CustomEvent('raft-stamina', {
+      detail: {
+        current: staminaState.current.current,
+        max: STAMINA.MAX,
+        isExhausted: staminaState.current.isExhausted,
+      }
+    }));
   });
 
   return (
@@ -663,9 +898,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         ref={bodyRef}
         type="dynamic"
         mass={150}
-        restitution={0.3}
-        linearDamping={2.5}
-        angularDamping={3}
+        restitution={0.4}
+        linearDamping={2.0}
+        angularDamping={2.5}
         position={PLAYER_SPAWN.position}
       >
         {/* Raft deck */}

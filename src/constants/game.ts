@@ -93,10 +93,38 @@ export const RAFT = {
     DANGER_THRESHOLD_DEG: 70,
     DANGER_TIME: 1.0,
     RESET_HEIGHT: 2,
-    PADDLE_THRUST_FORCE: 12,
-    PADDLE_TORQUE_FORCE: 8,
+    PADDLE_THRUST_FORCE: 14,
+    PADDLE_TORQUE_FORCE: 10,
     PADDLE_FOAM_PARTICLE_COUNT: 8,
     PADDLE_FOAM_LIFETIME: 0.6,
+
+    // Stamina system for paddle strokes
+    STAMINA_MAX: 100,
+    STAMINA_COST_PER_STROKE: 15,
+    STAMINA_REGEN_RATE: 20,        // per second
+    STAMINA_REGEN_DELAY: 0.4,      // seconds before regen starts after stroke
+    STAMINA_EXHAUSTED_THRESHOLD: 5, // below this, strokes are disabled
+    STAMINA_POWER_CURVE: 0.7,      // at 50% stamina, force = 50%^0.7 ≈ 62% (feels forgiving)
+
+    // Brake (broadside drag)
+    BRAKE_DRAG_MULTIPLIER: 4.0,    // multiplier on drag when braking
+    BRAKE_ANGULAR_DRAG: 6.0,       // extra angular damping when braking
+
+    // Collision response
+    COLLISION_BOUNCE_FORCE: 8,     // elastic bounce impulse scale
+    COLLISION_SPIN_FORCE: 3,       // spin applied on impact
+    COLLISION_STUN_DURATION: 0.3,  // seconds of reduced control after impact
+
+    // Camera dynamics
+    CAMERA_BASE_OFFSET_Y: 2.5,
+    CAMERA_BASE_OFFSET_Z: 5.0,
+    CAMERA_VELOCITY_LAG: 0.15,     // how much camera trails behind velocity
+    CAMERA_LEAN_FACTOR: 0.3,       // lean into turns
+    CAMERA_LERP_SPEED: 0.08,
+    CAMERA_FOV_BASE: 75,
+    CAMERA_FOV_SPEED_SCALE: 8,     // FOV increase at max speed
+    CAMERA_FOV_MAX: 90,
+    CAMERA_FOV_LERP: 0.05,
 } as const;
 
 export const SHADERS = {
