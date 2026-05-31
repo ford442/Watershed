@@ -4,6 +4,7 @@ import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { useFrame, useThree } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
 import { extendRiverMaterial, updateRiverMaterial } from '../utils/RiverShader';
+import { createCanyonMaterial, updateCanyonMaterial } from '../materials/CanyonMaterial';
 import { WATER_LEVEL, WALL_WATERLINE_Y, SHADERS, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
@@ -1303,15 +1304,20 @@ function TrackSegmentMeshes({
         }
     });
 
+    const isSlotCanyon = biomeProfile.id === 'slotCanyon';
+
     const wallMaterial = useMemo(() => {
-        // Clone the rock material so we can apply shader effects
+        if (isSlotCanyon) {
+            return createCanyonMaterial({
+                biome: 'slotCanyon',
+                wallHeight: biomeProfile.wallHeight || 26,
+                parallaxScale: 0.025,
+                highWaterMark: segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15,
+            });
+        }
+        // Non-slot biomes: clone rock material with RiverShader
         const mat = rockMaterial.clone();
         mat.vertexColors = true;
-        if (biomeProfile.id === 'slotCanyon') {
-            mat.color.set(SHADERS.SLOT_ROCK_BASE);
-            mat.roughness = 0.96;
-            mat.metalness = 0;
-        }
         // Apply RiverShader with moss and wetness
         extendRiverMaterial(mat, {
             enableWetness: true,
@@ -1321,13 +1327,18 @@ function TrackSegmentMeshes({
             wetnessRange: 4.0
         });
         return mat;
-    }, [biomeProfile.id, rockMaterial]);
+    }, [isSlotCanyon, biomeProfile.wallHeight, rockMaterial, segmentState]);
 
     wallMaterialRef.current = wallMaterial;
 
     // Update shader uniforms each frame
     useFrame((state) => {
-        if (wallMaterialRef.current) {
+        if (isSlotCanyon && wallMaterialRef.current?.uniforms) {
+            const highWaterMark = segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15;
+            updateCanyonMaterial(wallMaterialRef.current, state.clock.getDelta(), state.clock.elapsedTime, {
+                highWaterMark,
+            });
+        } else if (wallMaterialRef.current) {
             updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime, {
                 waterLevel: WALL_WATERLINE_Y,
                 weatherWetness: weatherWetnessRef?.current || 0,

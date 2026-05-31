@@ -72,6 +72,14 @@ const BIOME_ADAPTATIONS = {
     soilColor: new THREE.Color('#3a4038'),
     weatheringIntensity: 0.7,
   },
+  slotCanyon: {
+    mossColor: new THREE.Color('#5a3a1a'),       // dark iron-oxide staining
+    soilColor: new THREE.Color('#c87840'),       // warm sandstone rim
+    weatheringIntensity: 1.0,
+    bedrockColor: new THREE.Color('#5c2a1a'),    // deep red-brown bedrock
+    sedimentaryColor: new THREE.Color('#a85a30'),// warm orange sandstone
+    graniteColor: new THREE.Color('#d4884c'),    // light tan-orange band
+  },
 };
 
 const VERTEX_SHADER = `
@@ -154,6 +162,7 @@ const FRAGMENT_SHADER = `
   uniform float weatheringIntensity;
   uniform vec3 sunDirection;
   uniform float parallaxScale;
+  uniform float highWaterMark;
   
   // Noise functions
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -289,6 +298,7 @@ export function createCanyonMaterial(options = {}) {
     wallHeight = 15,
     parallaxScale = 0.02,
     time = 0,
+    highWaterMark = 0.15,
   } = options;
 
   const biomeAdapt = BIOME_ADAPTATIONS[biome] || BIOME_ADAPTATIONS.summer;
@@ -297,9 +307,9 @@ export function createCanyonMaterial(options = {}) {
     uniforms: {
       time: { value: time },
       wallHeight: { value: wallHeight },
-      bedrockColor: { value: GEOLOGICAL_LAYERS.bedrock.color },
-      sedimentaryColor: { value: GEOLOGICAL_LAYERS.sedimentary.color },
-      graniteColor: { value: GEOLOGICAL_LAYERS.granite.color },
+      bedrockColor: { value: biomeAdapt.bedrockColor || GEOLOGICAL_LAYERS.bedrock.color },
+      sedimentaryColor: { value: biomeAdapt.sedimentaryColor || GEOLOGICAL_LAYERS.sedimentary.color },
+      graniteColor: { value: biomeAdapt.graniteColor || GEOLOGICAL_LAYERS.granite.color },
       mossColor: { value: biomeAdapt.mossColor },
       soilColor: { value: biomeAdapt.soilColor },
       roughness: { value: 0.75 },
@@ -307,6 +317,7 @@ export function createCanyonMaterial(options = {}) {
       weatheringIntensity: { value: biomeAdapt.weatheringIntensity },
       sunDirection: { value: new THREE.Vector3(0.5, 1, 0.3).normalize() },
       parallaxScale: { value: parallaxScale },
+      highWaterMark: { value: highWaterMark },
     },
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
@@ -337,9 +348,12 @@ export function createFallbackCanyonMaterial(options = {}) {
 /**
  * Update material uniforms (call in useFrame)
  */
-export function updateCanyonMaterial(material, deltaTime, elapsedTime) {
+export function updateCanyonMaterial(material, deltaTime, elapsedTime, options = {}) {
   if (material && material.uniforms) {
     material.uniforms.time.value = elapsedTime;
+    if (options.highWaterMark !== undefined) {
+      material.uniforms.highWaterMark.value = options.highWaterMark;
+    }
   }
 }
 
