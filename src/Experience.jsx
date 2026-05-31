@@ -27,6 +27,7 @@ import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio, getAudioManager } from "./systems/AudioSystem";
+import { SunPositionProvider, useSunPosition } from "./systems/SunPositionSystem";
 import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
 import PhysicsDebugOverlay from "./components/PhysicsDebugOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
@@ -111,6 +112,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   // Calling setBiomeContext normalizes legacy IDs, triggers smooth palette
   // interpolation, and mirrors the canonical id to the Zustand store.
   const { setBiome: setBiomeContext } = useBiome();
+  const { sunWorldPosition } = useSunPosition();
 
   // Initialize Three.js audio listener on camera
   useEffect(() => {
@@ -369,6 +371,11 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
   // Use lighting from biome system or fallback
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.canyonSummer;
+  const isTightCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
+  const sharedSunPosition = useMemo(
+    () => [sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z],
+    [sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z]
+  );
 
   useEffect(() => {
     const trackedStages = ['physics', 'visualization', 'worldSystems', 'postProcessing', 'uiOverlay'];
@@ -382,7 +389,9 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   return (
     <>
       {/* Sky and environment */}
-      {debug.isStageEnabled('visualization') && <EnhancedSky biome={biome} />}
+      {debug.isStageEnabled('visualization') && (
+        <EnhancedSky />
+      )}
 
       {/* Lighting - biome responsive */}
       {debug.isStageEnabled('visualization') && (
@@ -395,7 +404,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
           />
           <directionalLight
             color={L.dirColor}
-            position={L.dirPosition}
+            position={sharedSunPosition}
             intensity={L.dirIntensity}
             castShadow
             shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
@@ -508,6 +517,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         <PostProcessingPipeline
           quality={quality}
           vehicleRef={vehicleRef}
+          isTightCanyon={isTightCanyon}
         />
       )}
 
@@ -636,10 +646,12 @@ const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     >
       <LODProvider initialQuality="high" enableAdaptive={true} targetFPS={60}>
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
-          <BiomeTransition />
-          <InnerExperience debug={debug} physicsDebug={physicsDebug} />
-          <PerformanceMonitor visible={import.meta.env.DEV} />
-          {debug.debugEnabled && <PerfCheckpointMonitor />}
+          <SunPositionProvider>
+            <BiomeTransition />
+            <InnerExperience debug={debug} physicsDebug={physicsDebug} />
+            <PerformanceMonitor visible={import.meta.env.DEV} />
+            {debug.debugEnabled && <PerfCheckpointMonitor />}
+          </SunPositionProvider>
         </BiomeProvider>
       </LODProvider>
     </KeyboardControls>

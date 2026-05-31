@@ -3,10 +3,15 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
+import { useLOD } from '../systems/LODManager';
+import { useBiome } from '../systems/BiomeSystem';
+import { useSunPosition } from '../systems/SunPositionSystem';
+import { GOD_RAYS_SHADER, getGodRaySunColor } from '../systems/volumetric/VolumetricGodRays';
 
 const CHROMATIC_ABERRATION_SHADER = {
   name: 'ChromaticAberrationShader',
@@ -47,6 +52,42 @@ const CHROMATIC_ABERRATION_SHADER = {
   `,
 };
 
+class GodRaysPass extends Pass {
+  constructor() {
+    super();
+    this.material = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.clone(GOD_RAYS_SHADER.uniforms),
+      vertexShader: GOD_RAYS_SHADER.vertexShader,
+      fragmentShader: GOD_RAYS_SHADER.fragmentShader,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    this.fsQuad = new FullScreenQuad(this.material);
+  }
+
+  render(renderer, writeBuffer, readBuffer) {
+    this.material.uniforms.tDiffuse.value = readBuffer.texture;
+    this.material.uniforms.tDepth.value = readBuffer.depthTexture || readBuffer.texture;
+
+    if (this.renderToScreen) {
+      renderer.setRenderTarget(null);
+      this.fsQuad.render(renderer);
+      return;
+    }
+
+    renderer.setRenderTarget(writeBuffer);
+    if (this.clear) renderer.clear();
+    this.fsQuad.render(renderer);
+  }
+
+  dispose() {
+    this.material.dispose();
+    this.fsQuad.dispose();
+  }
+}
+
 /**
  * PostProcessingPipeline - Imperative EffectComposer for R3F v9
  *
@@ -60,6 +101,7 @@ const CHROMATIC_ABERRATION_SHADER = {
 export function PostProcessingPipeline({
   quality = 'high',
   vehicleRef,
+  isTightCanyon = false,
 
   bloomIntensity = 0.5,
   bloomThreshold = 0.8,
@@ -73,6 +115,9 @@ export function PostProcessingPipeline({
   chromaticMaxOffset = 0.002,
 }) {
   const { gl, scene, camera, size } = useThree();
+  const { config } = useLOD();
+  const { timeOfDay } = useBiome();
+  const { sunWorldPosition } = useSunPosition();
 
   // Refs for smooth animation values
   const smoothed = useRef({
@@ -98,9 +143,18 @@ export function PostProcessingPipeline({
     if (!gl || !scene || !camera) return null;
 
     const composer = new EffectComposer(gl);
+    composer.renderTarget1.depthBuffer = true;
+    composer.renderTarget2.depthBuffer = true;
+    composer.renderTarget1.depthTexture = new THREE.DepthTexture(size.width, size.height, THREE.UnsignedShortType);
+    composer.renderTarget2.depthTexture = new THREE.DepthTexture(size.width, size.height, THREE.UnsignedShortType);
     composer.addPass(new RenderPass(scene, camera));
 
     const resolution = new THREE.Vector2(size.width, size.height);
+
+    // Volumetric god rays (slot canyons)
+    const godRaysPass = new GodRaysPass();
+    godRaysPass.enabled = false;
+    composer.addPass(godRaysPass);
 
     // Bloom
     const strength = bloomIntensity;
@@ -128,6 +182,7 @@ export function PostProcessingPipeline({
 
     // Store passes for imperative updates
     composer.userData = {
+      godRaysPass,
       bloomPass,
       hueSatPass,
       chromaticPass,
@@ -135,7 +190,7 @@ export function PostProcessingPipeline({
     };
 
     return composer;
-  }, [gl, scene, camera]);
+  }, [gl, scene, camera, size.height, size.width]);
 
   // Handle resize
   useEffect(() => {
@@ -200,6 +255,32 @@ export function PostProcessingPipeline({
     smoothed.current.vignetteBoost += (targetVignetteBoost - smoothed.current.vignetteBoost) * t;
 
     // Apply to passes
+    if (passes.godRaysPass) {
+      const shouldRenderGodRays =
+        isTightCanyon &&
+        (quality === 'medium' || quality === 'high' || quality === 'ultra') &&
+        (config.enableGodRays || quality === 'medium');
+
+      const samples = quality === 'medium' ? 16 : Math.max(48, config.volumetricSamples || 48);
+      const sunClip = sunWorldPosition.clone().project(camera);
+      const sunVisible = sunClip.z > -1.0 && sunClip.z < 1.0;
+
+      passes.godRaysPass.enabled = shouldRenderGodRays && sunVisible;
+      if (passes.godRaysPass.enabled) {
+        const uniforms = passes.godRaysPass.material.uniforms;
+        uniforms.sunScreenPosition.value.set((sunClip.x + 1) * 0.5, (1 - sunClip.y) * 0.5);
+        uniforms.sunColor.value.copy(getGodRaySunColor(timeOfDay));
+        uniforms.intensity.value = quality === 'medium' ? 0.45 : 0.6;
+        uniforms.samples.value = samples;
+        uniforms.decay.value = 0.95;
+        uniforms.exposure.value = quality === 'medium' ? 0.14 : 0.18;
+        uniforms.rayLength.value = 0.4;
+        uniforms.density.value = 0.96;
+        uniforms.wallOcclusion.value = 0.92;
+        uniforms.time.value = state.clock.elapsedTime;
+      }
+    }
+
     if (passes.chromaticPass) {
       passes.chromaticPass.uniforms.amount.value = smoothed.current.chromaticOffset;
     }

@@ -34,14 +34,17 @@ interface AudioState {
   failed: string[];
   active: { name: string; elapsed: number }[];
   phase: SegmentAudioPhase;
-  volumes: { low: number; mid: number; high: number; rapids: number } | null;
+  volumes: { low: number; mid: number; high: number; rapids: number; whoosh: number; transition: number } | null;
+  reverbActive: boolean;
+  wallTightness: number;
 }
 
 function gatherAudioState(segmentIndex: number): AudioState {
   const manager = getAudioManager();
   const status = manager?.getLoadStatus();
   const active = manager?.getActiveSounds() ?? [];
-  const volumes = manager?.getReactiveVolumes() ?? null;
+  const audioState = manager?.getAudioState();
+  const volumes = audioState?.layers ?? null;
 
   return {
     contextState: manager?.getAudioContextState() ?? 'none',
@@ -51,6 +54,8 @@ function gatherAudioState(segmentIndex: number): AudioState {
     active,
     phase: getPhase(segmentIndex),
     volumes,
+    reverbActive: audioState?.reverbActive ?? false,
+    wallTightness: audioState?.wallTightness ?? 0,
   };
 }
 
@@ -178,6 +183,20 @@ const AudioDiagnosticsOverlay: React.FC = () => {
           <div style={rowStyle}>
             <span>Rapids</span>
             <span>{state.volumes.rapids.toFixed(2)}</span>
+          </div>
+          <div style={rowStyle}>
+            <span>Whoosh</span>
+            <span>{state.volumes.whoosh.toFixed(2)}</span>
+          </div>
+          <div style={rowStyle}>
+            <span>Transition</span>
+            <span>{state.volumes.transition.toFixed(2)}</span>
+          </div>
+          <div style={rowStyle}>
+            <span>Canyon Reverb</span>
+            <span style={state.reverbActive ? okStyle : labelStyle}>
+              {state.reverbActive ? `ON (${state.wallTightness.toFixed(2)})` : 'OFF'}
+            </span>
           </div>
         </div>
       )}

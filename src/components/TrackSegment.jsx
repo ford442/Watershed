@@ -1,9 +1,11 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { useFrame, useThree } from '@react-three/fiber';
 import FlowingWater from './FlowingWater';
+import CanyonDecorations from './CanyonDecorations';
 import { extendRiverMaterial, updateRiverMaterial } from '../utils/RiverShader';
+import { createCanyonMaterial, updateCanyonMaterial } from '../materials/CanyonMaterial';
 import { WATER_LEVEL, WALL_WATERLINE_Y, SHADERS, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
 import { getTrackBiomeProfile } from '../configs/TrackBiomes';
@@ -30,11 +32,19 @@ import RockFoam from './Environment/RockFoam';
 import Wildflowers from './Environment/Wildflowers';
 import WaterfallParticles from './Environment/WaterfallParticles';
 import FloatingObjectManager from './Environment/FloatingObjectManager';
+import CanyonDust from './Environment/CanyonDust';
+import { useLOD } from '../systems/LODManager';
 
 // Simple seeded random function
 const seededRandom = (seed) => {
     const x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
+};
+
+const SLOT_CANYON_STRATA = {
+    bedrockColor: new THREE.Color('#5b2f1f'),
+    sedimentaryColor: new THREE.Color('#8f4d2d'),
+    graniteColor: new THREE.Color('#bf7444'),
 };
 
 /**
@@ -123,6 +133,7 @@ export default function TrackSegment({
 
     // Create the spline path (Only if active)
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
+    const { quality: lodQuality } = useLOD();
 
     const segmentPath = useMemo(() => {
         if (!active) return null;
@@ -196,6 +207,7 @@ export default function TrackSegment({
                 pinecones: [],
                 mushrooms: [],
                 rockFoam: [],
+                canyonDust: [],
             };
         }
 
@@ -224,6 +236,7 @@ export default function TrackSegment({
         const dragonflies = [];
         const pinecones = [];
         const mushrooms = [];
+        const canyonDust = [];
 
         let seed = segmentId * 1000;
         const geoLength = pathLength;
@@ -699,29 +712,65 @@ export default function TrackSegment({
                 // 11. MIST
                 // Patches of mist floating above the water
                 if (type !== 'waterfall') { // Waterfalls have their own particles
-                    const mistChance = isSlotCanyon ? 0.35 : 0.6; // Lower threshold = more frequent mist spawns
-                    if (seededRandom(seed++) > mistChance) {
-                        const clusterSize = isSlotCanyon
-                            ? 2 + Math.floor(seededRandom(seed++) * 3) // Denser mist in slot canyon
-                            : 1 + Math.floor(seededRandom(seed++) * 2);
-                        for (let m = 0; m < clusterSize; m++) {
-                            const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
-                            const offset = binormal.clone().multiplyScalar(dist);
-                            const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    if (isSlotCanyon) {
+                        // Floor mist: dense, broad, near waterline.
+                        const floorChance = lodQuality === 'low' ? 0.55 : 0.42;
+                        if (seededRandom(seed++) > floorChance) {
+                            const floorClusterSize = lodQuality === 'low'
+                                ? 1 + Math.floor(seededRandom(seed++) * 2)
+                                : 2 + Math.floor(seededRandom(seed++) * 4);
+                            for (let m = 0; m < floorClusterSize; m++) {
+                                const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.95;
+                                const offset = binormal.clone().multiplyScalar(dist);
+                                const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                                position.y = waterLevel + seededRandom(seed++) * 2.0;
+                                const sx = 2.0 + seededRandom(seed++) * 2.0;
+                                const sy = 1.2 + seededRandom(seed++) * 1.4;
+                                const sz = 1.5 + seededRandom(seed++) * 1.5;
+                                mist.push({
+                                    position,
+                                    rotation: new THREE.Euler(),
+                                    scale: new THREE.Vector3(sx, sy, sz),
+                                    type: 'floor',
+                                });
+                            }
+                        }
 
-                            // Height: Slot canyons trap mist higher between walls
-                            const mistHeight = isSlotCanyon
-                                ? waterLevel + 0.3 + seededRandom(seed++) * 4.0
-                                : waterLevel + 0.2 + seededRandom(seed++) * 2.0;
-                            position.y = mistHeight;
-
-                            mist.push({
-                                position,
-                                rotation: new THREE.Euler(),
-                                scale: isSlotCanyon
-                                    ? new THREE.Vector3(0.8, 1.5, 0.8) // Taller, compressed mist
-                                    : new THREE.Vector3(1, 1, 1)
-                            });
+                        // Column mist: isolated rising pillars toward the light shaft opening.
+                        const allowColumnMist = lodQuality === 'high' || lodQuality === 'ultra';
+                        if (allowColumnMist && seededRandom(seed++) > 0.6) {
+                            const columnCount = 1 + Math.floor(seededRandom(seed++) * 2);
+                            for (let c = 0; c < columnCount; c++) {
+                                const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.5;
+                                const offset = binormal.clone().multiplyScalar(dist);
+                                const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                                position.y = waterLevel + 3.0 + seededRandom(seed++) * 7.0;
+                                const sx = 0.5 + seededRandom(seed++) * 0.7;
+                                const sy = 3.0 + seededRandom(seed++) * 4.0;
+                                mist.push({
+                                    position,
+                                    rotation: new THREE.Euler(),
+                                    scale: new THREE.Vector3(sx, sy, 0.4 + seededRandom(seed++) * 0.6),
+                                    type: 'column',
+                                });
+                            }
+                        }
+                    } else {
+                        const mistChance = 0.6;
+                        if (seededRandom(seed++) > mistChance) {
+                            const clusterSize = 1 + Math.floor(seededRandom(seed++) * 2);
+                            for (let m = 0; m < clusterSize; m++) {
+                                const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.8;
+                                const offset = binormal.clone().multiplyScalar(dist);
+                                const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                                position.y = waterLevel + 0.2 + seededRandom(seed++) * 2.0;
+                                mist.push({
+                                    position,
+                                    rotation: new THREE.Euler(),
+                                    scale: new THREE.Vector3(1, 1, 1),
+                                    type: 'floor',
+                                });
+                            }
                         }
                     }
                 }
@@ -760,7 +809,7 @@ export default function TrackSegment({
                 // Rare rays of light piercing the canopy
                 if (isSlotCanyon) {
                     // Slot canyon: dramatic narrow god rays from above
-                    if (seededRandom(seed++) > 0.75) { // More frequent in narrows
+                    if (seededRandom(seed++) > 0.68) { // More frequent in narrows
                         const dist = (seededRandom(seed++) - 0.5) * waterWidth * 0.6;
                         const offset = binormal.clone().multiplyScalar(dist);
                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
@@ -874,10 +923,46 @@ export default function TrackSegment({
                     }
                 }
             }
+
+            // Slot canyon airborne dust: subtle additive motes near water and wall crevices.
+            if (isSlotCanyon && (lodQuality === 'high' || lodQuality === 'ultra')) {
+                if (seededRandom(seed++) > 0.25) {
+                    const waterDist = (seededRandom(seed++) - 0.5) * waterWidth * 0.7;
+                    const waterOffset = binormal.clone().multiplyScalar(waterDist);
+                    const waterPos = new THREE.Vector3().copy(pathPoint).add(waterOffset);
+                    waterPos.y = waterLevel + 0.15 + seededRandom(seed++) * 0.9;
+                    canyonDust.push({
+                        position: waterPos,
+                        rotation: new THREE.Euler(),
+                        scale: new THREE.Vector3(
+                            0.15 + seededRandom(seed++) * 0.25,
+                            0.22 + seededRandom(seed++) * 0.35,
+                            0.15 + seededRandom(seed++) * 0.25
+                        ),
+                    });
+                }
+
+                if (seededRandom(seed++) > 0.35) {
+                    const wallSide = seededRandom(seed++) > 0.5 ? 1 : -1;
+                    const wallDist = bankStart + 0.5 + seededRandom(seed++) * Math.max(0.6, canyonWidth * 0.08);
+                    const wallOffset = binormal.clone().multiplyScalar(wallSide * wallDist);
+                    const wallPos = new THREE.Vector3().copy(pathPoint).add(wallOffset);
+                    wallPos.y = waterLevel + 2.0 + seededRandom(seed++) * 6.0;
+                    canyonDust.push({
+                        position: wallPos,
+                        rotation: new THREE.Euler(),
+                        scale: new THREE.Vector3(
+                            0.18 + seededRandom(seed++) * 0.22,
+                            0.20 + seededRandom(seed++) * 0.30,
+                            0.18 + seededRandom(seed++) * 0.22
+                        ),
+                    });
+                }
+            }
         }
 
-        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam };
-    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed, config]);
+        return { rocks, trees, debris, grass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, fish, pebbles, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rockFoam, canyonDust };
+    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed, config, isSlotCanyon, lodQuality]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
@@ -1013,6 +1098,7 @@ export default function TrackSegment({
         const vertex = new THREE.Vector3();
         const colors = new Float32Array(positions.count * 3);
         const mossMask = new Float32Array(positions.count); // Moss/lichen mask channel
+        const highWaterMask = new Float32Array(positions.count); // Historical flood mark channel
 
         // Color palette - three-stop gradient from waterline to rim
         const waterlineColor = new THREE.Color(0.08, 0.10, 0.07);
@@ -1054,9 +1140,14 @@ export default function TrackSegment({
             const bandNoise2 = Math.cos(zLocal * 0.7 - xLocal * 0.4) * 0.5 + 0.5;
             const mossBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.08) / 0.12) * bandNoise;
             const lichenBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.25) / 0.10) * bandNoise2;
+            const floodMarkBand = Math.max(
+                0,
+                1.0 - Math.abs(heightAboveWater - 0.38) / 0.06
+            ) * (0.7 + bandNoise * 0.3);
 
             // Store moss mask for shader use (0-1 range)
             mossMask[i] = Math.max(mossBand, lichenBand * 0.7);
+            highWaterMask[i] = floodMarkBand;
 
             colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
 
@@ -1087,6 +1178,7 @@ export default function TrackSegment({
         }
         geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geo.setAttribute('mossMask', new THREE.BufferAttribute(mossMask, 1));
+        geo.setAttribute('highWaterMask', new THREE.BufferAttribute(highWaterMask, 1));
 
         // Compute triplanar UVs (secondary UV channel) to break up texture tiling
         const uv2 = new Float32Array(positions.count * 2);
@@ -1228,6 +1320,7 @@ export default function TrackSegment({
             flowMap={flowMap}
             verticalBias={verticalBias}
             weatherWetnessRef={weatherWetnessRef}
+            isSlotCanyon={isSlotCanyon}
         />
     );
 }
@@ -1256,15 +1349,20 @@ function TrackSegmentMeshes({
     flowMap,
     verticalBias = 0,
     weatherWetnessRef,
+    isSlotCanyon = false,
 }) {
+    const { quality: lodQuality } = useLOD();
     const waterSurfaceOffset = (segmentState === 'downhill' || verticalBias <= -1.2) ? 0.6 : 0;
     const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef(null);
 
-    // Track player velocity for particle scaling (E4)
-    const [playerVelocity, setPlayerVelocity] = useState(0);
+    // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
+    const playerVelocityRef = useRef(0);
+    const [playerVelocityForParticles, setPlayerVelocityForParticles] = useState(0);
+    const playerVelocitySyncAccumulator = useRef(0);
+    const [canyonRockFoam, setCanyonRockFoam] = useState([]);
 
     // Vehicle position/velocity for FlowingWater
     const vehiclePos = useMemo(() => new THREE.Vector3(), []);
@@ -1284,16 +1382,22 @@ function TrackSegmentMeshes({
     }, [canyonGeometry]);
 
     // Update velocity each frame
-    useFrame(() => {
+    useFrame((_, delta) => {
         if (raftRef?.current) {
             const t = raftRef.current.translation();
             vehiclePos.set(t.x, t.y, t.z);
             const vel = raftRef.current.linvel?.();
             if (vel) {
                 const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-                setPlayerVelocity(speed);
+                playerVelocityRef.current = speed;
                 vehicleVelocity.set(vel.x, vel.y, vel.z);
             }
+        }
+
+        playerVelocitySyncAccumulator.current += delta;
+        if (playerVelocitySyncAccumulator.current >= 0.12) {
+            playerVelocitySyncAccumulator.current = 0;
+            setPlayerVelocityForParticles(playerVelocityRef.current);
         }
 
         // Goal 3: Pond draw distance — hide vegetation beyond 50m
@@ -1303,15 +1407,53 @@ function TrackSegmentMeshes({
         }
     });
 
+    const handleCanyonRockFoamUpdate = useCallback((foamTransforms) => {
+        setCanyonRockFoam(Array.isArray(foamTransforms) ? foamTransforms : []);
+    }, []);
+
+    useEffect(() => {
+        if (!isSlotCanyon) {
+            setCanyonRockFoam([]);
+        }
+    }, [isSlotCanyon]);
+
+    const mergedRockFoam = useMemo(
+        () => (isSlotCanyon ? [...placementData.rockFoam, ...canyonRockFoam] : placementData.rockFoam),
+        [canyonRockFoam, isSlotCanyon, placementData.rockFoam]
+    );
+
+    const highWaterMark = useMemo(() => {
+        if (segmentState === 'Flooded') return 0.32;
+        if (segmentState === 'HighFlow') return 0.24;
+        return 0.15;
+    }, [segmentState]);
+
+    const highWaterIntensity = useMemo(() => {
+        if (segmentState === 'Flooded') return 1.0;
+        if (segmentState === 'HighFlow') return 0.7;
+        return 0.35;
+    }, [segmentState]);
+
+    const allowColumnMist = lodQuality === 'high' || lodQuality === 'ultra';
+    const allowCanyonDust = allowColumnMist;
+
     const wallMaterial = useMemo(() => {
+        if (isSlotCanyon) {
+            return createCanyonMaterial({
+                biome: 'slotCanyon',
+                wallHeight: biomeProfile.wallHeight,
+                parallaxScale: 0.025,
+                flowSpeed,
+                mossCoverage: 1.0,
+                highWaterMark,
+                highWaterIntensity,
+                strata: SLOT_CANYON_STRATA,
+            });
+        }
+
         // Clone the rock material so we can apply shader effects
         const mat = rockMaterial.clone();
         mat.vertexColors = true;
-        if (biomeProfile.id === 'slotCanyon') {
-            mat.color.set(SHADERS.SLOT_ROCK_BASE);
-            mat.roughness = 0.96;
-            mat.metalness = 0;
-        }
         // Apply RiverShader with moss and wetness
         extendRiverMaterial(mat, {
             enableWetness: true,
@@ -1321,17 +1463,24 @@ function TrackSegmentMeshes({
             wetnessRange: 4.0
         });
         return mat;
-    }, [biomeProfile.id, rockMaterial]);
+    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial]);
 
     wallMaterialRef.current = wallMaterial;
 
     // Update shader uniforms each frame
     useFrame((state) => {
-        if (wallMaterialRef.current) {
+        if (isSlotCanyon && wallMaterialRef.current?.uniforms) {
+            updateCanyonMaterial(wallMaterialRef.current, {
+                flowSpeed,
+                mossCoverage: 1.0,
+                highWaterMark,
+                highWaterIntensity,
+            }, state.clock.elapsedTime);
+        } else if (wallMaterialRef.current) {
             updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime, {
                 waterLevel: WALL_WATERLINE_Y,
                 weatherWetness: weatherWetnessRef?.current || 0,
-            });
+            }, 1);
         }
     });
 
@@ -1379,6 +1528,19 @@ function TrackSegmentMeshes({
                 waterSurfaceOffset={waterSurfaceOffset}
             />
 
+            {isSlotCanyon && segmentPath && (
+                <CanyonDecorations
+                    riverPath={segmentPath}
+                    trackWidth={biomeProfile.canyonWidth}
+                    wallHeight={biomeProfile.wallHeight}
+                    segmentSeed={segmentId * 137}
+                    wallTightness={biomeProfile.wallTightness}
+                    waterLevel={waterLevel}
+                    rockDensityBias={biomeProfile.decorationBias?.rocks ?? 1.0}
+                    onRockFoamUpdate={handleCanyonRockFoamUpdate}
+                />
+            )}
+
             {/* Vegetation - Trees with Sway (ref for draw-distance culling) */}
             <group ref={vegetationGroupRef}>
                 <Vegetation transforms={placementData.trees} biome={biome} />
@@ -1420,7 +1582,22 @@ function TrackSegmentMeshes({
             <WaterLilies transforms={placementData.waterLilies} />
 
             {/* Mist - Atmospheric patches over water */}
-            <Mist transforms={placementData.mist} />
+            <Mist
+                transforms={placementData.mist}
+                flowSpeed={flowSpeed}
+                playerVelocityRef={playerVelocityRef}
+                isSlotCanyon={isSlotCanyon}
+            />
+
+            {isSlotCanyon && allowCanyonDust && (
+                <CanyonDust
+                    transforms={placementData.canyonDust}
+                    playerVelocityRef={playerVelocityRef}
+                    flowSpeed={flowSpeed}
+                    count={64}
+                    maxDistance={30}
+                />
+            )}
 
             {/* Fireflies */}
             <Fireflies transforms={placementData.fireflies} />
@@ -1438,10 +1615,10 @@ function TrackSegmentMeshes({
             <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
 
             {/* Rock Foam - Wake effects around rocks */}
-            <RockFoam transforms={placementData.rockFoam} flowSpeed={flowSpeed} />
+            <RockFoam transforms={mergedRockFoam} flowSpeed={flowSpeed} />
 
             {/* Sun Shafts - Atmospheric light rays */}
-            <SunShafts transforms={placementData.sunShafts} />
+            <SunShafts transforms={placementData.sunShafts} flowSpeed={flowSpeed} isSlotCanyon={isSlotCanyon} />
             </group>
 
             {/* Goal 2: Dynamic floating objects (logs, tires, boats, debris) */}
@@ -1463,7 +1640,7 @@ function TrackSegmentMeshes({
                         count={particleCount || 300}
                         width={waterWidth}
                         height={20}
-                        playerVelocity={playerVelocity}
+                        playerVelocity={playerVelocityForParticles}
                         particleDensity={particleDensity}
                         fanAngle={waterfallFanAngle}
                     />

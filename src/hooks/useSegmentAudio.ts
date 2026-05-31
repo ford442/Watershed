@@ -11,7 +11,10 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 import { getAudioManager } from '../systems/AudioSystem';
+import { useGameStore } from '../systems/GameState';
 
 export type SegmentAudioPhase = 'meander' | 'approach' | 'waterfall' | 'splash' | 'pond' | 'rapids';
 
@@ -37,6 +40,9 @@ function getPhase(segmentIndex: number): SegmentAudioPhase {
 export function useSegmentAudio(currentSegmentIndex: number) {
   const lastPhaseRef = useRef<SegmentAudioPhase>('meander');
   const lastSegmentRef = useRef(-1);
+  const flowSpeedRef = useRef(1);
+  const volumesRef = useRef({ low: 1, high: 0 });
+  const playerSpeed = useGameStore((s) => s.currentSpeed);
 
   useEffect(() => {
     // Debounce: only react when segment index actually changes
@@ -74,6 +80,39 @@ export function useSegmentAudio(currentSegmentIndex: number) {
         break;
     }
   }, [currentSegmentIndex]);
+
+  useEffect(() => {
+    const onFlow = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && isFinite(detail.flowSpeed)) {
+        flowSpeedRef.current = detail.flowSpeed;
+      }
+    };
+    window.addEventListener('water-flow-update', onFlow);
+    return () => window.removeEventListener('water-flow-update', onFlow);
+  }, []);
+
+  useFrame((_, delta) => {
+    const audio = getAudioManager();
+    if (!audio || !isFinite(delta) || delta <= 0) return;
+
+    const flowSpeed = isFinite(flowSpeedRef.current) ? flowSpeedRef.current : 1;
+    const speed = isFinite(playerSpeed) ? playerSpeed : 0;
+
+    const targetLow = THREE.MathUtils.clamp(1 - flowSpeed * 0.5, 0, 1);
+    const targetHigh = THREE.MathUtils.clamp((flowSpeed - 0.8) / 0.5, 0, 1);
+    const speedWhoosh = THREE.MathUtils.clamp((speed - 8) / 20, 0, 1);
+
+    const lerp = Math.min(1, delta * 2);
+    volumesRef.current.low += (targetLow - volumesRef.current.low) * lerp;
+    volumesRef.current.high += (targetHigh - volumesRef.current.high) * lerp;
+
+    audio.setReactiveVolumes({
+      low: volumesRef.current.low,
+      high: volumesRef.current.high,
+      whoosh: speedWhoosh,
+    });
+  });
 }
 
 export default useSegmentAudio;

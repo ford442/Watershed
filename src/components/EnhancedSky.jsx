@@ -1,82 +1,293 @@
-import React, { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Sky, Stars } from '@react-three/drei';
 import * as THREE from 'three';
+import { useBiome } from '../systems/BiomeSystem';
+import { useSunPosition } from '../systems/SunPositionSystem';
+import { BiomePalettes } from '../configs/BiomePalettes';
+import { useGameStore } from '../systems/GameState';
 
-// Atmospheric presets – tuned to complement the improved water surface
-// Keys use the canonical BiomePalette vocabulary (canyonSummer / canyonAutumn).
-const BIOME_SETTINGS = {
+const SKY_OVERRIDES = {
+    alpineSpring: {
+        sunPosition: [90, 42, 65],
+        turbidity: 5.8,
+        rayleigh: 3.7,
+        mieCoefficient: 0.0035,
+        mieDirectionalG: 0.8,
+    },
     canyonSummer: {
-        sunPosition: [100, 28, 100],    // Slightly higher sun for crisper canyon light
-        fogColor: '#b0cfea',             // Cooler blue-grey haze, closer to water palette
-        fogDensity: 0.010,               // Slightly lighter fog for better depth readability
-        turbidity: 6,                    // Less haze – cleaner alpine sky
-        rayleigh: 4,                     // Balanced sky scattering
+        sunPosition: [100, 34, 90],
+        turbidity: 6.4,
+        rayleigh: 3.8,
         mieCoefficient: 0.004,
         mieDirectionalG: 0.82,
     },
     canyonAutumn: {
-        sunPosition: [100, 12, 50],      // Low golden-hour sun
-        fogColor: '#dfc08e',             // Warm amber haze, less saturated to sit with water
-        fogDensity: 0.016,               // Slight reduction for better canyon readability
-        turbidity: 10,                   // Reduced from 12 – less muddy sky
+        sunPosition: [95, 24, 55],
+        turbidity: 9.5,
         rayleigh: 2.5,
         mieCoefficient: 0.007,
         mieDirectionalG: 0.86,
-    }
+    },
+    cavern: {
+        sunPosition: [0, 8, 12],
+        turbidity: 12.0,
+        rayleigh: 0.8,
+        mieCoefficient: 0.012,
+        mieDirectionalG: 0.9,
+    },
+    delta: {
+        sunPosition: [80, 22, 80],
+        turbidity: 7.2,
+        rayleigh: 3.3,
+        mieCoefficient: 0.005,
+        mieDirectionalG: 0.83,
+    },
+    midnightMist: {
+        sunPosition: [20, 14, 30],
+        turbidity: 11.0,
+        rayleigh: 1.2,
+        mieCoefficient: 0.01,
+        mieDirectionalG: 0.88,
+    },
+    pond: {
+        sunPosition: [80, 18, 80],
+        turbidity: 6.8,
+        rayleigh: 3.1,
+        mieCoefficient: 0.0048,
+        mieDirectionalG: 0.82,
+    },
+    slotCanyon: {
+        sunPosition: [100, 60, 20],
+        turbidity: 10.8,
+        rayleigh: 2.0,
+        mieCoefficient: 0.009,
+        mieDirectionalG: 0.88,
+    },
 };
 
-export default function EnhancedSky({ biome = 'canyonSummer', timeOfDay = 0.25 }) {
-    const target = BIOME_SETTINGS[biome] || BIOME_SETTINGS.canyonSummer;
-    const fogRef = useRef();
-    const showStars = biome === 'canyonAutumn' ? (timeOfDay < 0.18 || timeOfDay > 0.82) : timeOfDay < 0.12;
+const CLOUD_VERTEX = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
 
-    // Store smoothly interpolated state
-    const current = useRef({
-        fogColor: new THREE.Color(target.fogColor),
-        fogDensity: target.fogDensity,
+const CLOUD_FRAGMENT = `
+  uniform float time;
+  uniform float opacity;
+  uniform float sunsetBlend;
+  uniform vec3 cloudColorA;
+  uniform vec3 cloudColorB;
+  varying vec2 vUv;
+
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+  float noise(vec2 p){
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+      v += a * noise(p);
+      p *= 2.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    vec2 uv = vUv * 2.8;
+    uv.x += time * 0.003;
+    uv.y += time * 0.0018;
+
+    float n = fbm(uv);
+    float cloud = smoothstep(0.52, 0.8, n);
+    vec3 cloudColor = mix(cloudColorA, cloudColorB, sunsetBlend);
+    float alpha = cloud * opacity;
+    gl_FragColor = vec4(cloudColor, alpha);
+  }
+`;
+
+const getSkyProfile = (biomeId, isSlotCanyon) => {
+    if (isSlotCanyon && SKY_OVERRIDES.slotCanyon) {
+        return SKY_OVERRIDES.slotCanyon;
+    }
+    return SKY_OVERRIDES[biomeId] || SKY_OVERRIDES.canyonSummer;
+};
+
+export default function EnhancedSky() {
+    const { scene } = useThree();
+    const { currentBiome, timeOfDay, transitionProgress } = useBiome();
+    const { setSunWorldPosition } = useSunPosition();
+    const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+    const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
+    const [weatherType, setWeatherType] = useState('clear');
+
+    const fogObjRef = useRef();
+    const starsRef = useRef();
+    const cloudMatNearRef = useRef();
+    const cloudMatFarRef = useRef();
+    const sunWorldPosRef = useRef(new THREE.Vector3());
+    const fogStateRef = useRef({
+        color: new THREE.Color(BiomePalettes.canyonSummer.fogColor),
+        near: 65,
+        far: 220,
     });
+
+    const skyProfile = useMemo(
+        () => getSkyProfile(currentBiome.id, isSlotCanyon),
+        [currentBiome.id, isSlotCanyon]
+    );
+
+    const cloudOpacity = isSlotCanyon ? 0.3 : currentBiome.id === 'delta' ? 0.5 : 0.42;
+    const sunsetBlend = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
+    const skySunPosition = useMemo(() => {
+        const dayArc = (timeOfDay - 0.5) * Math.PI;
+        const base = skyProfile.sunPosition;
+        const x = base[0] + Math.sin(dayArc) * (isSlotCanyon ? 8 : 24);
+        const y = Math.max(8, base[1] + Math.cos(dayArc * 0.85) * 18);
+        const z = base[2] + Math.cos(dayArc) * (isSlotCanyon ? 6 : 14);
+        return [x, y, z];
+    }, [isSlotCanyon, skyProfile.sunPosition, timeOfDay]);
+
+    useEffect(() => {
+        const onWeatherUpdate = (event) => {
+            const incoming = event?.detail?.type;
+            if (typeof incoming === 'string') setWeatherType(incoming);
+        };
+        window.addEventListener('weather-update', onWeatherUpdate);
+        return () => window.removeEventListener('weather-update', onWeatherUpdate);
+    }, []);
+
+    useEffect(() => {
+        scene.userData.skyOwnsFog = true;
+        return () => {
+            scene.userData.skyOwnsFog = false;
+        };
+    }, [scene]);
 
     useFrame((state, delta) => {
-        const step = Math.min(1.0, delta * 0.8); // Smooth biome transition
+        const step = Math.min(1.0, delta * (0.9 + transitionProgress * 0.2));
 
-        // Lerp fog color and density toward target
-        current.current.fogColor.lerp(new THREE.Color(target.fogColor), step);
-        current.current.fogDensity += (target.fogDensity - current.current.fogDensity) * step;
+        const targetFogColor = new THREE.Color(currentBiome.fogColor);
+        const slotFogNear = 40;
+        const slotFogFar = 145;
+        const pondFogNear = 85;
+        const pondFogFar = 260;
+        const targetFogNear = isSlotCanyon
+            ? slotFogNear
+            : (currentBiome.id === 'delta' ? pondFogNear : currentBiome.fogNear);
+        const targetFogFar = isSlotCanyon
+            ? slotFogFar
+            : (currentBiome.id === 'delta' ? pondFogFar : currentBiome.fogFar);
 
-        // Update the fog object directly to avoid recreating the component
-        if (fogRef.current) {
-            fogRef.current.color.copy(current.current.fogColor);
-            fogRef.current.density = current.current.fogDensity;
+        fogStateRef.current.color.lerp(targetFogColor, step);
+        fogStateRef.current.near += (targetFogNear - fogStateRef.current.near) * step;
+        fogStateRef.current.far += (targetFogFar - fogStateRef.current.far) * step;
+
+        if (fogObjRef.current) {
+            fogObjRef.current.color.copy(fogStateRef.current.color);
+            fogObjRef.current.near = fogStateRef.current.near;
+            fogObjRef.current.far = fogStateRef.current.far;
         }
 
-        // Keep scene background in sync with fog horizon color
         if (state.scene.background instanceof THREE.Color) {
-            state.scene.background.copy(current.current.fogColor);
+            state.scene.background.copy(fogStateRef.current.color);
+        }
+
+        state.scene.userData.skyOwnsFog = true;
+
+        sunWorldPosRef.current.set(skySunPosition[0], skySunPosition[1], skySunPosition[2]);
+        setSunWorldPosition(sunWorldPosRef.current);
+
+        if (cloudMatNearRef.current?.uniforms) {
+            cloudMatNearRef.current.uniforms.time.value = state.clock.elapsedTime;
+            cloudMatNearRef.current.uniforms.opacity.value = cloudOpacity;
+            cloudMatNearRef.current.uniforms.sunsetBlend.value = sunsetBlend;
+        }
+        if (cloudMatFarRef.current?.uniforms) {
+            cloudMatFarRef.current.uniforms.time.value = state.clock.elapsedTime + 23.0;
+            cloudMatFarRef.current.uniforms.opacity.value = cloudOpacity * 0.8;
+            cloudMatFarRef.current.uniforms.sunsetBlend.value = sunsetBlend;
         }
     });
+
+    const starsBlockedByWeather = weatherType === 'overcast' || weatherType === 'fog' || weatherType === 'storm';
+    const showStars = (timeOfDay < 0.1 || timeOfDay > 0.85) && !starsBlockedByWeather;
 
     return (
         <group>
-            {/* Physically-based sky */}
+            <Sky
+                distance={450000}
+                sunPosition={skySunPosition}
+                turbidity={skyProfile.turbidity}
+                rayleigh={skyProfile.rayleigh}
+                mieCoefficient={skyProfile.mieCoefficient}
+                mieDirectionalG={skyProfile.mieDirectionalG}
+            />
+
             {showStars && (
                 <Stars
-                    ref={fogRef}
-                    radius={100}
-                    depth={40}
-                    count={biome === 'canyonSummer' ? 600 : 1200}
-                    factor={biome === 'canyonSummer' ? 3.5 : 4.5}
+                    ref={starsRef}
+                    radius={120}
+                    depth={60}
+                    count={currentBiome.id === 'midnightMist' ? 1400 : 900}
+                    factor={isSlotCanyon ? 2.2 : 4.0}
                     saturation={0}
                     fade
-                    speed={0.8}
+                    speed={0.6}
                 />
             )}
 
-            {/* Cloud and Environment components removed - were causing asset loading errors */}
+            {/* Procedural cloud ribbon: two cheap layers, no external assets. */}
+            <mesh position={[0, 40, 0]} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
+                <planeGeometry args={[700, 700, 1, 1]} />
+                <shaderMaterial
+                    ref={cloudMatNearRef}
+                    transparent
+                    depthWrite={false}
+                    side={THREE.DoubleSide}
+                    blending={THREE.NormalBlending}
+                    uniforms={{
+                        time: { value: 0 },
+                        opacity: { value: cloudOpacity },
+                        sunsetBlend: { value: sunsetBlend },
+                        cloudColorA: { value: new THREE.Color('#fff2e2') },
+                        cloudColorB: { value: new THREE.Color('#ffcc88') },
+                    }}
+                    vertexShader={CLOUD_VERTEX}
+                    fragmentShader={CLOUD_FRAGMENT}
+                />
+            </mesh>
 
-            {/* Exponential fog: ref allows density/color to be updated each frame without
-                recreating the scene fog object. Initial args match the starting biome. */}
-            <fogExp2 ref={fogRef} attach="fog" args={[target.fogColor, target.fogDensity]} />
+            <mesh position={[0, 55, 0]} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
+                <planeGeometry args={[820, 820, 1, 1]} />
+                <shaderMaterial
+                    ref={cloudMatFarRef}
+                    transparent
+                    depthWrite={false}
+                    side={THREE.DoubleSide}
+                    blending={THREE.NormalBlending}
+                    uniforms={{
+                        time: { value: 23 },
+                        opacity: { value: cloudOpacity * 0.8 },
+                        sunsetBlend: { value: sunsetBlend },
+                        cloudColorA: { value: new THREE.Color('#f8eee0') },
+                        cloudColorB: { value: new THREE.Color('#f0b773') },
+                    }}
+                    vertexShader={CLOUD_VERTEX}
+                    fragmentShader={CLOUD_FRAGMENT}
+                />
+            </mesh>
+
+            {/* Linear haze for stronger depth layering; tightened in slot canyons. */}
+            <fog ref={fogObjRef} attach="fog" args={[currentBiome.fogColor, currentBiome.fogNear, currentBiome.fogFar]} />
         </group>
     );
 }

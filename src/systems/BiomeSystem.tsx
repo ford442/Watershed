@@ -200,7 +200,7 @@ export const BiomeTransition: React.FC = () => {
     sun.position.set(...sunPos);
     
     // Update fog
-    if (scene.fog) {
+    if (scene.fog && !scene.userData.skyOwnsFog) {
       scene.fog.color.set(currentBiome.fogColor);
       if (scene.fog instanceof THREE.Fog) {
         scene.fog.near = currentBiome.fogNear;

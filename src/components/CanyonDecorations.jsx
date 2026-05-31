@@ -1,5 +1,6 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { RigidBody } from '@react-three/rapier';
 
 /**
  * CanyonDecorations - Rocks, boulders, and vegetation along canyon walls
@@ -14,135 +15,243 @@ import * as THREE from 'three';
  * @param {THREE.CatmullRomCurve3} riverPath - The river curve (can also accept segmentPath from TrackSegment)
  * @param {number} trackWidth - Width of the river track
  * @param {number} wallHeight - Height of canyon walls
+ * @param {number} segmentSeed - Deterministic seed for layout stability
+ * @param {number} wallTightness - Canyon tightness factor (0-1)
+ * @param {number} waterLevel - Waterline Y used for foam generation
+ * @param {number} rockDensityBias - Biome rock density multiplier
+ * @param {(foam: Array) => void} onRockFoamUpdate - Callback with wake transforms
  */
-export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeight = 12 }) {
-    // Generate decoration positions
+const seededRandom = (seed) => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+};
+
+const isFiniteVec3 = (v) => v && isFinite(v.x) && isFinite(v.y) && isFinite(v.z);
+
+export default function CanyonDecorations({
+    riverPath,
+    trackWidth = 16,
+    wallHeight = 12,
+    segmentSeed = 1,
+    wallTightness = 0.6,
+    waterLevel = 0.5,
+    rockDensityBias = 1.0,
+    onRockFoamUpdate,
+}) {
+    // Generate deterministic decoration positions
     const decorationData = useMemo(() => {
-        if (!riverPath) return { boulders: [], rocks: [], vegetation: [] };
-        
+        if (!riverPath) {
+            return { largeBoulders: [], smallBoulders: [], wallRocks: [], vegetation: [], rockFoam: [] };
+        }
+
         const boulders = [];
-        const rocks = [];
+        const wallRocks = [];
         const vegetation = [];
-        const numSamples = 40;
-        
-        for (let i = 0; i < numSamples; i++) {
-            const t = i / numSamples;
+        const sampleCount = 17;
+        let seed = Math.max(1, segmentSeed);
+
+        const boulderChance = Math.min(0.58, Math.max(0.5, 0.45 + rockDensityBias * 0.07));
+
+        const createBoulder = (side, point, right, tangent) => {
+            if (seededRandom(seed++) > boulderChance) return null;
+
+            const lateralMin = trackWidth * 0.24;
+            const lateralMax = trackWidth * 0.45;
+            const lateralOffset = lateralMin + seededRandom(seed++) * (lateralMax - lateralMin);
+            const alongOffset = (seededRandom(seed++) - 0.5) * 4.5;
+            const position = point.clone()
+                .add(right.clone().multiplyScalar(side * lateralOffset))
+                .add(tangent.clone().multiplyScalar(alongOffset));
+            position.y += 0.1 + seededRandom(seed++) * 1.0;
+
+            return {
+                side,
+                lateralOffset,
+                tangent,
+                right,
+                centerPoint: point,
+                alongOffset,
+                position,
+                scale: 1.2 + seededRandom(seed++) * 1.8, // 1.2 - 3.0
+                rotation: [
+                    seededRandom(seed++) * 0.9,
+                    seededRandom(seed++) * Math.PI * 2,
+                    seededRandom(seed++) * 0.8,
+                ],
+            };
+        };
+
+        const updateBoulderPosition = (boulder) => {
+            boulder.position = boulder.centerPoint.clone()
+                .add(boulder.right.clone().multiplyScalar(boulder.side * boulder.lateralOffset))
+                .add(boulder.tangent.clone().multiplyScalar(boulder.alongOffset));
+            boulder.position.y += 0.15;
+        };
+
+        for (let i = 0; i < sampleCount; i++) {
+            const t = (i + 0.5) / sampleCount;
             const point = riverPath.getPoint(t);
-            
-            // Skip if point has invalid values
-            if (!point || !isFinite(point.x) || !isFinite(point.y) || !isFinite(point.z)) {
-                continue;
-            }
-            
+            if (!isFiniteVec3(point)) continue;
+
             const tangent = riverPath.getTangent(t).normalize();
-            
-            const up = new THREE.Vector3(0, 1, 0);
-            const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
-            
-            // Large boulders near river edges
-            for (let side = -1; side <= 1; side += 2) {
-                if (Math.random() > 0.7) { // 30% chance
-                    const lateralOffset = (trackWidth / 2) * 0.7 + Math.random() * 2;
-                    const position = point.clone()
-                        .add(right.clone().multiplyScalar(side * lateralOffset))
-                        .add(tangent.clone().multiplyScalar((Math.random() - 0.5) * 3));
-                    
-                    boulders.push({
-                        position,
-                        scale: 0.8 + Math.random() * 1.2, // 0.8-2.0
-                        rotation: [
-                            Math.random() * 0.5,
-                            Math.random() * Math.PI * 2,
-                            Math.random() * 0.5
-                        ],
-                    });
+            const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+            if (!isFiniteVec3(tangent) || !isFiniteVec3(right)) continue;
+
+            const leftBoulder = createBoulder(-1, point, right, tangent);
+            const rightBoulder = createBoulder(1, point, right, tangent);
+
+            // Create deterministic choke-points by forcing mirrored pairs with narrow safe gaps.
+            if (leftBoulder && rightBoulder) {
+                const innerGap = trackWidth - leftBoulder.lateralOffset - rightBoulder.lateralOffset;
+                if (innerGap < 10.0 && seededRandom(seed++) > 0.3) {
+                    const leftRadius = leftBoulder.scale * 0.55;
+                    const rightRadius = rightBoulder.scale * 0.55;
+                    const desiredInnerGap = 6.0;
+                    const centerGap = desiredInnerGap + leftRadius + rightRadius;
+                    const mirroredOffset = Math.min(trackWidth * 0.42, Math.max(trackWidth * 0.2, centerGap * 0.5));
+
+                    leftBoulder.lateralOffset = mirroredOffset;
+                    rightBoulder.lateralOffset = mirroredOffset;
+                    leftBoulder.alongOffset *= 0.5;
+                    rightBoulder.alongOffset *= 0.5;
+
+                    updateBoulderPosition(leftBoulder);
+                    updateBoulderPosition(rightBoulder);
                 }
-                
-                // Rocks on canyon walls
-                const numWallRocks = Math.floor(Math.random() * 3) + 1;
-                for (let j = 0; j < numWallRocks; j++) {
-                    const wallOffset = (trackWidth / 2) + Math.random() * 1;
-                    const heightOnWall = Math.random() * wallHeight * 0.8;
+            }
+
+            if (leftBoulder && isFiniteVec3(leftBoulder.position)) boulders.push(leftBoulder);
+            if (rightBoulder && isFiniteVec3(rightBoulder.position)) boulders.push(rightBoulder);
+
+            for (let side = -1; side <= 1; side += 2) {
+                const wallRockCount = 1 + Math.floor(seededRandom(seed++) * 2); // 1-2
+                for (let j = 0; j < wallRockCount; j++) {
+                    const wallOffset = (trackWidth * 0.5) + seededRandom(seed++) * 1.2;
+                    const heightOnWall = seededRandom(seed++) * wallHeight * 0.85;
                     const position = point.clone()
                         .add(right.clone().multiplyScalar(side * wallOffset))
-                        .add(tangent.clone().multiplyScalar((Math.random() - 0.5) * 5));
+                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 5.0));
                     position.y += heightOnWall;
-                    
-                    rocks.push({
+
+                    if (!isFiniteVec3(position)) continue;
+                    wallRocks.push({
                         position,
-                        scale: 0.2 + Math.random() * 0.4, // Small rocks
+                        scale: 0.25 + seededRandom(seed++) * 0.45,
                         rotation: [
-                            Math.random() * Math.PI,
-                            Math.random() * Math.PI * 2,
-                            Math.random() * Math.PI
+                            seededRandom(seed++) * Math.PI,
+                            seededRandom(seed++) * Math.PI * 2,
+                            seededRandom(seed++) * Math.PI,
                         ],
                     });
                 }
-                
-                // Vegetation patches on canyon floor edges
-                if (Math.random() > 0.6) { // 40% chance
-                    const vegOffset = (trackWidth / 2) * 0.8 + Math.random() * 1.5;
+
+                // Wall-clinging mid-height near-miss rocks pushed into channel by wall tightness.
+                if (seededRandom(seed++) < 0.65) {
+                    const channelPush = 0.35 + wallTightness * 1.4 + seededRandom(seed++) * 0.4;
+                    const clingOffset = (trackWidth * 0.5) - channelPush;
+                    const clingHeight = wallHeight * (0.3 + seededRandom(seed++) * 0.4);
+                    const clingPos = point.clone()
+                        .add(right.clone().multiplyScalar(side * clingOffset))
+                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 3.5));
+                    clingPos.y += clingHeight;
+
+                    if (isFiniteVec3(clingPos)) {
+                        wallRocks.push({
+                            position: clingPos,
+                            scale: 0.45 + seededRandom(seed++) * 0.65,
+                            rotation: [
+                                seededRandom(seed++) * Math.PI * 0.6,
+                                seededRandom(seed++) * Math.PI * 2,
+                                seededRandom(seed++) * Math.PI * 0.6,
+                            ],
+                        });
+                    }
+                }
+
+                // Sparse vegetation high on walls.
+                if (seededRandom(seed++) > 0.72) {
+                    const vegOffset = (trackWidth * 0.5) + 0.8 + seededRandom(seed++) * 1.2;
                     const position = point.clone()
                         .add(right.clone().multiplyScalar(side * vegOffset))
-                        .add(tangent.clone().multiplyScalar((Math.random() - 0.5) * 4));
-                    
-                    vegetation.push({
-                        position,
-                        scale: 0.4 + Math.random() * 0.6, // 0.4-1.0
-                        rotation: Math.random() * Math.PI * 2,
-                    });
+                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 4.0));
+                    position.y += wallHeight * (0.5 + seededRandom(seed++) * 0.35);
+
+                    if (isFiniteVec3(position)) {
+                        vegetation.push({
+                            position,
+                            scale: 0.35 + seededRandom(seed++) * 0.6,
+                            rotation: seededRandom(seed++) * Math.PI * 2,
+                        });
+                    }
                 }
             }
         }
-        
-        return { boulders, rocks, vegetation };
-    }, [riverPath, trackWidth, wallHeight]);
+
+        const largeBoulders = boulders.filter((b) => b.scale > 1.5);
+        const smallBoulders = boulders.filter((b) => b.scale <= 1.5);
+
+        const rockFoam = largeBoulders
+            .filter((b) => b.position.y <= (waterLevel + 0.45))
+            .map((b) => ({
+                position: new THREE.Vector3(b.position.x, waterLevel + 0.05, b.position.z),
+                rotation: new THREE.Euler(-Math.PI / 2, Math.atan2(b.tangent.x, b.tangent.z), 0),
+                scale: new THREE.Vector3(b.scale * 3.0, b.scale * 3.0, 1.0),
+            }));
+
+        return { largeBoulders, smallBoulders, wallRocks, vegetation, rockFoam };
+    }, [riverPath, trackWidth, wallHeight, segmentSeed, wallTightness, waterLevel, rockDensityBias]);
+
+    useEffect(() => {
+        if (onRockFoamUpdate) {
+            onRockFoamUpdate(decorationData.rockFoam);
+        }
+    }, [decorationData.rockFoam, onRockFoamUpdate]);
     
     // Refs for instanced meshes
-    const bouldersRef = useRef();
-    const rocksRef = useRef();
+    const smallBouldersRef = useRef();
+    const wallRocksRef = useRef();
     const vegetationRef = useRef();
+    const boulderGeometry = useMemo(() => new THREE.DodecahedronGeometry(1, 1), []);
+    const wallRockGeometry = useMemo(() => new THREE.DodecahedronGeometry(1, 1), []);
+    const vegetationGeometry = useMemo(() => new THREE.SphereGeometry(1, 8, 6), []);
     
     // Update instance matrices
-    useMemo(() => {
+    useEffect(() => {
         const matrix = new THREE.Matrix4();
         const position = new THREE.Vector3();
         const quaternion = new THREE.Quaternion();
         const scale = new THREE.Vector3();
 
-        // Helper to check if position is valid
-        const isValidPosition = (pos) => pos && isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z);
-
-        // Update boulders
-        if (bouldersRef.current && decorationData.boulders.length > 0) {
-            decorationData.boulders.forEach((boulder, i) => {
-                if (!isValidPosition(boulder.position)) return;
+        // Update small visual-only boulders
+        if (smallBouldersRef.current && decorationData.smallBoulders.length > 0) {
+            decorationData.smallBoulders.forEach((boulder, i) => {
+                if (!isFiniteVec3(boulder.position)) return;
                 position.copy(boulder.position);
                 quaternion.setFromEuler(new THREE.Euler(...boulder.rotation));
                 scale.set(boulder.scale, boulder.scale * 0.8, boulder.scale);
                 matrix.compose(position, quaternion, scale);
-                bouldersRef.current.setMatrixAt(i, matrix);
+                smallBouldersRef.current.setMatrixAt(i, matrix);
             });
-            bouldersRef.current.instanceMatrix.needsUpdate = true;
+            smallBouldersRef.current.instanceMatrix.needsUpdate = true;
         }
 
-        // Update rocks
-        if (rocksRef.current && decorationData.rocks.length > 0) {
-            decorationData.rocks.forEach((rock, i) => {
-                if (!isValidPosition(rock.position)) return;
+        // Update wall rocks
+        if (wallRocksRef.current && decorationData.wallRocks.length > 0) {
+            decorationData.wallRocks.forEach((rock, i) => {
+                if (!isFiniteVec3(rock.position)) return;
                 position.copy(rock.position);
                 quaternion.setFromEuler(new THREE.Euler(...rock.rotation));
                 scale.set(rock.scale, rock.scale, rock.scale);
                 matrix.compose(position, quaternion, scale);
-                rocksRef.current.setMatrixAt(i, matrix);
+                wallRocksRef.current.setMatrixAt(i, matrix);
             });
-            rocksRef.current.instanceMatrix.needsUpdate = true;
+            wallRocksRef.current.instanceMatrix.needsUpdate = true;
         }
 
         // Update vegetation
         if (vegetationRef.current && decorationData.vegetation.length > 0) {
             decorationData.vegetation.forEach((veg, i) => {
-                if (!isValidPosition(veg.position)) return;
+                if (!isFiniteVec3(veg.position)) return;
                 position.copy(veg.position);
                 quaternion.setFromEuler(new THREE.Euler(0, veg.rotation, 0));
                 scale.set(veg.scale, veg.scale * 0.6, veg.scale);
@@ -157,32 +266,47 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
     
     return (
         <group name="canyon-decorations">
-            {/* Large boulders - irregular spheres */}
-            {decorationData.boulders.length > 0 && (
+            {/* Large boulders with colliders for gameplay-critical obstacles */}
+            {decorationData.largeBoulders.map((boulder, i) => (
+                <RigidBody
+                    key={`canyon-boulder-${segmentSeed}-${i}`}
+                    type="fixed"
+                    colliders="hull"
+                    friction={1.1}
+                    restitution={0.05}
+                    position={[boulder.position.x, boulder.position.y, boulder.position.z]}
+                    rotation={boulder.rotation}
+                >
+                    <mesh castShadow receiveShadow scale={[boulder.scale, boulder.scale * 0.8, boulder.scale]} geometry={boulderGeometry}>
+                        <meshStandardMaterial color="#5a3f30" roughness={0.93} metalness={0.03} />
+                    </mesh>
+                </RigidBody>
+            ))}
+
+            {/* Small visual-only boulders keep density high at low physics cost */}
+            {decorationData.smallBoulders.length > 0 && (
                 <instancedMesh
-                    ref={bouldersRef}
-                    args={[null, null, decorationData.boulders.length]}
+                    ref={smallBouldersRef}
+                    args={[boulderGeometry, null, decorationData.smallBoulders.length]}
                     castShadow
                     receiveShadow
                 >
-                    <dodecahedronGeometry args={[1, 1]} />
                     <meshStandardMaterial
-                        color="#5a4a3a"
-                        roughness={0.9}
-                        metalness={0.1}
+                        color="#6a4b38"
+                        roughness={0.92}
+                        metalness={0.04}
                     />
                 </instancedMesh>
             )}
             
-            {/* Small rocks on walls */}
-            {decorationData.rocks.length > 0 && (
+            {/* Wall and wall-clinging rocks */}
+            {decorationData.wallRocks.length > 0 && (
                 <instancedMesh
-                    ref={rocksRef}
-                    args={[null, null, decorationData.rocks.length]}
+                    ref={wallRocksRef}
+                    args={[wallRockGeometry, null, decorationData.wallRocks.length]}
                     castShadow
                     receiveShadow
                 >
-                    <dodecahedronGeometry args={[1, 1]} />
                     <meshStandardMaterial
                         color="#6b5a4a"
                         roughness={0.95}
@@ -194,11 +318,10 @@ export default function CanyonDecorations({ riverPath, trackWidth = 16, wallHeig
             {decorationData.vegetation.length > 0 && (
                 <instancedMesh
                     ref={vegetationRef}
-                    args={[null, null, decorationData.vegetation.length]}
+                    args={[vegetationGeometry, null, decorationData.vegetation.length]}
                     castShadow
                     receiveShadow
                 >
-                    <sphereGeometry args={[1, 8, 6]} />
                     <meshStandardMaterial
                         color="#3a4a2a"
                         roughness={0.9}
