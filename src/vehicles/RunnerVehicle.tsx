@@ -60,6 +60,11 @@ const BANK_CONFIG = {
   BANK_FRICTION_MULTIPLIER: 2,
 };
 
+const NEAR_MISS_SPEED_THRESHOLD = 12;
+const NEAR_MISS_RAY_LENGTH = 2.6;
+const NEAR_MISS_TOI_MIN = 0.35;
+const NEAR_MISS_TOI_MAX = 1.55;
+
 // Jump states
 type JumpState = 'grounded' | 'airborne' | 'landing' | 'recovering';
 
@@ -209,6 +214,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     state: 'ready' as DodgeState,
     timer: 0,
     direction: new THREE.Vector3(1, 0, 0),
+    nearMissAwarded: false,
   });
   
   // Goal 2: Platform riding state
@@ -753,6 +759,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         if (dodgeJustPressed && isGrounded) {
           ds.state = 'dodging';
           ds.timer = MOVEMENT.DODGE_DURATION;
+          ds.nearMissAwarded = false;
           
           // Determine dodge direction from input
           const forwardDir = new THREE.Vector3();
@@ -803,6 +810,32 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       }
       
       case 'dodging': {
+        const dodgeSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        if (!ds.nearMissAwarded && dodgeSpeed >= NEAR_MISS_SPEED_THRESHOLD) {
+          const sideDir = new THREE.Vector3(-ds.direction.z, 0, ds.direction.x);
+          if (sideDir.lengthSq() > 0.001) {
+            sideDir.normalize();
+            const rayOrigin = { x: pos.x, y: pos.y + 0.6, z: pos.z };
+            const checkSide = (sign: number) => {
+              const dir = sideDir.clone().multiplyScalar(sign);
+              const ray = new rapier.Ray(rayOrigin, { x: dir.x, y: 0, z: dir.z });
+              const hit = world.castRay(ray, NEAR_MISS_RAY_LENGTH, true);
+              const toi = hit
+                ? (typeof (hit as any).timeOfImpact === 'function'
+                  ? (hit as any).timeOfImpact()
+                  : (hit as any).timeOfImpact)
+                : null;
+              if (hit && typeof (hit as any).free === 'function') (hit as any).free();
+              return toi !== null && toi >= NEAR_MISS_TOI_MIN && toi <= NEAR_MISS_TOI_MAX;
+            };
+
+            if (checkSide(1) || checkSide(-1)) {
+              ds.nearMissAwarded = true;
+              window.dispatchEvent(new CustomEvent('player-near-miss', { detail: { speed: dodgeSpeed } }));
+            }
+          }
+        }
+
         ds.timer -= dt;
         if (ds.timer <= 0) {
           ds.state = 'cooldown';

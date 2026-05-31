@@ -83,6 +83,7 @@ const VERTEX_SHADER = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+  varying vec3 vColor;
   varying float vHeight;
   varying vec3 vViewDir;
   varying float vMossMask;
@@ -90,6 +91,7 @@ const VERTEX_SHADER = `
   
   uniform float time;
   uniform float wallHeight;
+  attribute vec3 color;
   attribute float mossMask;
   attribute float highWaterMask;
   
@@ -125,6 +127,7 @@ const VERTEX_SHADER = `
   
   void main() {
     vUv = uv;
+    vColor = color;
     vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
     vNormal = normalize(normalMatrix * normal);
     
@@ -151,6 +154,7 @@ const FRAGMENT_SHADER = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+  varying vec3 vColor;
   varying float vHeight;
   varying vec3 vViewDir;
   varying float vMossMask;
@@ -301,6 +305,9 @@ const FRAGMENT_SHADER = `
     vec3 rimColor = vec3(0.3, 0.25, 0.2) * rim * 0.3;
     color += rimColor;
     
+    // Blend authored geological vertex color bands with procedural strata
+    color *= vColor;
+
     // Output
     gl_FragColor = vec4(color, 1.0);
     
