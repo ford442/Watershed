@@ -397,6 +397,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   // Use lighting from biome system or fallback
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.canyonSummer;
   const isTightCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
+  const waterfallFxIntensity =
+    currentSegmentIndex === 13 ? 0.45 :
+    currentSegmentIndex === 14 ? 1.0 :
+    currentSegmentIndex === 15 ? 0.55 : 0;
   const isSlotCanyonLighting = biome === 'slotCanyon' || isTightCanyon;
   const ambientIntensity = isSlotCanyonLighting ? Math.min(L.ambientIntensity, 0.18) : L.ambientIntensity;
   const hemiIntensity = isSlotCanyonLighting ? Math.min(L.hemiIntensity, 0.25) : L.hemiIntensity;
@@ -415,6 +419,31 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       }
     });
   }, [debug.isStageEnabled, debug.setStageSuccess]);
+
+  const lastWaterfallRumbleRef = useRef(-1);
+  useFrame(() => {
+    const speed = playerVelocityRef.current;
+    const rumble =
+      currentSegmentIndex === 13 ? 0.05 + Math.min(0.08, speed * 0.002) :
+      currentSegmentIndex === 14 ? 0.16 + Math.min(0.16, speed * 0.004) :
+      currentSegmentIndex === 15 ? 0.06 : 0;
+
+    if (Math.abs(rumble - lastWaterfallRumbleRef.current) > 0.01) {
+      lastWaterfallRumbleRef.current = rumble;
+      window.dispatchEvent(new CustomEvent('camera-rumble', { detail: { intensity: rumble } }));
+    }
+  });
+
+  useEffect(() => {
+    if (currentSegmentIndex === 13) {
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.18, duration: 1.8 } }));
+    } else if (currentSegmentIndex === 14) {
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.55, duration: 1.2 } }));
+      window.dispatchEvent(new CustomEvent('boost-triggered', { detail: { intensity: 1.1, duration: 1.0 } }));
+    } else if (currentSegmentIndex === 15) {
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.22, duration: 1.0 } }));
+    }
+  }, [currentSegmentIndex]);
 
   return (
     <>
@@ -548,6 +577,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
           quality={quality}
           vehicleRef={vehicleRef}
           isTightCanyon={isTightCanyon}
+          waterfallIntensity={waterfallFxIntensity}
         />
       )}
 

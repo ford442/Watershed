@@ -1,9 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
-import { InstancedRigidBodies } from '@react-three/rapier';
 import { useTreeAssets } from './TreeAssets';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 
 // Color Palettes
 const PALETTES = {
@@ -18,149 +17,114 @@ const RIM_PALETTES = {
 };
 
 export default function Vegetation({ transforms, biome = 'summer', isRim = false }) {
-  const { trunkGeometry, foliageGeometry } = useTreeAssets();
-  const foliageRef = useRef(null);
-  const rimBillboardRef = useRef(null);
-  const { camera } = useThree();
+  const { variants } = useTreeAssets();
+  const speciesRefs = useRef({});
   const safeTransforms = Array.isArray(transforms) ? transforms : [];
 
-  // Materials
-  const trunkMaterial = useMemo(() => {
-    const mat = new THREE.MeshStandardMaterial({
-      color: '#4a3a2e',    // Slightly warmer bark tone
-      roughness: 0.92,
-      metalness: 0
-    });
-    return mat;
-  }, []);
-
-  const foliageMaterial = useMemo(() => {
-    const mat = new THREE.MeshStandardMaterial({
-      color: '#ffffff', // Use white so instance color tints it correctly
-      roughness: 0.82,
-      metalness: 0
-    });
-    return mat;
-  }, []);
-
-
-
-  const instances = useMemo(() => {
+  const instancesBySpecies = useMemo(() => {
     // Select palette based on biome, default to summer if invalid
     const palette = isRim
       ? (biome === 'slotCanyon' ? RIM_PALETTES.slotCanyon : (RIM_PALETTES[biome] || RIM_PALETTES.summer))
       : (PALETTES[biome] || PALETTES.summer);
 
-    return safeTransforms.map((t, i) => {
+    const grouped = {
+      conifer: [],
+      broadleaf: [],
+      birch: [],
+      snag: [],
+    };
+
+    safeTransforms.forEach((t, i) => {
       const colorHex = palette[i % palette.length];
       const color = new THREE.Color(colorHex);
+      const shadeSeed = (t.speciesIndex ?? i) * 31 + i * 17;
+      const shade = 0.82 + (shadeSeed % 19) / 100;
+      const species = grouped[t.species] ? t.species : 'conifer';
 
-      // Add slight brightness variation
-      const shade = 0.82 + ((i * 37) % 19) / 100;
+      if (species === 'snag') {
+        color.lerp(new THREE.Color('#8c7866'), 0.65);
+      } else if (species === 'birch') {
+        color.lerp(new THREE.Color('#eef3dd'), 0.55);
+      } else if (species === 'broadleaf') {
+        color.lerp(new THREE.Color('#ffd0a2'), biome === 'autumn' ? 0.35 : 0.15);
+      }
+
       color.multiplyScalar(shade);
 
-      return {
+      grouped[species].push({
         key: `veg-${i}`,
         position: t.position,
         rotation: t.rotation,
         scale: t.scale,
-        color: color
-      };
+        color,
+      });
     });
+
+    return grouped;
   }, [safeTransforms, biome, isRim]);
 
-  const rimGeometry = useMemo(() => {
-    const geo = new THREE.PlaneGeometry(1, 1.8, 1, 3);
-    const positions = geo.attributes.position;
-    const vertex = new THREE.Vector3();
-    for (let i = 0; i < positions.count; i++) {
-      vertex.fromBufferAttribute(positions, i);
-      const yNorm = (vertex.y + 0.9) / 1.8;
-      const taper = 1.0 - yNorm * 0.55;
-      positions.setXYZ(i, vertex.x * taper, vertex.y + 0.9, vertex.z);
-    }
-    positions.needsUpdate = true;
-    geo.computeVertexNormals();
-    return geo;
-  }, []);
-
-  const rimMaterial = useMemo(() => {
-    return new THREE.MeshStandardMaterial({
-      color: biome === 'slotCanyon' ? '#1e1a16' : '#23211d',
-      roughness: 1,
-      metalness: 0,
-      side: THREE.DoubleSide,
+  const speciesMaterials = useMemo(() => {
+    const map = {};
+    variants.forEach((variant) => {
+      map[variant.type] = new THREE.MeshStandardMaterial({
+        color: variant.baseTint,
+        roughness: variant.type === 'snag' ? 0.96 : 0.86,
+        metalness: 0,
+        vertexColors: true,
+      });
     });
-  }, [biome]);
+    return map;
+  }, [variants]);
 
   // Tree sway animation
   useFrame((state) => {
-    if (isRim) {
-      if (!rimBillboardRef.current) return;
-      rimBillboardRef.current.quaternion.copy(camera.quaternion);
-      return;
-    }
-    if (!foliageRef.current) return;
-    foliageRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 1.5) * 0.04;
+    variants.forEach((variant, index) => {
+      const ref = speciesRefs.current[variant.type];
+      if (!ref) return;
+      const phase = index * 0.9;
+      ref.rotation.z = Math.sin(state.clock.elapsedTime * 1.35 + phase) * variant.swayAmount;
+    });
   });
 
   if (safeTransforms.length === 0) return null;
 
-  if (isRim) {
-    return (
-      <group ref={rimBillboardRef}>
-        <Instances
-          range={instances.length}
-          geometry={rimGeometry}
-          material={rimMaterial}
-          castShadow
-          receiveShadow={false}
-        >
-          {instances.map((t) => (
-            <Instance
-              key={t.key}
-              position={t.position}
-              scale={t.scale}
-              color={t.color}
-            />
-          ))}
-        </Instances>
-      </group>
-    );
-  }
-
   return (
     <group>
-      {/* TRUNKS */}
-      <InstancedRigidBodies
-        instances={instances}
-        type="fixed"
-        colliders={false}
-      >
-        <Instances range={instances.length} geometry={trunkGeometry} material={trunkMaterial} castShadow receiveShadow>
-          {instances.map((t) => (
-            <Instance
-              key={t.key}
-              position={t.position}
-              rotation={t.rotation}
-              scale={t.scale}
-            />
-          ))}
-        </Instances>
-      </InstancedRigidBodies>
+      {variants.map((variant) => {
+        const instances = instancesBySpecies[variant.type] || [];
+        if (instances.length === 0) return null;
 
-      {/* FOLIAGE */}
-      <Instances ref={foliageRef} range={instances.length} geometry={foliageGeometry} material={foliageMaterial} castShadow receiveShadow>
-        {instances.map((t) => (
-          <Instance
-            key={t.key}
-            position={t.position}
-            rotation={t.rotation}
-            scale={t.scale}
-            color={t.color}
-          />
-        ))}
-      </Instances>
+        return (
+          <group
+            key={variant.type}
+            ref={(node) => {
+              if (node) {
+                speciesRefs.current[variant.type] = node;
+              } else {
+                delete speciesRefs.current[variant.type];
+              }
+            }}
+          >
+            <Instances
+              range={instances.length}
+              geometry={variant.geometry}
+              material={speciesMaterials[variant.type]}
+              castShadow
+              receiveShadow
+            >
+              {instances.map((t) => (
+                <Instance
+                  key={t.key}
+                  position={t.position}
+                  rotation={t.rotation}
+                  scale={t.scale}
+                  color={t.color}
+                />
+              ))}
+            </Instances>
+          </group>
+        );
+      })}
     </group>
   );
 }

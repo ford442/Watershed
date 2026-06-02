@@ -46,6 +46,7 @@ export interface BiomePalette {
   vegetationDensity: number;
   treeDensity: number;
   grassDensity: number;
+  wildflowerColors: string[];
   
   // Effects
   fireflyCount: number;
@@ -101,6 +102,7 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     vegetationDensity: 0.7,
     treeDensity: 0.8,
     grassDensity: 1.0,
+    wildflowerColors: ['#f4d35e', '#c6e377', '#9ad1d4', '#f7f7ff'],
     
     // Effects
     fireflyCount: 0,
@@ -151,6 +153,7 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     vegetationDensity: 1.0,
     treeDensity: 1.0,
     grassDensity: 1.2,
+    wildflowerColors: ['#ff6f91', '#ffd166', '#7bd389', '#8ec5ff', '#f7f3e9', '#ff8c42'],
     
     // Effects
     fireflyCount: 15,
@@ -201,6 +204,7 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     vegetationDensity: 0.8,
     treeDensity: 0.9,
     grassDensity: 0.6,
+    wildflowerColors: ['#c96f3b', '#d89a54', '#b95c42', '#e0b36a', '#c7a27c'],
     
     // Effects
     fireflyCount: 8,
@@ -251,6 +255,7 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     vegetationDensity: 0.3,
     treeDensity: 0.2,
     grassDensity: 0.3,
+    wildflowerColors: ['#5d7a52', '#6f8b60', '#879a75'],
     
     // Effects
     fireflyCount: 25,
@@ -301,6 +306,7 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     vegetationDensity: 0.9,
     treeDensity: 0.6,
     grassDensity: 1.3,
+    wildflowerColors: ['#f0c95d', '#d4e27a', '#80cfa9', '#d7eef8'],
     
     // Effects
     fireflyCount: 5,
@@ -351,6 +357,7 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     vegetationDensity: 0.6,
     treeDensity: 0.5,
     grassDensity: 0.4,
+    wildflowerColors: ['#5f6a5d', '#727d6f', '#8d917f'],
     
     // Effects
     fireflyCount: 30,

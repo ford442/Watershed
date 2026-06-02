@@ -102,6 +102,7 @@ export function PostProcessingPipeline({
   quality = 'high',
   vehicleRef,
   isTightCanyon = false,
+  waterfallIntensity = 0,
 
   bloomIntensity = 0.5,
   bloomThreshold = 0.8,
@@ -227,10 +228,11 @@ export function PostProcessingPipeline({
       velocity = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.z * bodyVel.z);
     }
     const speedFactor = Math.min(1, velocity / 25);
+    const waterfallBoost = THREE.MathUtils.clamp(waterfallIntensity, 0, 1);
 
     // Chromatic aberration target
     const targetChromatic =
-      chromaticBaseOffset + (chromaticMaxOffset - chromaticBaseOffset) * speedFactor + boostScale * 0.0025;
+      chromaticBaseOffset + (chromaticMaxOffset - chromaticBaseOffset) * speedFactor + boostScale * 0.0025 + waterfallBoost * 0.0009;
 
     // Saturation target
     let targetSaturation = 1.0;
@@ -246,7 +248,7 @@ export function PostProcessingPipeline({
     targetSaturation = Math.min(1, targetSaturation + boostScale * 0.15);
 
     // Vignette boost target
-    const targetVignetteBoost = velocity > 25 * 0.9 ? 0.3 : 0;
+    const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08;
 
     // Smooth transitions
     const t = 1 - Math.exp(-delta * 10);
@@ -257,20 +259,24 @@ export function PostProcessingPipeline({
     // Apply to passes
     if (passes.godRaysPass) {
       const shouldRenderGodRays =
-        isTightCanyon &&
+        (isTightCanyon || waterfallBoost > 0.2) &&
         (quality === 'medium' || quality === 'high' || quality === 'ultra') &&
         (config.enableGodRays || quality === 'medium');
 
       const samples = quality === 'medium' ? 16 : Math.max(48, config.volumetricSamples || 48);
       const sunClip = sunWorldPosition.clone().project(camera);
       const sunVisible = sunClip.z > -1.0 && sunClip.z < 1.0;
+      const cameraForward = new THREE.Vector3();
+      camera.getWorldDirection(cameraForward);
+      const sunDir = sunWorldPosition.clone().sub(camera.position).normalize();
+      const alignment = Math.max(0, cameraForward.dot(sunDir));
 
       passes.godRaysPass.enabled = shouldRenderGodRays && sunVisible;
       if (passes.godRaysPass.enabled) {
         const uniforms = passes.godRaysPass.material.uniforms;
         uniforms.sunScreenPosition.value.set((sunClip.x + 1) * 0.5, (1 - sunClip.y) * 0.5);
         uniforms.sunColor.value.copy(getGodRaySunColor(timeOfDay));
-        uniforms.intensity.value = quality === 'medium' ? 0.45 : 0.6;
+        uniforms.intensity.value = (quality === 'medium' ? 0.45 : 0.6) * Math.max(0.35, alignment) * (1 + waterfallBoost * 0.55);
         uniforms.samples.value = samples;
         uniforms.decay.value = 0.95;
         uniforms.exposure.value = quality === 'medium' ? 0.14 : 0.18;
@@ -298,9 +304,9 @@ export function PostProcessingPipeline({
       passes.vignettePass.uniforms.darkness.value = vignetteDarkness + smoothed.current.vignetteBoost;
     }
     if (passes.bloomPass) {
-      passes.bloomPass.strength = bloomIntensity + boostScale * 0.4;
-      passes.bloomPass.threshold = Math.max(0.2, bloomThreshold - boostScale * 0.15);
-      passes.bloomPass.radius = bloomRadius + boostScale * 0.2;
+      passes.bloomPass.strength = bloomIntensity + boostScale * 0.4 + waterfallBoost * 0.55;
+      passes.bloomPass.threshold = Math.max(0.2, bloomThreshold - boostScale * 0.15 - waterfallBoost * 0.1);
+      passes.bloomPass.radius = bloomRadius + boostScale * 0.2 + waterfallBoost * 0.12;
     }
 
     composer.render();

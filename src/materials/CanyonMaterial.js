@@ -226,6 +226,15 @@ const FRAGMENT_SHADER = `
     
     return streaks;
   }
+
+  float seepStreaks(vec3 worldPos, vec2 uv, float h) {
+    float crackSeed = noise(vec2(worldPos.x * 0.08 + worldPos.z * 0.04, worldPos.z * 0.09));
+    float anchor = smoothstep(0.62, 0.92, crackSeed);
+    float verticalRun = smoothstep(0.2, 0.95, 1.0 - h);
+    float waviness = noise(vec2(worldPos.x * 0.12, worldPos.y * 0.08 - time * 0.04));
+    float stripe = smoothstep(0.58, 0.86, waviness);
+    return anchor * verticalRun * stripe * weatheringIntensity;
+  }
   
   // Moss coverage (authored mask + procedural variation)
   float computeMossCoverage(float h, vec2 uv, float authoredMask) {
@@ -277,6 +286,12 @@ const FRAGMENT_SHADER = `
     // Apply weathering streaks
     float streaks = weatheringStreaks(uv, h);
     color = mix(color, color * 0.7, streaks); // Darken where water runs
+
+    // Dark seep channels and mineral staining below ledges/cracks
+    float seeps = seepStreaks(vWorldPos, uv, h);
+    vec3 mineralTint = mix(vec3(0.28, 0.22, 0.16), vec3(0.48, 0.34, 0.22), smoothstep(0.1, 0.75, h));
+    color = mix(color, color * 0.58, seeps * 0.55);
+    color = mix(color, mineralTint, seeps * 0.16);
     
     // Apply crack patterns (darker in cracks)
     float cracks = crackPattern(uv);

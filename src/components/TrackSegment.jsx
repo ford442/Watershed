@@ -33,12 +33,15 @@ import Mushrooms from './Environment/Mushrooms';
 import RockFoam from './Environment/RockFoam';
 import Wildflowers from './Environment/Wildflowers';
 import WaterfallParticles from './Environment/WaterfallParticles';
+import WaterfallSheet from './Environment/WaterfallSheet';
+import WaterfallImpactZone from './Environment/WaterfallImpactZone';
 import FloatingObjectManager from './Environment/FloatingObjectManager';
 import CanyonDust from './Environment/CanyonDust';
 import Cactus from './Environment/Cactus';
 import DesertSage from './Environment/DesertSage';
 import CanyonGrass from './Environment/CanyonGrass';
 import CanyonBackground from './Environment/CanyonBackground';
+import Rock from './Obstacles/Rock';
 import { useLOD } from '../systems/LODManager';
 import { useBiome } from '../systems/BiomeSystem';
 import { useSunPosition } from '../systems/SunPositionSystem';
@@ -47,6 +50,92 @@ import { useSunPosition } from '../systems/SunPositionSystem';
 const seededRandom = (seed) => {
     const x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
+};
+
+const TREE_SPECIES = ['conifer', 'broadleaf', 'birch', 'snag'];
+const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'];
+const ROCK_TYPES = ['boulder', 'slab', 'column'];
+
+const pickTreeSpecies = ({ biomeProfile, biome, isRim, type, segmentId, instanceIndex }) => {
+    const weights = biomeProfile.treeSpeciesWeights[isRim ? 'rim' : 'floor'];
+    const speciesWeights = { ...weights };
+
+    if (type === 'waterfall' || type === 'splash') {
+        speciesWeights.snag += isRim ? 0.2 : 0.12;
+        speciesWeights.broadleaf *= 0.75;
+    }
+
+    if (biome === 'summer' && !isRim) {
+        speciesWeights.conifer += 0.08;
+    }
+
+    const total = TREE_SPECIES.reduce((sum, species) => sum + Math.max(0, speciesWeights[species] || 0), 0);
+    if (total <= 0) {
+        return { species: 'conifer', speciesIndex: 0 };
+    }
+
+    const roll = seededRandom(segmentId * 137 + instanceIndex * 97 + (isRim ? 53 : 11)) * total;
+    let cursor = 0;
+    for (let i = 0; i < TREE_SPECIES.length; i++) {
+        const species = TREE_SPECIES[i];
+        cursor += Math.max(0, speciesWeights[species] || 0);
+        if (roll <= cursor) {
+            return { species, speciesIndex: i };
+        }
+    }
+
+    return { species: 'conifer', speciesIndex: 0 };
+};
+
+const createFlowerPayload = ({ position, rotation, scale, biome, segmentId, instanceIndex }) => {
+    const variantIndex = Math.floor(seededRandom(segmentId * 137 + instanceIndex * 71 + 23) * FLOWER_VARIANTS.length);
+    return {
+        position,
+        rotation,
+        scale,
+        variant: FLOWER_VARIANTS[variantIndex],
+        variantIndex,
+        colorIndex: Math.floor(seededRandom(segmentId * 137 + instanceIndex * 89 + 31) * 6),
+        hueJitter: seededRandom(segmentId * 137 + instanceIndex * 113 + 7) - 0.5,
+        lightnessJitter: seededRandom(segmentId * 137 + instanceIndex * 131 + (biome === 'autumn' ? 41 : 17)) - 0.5,
+    };
+};
+
+const createRockPayload = ({ position, rotation, scale, biome, segmentId, instanceIndex, isScatter = false, nearWall = false }) => {
+    let rockType = 'boulder';
+
+    if (biome === 'slotCanyon') {
+        const roll = seededRandom(segmentId * 137 + instanceIndex * 59 + (isScatter ? 17 : 7));
+        rockType = roll > 0.68 ? 'column' : roll > 0.36 ? 'slab' : 'boulder';
+    } else if (nearWall) {
+        rockType = seededRandom(segmentId * 137 + instanceIndex * 47 + 13) > 0.58 ? 'slab' : 'boulder';
+    }
+
+    const shadePalette = biome === 'autumn'
+        ? ['#8b7355', '#9f7b55', '#74563e']
+        : biome === 'slotCanyon'
+            ? ['#a65f3a', '#bf7444', '#8d4c2b']
+            : ['#8f8576', '#9d8b78', '#6f675d'];
+
+    const color = shadePalette[Math.floor(seededRandom(segmentId * 137 + instanceIndex * 83 + 29) * shadePalette.length)];
+    const scaled = isScatter
+        ? scale.clone().multiplyScalar(0.35 + seededRandom(segmentId * 137 + instanceIndex * 97 + 5) * 0.35)
+        : scale;
+
+    return {
+        position,
+        rotation,
+        scale: scaled,
+        rockType: ROCK_TYPES.includes(rockType) ? rockType : 'boulder',
+        color,
+    };
+};
+
+const lerpValue = (a, b, t) => a + (b - a) * t;
+
+const smoothNoise = (seed) => {
+    const x = Math.sin(seed * 12.9898) * 43758.5453;
+    return (x - Math.floor(x)) * 2 - 1;
 };
 
 const SLOT_CANYON_STRATA = {
@@ -188,12 +277,53 @@ export default function TrackSegment({
     const waterWidth = waterWidthOverride ?? (type === 'pond' ? Math.max(45, biomeProfile.waterWidth) : biomeProfile.waterWidth);
     const waterLevel = WATER_LEVEL;
     const isSlotCanyon = biomeProfile.id === 'slotCanyon';
+    const channelProfile = useMemo(() => {
+        if (!active || !segmentPath || pathLength <= 0) return [];
+
+        const sampleCount = Math.max(8, Math.floor(pathLength / 2));
+        const corridorHalfWidth = Math.max(3.2, Math.min(waterWidth * 0.35, waterWidth * 0.5 - 1.2));
+        const widthAmplitude = type === 'pond' ? 0.06 : isSlotCanyon ? 0.12 : 0.18;
+        const asymmetryAmplitude = isSlotCanyon ? 0.22 : 0.14;
+
+        return Array.from({ length: sampleCount + 1 }, (_, index) => {
+            const t = sampleCount === 0 ? 0 : index / sampleCount;
+            const worldArc = segmentId + t;
+            const baseWidth = waterWidth * 0.5;
+            const widthNoise = smoothNoise(worldArc * 2.1 + 0.17) * 0.6 + smoothNoise(worldArc * 4.4 - 0.33) * 0.4;
+            const riffleWave = Math.sin(worldArc * Math.PI * 1.35 + segmentId * 0.21);
+            const riffleNoise = smoothNoise(worldArc * 3.2 + 1.7) * 0.35;
+            const riffleStrength = THREE.MathUtils.clamp(riffleWave * 0.65 + riffleNoise, -1, 1);
+            const poolDepth = THREE.MathUtils.clamp(Math.max(0, -riffleStrength), 0, 1);
+            const riffleAmount = THREE.MathUtils.clamp(Math.max(0, riffleStrength), 0, 1);
+            const widthScale = 1 + widthNoise * widthAmplitude + poolDepth * 0.16 - riffleAmount * 0.1;
+            const asymmetry = smoothNoise(worldArc * 1.5 - 2.4) * asymmetryAmplitude;
+            const leftHalfWidth = Math.max(corridorHalfWidth + 0.8, baseWidth * widthScale * (1 + asymmetry));
+            const rightHalfWidth = Math.max(corridorHalfWidth + 0.8, baseWidth * widthScale * (1 - asymmetry));
+            const floorDepth = poolDepth * (isSlotCanyon ? 1.4 : 1.1) - riffleAmount * 0.35;
+            const floorWave = smoothNoise(worldArc * 6.4 + 0.8) * 0.18 + Math.sin(worldArc * Math.PI * 3.1) * 0.08;
+
+            return {
+                t,
+                worldArc,
+                leftHalfWidth,
+                rightHalfWidth,
+                corridorHalfWidth,
+                floorDepth,
+                floorWave,
+                riffleStrength,
+                gravelBarSide: asymmetry > 0 ? 1 : -1,
+                undercutSide: asymmetry > 0 ? -1 : 1,
+                flowScale: 1 + riffleAmount * 0.18 - poolDepth * 0.12,
+            };
+        });
+    }, [active, segmentId, segmentPath, pathLength, waterWidth, type, isSlotCanyon]);
 
     // Derived Placement Data - Trees and foliage enabled
     const placementData = useMemo(() => {
         if (!active || !segmentPath) {
             return {
                 rocks: [],
+                scatterRocks: [],
                 trees: [],
                 cactus: [],
                 desertSage: [],
@@ -229,6 +359,7 @@ export default function TrackSegment({
 
         /* DISABLED DECORATION LOGIC */
         const rocks = []; // Empty but defined to prevent reference errors
+        const scatterRocks = [];
         const rockFoam = [];
         const trees = [];
         const cactus = [];
@@ -263,6 +394,41 @@ export default function TrackSegment({
         const zSteps = Math.ceil(pathLength / 2);
 
         const bankStart = waterWidth / 2;
+        const getChannelShape = (t) => {
+            if (!channelProfile.length) {
+                return {
+                    leftHalfWidth: bankStart,
+                    rightHalfWidth: bankStart,
+                    corridorHalfWidth: Math.max(3.2, bankStart - 1.2),
+                    floorDepth: 0,
+                    floorWave: 0,
+                    riffleStrength: 0,
+                    gravelBarSide: 1,
+                    undercutSide: -1,
+                    flowScale: 1,
+                };
+            }
+
+            const clampedT = THREE.MathUtils.clamp(t, 0, 1);
+            const scaled = clampedT * (channelProfile.length - 1);
+            const lower = Math.floor(scaled);
+            const upper = Math.min(channelProfile.length - 1, lower + 1);
+            const alpha = scaled - lower;
+            const from = channelProfile[lower];
+            const to = channelProfile[upper];
+
+            return {
+                leftHalfWidth: lerpValue(from.leftHalfWidth, to.leftHalfWidth, alpha),
+                rightHalfWidth: lerpValue(from.rightHalfWidth, to.rightHalfWidth, alpha),
+                corridorHalfWidth: lerpValue(from.corridorHalfWidth, to.corridorHalfWidth, alpha),
+                floorDepth: lerpValue(from.floorDepth, to.floorDepth, alpha),
+                floorWave: lerpValue(from.floorWave, to.floorWave, alpha),
+                riffleStrength: lerpValue(from.riffleStrength, to.riffleStrength, alpha),
+                gravelBarSide: alpha < 0.5 ? from.gravelBarSide : to.gravelBarSide,
+                undercutSide: alpha < 0.5 ? from.undercutSide : to.undercutSide,
+                flowScale: lerpValue(from.flowScale, to.flowScale, alpha),
+            };
+        };
 
         // --- Array-path: explicit authored decoration positions ---
         const treeDef = config?.decorations?.trees;
@@ -307,7 +473,15 @@ export default function TrackSegment({
                 const rotEuler = rot != null
                     ? new THREE.Euler(0, rot, 0)
                     : new THREE.Euler(rng.next() * Math.PI, rng.next() * Math.PI, rng.next() * Math.PI);
-                rocks.push({ position: pos, rotation: rotEuler, scale: new THREE.Vector3(scaleMod, scaleMod, scaleMod) });
+                rocks.push(createRockPayload({
+                    position: pos,
+                    rotation: rotEuler,
+                    scale: new THREE.Vector3(scaleMod, scaleMod, scaleMod),
+                    biome,
+                    segmentId,
+                    instanceIndex: rocks.length,
+                    nearWall: Math.abs(localX) > bankStart + 3,
+                }));
             });
         }
         // ---------------------------------------------------------
@@ -315,6 +489,7 @@ export default function TrackSegment({
         for (let z = 0; z < zSteps; z++) {
             const t = z / zSteps;
             const zLocal = (t - 0.5) * geoLength;
+            const channelShape = getChannelShape(t);
 
             const pathPoint = segmentPath.getPoint(t);
             const tangent = segmentPath.getTangent(t).normalize();
@@ -331,13 +506,15 @@ export default function TrackSegment({
             for (let sideIdx = 0; sideIdx < sides.length; sideIdx++) {
                 const side = sides[sideIdx];
                 const isPond = type === 'pond';
+                const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
 
                 // 1. ROCKS (Large) — skip if explicit authored positions provided
                 if (!Array.isArray(rockDef)) {
                 const rockChanceMultipliers = { low: 0.4, high: 0.7 };
-                const rockChance = isPond ? 0.3 : (isSlotCanyon ? 0.8 : rockChanceMultipliers[rockDensity] || 0.4);
+                const riffleBoost = Math.max(0, channelShape.riffleStrength) * 0.22;
+                const rockChance = isPond ? 0.3 : (isSlotCanyon ? 0.8 : (rockChanceMultipliers[rockDensity] || 0.4) + riffleBoost);
                 if (seededRandom(seed++) > (1.0 - rockChance)) {
-                    const dist = bankStart + 1 + seededRandom(seed++) * 4;
+                    const dist = bankEdge + 0.6 + seededRandom(seed++) * (2.6 + Math.max(0, channelShape.riffleStrength) * 1.5);
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
 
@@ -358,7 +535,37 @@ export default function TrackSegment({
                         seededRandom(seed++) * Math.PI,
                         seededRandom(seed++) * Math.PI
                     );
-                    rocks.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                    rocks.push(createRockPayload({
+                        position,
+                        rotation,
+                        scale: new THREE.Vector3(scale, scale, scale),
+                        biome,
+                        segmentId,
+                        instanceIndex: rocks.length,
+                        nearWall: dist > bankStart + 3,
+                    }));
+
+                    const scatterCount = 2 + Math.floor(seededRandom(seed++) * 4);
+                    for (let sr = 0; sr < scatterCount; sr++) {
+                        const scatterPos = position.clone()
+                            .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 2.4))
+                            .add(binormal.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 2.2));
+                        scatterPos.y = Math.max(waterLevel + 0.04, position.y - 0.2 + seededRandom(seed++) * 0.35);
+                        scatterRocks.push(createRockPayload({
+                            position: scatterPos,
+                            rotation: new THREE.Euler(
+                                seededRandom(seed++) * Math.PI,
+                                seededRandom(seed++) * Math.PI * 2,
+                                seededRandom(seed++) * Math.PI
+                            ),
+                            scale: new THREE.Vector3(1, 1, 1),
+                            biome,
+                            segmentId,
+                            instanceIndex: scatterRocks.length,
+                            isScatter: true,
+                            nearWall: dist > bankStart + 3,
+                        }));
+                    }
 
                     // 1.1 ROCK FOAM (Wake effect)
                     if (Math.abs(xLocal) < (waterWidth / 2) - 1.0) {
@@ -421,7 +628,21 @@ export default function TrackSegment({
 
                             const scale = 1.5 + seededRandom(seed++) * 1.0;
                             const rotation = new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0);
-                            trees.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
+                            const treeIndex = trees.length;
+                            const treeSpecies = pickTreeSpecies({
+                                biomeProfile,
+                                biome,
+                                isRim: false,
+                                type,
+                                segmentId,
+                                instanceIndex: treeIndex,
+                            });
+                            trees.push({
+                                position,
+                                rotation,
+                                scale: new THREE.Vector3(scale, scale, scale),
+                                ...treeSpecies,
+                            });
 
                             const numPinecones = 2 + Math.floor(seededRandom(seed++) * 4);
                             for (let pc = 0; pc < numPinecones; pc++) {
@@ -561,21 +782,50 @@ export default function TrackSegment({
                     });
                 }
 
-                // 4.5 WILDFLOWERS (New: Pops of Color)
-                const flowerChance = biome === 'summer' ? 0.85 : 0.98;
-                if (!isSlotCanyon && seededRandom(seed++) > flowerChance) {
-                    const dist = bankStart + seededRandom(seed++) * 5;
+                // 4.5 WILDFLOWERS - denser near waterline with deterministic clumping.
+                if (!isSlotCanyon) {
+                    const bankHeight = Math.max(1.5, biomeProfile.wallHeight * 0.55);
+                    const minFlowerDist = bankStart + 0.35;
+                    const maxFlowerDist = bankStart + Math.min(7.5, canyonWidth * 0.18);
+                    const dist = minFlowerDist + seededRandom(seed++) * Math.max(0.5, maxFlowerDist - minFlowerDist);
                     const offset = binormal.clone().multiplyScalar(side * dist);
-                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += 1.0; // Same ground level as grass approx
+                    const xLocal = side * dist;
+                    const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
+                    let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+                    groundY += Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
+                    if (groundY > 25) groundY = 25 - seededRandom(seed++) * 2;
 
-                    // Slightly smaller than grass bushes
-                    const scale = 0.6 + seededRandom(seed++) * 0.4;
-                    wildflowers.push({
-                        position,
-                        rotation: new THREE.Euler(0, rng.next() * Math.PI, 0),
-                        scale: new THREE.Vector3(scale, scale, scale)
-                    });
+                    const heightAboveWaterline = Math.max(0, (groundY - 0.5) - waterLevel);
+                    const waterlineFactor = Math.min(1, heightAboveWaterline / bankHeight);
+                    const highNearWater = biome === 'autumn' ? 0.52 : 0.72;
+                    const lowAtRim = biome === 'autumn' ? 0.14 : 0.2;
+                    const spawnProbability = highNearWater + (lowAtRim - highNearWater) * waterlineFactor;
+
+                    if (seededRandom(seed++) < spawnProbability) {
+                        const clusterSize = 2 + Math.floor(seededRandom(seed++) * 3);
+                        const baseScale = biome === 'autumn' ? 0.55 + seededRandom(seed++) * 0.28 : 0.6 + seededRandom(seed++) * 0.35;
+
+                        for (let wf = 0; wf < clusterSize; wf++) {
+                            const spreadAlong = wf === 0 ? 0 : (seededRandom(seed++) - 0.5) * 1.2;
+                            const spreadAcross = wf === 0 ? 0 : (seededRandom(seed++) - 0.5) * 0.9;
+                            const position = new THREE.Vector3().copy(pathPoint)
+                                .add(offset)
+                                .add(tangent.clone().multiplyScalar(spreadAlong))
+                                .add(binormal.clone().multiplyScalar(spreadAcross));
+                            position.y = Math.max(waterLevel + 0.05, groundY + 0.12 + seededRandom(seed++) * 0.2);
+
+                            const scaleMod = wf === 0 ? 1 : 0.78 + seededRandom(seed++) * 0.32;
+                            const flowerIndex = wildflowers.length;
+                            wildflowers.push(createFlowerPayload({
+                                position,
+                                rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
+                                scale: new THREE.Vector3(baseScale * scaleMod, baseScale * (0.9 + seededRandom(seed++) * 0.4), baseScale * scaleMod),
+                                biome,
+                                segmentId,
+                                instanceIndex: flowerIndex,
+                            }));
+                        }
+                    }
                 }
 
                 // 4.6 FERNS (New: Undergrowth clusters)
@@ -1019,12 +1269,12 @@ export default function TrackSegment({
                 // Turbulent foam piles in fast water
                 if (!isSlotCanyon && flowSpeed > 0.8 && type !== 'pond') {
                     // Density based on flow speed and rock density
-                    const rapidChance = rockDensity === 'high' ? 0.6 : 0.3;
+                    const rapidChance = (rockDensity === 'high' ? 0.35 : 0.15) + Math.max(0, channelShape.riffleStrength) * 0.45;
 
                     if (seededRandom(seed++) > (1.0 - rapidChance)) {
                         const clusterSize = 1 + Math.floor(seededRandom(seed++) * 3);
                         // Place in center channel (avoid banks)
-                        const centerSpread = waterWidth * 0.4; // 40% of width
+                        const centerSpread = channelShape.corridorHalfWidth * 1.4;
 
                         for (let r = 0; r < clusterSize; r++) {
                             const dist = (seededRandom(seed++) - 0.5) * centerSpread;
@@ -1158,10 +1408,20 @@ export default function TrackSegment({
                     ? new THREE.Vector3(baseScale * 1.2, baseScale * 0.85, baseScale * 1.2)
                     : new THREE.Vector3(baseScale * 0.8, baseScale * 1.7, baseScale * 0.8);
 
+                const rimTreeIndex = rimTrees.length;
+                const treeSpecies = pickTreeSpecies({
+                    biomeProfile,
+                    biome,
+                    isRim: true,
+                    type,
+                    segmentId,
+                    instanceIndex: rimTreeIndex,
+                });
                 rimTrees.push({
                     position,
                     rotation: new THREE.Euler(0, seededRandom(seed++) * Math.PI * 2, 0),
                     scale,
+                    ...treeSpecies,
                 });
             }
         }
@@ -1196,6 +1456,7 @@ export default function TrackSegment({
 
         return {
             rocks,
+            scatterRocks,
             trees,
             cactus,
             desertSage,
@@ -1256,27 +1517,72 @@ export default function TrackSegment({
         const shoreColor = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_BASE) : (biome === 'autumn' ? new THREE.Color('#685840') : new THREE.Color('#4a5c44'));
         const mossColor = isSlotCanyon ? new THREE.Color('#7c4a2d') : (biome === 'autumn' ? new THREE.Color('#7a6640') : new THREE.Color('#587248'));
         const bankColor = isSlotCanyon ? new THREE.Color('#bf7444') : (biome === 'autumn' ? new THREE.Color('#907850') : new THREE.Color('#788860'));
+        const getChannelShape = (t) => {
+            if (!channelProfile.length) {
+                return {
+                    leftHalfWidth: waterWidth * 0.5,
+                    rightHalfWidth: waterWidth * 0.5,
+                    corridorHalfWidth: Math.max(3.2, waterWidth * 0.5 - 1.2),
+                    floorDepth: 0,
+                    floorWave: 0,
+                    riffleStrength: 0,
+                    gravelBarSide: 1,
+                    undercutSide: -1,
+                };
+            }
+            const scaled = THREE.MathUtils.clamp(t, 0, 1) * (channelProfile.length - 1);
+            const lower = Math.floor(scaled);
+            const upper = Math.min(channelProfile.length - 1, lower + 1);
+            const alpha = scaled - lower;
+            const from = channelProfile[lower];
+            const to = channelProfile[upper];
+            return {
+                leftHalfWidth: lerpValue(from.leftHalfWidth, to.leftHalfWidth, alpha),
+                rightHalfWidth: lerpValue(from.rightHalfWidth, to.rightHalfWidth, alpha),
+                corridorHalfWidth: lerpValue(from.corridorHalfWidth, to.corridorHalfWidth, alpha),
+                floorDepth: lerpValue(from.floorDepth, to.floorDepth, alpha),
+                floorWave: lerpValue(from.floorWave, to.floorWave, alpha),
+                riffleStrength: lerpValue(from.riffleStrength, to.riffleStrength, alpha),
+                gravelBarSide: alpha < 0.5 ? from.gravelBarSide : to.gravelBarSide,
+                undercutSide: alpha < 0.5 ? from.undercutSide : to.undercutSide,
+            };
+        };
 
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
             const xLocal = vertex.x;
             const zLocal = vertex.z;
+            const t = (zLocal + len / 2) / len;
+            const safeT = Math.max(0, Math.min(1, t));
+            const channelShape = getChannelShape(safeT);
+            const signedBankWidth = xLocal < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
+            const corridorWidth = Math.max(1.2, channelShape.corridorHalfWidth);
             const distFromCenter = Math.abs(xLocal);
             const normalizedDist = distFromCenter / (canyonWidth * 0.45);
+            const bankRatio = distFromCenter / Math.max(0.001, signedBankWidth);
+            const gravelBarInfluence = channelShape.gravelBarSide === Math.sign(xLocal || 1) ? 1 : 0;
+            const undercutInfluence = channelShape.undercutSide === Math.sign(xLocal || 1) ? 1 : 0;
 
             let yHeight = isSlotCanyon
                 ? 22 + Math.pow(Math.max(0, normalizedDist), 1.8) * 18
                 : Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
 
-            if (distFromCenter < waterWidth / 2) {
+            if (distFromCenter < signedBankWidth) {
+                const inChannel = distFromCenter / Math.max(0.001, signedBankWidth);
+                const corridorEase = THREE.MathUtils.smoothstep(inChannel, 0, 1);
                 yHeight *= isSlotCanyon ? 0.18 : 0.1;
+                yHeight -= channelShape.floorDepth * 1.4;
+                yHeight += channelShape.floorWave * (distFromCenter < corridorWidth ? 0.2 : 0.55);
+                yHeight += Math.max(0, channelShape.riffleStrength) * inChannel * 0.35;
+                yHeight += Math.max(0, 1 - corridorEase) * 0.05;
+            } else {
+                const aboveBank = Math.max(0, bankRatio - 1);
+                yHeight += aboveBank * aboveBank * 4.5 * undercutInfluence;
+                yHeight -= aboveBank * 1.25 * gravelBarInfluence;
             }
 
             const rockNoise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
             yHeight += rockNoise * (0.5 + normalizedDist);
-
-            const t = (zLocal + len / 2) / len;
-            const safeT = Math.max(0, Math.min(1, t));
 
             // GUARD: Check if getPoint returns valid result
             let point;
@@ -1292,7 +1598,8 @@ export default function TrackSegment({
                 point = new THREE.Vector3(0, 0, 0);
             }
 
-            const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2) / 2.5));
+            const depthTint = THREE.MathUtils.clamp(-channelShape.floorDepth * 0.25, 0, 0.2);
+            const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2 + depthTint) / 2.5));
             // 5-stop blend: wet → shore → moss → bank → dry for smoother waterline transition
             if (dryness < 0.20) {
                 color.copy(wetColor).lerp(shoreColor, dryness / 0.20);
@@ -1337,7 +1644,7 @@ export default function TrackSegment({
             geo.computeVertexNormals();
         }
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId, biome]);
+    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId, biome, channelProfile, isSlotCanyon]);
 
     // Wall Shell Geometry
     const wallShellGeometry = useMemo(() => {
@@ -1366,18 +1673,18 @@ export default function TrackSegment({
         // Height bands relative to WALL_WATERLINE_Y.
         const bandPalette = isSlotCanyon
             ? {
-                waterline: new THREE.Color('#351b12'),
-                lower: new THREE.Color('#8a4620'),
-                mid: new THREE.Color('#ad5a2a'),
-                upper: new THREE.Color('#d08748'),
-                rim: new THREE.Color('#c2a27a'),
+                waterline: new THREE.Color('#2f1a12'),
+                lower: new THREE.Color('#7e4123'),
+                mid: new THREE.Color('#a95a32'),
+                upper: new THREE.Color('#cc8353'),
+                rim: new THREE.Color('#d2b08d'),
             }
             : {
-                waterline: new THREE.Color('#2a1a0e'),
-                lower: new THREE.Color('#6b3d1e'),
-                mid: new THREE.Color('#9f5c2a'),
-                upper: new THREE.Color('#c47d3f'),
-                rim: new THREE.Color('#b89a72'),
+                waterline: new THREE.Color('#24170f'),
+                lower: new THREE.Color('#5c3721'),
+                mid: new THREE.Color('#87614b'),
+                upper: new THREE.Color('#ae9173'),
+                rim: new THREE.Color('#c8baa0'),
             };
         const rimGrey = new THREE.Color('#9a948b');
 
@@ -1391,26 +1698,29 @@ export default function TrackSegment({
                 ? biomeProfile.wallHeight + (distFromCenter * 0.18)
                 : 15 + (distFromCenter * 0.5);
             yHeight += Math.sin(zLocal * 0.1) * (isSlotCanyon ? 1.8 : 3) + Math.cos(xLocal * 0.2) * (isSlotCanyon ? 1.1 : 2);
+            const strataWarp = Math.sin(zLocal * 0.14 + xLocal * 0.06 + segmentId * 0.17) * (isSlotCanyon ? 1.6 : 1.1)
+                + Math.cos(zLocal * 0.22 - xLocal * 0.09) * (isSlotCanyon ? 0.8 : 0.55);
 
             // Height relative to waterline in wall-local coordinates.
             const localY = yHeight - 2;
             const relY = localY - WALL_WATERLINE_Y;
+            const warpedRelY = relY + strataWarp;
 
             const c = new THREE.Color();
-            if (relY < 0.5) {
-                const blend = THREE.MathUtils.smoothstep(relY, -0.5, 0.5);
+            if (warpedRelY < 0.5) {
+                const blend = THREE.MathUtils.smoothstep(warpedRelY, -0.5, 0.5);
                 c.copy(bandPalette.waterline).lerp(bandPalette.lower, blend);
-            } else if (relY < 4.0) {
-                const blend = THREE.MathUtils.smoothstep(relY, 0.5, 4.0);
+            } else if (warpedRelY < 4.0) {
+                const blend = THREE.MathUtils.smoothstep(warpedRelY, 0.5, 4.0);
                 c.copy(bandPalette.lower).lerp(bandPalette.mid, blend);
-            } else if (relY < 12.0) {
-                const blend = THREE.MathUtils.smoothstep(relY, 4.0, 12.0);
+            } else if (warpedRelY < 12.0) {
+                const blend = THREE.MathUtils.smoothstep(warpedRelY, 4.0, 12.0);
                 c.copy(bandPalette.mid).lerp(bandPalette.upper, blend * 0.25);
-            } else if (relY < 18.0) {
-                const blend = THREE.MathUtils.smoothstep(relY, 12.0, 18.0);
+            } else if (warpedRelY < 18.0) {
+                const blend = THREE.MathUtils.smoothstep(warpedRelY, 12.0, 18.0);
                 c.copy(bandPalette.mid).lerp(bandPalette.upper, blend);
-            } else if (relY < 26.0) {
-                const blend = THREE.MathUtils.smoothstep(relY, 18.0, 26.0);
+            } else if (warpedRelY < 26.0) {
+                const blend = THREE.MathUtils.smoothstep(warpedRelY, 18.0, 26.0);
                 const rimTint = bandPalette.rim.clone().lerp(rimGrey, 0.3 + blend * 0.25);
                 c.copy(bandPalette.upper).lerp(rimTint, blend);
             } else {
@@ -1422,15 +1732,16 @@ export default function TrackSegment({
             const noise2 = Math.sin(zLocal * 1.2 + xLocal * 0.8) * 0.5 + 0.5;
             const seedNoise = Math.sin(zLocal * 0.77 + segmentId * 0.31) * 0.5 + 0.5;
             const detailNoise = noise1 * 0.08 + noise2 * 0.04 + seedNoise * 0.05;
-            c.multiplyScalar(0.9 + detailNoise);
+            const verticalFade = THREE.MathUtils.clamp((warpedRelY + 2.0) / 24.0, 0, 1);
+            c.multiplyScalar(0.78 + detailNoise + verticalFade * 0.18);
 
             // Organic band masks for shader-driven moss/lichen
             const bandNoise = Math.sin(zLocal * 0.3 + xLocal * 0.5) * 0.5 + 0.5;
             const bandNoise2 = Math.cos(zLocal * 0.7 - xLocal * 0.4) * 0.5 + 0.5;
             const normalizedWallHeight = isSlotCanyon ? 22 : 15;
             const heightAboveWater = Math.max(0, Math.min(1, relY / normalizedWallHeight));
-            const mossBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.08) / 0.12) * bandNoise;
-            const lichenBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.25) / 0.10) * bandNoise2;
+            const mossBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.08) / 0.13) * bandNoise;
+            const lichenBand = Math.max(0, 1.0 - Math.abs(heightAboveWater - 0.24) / 0.11) * bandNoise2;
             const floodMarkBand = Math.max(
                 0,
                 1.0 - Math.abs(heightAboveWater - 0.38) / 0.06
@@ -1480,16 +1791,16 @@ export default function TrackSegment({
 
             // Triplanar UV projection using world-space XZ and XY
             // Scale factor to control texture density
-            const scale = 0.08;
-            const triplanarBlend = Math.abs(worldPos.y - 13) / 15; // Blend based on height
+            const scale = 0.07;
+            const triplanarBlend = Math.abs(worldPos.y - WALL_WATERLINE_Y) / 12;
 
             // Primary triplanar: side projection (XZ plane with Y variation)
             const u1 = worldPos.x * scale;
-            const v1 = worldPos.z * scale * 0.5; // Compress Z to reduce stretch
+            const v1 = worldPos.z * scale * 0.42;
 
             // Secondary: top-down variation for rim areas
-            const u2 = (worldPos.x + worldPos.z) * scale * 0.7;
-            const v2 = worldPos.y * scale * 0.3;
+            const u2 = (worldPos.x + worldPos.z) * scale * 0.65 + Math.sin(worldPos.y * 0.06) * 0.12;
+            const v2 = worldPos.y * scale * 0.28 + Math.cos((worldPos.x - worldPos.z) * 0.04) * 0.08;
 
             // Blend based on height above water
             const blend = Math.min(1, Math.max(0, triplanarBlend));
@@ -1525,15 +1836,43 @@ export default function TrackSegment({
         }
 
         const segmentsZ = Math.max(2, Math.floor(len / 2));
-        const geo = new THREE.PlaneGeometry(waterWidth, len, 4, segmentsZ);
+        const basePlaneWidth = waterWidth * 1.45;
+        const geo = new THREE.PlaneGeometry(basePlaneWidth, len, 8, segmentsZ);
         geo.rotateX(-Math.PI / 2);
 
         const positions = geo.attributes.position;
+        const getChannelShape = (t) => {
+            if (!channelProfile.length) {
+                return {
+                    leftHalfWidth: waterWidth * 0.5,
+                    rightHalfWidth: waterWidth * 0.5,
+                    corridorHalfWidth: Math.max(3.2, waterWidth * 0.5 - 1.2),
+                };
+            }
+            const scaled = THREE.MathUtils.clamp(t, 0, 1) * (channelProfile.length - 1);
+            const lower = Math.floor(scaled);
+            const upper = Math.min(channelProfile.length - 1, lower + 1);
+            const alpha = scaled - lower;
+            const from = channelProfile[lower];
+            const to = channelProfile[upper];
+            return {
+                leftHalfWidth: lerpValue(from.leftHalfWidth, to.leftHalfWidth, alpha),
+                rightHalfWidth: lerpValue(from.rightHalfWidth, to.rightHalfWidth, alpha),
+                corridorHalfWidth: lerpValue(from.corridorHalfWidth, to.corridorHalfWidth, alpha),
+            };
+        };
+
         for (let i = 0; i < positions.count; i++) {
             const x = positions.getX(i);
             const z = positions.getZ(i);
             const t = (z + len / 2) / len;
             const safeT = Math.max(0, Math.min(1, t));
+            const channelShape = getChannelShape(safeT);
+            const halfWidth = x < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
+            const xNormalized = THREE.MathUtils.clamp(x / (basePlaneWidth * 0.5), -1, 1);
+            const shapedX = xNormalized < 0
+                ? xNormalized * channelShape.leftHalfWidth
+                : xNormalized * channelShape.rightHalfWidth;
 
             let point;
             try {
@@ -1545,7 +1884,7 @@ export default function TrackSegment({
                 point = new THREE.Vector3(0, 0, 0);
             }
 
-            const finalX = point.x + x;
+            const finalX = point.x + shapedX;
             const finalY = point.y + waterLevel;
             const finalZ = point.z;
 
@@ -1569,7 +1908,7 @@ export default function TrackSegment({
             geo.computeVertexNormals();
         }
         return geo;
-    }, [segmentPath, pathLength, waterWidth, active, segmentId]);
+    }, [segmentPath, pathLength, waterWidth, active, segmentId, channelProfile]);
 
     // Waterfall position
     const waterfallPos = useMemo(() => {
@@ -1582,6 +1921,35 @@ export default function TrackSegment({
             return null;
         }
     }, [type, segmentPath, active, segmentId]);
+
+    const plungeImpactPlacement = useMemo(() => {
+        if (!active || !segmentPath) return null;
+
+        try {
+            if (type === 'waterfall' && waterfallPos) {
+                return {
+                    position: waterfallPos.clone().add(new THREE.Vector3(0, -10.0, 0)),
+                    intensity: 1.0,
+                    width: Math.max(6, waterWidth * 0.95),
+                };
+            }
+
+            if (type === 'splash') {
+                const point = segmentPath.getPoint(0.16);
+                if (!hasFiniteCoordinates(point)) return null;
+                point.y = waterLevel + 0.05;
+                return {
+                    position: point,
+                    intensity: 0.72,
+                    width: Math.max(7, waterWidth * 1.1),
+                };
+            }
+        } catch (error) {
+            console.warn(`[TrackSegment ${segmentId}] Failed to compute plunge impact placement`, error);
+        }
+
+        return null;
+    }, [active, segmentId, segmentPath, type, waterfallPos, waterLevel, waterWidth]);
 
     if (!active || !canyonGeometry || !waterGeometry || !rockMaterial) {
         return null;
@@ -1601,6 +1969,7 @@ export default function TrackSegment({
             placementData={placementData}
             biome={biome}
             waterfallPos={waterfallPos}
+            plungeImpactPlacement={plungeImpactPlacement}
             particleCount={particleCount}
             particleDensity={particleDensity}
             waterWidth={waterWidth}
@@ -1630,6 +1999,7 @@ function TrackSegmentMeshes({
     placementData,
     biome,
     waterfallPos,
+    plungeImpactPlacement,
     particleCount,
     particleDensity,
     waterWidth,
@@ -1869,10 +2239,10 @@ function TrackSegmentMeshes({
             enableMoss: true,
             enableTriplanar: true,
             waterLevel: WALL_WATERLINE_Y,
-            wetnessRange: 4.0
+            wetnessRange: type === 'waterfall' || type === 'splash' ? 7.5 : 4.0
         });
         return mat;
-    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial]);
+    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type]);
 
     wallMaterialRef.current = wallMaterial;
 
@@ -1937,6 +2307,7 @@ function TrackSegmentMeshes({
                     segmentId={segmentId}
                     segmentCenter={segmentCenterRef.current}
                     baseColor={biomeProfile.id === 'slotCanyon' ? '#bf5e2a' : biomeProfile.rockBaseColor}
+                    biome={biome}
                 />
             )}
 
@@ -1955,6 +2326,18 @@ function TrackSegmentMeshes({
                 vehicleVelocity={vehicleVelocity}
                 waterSurfaceOffset={waterSurfaceOffset}
             />
+
+            {plungeImpactPlacement && (
+                <group position={plungeImpactPlacement.position}>
+                    <WaterfallImpactZone
+                        width={plungeImpactPlacement.width}
+                        flowSpeed={flowSpeed * (type === 'waterfall' ? 1.4 : 1.05)}
+                        intensity={plungeImpactPlacement.intensity}
+                        particleDensity={particleDensity}
+                        playerVelocity={playerVelocityForParticles}
+                    />
+                </group>
+            )}
 
             {type === 'splash' && rainbowPlacement && rainbowOpacity > 0.02 && (
                 <group
@@ -1977,6 +2360,12 @@ function TrackSegmentMeshes({
                     onRockFoamUpdate={handleCanyonRockFoamUpdate}
                 />
             )}
+
+            <Rock
+                transforms={placementData.rocks}
+                scatterTransforms={placementData.scatterRocks}
+                material={rockMaterial}
+            />
 
             {/* Vegetation - Trees with Sway (ref for draw-distance culling) */}
             <group ref={vegetationGroupRef}>
@@ -2087,6 +2476,12 @@ function TrackSegmentMeshes({
             {/* Waterfall Particles - with dynamic scaling (E4) */}
             {type === 'waterfall' && waterfallPos && (
                 <group position={waterfallPos}>
+                    <WaterfallSheet
+                        width={waterWidth}
+                        height={20}
+                        flowSpeed={flowSpeed * 1.35}
+                        fanAngle={waterfallFanAngle}
+                    />
                     <WaterfallParticles
                         count={particleCount || 300}
                         width={waterWidth}

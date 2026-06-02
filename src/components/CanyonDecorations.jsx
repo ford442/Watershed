@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
+import { useFrame } from '@react-three/fiber';
 
 /**
  * CanyonDecorations - Rocks, boulders, and vegetation along canyon walls
@@ -41,12 +42,13 @@ export default function CanyonDecorations({
     // Generate deterministic decoration positions
     const decorationData = useMemo(() => {
         if (!riverPath) {
-            return { largeBoulders: [], smallBoulders: [], wallRocks: [], vegetation: [], rockFoam: [] };
+            return { largeBoulders: [], smallBoulders: [], wallRocks: [], vegetation: [], hangingGrowth: [], rockFoam: [] };
         }
 
         const boulders = [];
         const wallRocks = [];
         const vegetation = [];
+        const hangingGrowth = [];
         const sampleCount = 17;
         let seed = Math.max(1, segmentSeed);
 
@@ -184,6 +186,35 @@ export default function CanyonDecorations({
                         });
                     }
                 }
+
+                const waterlineBias = seededRandom(seed++);
+                const hangingChance = side === -1 ? 0.62 : 0.48;
+                if (waterlineBias < hangingChance) {
+                    const wallOffset = (trackWidth * 0.5) + 0.45 + seededRandom(seed++) * 1.35;
+                    const ledgeHeight = wallHeight * (0.18 + seededRandom(seed++) * 0.55);
+                    const droopLength = 1.2 + seededRandom(seed++) * 2.4;
+                    const position = point.clone()
+                        .add(right.clone().multiplyScalar(side * wallOffset))
+                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 3.5));
+                    position.y += ledgeHeight;
+
+                    if (isFiniteVec3(position)) {
+                        hangingGrowth.push({
+                            position,
+                            scale: new THREE.Vector3(
+                                0.45 + seededRandom(seed++) * 0.35,
+                                droopLength,
+                                0.45 + seededRandom(seed++) * 0.25
+                            ),
+                            rotation: [
+                                0.05 + seededRandom(seed++) * 0.12,
+                                seededRandom(seed++) * Math.PI * 2,
+                                side * (0.12 + seededRandom(seed++) * 0.18),
+                            ],
+                            color: seededRandom(seed++) > 0.45 ? '#4b5f32' : '#6b7d46',
+                        });
+                    }
+                }
             }
         }
 
@@ -198,7 +229,7 @@ export default function CanyonDecorations({
                 scale: new THREE.Vector3(b.scale * 3.0, b.scale * 3.0, 1.0),
             }));
 
-        return { largeBoulders, smallBoulders, wallRocks, vegetation, rockFoam };
+        return { largeBoulders, smallBoulders, wallRocks, vegetation, hangingGrowth, rockFoam };
     }, [riverPath, trackWidth, wallHeight, segmentSeed, wallTightness, waterLevel, rockDensityBias]);
 
     useEffect(() => {
@@ -211,9 +242,24 @@ export default function CanyonDecorations({
     const smallBouldersRef = useRef();
     const wallRocksRef = useRef();
     const vegetationRef = useRef();
+    const hangingGrowthRef = useRef();
     const boulderGeometry = useMemo(() => new THREE.DodecahedronGeometry(1, 1), []);
     const wallRockGeometry = useMemo(() => new THREE.DodecahedronGeometry(1, 1), []);
     const vegetationGeometry = useMemo(() => new THREE.SphereGeometry(1, 8, 6), []);
+    const hangingGrowthGeometry = useMemo(() => {
+        const geo = new THREE.PlaneGeometry(1, 1.8, 1, 4);
+        const positions = geo.attributes.position;
+        const vertex = new THREE.Vector3();
+        for (let i = 0; i < positions.count; i++) {
+            vertex.fromBufferAttribute(positions, i);
+            const yNorm = (vertex.y + 0.9) / 1.8;
+            const taper = 1.0 - yNorm * 0.55;
+            positions.setXYZ(i, vertex.x * taper, vertex.y - 0.9, vertex.z);
+        }
+        positions.needsUpdate = true;
+        geo.computeVertexNormals();
+        return geo;
+    }, []);
     
     // Update instance matrices
     useEffect(() => {
@@ -260,7 +306,29 @@ export default function CanyonDecorations({
             });
             vegetationRef.current.instanceMatrix.needsUpdate = true;
         }
+
+        if (hangingGrowthRef.current && decorationData.hangingGrowth.length > 0) {
+            decorationData.hangingGrowth.forEach((growth, i) => {
+                if (!isFiniteVec3(growth.position)) return;
+                position.copy(growth.position);
+                quaternion.setFromEuler(new THREE.Euler(...growth.rotation));
+                scale.copy(growth.scale);
+                matrix.compose(position, quaternion, scale);
+                hangingGrowthRef.current.setMatrixAt(i, matrix);
+                hangingGrowthRef.current.setColorAt(i, new THREE.Color(growth.color));
+            });
+            hangingGrowthRef.current.instanceMatrix.needsUpdate = true;
+            if (hangingGrowthRef.current.instanceColor) {
+                hangingGrowthRef.current.instanceColor.needsUpdate = true;
+            }
+        }
     }, [decorationData]);
+
+    useFrame((state) => {
+        if (!hangingGrowthRef.current) return;
+        hangingGrowthRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.55 + segmentSeed * 0.01) * 0.045;
+        hangingGrowthRef.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.35 + segmentSeed * 0.015) * 0.018;
+    });
     
     if (!riverPath) return null;
     
@@ -325,6 +393,23 @@ export default function CanyonDecorations({
                     <meshStandardMaterial
                         color="#3a4a2a"
                         roughness={0.9}
+                    />
+                </instancedMesh>
+            )}
+
+            {decorationData.hangingGrowth.length > 0 && (
+                <instancedMesh
+                    ref={hangingGrowthRef}
+                    args={[hangingGrowthGeometry, null, decorationData.hangingGrowth.length]}
+                    castShadow
+                    receiveShadow
+                >
+                    <meshStandardMaterial
+                        color="#5a6b3d"
+                        roughness={0.92}
+                        metalness={0.0}
+                        vertexColors
+                        side={THREE.DoubleSide}
                     />
                 </instancedMesh>
             )}

@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import { getBiomePalette } from '../../configs/BiomePalettes';
 
 const LAYERS = [
-  { depthOffset: -120, desaturation: 0.4, opacity: 0.72, width: 420, heightVariance: 5.2, rimY: 28 },
-  { depthOffset: -220, desaturation: 0.8, opacity: 0.45, width: 520, heightVariance: 6.8, rimY: 30 },
-  { depthOffset: -350, desaturation: 0.95, opacity: 0.2, width: 680, heightVariance: 8.0, rimY: 33 },
+  { depthOffset: -120, desaturation: 0.35, opacity: 0.78, width: 420, heightVariance: 5.2, rimY: 28, parallax: 0.08, towers: true },
+  { depthOffset: -220, desaturation: 0.72, opacity: 0.48, width: 520, heightVariance: 6.8, rimY: 30, parallax: 0.045, towers: false },
+  { depthOffset: -350, desaturation: 0.94, opacity: 0.24, width: 680, heightVariance: 8.0, rimY: 33, parallax: 0.02, towers: false },
 ];
 
 const hash = (n) => {
@@ -12,7 +14,7 @@ const hash = (n) => {
   return x - Math.floor(x);
 };
 
-function createRidgelineGeometry(seed, width, heightVariance) {
+function createRidgelineGeometry(seed, width, heightVariance, addTowers = false) {
   const segCount = 14;
   const positions = [];
   const indices = [];
@@ -25,7 +27,11 @@ function createRidgelineGeometry(seed, width, heightVariance) {
     const harmonicA = Math.sin(i * 0.63 + seed) * heightVariance;
     const harmonicB = Math.sin(i * 1.27 + seed * 1.9) * (heightVariance * 0.4);
     const jitter = (hash(seed + i * 2.7) - 0.5) * heightVariance * 0.25;
-    const h = harmonicA + harmonicB + jitter;
+    let h = harmonicA + harmonicB + jitter;
+    if (addTowers) {
+      const towerPulse = Math.max(0, Math.sin(i * 0.9 + seed * 0.7));
+      h += towerPulse * towerPulse * heightVariance * 0.85;
+    }
 
     positions.push(x, h, 0);
     positions.push(x, floorY, 0);
@@ -46,14 +52,16 @@ function createRidgelineGeometry(seed, width, heightVariance) {
   return geo;
 }
 
-export default function CanyonBackground({ segmentId, segmentCenter, baseColor = '#9f5c2a' }) {
+export default function CanyonBackground({ segmentId, segmentCenter, baseColor = '#9f5c2a', biome = 'slotCanyon' }) {
+  const groupRef = useRef();
+  const { camera } = useThree();
   const safeCenter = segmentCenter || new THREE.Vector3();
 
   const layers = useMemo(() => {
-    const fogColor = new THREE.Color('#d8cfc4');
+    const fogColor = new THREE.Color(getBiomePalette(biome).fogColor);
     return LAYERS.map((layer, index) => {
       const seed = segmentId * 3.7 + index * 11.3;
-      const geometry = createRidgelineGeometry(seed, layer.width, layer.heightVariance);
+      const geometry = createRidgelineGeometry(seed, layer.width, layer.heightVariance, layer.towers);
 
       const color = new THREE.Color(baseColor);
       color.lerp(fogColor, layer.desaturation);
@@ -69,7 +77,7 @@ export default function CanyonBackground({ segmentId, segmentCenter, baseColor =
 
       return { ...layer, geometry, material };
     });
-  }, [baseColor, segmentId]);
+  }, [baseColor, biome, segmentId]);
 
   useEffect(() => {
     return () => {
@@ -80,8 +88,20 @@ export default function CanyonBackground({ segmentId, segmentCenter, baseColor =
     };
   }, [layers]);
 
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const offsetX = camera.position.x - safeCenter.x;
+    const offsetZ = camera.position.z - safeCenter.z;
+    groupRef.current.children.forEach((child, index) => {
+      const layer = LAYERS[index];
+      if (!layer) return;
+      child.position.x = safeCenter.x + offsetX * layer.parallax;
+      child.position.z = safeCenter.z + layer.depthOffset + offsetZ * layer.parallax * 0.08;
+    });
+  });
+
   return (
-    <group renderOrder={-30}>
+    <group ref={groupRef} renderOrder={-30}>
       {layers.map((layer, index) => (
         <mesh
           key={`bg-layer-${index}`}
