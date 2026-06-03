@@ -55,6 +55,9 @@ export {
   useGameStore,
   usePlayerPosition,
   usePlayerSpeed,
+  useScore,
+  useMultiplier,
+  useComboLabel,
   usePlayerBiome,
   useGamePaused,
   useGameWipeout,
@@ -67,3 +70,11 @@ export {
   type GameActions,
   type GameStore,
 } from './GameState';
+
+// Score system
+export {
+  tickScoreSystem,
+  awardDodgeBonus,
+  awardWaterfallBonus,
+  resetScoreSystemState,
+} from './ScoreSystem';

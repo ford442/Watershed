@@ -1,11 +1,23 @@
 import React, { useMemo, useRef, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useBiome } from '../../systems/BiomeSystem';
+import { useSunPosition } from '../../systems/SunPositionSystem';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
-export default function SunShafts({ transforms }) {
+export default function SunShafts({
+  transforms,
+  flowSpeed = 1.0,
+  isSlotCanyon = false,
+}) {
   const meshRef = useRef();
+  const dustRef = useRef();
+  const { camera } = useThree();
+  const { timeOfDay } = useBiome();
+  const { sunWorldPosition } = useSunPosition();
+  const prevCamPosRef = useRef(new THREE.Vector3());
+  const streakStrengthRef = useRef(0);
 
   // Geometry: Cone/Cylinder representing the light beam
   // Top radius smaller (2), Bottom radius larger (6), Height 30
@@ -28,6 +40,12 @@ export default function SunShafts({ transforms }) {
       uniforms: {
         time: { value: 0 },
         colorBase: { value: new THREE.Color('#fff6d8') }, // Slightly warmer golden sunlight
+        warmTint: { value: new THREE.Color('#ffcc88') },
+        flowSpeed: { value: flowSpeed },
+        shaftOpacity: { value: isSlotCanyon ? 0.5 : 0.3 },
+        timeOfDay: { value: timeOfDay },
+        speedStreak: { value: 0 },
+        sunDirection: { value: new THREE.Vector3(0.1, 1.0, 0.05).normalize() },
       },
       vertexShader: `
         uniform float time;
@@ -64,6 +82,12 @@ export default function SunShafts({ transforms }) {
       fragmentShader: `
         uniform float time;
         uniform vec3 colorBase;
+        uniform vec3 warmTint;
+        uniform float flowSpeed;
+        uniform float shaftOpacity;
+        uniform float timeOfDay;
+        uniform float speedStreak;
+        uniform vec3 sunDirection;
         varying vec2 vUv;
         varying vec3 vWorldPosition;
         varying float vAlpha;
@@ -132,34 +156,72 @@ export default function SunShafts({ transforms }) {
 
           // Dust Motes Noise
           // Move noise upwards and slowly
-          float noise = snoise(vWorldPosition * 0.3 + vec3(0.0, -time * 0.5, 0.0));
+          float noise = snoise(vWorldPosition * 0.3 + vec3(0.0, -time * (0.5 + flowSpeed * 0.3), 0.0));
           noise = noise * 0.5 + 0.5; // 0 to 1
 
           // Enhance contrast of noise for "shaft" look
           float shaft = smoothstep(0.3, 0.7, noise);
 
-          // Combine
-          float alpha = vAlpha * verticalFade * shaft * 0.3; // Low opacity base
+          // Dust streak accents when player is moving quickly.
+          float streaks = sin((vUv.y + time * (1.2 + flowSpeed * 0.6)) * 35.0 + vUv.x * 20.0) * 0.5 + 0.5;
+          streaks = smoothstep(0.82, 1.0, streaks) * speedStreak;
 
-          gl_FragColor = vec4(colorBase, alpha);
+          // Time-of-day modulation: strongest at midday with warmer amber toward golden hour.
+          float midday = max(0.0, 1.0 - abs(timeOfDay - 0.5) * 2.0);
+          float goldenHour = smoothstep(0.65, 0.9, timeOfDay);
+          vec3 shaftColor = mix(colorBase, warmTint, goldenHour * 0.7 + (1.0 - midday) * 0.1);
+          float sunFacing = clamp(dot(normalize(sunDirection), vec3(0.0, 1.0, 0.0)), 0.2, 1.0);
+
+          // Combine
+          float alpha = vAlpha * verticalFade * shaft * shaftOpacity * (0.65 + midday * 0.35) * sunFacing;
+          alpha += streaks * 0.12;
+
+          gl_FragColor = vec4(shaftColor, alpha);
         }
       `
     });
 
     return mat;
-  }, []);
+  }, [flowSpeed, isSlotCanyon, timeOfDay]);
+
+  const dustGeometry = useMemo(() => new THREE.PlaneGeometry(0.12, 1.0), []);
+  const dustMaterial = useMemo(() => new THREE.MeshBasicMaterial({
+    color: '#fff4d0',
+    transparent: true,
+    opacity: 0.18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  }), []);
 
   useFrame((state) => {
+    const dt = Math.max(0.0001, state.clock.getDelta());
+    const camDelta = camera.position.distanceTo(prevCamPosRef.current);
+    prevCamPosRef.current.copy(camera.position);
+    const cameraSpeed = camDelta / dt;
+    const targetStreak = THREE.MathUtils.clamp(cameraSpeed / 30, 0, 1);
+    streakStrengthRef.current = THREE.MathUtils.lerp(streakStrengthRef.current, targetStreak, 0.12);
+
     if (material.uniforms) {
       material.uniforms.time.value = state.clock.elapsedTime;
+      material.uniforms.flowSpeed.value = flowSpeed;
+      material.uniforms.shaftOpacity.value = isSlotCanyon ? 0.5 : 0.3;
+      material.uniforms.timeOfDay.value = timeOfDay;
+      material.uniforms.speedStreak.value = streakStrengthRef.current;
+      material.uniforms.sunDirection.value.copy(sunWorldPosition).normalize();
     }
-  });
+
+    if (dustMaterial) {
+      dustMaterial.opacity = (isSlotCanyon ? 0.2 : 0.12) + streakStrengthRef.current * 0.18;
+    }
+  }, 0);
 
   // Setup Instances
   useEffect(() => {
     if (!meshRef.current || !transforms || transforms.length === 0) return;
 
     const mesh = meshRef.current;
+    const dustMesh = dustRef.current;
 
     transforms.forEach((t, i) => {
       DUMMY_OBJ.position.copy(t.position);
@@ -167,19 +229,36 @@ export default function SunShafts({ transforms }) {
       DUMMY_OBJ.scale.copy(t.scale);
       DUMMY_OBJ.updateMatrix();
       mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
+      if (dustMesh) {
+        const dustScale = t.scale.clone().multiply(new THREE.Vector3(0.18, 0.55, 0.18));
+        DUMMY_OBJ.scale.copy(dustScale);
+        DUMMY_OBJ.updateMatrix();
+        dustMesh.setMatrixAt(i, DUMMY_OBJ.matrix);
+      }
     });
 
     mesh.instanceMatrix.needsUpdate = true;
+    if (dustMesh) {
+      dustMesh.instanceMatrix.needsUpdate = true;
+    }
   }, [transforms]);
 
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geometry, material, transforms.length]}
-      frustumCulled={false}
-      renderOrder={1} // Render after opaque objects
-    />
+    <group>
+      <instancedMesh
+        ref={meshRef}
+        args={[geometry, material, transforms.length]}
+        frustumCulled={false}
+        renderOrder={1}
+      />
+      <instancedMesh
+        ref={dustRef}
+        args={[dustGeometry, dustMaterial, transforms.length]}
+        frustumCulled={false}
+        renderOrder={2}
+      />
+    </group>
   );
 }

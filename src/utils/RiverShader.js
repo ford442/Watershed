@@ -95,12 +95,14 @@ export function extendRiverMaterial(material, options = {}) {
                 // attributes that are not present on every geometry.
                 const vertexPreamble = [
                     enableMoss ? 'attribute float mossMask;' : '',
+                    enableMoss ? 'attribute float highWaterMask;' : '',
                     enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 attribute vec2 uv2;
                 varying vec2 vUv2;
                 #endif` : '',
                     enableMoss ? 'varying float vMossMask;' : '',
+                    enableMoss ? 'varying float vHighWaterMask;' : '',
                     enableMoss ? 'varying vec3 vWorldNormal;' : '',
                     'varying float vHeightAboveWater;',
                     'varying vec3 vWorldPos;',
@@ -121,6 +123,7 @@ export function extendRiverMaterial(material, options = {}) {
                 ${enableMoss ? 'vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);' : ''}
                 
                 ${enableMoss ? 'vMossMask = mossMask;' : ''}
+                ${enableMoss ? 'vHighWaterMask = highWaterMask;' : ''}
                 ${enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 vUv2 = uv2;
@@ -149,6 +152,7 @@ export function extendRiverMaterial(material, options = {}) {
                     enableMoss ? 'uniform float uMossIntensity;' : '',
                     'varying float vHeightAboveWater;',
                     enableMoss ? 'varying float vMossMask;' : '',
+                    enableMoss ? 'varying float vHighWaterMask;' : '',
                     enableMoss ? 'varying vec3 vWorldNormal;' : '',
                     enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
@@ -203,10 +207,12 @@ export function extendRiverMaterial(material, options = {}) {
                     #endif
                     ${enableTriplanar ? `
                     #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
-                        // Triplanar blend: waterline uses secondary UV, rim uses standard UV
+                        // Blend in secondary projection aggressively on cliffs to break tiling.
                         vec4 triplanarSample = texture2D( map, vUv2 + parallaxOffset );
-                        float triplanarBlend = smoothstep( 6.0, 14.0, vHeightAboveWater );
-                        sampledDiffuseColor = mix( triplanarSample, sampledDiffuseColor, triplanarBlend * 0.6 + 0.2 );
+                        float triplanarBlend = smoothstep( 3.0, 12.0, vHeightAboveWater );
+                        float cliffBlend = pow(1.0 - abs(dot(normalize(vWorldNormal), vec3(0.0, 1.0, 0.0))), 1.35);
+                        float projectionBlend = clamp(max(triplanarBlend, cliffBlend * 0.85), 0.0, 1.0);
+                        sampledDiffuseColor = mix( sampledDiffuseColor, triplanarSample, projectionBlend * 0.85 );
                     #endif` : ''}
                     diffuseColor *= sampledDiffuseColor;
                 #endif
@@ -227,7 +233,7 @@ export function extendRiverMaterial(material, options = {}) {
                 
                 ${enableMoss ? `
                 // Moss/Lichen bands using vertex color mask
-                if (vMossMask > 0.1) {
+                if (max(vMossMask, vHighWaterMask) > 0.08) {
                     // Organic variation based on world position
                     float mossNoise = riverNoise(vWorldPos.xz * 0.5 + uTime * 0.05);
                     float mossNoise2 = riverNoise(vWorldPos.xz * 1.2 - uTime * 0.03);
@@ -237,15 +243,16 @@ export function extendRiverMaterial(material, options = {}) {
                     vec3 growthColor = mix(uMossColor, uLichenColor, heightFactor);
                     
                     // Modulate intensity with noise
-                    float intensity = vMossMask * uMossIntensity * (0.7 + mossNoise * 0.3);
+                    float floodBand = clamp(vHighWaterMask * 1.15, 0.0, 1.0);
+                    float intensity = max(vMossMask, floodBand * 0.65) * uMossIntensity * (0.7 + mossNoise * 0.3);
                     intensity *= (0.8 + mossNoise2 * 0.2);
                     
-                    // Height-based fade: tight 2-4 unit band above waterline
-                    float mossHeightFade = 1.0 - smoothstep(2.0, 4.0, vHeightAboveWater);
+                    // Height-based fade: tight band above waterline with extra flood-mark carry.
+                    float mossHeightFade = 1.0 - smoothstep(2.0, 4.5, vHeightAboveWater);
                     intensity *= mossHeightFade;
                     
-                    // Normal-based mask: prefer vertical/side-facing wall surfaces
-                    float normalFactor = 1.0 - smoothstep(0.2, 0.7, vWorldNormal.y);
+                    // Normal-based mask: prefer upward-facing ledges and broken shelves near water.
+                    float normalFactor = smoothstep(0.15, 0.82, dot(normalize(vWorldNormal), vec3(0.0, 1.0, 0.0)));
                     intensity *= normalFactor;
                     
                     // Apply moss color
@@ -270,13 +277,16 @@ export function extendRiverMaterial(material, options = {}) {
                 diffuseColor.rgb *= (1.0 - crackMask * uCrackIntensity);
                 
                 // Stratification (secondary)
-                float strat = sin(vWorldPos.y * uStratificationScale + hash(vWorldPos.xz) * 2.0) * 0.5 + 0.5;
-                diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * (0.85 + strat * 0.15), uStratificationStrength * 0.5);
+                float stratWarp = fbm2(vWorldPos.xz * (uStratificationScale * 0.35) + vec2(4.1, -2.7));
+                float strat = sin(vWorldPos.y * uStratificationScale + stratWarp * 4.5 + hash(vWorldPos.xz) * 2.0) * 0.5 + 0.5;
+                float stratContrast = smoothstep(0.18, 0.82, strat);
+                diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * (0.78 + stratContrast * 0.32), uStratificationStrength * 0.7);
                 
                 // Color variation (secondary)
                 float heightRatio = clamp(vHeightAboveWater / 12.0, 0.0, 1.0);
                 vec3 heightTint = mix(uWarmColor, uCoolColor, heightRatio);
-                diffuseColor.rgb = mix(diffuseColor.rgb, heightTint, uColorVariationStrength * heightRatio);
+                diffuseColor.rgb = mix(diffuseColor.rgb, heightTint, uColorVariationStrength * (0.35 + heightRatio * 0.65));
+                diffuseColor.rgb *= 1.0 - clamp(vHighWaterMask, 0.0, 1.0) * 0.08;
                 `,
                     'fragment shader'
                 );

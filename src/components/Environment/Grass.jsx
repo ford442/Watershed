@@ -3,8 +3,19 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 
-export default function Grass({ transforms }) {
+const BASE_COLORS = {
+  default: '#4e7336',
+  slotCanyon: '#c8a86e',
+};
+
+const hash = (n) => {
+  const x = Math.sin(n * 7.531) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+export default function Grass({ transforms, biome = 'summer' }) {
   const grassRef = useRef(null);
+  const baseColor = biome === 'slotCanyon' ? BASE_COLORS.slotCanyon : BASE_COLORS.default;
   
   // Geometry: Low poly bush (Icosahedron)
   const geometry = useMemo(() => {
@@ -25,19 +36,19 @@ export default function Grass({ transforms }) {
   // Material: Stylized green
   const material = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
-        color: '#4e7336', // Slightly muted organic green for cohesion with terrain
+        color: baseColor,
         roughness: 0.88,
         metalness: 0
     });
     return mat;
-  }, []);
+  }, [baseColor]);
 
   const instances = useMemo(() => {
     if (!transforms) return [];
     return transforms.map((t, i) => {
-        // Random shade variation per bush
-        const shade = 0.8 + Math.random() * 0.4;
-        const color = new THREE.Color('#4e7336').multiplyScalar(shade);
+        const seed = t.position.x * 0.31 + t.position.z * 0.19 + i * 1.17;
+        const shade = 0.8 + hash(seed) * 0.4;
+        const color = new THREE.Color(baseColor).multiplyScalar(shade);
         return {
             key: `grass-${i}`,
             position: t.position,
@@ -46,7 +57,7 @@ export default function Grass({ transforms }) {
             color
         };
     });
-  }, [transforms]);
+  }, [baseColor, transforms]);
 
   // Grass sway animation
   useFrame((state) => {

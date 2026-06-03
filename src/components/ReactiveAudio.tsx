@@ -18,6 +18,8 @@ import { getAudioManager } from '../systems/AudioSystem';
 import { AssetCache } from '../systems/ReachStreamer';
 import { REACH_API_BASE } from '../constants/game';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
+import { useGameStore } from '../systems/GameState';
+import { useLOD } from '../systems/LODManager';
 import type { ReachManifest } from '../systems/ReachStreamer';
 import type { NormalizedSegment } from '../systems/ReachNormalizer';
 
@@ -78,6 +80,7 @@ export default function ReactiveAudio({
 
   // SFX layer refs
   const sfxRapidsRef = useRef<THREE.Audio | null>(null);
+  const sfxWhooshRef = useRef<THREE.Audio | null>(null);
   const posTransitionRef = useRef<THREE.PositionalAudio | null>(null);
 
   // Lerped volume targets
@@ -86,6 +89,7 @@ export default function ReactiveAudio({
     mid: 0,
     high: 0,
     rapids: 0,
+    whoosh: 0,
     transition: 0,
   });
 
@@ -97,6 +101,8 @@ export default function ReactiveAudio({
 
   const splashCooldownRef = useRef(0);
   const [audioReady, setAudioReady] = useState(false);
+  const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  const { quality } = useLOD();
 
   // ========================================================================
   // Initialize audio nodes
@@ -116,6 +122,7 @@ export default function ReactiveAudio({
         AUDIO_CONFIG.defaultAmbientTracks.mid,
         AUDIO_CONFIG.defaultAmbientTracks.high,
         AUDIO_CONFIG.defaultSfxTracks.rapids,
+        AUDIO_CONFIG.defaultSfxTracks.whoosh,
         AUDIO_CONFIG.defaultSfxTracks.splash,
       ];
       await Promise.all(fallbackNames.map((n) => am.loadSound(n)));
@@ -124,6 +131,7 @@ export default function ReactiveAudio({
       const midBuf = resolveAudioBuffer(reachId, 'ambient_mid', AUDIO_CONFIG.defaultAmbientTracks.mid);
       const highBuf = resolveAudioBuffer(reachId, 'ambient_high', AUDIO_CONFIG.defaultAmbientTracks.high);
       const rapidsBuf = resolveAudioBuffer(reachId, 'sfx_rapids', AUDIO_CONFIG.defaultSfxTracks.rapids);
+      const whooshBuf = resolveAudioBuffer(reachId, 'sfx_whoosh', AUDIO_CONFIG.defaultSfxTracks.whoosh);
 
       if (lowBuf) {
         ambientLowRef.current = new THREE.Audio(listener);
@@ -153,6 +161,13 @@ export default function ReactiveAudio({
         sfxRapidsRef.current.setVolume(0);
         sfxRapidsRef.current.play();
       }
+      if (whooshBuf) {
+        sfxWhooshRef.current = new THREE.Audio(listener);
+        sfxWhooshRef.current.setBuffer(whooshBuf);
+        sfxWhooshRef.current.setLoop(true);
+        sfxWhooshRef.current.setVolume(0);
+        sfxWhooshRef.current.play();
+      }
 
       // Positional transition audio (waterfall / slot canyon roar)
       if (manifest && reachSegments) {
@@ -181,7 +196,7 @@ export default function ReactiveAudio({
     setup();
 
     return () => {
-      [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef].forEach((ref) => {
+      [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef].forEach((ref) => {
         if (ref.current) {
           ref.current.stop();
           ref.current.disconnect();
@@ -194,9 +209,29 @@ export default function ReactiveAudio({
         scene.remove(posTransitionRef.current);
         posTransitionRef.current = null;
       }
+      const mgr = getAudioManager();
+      mgr?.disableCanyonAcoustics();
       setAudioReady(false);
     };
   }, [reachId, manifest, reachSegments, scene]);
+
+  // Canyon acoustics toggle + filter routing
+  useEffect(() => {
+    if (!audioReady) return;
+    const am = getAudioManager();
+    if (!am) return;
+
+    const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
+    if (isSlotCanyon) {
+      am.enableCanyonAcoustics(0.78);
+    } else {
+      am.disableCanyonAcoustics();
+    }
+
+    [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef, posTransitionRef].forEach((ref) => {
+      if (ref.current) am.applyCanyonFilters(ref.current);
+    });
+  }, [audioReady, currentSegmentIndex]);
 
   // ========================================================================
   // Listen to global flow events
@@ -246,9 +281,15 @@ export default function ReactiveAudio({
     // Mid peaks around 0.35
     const targetMid = Math.max(0, 1 - Math.abs(intensity - 0.35) * 3.5);
     // High fades in above 0.5
-    const targetHigh = Math.min(1, Math.max(0, (intensity - 0.25) * 1.6));
+    const targetHigh = quality === 'low'
+      ? 0
+      : Math.min(1, Math.max(0, (intensity - 0.25) * 1.6));
     // Rapids sfx rises quadratically
     const targetRapids = Math.min(1, intensity * intensity * 1.6);
+    const whooshSpan = Math.max(1, AUDIO_CONFIG.sfx.whooshFullSpeed - AUDIO_CONFIG.sfx.whooshStartSpeed);
+    const targetWhoosh = quality === 'low'
+      ? 0
+      : THREE.MathUtils.clamp((playerSpeed - AUDIO_CONFIG.sfx.whooshStartSpeed) / whooshSpan, 0, 1);
 
     // Smooth interpolation
     const lerp = AUDIO_CONFIG.ambient.crossfadeSpeed * delta;
@@ -262,12 +303,14 @@ export default function ReactiveAudio({
     v.mid += (targetMid - v.mid) * lerp;
     v.high += (targetHigh - v.high) * lerp;
     v.rapids += (targetRapids - v.rapids) * lerp;
+    v.whoosh += (targetWhoosh - v.whoosh) * lerp;
 
     // Harden: reset any NaN values back to 0
     if (!isFinite(v.low)) v.low = 0;
     if (!isFinite(v.mid)) v.mid = 0;
     if (!isFinite(v.high)) v.high = 0;
     if (!isFinite(v.rapids)) v.rapids = 0;
+    if (!isFinite(v.whoosh)) v.whoosh = 0;
 
     const master = AUDIO_CONFIG.masterVolume;
 
@@ -298,6 +341,12 @@ export default function ReactiveAudio({
         sfxRapidsRef.current.setVolume(rapidsVol * master);
       }
     }
+    if (sfxWhooshRef.current) {
+      const whooshVol = v.whoosh * AUDIO_CONFIG.sfx.whooshMaxVolume * master;
+      if (isFinite(whooshVol)) {
+        sfxWhooshRef.current.setVolume(whooshVol);
+      }
+    }
 
     // Positional transition volume based on distance
     if (posTransitionRef.current) {
@@ -309,7 +358,11 @@ export default function ReactiveAudio({
           1,
           distance / AUDIO_CONFIG.positional.transitionFadeDistance
         );
-      const targetTransition = fade * AUDIO_CONFIG.positional.transitionMaxVolume;
+      const phaseBoost =
+        currentSegmentIndex === 13 ? 0.75 :
+        currentSegmentIndex === 14 ? 1.0 :
+        currentSegmentIndex >= 15 ? 0.5 : 0.25;
+      const targetTransition = fade * AUDIO_CONFIG.positional.transitionMaxVolume * phaseBoost;
       v.transition += (targetTransition - v.transition) * lerp;
       
       // Harden: reset any NaN values back to 0
@@ -321,6 +374,16 @@ export default function ReactiveAudio({
       }
     }
 
+    const am = getAudioManager();
+    am?.setReactiveVolumes({
+      low: v.low,
+      mid: v.mid,
+      high: v.high,
+      rapids: v.rapids,
+      whoosh: v.whoosh,
+      transition: v.transition,
+    });
+
     // Splash one-shots
     if (splashCooldownRef.current > 0) {
       splashCooldownRef.current -= delta;
@@ -330,13 +393,15 @@ export default function ReactiveAudio({
       playerSpeed > AUDIO_CONFIG.sfx.splashThresholdSpeed &&
       turbulence > AUDIO_CONFIG.sfx.splashThresholdTurbulence
     ) {
-      splashCooldownRef.current = AUDIO_CONFIG.sfx.splashCooldown;
-      const am = getAudioManager();
+      const dynamicCooldown = Math.max(0.08, 0.4 - playerSpeed * 0.015);
+      splashCooldownRef.current = Math.min(AUDIO_CONFIG.sfx.splashCooldown, dynamicCooldown);
       if (am) {
+        const dynamicPitch = THREE.MathUtils.clamp(0.8 + playerSpeed * 0.02, 0.8, 1.8);
+        const dynamicVolume = THREE.MathUtils.clamp(playerSpeed * 0.04, 0.15, 1.0);
         am.playSound(
           AUDIO_CONFIG.defaultSfxTracks.splash,
-          AUDIO_CONFIG.sfx.splashVolume * (0.5 + intensity * 0.5),
-          0.9 + Math.random() * 0.2
+          AUDIO_CONFIG.sfx.splashVolume * dynamicVolume,
+          dynamicPitch
         );
       }
     }

@@ -3,6 +3,10 @@ import { FLOW_FORECAST_STATES, type FlowForecastState } from '../constants/game'
 
 export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon';
 
+export type TreeSpeciesId = 'conifer' | 'broadleaf' | 'birch' | 'snag';
+
+export type TreeSpeciesWeights = Record<TreeSpeciesId, number>;
+
 export type TrackBiomeProfile = {
   id: TrackBiomeId;
   waterWidth: number;
@@ -22,6 +26,10 @@ export type TrackBiomeProfile = {
     reeds: number;
     rocks: number;
   };
+  treeSpeciesWeights: {
+    floor: TreeSpeciesWeights;
+    rim: TreeSpeciesWeights;
+  };
 };
 
 export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
@@ -39,6 +47,10 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
     rockShadowColor: '#3e5038',
     rockRimColor: '#d0d8c8',
     decorationBias: { trees: 1, grasses: 1, reeds: 1, rocks: 0.8 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.45, broadleaf: 0.15, birch: 0.35, snag: 0.05 },
+      rim: { conifer: 0.55, broadleaf: 0.05, birch: 0.2, snag: 0.2 },
+    },
   },
   autumn: {
     id: 'autumn',
@@ -54,6 +66,10 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
     rockShadowColor: '#584028',
     rockRimColor: '#d8c898',
     decorationBias: { trees: 0.85, grasses: 0.8, reeds: 0.9, rocks: 1.2 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.15, broadleaf: 0.55, birch: 0.1, snag: 0.2 },
+      rim: { conifer: 0.25, broadleaf: 0.15, birch: 0.05, snag: 0.55 },
+    },
   },
   slotCanyon: {
     id: 'slotCanyon',
@@ -69,6 +85,10 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
     rockShadowColor: '#4d2315',
     rockRimColor: '#f0a86d',
     decorationBias: { trees: 0.1, grasses: 0.15, reeds: 0.15, rocks: 1.5 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.15, broadleaf: 0.05, birch: 0.05, snag: 0.75 },
+      rim: { conifer: 0.2, broadleaf: 0.05, birch: 0.05, snag: 0.7 },
+    },
   },
 };
 

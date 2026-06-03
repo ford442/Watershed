@@ -41,6 +41,12 @@ export interface GameState {
   currentBiome: string;
   isPaused: boolean;
   distanceTraveled: number;
+  distance: number;
+  score: number;
+  multiplier: number;
+  topSpeed: number;
+  comboLabel: string;
+  highScore: number;
   currentSegmentIndex: number;
   isWipeout: boolean;
   isDodging: boolean;
@@ -57,6 +63,12 @@ export interface GameActions {
   setCurrentBiome: (biome: string) => void;
   setIsPaused: (paused: boolean) => void;
   setDistanceTraveled: (distance: number) => void;
+  setDistance: (distance: number) => void;
+  setScore: (score: number) => void;
+  setMultiplier: (multiplier: number) => void;
+  setTopSpeed: (topSpeed: number) => void;
+  setComboLabel: (comboLabel: string) => void;
+  setHighScore: (highScore: number) => void;
   setCurrentSegmentIndex: (index: number) => void;
   setIsWipeout: (wipeout: boolean) => void;
   setIsDodging: (dodging: boolean) => void;
@@ -78,12 +90,29 @@ const DEFAULT_SETTINGS: GameSettings = {
   soundVolume: 0.8,
 };
 
+const readStoredHighScore = (): number => {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = window.localStorage.getItem('watershed_highscore');
+    const parsed = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
 const INITIAL_STATE: GameState = {
   playerPosition: { x: 0, y: -4, z: -10 },
   currentSpeed: 0,
   currentBiome: 'canyonSummer',
   isPaused: false,
   distanceTraveled: 0,
+  distance: 0,
+  score: 0,
+  multiplier: 1,
+  topSpeed: 0,
+  comboLabel: '',
+  highScore: readStoredHighScore(),
   currentSegmentIndex: 0,
   isWipeout: false,
   isDodging: false,
@@ -111,7 +140,19 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setIsPaused: (paused) => set({ isPaused: paused }),
 
-  setDistanceTraveled: (distance) => set({ distanceTraveled: distance }),
+  setDistanceTraveled: (distance) => set({ distanceTraveled: distance, distance }),
+
+  setDistance: (distance) => set({ distance }),
+
+  setScore: (score) => set({ score }),
+
+  setMultiplier: (multiplier) => set({ multiplier }),
+
+  setTopSpeed: (topSpeed) => set({ topSpeed }),
+
+  setComboLabel: (comboLabel) => set({ comboLabel }),
+
+  setHighScore: (highScore) => set({ highScore }),
 
   setCurrentSegmentIndex: (index) => set({ currentSegmentIndex: index }),
 
@@ -134,7 +175,12 @@ export const useGameStore = create<GameStore>((set) => ({
       settings: { ...state.settings, ...partial },
     })),
 
-  resetGameState: () => set({ ...INITIAL_STATE, settings: { ...DEFAULT_SETTINGS } }),
+  resetGameState: () =>
+    set({
+      ...INITIAL_STATE,
+      highScore: readStoredHighScore(),
+      settings: { ...DEFAULT_SETTINGS },
+    }),
 }));
 
 // =============================================================================
@@ -149,6 +195,21 @@ export function usePlayerPosition() {
 /** Subscribe only to speed — useful for speedometer HUD */
 export function usePlayerSpeed() {
   return useGameStore((s) => s.currentSpeed);
+}
+
+/** Subscribe only to score */
+export function useScore() {
+  return useGameStore((s) => s.score);
+}
+
+/** Subscribe only to multiplier */
+export function useMultiplier() {
+  return useGameStore((s) => s.multiplier);
+}
+
+/** Subscribe only to combo label */
+export function useComboLabel() {
+  return useGameStore((s) => s.comboLabel);
 }
 
 /** Subscribe only to biome — useful for biome badge */
