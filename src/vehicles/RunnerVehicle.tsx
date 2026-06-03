@@ -65,6 +65,22 @@ const NEAR_MISS_RAY_LENGTH = 2.6;
 const NEAR_MISS_TOI_MIN = 0.35;
 const NEAR_MISS_TOI_MAX = 1.55;
 
+// Sprint stamina configuration (normalized 0.0–1.0)
+const RUNNER_SPRINT = {
+  /** Stamina drained per second while sprinting on the ground */
+  DRAIN_RATE: 0.25,
+  /** Stamina recovered per second while grounded and NOT sprinting */
+  REGEN_GROUNDED: 0.15,
+  /** Stamina recovered per second while airborne (faster — rewarded air time) */
+  REGEN_AIRBORNE: 0.30,
+  /** Below this value sprint input is rejected (exhaustion lock) */
+  EXHAUSTION_THRESHOLD: 0.0,
+  /** Sprint re-enables once stamina reaches this level (hysteresis) */
+  RECOVERY_THRESHOLD: 0.2,
+  /** Speed multiplier while sprinting */
+  SPEED_MULTIPLIER: 1.5,
+} as const;
+
 // Jump states
 type JumpState = 'grounded' | 'airborne' | 'landing' | 'recovering';
 
@@ -226,6 +242,9 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
   // Track last applied gravity multiplier to avoid redundant world.gravity mutations
   const appliedGravMultRef = useRef(1.0);
+
+  // Sprint stamina hysteresis: when stamina hits 0, sprint is locked out until RECOVERY_THRESHOLD
+  const sprintLockedRef = useRef(false);
 
   // Reusable Vector3 for camera forward direction (avoids per-frame heap allocations)
   const jumpForwardDirRef = useRef(new THREE.Vector3());
@@ -615,6 +634,34 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     const jumpJustPressed = jump && !prevFrame.current.jumpPressed;
     const dodgeJustPressed = dodge && !prevFrame.current.dodgePressed;
 
+    // === SPRINT STAMINA (Zustand-backed, no stale closures) ===
+    // Read via getState() to avoid stale closure; never use the hook form in useFrame.
+    const storeState = useGameStore.getState();
+    let stamina = storeState.sprintStamina;
+
+    // Hysteresis: once exhausted, lock sprint until RECOVERY_THRESHOLD is reached
+    if (stamina <= RUNNER_SPRINT.EXHAUSTION_THRESHOLD) {
+      sprintLockedRef.current = true;
+    } else if (sprintLockedRef.current && stamina >= RUNNER_SPRINT.RECOVERY_THRESHOLD) {
+      sprintLockedRef.current = false;
+    }
+
+    // Airborne sprint intent is ignored — no drain, faster recovery instead
+    const isAirborne = js.state === 'airborne';
+    const isSprinting = sprint && !sprintLockedRef.current && !isAirborne;
+
+    if (isSprinting) {
+      // Drain while grounded and sprinting
+      stamina = Math.max(0, stamina - RUNNER_SPRINT.DRAIN_RATE * dt);
+    } else if (isAirborne) {
+      // Faster recovery while airborne
+      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_AIRBORNE * dt);
+    } else {
+      // Normal grounded recovery when not sprinting
+      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_GROUNDED * dt);
+    }
+    storeState.setSprintStamina(stamina);
+
     // Goal 2: Update coyote time
     if (isGrounded) {
       js.timeSinceGrounded = 0;
@@ -941,7 +988,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     applyImpulseWithDebugTracking('flow', { x: 0, y: 0, z: -flowResponsiveness * flowMultiplier * dt });
 
     const baseSpeed = VEHICLE_TUNING.baseSpeed;
-    const speed = baseSpeed * flowMultiplier * recoveryFactor;
+    const sprintMultiplier = isSprinting ? RUNNER_SPRINT.SPEED_MULTIPLIER : 1.0;
+    const speed = baseSpeed * flowMultiplier * recoveryFactor * sprintMultiplier;
 
     if (forward) {
       applyImpulseWithDebugTracking('forwardInput', {

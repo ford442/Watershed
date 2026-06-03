@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerBiome, useGameStore } from '../systems/GameState';
 
 interface GameHUDProps {
@@ -29,6 +29,42 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const highScore = useGameStore((s) => s.highScore);
   const topSpeed = useGameStore((s) => s.topSpeed);
   const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
+  const vehicleType = useGameStore((s) => s.vehicleType);
+
+  // Stamina bar — imperative DOM mutation; no per-frame re-render
+  const staminaFillRef = useRef<HTMLDivElement>(null);
+  const staminaBarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const unsub = useGameStore.subscribe(
+      (s) => s.sprintStamina,
+      (stamina) => {
+        const fill = staminaFillRef.current;
+        const bar = staminaBarRef.current;
+        if (!fill || !bar) return;
+
+        fill.style.width = `${Math.round(stamina * 100)}%`;
+
+        let color: string;
+        if (stamina >= 0.5) {
+          color = '#f8fafc'; // white
+        } else if (stamina >= 0.25) {
+          color = '#fbbf24'; // amber
+        } else {
+          color = '#ef4444'; // red
+        }
+        fill.style.backgroundColor = color;
+
+        // Pulse animation class when fully exhausted
+        if (stamina === 0) {
+          bar.classList.add('stamina-bar--exhausted');
+        } else {
+          bar.classList.remove('stamina-bar--exhausted');
+        }
+      }
+    );
+    return unsub;
+  }, []);
 
   const [comboFlash, setComboFlash] = useState('');
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -185,6 +221,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         Best: <span className="text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>
         <span className="ml-4 text-white/50">Top {Math.round(topSpeed)} m/s</span>
       </div>
+
+      {vehicleType === 'runner' && (
+        <div className="stamina-bar" ref={staminaBarRef}>
+          <div className="stamina-bar__label">SPRINT</div>
+          <div className="stamina-bar__track">
+            <div className="stamina-fill" ref={staminaFillRef} style={{ width: '100%', backgroundColor: '#f8fafc' }} />
+          </div>
+        </div>
+      )}
     </>
   );
 };

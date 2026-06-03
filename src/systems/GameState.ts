@@ -56,6 +56,10 @@ export interface GameState {
   /** Spawn points indexed by segment id */
   spawnPoints: Record<number, SpawnPoint>;
   settings: GameSettings;
+  /** Sprint stamina for the runner (0.0–1.0). Single source of truth — never expose via vehicleRef. */
+  sprintStamina: number;
+  /** Active vehicle type — gates HUD elements and post-processing. */
+  vehicleType: 'runner' | 'raft';
 }
 
 export interface GameActions {
@@ -78,6 +82,9 @@ export interface GameActions {
   setWaterfallGravityMultiplier: (multiplier: number) => void;
   setSpawnPoint: (segmentIndex: number, point: SpawnPoint) => void;
   setSettings: (settings: Partial<GameSettings>) => void;
+  /** Clamps value to [0, 1] before writing. Call from useFrame via getState() — never via the hook. */
+  setSprintStamina: (v: number) => void;
+  setVehicleType: (type: 'runner' | 'raft') => void;
   resetGameState: () => void;
 }
 
@@ -123,6 +130,8 @@ const INITIAL_STATE: GameState = {
   waterfallGravityMultiplier: 1,
   spawnPoints: {},
   settings: { ...DEFAULT_SETTINGS },
+  sprintStamina: 1.0,
+  vehicleType: 'runner',
 };
 
 // =============================================================================
@@ -195,6 +204,10 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => ({
       settings: { ...state.settings, ...partial },
     })),
+
+  setSprintStamina: (v) => set({ sprintStamina: Math.min(1, Math.max(0, v)) }),
+
+  setVehicleType: (type) => set({ vehicleType: type }),
 
   resetGameState: () =>
     set({
