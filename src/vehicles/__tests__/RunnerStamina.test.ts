@@ -164,7 +164,7 @@ describe('RunnerSprint hysteresis', () => {
     expect(st.sprintLocked).toBe(false);
   });
 
-  it('sprint remains locked at exactly RECOVERY_THRESHOLD boundary (exclusive lower)', () => {
+  it('sprint remains locked below RECOVERY_THRESHOLD (exclusive lower bound)', () => {
     const st = createState();
     st.sprintLocked = true;
     st.stamina = RUNNER_SPRINT.RECOVERY_THRESHOLD - 0.001;

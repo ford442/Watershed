@@ -34,6 +34,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   // Stamina bar — imperative DOM mutation; no per-frame re-render
   const staminaFillRef = useRef<HTMLDivElement>(null);
   const staminaBarRef = useRef<HTMLDivElement>(null);
+  const exhaustedRef = useRef(false);
 
   useEffect(() => {
     const unsub = useGameStore.subscribe(
@@ -55,11 +56,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         }
         fill.style.backgroundColor = color;
 
-        // Pulse animation class when fully exhausted
-        if (stamina === 0) {
-          bar.classList.add('stamina-bar--exhausted');
-        } else {
-          bar.classList.remove('stamina-bar--exhausted');
+        // Only toggle exhausted class when state changes to avoid redundant DOM ops
+        const nowExhausted = stamina === 0;
+        if (nowExhausted !== exhaustedRef.current) {
+          exhaustedRef.current = nowExhausted;
+          bar.classList.toggle('stamina-bar--exhausted', nowExhausted);
         }
       }
     );
