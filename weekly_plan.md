@@ -1,9 +1,9 @@
 # Watershed — Weekly Plan
 
 ## Today's focus
-**2026-05-27 — Fix broken production build + integrate WatershedWasm buoyancy into FloatingObjectManager**
+**2026-06-03 — Author the delta biome as the game's conclusion (segments 31–38)**
 
-`npm run build` is broken: the build script unconditionally chains `npm run build:wasm && npm run build:wasm:threads && vite build`, but Emscripten (`emcc`) is not installed in the dev environment and `public/watershed_native.wasm` does not exist. Fix: make `build:wasm` skip gracefully when `emcc` is not in PATH (add early-exit to `emscripten/build.sh`, no WASM compile attempted unless toolchain present). Second: `WatershedWasm.ts` is fully unintegrated — no game component imports it. Begin integration by wiring buoyancy (`computeBuoyancy`) into `FloatingObjectManager.ts`, which already has NaN guards from last week's physics fixes — a natural hook point. Acceptance: `npm run build` exits 0 without Emscripten installed; `FloatingObjectManager` uses `WatershedWasm.computeBuoyancy` for upward force when the WASM module is loaded, falls back to JS formula otherwise.
+`BiomePalettes.ts` already has a fully-specified `delta` palette (wide water, sediment color, sunset orange/gold fog), but `TrackBiomeId` only lists `'summer' | 'autumn' | 'slotCanyon'` — delta is unreachable. After segment 30 the progression falls to the `19+ catch-all (autumn rapids)`, so the run has no ending. Today's work: (1) add `'delta'` to `TrackBiomeId` and `TRACK_BIOMES`; (2) author segments 31–38 in `meander_to_waterfall.ts` (widening channel, calming current, sunset palette blend, raft-mode suggestion text); (3) add a "Journey Complete" terminal state in `GameState.ts` that fires when the player crosses segment 38; (4) display a simple end-screen overlay in `GameHUD.tsx`. Acceptance: player who reaches segment 31 sees sky/fog shift to warm sunset, by segment 38 sees the "Journey Complete" card, and the score is finalized + written to high score.
 
 ## Ideas
 <!--
@@ -16,23 +16,28 @@ Routine will mark picked items as "[in progress — YYYY-MM-DD]".
 - [x] Author segments 0–12 waypoints in meander_to_waterfall.json — done 2026-05-13; PR #130 merged (deterministic decoration placement + authored waypoints)
 - [x] Reactive audio validation — done 2026-05-27: all 23 MP3 stubs replaced with valid 1-second sine tones (17,180 bytes each), AudioDiagnosticsOverlay.tsx wired into Experience.jsx behind DEV gate, AudioSystem.ts updated with getLoadStatus/getActiveSounds diagnostics APIs; confirmed by .swarm-state.md
 - [x] In-scene Level Editor — done 2026-05-20: PR #151 merged; LevelEditor wired via ?editor=1, useLevelEditor.ts hook + levelEditorValidator.ts added; Option A (overlay on game Canvas) selected
+- [ ] Runner sprint stamina HUD feedback — stamina bar in GameHUD, speed-reactive vignette intensity when sprinting in RunnerVehicle
+- [ ] Authored environmental set-pieces — rock launch shelf geometry at waterfall (segment 14), crumbling pillar formation at slot canyon exit (segment 22); unique per-segment decoration passes beyond the procedural baseline
 
 ## Backlog
 <!--
 Unfinished items, known bugs, deferred ideas.
 Routine maintains this automatically — you can add items too.
 -->
-- [ ] **CRITICAL:** `npm run build` broken — emcc not found, build:wasm fails; `public/watershed_native.wasm` missing; WatershedWasm.ts unintegrated (no game component imports it)
 - [ ] Verify RiverShader.js moss effect receives correct world normals from TrackSegment.jsx terrain mesh (visual check needed)
 - [ ] ReachManager architecture not documented in CLAUDE.md — significant new systems (ReachStreamer, ReachNormalizer, BiomeSystem, LODManager, SplashSystem, WaterReflection, WaterInteraction) need doc pass before onboarding new contributors
-- [ ] WatershedWasm.ts not wired into any game component — TypeScript bindings + Jest tests exist but `getWasm()` is never called from live code; buoyancy/drag/SWE grid unused
 - [ ] WASM build requires Emscripten SDK at `/content/buil*/emsdk/` (hardcoded path in build.sh) — needs portable emsdk_env.sh discovery or CI matrix
+- [ ] CLAUDE.md "Known split" warning (BiomeProvider/EnhancedSky reads legacy prop) is now stale — EnhancedSky.jsx uses useBiome() as of PR #180 series; warning should be removed from CLAUDE.md + SYSTEMS.md to avoid misleading future contributors
+- [ ] `delta` biome palette exists in BiomePalettes.ts but `TrackBiomeId` only lists summer/autumn/slotCanyon — delta is unreachable; segments 31+ fall to autumn catch-all; game has no authored conclusion (today's focus addresses this)
 
 ## Done
 <!--
 Completed items, routine archives here with date.
 Prune occasionally when this gets long.
 -->
+- [x] 2026-06-03 — PRs #179–181 (Movement Polish + Canyon Expansion epic): raft stamina/brake/dynamic-camera/wake-VFX; slot canyon segment with god rays/mist/biome fix; ScoreSystem.ts fully wired into GameHUD + Experience.jsx (score, multiplier, combo label, high score, top speed)
+- [x] 2026-05-27 — npm run build fix: emcc graceful skip in emscripten/build.sh — exits 0 without Emscripten installed (confirmed via .swarm-state.md)
+- [x] 2026-05-27 — WatershedWasm buoyancy integration: FloatingObjectManager uses wasmModule.computeBuoyancy() with JS fallback; WatershedWasm.ts uses new Function() trick to avoid Vite static analysis (confirmed via .swarm-state.md, 123 tests pass)
 - [x] 2026-05-27 — Reactive audio validation: all 23 MP3 stubs replaced with valid 1-second sine tones (17,180 bytes); AudioDiagnosticsOverlay.tsx DEV-gated overlay; AudioSystem.ts diagnostics APIs (getLoadStatus, getActiveSounds, getAudioContextState); confirmed by .swarm-state.md
 - [x] 2026-05-27 — In-scene Level Editor wiring: PR #151 merged; LevelEditor overlay via ?editor=1, useLevelEditor.ts hook + levelEditorValidator.ts
 - [x] 2026-05-27 — Downhill creek → second waterfall (segments 23–30): PR #153 merged; meander_to_waterfall.ts extended, RunnerVehicle updated, WaterfallParticles + FlowingWater tuned
@@ -58,7 +63,7 @@ Prune occasionally when this gets long.
 
 ## Last run
 <!-- Routine writes summary here each run. Overwrites previous. -->
-Date: 2026-05-27
-Mode: Fix First — `npm run build` unconditionally chains build:wasm which requires Emscripten; emcc not in PATH; public/watershed_native.wasm missing; build is broken
-Focus: Fix build:wasm graceful skip + begin WatershedWasm buoyancy integration into FloatingObjectManager
-Outcome: Dispatch produced. Done section updated with PRs #151, #153–156, #158–159 + audio validation confirmation. Backlog updated with WASM build debt. Today's focus set.
+Date: 2026-06-03
+Mode: New Idea — Ideas list exhausted; all 4 user ideas completed; PRs #179–181 merged between runs (raft polish, slot canyon, ScoreSystem) — foundation solid
+Focus: Author delta biome as game conclusion — segments 31–38, TrackBiomeId extension, "Journey Complete" terminal state in GameState.ts, end-screen in GameHUD.tsx
+Outcome: Dispatch produced. Done section updated with PRs #179–181 + last week's WASM/build fixes confirmed. Backlog updated (stale CLAUDE.md warning flagged, delta gap flagged). 2 new ideas appended to Ideas.
