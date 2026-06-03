@@ -960,6 +960,16 @@ canvas {
   }
 }
 
+/* Journey Complete overlay fade-in */
+.journey-complete-overlay {
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.journey-complete-overlay.visible {
+  opacity: 1;
+}
+
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   * {

@@ -213,6 +213,8 @@ export interface SegmentProgressionConfig {
   cameraShake?: number;
   /** Per-segment gravity scale applied to the Rapier world (1.0 = normal). */
   gravityMultiplier?: number;
+  /** When true, entering this segment triggers the journey-complete sequence. */
+  journeyComplete?: boolean;
 }
 
 export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {

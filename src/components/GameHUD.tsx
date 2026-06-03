@@ -28,8 +28,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const comboLabel = useGameStore((s) => s.comboLabel);
   const highScore = useGameStore((s) => s.highScore);
   const topSpeed = useGameStore((s) => s.topSpeed);
+  const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
 
   const [comboFlash, setComboFlash] = useState('');
+  const [overlayVisible, setOverlayVisible] = useState(false);
 
   const speedMs = Math.max(0, Math.round(rawSpeed));
   const distanceKm = useMemo(() => (distanceMeters / 1000).toFixed(2), [distanceMeters]);
@@ -41,6 +43,25 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const timeout = window.setTimeout(() => setComboFlash(''), 1200);
     return () => window.clearTimeout(timeout);
   }, [comboLabel]);
+
+  useEffect(() => {
+    if (isJourneyComplete) {
+      const t = window.setTimeout(() => setOverlayVisible(true), 50);
+      return () => window.clearTimeout(t);
+    }
+    setOverlayVisible(false);
+  }, [isJourneyComplete]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isJourneyComplete && e.key === 'Enter') {
+        useGameStore.getState().resetGameState();
+        onRespawn?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isJourneyComplete, onRespawn]);
 
   if (isWipeout) {
     return (
@@ -66,6 +87,53 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           <p className="mt-8 text-zinc-600 text-sm">
             Press SPACE to respawn
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isJourneyComplete) {
+    const isNewHighScore = score >= highScore && score > 0;
+    return (
+      <div
+        className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
+      >
+        <div className="text-center">
+          <div className="text-5xl md:text-7xl font-black text-amber-300 mb-6 tracking-tighter">
+            Journey Complete
+          </div>
+
+          <div className="text-3xl md:text-5xl text-white mb-4">
+            <span className="font-mono font-bold">{Math.floor(score).toLocaleString()}</span>
+          </div>
+
+          <div className="text-lg md:text-xl mb-2">
+            {isNewHighScore ? (
+              <span className="text-emerald-400 font-bold">New High Score!</span>
+            ) : (
+              <span className="text-zinc-400">
+                High Score: <span className="font-mono text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>
+              </span>
+            )}
+          </div>
+
+          <div className="text-zinc-500 text-base mb-10">
+            Top Speed: <span className="font-mono text-white">{Math.round(topSpeed)} m/s</span>
+          </div>
+
+          <button
+            onClick={() => {
+              useGameStore.getState().resetGameState();
+              onRespawn?.();
+            }}
+            className="px-12 py-5 bg-white text-black text-2xl md:text-3xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
+          >
+            RESTART
+          </button>
+
+          <p className="mt-8 text-zinc-600 text-sm">
+            Press Enter to restart
           </p>
         </div>
       </div>

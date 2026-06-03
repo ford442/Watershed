@@ -49,6 +49,7 @@ export interface GameState {
   highScore: number;
   currentSegmentIndex: number;
   isWipeout: boolean;
+  isJourneyComplete: boolean;
   isDodging: boolean;
   respawnSegmentIndex: number;
   waterfallGravityMultiplier: number;
@@ -71,6 +72,7 @@ export interface GameActions {
   setHighScore: (highScore: number) => void;
   setCurrentSegmentIndex: (index: number) => void;
   setIsWipeout: (wipeout: boolean) => void;
+  setJourneyComplete: () => void;
   setIsDodging: (dodging: boolean) => void;
   setRespawnSegmentIndex: (index: number) => void;
   setWaterfallGravityMultiplier: (multiplier: number) => void;
@@ -115,6 +117,7 @@ const INITIAL_STATE: GameState = {
   highScore: readStoredHighScore(),
   currentSegmentIndex: 0,
   isWipeout: false,
+  isJourneyComplete: false,
   isDodging: false,
   respawnSegmentIndex: 0,
   waterfallGravityMultiplier: 1,
@@ -157,6 +160,24 @@ export const useGameStore = create<GameStore>((set) => ({
   setCurrentSegmentIndex: (index) => set({ currentSegmentIndex: index }),
 
   setIsWipeout: (wipeout) => set({ isWipeout: wipeout }),
+
+  setJourneyComplete: () =>
+    set((state) => {
+      const finalScore = state.score;
+      const newHighScore = Math.max(state.highScore, finalScore);
+      if (newHighScore > state.highScore && typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('watershed_highscore', String(newHighScore));
+        } catch {
+          // ignore storage errors
+        }
+      }
+      return {
+        isJourneyComplete: true,
+        isPaused: true,
+        highScore: newHighScore,
+      };
+    }),
 
   setIsDodging: (dodging) => set({ isDodging: dodging }),
 

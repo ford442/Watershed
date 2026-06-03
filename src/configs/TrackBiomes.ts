@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FLOW_FORECAST_STATES, type FlowForecastState } from '../constants/game';
 
-export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon';
+export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon' | 'delta';
 
 export type TreeSpeciesId = 'conifer' | 'broadleaf' | 'birch' | 'snag';
 
@@ -90,6 +90,25 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
       rim: { conifer: 0.2, broadleaf: 0.05, birch: 0.05, snag: 0.7 },
     },
   },
+  delta: {
+    id: 'delta',
+    waterWidth: 35,
+    canyonWidth: 100,
+    wallHeight: 8,
+    wallTightness: 0.2,
+    wallFriction: 0.6,
+    wallShadowStrength: 0.2,
+    vegetationDensity: 0.5,
+    rockDensity: 'low',
+    rockBaseColor: '#9a9a78',
+    rockShadowColor: '#5a6a48',
+    rockRimColor: '#d0d8c0',
+    decorationBias: { trees: 0.4, grasses: 1.2, reeds: 1.5, rocks: 0.2 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.05, broadleaf: 0.6, birch: 0.1, snag: 0.25 },
+      rim: { conifer: 0.05, broadleaf: 0.5, birch: 0.1, snag: 0.35 },
+    },
+  },
 };
 
 export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
@@ -99,6 +118,10 @@ export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
 
   if (biome === 'autumn') {
     return TRACK_BIOMES.autumn;
+  }
+
+  if (biome === 'delta') {
+    return TRACK_BIOMES.delta;
   }
 
   return TRACK_BIOMES.summer;

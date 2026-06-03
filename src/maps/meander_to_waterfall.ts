@@ -139,9 +139,91 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
             rockDensity: 'low',
         },
     },
-    // Segments 19+ catch-all — Autumn Rapids (open-ended, covers 19 and 31+)
+    // Segments 31–32 — Delta Approach (widening, mist on, reduced rocks)
+    {
+        indexFrom: 31,
+        indexTo: 32,
+        config: {
+            biome: 'autumn',
+            type: 'normal',
+            width: 80,
+            waterWidth: 20,
+            verticalBias: -0.1,
+            meanderStrength: 0.4,
+            flowSpeed: 0.5,
+            rockDensity: 'low',
+            treeDensity: 0.5,
+        },
+    },
+    // Segments 33–34 — Delta Entry (transition to delta, calm, willows, no rocks)
+    {
+        indexFrom: 33,
+        indexTo: 34,
+        config: {
+            biome: 'delta',
+            type: 'normal',
+            width: 90,
+            waterWidth: 30,
+            verticalBias: 0,
+            meanderStrength: 0.2,
+            flowSpeed: 0.35,
+            rockDensity: 'low',
+            treeDensity: 0.6,
+        },
+    },
+    // Segments 35–36 — Wide Delta (mirror-flat, bird flocks, reed banks)
+    {
+        indexFrom: 35,
+        indexTo: 36,
+        config: {
+            biome: 'delta',
+            type: 'normal',
+            width: 100,
+            waterWidth: 35,
+            verticalBias: 0,
+            meanderStrength: 0.1,
+            flowSpeed: 0.25,
+            rockDensity: 'low',
+            treeDensity: 0.4,
+        },
+    },
+    // Segment 37 — Final Stretch (current nearly zero, thick sunset fog)
+    {
+        indexFrom: 37,
+        indexTo: 37,
+        config: {
+            biome: 'delta',
+            type: 'normal',
+            width: 110,
+            waterWidth: 38,
+            verticalBias: 0,
+            meanderStrength: 0.05,
+            flowSpeed: 0.15,
+            rockDensity: 'low',
+            treeDensity: 0.3,
+        },
+    },
+    // Segment 38 — Journey Complete trigger
+    {
+        indexFrom: 38,
+        indexTo: 38,
+        config: {
+            biome: 'delta',
+            type: 'normal',
+            width: 110,
+            waterWidth: 38,
+            verticalBias: 0,
+            meanderStrength: 0,
+            flowSpeed: 0.1,
+            rockDensity: 'low',
+            treeDensity: 0.2,
+            journeyComplete: true,
+        },
+    },
+    // Segments 19+ catch-all — Autumn Rapids (open-ended, covers 19 and 39+)
     {
         indexFrom: 19,
+        indexTo: 30,
         config: {
             biome: 'autumn',
             verticalBias: -0.7,

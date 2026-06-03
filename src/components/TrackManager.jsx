@@ -12,6 +12,7 @@ import { useNightMode } from '../hooks/useNightMode';
 import { DefaultMapManager, JSONMapManager } from '../systems/MapSystem';
 import { MEANDER_TO_WATERFALL_PROGRESSION } from '../maps/meander_to_waterfall';
 import { ChunkManager } from '../systems/ChunkManager';
+import { useGameStore } from '../systems/GameState';
 
 function cloneForRender(segment, slotIndex, active) {
     if (!segment) {
@@ -195,6 +196,11 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                 const gravityMultiplier = entered?.gravityMultiplier;
                 window.__watershedFlowSpeed = flowSpeed;
                 window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index, flowSpeed, gravityMultiplier } }));
+
+                const segmentConfig = mapManagerRef.current?.getChunkConfig?.(index);
+                if (segmentConfig?.journeyComplete && !useGameStore.getState().isJourneyComplete) {
+                    useGameStore.getState().setJourneyComplete();
+                }
             },
         };
 

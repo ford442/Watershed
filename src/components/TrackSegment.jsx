@@ -2086,7 +2086,6 @@ function TrackSegmentMeshes({
         }
     });
 
-    const isSlotCanyon = biomeProfile.id === 'slotCanyon';
     const handleCanyonRockFoamUpdate = useCallback((foamTransforms) => {
         setCanyonRockFoam(Array.isArray(foamTransforms) ? foamTransforms : []);
     }, []);
