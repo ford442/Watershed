@@ -2086,6 +2086,7 @@ function TrackSegmentMeshes({
         }
     });
 
+    const isSlotCanyon = biomeProfile.id === 'slotCanyon';
     const handleCanyonRockFoamUpdate = useCallback((foamTransforms) => {
         setCanyonRockFoam(Array.isArray(foamTransforms) ? foamTransforms : []);
     }, []);
@@ -2220,11 +2221,11 @@ function TrackSegmentMeshes({
         if (isSlotCanyon) {
             return createCanyonMaterial({
                 biome: 'slotCanyon',
-                wallHeight: biomeProfile.wallHeight,
+                wallHeight: biomeProfile.wallHeight || 26,
                 parallaxScale: 0.025,
                 flowSpeed,
                 mossCoverage: 1.0,
-                highWaterMark,
+                highWaterMark: segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15,
                 highWaterIntensity,
                 strata: SLOT_CANYON_STRATA,
             });
@@ -2242,7 +2243,7 @@ function TrackSegmentMeshes({
             wetnessRange: type === 'waterfall' || type === 'splash' ? 7.5 : 4.0
         });
         return mat;
-    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type]);
+    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type, segmentState]);
 
     wallMaterialRef.current = wallMaterial;
 

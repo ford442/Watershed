@@ -73,9 +73,12 @@ const BIOME_ADAPTATIONS = {
     weatheringIntensity: 0.7,
   },
   slotCanyon: {
-    mossColor: new THREE.Color('#5a3a1a'),
-    soilColor: new THREE.Color('#c87840'),
+    mossColor: new THREE.Color('#5a3a1a'),       // dark iron-oxide staining
+    soilColor: new THREE.Color('#c87840'),       // warm sandstone rim
     weatheringIntensity: 1.0,
+    bedrockColor: new THREE.Color('#5c2a1a'),    // deep red-brown bedrock
+    sedimentaryColor: new THREE.Color('#a85a30'),// warm orange sandstone
+    graniteColor: new THREE.Color('#d4884c'),    // light tan-orange band
   },
 };
 
@@ -356,9 +359,9 @@ export function createCanyonMaterial(options = {}) {
     uniforms: {
       time: { value: time },
       wallHeight: { value: wallHeight },
-      bedrockColor: { value: strata.bedrockColor || GEOLOGICAL_LAYERS.bedrock.color },
-      sedimentaryColor: { value: strata.sedimentaryColor || GEOLOGICAL_LAYERS.sedimentary.color },
-      graniteColor: { value: strata.graniteColor || GEOLOGICAL_LAYERS.granite.color },
+      bedrockColor: { value: biomeAdapt.bedrockColor || GEOLOGICAL_LAYERS.bedrock.color },
+      sedimentaryColor: { value: biomeAdapt.sedimentaryColor || GEOLOGICAL_LAYERS.sedimentary.color },
+      graniteColor: { value: biomeAdapt.graniteColor || GEOLOGICAL_LAYERS.granite.color },
       mossColor: { value: biomeAdapt.mossColor },
       soilColor: { value: biomeAdapt.soilColor },
       roughness: { value: 0.75 },
