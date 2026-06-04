@@ -12,6 +12,7 @@ import { useLOD } from '../systems/LODManager';
 import { useBiome } from '../systems/BiomeSystem';
 import { useSunPosition } from '../systems/SunPositionSystem';
 import { GOD_RAYS_SHADER, getGodRaySunColor } from '../systems/volumetric/VolumetricGodRays';
+import { useGameStore } from '../systems/GameState';
 
 const CHROMATIC_ABERRATION_SHADER = {
   name: 'ChromaticAberrationShader',
@@ -248,7 +249,16 @@ export function PostProcessingPipeline({
     targetSaturation = Math.min(1, targetSaturation + boostScale * 0.15);
 
     // Vignette boost target
-    const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08;
+    // "Speed rush" design: vignette tightens modestly when actively sprinting at speed
+    // (tunnel-vision rush feel). Normalizes on raft or when not sprinting.
+    const gameState = useGameStore.getState();
+    const isRunner = gameState.vehicleType === 'runner';
+    const sprintStamina = gameState.sprintStamina;
+    // Consider sprint active when stamina is being consumed (stamina < 1 and speed is high)
+    // We detect "sprinting at speed" by checking speed threshold + stamina drain state.
+    const isSprintingAtSpeed = isRunner && velocity > 12 && sprintStamina < 0.999;
+    const sprintVignetteBoost = isSprintingAtSpeed ? 0.18 : 0;
+    const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08 + sprintVignetteBoost;
 
     // Smooth transitions
     const t = 1 - Math.exp(-delta * 10);

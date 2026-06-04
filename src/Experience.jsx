@@ -87,7 +87,7 @@ const NOOP_DEBUG = {
  * Wrapped in providers for context access
  */
 const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
-  const [vehicleType, setVehicleType] = useState('runner');
+  const [vehicleType, setVehicleTypeLocal] = useState('runner');
   const vehicleRef = useRef(null);
   const { camera } = useThree();
 
@@ -107,6 +107,13 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
   const spawnPoints = useGameStore((s) => s.spawnPoints);
   const respawnSegmentIndex = useGameStore((s) => s.respawnSegmentIndex);
+  const setVehicleTypeStore = useGameStore((s) => s.setVehicleType);
+
+  // Keep Zustand vehicleType in sync with local state so HUD/vignette can gate on it
+  const setVehicleType = (type) => {
+    setVehicleTypeLocal(type);
+    setVehicleTypeStore(type);
+  };
 
   // BiomeProvider is the single authoritative source of biome state.
   // Calling setBiomeContext normalizes legacy IDs, triggers smooth palette
