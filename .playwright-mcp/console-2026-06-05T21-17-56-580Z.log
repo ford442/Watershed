@@ -1,0 +1,82 @@
+[    1087ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=60dc0256:20102
+[    1705ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/watershed_native.js:0
+[    1915ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[    2135ms] [WARNING] [.WebGL-0x3f5c00100200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:3000/:0
+[    2223ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=60dc0256:2516
+[    2233ms] [WARNING] [.WebGL-0x3f5c00100200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:3000/:0
+[    2256ms] [WARNING] [.WebGL-0x3f5c00100200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://localhost:3000/:0
+[    2279ms] [WARNING] [.WebGL-0x3f5c00100200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://localhost:3000/:0
+[    4846ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://localhost:3000/src/components/TrackManager.jsx:205
+[    5588ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=60dc0256:1674
+[    6090ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=60dc0256:1674
+[    6165ms] [ERROR] [Global Error Handler] {message: Uncaught ReferenceError: isGlacier is not defined, source: http://localhost:3000/src/components/TrackSegment.jsx, lineno: 1940, colno: 20, error: ReferenceError: isGlacier is not defined
+    at TrackSegmentMeshes (http://localhost:3000/src/compo…} @ http://localhost:3000/src/index.tsx:4
+[    6239ms] ReferenceError: isGlacier is not defined
+    at TrackSegmentMeshes (http://localhost:3000/src/components/TrackSegment.jsx:1940:20)
+    at react-stack-bottom-frame (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:10487:20)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:3275:24)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:4853:22)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:5862:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:918:18)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9394:88)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9255:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9238:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:8882:46)
+[    6272ms] [ERROR] [ErrorBoundary] Error caught: ReferenceError: isGlacier is not defined
+    at TrackSegmentMeshes (http://localhost:3000/src/components/TrackSegment.jsx:1940:20)
+    at react-stack-bottom-frame (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:10487:20)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:3275:24)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:4853:22)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:5862:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:918:18)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9394:88)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9255:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9238:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:8882:46) @ http://localhost:3000/src/components/ErrorBoundary.tsx:12
+[    6277ms] [ERROR] [ErrorBoundary] Error caught: ReferenceError: isGlacier is not defined
+    at TrackSegmentMeshes (http://localhost:3000/src/components/TrackSegment.jsx:1940:20)
+    at react-stack-bottom-frame (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:10487:20)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:3275:24)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:4853:22)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:5862:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:918:18)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9394:88)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9255:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9238:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:8882:46) @ http://localhost:3000/src/components/ErrorBoundary.tsx:12
+[    6284ms] [ERROR] %o
+
+%s
+
+%s
+ ReferenceError: isGlacier is not defined
+    at TrackSegmentMeshes (http://localhost:3000/src/components/TrackSegment.jsx:1940:20)
+    at react-stack-bottom-frame (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:10487:20)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:3275:24)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:4853:22)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:5862:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:918:18)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9394:88)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9255:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9238:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:8882:46) The above error occurred in the <CanvasImpl> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=60dc0256:7000
+[    6286ms] [ERROR] [ErrorBoundary] Component stack: 
+    at CanvasImpl (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:14414:3)
+    at m (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:12326:9)
+    at Canvas (<anonymous>)
+    at ErrorBoundary (http://localhost:3000/src/components/ErrorBoundary.tsx:5:5)
+    at App (http://localhost:3000/src/App.tsx:44:29) @ http://localhost:3000/src/components/ErrorBoundary.tsx:20
+[    6287ms] [ERROR] [ErrorBoundary] Error details: ReferenceError: isGlacier is not defined
+    at TrackSegmentMeshes (http://localhost:3000/src/components/TrackSegment.jsx:1940:20)
+    at react-stack-bottom-frame (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:10487:20)
+    at renderWithHooks (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:3275:24)
+    at updateFunctionComponent (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:4853:22)
+    at beginWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:5862:20)
+    at runWithFiberInDEV (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:918:18)
+    at performUnitOfWork (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9394:88)
+    at workLoopSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9255:43)
+    at renderRootSync (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:9238:13)
+    at performWorkOnRoot (http://localhost:3000/node_modules/.vite/deps/chunk-55OMOSV4.js?v=60dc0256:8882:46) @ http://localhost:3000/src/components/ErrorBoundary.tsx:21
+[    6855ms] [LOG] THREE.WebGLRenderer: Context Lost. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=60dc0256:17742
+[ 1491579ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/src/components/TrackSegment.jsx?t=1780695767903:0
+[ 1491583ms] [ERROR] [vite] Failed to reload /src/components/TrackSegment.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:808

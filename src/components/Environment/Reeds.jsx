@@ -3,6 +3,11 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 
+const mergeCompatibleGeometries = (geometries) => {
+    const normalized = geometries.map((geometry) => geometry.index ? geometry.toNonIndexed() : geometry);
+    return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+};
+
 export default function Reeds({ transforms }) {
   // Geometry: Cluster of Cattails/Reeds
   const geometry = useMemo(() => {
@@ -51,7 +56,7 @@ export default function Reeds({ transforms }) {
 
         if (geos.length === 0) return new THREE.BufferGeometry();
 
-        const merged = mergeBufferGeometries(geos);
+        const merged = mergeCompatibleGeometries(geos);
         if (!merged) return new THREE.BufferGeometry();
 
         merged.computeVertexNormals();

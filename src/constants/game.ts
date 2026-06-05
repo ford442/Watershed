@@ -111,9 +111,15 @@ export const RAFT = {
     BRAKE_ANGULAR_DRAG: 6.0,       // extra angular damping when braking
 
     // Collision response
-    COLLISION_BOUNCE_FORCE: 8,     // elastic bounce impulse scale
-    COLLISION_SPIN_FORCE: 3,       // spin applied on impact
-    COLLISION_STUN_DURATION: 0.3,  // seconds of reduced control after impact
+    COLLISION_BOUNCE_FORCE: 10,    // elastic bounce impulse scale (increased for satisfying wall pops)
+    COLLISION_SPIN_FORCE: 4,       // spin applied on impact
+    COLLISION_STUN_DURATION: 0.25, // base stun duration — scales up with impact force
+    COLLISION_STUN_MAX: 0.6,       // cap on stun duration regardless of impact force
+    COLLISION_WALL_FORWARD_RETAIN: 0.7, // fraction of forward momentum kept on lateral wall hit
+
+    // Forward bias after a paddle stroke: keeps some momentum for this many seconds
+    PADDLE_FORWARD_BIAS_DURATION: 0.35,
+    PADDLE_FORWARD_BIAS_FORCE: 3.5,
 
     // Camera dynamics
     CAMERA_BASE_OFFSET_Y: 2.5,
@@ -164,6 +170,10 @@ export const WATER_SHADER = {
     EDGE_FOAM_WIDTH: 0.28,
     WETNESS_DARKEN: 0.25,
     WETNESS_REFLECT_BOOST: 0.3,
+    // Rapids foam scrolls faster once flowSpeed pushes past this multiplier threshold
+    RAPIDS_FOAM_SPEED_MULT: 1.8,
+    // Canyon god-ray shaft strength (0 = off, 1 = full blinding shafts)
+    GOD_RAY_STRENGTH: 0.0,
 } as const;
 
 export const FLOW_FORECAST_STATES = {

@@ -207,7 +207,7 @@ export interface SegmentProgressionConfig {
   verticalBias: number;
   flowSpeed: number;
   treeDensity: number;
-  rockDensity: 'low' | 'high';
+  rockDensity: 'low' | 'medium' | 'high';
   forwardMomentum?: number;
   particleCount?: number;
   cameraShake?: number;
@@ -215,6 +215,13 @@ export interface SegmentProgressionConfig {
   gravityMultiplier?: number;
   /** When true, entering this segment triggers the journey-complete sequence. */
   journeyComplete?: boolean;
+  /**
+   * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
+   * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and
+   * add a persistent downstream slide bias when > 0.
+   * TODO: wire into Rapier contact material override per segment.
+   */
+  slipperiness?: number;
 }
 
 export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
@@ -227,6 +234,7 @@ export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
   flowSpeed: 1,
   treeDensity: 1,
   rockDensity: 'low',
+  slipperiness: 0,
 };
 
 /**

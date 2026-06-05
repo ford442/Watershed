@@ -63,6 +63,12 @@ export interface ChunkManagerOptions {
   reachSegments?: NormalizedSegment[] | null;
   forecastByIndex?: Map<number, string>;
   callbacks?: ChunkManagerCallbacks;
+  /**
+   * Segment index to begin pool initialisation from.
+   * Defaults to 0 (summer meander start). Set to GLACIER_START_INDEX (-5)
+   * to chain the glacier prelude before the meander.
+   */
+  startIndex?: number;
 }
 
 export interface ChunkManagerStats {
@@ -233,12 +239,14 @@ export class ChunkManager {
   private lastEnteredSegment = -1;
   private biomeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingBiome: string | null = null;
+  private startIndex: number;
 
   constructor(options: ChunkManagerOptions) {
     this.mapManager = options.mapManager;
     this.reachSegments = options.reachSegments ?? null;
     this.forecastByIndex = options.forecastByIndex ?? new Map();
     this.callbacks = options.callbacks ?? {};
+    this.startIndex = options.startIndex ?? 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -254,14 +262,18 @@ export class ChunkManager {
     const activeOrder: number[] = [];
     const segments = this.reachSegments;
 
-    for (let index = 0; index < MAX_ACTIVE_SEGMENTS; index += 1) {
+    for (let i = 0; i < MAX_ACTIVE_SEGMENTS; i += 1) {
+      // startIndex allows the pool to begin at a negative offset (glacier prelude)
+      const index = this.startIndex + i;
+      // reachSegments are always 0-based; only use them for non-negative indices
+      const reachIdx = index - this.startIndex;
       const segment =
-        segments && segments[index]
-          ? this.adaptReachSegment(segments[index], previousSegment)
+        segments && index >= 0 && segments[reachIdx]
+          ? this.adaptReachSegment(segments[reachIdx], previousSegment)
           : this.buildSegment(index, previousSegment);
 
-      pool[index] = { slotIndex: index, active: true, segment };
-      activeOrder.push(index);
+      pool[i] = { slotIndex: i, active: true, segment };
+      activeOrder.push(i);
       previousSegment = segment;
       this.nextSegmentId = index + 1;
 
@@ -285,7 +297,7 @@ export class ChunkManager {
   reset(reachSegments?: NormalizedSegment[] | null): void {
     this.reachSegments = reachSegments ?? null;
     this.initialized = false;
-    this.nextSegmentId = 0;
+    this.nextSegmentId = this.startIndex;
     this.activeOrder = [];
     this.pool = Array.from({ length: POOL_SIZE }, (_, slotIndex) => ({
       slotIndex,

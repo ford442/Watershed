@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FLOW_FORECAST_STATES, type FlowForecastState } from '../constants/game';
 
-export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon' | 'delta';
+export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon' | 'delta' | 'glacier';
 
 export type TreeSpeciesId = 'conifer' | 'broadleaf' | 'birch' | 'snag';
 
@@ -90,6 +90,30 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
       rim: { conifer: 0.2, broadleaf: 0.05, birch: 0.05, snag: 0.7 },
     },
   },
+  glacier: {
+    id: 'glacier',
+    waterWidth: 7,
+    canyonWidth: 28,
+    // Glacier channels are high-walled ice chutes, narrower than summer canyon
+    wallHeight: 20,
+    wallTightness: 0.55,
+    // Low friction = slippery ice walls; physics layer reads this for contact response
+    wallFriction: 0.18,
+    wallShadowStrength: 0.65,
+    // Very sparse vegetation — only isolated dead conifers survive at altitude
+    vegetationDensity: 0.12,
+    rockDensity: 'medium' as const,
+    // Blue-grey ice-scoured granite colours
+    rockBaseColor: '#b0c8d8',
+    rockShadowColor: '#3a5060',
+    rockRimColor: '#e8f4ff',
+    decorationBias: { trees: 0.1, grasses: 0.05, reeds: 0.0, rocks: 1.2 },
+    treeSpeciesWeights: {
+      // Mostly dead snags; a few spindly conifers clinging to rock ledges
+      floor: { conifer: 0.25, broadleaf: 0.0, birch: 0.1, snag: 0.65 },
+      rim:   { conifer: 0.35, broadleaf: 0.0, birch: 0.05, snag: 0.6 },
+    },
+  },
   delta: {
     id: 'delta',
     waterWidth: 35,
@@ -122,6 +146,10 @@ export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
 
   if (biome === 'delta') {
     return TRACK_BIOMES.delta;
+  }
+
+  if (biome === 'glacier' || biome === 'glacial') {
+    return TRACK_BIOMES.glacier;
   }
 
   return TRACK_BIOMES.summer;

@@ -5,8 +5,11 @@ import * as THREE from 'three';
 import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { RAFT, WATER_DENSITY, GRAVITY, HUMAN_DENSITY, PLAYER_SPAWN } from '../constants/game';
+import { RAFT, WATER_DENSITY, GRAVITY, HUMAN_DENSITY, PLAYER_SPAWN, WATER_LEVEL } from '../constants/game';
 import { calculateFlowForce, applyWaterForce } from '../physics/WaterForces';
+import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
+import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
+import type { WorkerRaftState } from '../physics/rapierWorkerProtocol';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 
 // Buoyancy and water physics configuration
@@ -88,11 +91,21 @@ const COLLISION = {
   BOUNCE_FORCE: RAFT.COLLISION_BOUNCE_FORCE,
   SPIN_FORCE: RAFT.COLLISION_SPIN_FORCE,
   STUN_DURATION: RAFT.COLLISION_STUN_DURATION,
+  STUN_MAX: RAFT.COLLISION_STUN_MAX,
+  WALL_FORWARD_RETAIN: RAFT.COLLISION_WALL_FORWARD_RETAIN,
   STUN_EFFECTIVENESS: 0.3,    // multiplier on input while stunned
   STUN_IMPACT_THRESHOLD: 10,  // min impact force to trigger stun
   IMPACT_FORCE_SCALE: 20,     // normalization for bounce strength
   SPIN_IMPACT_THRESHOLD: 15,  // normalization for spin strength
-  BOUNCE_VERTICAL_DAMPING: 0.3, // vertical bounce reduction factor
+  BOUNCE_VERTICAL_DAMPING: 0.45, // vertical bounce for satisfying wall pop
+  CONTACT_BURST_COUNT: 10,    // shed particles spawned on hard wall contact
+  WALL_LATERAL_RATIO: 0.6,    // impact is "mostly lateral" if |dx|/|dz| > this
+};
+
+// Forward bias after paddle — keeps momentum from killing flow feel
+const BIAS = {
+  DURATION: RAFT.PADDLE_FORWARD_BIAS_DURATION,
+  FORCE: RAFT.PADDLE_FORWARD_BIAS_FORCE,
 };
 
 // Camera dynamics configuration
@@ -199,6 +212,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
   const { camera } = useThree();
   const { world } = useRapier();
+  const useWorkerPhysics = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('raftWorker') === '1';
 
   // Goal 2: Unified player controls hook
   const controls = usePlayerControls();
@@ -241,6 +256,13 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   // Camera FOV tracking
   const currentFov = useRef(CAMERA.FOV_BASE);
 
+  // Forward bias timer: keeps momentum for BIAS.DURATION seconds after a paddle stroke
+  const forwardBiasTimer = useRef(0);
+
+  // Raft deck material ref for wetness darkening
+  const raftMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const raftBaseColor = useRef(new THREE.Color('saddlebrown'));
+
   // Goal 2: Water-shedding particle trail
   const shedParticles = useRef<ShedParticle[]>([]);
   const nextShedId = useRef(0);
@@ -248,6 +270,10 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
   const timeRef = useRef(0);
   const nextParticleId = useRef(0);
+  const workerProxyRef = useRef<RapierWorkerProxy | null>(null);
+  const workerReadyRef = useRef(false);
+  const workerStepPendingRef = useRef(false);
+  const workerLatencyLogRef = useRef(0);
 
   // Collision & material state
   const collisionState = useRef({
@@ -267,7 +293,37 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     if (bodyRef.current) {
       vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
       vehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
-      bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
+      if (useWorkerPhysics) {
+        const proxy = createRapierWorkerProxy();
+        workerProxyRef.current = proxy;
+        proxy.init({
+          raft: {
+            position: [...PLAYER_SPAWN.position],
+            halfExtents: [WATER_PHYSICS.RAFT_WIDTH * 0.5, WATER_PHYSICS.RAFT_HEIGHT * 0.5, WATER_PHYSICS.RAFT_LENGTH * 0.5],
+            mass: WATER_PHYSICS.RAFT_MASS,
+            linearDamping: 2,
+            angularDamping: 2.5,
+          },
+          staticColliders: [
+            {
+              position: [0, WATER_PHYSICS.LEVEL - 0.65, -80],
+              halfExtents: [28, 0.25, 220],
+            },
+          ],
+        }).then((workerState) => {
+          workerReadyRef.current = true;
+          syncBodyFromWorkerState(bodyRef.current, workerState);
+          return proxy.applyImpulse([0, 2, 0]);
+        }).catch((error) => {
+          console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
+          workerReadyRef.current = false;
+          workerProxyRef.current?.dispose();
+          workerProxyRef.current = null;
+          bodyRef.current?.applyImpulse?.({ x: 0, y: 2, z: 0 }, true);
+        });
+      } else {
+        bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
+      }
       tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
     }
 
@@ -281,8 +337,51 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     };
 
     window.addEventListener('biome-change', handleBiomeChange);
-    return () => window.removeEventListener('biome-change', handleBiomeChange);
-  }, []);
+    return () => {
+      window.removeEventListener('biome-change', handleBiomeChange);
+      workerProxyRef.current?.dispose();
+      workerProxyRef.current = null;
+    };
+  }, [useWorkerPhysics]);
+
+  const syncBodyFromWorkerState = (body: any, workerState: WorkerRaftState | null) => {
+    if (!body || !workerState) return;
+    const [px, py, pz] = workerState.position;
+    const [rx, ry, rz, rw] = workerState.rotation;
+    const [vx, vy, vz] = workerState.velocity;
+    const [avx, avy, avz] = workerState.angularVelocity;
+    body.setTranslation({ x: px, y: py, z: pz }, true);
+    body.setRotation({ x: rx, y: ry, z: rz, w: rw }, true);
+    body.setLinvel({ x: vx, y: vy, z: vz }, true);
+    body.setAngvel({ x: avx, y: avy, z: avz }, true);
+  };
+
+  const applyWorkerImpulse = (impulse: THREE.Vector3) => {
+    const proxy = workerProxyRef.current;
+    if (!proxy || !workerReadyRef.current) return;
+    proxy.applyImpulse([impulse.x, impulse.y, impulse.z]).catch((error) => {
+      console.warn('[RaftVehicle] Rapier worker impulse failed', error);
+    });
+  };
+
+  const stepWorkerProxy = (body: any, delta: number) => {
+    const proxy = workerProxyRef.current;
+    if (!proxy || !workerReadyRef.current || workerStepPendingRef.current) return;
+
+    workerStepPendingRef.current = true;
+    proxy.step(delta).then((workerState) => {
+      syncBodyFromWorkerState(body, workerState);
+      const now = performance.now();
+      if (now - workerLatencyLogRef.current > 2000) {
+        workerLatencyLogRef.current = now;
+        console.info(`[RaftVehicle] Rapier worker RTT avg ${proxy.averageLatencyMs.toFixed(3)}ms`);
+      }
+    }).catch((error) => {
+      console.warn('[RaftVehicle] Rapier worker step failed', error);
+    }).finally(() => {
+      workerStepPendingRef.current = false;
+    });
+  };
 
   const calculateSubmergedRatio = (raftY: number): number => {
     const waterLevel = WATER_PHYSICS.LEVEL;
@@ -536,6 +635,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         z: forwardDir.z * PADDLE.THRUST_FORCE * power * delta
       }, true);
 
+      // Arm forward bias to retain momentum after this stroke
+      forwardBiasTimer.current = BIAS.DURATION;
+
       // Spawn foam on both sides
       if (Math.random() > 0.7) {
         spawnFoamParticle(body, 'left');
@@ -574,6 +676,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         spawnFoamParticle(body, 'left');
         playPaddleSound('left');
       }
+      forwardBiasTimer.current = BIAS.DURATION;
     }
 
     // Right paddle (E) - apply force at right attachment point, rotate right
@@ -603,6 +706,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         spawnFoamParticle(body, 'right');
         playPaddleSound('right');
       }
+      forwardBiasTimer.current = BIAS.DURATION;
     }
   };
 
@@ -678,6 +782,38 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   };
 
   /**
+   * Spawn a burst of shed particles at a wall contact point.
+   * Gives the "shedding water on hard impact" feel without a full particle system.
+   */
+  const spawnContactBurst = (body: any, contactPoint: THREE.Vector3, impactForce: number) => {
+    const forceFactor = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE);
+    const count = Math.floor(COLLISION.CONTACT_BURST_COUNT * forceFactor) + 4;
+    const rot = body.rotation();
+
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.5 + Math.random() * 3.0 * forceFactor;
+      const vel = new THREE.Vector3(
+        Math.cos(angle) * speed,
+        0.8 + Math.random() * 2.0 * forceFactor,
+        Math.sin(angle) * speed
+      );
+      shedParticles.current.push({
+        id: nextShedId.current++,
+        position: contactPoint.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.1, (Math.random() - 0.5) * 0.4)),
+        velocity: vel,
+        life: SHED.LIFETIME * (0.6 + Math.random() * 0.6),
+        scale: SHED.SIZE_BASE * 1.5 + Math.random() * 0.06 * forceFactor,
+      });
+    }
+
+    // Trim if over limit
+    if (shedParticles.current.length > SHED.COUNT_LIMIT) {
+      shedParticles.current.splice(0, shedParticles.current.length - SHED.COUNT_LIMIT);
+    }
+  };
+
+  /**
    * Reset raft to safe position after tipping
    */
   const resetRaft = (body: any) => {
@@ -696,6 +832,77 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     window.dispatchEvent(new CustomEvent('raft-tipped', {
       detail: { resetPosition: safePos }
+    }));
+  };
+
+  const updateCameraFromBody = (body: any) => {
+    const pos = body.translation();
+    const vel = body.linvel();
+    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+
+    const velLagX = -vel.x * CAMERA.VELOCITY_LAG;
+    const velLagZ = -vel.z * CAMERA.VELOCITY_LAG;
+    const angVel = body.angvel();
+    const leanOffset = -angVel.y * CAMERA.LEAN_FACTOR;
+
+    const targetPos = new THREE.Vector3(
+      pos.x + velLagX + leanOffset,
+      pos.y + CAMERA.BASE_OFFSET_Y,
+      pos.z + CAMERA.BASE_OFFSET_Z + velLagZ
+    );
+    camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
+    camera.lookAt(pos.x, pos.y, pos.z);
+
+    const targetFov = Math.min(
+      CAMERA.FOV_MAX,
+      CAMERA.FOV_BASE + (speed / CAMERA.FOV_SPEED_REFERENCE) * CAMERA.FOV_SPEED_SCALE
+    );
+    currentFov.current += (targetFov - currentFov.current) * CAMERA.FOV_LERP;
+    if ('fov' in camera) {
+      (camera as THREE.PerspectiveCamera).fov = currentFov.current;
+      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+    }
+
+    return { pos, vel, speed };
+  };
+
+  const updateWorkerPhysicsFrame = (body: any, delta: number) => {
+    const { paddleLeft, paddleRight, forward } = controls.getControls();
+    paddleState.current.leftPaddle = paddleLeft;
+    paddleState.current.rightPaddle = paddleRight;
+
+    const rot = body.rotation();
+    const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
+    const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
+
+    if ((paddleLeft && paddleRight) || forward) {
+      const power = consumeStamina();
+      if (power > 0) {
+        applyWorkerImpulse(forwardDir.multiplyScalar(PADDLE.THRUST_FORCE * power * delta));
+      }
+    } else if (paddleLeft) {
+      const power = consumeStamina();
+      if (power > 0) {
+        applyWorkerImpulse(forwardDir.multiplyScalar(PADDLE.THRUST_FORCE * 0.7 * power * delta));
+        applyWorkerImpulse(rightDir.multiplyScalar(PADDLE.THRUST_FORCE * 0.5 * power * delta));
+      }
+    } else if (paddleRight) {
+      const power = consumeStamina();
+      if (power > 0) {
+        applyWorkerImpulse(forwardDir.multiplyScalar(PADDLE.THRUST_FORCE * 0.7 * power * delta));
+        applyWorkerImpulse(rightDir.multiplyScalar(-PADDLE.THRUST_FORCE * 0.5 * power * delta));
+      }
+    }
+
+    stepWorkerProxy(body, delta);
+    updateCameraFromBody(body);
+
+    window.dispatchEvent(new CustomEvent('raft-stamina', {
+      detail: {
+        current: staminaState.current.current,
+        max: STAMINA.MAX,
+        isExhausted: staminaState.current.isExhausted,
+      }
     }));
   };
 
@@ -723,6 +930,11 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         stunState.current.active = false;
         stunState.current.timer = 0;
       }
+    }
+
+    if (useWorkerPhysics && workerProxyRef.current) {
+      updateWorkerPhysicsFrame(body, delta);
+      return;
     }
 
     // Calculate submersion
@@ -755,6 +967,21 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     // Apply paddle forces (overrides WASD for raft)
     applyPaddleForces(body, delta);
 
+    // Forward bias: carry post-paddle momentum by applying a mild fwd nudge
+    if (forwardBiasTimer.current > 0) {
+      forwardBiasTimer.current -= delta;
+      if (!stunState.current.active) {
+        const rot = body.rotation();
+        const fwdDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
+        const biasFraction = forwardBiasTimer.current / BIAS.DURATION;
+        body.applyImpulse({
+          x: fwdDir.x * BIAS.FORCE * biasFraction * delta,
+          y: 0,
+          z: fwdDir.z * BIAS.FORCE * biasFraction * delta,
+        }, true);
+      }
+    }
+
     // Fallback WASD (strafing) if no paddle input
     const { leftward, rightward, backward, forward, paddleLeft, paddleRight } = controls.getControls();
 
@@ -772,36 +999,15 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       }
     }
 
-    // === DYNAMIC CAMERA ===
-    const vel = body.linvel();
-    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-
-    // Velocity-based lag: camera trails behind motion direction
-    const velLagX = -vel.x * CAMERA.VELOCITY_LAG;
-    const velLagZ = -vel.z * CAMERA.VELOCITY_LAG;
-
-    // Lean into turns based on angular velocity
-    const angVel = body.angvel();
-    const leanOffset = -angVel.y * CAMERA.LEAN_FACTOR;
-
-    const targetPos = new THREE.Vector3(
-      pos.x + velLagX + leanOffset,
-      pos.y + CAMERA.BASE_OFFSET_Y,
-      pos.z + CAMERA.BASE_OFFSET_Z + velLagZ
-    );
-    camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
-    camera.lookAt(pos.x, pos.y, pos.z);
-
-    // Speed-dependent FOV
-    const targetFov = Math.min(
-      CAMERA.FOV_MAX,
-      CAMERA.FOV_BASE + (speed / CAMERA.FOV_SPEED_REFERENCE) * CAMERA.FOV_SPEED_SCALE
-    );
-    currentFov.current += (targetFov - currentFov.current) * CAMERA.FOV_LERP;
-    if ('fov' in camera) {
-      (camera as THREE.PerspectiveCamera).fov = currentFov.current;
-      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+    // Subtle raft wetness: darken deck proportional to submersion + any spray
+    if (raftMaterialRef.current) {
+      const wetnessLevel = submergedRatio * 0.6 + (speed > 4 ? Math.min(0.25, (speed - 4) * 0.03) : 0);
+      const darken = 1.0 - wetnessLevel * 0.35;
+      raftMaterialRef.current.color.copy(raftBaseColor.current).multiplyScalar(darken);
     }
+
+    // === DYNAMIC CAMERA ===
+    const { vel, speed } = updateCameraFromBody(body);
 
     // Update foam particles
     paddleState.current.foamParticles = paddleState.current.foamParticles
@@ -849,32 +1055,58 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         new THREE.Vector3(vel.x, vel.y, vel.z)
       );
 
-      // Elastic bounce: reflect velocity away from impact
-      const bounceScale = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE) * COLLISION.BOUNCE_FORCE;
-      const bounceDir = velocityDelta.normalize().multiplyScalar(-bounceScale);
-      body.applyImpulse({ x: bounceDir.x, y: Math.abs(bounceDir.y) * COLLISION.BOUNCE_VERTICAL_DAMPING, z: bounceDir.z }, true);
+      const forceFactor = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE);
 
-      // Spin on impact (adds satisfying rotation)
+      // Determine if this is a lateral wall hit vs a head-on rock impact.
+      // Wall hits: |dx| >> |dz|.  Retain Z forward momentum for wall-riding feel.
+      const dxAbs = Math.abs(velocityDelta.x);
+      const dzAbs = Math.abs(velocityDelta.z);
+      const isLateralWallHit = dxAbs > dzAbs * COLLISION.WALL_LATERAL_RATIO;
+
+      if (isLateralWallHit) {
+        // Wall-ride: bounce X hard, retain most of Z forward velocity
+        const bounceX = -velocityDelta.x * forceFactor * COLLISION.BOUNCE_FORCE * 0.08;
+        const popY = Math.abs(velocityDelta.x) * forceFactor * COLLISION.BOUNCE_VERTICAL_DAMPING * 0.06;
+        body.applyImpulse({ x: bounceX, y: popY, z: 0 }, true);
+      } else {
+        // Head-on: full reflect, vertical pop for waterfall rocks
+        const bounceDir = velocityDelta.clone().normalize().multiplyScalar(-forceFactor * COLLISION.BOUNCE_FORCE * 0.1);
+        body.applyImpulse({ x: bounceDir.x, y: Math.abs(bounceDir.y) * COLLISION.BOUNCE_VERTICAL_DAMPING + 0.5, z: bounceDir.z }, true);
+      }
+
+      // Spin on impact (satisfying rotation — stronger on glancing lateral hits)
       const spinDir = Math.sign(vel.x) || 1;
+      const spinScale = isLateralWallHit ? 1.6 : 1.0;
       body.applyTorqueImpulse({
         x: 0,
-        y: spinDir * COLLISION.SPIN_FORCE * Math.min(1, impactForce / COLLISION.SPIN_IMPACT_THRESHOLD),
+        y: spinDir * COLLISION.SPIN_FORCE * Math.min(1, impactForce / COLLISION.SPIN_IMPACT_THRESHOLD) * spinScale,
         z: 0,
       }, true);
 
-      // Trigger stun (reduced controls briefly)
+      // Stun duration scales with impact force, capped at STUN_MAX
       if (impactForce > COLLISION.STUN_IMPACT_THRESHOLD) {
+        const scaledStun = COLLISION.STUN_DURATION + forceFactor * (COLLISION.STUN_MAX - COLLISION.STUN_DURATION);
         stunState.current.active = true;
-        stunState.current.timer = COLLISION.STUN_DURATION;
+        stunState.current.timer = Math.min(scaledStun, COLLISION.STUN_MAX);
+
+        // Dispatch wall-impact event so camera shake can respond
+        window.dispatchEvent(new CustomEvent('raft-wall-impact', {
+          detail: { force: impactForce, isWall: isLateralWallHit },
+        }));
       }
 
-      // Add visual particles for high impact
+      // Contact burst: shed particles scatter from impact point on any significant hit
+      if (impactForce > 8) {
+        spawnContactBurst(body, contactPoint, impactForce);
+      }
+
+      // CollisionParticles for very hard hits
       if (impactForce > vehicle.current['highImpactThreshold']) {
         const newParticle = {
           id: Date.now(),
           material,
           position: contactPoint.clone(),
-          intensity: Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE),
+          intensity: forceFactor,
         };
         collisionState.current.activeParticles.push(newParticle);
       }
@@ -903,10 +1135,15 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         angularDamping={2.5}
         position={PLAYER_SPAWN.position}
       >
-        {/* Raft deck */}
+        {/* Raft deck — material ref for runtime wetness darkening */}
         <mesh castShadow receiveShadow>
           <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH, WATER_PHYSICS.RAFT_HEIGHT, WATER_PHYSICS.RAFT_LENGTH]} />
-          <meshStandardMaterial color="saddlebrown" />
+          <meshStandardMaterial
+            ref={raftMaterialRef}
+            color="saddlebrown"
+            roughness={0.85}
+            metalness={0.05}
+          />
         </mesh>
 
         {/* Paddle indicators */}

@@ -4,6 +4,11 @@ import { mergeBufferGeometries } from 'three-stdlib';
 
 const TREE_SPECIES = ['conifer', 'broadleaf', 'birch', 'snag'];
 
+const mergeCompatibleGeometries = (geometries) => {
+  const normalized = geometries.map((geometry) => geometry.index ? geometry.toNonIndexed() : geometry);
+  return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+};
+
 const applyVertexColor = (geometry, color) => {
   const attribute = geometry.getAttribute('position');
   const colors = new Float32Array(attribute.count * 3);
@@ -80,25 +85,25 @@ export function useTreeAssets() {
     const speciesVariants = [
       {
         type: 'conifer',
-        geometry: mergeBufferGeometries([coniferTrunk, ...coniferFoliage]),
+        geometry: mergeCompatibleGeometries([coniferTrunk, ...coniferFoliage]),
         swayAmount: 0.04,
         baseTint: '#ffffff',
       },
       {
         type: 'broadleaf',
-        geometry: mergeBufferGeometries([...broadleafTrunkParts, ...broadleafFoliage]),
+        geometry: mergeCompatibleGeometries([...broadleafTrunkParts, ...broadleafFoliage]),
         swayAmount: 0.07,
         baseTint: '#fff0e0',
       },
       {
         type: 'birch',
-        geometry: mergeBufferGeometries([birchTrunk, ...birchFoliage]),
+        geometry: mergeCompatibleGeometries([birchTrunk, ...birchFoliage]),
         swayAmount: 0.05,
         baseTint: '#f3f6ea',
       },
       {
         type: 'snag',
-        geometry: mergeBufferGeometries(snagParts),
+        geometry: mergeCompatibleGeometries(snagParts),
         swayAmount: 0.01,
         baseTint: '#f3e7d6',
       },

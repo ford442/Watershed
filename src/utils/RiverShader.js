@@ -102,8 +102,8 @@ export function extendRiverMaterial(material, options = {}) {
                 varying vec2 vUv2;
                 #endif` : '',
                     enableMoss ? 'varying float vMossMask;' : '',
-                    enableMoss ? 'varying float vHighWaterMask;' : '',
-                    enableMoss ? 'varying vec3 vWorldNormal;' : '',
+                    'varying float vHighWaterMask;',
+                    (enableMoss || enableTriplanar) ? 'varying vec3 vWorldNormal;' : '',
                     'varying float vHeightAboveWater;',
                     'varying vec3 vWorldPos;',
                     'varying vec3 vViewDir;',
@@ -120,10 +120,10 @@ export function extendRiverMaterial(material, options = {}) {
                 vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
                 vHeightAboveWater = vWorldPos.y - uWaterLevel;
                 vViewDir = normalize(cameraPosition - vWorldPos);
-                ${enableMoss ? 'vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);' : ''}
+                ${(enableMoss || enableTriplanar) ? 'vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);' : ''}
                 
                 ${enableMoss ? 'vMossMask = mossMask;' : ''}
-                ${enableMoss ? 'vHighWaterMask = highWaterMask;' : ''}
+                ${enableMoss ? 'vHighWaterMask = highWaterMask;' : 'vHighWaterMask = 0.0;'}
                 ${enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 vUv2 = uv2;
@@ -152,8 +152,8 @@ export function extendRiverMaterial(material, options = {}) {
                     enableMoss ? 'uniform float uMossIntensity;' : '',
                     'varying float vHeightAboveWater;',
                     enableMoss ? 'varying float vMossMask;' : '',
-                    enableMoss ? 'varying float vHighWaterMask;' : '',
-                    enableMoss ? 'varying vec3 vWorldNormal;' : '',
+                    'varying float vHighWaterMask;',
+                    (enableMoss || enableTriplanar) ? 'varying vec3 vWorldNormal;' : '',
                     enableTriplanar ? `
                 #if !defined( USE_LIGHTMAP ) && !defined( USE_AOMAP )
                 varying vec2 vUv2;

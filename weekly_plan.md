@@ -1,9 +1,9 @@
 # Watershed — Weekly Plan
 
 ## Today's focus
-**2026-06-03 — Author the delta biome as the game's conclusion (segments 31–38)**
+**2026-06-05 — Add two new early-game segments: Glacier Ice Run & Alpine Wildflower Stream**
 
-`BiomePalettes.ts` already has a fully-specified `delta` palette (wide water, sediment color, sunset orange/gold fog), but `TrackBiomeId` only lists `'summer' | 'autumn' | 'slotCanyon'` — delta is unreachable. After segment 30 the progression falls to the `19+ catch-all (autumn rapids)`, so the run has no ending. Today's work: (1) add `'delta'` to `TrackBiomeId` and `TRACK_BIOMES`; (2) author segments 31–38 in `meander_to_waterfall.ts` (widening channel, calming current, sunset palette blend, raft-mode suggestion text); (3) add a "Journey Complete" terminal state in `GameState.ts` that fires when the player crosses segment 38; (4) display a simple end-screen overlay in `GameHUD.tsx`. Acceptance: player who reaches segment 31 sees sky/fog shift to warm sunset, by segment 38 sees the "Journey Complete" card, and the score is finalized + written to high score.
+Replace the legacy 5-segment glacier prelude stub with two authored segments before the summer meander. Glacier Ice Run (segment -3) is tight, slippery, and high-contrast; Alpine Wildflower Stream (segments -2 to -1) is gentle, bright, and lush with boosted wildflower density via `particleCount`. Update `GLACIER_START_INDEX` to -3, wire `startIndex` through `TrackManager` → `ChunkManager`, and pass it from `Experience.jsx` so the default run now begins in the glacier. Acceptance: `npm start` and moving forward produces seamless glacier → alpine → meander chaining with no seams or camera pops.
 
 ## Ideas
 <!--
@@ -35,6 +35,7 @@ Routine maintains this automatically — you can add items too.
 Completed items, routine archives here with date.
 Prune occasionally when this gets long.
 -->
+- [x] 2026-06-05 — Early-game segments: Glacier Ice Run (-3) and Alpine Wildflower Stream (-2 to -1) authored in `meander_to_waterfall.ts`; `GLACIER_START_INDEX` updated to -3; `startIndex` wired through `TrackManager`/`ChunkManager`; `Experience.jsx` default start now chains glacier → alpine → meander; wildflower spawn boost tied to `particleCount` in `TrackSegment.jsx`; `LEVEL_DESIGN.md` updated with parameters and QA cases.
 - [x] 2026-06-03 — PRs #179–181 (Movement Polish + Canyon Expansion epic): raft stamina/brake/dynamic-camera/wake-VFX; slot canyon segment with god rays/mist/biome fix; ScoreSystem.ts fully wired into GameHUD + Experience.jsx (score, multiplier, combo label, high score, top speed)
 - [x] 2026-05-27 — npm run build fix: emcc graceful skip in emscripten/build.sh — exits 0 without Emscripten installed (confirmed via .swarm-state.md)
 - [x] 2026-05-27 — WatershedWasm buoyancy integration: FloatingObjectManager uses wasmModule.computeBuoyancy() with JS fallback; WatershedWasm.ts uses new Function() trick to avoid Vite static analysis (confirmed via .swarm-state.md, 123 tests pass)

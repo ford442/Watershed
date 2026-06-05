@@ -73,6 +73,22 @@ export const BIOMES: Record<string, BiomeConfig> = {
     musicId: 'ambient-glacial-001',
     flowMultiplier: 1.2,
   },
+
+  // High-alpine glacier chute — frigid meltwater rushing through ice-scoured granite
+  glacier: {
+    name: 'Glacier Channel',
+    waterSpeed: 2.2,
+    // Milky blue-white glacial flour suspended in meltwater
+    waterColor: '#a8d8ea',
+    deepColor: '#1a6e8c',
+    foamColor: '#e8f6ff',
+    edgeHighlight: '#c8eeff',
+    props: ['ice_chunks', 'snow_banks', 'frost_rocks', 'icicles'],
+    vortexChance: 0.04,
+    musicId: 'ambient-glacier-001',
+    // Fast-moving meltwater — steeper gradient than glacial biome
+    flowMultiplier: 1.6,
+  },
 };
 
 export type BiomeKey = keyof typeof BIOMES;

@@ -42,6 +42,7 @@ import DesertSage from './Environment/DesertSage';
 import CanyonGrass from './Environment/CanyonGrass';
 import CanyonBackground from './Environment/CanyonBackground';
 import Rock from './Obstacles/Rock';
+import IceSpray from './Environment/IceSpray';
 import { useLOD } from '../systems/LODManager';
 import { useBiome } from '../systems/BiomeSystem';
 import { useSunPosition } from '../systems/SunPositionSystem';
@@ -224,12 +225,14 @@ export default function TrackSegment({
     reachId,
     weatherWetnessRef,
     config,
+    usePooledStaticObstacles = false,
 }) {
     // console.log(`[TrackSegment ${segmentId}] Rendering - active: ${active}, has rockMaterial: ${!!rockMaterial}`);
     // --- Hooks ---
 
     // Create the spline path (Only if active)
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
+    const isGlacier = biomeProfile.id === 'glacier';
     const { quality: lodQuality } = useLOD();
 
     const segmentPath = useMemo(() => {
@@ -755,7 +758,7 @@ export default function TrackSegment({
                 }
 
                 // 4. GRASS
-                if (!isSlotCanyon && seededRandom(seed++) > 0.6) {
+                if (!isSlotCanyon && !isGlacier && seededRandom(seed++) > 0.6) {
                     const dist = bankStart + seededRandom(seed++) * 4;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
@@ -783,7 +786,7 @@ export default function TrackSegment({
                 }
 
                 // 4.5 WILDFLOWERS - denser near waterline with deterministic clumping.
-                if (!isSlotCanyon) {
+                if (!isSlotCanyon && !isGlacier) {
                     const bankHeight = Math.max(1.5, biomeProfile.wallHeight * 0.55);
                     const minFlowerDist = bankStart + 0.35;
                     const maxFlowerDist = bankStart + Math.min(7.5, canyonWidth * 0.18);
@@ -799,7 +802,8 @@ export default function TrackSegment({
                     const waterlineFactor = Math.min(1, heightAboveWaterline / bankHeight);
                     const highNearWater = biome === 'autumn' ? 0.52 : 0.72;
                     const lowAtRim = biome === 'autumn' ? 0.14 : 0.2;
-                    const spawnProbability = highNearWater + (lowAtRim - highNearWater) * waterlineFactor;
+                    const wildflowerBoost = (type === 'normal' && particleCount > 0) ? Math.min(particleCount / 60, 2.5) : 1.0;
+                    const spawnProbability = (highNearWater + (lowAtRim - highNearWater) * waterlineFactor) * wildflowerBoost;
 
                     if (seededRandom(seed++) < spawnProbability) {
                         const clusterSize = 2 + Math.floor(seededRandom(seed++) * 3);
@@ -831,7 +835,7 @@ export default function TrackSegment({
                 // 4.6 FERNS (New: Undergrowth clusters)
                 // Ferns like the "floor" of the forest, often near trees or walls
                 const fernChance = biome === 'autumn' ? 0.4 : 0.3;
-                if (!isSlotCanyon && seededRandom(seed++) > (1.0 - fernChance)) {
+                if (!isSlotCanyon && !isGlacier && seededRandom(seed++) > (1.0 - fernChance)) {
                     // Spawn a cluster
                     const clusterSize = 3 + Math.floor(seededRandom(seed++) * 3);
 
@@ -870,7 +874,7 @@ export default function TrackSegment({
 
                 // 4.7 MUSHROOMS (New: Forest floor detail)
                 const mushroomChance = biome === 'autumn' ? 0.6 : 0.3;
-                if (!isSlotCanyon && seededRandom(seed++) > (1.0 - mushroomChance)) {
+                if (!isSlotCanyon && !isGlacier && seededRandom(seed++) > (1.0 - mushroomChance)) {
                     // Cluster
                     const clusterSize = 3 + Math.floor(seededRandom(seed++) * 5);
                     // Placement: Near trees or damp spots (between bank and wall)
@@ -907,7 +911,7 @@ export default function TrackSegment({
                 }
 
                 // 5. REEDS
-                if (!isSlotCanyon && seededRandom(seed++) > 0.5) {
+                if (!isSlotCanyon && !isGlacier && seededRandom(seed++) > 0.5) {
                     const dist = bankStart + (seededRandom(seed++) - 0.2) * 1.5;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
@@ -928,7 +932,7 @@ export default function TrackSegment({
 
                 // 6. DRIFTWOOD (Enhanced Density)
                 // Scatter new Driftwood instances along the river edge
-                if (!isSlotCanyon && seededRandom(seed++) > 0.25) { // 75% chance per step (Significantly increased from 0.4)
+                if (!isSlotCanyon && !isGlacier && seededRandom(seed++) > 0.25) { // 75% chance per step (Significantly increased from 0.4)
                     // Chance for a larger pile (Log Jam)
                     const isPile = seededRandom(seed++) > 0.7;
                     const clusterSize = isPile ? 3 + Math.floor(seededRandom(seed++) * 4) : 1 + Math.floor(seededRandom(seed++) * 2);
@@ -1486,7 +1490,7 @@ export default function TrackSegment({
             rockFoam,
             canyonDust
         };
-    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed, config, isSlotCanyon, lodQuality, biomeProfile.wallHeight]);
+    }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, waterLevel, biome, treeDensity, rockDensity, type, flowSpeed, config, isSlotCanyon, isGlacier, lodQuality, biomeProfile.wallHeight, particleCount]);
 
     // Canyon Geometry
     const canyonGeometry = useMemo(() => {
@@ -1512,11 +1516,21 @@ export default function TrackSegment({
 
         // Biome-based color palette for the canyon floor (richer 5-stop gradient)
         // Tuned to bridge smoothly from water-edge to dry bank
-        const dryColor = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_RIM) : (biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#9a8e78'));
-        const wetColor = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_SHADOW) : (biome === 'autumn' ? new THREE.Color('#4a3828') : new THREE.Color('#3e5038'));
-        const shoreColor = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_BASE) : (biome === 'autumn' ? new THREE.Color('#685840') : new THREE.Color('#4a5c44'));
-        const mossColor = isSlotCanyon ? new THREE.Color('#7c4a2d') : (biome === 'autumn' ? new THREE.Color('#7a6640') : new THREE.Color('#587248'));
-        const bankColor = isSlotCanyon ? new THREE.Color('#bf7444') : (biome === 'autumn' ? new THREE.Color('#907850') : new THREE.Color('#788860'));
+        const dryColor   = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_RIM)
+                         : isGlacier    ? new THREE.Color('#c8dce8')   // pale ice-scoured granite
+                         : (biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#9a8e78'));
+        const wetColor   = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_SHADOW)
+                         : isGlacier    ? new THREE.Color('#2a4858')   // deep glacial shadow
+                         : (biome === 'autumn' ? new THREE.Color('#4a3828') : new THREE.Color('#3e5038'));
+        const shoreColor = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_BASE)
+                         : isGlacier    ? new THREE.Color('#6a9ab0')   // submerged blue-grey stone
+                         : (biome === 'autumn' ? new THREE.Color('#685840') : new THREE.Color('#4a5c44'));
+        const mossColor  = isSlotCanyon ? new THREE.Color('#7c4a2d')
+                         : isGlacier    ? new THREE.Color('#4a7888')   // glacial algae / cryoconite
+                         : (biome === 'autumn' ? new THREE.Color('#7a6640') : new THREE.Color('#587248'));
+        const bankColor  = isSlotCanyon ? new THREE.Color('#bf7444')
+                         : isGlacier    ? new THREE.Color('#a0b8c8')   // frost-dusted bank gravel
+                         : (biome === 'autumn' ? new THREE.Color('#907850') : new THREE.Color('#788860'));
         const getChannelShape = (t) => {
             if (!channelProfile.length) {
                 return {
@@ -1644,7 +1658,7 @@ export default function TrackSegment({
             geo.computeVertexNormals();
         }
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId, biome, channelProfile, isSlotCanyon]);
+    }, [segmentPath, pathLength, canyonWidth, waterWidth, active, segmentId, biome, channelProfile, isSlotCanyon, isGlacier]);
 
     // Wall Shell Geometry
     const wallShellGeometry = useMemo(() => {
@@ -1678,6 +1692,15 @@ export default function TrackSegment({
                 mid: new THREE.Color('#a95a32'),
                 upper: new THREE.Color('#cc8353'),
                 rim: new THREE.Color('#d2b08d'),
+            }
+            : isGlacier
+            ? {
+                // Ice-scoured granite: deep blue-black at waterline, frost-white at rim
+                waterline: new THREE.Color('#1a2830'),
+                lower: new THREE.Color('#3a5868'),
+                mid: new THREE.Color('#607888'),
+                upper: new THREE.Color('#8aaabb'),
+                rim: new THREE.Color('#d0e8f0'),
             }
             : {
                 waterline: new THREE.Color('#24170f'),
@@ -1822,7 +1845,7 @@ export default function TrackSegment({
             geo.computeVertexNormals();
         }
         return geo;
-    }, [segmentPath, pathLength, canyonWidth, active, segmentId, biome, biomeProfile.wallHeight, isSlotCanyon]);
+    }, [segmentPath, pathLength, canyonWidth, active, segmentId, biome, biomeProfile.wallHeight, isSlotCanyon, isGlacier]);
 
     // Water Geometry
     const waterGeometry = useMemo(() => {
@@ -1981,6 +2004,8 @@ export default function TrackSegment({
             verticalBias={verticalBias}
             weatherWetnessRef={weatherWetnessRef}
             isSlotCanyon={isSlotCanyon}
+            active={active}
+            usePooledStaticObstacles={usePooledStaticObstacles}
         />
     );
 }
@@ -1988,6 +2013,7 @@ export default function TrackSegment({
 // Inner component to handle material effects with hooks
 function TrackSegmentMeshes({
     segmentId,
+    active,
     canyonGeometry,
     wallShellGeometry,
     waterGeometry,
@@ -2011,6 +2037,7 @@ function TrackSegmentMeshes({
     verticalBias = 0,
     weatherWetnessRef,
     isSlotCanyon = false,
+    usePooledStaticObstacles = false,
 }) {
     const { quality: lodQuality } = useLOD();
     const { timeOfDay } = useBiome();
@@ -2018,6 +2045,7 @@ function TrackSegmentMeshes({
     const waterSurfaceOffset = (segmentState === 'downhill' || verticalBias <= -1.2) ? 0.6 : 0;
     const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
+    const isGlacier = biomeProfile.id === 'glacier';
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
     const batsActive = (biomeProfile.id === 'slotCanyon' || biome === 'autumn' || biome === 'canyon') && timeOfDay > 0.65;
     const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';
@@ -2320,12 +2348,23 @@ function TrackSegmentMeshes({
                 flowSpeed={flowSpeed}
                 biome={biome}
                 isNight={isNight}
-                baseColor={type === 'pond' ? "#1a4b6a" : undefined}
+                baseColor={isGlacier ? '#a8d8ea' : (type === 'pond' ? '#1a4b6a' : undefined)}
+                foamColor={isGlacier ? '#e8f6ff' : undefined}
+                edgeHighlightColor={isGlacier ? '#c8eeff' : undefined}
                 flowMap={flowMap}
                 vehiclePos={vehiclePos}
                 vehicleVelocity={vehicleVelocity}
                 waterSurfaceOffset={waterSurfaceOffset}
             />
+
+            {/* Glacier: ice-crystal spray bursts at the segment midpoint, scale with player speed */}
+            {isGlacier && active && (
+                <IceSpray
+                    origin={vehiclePos}
+                    intensity={Math.min(1, playerVelocityForParticles / 8)}
+                    active={vehiclePos.distanceTo(segmentCenterRef.current) < 60}
+                />
+            )}
 
             {plungeImpactPlacement && (
                 <group position={plungeImpactPlacement.position}>
@@ -2362,7 +2401,7 @@ function TrackSegmentMeshes({
             )}
 
             <Rock
-                transforms={placementData.rocks}
+                transforms={usePooledStaticObstacles ? [] : placementData.rocks}
                 scatterTransforms={placementData.scatterRocks}
                 material={rockMaterial}
             />

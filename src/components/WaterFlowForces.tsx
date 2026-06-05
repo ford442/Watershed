@@ -13,6 +13,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { sampleSegmentFlow } from '../utils/segmentSampler';
 import { WATER_FLOW_CONFIG } from '../constants/waterFlow';
+import { RAFT, WATER_LEVEL } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
 import { getAudioManager } from '../systems/AudioSystem';
 
@@ -116,6 +117,16 @@ export default function WaterFlowForces({
     flowMapUrlRef.current = getReachFlowMapUrl(reachId);
   }, [segments, reachId]);
 
+  // Track slipperiness from the current glacier/ice segment
+  const slipperinessRef = useRef(0);
+  useEffect(() => {
+    const onSegmentEnter = (e: CustomEvent) => {
+      slipperinessRef.current = e.detail?.slipperiness ?? 0;
+    };
+    window.addEventListener('segment-enter', onSegmentEnter as EventListener);
+    return () => window.removeEventListener('segment-enter', onSegmentEnter as EventListener);
+  }, []);
+
   // Listen for boost events to surge water visuals
   useEffect(() => {
     const onBoost = () => {
@@ -153,7 +164,8 @@ export default function WaterFlowForces({
 
     const current = body.linvel();
     tmpForward.set(current.x, 0, current.z);
-    if (tmpForward.lengthSq() < 0.0001) {
+    const horizontalSpeedSq = tmpForward.lengthSq();
+    if (horizontalSpeedSq < 0.0001) {
       tmpForward.set(0, 0, -1);
     } else {
       tmpForward.normalize();
@@ -172,6 +184,12 @@ export default function WaterFlowForces({
     else if (rawFlowSpeed > 1.3) stateMultiplier = WATER_FLOW_CONFIG.rapidsMultiplier;
 
     const effectiveFlowSpeed = Math.max(0.3, rawFlowSpeed * stateMultiplier * flowScale);
+    const raftBottom = translation.y - RAFT.HEIGHT * 0.5;
+    const submergedRatio = THREE.MathUtils.clamp(
+      (WATER_LEVEL - raftBottom) / RAFT.HEIGHT,
+      0,
+      1
+    );
 
     // ========================================================================
     // 2. Sample flowMap at low frequency for vector-field lateral forces
@@ -196,7 +214,18 @@ export default function WaterFlowForces({
     // ========================================================================
     // 3. Build downstream force along curve tangent
     // ========================================================================
-    const impulseStrength = effectiveFlowSpeed * WATER_FLOW_CONFIG.baseFlowMultiplier;
+    const flowCarry =
+      rawFlowSpeed < WATER_FLOW_CONFIG.raftNeutralFlowSpeed
+        ? WATER_FLOW_CONFIG.raftPondSlowMultiplier
+        : rawFlowSpeed > 1.25
+          ? WATER_FLOW_CONFIG.raftRapidsCarryMultiplier
+          : 1;
+    const impulseStrength = effectiveFlowSpeed
+      * WATER_FLOW_CONFIG.baseFlowMultiplier
+      * WATER_FLOW_CONFIG.raftSubmergedArea
+      * WATER_FLOW_CONFIG.raftDragShedding
+      * submergedRatio
+      * flowCarry;
     const alongFlow = closestSample.tangent.clone().multiplyScalar(impulseStrength * delta * 2.0);
 
     // ========================================================================
@@ -206,6 +235,12 @@ export default function WaterFlowForces({
     const sideSlip = closestSample.lateral
       .clone()
       .multiplyScalar(centeringFactor * WATER_FLOW_CONFIG.centeringStrength * delta);
+    const pondDrag = rawFlowSpeed < WATER_FLOW_CONFIG.raftNeutralFlowSpeed && horizontalSpeedSq > 0.0001
+      ? (WATER_FLOW_CONFIG.raftNeutralFlowSpeed - rawFlowSpeed)
+        * WATER_FLOW_CONFIG.raftSubmergedArea
+        * WATER_FLOW_CONFIG.raftDragShedding
+        * delta
+      : 0;
 
     // ========================================================================
     // 5. Turbulence noise force
@@ -225,8 +260,16 @@ export default function WaterFlowForces({
     // ========================================================================
     // 7. Apply all forces
     // ========================================================================
-    const impulseX = alongFlow.x + flowMapForce.x * delta + sideSlip.x + turbulence.x;
-    const impulseZ = alongFlow.z + flowMapForce.z * delta + sideSlip.z + turbulence.z;
+    // On glacier ice: reduce lateral resistance and add a persistent slide bias
+    // that nudges the raft/runner toward the downstream tangent even without input.
+    // slipperiness 0 = no effect; 1 = frictionless chute (reduced by 80% lateral drag).
+    const slip = slipperinessRef.current;
+    const lateralDampScale = 1.0 - slip * 0.8; // lateral forces attenuated on ice
+    const slideBiasX = slip > 0.05 ? closestSample.tangent.x * effectiveFlowSpeed * slip * 0.18 * delta : 0;
+    const slideBiasZ = slip > 0.05 ? closestSample.tangent.z * effectiveFlowSpeed * slip * 0.18 * delta : 0;
+
+    const impulseX = alongFlow.x + (flowMapForce.x * delta + sideSlip.x + turbulence.x) * lateralDampScale - tmpForward.x * pondDrag + slideBiasX;
+    const impulseZ = alongFlow.z + (flowMapForce.z * delta + sideSlip.z + turbulence.z) * lateralDampScale - tmpForward.z * pondDrag + slideBiasZ;
     if (!isFinite(impulseX) || !isFinite(impulseZ) || !isFinite(downwardImpulse)) return;
     body.applyImpulse(
       { x: impulseX, y: downwardImpulse, z: impulseZ },

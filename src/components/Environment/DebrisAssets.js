@@ -2,6 +2,11 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three-stdlib';
 
+const mergeCompatibleGeometries = (geometries) => {
+    const normalized = geometries.map((geometry) => geometry.index ? geometry.toNonIndexed() : geometry);
+    return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+};
+
 export function useDriftwoodAssets() {
     const geometry = useMemo(() => {
         const geos = [];
@@ -25,7 +30,7 @@ export function useDriftwoodAssets() {
         branch2.translate(-1.2, 0.3, -0.1);
         geos.push(branch2);
 
-        const merged = mergeBufferGeometries(geos);
+        const merged = mergeCompatibleGeometries(geos);
         merged.computeVertexNormals();
         return merged;
     }, []);

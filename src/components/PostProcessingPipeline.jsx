@@ -53,6 +53,72 @@ const CHROMATIC_ABERRATION_SHADER = {
   `,
 };
 
+const RAINBOW_SHADER = {
+  name: 'RainbowShader',
+  uniforms: {
+    tDiffuse: { value: null },
+    intensity: { value: 0.0 },
+    time: { value: 0.0 },
+    aspectRatio: { value: 1.0 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float intensity;
+    uniform float time;
+    uniform float aspectRatio;
+    varying vec2 vUv;
+
+    // Hue to RGB — perceptually accurate spectral spread
+    vec3 hue2rgb(float h) {
+      h = fract(h);
+      float r = abs(h * 6.0 - 3.0) - 1.0;
+      float g = 2.0 - abs(h * 6.0 - 2.0);
+      float b = 2.0 - abs(h * 6.0 - 4.0);
+      return clamp(vec3(r, g, b), 0.0, 1.0);
+    }
+
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+
+      if (intensity < 0.005) {
+        gl_FragColor = base;
+        return;
+      }
+
+      // Arc center: slightly below screen center — where waterfall spray collects
+      vec2 arcCenter = vec2(0.5, 0.52);
+      vec2 delta = (vUv - arcCenter) * vec2(aspectRatio, 1.0);
+      float dist = length(delta);
+
+      float inner = 0.20;
+      float outer = 0.37;
+      float band = smoothstep(inner - 0.03, inner, dist)
+                 * smoothstep(outer + 0.03, outer, dist);
+
+      // Show only the upper arc (above the center in UV space = lower delta.y)
+      float arcMask = smoothstep(0.06, -0.04, delta.y / max(dist, 0.001));
+
+      // t = 0 at inner (violet), 1 at outer (red) — matches real rainbow
+      float t = clamp((dist - inner) / max(outer - inner, 0.001), 0.0, 1.0);
+      float hue = (1.0 - t) * 0.75; // 0.75 = violet, 0.0 = red
+      vec3 spectral = hue2rgb(hue);
+
+      // Gentle shimmer to mimic moving mist diffraction
+      float shimmer = 0.8 + sin(time * 2.5 + dist * 24.0) * 0.2;
+
+      float rainbow = band * arcMask * shimmer * intensity * 0.28;
+      gl_FragColor = vec4(base.rgb + spectral * rainbow, base.a);
+    }
+  `,
+};
+
 class GodRaysPass extends Pass {
   constructor() {
     super();
@@ -182,6 +248,12 @@ export function PostProcessingPipeline({
     vignettePass.uniforms.darkness.value = vignetteDarkness;
     composer.addPass(vignettePass);
 
+    // Rainbow god-ray overlay (waterfall mist prismatic arc)
+    const rainbowPass = new ShaderPass(RAINBOW_SHADER);
+    rainbowPass.uniforms.intensity.value = 0;
+    rainbowPass.uniforms.aspectRatio.value = size.width / Math.max(1, size.height);
+    composer.addPass(rainbowPass);
+
     // Store passes for imperative updates
     composer.userData = {
       godRaysPass,
@@ -189,6 +261,7 @@ export function PostProcessingPipeline({
       hueSatPass,
       chromaticPass,
       vignettePass,
+      rainbowPass,
     };
 
     return composer;
@@ -317,6 +390,16 @@ export function PostProcessingPipeline({
       passes.bloomPass.strength = bloomIntensity + boostScale * 0.4 + waterfallBoost * 0.55;
       passes.bloomPass.threshold = Math.max(0.2, bloomThreshold - boostScale * 0.15 - waterfallBoost * 0.1);
       passes.bloomPass.radius = bloomRadius + boostScale * 0.2 + waterfallBoost * 0.12;
+    }
+
+    // Rainbow prismatic arc — only during waterfall, fades quickly outside it
+    if (passes.rainbowPass) {
+      const targetRainbow = Math.max(0, (waterfallBoost - 0.35) / 0.65);
+      const currentRainbow = passes.rainbowPass.uniforms.intensity.value;
+      passes.rainbowPass.uniforms.intensity.value +=
+        (targetRainbow - currentRainbow) * (1 - Math.exp(-delta * 3));
+      passes.rainbowPass.uniforms.time.value = state.clock.elapsedTime;
+      passes.rainbowPass.uniforms.aspectRatio.value = size.width / Math.max(1, size.height);
     }
 
     composer.render();

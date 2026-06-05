@@ -4,6 +4,11 @@ import { mergeBufferGeometries } from 'three-stdlib';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
+const mergeCompatibleGeometries = (geometries) => {
+  const normalized = geometries.map((geometry) => geometry.index ? geometry.toNonIndexed() : geometry);
+  return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+};
+
 export default function Dragonflies({ transforms }) {
   const meshRef = useRef();
 
@@ -58,7 +63,7 @@ export default function Dragonflies({ transforms }) {
 
     if (geometries.length === 0) return new THREE.BufferGeometry();
 
-    const merged = mergeBufferGeometries(geometries);
+    const merged = mergeCompatibleGeometries(geometries);
     merged.computeVertexNormals();
     return merged;
   }, []);

@@ -16,6 +16,7 @@ import RaftVehicle from "./vehicles/RaftVehicle";
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
 import ReachManager from "./systems/ReachManager";
 import TrackManager from "./components/TrackManager";
+import { GLACIER_START_INDEX } from "./maps/meander_to_waterfall";
 
 // NEW: Visual enhancement systems
 import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials, useBiome } from "./systems/BiomeSystem";
@@ -87,7 +88,10 @@ const NOOP_DEBUG = {
  * Wrapped in providers for context access
  */
 const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
-  const [vehicleType, setVehicleTypeLocal] = useState('runner');
+  const [vehicleType, setVehicleTypeLocal] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('vehicle') === 'raft' ? 'raft' : 'runner';
+  });
   const vehicleRef = useRef(null);
   const { camera } = useThree();
 
@@ -114,6 +118,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     setVehicleTypeLocal(type);
     setVehicleTypeStore(type);
   };
+
+  useEffect(() => {
+    setVehicleTypeStore(vehicleType);
+  }, [setVehicleTypeStore, vehicleType]);
 
   // BiomeProvider is the single authoritative source of biome state.
   // Calling setBiomeContext normalizes legacy IDs, triggers smooth palette
@@ -407,7 +415,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   const waterfallFxIntensity =
     currentSegmentIndex === 13 ? 0.45 :
     currentSegmentIndex === 14 ? 1.0 :
-    currentSegmentIndex === 15 ? 0.55 : 0;
+    currentSegmentIndex === 15 ? 0.55 :
+    currentSegmentIndex === 28 ? 0.6 :
+    currentSegmentIndex === 29 ? 1.0 :
+    currentSegmentIndex === 30 ? 0.45 : 0;
   const isSlotCanyonLighting = biome === 'slotCanyon' || isTightCanyon;
   const ambientIntensity = isSlotCanyonLighting ? Math.min(L.ambientIntensity, 0.18) : L.ambientIntensity;
   const hemiIntensity = isSlotCanyonLighting ? Math.min(L.hemiIntensity, 0.25) : L.hemiIntensity;
@@ -433,7 +444,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     const rumble =
       currentSegmentIndex === 13 ? 0.05 + Math.min(0.08, speed * 0.002) :
       currentSegmentIndex === 14 ? 0.16 + Math.min(0.16, speed * 0.004) :
-      currentSegmentIndex === 15 ? 0.06 : 0;
+      currentSegmentIndex === 15 ? 0.06 :
+      currentSegmentIndex === 28 ? 0.08 + Math.min(0.1, speed * 0.003) :
+      currentSegmentIndex === 29 ? 0.18 + Math.min(0.18, speed * 0.004) :
+      currentSegmentIndex === 30 ? 0.06 : 0;
 
     if (Math.abs(rumble - lastWaterfallRumbleRef.current) > 0.01) {
       lastWaterfallRumbleRef.current = rumble;
@@ -441,14 +455,28 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     }
   });
 
+  // Speed-scaled shake intensity — read at segment-entry time
+  const entrySpeedRef = useRef(0);
   useEffect(() => {
+    entrySpeedRef.current = playerVelocityRef.current;
+  }, [currentSegmentIndex]);
+
+  useEffect(() => {
+    const speed = entrySpeedRef.current;
     if (currentSegmentIndex === 13) {
-      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.18, duration: 1.8 } }));
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.22, duration: 2.2, frequency: 14, angular: 0.012 } }));
     } else if (currentSegmentIndex === 14) {
-      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.55, duration: 1.2 } }));
+      // Primary waterfall drop — scale punch with entry speed
+      const speedBonus = Math.min(0.45, speed * 0.022);
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.75 + speedBonus, duration: 2.8, frequency: 8, angular: 0.04 } }));
       window.dispatchEvent(new CustomEvent('boost-triggered', { detail: { intensity: 1.1, duration: 1.0 } }));
     } else if (currentSegmentIndex === 15) {
-      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.22, duration: 1.0 } }));
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.28, duration: 1.4, frequency: 16, angular: 0.008 } }));
+    } else if (currentSegmentIndex === 29) {
+      // Second waterfall drop (canyon rapids section)
+      const speedBonus = Math.min(0.5, speed * 0.025);
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.8 + speedBonus, duration: 3.0, frequency: 8, angular: 0.045 } }));
+      window.dispatchEvent(new CustomEvent('boost-triggered', { detail: { intensity: 1.2, duration: 1.2 } }));
     }
   }, [currentSegmentIndex]);
 
@@ -573,6 +601,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
               onBiomeChange={handleBiomeChange}
               raftRef={vehicleRef}
               forecastSamples={forecastSamples}
+              startIndex={GLACIER_START_INDEX}
             />
           ))}
         </Physics>

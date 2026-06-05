@@ -1,0 +1,28 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - generic: SYSTEM INITIALIZATION
+      - generic: LOADING ASSETS... 1%
+      - progressbar "Asset loading progress"
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - heading "WATERSHED" [level=1] [ref=e9]
+      - paragraph [ref=e10]: From alpine source to valley delta — shed the water.
+    - generic [ref=e11]:
+      - button "Start Game - Click or Press Enter" [active] [ref=e12] [cursor=pointer]:
+        - text: START RUN
+        - generic [ref=e13]: ENTER
+      - button "Open Settings" [ref=e14] [cursor=pointer]: SETTINGS
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: WASD
+        - generic [ref=e18]: Move
+      - generic [ref=e19]:
+        - generic [ref=e20]: Mouse
+        - generic [ref=e21]: Look
+      - generic [ref=e22]:
+        - generic [ref=e23]: Space
+        - generic [ref=e24]: Jump
+      - generic [ref=e25]:
+        - generic [ref=e26]: Esc
+        - generic [ref=e27]: Pause

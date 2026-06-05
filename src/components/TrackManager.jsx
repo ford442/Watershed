@@ -5,6 +5,7 @@ import { useTexture } from '@react-three/drei';
 import TrackSegment from './TrackSegment';
 import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
+import PooledObstacles from './PooledObstacles';
 import { extendRiverMaterial } from '../utils/RiverShader';
 import { WATER_LEVEL, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
@@ -12,6 +13,7 @@ import { useNightMode } from '../hooks/useNightMode';
 import { DefaultMapManager, JSONMapManager } from '../systems/MapSystem';
 import { MEANDER_TO_WATERFALL_PROGRESSION } from '../maps/meander_to_waterfall';
 import { ChunkManager } from '../systems/ChunkManager';
+import { createObstaclePool } from '../systems/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
 
 function cloneForRender(segment, slotIndex, active) {
@@ -30,9 +32,10 @@ function cloneForRender(segment, slotIndex, active) {
     };
 }
 
-export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null, reachId = null, mapData = null }) {
+export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null, reachId = null, mapData = null, startIndex = 0 }) {
     const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
+    const [obstaclePoolVersion, setObstaclePoolVersion] = useState(0);
     const { isNight } = useNightMode();
 
     const chunkManagerRef = useRef(null);
@@ -42,6 +45,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         mapData ? new JSONMapManager(mapData) : new DefaultMapManager({}, MEANDER_TO_WATERFALL_PROGRESSION)
     );
     const reachSegmentsRef = useRef(reachSegments);
+    const obstaclePoolRef = useRef(createObstaclePool(16));
 
     // Keep reachSegments ref in sync
     useEffect(() => {
@@ -194,8 +198,12 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                 const entered = activeSegments.find((s) => s?.id === index);
                 const flowSpeed = entered?.flowSpeed ?? 1.0;
                 const gravityMultiplier = entered?.gravityMultiplier;
+                // slipperiness is stored on the config, not the live SegmentData — read from map manager
+                const segCfg = mapManagerRef.current?.getChunkConfig?.(index);
+                const slipperiness = segCfg?.slipperiness ?? 0;
                 window.__watershedFlowSpeed = flowSpeed;
-                window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index, flowSpeed, gravityMultiplier } }));
+                window.__watershedSlipperiness = slipperiness;
+                window.dispatchEvent(new CustomEvent('segment-enter', { detail: { segmentIndex: index, flowSpeed, gravityMultiplier, slipperiness } }));
 
                 const segmentConfig = mapManagerRef.current?.getChunkConfig?.(index);
                 if (segmentConfig?.journeyComplete && !useGameStore.getState().isJourneyComplete) {
@@ -209,6 +217,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
             reachSegments: reachSegmentsRef.current,
             forecastByIndex: forecastByIndexRef.current,
             callbacks,
+            startIndex,
         });
 
         chunkManagerRef.current.initializePool();
@@ -257,6 +266,28 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
         return chunkManagerRef.current.getActiveSegments();
     }, [poolVersion]);
 
+    useEffect(() => {
+        obstaclePoolRef.current.syncSegments(activeSegments);
+        setObstaclePoolVersion((v) => v + 1);
+    }, [activeSegments]);
+
+    const pooledObstacleSlots = useMemo(
+        () => obstaclePoolRef.current.getSnapshot(),
+        [obstaclePoolVersion]
+    );
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.__watershedObstaclePool = {
+            size: pooledObstacleSlots.length,
+            active: pooledObstacleSlots.filter((slot) => slot.active).length,
+            types: pooledObstacleSlots.reduce((acc, slot) => {
+                if (slot.active) acc[slot.type] = (acc[slot.type] || 0) + 1;
+                return acc;
+            }, {}),
+        };
+    }, [pooledObstacleSlots]);
+
     return (
         <group name="track-manager">
             {renderedSlots.map(({ slotIndex, active, segment }) => (
@@ -272,10 +303,12 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
                     biome={segment?.biome || 'summer'}
                     isNight={isNight}
                     weatherWetnessRef={weatherWetnessRef}
+                    usePooledStaticObstacles
                     {...(segment || {})}
                 />
             ))}
 
+            <PooledObstacles slots={pooledObstacleSlots} rockMaterial={rockMaterial} />
             <WaterFlowForces targetRef={raftRef} segments={activeSegments} reachId={reachId} />
             <VehicleTuner targetRef={raftRef} segments={activeSegments} />
         </group>

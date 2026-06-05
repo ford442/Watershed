@@ -7,11 +7,63 @@
  * Ranges use "first match wins" semantics — more-specific entries must appear
  * before broader catch-alls. Segments 0–12 are not listed and resolve to
  * DEFAULT_SEGMENT_PROGRESSION (summer, normal, width 35).
+ *
+ * GLACIER PRELUDE (segments -5 to -1):
+ * To start the run in the glacier, set ChunkManager startIndex to GLACIER_START_INDEX.
+ * The glacier feeds directly into the meander at segment 0.
+ * See LEVEL_DESIGN.md § Glacier Prelude for full details.
  */
 
 import type { SegmentRange } from '../systems/MapSystem';
 
+/** First segment ID of the early-game glacier/alpine prelude. Pass to ChunkManager as startIndex. */
+export const GLACIER_START_INDEX = -3;
+
 export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
+    // =========================================================================
+    // EARLY GAME: Glacier Ice Run → Alpine Wildflower Stream → The Meander
+    // Replaces the old 5-segment glacier prelude stub with two authored sets.
+    // =========================================================================
+
+    // Segment -3 — Glacier Ice Run: tight ice chute, slippery, high contrast
+    {
+        indexFrom: -3,
+        indexTo: -3,
+        config: {
+            biome: 'glacier',
+            type: 'normal',
+            width: 24,
+            waterWidth: 7,
+            meanderStrength: 0.2,
+            verticalBias: -2.0,
+            flowSpeed: 2.2,
+            treeDensity: 0.05,
+            rockDensity: 'medium',
+            slipperiness: 0.9,
+            particleCount: 80,
+            cameraShake: 0.15,
+        },
+    },
+
+    // Segments -2 to -1 — Alpine Wildflower Stream: gentle, bright, high flowers
+    {
+        indexFrom: -2,
+        indexTo: -1,
+        config: {
+            biome: 'summer',
+            type: 'normal',
+            width: 32,
+            waterWidth: 11,
+            meanderStrength: 0.9,
+            verticalBias: -0.4,
+            flowSpeed: 0.8,
+            treeDensity: 0.9,
+            rockDensity: 'low',
+            slipperiness: 0,
+            particleCount: 150,
+            cameraShake: 0,
+        },
+    },
     // Segment 13 — Approach: steepens toward the waterfall
     {
         indexFrom: 13,

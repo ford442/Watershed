@@ -7,6 +7,11 @@ import { getBiomePalette } from '../../configs/BiomePalettes';
 
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'];
 
+const mergeCompatibleGeometries = (geometries) => {
+  const normalized = geometries.map((geometry) => geometry.index ? geometry.toNonIndexed() : geometry);
+  return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+};
+
 const buildCrossPetals = (width, height, y, count = 3) => {
   const geometries = [];
   for (let i = 0; i < count; i++) {
@@ -49,9 +54,9 @@ export default function Wildflowers({ transforms, biome = 'summer' }) {
 
     return [
       { type: 'bloom', geometry: bloom, swayAmount: 0.025 },
-      { type: 'spike', geometry: mergeBufferGeometries(spike), swayAmount: 0.05 },
-      { type: 'daisy', geometry: mergeBufferGeometries(daisy), swayAmount: 0.03 },
-      { type: 'bell', geometry: mergeBufferGeometries(bell), swayAmount: 0.04 },
+      { type: 'spike', geometry: mergeCompatibleGeometries(spike), swayAmount: 0.05 },
+      { type: 'daisy', geometry: mergeCompatibleGeometries(daisy), swayAmount: 0.03 },
+      { type: 'bell', geometry: mergeCompatibleGeometries(bell), swayAmount: 0.04 },
     ];
   }, []);
 

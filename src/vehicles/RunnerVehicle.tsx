@@ -277,6 +277,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
   // Goal 2: Collision groups for i-frames
   const defaultCollisionGroups = useRef(0);
+  const fovRef = useRef(75);
   const debugState = useRef({
     recentImpulses: [] as DebugImpulse[],
     recentContacts: [] as DebugContact[],
@@ -1120,6 +1121,20 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     if (isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z)) {
       const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
       camera.position.lerp(targetPos, 0.12);
+    }
+
+    // FOV kick — speed-based expansion + waterfall punch
+    {
+      const segIdx = useGameStore.getState().currentSegmentIndex;
+      const isWaterfallSeg = segIdx === 14 || segIdx === 29;
+      // Horizontal speed only — vertical drops shouldn't affect FOV alone
+      const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+      const targetFov = 75 + Math.min(12, hSpeed * 0.45) + (isWaterfallSeg ? 10 : 0);
+      fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-delta * 5));
+      if (Math.abs(camera.fov - fovRef.current) > 0.05) {
+        camera.fov = fovRef.current;
+        camera.updateProjectionMatrix();
+      }
     }
 
     frameImpulses.forEach((impulse, tag) => {
