@@ -3,6 +3,11 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 
+const mergeCompatibleGeometries = (geometries) => {
+    const normalized = geometries.map((g) => g.index ? g.toNonIndexed() : g);
+    return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+};
+
 export default function Ferns({ transforms, biome = 'summer' }) {
     // 1. Geometry Construction
     const geometry = useMemo(() => {
@@ -58,7 +63,7 @@ export default function Ferns({ transforms, biome = 'summer' }) {
 
         if (frondGeos.length === 0) return new THREE.BufferGeometry();
 
-        const merged = mergeBufferGeometries(frondGeos);
+        const merged = mergeCompatibleGeometries(frondGeos);
         if (!merged) return new THREE.BufferGeometry();
         
         // Validate positions before computing normals
