@@ -1,0 +1,157 @@
+import { RAFT, WATER_DENSITY, HUMAN_DENSITY } from '../../constants/game';
+
+// Buoyancy and water physics configuration
+export const WATER_PHYSICS = {
+  LEVEL: RAFT.WATER_LEVEL,
+  RAFT_HEIGHT: RAFT.HEIGHT,
+  RAFT_WIDTH: RAFT.WIDTH,
+  RAFT_LENGTH: RAFT.LENGTH,
+  RAFT_VOLUME: RAFT.VOLUME,
+  RAFT_MASS: RAFT.MASS,
+
+  BUOYANCY_MAX_FORCE: RAFT.BUOYANCY_MAX_FORCE,
+  DRAG_COEFFICIENT: RAFT.DRAG_COEFFICIENT,
+  DRAG_AREA_FRONT: RAFT.DRAG_AREA_FRONT,
+  DRAG_AREA_SIDE: RAFT.DRAG_AREA_SIDE,
+
+  TURBULENCE_FREQ: RAFT.TURBULENCE_FREQ,
+  TURBULENCE_AMP: RAFT.TURBULENCE_AMP,
+  TIP_THRESHOLD_SPEED: RAFT.TIP_THRESHOLD_SPEED,
+  TIP_SUBMERGE_THRESHOLD: RAFT.TIP_SUBMERGE_THRESHOLD,
+  TIP_FORCE_MAGNITUDE: RAFT.TIP_FORCE_MAGNITUDE,
+  ROTATION_DAMPING: RAFT.ROTATION_DAMPING,
+};
+
+// Scientific density constants
+export const DENSITY = {
+  WATER: WATER_DENSITY,
+  HUMAN: HUMAN_DENSITY,
+  RAFT: RAFT.MASS / RAFT.VOLUME,
+} as const;
+
+// Tipping mechanics
+export const TIPPING = {
+  RIGHTING_THRESHOLD: RAFT.RIGHTING_THRESHOLD_DEG * (Math.PI / 180),
+  RIGHTING_TORQUE: RAFT.RIGHTING_TORQUE,
+  DANGER_THRESHOLD: RAFT.DANGER_THRESHOLD_DEG * (Math.PI / 180),
+  DANGER_TIME: RAFT.DANGER_TIME,
+  RESET_HEIGHT: RAFT.RESET_HEIGHT,
+};
+
+// Paddle input configuration
+export const PADDLE = {
+  THRUST_FORCE: RAFT.PADDLE_THRUST_FORCE,
+  TORQUE_FORCE: RAFT.PADDLE_TORQUE_FORCE,
+  FOAM_PARTICLE_COUNT: RAFT.PADDLE_FOAM_PARTICLE_COUNT,
+  FOAM_LIFETIME: RAFT.PADDLE_FOAM_LIFETIME,
+};
+
+// Stamina system configuration
+export const STAMINA = {
+  MAX: RAFT.STAMINA_MAX,
+  COST: RAFT.STAMINA_COST_PER_STROKE,
+  REGEN_RATE: RAFT.STAMINA_REGEN_RATE,
+  REGEN_DELAY: RAFT.STAMINA_REGEN_DELAY,
+  EXHAUSTED_THRESHOLD: RAFT.STAMINA_EXHAUSTED_THRESHOLD,
+  POWER_CURVE: RAFT.STAMINA_POWER_CURVE,
+  EXHAUSTED_RECOVERY_MULTIPLIER: 3,
+};
+
+// Brake configuration
+export const BRAKE = {
+  DRAG_MULTIPLIER: RAFT.BRAKE_DRAG_MULTIPLIER,
+  ANGULAR_DRAG: RAFT.BRAKE_ANGULAR_DRAG,
+};
+
+// Collision response configuration
+export const COLLISION = {
+  BOUNCE_FORCE: RAFT.COLLISION_BOUNCE_FORCE,
+  SPIN_FORCE: RAFT.COLLISION_SPIN_FORCE,
+  STUN_DURATION: RAFT.COLLISION_STUN_DURATION,
+  STUN_MAX: RAFT.COLLISION_STUN_MAX,
+  WALL_FORWARD_RETAIN: RAFT.COLLISION_WALL_FORWARD_RETAIN,
+  STUN_EFFECTIVENESS: 0.3,
+  STUN_IMPACT_THRESHOLD: 10,
+  IMPACT_FORCE_SCALE: 20,
+  SPIN_IMPACT_THRESHOLD: 15,
+  BOUNCE_VERTICAL_DAMPING: 0.45,
+  CONTACT_BURST_COUNT: 10,
+  WALL_LATERAL_RATIO: 0.6,
+};
+
+export const BIAS = {
+  DURATION: RAFT.PADDLE_FORWARD_BIAS_DURATION,
+  FORCE: RAFT.PADDLE_FORWARD_BIAS_FORCE,
+};
+
+export const CAMERA = {
+  BASE_OFFSET_Y: RAFT.CAMERA_BASE_OFFSET_Y,
+  BASE_OFFSET_Z: RAFT.CAMERA_BASE_OFFSET_Z,
+  VELOCITY_LAG: RAFT.CAMERA_VELOCITY_LAG,
+  LEAN_FACTOR: RAFT.CAMERA_LEAN_FACTOR,
+  LERP_SPEED: RAFT.CAMERA_LERP_SPEED,
+  FOV_BASE: RAFT.CAMERA_FOV_BASE,
+  FOV_SPEED_SCALE: RAFT.CAMERA_FOV_SPEED_SCALE,
+  FOV_MAX: RAFT.CAMERA_FOV_MAX,
+  FOV_LERP: RAFT.CAMERA_FOV_LERP,
+  FOV_SPEED_REFERENCE: 15,
+};
+
+export const SHED = {
+  EMISSION_RATE_BASE: 0.08,
+  EMISSION_RATE_FAST: 0.03,
+  MIN_SPEED: 2.0,
+  MIN_SUBMERGED: 0.15,
+  LIFETIME: 0.8,
+  SIZE_BASE: 0.06,
+  SIZE_SPEED_SCALE: 0.02,
+  COUNT_LIMIT: 40,
+  SPEED_REF: 12,
+};
+
+import * as THREE from 'three';
+
+export interface BuoyancyState {
+  submergedRatio: number;
+  buoyancyForce: number;
+  isFloating: boolean;
+}
+
+export interface TippingState {
+  rollAngle: number;
+  pitchAngle: number;
+  dangerTime: number;
+  isTipped: boolean;
+  lastSafePosition: THREE.Vector3;
+}
+
+export interface PaddleState {
+  leftPaddle: boolean;
+  rightPaddle: boolean;
+  foamParticles: Array<{
+    id: number;
+    position: THREE.Vector3;
+    velocity: THREE.Vector3;
+    life: number;
+    side: 'left' | 'right';
+  }>;
+}
+
+export interface StaminaState {
+  current: number;
+  regenDelay: number;
+  isExhausted: boolean;
+}
+
+export interface StunState {
+  active: boolean;
+  timer: number;
+}
+
+export interface ShedParticle {
+  id: number;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  life: number;
+  scale: number;
+}
