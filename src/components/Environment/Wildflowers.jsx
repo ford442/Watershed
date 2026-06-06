@@ -8,8 +8,23 @@ import { getBiomePalette } from '../../configs/BiomePalettes';
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'];
 
 const mergeCompatibleGeometries = (geometries) => {
-  const normalized = geometries.map((geometry) => geometry.index ? geometry.toNonIndexed() : geometry);
-  return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+  if (!geometries.length) return new THREE.BufferGeometry();
+  const normalized = geometries.map((g) => g.index ? g.toNonIndexed() : g);
+  const attrNames = new Set();
+  normalized.forEach((g) => Object.keys(g.attributes).forEach((n) => attrNames.add(n)));
+  normalized.forEach((g) => {
+    attrNames.forEach((name) => {
+      if (!g.getAttribute(name)) {
+        const ref = normalized.find((h) => h.getAttribute(name)).getAttribute(name);
+        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+      }
+    });
+  });
+  try {
+    return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+  } catch (e) {
+    return new THREE.BufferGeometry();
+  }
 };
 
 const buildCrossPetals = (width, height, y, count = 3) => {
