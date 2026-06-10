@@ -1,9 +1,9 @@
 # Watershed — Weekly Plan
 
 ## Today's focus
-**2026-06-05 — Add two new early-game segments: Glacier Ice Run & Alpine Wildflower Stream**
+**2026-06-10 — Fix First: WASM build pipeline regression (hotfixed) + hardening**
 
-Replace the legacy 5-segment glacier prelude stub with two authored segments before the summer meander. Glacier Ice Run (segment -3) is tight, slippery, and high-contrast; Alpine Wildflower Stream (segments -2 to -1) is gentle, bright, and lush with boosted wildflower density via `particleCount`. Update `GLACIER_START_INDEX` to -3, wire `startIndex` through `TrackManager` → `ChunkManager`, and pass it from `Experience.jsx` so the default run now begins in the glacier. Acceptance: `npm start` and moving forward produces seamless glacier → alpine → meander chaining with no seams or camera pops.
+`npm run build` was broken on this branch: commit `b63abac` (2026-06-06) reordered `emscripten/build.sh` so `source /root/emsdk/emsdk_env.sh` ran under `set -euo pipefail` *before* the `command -v emcc` graceful-skip check, so the script (and therefore `npm run build`) exited 1 on any host without Emscripten at exactly `/root/emsdk/` — breaking the build/deploy pipeline (`build_and_patch.py` → `deploy.py`). **Already hotfixed this run** (commit `5496c14`): restored portable `emsdk_env.sh` discovery (checks `$REPO_ROOT/emsdk`, `$HOME/emsdk`, `/usr/local/emsdk`, `/opt/emsdk`, `/root/emsdk`) ahead of the skip-and-exit-0 check; verified `bash emscripten/build.sh` and `--threads` both exit 0 cleanly. Remaining work for today hardens this so it can't silently regress again: apply the same portable-discovery pattern to `emscripten/build_colab.sh`, and add a CI job that runs `npm run build` on a runner WITHOUT Emscripten installed (the exact missing case that let this regression slip through unnoticed for 4 days).
 
 ## Ideas
 <!--
@@ -16,7 +16,7 @@ Routine will mark picked items as "[in progress — YYYY-MM-DD]".
 - [x] Author segments 0–12 waypoints in meander_to_waterfall.json — done 2026-05-13; PR #130 merged (deterministic decoration placement + authored waypoints)
 - [x] Reactive audio validation — done 2026-05-27: all 23 MP3 stubs replaced with valid 1-second sine tones (17,180 bytes each), AudioDiagnosticsOverlay.tsx wired into Experience.jsx behind DEV gate, AudioSystem.ts updated with getLoadStatus/getActiveSounds diagnostics APIs; confirmed by .swarm-state.md
 - [x] In-scene Level Editor — done 2026-05-20: PR #151 merged; LevelEditor wired via ?editor=1, useLevelEditor.ts hook + levelEditorValidator.ts added; Option A (overlay on game Canvas) selected
-- [ ] Runner sprint stamina HUD feedback — stamina bar in GameHUD, speed-reactive vignette intensity when sprinting in RunnerVehicle
+- [x] Runner sprint stamina HUD feedback — done 2026-06-03; PR #211 merged (Zustand stamina store, speed-reactive vignette intensity in RunnerVehicle, HUD stamina bar)
 - [ ] Authored environmental set-pieces — rock launch shelf geometry at waterfall (segment 14), crumbling pillar formation at slot canyon exit (segment 22); unique per-segment decoration passes beyond the procedural baseline
 
 ## Backlog
@@ -25,16 +25,20 @@ Unfinished items, known bugs, deferred ideas.
 Routine maintains this automatically — you can add items too.
 -->
 - [ ] Verify RiverShader.js moss effect receives correct world normals from TrackSegment.jsx terrain mesh (visual check needed)
-- [ ] ReachManager architecture not documented in CLAUDE.md — significant new systems (ReachStreamer, ReachNormalizer, BiomeSystem, LODManager, SplashSystem, WaterReflection, WaterInteraction) need doc pass before onboarding new contributors
-- [ ] WASM build requires Emscripten SDK at `/content/buil*/emsdk/` (hardcoded path in build.sh) — needs portable emsdk_env.sh discovery or CI matrix
-- [ ] CLAUDE.md "Known split" warning (BiomeProvider/EnhancedSky reads legacy prop) is now stale — EnhancedSky.jsx uses useBiome() as of PR #180 series; warning should be removed from CLAUDE.md + SYSTEMS.md to avoid misleading future contributors
-- [ ] `delta` biome palette exists in BiomePalettes.ts but `TrackBiomeId` only lists summer/autumn/slotCanyon — delta is unreachable; segments 31+ fall to autumn catch-all; game has no authored conclusion (today's focus addresses this)
+- [ ] ReachManager architecture not documented in CLAUDE.md — significant new systems (ReachStreamer, ReachNormalizer, BiomeSystem, LODManager, SplashSystem, WaterReflection, WaterInteraction) need doc pass before onboarding new contributors (note: SYSTEMS.md now exists and is referenced from CLAUDE.md — verify it actually covers these systems before closing this item)
+- [ ] WASM build portability hardening — `emscripten/build.sh` regression hotfixed 2026-06-10 (commit 5496c14, see Done); still need: same portable emsdk_env.sh discovery applied to `emscripten/build_colab.sh`, and a CI job that runs `npm run build` WITHOUT Emscripten installed so this regression class can't recur silently (today's kimi-cli focus)
+- [ ] CLAUDE.md "Known split" warning (BiomeProvider/EnhancedSky reads legacy prop) is now stale — confirmed EnhancedSky.jsx:5,126 already calls useBiome() as of PR #180 series; warning should be removed from CLAUDE.md + SYSTEMS.md to avoid misleading future contributors
+- [ ] PR #212 (open, draft since 2026-06-06) fixes a real crash: `mergeCompatibleGeometries` throws on mismatched geometry attributes across 6 Environment components (TreeAssets, DebrisAssets, Ferns, Reeds, Wildflowers, Dragonflies) → uncaught TypeError → ErrorBoundary trip → WebGL context loss. The fix is complete and correctly scoped (confirmed no other component shares the vulnerable pattern), but unverified — test-plan checkboxes unchecked for 4 days. Needs in-browser verification + merge (today's Claude Code whole-stack task)
 
 ## Done
 <!--
 Completed items, routine archives here with date.
 Prune occasionally when this gets long.
 -->
+- [x] 2026-06-10 — Hotfix: restored graceful WASM build skip in `emscripten/build.sh` — a 2026-06-06 regression (commit b63abac) had reordered `source /root/emsdk/emsdk_env.sh` before the `command -v emcc` check under `set -euo pipefail`, causing `npm run build` to exit 1 on any host without Emscripten at that exact path. Restored portable emsdk_env.sh discovery (5 candidate paths) ahead of the graceful skip-and-exit-0 check; verified both `build.sh` and `build.sh --threads` exit 0 cleanly (commit 5496c14).
+- [x] 2026-06-06/07 — PR #213 merged (Jules): refactored `TrackSegment.jsx`, `RunnerVehicle.tsx`, `RaftVehicle.tsx` (all >1000 lines) into smaller modules under 700 lines — new `TrackSegment/` (index.jsx, TrackSegmentMeshes.jsx, PondFog.jsx, hooks/), `RunnerVehicle/` and `RaftVehicle/` subdirectories with constants/audio/physics hooks split out; also added pond fog VFX, raft paddle/splash/collision audio, runner footstep/jump/landing audio, and camera shake.
+- [x] 2026-06-03/04 — Delta biome authored as game conclusion (5 deliverables, .swarm-state.md, 147/147 tests pass): `TrackBiomeId` extended with `'delta'` + `TRACK_BIOMES.delta` profile; segments 31–38 authored in `meander_to_waterfall.ts` (Delta Approach → Delta Entry → Wide Delta → Final Stretch → segment 38 `journeyComplete: true`); `GameState.ts` gained `isJourneyComplete`/`setJourneyComplete` (finalizes high score on completion); `TrackManager.jsx` fires the trigger via `getChunkConfig`; `GameHUD.tsx` renders a "Journey Complete" overlay (final score, high score, top speed, restart). Resolves the "delta biome unreachable" backlog item — the game now has an authored ending.
+- [x] 2026-06-03 — PR #211 merged: runner sprint stamina (Zustand store) + speed-reactive vignette intensity in RunnerVehicle + HUD stamina bar in GameHUD.
 - [x] 2026-06-05 — Early-game segments: Glacier Ice Run (-3) and Alpine Wildflower Stream (-2 to -1) authored in `meander_to_waterfall.ts`; `GLACIER_START_INDEX` updated to -3; `startIndex` wired through `TrackManager`/`ChunkManager`; `Experience.jsx` default start now chains glacier → alpine → meander; wildflower spawn boost tied to `particleCount` in `TrackSegment.jsx`; `LEVEL_DESIGN.md` updated with parameters and QA cases.
 - [x] 2026-06-03 — PRs #179–181 (Movement Polish + Canyon Expansion epic): raft stamina/brake/dynamic-camera/wake-VFX; slot canyon segment with god rays/mist/biome fix; ScoreSystem.ts fully wired into GameHUD + Experience.jsx (score, multiplier, combo label, high score, top speed)
 - [x] 2026-05-27 — npm run build fix: emcc graceful skip in emscripten/build.sh — exits 0 without Emscripten installed (confirmed via .swarm-state.md)
@@ -64,7 +68,7 @@ Prune occasionally when this gets long.
 
 ## Last run
 <!-- Routine writes summary here each run. Overwrites previous. -->
-Date: 2026-06-03
-Mode: New Idea — Ideas list exhausted; all 4 user ideas completed; PRs #179–181 merged between runs (raft polish, slot canyon, ScoreSystem) — foundation solid
-Focus: Author delta biome as game conclusion — segments 31–38, TrackBiomeId extension, "Journey Complete" terminal state in GameState.ts, end-screen in GameHUD.tsx
-Outcome: Dispatch produced. Done section updated with PRs #179–181 + last week's WASM/build fixes confirmed. Backlog updated (stale CLAUDE.md warning flagged, delta gap flagged). 2 new ideas appended to Ideas.
+Date: 2026-06-10
+Mode: Fix First — `npm run build` was broken on this branch (emscripten/build.sh regression from 2026-06-06 commit b63abac exits 1 without Emscripten at /root/emsdk/, breaking the whole build/deploy pipeline); a known crash-fix (PR #212) has also sat as an unverified draft for 4 days
+Focus: WASM build pipeline hardening — immediate regression already hotfixed (commit 5496c14, verified exit 0); kimi-cli's swarm task extends the fix to build_colab.sh and adds a CI job that builds without Emscripten so this can't recur silently
+Outcome: Hotfix committed. Done updated with last week's actual landed work (delta biome conclusion — segments 31–38 + Journey Complete overlay, 147/147 tests; PR #211 sprint stamina; PR #213 large-file refactor). Backlog updated: delta-unreachable item resolved/removed; WASM item narrowed to remaining hardening; new item added for open draft PR #212 (mergeBufferGeometries crash/WebGL-context-loss fix, unverified) — assigned to today's Claude Code whole-stack task. "Authored environmental set-pieces" remains the top User Idea for next run. Dispatch produced for kimi-cli/Copilot/Gemini/Kimi/Grok/Jules.
