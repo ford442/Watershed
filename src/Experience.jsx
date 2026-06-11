@@ -33,6 +33,8 @@ import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
 import PhysicsDebugOverlay from "./components/PhysicsDebugOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
+import RendererDiagnosticsMonitor from "./rendering/RendererDiagnosticsMonitor";
+import WireframeDebug from "./rendering/WireframeDebug";
 import { tickScoreSystem, awardDodgeBonus, awardWaterfallBonus, resetScoreSystemState } from "./systems/ScoreSystem";
 
 // Goal 1: Zustand game state
@@ -87,7 +89,7 @@ const NOOP_DEBUG = {
  * InnerExperience - The actual game scene
  * Wrapped in providers for context access
  */
-const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
+const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDebug = false }) => {
   const [vehicleType, setVehicleTypeLocal] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('vehicle') === 'raft' ? 'raft' : 'runner';
@@ -545,6 +547,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
           {physicsDebugEnabled && (
             <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
           )}
+          {wireframeDebug && <WireframeDebug enabled={wireframeDebug} />}
 
           {/* Splash system for water interactions */}
           {debug.isStageEnabled('worldSystems') && (
@@ -721,7 +724,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
  *
  * Wraps the game in provider contexts for biome and LOD management
  */
-const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
+const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreference = 'webgpu', wireframeDebug = false }) => {
   // Check for debug flag in URL
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   
@@ -744,8 +747,9 @@ const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
           <SunPositionProvider>
             <BiomeTransition />
-            <InnerExperience debug={debug} physicsDebug={physicsDebug} />
+            <InnerExperience debug={debug} physicsDebug={physicsDebug} wireframeDebug={wireframeDebug} />
             <PerformanceMonitor visible={import.meta.env.DEV} />
+            <RendererDiagnosticsMonitor preference={rendererPreference} />
             {debug.debugEnabled && <PerfCheckpointMonitor />}
           </SunPositionProvider>
         </BiomeProvider>

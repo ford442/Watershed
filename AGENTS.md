@@ -52,7 +52,7 @@ The title has a double meaning:
 
 | File | Purpose |
 |------|---------|
-| `vite.config.ts` | Primary build config. Dev server on port 3000, `base: './'`, manual chunks for `vendor-three`, `vendor-post`, `vendor-rapier`. Output dir: `build/`. |
+| `vite.config.ts` | Primary build config. Dev server on port 3000, `base: './'`, manual chunks for `vendor-three`, `vendor-webgpu`, `vendor-post`, `vendor-rapier`. Output dir: `build/`. |
 | `tsconfig.json` | TypeScript config: `target: es5`, `jsx: react-jsx`, `strict: true`, includes `src/`. |
 | `package.json` | Dependencies and npm scripts. Uses pnpm. |
 | `webpack.config.js` | **Legacy/unused.** Leftover from earlier toolchain; Vite is the active bundler. |
@@ -655,6 +655,33 @@ playwright install chromium
 
 ---
 
+## Renderer Toggle (WebGPU / WebGL2 Fallback)
+
+Watershed supports a toggleable renderer for visual debugging while sharing the same game state, level data, camera, and entities. See **[`docs/RENDERER.md`](./docs/RENDERER.md)** for full details.
+
+| Mode | URL | Renderer |
+|------|-----|----------|
+| Default | `?renderer=webgpu` | `WebGPURenderer` (lazy-loaded from `three/webgpu`; auto-falls back to WebGL2 when WebGPU unavailable) |
+| Debug / GLSL parity | `?renderer=webgl` | `WebGLRenderer` — use for shader tuning, post-processing, and environments |
+
+**Debug helpers** (enable with `?debug=1`):
+
+- **Renderer buttons** in `DebugPanel` — switch WebGPU ↔ WebGL2 (remounts Canvas via `key`)
+- **Wireframe overlay** — `?wireframe=1` or press `G` (`WireframeDebug.tsx`)
+- **Physics colliders** — `?physicsDebug=1` or press `F` (`PhysicsDebugOverlay.tsx`)
+
+**Key files:**
+
+| File | Purpose |
+|------|---------|
+| `src/rendering/createRenderer.ts` | Async R3F `gl` factory |
+| `src/rendering/rendererConfig.ts` | URL param + localStorage preference |
+| `src/rendering/rendererState.ts` | Active backend diagnostics store |
+| `src/App.tsx` | Canvas wiring, keyboard shortcuts |
+| `src/components/DebugPanel.tsx` | Debug UI controls |
+
+---
+
 ## Browser Requirements
 
 - **Chrome 90+** (recommended)
@@ -692,7 +719,10 @@ Planned for:
 
 | File | Purpose |
 |------|---------|
-| `src/App.tsx` | Canvas configuration, error boundaries, progress tracking |
+| `src/App.tsx` | Canvas configuration, renderer toggle, error boundaries, progress tracking |
+| `src/rendering/createRenderer.ts` | WebGPU/WebGL2 renderer factory for R3F Canvas |
+| `src/rendering/WireframeDebug.tsx` | Scene-wide wireframe debug overlay |
+| `docs/RENDERER.md` | Renderer toggle documentation |
 | `src/Experience.jsx` | Scene composition, keyboard controls setup, lighting, biome/LOD providers |
 | `src/components/Player.jsx` | First-person controls, camera, physics |
 | `src/components/TrackManager.jsx` | Procedural generation orchestration |

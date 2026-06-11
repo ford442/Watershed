@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { DebugStageController, DebugStageId, DebugStageStatus } from '../debug/debugStages';
 import { getPerfMetrics, subscribePerfMetrics } from '../debug/perfMetrics';
+import { getRendererDiagnostics, subscribeRendererDiagnostics } from '../rendering/rendererState';
+import type { RendererPreference } from '../rendering/types';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -97,15 +99,28 @@ export interface DebugPanelProps {
   debug: DebugStageController;
   physicsDebug?: boolean;
   onTogglePhysicsDebug?: (val: boolean) => void;
+  rendererPreference?: RendererPreference;
+  onRendererPreferenceChange?: (preference: RendererPreference) => void;
+  wireframeDebug?: boolean;
+  onToggleWireframeDebug?: (val: boolean) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function DebugPanel({ debug, physicsDebug = false, onTogglePhysicsDebug }: DebugPanelProps) {
+export function DebugPanel({
+  debug,
+  physicsDebug = false,
+  onTogglePhysicsDebug,
+  rendererPreference = 'webgpu',
+  onRendererPreferenceChange,
+  wireframeDebug = false,
+  onToggleWireframeDebug,
+}: DebugPanelProps) {
   const [stagesOpen, setStagesOpen] = useState(false);
 
   // Subscribe to live perf metrics from PerfCheckpointMonitor (inside Canvas)
   const metrics = useSyncExternalStore(subscribePerfMetrics, getPerfMetrics);
+  const rendererDiagnostics = useSyncExternalStore(subscribeRendererDiagnostics, getRendererDiagnostics);
 
   if (!debug.debugEnabled) return null;
 
@@ -173,6 +188,43 @@ export function DebugPanel({ debug, physicsDebug = false, onTogglePhysicsDebug }
 
       <Divider />
 
+      {/* ── Renderer backend toggle ─────────────────────────────────────── */}
+      <SectionTitle>Renderer — WebGPU / WebGL2</SectionTitle>
+      <div style={{ marginBottom: 6, color: '#d0d0d0' }}>
+        Active: <span style={{ color: '#9fd6ff' }}>{rendererDiagnostics.rendererName}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        {(['webgpu', 'webgl'] as RendererPreference[]).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onRendererPreferenceChange?.(mode)}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              borderRadius: 4,
+              border: rendererPreference === mode
+                ? '1px solid #6dde7a'
+                : '1px solid rgba(255,255,255,0.18)',
+              background: rendererPreference === mode
+                ? 'rgba(109,222,122,0.15)'
+                : 'rgba(255,255,255,0.04)',
+              color: rendererPreference === mode ? '#6dde7a' : '#ccc',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 11,
+            }}
+          >
+            {mode === 'webgpu' ? 'WebGPU' : 'WebGL2'}
+          </button>
+        ))}
+      </div>
+      <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>
+        URL: <code>?renderer=webgl</code> or <code>?renderer=webgpu</code>
+      </div>
+
+      <Divider />
+
       {/* ── CP2: Physics debug ──────────────────────────────────────────── */}
       <SectionTitle>CP2 · CPU — Physics Colliders</SectionTitle>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, cursor: 'pointer' }}>
@@ -190,6 +242,16 @@ export function DebugPanel({ debug, physicsDebug = false, onTogglePhysicsDebug }
           ↳ Press P to log current physics snapshot in the console
         </div>
       )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, marginBottom: 4, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={wireframeDebug}
+          onChange={(e) => onToggleWireframeDebug?.(e.target.checked)}
+        />
+        <span style={{ color: wireframeDebug ? '#6dde7a' : '#d0d0d0' }}>
+          Wireframe geometry overlay (G)
+        </span>
+      </label>
 
       <Divider />
 
