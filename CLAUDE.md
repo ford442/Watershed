@@ -41,9 +41,9 @@ src/
 │
 ├── components/
 │   ├── TrackManager.jsx       # ★ Chunk treadmill orchestrator (wrapped by ReachManager)
-│   ├── TrackSegment.jsx       # ★ One canyon chunk: geometry + PBR terrain + 25 env types
+│   ├── TrackSegment/          # ★ One canyon chunk: geometry + PBR terrain + 25 env types
 │   ├── FlowingWater.jsx       # ★ Animated water surface (ShaderMaterial, GLSL)
-│   ├── EnhancedSky.jsx        # Biome-responsive sky (drei Sky + fogExp2)
+│   ├── EnhancedSky.jsx        # Biome-responsive sky (uses useBiome() + drei Sky + fogExp2)
 │   ├── WaterReflection.jsx    # Water reflection render pass (wired in Experience.jsx)
 │   ├── WaterInteraction.jsx   # Water-contact interaction effects (wired in Experience.jsx)
 │   ├── Player.jsx             # First-person capsule controller (Rapier RigidBody)
@@ -83,8 +83,8 @@ src/
 │   └── VFX/SplashParticles.jsx
 │
 ├── vehicles/
-│   ├── RunnerVehicle.tsx      # ★ First-person foot runner (active default)
-│   └── RaftVehicle.tsx        # Third-person raft (switch via vehicleType in Experience.jsx)
+│   ├── RunnerVehicle/         # ★ First-person foot runner (active default)
+│   └── RaftVehicle/           # Third-person raft (switch via vehicleType in Experience.jsx)
 │
 ├── systems/
 │   ├── AudioSystem.ts
@@ -199,10 +199,6 @@ Shared state flows through a Zustand store (`GameState.ts`).
 **All details, contract cards, dependency graph, and architectural constraints are in
 [`SYSTEMS.md`](./SYSTEMS.md).**
 
-> ⚠️ **Known split:** `BiomeProvider` context is live, but `EnhancedSky.jsx` still reads
-> a legacy `biome` string prop — it does **not** call `useBiome()`. Changing one source
-> does not update the other. See `SYSTEMS.md → BiomeSystem → Known Pain`.
-
 ---
 Watershed now runs a live orchestration stack in `Experience.jsx`: `LODProvider` wraps `BiomeProvider`, which wraps scene systems including `ReachManager` (which wraps `TrackManager`, not replaces it) and `SplashSystem`. These systems, their contracts, and known constraints/pain points are documented in **[`SYSTEMS.md`](./SYSTEMS.md)** to keep this file readable and keep architecture details centralized.
 
@@ -281,7 +277,7 @@ The following are leftover debug elements that make the game look rough:
 
 1. **`App.tsx:69–88` — Green debug overlay** — Always-visible panel showing "Canvas Ready / Loading Active / Progress / Experience Error". Must be removed for any polished build.
 2. **`Player.jsx:126–129` — Yellow wireframe capsule** — A visible debug mesh rendered at the player position. Not needed in final game; remove or hide.
-3. **`RaftVehicle.tsx:60–63` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
+3. **`RaftVehicle/` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
 4. **`App.tsx:92` — `antialias: false`** — Antialiasing is disabled. Switching to `antialias: true` will immediately improve edge quality at modest cost.
 5. **`EnhancedSky.jsx:72` — Stars always rendered** — Stars are visible even at noon. They are subtle but should be conditional on time-of-day or biome.
 
@@ -294,7 +290,7 @@ Maps (authored segment sequences) require a stable visual baseline to test again
 ### Step 1 — Strip debug artifacts (1–2 hours)
 - Remove the green debug panel from `App.tsx`
 - Remove the yellow wireframe mesh from `Player.jsx`
-- Remove the hotpink box from `RaftVehicle.tsx`
+- Remove the hotpink box from `RaftVehicle/`
 - Enable `antialias: true` in Canvas
 
 ### Step 2 — Terrain visual quality (2–4 hours)
@@ -302,7 +298,7 @@ The canyon walls currently use a U-shaped extrusion + Rock031 PBR textures. The 
 - Add **vertex color variation** to the upper canyon walls (darker, more saturated at the waterline; lighter/tan at the rim)
 - Introduce **secondary UV channel** or triplanar projection to break up tiling
 - Add **moss/lichen vertex color bands** at the waterline (already supported by `extendRiverMaterial`)
-- The `RiverShader.js` moss effect needs the terrain mesh to pass correct world normals — verify this is wired correctly in `TrackSegment.jsx`
+- The `RiverShader.js` moss effect needs the terrain mesh to pass correct world normals — verify this is wired correctly in `TrackSegment/`
 
 ### Step 3 — Water visual quality (1–2 hours)
 The water shader is solid. Two tweaks to match the concept:
@@ -383,10 +379,10 @@ python3 deploy.py             # SFTP to test.1ink.us/watershed
 |------|--------------|
 | `Experience.jsx` | Lighting, vehicle swap, physics gravity |
 | `TrackManager.jsx` | Segment generation, biome transitions, rock material |
-| `TrackSegment.jsx` | Canyon geometry, decoration placement |
+| `TrackSegment/` | Canyon geometry, decoration placement |
 | `FlowingWater.jsx` | Water shader uniforms and GLSL |
 | `RiverShader.js` | Wetness/moss/caustics injection |
-| `EnhancedSky.jsx` | Sky, fog biome transitions |
+| `EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
 | `Player.jsx` | Movement, camera, jump |
 | `systems/MapSystem.ts` | Chunk interfaces, seeded RNG, spawn calc |
 | `src/style.css` | All UI chrome |
