@@ -18,6 +18,9 @@ This directory contains comprehensive documentation from the Watershed startup i
 ### Building New Features?
 👉 **[CODE_HEALTH_GUIDE.md](./CODE_HEALTH_GUIDE.md)** - Best practices and patterns
 
+### Debugging Rendering / Shaders?
+👉 **[RENDERER.md](./RENDERER.md)** - WebGPU / WebGL2 renderer toggle and debug helpers
+
 ---
 
 ## 📚 Document Descriptions

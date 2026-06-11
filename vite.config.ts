@@ -22,6 +22,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
+          'vendor-webgpu': ['three/webgpu'],
           'vendor-post':   ['postprocessing', '@react-three/postprocessing'],
           'vendor-rapier': ['@dimforge/rapier3d-compat'],
         },
