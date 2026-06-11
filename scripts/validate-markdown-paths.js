@@ -39,14 +39,6 @@ function pathExistsAsModule(candidate) {
     if (fs.existsSync(`${candidate}${ext}`)) return true;
   }
 
-  if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-    for (const ext of extensions) {
-      for (const prefix of ['index', 'README']) {
-        if (fs.existsSync(path.join(candidate, `${prefix}${ext}`))) return true;
-      }
-    }
-  }
-
   return false;
 }
 
@@ -55,7 +47,9 @@ for (const file of markdownFiles) {
   const matches = new Set(content.match(pattern) || []);
 
   for (const match of matches) {
-    const trimmed = match.replace(/[)\],.;:'"`>]+$/g, '');
+    const trimmed = match
+      .replace(/^[(\[<`"']+/g, '')
+      .replace(/[)\],.;:'"`>]+$/g, '');
     const target = path.resolve(repoRoot, trimmed);
     if (!pathExistsAsModule(target)) {
       failures.push(`${path.relative(repoRoot, file)}: ${trimmed}`);
