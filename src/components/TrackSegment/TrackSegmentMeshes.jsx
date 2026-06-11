@@ -41,10 +41,14 @@ import IceSpray from '../Environment/IceSpray';
 
 import { useLOD } from '../../systems/LODManager';
 import { useBiome } from '../../systems/BiomeSystem';
+import { useSunPosition } from '../../systems/SunPositionSystem';
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
+import { WALL_WATERLINE_Y } from '../../constants/game';
+import { createCanyonMaterial } from '../../materials/CanyonMaterial';
+import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 import { AssetCache } from '../../systems/ReachStreamer';
 import PondFog from './PondFog';
-import { hasFiniteCoordinates } from './utils';
+import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 
 export function TrackSegmentMeshes({
     segmentId,
@@ -280,6 +284,8 @@ export function TrackSegmentMeshes({
     }, [sandBarMaterial]);
 
     const wallMaterial = useMemo(() => {
+        if (!rockMaterial) return null;
+
         if (isSlotCanyon) {
             return createCanyonMaterial({
                 biome: 'slotCanyon',
