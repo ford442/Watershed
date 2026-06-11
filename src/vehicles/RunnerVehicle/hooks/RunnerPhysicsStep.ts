@@ -1,4 +1,4 @@
-import { handleDodgeAndCollision } from './RunnerPhysicsHelpers';
+import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier } from './RunnerPhysicsHelpers';
 import * as THREE from 'three';
 import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSystem';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../../../constants/game';
@@ -41,7 +41,7 @@ export function updateRunnerPhysics({
     };
 
     // === SLOPE DETECTION ===
-    const slopeAngle = calculateSlopeAngle();
+    const slopeAngle = calculateSlopeAngle({ body, world, rapier, slopeState });
 
     const groundRay = new rapier.Ray(
       { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z },
