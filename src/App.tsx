@@ -226,7 +226,7 @@ function App() {
               })
             }
             camera={{ position: [0, 10, -10], fov: 75 }}
-            shadows
+            shadows="soft"
             frameloop="always"
             onCreated={() => {
               debug.runStage('visualization', () => undefined);

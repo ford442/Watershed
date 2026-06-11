@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
+import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
 
 const mergeCompatibleGeometries = (geometries) => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -106,8 +108,13 @@ export default function Ferns({ transforms, biome = 'summer' }) {
             metalness: 0,
             side: THREE.DoubleSide,
         });
+        extendVegetationMaterial(mat, { plantHeight: 1.2, windStrength: 0.05, windSpeed: 1.0 });
         return mat;
     }, []);
+
+    useFrame((state) => {
+        updateVegetationMaterial(material, state.clock.elapsedTime);
+    });
 
     const instances = useMemo(() => {
         if (!transforms) return [];

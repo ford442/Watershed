@@ -461,23 +461,84 @@ export function lerpBiomePalettes(
 /**
  * Apply biome palette to scene lighting
  */
+// Scratch colors reused every frame to avoid per-call allocation.
+const _hemiSkyScratch = new THREE.Color();
+const _sunScratch = new THREE.Color();
+const _greyScratch = new THREE.Color();
+const _fillScratch = new THREE.Color();
+const HORIZON_TINT = new THREE.Color('#ff7e3d');
+const OVERCAST_HEMI_TINT = new THREE.Color('#9aa4ad');
+const NIGHT_HEMI_TINT = new THREE.Color('#5a6a8a');
+const OVERCAST_SUN_GREY = new THREE.Color('#aab2bb');
+
+export interface BiomeLightingOptions {
+  /** Slot canyons get much less ambient/hemi fill — narrow, shadowed walls. */
+  isSlotCanyon?: boolean;
+  /** 'clear' | 'overcast' | 'fog' | 'storm' — dims/desaturates sun + boosts soft hemi fill. */
+  weatherType?: string;
+  /** 0 = sun at/below horizon, 1 = sun directly overhead. Drives color temperature + intensity. */
+  sunElevation?: number;
+}
+
+/**
+ * Applies a biome palette to the scene's core lights, with creative
+ * time-of-day and weather modulation layered on top:
+ *  - Sun warms toward orange near the horizon and dims at low elevation.
+ *  - Overcast/storm desaturates and dims the sun while boosting soft hemi fill.
+ *  - Slot canyons get a cooler, much dimmer ambient/hemi for a moody read.
+ */
 export function applyBiomeToLighting(palette: BiomePalette, lights: {
   ambient: THREE.AmbientLight;
   hemi: THREE.HemisphereLight;
   sun: THREE.DirectionalLight;
   fill: THREE.DirectionalLight;
-}) {
-  lights.ambient.intensity = palette.ambientIntensity;
-  
-  lights.hemi.color.set(palette.hemiSkyColor);
-  lights.hemi.groundColor.set(palette.hemiGroundColor);
-  lights.hemi.intensity = 0.85;
-  
-  lights.sun.color.set(palette.sunColor);
-  lights.sun.intensity = palette.sunIntensity;
-  
-  lights.fill.color.set(palette.fillColor);
-  lights.fill.intensity = palette.fillIntensity;
+}, options: BiomeLightingOptions = {}) {
+  const { isSlotCanyon = false, weatherType = 'clear', sunElevation = 1 } = options;
+
+  const overcastBlend = weatherType === 'storm' ? 1
+    : weatherType === 'overcast' ? 0.6
+    : weatherType === 'fog' ? 0.35
+    : 0;
+  // 0 = high sun, 1 = sun at/below horizon
+  const horizonBlend = THREE.MathUtils.clamp(1 - sunElevation, 0, 1);
+
+  // Ambient: slot canyons read much darker/moodier; overcast bumps soft skylight.
+  let ambientIntensity = palette.ambientIntensity;
+  if (isSlotCanyon) ambientIntensity = Math.min(ambientIntensity, 0.18);
+  ambientIntensity *= 1 + overcastBlend * 0.25;
+  lights.ambient.intensity = ambientIntensity;
+
+  // Hemisphere: cool toward dusk/night, flatten toward grey under heavy weather.
+  _hemiSkyScratch.set(isSlotCanyon ? '#1a120a' : palette.hemiSkyColor);
+  _hemiSkyScratch.lerp(NIGHT_HEMI_TINT, horizonBlend * 0.4);
+  _hemiSkyScratch.lerp(OVERCAST_HEMI_TINT, overcastBlend * 0.7);
+  lights.hemi.color.copy(_hemiSkyScratch);
+  lights.hemi.groundColor.set(isSlotCanyon ? '#0a0806' : palette.hemiGroundColor);
+  let hemiIntensity = isSlotCanyon ? 0.25 : 0.85;
+  hemiIntensity *= 1 - overcastBlend * 0.2;
+  lights.hemi.intensity = hemiIntensity;
+
+  // Sun: warm color-temperature shift near the horizon, desaturate + dim under weather.
+  _sunScratch.set(palette.sunColor);
+  _sunScratch.lerp(HORIZON_TINT, horizonBlend * 0.55);
+  if (overcastBlend > 0) {
+    _greyScratch.copy(_sunScratch).lerp(OVERCAST_SUN_GREY, 0.85);
+    _sunScratch.lerp(_greyScratch, overcastBlend);
+  }
+  lights.sun.color.copy(_sunScratch);
+  // Floor is low (not flat 0.35) so a true night sky reads as genuinely dark —
+  // moonlight (EnhancedSky's moonLightRef, ~0.18 cool blue) becomes the
+  // dominant light source rather than competing with a still-bright "sun".
+  let sunIntensity = palette.sunIntensity * (0.06 + 0.94 * sunElevation);
+  sunIntensity *= 1 - overcastBlend * 0.55;
+  lights.sun.intensity = Math.max(0.02, sunIntensity);
+
+  // Fill/rim light — biome-tinted (warm canyon rim in summer, cool blue in slot
+  // canyon), cooling toward moonlight blue as the sun drops toward the horizon.
+  _fillScratch.set(palette.fillColor);
+  _fillScratch.lerp(NIGHT_HEMI_TINT, horizonBlend * 0.5);
+  lights.fill.color.copy(_fillScratch);
+  lights.fill.intensity = palette.fillIntensity * (1 - overcastBlend * 0.3) * (0.5 + 0.5 * sunElevation);
 }
 
 export default BiomePalettes;

@@ -10,8 +10,13 @@ const TEMP_OFFSET = new THREE.Vector3();
 const TEMP_QUAT = new THREE.Quaternion();
 const FLAP_QUAT = new THREE.Quaternion();
 const RIGHT_WING_FLAP_QUAT = new THREE.Quaternion();
+const ROLL_QUAT = new THREE.Quaternion();
 const TEMP_AXIS = new THREE.Vector3(0, 0, 1);
+const PREV_POS = new THREE.Vector3();
+const PREV_VEL = new THREE.Vector3();
+const FLEE_DIR = new THREE.Vector3();
 const MAX_BIRDS = 8;
+const STARTLE_RADIUS = 7;
 
 const hash = (n) => {
   const x = Math.sin(n) * 43758.5453123;
@@ -30,6 +35,16 @@ const createWingGeometry = (side, config) => {
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setIndex([0, 1, 2, 0, 2, 3]);
   geo.computeVertexNormals();
+
+  // Vertex-color gradient: lighter near the body, darkening toward the
+  // primary feather tips so wings read with a bit of depth/shading.
+  const colors = new Float32Array([
+   1.0, 1.0, 1.0,
+   0.62, 0.62, 0.62,
+   0.5, 0.5, 0.5,
+   0.8, 0.8, 0.8,
+  ]);
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return geo;
 };
 
@@ -203,25 +218,47 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
      roughness: 0.86,
      metalness: 0.01,
      side: THREE.DoubleSide,
+     vertexColors: true,
    });
   }, [birdType]);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
    if (!bodyRef.current || !leftWingRef.current || !rightWingRef.current || birds.length === 0) return;
 
    const now = clock.elapsedTime;
+   const evaluate = birdType === 'hawk' ? evaluateHawk : evaluateSongbird;
 
    birds.forEach((bird, index) => {
-     const motion = birdType === 'hawk'
-       ? evaluateHawk(bird, now, TEMP_POS, TEMP_VEL)
-       : evaluateSongbird(bird, now, TEMP_POS, TEMP_VEL);
+     const motion = evaluate(bird, now, TEMP_POS, TEMP_VEL);
 
      if (TEMP_VEL.lengthSq() < 1e-4) {
        TEMP_VEL.set(0, 0, 1);
      }
-
      TEMP_VEL.normalize();
+
+     // Startle response: birds near the player veer away and flap harder
+     const distToCam = TEMP_POS.distanceTo(camera.position);
+     let flapMul = 1;
+     if (distToCam < STARTLE_RADIUS) {
+       const proximity = 1 - distToCam / STARTLE_RADIUS;
+       FLEE_DIR.copy(TEMP_POS).sub(camera.position).normalize();
+       TEMP_VEL.lerp(FLEE_DIR, 0.5 + proximity * 0.4).normalize();
+       flapMul = 1.6 + proximity * 1.4;
+     }
+
      TEMP_QUAT.setFromUnitVectors(LOCAL_FORWARD, TEMP_VEL);
+
+     // Banking tilt: roll into turns based on heading change over a short window
+     evaluate(bird, now - 0.08, PREV_POS, PREV_VEL);
+     if (PREV_VEL.lengthSq() < 1e-4) PREV_VEL.set(0, 0, 1);
+     const heading = Math.atan2(TEMP_VEL.x, TEMP_VEL.z);
+     const headingPrev = Math.atan2(PREV_VEL.x, PREV_VEL.z);
+     let yawDelta = heading - headingPrev;
+     if (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
+     if (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
+     const bank = THREE.MathUtils.clamp(-yawDelta * 6, -0.9, 0.9);
+     ROLL_QUAT.setFromAxisAngle(LOCAL_FORWARD, bank);
+     TEMP_QUAT.multiply(ROLL_QUAT);
 
      DUMMY_OBJ.position.copy(TEMP_POS);
      DUMMY_OBJ.quaternion.copy(TEMP_QUAT);
@@ -229,8 +266,8 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
      DUMMY_OBJ.updateMatrix();
      bodyRef.current.setMatrixAt(index, DUMMY_OBJ.matrix);
 
-     FLAP_QUAT.setFromAxisAngle(TEMP_AXIS, motion.flap);
-     RIGHT_WING_FLAP_QUAT.setFromAxisAngle(TEMP_AXIS, -motion.flap);
+     FLAP_QUAT.setFromAxisAngle(TEMP_AXIS, motion.flap * flapMul);
+     RIGHT_WING_FLAP_QUAT.setFromAxisAngle(TEMP_AXIS, -motion.flap * flapMul);
 
      TEMP_OFFSET.set(-bird.wingRootOffset, bird.wingRootLift, 0).applyQuaternion(TEMP_QUAT);
      DUMMY_OBJ.position.copy(TEMP_POS).add(TEMP_OFFSET);
@@ -260,16 +297,19 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
        ref={bodyRef}
        args={[bodyGeometry, bodyMaterial, birds.length]}
        frustumCulled={false}
+       castShadow
      />
      <instancedMesh
        ref={leftWingRef}
        args={[leftWingGeometry, wingMaterial, birds.length]}
        frustumCulled={false}
+       castShadow
      />
      <instancedMesh
        ref={rightWingRef}
        args={[rightWingGeometry, wingMaterial, birds.length]}
        frustumCulled={false}
+       castShadow
      />
    </group>
   );

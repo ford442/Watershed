@@ -32,6 +32,8 @@ export default function FlowingWater({
   weatherRipple = 0,
   wetness = 0,
   waterSurfaceOffset = 0,
+  sunWorldPosition = null,
+  isPond = false,
 }) {
   const materialRef = useRef(null);
   const { camera } = useThree();
@@ -99,6 +101,10 @@ export default function FlowingWater({
     // Canyon god-ray uniforms — WGSL migration: pass via uniform buffer
     uniform vec3 sunDir;
     uniform float godRayStrength;
+    // World-space sun/moon position for specular catch-light
+    uniform vec3 sunWorldPos;
+    // 0 = flowing river water, 1 = glassy pond/delta water
+    uniform float isPond;
 
     varying vec2 vUv;
     varying vec3 vWorldPos;
@@ -138,6 +144,25 @@ export default function FlowingWater({
       // In rapids, edge foam band widens
       edgeFoam *= (1.0 + (rapidsBoost - 1.0) * 0.5);
 
+      // Standing foam in eddies/slack water: a slow, large-scale spatial mask
+      // (independent of the scrolling streaks) that "sticks" wherever the
+      // current is weak — banks, behind rocks, calm pockets.
+      float eddyMask = fbm3(vWorldPos.xz * 0.09 + vec2(7.3, -2.1));
+      float eddyFoam = smoothstep(0.5, 0.68, eddyMask) * (1.0 - vCurrent) * EDDY_FOAM_INTENSITY;
+
+      // Thin bubble lines: tight scrolling streaks perpendicular to the flow,
+      // brightest where the eddy mask is already foamy.
+      vec2 bubbleUv = vWorldPos.xz * vec2(1.4, 0.35) + vec2(time * flowSpeed * 0.12, -time * flowSpeed * 0.07);
+      float bubbleNoise = fbm2(bubbleUv);
+      float bubbleLines = smoothstep(0.93, 0.985, bubbleNoise) * (0.5 + eddyMask * 0.5);
+
+      // Glassy pond/delta water suppresses all the rough-water foam terms.
+      float pondCalm = mix(1.0, POND_CALM_MULTIPLIER, isPond);
+      foamStreak *= pondCalm;
+      edgeFoam *= mix(1.0, 0.6, isPond);
+      eddyFoam *= pondCalm;
+      bubbleLines *= pondCalm;
+
       // Shader-only vehicle wake
       vec3 toVehicle = vehiclePos - vWorldPos;
       float velLen = length(vehicleVelocity);
@@ -147,26 +172,52 @@ export default function FlowingWater({
       float wakeMask = smoothstep(WAKE_WIDTH, 0.0, sideways)
                      * smoothstep(WAKE_LENGTH, 0.0, behind)
                      * smoothstep(0.0, 1.0, behind);
-      float wakeFoam = wakeMask * (0.4 + streakNoise * 0.3) * FOAM_INTENSITY;
+      float wakeFoam = wakeMask * (0.4 + streakNoise * 0.3) * FOAM_INTENSITY * pondCalm;
+      // Splashy displacement bump right where the wake foam is thickest —
+      // reads as the surface piling up against the hull/feet.
+      float wakeDisplacement = wakeMask * vWave * 0.15;
 
-      float foam = clamp(foamStreak + edgeFoam + wakeFoam, 0.0, 1.0);
+      float foam = clamp(foamStreak + edgeFoam + wakeFoam + eddyFoam + bubbleLines, 0.0, 1.0);
 
       float depthFactor = 1.0 - edgeDist * 2.0;
       depthFactor = clamp(depthFactor, 0.0, 1.0);
+      float shallow = 1.0 - depthFactor;
       vec3 baseWater = mix(waterColor, deepColor, depthFactor * (0.45 + vCurrent * 0.18));
 
       // WGSL migration: dot/pow ops map directly to WGSL built-ins
-      float fresnel = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewDir)), 0.0, 1.0), 2.5);
+      vec3 viewDirN = normalize(vViewDir);
+      vec3 normalN = normalize(vNormal);
+      float fresnel = pow(1.0 - clamp(dot(normalN, viewDirN), 0.0, 1.0), 2.5);
       fresnel *= (1.0 + wetness * WETNESS_REFLECT_BOOST);
+      // Glassy water reads much more mirror-like — push fresnel toward full reflection.
+      fresnel = mix(fresnel, pow(fresnel, 0.5), isPond);
+
+      // Underwater refraction hint: at acute viewing angles, distort the
+      // riverbed read by warping the caustics/base-water sample with the
+      // surface normal — simulates light bending through the wave surface.
+      float viewAngle = clamp(dot(normalN, viewDirN), 0.0, 1.0);
+      vec2 refractOffset = normalN.xz * (1.0 - viewAngle) * 1.6;
 
       // Inline caustics: dual-layer scrolling fbm (2 octaves each = 4 total max)
-      vec2 causticsUv1 = vWorldPos.xz * 0.4 + vec2(time * flowSpeed * 0.1, -time * flowSpeed * 0.2);
-      vec2 causticsUv2 = vWorldPos.xz * 0.35 + vec2(-time * flowSpeed * 0.15, time * flowSpeed * 0.1);
+      vec2 causticsUv1 = vWorldPos.xz * 0.4 + refractOffset + vec2(time * flowSpeed * 0.1, -time * flowSpeed * 0.2);
+      vec2 causticsUv2 = vWorldPos.xz * 0.35 + refractOffset + vec2(-time * flowSpeed * 0.15, time * flowSpeed * 0.1);
       float causticsVal = (fbm2(causticsUv1) + fbm2(causticsUv2)) * CAUSTICS_BRIGHTNESS;
-      baseWater += edgeHighlight * causticsVal * 0.15 * depthFactor;
+      // Caustics read strongest in shallow water near banks/rocks
+      causticsVal *= (0.4 + shallow * 1.6);
+      baseWater += edgeHighlight * causticsVal * 0.18 * depthFactor;
 
       vec3 col = mix(baseWater, foamColor, foam);
       col = mix(col, edgeHighlight, fresnel * 0.22);
+      col += vec3(wakeDisplacement);
+
+      // Sun/moon specular catch-light — tracks the actual light direction so
+      // the glint sweeps across the surface as the sun/moon arcs overhead.
+      vec3 sunDirN = normalize(sunWorldPos - vWorldPos);
+      vec3 reflectDir = reflect(-viewDirN, normalN);
+      float specAngle = max(dot(reflectDir, sunDirN), 0.0);
+      float specShininess = mix(SPECULAR_SHININESS, SPECULAR_SHININESS * 3.0, isPond);
+      float specular = pow(specAngle, specShininess) * (1.0 - foam * 0.6);
+      col += vec3(1.0, 0.96, 0.85) * specular * (0.7 + wetness * 0.3) * mix(1.0, 1.6, isPond);
 
       // Weather wetness: darken + reflect boost
       col *= (1.0 - wetness * WETNESS_DARKEN);
@@ -250,6 +301,9 @@ export default function FlowingWater({
         WETNESS_DARKEN: WATER_SHADER.WETNESS_DARKEN.toFixed(3),
         WETNESS_REFLECT_BOOST: WATER_SHADER.WETNESS_REFLECT_BOOST.toFixed(3),
         RAPIDS_FOAM_SPEED_MULT: WATER_SHADER.RAPIDS_FOAM_SPEED_MULT.toFixed(3),
+        SPECULAR_SHININESS: WATER_SHADER.SPECULAR_SHININESS.toFixed(3),
+        EDDY_FOAM_INTENSITY: WATER_SHADER.EDDY_FOAM_INTENSITY.toFixed(3),
+        POND_CALM_MULTIPLIER: WATER_SHADER.POND_CALM_MULTIPLIER.toFixed(3),
         ...(effectiveFlowMap ? { USE_FLOWMAP: '1' } : {}),
       };
 
@@ -276,6 +330,9 @@ export default function FlowingWater({
           // God-ray uniforms — driven by biome in useFrame
           sunDir: { value: new THREE.Vector3(0.3, 1.0, -0.4).normalize() },
           godRayStrength: { value: 0.0 },
+          // World-space sun/moon position for specular catch-light
+          sunWorldPos: { value: sunWorldPosition ? new THREE.Vector3().copy(sunWorldPosition) : new THREE.Vector3(100, 200, -100) },
+          isPond: { value: isPond ? 1.0 : 0.0 },
         },
         vertexShader: `
           uniform float time;
@@ -283,6 +340,9 @@ export default function FlowingWater({
           uniform float weatherRipple;
           uniform float cameraHeight;
           uniform sampler2D flowMap;
+          uniform vec3 vehiclePos;
+          uniform vec3 vehicleVelocity;
+          uniform float isPond;
 
           varying vec2 vUv;
           varying vec3 vWorldPos;
@@ -297,6 +357,8 @@ export default function FlowingWater({
           float getDisplacement(vec2 p, vec2 fb) {
             float effFlow = flowSpeed;
             float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
+            // Glassy pond/delta water: flatten the big swells almost completely.
+            scale *= mix(1.0, POND_CALM_MULTIPLIER * 0.5, isPond);
 
             vec2 d1 = normalize(vec2(fb.x * 0.3, -1.0));
             float swell1 = sin(dot(p, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
@@ -306,15 +368,32 @@ export default function FlowingWater({
 
             float detail = fbm3(p * 1.5 + vec2(time * effFlow * 0.2, -time * effFlow * 0.3)) * 0.25;
 
+            // Fine choppiness: extra high-frequency layer that scales with
+            // flow speed so rapids look broken-up while calm water stays smooth.
+            float choppiness = clamp(effFlow - 0.8, 0.0, 2.5);
+            float chop = fbm3(p * 4.0 + vec2(-time * effFlow * 0.6, time * effFlow * 0.45)) * 0.18 * choppiness;
+            chop *= mix(1.0, POND_CALM_MULTIPLIER * 0.3, isPond);
+
             float ripple = sin(p.x * 8.0 * RIPPLE_SCALE + time * 4.0)
                          * cos(p.y * 7.5 * RIPPLE_SCALE + time * 3.5)
                          * weatherRipple * 0.08;
+
+            // Pond/delta: subtle slow concentric ripples instead of choppiness.
+            float pondRipple = sin(length(p - vehiclePos.xz) * 1.4 - time * 1.5) * 0.04 * isPond;
 
             float waterLevel = 0.5;
             float heightDiff = abs(cameraHeight - waterLevel);
             float heightProx = 1.0 - smoothstep(0.0, 6.0, heightDiff);
             float proximityScale = 1.0 + heightProx * 0.35;
-            return (swell1 + swell2 + detail + ripple) * scale * proximityScale;
+
+            // Velocity-driven turbulence near the player/raft — the surface
+            // churns harder right where the vehicle is moving fast.
+            float distToVehicle = length(p - vehiclePos.xz);
+            float vehicleProx = 1.0 - smoothstep(0.0, 9.0, distToVehicle);
+            float velLen = length(vehicleVelocity);
+            float vehicleTurb = fbm3(p * 3.0 + vec2(time * 1.7, -time * 1.3)) * vehicleProx * clamp(velLen, 0.0, 45.0) * 0.012;
+
+            return (swell1 + swell2 + detail + chop + ripple + pondRipple) * scale * proximityScale + vehicleTurb;
           }
 
           void main() {
@@ -456,6 +535,12 @@ export default function FlowingWater({
     if (mat.uniforms.sunDir) {
       const t = state.clock.elapsedTime * 0.04;
       mat.uniforms.sunDir.value.set(Math.sin(t) * 0.4, 1.0, Math.cos(t) * 0.3 - 0.4).normalize();
+    }
+    if (mat.uniforms.sunWorldPos && sunWorldPosition) {
+      mat.uniforms.sunWorldPos.value.copy(sunWorldPosition);
+    }
+    if (mat.uniforms.isPond) {
+      mat.uniforms.isPond.value = isPond ? 1.0 : 0.0;
     }
   });
 

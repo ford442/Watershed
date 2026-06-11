@@ -174,6 +174,12 @@ export const WATER_SHADER = {
     RAPIDS_FOAM_SPEED_MULT: 1.8,
     // Canyon god-ray shaft strength (0 = off, 1 = full blinding shafts)
     GOD_RAY_STRENGTH: 0.0,
+    // Sun/moon specular highlight tightness (higher = sharper glint)
+    SPECULAR_SHININESS: 70.0,
+    // Eddy/standing foam intensity in slow-moving water
+    EDDY_FOAM_INTENSITY: 0.5,
+    // Multiplier applied to displacement/foam/specular scale in glassy pond/delta water
+    POND_CALM_MULTIPLIER: 0.35,
 } as const;
 
 export const FLOW_FORECAST_STATES = {

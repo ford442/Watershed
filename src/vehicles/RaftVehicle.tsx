@@ -164,6 +164,16 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
           <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH * 0.8, 0.2, WATER_PHYSICS.RAFT_LENGTH * 0.8]} />
           <meshStandardMaterial color="#443322" />
         </mesh>
+
+        {/* Bounced-light catch from the water surface — gives the hull a
+            believable cool wet-rim glow along the waterline. */}
+        <pointLight
+          position={[0, -0.15, 0]}
+          color="#bcdfff"
+          intensity={0.6}
+          distance={3}
+          decay={2}
+        />
       </RigidBody>
 
       {paddleState.current.foamParticles.map(particle => (

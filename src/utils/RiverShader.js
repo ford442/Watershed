@@ -230,8 +230,38 @@ export function extendRiverMaterial(material, options = {}) {
                     '#include <color_fragment>',
                     `
                 #include <color_fragment>
-                
+
+                // Macro variation - large-scale tint that breaks tiling across hundreds of meters
+                float macroNoise = fbm2(vWorldPos.xz * 0.01 + vec2(91.0, 47.0));
+                vec3 macroWarm = vec3(1.05, 0.97, 0.9);
+                vec3 macroCool = vec3(0.92, 0.97, 1.04);
+                diffuseColor.rgb *= mix(macroWarm, macroCool, macroNoise);
+                diffuseColor.rgb *= 0.9 + macroNoise * 0.2;
+
+                // Shadow pockets - deep crevices the river carved over millennia
+                float pocketNoise = fbm2(vWorldPos.xz * 0.2 + vec2(vWorldPos.y * 0.05 + 11.0, -4.0));
+                float shadowPocket = smoothstep(0.6, 0.85, pocketNoise) * (1.0 - smoothstep(0.85, 1.0, pocketNoise));
+                diffuseColor.rgb *= 1.0 - shadowPocket * 0.55;
+
+                // Mineral veins - bright quartz/iron seams discovered while moving at speed
+                float veinNoise = fbm2(vWorldPos.xz * 0.5 + vec2(vWorldPos.y * 0.3 + 33.0, -19.0));
+                float vein = 1.0 - abs(veinNoise * 2.0 - 1.0);
+                vein = smoothstep(0.96, 0.99, vein) * smoothstep(0.3, 0.55, macroNoise);
+                vec3 veinColor = mix(vec3(0.92, 0.8, 0.5), vec3(0.85, 0.92, 0.95), step(0.5, macroNoise));
+                diffuseColor.rgb = mix(diffuseColor.rgb, veinColor, vein * 0.85);
+
+                // Near-water caustic shimmer - walls "talk" to the river beside them
+                float causticPattern = sin(vWorldPos.x * 0.6 + uTime * 1.3) * sin(vWorldPos.z * 0.6 - uTime * 1.0);
+                float causticBand = smoothstep(uWetnessRange, 0.0, abs(vHeightAboveWater));
+                diffuseColor.rgb += causticPattern * causticBand * 0.04;
+
                 ${enableMoss ? `
+                // Moss "explosion" - vivid surprise growth patches independent of height bands
+                float explosionNoise = riverNoise(vWorldPos.xz * 0.06 + 13.7);
+                float mossExplosion = smoothstep(0.74, 0.9, explosionNoise)
+                    * smoothstep(-1.0, 2.0, vHeightAboveWater) * (1.0 - smoothstep(3.0, 6.0, vHeightAboveWater));
+                diffuseColor.rgb = mix(diffuseColor.rgb, uMossColor * 1.7, mossExplosion * 0.45);
+
                 // Moss/Lichen bands using vertex color mask
                 if (max(vMossMask, vHighWaterMask) > 0.08) {
                     // Organic variation based on world position
@@ -261,9 +291,14 @@ export function extendRiverMaterial(material, options = {}) {
                 ` : ''}
                 
                 ${enableWetness ? `
-                // Wetness effect - darker near waterline, boosted by weather
-                float baseWetness = 1.0 - smoothstep(0.0, uWetnessRange, vHeightAboveWater);
-                float weatherWetnessFactor = uWeatherWetness * (1.0 - smoothstep(0.0, uWetnessRange * 1.5, vHeightAboveWater));
+                // Wetness effect - darker near waterline, boosted by weather.
+                // The wet/dry boundary is perturbed by noise so it climbs
+                // unevenly up rocks and canyon walls instead of forming a
+                // perfectly flat waterline.
+                float wetnessNoise = fbm2(vWorldPos.xz * 0.3 + vec2(vWorldPos.y * 0.15, 0.0)) * 1.6 - 0.8;
+                float wetRange = max(0.05, uWetnessRange + wetnessNoise);
+                float baseWetness = 1.0 - smoothstep(0.0, wetRange, vHeightAboveWater);
+                float weatherWetnessFactor = uWeatherWetness * (1.0 - smoothstep(0.0, wetRange * 1.5, vHeightAboveWater));
                 float combinedWetness = clamp(baseWetness + weatherWetnessFactor, 0.0, 1.0);
                 
                 // Darken wet areas

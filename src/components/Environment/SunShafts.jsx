@@ -1,10 +1,109 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
 import { useSunPosition } from '../../systems/SunPositionSystem';
 
 const DUMMY_OBJ = new THREE.Object3D();
+const MOTES_PER_SHAFT = 6;
+const MAX_DUST_SHAFTS = 24;
+
+// Build a static GPU-driven dust mote field scattered through each shaft's
+// cylindrical volume. Motion (rise + drift + twinkle) is computed entirely in
+// the vertex shader from per-vertex attributes, so no per-frame CPU work.
+const buildDustMotes = (transforms) => {
+  const shaftCount = Math.min(transforms.length, MAX_DUST_SHAFTS);
+  const total = shaftCount * MOTES_PER_SHAFT;
+
+  const basePositions = new Float32Array(total * 3);
+  const heights = new Float32Array(total);
+  const radii = new Float32Array(total);
+  const phases = new Float32Array(total);
+  const speeds = new Float32Array(total);
+
+  const matrix = new THREE.Matrix4();
+  const local = new THREE.Vector3();
+  const world = new THREE.Vector3();
+
+  for (let s = 0; s < shaftCount; s++) {
+    const t = transforms[s];
+    matrix.compose(
+      t.position,
+      new THREE.Quaternion().setFromEuler(t.rotation || new THREE.Euler()),
+      t.scale || new THREE.Vector3(1, 1, 1)
+    );
+
+    const shaftHeight = 30 * (t.scale?.y ?? 1);
+
+    for (let m = 0; m < MOTES_PER_SHAFT; m++) {
+      const idx = s * MOTES_PER_SHAFT + m;
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 4; // within the wide base radius (cylinder bottom radius 6)
+      const localY = (Math.random() - 0.5) * 30; // cylinder spans -15..15 locally
+
+      local.set(Math.cos(a) * r, localY, Math.sin(a) * r);
+      world.copy(local).applyMatrix4(matrix);
+
+      basePositions[idx * 3] = world.x;
+      basePositions[idx * 3 + 1] = world.y;
+      basePositions[idx * 3 + 2] = world.z;
+
+      heights[idx] = shaftHeight;
+      radii[idx] = 0.15 + Math.random() * 0.35;
+      phases[idx] = Math.random() * Math.PI * 2;
+      speeds[idx] = 0.3 + Math.random() * 0.6;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(basePositions, 3));
+  geo.setAttribute('aHeight', new THREE.BufferAttribute(heights, 1));
+  geo.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
+  geo.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+  geo.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+  return geo;
+};
+
+const DUST_MOTE_VERTEX = `
+  uniform float time;
+  uniform float flowSpeed;
+  uniform float sunFacing;
+  attribute float aHeight;
+  attribute float aRadius;
+  attribute float aPhase;
+  attribute float aSpeed;
+  varying float vTwinkle;
+
+  void main() {
+    // Slow upward drift through the shaft, wrapping at the top so motes
+    // appear to rise endlessly through the light.
+    float rise = mod(time * (0.15 + flowSpeed * 0.08) * aSpeed + aPhase * aHeight, aHeight) - aHeight * 0.5;
+    vec3 pos = position;
+    pos.y += rise;
+    pos.x += sin(time * aSpeed * 0.7 + aPhase * 6.2831) * 0.4;
+    pos.z += cos(time * aSpeed * 0.6 + aPhase * 6.2831) * 0.4;
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    gl_PointSize = aRadius * sunFacing * (180.0 / -mvPosition.z);
+
+    vTwinkle = 0.4 + 0.6 * (0.5 + 0.5 * sin(time * (1.5 + aSpeed) + aPhase * 9.0));
+  }
+`;
+
+const DUST_MOTE_FRAGMENT = `
+  uniform vec3 colorBase;
+  uniform float opacity;
+  varying float vTwinkle;
+
+  void main() {
+    vec2 uv = gl_PointCoord - 0.5;
+    float d = length(uv);
+    float core = smoothstep(0.5, 0.0, d);
+    if (core <= 0.001) discard;
+    gl_FragColor = vec4(colorBase, core * vTwinkle * opacity);
+  }
+`;
 
 export default function SunShafts({
   transforms,
@@ -13,20 +112,26 @@ export default function SunShafts({
 }) {
   const meshRef = useRef();
   const dustRef = useRef();
+  const motesRef = useRef();
   const { camera } = useThree();
   const { timeOfDay } = useBiome();
   const { sunWorldPosition } = useSunPosition();
   const prevCamPosRef = useRef(new THREE.Vector3());
   const streakStrengthRef = useRef(0);
+  const [weatherType, setWeatherType] = useState('clear');
+
+  useEffect(() => {
+    const onWeatherUpdate = (event) => {
+      const incoming = event?.detail?.type;
+      if (typeof incoming === 'string') setWeatherType(incoming);
+    };
+    window.addEventListener('weather-update', onWeatherUpdate);
+    return () => window.removeEventListener('weather-update', onWeatherUpdate);
+  }, []);
 
   // Geometry: Cone/Cylinder representing the light beam
-  // Top radius smaller (2), Bottom radius larger (6), Height 30
-  // OpenEnded because we don't need caps
   const geometry = useMemo(() => {
     const geo = new THREE.CylinderGeometry(2, 6, 30, 8, 1, true);
-    // Move origin to the top of the beam so scaling/rotation is easier?
-    // Actually center is fine, but let's shift it up so y=0 is the bottom or top?
-    // Let's keep center at 0,0,0 for now, height 30 means -15 to +15.
     return geo;
   }, []);
 
@@ -46,6 +151,7 @@ export default function SunShafts({
         timeOfDay: { value: timeOfDay },
         speedStreak: { value: 0 },
         sunDirection: { value: new THREE.Vector3(0.1, 1.0, 0.05).normalize() },
+        overcastBlend: { value: 0 },
       },
       vertexShader: `
         uniform float time;
@@ -88,6 +194,7 @@ export default function SunShafts({
         uniform float timeOfDay;
         uniform float speedStreak;
         uniform vec3 sunDirection;
+        uniform float overcastBlend;
         varying vec2 vUv;
         varying vec3 vWorldPosition;
         varying float vAlpha;
@@ -150,17 +257,22 @@ export default function SunShafts({
           // uv.y goes from 0 to 1
           float verticalFade = smoothstep(0.0, 0.2, vUv.y) * (1.0 - smoothstep(0.8, 1.0, vUv.y));
 
-          // Fresnel / Edge fade (Simulated by View Dir vs Normal? No, cylinder is tricky)
-          // Simple approximation: fade edges based on view angle would be ideal but expensive.
-          // Instead, let's just use the noise to break it up.
+          // Layered volumetric noise: a coarse "shaft mass" layer plus a finer,
+          // faster-drifting layer for internal swirl/turbulence.
+          float noiseA = snoise(vWorldPosition * 0.3 + vec3(0.0, -time * (0.5 + flowSpeed * 0.3), 0.0));
+          noiseA = noiseA * 0.5 + 0.5;
+          float shaftA = smoothstep(0.3, 0.7, noiseA);
 
-          // Dust Motes Noise
-          // Move noise upwards and slowly
-          float noise = snoise(vWorldPosition * 0.3 + vec3(0.0, -time * (0.5 + flowSpeed * 0.3), 0.0));
-          noise = noise * 0.5 + 0.5; // 0 to 1
+          float noiseB = snoise(vWorldPosition * 0.9 + vec3(time * 0.12, -time * (0.9 + flowSpeed * 0.5), time * 0.08));
+          noiseB = noiseB * 0.5 + 0.5;
+          float shaftB = smoothstep(0.35, 0.75, noiseB);
 
-          // Enhance contrast of noise for "shaft" look
-          float shaft = smoothstep(0.3, 0.7, noise);
+          float shaft = shaftA * (0.65 + 0.35 * shaftB);
+
+          // Edge glow: shafts read brighter near their core (uv.x ~ angle around
+          // the cylinder), simulating a view-angle / fresnel response.
+          float edge = pow(1.0 - abs(vUv.x * 2.0 - 1.0), 1.5);
+          shaft *= (0.55 + 0.45 * edge);
 
           // Dust streak accents when player is moving quickly.
           float streaks = sin((vUv.y + time * (1.2 + flowSpeed * 0.6)) * 35.0 + vUv.x * 20.0) * 0.5 + 0.5;
@@ -172,9 +284,14 @@ export default function SunShafts({
           vec3 shaftColor = mix(colorBase, warmTint, goldenHour * 0.7 + (1.0 - midday) * 0.1);
           float sunFacing = clamp(dot(normalize(sunDirection), vec3(0.0, 1.0, 0.0)), 0.2, 1.0);
 
+          // Overcast weather: flatten contrast and desaturate into soft, diffuse god rays.
+          shaft = mix(shaft, 0.45, overcastBlend * 0.6);
+          shaftColor = mix(shaftColor, vec3(0.82, 0.85, 0.9), overcastBlend * 0.7);
+          float overcastDim = mix(1.0, 0.55, overcastBlend);
+
           // Combine
-          float alpha = vAlpha * verticalFade * shaft * shaftOpacity * (0.65 + midday * 0.35) * sunFacing;
-          alpha += streaks * 0.12;
+          float alpha = vAlpha * verticalFade * shaft * shaftOpacity * (0.65 + midday * 0.35) * sunFacing * overcastDim;
+          alpha += streaks * 0.12 * (1.0 - overcastBlend * 0.6);
 
           gl_FragColor = vec4(shaftColor, alpha);
         }
@@ -194,6 +311,22 @@ export default function SunShafts({
     side: THREE.DoubleSide,
   }), []);
 
+  const moteGeometry = useMemo(() => (transforms ? buildDustMotes(transforms) : null), [transforms]);
+  const moteMaterial = useMemo(() => new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      time: { value: 0 },
+      flowSpeed: { value: flowSpeed },
+      colorBase: { value: new THREE.Color('#fff6d8') },
+      opacity: { value: isSlotCanyon ? 0.55 : 0.35 },
+      sunFacing: { value: 1.0 },
+    },
+    vertexShader: DUST_MOTE_VERTEX,
+    fragmentShader: DUST_MOTE_FRAGMENT,
+  }), [flowSpeed, isSlotCanyon]);
+
   useFrame((state) => {
     const dt = Math.max(0.0001, state.clock.getDelta());
     const camDelta = camera.position.distanceTo(prevCamPosRef.current);
@@ -202,6 +335,8 @@ export default function SunShafts({
     const targetStreak = THREE.MathUtils.clamp(cameraSpeed / 30, 0, 1);
     streakStrengthRef.current = THREE.MathUtils.lerp(streakStrengthRef.current, targetStreak, 0.12);
 
+    const overcastBlend = (weatherType === 'overcast' || weatherType === 'storm') ? 1 : weatherType === 'fog' ? 0.6 : 0;
+
     if (material.uniforms) {
       material.uniforms.time.value = state.clock.elapsedTime;
       material.uniforms.flowSpeed.value = flowSpeed;
@@ -209,10 +344,18 @@ export default function SunShafts({
       material.uniforms.timeOfDay.value = timeOfDay;
       material.uniforms.speedStreak.value = streakStrengthRef.current;
       material.uniforms.sunDirection.value.copy(sunWorldPosition).normalize();
+      material.uniforms.overcastBlend.value = overcastBlend;
     }
 
     if (dustMaterial) {
-      dustMaterial.opacity = (isSlotCanyon ? 0.2 : 0.12) + streakStrengthRef.current * 0.18;
+      dustMaterial.opacity = (isSlotCanyon ? 0.2 : 0.12) + streakStrengthRef.current * 0.18 * (1 - overcastBlend * 0.6);
+    }
+
+    if (moteMaterial.uniforms) {
+      moteMaterial.uniforms.time.value = state.clock.elapsedTime;
+      moteMaterial.uniforms.flowSpeed.value = flowSpeed;
+      const sunFacing = THREE.MathUtils.clamp(sunWorldPosition.y / 60, 0.25, 1.0);
+      moteMaterial.uniforms.sunFacing.value = sunFacing * (1 - overcastBlend * 0.5);
     }
   }, 0);
 
@@ -259,6 +402,9 @@ export default function SunShafts({
         frustumCulled={false}
         renderOrder={2}
       />
+      {moteGeometry && (
+        <points ref={motesRef} geometry={moteGeometry} material={moteMaterial} frustumCulled={false} renderOrder={3} />
+      )}
     </group>
   );
 }

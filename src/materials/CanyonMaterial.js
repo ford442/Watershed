@@ -286,6 +286,35 @@ const FRAGMENT_SHADER = `
     layerMix = smoothstep(0.95, 1.0, h);
     color = mix(color, soilColor, layerMix);
     
+    // Macro variation - large-scale tint that breaks tiling across hundreds of meters
+    float macroNoise = fbm(vWorldPos.xz * 0.012 + vec2(91.0, 47.0));
+    vec3 macroWarm = vec3(1.05, 0.97, 0.9);
+    vec3 macroCool = vec3(0.92, 0.97, 1.04);
+    color *= mix(macroWarm, macroCool, macroNoise);
+    color *= 0.9 + macroNoise * 0.2;
+
+    // Shadow pockets - deep crevices the river carved over millennia
+    float pocketNoise = fbm(vWorldPos.xz * 0.22 + vec2(vWorldPos.y * 0.05 + 7.0, 3.0));
+    float shadowPocket = smoothstep(0.6, 0.85, pocketNoise) * (1.0 - smoothstep(0.85, 1.0, pocketNoise));
+    color *= 1.0 - shadowPocket * 0.6;
+
+    // Mineral veins - bright quartz/iron seams that catch the eye at speed
+    float veinNoise = fbm(vWorldPos.xz * 0.55 + vec2(vWorldPos.y * 0.35 + 31.0, -17.0));
+    float vein = 1.0 - abs(veinNoise * 2.0 - 1.0);
+    vein = smoothstep(0.965, 0.99, vein) * smoothstep(0.3, 0.55, macroNoise);
+    vec3 veinColor = mix(vec3(0.92, 0.8, 0.5), vec3(0.85, 0.92, 0.95), step(0.5, macroNoise));
+    color = mix(color, veinColor, vein * 0.85);
+
+    // Moss "explosion" - vivid surprise growth patches independent of height bands
+    float explosionNoise = fbm(vWorldPos.xz * 0.07 + vec2(13.7, -8.2));
+    float mossExplosion = smoothstep(0.74, 0.9, explosionNoise) * smoothstep(0.05, 0.4, h);
+    color = mix(color, mossColor * 1.6, mossExplosion * 0.5);
+
+    // Near-water caustic shimmer - walls reflect the river's dance
+    float causticPattern = sin(vWorldPos.x * 0.6 + time * 1.3) * sin(vWorldPos.z * 0.6 - time * 1.0);
+    float causticBand = (1.0 - smoothstep(0.0, 0.18, h)) * smoothstep(0.0, 0.05, h);
+    color += causticPattern * causticBand * 0.05 * weatheringIntensity;
+
     // Apply weathering streaks
     float streaks = weatheringStreaks(uv, h);
     color = mix(color, color * 0.7, streaks); // Darken where water runs
@@ -322,6 +351,10 @@ const FRAGMENT_SHADER = `
     rim = smoothstep(0.4, 0.8, rim);
     vec3 rimColor = vec3(0.3, 0.25, 0.2) * rim * 0.3;
     color += rimColor;
+
+    // Heat glow - dramatic warm rim light on iron-stained, sun-baked walls
+    vec3 heatGlow = vec3(1.0, 0.45, 0.15) * rim * weatheringIntensity * 0.4;
+    color += heatGlow;
     
     // Blend authored geological vertex color bands with procedural strata
     color *= vColor;

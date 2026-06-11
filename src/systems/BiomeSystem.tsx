@@ -154,7 +154,17 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
 export const BiomeTransition: React.FC = () => {
   const { currentBiome, timeOfDay } = useBiome();
   const { scene } = useThree();
-  
+  const [weatherType, setWeatherType] = useState('clear');
+
+  useEffect(() => {
+    const onWeatherUpdate = (event: Event) => {
+      const incoming = (event as CustomEvent)?.detail?.type;
+      if (typeof incoming === 'string') setWeatherType(incoming);
+    };
+    window.addEventListener('weather-update', onWeatherUpdate);
+    return () => window.removeEventListener('weather-update', onWeatherUpdate);
+  }, []);
+
   // Get lighting references
   const lightsRef = useRef<{
     ambient?: THREE.AmbientLight;
@@ -191,13 +201,22 @@ export const BiomeTransition: React.FC = () => {
   useFrame(() => {
     const { ambient, hemi, sun, fill } = lightsRef.current;
     if (!ambient || !hemi || !sun || !fill) return;
-    
-    // Apply palette to lighting
-    applyBiomeToLighting(currentBiome, { ambient, hemi, sun, fill });
-    
+
     // Update sun position
     const sunPos = getSunPosition(timeOfDay);
     sun.position.set(...sunPos);
+
+    // Sun elevation (0 = horizon/below, 1 = directly overhead) drives the
+    // warm/cool color temperature shift and intensity falloff.
+    const sunElevation = THREE.MathUtils.clamp(sunPos[1] / 40, 0, 1);
+    const isSlotCanyon = currentBiome.id === 'slotCanyon';
+
+    // Apply palette to lighting, with weather + time-of-day modulation
+    applyBiomeToLighting(currentBiome, { ambient, hemi, sun, fill }, {
+      isSlotCanyon,
+      weatherType,
+      sunElevation,
+    });
     
     // Update fog
     if (scene.fog && !scene.userData.skyOwnsFog) {

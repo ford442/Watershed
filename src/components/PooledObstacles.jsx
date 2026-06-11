@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
+import { extendRockMaterial } from '../utils/RockShader';
 
 const HIDDEN_POSITION = [0, -1000, 0];
 
@@ -42,6 +43,22 @@ export default function PooledObstacles({ slots, rockMaterial }) {
     roughness: 0.92,
     metalness: 0,
   }), []);
+
+  // Pooled debris rocks are loose, kicked-around fragments - lean toward
+  // dust/scuffing and fractured streaks rather than mossy growth.
+  const pooledRockMaterial = useMemo(() => {
+    if (!rockMaterial) return rockMaterial;
+    const clone = rockMaterial.clone();
+    extendRockMaterial(clone, {
+      mossStrength: 0.2,
+      streakStrength: 0.35,
+      bandStrength: 0.0,
+      dustStrength: 0.35,
+      rimStrength: 0.3,
+      wetnessRange: 1.5,
+    });
+    return clone;
+  }, [rockMaterial]);
 
   useEffect(() => {
     const matrix = new THREE.Matrix4();
@@ -105,7 +122,7 @@ export default function PooledObstacles({ slots, rockMaterial }) {
     <group name="pooled-static-obstacles">
       <instancedMesh
         ref={rockMeshRef}
-        args={[rockGeometry, rockMaterial, slots.length]}
+        args={[rockGeometry, pooledRockMaterial, slots.length]}
         castShadow
         receiveShadow
       />

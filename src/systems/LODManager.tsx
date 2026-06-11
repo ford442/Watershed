@@ -20,6 +20,9 @@ type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
 interface LODConfig {
   particleDensity: number;
   shadowMapSize: number;
+  // Shadow acne/peter-panning bias, tuned per shadow map resolution.
+  shadowBias: number;
+  shadowNormalBias: number;
   enableReflections: boolean;
   enableCaustics: boolean;
   enableGodRays: boolean;
@@ -34,6 +37,8 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   low: {
     particleDensity: 0.4,
     shadowMapSize: 1024,
+    shadowBias: -0.0015,
+    shadowNormalBias: 0.025,
     enableReflections: false,
     enableCaustics: false,
     enableGodRays: false,
@@ -46,6 +51,8 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   medium: {
     particleDensity: 0.7,
     shadowMapSize: 2048,
+    shadowBias: -0.0009,
+    shadowNormalBias: 0.018,
     enableReflections: false,
     enableCaustics: true,
     enableGodRays: true,
@@ -57,7 +64,9 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   },
   high: {
     particleDensity: 1.0,
-    shadowMapSize: 1024,
+    shadowMapSize: 3072,
+    shadowBias: -0.0006,
+    shadowNormalBias: 0.012,
     enableReflections: true,
     enableCaustics: true,
     enableGodRays: true,
@@ -70,6 +79,8 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   ultra: {
     particleDensity: 1.5,
     shadowMapSize: 4096,
+    shadowBias: -0.0004,
+    shadowNormalBias: 0.008,
     enableReflections: true,
     enableCaustics: true,
     enableGodRays: true,

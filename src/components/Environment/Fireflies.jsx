@@ -3,16 +3,24 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const DUMMY_OBJ = new THREE.Object3D();
+const MAX_LIGHTS = 5;
+const SEED = 8.731;
+
+const hash = (n) => {
+  const x = Math.sin(n * SEED) * 43758.5453;
+  return x - Math.floor(x);
+};
 
 export default function Fireflies({ transforms }) {
   const meshRef = useRef();
+  const lightRefs = useRef([]);
 
   // Geometry: Very simple low-poly shape (Tetrahedron is only 4 triangles)
   const geometry = useMemo(() => {
     return new THREE.TetrahedronGeometry(0.1, 0);
   }, []);
 
-  // Custom Shader Material for blinking and movement
+  // Custom Shader Material for blinking, swarming and movement
   const material = useMemo(() => {
     const mat = new THREE.ShaderMaterial({
       transparent: true,
@@ -37,14 +45,19 @@ export default function Fireflies({ transforms }) {
           float rand = hash(instancePos.xz);
           float rand2 = hash(instancePos.zx);
 
+          // Lazy spiral/swarm path on top of the gentle float, radius and speed vary per firefly
+          float swarmSpeed = 0.4 + rand2 * 0.6;
+          float swarmRadius = 0.4 + rand * 0.9;
+          float swarmAngle = time * swarmSpeed + rand * 6.2831;
+
           // Floating Animation (Vertex Displacement)
           float floatSpeed = 0.5 + rand * 0.5;
-          float floatAmp = 0.5 + rand * 0.5;
+          float floatAmp = 0.3 + rand * 0.35;
 
           vec3 offset = vec3(0.0);
-          offset.x = sin(time * floatSpeed + rand * 10.0) * floatAmp;
-          offset.y = sin(time * floatSpeed * 1.3 + rand2 * 10.0) * floatAmp * 0.5; // Less vertical movement
-          offset.z = cos(time * floatSpeed * 0.8 + rand * 20.0) * floatAmp;
+          offset.x = cos(swarmAngle) * swarmRadius + sin(time * floatSpeed + rand * 10.0) * floatAmp;
+          offset.y = sin(time * floatSpeed * 1.3 + rand2 * 10.0) * floatAmp * 0.6 + sin(swarmAngle * 1.5) * 0.25;
+          offset.z = sin(swarmAngle) * swarmRadius + cos(time * floatSpeed * 0.8 + rand * 20.0) * floatAmp;
 
           // Apply offset to the instance position (effectively)
           // We do this by modifying gl_Position or the modelViewMatrix
@@ -98,10 +111,52 @@ export default function Fireflies({ transforms }) {
     return mat;
   }, []);
 
-  useFrame((state) => {
-    if (material.uniforms) {
-      material.uniforms.time.value = state.clock.elapsedTime;
+  // A handful of fireflies cast a soft, flickering glow onto nearby geometry/water
+  const glowFireflies = useMemo(() => {
+    if (!transforms || transforms.length === 0) return [];
+    const count = Math.min(transforms.length, MAX_LIGHTS);
+    const step = Math.max(1, Math.floor(transforms.length / count));
+    const picked = [];
+    for (let i = 0; i < transforms.length && picked.length < count; i += step) {
+      const t = transforms[i];
+      const seed = t.position.x * 0.51 + t.position.z * 0.27 + i * 1.13;
+      picked.push({
+        base: t.position.clone(),
+        rand: hash(seed),
+        rand2: hash(seed + 3.7),
+        swarmSpeed: 0.4 + hash(seed + 3.7) * 0.6,
+        swarmRadius: 0.4 + hash(seed) * 0.9,
+        floatSpeed: 0.5 + hash(seed) * 0.5,
+        floatAmp: 0.3 + hash(seed) * 0.35,
+        blinkSpeed: 2.0 + hash(seed) * 3.0,
+        blinkPhase: hash(seed) * 10.0,
+      });
     }
+    return picked;
+  }, [transforms]);
+
+  useFrame((state) => {
+    const time = state.clock.elapsedTime;
+    if (material.uniforms) {
+      material.uniforms.time.value = time;
+    }
+
+    // Mirror the shader's swarm + blink math so the lights track their fireflies
+    glowFireflies.forEach((f, i) => {
+      const light = lightRefs.current[i];
+      if (!light) return;
+
+      const swarmAngle = time * f.swarmSpeed + f.rand * 6.2831;
+      const x = f.base.x + Math.cos(swarmAngle) * f.swarmRadius + Math.sin(time * f.floatSpeed + f.rand * 10.0) * f.floatAmp;
+      const y = f.base.y + Math.sin(time * f.floatSpeed * 1.3 + f.rand2 * 10.0) * f.floatAmp * 0.6 + Math.sin(swarmAngle * 1.5) * 0.25;
+      const z = f.base.z + Math.sin(swarmAngle) * f.swarmRadius + Math.cos(time * f.floatSpeed * 0.8 + f.rand * 20.0) * f.floatAmp;
+
+      light.position.set(x, y, z);
+
+      let blink = Math.sin(time * f.blinkSpeed + f.blinkPhase);
+      blink = THREE.MathUtils.smoothstep(blink, -0.2, 0.8);
+      light.intensity = (0.3 + 0.7 * blink) * 0.6;
+    });
   });
 
   // Setup Instances
@@ -124,10 +179,23 @@ export default function Fireflies({ transforms }) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[geometry, material, transforms.length]}
-      frustumCulled={false} // Prevent culling when floating slightly out of bound
-    />
+    <group>
+      <instancedMesh
+        ref={meshRef}
+        args={[geometry, material, transforms.length]}
+        frustumCulled={false} // Prevent culling when floating slightly out of bound
+      />
+      {glowFireflies.map((f, i) => (
+        <pointLight
+          key={`firefly-glow-${i}`}
+          ref={(el) => { lightRefs.current[i] = el; }}
+          color="#ffdd55"
+          intensity={0.3}
+          distance={3}
+          decay={2}
+          position={[f.base.x, f.base.y, f.base.z]}
+        />
+      ))}
+    </group>
   );
 }

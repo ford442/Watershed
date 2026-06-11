@@ -11,6 +11,8 @@ const TEMP_UP = new THREE.Vector3(0, 1, 0);
 const TEMP_QUAT = new THREE.Quaternion();
 const LEFT_FLAP_QUAT = new THREE.Quaternion();
 const RIGHT_FLAP_QUAT = new THREE.Quaternion();
+const ROLL_QUAT = new THREE.Quaternion();
+const PREV_POS = new THREE.Vector3();
 const MAX_BATS = 12;
 
 const hash = (n) => {
@@ -113,6 +115,7 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }) 
         progress: 0,
         duration: 0.6,
         hopCount: 0,
+        lastForward: BASE_FORWARD.clone(),
       };
       chooseNextPath(bat, 10.0);
       return bat;
@@ -171,13 +174,32 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }) 
 
       TEMP_QUAT.setFromUnitVectors(BASE_FORWARD, TEMP_FORWARD);
 
+      // Banking tilt: roll into the turn based on heading change since last frame
+      PREV_POS.subVectors(TEMP_POS, bat.current);
+      if (PREV_POS.lengthSq() > 1e-6) {
+        const heading = Math.atan2(TEMP_FORWARD.x, TEMP_FORWARD.z);
+        const prevHeading = Math.atan2(bat.lastForward.x, bat.lastForward.z);
+        let yawDelta = heading - prevHeading;
+        if (yawDelta > Math.PI) yawDelta -= Math.PI * 2;
+        if (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
+        const bank = THREE.MathUtils.clamp(-yawDelta * 8, -1.1, 1.1);
+        ROLL_QUAT.setFromAxisAngle(BASE_FORWARD, bank);
+        TEMP_QUAT.multiply(ROLL_QUAT);
+      }
+      bat.lastForward.copy(TEMP_FORWARD);
+
+      // Skim the water: dip slightly and dampen flap when very low over the surface
+      const heightAboveWater = TEMP_POS.y - bat.waterLevel;
+      const isWet = heightAboveWater < 0.6;
+
       DUMMY.position.copy(TEMP_POS);
       DUMMY.quaternion.copy(TEMP_QUAT);
       DUMMY.scale.setScalar(bat.scale);
       DUMMY.updateMatrix();
       bodyRef.current.setMatrixAt(index, DUMMY.matrix);
 
-      const flap = Math.sin(now * bat.flapFreq * Math.PI * 2 + bat.phase) * bat.flapAmp;
+      const flapDamp = isWet ? 0.55 : 1.0;
+      const flap = Math.sin(now * bat.flapFreq * Math.PI * 2 + bat.phase) * bat.flapAmp * flapDamp;
       LEFT_FLAP_QUAT.setFromAxisAngle(BASE_FORWARD, flap);
       RIGHT_FLAP_QUAT.setFromAxisAngle(BASE_FORWARD, -flap);
 
@@ -207,9 +229,9 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }) 
 
   return (
     <group>
-      <instancedMesh ref={bodyRef} args={[bodyGeometry, bodyMaterial, bats.length]} frustumCulled={false} />
-      <instancedMesh ref={leftWingRef} args={[leftWingGeometry, wingMaterial, bats.length]} frustumCulled={false} />
-      <instancedMesh ref={rightWingRef} args={[rightWingGeometry, wingMaterial, bats.length]} frustumCulled={false} />
+      <instancedMesh ref={bodyRef} args={[bodyGeometry, bodyMaterial, bats.length]} frustumCulled={false} castShadow />
+      <instancedMesh ref={leftWingRef} args={[leftWingGeometry, wingMaterial, bats.length]} frustumCulled={false} castShadow />
+      <instancedMesh ref={rightWingRef} args={[rightWingGeometry, wingMaterial, bats.length]} frustumCulled={false} castShadow />
     </group>
   );
 }

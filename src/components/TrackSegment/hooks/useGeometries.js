@@ -241,6 +241,18 @@ export function useGeometries({
             const strataWarp = Math.sin(zLocal * 0.14 + xLocal * 0.06 + segmentId * 0.17) * (isSlotCanyon ? 1.6 : 1.1)
                 + Math.cos(zLocal * 0.22 - xLocal * 0.09) * (isSlotCanyon ? 0.8 : 0.55);
 
+            // Vertical ribbing - hand-carved flutes left by millennia of flowing water
+            const ribPhase = segmentId * 0.91;
+            const ribbing = Math.sin(zLocal * (isSlotCanyon ? 0.5 : 0.38) + xLocal * 0.12 + ribPhase)
+                * Math.sin(xLocal * 0.22 - ribPhase * 0.6);
+            yHeight += ribbing * (isSlotCanyon ? 1.1 : 0.7);
+
+            // Quantized strata shelves - discrete ledges/undercuts where softer rock eroded away
+            const shelfRaw = Math.sin(zLocal * 0.085 + xLocal * 0.04 + segmentId * 0.21) * 0.5 + 0.5;
+            const shelfSteps = isSlotCanyon ? 5.0 : 3.0;
+            const shelf = Math.floor(shelfRaw * shelfSteps) / shelfSteps;
+            yHeight += (shelf - 0.5) * (isSlotCanyon ? 2.2 : 1.2);
+
             // Height relative to waterline in wall-local coordinates.
             const localY = yHeight - 2;
             const relY = localY - WALL_WATERLINE_Y;

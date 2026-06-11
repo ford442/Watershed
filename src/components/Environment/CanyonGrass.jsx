@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
 
 const hash = (n) => {
   const x = Math.sin(n * 9.173) * 43758.5453;
@@ -15,17 +16,37 @@ export default function CanyonGrass({ transforms }) {
   const geometry = useMemo(() => {
     const geo = new THREE.PlaneGeometry(0.08, 0.65, 1, 3);
     geo.translate(0, 0.32, 0);
+
+    // Vertex color gradient: dusty base, sun-bleached tip
+    const positions = geo.attributes.position;
+    const colors = new Float32Array(positions.count * 3);
+    const base = new THREE.Color('#a8845a');
+    const tip = new THREE.Color('#e0c98a');
+    const c = new THREE.Color();
+    for (let i = 0; i < positions.count; i++) {
+      const t = THREE.MathUtils.clamp(positions.getY(i) / 0.65, 0, 1);
+      c.copy(base).lerp(tip, t);
+      colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     return geo;
   }, []);
 
-  const material = useMemo(() => (
-    new THREE.MeshStandardMaterial({
+  const material = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
       color: '#c8a86e',
       roughness: 0.88,
       metalness: 0,
       side: THREE.DoubleSide,
-    })
-  ), []);
+      vertexColors: true,
+    });
+    extendVegetationMaterial(mat, { plantHeight: 0.65, windStrength: 0.05, windSpeed: 1.3 });
+    return mat;
+  }, []);
+
+  useFrame((state) => {
+    updateVegetationMaterial(material, state.clock.elapsedTime);
+  });
 
   const instances = useMemo(() => safeTransforms.map((transform, index) => {
     const position = transform.position;
@@ -41,16 +62,9 @@ export default function CanyonGrass({ transforms }) {
         transform.scale.y * (0.9 + hash(seed + 3.6) * 0.6),
         transform.scale.z
       ),
-      color: new THREE.Color('#c8a86e').multiplyScalar(0.82 + hash(seed + 4.2) * 0.25),
+      color: new THREE.Color(0xffffff).multiplyScalar(0.82 + hash(seed + 4.2) * 0.25),
     };
   }), [safeTransforms]);
-
-  useFrame((state) => {
-    if (!grassRef.current) return;
-    const t = state.clock.getElapsedTime();
-    grassRef.current.rotation.z = Math.sin(t * 1.6) * 0.02;
-    grassRef.current.rotation.x = Math.cos(t * 1.3) * 0.01;
-  });
 
   if (!instances.length) return null;
 

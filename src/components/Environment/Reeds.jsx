@@ -1,7 +1,31 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
+import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+
+const STALK_GREEN = new THREE.Color('#3f6b34');
+const STALK_TIP = new THREE.Color('#7da84a');
+const CATTAIL_BODY = new THREE.Color('#5a3a22');
+const CATTAIL_TIP = new THREE.Color('#2e1d11');
+const BROKEN_TIP = new THREE.Color('#8a7250');
+
+const PLANT_HEIGHT = 2.0;
+
+const paintGradient = (geo, fromColor, toColor, minY, maxY) => {
+    const positions = geo.attributes.position;
+    const colors = new Float32Array(positions.count * 3);
+    const span = Math.max(0.0001, maxY - minY);
+    const c = new THREE.Color();
+    for (let i = 0; i < positions.count; i++) {
+        const t = THREE.MathUtils.clamp((positions.getY(i) - minY) / span, 0, 1);
+        c.copy(fromColor).lerp(toColor, t);
+        colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return geo;
+};
 
 const mergeCompatibleGeometries = (geometries) => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -24,48 +48,65 @@ const mergeCompatibleGeometries = (geometries) => {
 };
 
 export default function Reeds({ transforms }) {
-  // Geometry: Cluster of Cattails/Reeds
+  // Geometry: Cluster of cattails with a couple of weather-broken stalks for character
   const geometry = useMemo(() => {
     try {
         const geos = [];
         const count = 5; // Reeds per clump
 
         for (let i = 0; i < count; i++) {
-            // Random offsets for this reed within the clump
             const offsetX = (Math.random() - 0.5) * 0.6;
             const offsetZ = (Math.random() - 0.5) * 0.6;
-            const height = 1.2 + Math.random() * 0.8;
             const tiltX = (Math.random() - 0.5) * 0.2;
             const tiltZ = (Math.random() - 0.5) * 0.2;
+            const isBroken = Math.random() < 0.15;
+
+            if (isBroken) {
+                // Broken/snapped stalk - short, jaggedly tilted, frayed tip, no cattail head
+                const height = 0.45 + Math.random() * 0.35;
+                const stalkGeo = new THREE.CylinderGeometry(0.018, 0.022, height, 4);
+                stalkGeo.translate(0, height / 2, 0);
+                stalkGeo.rotateX(tiltX * 2.2 + 0.35);
+                stalkGeo.rotateZ(tiltZ * 2.2);
+                paintGradient(stalkGeo, STALK_GREEN, BROKEN_TIP, 0, height);
+                stalkGeo.translate(offsetX, 0, offsetZ);
+                geos.push(stalkGeo);
+                continue;
+            }
+
+            const height = 1.2 + Math.random() * 0.8;
 
             // Stalk
             const stalkRadius = 0.02;
             const stalkGeo = new THREE.CylinderGeometry(stalkRadius, stalkRadius, height, 4);
             stalkGeo.translate(0, height / 2, 0); // Base at 0
-
-            // Tilt
+            paintGradient(stalkGeo, STALK_GREEN, STALK_TIP, 0, height);
             stalkGeo.rotateX(tiltX);
             stalkGeo.rotateZ(tiltZ);
-
-            // Move to offset
             stalkGeo.translate(offsetX, 0, offsetZ);
             geos.push(stalkGeo);
 
-            // Cattail Head (Brown part) - on 60% of reeds
+            // Cattail head - two-part silhouette: plump cylindrical body + tapered velvet tip
             if (Math.random() > 0.4) {
-                const headHeight = 0.3;
-                const headRadius = 0.06;
-                const headGeo = new THREE.CylinderGeometry(headRadius, headRadius, headHeight, 5);
-                // Position near top
-                const headY = height - 0.15;
-                headGeo.translate(0, headY, 0);
+                const bodyHeight = 0.32;
+                const bodyRadius = 0.065;
+                const bodyGeo = new THREE.CylinderGeometry(bodyRadius * 0.85, bodyRadius, bodyHeight, 6);
+                const bodyY = height - 0.12;
+                bodyGeo.translate(0, bodyY, 0);
+                paintGradient(bodyGeo, CATTAIL_BODY, CATTAIL_TIP, bodyY - bodyHeight / 2, bodyY + bodyHeight / 2);
 
-                // Apply same tilt/offset
-                headGeo.rotateX(tiltX);
-                headGeo.rotateZ(tiltZ);
-                headGeo.translate(offsetX, 0, offsetZ);
+                const tipHeight = 0.12;
+                const tipGeo = new THREE.ConeGeometry(bodyRadius * 0.85, tipHeight, 6);
+                const tipY = bodyY + bodyHeight / 2 + tipHeight / 2;
+                tipGeo.translate(0, tipY, 0);
+                paintGradient(tipGeo, CATTAIL_TIP, CATTAIL_TIP, tipY - tipHeight / 2, tipY + tipHeight / 2);
 
-                geos.push(headGeo);
+                [bodyGeo, tipGeo].forEach((g) => {
+                    g.rotateX(tiltX);
+                    g.rotateZ(tiltZ);
+                    g.translate(offsetX, 0, offsetZ);
+                    geos.push(g);
+                });
             }
         }
 
@@ -82,31 +123,35 @@ export default function Reeds({ transforms }) {
     }
   }, []);
 
-  // Material: Green/Brown with lighting response
+  // Material: vertex-colored stalks/cattails, individually wind-animated
   const reedsMaterial = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
-        color: '#4a6b3c', // Swampy green
-        roughness: 0.88,
+        color: '#ffffff',
+        roughness: 0.85,
         metalness: 0,
         side: THREE.DoubleSide,
+        vertexColors: true,
     });
+    extendVegetationMaterial(mat, { plantHeight: PLANT_HEIGHT, windStrength: 0.09, windSpeed: 1.1 });
     return mat;
   }, []);
+
+  useFrame((state) => {
+    updateVegetationMaterial(reedsMaterial, state.clock.elapsedTime);
+  });
 
   const instances = useMemo(() => {
       if (!transforms) return [];
       return transforms.map((t, i) => {
           const isDry = Math.random() > 0.7;
-          const baseColor = isDry ? new THREE.Color('#8b7e60') : new THREE.Color('#4a6b3c');
-          const shade = 0.8 + Math.random() * 0.4;
-          const color = baseColor.multiplyScalar(shade);
+          const shade = (isDry ? 0.75 : 0.9) + Math.random() * 0.3;
 
           return {
               key: `reeds-${i}`,
               position: t.position,
               rotation: t.rotation,
               scale: t.scale,
-              color: color
+              color: new THREE.Color(0xffffff).multiplyScalar(shade),
           };
       });
   }, [transforms]);

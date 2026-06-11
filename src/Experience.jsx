@@ -504,6 +504,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
             intensity={L.dirIntensity}
             castShadow
             shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
+            shadow-bias={lodConfig.shadowBias}
+            shadow-normalBias={lodConfig.shadowNormalBias}
             shadow-camera-near={1}
             shadow-camera-far={200}
             shadow-camera-left={-60}

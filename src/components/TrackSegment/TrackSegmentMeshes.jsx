@@ -367,7 +367,7 @@ export function TrackSegmentMeshes({
             )}
 
             {/* Goal 3: Pond fog override */}
-            {type === 'pond' && <PondFog segmentCenter={segmentCenterRef.current} />}
+            {type === 'pond' && <PondFog segmentCenter={segmentCenterRef.current} waterLevel={waterLevel} />}
 
             <mesh geometry={wallShellGeometry} material={wallMaterial} />
 
@@ -396,6 +396,8 @@ export function TrackSegmentMeshes({
                 vehiclePos={vehiclePos}
                 vehicleVelocity={vehicleVelocity}
                 waterSurfaceOffset={waterSurfaceOffset}
+                sunWorldPosition={sunWorldPosition}
+                isPond={type === 'pond'}
             />
 
             {/* Glacier: ice-crystal spray bursts at the segment midpoint, scale with player speed */}

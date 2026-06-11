@@ -1,8 +1,16 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useBiome } from '../../systems/BiomeSystem';
 
 const DUMMY_OBJ = new THREE.Object3D();
+
+// Dry/autumn biomes kick up noticeably more dust than lush summer canyons.
+const DUST_DENSITY_BY_BIOME = {
+  canyonAutumn: 1.8,
+  slotCanyon: 1.4,
+  cavern: 1.2,
+};
 
 export default function CanyonDust({
   transforms,
@@ -13,6 +21,8 @@ export default function CanyonDust({
 }) {
   const meshRef = useRef();
   const { camera } = useThree();
+  const { currentBiome } = useBiome();
+  const densityMul = DUST_DENSITY_BY_BIOME[currentBiome.id] ?? 1.0;
 
   const poolSize = Math.max(1, count);
   const geometry = useMemo(() => {
@@ -38,11 +48,13 @@ export default function CanyonDust({
       flowSpeed: { value: flowSpeed },
       playerVelocity: { value: 0 },
       colorBase: { value: new THREE.Color('#f7e9cf') },
+      densityMul: { value: 1.0 },
     },
     vertexShader: `
       uniform float time;
       uniform float flowSpeed;
       uniform float playerVelocity;
+      uniform float densityMul;
       attribute vec3 instanceScale;
       varying float vAlpha;
       varying vec2 vUv;
@@ -72,7 +84,7 @@ export default function CanyonDust({
         gl_Position = projectionMatrix * viewMatrix * vec4(finalPos, 1.0);
 
         float pulse = sin(time * 1.4 + rand * 20.0) * 0.5 + 0.5;
-        vAlpha = mix(0.05, 0.12, pulse);
+        vAlpha = mix(0.05, 0.12, pulse) * densityMul;
       }
     `,
     fragmentShader: `
@@ -98,6 +110,8 @@ export default function CanyonDust({
       material.uniforms.time.value = state.clock.elapsedTime;
       material.uniforms.flowSpeed.value = flowSpeed;
       material.uniforms.playerVelocity.value = playerVelocityRef?.current ?? 0;
+      material.uniforms.densityMul.value = densityMul;
+      material.uniforms.colorBase.value.set(currentBiome.id === 'canyonAutumn' ? '#e8c79a' : '#f7e9cf');
     }
   });
 

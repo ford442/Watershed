@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -184,7 +184,7 @@ export function PostProcessingPipeline({
 }) {
   const { gl, scene, camera, size } = useThree();
   const { config } = useLOD();
-  const { timeOfDay } = useBiome();
+  const { timeOfDay, currentBiome } = useBiome();
   const { sunWorldPosition } = useSunPosition();
 
   // Refs for smooth animation values
@@ -194,6 +194,7 @@ export function PostProcessingPipeline({
     vignetteBoost: 0,
   });
   const boostRef = useRef({ active: 0, intensity: 0 });
+  const [weatherType, setWeatherType] = useState('clear');
 
   // Listen for boost events
   useEffect(() => {
@@ -204,6 +205,17 @@ export function PostProcessingPipeline({
     };
     window.addEventListener('boost-triggered', onBoost);
     return () => window.removeEventListener('boost-triggered', onBoost);
+  }, []);
+
+  // Listen for weather changes — desaturates and softens the scene under
+  // overcast/storm, and tightens the vignette for stormy drama.
+  useEffect(() => {
+    const onWeatherUpdate = (e) => {
+      const incoming = e?.detail?.type;
+      if (typeof incoming === 'string') setWeatherType(incoming);
+    };
+    window.addEventListener('weather-update', onWeatherUpdate);
+    return () => window.removeEventListener('weather-update', onWeatherUpdate);
   }, []);
 
   // Build composer once gl/scene/camera are ready
@@ -304,6 +316,16 @@ export function PostProcessingPipeline({
     const speedFactor = Math.min(1, velocity / 25);
     const waterfallBoost = THREE.MathUtils.clamp(waterfallIntensity, 0, 1);
 
+    // Biome/weather mood — slot canyons get a more artistic, claustrophobic
+    // vignette; overcast/storm desaturate and soften the whole frame.
+    const isSlotCanyon = currentBiome?.id === 'slotCanyon';
+    const overcastBlend = weatherType === 'storm' ? 1
+      : weatherType === 'overcast' ? 0.6
+      : weatherType === 'fog' ? 0.35
+      : 0;
+    const sunElevation = THREE.MathUtils.clamp(sunWorldPosition.y / 40, 0, 1);
+    const nightFactor = 1 - sunElevation;
+
     // Chromatic aberration target
     const targetChromatic =
       chromaticBaseOffset + (chromaticMaxOffset - chromaticBaseOffset) * speedFactor + boostScale * 0.0025 + waterfallBoost * 0.0009;
@@ -320,6 +342,8 @@ export function PostProcessingPipeline({
       }
     }
     targetSaturation = Math.min(1, targetSaturation + boostScale * 0.15);
+    // Overcast/storm/fog wash the color out of the whole scene.
+    targetSaturation *= 1 - overcastBlend * 0.4;
 
     // Vignette boost target
     // "Speed rush" design: vignette tightens modestly when actively sprinting at speed
@@ -331,7 +355,10 @@ export function PostProcessingPipeline({
     // We detect "sprinting at speed" by checking speed threshold + stamina drain state.
     const isSprintingAtSpeed = isRunner && velocity > 12 && sprintStamina < 0.999;
     const sprintVignetteBoost = isSprintingAtSpeed ? 0.18 : 0;
-    const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08 + sprintVignetteBoost;
+    // Slot canyons get a deliberately tighter, more cinematic vignette to sell
+    // the claustrophobic walls; storms tighten it further for drama.
+    const biomeVignetteBoost = (isSlotCanyon ? 0.12 : 0) + overcastBlend * 0.08;
+    const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08 + sprintVignetteBoost + biomeVignetteBoost;
 
     // Smooth transitions
     const t = 1 - Math.exp(-delta * 10);
@@ -387,9 +414,13 @@ export function PostProcessingPipeline({
       passes.vignettePass.uniforms.darkness.value = vignetteDarkness + smoothed.current.vignetteBoost;
     }
     if (passes.bloomPass) {
-      passes.bloomPass.strength = bloomIntensity + boostScale * 0.4 + waterfallBoost * 0.55;
-      passes.bloomPass.threshold = Math.max(0.2, bloomThreshold - boostScale * 0.15 - waterfallBoost * 0.1);
-      passes.bloomPass.radius = bloomRadius + boostScale * 0.2 + waterfallBoost * 0.12;
+      // At night, drop the threshold so fireflies, moonlit water glints, and
+      // wet specular highlights glow instead of getting clipped — but trim
+      // overall strength under heavy overcast/storm so the look stays moody
+      // rather than glary.
+      passes.bloomPass.strength = (bloomIntensity + boostScale * 0.4 + waterfallBoost * 0.55) * (1 - overcastBlend * 0.3);
+      passes.bloomPass.threshold = Math.max(0.15, bloomThreshold - boostScale * 0.15 - waterfallBoost * 0.1 - nightFactor * 0.25);
+      passes.bloomPass.radius = bloomRadius + boostScale * 0.2 + waterfallBoost * 0.12 + nightFactor * 0.08;
     }
 
     // Rainbow prismatic arc — only during waterfall, fades quickly outside it

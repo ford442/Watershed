@@ -1,8 +1,16 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useTreeAssets } from './TreeAssets';
 import { useFrame } from '@react-three/fiber';
+import { extendTreeMaterial, updateTreeMaterial } from '../../utils/TreeShader';
+import { WATER_LEVEL } from '../../constants/game';
+
+// Warm backlight tints used for the foliage SSS/translucency approximation
+const SSS_TINTS = {
+  summer: '#dff0a8',
+  autumn: '#ffd27a',
+};
 
 // Color Palettes
 const PALETTES = {
@@ -18,7 +26,6 @@ const RIM_PALETTES = {
 
 export default function Vegetation({ transforms, biome = 'summer', isRim = false }) {
   const { variants } = useTreeAssets();
-  const speciesRefs = useRef({});
   const safeTransforms = Array.isArray(transforms) ? transforms : [];
 
   const instancesBySpecies = useMemo(() => {
@@ -64,25 +71,33 @@ export default function Vegetation({ transforms, biome = 'summer', isRim = false
   }, [safeTransforms, biome, isRim]);
 
   const speciesMaterials = useMemo(() => {
+    const sssColor = SSS_TINTS[biome] || SSS_TINTS.summer;
     const map = {};
     variants.forEach((variant) => {
-      map[variant.type] = new THREE.MeshStandardMaterial({
+      const material = new THREE.MeshStandardMaterial({
         color: variant.baseTint,
         roughness: variant.type === 'snag' ? 0.96 : 0.86,
         metalness: 0,
         vertexColors: true,
       });
+      extendTreeMaterial(material, {
+        windStrength: variant.swayAmount * 1.6,
+        windSpeed: 1.35,
+        sssColor,
+        sssStrength: variant.type === 'snag' ? 0 : 0.35,
+        waterLevel: WATER_LEVEL,
+        rustleRadius: 6.0,
+        rustleStrength: 2.5,
+      });
+      map[variant.type] = material;
     });
     return map;
-  }, [variants]);
+  }, [variants, biome]);
 
-  // Tree sway animation
+  // Per-vertex wind sway, leaf flutter, player rustle + foliage backlight, driven by TreeShader
   useFrame((state) => {
-    variants.forEach((variant, index) => {
-      const ref = speciesRefs.current[variant.type];
-      if (!ref) return;
-      const phase = index * 0.9;
-      ref.rotation.z = Math.sin(state.clock.elapsedTime * 1.35 + phase) * variant.swayAmount;
+    variants.forEach((variant) => {
+      updateTreeMaterial(speciesMaterials[variant.type], state.clock.elapsedTime, state.camera.position);
     });
   });
 
@@ -95,16 +110,7 @@ export default function Vegetation({ transforms, biome = 'summer', isRim = false
         if (instances.length === 0) return null;
 
         return (
-          <group
-            key={variant.type}
-            ref={(node) => {
-              if (node) {
-                speciesRefs.current[variant.type] = node;
-              } else {
-                delete speciesRefs.current[variant.type];
-              }
-            }}
-          >
+          <group key={variant.type}>
             <Instances
               range={instances.length}
               geometry={variant.geometry}
