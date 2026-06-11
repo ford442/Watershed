@@ -14,7 +14,41 @@
 # Requires: Emscripten SDK (em++ in PATH or auto-located via emsdk_env.sh)
 
 set -euo pipefail
-source /content/buil*/emsdk/emsdk_env.sh
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUTPUT_JS="$REPO_ROOT/public/watershed_native.js"
+
+# ---------------------------------------------------------------------------
+# Locate and source the Emscripten environment (portable across hosts)
+# ---------------------------------------------------------------------------
+CANDIDATES=(
+    "$REPO_ROOT/emsdk/emsdk_env.sh"
+    "$HOME/emsdk/emsdk_env.sh"
+    "/content/build/emsdk/emsdk_env.sh"
+    "/usr/local/emsdk/emsdk_env.sh"
+    "/opt/emsdk/emsdk_env.sh"
+    "/root/emsdk/emsdk_env.sh"
+)
+
+# Colab workspaces may have build directories matching /content/buil*/emsdk.
+# Expand that pattern in a loop and only source concrete files.
+for f in /content/buil*/emsdk/emsdk_env.sh; do
+    if [ -f "$f" ]; then
+        CANDIDATES+=("$f")
+    fi
+done
+
+for f in "${CANDIDATES[@]}"; do
+    if [ -f "$f" ]; then
+        # shellcheck source=/dev/null
+        source "$f"
+        break
+    fi
+done
 
 if ! command -v emcc &>/dev/null; then
   echo "[build:wasm] Emscripten not found — skipping WASM compile (run 'source emsdk_env.sh' first)."
@@ -41,44 +75,6 @@ elif [ "$DEBUG_BUILD" -eq 1 ]; then
     echo "Building watershed_native.js (debug, single-threaded)..."
 else
     echo "Building watershed_native.js (single-threaded, optimised)..."
-fi
-
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_JS="$REPO_ROOT/public/watershed_native.js"
-
-# ---------------------------------------------------------------------------
-# Locate and source the Emscripten environment
-# ---------------------------------------------------------------------------
-CANDIDATES=(
-    "$REPO_ROOT/emsdk/emsdk_env.sh"
-    "$HOME/emsdk/emsdk_env.sh"
-    "/usr/local/emsdk/emsdk_env.sh"
-    "/opt/emsdk/emsdk_env.sh"
-)
-
-FOUND=0
-for f in "${CANDIDATES[@]}"; do
-    if [ -f "$f" ]; then
-        # shellcheck source=/dev/null
-        source "$f"
-        FOUND=1
-        break
-    fi
-done
-
-if [ "$FOUND" -eq 0 ]; then
-    if command -v em++ &>/dev/null; then
-        echo "Using em++ already in PATH."
-    else
-        echo "ERROR: Emscripten SDK not found."
-        echo "Install from: https://emscripten.org/docs/getting_started/downloads.html"
-        echo "Searched: ${CANDIDATES[*]}"
-        exit 1
-    fi
 fi
 
 # ---------------------------------------------------------------------------
