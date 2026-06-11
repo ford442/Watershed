@@ -6,6 +6,7 @@ export const DEBUG_STAGES = {
   dataProcessing: { label: 'Data Processing', category: 'data', defaultEnabled: true },
   visualization: { label: 'Visualization', category: 'render', defaultEnabled: true },
   physics: { label: 'Physics', category: 'simulation', defaultEnabled: true },
+  physicsDebug: { label: 'Physics Debug Overlay', category: 'simulation', defaultEnabled: true },
   worldSystems: { label: 'World Systems', category: 'systems', defaultEnabled: true },
   audio: { label: 'Audio', category: 'systems', defaultEnabled: true },
   postProcessing: { label: 'Post Processing', category: 'render', defaultEnabled: true },

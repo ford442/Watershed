@@ -3,6 +3,26 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 
+const mergeCompatibleGeometries = (geometries) => {
+    if (!geometries.length) return new THREE.BufferGeometry();
+    const normalized = geometries.map((g) => g.index ? g.toNonIndexed() : g);
+    const attrNames = new Set();
+    normalized.forEach((g) => Object.keys(g.attributes).forEach((n) => attrNames.add(n)));
+    normalized.forEach((g) => {
+        attrNames.forEach((name) => {
+            if (!g.getAttribute(name)) {
+                const ref = normalized.find((h) => h.getAttribute(name)).getAttribute(name);
+                g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+            }
+        });
+    });
+    try {
+        return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+    } catch (e) {
+        return new THREE.BufferGeometry();
+    }
+};
+
 export default function Ferns({ transforms, biome = 'summer' }) {
     // 1. Geometry Construction
     const geometry = useMemo(() => {
@@ -58,7 +78,7 @@ export default function Ferns({ transforms, biome = 'summer' }) {
 
         if (frondGeos.length === 0) return new THREE.BufferGeometry();
 
-        const merged = mergeBufferGeometries(frondGeos);
+        const merged = mergeCompatibleGeometries(frondGeos);
         if (!merged) return new THREE.BufferGeometry();
         
         // Validate positions before computing normals

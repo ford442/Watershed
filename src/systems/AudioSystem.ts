@@ -38,6 +38,15 @@ interface ActiveSound {
   startTime: number;
 }
 
+interface ReactiveVolumes {
+  low: number;
+  mid: number;
+  high: number;
+  rapids: number;
+  whoosh: number;
+  transition: number;
+}
+
 // Default sound library
 const BASE_SOUND_URL = import.meta.env.BASE_URL || '/';
 
@@ -79,6 +88,12 @@ const SOUND_LIBRARY: Record<string, SoundDef> = {
   // Water flow — rapids ambience
   'rapids_roar': { url: `${BASE_SOUND_URL}sounds/rapids_roar.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 1 },
 
+  // Layered water stems (fallback-friendly names; can be swapped for bespoke assets later)
+  'water_close_gurgle': { url: `${BASE_SOUND_URL}sounds/ambient_water.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
+  'water_mid_rapids': { url: `${BASE_SOUND_URL}sounds/rapids_roar.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 1 },
+  'water_distant_roar': { url: `${BASE_SOUND_URL}sounds/ambient_canyon.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.4, basePitch: 1.0, maxConcurrent: 1 },
+  'water_whoosh': { url: `${BASE_SOUND_URL}sounds/ambient_wind.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.0, basePitch: 1.0, maxConcurrent: 1 },
+
   // Ambient
   'ambient_water': { url: `${BASE_SOUND_URL}sounds/ambient_water.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.3, basePitch: 1.0, maxConcurrent: 1 },
   'ambient_wind': { url: `${BASE_SOUND_URL}sounds/ambient_wind.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.2, basePitch: 1.0, maxConcurrent: 1 },
@@ -105,7 +120,13 @@ export class AudioManager {
   private failedSounds: Set<string> = new Set();
   
   // Reactive audio volumes (populated by ReactiveAudio if mounted)
-  private reactiveVolumes = { low: 0, mid: 0, high: 0, rapids: 0 };
+  private reactiveVolumes: ReactiveVolumes = { low: 0, mid: 0, high: 0, rapids: 0, whoosh: 0, transition: 0 };
+
+  // Canyon acoustic state
+  private canyonAcoustics = {
+    active: false,
+    wallTightness: 0,
+  };
   
   constructor(camera: THREE.Camera) {
     // Create audio listener and attach to camera
@@ -441,19 +462,89 @@ export class AudioManager {
   getAudioContextState(): string {
     return this.audioContext?.state ?? 'unknown';
   }
+
+  /**
+   * Build a lightweight synthetic IR for canyon-like reverberation.
+   */
+  private syntheticImpulseResponse(decaySeconds: number): AudioBuffer | null {
+    if (!this.audioContext) return null;
+    const sampleRate = this.audioContext.sampleRate;
+    const length = Math.max(1, Math.floor(sampleRate * decaySeconds));
+    const buffer = this.audioContext.createBuffer(2, length, sampleRate);
+
+    for (let channel = 0; channel < 2; channel += 1) {
+      const data = buffer.getChannelData(channel);
+      for (let i = 0; i < length; i += 1) {
+        const t = i / length;
+        const envelope = Math.pow(1 - t, 2.2);
+        data[i] = (Math.random() * 2 - 1) * envelope;
+      }
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Enable canyon acoustics for reactive layers.
+   */
+  enableCanyonAcoustics(wallTightness: number): void {
+    this.canyonAcoustics.active = true;
+    this.canyonAcoustics.wallTightness = Math.max(0, Math.min(1, wallTightness));
+  }
+
+  /**
+   * Disable canyon acoustics.
+   */
+  disableCanyonAcoustics(): void {
+    this.canyonAcoustics.active = false;
+    this.canyonAcoustics.wallTightness = 0;
+  }
+
+  /**
+   * Apply/clear acoustic filter chain on a playing source.
+   */
+  applyCanyonFilters(source: THREE.Audio | THREE.PositionalAudio): void {
+    if (!this.audioContext || !this.canyonAcoustics.active) {
+      source.setFilters([]);
+      return;
+    }
+
+    const wallTightness = this.canyonAcoustics.wallTightness;
+    const lowPass = this.audioContext.createBiquadFilter();
+    lowPass.type = 'lowpass';
+    lowPass.frequency.value = 6000 - wallTightness * 2000;
+    lowPass.Q.value = 0.5 + wallTightness * 2.0;
+
+    const convolver = this.audioContext.createConvolver();
+    const decay = 0.3 + wallTightness * 0.5;
+    convolver.buffer = this.syntheticImpulseResponse(decay);
+
+    source.setFilters([lowPass, convolver]);
+  }
   
   /**
    * Set reactive audio crossfade volumes (called by ReactiveAudio)
    */
-  setReactiveVolumes(volumes: { low: number; mid: number; high: number; rapids: number }): void {
-    this.reactiveVolumes = { ...volumes };
+  setReactiveVolumes(volumes: Partial<ReactiveVolumes>): void {
+    this.reactiveVolumes = { ...this.reactiveVolumes, ...volumes };
   }
   
   /**
    * Get reactive audio crossfade volumes
    */
-  getReactiveVolumes(): { low: number; mid: number; high: number; rapids: number } {
+  getReactiveVolumes(): ReactiveVolumes {
     return { ...this.reactiveVolumes };
+  }
+
+  /**
+   * Snapshot of reactive layers + canyon acoustic state for diagnostics.
+   */
+  getAudioState(): { layers: ReactiveVolumes; reverbActive: boolean; wallTightness: number } {
+    return {
+      layers: this.getReactiveVolumes(),
+      reverbActive: this.canyonAcoustics.active,
+      wallTightness: this.canyonAcoustics.wallTightness,
+    };
   }
   
   /**

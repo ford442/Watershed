@@ -26,6 +26,7 @@ export default function FlowingWater({
   biome = 'river',
   isNight = false,
   flowMap = null,
+  heightmapFlow = null,
   vehiclePos = null,
   vehicleVelocity = null,
   weatherRipple = 0,
@@ -34,12 +35,23 @@ export default function FlowingWater({
 }) {
   const materialRef = useRef(null);
   const { camera } = useThree();
+  const heightmapFlowRef = useRef(heightmapFlow);
 
   const biomeData = BIOMES[biome] || BIOMES.river;
   const effectiveWaterColor = baseColor || biomeData.waterColor;
   const effectiveFoamColor = foamColor || biomeData.foamColor;
   const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
   const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0);
+  const effectiveFlowMap = heightmapFlow?.flowMapTexture || flowMap;
+
+  useEffect(() => {
+    heightmapFlowRef.current = heightmapFlow;
+    if (heightmapFlow?.initWebGPU) {
+      heightmapFlow.initWebGPU().catch((error) => {
+        console.warn('[FlowingWater] Heightmap flow WebGPU init failed; using DataTexture fallback', error);
+      });
+    }
+  }, [heightmapFlow]);
 
   // Shared noise helpers for GLSL
   const noiseHelpers = useMemo(() => `
@@ -70,6 +82,7 @@ export default function FlowingWater({
 
   // Built-in fallback fragment shader with all upgraded features
   const builtinFragmentShader = useMemo(() => `
+    // WGSL migration: uniforms → @group(0) @binding(N) var<uniform> blocks
     uniform float time;
     uniform float flowSpeed;
     uniform vec3 waterColor;
@@ -83,6 +96,9 @@ export default function FlowingWater({
     uniform vec3 vehiclePos;
     uniform vec3 vehicleVelocity;
     uniform sampler2D flowMap;
+    // Canyon god-ray uniforms — WGSL migration: pass via uniform buffer
+    uniform vec3 sunDir;
+    uniform float godRayStrength;
 
     varying vec2 vUv;
     varying vec3 vWorldPos;
@@ -95,22 +111,32 @@ export default function FlowingWater({
     ${noiseHelpers}
 
     void main() {
+      // WGSL migration: flowBias sample → textureSample(flowMapTex, sampler, vUv*0.5).rg
       vec2 flowBias = vec2(sin(time * 0.1), -1.0);
       #ifdef USE_FLOWMAP
         flowBias = texture2D(flowMap, vUv * 0.5).rg * 2.0 - 1.0;
       #endif
 
-      // Flow-driven foam streaks on stretched UVs
+      // Rapids: foam streaks scroll faster proportional to flowSpeed.
+      // At flowSpeed ≥ RAPIDS_FOAM_SPEED_MULT the scroll rate doubles for churning whitewater.
+      float rapidsBoost = max(1.0, flowSpeed / RAPIDS_FOAM_SPEED_MULT);
       vec2 streakUv = vWorldPos.xz * vec2(0.15, 0.6) * FLOW_INFLUENCE
-                    + vec2(time * flowSpeed * 0.05 * flowBias.x, -time * flowSpeed * 0.15);
+                    + vec2(time * flowSpeed * 0.05 * flowBias.x * rapidsBoost,
+                           -time * flowSpeed * 0.15 * rapidsBoost);
       float streakNoise = fbm3(streakUv);
-      float foamStreak = smoothstep(0.45, 0.75, streakNoise) * FOAM_INTENSITY;
+      // Second streak layer offset in time — adds turbulent overlap at high speed
+      vec2 streakUv2 = vWorldPos.xz * vec2(0.12, 0.5) * FLOW_INFLUENCE
+                     + vec2(-time * flowSpeed * 0.04 * rapidsBoost, -time * flowSpeed * 0.19 * rapidsBoost);
+      float streakNoise2 = fbm2(streakUv2);
+      float foamStreak = smoothstep(0.45, 0.75, max(streakNoise, streakNoise2 * 0.85)) * FOAM_INTENSITY;
 
       // Sharpened edge foam using EDGE_FOAM_WIDTH and normal test
       float edgeDist = abs(vUv.x - 0.5);
       float edgeFoam = smoothstep(EDGE_FOAM_WIDTH, 0.0, edgeDist) * (0.6 + streakNoise * 0.4);
       float normalSteep = 1.0 - abs(dot(normalize(vNormal), vec3(0.0, 1.0, 0.0)));
       edgeFoam *= (1.0 + normalSteep * 3.5);
+      // In rapids, edge foam band widens
+      edgeFoam *= (1.0 + (rapidsBoost - 1.0) * 0.5);
 
       // Shader-only vehicle wake
       vec3 toVehicle = vehiclePos - vWorldPos;
@@ -129,6 +155,7 @@ export default function FlowingWater({
       depthFactor = clamp(depthFactor, 0.0, 1.0);
       vec3 baseWater = mix(waterColor, deepColor, depthFactor * (0.45 + vCurrent * 0.18));
 
+      // WGSL migration: dot/pow ops map directly to WGSL built-ins
       float fresnel = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewDir)), 0.0, 1.0), 2.5);
       fresnel *= (1.0 + wetness * WETNESS_REFLECT_BOOST);
 
@@ -151,6 +178,22 @@ export default function FlowingWater({
       // Bioluminescence glow for glacial at night
       float bioGlow = bioLuminescence * (1.0 - depthFactor) * (0.6 + sin(time * 3.0) * 0.4);
       col += vec3(0.3, 0.8, 1.0) * bioGlow * 1.8;
+
+      // Canyon god rays: animated FBM light shafts projected along sunDir onto water surface.
+      // Simulates narrow canyon opening letting in shifting columns of sunlight.
+      // WGSL migration: replace fbm2 calls with textureSample(shaftLUT, shaftSampler, uv)
+      if (godRayStrength > 0.001) {
+        vec2 sunXZ = normalize(sunDir.xz + vec2(0.001));
+        vec2 shaftUv1 = vWorldPos.xz * 0.055 + sunXZ * time * 0.018;
+        vec2 shaftUv2 = vWorldPos.xz * 0.038 - sunXZ * time * 0.012 + vec2(0.63, 1.17);
+        float s1 = smoothstep(0.52, 0.84, fbm2(shaftUv1));
+        float s2 = smoothstep(0.48, 0.80, fbm2(shaftUv2));
+        // Multiply two shifted layers — creates tight discrete beams rather than broad glow
+        float shaftPattern = s1 * s2;
+        // Fade toward water edges so shafts read as coming from canyon top-center
+        float lateralFade = 1.0 - smoothstep(0.0, 10.0, abs(vWorldPos.x));
+        col += vec3(1.0, 0.93, 0.72) * shaftPattern * godRayStrength * lateralFade * (1.0 - foam * 0.65);
+      }
 
       // Darken at night
       float nightDim = 1.0 - (timeOfDay * 0.4);
@@ -206,7 +249,8 @@ export default function FlowingWater({
         EDGE_FOAM_WIDTH: WATER_SHADER.EDGE_FOAM_WIDTH.toFixed(3),
         WETNESS_DARKEN: WATER_SHADER.WETNESS_DARKEN.toFixed(3),
         WETNESS_REFLECT_BOOST: WATER_SHADER.WETNESS_REFLECT_BOOST.toFixed(3),
-        ...(flowMap ? { USE_FLOWMAP: '1' } : {}),
+        RAPIDS_FOAM_SPEED_MULT: WATER_SHADER.RAPIDS_FOAM_SPEED_MULT.toFixed(3),
+        ...(effectiveFlowMap ? { USE_FLOWMAP: '1' } : {}),
       };
 
       const mat = new THREE.ShaderMaterial({
@@ -227,8 +271,11 @@ export default function FlowingWater({
           wetness: { value: wetness },
           vehiclePos: { value: vehiclePos ? new THREE.Vector3().copy(vehiclePos) : new THREE.Vector3(99999.0, 99999.0, 99999.0) },
           vehicleVelocity: { value: vehicleVelocity ? new THREE.Vector3().copy(vehicleVelocity) : new THREE.Vector3() },
-          flowMap: { value: flowMap || null },
+          flowMap: { value: effectiveFlowMap || null },
           cameraHeight: { value: 0.0 },
+          // God-ray uniforms — driven by biome in useFrame
+          sunDir: { value: new THREE.Vector3(0.3, 1.0, -0.4).normalize() },
+          godRayStrength: { value: 0.0 },
         },
         vertexShader: `
           uniform float time;
@@ -286,15 +333,19 @@ export default function FlowingWater({
             #endif
 
             float d = getDisplacement(pos.xz, flowBias);
-            float dX = getDisplacement(pos.xz + vec2(0.05, 0.0), flowBias);
-            float dZ = getDisplacement(pos.xz + vec2(0.0, 0.05), flowBias);
-
             pos.y += d;
 
-            vec3 p0 = vec3(pos.x, d, pos.z);
-            vec3 p1 = vec3(pos.x + 0.05, dX, pos.z);
-            vec3 p2 = vec3(pos.x, dZ, pos.z + 0.05);
-            vec3 newNormal = normalize(cross(p1 - p0, p2 - p0));
+            // 4-sample cross gradient for more accurate normals (reduces faceting in Fresnel)
+            // WGSL migration: identical math, just dpdx/dpdy built-ins can replace this
+            const float h = 0.08;
+            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias);
+            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias);
+            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias);
+            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias);
+            // Central-difference tangents give a smoother, analytically correct normal
+            vec3 tangentX = normalize(vec3(2.0 * h, dR - dL, 0.0));
+            vec3 tangentZ = normalize(vec3(0.0, dU - dD, 2.0 * h));
+            vec3 newNormal = normalize(cross(tangentZ, tangentX));
 
             vNormal = normalMatrix * newNormal;
             vViewDir = normalize(cameraPosition - worldPos);
@@ -320,6 +371,7 @@ export default function FlowingWater({
       mat.userData.waterFlowField = {
         waterLevel: WATER_LEVEL,
         flowSpeed: effectiveFlowSpeed,
+        heightmapFlow,
         sampleAt: (position, time) => {
           const x = position.x * 0.35;
           const z = position.z * 0.28 - time * effectiveFlowSpeed * 0.15;
@@ -348,13 +400,19 @@ export default function FlowingWater({
     effectiveEdgeColor,
     effectiveFlowSpeed,
     fragmentShader,
-    flowMap,
+    effectiveFlowMap,
+    heightmapFlow,
     noiseHelpers,
   ]);
 
   // Update uniforms with strong guards
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const mat = materialRef.current;
+    if (heightmapFlowRef.current?.update) {
+      heightmapFlowRef.current.update(delta, state.clock.elapsedTime, {
+        flowStrength: effectiveFlowSpeed,
+      });
+    }
     if (!mat?.uniforms?.time) return;
 
     mat.uniforms.time.value = state.clock.elapsedTime;
@@ -376,7 +434,7 @@ export default function FlowingWater({
       mat.uniforms.wetness.value = wetness;
     }
     if (mat.uniforms.flowMap) {
-      mat.uniforms.flowMap.value = flowMap || null;
+      mat.uniforms.flowMap.value = heightmapFlowRef.current?.flowMapTexture || flowMap || null;
     }
 
     if (mat.uniforms.bioLuminescence) {
@@ -388,6 +446,16 @@ export default function FlowingWater({
     }
     if (mat.uniforms.cameraHeight) {
       mat.uniforms.cameraHeight.value = camera.position.y;
+    }
+    // God rays: slot canyon biome gets shafts; other biomes fade out over ~1s
+    if (mat.uniforms.godRayStrength) {
+      const targetGodRay = (biome === 'canyon') ? 0.18 : 0.0;
+      mat.uniforms.godRayStrength.value += (targetGodRay - mat.uniforms.godRayStrength.value) * Math.min(1, delta * 1.5);
+    }
+    // Animate sun azimuth slowly for shifting canyon light feel
+    if (mat.uniforms.sunDir) {
+      const t = state.clock.elapsedTime * 0.04;
+      mat.uniforms.sunDir.value.set(Math.sin(t) * 0.4, 1.0, Math.cos(t) * 0.3 - 0.4).normalize();
     }
   });
 

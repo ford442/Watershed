@@ -1,0 +1,9 @@
+[    1350ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=60dc0256:20102
+[    1598ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/watershed_native.js:0
+[    1883ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=60dc0256:2516
+[    2344ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://localhost:3000/src/components/TrackManager.jsx?t=1780695921620:205
+[   74795ms] [WARNING] [Experience] Sustained slow frames detected: 1174ms (1 FPS). Target is <17ms (60 FPS). @ http://localhost:3000/src/Experience.jsx?t=1780695921620:219
+[  134508ms] [WARNING] [LODManager] High memory usage: 345MB. Target is <300MB. Consider lowering quality or restarting. @ http://localhost:3000/src/systems/LODManager.tsx:122
+[  197333ms] [WARNING] [LODManager] Sustained low FPS detected: 1 (threshold 50). Downgrading quality: high → medium @ http://localhost:3000/src/systems/LODManager.tsx:137
+[  201973ms] [WARNING] [App] Pointer lock failed: WrongDocumentError: The root document of this element is not valid for pointer lock. @ http://localhost:3000/src/App.tsx?t=1780695921620:120
+[  202952ms] [ERROR] THREE.PointerLockControls: Unable to use Pointer Lock API @ http://localhost:3000/node_modules/.vite/deps/chunk-75NQT3GZ.js?v=60dc0256:37737

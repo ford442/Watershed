@@ -52,7 +52,7 @@ The title has a double meaning:
 
 | File | Purpose |
 |------|---------|
-| `vite.config.ts` | Primary build config. Dev server on port 3000, `base: './'`, manual chunks for `vendor-three`, `vendor-post`, `vendor-rapier`. Output dir: `build/`. |
+| `vite.config.ts` | Primary build config. Dev server on port 3000, `base: './'`, manual chunks for `vendor-three`, `vendor-webgpu`, `vendor-post`, `vendor-rapier`. Output dir: `build/`. |
 | `tsconfig.json` | TypeScript config: `target: es5`, `jsx: react-jsx`, `strict: true`, includes `src/`. |
 | `package.json` | Dependencies and npm scripts. Uses pnpm. |
 | `webpack.config.js` | **Legacy/unused.** Leftover from earlier toolchain; Vite is the active bundler. |
@@ -655,6 +655,33 @@ playwright install chromium
 
 ---
 
+## Renderer Toggle (WebGPU / WebGL2 Fallback)
+
+Watershed supports a toggleable renderer for visual debugging while sharing the same game state, level data, camera, and entities. See **[`docs/RENDERER.md`](./docs/RENDERER.md)** for full details.
+
+| Mode | URL | Renderer |
+|------|-----|----------|
+| Default | `?renderer=webgpu` | `WebGPURenderer` (lazy-loaded from `three/webgpu`; auto-falls back to WebGL2 when WebGPU unavailable) |
+| Debug / GLSL parity | `?renderer=webgl` | `WebGLRenderer` — use for shader tuning, post-processing, and environments |
+
+**Debug helpers** (enable with `?debug=1`):
+
+- **Renderer buttons** in `DebugPanel` — switch WebGPU ↔ WebGL2 (remounts Canvas via `key`)
+- **Wireframe overlay** — `?wireframe=1` or press `G` (`WireframeDebug.tsx`)
+- **Physics colliders** — `?physicsDebug=1` or press `F` (`PhysicsDebugOverlay.tsx`)
+
+**Key files:**
+
+| File | Purpose |
+|------|---------|
+| `src/rendering/createRenderer.ts` | Async R3F `gl` factory |
+| `src/rendering/rendererConfig.ts` | URL param + localStorage preference |
+| `src/rendering/rendererState.ts` | Active backend diagnostics store |
+| `src/App.tsx` | Canvas wiring, keyboard shortcuts |
+| `src/components/DebugPanel.tsx` | Debug UI controls |
+
+---
+
 ## Browser Requirements
 
 - **Chrome 90+** (recommended)
@@ -692,7 +719,10 @@ Planned for:
 
 | File | Purpose |
 |------|---------|
-| `src/App.tsx` | Canvas configuration, error boundaries, progress tracking |
+| `src/App.tsx` | Canvas configuration, renderer toggle, error boundaries, progress tracking |
+| `src/rendering/createRenderer.ts` | WebGPU/WebGL2 renderer factory for R3F Canvas |
+| `src/rendering/WireframeDebug.tsx` | Scene-wide wireframe debug overlay |
+| `docs/RENDERER.md` | Renderer toggle documentation |
 | `src/Experience.jsx` | Scene composition, keyboard controls setup, lighting, biome/LOD providers |
 | `src/components/Player.jsx` | First-person controls, camera, physics |
 | `src/components/TrackManager.jsx` | Procedural generation orchestration |
@@ -755,3 +785,46 @@ Additional documentation files in the project:
 3. **Pointer lock requires user gesture** — Browser security prevents programmatic pointer lock.
 4. **CORS for textures** — Ensure textures load from same origin or proper CORS headers.
 5. **External level loading** — `?levelUrl=` parameter loads arbitrary URLs; validate origins if deploying in untrusted environments.
+
+---
+
+## Cursor Cloud specific instructions
+
+This is a single-service frontend project — there is no backend to run. The only service is the
+Vite dev server. Dependencies are installed by the startup update script (`pnpm install`), so you
+normally do not need to install anything manually.
+
+### Services / commands (see `package.json` scripts for the source of truth)
+
+| Task | Command | Notes |
+|------|---------|-------|
+| Dev server | `pnpm dev` (alias `pnpm start`) | Vite on port `3000`. Long-running; start it in a tmux/background session. |
+| Tests | `CI=true pnpm test` | `pnpm test` alone runs `react-scripts test` in **interactive watch mode** (blocks waiting for TTY input). Always prefix `CI=true` for a one-shot, non-interactive run. |
+| Production build | `pnpm build` | See WASM note below. Output goes to `build/`. |
+| Lint | No standalone script | ESLint config (`react-app`) lives in `package.json` and runs as part of `react-scripts test`/CRA tooling; there is no `pnpm lint`. |
+
+### Non-obvious caveats
+
+- **Emscripten WASM build is optional.** `pnpm build` first runs `build:wasm` / `build:wasm:threads`
+  (`emscripten/build.sh`). When Emscripten is not installed (the default cloud VM), that script prints
+  `Emscripten not found — skipping WASM compile` and exits 0, then the Vite build proceeds normally and
+  succeeds. You do **not** need Emscripten just to build or run the app.
+- **No backend / Reach API.** The Reach system fetches from `/api/reaches/...` (see
+  `REACH_API_BASE` in `src/constants/game.ts`). There is no server in this repo, so those requests
+  404 and the game falls back to pure procedural generation. This is expected; do not try to stand up
+  a backend.
+- **Renderer fallback.** Default renderer is WebGPU (`?renderer=webgpu`) which auto-falls back to
+  WebGL2 when WebGPU is unavailable (headless/most cloud browsers). Use `?renderer=webgl` to force WebGL2.
+
+### Known blocking runtime bug (pre-existing on `main`, as of env setup)
+
+The React UI boots and the start menu renders, but the 3D `<Canvas>` (mounted immediately in
+`src/App.tsx`, not gated behind "Start") **crashes on load** with
+`ReferenceError: isSlotCanyon is not defined`, caught by the top-level `ErrorBoundary`. Root cause is
+a botched refactor of `src/components/TrackSegment.jsx` into `src/components/TrackSegment/`: the hooks
+reference variables their callers never pass —
+`src/components/TrackSegment/hooks/usePlacementData.js` uses `isSlotCanyon`/`biomeProfile`/`flowSpeed`
+that `index.jsx` does not forward, and `src/components/TrackSegment/hooks/useGeometries.js` references
+undefined `canyonWidth`/`biome`/`isGlacier`/`SHADERS`. There is also a stale duplicate flat file
+`src/components/TrackSegment.jsx` with broken relative imports. This is application code (not an
+environment problem); fix it in a dedicated change, not as part of environment setup.

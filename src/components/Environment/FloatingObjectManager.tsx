@@ -3,15 +3,15 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { InstancedRigidBodies } from '@react-three/rapier';
 import {
-  calculateBuoyancyForce,
   calculateDragForce,
   calculateFlowForce,
 } from '../../physics/WaterForces';
+import { getWasm, WatershedNativeModule } from '../../systems/WatershedWasm';
 import {
   registerFloatingPlatform,
   unregisterFloatingPlatform,
 } from '../../systems/FloatingObjectRegistry';
-import { WATER_LEVEL } from '../../constants/game';
+import { WATER_LEVEL, WATER_DENSITY, GRAVITY } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
 
 // =============================================================================
@@ -45,6 +45,12 @@ const FORCE_CONFIG = {
   turbulence: 0.2,
   turbulenceFreq: 1.5,
 };
+
+// =============================================================================
+// WASM lazy-load
+// =============================================================================
+let wasmModule: WatershedNativeModule | null = null;
+getWasm().then(m => { wasmModule = m; }).catch(() => {}); // best-effort, not required
 
 // =============================================================================
 // COMPONENT
@@ -218,13 +224,14 @@ export default function FloatingObjectManager({
         const submergedRatio = THREE.MathUtils.clamp(submergedDepth / 0.5, 0, 1);
 
         if (submergedRatio > 0) {
-          const buoyancy = calculateBuoyancyForce(
-            submergedRatio,
-            FLOATING_OBJECT.DEBRIS_VOLUME,
-            1000,
-            9.80665
-          );
-          api.applyImpulse({ x: 0, y: buoyancy * dt * PHYSICS_SCALE, z: 0 }, true);
+          const submergedVolume = FLOATING_OBJECT.DEBRIS_VOLUME * submergedRatio;
+          const buoyancyForce = wasmModule
+            ? wasmModule.computeBuoyancy(submergedVolume, WATER_DENSITY, GRAVITY)
+            : submergedVolume * WATER_DENSITY * GRAVITY; // JS fallback
+
+          if (isFinite(buoyancyForce)) {
+            api.applyImpulse({ x: 0, y: buoyancyForce * dt * PHYSICS_SCALE, z: 0 }, true);
+          }
         }
 
         // === DRAG ===

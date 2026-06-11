@@ -1,0 +1,2 @@
+[     501ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/src/components/TrackSegment.jsx?t=1780695767903:0
+[   27643ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/src/components/TrackSegment.jsx?t=1780695800298:0

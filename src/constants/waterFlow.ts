@@ -8,6 +8,21 @@ export const WATER_FLOW_CONFIG = {
   /** Base multiplier for the downstream tangent force */
   baseFlowMultiplier: 2.4,
 
+  /** Raft surface area used by the segment current impulse */
+  raftSubmergedArea: 2.8,
+
+  /** Fraction of current impulse retained after water sheds off the raft */
+  raftDragShedding: 0.9,
+
+  /** Segment flowSpeed at which current should feel neutral */
+  raftNeutralFlowSpeed: 1.0,
+
+  /** Extra carry in fast rapids and waterfall approaches */
+  raftRapidsCarryMultiplier: 1.35,
+
+  /** Mild resistance in ponds and splash pools */
+  raftPondSlowMultiplier: 0.62,
+
   /** Extra multiplier in rapids sections (flowSpeed > 1.3) */
   rapidsMultiplier: 1.55,
 

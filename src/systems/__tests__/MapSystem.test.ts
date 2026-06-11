@@ -84,6 +84,22 @@ describe('JSONMapManager — meander_to_waterfall', () => {
     expect(cfg.flowSpeed).toBeCloseTo(1.6);
   });
 
+  it('segment 14 (waterfall) has gravityMultiplier of 1.45', () => {
+    const cfg = manager.getChunkConfig(14);
+    expect(cfg.gravityMultiplier).toBeCloseTo(1.45);
+  });
+
+  it('segment 15 (splash pool) resets gravityMultiplier to 1.0', () => {
+    const cfg = manager.getChunkConfig(15);
+    expect(cfg.gravityMultiplier).toBeCloseTo(1.0);
+  });
+
+  it('segments without explicit physics.gravityMultiplier return undefined', () => {
+    // Segment 0 has no physics config in the JSON
+    const cfg = manager.getChunkConfig(0);
+    expect(cfg.gravityMultiplier).toBeUndefined();
+  });
+
   // -------------------------------------------------------------------------
   // Segment 15 — Splash Pool / biome transition
   // -------------------------------------------------------------------------

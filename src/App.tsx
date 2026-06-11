@@ -8,6 +8,12 @@ import DebugPanel from './components/DebugPanel';
 import { useDebugStages } from './debug/debugStages';
 import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
+import {
+  createGameRenderer,
+  parseRendererPreference,
+  persistRendererPreference,
+  type RendererPreference,
+} from './rendering';
 import './style.css';
 
 // ---------------------------------------------------------------------------
@@ -34,13 +40,38 @@ const FallbackScene = () => {
   );
 };
 
+const isTypingTarget = (target: EventTarget | null) => {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  const role = el.getAttribute('role');
+  return (
+    el.isContentEditable ||
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    role === 'textbox' ||
+    role === 'searchbox'
+  );
+};
+
 function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
-  const [physicsDebug, setPhysicsDebug] = useState(() =>
-    window.location.search.includes('physicsDebug=1')
+  const [physicsDebug, setPhysicsDebug] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('physicsDebug');
+    return raw === '1' || raw === 'true';
+  });
+  const [rendererPreference, setRendererPreference] = useState<RendererPreference>(() =>
+    parseRendererPreference()
   );
+  const [wireframeDebug, setWireframeDebug] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('wireframe');
+    return raw === '1' || raw === 'true';
+  });
 
   // Dynamic import for editor — keeps LevelEditor out of the production bundle.
   const [EditorComponent, setEditorComponent] =
@@ -61,6 +92,54 @@ function App() {
       }
     });
   }, [debug.runStage]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (physicsDebug) {
+      params.set('physicsDebug', '1');
+    } else {
+      params.delete('physicsDebug');
+    }
+    const next = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  }, [physicsDebug]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (wireframeDebug) {
+      params.set('wireframe', '1');
+    } else {
+      params.delete('wireframe');
+    }
+    const next = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  }, [wireframeDebug]);
+
+  const handleRendererPreferenceChange = useCallback((next: RendererPreference) => {
+    persistRendererPreference(next);
+    setRendererPreference(next);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.repeat) return;
+      if (e.code === 'KeyF') {
+        setPhysicsDebug((prev) => !prev);
+      }
+      if (e.code === 'KeyG') {
+        setWireframeDebug((prev) => !prev);
+      }
+      if (e.code === 'KeyP') {
+        const snapshot = (window as any).__watershedPhysicsDebug;
+        if (snapshot) {
+          console.info('[PhysicsDebug] Snapshot', snapshot);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Detect pointer lock loss as pause trigger
   useEffect(() => {
@@ -138,10 +217,14 @@ function App() {
       ) : (
         <>
           <Canvas
-            gl={{
-              powerPreference: 'high-performance',
-              antialias: true,
-            }}
+            key={`renderer-${rendererPreference}`}
+            gl={async (props) =>
+              createGameRenderer(props, {
+                preference: rendererPreference,
+                antialias: true,
+                powerPreference: 'high-performance',
+              })
+            }
             camera={{ position: [0, 10, -10], fov: 75 }}
             shadows
             frameloop="always"
@@ -150,7 +233,12 @@ function App() {
             }}
           >
             <React.Suspense fallback={null}>
-              <Experience debug={debug} physicsDebug={physicsDebug} />
+              <Experience
+                debug={debug}
+                physicsDebug={physicsDebug}
+                rendererPreference={rendererPreference}
+                wireframeDebug={wireframeDebug}
+              />
             </React.Suspense>
           </Canvas>
 
@@ -168,7 +256,15 @@ function App() {
               onQuit={handleQuit}
             />
           )}
-          <DebugPanel debug={debug} physicsDebug={physicsDebug} onTogglePhysicsDebug={setPhysicsDebug} />
+          <DebugPanel
+            debug={debug}
+            physicsDebug={physicsDebug}
+            onTogglePhysicsDebug={setPhysicsDebug}
+            rendererPreference={rendererPreference}
+            onRendererPreferenceChange={handleRendererPreferenceChange}
+            wireframeDebug={wireframeDebug}
+            onToggleWireframeDebug={setWireframeDebug}
+          />
         </>
       )}
     </ErrorBoundary>

@@ -41,14 +41,25 @@ export interface GameState {
   currentBiome: string;
   isPaused: boolean;
   distanceTraveled: number;
+  distance: number;
+  score: number;
+  multiplier: number;
+  topSpeed: number;
+  comboLabel: string;
+  highScore: number;
   currentSegmentIndex: number;
   isWipeout: boolean;
+  isJourneyComplete: boolean;
   isDodging: boolean;
   respawnSegmentIndex: number;
   waterfallGravityMultiplier: number;
   /** Spawn points indexed by segment id */
   spawnPoints: Record<number, SpawnPoint>;
   settings: GameSettings;
+  /** Sprint stamina for the runner (0.0–1.0). Single source of truth — never expose via vehicleRef. */
+  sprintStamina: number;
+  /** Active vehicle type — gates HUD elements and post-processing. */
+  vehicleType: 'runner' | 'raft';
 }
 
 export interface GameActions {
@@ -57,13 +68,23 @@ export interface GameActions {
   setCurrentBiome: (biome: string) => void;
   setIsPaused: (paused: boolean) => void;
   setDistanceTraveled: (distance: number) => void;
+  setDistance: (distance: number) => void;
+  setScore: (score: number) => void;
+  setMultiplier: (multiplier: number) => void;
+  setTopSpeed: (topSpeed: number) => void;
+  setComboLabel: (comboLabel: string) => void;
+  setHighScore: (highScore: number) => void;
   setCurrentSegmentIndex: (index: number) => void;
   setIsWipeout: (wipeout: boolean) => void;
+  setJourneyComplete: () => void;
   setIsDodging: (dodging: boolean) => void;
   setRespawnSegmentIndex: (index: number) => void;
   setWaterfallGravityMultiplier: (multiplier: number) => void;
   setSpawnPoint: (segmentIndex: number, point: SpawnPoint) => void;
   setSettings: (settings: Partial<GameSettings>) => void;
+  /** Clamps value to [0, 1] before writing. Call from useFrame via getState() — never via the hook. */
+  setSprintStamina: (v: number) => void;
+  setVehicleType: (type: 'runner' | 'raft') => void;
   resetGameState: () => void;
 }
 
@@ -78,19 +99,39 @@ const DEFAULT_SETTINGS: GameSettings = {
   soundVolume: 0.8,
 };
 
+const readStoredHighScore = (): number => {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = window.localStorage.getItem('watershed_highscore');
+    const parsed = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
 const INITIAL_STATE: GameState = {
   playerPosition: { x: 0, y: -4, z: -10 },
   currentSpeed: 0,
-  currentBiome: 'summer',
+  currentBiome: 'canyonSummer',
   isPaused: false,
   distanceTraveled: 0,
+  distance: 0,
+  score: 0,
+  multiplier: 1,
+  topSpeed: 0,
+  comboLabel: '',
+  highScore: readStoredHighScore(),
   currentSegmentIndex: 0,
   isWipeout: false,
+  isJourneyComplete: false,
   isDodging: false,
   respawnSegmentIndex: 0,
   waterfallGravityMultiplier: 1,
   spawnPoints: {},
   settings: { ...DEFAULT_SETTINGS },
+  sprintStamina: 1.0,
+  vehicleType: 'runner',
 };
 
 // =============================================================================
@@ -111,11 +152,41 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setIsPaused: (paused) => set({ isPaused: paused }),
 
-  setDistanceTraveled: (distance) => set({ distanceTraveled: distance }),
+  setDistanceTraveled: (distance) => set({ distanceTraveled: distance, distance }),
+
+  setDistance: (distance) => set({ distance }),
+
+  setScore: (score) => set({ score }),
+
+  setMultiplier: (multiplier) => set({ multiplier }),
+
+  setTopSpeed: (topSpeed) => set({ topSpeed }),
+
+  setComboLabel: (comboLabel) => set({ comboLabel }),
+
+  setHighScore: (highScore) => set({ highScore }),
 
   setCurrentSegmentIndex: (index) => set({ currentSegmentIndex: index }),
 
   setIsWipeout: (wipeout) => set({ isWipeout: wipeout }),
+
+  setJourneyComplete: () =>
+    set((state) => {
+      const finalScore = state.score;
+      const newHighScore = Math.max(state.highScore, finalScore);
+      if (newHighScore > state.highScore && typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('watershed_highscore', String(newHighScore));
+        } catch {
+          // ignore storage errors
+        }
+      }
+      return {
+        isJourneyComplete: true,
+        isPaused: true,
+        highScore: newHighScore,
+      };
+    }),
 
   setIsDodging: (dodging) => set({ isDodging: dodging }),
 
@@ -134,7 +205,16 @@ export const useGameStore = create<GameStore>((set) => ({
       settings: { ...state.settings, ...partial },
     })),
 
-  resetGameState: () => set({ ...INITIAL_STATE, settings: { ...DEFAULT_SETTINGS } }),
+  setSprintStamina: (v) => set({ sprintStamina: Math.min(1, Math.max(0, v)) }),
+
+  setVehicleType: (type) => set({ vehicleType: type }),
+
+  resetGameState: () =>
+    set({
+      ...INITIAL_STATE,
+      highScore: readStoredHighScore(),
+      settings: { ...DEFAULT_SETTINGS },
+    }),
 }));
 
 // =============================================================================
@@ -149,6 +229,21 @@ export function usePlayerPosition() {
 /** Subscribe only to speed — useful for speedometer HUD */
 export function usePlayerSpeed() {
   return useGameStore((s) => s.currentSpeed);
+}
+
+/** Subscribe only to score */
+export function useScore() {
+  return useGameStore((s) => s.score);
+}
+
+/** Subscribe only to multiplier */
+export function useMultiplier() {
+  return useGameStore((s) => s.multiplier);
+}
+
+/** Subscribe only to combo label */
+export function useComboLabel() {
+  return useGameStore((s) => s.comboLabel);
 }
 
 /** Subscribe only to biome — useful for biome badge */
@@ -174,6 +269,14 @@ export function useGameSettings() {
 /** Subscribe only to quality preset */
 export function useQualityPreset(): QualityPreset {
   return useGameStore((s) => s.settings.quality);
+}
+
+/**
+ * Subscribe to the current gravity multiplier.
+ * Useful for camera-shake intensity scaling, VFX, and particle behaviour.
+ */
+export function useGravityMultiplier(): number {
+  return useGameStore((s) => s.waterfallGravityMultiplier);
 }
 
 // =============================================================================

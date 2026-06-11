@@ -72,17 +72,31 @@ const BIOME_ADAPTATIONS = {
     soilColor: new THREE.Color('#3a4038'),
     weatheringIntensity: 0.7,
   },
+  slotCanyon: {
+    mossColor: new THREE.Color('#5a3a1a'),       // dark iron-oxide staining
+    soilColor: new THREE.Color('#c87840'),       // warm sandstone rim
+    weatheringIntensity: 1.0,
+    bedrockColor: new THREE.Color('#5c2a1a'),    // deep red-brown bedrock
+    sedimentaryColor: new THREE.Color('#a85a30'),// warm orange sandstone
+    graniteColor: new THREE.Color('#d4884c'),    // light tan-orange band
+  },
 };
 
 const VERTEX_SHADER = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+  varying vec3 vColor;
   varying float vHeight;
   varying vec3 vViewDir;
+  varying float vMossMask;
+  varying float vHighWaterMask;
   
   uniform float time;
   uniform float wallHeight;
+  attribute vec3 color;
+  attribute float mossMask;
+  attribute float highWaterMask;
   
   // Simplex noise for surface variation
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -116,6 +130,7 @@ const VERTEX_SHADER = `
   
   void main() {
     vUv = uv;
+    vColor = color;
     vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
     vNormal = normalize(normalMatrix * normal);
     
@@ -131,6 +146,8 @@ const VERTEX_SHADER = `
     // View direction for parallax
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vViewDir = normalize(cameraPosition - worldPos.xyz);
+    vMossMask = mossMask;
+    vHighWaterMask = highWaterMask;
     
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
@@ -140,8 +157,11 @@ const FRAGMENT_SHADER = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+  varying vec3 vColor;
   varying float vHeight;
   varying vec3 vViewDir;
+  varying float vMossMask;
+  varying float vHighWaterMask;
   
   uniform float time;
   uniform vec3 bedrockColor;
@@ -154,6 +174,10 @@ const FRAGMENT_SHADER = `
   uniform float weatheringIntensity;
   uniform vec3 sunDirection;
   uniform float parallaxScale;
+  uniform float flowSpeed;
+  uniform float mossCoverage;
+  uniform float highWaterMark;
+  uniform float highWaterIntensity;
   
   // Noise functions
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -187,32 +211,47 @@ const FRAGMENT_SHADER = `
   float weatheringStreaks(vec2 uv, float h) {
     float streaks = 0.0;
     float freq = 0.3;
+    float flowAnim = time * (0.03 + flowSpeed * 0.02);
     
     // Vertical water channels
     for(int i = 0; i < 3; i++) {
       float offset = float(i) * 10.0;
-      float x = uv.x * freq + sin(uv.y * 0.5 + offset) * 0.3;
-      float streak = smoothstep(0.6, 0.9, noise(vec2(x * 3.0, uv.y * 0.2)));
+      float x = uv.x * freq + sin(uv.y * 0.5 + offset + flowAnim) * 0.3;
+      float streak = smoothstep(0.6, 0.9, noise(vec2(x * 3.0, uv.y * 0.2 - flowAnim)));
       streaks += streak * 0.3;
     }
     
-    // Height-based intensity (more weathering lower down)
-    streaks *= (1.0 - h) * weatheringIntensity;
+    // Height-based intensity band with adjustable high-water mark
+    float lowerBand = max(0.0, highWaterMark - 0.14);
+    float upperBand = min(1.0, highWaterMark + 0.26);
+    float streakBand = 1.0 - smoothstep(lowerBand, upperBand, h);
+    streaks *= streakBand * weatheringIntensity;
     
     return streaks;
   }
+
+  float seepStreaks(vec3 worldPos, vec2 uv, float h) {
+    float crackSeed = noise(vec2(worldPos.x * 0.08 + worldPos.z * 0.04, worldPos.z * 0.09));
+    float anchor = smoothstep(0.62, 0.92, crackSeed);
+    float verticalRun = smoothstep(0.2, 0.95, 1.0 - h);
+    float waviness = noise(vec2(worldPos.x * 0.12, worldPos.y * 0.08 - time * 0.04));
+    float stripe = smoothstep(0.58, 0.86, waviness);
+    return anchor * verticalRun * stripe * weatheringIntensity;
+  }
   
-  // Moss coverage (more on top, noise-based)
-  float mossCoverage(float h, vec2 uv) {
+  // Moss coverage (authored mask + procedural variation)
+  float computeMossCoverage(float h, vec2 uv, float authoredMask) {
     float baseCoverage = smoothstep(0.8, 0.95, h);
     float noiseVar = fbm(uv * 2.0 + time * 0.01) * 0.4 + 0.6;
-    return baseCoverage * noiseVar * weatheringIntensity;
+    float proceduralCoverage = baseCoverage * noiseVar * weatheringIntensity;
+    float authoredCoverage = authoredMask * mossCoverage;
+    return max(proceduralCoverage * 0.4, authoredCoverage);
   }
   
   // Crack patterns for realism
   float crackPattern(vec2 uv) {
     float cracks = 0.0;
-    float n = fbm(uv * 4.0);
+    float n = fbm(uv * 4.0 + vec2(time * 0.02 + flowSpeed * 0.03, -time * 0.01));
     cracks = smoothstep(0.7, 0.75, n) * 0.3;
     return cracks;
   }
@@ -240,7 +279,7 @@ const FRAGMENT_SHADER = `
     layerMix = smoothstep(0.7, 0.85, h) - smoothstep(0.85, 0.95, h);
     
     // Layer 4: Moss (85-95%)
-    float mossAmt = mossCoverage(h, uv);
+    float mossAmt = computeMossCoverage(h, uv, vMossMask);
     color = mix(color, mossColor, mossAmt * 0.7);
     
     // Layer 5: Soil (95-100%)
@@ -250,10 +289,22 @@ const FRAGMENT_SHADER = `
     // Apply weathering streaks
     float streaks = weatheringStreaks(uv, h);
     color = mix(color, color * 0.7, streaks); // Darken where water runs
+
+    // Dark seep channels and mineral staining below ledges/cracks
+    float seeps = seepStreaks(vWorldPos, uv, h);
+    vec3 mineralTint = mix(vec3(0.28, 0.22, 0.16), vec3(0.48, 0.34, 0.22), smoothstep(0.1, 0.75, h));
+    color = mix(color, color * 0.58, seeps * 0.55);
+    color = mix(color, mineralTint, seeps * 0.16);
     
     // Apply crack patterns (darker in cracks)
     float cracks = crackPattern(uv);
     color = mix(color, color * 0.6, cracks);
+
+    // Authored flood scar band from geometry (historical high-water line)
+    float floodStripe = clamp(vHighWaterMask * highWaterIntensity, 0.0, 1.0);
+    float luma = dot(color, vec3(0.299, 0.587, 0.114));
+    vec3 floodDesat = mix(color, vec3(luma), floodStripe * 0.55);
+    color = mix(color, floodDesat * 0.82, floodStripe);
     
     // Surface detail noise
     float detailNoise = fbm(uv * 8.0) * 0.1 - 0.05;
@@ -272,6 +323,9 @@ const FRAGMENT_SHADER = `
     vec3 rimColor = vec3(0.3, 0.25, 0.2) * rim * 0.3;
     color += rimColor;
     
+    // Blend authored geological vertex color bands with procedural strata
+    color *= vColor;
+
     // Output
     gl_FragColor = vec4(color, 1.0);
     
@@ -287,26 +341,38 @@ export function createCanyonMaterial(options = {}) {
   const {
     biome = 'summer',
     wallHeight = 15,
-    parallaxScale = 0.02,
+    parallaxScale,
     time = 0,
+    flowSpeed = 1.0,
+    mossCoverage = 0.85,
+    highWaterMark = 0.15,
+    highWaterIntensity = 0.35,
+    strata = {},
   } = options;
 
   const biomeAdapt = BIOME_ADAPTATIONS[biome] || BIOME_ADAPTATIONS.summer;
+  const defaultParallaxScale = biome === 'slotCanyon' ? 0.025 : 0.012;
+  const clampedHighWaterMark = Math.min(0.4, Math.max(0.0, highWaterMark));
+  const clampedMossCoverage = Math.max(0.0, mossCoverage);
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: time },
       wallHeight: { value: wallHeight },
-      bedrockColor: { value: GEOLOGICAL_LAYERS.bedrock.color },
-      sedimentaryColor: { value: GEOLOGICAL_LAYERS.sedimentary.color },
-      graniteColor: { value: GEOLOGICAL_LAYERS.granite.color },
+      bedrockColor: { value: biomeAdapt.bedrockColor || GEOLOGICAL_LAYERS.bedrock.color },
+      sedimentaryColor: { value: biomeAdapt.sedimentaryColor || GEOLOGICAL_LAYERS.sedimentary.color },
+      graniteColor: { value: biomeAdapt.graniteColor || GEOLOGICAL_LAYERS.granite.color },
       mossColor: { value: biomeAdapt.mossColor },
       soilColor: { value: biomeAdapt.soilColor },
       roughness: { value: 0.75 },
       metalness: { value: 0.08 },
       weatheringIntensity: { value: biomeAdapt.weatheringIntensity },
       sunDirection: { value: new THREE.Vector3(0.5, 1, 0.3).normalize() },
-      parallaxScale: { value: parallaxScale },
+      parallaxScale: { value: parallaxScale ?? defaultParallaxScale },
+      flowSpeed: { value: flowSpeed },
+      mossCoverage: { value: clampedMossCoverage },
+      highWaterMark: { value: clampedHighWaterMark },
+      highWaterIntensity: { value: Math.max(0.0, highWaterIntensity) },
     },
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
@@ -338,8 +404,25 @@ export function createFallbackCanyonMaterial(options = {}) {
  * Update material uniforms (call in useFrame)
  */
 export function updateCanyonMaterial(material, deltaTime, elapsedTime) {
-  if (material && material.uniforms) {
-    material.uniforms.time.value = elapsedTime;
+  if (!material || !material.uniforms) return;
+
+  material.uniforms.time.value = elapsedTime;
+
+  const options = (typeof deltaTime === 'object' && deltaTime !== null)
+    ? deltaTime
+    : {};
+
+  if (options.flowSpeed !== undefined && material.uniforms.flowSpeed) {
+    material.uniforms.flowSpeed.value = options.flowSpeed;
+  }
+  if (options.mossCoverage !== undefined && material.uniforms.mossCoverage) {
+    material.uniforms.mossCoverage.value = Math.max(0.0, options.mossCoverage);
+  }
+  if (options.highWaterMark !== undefined && material.uniforms.highWaterMark) {
+    material.uniforms.highWaterMark.value = Math.min(0.4, Math.max(0.0, options.highWaterMark));
+  }
+  if (options.highWaterIntensity !== undefined && material.uniforms.highWaterIntensity) {
+    material.uniforms.highWaterIntensity.value = Math.max(0.0, options.highWaterIntensity);
   }
 }
 

@@ -15,12 +15,14 @@
 
 set -euo pipefail
 
+source /content/buil*/emsdk/emsdk_env.sh
+
+
 if ! command -v emcc &>/dev/null; then
   echo "[build:wasm] Emscripten not found — skipping WASM compile (source emsdk_env.sh first)."
   exit 0
 fi
 
-source /content/buil*/emsdk/emsdk_env.sh
 
 # ---------------------------------------------------------------------------
 # Parse flags
@@ -51,34 +53,49 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_JS="$REPO_ROOT/public/watershed_native.js"
 
 # ---------------------------------------------------------------------------
-# Locate and source the Emscripten environment
+# Locate and source the Emscripten environment (portable across hosts)
 # ---------------------------------------------------------------------------
 CANDIDATES=(
     "$REPO_ROOT/emsdk/emsdk_env.sh"
     "$HOME/emsdk/emsdk_env.sh"
     "/usr/local/emsdk/emsdk_env.sh"
     "/opt/emsdk/emsdk_env.sh"
+    "/root/emsdk/emsdk_env.sh"
 )
 
-FOUND=0
 for f in "${CANDIDATES[@]}"; do
     if [ -f "$f" ]; then
         # shellcheck source=/dev/null
         source "$f"
-        FOUND=1
         break
     fi
 done
 
-if [ "$FOUND" -eq 0 ]; then
-    if command -v em++ &>/dev/null; then
-        echo "Using em++ already in PATH."
-    else
-        echo "ERROR: Emscripten SDK not found."
-        echo "Install from: https://emscripten.org/docs/getting_started/downloads.html"
-        echo "Searched: ${CANDIDATES[*]}"
-        exit 1
-    fi
+if ! command -v emcc &>/dev/null; then
+  echo "[build:wasm] Emscripten not found — skipping WASM compile (run 'source emsdk_env.sh' first)."
+  exit 0
+fi
+
+
+# ---------------------------------------------------------------------------
+# Parse flags
+# ---------------------------------------------------------------------------
+USE_THREADS=0
+DEBUG_BUILD=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --threads) USE_THREADS=1 ;;
+        --debug)   DEBUG_BUILD=1  ;;
+    esac
+done
+
+if [ "$USE_THREADS" -eq 1 ]; then
+    echo "Building watershed_native.js (multi-threaded)..."
+elif [ "$DEBUG_BUILD" -eq 1 ]; then
+    echo "Building watershed_native.js (debug, single-threaded)..."
+else
+    echo "Building watershed_native.js (single-threaded, optimised)..."
 fi
 
 # ---------------------------------------------------------------------------
@@ -150,10 +167,13 @@ if [ -f "$OUTPUT_JS" ]; then
         echo "  WASM size: ${WASM_SIZE} bytes"
     fi
     if [ "$USE_THREADS" -eq 1 ]; then
-        if [ -f "$REPO_ROOT/public/watershed_native.worker.js" ]; then
-            echo "  → $REPO_ROOT/public/watershed_native.worker.js (pthread worker shim)"
+        WORKER_JS="$REPO_ROOT/public/watershed_native.worker.js"
+        if [ -f "$WORKER_JS" ]; then
+            echo "  → $WORKER_JS (pthread worker shim)"
+        elif grep -q "PThread\|postMessage\|new Blob" "$OUTPUT_JS" 2>/dev/null; then
+            echo "  pthread worker shim embedded in watershed_native.js (modern Emscripten)"
         else
-            echo "  WARNING: watershed_native.worker.js not found — pthread worker shim may be missing."
+            echo "  WARNING: pthread worker shim not found in output — check Emscripten version"
         fi
     fi
 else

@@ -1,16 +1,6 @@
-/**
- * VolumetricGodRays - Ray-marching volumetric light shafts through mist
- * 
- * Implements screen-space ray marching for realistic god ray effects
- * that interact with scene mist density.
- */
-
-import React, { useRef, useMemo } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
-import { useBiome } from '../BiomeSystem';
 
-const VERTEX_SHADER = `
+export const GOD_RAYS_VERTEX_SHADER = `
   varying vec2 vUv;
   void main() {
     vUv = uv;
@@ -18,10 +8,10 @@ const VERTEX_SHADER = `
   }
 `;
 
-const FRAGMENT_SHADER = `
+export const GOD_RAYS_FRAGMENT_SHADER = `
   uniform sampler2D tDiffuse;
   uniform sampler2D tDepth;
-  uniform vec3 sunPosition;
+  uniform vec2 sunScreenPosition;
   uniform vec3 sunColor;
   uniform float intensity;
   uniform float rayLength;
@@ -29,12 +19,11 @@ const FRAGMENT_SHADER = `
   uniform float decay;
   uniform float exposure;
   uniform float density;
-  uniform vec2 resolution;
+  uniform float wallOcclusion;
   uniform float time;
   
   varying vec2 vUv;
   
-  // Noise for mist variation
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
     vec2 i = floor(p); vec2 f = fract(p);
@@ -45,161 +34,69 @@ const FRAGMENT_SHADER = `
   
   void main() {
     vec2 uv = vUv;
-    
-    // Get sun position in screen space
-    vec2 sunScreen = sunPosition.xy / sunPosition.z * 0.5 + 0.5;
-    sunScreen.y = 1.0 - sunScreen.y; // Flip Y
-    
-    // Calculate ray direction from pixel to sun
-    vec2 delta = sunScreen - uv;
+    vec2 delta = sunScreenPosition - uv;
     float dist = length(delta);
-    vec2 direction = normalize(delta);
-    
-    // Early exit if sun is behind camera
-    if (sunPosition.z < 0.0 || dist < 0.01) {
+    if (dist < 0.0005) {
       gl_FragColor = vec4(0.0);
       return;
     }
+    vec2 direction = normalize(delta);
     
-    // Ray marching
+    float currentDepth = texture2D(tDepth, uv).r;
     float illumination = 0.0;
-    float sampleDist = rayLength / float(samples);
+    float sampleDist = rayLength / float(max(samples, 1));
     vec2 samplePos = uv;
     float sampleWeight = 1.0;
     
     for (int i = 0; i < 64; i++) {
       if (i >= samples) break;
-      
       samplePos += direction * sampleDist;
+      if (samplePos.x < 0.0 || samplePos.x > 1.0 || samplePos.y < 0.0 || samplePos.y > 1.0) break;
       
-      // Check bounds
-      if (samplePos.x < 0.0 || samplePos.x > 1.0 || 
-          samplePos.y < 0.0 || samplePos.y > 1.0) break;
-      
-      // Sample scene color
       vec4 sceneColor = texture2D(tDiffuse, samplePos);
-      
-      // Add mist density variation
-      float mistNoise = noise(samplePos * 3.0 + time * 0.1) * 0.5 + 0.5;
-      float mistDensity = density * mistNoise;
-      
-      // Accumulate light (brighter areas contribute more)
       float luminance = dot(sceneColor.rgb, vec3(0.299, 0.587, 0.114));
-      illumination += luminance * sampleWeight * mistDensity;
+      float sampleDepth = texture2D(tDepth, samplePos).r;
+      float mistNoise = noise(samplePos * 8.0 + vec2(time * 0.02, -time * 0.01)) * 0.5 + 0.5;
       
-      // Decay sample weight
+      float depthDelta = abs(sampleDepth - currentDepth);
+      float edgeAttenuation = 1.0 - smoothstep(0.008, 0.085, depthDelta) * wallOcclusion;
+      float mistDensity = density * mistNoise * edgeAttenuation;
+      
+      illumination += luminance * sampleWeight * mistDensity;
       sampleWeight *= decay;
     }
     
-    // Apply exposure
-    illumination *= exposure / float(samples);
+    illumination *= exposure / float(max(samples, 1));
     illumination = clamp(illumination, 0.0, 1.0);
-    
-    // Fade based on distance from sun
-    float sunFade = smoothstep(1.0, 0.2, dist);
-    
-    // Output god ray color
+    float sunFade = smoothstep(1.0, 0.15, dist);
     vec3 rayColor = sunColor * illumination * intensity * sunFade;
+    
     gl_FragColor = vec4(rayColor, illumination * intensity);
   }
 `;
 
-interface VolumetricGodRaysProps {
-  intensity?: number;
-  rayLength?: number;
-  samples?: number;
-  decay?: number;
-  exposure?: number;
-  sunColor?: string;
-}
-
-/**
- * VolumetricGodRays - Post-processing effect for light shafts
- */
-export const VolumetricGodRays: React.FC<VolumetricGodRaysProps> = ({
-  intensity = 0.8,
-  rayLength = 0.5,
-  samples = 32,
-  decay = 0.95,
-  exposure = 0.3,
-  sunColor = '#fff4e0',
-}) => {
-  const { camera, scene, size } = useThree();
-  const { currentBiome } = useBiome();
-  const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const sunRef = useRef<THREE.DirectionalLight>(null);
-  
-  // Find sun in scene
-  React.useEffect(() => {
-    scene.traverse((obj) => {
-      if (obj instanceof THREE.DirectionalLight && obj.intensity > 0.8) {
-        sunRef.current = obj;
-      }
-    });
-  }, [scene]);
-  
-  // Create render target for scene capture
-  const renderTarget = useMemo(() => {
-    return new THREE.WebGLRenderTarget(size.width, size.height, {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-    });
-  }, [size]);
-  
-  // Create shader material
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        tDiffuse: { value: null },
-        tDepth: { value: null },
-        sunPosition: { value: new THREE.Vector3() },
-        sunColor: { value: new THREE.Color(sunColor) },
-        intensity: { value: intensity * currentBiome.sunShaftIntensity },
-        rayLength: { value: rayLength },
-        samples: { value: samples },
-        decay: { value: decay },
-        exposure: { value: exposure },
-        density: { value: currentBiome.mistDensity },
-        resolution: { value: new THREE.Vector2(size.width, size.height) },
-        time: { value: 0 },
-      },
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-    });
-  }, [sunColor, intensity, rayLength, samples, decay, exposure, currentBiome, size]);
-  
-  // Update uniforms each frame
-  useFrame((state) => {
-    if (!materialRef.current || !sunRef.current) return;
-    
-    const sun = sunRef.current;
-    const mat = materialRef.current;
-    
-    // Calculate sun position in view space
-    const sunPos = sun.position.clone();
-    sunPos.project(camera);
-    mat.uniforms.sunPosition.value.set(sunPos.x, sunPos.y, sunPos.z);
-    
-    // Update time for animation
-    mat.uniforms.time.value = state.clock.elapsedTime;
-    
-    // Update biome-dependent values
-    mat.uniforms.intensity.value = intensity * currentBiome.sunShaftIntensity;
-    mat.uniforms.density.value = currentBiome.mistDensity;
-  });
-  
-  return (
-    <mesh material={material} ref={(mesh) => {
-      if (mesh) materialRef.current = mesh.material as THREE.ShaderMaterial;
-    }}>
-      <planeGeometry args={[2, 2]} />
-    </mesh>
-  );
+export const GOD_RAYS_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    tDepth: { value: null as THREE.Texture | null },
+    sunScreenPosition: { value: new THREE.Vector2(0.5, 0.2) },
+    sunColor: { value: new THREE.Color('#fff4e0') },
+    intensity: { value: 0.6 },
+    rayLength: { value: 0.4 },
+    samples: { value: 16 },
+    decay: { value: 0.95 },
+    exposure: { value: 0.18 },
+    density: { value: 0.96 },
+    wallOcclusion: { value: 0.9 },
+    time: { value: 0 },
+  },
+  vertexShader: GOD_RAYS_VERTEX_SHADER,
+  fragmentShader: GOD_RAYS_FRAGMENT_SHADER,
 };
 
-export default VolumetricGodRays;
+export const getGodRaySunColor = (timeOfDay: number) => {
+  const midday = Math.max(0, 1.0 - Math.abs(timeOfDay - 0.5) * 2.0);
+  const goldenHour = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
+  return new THREE.Color('#fff6e3').lerp(new THREE.Color('#ffcc88'), goldenHour * 0.8 + (1.0 - midday) * 0.15);
+};
+

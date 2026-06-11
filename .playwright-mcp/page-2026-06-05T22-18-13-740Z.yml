@@ -1,0 +1,100 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic: Flow Forecast
+            - generic:
+              - generic: Flooded
+            - generic: Peak flow 1.48x, 24 risky hours in the next 24h
+            - generic:
+              - generic:
+                - generic: H0
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H1
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H2
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H3
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H4
+                - generic: Flooded
+                - generic: 1.36x
+              - generic:
+                - generic: H5
+                - generic: Flooded
+                - generic: 1.44x
+        - generic:
+          - generic: CANYON SUMMER
+          - generic:
+            - generic: 1 m/s
+            - generic: 0.01 km
+            - generic: Score
+            - generic: "1"
+          - generic:
+            - text: "Best: 40"
+            - generic: Top 1 m/s
+          - generic:
+            - generic: SPRINT
+        - generic:
+          - generic: 🔊 Audio Diagnostics
+          - generic:
+            - generic: Context
+            - generic: running
+          - generic:
+            - generic: Buffers
+            - generic: 4 / 28
+          - generic:
+            - generic: Phase
+            - generic: meander
+          - generic:
+            - generic: "Crossfade:"
+            - generic:
+              - generic: Low
+              - generic: "0.50"
+            - generic:
+              - generic: Mid
+              - generic: "0.00"
+            - generic:
+              - generic: High
+              - generic: "0.40"
+            - generic:
+              - generic: Rapids
+              - generic: "0.00"
+            - generic:
+              - generic: Whoosh
+              - generic: "0.00"
+            - generic:
+              - generic: Transition
+              - generic: "0.00"
+            - generic:
+              - generic: Canyon Reverb
+              - generic: "OFF"
+    - generic [ref=e28]:
+      - generic:
+        - generic: "FPS: 60"
+        - generic: "Quality: high"
+        - generic: "Particles: 700"
+        - generic: "Reflections: ON"
+        - generic: "God Rays: ON"
+        - generic: "Memory: 196MB"
+  - generic [ref=e30]:
+    - heading "PAUSED" [level=1] [ref=e31]
+    - generic [ref=e32]:
+      - button "Resume Game" [active] [ref=e33] [cursor=pointer]:
+        - text: RESUME
+        - generic [ref=e34]: ENTER
+      - button "Restart Game" [ref=e35] [cursor=pointer]:
+        - text: RESTART
+        - generic [ref=e36]: R
+      - button "Open Settings" [ref=e37] [cursor=pointer]: SETTINGS
+      - button "Quit to Main Menu" [ref=e38] [cursor=pointer]: QUIT

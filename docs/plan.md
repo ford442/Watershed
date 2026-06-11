@@ -102,15 +102,31 @@ Prototype Todo: Implement a minimal `FlowForecast` simulation, wire forecasted s
 ## Phase 3: Polish & Content
 
 ### Visual Effects
-- [ ] Implement water spray particles
-- [ ] Add motion blur for speed sensation
-- [ ] Create environmental fog/atmosphere
-- [ ] Design lighting for canyon ambiance
+- [x] Implement water spray particles (RaftVehicle shed particles, wake VFX)
+- [x] Add motion blur for speed sensation (FOV increase + speed-dependent camera dynamics)
+- [x] Create environmental fog/atmosphere (canyon mist, volumetric god rays)
+- [x] Design lighting for canyon ambiance (slot canyon god rays, sun shafts)
+- [x] Canyon wall material with triplanar mapping and geological layering
+
+### Movement & Controls (Q2 Epic #178 ✅)
+- [x] Paddle input & thrust system with impulse-based steering
+- [x] Drift mechanics (driftFlowScale, driftTorqueScale, lateralRetention)
+- [x] Wall riding / wall boost in canyon sections
+- [x] Dynamic camera: velocity lag, lean into turns, speed-dependent FOV
+- [x] Collision response: elastic bounce, spin, temporary stun
+- [x] Bank angle detection via raycasting for canyon wall assist
+
+### Canyon Content (Q2 Epic #178 ✅)
+- [x] Slot Canyon biome (segments 20–22) with photorealistic walls
+- [x] Rock debris with physics colliders (instanced boulders)
+- [x] God ray light shafts from narrow opening above
+- [x] Enhanced mist/spray particles localized to canyon
+- [x] Floating debris (physics-enabled driftwood)
 
 ### Audio
-- [ ] Rushing water ambiance
+- [x] Rushing water ambiance (segment-aware via useSegmentAudio)
 - [ ] Speed-based wind sounds
-- [ ] Collision/impact effects
+- [x] Collision/impact effects
 
 ---
 

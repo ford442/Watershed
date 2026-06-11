@@ -47,7 +47,17 @@ export const PHYSICS = {
 } as const;
 
 export const PLAYER = {
+    /**
+     * @deprecated  Movement speed is controlled by VEHICLE_TUNING.baseSpeed in
+     *              src/constants/vehicleTuning.ts.  This value is not read by
+     *              RunnerVehicle and is retained only for reference.
+     */
     SPEED: 5,
+    /**
+     * @deprecated  Jump force is controlled by VEHICLE_TUNING.jumpForce in
+     *              src/constants/vehicleTuning.ts.  This value is not read by
+     *              RunnerVehicle and is retained only for reference.
+     */
     JUMP_FORCE: 5,
     CAMERA_HEIGHT: 0.8,
 } as const;
@@ -83,10 +93,44 @@ export const RAFT = {
     DANGER_THRESHOLD_DEG: 70,
     DANGER_TIME: 1.0,
     RESET_HEIGHT: 2,
-    PADDLE_THRUST_FORCE: 12,
-    PADDLE_TORQUE_FORCE: 8,
+    PADDLE_THRUST_FORCE: 14,
+    PADDLE_TORQUE_FORCE: 10,
     PADDLE_FOAM_PARTICLE_COUNT: 8,
     PADDLE_FOAM_LIFETIME: 0.6,
+
+    // Stamina system for paddle strokes
+    STAMINA_MAX: 100,
+    STAMINA_COST_PER_STROKE: 15,
+    STAMINA_REGEN_RATE: 20,        // per second
+    STAMINA_REGEN_DELAY: 0.4,      // seconds before regen starts after stroke
+    STAMINA_EXHAUSTED_THRESHOLD: 5, // below this, strokes are disabled
+    STAMINA_POWER_CURVE: 0.7,      // at 50% stamina, force = 50%^0.7 ≈ 62% (feels forgiving)
+
+    // Brake (broadside drag)
+    BRAKE_DRAG_MULTIPLIER: 4.0,    // multiplier on drag when braking
+    BRAKE_ANGULAR_DRAG: 6.0,       // extra angular damping when braking
+
+    // Collision response
+    COLLISION_BOUNCE_FORCE: 10,    // elastic bounce impulse scale (increased for satisfying wall pops)
+    COLLISION_SPIN_FORCE: 4,       // spin applied on impact
+    COLLISION_STUN_DURATION: 0.25, // base stun duration — scales up with impact force
+    COLLISION_STUN_MAX: 0.6,       // cap on stun duration regardless of impact force
+    COLLISION_WALL_FORWARD_RETAIN: 0.7, // fraction of forward momentum kept on lateral wall hit
+
+    // Forward bias after a paddle stroke: keeps some momentum for this many seconds
+    PADDLE_FORWARD_BIAS_DURATION: 0.35,
+    PADDLE_FORWARD_BIAS_FORCE: 3.5,
+
+    // Camera dynamics
+    CAMERA_BASE_OFFSET_Y: 2.5,
+    CAMERA_BASE_OFFSET_Z: 5.0,
+    CAMERA_VELOCITY_LAG: 0.15,     // how much camera trails behind velocity
+    CAMERA_LEAN_FACTOR: 0.3,       // lean into turns
+    CAMERA_LERP_SPEED: 0.08,
+    CAMERA_FOV_BASE: 75,
+    CAMERA_FOV_SPEED_SCALE: 8,     // FOV increase at max speed
+    CAMERA_FOV_MAX: 90,
+    CAMERA_FOV_LERP: 0.05,
 } as const;
 
 export const SHADERS = {
@@ -126,6 +170,10 @@ export const WATER_SHADER = {
     EDGE_FOAM_WIDTH: 0.28,
     WETNESS_DARKEN: 0.25,
     WETNESS_REFLECT_BOOST: 0.3,
+    // Rapids foam scrolls faster once flowSpeed pushes past this multiplier threshold
+    RAPIDS_FOAM_SPEED_MULT: 1.8,
+    // Canyon god-ray shaft strength (0 = off, 1 = full blinding shafts)
+    GOD_RAY_STRENGTH: 0.0,
 } as const;
 
 export const FLOW_FORECAST_STATES = {

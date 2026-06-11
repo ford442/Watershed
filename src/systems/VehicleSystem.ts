@@ -476,16 +476,16 @@ export class RaftVehicle extends BaseVehicle {
       // Raft Cd ≈ 0.9 (bluff body in water)
       // Formula: F_drag = 0.5 * ρ * v² * Cd * A
       // At 5 m/s: F ≈ 0.5 * 1000 * 25 * 0.9 * 1.5 ≈ 16,875 N (substantial!)
-      // Game-tuned value: 2.5 (provides good "water feel" while maintaining playability)
+      // Game-tuned value: 2.0 (reduced from 2.5 for more responsive arcade feel)
       // Note: This is higher than runner (0.35) to simulate water vs air resistance
-      linearDamping: 2.5,
-      angularDamping: 3.0,
+      linearDamping: 2.0,
+      angularDamping: 2.5,
       friction: 0.1,
-      restitution: 0.3,
-      baseSpeed: 16,
-      sprintMultiplier: 1.2, // Paddle boost
+      restitution: 0.4, // Slightly bouncier for elastic collision response
+      baseSpeed: 18, // Increased for more kinetic feel
+      sprintMultiplier: 1.3, // Paddle boost
       jumpForce: 0, // Rafts can't jump
-      flowResponsiveness: 4, // Follows flow more closely
+      flowResponsiveness: 5, // Follows flow more closely, stronger current pull
     };
   }
   
@@ -507,8 +507,8 @@ export class RaftVehicle extends BaseVehicle {
       z: turbulence * delta
     }, true);
     
-    // Raft steering (slower than runner)
-    const steerSpeed = this.config.baseSpeed * 0.3;
+    // Raft steering (responsive lateral movement for canyon navigation)
+    const steerSpeed = this.config.baseSpeed * 0.4;
     
     if (this.input.moveX !== 0) {
       this.body.applyImpulse({
@@ -517,21 +517,21 @@ export class RaftVehicle extends BaseVehicle {
         z: 0
       }, true);
       
-      // Add rotation when steering
+      // Add rotation when steering (increased for tighter turns)
       this.body.applyTorqueImpulse({
         x: 0,
-        y: -this.input.moveX * 2 * delta,
+        y: -this.input.moveX * 3 * delta,
         z: 0
       }, true);
     }
     
-    // Cap speed to prevent going supersonic
+    // Cap speed to prevent going supersonic (raised for higher speed gameplay)
     const vel = this.body.linvel();
-    if (Math.abs(vel.z) > 15) {
+    if (Math.abs(vel.z) > 20) {
       this.body.setLinvel({
         x: vel.x,
         y: vel.y,
-        z: 15 * Math.sign(vel.z)
+        z: 20 * Math.sign(vel.z)
       }, true);
     }
   }

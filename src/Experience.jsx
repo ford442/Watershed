@@ -6,7 +6,7 @@ import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
 import ForecastHUD from "./components/ForecastHUD";
 import GameHUD from "./components/GameHUD";
-import { WATER_LEVEL, PLAYER_SPAWN } from "./constants/game";
+import { WATER_LEVEL, PLAYER_SPAWN, PHYSICS } from "./constants/game";
 
 // Vehicle system
 import RunnerVehicle from "./vehicles/RunnerVehicle";
@@ -16,9 +16,10 @@ import RaftVehicle from "./vehicles/RaftVehicle";
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
 import ReachManager from "./systems/ReachManager";
 import TrackManager from "./components/TrackManager";
+import { GLACIER_START_INDEX } from "./maps/meander_to_waterfall";
 
 // NEW: Visual enhancement systems
-import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials } from "./systems/BiomeSystem";
+import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials, useBiome } from "./systems/BiomeSystem";
 import { LODProvider, PerformanceMonitor, useLOD } from "./systems/LODManager";
 import { SplashSystem } from "./systems/SplashSystem";
 import WaterReflection from "./components/WaterReflection";
@@ -27,9 +28,14 @@ import { PostProcessingPipeline } from "./components/PostProcessingPipeline";
 import { useCameraShake } from "./hooks/useCameraShake";
 import { useSegmentAudio } from "./hooks/useSegmentAudio";
 import { initAudio, getAudioManager } from "./systems/AudioSystem";
+import { SunPositionProvider, useSunPosition } from "./systems/SunPositionSystem";
 import AudioDiagnosticsOverlay from "./components/AudioDiagnosticsOverlay";
+import PhysicsDebugOverlay from "./components/PhysicsDebugOverlay";
 import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
+import RendererDiagnosticsMonitor from "./rendering/RendererDiagnosticsMonitor";
+import WireframeDebug from "./rendering/WireframeDebug";
+import { tickScoreSystem, awardDodgeBonus, awardWaterfallBonus, resetScoreSystemState } from "./systems/ScoreSystem";
 
 // Goal 1: Zustand game state
 import { useGameStore, batchFrameUpdate } from "./systems/GameState";
@@ -40,9 +46,9 @@ const DAM_RELEASE_SCHEDULE = [
   { hour: 14, release: 0.12 },
 ];
 
-// Base lighting configuration
+// Base lighting configuration (keyed by canonical BiomePalette id)
 const BIOME_LIGHTING = {
-  summer: {
+  canyonSummer: {
     ambientIntensity: 0.40,
     hemiSky: '#9ad0f0',
     hemiGround: '#3a3828',
@@ -53,7 +59,7 @@ const BIOME_LIGHTING = {
     fillColor: '#a0c4e8',
     fillIntensity: 0.22,
   },
-  autumn: {
+  canyonAutumn: {
     ambientIntensity: 0.32,
     hemiSky: '#e8c070',
     hemiGround: '#382818',
@@ -83,28 +89,47 @@ const NOOP_DEBUG = {
  * InnerExperience - The actual game scene
  * Wrapped in providers for context access
  */
-const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
-  const [vehicleType, setVehicleType] = useState('runner');
+const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDebug = false }) => {
+  const [vehicleType, setVehicleTypeLocal] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('vehicle') === 'raft' ? 'raft' : 'runner';
+  });
   const vehicleRef = useRef(null);
   const { camera } = useThree();
 
   // Check for debug flag in URL for physics visualization
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const physicsDebugEnabled = debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
 
   // Goal 1: Zustand game state selectors
   const biome = useGameStore((s) => s.currentBiome);
-  const setBiome = useGameStore((s) => s.setCurrentBiome);
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   const isWipeout = useGameStore((s) => s.isWipeout);
   const setIsWipeout = useGameStore((s) => s.setIsWipeout);
   const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
   const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
   const setWaterfallGravityMultiplier = useGameStore((s) => s.setWaterfallGravityMultiplier);
-  const setCurrentSpeed = useGameStore((s) => s.setCurrentSpeed);
   const setDistanceTraveled = useGameStore((s) => s.setDistanceTraveled);
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
   const spawnPoints = useGameStore((s) => s.spawnPoints);
   const respawnSegmentIndex = useGameStore((s) => s.respawnSegmentIndex);
+  const setVehicleTypeStore = useGameStore((s) => s.setVehicleType);
+
+  // Keep Zustand vehicleType in sync with local state so HUD/vignette can gate on it
+  const setVehicleType = (type) => {
+    setVehicleTypeLocal(type);
+    setVehicleTypeStore(type);
+  };
+
+  useEffect(() => {
+    setVehicleTypeStore(vehicleType);
+  }, [setVehicleTypeStore, vehicleType]);
+
+  // BiomeProvider is the single authoritative source of biome state.
+  // Calling setBiomeContext normalizes legacy IDs, triggers smooth palette
+  // interpolation, and mirrors the canonical id to the Zustand store.
+  const { setBiome: setBiomeContext } = useBiome();
+  const { sunWorldPosition } = useSunPosition();
 
   // Initialize Three.js audio listener on camera
   useEffect(() => {
@@ -139,6 +164,12 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   // Goal 3: Segment-aware ambient audio
   useSegmentAudio(currentSegmentIndex);
 
+  const awardedWaterfallSegmentsRef = useRef(new Set());
+
+  useEffect(() => {
+    resetScoreSystemState();
+  }, []);
+
   // Track segment enter events for respawn bookkeeping
   useEffect(() => {
     if (!debug.isStageEnabled('stateManagement')) return;
@@ -149,12 +180,28 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         setCurrentSegmentIndex(index);
         setRespawnSegmentIndex(index);
 
-        // Waterfall gravity shift for segment 14
-        if (index === 14) {
+        // Prefer per-segment gravityMultiplier from level data (JSON-loaded levels).
+        // Fall back to hardcoded values for procedurally-generated segments that
+        // don't carry an explicit physics.gravityMultiplier.
+        if (e.detail?.gravityMultiplier !== undefined) {
+          setWaterfallGravityMultiplier(e.detail.gravityMultiplier);
+        } else if (index === 14) {
+          // Waterfall gravity shift (procedural / default map)
           setWaterfallGravityMultiplier(1.45);
         } else if (index === 15) {
           // Reset gravity after waterfall
           setWaterfallGravityMultiplier(1.0);
+        } else if (index >= 23 && index <= 29) {
+          // Steep rapids: boost gravity for high-verticalBias sections
+          setWaterfallGravityMultiplier(1.2);
+        } else if (index === 30) {
+          // Reset gravity after steep rapids
+          setWaterfallGravityMultiplier(1.0);
+        }
+
+        if ((index === 15 || index === 30) && !awardedWaterfallSegmentsRef.current.has(index)) {
+          awardedWaterfallSegmentsRef.current.add(index);
+          awardWaterfallBonus();
         }
 
         // Audio cues for the downhill-creek → waterfall progression (segments 23–30)
@@ -202,6 +249,18 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     setSpawnPoint
   ]);
 
+  useEffect(() => {
+    const handleNearMiss = () => {
+      const game = useGameStore.getState();
+      if (!game.isWipeout) {
+        awardDodgeBonus();
+      }
+    };
+
+    window.addEventListener('player-near-miss', handleNearMiss);
+    return () => window.removeEventListener('player-near-miss', handleNearMiss);
+  }, []);
+
   // Goal 5: Performance regression tracking
   const slowFrameCount = useRef(0);
   const warnedSlowFrames = useRef(false);
@@ -238,6 +297,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         if (velOk) {
           const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
           playerVelocityRef.current = speed;
+          tickScoreSystem(delta, speed);
 
         const downstream = posOk ? Math.abs(pos.z) : 0;
         const meters = Math.floor(downstream * 0.5);
@@ -247,7 +307,6 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
           useGameStore.getState().currentSegmentIndex
         );
         setDistanceTraveled(meters);
-        setCurrentSpeed(speed);
       }
 
       // Minimal wipeout detection
@@ -307,26 +366,20 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
       setIsLoadingLevel(false);
 
       if (levelState?.biome?.baseType) {
-        const biomeMap = {
-          'creek-summer': 'summer',
-          'creek-autumn': 'autumn',
-          'alpine-spring': 'summer',
-          'canyon-sunset': 'autumn',
-          'midnight-mist': 'autumn',
-        };
-        const newBiome = biomeMap[levelState.biome.baseType] || 'summer';
-        setBiome(newBiome);
+        // normalizeBiomeId (inside getBiomePalette via setBiomeContext) converts
+        // authored names like 'creek-summer' to canonical 'canyonSummer'.
+        setBiomeContext(levelState.biome.baseType);
       }
     });
-  }, [debug.runStage, setBiome]);
+  }, [debug.runStage, setBiomeContext]);
 
   // Goal 3: Biome transition with segment-aware duration
   const handleBiomeChange = useCallback((newBiome, segmentIndex) => {
     // Summer → autumn at segment 15 uses 2000ms lerp (LEVEL_DESIGN.md)
     const isTransitionSegment = segmentIndex === 15;
     const duration = isTransitionSegment ? 2.0 : undefined;
-    setBiome(newBiome, duration);
-  }, [setBiome]);
+    setBiomeContext(newBiome, duration);
+  }, [setBiomeContext]);
 
   const handleLevelError = useCallback((error) => {
     debug.setStageFailure('dataProcessing', error);
@@ -350,6 +403,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         vehicleRef.current.setTranslation(target, true);
         vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
         vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        awardedWaterfallSegmentsRef.current.clear();
+        resetScoreSystemState();
       }
     } catch (error) {
       debug.setStageFailure('stateManagement', error);
@@ -357,7 +412,24 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
   }, [debug.setStageFailure, setIsWipeout, spawnPoints, respawnSegmentIndex]);
 
   // Use lighting from biome system or fallback
-  const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.summer;
+  const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.canyonSummer;
+  const isTightCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
+  const waterfallFxIntensity =
+    currentSegmentIndex === 13 ? 0.45 :
+    currentSegmentIndex === 14 ? 1.0 :
+    currentSegmentIndex === 15 ? 0.55 :
+    currentSegmentIndex === 28 ? 0.6 :
+    currentSegmentIndex === 29 ? 1.0 :
+    currentSegmentIndex === 30 ? 0.45 : 0;
+  const isSlotCanyonLighting = biome === 'slotCanyon' || isTightCanyon;
+  const ambientIntensity = isSlotCanyonLighting ? Math.min(L.ambientIntensity, 0.18) : L.ambientIntensity;
+  const hemiIntensity = isSlotCanyonLighting ? Math.min(L.hemiIntensity, 0.25) : L.hemiIntensity;
+  const hemiSkyColor = isSlotCanyonLighting ? '#1a120a' : L.hemiSky;
+  const hemiGroundColor = isSlotCanyonLighting ? '#0a0806' : L.hemiGround;
+  const sharedSunPosition = useMemo(
+    () => [sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z],
+    [sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z]
+  );
 
   useEffect(() => {
     const trackedStages = ['physics', 'visualization', 'worldSystems', 'postProcessing', 'uiOverlay'];
@@ -368,23 +440,67 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     });
   }, [debug.isStageEnabled, debug.setStageSuccess]);
 
+  const lastWaterfallRumbleRef = useRef(-1);
+  useFrame(() => {
+    const speed = playerVelocityRef.current;
+    const rumble =
+      currentSegmentIndex === 13 ? 0.05 + Math.min(0.08, speed * 0.002) :
+      currentSegmentIndex === 14 ? 0.16 + Math.min(0.16, speed * 0.004) :
+      currentSegmentIndex === 15 ? 0.06 :
+      currentSegmentIndex === 28 ? 0.08 + Math.min(0.1, speed * 0.003) :
+      currentSegmentIndex === 29 ? 0.18 + Math.min(0.18, speed * 0.004) :
+      currentSegmentIndex === 30 ? 0.06 : 0;
+
+    if (Math.abs(rumble - lastWaterfallRumbleRef.current) > 0.01) {
+      lastWaterfallRumbleRef.current = rumble;
+      window.dispatchEvent(new CustomEvent('camera-rumble', { detail: { intensity: rumble } }));
+    }
+  });
+
+  // Speed-scaled shake intensity — read at segment-entry time
+  const entrySpeedRef = useRef(0);
+  useEffect(() => {
+    entrySpeedRef.current = playerVelocityRef.current;
+  }, [currentSegmentIndex]);
+
+  useEffect(() => {
+    const speed = entrySpeedRef.current;
+    if (currentSegmentIndex === 13) {
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.22, duration: 2.2, frequency: 14, angular: 0.012 } }));
+    } else if (currentSegmentIndex === 14) {
+      // Primary waterfall drop — scale punch with entry speed
+      const speedBonus = Math.min(0.45, speed * 0.022);
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.75 + speedBonus, duration: 2.8, frequency: 8, angular: 0.04 } }));
+      window.dispatchEvent(new CustomEvent('boost-triggered', { detail: { intensity: 1.1, duration: 1.0 } }));
+    } else if (currentSegmentIndex === 15) {
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.28, duration: 1.4, frequency: 16, angular: 0.008 } }));
+    } else if (currentSegmentIndex === 29) {
+      // Second waterfall drop (canyon rapids section)
+      const speedBonus = Math.min(0.5, speed * 0.025);
+      window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.8 + speedBonus, duration: 3.0, frequency: 8, angular: 0.045 } }));
+      window.dispatchEvent(new CustomEvent('boost-triggered', { detail: { intensity: 1.2, duration: 1.2 } }));
+    }
+  }, [currentSegmentIndex]);
+
   return (
     <>
       {/* Sky and environment */}
-      {debug.isStageEnabled('visualization') && <EnhancedSky biome={biome} />}
+      {debug.isStageEnabled('visualization') && (
+        <EnhancedSky />
+      )}
 
       {/* Lighting - biome responsive */}
       {debug.isStageEnabled('visualization') && (
         <>
-          <ambientLight intensity={L.ambientIntensity} />
+          <ambientLight intensity={ambientIntensity} />
           <hemisphereLight
-            skyColor={L.hemiSky}
-            groundColor={L.hemiGround}
-            intensity={L.hemiIntensity}
+            skyColor={hemiSkyColor}
+            groundColor={hemiGroundColor}
+            intensity={hemiIntensity}
           />
           <directionalLight
             color={L.dirColor}
-            position={L.dirPosition}
+            position={sharedSunPosition}
             intensity={L.dirIntensity}
             castShadow
             shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
@@ -414,7 +530,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
 
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
-        <Physics debug={isDebug} gravity={[0, -9.8, 0]}>
+        <Physics debug={isDebug || physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
           <PointerLockControls
             makeDefault
             lockOnClick
@@ -427,6 +543,11 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
           ) : (
             <RaftVehicle ref={vehicleRef} />
           )}
+
+          {physicsDebugEnabled && (
+            <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
+          )}
+          {wireframeDebug && <WireframeDebug enabled={wireframeDebug} />}
 
           {/* Splash system for water interactions */}
           {debug.isStageEnabled('worldSystems') && (
@@ -483,6 +604,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
               onBiomeChange={handleBiomeChange}
               raftRef={vehicleRef}
               forecastSamples={forecastSamples}
+              startIndex={GLACIER_START_INDEX}
             />
           ))}
         </Physics>
@@ -493,6 +615,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
         <PostProcessingPipeline
           quality={quality}
           vehicleRef={vehicleRef}
+          isTightCanyon={isTightCanyon}
+          waterfallIntensity={waterfallFxIntensity}
         />
       )}
 
@@ -600,7 +724,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
  *
  * Wraps the game in provider contexts for biome and LOD management
  */
-const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
+const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreference = 'webgpu', wireframeDebug = false }) => {
   // Check for debug flag in URL
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   
@@ -621,10 +745,13 @@ const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false }) => {
     >
       <LODProvider initialQuality="high" enableAdaptive={true} targetFPS={60}>
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
-          <BiomeTransition />
-          <InnerExperience debug={debug} physicsDebug={physicsDebug} />
-          <PerformanceMonitor visible={import.meta.env.DEV} />
-          {debug.debugEnabled && <PerfCheckpointMonitor />}
+          <SunPositionProvider>
+            <BiomeTransition />
+            <InnerExperience debug={debug} physicsDebug={physicsDebug} wireframeDebug={wireframeDebug} />
+            <PerformanceMonitor visible={import.meta.env.DEV} />
+            <RendererDiagnosticsMonitor preference={rendererPreference} />
+            {debug.debugEnabled && <PerfCheckpointMonitor />}
+          </SunPositionProvider>
         </BiomeProvider>
       </LODProvider>
     </KeyboardControls>

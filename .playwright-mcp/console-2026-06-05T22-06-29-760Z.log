@@ -1,0 +1,22 @@
+[     517ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:1674
+[    1043ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:1674
+[    1623ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:1674
+[    2104ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:1674
+[    2520ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:1674
+[    2979ms] [WARNING] THREE.Texture: Unable to serialize Texture. @ http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:1674
+[   11486ms] [WARNING] [AudioManager] Failed to load sound: jump TypeError: Failed to fetch
+    at http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:26006:28 @ http://localhost:3000/src/systems/AudioSystem.ts:121
+[   11488ms] [WARNING] [AudioManager] Failed to load sound: land_soft TypeError: Failed to fetch
+    at http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:26006:28 @ http://localhost:3000/src/systems/AudioSystem.ts:121
+[   11488ms] [WARNING] [AudioManager] Failed to load sound: step_rock TypeError: Failed to fetch
+    at http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:26006:28 @ http://localhost:3000/src/systems/AudioSystem.ts:121
+[   11488ms] [WARNING] [AudioManager] Failed to load sound: collide_rock TypeError: Failed to fetch
+    at http://localhost:3000/node_modules/.vite/deps/chunk-NAPKAS2G.js?v=7688e8b4:26006:28 @ http://localhost:3000/src/systems/AudioSystem.ts:121
+[   11936ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-2MPRXHHW.js?v=7688e8b4:20102
+[   12287ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/watershed_native.js:0
+[   12525ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:3000/node_modules/.vite/deps/chunk-UJK3BQQO.js?v=7688e8b4:2516
+[   12977ms] [LOG] [TrackManager] ☀️ Day mode activated @ http://localhost:3000/src/components/TrackManager.jsx:205
+[   85457ms] [WARNING] [LODManager] High memory usage: 397MB. Target is <300MB. Consider lowering quality or restarting. @ http://localhost:3000/src/systems/LODManager.tsx:122
+[   86766ms] [WARNING] [Experience] Sustained slow frames detected: 1274ms (1 FPS). Target is <17ms (60 FPS). @ http://localhost:3000/src/Experience.jsx:219
+[  217857ms] [WARNING] [LODManager] Sustained low FPS detected: 1 (threshold 50). Downgrading quality: high → medium @ http://localhost:3000/src/systems/LODManager.tsx:137
+[  372493ms] [WARNING] [LODManager] Sustained low FPS detected: 1 (threshold 50). Downgrading quality: medium → low @ http://localhost:3000/src/systems/LODManager.tsx:137

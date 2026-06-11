@@ -32,6 +32,12 @@ export const AUDIO_CONFIG = {
     splashCooldown: 0.55,
     /** Splash sound volume multiplier */
     splashVolume: 0.65,
+    /** Max whoosh loop volume at full speed */
+    whooshMaxVolume: 0.85,
+    /** Speed where whoosh starts to become audible */
+    whooshStartSpeed: 8.0,
+    /** Speed where whoosh reaches full intensity */
+    whooshFullSpeed: 28.0,
   },
 
   positional: {
@@ -56,15 +62,16 @@ export const AUDIO_CONFIG = {
 
   /** Fallback sound names from AudioSystem SOUND_LIBRARY */
   defaultAmbientTracks: {
-    low: 'ambient_water',
-    mid: 'ambient_wind',
-    high: 'ambient_canyon',
+    low: 'water_close_gurgle',
+    mid: 'water_mid_rapids',
+    high: 'water_distant_roar',
   },
 
   defaultSfxTracks: {
     rapids: 'rapids_roar',
     transition: 'rapids_roar',
     splash: 'collide_water',
+    whoosh: 'water_whoosh',
   },
 } as const;
 

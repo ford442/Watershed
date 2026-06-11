@@ -1,660 +1,142 @@
-import React, { useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react';
+import React, { useRef, useEffect, forwardRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, useRapier } from '@react-three/rapier';
 import * as THREE from 'three';
 import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
-import { getAudioManager, AudioManager } from '../systems/AudioSystem';
-import { RAFT, WATER_DENSITY, GRAVITY, HUMAN_DENSITY, PLAYER_SPAWN } from '../constants/game';
-import { calculateFlowForce, applyWaterForce } from '../physics/WaterForces';
+import { PLAYER_SPAWN } from '../constants/game';
+import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
+import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
+import type { WorkerRaftState } from '../physics/rapierWorkerProtocol';
 import { usePlayerControls } from '../hooks/usePlayerControls';
-
-// Buoyancy and water physics configuration
-// Uses scientifically accurate densities from Wolfram Alpha:
-// - Fresh water: 1000 kg/m³
-// - Human body: 1038 kg/m³ (slightly sinks)
-// - Buoyancy formula: F_b = ρ_water * V_displaced * g
-const WATER_PHYSICS = {
-  LEVEL: RAFT.WATER_LEVEL,
-  RAFT_HEIGHT: RAFT.HEIGHT,
-  RAFT_WIDTH: RAFT.WIDTH,
-  RAFT_LENGTH: RAFT.LENGTH,
-  RAFT_VOLUME: RAFT.VOLUME,
-  RAFT_MASS: RAFT.MASS,
-
-  // Scientific buoyancy: max force when fully submerged
-  // F_b = 1000 kg/m³ * 1.8 m³ * 9.8 m/s² = 17640 N
-  // Scaled for gameplay physics: 2940 N
-  BUOYANCY_MAX_FORCE: RAFT.BUOYANCY_MAX_FORCE,
-
-  // Drag coefficient for blunt body in turbulent flow (~0.47)
-  DRAG_COEFFICIENT: RAFT.DRAG_COEFFICIENT,
-
-  // Cross-sectional areas for drag calculation (m²)
-  DRAG_AREA_FRONT: RAFT.DRAG_AREA_FRONT,
-  DRAG_AREA_SIDE: RAFT.DRAFT_AREA_SIDE,
-
-  TURBULENCE_FREQ: RAFT.TURBULENCE_FREQ,
-  TURBULENCE_AMP: RAFT.TURBULENCE_AMP,
-  TIP_THRESHOLD_SPEED: RAFT.TIP_THRESHOLD_SPEED,
-  TIP_SUBMERGE_THRESHOLD: RAFT.TIP_SUBMERGE_THRESHOLD,
-  TIP_FORCE_MAGNITUDE: RAFT.TIP_FORCE_MAGNITUDE,
-  ROTATION_DAMPING: RAFT.ROTATION_DAMPING,
-};
-
-// Scientific density constants
-const DENSITY = {
-  WATER: WATER_DENSITY,      // 1000 kg/m³
-  HUMAN: HUMAN_DENSITY,      // 1038 kg/m³ (slightly negative buoyancy)
-  RAFT: RAFT.MASS / RAFT.VOLUME, // ~83 kg/m³ (highly buoyant)
-} as const;
-
-// Tipping mechanics
-const TIPPING = {
-  RIGHTING_THRESHOLD: RAFT.RIGHTING_THRESHOLD_DEG * (Math.PI / 180),
-  RIGHTING_TORQUE: RAFT.RIGHTING_TORQUE,
-  DANGER_THRESHOLD: RAFT.DANGER_THRESHOLD_DEG * (Math.PI / 180),
-  DANGER_TIME: RAFT.DANGER_TIME,
-  RESET_HEIGHT: RAFT.RESET_HEIGHT,
-};
-
-// Paddle input configuration
-const PADDLE = {
-  THRUST_FORCE: RAFT.PADDLE_THRUST_FORCE,
-  TORQUE_FORCE: RAFT.PADDLE_TORQUE_FORCE,
-  FOAM_PARTICLE_COUNT: RAFT.PADDLE_FOAM_PARTICLE_COUNT,
-  FOAM_LIFETIME: RAFT.PADDLE_FOAM_LIFETIME,
-};
-
-// Water shedding particle config
-const SHED = {
-  EMISSION_RATE: 0.08,      // seconds between particle spawns
-  MIN_SPEED: 2.0,           // min raft speed to emit
-  MIN_SUBMERGED: 0.15,      // min submerged ratio to emit
-  LIFETIME: 0.8,
-  SIZE: 0.06,
-  COUNT_LIMIT: 24,          // max active shed particles
-};
-
-interface BuoyancyState {
-  submergedRatio: number;
-  buoyancyForce: number;
-  isFloating: boolean;
-}
-
-interface TippingState {
-  rollAngle: number;
-  pitchAngle: number;
-  dangerTime: number;
-  isTipped: boolean;
-  lastSafePosition: THREE.Vector3;
-}
-
-interface PaddleState {
-  leftPaddle: boolean;
-  rightPaddle: boolean;
-  foamParticles: Array<{
-    id: number;
-    position: THREE.Vector3;
-    velocity: THREE.Vector3;
-    life: number;
-    side: 'left' | 'right';
-  }>;
-}
-
-interface ShedParticle {
-  id: number;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  life: number;
-  scale: number;
-}
-
-// Audio manager reference
-let audioManager: AudioManager | null = null;
-
-const initAudio = () => {
-  if (!audioManager) {
-    audioManager = getAudioManager();
-  }
-};
-
-const playPaddleSound = (side: 'left' | 'right') => {
-  initAudio();
-  if (!audioManager) return;
-
-  const sound = side === 'left' ? 'paddle_left' : 'paddle_right';
-  const pitch = 0.95 + Math.random() * 0.1;
-  audioManager.playSound(sound, 0.8, pitch);
-};
-
-const playRaftTipSound = () => {
-  initAudio();
-  if (!audioManager) return;
-
-  audioManager.playSound('raft_creak', 0.7, 1.0);
-  setTimeout(() => {
-    audioManager?.playSound('water_crash', 1.0, 0.9);
-  }, 100);
-};
+import { WATER_PHYSICS } from './RaftVehicle/constants';
+import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
+import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 
 const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
+  const raftMaterialRef = useRef<any>(null);
   const { camera } = useThree();
   const { world } = useRapier();
+  const useWorkerPhysics = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('raftWorker') === '1';
 
-  // Goal 2: Unified player controls hook
   const controls = usePlayerControls();
+  const raftVehicle = useRef(new RaftVehicleClass());
 
-  const vehicle = useRef(new RaftVehicleClass());
+  const workerProxyRef = useRef<RapierWorkerProxy | null>(null);
+  const workerReadyRef = useRef(false);
+  const workerStepPendingRef = useRef(false);
 
-  const buoyancyState = useRef<BuoyancyState>({
-    submergedRatio: 0,
-    buoyancyForce: 0,
-    isFloating: false,
-  });
+  const physicsState = useRaftPhysicsState();
+  const {
+    buoyancyState, tippingState, paddleState, staminaState, stunState,
+    forwardBiasState, shedParticles, collisionState, sharedPhysicsState, lastWorkerSync
+  } = physicsState;
 
-  const tippingState = useRef<TippingState>({
-    rollAngle: 0,
-    pitchAngle: 0,
-    dangerTime: 0,
-    isTipped: false,
-    lastSafePosition: new THREE.Vector3(0, 2, 0),
-  });
+  React.useImperativeHandle(forwardedRef, () => bodyRef.current);
 
-  const paddleState = useRef<PaddleState>({
-    leftPaddle: false,
-    rightPaddle: false,
-    foamParticles: [],
-  });
+  const syncBodyFromWorkerState = (body: any, workerState: WorkerRaftState | null) => {
+    if (!body || !workerState) return;
+    const [px, py, pz] = workerState.position;
+    const [rx, ry, rz, rw] = workerState.rotation;
+    const [vx, vy, vz] = workerState.velocity;
+    const [avx, avy, avz] = workerState.angularVelocity;
+    body.setTranslation({ x: px, y: py, z: pz }, true);
+    body.setRotation({ x: rx, y: ry, z: rz, w: rw }, true);
+    body.setLinvel({ x: vx, y: vy, z: vz }, true);
+    body.setAngvel({ x: avx, y: avy, z: avz }, true);
+  };
 
-  // Goal 2: Water-shedding particle trail
-  const shedParticles = useRef<ShedParticle[]>([]);
-  const nextShedId = useRef(0);
-  const shedTimer = useRef(0);
+  const applyWorkerImpulse = (impulse: THREE.Vector3) => {
+    const proxy = workerProxyRef.current;
+    if (!proxy || !workerReadyRef.current) return;
+    proxy.applyImpulse([impulse.x, impulse.y, impulse.z]).catch((error) => {
+      console.warn('[RaftVehicle] Rapier worker impulse failed', error);
+    });
+  };
 
-  const timeRef = useRef(0);
-  const nextParticleId = useRef(0);
+  const stepWorkerProxy = (body: any, delta: number) => {
+    const proxy = workerProxyRef.current;
+    if (!proxy || !workerReadyRef.current || workerStepPendingRef.current) return;
 
-  // Collision & material state
-  const collisionState = useRef({
-    currentBiome: 'summer' as string,
-    activeParticles: [] as Array<{
-      id: number;
-      material: SurfaceMaterial;
-      position: THREE.Vector3;
-      intensity: number;
-    }>,
-    prevVelocity: new THREE.Vector3(),
-  });
+    workerStepPendingRef.current = true;
+    const pos = body.translation();
+    const rot = body.rotation();
+    const vel = body.linvel();
+    const angvel = body.angvel();
 
-  useImperativeHandle(forwardedRef, () => bodyRef.current);
+    proxy.step({
+      position: [pos.x, pos.y, pos.z],
+      rotation: [rot.x, rot.y, rot.z, rot.w],
+      velocity: [vel.x, vel.y, vel.z],
+      angularVelocity: [angvel.x, angvel.y, angvel.z],
+    }, delta).then((workerState) => {
+      if (workerState) syncBodyFromWorkerState(bodyRef.current, workerState);
+    }).finally(() => {
+      workerStepPendingRef.current = false;
+    });
+  };
 
   useEffect(() => {
     if (bodyRef.current) {
-      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
-      vehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
-      bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
+      raftVehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
+      raftVehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
+      if (useWorkerPhysics) {
+        const proxy = createRapierWorkerProxy();
+        workerProxyRef.current = proxy;
+        proxy.init({
+          raft: {
+            position: [...PLAYER_SPAWN.position],
+            halfExtents: [WATER_PHYSICS.RAFT_WIDTH * 0.5, WATER_PHYSICS.RAFT_HEIGHT * 0.5, WATER_PHYSICS.RAFT_LENGTH * 0.5],
+            mass: WATER_PHYSICS.RAFT_MASS,
+            linearDamping: 2,
+            angularDamping: 2.5,
+          },
+          staticColliders: [
+            {
+              position: [0, WATER_PHYSICS.LEVEL - 0.65, -80],
+              halfExtents: [28, 0.25, 220],
+            },
+          ],
+        }).then((workerState) => {
+          workerReadyRef.current = true;
+          syncBodyFromWorkerState(bodyRef.current, workerState);
+          return proxy.applyImpulse([0, 2, 0]);
+        }).catch((error) => {
+          console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
+          workerReadyRef.current = false;
+          workerProxyRef.current?.dispose();
+          workerProxyRef.current = null;
+          bodyRef.current?.applyImpulse?.({ x: 0, y: 2, z: 0 }, true);
+        });
+      } else {
+        bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
+      }
       tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
     }
 
-    // Listen for biome changes
     const handleBiomeChange = (event: Event) => {
       const customEvent = event as CustomEvent;
       const biome = customEvent.detail?.biome || 'summer';
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.WATER;
-      vehicle.current.setSurfaceMaterial(material);
+      raftVehicle.current.setSurfaceMaterial(material);
     };
 
     window.addEventListener('biome-change', handleBiomeChange);
-    return () => window.removeEventListener('biome-change', handleBiomeChange);
-  }, []);
-
-  const calculateSubmergedRatio = (raftY: number): number => {
-    const waterLevel = WATER_PHYSICS.LEVEL;
-    const raftHalfHeight = WATER_PHYSICS.RAFT_HEIGHT / 2;
-    const raftBottom = raftY - raftHalfHeight;
-    const raftTop = raftY + raftHalfHeight;
-
-    if (raftBottom >= waterLevel) return 0;
-    if (raftTop <= waterLevel) return 1;
-
-    const submergedHeight = waterLevel - raftBottom;
-    return Math.max(0, Math.min(1, submergedHeight / WATER_PHYSICS.RAFT_HEIGHT));
-  };
-
-  /** Apply scientifically accurate buoyancy force */
-  const applyBuoyancy = (body: any, submergedRatio: number, delta: number) => {
-    if (submergedRatio <= 0) return;
-
-    const displacedVolume = WATER_PHYSICS.RAFT_VOLUME * submergedRatio;
-    const maxBuoyancy = WATER_PHYSICS.BUOYANCY_MAX_FORCE;
-    const buoyancyForce = maxBuoyancy * submergedRatio;
-
-    body.applyImpulse({
-      x: 0,
-      y: buoyancyForce * delta,
-      z: 0
-    }, true);
-
-    buoyancyState.current.buoyancyForce = buoyancyForce;
-    buoyancyState.current.isFloating = submergedRatio > 0.1;
-  };
-
-  /** Apply scientifically accurate water drag */
-  const applyDrag = (body: any, delta: number) => {
-    const vel = body.linvel();
-    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-
-    if (speed < 0.1) return;
-
-    const dragMagnitude = WATER_PHYSICS.DRAG_COEFFICIENT * speed * speed * WATER_DENSITY / 1000;
-    const dragX = -(vel.x / speed) * dragMagnitude * delta;
-    const dragZ = -(vel.z / speed) * dragMagnitude * delta;
-
-    body.applyImpulse({ x: dragX, y: 0, z: dragZ }, true);
-  };
-
-  /** Goal 2: Apply flow-map-based water current force */
-  const applyFlowForce = (body: any, delta: number) => {
-    const pos = body.translation();
-    const flowForce = calculateFlowForce(
-      new THREE.Vector3(pos.x, pos.y, pos.z),
-      null, // No CPU flow map yet; downstream default is used
-      { flowSpeed: 1.2, maxForce: 8, turbulence: 0.1, turbulenceFreq: 2.0 },
-      timeRef.current
-    );
-    applyWaterForce(body, flowForce, delta, true);
-  };
-
-  const applyTurbulence = (body: any, time: number, delta: number) => {
-    if (!buoyancyState.current.isFloating) return;
-
-    const vel = body.linvel();
-    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-    const speedFactor = Math.min(1, speed / 5);
-    const amp = WATER_PHYSICS.TURBULENCE_AMP * speedFactor;
-
-    const pitchWobble = Math.sin(time * WATER_PHYSICS.TURBULENCE_FREQ) * amp +
-      Math.sin(time * WATER_PHYSICS.TURBULENCE_FREQ * 1.7) * amp * 0.3;
-    const rollWobble = Math.cos(time * WATER_PHYSICS.TURBULENCE_FREQ * 1.3) * amp * 0.8 +
-      Math.sin(time * WATER_PHYSICS.TURBULENCE_FREQ * 2.1) * amp * 0.2;
-
-    const currentRot = body.rotation();
-    const euler = new THREE.Euler().setFromQuaternion(currentRot);
-    euler.x += pitchWobble * delta * 2;
-    euler.z += rollWobble * delta * 2;
-
-    const targetRot = new THREE.Quaternion().setFromEuler(euler);
-    body.setRotation(targetRot, true);
-  };
-
-  const applyTippingForce = (body: any, submergedRatio: number, delta: number) => {
-    const vel = body.linvel();
-    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-
-    if (speed < WATER_PHYSICS.TIP_THRESHOLD_SPEED || submergedRatio < WATER_PHYSICS.TIP_SUBMERGE_THRESHOLD) {
-      return;
-    }
-
-    const tipMagnitude = WATER_PHYSICS.TIP_FORCE_MAGNITUDE *
-      ((speed - WATER_PHYSICS.TIP_THRESHOLD_SPEED) / 5);
-
-    body.applyTorqueImpulse({
-      x: vel.z * tipMagnitude * delta * 0.1,
-      y: 0,
-      z: -vel.x * tipMagnitude * delta * 0.15
-    }, true);
-  };
-
-  const dampenRotation = (body: any, delta: number) => {
-    const angVel = body.angvel();
-    const damping = Math.pow(WATER_PHYSICS.ROTATION_DAMPING, delta * 60);
-
-    body.setAngvel({
-      x: angVel.x * damping,
-      y: angVel.y * damping,
-      z: angVel.z * damping
-    }, true);
-  };
-
-  /**
-   * Handle tipping mechanics - righting torque and danger detection
-   */
-  const handleTipping = (body: any, delta: number): boolean => {
-    const rot = body.rotation();
-    const euler = new THREE.Euler().setFromQuaternion(rot);
-
-    tippingState.current.rollAngle = euler.z;
-    tippingState.current.pitchAngle = euler.x;
-
-    const absRoll = Math.abs(euler.z);
-    const absPitch = Math.abs(euler.x);
-    const maxTilt = Math.max(absRoll, absPitch);
-
-    // Righting torque at 45°
-    if (maxTilt > TIPPING.RIGHTING_THRESHOLD) {
-      const rightingDirection = -Math.sign(euler.z);
-      const rightingStrength = (maxTilt - TIPPING.RIGHTING_THRESHOLD) / (Math.PI / 2);
-
-      body.applyTorqueImpulse({
-        x: 0,
-        y: 0,
-        z: rightingDirection * TIPPING.RIGHTING_TORQUE * rightingStrength * delta
-      }, true);
-    }
-
-    // Danger zone at 70°
-    if (maxTilt > TIPPING.DANGER_THRESHOLD) {
-      tippingState.current.dangerTime += delta;
-
-      if (tippingState.current.dangerTime > TIPPING.DANGER_TIME) {
-        tippingState.current.isTipped = true;
-        return true;
-      }
-    } else {
-      tippingState.current.dangerTime = Math.max(0, tippingState.current.dangerTime - delta * 2);
-
-      // Update last safe position when stable
-      if (maxTilt < TIPPING.RIGHTING_THRESHOLD * 0.5) {
-        tippingState.current.lastSafePosition.copy(body.translation());
-      }
-    }
-
-    return false;
-  };
-
-  /**
-   * Apply paddle forces based on Q/E input
-   */
-  const applyPaddleForces = (body: any, delta: number) => {
-    const { paddleLeft, paddleRight, forward } = controls.getControls();
-
-    paddleState.current.leftPaddle = paddleLeft;
-    paddleState.current.rightPaddle = paddleRight;
-
-    const rot = body.rotation();
-    const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
-    const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
-
-    // Both paddles or W key = straight forward
-    if ((paddleLeft && paddleRight) || forward) {
-      body.applyImpulse({
-        x: forwardDir.x * PADDLE.THRUST_FORCE * delta,
-        y: 0,
-        z: forwardDir.z * PADDLE.THRUST_FORCE * delta
-      }, true);
-
-      // Spawn foam on both sides
-      if (forward && Math.random() > 0.7) {
-        spawnFoamParticle(body, 'left');
-        spawnFoamParticle(body, 'right');
-      }
-      return;
-    }
-
-    // Left paddle (Q) - thrust right, rotate left
-    if (paddleLeft) {
-      body.applyImpulse({
-        x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * delta,
-        y: 0,
-        z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * delta
-      }, true);
-
-      body.applyImpulse({
-        x: rightDir.x * PADDLE.THRUST_FORCE * 0.5 * delta,
-        y: 0,
-        z: rightDir.z * PADDLE.THRUST_FORCE * 0.5 * delta
-      }, true);
-
-      body.applyTorqueImpulse({
-        x: 0,
-        y: -PADDLE.TORQUE_FORCE * delta,
-        z: 0
-      }, true);
-
-      if (Math.random() > 0.6) {
-        spawnFoamParticle(body, 'left');
-        playPaddleSound('left');
-      }
-    }
-
-    // Right paddle (E) - thrust left, rotate right
-    if (paddleRight) {
-      body.applyImpulse({
-        x: forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * delta,
-        y: 0,
-        z: forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * delta
-      }, true);
-
-      body.applyImpulse({
-        x: -rightDir.x * PADDLE.THRUST_FORCE * 0.5 * delta,
-        y: 0,
-        z: -rightDir.z * PADDLE.THRUST_FORCE * 0.5 * delta
-      }, true);
-
-      body.applyTorqueImpulse({
-        x: 0,
-        y: PADDLE.TORQUE_FORCE * delta,
-        z: 0
-      }, true);
-
-      if (Math.random() > 0.6) {
-        spawnFoamParticle(body, 'right');
-        playPaddleSound('right');
-      }
-    }
-  };
-
-  /**
-   * Spawn a foam particle for paddle visual feedback
-   */
-  const spawnFoamParticle = (body: any, side: 'left' | 'right') => {
-    const pos = body.translation();
-    const rot = body.rotation();
-
-    const offset = new THREE.Vector3(
-      side === 'left' ? -1.2 : 1.2,
-      -0.2,
-      side === 'left' ? 0.5 : -0.5
-    ).applyQuaternion(rot);
-
-    const velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.5,
-      Math.random() * 0.3,
-      (Math.random() - 0.5) * 0.5
-    );
-
-    paddleState.current.foamParticles.push({
-      id: nextParticleId.current++,
-      position: new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z),
-      velocity,
-      life: PADDLE.FOAM_LIFETIME,
-      side,
-    });
-  };
-
-  /**
-   * Goal 2: Spawn a water-shedding particle trailing the raft
-   */
-  const spawnShedParticle = (body: any) => {
-    const pos = body.translation();
-    const rot = body.rotation();
-
-    // Spawn at the stern (raft moves -Z, so stern is +Z relative to raft)
-    const sternOffset = new THREE.Vector3(0, -0.1, 1.6).applyQuaternion(rot);
-    const spread = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.8,
-      Math.random() * 0.2,
-      (Math.random() - 0.5) * 0.4
-    );
-
-    // Velocity opposes raft motion + slight upward arc
-    const vel = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.6,
-      0.3 + Math.random() * 0.4,
-      0.5 + Math.random() * 0.5
-    ).applyQuaternion(rot);
-
-    shedParticles.current.push({
-      id: nextShedId.current++,
-      position: new THREE.Vector3(pos.x + sternOffset.x, pos.y + sternOffset.y, pos.z + sternOffset.z).add(spread),
-      velocity: vel,
-      life: SHED.LIFETIME,
-      scale: SHED.SIZE + Math.random() * 0.03,
-    });
-
-    // Trim excess particles
-    if (shedParticles.current.length > SHED.COUNT_LIMIT) {
-      shedParticles.current.shift();
-    }
-  };
-
-  /**
-   * Reset raft to safe position after tipping
-   */
-  const resetRaft = (body: any) => {
-    playRaftTipSound();
-
-    const safePos = tippingState.current.lastSafePosition.clone();
-    safePos.y = Math.max(safePos.y, WATER_PHYSICS.LEVEL + TIPPING.RESET_HEIGHT);
-
-    body.setTranslation(safePos, true);
-    body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    body.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0)), true);
-
-    tippingState.current.dangerTime = 0;
-    tippingState.current.isTipped = false;
-
-    window.dispatchEvent(new CustomEvent('raft-tipped', {
-      detail: { resetPosition: safePos }
-    }));
-  };
-
-  useFrame((state, delta) => {
-    if (!bodyRef.current || !world) return;
-
-    const body = bodyRef.current;
-    const pos = body.translation();
-
-    // Check if tipped and needs reset
-    if (tippingState.current.isTipped) {
-      resetRaft(body);
-      return;
-    }
-
-    timeRef.current += delta;
-
-    // Calculate submersion
-    const submergedRatio = calculateSubmergedRatio(pos.y);
-    buoyancyState.current.submergedRatio = submergedRatio;
-
-    // Apply water physics
-    applyBuoyancy(body, submergedRatio, delta);
-
-    if (submergedRatio > 0) {
-      applyDrag(body, delta);
-    }
-
-    // Goal 2: Apply flow-map-based water force
-    if (submergedRatio > 0.1) {
-      applyFlowForce(body, delta);
-    }
-
-    applyTurbulence(body, timeRef.current, delta);
-    applyTippingForce(body, submergedRatio, delta);
-    dampenRotation(body, delta);
-
-    // Handle tipping mechanics
-    const tipped = handleTipping(body, delta);
-    if (tipped) {
-      resetRaft(body);
-      return;
-    }
-
-    // Apply paddle forces (overrides WASD for raft)
-    applyPaddleForces(body, delta);
-
-    // Fallback WASD (strafing) if no paddle input
-    const { leftward, rightward, forward, paddleLeft, paddleRight } = controls.getControls();
-
-    if (!paddleLeft && !paddleRight && !forward) {
-      if (leftward || rightward) {
-        vehicle.current.setInput({
-          moveX: rightward ? 1 : leftward ? -1 : 0,
-        });
-        vehicle.current.update(delta);
-      }
-    }
-
-    // Camera follow
-    const targetPos = new THREE.Vector3(pos.x, pos.y + 2.5, pos.z + 5);
-    camera.position.lerp(targetPos, 0.1);
-    camera.lookAt(pos.x, pos.y, pos.z);
-
-    // Update foam particles
-    paddleState.current.foamParticles = paddleState.current.foamParticles
-      .map(p => ({
-        ...p,
-        position: p.position.clone().add(p.velocity.clone().multiplyScalar(delta)),
-        life: p.life - delta,
-      }))
-      .filter(p => p.life > 0);
-
-    // Goal 2: Update water-shedding particles
-    const speed = Math.sqrt(
-      body.linvel().x ** 2 + body.linvel().z ** 2
-    );
-    if (speed > SHED.MIN_SPEED && submergedRatio > SHED.MIN_SUBMERGED) {
-      shedTimer.current += delta;
-      if (shedTimer.current > SHED.EMISSION_RATE) {
-        shedTimer.current = 0;
-        spawnShedParticle(body);
-      }
-    }
-
-    shedParticles.current = shedParticles.current
-      .map(p => ({
-        ...p,
-        position: p.position.clone().add(p.velocity.clone().multiplyScalar(delta)),
-        velocity: p.velocity.clone().add(new THREE.Vector3(0, -1.5 * delta, 0)), // gravity
-        life: p.life - delta,
-      }))
-      .filter(p => p.life > 0);
-
-    // === COLLISION DETECTION ===
-    const vel = body.linvel();
-    const prevVel = collisionState.current.prevVelocity;
-    const velocityDelta = new THREE.Vector3(vel.x - prevVel.x, vel.y - prevVel.y, vel.z - prevVel.z);
-    const impactForce = velocityDelta.length() / delta;
-
-    // Detect collision with terrain (when not mostly submerged)
-    if (impactForce > 6 && submergedRatio < 0.8) {
-      const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
-      const contactPoint = new THREE.Vector3(pos.x, pos.y - WATER_PHYSICS.RAFT_HEIGHT / 2, pos.z);
-
-      vehicle.current.processCollision(
-        material,
-        impactForce,
-        contactPoint,
-        new THREE.Vector3(vel.x, vel.y, vel.z)
-      );
-
-      // Add visual particles for high impact
-      if (impactForce > vehicle.current['highImpactThreshold']) {
-        const newParticle = {
-          id: Date.now(),
-          material,
-          position: contactPoint.clone(),
-          intensity: Math.min(1, impactForce / 20),
-        };
-        collisionState.current.activeParticles.push(newParticle);
-      }
-    }
-
-    collisionState.current.prevVelocity.set(vel.x, vel.y, vel.z);
+    return () => {
+      window.removeEventListener('biome-change', handleBiomeChange);
+      workerProxyRef.current?.dispose();
+      workerProxyRef.current = null;
+    };
+  }, [useWorkerPhysics]);
+
+  useRaftControls({
+    bodyRef, raftVehicle, camera, controls, workerProxy: workerProxyRef.current,
+    buoyancyState, tippingState, paddleState, staminaState,
+    stunState, forwardBiasState, shedParticles, collisionState,
+    lastWorkerSync, sharedPhysicsState, raftMaterialRef, useWorkerPhysics, applyWorkerImpulse, stepWorkerProxy
   });
 
   return (
@@ -663,63 +145,51 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         ref={bodyRef}
         type="dynamic"
         mass={150}
-        restitution={0.3}
-        linearDamping={2.5}
-        angularDamping={3}
+        restitution={0.4}
+        linearDamping={2.0}
+        angularDamping={2.5}
         position={PLAYER_SPAWN.position}
       >
-        {/* Raft deck */}
         <mesh castShadow receiveShadow>
           <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH, WATER_PHYSICS.RAFT_HEIGHT, WATER_PHYSICS.RAFT_LENGTH]} />
-          <meshStandardMaterial color="saddlebrown" />
+          <meshStandardMaterial
+            ref={raftMaterialRef}
+            color="saddlebrown"
+            roughness={0.6}
+            metalness={0.1}
+          />
         </mesh>
 
-        {/* Paddle indicators */}
-        {paddleState.current.leftPaddle && (
-          <mesh position={[-1.3, 0.2, 0.5]}>
-            <sphereGeometry args={[0.15]} />
-            <meshBasicMaterial color="white" transparent opacity={0.8} />
-          </mesh>
-        )}
-        {paddleState.current.rightPaddle && (
-          <mesh position={[1.3, 0.2, -0.5]}>
-            <sphereGeometry args={[0.15]} />
-            <meshBasicMaterial color="white" transparent opacity={0.8} />
-          </mesh>
-        )}
+        <mesh position={[0, WATER_PHYSICS.RAFT_HEIGHT * 0.5 + 0.1, 0]}>
+          <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH * 0.8, 0.2, WATER_PHYSICS.RAFT_LENGTH * 0.8]} />
+          <meshStandardMaterial color="#443322" />
+        </mesh>
       </RigidBody>
 
-      {/* Foam particles */}
       {paddleState.current.foamParticles.map(particle => (
-        <mesh
-          key={particle.id}
-          position={[particle.position.x, particle.position.y, particle.position.z]}
-        >
-          <sphereGeometry args={[0.08 + particle.life * 0.05]} />
+        <mesh key={particle.id} position={particle.position}>
+          <sphereGeometry args={[0.15 + Math.random() * 0.1, 8, 8]} />
           <meshBasicMaterial
             color="white"
             transparent
-            opacity={particle.life / PADDLE.FOAM_LIFETIME * 0.7}
+            opacity={particle.life / PADDLE.FOAM_LIFETIME}
+            depthWrite={false}
           />
         </mesh>
       ))}
 
-      {/* Goal 2: Water-shedding trail particles */}
       {shedParticles.current.map(particle => (
-        <mesh
-          key={`shed-${particle.id}`}
-          position={[particle.position.x, particle.position.y, particle.position.z]}
-        >
-          <sphereGeometry args={[particle.scale * (particle.life / SHED.LIFETIME)]} />
+        <mesh key={particle.id} position={particle.position}>
+          <sphereGeometry args={[particle.scale, 8, 8]} />
           <meshBasicMaterial
-            color="#dff4ff"
+            color="#e0f0ff"
             transparent
-            opacity={(particle.life / SHED.LIFETIME) * 0.5}
+            opacity={(particle.life / SHED.LIFETIME) * 0.6}
+            depthWrite={false}
           />
         </mesh>
       ))}
 
-      {/* Collision particle effects */}
       {collisionState.current.activeParticles.map(particle => (
         <CollisionParticles
           key={particle.id}

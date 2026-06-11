@@ -40,11 +40,17 @@ src/
 ├── style.css                  # UI, loader, crosshair, overlay styles
 │
 ├── components/
-│   ├── TrackManager.jsx       # ★ Chunk treadmill orchestrator (generation + biome detection)
-│   ├── TrackSegment.jsx       # ★ One canyon chunk: geometry + PBR terrain + 25 env types
+│   ├── TrackManager.jsx       # ★ Chunk treadmill orchestrator (wrapped by ReachManager)
+│   ├── TrackSegment/          # ★ One canyon chunk: geometry + PBR terrain + 25 env types
 │   ├── FlowingWater.jsx       # ★ Animated water surface (ShaderMaterial, GLSL)
-│   ├── EnhancedSky.jsx        # Biome-responsive sky (drei Sky + fogExp2)
+│   ├── EnhancedSky.jsx        # Biome-responsive sky (uses useBiome() + drei Sky + fogExp2)
+│   ├── WaterReflection.jsx    # Water reflection render pass (wired in Experience.jsx)
+│   ├── WaterInteraction.jsx   # Water-contact interaction effects (wired in Experience.jsx)
 │   ├── Player.jsx             # First-person capsule controller (Rapier RigidBody)
+│   ├── ReactiveAudio.tsx      # Biome/speed-reactive audio, rendered by ReachManager
+│   ├── WeatherSystem.tsx      # Weather particle/fog system, rendered by ReachManager
+│   ├── WaterReflection.jsx    # Water reflection plane, wired in Experience.jsx
+│   ├── WaterInteraction.jsx   # Player–water interaction events, wired in Experience.jsx
 │   ├── Raft.jsx               # (legacy) raft mesh
 │   ├── UI.tsx                 # Pause/start overlay, pointer lock, controls display
 │   ├── Loader.tsx             # Asset loading screen
@@ -77,22 +83,124 @@ src/
 │   └── VFX/SplashParticles.jsx
 │
 ├── vehicles/
-│   ├── RunnerVehicle.tsx      # ★ First-person foot runner (active default)
-│   └── RaftVehicle.tsx        # Third-person raft (switch via vehicleType in Experience.jsx)
+│   ├── RunnerVehicle/         # ★ First-person foot runner (active default)
+│   └── RaftVehicle/           # Third-person raft (switch via vehicleType in Experience.jsx)
 │
 ├── systems/
-│   ├── MapSystem.ts           # ★ BaseMapChunk interface, SeededRandom, chunk pool (not yet wired to TrackManager)
+│   ├── AudioSystem.ts
+│   ├── BiomeSystem.tsx
+│   ├── ChunkManager.ts
+│   ├── FloatingObjectRegistry.ts
+│   ├── GameState.ts           # Zustand shared-state backbone
+│   ├── LODManager.tsx
+│   ├── LevelLoader.tsx
+│   ├── MapSystem.ts           # ★ BaseMapChunk interface, SeededRandom, chunk pool
+│   ├── ObjectSystem.ts
+│   ├── ParticlePool.ts
+│   ├── PLAN.md
+│   ├── PostProcessing.tsx
+│   ├── ReachManager.tsx       # Reach orchestration layer (wraps TrackManager)
+│   ├── ReachNormalizer.ts
+│   ├── ReachStreamer.ts
+│   ├── SplashSystem.tsx
 │   ├── VehicleSystem.ts       # Vehicle base classes
 │   ├── WaterSystem.ts         # Water force/flow utilities
-│   └── ObjectSystem.ts        # Object lifecycle
+│   ├── WatershedWasm.ts
+│   └── index.ts
+│
+├── hooks/
+│   ├── index.ts
+│   ├── useCameraShake.ts
+│   ├── useChunkLoader.ts
+│   ├── useLevel.ts
+│   ├── useLevelEditor.ts
+│   ├── useNightMode.ts
+│   ├── usePlayerControls.ts
+│   ├── useRiverAudio.ts
+│   ├── useSegmentAudio.ts
+│   ├── useShaderBrowser.ts
+│   ├── useShaderLoader.ts
+│   ├── useVortexForce.ts
+│   └── useWaterFlowField.ts
+│
+├── configs/
+│   ├── BiomePalettes.ts
+│   └── TrackBiomes.ts
+│
+├── constants/
+│   ├── audioConfig.ts
+│   ├── biomes.ts
+│   ├── game.ts
+│   ├── nightMode.ts
+│   ├── vehicleTuning.ts
+│   ├── waterFlow.ts
+│   └── weather.ts
+│
+├── maps/
+│   ├── meander_to_waterfall.json
+│   └── meander_to_waterfall.ts
+│
+├── materials/
+│   ├── CausticsMaterial.js
+│   ├── CanyonMaterial.js
+│   └── EnhancedWaterMaterial.js
+│
+├── hooks/                     # 13 custom React hooks
+│   ├── useCameraShake.ts
+│   ├── useChunkLoader.ts
+│   ├── useLevel.ts
+│   ├── useLevelEditor.ts
+│   ├── useNightMode.ts
+│   ├── usePlayerControls.ts
+│   ├── useRiverAudio.ts
+│   ├── useSegmentAudio.ts
+│   ├── useShaderBrowser.ts
+│   ├── useShaderLoader.ts
+│   ├── useVortexForce.ts
+│   ├── useWaterFlowField.ts
+│   └── index.ts
+│
+├── configs/
+│   ├── BiomePalettes.ts       # Biome color/fog/lighting palettes + lerp helpers
+│   └── TrackBiomes.ts         # Wall profiles (canyon width, rock density, vegetation) per biome
+│
+├── constants/
+│   ├── audioConfig.ts
+│   ├── biomes.ts
+│   ├── game.ts                # REACH_API_BASE and other game-wide constants
+│   ├── nightMode.ts
+│   ├── vehicleTuning.ts
+│   ├── waterFlow.ts
+│   └── weather.ts
+│
+├── maps/
+│   ├── meander_to_waterfall.json   # Authored segment sequence (JSON)
+│   └── meander_to_waterfall.ts     # TypeScript wrapper for the map data
+│
+├── materials/
+│   └── EnhancedWaterMaterial.js    # Extended water ShaderMaterial
 │
 └── utils/
+    ├── reachValidator.ts
     └── RiverShader.js         # extendRiverMaterial(): adds wetness, moss, caustics via onBeforeCompile
 ```
 
 ---
 
 ## Core Systems
+
+### Reach / Biome / LOD Systems
+
+Since April 2026, an orchestration layer wraps the track treadmill with streaming reaches,
+biome-context transitions, and adaptive LOD. The live wiring runs:
+`LODProvider` → `BiomeProvider` → `ReachManager` (wraps `TrackManager`) + `SplashSystem`.
+Shared state flows through a Zustand store (`GameState.ts`).
+
+**All details, contract cards, dependency graph, and architectural constraints are in
+[`SYSTEMS.md`](./SYSTEMS.md).**
+
+---
+Watershed now runs a live orchestration stack in `Experience.jsx`: `LODProvider` wraps `BiomeProvider`, which wraps scene systems including `ReachManager` (which wraps `TrackManager`, not replaces it) and `SplashSystem`. These systems, their contracts, and known constraints/pain points are documented in **[`SYSTEMS.md`](./SYSTEMS.md)** to keep this file readable and keep architecture details centralized.
 
 ### Track Treadmill (`TrackManager.jsx`)
 
@@ -169,7 +277,7 @@ The following are leftover debug elements that make the game look rough:
 
 1. **`App.tsx:69–88` — Green debug overlay** — Always-visible panel showing "Canvas Ready / Loading Active / Progress / Experience Error". Must be removed for any polished build.
 2. **`Player.jsx:126–129` — Yellow wireframe capsule** — A visible debug mesh rendered at the player position. Not needed in final game; remove or hide.
-3. **`RaftVehicle.tsx:60–63` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
+3. **`RaftVehicle/` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
 4. **`App.tsx:92` — `antialias: false`** — Antialiasing is disabled. Switching to `antialias: true` will immediately improve edge quality at modest cost.
 5. **`EnhancedSky.jsx:72` — Stars always rendered** — Stars are visible even at noon. They are subtle but should be conditional on time-of-day or biome.
 
@@ -182,7 +290,7 @@ Maps (authored segment sequences) require a stable visual baseline to test again
 ### Step 1 — Strip debug artifacts (1–2 hours)
 - Remove the green debug panel from `App.tsx`
 - Remove the yellow wireframe mesh from `Player.jsx`
-- Remove the hotpink box from `RaftVehicle.tsx`
+- Remove the hotpink box from `RaftVehicle/`
 - Enable `antialias: true` in Canvas
 
 ### Step 2 — Terrain visual quality (2–4 hours)
@@ -190,7 +298,7 @@ The canyon walls currently use a U-shaped extrusion + Rock031 PBR textures. The 
 - Add **vertex color variation** to the upper canyon walls (darker, more saturated at the waterline; lighter/tan at the rim)
 - Introduce **secondary UV channel** or triplanar projection to break up tiling
 - Add **moss/lichen vertex color bands** at the waterline (already supported by `extendRiverMaterial`)
-- The `RiverShader.js` moss effect needs the terrain mesh to pass correct world normals — verify this is wired correctly in `TrackSegment.jsx`
+- The `RiverShader.js` moss effect needs the terrain mesh to pass correct world normals — verify this is wired correctly in `TrackSegment/`
 
 ### Step 3 — Water visual quality (1–2 hours)
 The water shader is solid. Two tweaks to match the concept:
@@ -271,10 +379,10 @@ python3 deploy.py             # SFTP to test.1ink.us/watershed
 |------|--------------|
 | `Experience.jsx` | Lighting, vehicle swap, physics gravity |
 | `TrackManager.jsx` | Segment generation, biome transitions, rock material |
-| `TrackSegment.jsx` | Canyon geometry, decoration placement |
+| `TrackSegment/` | Canyon geometry, decoration placement |
 | `FlowingWater.jsx` | Water shader uniforms and GLSL |
 | `RiverShader.js` | Wetness/moss/caustics injection |
-| `EnhancedSky.jsx` | Sky, fog biome transitions |
+| `EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
 | `Player.jsx` | Movement, camera, jump |
 | `systems/MapSystem.ts` | Chunk interfaces, seeded RNG, spawn calc |
 | `src/style.css` | All UI chrome |

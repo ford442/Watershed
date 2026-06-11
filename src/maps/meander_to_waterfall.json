@@ -78,7 +78,7 @@
       "verticalBias": -3.0,
       "forwardMomentum": 0.15,
       "waterWidth": 10,
-      "physics": { "waterFlowIntensity": 1.6 },
+      "physics": { "waterFlowIntensity": 1.6, "gravityMultiplier": 1.45 },
       "effects": { "particleCount": 400, "cameraShake": 0.5 }
     },
     {
@@ -90,7 +90,7 @@
       "waterWidth": 18,
       "meanderStrength": 0.5,
       "verticalBias": -0.2,
-      "physics": { "waterFlowIntensity": 0.3 },
+      "physics": { "waterFlowIntensity": 0.3, "gravityMultiplier": 1.0 },
       "effects": { "transitionDuration": 2000 }
     },
     { "index": 16, "difficulty": 0.2, "type": "pond", "biomeOverride": "creek-autumn", "width": 70, "waterWidth": 28, "meanderStrength": 0.3, "verticalBias": -0.02, "physics": { "waterFlowIntensity": 0.45 }, "decorations": { "trees": 8 } },

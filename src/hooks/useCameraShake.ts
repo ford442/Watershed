@@ -5,64 +5,110 @@ import * as THREE from 'three';
 interface ShakeEvent {
   intensity: number;
   duration: number;
+  /** Oscillation frequency — lower = heavier/slower (waterfall uses 8, default 20) */
+  frequency?: number;
+  /** Max rotation roll amplitude in radians (waterfall uses 0.03, default 0) */
+  angular?: number;
 }
 
 /**
- * useCameraShake - Hook that listens for camera shake events
- * 
- * Listens for 'camera-shake' CustomEvent on window and applies
- * shake offset to the camera during the specified duration.
+ * useCameraShake — spring-damped camera shake with optional angular roll.
+ *
+ * Design:
+ * - Undo/redo offset each frame so vehicle movement composites cleanly.
+ * - Squared-progress decay: snappier punch, smoother tail-off vs linear.
+ * - Separate rumble channel for continuous low-intensity tremor.
+ * - Angular roll driven by low-frequency sine — gives waterfall plunge "tumble" feel.
+ *
+ * WGSL migration: when camera is managed on the GPU side, this hook should
+ * write to a uniform buffer read by the vertex stage rather than mutating
+ * camera.position directly.
  */
 export function useCameraShake() {
   const { camera } = useThree();
   const shakeRef = useRef<ShakeEvent | null>(null);
   const shakeTimeRef = useRef(0);
-  const originalPosition = useRef(new THREE.Vector3());
+  // Accumulated offsets from the previous frame, undone at next update start
+  const shakeOffset = useRef(new THREE.Vector3());
+  const rollOffset = useRef(0);
+  const rumbleIntensityRef = useRef(0);
 
   useEffect(() => {
     const handleShake = (event: Event) => {
-      const customEvent = event as CustomEvent<ShakeEvent>;
-      const { intensity, duration } = customEvent.detail;
-      
-      shakeRef.current = { intensity, duration };
+      const e = event as CustomEvent<ShakeEvent>;
+      const { intensity, duration, frequency = 20, angular = 0 } = e.detail;
+      shakeRef.current = { intensity, duration, frequency, angular };
       shakeTimeRef.current = 0;
-      originalPosition.current.copy(camera.position);
+    };
+
+    const handleRumble = (event: Event) => {
+      const e = event as CustomEvent<{ intensity: number }>;
+      rumbleIntensityRef.current = Math.max(0, e.detail?.intensity ?? 0);
     };
 
     window.addEventListener('camera-shake', handleShake);
-    return () => window.removeEventListener('camera-shake', handleShake);
+    window.addEventListener('camera-rumble', handleRumble);
+    return () => {
+      window.removeEventListener('camera-shake', handleShake);
+      window.removeEventListener('camera-rumble', handleRumble);
+    };
   }, [camera]);
 
   return {
     shakeRef,
     shakeTimeRef,
-    originalPosition,
+    shakeOffset,
+    rollOffset,
     update: (delta: number) => {
-      if (!shakeRef.current) return;
+      // ── 1. Undo last frame's offset (allows vehicle lerp to compose underneath) ──
+      camera.position.sub(shakeOffset.current);
+      camera.rotation.z -= rollOffset.current;
 
-      shakeTimeRef.current += delta;
-      
-      if (shakeTimeRef.current >= shakeRef.current.duration) {
-        // Shake complete
-        shakeRef.current = null;
+      let transientIntensity = 0;
+      let freq = 20;
+      let angularAmp = 0;
+
+      if (shakeRef.current) {
+        shakeTimeRef.current += delta;
+        if (shakeTimeRef.current >= shakeRef.current.duration) {
+          shakeRef.current = null;
+        } else {
+          const progress = shakeTimeRef.current / shakeRef.current.duration;
+          // Squared decay: punchy start, graceful tail-off
+          transientIntensity = shakeRef.current.intensity * Math.pow(1 - progress, 2);
+          freq = shakeRef.current.frequency ?? 20;
+          angularAmp = shakeRef.current.angular ?? 0;
+        }
+      }
+
+      const ambientIntensity = rumbleIntensityRef.current;
+      const intensity = transientIntensity + ambientIntensity;
+
+      if (intensity <= 0) {
+        shakeOffset.current.set(0, 0, 0);
+        rollOffset.current = 0;
         return;
       }
 
-      // Calculate shake decay (strong at start, fades out)
-      const progress = shakeTimeRef.current / shakeRef.current.duration;
-      const decay = 1 - progress;
-      const intensity = shakeRef.current.intensity * decay;
+      // ── 2. Compute new offsets ─────────────────────────────────────────────────
+      const t = shakeTimeRef.current * freq;
+      const posAmp = intensity * 0.3;
 
-      // Perlin-like noise for smooth shake
-      const time = shakeTimeRef.current * 20; // Shake frequency
-      const offsetX = (Math.sin(time * 1.3) + Math.sin(time * 2.7)) * 0.5 * intensity * 0.3;
-      const offsetY = (Math.cos(time * 1.7) + Math.cos(time * 2.3)) * 0.5 * intensity * 0.3;
-      const offsetZ = (Math.sin(time * 2.1) + Math.cos(time * 3.1)) * 0.5 * intensity * 0.2;
+      // Two-frequency superposition per axis — avoids regular periodicity
+      const offsetX = (Math.sin(t * 1.3) + Math.sin(t * 2.7)) * 0.5 * posAmp;
+      const offsetY = (Math.cos(t * 1.7) + Math.cos(t * 2.3)) * 0.5 * posAmp;
+      const offsetZ = (Math.sin(t * 2.1) + Math.cos(t * 3.1)) * 0.5 * posAmp * 0.65;
 
-      // Apply shake offset to camera
-      camera.position.x = originalPosition.current.x + offsetX;
-      camera.position.y = originalPosition.current.y + offsetY;
-      camera.position.z = originalPosition.current.z + offsetZ;
+      // Angular roll: low-frequency sine driven by transient shake only
+      const roll = transientIntensity > 0
+        ? Math.sin(t * 0.55) * angularAmp * transientIntensity
+        : 0;
+
+      // ── 3. Apply and store for next-frame undo ─────────────────────────────────
+      shakeOffset.current.set(offsetX, offsetY, offsetZ);
+      rollOffset.current = roll;
+      camera.position.add(shakeOffset.current);
+      camera.rotation.z += rollOffset.current;
     }
   };
 }
