@@ -5,11 +5,13 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const inputs = process.argv.slice(2);
+const LEADING_DELIMITERS = /^[(\[<`"']+/g;
+const TRAILING_DELIMITERS = /[)\],.;:'"`>]+$/g;
 
 function collectMarkdownFiles(entry) {
   const fullPath = path.resolve(repoRoot, entry);
   if (!fs.existsSync(fullPath)) {
-    throw new Error(`Path does not exist: ${entry}`);
+    throw new Error(`Input path does not exist: ${entry} (resolved to ${fullPath})`);
   }
 
   const stat = fs.statSync(fullPath);
@@ -48,8 +50,8 @@ for (const file of markdownFiles) {
 
   for (const match of matches) {
     const trimmed = match
-      .replace(/^[(\[<`"']+/g, '')
-      .replace(/[)\],.;:'"`>]+$/g, '');
+      .replace(LEADING_DELIMITERS, '')
+      .replace(TRAILING_DELIMITERS, '');
     const target = path.resolve(repoRoot, trimmed);
     if (!pathExistsAsModule(target)) {
       failures.push(`${path.relative(repoRoot, file)}: ${trimmed}`);
