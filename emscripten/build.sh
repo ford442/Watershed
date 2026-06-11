@@ -15,6 +15,36 @@
 
 set -euo pipefail
 
+source /content/buil*/emsdk/emsdk_env.sh
+
+
+if ! command -v emcc &>/dev/null; then
+  echo "[build:wasm] Emscripten not found — skipping WASM compile (source emsdk_env.sh first)."
+  exit 0
+fi
+
+
+# ---------------------------------------------------------------------------
+# Parse flags
+# ---------------------------------------------------------------------------
+USE_THREADS=0
+DEBUG_BUILD=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --threads) USE_THREADS=1 ;;
+        --debug)   DEBUG_BUILD=1  ;;
+    esac
+done
+
+if [ "$USE_THREADS" -eq 1 ]; then
+    echo "Building watershed_native.js (multi-threaded)..."
+elif [ "$DEBUG_BUILD" -eq 1 ]; then
+    echo "Building watershed_native.js (debug, single-threaded)..."
+else
+    echo "Building watershed_native.js (single-threaded, optimised)..."
+fi
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
