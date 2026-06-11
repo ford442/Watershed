@@ -10,6 +10,8 @@ export function usePlacementData({
     waterWidth, canyonWidth, biome, config, channelProfile, bankStartOverride, flowSpeed,
     biomeProfile
 }) {
+    const isSlotCanyon = biomeProfile?.id === 'slotCanyon';
+
     const placementData = useMemo(() => {
         if (!active || !segmentPath) {
             return {

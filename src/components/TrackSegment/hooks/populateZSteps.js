@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies } from '../utils';
+import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
 import { WATER_LEVEL } from '../../../constants/game';
 import { populateSide } from './populateSide';
 

@@ -22,7 +22,17 @@ export default function TrackSegment({
     waterMaterial,
     flowSpeed = 1.0,
     config = {},
-    showDebug = false
+    showDebug = false,
+    waterLevel = WATER_LEVEL,
+    segmentState = 'Normal',
+    particleCount,
+    particleDensity,
+    raftRef,
+    isNight = false,
+    flowMap,
+    verticalBias = 0,
+    weatherWetnessRef,
+    usePooledStaticObstacles = false,
 }) {
     if (!active) return null;
 
@@ -80,12 +90,14 @@ export default function TrackSegment({
 
     const placementData = usePlacementData({
         active, segmentPath, segmentId, type, pathLength,
-        waterWidth, canyonWidth, biome, config, channelProfile, bankStartOverride: undefined
+        waterWidth, canyonWidth, biome, config, channelProfile,
+        bankStartOverride: undefined, flowSpeed, biomeProfile,
     });
 
     const { canyonGeometry, wallShellGeometry, waterGeometry, waterfallPos, plungeImpactPlacement } = useGeometries({
         active, segmentPath, pathLength, segmentId, type,
-        channelProfile, biomeProfile, isSlotCanyon, placementData
+        channelProfile, biomeProfile, isSlotCanyon, placementData,
+        canyonWidth, waterWidth, biome,
     });
 
     const localRockMaterial = useMemo(() => {
@@ -96,12 +108,9 @@ export default function TrackSegment({
         return extendRiverMaterial(rockMaterial, false, biome);
     }, [rockMaterial, biome]);
 
-    const baseCanyonProps = {
-        receiveShadow: true,
-        castShadow: true,
-        material: localRockMaterial,
-        geometry: canyonGeometry
-    };
+    if (!localRockMaterial || !canyonGeometry || !wallShellGeometry || !waterGeometry) {
+        return null;
+    }
 
     return (
         <TrackSegmentMeshes
@@ -124,9 +133,17 @@ export default function TrackSegment({
             waterGeometry={waterGeometry}
             waterfallPos={waterfallPos}
             plungeImpactPlacement={plungeImpactPlacement}
-            baseCanyonProps={baseCanyonProps}
             isSlotCanyon={isSlotCanyon}
-            biomeProfile={biomeProfile}
+            waterLevel={waterLevel}
+            segmentState={segmentState}
+            particleCount={particleCount}
+            particleDensity={particleDensity}
+            raftRef={raftRef}
+            isNight={isNight}
+            flowMap={flowMap}
+            verticalBias={verticalBias}
+            weatherWetnessRef={weatherWetnessRef}
+            usePooledStaticObstacles={usePooledStaticObstacles}
         />
     );
 }

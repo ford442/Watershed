@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies } from '../utils';
+import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
 import { WATER_LEVEL } from '../../../constants/game';
 
 export function populateSidePart1(args) {
@@ -14,6 +14,11 @@ export function populateSidePart1(args) {
     } = args;
     const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
+    const rockDef = config?.decorations?.rocks;
+    const treeDef = config?.decorations?.trees;
+    const rockDensity = config?.rockDensity ?? biomeProfile?.rockDensity ?? 'low';
+    const treeDensity = config?.treeDensity ?? biomeProfile?.treeDensity ?? 1;
+    const isGlacier = biomeProfile?.id === 'glacier' || biome === 'glacier';
 
 
 

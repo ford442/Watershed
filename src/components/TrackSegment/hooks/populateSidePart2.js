@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies } from '../utils';
+import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
 
 export function populateSidePart2(args) {
     const {
@@ -13,6 +13,8 @@ export function populateSidePart2(args) {
     } = args;
     const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
+    const rockDensity = config?.rockDensity ?? biomeProfile?.rockDensity ?? 'low';
+    const isGlacier = biomeProfile?.id === 'glacier' || biome === 'glacier';
                 // 4.7 MUSHROOMS (New: Forest floor detail)
                 const mushroomChance = biome === 'autumn' ? 0.6 : 0.3;
                 if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > (1.0 - mushroomChance)) {

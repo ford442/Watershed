@@ -1,12 +1,15 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { smoothNoise, hasFiniteCoordinates } from '../utils';
-import { WALL_WATERLINE_Y } from '../../../constants/game';
+import { smoothNoise, hasFiniteCoordinates, lerpValue } from '../utils';
+import { WALL_WATERLINE_Y, SHADERS, WATER_LEVEL } from '../../../constants/game';
 
 export function useGeometries({
     active, segmentPath, pathLength, segmentId, type,
-    channelProfile, biomeProfile, isSlotCanyon, placementData
+    channelProfile, biomeProfile, isSlotCanyon, placementData,
+    canyonWidth, waterWidth, biome,
 }) {
+    const isGlacier = biomeProfile?.id === 'glacier' || biome === 'glacier';
+    const waterLevel = WATER_LEVEL;
     const canyonGeometry = useMemo(() => {
         if (!active || !segmentPath) return null;
 
