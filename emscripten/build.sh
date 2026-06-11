@@ -137,10 +137,13 @@ if [ -f "$OUTPUT_JS" ]; then
         echo "  WASM size: ${WASM_SIZE} bytes"
     fi
     if [ "$USE_THREADS" -eq 1 ]; then
-        if [ -f "$REPO_ROOT/public/watershed_native.worker.js" ]; then
-            echo "  → $REPO_ROOT/public/watershed_native.worker.js (pthread worker shim)"
+        WORKER_JS="$REPO_ROOT/public/watershed_native.worker.js"
+        if [ -f "$WORKER_JS" ]; then
+            echo "  → $WORKER_JS (pthread worker shim)"
+        elif grep -q "PThread\|postMessage\|new Blob" "$OUTPUT_JS" 2>/dev/null; then
+            echo "  pthread worker shim embedded in watershed_native.js (modern Emscripten)"
         else
-            echo "  WARNING: watershed_native.worker.js not found — pthread worker shim may be missing."
+            echo "  WARNING: pthread worker shim not found in output — check Emscripten version"
         fi
     fi
 else
