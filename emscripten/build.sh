@@ -15,8 +15,14 @@
 
 set -euo pipefail
 
-source /content/buil*/emsdk/emsdk_env.sh
-
+# Optional: source a Colab-specific Emscripten install if present.
+for f in /content/build*/emsdk/emsdk_env.sh; do
+    if [ -f "$f" ]; then
+        # shellcheck source=/dev/null
+        source "$f"
+        break
+    fi
+done
 
 if ! command -v emcc &>/dev/null; then
   echo "[build:wasm] Emscripten not found — skipping WASM compile (source emsdk_env.sh first)."

@@ -19,6 +19,24 @@ import { initAudio, playJumpSound, playLandSound, playFootstep, playDodgeSound }
 import { triggerCameraShake } from './RunnerVehicle/utils';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
 
+const isNoPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
+
+function HeadlessPlayerMarker({ bodyRef }: { bodyRef: React.MutableRefObject<any> }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  useFrame(() => {
+    if (meshRef.current && bodyRef.current) {
+      const pos = bodyRef.current.translation();
+      meshRef.current.position.set(pos.x, pos.y, pos.z);
+    }
+  });
+  return (
+    <mesh ref={meshRef}>
+      <sphereGeometry args={[2.5, 16, 16]} />
+      <meshBasicMaterial color="#ff2a6d" />
+    </mesh>
+  );
+}
+
 const RunnerVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
   const { camera } = useThree();
@@ -222,6 +240,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       >
         <CapsuleCollider args={[0.4, 0.5]} />
       </RigidBody>
+
+      {isNoPointerLock && <HeadlessPlayerMarker bodyRef={bodyRef} />}
       
       {/* Collision particle effects */}
       {collisionState.current.activeParticles.map(particle => (

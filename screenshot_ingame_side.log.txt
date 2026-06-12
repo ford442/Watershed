@@ -1,0 +1,33 @@
+[console] [Unhandled Promise Rejection] DataCloneError: Failed to execute 'postMessage' on 'Worker': SharedArrayBuffer transfer requires self.crossOriginIsolated.
+[console] [Promise] [promise Promise]
+[pageerror] DataCloneError: Failed to execute 'postMessage' on 'Worker': SharedArrayBuffer transfer requires self.crossOriginIsolated.
+http://localhost:3000/watershed_native.js:1:10911
+new Promise (<anonymous>)
+DOMException: DataCloneError: Failed to execute 'postMessage' on 'Worker': SharedArrayBuffer transfer requires self.crossOriginIsolated.
+http://localhost:3000/watershed_native.js:1:10911
+new Promise (<anonymous>)
+    at <anonymous> (http://localhost:3000/watershed_native.js:1:10911)
+    at loadWasmModuleToWorker (http://localhost:3000/watershed_native.js:1:9822)
+    at loadWasmModuleToAllWorkers (http://localhost:3000/watershed_native.js:1:11094)
+    at <anonymous> (http://localhost:3000/watershed_native.js:1:9103)
+    at callRuntimeCallbacks (http://localhost:3000/watershed_native.js:1:6762)
+    at preRun (http://localhost:3000/watershed_native.js:1:3555)
+    at run (http://localhost:3000/watershed_native.js:1:39736)
+    at createWatershedNative (http://localhost:3000/watershed_native.js:1:40166)
+[console] Failed to load resource: the server responded with a status of 404 (File not found)
+[console] [.WebGL-0x57401de1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console] using deprecated parameters for the initialization function; pass a single object instead
+[console] [.WebGL-0x57401de1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console] [.WebGL-0x57401de1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console] [.WebGL-0x57401de1a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+[console] [TrackManager] ☀️ Day mode activated
+[requestfailed] http://localhost:3000/sounds/jump.mp3: net::ERR_ABORTED
+[console] [AudioManager] Failed to load sound: jump TypeError: Failed to fetch
+[requestfailed] http://localhost:3000/sounds/land_soft.mp3: net::ERR_ABORTED
+[console] [AudioManager] Failed to load sound: land_soft TypeError: Failed to fetch
+[requestfailed] http://localhost:3000/sounds/footstep_rock.mp3: net::ERR_ABORTED
+[console] [AudioManager] Failed to load sound: step_rock TypeError: Failed to fetch
+[requestfailed] http://localhost:3000/sounds/collide_rock.mp3: net::ERR_ABORTED
+[console] [AudioManager] Failed to load sound: collide_rock TypeError: Failed to fetch
+[console] [TrackManager] rendered slots: 10 active: 7
+[console] [TrackManager] rendered slots: 10 active: 7

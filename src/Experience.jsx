@@ -2,6 +2,7 @@ import { PointerLockControls, KeyboardControls, Html, Stats } from "@react-three
 import { Physics } from "@react-three/rapier";
 import { useFrame, useThree } from "@react-three/fiber";
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { BackSide } from "three";
 import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
 import ForecastHUD from "./components/ForecastHUD";
@@ -85,6 +86,27 @@ const NOOP_DEBUG = {
   setStageFailure: () => {},
 };
 
+function HeadlessSkySphere() {
+  const { camera, scene } = useThree();
+  const meshRef = useRef(null);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock')) {
+      scene.fog = null;
+    }
+  }, [scene]);
+  useFrame(() => {
+    if (meshRef.current && camera) {
+      meshRef.current.position.copy(camera.position);
+    }
+  });
+  return (
+    <mesh ref={meshRef} scale={[200, 200, 200]}>
+      <sphereGeometry args={[1, 32, 32]} />
+      <meshBasicMaterial color="#1a4a8a" side={BackSide} />
+    </mesh>
+  );
+}
+
 /**
  * InnerExperience - The actual game scene
  * Wrapped in providers for context access
@@ -93,6 +115,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
   const [vehicleType, setVehicleTypeLocal] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('vehicle') === 'raft' ? 'raft' : 'runner';
+  });
+  const [noPointerLock] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.location.search.includes('no-pointer-lock');
   });
   const vehicleRef = useRef(null);
   const { camera } = useThree();
@@ -484,6 +510,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
 
   return (
     <>
+      {noPointerLock && <HeadlessSkySphere />}
+
       {/* Sky and environment */}
       {debug.isStageEnabled('visualization') && (
         <EnhancedSky />
@@ -533,11 +561,13 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
       {/* Physics world */}
       {debug.isStageEnabled('physics') && (
         <Physics debug={isDebug || physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
-          <PointerLockControls
-            makeDefault
-            lockOnClick
-            onLock={() => { }}
-          />
+          {!noPointerLock && (
+            <PointerLockControls
+              makeDefault
+              lockOnClick
+              onLock={() => { }}
+            />
+          )}
 
           {/* Vehicle */}
           {vehicleType === 'runner' ? (

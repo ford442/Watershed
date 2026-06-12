@@ -21,7 +21,7 @@ export function updateRunnerPhysics({
     prevFrame, collisionState, defaultCollisionGroups, fovRef, debugState, debugSnapshotRef
   } = vehicleState;
 
-
+  const noPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
 
     const pos = body.translation();
     const vel = body.linvel();
@@ -175,7 +175,7 @@ export function updateRunnerPhysics({
 
     // === JUMP STATE MACHINE ===
     const js = jumpState.current;
-    const { jump, leftward, rightward, dodge, sprint } = controls.getControls();
+    const { jump, leftward, rightward, dodge, sprint, forward, backward } = controls.getControls();
     const jumpJustPressed = jump && !prevFrame.current.jumpPressed;
     const dodgeJustPressed = dodge && !prevFrame.current.dodgePressed;
 
@@ -374,7 +374,7 @@ export function updateRunnerPhysics({
     prevFrame.current.velocity.set(vel.x, vel.y, vel.z);
 
     // === MOVEMENT INPUT ===
-    const { forward, backward } = controls.getControls();
+    // forward/backward already read above to avoid TDZ in handleDodgeAndCollision.
 
     // Camera-relative direction
     const forwardDir = new THREE.Vector3();
@@ -417,7 +417,7 @@ export function updateRunnerPhysics({
 
     // Strafe with commit/recovery restrictions
     const inCommitPhase = js.state === 'airborne' && js.commitTimer > 0;
-    const canStrafe = !inCommitPhase && js.state !== 'recovering' && ds.state !== 'dodging';
+    const canStrafe = !inCommitPhase && js.state !== 'recovering' && dodgeState.current.state !== 'dodging';
 
     if (canStrafe) {
       if (leftward) {
@@ -527,8 +527,15 @@ export function updateRunnerPhysics({
     // Camera follow (first-person, smooth)
     // Guard against NaN from Rapier during physics init — lerping NaN permanently corrupts camera matrix
     if (isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z)) {
-      const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
-      camera.position.lerp(targetPos, 0.12);
+      if (noPointerLock) {
+        // Headless/screenshot mode: straight top-down view so the generated river/canyon is visible
+        // even when PointerLockControls is unavailable.
+        camera.position.set(pos.x, pos.y + 40, pos.z);
+        camera.lookAt(pos.x, pos.y, pos.z);
+      } else {
+        const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
+        camera.position.lerp(targetPos, 0.12);
+      }
     }
 
     // FOV kick — speed-based expansion + waterfall punch
@@ -538,7 +545,7 @@ export function updateRunnerPhysics({
       // Horizontal speed only — vertical drops shouldn't affect FOV alone
       const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
       const targetFov = 75 + Math.min(12, hSpeed * 0.45) + (isWaterfallSeg ? 10 : 0);
-      fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-delta * 5));
+      fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-dt * 5));
       if (Math.abs(camera.fov - fovRef.current) > 0.05) {
         camera.fov = fovRef.current;
         camera.updateProjectionMatrix();

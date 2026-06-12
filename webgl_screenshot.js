@@ -1,0 +1,10 @@
+import puppeteer from 'puppeteer';
+const args=['--no-sandbox','--headless=new','--use-angle=vulkan','--enable-features=Vulkan','--disable-vulkan-surface','--enable-unsafe-webgpu','--ignore-gpu-blocklist','--enable-gpu-rasterization','--disable-software-rasterizer','--window-size=1280,720'];
+const browser=await puppeteer.launch({headless:'new',ignoreDefaultArgs:true,executablePath:'/usr/bin/google-chrome',args});
+const page=await browser.newPage();
+await page.setViewport({width:1280,height:720});
+await page.goto('http://localhost:8080/webgl_test.html',{waitUntil:'networkidle0',timeout:30000});
+await new Promise(r=>setTimeout(r,1000));
+await page.screenshot({path:'/tmp/webgl_test.png'});
+console.log('saved /tmp/webgl_test.png');
+await browser.close();
