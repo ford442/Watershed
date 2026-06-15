@@ -508,6 +508,43 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }, []);
 
+  // Screenshot harness: ?screenshot=1 exposes teleport helpers for automated WebGL captures.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.search.includes('screenshot=1')) {
+      return undefined;
+    }
+
+    const api = {
+      teleportToZ: (z, y = PLAYER_SPAWN.position[1]) => {
+        if (!vehicleRef.current) return false;
+        vehicleRef.current.setTranslation({ x: 0, y, z }, true);
+        vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        return true;
+      },
+      teleportToSegment: (segmentIndex) => {
+        const spawn = spawnPoints[segmentIndex];
+        if (spawn && vehicleRef.current) {
+          vehicleRef.current.setTranslation(
+            { x: spawn.x, y: spawn.y + 1.5, z: spawn.z },
+            true
+          );
+          vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          return true;
+        }
+        // Fallback: ~95 units per segment along -Z from the meander origin.
+        return api.teleportToZ(-segmentIndex * 95);
+      },
+      getSpawnPoints: () => ({ ...spawnPoints }),
+    };
+
+    window.__watershedScreenshot = api;
+    return () => {
+      delete window.__watershedScreenshot;
+    };
+  }, [spawnPoints]);
+
   const resetDefaultMapRun = useCallback((targetMapId) => {
     const targetMap = DEFAULT_MAPS[targetMapId] ?? DEFAULT_MAPS.meander;
 

@@ -1,0 +1,171 @@
+{
+  "url": "http://localhost:3000?renderer=webgl&screenshot=1",
+  "startedAt": "2026-06-15T06:38:11.197Z",
+  "captures": [
+    {
+      "file": "/root/watershed/verification/webgl/01_meander_start.png",
+      "label": "01_meander_start",
+      "segment": 29,
+      "position": {
+        "x": 0,
+        "y": 33165998,
+        "z": -504721248
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    },
+    {
+      "file": "/root/watershed/verification/webgl/02_meander_glacier.png",
+      "label": "02_meander_glacier",
+      "segment": 29,
+      "position": {
+        "x": 0,
+        "y": 3180131516416,
+        "z": -504721248
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    },
+    {
+      "file": "/root/watershed/verification/webgl/03_meander_flowing.png",
+      "label": "03_meander_flowing",
+      "segment": 29,
+      "position": {
+        "x": 0,
+        "y": 5546180083712,
+        "z": -504721248
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    },
+    {
+      "file": "/root/watershed/verification/webgl/04_canyon_run.png",
+      "label": "04_canyon_run",
+      "segment": 29,
+      "position": {
+        "x": 0,
+        "y": 5651377422336,
+        "z": -504721248
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    },
+    {
+      "file": "/root/watershed/verification/webgl/05_downstream.png",
+      "label": "05_downstream",
+      "segment": 29,
+      "position": {
+        "x": 80.63067626953125,
+        "y": -529.58740234375,
+        "z": -1008.195068359375
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    },
+    {
+      "file": "/root/watershed/verification/webgl/06_slot_canyon.png",
+      "label": "06_slot_canyon",
+      "segment": 29,
+      "position": {
+        "x": 59.88015365600586,
+        "y": -1226.7757568359375,
+        "z": -1457.1573486328125
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    },
+    {
+      "file": "/root/watershed/verification/webgl/07_delta.png",
+      "label": "07_delta",
+      "segment": 29,
+      "position": {
+        "x": 0,
+        "y": -37.03464126586914,
+        "z": -3112.1318359375
+      },
+      "inMenu": false,
+      "luminance": 223.88,
+      "isMenu": false,
+      "isBlack": true,
+      "isSkyOnly": true,
+      "isGood": false,
+      "centerPixel": [
+        206,
+        231,
+        206,
+        255
+      ]
+    }
+  ],
+  "parityNotes": [
+    "Teleporting far downstream triggers firstElem.toArray errors in flow/audio code — early-run captures are more stable.",
+    "Avoid ?no-pointer-lock for screenshots; it forces top-down camera + HeadlessSkySphere.",
+    "Use SwiftShader flags in headless CI; Vulkan ANGLE often fails without GPU.",
+    "WebGPU default path may error under SwiftShader — force ?renderer=webgl."
+  ],
+  "webglVerified": true,
+  "pageErrors": [
+    "Failed to execute 'linearRampToValueAtTime' on 'AudioParam': The provided float value is non-finite.",
+    "firstElem.toArray is not a function"
+  ]
+}

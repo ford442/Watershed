@@ -219,11 +219,18 @@ function App() {
           <Canvas
             key={`renderer-${rendererPreference}`}
             gl={async (props) =>
-              createGameRenderer(props, {
-                preference: rendererPreference,
-                antialias: true,
-                powerPreference: 'high-performance',
-              })
+              createGameRenderer(
+                {
+                  ...props,
+                  preserveDrawingBuffer:
+                    urlParams.get('screenshot') === '1' || urlParams.get('capture') === '1',
+                },
+                {
+                  preference: rendererPreference,
+                  antialias: true,
+                  powerPreference: 'high-performance',
+                }
+              )
             }
             camera={{ position: [0, 10, -10], fov: 75 }}
             shadows="soft"
