@@ -4,6 +4,10 @@ import { usePlayerBiome, useGameStore } from '../systems/GameState';
 interface GameHUDProps {
   isWipeout?: boolean;
   onRespawn?: () => void;
+  onRestartJourney?: () => void;
+  onLoopMap?: () => void;
+  onContinueJourney?: () => void;
+  mapLabel?: string;
 }
 
 const BIOME_LABELS: Record<string, string> = {
@@ -19,6 +23,10 @@ const BIOME_LABELS: Record<string, string> = {
 export const GameHUD: React.FC<GameHUDProps> = ({
   isWipeout = false,
   onRespawn,
+  onRestartJourney,
+  onLoopMap,
+  onContinueJourney,
+  mapLabel = 'Map 1: Meander',
 }) => {
   const currentBiome = usePlayerBiome();
   const rawSpeed = useGameStore((s) => s.currentSpeed);
@@ -92,13 +100,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isJourneyComplete && e.key === 'Enter') {
-        useGameStore.getState().resetGameState();
-        onRespawn?.();
+        onRestartJourney?.();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isJourneyComplete, onRespawn]);
+  }, [isJourneyComplete, onRestartJourney]);
 
   if (isWipeout) {
     return (
@@ -141,6 +148,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             Journey Complete
           </div>
 
+          <div className="text-sm md:text-base text-white/45 font-mono uppercase tracking-[0.18em] mb-6">
+            {mapLabel}
+          </div>
+
           <div className="text-3xl md:text-5xl text-white mb-4">
             <span className="font-mono font-bold">{Math.floor(score).toLocaleString()}</span>
           </div>
@@ -159,18 +170,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             Top Speed: <span className="font-mono text-white">{Math.round(topSpeed)} m/s</span>
           </div>
 
-          <button
-            onClick={() => {
-              useGameStore.getState().resetGameState();
-              onRespawn?.();
-            }}
-            className="px-12 py-5 bg-white text-black text-2xl md:text-3xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
-          >
-            RESTART
-          </button>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+            <button
+              onClick={() => {
+                onLoopMap?.();
+              }}
+              className="px-10 py-5 bg-white text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
+            >
+              LOOP MAP
+            </button>
+
+            {onContinueJourney && (
+              <button
+                onClick={() => {
+                  onContinueJourney();
+                }}
+                className="px-10 py-5 bg-amber-300 text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-sky-300 hover:scale-105 transition-all shadow-2xl"
+              >
+                CONTINUE TO MAP 2
+              </button>
+            )}
+          </div>
 
           <p className="mt-8 text-zinc-600 text-sm">
-            Press Enter to restart
+            Press Enter for the configured default action
           </p>
         </div>
       </div>

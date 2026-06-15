@@ -285,3 +285,77 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
         },
     },
 ];
+
+/**
+ * Minimal second-map stub used to prove the authored-map handoff contract.
+ * This is intentionally short and delta-focused; future authored content can
+ * replace the progression without changing the TrackManager handoff plumbing.
+ */
+export const DELTA_RAPIDS_CONTINUED_START_INDEX = 0;
+
+export const DELTA_RAPIDS_CONTINUED_PROGRESSION: SegmentRange[] = [
+    {
+        indexFrom: 0,
+        indexTo: 2,
+        config: {
+            biome: 'delta',
+            type: 'pond',
+            width: 115,
+            waterWidth: 42,
+            verticalBias: -0.02,
+            meanderStrength: 0.25,
+            flowSpeed: 0.25,
+            rockDensity: 'low',
+            treeDensity: 0.25,
+        },
+    },
+    {
+        indexFrom: 3,
+        indexTo: 5,
+        config: {
+            biome: 'delta',
+            type: 'normal',
+            width: 85,
+            waterWidth: 30,
+            verticalBias: -0.35,
+            meanderStrength: 0.8,
+            flowSpeed: 0.9,
+            rockDensity: 'medium',
+            treeDensity: 0.35,
+            particleCount: 120,
+        },
+    },
+    {
+        indexFrom: 6,
+        indexTo: 7,
+        config: {
+            biome: 'autumn',
+            type: 'normal',
+            width: 62,
+            waterWidth: 22,
+            verticalBias: -0.55,
+            meanderStrength: 1.2,
+            flowSpeed: 1.15,
+            rockDensity: 'high',
+            treeDensity: 0.55,
+            particleCount: 220,
+            cameraShake: 0.12,
+        },
+    },
+    {
+        indexFrom: 8,
+        indexTo: 8,
+        config: {
+            biome: 'delta',
+            type: 'splash',
+            width: 100,
+            waterWidth: 36,
+            verticalBias: -0.08,
+            meanderStrength: 0.1,
+            flowSpeed: 0.35,
+            rockDensity: 'low',
+            treeDensity: 0.2,
+            journeyComplete: true,
+        },
+    },
+];

@@ -295,6 +295,7 @@ export class ChunkManager {
   }
 
   reset(reachSegments?: NormalizedSegment[] | null): void {
+    this.clearBiomeDebounce();
     this.reachSegments = reachSegments ?? null;
     this.initialized = false;
     this.nextSegmentId = this.startIndex;
@@ -304,6 +305,15 @@ export class ChunkManager {
       active: false,
       segment: null,
     }));
+    this.spawnPoints.clear();
+    this.lastEnteredSegment = -1;
+  }
+
+  dispose(): void {
+    this.clearBiomeDebounce();
+    this.initialized = false;
+    this.activeOrder = [];
+    this.pool = [];
     this.spawnPoints.clear();
     this.lastEnteredSegment = -1;
   }
@@ -550,6 +560,14 @@ export class ChunkManager {
 
   setReachSegments(reachSegments: NormalizedSegment[] | null): void {
     this.reachSegments = reachSegments ?? null;
+  }
+
+  private clearBiomeDebounce(): void {
+    if (this.biomeDebounceTimer) {
+      clearTimeout(this.biomeDebounceTimer);
+      this.biomeDebounceTimer = null;
+    }
+    this.pendingBiome = null;
   }
 }
 

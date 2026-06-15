@@ -32,7 +32,16 @@ function cloneForRender(segment, slotIndex, active) {
     };
 }
 
-export default function TrackManager({ onBiomeChange, raftRef, forecastSamples = [], reachSegments = null, reachId = null, mapData = null, startIndex = 0 }) {
+export default function TrackManager({
+    onBiomeChange,
+    raftRef,
+    forecastSamples = [],
+    reachSegments = null,
+    reachId = null,
+    mapData = null,
+    startIndex = 0,
+    mapProgression = MEANDER_TO_WATERFALL_PROGRESSION,
+}) {
     const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
     const [obstaclePoolVersion, setObstaclePoolVersion] = useState(0);
@@ -42,7 +51,7 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
     const forecastByIndexRef = useRef(new Map());
     const weatherWetnessRef = useRef(0);
     const mapManagerRef = useRef(
-        mapData ? new JSONMapManager(mapData) : new DefaultMapManager({}, MEANDER_TO_WATERFALL_PROGRESSION)
+        mapData ? new JSONMapManager(mapData) : new DefaultMapManager({}, mapProgression)
     );
     const reachSegmentsRef = useRef(reachSegments);
     const obstaclePoolRef = useRef(createObstaclePool(16));
@@ -222,6 +231,11 @@ export default function TrackManager({ onBiomeChange, raftRef, forecastSamples =
 
         chunkManagerRef.current.initializePool();
         setPoolVersion((v) => v + 1);
+
+        return () => {
+            chunkManagerRef.current?.dispose?.();
+            chunkManagerRef.current = null;
+        };
     }, [rockMaterial, onBiomeChange, reachSegments]);
 
     // Night mode: update scene fog and background

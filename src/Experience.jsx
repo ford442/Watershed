@@ -17,7 +17,12 @@ import RaftVehicle from "./vehicles/RaftVehicle";
 import LevelLoader, { ErrorDisplay, LoadingDisplay } from "./systems/LevelLoader";
 import ReachManager from "./systems/ReachManager";
 import TrackManager from "./components/TrackManager";
-import { GLACIER_START_INDEX } from "./maps/meander_to_waterfall";
+import {
+  DELTA_RAPIDS_CONTINUED_PROGRESSION,
+  DELTA_RAPIDS_CONTINUED_START_INDEX,
+  GLACIER_START_INDEX,
+  MEANDER_TO_WATERFALL_PROGRESSION,
+} from "./maps/meander_to_waterfall";
 
 // NEW: Visual enhancement systems
 import { BiomeProvider, BiomeTransition, BiomeDetector, useBiomeMaterials, useBiome } from "./systems/BiomeSystem";
@@ -46,6 +51,23 @@ const DAM_RELEASE_SCHEDULE = [
   { hour: 6, release: 0.08 },
   { hour: 14, release: 0.12 },
 ];
+
+const DEFAULT_MAPS = {
+  meander: {
+    id: 'meander',
+    label: 'Map 1: Meander to Waterfall',
+    startIndex: GLACIER_START_INDEX,
+    progression: MEANDER_TO_WATERFALL_PROGRESSION,
+    initialBiome: 'canyonSummer',
+  },
+  delta: {
+    id: 'delta',
+    label: 'Map 2: Delta Rapids Stub',
+    startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
+    progression: DELTA_RAPIDS_CONTINUED_PROGRESSION,
+    initialBiome: 'delta',
+  },
+};
 
 // Base lighting configuration (keyed by canonical BiomePalette id)
 const BIOME_LIGHTING = {
@@ -131,6 +153,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
   const biome = useGameStore((s) => s.currentBiome);
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   const isWipeout = useGameStore((s) => s.isWipeout);
+  const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
   const setIsWipeout = useGameStore((s) => s.setIsWipeout);
   const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
   const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
@@ -174,6 +197,40 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState(null);
   const [reachRetryKey, setReachRetryKey] = useState(0);
+  const [defaultMapRunKey, setDefaultMapRunKey] = useState(0);
+  const [activeDefaultMapId, setActiveDefaultMapId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('map') === 'delta' ? 'delta' : 'meander';
+  });
+  const [journeyDefaultAction] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('loop') === '1') return 'loop';
+    return params.get('nextMap') === 'delta' ? 'nextMap' : 'loop';
+  });
+  const activeDefaultMap = DEFAULT_MAPS[activeDefaultMapId] ?? DEFAULT_MAPS.meander;
+  const canContinueDefaultMap = activeDefaultMapId === 'meander';
+
+  useEffect(() => {
+    if (levelUrl || reachId) return;
+    const syncMapStartState = () => {
+      setCurrentSegmentIndex(activeDefaultMap.startIndex);
+      setRespawnSegmentIndex(activeDefaultMap.startIndex);
+      setBiomeContext(activeDefaultMap.initialBiome);
+      useGameStore.setState({ currentBiome: activeDefaultMap.initialBiome });
+    };
+
+    syncMapStartState();
+    const timeout = window.setTimeout(syncMapStartState, 0);
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeDefaultMap.initialBiome,
+    activeDefaultMap.startIndex,
+    levelUrl,
+    reachId,
+    setBiomeContext,
+    setCurrentSegmentIndex,
+    setRespawnSegmentIndex,
+  ]);
 
   // Get LOD config and quality level
   const { config: lodConfig, quality } = useLOD();
@@ -437,6 +494,73 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     }
   }, [debug.setStageFailure, setIsWipeout, spawnPoints, respawnSegmentIndex]);
 
+  const teleportVehicleToStart = useCallback(() => {
+    if (!vehicleRef.current) return;
+
+    const target = {
+      x: PLAYER_SPAWN.position[0],
+      y: PLAYER_SPAWN.position[1],
+      z: PLAYER_SPAWN.position[2],
+    };
+
+    vehicleRef.current.setTranslation(target, true);
+    vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }, []);
+
+  const resetDefaultMapRun = useCallback((targetMapId) => {
+    const targetMap = DEFAULT_MAPS[targetMapId] ?? DEFAULT_MAPS.meander;
+
+    try {
+      useGameStore.getState().resetGameState();
+      setIsWipeout(false);
+      setActiveDefaultMapId(targetMap.id);
+      setCurrentSegmentIndex(targetMap.startIndex);
+      setRespawnSegmentIndex(targetMap.startIndex);
+      setWaterfallGravityMultiplier(1.0);
+      setBiomeContext(targetMap.initialBiome);
+      useGameStore.setState({ currentBiome: targetMap.initialBiome });
+      setForecastSamples([]);
+      awardedWaterfallSegmentsRef.current.clear();
+      resetScoreSystemState();
+      teleportVehicleToStart();
+
+      // Remount the default treadmill so active chunks, spawn points, and
+      // journey-complete detection restart from the glacier prelude.
+      if (!levelUrl && !reachId) {
+        setDefaultMapRunKey((key) => key + 1);
+      }
+    } catch (error) {
+      debug.setStageFailure('stateManagement', error);
+    }
+  }, [
+    debug.setStageFailure,
+    levelUrl,
+    reachId,
+    setBiomeContext,
+    setCurrentSegmentIndex,
+    setIsWipeout,
+    setRespawnSegmentIndex,
+    setWaterfallGravityMultiplier,
+    teleportVehicleToStart,
+  ]);
+
+  const handleLoopCurrentMap = useCallback(() => {
+    resetDefaultMapRun(activeDefaultMapId);
+  }, [activeDefaultMapId, resetDefaultMapRun]);
+
+  const handleContinueJourney = useCallback(() => {
+    resetDefaultMapRun('delta');
+  }, [resetDefaultMapRun]);
+
+  const handleDefaultJourneyAction = useCallback(() => {
+    if (journeyDefaultAction === 'nextMap' && canContinueDefaultMap) {
+      resetDefaultMapRun('delta');
+      return;
+    }
+    resetDefaultMapRun(activeDefaultMapId);
+  }, [activeDefaultMapId, canContinueDefaultMap, journeyDefaultAction, resetDefaultMapRun]);
+
   // Use lighting from biome system or fallback
   const L = BIOME_LIGHTING[biome] || BIOME_LIGHTING.canyonSummer;
   const isTightCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
@@ -633,10 +757,12 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
           ) : (
             // Default to procedural TrackManager if no levelUrl or reachId
             <TrackManager
+              key={defaultMapRunKey}
               onBiomeChange={handleBiomeChange}
               raftRef={vehicleRef}
               forecastSamples={forecastSamples}
-              startIndex={GLACIER_START_INDEX}
+              startIndex={activeDefaultMap.startIndex}
+              mapProgression={activeDefaultMap.progression}
             />
           ))}
         </Physics>
@@ -657,10 +783,14 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
         <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
         <ForecastHUD samples={forecastSamples} />
 
-        <div style={{ pointerEvents: isWipeout ? 'auto' : 'none' }}>
+        <div style={{ pointerEvents: isWipeout || isJourneyComplete ? 'auto' : 'none' }}>
           <GameHUD
             isWipeout={isWipeout}
             onRespawn={handleRespawn}
+            onRestartJourney={handleDefaultJourneyAction}
+            onLoopMap={handleLoopCurrentMap}
+            onContinueJourney={canContinueDefaultMap ? handleContinueJourney : undefined}
+            mapLabel={activeDefaultMap.label}
           />
         </div>
 
