@@ -6,6 +6,7 @@ import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
 import { useDebugStages } from './debug/debugStages';
+import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import {
@@ -59,7 +60,9 @@ function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
+  const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
   const [physicsDebug, setPhysicsDebug] = useState(() => {
+    if (isCleanTestMode()) return false;
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('physicsDebug');
     return raw === '1' || raw === 'true';
@@ -68,6 +71,7 @@ function App() {
     parseRendererPreference()
   );
   const [wireframeDebug, setWireframeDebug] = useState(() => {
+    if (isCleanTestMode()) return false;
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('wireframe');
     return raw === '1' || raw === 'true';
@@ -124,6 +128,7 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.repeat) return;
+      if (cleanTest) return;
       if (e.code === 'KeyF') {
         setPhysicsDebug((prev) => !prev);
       }
@@ -139,7 +144,13 @@ function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [cleanTest]);
+
+  useEffect(() => {
+    if (!cleanTest) return;
+    setPhysicsDebug(false);
+    setWireframeDebug(false);
+  }, [cleanTest]);
 
   // Detect pointer lock loss as pause trigger
   useEffect(() => {
@@ -245,6 +256,7 @@ function App() {
                 physicsDebug={physicsDebug}
                 rendererPreference={rendererPreference}
                 wireframeDebug={wireframeDebug}
+                cleanTest={cleanTest}
               />
             </React.Suspense>
           </Canvas>
@@ -263,15 +275,48 @@ function App() {
               onQuit={handleQuit}
             />
           )}
-          <DebugPanel
-            debug={debug}
-            physicsDebug={physicsDebug}
-            onTogglePhysicsDebug={setPhysicsDebug}
-            rendererPreference={rendererPreference}
-            onRendererPreferenceChange={handleRendererPreferenceChange}
-            wireframeDebug={wireframeDebug}
-            onToggleWireframeDebug={setWireframeDebug}
-          />
+          {debug.debugEnabled && !cleanTest && (
+            <DebugPanel
+              debug={debug}
+              physicsDebug={physicsDebug}
+              onTogglePhysicsDebug={setPhysicsDebug}
+              rendererPreference={rendererPreference}
+              onRendererPreferenceChange={handleRendererPreferenceChange}
+              wireframeDebug={wireframeDebug}
+              onToggleWireframeDebug={setWireframeDebug}
+              onEnableCleanTest={() => {
+                setCleanTestMode(true);
+                setCleanTestActive(true);
+                setPhysicsDebug(false);
+                setWireframeDebug(false);
+              }}
+            />
+          )}
+          {cleanTest && debug.debugEnabled && (
+            <button
+              type="button"
+              onClick={() => {
+                setCleanTestMode(false);
+                setCleanTestActive(false);
+              }}
+              style={{
+                position: 'fixed',
+                bottom: 12,
+                right: 12,
+                zIndex: 20000,
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(10,10,16,0.85)',
+                color: '#ccc',
+                fontFamily: 'ui-monospace, monospace',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              Show debug
+            </button>
+          )}
         </>
       )}
     </ErrorBoundary>

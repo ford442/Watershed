@@ -111,7 +111,7 @@ const readStoredHighScore = (): number => {
 };
 
 const INITIAL_STATE: GameState = {
-  playerPosition: { x: 0, y: -4, z: -10 },
+  playerPosition: { x: 0, y: -6, z: -10 },
   currentSpeed: 0,
   currentBiome: 'canyonSummer',
   isPaused: false,

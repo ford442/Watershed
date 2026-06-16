@@ -113,14 +113,10 @@ setInterval(() => {
 
 ### Unit Tests
 ```bash
-npm test
+CI=true pnpm test --watchAll=false
 ```
 
-Currently, no unit tests are implemented. Future tests should cover:
-- Player spawn position validation
-- Collision detection
-- Movement controls
-- Camera controls
+176 tests across 17 suites (components, systems, rendering, validators). See **2026-06 Live Test Gate** below for the full verification matrix.
 
 ### Visual Regression Testing
 
@@ -245,6 +241,110 @@ console.log('WebAssembly:', typeof WebAssembly !== 'undefined' ? 'Supported' : '
 2. Open Components tab
 3. Enable "Highlight updates"
 4. Look for unnecessary re-renders
+
+## 2026-06 Live Test Gate — “Game Up and Testable”
+
+**Gate date:** 2026-06-15  
+**Map:** `meander_to_waterfall` (glacier prelude `startIndex=-3` → segment 38 `journeyComplete`)  
+**Verdict:** **Conditional pass** — safe to hand to a human tester on real Chrome + GPU. Full authored traversal, visuals, and journey-complete loop still require manual sign-off (see blockers below).
+
+### Quick commands
+
+```bash
+pnpm install
+pnpm dev                    # http://localhost:3000
+CI=true pnpm test --watchAll=false
+pnpm build
+node verification/webgl_screenshots.mjs   # headless WebGL captures (CI parity)
+```
+
+Use **`?renderer=webgl`** for the supported test path. Add **`?cleanTest=1`** (or use **`?screenshot=1`**, which enables clean mode automatically) to hide the debug panel, Flow Forecast HUD, audio diagnostics, wireframe overlay (G), and physics debug (F) for polished screenshots and live test runs.
+
+### Manual tester script (real Chrome, decent GPU)
+
+1. `pnpm dev` (or `npm start`).
+2. Open `http://localhost:3000` — also spot-check `?renderer=webgl`.
+3. Click **Start Run** (or `?no-pointer-lock=1` for top-down debug camera only).
+4. Engage controls: WASD / right-click forward, mouse look, Space jump, **R** restart prompt, **Esc** pause.
+5. Play through the authored sequence:
+   - Glacier prelude (segments **-3…-1** via `GLACIER_START_INDEX`)
+   - Meander **0–13**, approach, waterfall **14** (camera shake + particles)
+   - Splash **15** + biome shift to autumn + pond **16–18**
+   - Rapids / slot **19–22** (narrow, high rocks)
+   - Later falls **28–29**, delta approach, **journey complete at 38**
+6. On **Journey Complete**: press **Enter** (or click) → should loop/teleport to glacier prelude and remount the track treadmill.
+7. Capture screenshots at representative points; store under `verification/` (examples: `firstmap-waterfall-webgl.png`, `firstmap-splash-webgl.png`).
+
+#### Success criteria
+
+| Check | Expected |
+|-------|----------|
+| Boot | No uncaught exceptions; no ErrorBoundary crash |
+| Physics | Player does not fall through geometry for a full run |
+| Systems | Biome transitions, water flow, camera shake (seg 14), LOD tier changes |
+| Ending | Journey Complete overlay at segment 38 |
+| Loop | Enter/click restart → fresh run from glacier prelude (`seg ≈ -3`) |
+| WebGL visuals | Canyon/water readable — not black or sky-only |
+| FPS | Playable (>25–30 FPS) after initial load dip |
+| Pause / wipeout | Esc pauses; fall-off-track shows WIPEOUT + respawn |
+
+Also exercise: pause/resume, respawn on wipeout, runner vehicle feel (default).
+
+### Automated verification run (2026-06-15)
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `CI=true pnpm test --watchAll=false` | **176/176 pass** | 17 suites |
+| `pnpm build` | **Pass** | WASM skipped without Emscripten (expected) |
+| WebGL boot `?renderer=webgl` | **Pass** | Canvas mounts, no ErrorBoundary, WebGL2 context |
+| WebGPU boot `?renderer=webgpu` | **Boot OK** | Menu renders; GPU-dependent path needs real hardware |
+| TrackSegment refactor crash | **Fixed** | No `isSlotCanyon is not defined` on load |
+| Glacier spawn | **Pass** | `currentSegmentIndex = -3`, finite Y (~-8 to -10) |
+| HUD / score / biome label | **Pass** | Speed, CANYON SUMMER, score increment |
+| Wipeout overlay | **Pass** | Store + WIPEOUT DOM when `setIsWipeout(true)` |
+| Journey restart plumbing | **Pass** | `setJourneyComplete()` → Enter resets store (`isJourneyComplete=false`, `seg=-3`) |
+| Headless WebGL screenshots | **0/7 “good” frames** | SwiftShader renders sky-only (~4 KB PNGs); not a visual gate |
+| Full map traversal (automated) | **Not verified** | Mocked pointer lock + W key ≈ zero speed; needs human |
+| Journey Complete via gameplay | **Not verified** | Teleport harness does not fire `ChunkManager.onSegmentEnter` |
+| Pause (Esc) in headless | **Not detected** | Likely needs real pointer-lock lifecycle |
+
+**Screenshots captured:** `verification/firstmap-*.png` and `verification/webgl/capture_report.json`.
+
+Representative captures with usable canyon content (from longer top-down / timed runs):
+
+- `verification/firstmap-waterfall-webgl.png` (~153 KB)
+- `verification/firstmap-splash-webgl.png` (~149 KB)
+
+Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc.) are **sky-only** and must not be used as the visual gate.
+
+### Known blockers / follow-ups
+
+| ID | Severity | Issue | Suggested fix |
+|----|----------|-------|---------------|
+| F-1 | **Gate** | Headless WebGL screenshots are sky-only; automated script exits 1 on “good frames” | Treat `webgl_screenshots.mjs` as boot/segment telemetry only; manual GPU screenshots for visuals |
+| F-2 | **Gate** | Journey Complete not triggerable via `__watershedScreenshot.teleportToSegment(38)` | Teleport moves rigid body only; `onSegmentEnter` must run — add `teleportToSegment` → synthetic segment-enter or manual traversal |
+| F-3 | Medium | `firstElem.toArray is not a function` when teleporting far downstream | Flow/audio path assumes curve/array shape — guard in segment sampler or flow forces |
+| F-4 | Medium | `linearRampToValueAtTime` non-finite AudioParam | Sanitize speed/flow inputs before Web Audio ramps |
+| F-5 | Low | Missing SFX buffers: `jump`, `land_soft`, `step_rock`, `collide_rock` | Add assets or disable stems in dev |
+| F-6 | Low | Automated W-key movement ~0 m/s with mocked pointer lock | Use real pointer lock for traversal tests; or expose a debug “autopilot” for CI |
+| F-7 | Info | WebGPU default errors under SwiftShader (`lightNodeClass`) | Document `?renderer=webgl` for CI; WebGPU OK on real Chrome 120+ |
+
+### Sign-off checklist (human tester)
+
+Copy into PR / release notes when complete:
+
+- [ ] WebGL path: full run glacier → segment 38 without fall-through
+- [ ] Waterfall 14: shake + particles observed
+- [ ] Segment 15: autumn biome transition
+- [ ] Slot canyon 19–22: narrow walls, high rock density
+- [ ] Journey Complete overlay at 38
+- [ ] Enter restart → fresh glacier prelude
+- [ ] Esc pause / resume works
+- [ ] Wipeout + respawn works
+- [ ] FPS ≥ 30 on target hardware after LOD settles
+- [ ] Screenshots attached (`verification/firstmap-*.png`)
+
+---
 
 ## Regression Testing Checklist
 

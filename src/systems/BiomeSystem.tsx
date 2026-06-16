@@ -21,7 +21,9 @@ type BiomeContextType = {
   transitionProgress: number;
   isTransitioning: boolean;
   timeOfDay: number; // 0-1 (0=8am, 0.5=noon, 1=5pm)
-  setBiome: (biomeId: string) => void;
+  setBiome: (biomeId: string, durationOverride?: number) => void;
+  /** Instant biome snap — used on journey loop / respawn so delta/end palettes don't linger. */
+  snapBiome: (biomeId: string) => void;
   setTimeOfDay: (time: number) => void;
 };
 
@@ -88,6 +90,22 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
       (newTarget as any).__durationOverride = durationOverride;
     }
   }, [currentBiome, targetBiome]);
+
+  const snapBiome = useCallback((biomeId: string) => {
+    const palette = getBiomePalette(biomeId);
+    previousBiome.current = palette;
+    setCurrentBiomeState(palette);
+    setTargetBiome(palette);
+    setIsTransitioning(false);
+    setTransitionProgress(1);
+    delete (palette as any).__durationOverride;
+    useGameStore.setState({ currentBiome: palette.id });
+    window.dispatchEvent(
+      new CustomEvent('biome-change', {
+        detail: { biome: palette.id, segmentIndex: useGameStore.getState().currentSegmentIndex },
+      })
+    );
+  }, []);
   
   // Update transition progress
   useEffect(() => {
@@ -141,6 +159,7 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
       isTransitioning,
       timeOfDay,
       setBiome,
+      snapBiome,
       setTimeOfDay,
     }}>
       {children}
@@ -161,8 +180,13 @@ export const BiomeTransition: React.FC = () => {
       const incoming = (event as CustomEvent)?.detail?.type;
       if (typeof incoming === 'string') setWeatherType(incoming);
     };
+    const onRunReset = () => setWeatherType('clear');
     window.addEventListener('weather-update', onWeatherUpdate);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate);
+    window.addEventListener('watershed-run-reset', onRunReset);
+    return () => {
+      window.removeEventListener('weather-update', onWeatherUpdate);
+      window.removeEventListener('watershed-run-reset', onRunReset);
+    };
   }, []);
 
   // Get lighting references

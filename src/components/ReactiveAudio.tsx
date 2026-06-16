@@ -247,8 +247,17 @@ export default function ReactiveAudio({
         };
       }
     };
+    const onRunReset = () => {
+      flowRef.current = { flowSpeed: 1, turbulence: 0, state: 'Normal' };
+      volumesRef.current = { low: 0, mid: 0, high: 0, rapids: 0, whoosh: 0, transition: 0 };
+      splashCooldownRef.current = 0;
+    };
     window.addEventListener('water-flow-update', onFlow);
-    return () => window.removeEventListener('water-flow-update', onFlow);
+    window.addEventListener('watershed-run-reset', onRunReset);
+    return () => {
+      window.removeEventListener('water-flow-update', onFlow);
+      window.removeEventListener('watershed-run-reset', onRunReset);
+    };
   }, []);
 
   // ========================================================================

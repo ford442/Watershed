@@ -103,6 +103,8 @@ export interface DebugPanelProps {
   onRendererPreferenceChange?: (preference: RendererPreference) => void;
   wireframeDebug?: boolean;
   onToggleWireframeDebug?: (val: boolean) => void;
+  /** Hide panel + debug overlays for screenshots / live test runs */
+  onEnableCleanTest?: () => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -115,8 +117,10 @@ export function DebugPanel({
   onRendererPreferenceChange,
   wireframeDebug = false,
   onToggleWireframeDebug,
+  onEnableCleanTest,
 }: DebugPanelProps) {
   const [stagesOpen, setStagesOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
 
   // Subscribe to live perf metrics from PerfCheckpointMonitor (inside Canvas)
   const metrics = useSyncExternalStore(subscribePerfMetrics, getPerfMetrics);
@@ -144,12 +148,12 @@ export function DebugPanel({
         zIndex: 20000,
         background: 'rgba(10, 10, 16, 0.93)',
         color: '#f1f1f1',
-        padding: '10px 12px',
+        padding: minimized ? '8px 10px' : '10px 12px',
         borderRadius: 8,
         border: '1px solid rgba(120, 180, 255, 0.35)',
-        width: 300,
-        maxHeight: '82vh',
-        overflowY: 'auto',
+        width: minimized ? 'auto' : 300,
+        maxHeight: minimized ? 'none' : '82vh',
+        overflowY: minimized ? 'visible' : 'auto',
         boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: 12,
@@ -157,12 +161,52 @@ export function DebugPanel({
       }}
       aria-label="Debug Stages Panel"
     >
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
-        ⚡ PERF DIAGNOSTICS
-        <span style={{ fontWeight: 400, fontSize: 10, color: '#888', marginLeft: 8 }}>?debug=1</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: minimized ? 0 : 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>
+          ⚡ PERF DIAGNOSTICS
+          <span style={{ fontWeight: 400, fontSize: 10, color: '#888', marginLeft: 8 }}>?debug=1</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {onEnableCleanTest && (
+            <button
+              type="button"
+              onClick={onEnableCleanTest}
+              title="Hide debug panel, forecast HUD, wireframes, and physics overlay"
+              style={{
+                padding: '2px 6px',
+                borderRadius: 4,
+                border: '1px solid rgba(109,222,122,0.45)',
+                background: 'rgba(109,222,122,0.12)',
+                color: '#6dde7a',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: 10,
+              }}
+            >
+              Clean
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMinimized((m) => !m)}
+            style={{
+              padding: '2px 6px',
+              borderRadius: 4,
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'transparent',
+              color: '#ccc',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 10,
+            }}
+          >
+            {minimized ? '▾' : '▴'}
+          </button>
+        </div>
       </div>
 
-      {/* ── CP1: Draw Calls (GPU bound) ─────────────────────────────────── */}
+      {minimized ? null : (
+      <>
       <SectionTitle>CP1 · GPU — Draw Calls</SectionTitle>
       <MetricRow
         label="Draw calls / frame"
@@ -349,6 +393,8 @@ export function DebugPanel({
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );

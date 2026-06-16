@@ -1,136 +1,136 @@
 {
   "url": "http://localhost:3000?renderer=webgl&screenshot=1",
-  "startedAt": "2026-06-15T06:38:11.197Z",
+  "startedAt": "2026-06-15T14:44:10.514Z",
   "captures": [
     {
       "file": "/root/watershed/verification/webgl/01_meander_start.png",
       "label": "01_meander_start",
-      "segment": 29,
+      "segment": -3,
       "position": {
         "x": 0,
-        "y": 33165998,
-        "z": -504721248
+        "y": -9.849772453308105,
+        "z": -21.514968872070312
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
       "isBlack": true,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     },
     {
       "file": "/root/watershed/verification/webgl/02_meander_glacier.png",
       "label": "02_meander_glacier",
-      "segment": 29,
+      "segment": -3,
       "position": {
         "x": 0,
-        "y": 3180131516416,
-        "z": -504721248
+        "y": -10.835160255432129,
+        "z": -16.530899047851562
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
       "isBlack": true,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     },
     {
       "file": "/root/watershed/verification/webgl/03_meander_flowing.png",
       "label": "03_meander_flowing",
-      "segment": 29,
+      "segment": -3,
       "position": {
         "x": 0,
-        "y": 5546180083712,
-        "z": -504721248
+        "y": -12.011245727539062,
+        "z": -10.655769348144531
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
       "isBlack": true,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     },
     {
       "file": "/root/watershed/verification/webgl/04_canyon_run.png",
       "label": "04_canyon_run",
-      "segment": 29,
+      "segment": -3,
       "position": {
         "x": 0,
-        "y": 5651377422336,
-        "z": -504721248
+        "y": -14.292084693908691,
+        "z": -1.4834599494934082
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
       "isBlack": true,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     },
     {
       "file": "/root/watershed/verification/webgl/05_downstream.png",
       "label": "05_downstream",
-      "segment": 29,
+      "segment": 12,
       "position": {
-        "x": 80.63067626953125,
-        "y": -529.58740234375,
-        "z": -1008.195068359375
+        "x": 0,
+        "y": -5.021595001220703,
+        "z": -1232.83642578125
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
-      "isBlack": true,
+      "isBlack": false,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     },
     {
       "file": "/root/watershed/verification/webgl/06_slot_canyon.png",
       "label": "06_slot_canyon",
-      "segment": 29,
+      "segment": 22,
       "position": {
-        "x": 59.88015365600586,
-        "y": -1226.7757568359375,
-        "z": -1457.1573486328125
+        "x": 5.324163522334048e-20,
+        "y": -4.718360424041748,
+        "z": -1992.49755859375
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
       "isBlack": true,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     },
@@ -140,8 +140,8 @@
       "segment": 29,
       "position": {
         "x": 0,
-        "y": -37.03464126586914,
-        "z": -3112.1318359375
+        "y": -4.8081769943237305,
+        "z": -3133.4716796875
       },
       "inMenu": false,
       "luminance": 223.88,

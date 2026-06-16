@@ -8,6 +8,9 @@ import { SHADERS, WATER_LEVEL, WATER_SHADER } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
 
+let warnedInvalidWaterShader = false;
+let warnedWaterShaderCompile = false;
+
 const isUsableFragmentShader = (source) => {
   if (typeof source !== 'string' || source.trim().length === 0) {
     return false;
@@ -271,7 +274,10 @@ export default function FlowingWater({
     if (isUsableFragmentShader(candidateShader)) {
       return candidateShader;
     }
-    console.warn('[FlowingWater] Invalid fragment shader, using built-in fallback');
+    if (!warnedInvalidWaterShader) {
+      warnedInvalidWaterShader = true;
+      console.warn('[FlowingWater] Invalid fragment shader, using built-in fallback');
+    }
     return builtinFragmentShader;
   }, [builtinFragmentShader, dynamicShaderCode]);
 
@@ -464,8 +470,10 @@ export default function FlowingWater({
       materialRef.current = mat;
       return mat;
     } catch (e) {
-      console.warn('[FlowingWater] Shader error, falling back to basic material:', e);
-      console.error('[FlowingWater] Fragment shader source:', fragmentShader);
+      if (!warnedWaterShaderCompile) {
+        warnedWaterShaderCompile = true;
+        console.warn('[FlowingWater] Shader compile failed, using basic material:', e?.message ?? e);
+      }
       return new THREE.MeshBasicMaterial({
         color: new THREE.Color(effectiveWaterColor),
         transparent: true,

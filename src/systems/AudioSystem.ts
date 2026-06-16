@@ -182,9 +182,16 @@ export class AudioManager {
       return this.sounds.get(name)!;
     }
     
+    if (this.failedSounds.has(name)) {
+      return null;
+    }
+
     const def = SOUND_LIBRARY[name];
     if (!def) {
-      console.warn(`[AudioManager] Sound not found: ${name}`);
+      if (!this.failedSounds.has(name)) {
+        console.warn(`[AudioManager] Sound not found: ${name}`);
+        this.failedSounds.add(name);
+      }
       return null;
     }
     
@@ -194,8 +201,10 @@ export class AudioManager {
       this.failedSounds.delete(name);
       return buffer;
     } catch (e) {
-      console.warn(`[AudioManager] Failed to load sound: ${name}`, e);
-      this.failedSounds.add(name);
+      if (!this.failedSounds.has(name)) {
+        console.warn(`[AudioManager] Failed to load sound: ${name}`);
+        this.failedSounds.add(name);
+      }
       return null;
     }
   }
@@ -219,7 +228,10 @@ export class AudioManager {
     
     const def = SOUND_LIBRARY[name];
     if (!def) {
-      console.warn(`[AudioManager] Unknown sound: ${name}`);
+      if (!this.failedSounds.has(name)) {
+        console.warn(`[AudioManager] Unknown sound: ${name}`);
+        this.failedSounds.add(name);
+      }
       return null;
     }
     

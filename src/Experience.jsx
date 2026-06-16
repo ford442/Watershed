@@ -42,6 +42,7 @@ import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 import RendererDiagnosticsMonitor from "./rendering/RendererDiagnosticsMonitor";
 import WireframeDebug from "./rendering/WireframeDebug";
 import { tickScoreSystem, awardDodgeBonus, awardWaterfallBonus, resetScoreSystemState } from "./systems/ScoreSystem";
+import { resetRunSession } from "./utils/resetRunSession";
 
 // Goal 1: Zustand game state
 import { useGameStore, batchFrameUpdate } from "./systems/GameState";
@@ -133,7 +134,7 @@ function HeadlessSkySphere() {
  * InnerExperience - The actual game scene
  * Wrapped in providers for context access
  */
-const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDebug = false }) => {
+const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDebug = false, cleanTest = false }) => {
   const [vehicleType, setVehicleTypeLocal] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('vehicle') === 'raft' ? 'raft' : 'runner';
@@ -147,7 +148,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
 
   // Check for debug flag in URL for physics visualization
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
-  const physicsDebugEnabled = debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
+  const physicsDebugEnabled = !cleanTest && debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
 
   // Goal 1: Zustand game state selectors
   const biome = useGameStore((s) => s.currentBiome);
@@ -177,7 +178,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
   // BiomeProvider is the single authoritative source of biome state.
   // Calling setBiomeContext normalizes legacy IDs, triggers smooth palette
   // interpolation, and mirrors the canonical id to the Zustand store.
-  const { setBiome: setBiomeContext } = useBiome();
+  const { setBiome: setBiomeContext, snapBiome: snapBiomeContext } = useBiome();
   const { sunWorldPosition } = useSunPosition();
 
   // Initialize Three.js audio listener on camera
@@ -215,7 +216,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     const syncMapStartState = () => {
       setCurrentSegmentIndex(activeDefaultMap.startIndex);
       setRespawnSegmentIndex(activeDefaultMap.startIndex);
-      setBiomeContext(activeDefaultMap.initialBiome);
+      snapBiomeContext(activeDefaultMap.initialBiome);
       useGameStore.setState({ currentBiome: activeDefaultMap.initialBiome });
     };
 
@@ -227,7 +228,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     activeDefaultMap.startIndex,
     levelUrl,
     reachId,
-    setBiomeContext,
+    snapBiomeContext,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
   ]);
@@ -555,11 +556,16 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
       setCurrentSegmentIndex(targetMap.startIndex);
       setRespawnSegmentIndex(targetMap.startIndex);
       setWaterfallGravityMultiplier(1.0);
-      setBiomeContext(targetMap.initialBiome);
-      useGameStore.setState({ currentBiome: targetMap.initialBiome });
+      snapBiomeContext(targetMap.initialBiome);
+      useGameStore.setState({ currentBiome: targetMap.initialBiome, isPaused: false });
       setForecastSamples([]);
       awardedWaterfallSegmentsRef.current.clear();
       resetScoreSystemState();
+      resetRunSession({
+        biome: targetMap.initialBiome,
+        flowSpeed: targetMap.id === 'meander' ? 2.2 : 0.25,
+        segmentIndex: targetMap.startIndex,
+      });
       teleportVehicleToStart();
 
       // Remount the default treadmill so active chunks, spawn points, and
@@ -574,11 +580,11 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     debug.setStageFailure,
     levelUrl,
     reachId,
-    setBiomeContext,
     setCurrentSegmentIndex,
     setIsWipeout,
     setRespawnSegmentIndex,
     setWaterfallGravityMultiplier,
+    snapBiomeContext,
     teleportVehicleToStart,
   ]);
 
@@ -740,7 +746,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
           {physicsDebugEnabled && (
             <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
           )}
-          {wireframeDebug && <WireframeDebug enabled={wireframeDebug} />}
+          {wireframeDebug && !cleanTest && <WireframeDebug enabled={wireframeDebug} />}
 
           {/* Splash system for water interactions */}
           {debug.isStageEnabled('worldSystems') && (
@@ -818,7 +824,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
       {/* --- DOM UI overlays: must be wrapped in <Html> inside R3F Canvas --- */}
       {debug.isStageEnabled('uiOverlay') && (
         <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-        <ForecastHUD samples={forecastSamples} />
+        {!cleanTest && <ForecastHUD samples={forecastSamples} />}
 
         <div style={{ pointerEvents: isWipeout || isJourneyComplete ? 'auto' : 'none' }}>
           <GameHUD
@@ -856,8 +862,8 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
           </div>
         )}
 
-        {/* DEV-only audio diagnostics overlay */}
-        {import.meta.env.DEV && <AudioDiagnosticsOverlay />}
+        {/* DEV-only audio diagnostics overlay — hidden in clean test / screenshot mode */}
+        {import.meta.env.DEV && !cleanTest && <AudioDiagnosticsOverlay />}
 
         {/* Reach error toast — non-blocking because we fall back to procedural */}
         {reachError && (
@@ -923,7 +929,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
  *
  * Wraps the game in provider contexts for biome and LOD management
  */
-const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreference = 'webgpu', wireframeDebug = false }) => {
+const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreference = 'webgpu', wireframeDebug = false, cleanTest = false }) => {
   // Check for debug flag in URL
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   
@@ -946,7 +952,7 @@ const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreferen
         <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
           <SunPositionProvider>
             <BiomeTransition />
-            <InnerExperience debug={debug} physicsDebug={physicsDebug} wireframeDebug={wireframeDebug} />
+            <InnerExperience debug={debug} physicsDebug={physicsDebug} wireframeDebug={wireframeDebug} cleanTest={cleanTest} />
             <PerformanceMonitor visible={import.meta.env.DEV} />
             <RendererDiagnosticsMonitor preference={rendererPreference} />
             {debug.debugEnabled && <PerfCheckpointMonitor />}

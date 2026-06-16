@@ -64,8 +64,8 @@ describe('FlowingWater', () => {
     );
 
     expect(warnSpy).toHaveBeenCalledWith(
-      '[FlowingWater] Shader error, falling back to basic material:',
-      expect.any(Error)
+      '[FlowingWater] Shader compile failed, using basic material:',
+      'shader compile failed'
     );
     expect(container.querySelector('mesh')).toBeInTheDocument();
   });
