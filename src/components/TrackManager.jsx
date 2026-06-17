@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
@@ -32,7 +32,7 @@ function cloneForRender(segment, slotIndex, active) {
     };
 }
 
-export default function TrackManager({
+const TrackManager = forwardRef(function TrackManager({
     onBiomeChange,
     raftRef,
     forecastSamples = [],
@@ -41,13 +41,20 @@ export default function TrackManager({
     mapData = null,
     startIndex = 0,
     mapProgression = MEANDER_TO_WATERFALL_PROGRESSION,
-}) {
+}, ref) {
     const { camera, scene } = useThree();
     const [poolVersion, setPoolVersion] = useState(0);
     const [obstaclePoolVersion, setObstaclePoolVersion] = useState(0);
     const { isNight } = useNightMode();
 
     const chunkManagerRef = useRef(null);
+
+    useImperativeHandle(ref, () => ({
+        synthesizeSegmentEnter: (index) => {
+            chunkManagerRef.current?.synthesizeSegmentEnter?.(index);
+        },
+        getLastEnteredSegment: () => chunkManagerRef.current?.getLastEnteredSegment?.() ?? -1,
+    }));
     const forecastByIndexRef = useRef(new Map());
     const weatherWetnessRef = useRef(0);
     const mapManagerRef = useRef(
@@ -327,4 +334,6 @@ export default function TrackManager({
             <VehicleTuner targetRef={raftRef} segments={activeSegments} />
         </group>
     );
-}
+});
+
+export default TrackManager;

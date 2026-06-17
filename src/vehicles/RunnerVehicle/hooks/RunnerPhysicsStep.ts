@@ -527,6 +527,13 @@ export function updateRunnerPhysics({
     // Camera follow (first-person, smooth)
     // Guard against NaN from Rapier during physics init — lerping NaN permanently corrupts camera matrix
     if (isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z)) {
+      // If a previous frame or external system left the camera position malformed,
+      // snap it back to the body before any lerp/set so we don't propagate NaN/null.
+      const camPos = camera.position;
+      if (!Number.isFinite(camPos.x) || !Number.isFinite(camPos.y) || !Number.isFinite(camPos.z)) {
+        camPos.set(pos.x, pos.y + 1.65, pos.z);
+      }
+
       if (noPointerLock) {
         // Headless/screenshot mode: straight top-down view so the generated river/canyon is visible
         // even when PointerLockControls is unavailable.
@@ -535,6 +542,11 @@ export function updateRunnerPhysics({
       } else {
         const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
         camera.position.lerp(targetPos, 0.12);
+      }
+
+      // Final safety: if lerp somehow produced non-finite values, reset to body.
+      if (!Number.isFinite(camera.position.x) || !Number.isFinite(camera.position.y) || !Number.isFinite(camera.position.z)) {
+        camera.position.set(pos.x, pos.y + 1.65, pos.z);
       }
     }
 

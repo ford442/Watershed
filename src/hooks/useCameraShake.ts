@@ -60,6 +60,28 @@ export function useCameraShake() {
     shakeOffset,
     rollOffset,
     update: (delta: number) => {
+      // Guard against malformed camera state that can be introduced by rapid
+      // teleports or physics glitches. Mutating a non-finite camera position
+      // permanently corrupts camera.matrixWorld and propagates to the attached
+      // AudioListener and reflection renderer.
+      const isFiniteVec3 = (v: THREE.Vector3) =>
+        Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+      const isFiniteEuler = (e: THREE.Euler) =>
+        Number.isFinite(e.x) && Number.isFinite(e.y) && Number.isFinite(e.z);
+
+      if (!isFiniteVec3(camera.position) || !isFiniteEuler(camera.rotation)) {
+        shakeOffset.current.set(0, 0, 0);
+        rollOffset.current = 0;
+        return;
+      }
+      if (!isFiniteVec3(shakeOffset.current) || !Number.isFinite(rollOffset.current)) {
+        shakeOffset.current.set(0, 0, 0);
+        rollOffset.current = 0;
+      }
+      if (!Number.isFinite(delta) || delta < 0) {
+        delta = 0;
+      }
+
       // ── 1. Undo last frame's offset (allows vehicle lerp to compose underneath) ──
       camera.position.sub(shakeOffset.current);
       camera.rotation.z -= rollOffset.current;
@@ -82,7 +104,10 @@ export function useCameraShake() {
       }
 
       const ambientIntensity = rumbleIntensityRef.current;
-      const intensity = transientIntensity + ambientIntensity;
+      let intensity = transientIntensity + ambientIntensity;
+      if (!Number.isFinite(intensity)) {
+        intensity = 0;
+      }
 
       if (intensity <= 0) {
         shakeOffset.current.set(0, 0, 0);

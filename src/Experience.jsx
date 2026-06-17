@@ -144,6 +144,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     return window.location.search.includes('no-pointer-lock');
   });
   const vehicleRef = useRef(null);
+  const trackManagerRef = useRef(null);
   const { camera } = useThree();
 
   // Check for debug flag in URL for physics visualization
@@ -170,6 +171,33 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     setVehicleTypeLocal(type);
     setVehicleTypeStore(type);
   };
+
+  // Runtime guard: catch non-finite transforms early before they propagate to
+  // audio/reflection subsystems. Also exposes a lightweight camera snapshot for
+  // the screenshot harness diagnostics.
+  useFrame(() => {
+    const pos = vehicleRef.current?.translation();
+    if (pos && (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z))) {
+      console.error('[NaNGuard] vehicle translation non-finite', pos);
+    }
+    const camPos = camera.position;
+    const camFinite = Number.isFinite(camPos?.x) && Number.isFinite(camPos?.y) && Number.isFinite(camPos?.z);
+    if (!camFinite) {
+      console.error('[NaNGuard] camera position non-finite', camPos);
+      return;
+    }
+    if (camera.matrixWorld.elements.some((v) => !Number.isFinite(v))) {
+      console.error('[NaNGuard] camera matrixWorld non-finite', camera.matrixWorld.elements);
+    }
+    if (typeof window !== 'undefined') {
+      window.__watershedCameraDiag = {
+        uuid: camera.uuid,
+        pos: { x: camPos.x, y: camPos.y, z: camPos.z },
+        quat: { x: camera.quaternion.x, y: camera.quaternion.y, z: camera.quaternion.z, w: camera.quaternion.w },
+        matrixWorld: Array.from(camera.matrixWorld.elements),
+      };
+    }
+  });
 
   useEffect(() => {
     setVehicleTypeStore(vehicleType);
@@ -524,18 +552,34 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
         return true;
       },
       teleportToSegment: (segmentIndex) => {
+        if (!vehicleRef.current) return false;
+
         const spawn = spawnPoints[segmentIndex];
-        if (spawn && vehicleRef.current) {
-          vehicleRef.current.setTranslation(
-            { x: spawn.x, y: spawn.y + 1.5, z: spawn.z },
-            true
-          );
-          vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-          vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-          return true;
+        const targetPosition = spawn
+          ? { x: spawn.x, y: spawn.y + 1.5, z: spawn.z }
+          : { x: 0, y: PLAYER_SPAWN.position[1], z: -segmentIndex * 95 };
+
+        const previousIndex = currentSegmentIndex ?? activeDefaultMap.startIndex;
+        const targetIndex = Math.max(0, Math.floor(segmentIndex));
+
+        vehicleRef.current.setTranslation(targetPosition, true);
+        vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+
+        // Mirror the store state that real treadmill progression would have set.
+        setCurrentSegmentIndex(targetIndex);
+        setRespawnSegmentIndex(targetIndex);
+
+        // Replay segment-enter side effects incrementally so downstream flow,
+        // biome, audio and journey-complete state is warm.
+        if (trackManagerRef.current?.synthesizeSegmentEnter) {
+          const startIdx = Math.max(previousIndex + 1, activeDefaultMap.startIndex);
+          for (let i = startIdx; i <= targetIndex; i += 1) {
+            trackManagerRef.current.synthesizeSegmentEnter(i);
+          }
         }
-        // Fallback: ~95 units per segment along -Z from the meander origin.
-        return api.teleportToZ(-segmentIndex * 95);
+
+        return true;
       },
       getSpawnPoints: () => ({ ...spawnPoints }),
     };
@@ -544,7 +588,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
     return () => {
       delete window.__watershedScreenshot;
     };
-  }, [spawnPoints]);
+  }, [spawnPoints, currentSegmentIndex, activeDefaultMap, setCurrentSegmentIndex, setRespawnSegmentIndex]);
 
   const resetDefaultMapRun = useCallback((targetMapId) => {
     const targetMap = DEFAULT_MAPS[targetMapId] ?? DEFAULT_MAPS.meander;
@@ -800,6 +844,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
           ) : (
             // Default to procedural TrackManager if no levelUrl or reachId
             <TrackManager
+              ref={trackManagerRef}
               key={defaultMapRunKey}
               onBiomeChange={handleBiomeChange}
               raftRef={vehicleRef}

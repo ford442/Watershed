@@ -1,6 +1,6 @@
 {
   "url": "http://localhost:3000?renderer=webgl&screenshot=1",
-  "startedAt": "2026-06-15T14:44:10.514Z",
+  "startedAt": "2026-06-17T14:34:36.873Z",
   "captures": [
     {
       "file": "/root/watershed/verification/webgl/01_meander_start.png",
@@ -8,8 +8,8 @@
       "segment": -3,
       "position": {
         "x": 0,
-        "y": -9.849772453308105,
-        "z": -21.514968872070312
+        "y": -11.869888305664062,
+        "z": -17.207077026367188
       },
       "inMenu": false,
       "luminance": 254.99999999999997,
@@ -30,8 +30,8 @@
       "segment": -3,
       "position": {
         "x": 0,
-        "y": -10.835160255432129,
-        "z": -16.530899047851562
+        "y": -13.394499778747559,
+        "z": -13.197032928466797
       },
       "inMenu": false,
       "luminance": 254.99999999999997,
@@ -52,8 +52,8 @@
       "segment": -3,
       "position": {
         "x": 0,
-        "y": -12.011245727539062,
-        "z": -10.655769348144531
+        "y": -15.422635078430176,
+        "z": -7.485786437988281
       },
       "inMenu": false,
       "luminance": 254.99999999999997,
@@ -74,8 +74,8 @@
       "segment": -3,
       "position": {
         "x": 0,
-        "y": -14.292084693908691,
-        "z": -1.4834599494934082
+        "y": -18.57448959350586,
+        "z": 1.3329789638519287
       },
       "inMenu": false,
       "luminance": 254.99999999999997,
@@ -93,33 +93,33 @@
     {
       "file": "/root/watershed/verification/webgl/05_downstream.png",
       "label": "05_downstream",
-      "segment": 12,
+      "segment": 13,
       "position": {
-        "x": 0,
-        "y": -5.021595001220703,
-        "z": -1232.83642578125
+        "x": -2.7679450468198994e-20,
+        "y": -6.559327125549316,
+        "z": -1231.6982421875
       },
       "inMenu": false,
-      "luminance": 254.99999999999997,
+      "luminance": 0,
       "isMenu": false,
-      "isBlack": false,
-      "isSkyOnly": true,
+      "isBlack": true,
+      "isSkyOnly": false,
       "isGood": false,
       "centerPixel": [
-        255,
-        255,
-        255,
+        0,
+        0,
+        0,
         255
       ]
     },
     {
       "file": "/root/watershed/verification/webgl/06_slot_canyon.png",
       "label": "06_slot_canyon",
-      "segment": 22,
+      "segment": 21,
       "position": {
-        "x": 5.324163522334048e-20,
-        "y": -4.718360424041748,
-        "z": -1992.49755859375
+        "x": 0,
+        "y": -6.7372307777404785,
+        "z": -1990.9423828125
       },
       "inMenu": false,
       "luminance": 254.99999999999997,
@@ -137,35 +137,31 @@
     {
       "file": "/root/watershed/verification/webgl/07_delta.png",
       "label": "07_delta",
-      "segment": 29,
+      "segment": 34,
       "position": {
         "x": 0,
-        "y": -4.8081769943237305,
-        "z": -3133.4716796875
+        "y": -6.900859832763672,
+        "z": -3132.443359375
       },
       "inMenu": false,
-      "luminance": 223.88,
+      "luminance": 254.99999999999997,
       "isMenu": false,
       "isBlack": true,
       "isSkyOnly": true,
       "isGood": false,
       "centerPixel": [
-        206,
-        231,
-        206,
+        255,
+        255,
+        255,
         255
       ]
     }
   ],
   "parityNotes": [
-    "Teleporting far downstream triggers firstElem.toArray errors in flow/audio code — early-run captures are more stable.",
-    "Avoid ?no-pointer-lock for screenshots; it forces top-down camera + HeadlessSkySphere.",
+    "Automated frame scoring is telemetry only under SwiftShader; headless first-person captures are typically sky-only.",
     "Use SwiftShader flags in headless CI; Vulkan ANGLE often fails without GPU.",
     "WebGPU default path may error under SwiftShader — force ?renderer=webgl."
   ],
   "webglVerified": true,
-  "pageErrors": [
-    "Failed to execute 'linearRampToValueAtTime' on 'AudioParam': The provided float value is non-finite.",
-    "firstElem.toArray is not a function"
-  ]
+  "pageErrors": []
 }

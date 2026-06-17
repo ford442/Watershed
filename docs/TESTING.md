@@ -319,12 +319,12 @@ Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc
 
 ### Known blockers / follow-ups
 
-| ID | Severity | Issue | Suggested fix |
-|----|----------|-------|---------------|
-| F-1 | **Gate** | Headless WebGL screenshots are sky-only; automated script exits 1 on “good frames” | Treat `webgl_screenshots.mjs` as boot/segment telemetry only; manual GPU screenshots for visuals |
-| F-2 | **Gate** | Journey Complete not triggerable via `__watershedScreenshot.teleportToSegment(38)` | Teleport moves rigid body only; `onSegmentEnter` must run — add `teleportToSegment` → synthetic segment-enter or manual traversal |
-| F-3 | Medium | `firstElem.toArray is not a function` when teleporting far downstream | Flow/audio path assumes curve/array shape — guard in segment sampler or flow forces |
-| F-4 | Medium | `linearRampToValueAtTime` non-finite AudioParam | Sanitize speed/flow inputs before Web Audio ramps |
+| ID | Severity | Issue | Status / fix |
+|----|----------|-------|--------------|
+| F-1 | **Gate** | Headless WebGL screenshots are sky-only; automated script previously exited 1 on “good frames” | **Accepted limitation.** `webgl_screenshots.mjs` is now telemetry-only (fails only on runtime page errors / missing WebGL); use manual/top-down GPU screenshots for the visual gate. |
+| F-2 | **Gate** | Journey Complete not triggerable via `__watershedScreenshot.teleportToSegment(38)` | **Fixed.** `teleportToSegment` replays `segment-enter` for every skipped index via `TrackManager`/`ChunkManager`, so flow/biome/audio state warms incrementally. |
+| F-3 | Medium | `firstElem.toArray is not a function` when teleporting far downstream | **Fixed.** `WaterFlowForces`/`WaterForces` coerce plain-object samples to real `THREE.Vector3` before calling `toArray()`; `RunnerPhysicsStep` resets a malformed camera before lerping. |
+| F-4 | Medium | `linearRampToValueAtTime` non-finite AudioParam | **Fixed.** `ReactiveAudio`, `useSegmentAudio`, and `useCameraShake` now guard non-finite camera/flow/speed values before they reach the `AudioListener` matrix or Web Audio ramps. |
 | F-5 | Low | Missing SFX buffers: `jump`, `land_soft`, `step_rock`, `collide_rock` | Add assets or disable stems in dev |
 | F-6 | Low | Automated W-key movement ~0 m/s with mocked pointer lock | Use real pointer lock for traversal tests; or expose a debug “autopilot” for CI |
 | F-7 | Info | WebGPU default errors under SwiftShader (`lightNodeClass`) | Document `?renderer=webgl` for CI; WebGPU OK on real Chrome 120+ |

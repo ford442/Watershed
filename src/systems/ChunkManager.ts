@@ -319,6 +319,27 @@ export class ChunkManager {
   }
 
   // ---------------------------------------------------------------------------
+  // Synthetic segment entry (for screenshot/teleport harnesses)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Replay the segment-enter side effects for a target index.
+   * Callers should invoke this once for every skipped index so that flow,
+   * biome, audio and journey-complete state accumulate incrementally rather
+   * than jumping cold. Updates lastEnteredSegment so real treadmill
+   * progression does not double-fire.
+   */
+  synthesizeSegmentEnter(index: number): void {
+    if (!this.initialized || index <= this.lastEnteredSegment) return;
+    this.lastEnteredSegment = index;
+    this.callbacks.onSegmentEnter?.(index);
+  }
+
+  getLastEnteredSegment(): number {
+    return this.lastEnteredSegment;
+  }
+
+  // ---------------------------------------------------------------------------
   // Per-frame update
   // ---------------------------------------------------------------------------
 
