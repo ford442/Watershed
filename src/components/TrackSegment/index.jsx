@@ -1,7 +1,5 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { extendRiverMaterial } from '../../utils/RiverShader';
-import { createCanyonMaterial } from '../../materials/CanyonMaterial';
 import { WATER_LEVEL } from '../../constants/game';
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import { smoothNoise } from './utils';
@@ -100,15 +98,7 @@ export default function TrackSegment({
         canyonWidth, waterWidth, biome,
     });
 
-    const localRockMaterial = useMemo(() => {
-        if (!rockMaterial) return null;
-        if (biome === 'slotCanyon') {
-            return createCanyonMaterial(rockMaterial);
-        }
-        return extendRiverMaterial(rockMaterial, false, biome);
-    }, [rockMaterial, biome]);
-
-    if (!localRockMaterial || !canyonGeometry || !wallShellGeometry || !waterGeometry) {
+    if (!rockMaterial || !canyonGeometry || !wallShellGeometry || !waterGeometry) {
         return null;
     }
 
@@ -121,7 +111,7 @@ export default function TrackSegment({
             canyonWidth={canyonWidth}
             waterWidth={waterWidth}
             active={active}
-            rockMaterial={localRockMaterial}
+            rockMaterial={rockMaterial}
             biome={biome}
             waterMaterial={waterMaterial}
             flowSpeed={flowSpeed}

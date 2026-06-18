@@ -364,6 +364,8 @@ export function extendRiverMaterial(material, options = {}) {
         // Fallback to property-based approach
         fallbackExtend(material);
     }
+
+    return material;
 }
 
 /**
