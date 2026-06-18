@@ -8,7 +8,7 @@ export function populateZSteps(args) {
         zSteps, geoLength, segmentPath, channelShapeFn,
         bankStart, canyonWidth, waterWidth, biome, segmentId, rng,
         type, config, flowSpeed, isSlotCanyon, biomeProfile,
-        trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
+        trees, rocks, scatterRocks, cactus, desertSage, debris, grass, canyonGrass,
         wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
         birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
         ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust
@@ -43,7 +43,7 @@ export function populateZSteps(args) {
                 populateSide({
                     side, t, zLocal, geoLength, segmentPath, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
                     biome, segmentId, rng, type, config, flowSpeed, isSlotCanyon, biomeProfile,
-                    trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
+                    trees, rocks, scatterRocks, cactus, desertSage, debris, grass, canyonGrass,
                     wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
                     birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
                     ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
