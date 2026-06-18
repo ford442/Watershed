@@ -32,8 +32,6 @@ export default function TrackSegment({
     weatherWetnessRef,
     usePooledStaticObstacles = false,
 }) {
-    if (!active) return null;
-
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
 
     const pathLength = useMemo(() => {
@@ -98,7 +96,7 @@ export default function TrackSegment({
         canyonWidth, waterWidth, biome,
     });
 
-    if (!rockMaterial || !canyonGeometry || !wallShellGeometry || !waterGeometry) {
+    if (!active || !rockMaterial || !canyonGeometry || !wallShellGeometry || !waterGeometry) {
         return null;
     }
 
