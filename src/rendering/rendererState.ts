@@ -6,7 +6,7 @@
 import type { ActiveRendererBackend, RendererDiagnostics, RendererPreference } from './types';
 
 const _diagnostics: RendererDiagnostics = {
-  preference: 'webgpu',
+  preference: 'webgl',
   activeBackend: 'webgl',
   rendererName: 'WebGLRenderer',
   webgpuAvailable: false,

@@ -48,6 +48,19 @@ Module-level stores cross the Canvas boundary:
 - **WebGPU** (`?renderer=webgpu`) currently forces the WebGL2 backend inside `WebGPURenderer` because legacy materials are incompatible with native WebGPU NodeMaterial. Custom WGSL compute (e.g. `HeightmapFlow.ts`) still runs on a separate WebGPU device when available.
 - Post-processing may behave differently under native WebGPU; use `?renderer=webgl` when tuning bloom, vignette, or chromatic aberration.
 
+### Strict CSP / deployed hosts
+
+Some hosts set `Content-Security-Policy: connect-src 'self' blob: https: wss:` without `data:`.
+Three.js `WebGPURenderer` loads internal WGSL via `data:text/wgsl;base64,...` fetches, which CSP blocks and produces a blank canvas with shader errors in the console.
+
+`createGameRenderer()` probes `data:` fetch support and **automatically falls back to `WebGLRenderer`**, persisting `webgl` preference. Force the safe path with:
+
+```
+?renderer=webgl
+```
+
+If you control the host CSP headers, add `data:` to `connect-src` to allow the experimental WebGPU renderer path.
+
 ## Keyboard Shortcuts (debug mode)
 
 | Key | Action |
