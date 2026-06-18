@@ -113,7 +113,7 @@ export function DebugPanel({
   debug,
   physicsDebug = false,
   onTogglePhysicsDebug,
-  rendererPreference = 'webgpu',
+  rendererPreference = 'webgl',
   onRendererPreferenceChange,
   wireframeDebug = false,
   onToggleWireframeDebug,

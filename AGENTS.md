@@ -813,8 +813,7 @@ normally do not need to install anything manually.
   `REACH_API_BASE` in `src/constants/game.ts`). There is no server in this repo, so those requests
   404 and the game falls back to pure procedural generation. This is expected; do not try to stand up
   a backend.
-- **Renderer fallback.** Default renderer is WebGPU (`?renderer=webgpu`) which auto-falls back to
-  WebGL2 when WebGPU is unavailable (headless/most cloud browsers). Use `?renderer=webgl` to force WebGL2.
+- **Renderer fallback.** Default renderer is WebGL2 (`?renderer=webgl`). Use `?renderer=webgpu` to opt into the WebGPURenderer path (currently forces WebGL2 backend because legacy GLSL materials are incompatible with native WebGPU).
 
 ### Known blocking runtime bug (pre-existing on `main`, as of env setup)
 

@@ -18,8 +18,8 @@ describe('rendererConfig', () => {
     window.history.replaceState({}, '', originalUrl);
   });
 
-  it('defaults to webgpu when no URL or storage override exists', () => {
-    expect(parseRendererPreference('')).toBe('webgpu');
+  it('defaults to webgl when no URL or storage override exists', () => {
+    expect(parseRendererPreference('')).toBe('webgl');
   });
 
   it('reads renderer preference from URL params', () => {

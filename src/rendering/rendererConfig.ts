@@ -16,8 +16,9 @@ export function parseRendererPreference(search = window.location.search): Render
     }
   }
 
-  // Default: WebGPU path (auto-falls back to WebGL2 when unavailable).
-  return 'webgpu';
+  // Default: WebGL2 — custom GLSL shaders (RiverShader, FlowingWater, post-processing)
+  // are not compatible with native WebGPU NodeMaterial yet. Use ?renderer=webgpu to opt in.
+  return 'webgl';
 }
 
 export function isRendererPreference(value: string): value is RendererPreference {

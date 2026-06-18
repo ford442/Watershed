@@ -974,7 +974,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
  *
  * Wraps the game in provider contexts for biome and LOD management
  */
-const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreference = 'webgpu', wireframeDebug = false, cleanTest = false }) => {
+const Experience = ({ debug = NOOP_DEBUG, physicsDebug = false, rendererPreference = 'webgl', wireframeDebug = false, cleanTest = false }) => {
   // Check for debug flag in URL
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   

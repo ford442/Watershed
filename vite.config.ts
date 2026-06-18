@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // Prevent duplicate Three.js when three/webgpu is lazy-loaded in a separate chunk.
+    dedupe: ['three'],
+  },
   server: {
     port: 3000,
     headers: {
@@ -22,7 +26,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
-          'vendor-webgpu': ['three/webgpu'],
           'vendor-post':   ['postprocessing', '@react-three/postprocessing'],
           'vendor-rapier': ['@dimforge/rapier3d-compat'],
         },

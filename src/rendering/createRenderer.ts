@@ -32,10 +32,12 @@ export async function createGameRenderer(
   }
 
   const { WebGPURenderer } = await import('three/webgpu');
+  // Native WebGPU rejects legacy ShaderMaterial / onBeforeCompile materials used
+  // throughout Watershed. Force the WebGL2 backend until materials migrate to NodeMaterial.
   const renderer = new WebGPURenderer({
     ...canvasProps,
     antialias,
-    forceWebGL: false,
+    forceWebGL: true,
   });
   await renderer.init();
   return renderer as unknown as THREE.WebGLRenderer;

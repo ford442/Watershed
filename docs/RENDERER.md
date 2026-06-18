@@ -6,8 +6,8 @@ Watershed supports two rendering backends for visual debugging and broader brows
 
 | URL param | Backend | Use case |
 |-----------|---------|----------|
-| `?renderer=webgpu` (default) | `WebGPURenderer` | Production path; auto-falls back to WebGL2 when WebGPU is unavailable |
-| `?renderer=webgl` | `WebGLRenderer` | Shader debugging, GLSL post-processing parity, environments without WebGPU |
+| `?renderer=webgl` (default) | `WebGLRenderer` | Production path; custom GLSL shaders, post-processing |
+| `?renderer=webgpu` | `WebGPURenderer` (WebGL2 backend) | Experimental; native WebGPU blocked until NodeMaterial migration |
 
 Examples:
 
@@ -44,8 +44,8 @@ Module-level stores cross the Canvas boundary:
 
 ## Visual Parity Notes
 
-- **WebGL2 (`?renderer=webgl`)** is the reference path for custom GLSL shaders (`RiverShader.js`, `PostProcessingPipeline`, `FlowingWater.jsx`).
-- **WebGPU** uses Three.js `WebGPURenderer`, which falls back to an internal WebGL2 backend when `navigator.gpu` is missing. Custom WGSL compute (e.g. `HeightmapFlow.ts`) still runs on a separate WebGPU device when available.
+- **WebGL2 (`?renderer=webgl`, default)** is the production path for custom GLSL shaders (`RiverShader.js`, `PostProcessingPipeline`, `FlowingWater.jsx`).
+- **WebGPU** (`?renderer=webgpu`) currently forces the WebGL2 backend inside `WebGPURenderer` because legacy materials are incompatible with native WebGPU NodeMaterial. Custom WGSL compute (e.g. `HeightmapFlow.ts`) still runs on a separate WebGPU device when available.
 - Post-processing may behave differently under native WebGPU; use `?renderer=webgl` when tuning bloom, vignette, or chromatic aberration.
 
 ## Keyboard Shortcuts (debug mode)
