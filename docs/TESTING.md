@@ -248,6 +248,110 @@ console.log('WebAssembly:', typeof WebAssembly !== 'undefined' ? 'Supported' : '
 **Map:** `meander_to_waterfall` (glacier prelude `startIndex=-3` → segment 38 `journeyComplete`)  
 **Verdict:** **Conditional pass** — safe to hand to a human tester on real Chrome + GPU. Full authored traversal, visuals, and journey-complete loop still require manual sign-off (see blockers below).
 
+> ⚠️ **Superseded by the 2026-06-18 re-test below — see blocker F-8.** A scripted re-run on
+> `HEAD = 3c66ead` found an intermittent cold-boot corruption that the 2026-06-15 pass did not
+> catch (the committed `capture_report.json` was a stale healthy boot). Do **not** treat the
+> 2026-06-15 verdict as current.
+
+### 2026-06-18 live re-test (regression found — gate is RED)
+
+**Tester:** scripted (`verification/diag_trials.mjs`, headless Chrome + SwiftShader, `?renderer=webgl&screenshot=1`).
+**Verdict:** **FAIL / blocked.** The game boots and renders, the menu and Start work, WebGL2 is
+verified, and *when it boots clean* the glacier prelude is stable (seg `-3`, finite Y ≈ −12). But
+**~43% of cold boots corrupt within seconds** — independent of player input.
+
+**Measured corruption rate (initial session):** 6 / 14 cold boots CORRUPT (3/6 with `W` held, 3/8 with no input).
+
+**Headless measurement caveat (2026-06-18 re-baseline):** Corruption rate under headless Chrome +
+SwiftShader is **load-sensitive**, not a stable signal. On a fresh server with clean code, rates
+climbed **40% → 80% → 100%** across a single investigation session as concurrent SwiftShader Chrome
+instances accumulated. Each instance is pure-CPU rendering, which starves Rapier physics-worker init
+relative to segment generation and loses the startup race far more often than real GPU hardware would.
+**Do not use headless corruption % as the sole fix-validation gate** — confirm on real Chrome + GPU.
+
+| Symptom | Evidence |
+|---------|----------|
+| Rigid-body position blows up | `y = 7.0e+34`, `6.25e+26`, `1.78e+26`, or `null` within ~8 s of start |
+| Runaway segment generation | `currentSegmentIndex` jumps to 29 / 38 / 47 (should cap ~7 active) |
+| React render storm | `webgl_screenshots.mjs` then throws **"Maximum update depth exceeded"** (setSpawnPoint loop via `Experience.jsx` `handleSegmentSpawn` → `ChunkManager` → `TrackManager`) |
+| Healthy boots | seg stays `-3`, Y ≈ −12, no errors — confirms it is a **race**, not a hard break |
+
+**Reproduce:**
+
+```bash
+pnpm dev
+TRIALS=8 node verification/diag_trials.mjs          # coarse healthy/corrupt tally
+TRIALS=10 node verification/diag_classify.mjs         # classify failure modes (see below)
+NOKEY=1 TRIALS=8 node verification/diag_trials.mjs   # no input — still corrupts pre-fix
+node verification/webgl_screenshots.mjs              # corrupt boot → Maximum update depth
+```
+
+**Classify failure modes** (`verification/diag_classify.mjs`):
+
+| Mode | Meaning |
+|------|---------|
+| `HEALTHY` | Start registered, finite Y within ±100, seg at prelude |
+| `REAL_blowup` | Start registered, position populated, but Y huge/NaN/null or seg runaway — real F-8 |
+| `FLAKE_menu_still_up` | Start click did not dismiss menu — harness timing flake |
+| `init_no_physics_step` | Menu gone but `__watershedPhysicsDebug.position` never populated — init stall |
+
+Run serially (one trial at a time) for the least noisy headless signal. Kill stray Chrome after a
+session: `pkill -f 'google-chrome.*swiftshader'`.
+
+**Root cause (analysis):** A non-finite force reaches the Rapier body during the
+first physics frames. `RunnerPhysicsStep.updateRunnerPhysics` applies the unconditional per-frame
+`flow` impulse (line ~397) and the camera-relative `forwardDir` impulses (line ~404) **before** the
+NaN guard at line ~529. The 3c66ead guards only sanitise `camera.position` (and only when the body
+is *already* finite) — they do **not** sanitise (a) the camera **orientation** that feeds
+`camera.getWorldDirection(forwardDir)`, nor (b) the `flowMultiplier` / slope state feeding the
+input-independent flow impulse. Once the body translation is NaN, the guard's `isFinite(pos)` check
+is false forever, so it can never recover; segment generation then keeps firing `segment-spawn` →
+`setSpawnPoint`, producing the render storm. Suggested fix: clamp every impulse to finite **at the
+`applyImpulse` boundary** (skip the frame's forces when `dt`, `flowMultiplier`, or the direction
+vectors are non-finite), and bail out of the whole step until the body, camera matrix, and terrain
+are warm. Needs confirmation on real Chrome + GPU — the path is CPU-physics (deterministic WASM), so
+it is likely not headless-only, but the boot timing window may differ on hardware.
+
+**Fix applied (2026-06-18):** `RunnerPhysicsStep.ts` now (a) resets the camera to spawn when
+`matrixWorld` is non-finite, (b) gates **all** `applyImpulse` / `setLinvel` calls behind a
+`physicsWarm` check (`dt`, body pos/vel, camera matrix, terrain ground-ray hit, and sane
+position/velocity all required), (c) drops non-finite impulses at the boundary, (d) uses a safe
+horizontal forward vector `(0,0,-1)` when the camera is not warm, (e) clamps non-finite
+`flowMultiplier` to `1.0`, (f) **holds the body kinematic at `PLAYER_SPAWN`** until the first
+successful ground raycast, then restores dynamic simulation, (g) snaps back to spawn when position
+or speed leaves sane bounds. `TrackManager.jsx` also skips treadmill generation when the camera
+transform is non-finite or out of range. Headless re-test after fix is advisory only (see load
+caveat above).
+
+**Post-fix headless spot-check (2026-06-18, serial runs, no concurrent Chrome):** `diag_classify.mjs`
+6/6 `HEALTHY`; `diag_trials.mjs` (`NOKEY=1`) 6/6 `HEALTHY`, seg `−3`, finite Y ≈ −8…−66. Confirms
+the kinematic bootstrap + impulse gate stops the blowup on this VM, but does **not** clear the gate
+without real-GPU confirmation.
+
+**What still works (re-confirmed 2026-06-18):** Vite dev server + build deps install; canvas mounts;
+Start menu + Start button; WebGL2 context; `__watershedScreenshot` teleport API; HUD; and clean
+boots play the glacier prelude without fall-through. The blocker is purely the startup race.
+
+#### Polish nits audit (2026-06-18) — clean-test smoothness pass
+
+Investigated the "quick wins / screenshot-friendly" list. Most were **already implemented**; the
+audit confirmed them and surfaced two minor follow-ups. None block the live test independently of F-8.
+
+| Nit | Status | Evidence |
+|-----|--------|----------|
+| Hide debug overlays for clean runs / screenshots | **Done already** | `?cleanTest=1` / `?clean-test=true` / `?screenshot=1` set clean mode (`utils/cleanTestMode.ts`). `App.tsx` gates `DebugPanel` on `!cleanTest`, disables the **G**/**F** toggles, and offers an in-panel **"Enable clean test"** button + a **"Show debug"** toggle-back. `Experience.jsx` also gates `ForecastHUD` + `AudioDiagnosticsOverlay` on `!cleanTest`. The CLAUDE.md "green debug overlay" no longer exists in `App.tsx`. |
+| FlowingWater / `onBeforeCompile` shader-fallback spam | **No spam** | Runtime console capture during a clean boot (`verification/diag_console.mjs`) shows **zero** FlowingWater/shader warnings in normal play. Both fallback warnings use module-level once-guards (`warnedInvalidWaterShader`, `warnedWaterShaderCompile`) and live in `useMemo`, not `useFrame`. |
+| 404s for optional sounds stay non-fatal | **Non-fatal** | The "missing" SFX (`jump`, `land_soft`, `footstep_rock`, `collide_rock`) actually **exist** in `public/sounds/` and serve 200 via curl; the in-browser 404s are a dev-server early-init timing artifact (THREE.AudioLoader firing during boot), not missing assets. `AudioManager.loadSound` warns once per name, marks `failedSounds`, returns `null` — graceful, no gameplay block. Revises **F-5** (assets are present). |
+| `PLAYER_SPAWN` too high / bad initial penetration | **Already tuned** | `PLAYER_SPAWN.position = [0, -6, -10]` (constants/game.ts) with a comment noting it was lowered to reduce drop. Healthy boots settle smoothly to Y ≈ −12 with no penetration. Left unchanged — spawn-time penetration is more likely a facet of F-8 (the startup NaN race), which is the separate fix track. |
+| Journey reset not stuck in end-of-map (audio/weather/biome) | **Code-correct; e2e unverifiable headless** | `resetDefaultMapRun` (`Experience.jsx`) resets biome (`snapBiomeContext` + store `resetGameState`), forecast, score, and **remounts** `<TrackManager key={defaultMapRunKey}>` (resets segment audio + journey detection). **ReactiveAudio/WeatherSystem are only mounted inside `ReachManager` (reach levels), not on the default map**, so they cannot get stuck on the first map; default-map weather is always `fallbackWeather: 'clear'`. End-to-end reset *from delta* couldn't be confirmed headlessly because teleport-to-38 does not raise the Journey Complete overlay or the biome transition in this build (harness limitation, see F-2/F-9) — needs a real-hardware traversal. |
+
+**New minor follow-ups from this audit:**
+
+| ID | Severity | Issue | Notes |
+|----|----------|-------|-------|
+| F-9 | Low | `teleportToSegment(38)` does **not** raise Journey Complete or apply the delta biome (overlay absent, HUD stays `CANYON SUMMER`). Contradicts F-2 "Fixed". | Blocks headless verification of journey-complete + reset. Real gameplay (segment-enter events) still drives these; the teleport replay path appears not to fire `journeyComplete`/biome side effects. Repro: `verification/diag_reset.mjs`. |
+| F-10 | Cosmetic | HUD shows `CANYON SUMMER` during the glacier prelude (seg −3…−1) instead of a glacier label. Root cause is propagation, not a missing label: `currentBiome` resolves to `canyonSummer` during the prelude (the glacier biome id never reaches the store / normalizes away), so adding a `glacier` entry to `BIOME_LABELS` alone won't fix it. Also `slotCanyon` normalizes to `canyonSummer` (`BiomePalettes.ts:381`), so the slot-canyon section won't read `SLOT CANYON` either. | Decide canonical glacier/slotCanyon HUD labels and ensure the biome id propagates to the store before relabelling. Screenshot-only cosmetic. |
+
 ### Quick commands
 
 ```bash
@@ -325,9 +429,10 @@ Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc
 | F-2 | **Gate** | Journey Complete not triggerable via `__watershedScreenshot.teleportToSegment(38)` | **Fixed.** `teleportToSegment` replays `segment-enter` for every skipped index via `TrackManager`/`ChunkManager`, so flow/biome/audio state warms incrementally. |
 | F-3 | Medium | `firstElem.toArray is not a function` when teleporting far downstream | **Fixed.** `WaterFlowForces`/`WaterForces` coerce plain-object samples to real `THREE.Vector3` before calling `toArray()`; `RunnerPhysicsStep` resets a malformed camera before lerping. |
 | F-4 | Medium | `linearRampToValueAtTime` non-finite AudioParam | **Fixed.** `ReactiveAudio`, `useSegmentAudio`, and `useCameraShake` now guard non-finite camera/flow/speed values before they reach the `AudioListener` matrix or Web Audio ramps. |
-| F-5 | Low | Missing SFX buffers: `jump`, `land_soft`, `step_rock`, `collide_rock` | Add assets or disable stems in dev |
+| F-5 | Low → Info | ~~Missing SFX buffers: `jump`, `land_soft`, `step_rock`, `collide_rock`~~ | **Re-checked 2026-06-18: assets exist in `public/sounds/` and serve 200.** In-browser 404s are a dev-init timing artifact and are handled gracefully (warn-once, `failedSounds`, non-fatal). Not a real missing-asset bug. |
 | F-6 | Low | Automated W-key movement ~0 m/s with mocked pointer lock | Use real pointer lock for traversal tests; or expose a debug “autopilot” for CI |
 | F-7 | Info | WebGPU default errors under SwiftShader (`lightNodeClass`) | Document `?renderer=webgl` for CI; WebGPU OK on real Chrome 120+ |
+| F-8 | **Gate (RED)** | **Intermittent cold-boot corruption: rigid-body Y → NaN/huge/null within seconds, runaway segment generation, then React "Maximum update depth exceeded". Input-independent.** | **Fix landed 2026-06-18** (impulse/camera warmup guards in `RunnerPhysicsStep.ts`). **Gate stays RED until confirmed on real Chrome + GPU** — headless SwiftShader rate is load-noisy (40–100%). Repro/classify: `verification/diag_trials.mjs`, `verification/diag_classify.mjs`. |
 
 ### Sign-off checklist (human tester)
 

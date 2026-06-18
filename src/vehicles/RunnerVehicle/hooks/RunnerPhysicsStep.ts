@@ -12,6 +12,65 @@ import {
 import { playJumpSound, playLandSound, playFootstep, playDodgeSound } from '../audio';
 import { triggerCameraShake } from '../utils';
 
+type Vec3 = { x: number; y: number; z: number };
+
+const isFiniteVec3 = (v: Vec3) =>
+  Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+
+const isFiniteImpulse = (impulse: Vec3) => isFiniteVec3(impulse);
+
+const isCameraWarm = (camera: THREE.Camera) => {
+  const camPos = camera.position;
+  if (!Number.isFinite(camPos.x) || !Number.isFinite(camPos.y) || !Number.isFinite(camPos.z)) {
+    return false;
+  }
+  return camera.matrixWorld.elements.every(Number.isFinite);
+};
+
+const resetCameraToSpawn = (camera: THREE.Camera, noPointerLock: boolean) => {
+  const [sx, sy, sz] = PLAYER_SPAWN.position;
+  const [cx, cy, cz] = PLAYER_SPAWN.fallbackCamera;
+  if (noPointerLock) {
+    camera.position.set(sx, sy + 40, sz);
+    camera.lookAt(sx, sy, sz);
+  } else {
+    camera.position.set(cx, cy, cz);
+    camera.rotation.set(0, 0, 0);
+  }
+  camera.updateMatrixWorld(true);
+};
+
+const getHorizontalCameraForward = (
+  camera: THREE.Camera,
+  cameraWarm: boolean,
+  out: THREE.Vector3,
+) => {
+  if (cameraWarm) {
+    camera.getWorldDirection(out);
+    out.y = 0;
+    if (out.lengthSq() > 0.001) {
+      out.normalize();
+      return out;
+    }
+  }
+  return out.set(0, 0, -1);
+};
+
+const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 };
+
+const isPositionSane = (pos: Vec3) =>
+  pos.y >= POSITION_SANE.yMin &&
+  pos.y <= POSITION_SANE.yMax &&
+  Math.abs(pos.x) <= POSITION_SANE.xzMax &&
+  Math.abs(pos.z) <= POSITION_SANE.xzMax;
+
+const holdBodyAtSpawn = (body: { setTranslation: Function; setLinvel: Function; setAngvel: Function }) => {
+  const [sx, sy, sz] = PLAYER_SPAWN.position;
+  body.setTranslation({ x: sx, y: sy, z: sz }, true);
+  body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+};
+
 export function updateRunnerPhysics({
   state, delta: dt, world, body, rapier, camera, controls, vehicleState
 }) {
@@ -25,10 +84,33 @@ export function updateRunnerPhysics({
 
     const pos = body.translation();
     const vel = body.linvel();
-    // dt is passed in
     const now = performance.now();
+
+    const dtOk = Number.isFinite(dt) && dt > 0 && dt < 0.5;
+    const posOk = isFiniteVec3(pos);
+    const velOk = isFiniteVec3(vel);
+    let cameraWarm = isCameraWarm(camera);
+    if (!cameraWarm) {
+      resetCameraToSpawn(camera, noPointerLock);
+      cameraWarm = isCameraWarm(camera);
+    }
+
+    if (!Number.isFinite(slopeState.current.currentMultiplier)) {
+      slopeState.current.currentMultiplier = 1.0;
+    }
+    if (!Number.isFinite(slopeState.current.targetMultiplier)) {
+      slopeState.current.targetMultiplier = 1.0;
+    }
+
+    const bodyUserData = (body.userData ??= {} as Record<string, unknown>);
+    const holdAtSpawn = () => holdBodyAtSpawn(body);
+
+    // F-8: defer gameplay impulses until body, camera, terrain, and velocity are sane.
+    let physicsWarm = false;
+
     const frameImpulses = new Map<string, { x: number; y: number; z: number }>();
-    const applyImpulseWithDebugTracking = (tag: string, impulse: { x: number; y: number; z: number }) => {
+    const applyImpulseWithDebugTracking = (tag: string, impulse: Vec3) => {
+      if (!physicsWarm || !isFiniteImpulse(impulse)) return;
       body.applyImpulse(impulse, true);
       const prev = frameImpulses.get(tag);
       if (prev) {
@@ -39,6 +121,43 @@ export function updateRunnerPhysics({
         frameImpulses.set(tag, { x: impulse.x, y: impulse.y, z: impulse.z });
       }
     };
+    const setLinvelSafe = (nextVel: Vec3) => {
+      if (!physicsWarm || !isFiniteVec3(nextVel)) return;
+      body.setLinvel(nextVel, true);
+    };
+
+    if (!posOk) {
+      const snapshot = debugSnapshotRef.current;
+      snapshot.position = { x: pos.x, y: pos.y, z: pos.z };
+      snapshot.linearVelocity = { x: vel.x, y: vel.y, z: vel.z };
+      snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
+      if (typeof window !== 'undefined') {
+        (window as any).__watershedPhysicsDebug = snapshot;
+      }
+      return;
+    }
+
+    const speedMag = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+    const velSane = velOk && Number.isFinite(speedMag) && speedMag <= POSITION_SANE.speedMax;
+    const posSane = isPositionSane(pos);
+
+    if (!posSane || !velSane) {
+      holdAtSpawn();
+      bodyUserData.__terrainReady = false;
+      try {
+        body.setBodyType(rapier.RigidBodyType.KinematicPositionBased, true);
+        bodyUserData.__bootBodyType = 'kinematic';
+      } catch (_e) { /* body type unavailable */ }
+      const snapshot = debugSnapshotRef.current;
+      const [sx, sy, sz] = PLAYER_SPAWN.position;
+      snapshot.position = { x: sx, y: sy, z: sz };
+      snapshot.linearVelocity = { x: 0, y: 0, z: 0 };
+      snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
+      if (typeof window !== 'undefined') {
+        (window as any).__watershedPhysicsDebug = snapshot;
+      }
+      return;
+    }
 
     // === SLOPE DETECTION ===
     const slopeAngle = calculateSlopeAngle({ body, world, rapier, slopeState });
@@ -61,6 +180,23 @@ export function updateRunnerPhysics({
         }
       : null;
     if (typeof (groundRay as any).free === 'function') (groundRay as any).free();
+
+    if (groundHit) {
+      bodyUserData.__terrainReady = true;
+    }
+    const terrainWarm = !!bodyUserData.__terrainReady;
+    if (!terrainWarm) {
+      holdAtSpawn();
+      if (bodyUserData.__bootBodyType !== 'kinematic') {
+        body.setBodyType(rapier.RigidBodyType.KinematicPositionBased, true);
+        bodyUserData.__bootBodyType = 'kinematic';
+      }
+    } else if (bodyUserData.__bootBodyType === 'kinematic') {
+      body.setBodyType(rapier.RigidBodyType.Dynamic, true);
+      bodyUserData.__bootBodyType = 'dynamic';
+    }
+
+    physicsWarm = dtOk && posOk && velOk && velSane && posSane && cameraWarm && terrainWarm;
 
     // Hysteresis: require GROUNDED_HYSTERESIS_FRAMES consecutive misses before going airborne.
     // This prevents spurious state changes when the player skims over small rocks/lips.
@@ -140,15 +276,19 @@ export function updateRunnerPhysics({
       const speedFactor = 1.0 + speed2D * BANK_CONFIG.SPEED_ASSIST_SCALE;
       const plantMag = BANK_CONFIG.ASSIST_STRENGTH * bankT * speedFactor * dt;
       // Push player into bank face (negate horizontal normal → toward wall surface)
-      applyImpulseWithDebugTracking('bankAssist', { x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag });
+      if (isFiniteVec3(gn)) {
+        applyImpulseWithDebugTracking('bankAssist', { x: -gn.x * plantMag, y: 0, z: -gn.z * plantMag });
+      }
       // Damp capsule angular velocity on X and Z to prevent tumbling on steep walls
       const angVel = body.angvel();
       const antiRoll = BANK_CONFIG.ANTI_ROLL_STRENGTH * bankT * dt;
-      body.applyTorqueImpulse({
-        x: -angVel.x * antiRoll,
-        y: 0,
-        z: -angVel.z * antiRoll,
-      }, true);
+      if (physicsWarm && isFiniteVec3(angVel)) {
+        body.applyTorqueImpulse({
+          x: -angVel.x * antiRoll,
+          y: 0,
+          z: -angVel.z * antiRoll,
+        }, true);
+      }
     }
 
     // === GRAVITY MULTIPLIER (waterfall / steep rapids) ===
@@ -165,9 +305,7 @@ export function updateRunnerPhysics({
 
     // === CAMERA FORWARD DIRECTION (used for slope-biased jump and dodge) ===
     const jumpForwardDir = jumpForwardDirRef.current;
-    camera.getWorldDirection(jumpForwardDir);
-    jumpForwardDir.y = 0;
-    if (jumpForwardDir.lengthSq() > 0.001) jumpForwardDir.normalize();
+    getHorizontalCameraForward(camera, cameraWarm, jumpForwardDir);
 
     // Pre-compute slope trig used by both grounded and coyote-time jump paths
     const slopeRad = Math.abs(slopeState.current.currentAngle) * DEG_TO_RAD;
@@ -263,11 +401,11 @@ export function updateRunnerPhysics({
         // Goal 2: Variable jump height - early release cuts upward velocity
         if (!jump && !js.jumpReleased && vel.y > 0) {
           js.jumpReleased = true;
-          body.setLinvel({
+          setLinvelSafe({
             x: vel.x,
             y: vel.y * MOVEMENT.JUMP_CUT_MULTIPLIER,
             z: vel.z
-          }, true);
+          });
         }
 
         // Goal 2: Coyote time jump - if we just left ground, still allow jump
@@ -296,7 +434,7 @@ export function updateRunnerPhysics({
           const doubleJumpForce = JUMP_CONFIG.DOUBLE_JUMP_FORCE;
           // Cancel some downward velocity for responsive feel
           const newVelY = Math.max(vel.y * 0.3, 0) + doubleJumpForce;
-          body.setLinvel({ x: vel.x, y: newVelY, z: vel.z }, true);
+          setLinvelSafe({ x: vel.x, y: newVelY, z: vel.z });
 
           js.hasDoubleJumped = true;
           js.jumpReleased = false;
@@ -378,16 +516,21 @@ export function updateRunnerPhysics({
 
     // Camera-relative direction
     const forwardDir = new THREE.Vector3();
-    camera.getWorldDirection(forwardDir);
-    forwardDir.y = 0;
-    forwardDir.normalize();
+    getHorizontalCameraForward(camera, cameraWarm, forwardDir);
 
     const rightDir = new THREE.Vector3();
-    rightDir.crossVectors(forwardDir, camera.up).normalize();
+    rightDir.crossVectors(forwardDir, camera.up);
+    if (rightDir.lengthSq() > 0.001) {
+      rightDir.normalize();
+    } else {
+      rightDir.set(1, 0, 0);
+    }
 
     // === APPLY FORCES ===
     const flowResponsiveness = VEHICLE_TUNING.flowResponsiveness;
-    const flowMultiplier = slopeState.current.currentMultiplier;
+    const flowMultiplier = Number.isFinite(slopeState.current.currentMultiplier)
+      ? slopeState.current.currentMultiplier
+      : 1.0;
 
     // Recovery state: reduced turn speed
     const recoveryFactor = js.state === 'recovering'
@@ -456,9 +599,9 @@ export function updateRunnerPhysics({
     const effectiveMaxH = VEHICLE_TUNING.maxHorizontalSpeed *
       (1 + VEHICLE_TUNING.slopeBonusScale * (flowMultiplier - 1));
     const horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-    if (horizSpeed > effectiveMaxH) {
+    if (horizSpeed > effectiveMaxH && Number.isFinite(horizSpeed) && horizSpeed > 0) {
       const scale = effectiveMaxH / horizSpeed;
-      body.setLinvel({ x: vel.x * scale, y: vel.y, z: vel.z * scale }, true);
+      setLinvelSafe({ x: vel.x * scale, y: vel.y, z: vel.z * scale });
     }
 
     // Goal 2: Slide mechanic — activate on steep forward pitch OR steep lateral bank
@@ -526,7 +669,7 @@ export function updateRunnerPhysics({
 
     // Camera follow (first-person, smooth)
     // Guard against NaN from Rapier during physics init — lerping NaN permanently corrupts camera matrix
-    if (isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z)) {
+    if (posOk) {
       // If a previous frame or external system left the camera position malformed,
       // snap it back to the body before any lerp/set so we don't propagate NaN/null.
       const camPos = camera.position;
@@ -605,7 +748,6 @@ export function updateRunnerPhysics({
     snapshot.recentImpulses = debugState.current.recentImpulses;
     snapshot.recentContacts = debugState.current.recentContacts;
 
-    const bodyUserData = (body.userData ??= {});
     bodyUserData.physicsDebug = snapshot;
     if (typeof window !== 'undefined') {
       (window as any).__watershedPhysicsDebug = snapshot;

@@ -264,6 +264,12 @@ const TrackManager = forwardRef(function TrackManager({
     useFrame(() => {
         if (!chunkManagerRef.current?.isInitialized()) return;
 
+        const { x, y, z } = camera.position;
+        const cameraSane =
+          Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) &&
+          y >= -80 && y <= 250 && Math.abs(x) <= 6000 && Math.abs(z) <= 6000;
+        if (!cameraSane) return;
+
         const result = chunkManagerRef.current.update(camera.position.z);
 
         if (result.poolChanged) {
