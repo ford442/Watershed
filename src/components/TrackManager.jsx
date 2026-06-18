@@ -321,6 +321,7 @@ const TrackManager = forwardRef(function TrackManager({
                 <TrackSegment
                     key={slotIndex}
                     active={active}
+                    segmentId={segment?.id}
                     rockMaterial={rockMaterial}
                     rockNormalMap={normalMap}
                     raftRef={raftRef}
