@@ -20,7 +20,6 @@ export function usePlacementData({
                 trees: [],
                 cactus: [],
                 desertSage: [],
-                debris: [],
                 grass: [],
                 canyonGrass: [],
                 wildflowers: [],
@@ -57,7 +56,6 @@ export function usePlacementData({
         const trees = [];
         const cactus = [];
         const desertSage = [];
-        const debris = [];
         const grass = [];
         const canyonGrass = [];
         const wildflowers = [];

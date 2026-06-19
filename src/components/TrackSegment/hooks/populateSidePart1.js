@@ -187,16 +187,7 @@ export function populateSidePart1(args) {
                     }
                 } // end if (!Array.isArray(treeDef))
 
-                // 3. DEBRIS
-                if (seededRandom(seedState.value++) > 0.5) {
-                    const dist = bankStart + seededRandom(seedState.value++) * 2;
-                    const offset = binormal.clone().multiplyScalar(side * dist);
-                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    position.y += 0.5;
-                    debris.push({ position, rotation: new THREE.Euler(), scale: new THREE.Vector3(0.3, 0.3, 0.3) });
-                }
-
-                // 3.5 PEBBLES (New: Shoreline scatter)
+                // PEBBLES (Shoreline scatter)
                 // High density, small objects along the water line
                 if (seededRandom(seedState.value++) > 0.3) { // 70% chance per step
                     // Spawn a cluster of 1-3 pebbles
