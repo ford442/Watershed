@@ -72,6 +72,7 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
     // Segment 14 — The Waterfall
     {
         indexFrom: 14,
+        indexTo: 14,
         config: {
             type: 'waterfall',
             verticalBias: -3,
@@ -80,6 +81,11 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
             particleCount: 400,
             cameraShake: 0.5,
             flowSpeed: 1.6,
+            decorations: {
+                rocks: [
+                    { localX: -13, localZ: -35, scale: 4.0, rotation: 0, rockType: 'slab' },
+                ],
+            },
         },
     },
     // Segment 15 — Splash Pool / biome transition summer → autumn
@@ -110,10 +116,25 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
             flowSpeed: 0.45,
         },
     },
-    // Segments 20–22 — Slot Canyon (narrow, high rock density)
+    // Segments 20–21 — Slot Canyon (narrow, high rock density)
     // Must be listed before the 19+ catch-all so it takes precedence.
     {
         indexFrom: 20,
+        indexTo: 21,
+        config: {
+            biome: 'slotCanyon',
+            width: 24,
+            waterWidth: 8,
+            meanderStrength: 0.55,
+            verticalBias: -0.95,
+            flowSpeed: 1.3,
+            treeDensity: 0.08,
+            rockDensity: 'high',
+        },
+    },
+    // Segment 22 — Slot canyon exit pillar formation
+    {
+        indexFrom: 22,
         indexTo: 22,
         config: {
             biome: 'slotCanyon',
@@ -124,6 +145,13 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
             flowSpeed: 1.3,
             treeDensity: 0.08,
             rockDensity: 'high',
+            decorations: {
+                rocks: [
+                    { localX: 10, localZ: 0, scale: 2.2, rotation: 0, rockType: 'column' },
+                    { localX: 11.5, localZ: 8, scale: 1.8, rotation: 0.4, rockType: 'column' },
+                    { localX: 9, localZ: -12, scale: 2.0, rotation: -0.3, rockType: 'column' },
+                ],
+            },
         },
     },
     // Segments 23–27 — Downhill Creek Run (fast mossy slot creek)

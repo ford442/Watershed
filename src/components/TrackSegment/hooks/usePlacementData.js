@@ -147,7 +147,7 @@ export function usePlacementData({
         }
 
         if (Array.isArray(rockDef)) {
-            rockDef.forEach(({ localX, localZ, scale: sc, rotation: rot }) => {
+            rockDef.forEach(({ localX, localZ, scale: sc, rotation: rot, rockType }) => {
                 const rockT = Math.max(0, Math.min(1, 0.5 + localZ / geoLength));
                 const pp = segmentPath.getPoint(rockT);
                 const tang = segmentPath.getTangent(rockT).normalize();
@@ -172,6 +172,7 @@ export function usePlacementData({
                     segmentId,
                     instanceIndex: rocks.length,
                     nearWall: Math.abs(localX) > bankStart + 3,
+                    rockTypeOverride: rockType ?? null,
                 }));
             });
         }

@@ -56,6 +56,7 @@ export interface DecorationPlacement {
   localZ: number;
   scale?: number;
   rotation?: number;
+  rockType?: 'boulder' | 'slab' | 'column';
 }
 
 export interface LevelSegment {
@@ -215,6 +216,8 @@ export interface SegmentProgressionConfig {
   gravityMultiplier?: number;
   /** When true, entering this segment triggers the journey-complete sequence. */
   journeyComplete?: boolean;
+  /** Authored decoration positions (array) or procedural density counts (number). */
+  decorations?: Record<string, number | DecorationPlacement[]>;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and
@@ -886,6 +889,7 @@ export class JSONMapManager implements MapManager {
       particleCount: seg.effects?.particleCount,
       cameraShake: seg.effects?.cameraShake,
       gravityMultiplier: seg.physics?.gravityMultiplier,
+      decorations: seg.decorations,
     };
   }
 }

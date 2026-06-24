@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { GENERATION } from '../constants/game';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../configs/TrackBiomes';
 import { MapManager } from './MapSystem';
+import type { DecorationPlacement } from './MapSystem';
 import type { NormalizedSegment } from './ReachNormalizer';
 
 // =============================================================================
@@ -44,6 +45,8 @@ export interface SegmentData {
   verticalBias?: number;
   /** Per-segment gravity scale from level data (undefined = use world default). */
   gravityMultiplier?: number;
+  /** Authored decoration overrides passed through to TrackSegment. */
+  config?: { decorations?: Record<string, number | DecorationPlacement[]> };
 }
 
 export interface RenderedSlot {
@@ -149,8 +152,8 @@ function createSegmentData(
   mapManager: MapManager,
   ensureContinuity = false
 ): SegmentData {
-  const config = mapManager.getChunkConfig(index);
-  const biomeProfile = getTrackBiomeProfile(config.biome);
+  const progression = mapManager.getChunkConfig(index);
+  const biomeProfile = getTrackBiomeProfile(progression.biome);
   const seed = 12345 + index * 1000;
 
   const lastPoints = previousSegment?.points ?? INITIAL_POINTS;
@@ -166,16 +169,16 @@ function createSegmentData(
   };
 
   for (let step = 0; step < 3; step += 1) {
-    const turnFactor = Math.sin(index * 0.5 + step) * config.meanderStrength;
+    const turnFactor = Math.sin(index * 0.5 + step) * progression.meanderStrength;
     direction.x += turnFactor * 0.3 + (localRandom(step + 1) - 0.5) * 0.2;
-    direction.y += localRandom(step + 2) * 0.2 + config.verticalBias * 0.2;
+    direction.y += localRandom(step + 2) * 0.2 + progression.verticalBias * 0.2;
 
-    const maxUpward = config.type === 'pond' ? -0.01 : -0.1;
+    const maxUpward = progression.type === 'pond' ? -0.01 : -0.1;
     if (direction.y > maxUpward) direction.y = maxUpward;
 
     direction.normalize();
 
-    if (config.type !== 'waterfall') {
+    if (progression.type !== 'waterfall') {
       if (direction.z > -0.5) direction.z = -0.5;
     } else {
       direction.z = -0.12;
@@ -194,30 +197,31 @@ function createSegmentData(
       ? ensureTangentContinuity(previousSegment.points, points)
       : points;
 
-  const segmentPath = createSpline(continuousPoints, config.type);
+  const segmentPath = createSpline(continuousPoints, progression.type);
 
   const forecastBoost =
     forecastState === 'Flooded' ? 1.45 : forecastState === 'HighFlow' ? 1.2 : 1;
 
   return {
     id: index,
-    type: forecastState === 'Flooded' && config.type === 'normal' ? 'pond' : config.type,
-    biome: biomeProfile.id === 'slotCanyon' ? 'slotCanyon' : config.biome,
+    type: forecastState === 'Flooded' && progression.type === 'normal' ? 'pond' : progression.type,
+    biome: biomeProfile.id === 'slotCanyon' ? 'slotCanyon' : progression.biome,
     points: continuousPoints,
     segmentPath,
-    width: config.width,
-    waterWidth: config.waterWidth,
-    flowSpeed: config.flowSpeed * forecastBoost,
-    particleCount: config.particleCount || 0,
-    cameraShake: config.cameraShake || 0,
-    treeDensity: config.treeDensity,
-    rockDensity: config.rockDensity,
+    width: progression.width,
+    waterWidth: progression.waterWidth,
+    flowSpeed: progression.flowSpeed * forecastBoost,
+    particleCount: progression.particleCount || 0,
+    cameraShake: progression.cameraShake || 0,
+    treeDensity: progression.treeDensity,
+    rockDensity: progression.rockDensity,
     segmentState: forecastState,
     wallProfile: biomeProfile,
-    forwardMomentum: config.forwardMomentum,
-    meanderStrength: config.meanderStrength,
-    verticalBias: config.verticalBias,
-    gravityMultiplier: config.gravityMultiplier,
+    forwardMomentum: progression.forwardMomentum,
+    meanderStrength: progression.meanderStrength,
+    verticalBias: progression.verticalBias,
+    gravityMultiplier: progression.gravityMultiplier,
+    config: progression.decorations ? { decorations: progression.decorations } : undefined,
   };
 }
 

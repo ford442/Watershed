@@ -434,6 +434,24 @@ Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc
 | F-7 | Info | WebGPU default errors under SwiftShader (`lightNodeClass`) | Document `?renderer=webgl` for CI; WebGPU OK on real Chrome 120+ |
 | F-8 | **Gate (RED)** | **Intermittent cold-boot corruption: rigid-body Y → NaN/huge/null within seconds, runaway segment generation, then React "Maximum update depth exceeded". Input-independent.** | **Fix landed 2026-06-18** (impulse/camera warmup guards in `RunnerPhysicsStep.ts`). **Gate stays RED until confirmed on real Chrome + GPU** — headless SwiftShader rate is load-noisy (40–100%). Repro/classify: `verification/diag_trials.mjs`, `verification/diag_classify.mjs`. |
 
+### 2026-06-24 execution log (automated + doc)
+
+**Executor:** Cursor agent (CI VM, headless Chrome + SwiftShader advisory).
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `CI=true pnpm test --watchAll=false` | **182/182 pass** | 19 suites, post set-piece plumbing |
+| `pnpm build` | **Pass** | WASM skipped without Emscripten (expected) |
+| `SYSTEMS.md` contract cards | **Done** | `WaterReflection.jsx`, `WaterInteraction.jsx` cards + SplashSystem cross-ref |
+| Set-piece plumbing (seg 14/22) | **Implemented** | `decorations` wired MapSystem → ChunkManager → TrackSegment; `rockType` override; authored in `meander_to_waterfall.ts` |
+| `diag_trials.mjs` (6 trials) | **Partial** | Trial 1 HEALTHY (seg −3, Y ≈ −5.2); trial 2 Chrome protocol timeout — headless load-sensitive per 2026-06-18 caveat |
+| `diag_reset.mjs` | *(see run below)* | Journey-complete restart plumbing |
+| Human GPU traversal | **Pending** | Required to flip gate GREEN |
+
+**Recommended human URL:** `http://localhost:3000/?renderer=webgl&cleanTest=1`
+
+**Verdict:** **Still RED** for F-8 until real Chrome + GPU sign-off. Code/doc/set-piece tracks landed; human checklist below remains open.
+
 ### Sign-off checklist (human tester)
 
 Copy into PR / release notes when complete:

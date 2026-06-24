@@ -1,7 +1,9 @@
 # SYSTEMS.md — Watershed Orchestration Layer
 
-Reference for the Reach / Biome / LOD / Splash systems and the WASM acceleration module.
-All six systems live in `src/systems/` and are **rendered inside `Experience.jsx`**.
+Reference for the Reach / Biome / LOD / Splash systems, live-wired water components,
+and the WASM acceleration module. Core orchestration lives in `src/systems/`; water
+reflection and interaction components live in `src/components/` but are mounted in
+`Experience.jsx`.
 
 For narrative context see [`CLAUDE.md`](./CLAUDE.md).
 
@@ -20,6 +22,8 @@ ReachStreamer ──ReachManifest──> ReachNormalizer ──NormalizedSegment
                                                                                └──> WeatherSystem
 
 Player velocity/contacts ──> SplashSystem ──> ParticlePool ──> VFX (InstancedMesh)
+                      └──> WaterInteraction ──> local instanced splash/mist (parallel path)
+WaterReflection (LOD high/ultra) ──> WebGLRenderTarget (no live consumer — see card)
 ```
 
 ### Live nesting in `Experience.jsx`
@@ -327,6 +331,127 @@ from pre-allocated `ParticlePool`s to avoid per-frame GC pressure.
   2000 particles) the instanced mesh cap becomes the bottleneck.
 - Water entry is detected by `playerPos.y < waterLevel`, which does not account for
   non-flat water surfaces.
+- **Cross-ref:** `WaterInteraction.jsx` mounts alongside this component (`Experience.jsx`,
+  adjacent JSX blocks) with independent splash pools (`0.15³` box geometry) for the same
+  water-entry / proximity+speed events — see the `WaterInteraction` card.
+
+---
+
+### `src/components/WaterReflection.jsx`
+
+**Purpose:** Planar reflection pass — renders the full scene from a camera mirrored below
+the water plane into an offscreen `WebGLRenderTarget`, clipped to geometry above
+`waterLevel`. Intended to feed a water-surface `reflectionTexture` uniform.
+
+**Runs in:** React component inside R3F `<Canvas>` + `useFrame` (returns `null` — no DOM
+or mesh output).
+
+**Exports:**
+- `WaterReflection` (default React component)
+- `useWaterReflection()` — stub hook (always returns `null`)
+
+**Consumes:**
+- `useThree()` — `scene`, `camera`, `gl`
+- `useFrame` from `@react-three/fiber`
+- `THREE.WebGLRenderTarget`, `THREE.PerspectiveCamera`, clip planes
+- Parent gate: `lodConfig.enableReflections` from `useLOD()` (`true` only for `high` /
+  `ultra` presets in `LODManager.tsx`) and `debug.isStageEnabled('worldSystems')` in
+  `Experience.jsx`
+
+**Props:**
+- `waterLevel?` — default `0.5`; clip plane and mirror plane Y
+- `resolution?` — default `1024`; RT width/height (`Experience.jsx` passes `1024`)
+- `updateInterval?` — default `2`; render every N frames (`Experience.jsx` passes `2`)
+- `reflectionStrength?` — **dead prop** (destructured in signature, never read in body)
+
+**Produces:**
+- Populated `WebGLRenderTarget` held in `renderTargetRef` (1024×1024 RGBA, no depth)
+- **Nothing in production reads this texture** — see Known Pain
+
+**Update Cadence:** Throttled — `useFrame` skips unless `frameCount % updateInterval === 0`
+(every 2 frames with current wiring).
+
+**Render Footprint:** High — one full `gl.render(scene, reflectCam)` into the RT per tick,
+plus GL state save/restore (render target, viewport, scissor, `autoClear`, clip planes).
+Cost scales with scene complexity and RT resolution; runs only when LOD quality is `high` or
+`ultra`, i.e. players with the most GPU headroom pay for zero visible benefit today.
+
+**Boundaries (Do NOT):**
+- Do NOT assume reflections appear on the water surface — `FlowingWater.jsx` (live water
+  shader) has no `reflectionTexture` uniform; `EnhancedWaterMaterial.js` defines one but
+  is not imported anywhere in `src/`.
+- Do NOT call `useWaterReflection()` expecting a texture — it hardcodes `return null`.
+- Do NOT mount without the LOD gate — duplicate scene renders are expensive.
+
+**Known Pain:**
+- **Primary:** Dead weight in production. The RT is filled every 2 frames but no material
+  samples it. `useWaterReflection()` is a stub. Only `createEnhancedWaterMaterial()` knows
+  how to consume `reflectionTexture`, and that factory is unused. High/ultra LOD players
+  pay the full duplicate-render cost for zero visible pixels.
+- `reflectionStrength` prop is accepted but never applied (no fade/strength in shader path).
+- Fixing this (wire into `FlowingWater.jsx` or remove the pass) is out of scope for
+  documentation — track as a separate engineering decision.
+
+---
+
+### `src/components/WaterInteraction.jsx`
+
+**Purpose:** Secondary water-contact VFX — proximity/speed splash particles, raft bow-wave
+mesh deformation, and raft mist spray when submerged. Complements `SplashSystem` with
+overlapping splash behaviour using a separate implementation.
+
+**Runs in:** React component inside R3F `<Physics>` + `useFrame` (particle sim + instanced
+matrix writes every frame).
+
+**Exports:**
+- `WaterInteraction` (default React component)
+
+**Consumes:**
+- Rapier rigid body via `target` ref — `translation()`, `linvel()`, `rotation()`
+- `useFrame` from `@react-three/fiber`
+- Local plain-object particle pools (not `ParticlePool.ts`)
+- `THREE.InstancedMesh`, `THREE.BoxGeometry(0.15, 0.15, 0.15)`, `THREE.ShaderMaterial`
+  (bow wave)
+
+**Props:**
+- `target` — Rapier `RigidBody` ref (same `vehicleRef` as `SplashSystem` in `Experience.jsx`)
+- `isRaft?` — enables bow-wave mesh + mist (`vehicleType === 'raft'`)
+- `waterLevel?` — default `0.5`
+- `maxVelocity?` — default `10` (`Experience.jsx` passes `15`)
+- `flowSpeed?` — default `1.0`; scales bow-wave height, mist spawn count, splash count —
+  **not passed from `Experience.jsx`**, so production always uses `1.0` unlike
+  `SplashSystem`, which receives `biomeMaterials.water.flowSpeed`
+
+**Produces:**
+- Up to 50 splash instanced particles (`MAX_SPLASH_PARTICLES`) when near water surface
+  and speed > `SPLASH_CONFIG.minSpeed` (1 m/s)
+- Up to 30 mist instanced particles (raft only, submerged > 60%, speed > 2 m/s)
+- Bow-wave `mesh` with vertex displacement (raft only, visible when speed > 1 m/s)
+
+**Update Cadence:** Every frame when `target.current` is set; early-out hides splashes when
+no target.
+
+**Render Footprint:** Medium CPU — per-particle gravity/drag integration and
+`setMatrixAt` for up to 80 instances; bow-wave updates all plane vertices when raft is
+active. GPU: 1–3 draw calls (splash always; mist + bow wave when raft). No shared pool
+with `SplashSystem` — duplicate allocation and update paths.
+
+**Boundaries (Do NOT):**
+- Do NOT assume `flowSpeed` tracks biome — wire it from `Experience.jsx` or
+  `useBiomeMaterials()` if speed-scaled effects should match river flow.
+- Do NOT add a third splash system for the same events — consolidate into
+  `SplashSystem`/`ParticlePool.ts` long-term (see Known Pain).
+- Raft-only meshes (`mist`, `bowWave`) are skipped when `isRaft` is false (runner mode).
+
+**Known Pain:**
+- **Redundant splashes with `SplashSystem.tsx`:** Both mount in `Experience.jsx` against
+  the same `vehicleRef`, independently detect water proximity/entry, and spawn near-identical
+  `0.15×0.15×0.15` box particles via separate state tracking and pooling. CPU cost doubles
+  for the same physical event.
+- **`flowSpeed` not wired:** Bow-wave amplitude, mist density, and splash count always use
+  the hardcoded default `1.0`; biome flow changes have no effect on this component.
+- Mist particle alpha is computed but not applied to per-instance material (instanced mesh
+  shares one material).
 
 ---
 

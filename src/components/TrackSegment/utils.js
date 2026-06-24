@@ -55,10 +55,12 @@ export const createFlowerPayload = ({ position, rotation, scale, biome, segmentI
     };
 };
 
-export const createRockPayload = ({ position, rotation, scale, biome, segmentId, instanceIndex, isScatter = false, nearWall = false }) => {
+export const createRockPayload = ({ position, rotation, scale, biome, segmentId, instanceIndex, isScatter = false, nearWall = false, rockTypeOverride = null }) => {
     let rockType = 'boulder';
 
-    if (biome === 'slotCanyon') {
+    if (rockTypeOverride && ROCK_TYPES.includes(rockTypeOverride)) {
+        rockType = rockTypeOverride;
+    } else if (biome === 'slotCanyon') {
         const roll = seededRandom(segmentId * 137 + instanceIndex * 59 + (isScatter ? 17 : 7));
         rockType = roll > 0.68 ? 'column' : roll > 0.36 ? 'slab' : 'boulder';
     } else if (nearWall) {
