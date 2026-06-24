@@ -224,8 +224,8 @@ The title has a double meaning:
 ├── emscripten/                   # C++ Emscripten future migration
 │   ├── build.sh                  # Emscripten build script
 │   └── main.cpp                  # C++ entry point
-├── build_and_patch.py            # Build + relative path patching script
-├── deploy.py                     # SFTP deployment script
+├── build_and_patch.py            # Build + optional deploy invocation script
+├── deploy.py                     # Deploy script (zips build/, uploads to Contabo storage manager)
 ├── verify_visuals_playwright.py  # Visual regression testing (Playwright)
 ├── test-browser.js               # Browser test helper
 ├── diagnose.js                   # Startup diagnostics script
@@ -278,14 +278,13 @@ npm run build
 # Preview production build
 npm run preview
 
-# Full build + path patching + optional deploy
+# Full build + optional deploy
 python3 build_and_patch.py
 ```
 
 The `build_and_patch.py` script:
-1. Runs `pnpm run build` (outputs to `build/`)
-2. Patches `build/index.html` to use relative paths (`src="./"` instead of `src="/"`)
-3. Runs `deploy.py` if available
+1. Runs `pnpm run build` (outputs to `build/`) — Vite's `base: './'` config already makes it emit relative asset paths, so no HTML patching is needed
+2. Runs `deploy.py` if available
 
 ### Testing
 
@@ -753,7 +752,7 @@ Planned for:
 | `src/constants/weather.ts` | Weather state constants |
 | `src/style.css` | UI styles, loader, crosshair, responsive design |
 | `vite.config.ts` | Vite build configuration |
-| `build_and_patch.py` | Build + relative path patching script |
+| `build_and_patch.py` | Build + optional deploy invocation script |
 | `verify_visuals_playwright.py` | Visual regression testing |
 
 ---
