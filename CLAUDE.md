@@ -357,8 +357,8 @@ Manual checklist before every commit:
 ## Deployment
 
 ```bash
-python3 build_and_patch.py    # build + patch relative paths → build/
-python3 deploy.py             # SFTP to test.1ink.us/watershed
+python3 build_and_patch.py    # build → build/, then invokes deploy.py
+python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com (Contabo)
 ```
 
 ---
