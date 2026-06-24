@@ -6,7 +6,7 @@ export function populateSidePart1(args) {
     const {
         side, t, zLocal, geoLength, segmentPath, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
         biome, segmentId, rng, type, config, flowSpeed, isSlotCanyon, biomeProfile,
-        trees, rocks, scatterRocks, cactus, desertSage, debris, grass, canyonGrass,
+        trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
         wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
         birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
         ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,

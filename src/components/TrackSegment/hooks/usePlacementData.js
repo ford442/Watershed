@@ -184,7 +184,7 @@ export function usePlacementData({
             bankStart, canyonWidth, waterWidth, biome, segmentId, rng,
             type, config, flowSpeed, isSlotCanyon, biomeProfile,
             // Mutating lists:
-            trees, rocks, scatterRocks, cactus, desertSage, debris, grass, canyonGrass,
+            trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
             wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
             birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
             ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust
@@ -192,7 +192,7 @@ export function usePlacementData({
 
 
 
-        return { rocks, scatterRocks, trees, cactus, desertSage, debris, grass, canyonGrass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust };
+        return { rocks, scatterRocks, trees, cactus, desertSage, grass, canyonGrass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust };
     }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, WATER_LEVEL, biome, type, flowSpeed, config, isSlotCanyon, biomeProfile]);
 
     return placementData;
