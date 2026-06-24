@@ -48,11 +48,17 @@ const TrackManager = forwardRef(function TrackManager({
     const { isNight } = useNightMode();
 
     const chunkManagerRef = useRef(null);
+    const pendingSynthesizesRef = useRef([]);
 
     useImperativeHandle(ref, () => ({
         synthesizeSegmentEnter: (index) => {
-            chunkManagerRef.current?.synthesizeSegmentEnter?.(index);
+            if (chunkManagerRef.current?.isInitialized()) {
+                chunkManagerRef.current.synthesizeSegmentEnter(index);
+            } else {
+                pendingSynthesizesRef.current.push(index);
+            }
         },
+        isInitialized: () => chunkManagerRef.current?.isInitialized() ?? false,
         getLastEnteredSegment: () => chunkManagerRef.current?.getLastEnteredSegment?.() ?? -1,
     }));
     const forecastByIndexRef = useRef(new Map());
@@ -239,9 +245,21 @@ const TrackManager = forwardRef(function TrackManager({
         chunkManagerRef.current.initializePool();
         setPoolVersion((v) => v + 1);
 
+        // Flush any synthesizeSegmentEnter calls that arrived before the
+        // rockMaterial-gated initialization completed (e.g. screenshot teleport).
+        const pending = pendingSynthesizesRef.current;
+        if (pending.length > 0) {
+            pendingSynthesizesRef.current = [];
+            pending.sort((a, b) => a - b);
+            pending.forEach((index) => {
+                chunkManagerRef.current?.synthesizeSegmentEnter?.(index);
+            });
+        }
+
         return () => {
             chunkManagerRef.current?.dispose?.();
             chunkManagerRef.current = null;
+            pendingSynthesizesRef.current = [];
         };
     }, [rockMaterial, onBiomeChange, reachSegments]);
 

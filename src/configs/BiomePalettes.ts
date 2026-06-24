@@ -214,7 +214,109 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     
     transitionDuration: 5,
   },
-  
+
+  slotCanyon: {
+    id: 'slotCanyon',
+    name: 'Slot Canyon',
+    description: 'Narrow, high-walled sandstone chutes with warm reflected light',
+
+    // Sky & Atmosphere — bright strip of sky overhead, warm bounce
+    skyColor: '#4A90E2',
+    fogColor: '#F4E4D4',
+    fogDensity: 0.02,
+    fogNear: 30,
+    fogFar: 180,
+
+    // Water
+    waterColor: '#8B5A3C',
+    waterDeepColor: '#5A3A24',
+    foamColor: '#EEDCC8',
+    causticsIntensity: 0.35,
+    waterOpacity: 0.75,
+    flowSpeed: 1.1,
+
+    // Lighting — warm, reflected canyon light
+    lightTemp: 4500,
+    sunColor: '#FFE4C4',
+    sunIntensity: 1.0,
+    ambientIntensity: 0.35,
+    hemiSkyColor: '#D4A574',
+    hemiGroundColor: '#5A3A28',
+    fillColor: '#C48A5E',
+    fillIntensity: 0.25,
+
+    // Canyon — warm sandstone
+    rockBaseColor: '#A65F3A',
+    rockMossColor: '#4D2315',
+    weatheringIntensity: 0.85,
+
+    // Vegetation — sparse dry snags and drought plants
+    vegetationColor: '#6B5B3D',
+    vegetationDensity: 0.2,
+    treeDensity: 0.15,
+    grassDensity: 0.1,
+    wildflowerColors: ['#c48a5e', '#b08050', '#9a7048'],
+
+    // Effects
+    fireflyCount: 0,
+    mistDensity: 0.2,
+    sunShaftIntensity: 0.9,
+    fallingLeaves: false,
+
+    transitionDuration: 5,
+  },
+
+  glacier: {
+    id: 'glacier',
+    name: 'Glacier',
+    description: 'High-altitude ice chutes with cold blue light and sparse dead timber',
+
+    // Sky & Atmosphere — clear cold alpine sky
+    skyColor: '#B8D4E8',
+    fogColor: '#E0F0F8',
+    fogDensity: 0.015,
+    fogNear: 50,
+    fogFar: 260,
+
+    // Water — glacial melt, milky turquoise
+    waterColor: '#5A9AA8',
+    waterDeepColor: '#2A5A68',
+    foamColor: '#D8F0FF',
+    causticsIntensity: 0.4,
+    waterOpacity: 0.7,
+    flowSpeed: 1.4,
+
+    // Lighting — cold, high-altitude daylight
+    lightTemp: 7500,
+    sunColor: '#F0F8FF',
+    sunIntensity: 1.5,
+    ambientIntensity: 0.38,
+    hemiSkyColor: '#A8C8E0',
+    hemiGroundColor: '#4A6070',
+    fillColor: '#90B8D0',
+    fillIntensity: 0.2,
+
+    // Canyon — ice-scoured grey-blue granite
+    rockBaseColor: '#B0C8D8',
+    rockMossColor: '#3A5060',
+    weatheringIntensity: 0.55,
+
+    // Vegetation — almost none, dead greys
+    vegetationColor: '#5A6A5A',
+    vegetationDensity: 0.15,
+    treeDensity: 0.1,
+    grassDensity: 0.05,
+    wildflowerColors: ['#9ab8c8', '#b0c8d8', '#c8dce8'],
+
+    // Effects
+    fireflyCount: 0,
+    mistDensity: 0.3,
+    sunShaftIntensity: 0.7,
+    fallingLeaves: false,
+
+    transitionDuration: 5,
+  },
+
   cavern: {
     id: 'cavern',
     name: 'Mystic Cavern',
@@ -378,7 +480,7 @@ export const BIOME_ID_MAP: Record<string, string> = {
   // Track geometry vocabulary (src/configs/TrackBiomes.ts TrackBiomeId)
   summer: 'canyonSummer',
   autumn: 'canyonAutumn',
-  slotCanyon: 'canyonSummer',
+  // slotCanyon and glacier now have their own palettes/HUD labels.
   // JSON authored vocabulary (src/formats/LevelFormat.md BiomeType)
   'creek-summer': 'canyonSummer',
   'creek-autumn': 'canyonAutumn',

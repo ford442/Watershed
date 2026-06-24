@@ -18,6 +18,7 @@ const BIOME_LABELS: Record<string, string> = {
   delta: 'RIVER DELTA',
   midnightMist: 'MIDNIGHT MIST',
   slotCanyon: 'SLOT CANYON',
+  glacier: 'GLACIER',
 };
 
 export const GameHUD: React.FC<GameHUDProps> = ({
