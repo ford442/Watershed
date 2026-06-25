@@ -37,9 +37,12 @@ BUILD_DIR: str = 'build'
 CONTABO_BASE_URL: str = "https://storage.noahcohn.com"
 DEPLOY_FOLDER: str = ""  # override remote target folder; empty = use PROJECT_NAME
 
-# Optional deploy token (recommended for security).
-# Set via environment: export DEPLOY_TOKEN="your_long_token_from_vps_env"
-DEPLOY_TOKEN: Optional[str] = "6de44dca5425348f2e2ef9456fc820bfe56a5ace68bddeb6da4a1c2a9d9cadc0"
+# Deploy token — REQUIRED. Read from the environment; never hard-code secrets here.
+#   export DEPLOY_TOKEN="your_long_token_from_vps_env"
+# SECURITY: a token was previously hard-coded here and is now in git history — it
+# MUST be treated as compromised. Rotating it on the VPS and scrubbing git history
+# remain manual owner actions; this code change only stops new leaks.
+DEPLOY_TOKEN: Optional[str] = os.environ.get("DEPLOY_TOKEN")
 # ============================================================
 
 
@@ -105,6 +108,14 @@ def main():
     if not build_path.exists() or not build_path.is_dir():
         print(f"ERROR: Build directory '{BUILD_DIR}/' does not exist.")
         print("Please run your build command first (e.g. `npm run build`).")
+        sys.exit(1)
+
+    if not DEPLOY_TOKEN:
+        print(
+            "ERROR: DEPLOY_TOKEN is not set. Export the deploy token before deploying:\n"
+            '  export DEPLOY_TOKEN="<your_token_from_vps_env>"',
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     try:

@@ -1,4 +1,5 @@
 import os
+import sys
 import paramiko
 import getpass
 
@@ -42,7 +43,18 @@ def main():
     """
     Main function to connect to the server and start the upload process.
     """
-    password = 'GoogleBez12!' # getpass.getpass(f"Enter password for {USERNAME}@{HOSTNAME}: ")
+    # SECURITY: the SFTP password was previously hard-coded here and is now in git
+    # history — treat it as compromised. Rotating it and scrubbing git history are
+    # manual owner actions; this change only stops new leaks. Read it from the env:
+    #   export DEPLOY_SFTP_PASSWORD="<sftp_password>"
+    password = os.environ.get("DEPLOY_SFTP_PASSWORD")
+    if not password:
+        print(
+            "ERROR: DEPLOY_SFTP_PASSWORD is not set. Export the SFTP password before deploying:\n"
+            '  export DEPLOY_SFTP_PASSWORD="<sftp_password>"',
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     transport = None
     sftp = None
