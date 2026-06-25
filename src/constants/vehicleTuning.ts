@@ -160,15 +160,17 @@ export const VEHICLE_TUNING = {
     /** Minimum downstream speed (m/s) required to trigger the launch. */
     speedThreshold: 12.0,
 
-    /** Forward (-Z / downstream) impulse magnitude (kg·m/s). */
-    forwardMagnitude: 42.0,
+    /** Forward (-Z / downstream) impulse magnitude (kg·m/s).
+     *  Tuned to carry the player off the waterfall drop and into the splash pool. */
+    forwardMagnitude: 85.0,
 
-    /** Upward (+Y) impulse magnitude (kg·m/s). */
-    upMagnitude: 36.0,
+    /** Upward (+Y) impulse magnitude (kg·m/s).
+     *  Combined with forwardMagnitude to arc the player into segment 15. */
+    upMagnitude: 65.0,
 
     /** Per-vehicle impulse scale. */
     runnerScale: 1.0,
-    raftScale: 0.85,
+    raftScale: 0.78,
 
     /** Trigger box half-extents (m). The box is centered on the shelf's
      *  downstream edge and aligned to the waterfall segment direction. */
