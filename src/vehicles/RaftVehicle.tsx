@@ -12,6 +12,7 @@ import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
+import { computeShelfTrigger } from './utils/shelfLaunch';
 
 const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
@@ -33,6 +34,11 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     buoyancyState, tippingState, paddleState, staminaState, stunState,
     forwardBiasState, shedParticles, collisionState, sharedPhysicsState, lastWorkerSync
   } = physicsState;
+
+  // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
+  const shelfSpawnPointRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const shelfLaunchFiredRef = useRef(false);
+  const shelfTriggerRef = useRef<ReturnType<typeof computeShelfTrigger>>(null);
 
   React.useImperativeHandle(forwardedRef, () => bodyRef.current);
 
@@ -125,8 +131,20 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     };
 
     window.addEventListener('biome-change', handleBiomeChange);
+
+    const handleSegmentSpawn = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { segmentIndex, spawnPoint } = customEvent.detail ?? {};
+      if (segmentIndex === 14 && spawnPoint) {
+        shelfSpawnPointRef.current = spawnPoint;
+        shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
+      }
+    };
+    window.addEventListener('segment-spawn', handleSegmentSpawn);
+
     return () => {
       window.removeEventListener('biome-change', handleBiomeChange);
+      window.removeEventListener('segment-spawn', handleSegmentSpawn);
       workerProxyRef.current?.dispose();
       workerProxyRef.current = null;
     };
@@ -136,7 +154,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     bodyRef, raftVehicle, camera, controls, workerProxy: workerProxyRef.current,
     buoyancyState, tippingState, paddleState, staminaState,
     stunState, forwardBiasState, shedParticles, collisionState,
-    lastWorkerSync, sharedPhysicsState, raftMaterialRef, useWorkerPhysics, applyWorkerImpulse, stepWorkerProxy
+    lastWorkerSync, sharedPhysicsState, raftMaterialRef, useWorkerPhysics, applyWorkerImpulse, stepWorkerProxy,
+    shelfLaunchFiredRef, shelfTriggerRef
   });
 
   return (

@@ -18,6 +18,7 @@ import {
 import { initAudio, playJumpSound, playLandSound, playFootstep, playDodgeSound } from './RunnerVehicle/audio';
 import { triggerCameraShake } from './RunnerVehicle/utils';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
+import { computeShelfTrigger } from './utils/shelfLaunch';
 
 const isNoPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
 
@@ -52,6 +53,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     prevFrame, collisionState, defaultCollisionGroups, fovRef, debugState, debugSnapshotRef
   } = state;
 
+  // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
+  const shelfSpawnPointRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const shelfLaunchFiredRef = useRef(false);
+  const shelfTriggerRef = useRef<ReturnType<typeof computeShelfTrigger>>(null);
+
   useImperativeHandle(forwardedRef, () => bodyRef.current);
 
   useEffect(() => {
@@ -79,7 +85,21 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     };
     
     window.addEventListener('biome-change', handleBiomeChange);
-    return () => window.removeEventListener('biome-change', handleBiomeChange);
+
+    const handleSegmentSpawn = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { segmentIndex, spawnPoint } = customEvent.detail ?? {};
+      if (segmentIndex === 14 && spawnPoint) {
+        shelfSpawnPointRef.current = spawnPoint;
+        shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
+      }
+    };
+    window.addEventListener('segment-spawn', handleSegmentSpawn);
+
+    return () => {
+      window.removeEventListener('biome-change', handleBiomeChange);
+      window.removeEventListener('segment-spawn', handleSegmentSpawn);
+    };
   }, []);
 
   const calculateSlopeAngle = (): number => {
@@ -222,7 +242,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
 
   useRunnerControls({
-    bodyRef, camera, controls, vehicleState: state
+    bodyRef, camera, controls, vehicleState: state,
+    shelfLaunchFiredRef, shelfTriggerRef
   });
 
   return (

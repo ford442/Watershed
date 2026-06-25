@@ -86,6 +86,14 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
                     { localX: -13, localZ: -35, scale: 4.0, rotation: 0, rockType: 'slab' },
                 ],
             },
+            launchShelf: {
+                rockRef: { localX: -13, localZ: -35, scale: 4.0 },
+                triggerHalfWidth: 9.0,
+                triggerHalfLength: 7.0,
+                triggerHeight: 6.0,
+                triggerDownstreamOffset: 5.5,
+                triggerYOffset: 1.0,
+            },
         },
     },
     // Segment 15 — Splash Pool / biome transition summer → autumn

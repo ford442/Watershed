@@ -199,6 +199,24 @@ export const DEFAULT_MAP_CONFIG: MapConfig = {
  * This is intentionally separate from BaseMapChunk: it is a lightweight config
  * object that describes HOW a segment should be built, not the built geometry.
  */
+export interface LaunchShelfConfig {
+  /** Reference to the authored rock that acts as the launch shelf.
+   *  The trigger zone is derived from this rock's local placement. */
+  rockRef: {
+    localX: number;
+    localZ: number;
+    scale: number;
+  };
+  /** Trigger box half-extents in meters. */
+  triggerHalfWidth: number;
+  triggerHalfLength: number;
+  triggerHeight: number;
+  /** Distance downstream from the rock center to the trigger plane. */
+  triggerDownstreamOffset: number;
+  /** Vertical offset of the trigger center above the path surface. */
+  triggerYOffset: number;
+}
+
 export interface SegmentProgressionConfig {
   biome: string;
   type: 'normal' | 'waterfall' | 'splash' | 'pond';
@@ -218,6 +236,8 @@ export interface SegmentProgressionConfig {
   journeyComplete?: boolean;
   /** Authored decoration positions (array) or procedural density counts (number). */
   decorations?: Record<string, number | DecorationPlacement[]>;
+  /** Optional launch-shelf gameplay trigger for waterfall set-pieces. */
+  launchShelf?: LaunchShelfConfig;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and

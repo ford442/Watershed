@@ -180,16 +180,15 @@ const TrackManager = forwardRef(function TrackManager({
         material.displacementMap = effectiveDisplacementMap;
 
         try {
-            extendRiverMaterial(material, {
+            return extendRiverMaterial(material, {
                 waterLevel: WATER_LEVEL,
                 enableMoss: false,
                 enableTriplanar: false,
             });
         } catch (err) {
             console.warn('[TrackManager] Failed to extend river material:', err);
+            return material;
         }
-
-        return material;
     }, [aoMap, colorMap, displacementMap, fallbackTextures, normalMap, reachId, roughnessMap]);
 
     // Forecast updates

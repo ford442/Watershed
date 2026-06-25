@@ -9,12 +9,38 @@ import {
     WATER_PHYSICS, DENSITY, TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED
 } from '../constants';
 import { playPaddleSound, playSplashSound, playCollisionSound, updateWaterRushingSound } from '../audio';
+import { triggerCameraShake } from '../../RunnerVehicle/utils';
+import {
+    tryFireShelfLaunch,
+    type ShelfTrigger,
+} from '../../utils/shelfLaunch';
+import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
+import { useGameStore } from '../../../systems/GameState';
 
 export function useRaftControls({
     bodyRef, raftVehicle, camera, controls, workerProxy,
     buoyancyState, tippingState, paddleState, staminaState,
     stunState, forwardBiasState, shedParticles, collisionState,
-    lastWorkerSync, sharedPhysicsState
+    lastWorkerSync, sharedPhysicsState,
+    shelfLaunchFiredRef, shelfTriggerRef
+}: {
+    bodyRef: { current: any };
+    raftVehicle: { current: any };
+    camera: any;
+    controls: any;
+    workerProxy: any;
+    buoyancyState: { current: any };
+    tippingState: { current: any };
+    paddleState: { current: any };
+    staminaState: { current: any };
+    stunState: { current: any };
+    forwardBiasState: { current: any };
+    shedParticles: { current: any };
+    collisionState: { current: any };
+    lastWorkerSync: { current: any };
+    sharedPhysicsState: { current: any };
+    shelfLaunchFiredRef: { current: boolean };
+    shelfTriggerRef: { current: ShelfTrigger | null };
 }) {
     const { world, rapier } = useRapier();
 
@@ -120,6 +146,26 @@ useFrame((state, delta) => {
 
     // === DYNAMIC CAMERA ===
     const { vel, speed } = updateCameraFromBody(body);
+
+    // === WATERFALL LAUNCH-SHELF v2 (segment 14) ===
+    try {
+      const launch = tryFireShelfLaunch({
+        currentSegmentIndex: useGameStore.getState().currentSegmentIndex,
+        position: pos,
+        velocity: vel,
+        trigger: shelfTriggerRef.current,
+        firedRef: shelfLaunchFiredRef,
+        speedThreshold: VEHICLE_TUNING.shelfLaunch.speedThreshold,
+        vehicleScale: VEHICLE_TUNING.shelfLaunch.raftScale,
+      });
+      if (launch) {
+        body.applyImpulse(launch.impulse, true);
+        triggerCameraShake(0.45, 0.25);
+        playSplashSound(Math.min(1.5, speed));
+      }
+    } catch (_e) {
+      // Defensive: never let launch logic crash the physics step.
+    }
 
     // Update foam particles
     paddleState.current.foamParticles = paddleState.current.foamParticles

@@ -44,7 +44,7 @@ import { useBiome } from '../../systems/BiomeSystem';
 import { useSunPosition } from '../../systems/SunPositionSystem';
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import { WALL_WATERLINE_Y } from '../../constants/game';
-import { createCanyonMaterial } from '../../materials/CanyonMaterial';
+import { createCanyonMaterial, updateCanyonMaterial } from '../../materials/CanyonMaterial';
 import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 import { AssetCache } from '../../systems/ReachStreamer';
 import PondFog from './PondFog';
@@ -299,25 +299,21 @@ export function TrackSegmentMeshes({
             });
         }
 
-        // Clone the rock material so we can apply shader effects
-        const mat = rockMaterial.clone();
-        mat.vertexColors = true;
-        // Apply RiverShader with moss and wetness
-        extendRiverMaterial(mat, {
+        // Factory returns a new RiverNodeMaterial (does not mutate the clone).
+        return extendRiverMaterial(rockMaterial.clone(), {
             enableWetness: true,
             enableMoss: true,
             enableTriplanar: true,
             waterLevel: WALL_WATERLINE_Y,
             wetnessRange: type === 'waterfall' || type === 'splash' ? 7.5 : 4.0
         });
-        return mat;
     }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type, segmentState]);
 
     wallMaterialRef.current = wallMaterial;
 
     // Update shader uniforms each frame
     useFrame((state) => {
-        if (isSlotCanyon && wallMaterialRef.current?.uniforms) {
+        if (isSlotCanyon && wallMaterialRef.current?.userData?.canyonUniforms) {
             updateCanyonMaterial(wallMaterialRef.current, {
                 flowSpeed,
                 mossCoverage: 1.0,
@@ -328,7 +324,7 @@ export function TrackSegmentMeshes({
             updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime, {
                 waterLevel: WALL_WATERLINE_Y,
                 weatherWetness: weatherWetnessRef?.current || 0,
-            }, 1);
+            });
         }
     });
 

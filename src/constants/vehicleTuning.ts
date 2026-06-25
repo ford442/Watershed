@@ -151,6 +151,39 @@ export const VEHICLE_TUNING = {
 
   /** Strength of the auto-alignment torque */
   autoAlignTorque: 1.2,
+
+  // ===========================================================================
+  // 6. Waterfall Launch-Shelf (segment 14)
+  // ===========================================================================
+  /** One-shot launch impulse when crossing the authored slab shelf on seg 14. */
+  shelfLaunch: {
+    /** Minimum downstream speed (m/s) required to trigger the launch. */
+    speedThreshold: 12.0,
+
+    /** Forward (-Z / downstream) impulse magnitude (kg·m/s). */
+    forwardMagnitude: 42.0,
+
+    /** Upward (+Y) impulse magnitude (kg·m/s). */
+    upMagnitude: 36.0,
+
+    /** Per-vehicle impulse scale. */
+    runnerScale: 1.0,
+    raftScale: 0.85,
+
+    /** Trigger box half-extents (m). The box is centered on the shelf's
+     *  downstream edge and aligned to the waterfall segment direction. */
+    triggerHalfWidth: 9.0,
+    triggerHalfLength: 7.0,
+    triggerHeight: 6.0,
+
+    /** Distance downstream from the shelf center to the trigger plane (m).
+     *  Tuned for the seg-14 slab at localZ = -35, scale = 4.0. */
+    triggerDownstreamOffset: 5.5,
+
+    /** Vertical offset applied to the trigger center so it covers the shelf
+     *  surface rather than the waterline. */
+    triggerYOffset: 1.0,
+  },
 } as const;
 
 export type VehicleTuningConfig = typeof VEHICLE_TUNING;

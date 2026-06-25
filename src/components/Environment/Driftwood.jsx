@@ -5,12 +5,12 @@ import { useDriftwoodAssets } from './DebrisAssets';
 import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 
 export default function Driftwood({ transforms }) {
-  const { geometry, material } = useDriftwoodAssets();
+  const { geometry, material: baseMaterial } = useDriftwoodAssets();
 
-  // Apply River Shader logic (Wetness, Moss)
-  useMemo(() => {
-    extendRiverMaterial(material);
-  }, [material]);
+  const material = useMemo(
+    () => extendRiverMaterial(baseMaterial, { enableMoss: false }),
+    [baseMaterial]
+  );
 
   useFrame((state) => {
     updateRiverMaterial(material, state.clock.elapsedTime);

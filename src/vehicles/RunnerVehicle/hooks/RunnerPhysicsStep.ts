@@ -11,6 +11,7 @@ import {
 } from '../constants';
 import { playJumpSound, playLandSound, playFootstep, playDodgeSound } from '../audio';
 import { triggerCameraShake } from '../utils';
+import { tryFireShelfLaunch, type ShelfTrigger } from '../../utils/shelfLaunch';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -72,7 +73,20 @@ const holdBodyAtSpawn = (body: { setTranslation: Function; setLinvel: Function; 
 };
 
 export function updateRunnerPhysics({
-  state, delta: dt, world, body, rapier, camera, controls, vehicleState
+  state, delta: dt, world, body, rapier, camera, controls, vehicleState,
+  shelfLaunchFiredRef,
+  shelfTriggerRef,
+}: {
+  state: any;
+  delta: number;
+  world: any;
+  body: any;
+  rapier: any;
+  camera: any;
+  controls: any;
+  vehicleState: any;
+  shelfLaunchFiredRef: { current: boolean };
+  shelfTriggerRef: { current: ShelfTrigger | null };
 }) {
   const {
     vehicle, slopeState, jumpState, ungroundedFramesRef, dodgeState, platformState,
@@ -301,6 +315,27 @@ export function updateRunnerPhysics({
       world.gravity.x = 0;
       world.gravity.y = PHYSICS.GRAVITY * gravMultCurrent;
       world.gravity.z = 0;
+    }
+
+    // === WATERFALL LAUNCH-SHELF v2 (segment 14) ===
+    // One-shot launch when crossing the authored slab shelf at speed.
+    try {
+      const launch = tryFireShelfLaunch({
+        currentSegmentIndex: useGameStore.getState().currentSegmentIndex,
+        position: pos,
+        velocity: vel,
+        trigger: shelfTriggerRef.current,
+        firedRef: shelfLaunchFiredRef,
+        speedThreshold: VEHICLE_TUNING.shelfLaunch.speedThreshold,
+        vehicleScale: VEHICLE_TUNING.shelfLaunch.runnerScale,
+      });
+      if (launch) {
+        applyImpulseWithDebugTracking('shelfLaunch', launch.impulse);
+        triggerCameraShake(0.45, 0.25);
+        playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+      }
+    } catch (_e) {
+      // Defensive: never let launch logic crash the physics step.
     }
 
     // === CAMERA FORWARD DIRECTION (used for slope-biased jump and dodge) ===
