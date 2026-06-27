@@ -178,29 +178,34 @@ function App() {
     }
   }, [debug.isStageEnabled, debug.setStageFailure, debug.setStageLoading, debug.setStageSuccess]);
 
-  const handleStart = useCallback(() => {
-    setPhase('playing');
-    if (!window.location.search.includes('no-pointer-lock')) {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
-        canvas.requestPointerLock().catch((err) => {
-          console.warn('[App] Pointer lock failed:', err);
-        });
-      }
+  const requestPointerLockSafely = useCallback(() => {
+    if (window.location.search.includes('no-pointer-lock')) return;
+    // Canvas may already be locked (e.g. PointerLockControls' own lockOnClick
+    // handler beat us to it), or detached/swapped (renderer preference change
+    // remounts the Canvas with a new key). Guard both to avoid the
+    // WrongDocumentError/unhandled rejection that requestPointerLock throws
+    // for a stale or already-locked element.
+    if (document.pointerLockElement) return;
+    const canvas = document.querySelector('canvas');
+    if (!canvas || !canvas.isConnected) return;
+    try {
+      canvas.requestPointerLock()?.catch((err: unknown) => {
+        console.warn('[App] Pointer lock failed:', err);
+      });
+    } catch (err) {
+      console.warn('[App] Pointer lock failed:', err);
     }
   }, []);
 
+  const handleStart = useCallback(() => {
+    setPhase('playing');
+    requestPointerLockSafely();
+  }, [requestPointerLockSafely]);
+
   const handleResume = useCallback(() => {
     setPhase('playing');
-    if (!window.location.search.includes('no-pointer-lock')) {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
-        canvas.requestPointerLock().catch((err) => {
-          console.warn('[App] Pointer lock failed:', err);
-        });
-      }
-    }
-  }, []);
+    requestPointerLockSafely();
+  }, [requestPointerLockSafely]);
 
   const handleRestart = useCallback(() => {
     window.location.reload();
