@@ -299,7 +299,6 @@ export function TrackSegmentMeshes({
             });
         }
 
-        // Factory returns a new RiverNodeMaterial (does not mutate the clone).
         return extendRiverMaterial(rockMaterial.clone(), {
             enableWetness: true,
             enableMoss: true,
@@ -313,7 +312,7 @@ export function TrackSegmentMeshes({
 
     // Update shader uniforms each frame
     useFrame((state) => {
-        if (isSlotCanyon && wallMaterialRef.current?.userData?.canyonUniforms) {
+        if (isSlotCanyon && wallMaterialRef.current?.uniforms) {
             updateCanyonMaterial(wallMaterialRef.current, {
                 flowSpeed,
                 mossCoverage: 1.0,

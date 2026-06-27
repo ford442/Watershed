@@ -1,7 +1,4 @@
 import * as THREE from 'three';
-
-jest.mock('../materials/RiverNodeMaterial');
-
 import {
   MOSS_HEIGHT_FADE,
   MOSS_NORMAL_MASK,
@@ -42,15 +39,13 @@ describe('riverConstants', () => {
 });
 
 describe('extendRiverMaterial', () => {
-  test('returns a NodeMaterial without onBeforeCompile', () => {
+  test('installs onBeforeCompile on MeshStandardMaterial', () => {
     const base = new THREE.MeshStandardMaterial({ color: '#808080', roughness: 0.9 });
     const material = extendRiverMaterial(base, { enableMoss: true });
 
-    expect(material).toBeDefined();
-    expect(material.isNodeMaterial).toBe(true);
-    expect(material.onBeforeCompile).toBeUndefined();
-    expect(material.userData.riverUniforms).toBeDefined();
-    expect(base).not.toBe(material);
+    expect(material).toBe(base);
+    expect(typeof material.onBeforeCompile).toBe('function');
+    expect(material.userData.riverShader).toBeDefined();
   });
 
   test('preserves moss mask thresholds via shared constants', () => {
@@ -58,16 +53,26 @@ describe('extendRiverMaterial', () => {
     expect(MOSS_NORMAL_MASK.high).toBe(0.82);
   });
 
-  test('updateRiverMaterial writes uniform node values', () => {
+  test('updateRiverMaterial writes shader uniform values after compile', () => {
     const material = extendRiverMaterial(new THREE.MeshStandardMaterial(), {
       waterLevel: 13,
       wetnessRange: 4,
     });
 
+    const shader = {
+      uniforms: {
+        uTime: { value: 0 },
+        uWaterLevel: { value: 13 },
+        uWeatherWetness: { value: 0 },
+      },
+    };
+    material.onBeforeCompile(shader);
+    material.userData.shader = shader;
+
     updateRiverMaterial(material, 1.5, { waterLevel: 12, weatherWetness: 0.4 });
 
-    expect(material.userData.riverUniforms.uTime.value).toBe(1.5);
-    expect(material.userData.riverUniforms.uWaterLevel.value).toBe(12);
-    expect(material.userData.riverUniforms.uWeatherWetness.value).toBe(0.4);
+    expect(shader.uniforms.uTime.value).toBe(1.5);
+    expect(shader.uniforms.uWaterLevel.value).toBe(12);
+    expect(shader.uniforms.uWeatherWetness.value).toBe(0.4);
   });
 });

@@ -164,7 +164,9 @@ export async function getWasm(): Promise<WatershedNativeModule> {
     // Use eval-like dynamic import to prevent bundlers from trying to resolve
     // the WASM glue JS at build time (the file is produced by Emscripten).
     const dynamicImport = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
-    const mod = await dynamicImport('/watershed_native.js') as {
+    const wasmBase = import.meta.env.BASE_URL || '/';
+    const wasmJsUrl = new URL('watershed_native.js', wasmBase.endsWith('/') ? wasmBase : `${wasmBase}/`).href;
+    const mod = await dynamicImport(wasmJsUrl) as {
       default: WatershedNativeFactory;
     };
 
@@ -173,7 +175,8 @@ export async function getWasm(): Promise<WatershedNativeModule> {
       locateFile: (path: string, _prefix: string) => {
         // Direct the glue JS to load all auxiliary files (including .wasm)
         // from the public root, regardless of the Vite base path.
-        return `/${path}`;
+        const assetBase = import.meta.env.BASE_URL || '/';
+        return new URL(path, assetBase.endsWith('/') ? assetBase : `${assetBase}/`).href;
       },
     });
   })();
