@@ -237,11 +237,22 @@ export function createRiverNodeMaterial(
     displacementTex
   );
 
+  const textureProps: Partial<THREE.MeshStandardMaterialParameters> = {};
+  if (parameters.map) textureProps.map = parameters.map;
+  if (parameters.normalMap) textureProps.normalMap = parameters.normalMap;
+  if (parameters.roughnessMap) textureProps.roughnessMap = parameters.roughnessMap;
+  if (parameters.aoMap) textureProps.aoMap = parameters.aoMap;
+  if (parameters.displacementMap) textureProps.displacementMap = parameters.displacementMap;
+
   const material = new MeshStandardNodeMaterial({
-    roughness: 0.9,
-    metalness: 0.1,
-    ...parameters,
-    map: parameters.map ?? undefined,
+    roughness: parameters.roughness ?? 0.9,
+    metalness: parameters.metalness ?? 0.1,
+    color: parameters.color,
+    vertexColors: parameters.vertexColors,
+    side: parameters.side,
+    transparent: parameters.transparent,
+    opacity: parameters.opacity,
+    ...textureProps,
   });
 
   material.colorNode = color;
