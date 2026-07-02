@@ -12,10 +12,17 @@ import { playPaddleSound, playSplashSound, playCollisionSound, updateWaterRushin
 import { triggerCameraShake } from '../../RunnerVehicle/utils';
 import {
     tryFireShelfLaunch,
+    getShelfDownstreamSpeed,
+    isInsideShelfTrigger,
     type ShelfTrigger,
 } from '../../utils/shelfLaunch';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { useGameStore } from '../../../systems/GameState';
+import {
+    notifyShelfLaunchImpulse,
+    tickLaunchScoring,
+    hasActiveLaunch,
+} from '../../../systems/LaunchScoringSession';
 
 export function useRaftControls({
     bodyRef, raftVehicle, camera, controls, workerProxy,
@@ -162,6 +169,11 @@ useFrame((state, delta) => {
         body.applyImpulse(launch.impulse, true);
         triggerCameraShake(0.45, 0.25);
         playSplashSound(Math.min(1.5, speed));
+        notifyShelfLaunchImpulse({
+          bodyHandle: body.handle,
+          launchPos: pos,
+          downstreamSpeed: getShelfDownstreamSpeed(vel),
+        });
       }
     } catch (_e) {
       // Defensive: never let launch logic crash the physics step.
@@ -271,6 +283,30 @@ useFrame((state, delta) => {
     }
 
     collisionState.current.prevVelocity.set(vel.x, vel.y, vel.z);
+
+    // === SHELF LAUNCH AIR-TIME SCORING (physics-step time, raft lands in water) ===
+    try {
+      const physicsDt =
+        typeof world.timestep === 'number' && world.timestep > 0 ? world.timestep : delta;
+      const raftContact = submergedRatio >= 0.35 ? 'water' : 'airborne';
+      tickLaunchScoring({
+        physicsDt,
+        bodyHandle: body.handle,
+        position: pos,
+        contactSurface: raftContact,
+        vehicle: 'raft',
+      });
+
+      if (
+        !hasActiveLaunch() &&
+        shelfTriggerRef.current &&
+        !isInsideShelfTrigger(pos, shelfTriggerRef.current)
+      ) {
+        shelfLaunchFiredRef.current = false;
+      }
+    } catch (_e) {
+      // Never let scoring break the raft frame.
+    }
 
     // Dispatch stamina state for UI consumption
     window.dispatchEvent(new CustomEvent('raft-stamina', {

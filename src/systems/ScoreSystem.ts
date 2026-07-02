@@ -1,4 +1,5 @@
 import { useGameStore } from './GameState';
+import { resetLaunchScoringSession, cancelLaunch } from './LaunchScoringSession';
 
 const HIGH_SPEED_THRESHOLD = 15;
 const RESET_SPEED_THRESHOLD = 8;
@@ -44,6 +45,7 @@ export function resetScoreSystemState(): void {
   highSpeedAccum = 0;
   belowResetAccum = 0;
   comboFlashRemaining = 0;
+  resetLaunchScoringSession();
   const highScore = Math.max(useGameStore.getState().highScore, readStoredHighScore());
   useGameStore.setState({
     score: 0,
@@ -51,8 +53,12 @@ export function resetScoreSystemState(): void {
     topSpeed: 0,
     comboLabel: '',
     highScore,
+    launchPopup: null,
+    latestReward: null,
   });
 }
+
+export { cancelLaunch };
 
 export function tickScoreSystem(deltaTime: number, speed: number): void {
   const dt = Math.min(Math.max(deltaTime, 0), MAX_FRAME_DELTA);

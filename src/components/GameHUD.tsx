@@ -45,6 +45,73 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const staminaBarRef = useRef<HTMLDivElement>(null);
   const exhaustedRef = useRef(false);
 
+  // Shelf launch popups — imperative DOM + CSS animation; no per-frame React state.
+  const launchPopupRef = useRef<HTMLDivElement>(null);
+  const rewardPopupRef = useRef<HTMLDivElement>(null);
+  const launchPopupTimerRef = useRef<number | null>(null);
+  const rewardPopupTimerRef = useRef<number | null>(null);
+
+  const showTransientPopup = (
+    element: HTMLDivElement | null,
+    timerRef: React.MutableRefObject<number | null>,
+    text: string,
+    className: string,
+  ) => {
+    if (!element) return;
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
+    element.textContent = text;
+    element.classList.remove('launch-popup--visible', 'air-reward-popup--visible');
+    // Force reflow so repeated launches retrigger the animation.
+    void element.offsetWidth;
+    element.classList.add(className, `${className}--visible`);
+    timerRef.current = window.setTimeout(() => {
+      element.classList.remove(`${className}--visible`);
+      timerRef.current = null;
+    }, 1400);
+  };
+
+  useEffect(() => {
+    const unsubLaunch = useGameStore.subscribe(
+      (s) => s.launchPopup,
+      (popup) => {
+        if (!popup) return;
+        showTransientPopup(
+          launchPopupRef.current,
+          launchPopupTimerRef,
+          popup.label,
+          'launch-popup',
+        );
+      },
+    );
+
+    const unsubReward = useGameStore.subscribe(
+      (s) => s.latestReward,
+      (reward) => {
+        if (!reward || reward.score <= 0) return;
+        const bonus = reward.clean ? ' + CLEAN' : '';
+        showTransientPopup(
+          rewardPopupRef.current,
+          rewardPopupTimerRef,
+          `+${reward.score}${bonus}`,
+          'air-reward-popup',
+        );
+      },
+    );
+
+    return () => {
+      unsubLaunch();
+      unsubReward();
+      if (launchPopupTimerRef.current !== null) {
+        window.clearTimeout(launchPopupTimerRef.current);
+      }
+      if (rewardPopupTimerRef.current !== null) {
+        window.clearTimeout(rewardPopupTimerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const unsub = useGameStore.subscribe(
       (s) => s.sprintStamina,
@@ -241,6 +308,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {comboFlash}
         </div>
       )}
+
+      <div ref={launchPopupRef} className="launch-popup" aria-live="polite" />
+      <div ref={rewardPopupRef} className="air-reward-popup" aria-live="polite" />
 
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 text-white/40 text-xs md:text-sm font-mono">
         Best: <span className="text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>

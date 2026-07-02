@@ -12,6 +12,9 @@
 import { MEANDER_TO_WATERFALL_PROGRESSION } from '../../maps/meander_to_waterfall';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 
+/** Minimum downstream speed (m/s) required to trigger the launch shelf. */
+export const SHELF_LAUNCH_SPEED_THRESHOLD = VEHICLE_TUNING.shelfLaunch.speedThreshold;
+
 export interface Vec3 {
   x: number;
   y: number;

@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  define: {
+    __WATERSHED_ASSET_BASE__: JSON.stringify('./'),
+  },
   plugins: [react()],
   resolve: {
     // Prevent duplicate Three.js when three/webgpu is lazy-loaded in a separate chunk.

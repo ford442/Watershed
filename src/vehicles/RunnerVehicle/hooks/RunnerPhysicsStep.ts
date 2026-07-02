@@ -11,7 +11,17 @@ import {
 } from '../constants';
 import { playJumpSound, playLandSound, playFootstep, playDodgeSound } from '../audio';
 import { triggerCameraShake } from '../utils';
-import { tryFireShelfLaunch, type ShelfTrigger } from '../../utils/shelfLaunch';
+import {
+  tryFireShelfLaunch,
+  getShelfDownstreamSpeed,
+  isInsideShelfTrigger,
+  type ShelfTrigger,
+} from '../../utils/shelfLaunch';
+import {
+  notifyShelfLaunchImpulse,
+  tickLaunchScoring,
+  hasActiveLaunch,
+} from '../../../systems/LaunchScoringSession';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -227,6 +237,29 @@ export function updateRunnerPhysics({
     const isGrounded = rawGrounded || ungroundedFramesRef.current < JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES;
     slopeState.current.isGrounded = isGrounded;
 
+    // === SHELF LAUNCH AIR-TIME SCORING (physics-step time) ===
+    try {
+      const physicsDt =
+        typeof world.timestep === 'number' && world.timestep > 0 ? world.timestep : dt;
+      tickLaunchScoring({
+        physicsDt,
+        bodyHandle: body.handle,
+        position: pos,
+        contactSurface: isGrounded ? 'terrain' : 'airborne',
+        vehicle: 'runner',
+      });
+
+      if (
+        !hasActiveLaunch() &&
+        shelfTriggerRef.current &&
+        !isInsideShelfTrigger(pos, shelfTriggerRef.current)
+      ) {
+        shelfLaunchFiredRef.current = false;
+      }
+    } catch (_e) {
+      // Never let scoring break the physics step.
+    }
+
     // Goal 2: Platform detection via raycast handle registry
     platformState.current.isOnPlatform = false;
     platformState.current.platformBody = null;
@@ -333,6 +366,11 @@ export function updateRunnerPhysics({
         applyImpulseWithDebugTracking('shelfLaunch', launch.impulse);
         triggerCameraShake(0.45, 0.25);
         playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+        notifyShelfLaunchImpulse({
+          bodyHandle: body.handle,
+          launchPos: pos,
+          downstreamSpeed: getShelfDownstreamSpeed(vel),
+        });
       }
     } catch (_e) {
       // Defensive: never let launch logic crash the physics step.

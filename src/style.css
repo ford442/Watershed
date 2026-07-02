@@ -1021,6 +1021,59 @@ canvas {
   to   { opacity: 1.0; }
 }
 
+/* ===== SHELF LAUNCH AIR-TIME POPUPS ===== */
+.launch-popup,
+.air-reward-popup {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%) scale(0.85);
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  z-index: 40;
+  will-change: transform, opacity;
+}
+
+.launch-popup {
+  color: #f8fafc;
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+}
+
+.air-reward-popup {
+  color: #fbbf24;
+  font-size: clamp(1.3rem, 3vw, 2rem);
+  text-shadow: 0 0 16px rgba(251, 191, 36, 0.55);
+}
+
+.launch-popup--visible,
+.air-reward-popup--visible {
+  animation: launch-popup-burst 1.4s ease-out forwards;
+}
+
+@keyframes launch-popup-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.7);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -55%) scale(1.08);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -62%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -78%) scale(0.95);
+  }
+}
+
 /* Reduce motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
   * {

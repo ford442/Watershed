@@ -60,6 +60,16 @@ export interface GameState {
   sprintStamina: number;
   /** Active vehicle type — gates HUD elements and post-processing. */
   vehicleType: 'runner' | 'raft';
+  /** Instant tier label popup at shelf launch (not the committed score). */
+  launchPopup: { label: string; id: number } | null;
+  /** Committed air-time reward after a valid landing. */
+  latestReward: {
+    tier: string;
+    score: number;
+    clean: boolean;
+    id: number;
+    label: string;
+  } | null;
 }
 
 export interface GameActions {
@@ -132,6 +142,8 @@ const INITIAL_STATE: GameState = {
   settings: { ...DEFAULT_SETTINGS },
   sprintStamina: 1.0,
   vehicleType: 'runner',
+  launchPopup: null,
+  latestReward: null,
 };
 
 // =============================================================================

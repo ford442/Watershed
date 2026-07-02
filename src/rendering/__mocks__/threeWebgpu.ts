@@ -13,6 +13,8 @@
 import * as THREE from 'three';
 
 export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
+  private _nodeProps: Record<string, unknown> = {};
+
   constructor(parameters: THREE.MeshStandardMaterialParameters = {}) {
     // Filter undefined entries to avoid THREE.Material warnings in the stub.
     const defined: THREE.MeshStandardMaterialParameters = {};
@@ -23,6 +25,22 @@ export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
     }
     super(defined);
     (this as any).type = 'MeshStandardNodeMaterial';
+  }
+
+  // Absorb TSL node graph assignments from createRiverNodeMaterial() so the
+  // Jest WebGLRenderer stub compiles this as a plain MeshStandardMaterial.
+  set colorNode(value: unknown) {
+    this._nodeProps.colorNode = value;
+  }
+  get colorNode() {
+    return undefined;
+  }
+
+  set roughnessNode(value: unknown) {
+    this._nodeProps.roughnessNode = value;
+  }
+  get roughnessNode() {
+    return undefined;
   }
 }
 

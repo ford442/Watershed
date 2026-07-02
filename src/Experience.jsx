@@ -41,7 +41,7 @@ import { DEBUG_STAGES } from "./debug/debugStages";
 import PerfCheckpointMonitor from "./debug/PerfCheckpointMonitor";
 import RendererDiagnosticsMonitor from "./rendering/RendererDiagnosticsMonitor";
 import WireframeDebug from "./rendering/WireframeDebug";
-import { tickScoreSystem, awardDodgeBonus, awardWaterfallBonus, resetScoreSystemState } from "./systems/ScoreSystem";
+import { tickScoreSystem, awardDodgeBonus, awardWaterfallBonus, resetScoreSystemState, cancelLaunch } from "./systems/ScoreSystem";
 import { resetRunSession } from "./utils/resetRunSession";
 
 // Goal 1: Zustand game state
@@ -423,6 +423,7 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
 
       // Minimal wipeout detection
         if (posOk && pos.y < -80 && !isWipeout) {
+          cancelLaunch();
           setIsWipeout(true);
         }
       }

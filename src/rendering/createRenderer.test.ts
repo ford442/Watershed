@@ -315,8 +315,8 @@ describe('createGameRenderer legacy material pipeline guard', () => {
    *
    * This test locks the current contract: createGameRenderer MUST return a
    * THREE.WebGLRenderer for both 'webgl' and 'webgpu' preferences, and the
-   * legacy materials MUST be preparable against that renderer without throwing
-   * a NodeMaterial-incompatibility error.
+   * production materials MUST be preparable against that renderer without
+   * throwing a NodeMaterial-incompatibility error.
    */
 
   function createSceneWithMaterials(materials: THREE.Material[]) {
@@ -328,30 +328,7 @@ describe('createGameRenderer legacy material pipeline guard', () => {
     return scene;
   }
 
-  it('returns WebGLRenderer for webgl and webgpu preferences', async () => {
-    const webgl = await createGameRenderer(
-      { canvas: document.createElement('canvas') },
-      { preference: 'webgl' }
-    );
-    const webgpu = await createGameRenderer(
-      { canvas: document.createElement('canvas') },
-      { preference: 'webgpu' }
-    );
-
-    expect(webgl.isWebGLRenderer).toBe(true);
-    expect(webgpu.isWebGLRenderer).toBe(true);
-    expect((webgpu as any).isWebGPURenderer).toBeFalsy();
-
-    webgl.dispose();
-    webgpu.dispose();
-  });
-
-  it('legacy GLSL materials do not throw when prepared against the returned renderer', async () => {
-    const renderer = await createGameRenderer(
-      { canvas: document.createElement('canvas') },
-      { preference: 'webgpu' }
-    );
-
+  function buildProductionMaterials() {
     const riverMaterial = createRiverMaterial();
     const canyonMaterial = createCanyonMaterial();
     const riverNodeMaterial = createRiverNodeMaterial();
@@ -370,27 +347,41 @@ describe('createGameRenderer legacy material pipeline guard', () => {
     };
     expect(() => riverMaterial.onBeforeCompile?.(mockShader as any)).not.toThrow();
 
-    // Preparing the legacy scene against the renderer must not throw a
-    // NodeMaterial-incompatibility error (the class of crashes fixed by
-    // PRs #252/#253).
-    const legacyScene = createSceneWithMaterials([riverMaterial, canyonMaterial]);
-    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-    expect(() => renderer.compile(legacyScene, camera)).not.toThrow();
+    return { riverMaterial, canyonMaterial, riverNodeMaterial };
+  }
 
-    renderer.dispose();
-  });
+  describe.each(['webgl', 'webgpu'] as const)('preference: %s', (preference) => {
+    it('returns a THREE.WebGLRenderer (not WebGPURenderer)', async () => {
+      const renderer = await createGameRenderer(
+        { canvas: document.createElement('canvas') },
+        { preference }
+      );
 
-  it('fails loudly if createGameRenderer returns a WebGPURenderer for the legacy pipeline', async () => {
-    // This is the negative-image assertion: the guard only passes because
-    // createGameRenderer currently returns WebGLRenderer. If a future change
-    // reverts to returning WebGPURenderer, the previous test will fail when
-    // renderer.compile() rejects the legacy ShaderMaterial/onBeforeCompile
-    // materials. We keep an explicit assertion here documenting that contract.
-    const renderer = await createGameRenderer(
-      { canvas: document.createElement('canvas') },
-      { preference: 'webgpu' }
-    );
-    expect(renderer.isWebGLRenderer).toBe(true);
-    renderer.dispose();
+      expect(renderer.isWebGLRenderer).toBe(true);
+      expect((renderer as any).isWebGPURenderer).toBeFalsy();
+
+      renderer.dispose();
+    });
+
+    it('compiles legacy GLSL materials without NodeMaterial-incompatibility error', async () => {
+      const renderer = await createGameRenderer(
+        { canvas: document.createElement('canvas') },
+        { preference }
+      );
+
+      const materials = buildProductionMaterials();
+      const legacyScene = createSceneWithMaterials([
+        materials.riverMaterial,
+        materials.canyonMaterial,
+      ]);
+      const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+
+      // Legacy GLSL materials are the production path guarded by PRs #252/#253.
+      // This fails loudly if createGameRenderer is reverted to return a
+      // WebGPURenderer while onBeforeCompile / ShaderMaterial are still in use.
+      expect(() => renderer.compile(legacyScene, camera)).not.toThrow();
+
+      renderer.dispose();
+    });
   });
 });
