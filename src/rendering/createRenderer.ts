@@ -19,6 +19,10 @@ export interface GameRendererOptions {
  * Legacy materials (RiverShader onBeforeCompile, FlowingWater ShaderMaterial,
  * post-processing GLSL) are incompatible with WebGPURenderer's NodeMaterial
  * pipeline even when `forceWebGL: true`.
+ *
+ * @invariant This function always returns a THREE.WebGLRenderer today. See
+ *   docs/RENDERER_CONTRACT.md before changing the return type or fallback
+ *   logic; PRs #252 and #253 established this contract.
  */
 export async function createGameRenderer(
   canvasProps: THREE.WebGLRendererParameters,

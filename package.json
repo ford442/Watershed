@@ -69,6 +69,12 @@
       "@dimforge/rapier3d-compat": "0.19.2"
     }
   },
+  "jest": {
+    "moduleNameMapper": {
+      "^three/webgpu$": "<rootDir>/src/rendering/__mocks__/threeWebgpu.ts",
+      "^three/tsl$": "<rootDir>/src/rendering/__mocks__/threeWebgpu.ts"
+    }
+  },
   "devDependencies": {
     "@types/gl-matrix": "^2.4.5",
     "@types/node": "^20.19.32",
