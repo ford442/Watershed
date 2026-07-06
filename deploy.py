@@ -20,6 +20,7 @@ Requirements:
   pip install requests
 """
 
+import argparse
 import io
 import os
 import sys
@@ -37,9 +38,10 @@ BUILD_DIR: str = 'build'
 CONTABO_BASE_URL: str = "https://storage.noahcohn.com"
 DEPLOY_FOLDER: str = ""  # override remote target folder; empty = use PROJECT_NAME
 
-# Optional deploy token (recommended for security).
+# Deploy token is required for authenticated uploads.
 # Set via environment: export DEPLOY_TOKEN="your_long_token_from_vps_env"
-DEPLOY_TOKEN: Optional[str] = "6de44dca5425348f2e2ef9456fc820bfe56a5ace68bddeb6da4a1c2a9d9cadc0"
+# There is no baked-in fallback — a real deploy fails loudly if this is unset.
+DEPLOY_TOKEN: Optional[str] = os.environ.get("DEPLOY_TOKEN")
 # ============================================================
 
 
@@ -60,17 +62,34 @@ def build_zip(build_path: Path) -> bytes:
     return buf.getvalue()
 
 
-def deploy_bundle(build_path: Path) -> bool:
-    """Zip the build and upload it as a single bundle."""
+def deploy_bundle(build_path: Path, dry_run: bool = False) -> bool:
+    """Zip the build and upload it as a single bundle (unless dry_run)."""
     target_folder = DEPLOY_FOLDER or PROJECT_NAME
-    url = f"{CONTABO_BASE_URL}/api/deploy/{PROJECT_NAME}/bundle"
-    headers = {}
-    if DEPLOY_TOKEN:
-        headers["X-Deploy-Token"] = DEPLOY_TOKEN
 
     print("Building zip archive...")
     zip_bytes = build_zip(build_path)
     print(f"Archive size: {len(zip_bytes) / 1024:.1f} KB\n")
+
+    if dry_run:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            top_level = sorted({name.split("/")[0] for name in zf.namelist()})
+        print(f"Dry run: {len(zip_bytes) / 1024:.1f} KB archive, top-level contents:")
+        for name in top_level:
+            print(f"  {name}")
+        print(
+            f"\nDry run: would POST to {CONTABO_BASE_URL}/api/deploy/{PROJECT_NAME}/bundle "
+            f"(target_folder={target_folder!r}). Stopping before network upload."
+        )
+        return True
+
+    if not DEPLOY_TOKEN:
+        print("ERROR: DEPLOY_TOKEN environment variable is not set.")
+        print('Set it via: export DEPLOY_TOKEN="your_long_token_from_vps_env"')
+        print("Refusing to deploy without an explicit token (no baked-in default).")
+        sys.exit(1)
+
+    url = f"{CONTABO_BASE_URL}/api/deploy/{PROJECT_NAME}/bundle"
+    headers = {"X-Deploy-Token": DEPLOY_TOKEN}
 
     print("Uploading bundle...")
     try:
@@ -99,7 +118,15 @@ def deploy_bundle(build_path: Path) -> bool:
 
 
 def main():
-    print(f"\n=== Deploying '{PROJECT_NAME}' via Contabo -> storage.1ink.us ===\n")
+    parser = argparse.ArgumentParser(description="Deploy build/ to storage.noahcohn.com")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build the zip and report its manifest, but stop before uploading.",
+    )
+    args = parser.parse_args()
+
+    print(f"\n=== Deploying '{PROJECT_NAME}' via Contabo -> storage.noahcohn.com ===\n")
 
     build_path = Path(BUILD_DIR)
     if not build_path.exists() or not build_path.is_dir():
@@ -107,17 +134,21 @@ def main():
         print("Please run your build command first (e.g. `npm run build`).")
         sys.exit(1)
 
-    try:
-        health = requests.get(f"{CONTABO_BASE_URL}/api/deploy/health", timeout=10)
-        if health.status_code == 200:
-            print(f"Contabo deploy service: {health.json().get('status', 'unknown')}")
-    except Exception:
-        print("Warning: Could not contact storage.noahcohn.com (continuing anyway).")
+    if not args.dry_run:
+        try:
+            health = requests.get(f"{CONTABO_BASE_URL}/api/deploy/health", timeout=10)
+            if health.status_code == 200:
+                print(f"Contabo deploy service: {health.json().get('status', 'unknown')}")
+        except Exception:
+            print("Warning: Could not contact storage.noahcohn.com (continuing anyway).")
+        print()
 
-    print()
-    success = deploy_bundle(build_path)
+    success = deploy_bundle(build_path, dry_run=args.dry_run)
 
-    print(f"\n=== {'Deployment complete' if success else 'Deployment finished with errors'} ===")
+    if args.dry_run:
+        print("\n=== Dry run complete (no upload performed) ===")
+    else:
+        print(f"\n=== {'Deployment complete' if success else 'Deployment finished with errors'} ===")
     sys.exit(0 if success else 1)
 
 
