@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerBiome, useGameStore } from '../systems/GameState';
+import {
+  calculateBuoyancyAndDragFallback,
+  getWasm,
+  type NativeWaterForceResult,
+} from '../systems/WatershedWasm';
 
 interface GameHUDProps {
   isWipeout?: boolean;
@@ -145,6 +150,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   const [comboFlash, setComboFlash] = useState('');
   const [overlayVisible, setOverlayVisible] = useState(false);
+  const [wasmSmoke, setWasmSmoke] = useState<{
+    status: 'loading' | 'ready' | 'fallback';
+    value: number;
+    force?: NativeWaterForceResult;
+  }>(() => ({
+    status: 'loading',
+    value: calculateBuoyancyAndDragFallback(150, 0.4, 0, -3),
+  }));
 
   const speedMs = Math.max(0, Math.round(rawSpeed));
   const distanceKm = useMemo(() => (distanceMeters / 1000).toFixed(2), [distanceMeters]);
@@ -174,6 +187,46 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isJourneyComplete, onRestartJourney]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getWasm()
+      .then((wasm) => {
+        if (cancelled) return;
+        const value = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
+        const force = wasm.calculateWaterForce(
+          0, 0.45, -10,
+          0, 0, 0,
+          0, -1,
+          4.5,
+          0.5,
+          150,
+          1.2,
+          0.47,
+          1.05,
+          0.7,
+          performance.now() / 1000,
+          0.08,
+          2.4,
+        );
+        console.info('[Watershed WASM] hello-world water force', {
+          moduleVersion: wasm.getVersion(),
+          buoyancyAndDrag: value,
+          force,
+        });
+        setWasmSmoke({ status: 'ready', value, force });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const value = calculateBuoyancyAndDragFallback(150, 0.4, 0, -3);
+        console.warn('[Watershed WASM] module unavailable; using TS fallback smoke value', error);
+        setWasmSmoke({ status: 'fallback', value });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (isWipeout) {
     return (
@@ -315,6 +368,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 text-white/40 text-xs md:text-sm font-mono">
         Best: <span className="text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>
         <span className="ml-4 text-white/50">Top {Math.round(topSpeed)} m/s</span>
+      </div>
+
+      <div className="fixed bottom-12 right-4 md:bottom-14 md:right-6 text-white/40 text-[10px] md:text-xs font-mono text-right">
+        WASM {wasmSmoke.status.toUpperCase()} {Math.round(wasmSmoke.value)}
+        {wasmSmoke.force && (
+          <span className="ml-2 text-sky-200/60">
+            Fz {Math.round(wasmSmoke.force.forceZ)}
+          </span>
+        )}
       </div>
 
       {vehicleType === 'runner' && (

@@ -14,6 +14,9 @@
 
 import {
   buoyancyFallback,
+  calculateBuoyancyAndDragFallback,
+  calculateWaterForceFallback,
+  createWaterForceBatch,
   dragForceFallback,
   createSWEGrid,
   getWasm,
@@ -35,12 +38,21 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof createSWEGrid).toBe('function');
   });
 
+  it('exports createWaterForceBatch function', () => {
+    expect(typeof createWaterForceBatch).toBe('function');
+  });
+
   it('exports buoyancyFallback function', () => {
     expect(typeof buoyancyFallback).toBe('function');
   });
 
   it('exports dragForceFallback function', () => {
     expect(typeof dragForceFallback).toBe('function');
+  });
+
+  it('exports native water-force fallback functions', () => {
+    expect(typeof calculateBuoyancyAndDragFallback).toBe('function');
+    expect(typeof calculateWaterForceFallback).toBe('function');
   });
 });
 
@@ -146,6 +158,96 @@ function buildMockModule(): WatershedNativeModule {
     HEAPU8:  new Uint8Array(buffer),
 
     getVersion:  () => 1,
+
+    calculateBuoyancyAndDrag(raftMass, submergedVolume, waterVelocityX, waterVelocityZ) {
+      return calculateBuoyancyAndDragFallback(
+        raftMass,
+        submergedVolume,
+        waterVelocityX,
+        waterVelocityZ,
+      );
+    },
+
+    calculateWaterForce(
+      posX, posY, posZ,
+      velX, velY, velZ,
+      flowDirX, flowDirZ,
+      flowSpeed,
+      waterLevel,
+      raftMass,
+      raftVolume,
+      dragCoefficient,
+      frontalArea,
+      sideArea,
+      timeSeconds,
+      turbulenceStrength,
+      turbulenceFrequency,
+    ) {
+      return calculateWaterForceFallback(
+        {
+          position: { x: posX, y: posY, z: posZ },
+          velocity: { x: velX, y: velY, z: velZ },
+          flowDirection: { x: flowDirX, z: flowDirZ },
+        },
+        {
+          flowSpeed,
+          waterLevel,
+          raftMass,
+          raftVolume,
+          dragCoefficient,
+          frontalArea,
+          sideArea,
+          timeSeconds,
+          turbulenceStrength,
+          turbulenceFrequency,
+        },
+      );
+    },
+
+    computeWaterForcesBatch(
+      inputPtr,
+      outputPtr,
+      sampleCount,
+      flowSpeed,
+      waterLevel,
+      raftMass,
+      raftVolume,
+      dragCoefficient,
+      frontalArea,
+      sideArea,
+      timeSeconds,
+      turbulenceStrength,
+      turbulenceFrequency,
+    ) {
+      const input = new Float32Array(buffer, inputPtr, sampleCount * 8);
+      const output = new Float32Array(buffer, outputPtr, sampleCount * 8);
+      for (let i = 0; i < sampleCount; i += 1) {
+        const s = i * 8;
+        const result = this.calculateWaterForce(
+          input[s + 0], input[s + 1], input[s + 2],
+          input[s + 3], input[s + 4], input[s + 5],
+          input[s + 6], input[s + 7],
+          flowSpeed,
+          waterLevel,
+          raftMass,
+          raftVolume,
+          dragCoefficient,
+          frontalArea,
+          sideArea,
+          timeSeconds,
+          turbulenceStrength,
+          turbulenceFrequency,
+        );
+        output[s + 0] = result.forceX;
+        output[s + 1] = result.forceY;
+        output[s + 2] = result.forceZ;
+        output[s + 3] = result.buoyancy;
+        output[s + 4] = result.drag;
+        output[s + 5] = result.flow;
+        output[s + 6] = result.turbulence;
+        output[s + 7] = result.submergedRatio;
+      }
+    },
 
     computeBuoyancy(v, rho, g) { return rho * v * g; },
 
@@ -307,6 +409,69 @@ describe('mock computeFlowForce', () => {
       80, 1.0, 0.47, 1.0
     );
     expect(force.z).toBeLessThan(0); // pushed downstream (−Z)
+  });
+});
+
+describe('native water force helpers', () => {
+  let mod: WatershedNativeModule;
+
+  beforeEach(() => {
+    mod = buildMockModule();
+  });
+
+  it('computes a positive smoke-test value for buoyancy plus drag', () => {
+    const value = calculateBuoyancyAndDragFallback(150, 0.4, 0, -3);
+    expect(value).toBeGreaterThan(0);
+  });
+
+  it('returns downstream force for a submerged stationary raft', () => {
+    const result = calculateWaterForceFallback(
+      {
+        position: { x: 0, y: 0.45, z: -10 },
+        velocity: { x: 0, y: 0, z: 0 },
+        flowDirection: { x: 0, z: -1 },
+      },
+      {
+        flowSpeed: 4.5,
+        waterLevel: 0.5,
+        raftMass: 150,
+        raftVolume: 1.2,
+        dragCoefficient: 0.47,
+        frontalArea: 1.05,
+        sideArea: 0.7,
+        timeSeconds: 0,
+        turbulenceStrength: 0,
+        turbulenceFrequency: 2,
+      },
+    );
+    expect(result.submergedRatio).toBeGreaterThan(0);
+    expect(result.forceZ).toBeLessThan(0);
+  });
+
+  it('packs samples into WASM heap and reads batch results', () => {
+    const batch = createWaterForceBatch(mod, 1);
+    batch.setSample(0, {
+      position: { x: 0, y: 0.45, z: -10 },
+      velocity: { x: 0, y: 0, z: 0 },
+      flowDirection: { x: 0, z: -1 },
+    });
+    batch.compute({
+      flowSpeed: 4.5,
+      waterLevel: 0.5,
+      raftMass: 150,
+      raftVolume: 1.2,
+      dragCoefficient: 0.47,
+      frontalArea: 1.05,
+      sideArea: 0.7,
+      timeSeconds: 0,
+      turbulenceStrength: 0,
+      turbulenceFrequency: 2,
+    });
+
+    const result = batch.readResult(0);
+    expect(result.forceZ).toBeLessThan(0);
+    expect(result.buoyancy).toBeGreaterThan(0);
+    batch.dispose();
   });
 });
 

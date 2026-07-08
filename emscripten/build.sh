@@ -15,21 +15,6 @@
 
 set -euo pipefail
 
-# Optional: source a Colab-specific Emscripten install if present.
-for f in /content/build*/emsdk/emsdk_env.sh; do
-    if [ -f "$f" ]; then
-        # shellcheck source=/dev/null
-        source "$f"
-        break
-    fi
-done
-
-if ! command -v emcc &>/dev/null; then
-  echo "[build:wasm] Emscripten not found — skipping WASM compile (source emsdk_env.sh first)."
-  exit 0
-fi
-
-
 # ---------------------------------------------------------------------------
 # Parse flags
 # ---------------------------------------------------------------------------
@@ -69,7 +54,7 @@ CANDIDATES=(
     "/root/emsdk/emsdk_env.sh"
 )
 
-for f in "${CANDIDATES[@]}"; do
+for f in /content/build*/emsdk/emsdk_env.sh "${CANDIDATES[@]}"; do
     if [ -f "$f" ]; then
         # shellcheck source=/dev/null
         source "$f"
@@ -80,28 +65,6 @@ done
 if ! command -v emcc &>/dev/null; then
   echo "[build:wasm] Emscripten not found — skipping WASM compile (run 'source emsdk_env.sh' first)."
   exit 0
-fi
-
-
-# ---------------------------------------------------------------------------
-# Parse flags
-# ---------------------------------------------------------------------------
-USE_THREADS=0
-DEBUG_BUILD=0
-
-for arg in "$@"; do
-    case "$arg" in
-        --threads) USE_THREADS=1 ;;
-        --debug)   DEBUG_BUILD=1  ;;
-    esac
-done
-
-if [ "$USE_THREADS" -eq 1 ]; then
-    echo "Building watershed_native.js (multi-threaded)..."
-elif [ "$DEBUG_BUILD" -eq 1 ]; then
-    echo "Building watershed_native.js (debug, single-threaded)..."
-else
-    echo "Building watershed_native.js (single-threaded, optimised)..."
 fi
 
 # ---------------------------------------------------------------------------
@@ -132,6 +95,7 @@ LINK_FLAGS="$OPT_FLAGS \
   -s WASM_BIGINT=1 \
   -s ALLOW_MEMORY_GROWTH=1 \
   -s INITIAL_MEMORY=${INITIAL_MEMORY_BYTES} \
+  -s EXPORTED_RUNTIME_METHODS=HEAPF32,HEAP32,HEAPU8 \
   -s EXPORT_ES6=1 \
   -s MODULARIZE=1 \
   -s EXPORT_NAME='createWatershedNative' \

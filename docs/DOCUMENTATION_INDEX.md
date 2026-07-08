@@ -21,6 +21,12 @@ This directory contains comprehensive documentation from the Watershed startup i
 ### Debugging Rendering / Shaders?
 👉 **[RENDERER.md](./RENDERER.md)** - WebGPU / WebGL2 renderer toggle and debug helpers
 
+### Building Native Water Physics?
+👉 **[WASM_WATER_FORCES.md](./WASM_WATER_FORCES.md)** - Emscripten build, TypeScript bindings, and Rapier force-exchange ABI
+
+### Coupling Rapier And C++ WASM?
+👉 **[ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_WATER_FORCES.md)** - Same-worker decision, data flow, chunk streaming, and measured force-call budget
+
 ---
 
 ## 📚 Document Descriptions

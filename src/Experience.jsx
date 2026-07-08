@@ -7,6 +7,7 @@ import EnhancedSky from "./components/EnhancedSky";
 import FlowForecast from "./components/FlowForecast";
 import ForecastHUD from "./components/ForecastHUD";
 import GameHUD from "./components/GameHUD";
+import WasmWaterForceTest from "./components/WasmWaterForceTest";
 import { WATER_LEVEL, PLAYER_SPAWN, PHYSICS } from "./constants/game";
 
 // Vehicle system
@@ -142,6 +143,10 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
   const [noPointerLock] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.location.search.includes('no-pointer-lock');
+  });
+  const [wasmWaterTest] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('wasmWaterTest') === '1';
   });
   const vehicleRef = useRef(null);
   const trackManagerRef = useRef(null);
@@ -782,7 +787,9 @@ const InnerExperience = ({ debug = NOOP_DEBUG, physicsDebug = false, wireframeDe
           )}
 
           {/* Vehicle */}
-          {vehicleType === 'runner' ? (
+          {wasmWaterTest ? (
+            <WasmWaterForceTest ref={vehicleRef} />
+          ) : vehicleType === 'runner' ? (
             <RunnerVehicle ref={vehicleRef} />
           ) : (
             <RaftVehicle ref={vehicleRef} />

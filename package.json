@@ -35,7 +35,7 @@
   "scripts": {
     "dev": "vite",
     "start": "vite",
-    "build": "npm run build:wasm && npm run build:wasm:threads && vite build",
+    "build": "npm run build:wasm && vite build",
     "build_colab": "npm run build:wasm_colab && npm run build:wasm:threads_colab && vite build",
     "preview": "vite preview",
     "test": "react-scripts test",

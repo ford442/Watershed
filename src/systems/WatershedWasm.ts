@@ -37,6 +37,39 @@ export interface Vec3 {
   z: number;
 }
 
+export interface NativeWaterForceResult {
+  forceX: number;
+  forceY: number;
+  forceZ: number;
+  buoyancy: number;
+  drag: number;
+  flow: number;
+  turbulence: number;
+  submergedRatio: number;
+}
+
+export interface NativeWaterForceSample {
+  position: Vec3;
+  velocity: Vec3;
+  flowDirection: { x: number; z: number };
+}
+
+export interface NativeWaterForceConfig {
+  flowSpeed: number;
+  waterLevel: number;
+  raftMass: number;
+  raftVolume: number;
+  dragCoefficient: number;
+  frontalArea: number;
+  sideArea: number;
+  timeSeconds: number;
+  turbulenceStrength: number;
+  turbulenceFrequency: number;
+}
+
+export const WATER_FORCE_INPUT_STRIDE = 8;
+export const WATER_FORCE_OUTPUT_STRIDE = 8;
+
 /**
  * Shape of the WASM module after Emscripten initialisation.
  * All numeric heap views share the same underlying ArrayBuffer.
@@ -50,6 +83,45 @@ export interface WatershedNativeModule {
   // ---- Module version ----
   /** Returns the integer module version (bump on ABI changes). */
   getVersion(): number;
+
+  calculateBuoyancyAndDrag(
+    raftMass: number,
+    submergedVolume: number,
+    waterVelocityX: number,
+    waterVelocityZ: number,
+  ): number;
+
+  calculateWaterForce(
+    posX: number, posY: number, posZ: number,
+    velX: number, velY: number, velZ: number,
+    flowDirX: number, flowDirZ: number,
+    flowSpeed: number,
+    waterLevel: number,
+    raftMass: number,
+    raftVolume: number,
+    dragCoefficient: number,
+    frontalArea: number,
+    sideArea: number,
+    timeSeconds: number,
+    turbulenceStrength: number,
+    turbulenceFrequency: number,
+  ): NativeWaterForceResult;
+
+  computeWaterForcesBatch(
+    inputPtr: number,
+    outputPtr: number,
+    sampleCount: number,
+    flowSpeed: number,
+    waterLevel: number,
+    raftMass: number,
+    raftVolume: number,
+    dragCoefficient: number,
+    frontalArea: number,
+    sideArea: number,
+    timeSeconds: number,
+    turbulenceStrength: number,
+    turbulenceFrequency: number,
+  ): void;
 
   // ---- Buoyancy physics ----
   /**
@@ -147,6 +219,22 @@ type WatershedNativeFactory = (options?: {
 // ---------------------------------------------------------------------------
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 
+function resolvePublicAsset(path: string): string {
+  const rawBase = getAssetBaseUrl();
+  const baseWithSlash = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+  const runtimeHref =
+    typeof window !== 'undefined'
+      ? window.location.href
+      : typeof globalThis.location?.href === 'string'
+        ? globalThis.location.href
+        : undefined;
+  const absoluteBase =
+    runtimeHref
+      ? new URL(baseWithSlash, runtimeHref).href
+      : baseWithSlash;
+  return new URL(path, absoluteBase).href;
+}
+
 /**
  * Load (or return the cached) Watershed WASM module.
  *
@@ -166,8 +254,7 @@ export async function getWasm(): Promise<WatershedNativeModule> {
     // Use eval-like dynamic import to prevent bundlers from trying to resolve
     // the WASM glue JS at build time (the file is produced by Emscripten).
     const dynamicImport = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
-    const wasmBase = getAssetBaseUrl();
-    const wasmJsUrl = new URL('watershed_native.js', wasmBase.endsWith('/') ? wasmBase : `${wasmBase}/`).href;
+    const wasmJsUrl = resolvePublicAsset('watershed_native.js');
     const mod = await dynamicImport(wasmJsUrl) as {
       default: WatershedNativeFactory;
     };
@@ -177,8 +264,7 @@ export async function getWasm(): Promise<WatershedNativeModule> {
       locateFile: (path: string, _prefix: string) => {
         // Direct the glue JS to load all auxiliary files (including .wasm)
         // from the public root, regardless of the Vite base path.
-        const assetBase = getAssetBaseUrl();
-        return new URL(path, assetBase.endsWith('/') ? assetBase : `${assetBase}/`).href;
+        return resolvePublicAsset(path);
       },
     });
   })();
@@ -211,6 +297,18 @@ export interface SWEGrid {
   /** Live Float32 view into the WASM heap — Z velocity. */
   w:      Float32Array;
   /** Free all WASM heap allocations.  Call when the grid is no longer needed. */
+  dispose(): void;
+}
+
+export interface NativeWaterForceBatch {
+  sampleCount: number;
+  inputPtr: number;
+  outputPtr: number;
+  input: Float32Array;
+  output: Float32Array;
+  setSample(index: number, sample: NativeWaterForceSample): void;
+  compute(config: NativeWaterForceConfig): Float32Array;
+  readResult(index: number): NativeWaterForceResult;
   dispose(): void;
 }
 
@@ -280,6 +378,84 @@ export function createSWEGrid(
   };
 }
 
+export function createWaterForceBatch(
+  mod: WatershedNativeModule,
+  sampleCount: number,
+): NativeWaterForceBatch {
+  const inputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_INPUT_STRIDE);
+  const outputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_OUTPUT_STRIDE);
+  const input = new Float32Array(
+    mod.HEAPF32.buffer,
+    inputPtr,
+    sampleCount * WATER_FORCE_INPUT_STRIDE,
+  );
+  const output = new Float32Array(
+    mod.HEAPF32.buffer,
+    outputPtr,
+    sampleCount * WATER_FORCE_OUTPUT_STRIDE,
+  );
+
+  return {
+    sampleCount,
+    inputPtr,
+    outputPtr,
+    input,
+    output,
+    setSample(index, sample) {
+      if (index < 0 || index >= sampleCount) {
+        throw new RangeError(`Water force sample ${index} out of range`);
+      }
+      const offset = index * WATER_FORCE_INPUT_STRIDE;
+      input[offset + 0] = sample.position.x;
+      input[offset + 1] = sample.position.y;
+      input[offset + 2] = sample.position.z;
+      input[offset + 3] = sample.velocity.x;
+      input[offset + 4] = sample.velocity.y;
+      input[offset + 5] = sample.velocity.z;
+      input[offset + 6] = sample.flowDirection.x;
+      input[offset + 7] = sample.flowDirection.z;
+    },
+    compute(config) {
+      mod.computeWaterForcesBatch(
+        inputPtr,
+        outputPtr,
+        sampleCount,
+        config.flowSpeed,
+        config.waterLevel,
+        config.raftMass,
+        config.raftVolume,
+        config.dragCoefficient,
+        config.frontalArea,
+        config.sideArea,
+        config.timeSeconds,
+        config.turbulenceStrength,
+        config.turbulenceFrequency,
+      );
+      return output;
+    },
+    readResult(index) {
+      if (index < 0 || index >= sampleCount) {
+        throw new RangeError(`Water force result ${index} out of range`);
+      }
+      const offset = index * WATER_FORCE_OUTPUT_STRIDE;
+      return {
+        forceX: output[offset + 0],
+        forceY: output[offset + 1],
+        forceZ: output[offset + 2],
+        buoyancy: output[offset + 3],
+        drag: output[offset + 4],
+        flow: output[offset + 5],
+        turbulence: output[offset + 6],
+        submergedRatio: output[offset + 7],
+      };
+    },
+    dispose() {
+      mod.freeGrid(inputPtr);
+      mod.freeGrid(outputPtr);
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Physics convenience wrappers (pure-TS fallbacks for offline / test use)
 // ---------------------------------------------------------------------------
@@ -307,4 +483,72 @@ export function dragForceFallback(
   const speedSq = vx*vx + vy*vy + vz*vz;
   if (speedSq <= 0) return 0;
   return 0.5 * density * speedSq * cd * area;
+}
+
+export function calculateBuoyancyAndDragFallback(
+  raftMass: number,
+  submergedVolume: number,
+  waterVelocityX: number,
+  waterVelocityZ: number,
+): number {
+  const buoyancy = buoyancyFallback(submergedVolume);
+  const waterSpeedSq = waterVelocityX * waterVelocityX + waterVelocityZ * waterVelocityZ;
+  const drag = 0.5 * 1000 * waterSpeedSq * 0.47 * 1.8;
+  return Math.max(0, buoyancy - Math.max(0, raftMass) * 9.80665) + drag;
+}
+
+export function calculateWaterForceFallback(
+  sample: NativeWaterForceSample,
+  config: NativeWaterForceConfig,
+): NativeWaterForceResult {
+  const raftHeight = 0.35;
+  const bottomY = sample.position.y - raftHeight * 0.5;
+  const submergedRatio = Math.min(1, Math.max(0, (config.waterLevel - bottomY) / raftHeight));
+  if (submergedRatio <= 0) {
+    return {
+      forceX: 0, forceY: 0, forceZ: 0,
+      buoyancy: 0, drag: 0, flow: 0, turbulence: 0, submergedRatio: 0,
+    };
+  }
+
+  const buoyancy = buoyancyFallback(config.raftVolume * submergedRatio);
+  const forceY = Math.max(0, buoyancy - config.raftMass * 9.80665 * 0.35);
+  const flowLen = Math.hypot(sample.flowDirection.x, sample.flowDirection.z) || 1;
+  const flowDirX = sample.flowDirection.x / flowLen;
+  const flowDirZ = sample.flowDirection.z / flowLen;
+  const relX = flowDirX * config.flowSpeed - sample.velocity.x;
+  const relZ = flowDirZ * config.flowSpeed - sample.velocity.z;
+  const relSpeedSq = relX * relX + relZ * relZ;
+  const relSpeed = Math.sqrt(relSpeedSq);
+  const projectedArea =
+    config.frontalArea * Math.abs(flowDirZ) +
+    config.sideArea * Math.abs(flowDirX);
+  const flow = relSpeedSq > 0
+    ? 0.5 * 1000 * relSpeedSq * config.dragCoefficient * projectedArea * submergedRatio
+    : 0;
+
+  const speed = Math.hypot(sample.velocity.x, sample.velocity.y, sample.velocity.z);
+  const dragArea = config.frontalArea + config.sideArea * 0.35;
+  const drag = speed > 0
+    ? 0.5 * 1000 * speed * speed * config.dragCoefficient * dragArea * submergedRatio
+    : 0;
+
+  const turbulence = Math.max(0, config.turbulenceStrength) * 1000 * submergedRatio;
+  const turbX = Math.sin(config.timeSeconds * config.turbulenceFrequency + sample.position.z * 0.37);
+  const turbZ = Math.cos(config.timeSeconds * config.turbulenceFrequency * 1.31 + sample.position.x * 0.29);
+
+  return {
+    forceX: (relSpeed > 0 ? (relX / relSpeed) * flow : 0) -
+      (speed > 0 ? (sample.velocity.x / speed) * drag : 0) +
+      turbX * turbulence,
+    forceY: forceY - (speed > 0 ? (sample.velocity.y / speed) * drag * 0.2 : 0),
+    forceZ: (relSpeed > 0 ? (relZ / relSpeed) * flow : 0) -
+      (speed > 0 ? (sample.velocity.z / speed) * drag : 0) +
+      turbZ * turbulence,
+    buoyancy,
+    drag,
+    flow,
+    turbulence,
+    submergedRatio,
+  };
 }
