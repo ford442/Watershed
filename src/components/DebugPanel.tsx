@@ -233,7 +233,7 @@ export function DebugPanel({
       <Divider />
 
       {/* ── Renderer backend toggle ─────────────────────────────────────── */}
-      <SectionTitle>Renderer — WebGPU / WebGL2</SectionTitle>
+      <SectionTitle>Renderer — WebGL2 (WebGPU experimental / no-op)</SectionTitle>
       <div style={{ marginBottom: 6, color: '#d0d0d0' }}>
         Active: <span style={{ color: '#9fd6ff' }}>{rendererDiagnostics.rendererName}</span>
       </div>
@@ -264,7 +264,7 @@ export function DebugPanel({
         ))}
       </div>
       <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>
-        URL: <code>?renderer=webgl</code> or <code>?renderer=webgpu</code>
+        URL: <code>?renderer=webgl</code> (live) or <code>?renderer=webgpu</code> (falls back to WebGL2)
       </div>
 
       <Divider />

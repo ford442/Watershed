@@ -1,3 +1,8 @@
+/**
+ * DORMANT WebGPU migration seed — not wired into the live renderer.
+ * Retained as the subject of the #255 guard. See docs/RENDERER_CONTRACT.md.
+ */
+
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {

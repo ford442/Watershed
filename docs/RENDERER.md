@@ -1,13 +1,15 @@
-# Renderer Toggle — WebGPU / WebGL2 Fallback
+# Renderer — WebGL2-only with experimental WebGPU preference
 
-Watershed supports two rendering backends for visual debugging and broader browser coverage. Game state, level data, camera, physics, and entities are shared — only the Three.js renderer changes.
+Watershed runs a **single live renderer: `THREE.WebGLRenderer`**. The `?renderer=webgpu` URL parameter is accepted for compatibility and testing, but it currently falls back to WebGL2 and does **not** instantiate `WebGPURenderer`.
+
+Game state, level data, camera, physics, and entities are shared; only the Canvas key changes when the preference is toggled, which remounts the scene.
 
 ## Quick Start
 
-| URL param | Backend | Use case |
-|-----------|---------|----------|
+| URL param | Actual backend | Use case |
+|-----------|----------------|----------|
 | `?renderer=webgl` (default) | `WebGLRenderer` | Production path; custom GLSL shaders, post-processing |
-| `?renderer=webgpu` | `WebGPURenderer` (WebGL2 backend) | Experimental; native WebGPU blocked until NodeMaterial migration |
+| `?renderer=webgpu` | `WebGLRenderer` (fallback) | Experimental/no-op today; reserved for future #256 path A migration |
 
 Examples:
 
@@ -16,13 +18,24 @@ http://localhost:3000/?renderer=webgl
 http://localhost:3000/?debug=1&renderer=webgl&wireframe=1&physicsDebug=1
 ```
 
+## Why there is no live WebGPU renderer
+
+The production pipeline uses legacy GLSL materials that crash inside `WebGPURenderer`'s `NodeMaterial` / TSL pipeline:
+
+- `RiverShader.js` — `MeshStandardMaterial` with `onBeforeCompile` injection.
+- `CanyonMaterial.js` — custom `ShaderMaterial`.
+- `FlowingWater.jsx` — custom `ShaderMaterial`.
+- Post-processing — GLSL passes from `postprocessing` / `@react-three/postprocessing` v6.
+
+Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. Issue #256 path A owns the real migration, which must replace every legacy material with a `NodeMaterial` / TSL equivalent before `createGameRenderer()` may return anything other than `THREE.WebGLRenderer`.
+
 ## Debug UI
 
-Enable the debug panel with `?debug=1`, then use:
+Enable the debug panel with `?debug=1`:
 
-- **Renderer buttons** — switch between WebGPU and WebGL2 (remounts the Canvas)
-- **Wireframe overlay (G)** — scene-wide geometry wireframe for mesh inspection
-- **Physics colliders (F)** — Rapier debug wireframes + HUD snapshot (P to log)
+- **Renderer buttons** — switch preference between `webgpu` and `webgl` (remounts the Canvas). Both currently result in WebGL2.
+- **Wireframe overlay (G)** — scene-wide geometry wireframe.
+- **Physics colliders (F)** — Rapier debug wireframes + HUD snapshot (P to log).
 
 ## Architecture
 
@@ -31,35 +44,24 @@ App.tsx
   └─ Canvas (key=renderer preference)
        └─ createGameRenderer()  ← async gl factory
             ├─ webgl  → THREE.WebGLRenderer
-            └─ webgpu → THREE.WebGPURenderer (lazy import three/webgpu)
+            └─ webgpu → THREE.WebGLRenderer (deliberate fallback)
        └─ Experience (shared scene graph)
             ├─ RendererDiagnosticsMonitor → rendererState store
             └─ WireframeDebug / PhysicsDebugOverlay
 ```
+
+`createGameRenderer()` probes CSP `data:` URL support because a future `WebGPURenderer` path would need it, but even when allowed it still returns `WebGLRenderer` today.
 
 Module-level stores cross the Canvas boundary:
 
 - `src/rendering/rendererState.ts` — active backend name (read by DebugPanel)
 - `src/debug/perfMetrics.ts` — draw calls, FPS, heap
 
-## Visual Parity Notes
+## Visual notes
 
-- **WebGL2 (`?renderer=webgl`, default)** is the production path for custom GLSL shaders (`RiverShader.js`, `PostProcessingPipeline`, `FlowingWater.jsx`).
-- **WebGPU** (`?renderer=webgpu`) currently forces the WebGL2 backend inside `WebGPURenderer` because legacy materials are incompatible with native WebGPU NodeMaterial. Custom WGSL compute (e.g. `HeightmapFlow.ts`) still runs on a separate WebGPU device when available.
-- Post-processing may behave differently under native WebGPU; use `?renderer=webgl` when tuning bloom, vignette, or chromatic aberration.
-
-### Strict CSP / deployed hosts
-
-Some hosts set `Content-Security-Policy: connect-src 'self' blob: https: wss:` without `data:`.
-Three.js `WebGPURenderer` loads internal WGSL via `data:text/wgsl;base64,...` fetches, which CSP blocks and produces a blank canvas with shader errors in the console.
-
-`createGameRenderer()` probes `data:` fetch support and **automatically falls back to `WebGLRenderer`**, persisting `webgl` preference. Force the safe path with:
-
-```
-?renderer=webgl
-```
-
-If you control the host CSP headers, add `data:` to `connect-src` to allow the experimental WebGPU renderer path.
+- **WebGL2 (`?renderer=webgl`, default)** is the only production path.
+- **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op; it falls back to WebGL2.
+- A separate experimental WebGPU compute path in `src/shaders/HeightmapFlow.ts` may run on a secondary `GPUDevice` when available, but its output is consumed by the WebGL2 `FlowingWater.jsx` shader and is independent of the renderer backend.
 
 ## Keyboard Shortcuts (debug mode)
 
@@ -73,8 +75,10 @@ If you control the host CSP headers, add `data:` to `connect-src` to allow the e
 
 | File | Purpose |
 |------|---------|
-| `src/rendering/createRenderer.ts` | Async renderer factory |
+| `src/rendering/createRenderer.ts` | Async renderer factory (WebGL-only today) |
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing |
+| `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
 | `src/App.tsx` | Canvas wiring + keyboard shortcuts |
+| `docs/RENDERER_CONTRACT.md` | Contract enforced by the regression guard |

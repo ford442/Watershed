@@ -13,7 +13,7 @@ npm test           # unit tests (Jest/RTL)
 npm run build      # production build → build/
 ```
 
-> Requires Chrome 90+ for WebGL 2.0. WebGPU paths are placeholders for future migration.
+> Requires Chrome 90+ for WebGL 2.0. The live renderer is WebGL2-only; WebGPU/TSL migration is deferred to issue #256 path A.
 
 ---
 
@@ -25,7 +25,7 @@ npm run build      # production build → build/
 | 3D rendering | Three.js 0.160 + React Three Fiber 9.4 |
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
-| Shaders | GLSL (injected via `onBeforeCompile`) + WGSL stubs for future WebGPU |
+| Shaders | GLSL (injected via `onBeforeCompile`) — dead WGSL stubs have been removed; dormant TSL/NodeMaterial seeds retained for #256 path A |
 | Package manager | pnpm (npm also works) |
 
 ---

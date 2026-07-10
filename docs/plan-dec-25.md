@@ -36,7 +36,7 @@ A high-octane, photorealistic downhill action game combining kinetic speed with 
 - [ ] Fog and atmospheric effects
 
 #### Water System
-- [ ] WebGPU compute shader for water surface deformation
+- [ ] WebGPU compute shader for water surface deformation (experimental / future; live renderer is WebGL2-only)
 - [ ] Water flow forces affecting player physics
 - [ ] Splash particles when player impacts water
 - [ ] Water foam and spray effects
@@ -168,10 +168,10 @@ Watershed/
 │   │   ├── TerrainGenerator.ts  → Heightmap generation
 │   │   └── ObstacleSpawner.ts   → Random obstacle placement
 │   │
-│   ├── shaders/             [CREATE: WebGPU shaders]
-│   │   ├── waterSurface.wgsl    → Water deformation compute
-│   │   ├── waterFlow.wgsl       → Flow simulation
-│   │   └── particleUpdate.wgsl  → Particle system
+│   ├── shaders/             [CREATE: WebGPU shaders — deferred to #256 path A]
+│   │   ├── waterSurface.wgsl    → Water deformation compute (future)
+│   │   ├── waterFlow.wgsl       → Flow simulation (future)
+│   │   └── particleUpdate.wgsl  → Particle system (future)
 │   │
 │   ├── utils/               [CREATE: Utilities]
 │   │   ├── MathHelpers.ts   → Vector math, curves

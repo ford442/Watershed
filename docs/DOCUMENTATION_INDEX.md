@@ -19,7 +19,7 @@ This directory contains comprehensive documentation from the Watershed startup i
 👉 **[CODE_HEALTH_GUIDE.md](./CODE_HEALTH_GUIDE.md)** - Best practices and patterns
 
 ### Debugging Rendering / Shaders?
-👉 **[RENDERER.md](./RENDERER.md)** - WebGPU / WebGL2 renderer toggle and debug helpers
+👉 **[RENDERER.md](./RENDERER.md)** - WebGL2-only renderer with experimental/no-op WebGPU preference
 
 ### Building Native Water Physics?
 👉 **[WASM_WATER_FORCES.md](./WASM_WATER_FORCES.md)** - Emscripten build, TypeScript bindings, and Rapier force-exchange ABI

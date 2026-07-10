@@ -21,8 +21,8 @@ The project has established a spline-based track system. The immediate focus is 
 - [ ] Profile and optimize Rapier physics performance
 - [ ] Consider convex decomposition vs trimesh
 
-### Priority C: Water Flow (WebGPU)
-- [ ] Design water flow vertex shader (WGSL)
+### Priority C: Water Flow (Deferred / WebGPU)
+- [ ] Design water flow compute shader (experimental; live renderer remains WebGL2)
 - [ ] Implement flowmap-based displacement
 - [ ] Add normal reconstruction for lighting
 - [ ] Apply water forces to player rigid body
