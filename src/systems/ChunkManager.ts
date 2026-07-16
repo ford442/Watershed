@@ -10,15 +10,15 @@
  *
  * ARCHITECTURE:
  * - Pure TypeScript class, no React dependencies
- * - TrackManager.jsx creates an instance and calls update() inside useFrame
+ * - TrackManager.tsx creates an instance and calls update() inside useFrame
  * - All NaN guards and tangent-continuity fixes from TrackManager are preserved
  */
 
 import * as THREE from 'three';
 import { GENERATION } from '../constants/game';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../configs/TrackBiomes';
-import { MapManager } from './MapSystem';
-import type { DecorationPlacement } from './MapSystem';
+import { MapManager, generateSegmentPath, calculateSegmentSpawns } from './MapSystem';
+import type { DecorationPlacement, SpawnData } from './MapSystem';
 import type { NormalizedSegment } from './ReachNormalizer';
 
 // =============================================================================
@@ -45,8 +45,13 @@ export interface SegmentData {
   verticalBias?: number;
   /** Per-segment gravity scale from level data (undefined = use world default). */
   gravityMultiplier?: number;
-  /** Authored decoration overrides passed through to TrackSegment. */
-  config?: { decorations?: Record<string, number | DecorationPlacement[]> };
+  /** Pre-calculated spawn data for objects. */
+  spawns?: SpawnData[];
+  /** Authored decoration / launch-shelf overrides passed through to TrackSegment. */
+  config?: {
+    decorations?: Record<string, number | DecorationPlacement[]>;
+    launchShelf?: { rockRef: { localX: number; localZ: number; scale: number } };
+  };
 }
 
 export interface RenderedSlot {
@@ -159,38 +164,9 @@ function createSegmentData(
   const lastPoints = previousSegment?.points ?? INITIAL_POINTS;
   const lastPoint = lastPoints[lastPoints.length - 1].clone();
   const prevPoint = (lastPoints[lastPoints.length - 2] ?? INITIAL_POINTS[0]).clone();
-  const direction = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
-  const points: THREE.Vector3[] = [lastPoint.clone()];
-  const currentPos = lastPoint.clone();
+  const startDirection = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
 
-  const localRandom = (offset: number) => {
-    const value = Math.sin(seed + offset * 17.31) * 10000;
-    return value - Math.floor(value);
-  };
-
-  for (let step = 0; step < 3; step += 1) {
-    const turnFactor = Math.sin(index * 0.5 + step) * progression.meanderStrength;
-    direction.x += turnFactor * 0.3 + (localRandom(step + 1) - 0.5) * 0.2;
-    direction.y += localRandom(step + 2) * 0.2 + progression.verticalBias * 0.2;
-
-    const maxUpward = progression.type === 'pond' ? -0.01 : -0.1;
-    if (direction.y > maxUpward) direction.y = maxUpward;
-
-    direction.normalize();
-
-    if (progression.type !== 'waterfall') {
-      if (direction.z > -0.5) direction.z = -0.5;
-    } else {
-      direction.z = -0.12;
-      direction.y = Math.min(direction.y, -0.92);
-    }
-
-    direction.normalize();
-
-    const distance = 30 + localRandom(step + 3) * 10;
-    currentPos.add(direction.clone().multiplyScalar(distance));
-    points.push(currentPos.clone());
-  }
+  const points = generateSegmentPath(index, lastPoint, startDirection, progression, seed);
 
   const continuousPoints =
     ensureContinuity && previousSegment?.points
@@ -198,6 +174,7 @@ function createSegmentData(
       : points;
 
   const segmentPath = createSpline(continuousPoints, progression.type);
+  const spawns = calculateSegmentSpawns(segmentPath, progression, index, seed);
 
   const forecastBoost =
     forecastState === 'Flooded' ? 1.45 : forecastState === 'HighFlow' ? 1.2 : 1;
@@ -221,7 +198,10 @@ function createSegmentData(
     meanderStrength: progression.meanderStrength,
     verticalBias: progression.verticalBias,
     gravityMultiplier: progression.gravityMultiplier,
-    config: progression.decorations ? { decorations: progression.decorations } : undefined,
+    spawns,
+    config: progression.decorations || progression.launchShelf
+      ? { decorations: progression.decorations, launchShelf: progression.launchShelf }
+      : undefined,
   };
 }
 

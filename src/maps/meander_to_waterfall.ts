@@ -67,6 +67,7 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
     // Segment 13 — Approach: steepens toward the waterfall
     {
         indexFrom: 13,
+        indexTo: 13,
         config: { meanderStrength: 0.2, verticalBias: -1.2, flowSpeed: 1.15 },
     },
     // Segment 14 — The Waterfall
@@ -99,6 +100,7 @@ export const MEANDER_TO_WATERFALL_PROGRESSION: SegmentRange[] = [
     // Segment 15 — Splash Pool / biome transition summer → autumn
     {
         indexFrom: 15,
+        indexTo: 15,
         config: {
             type: 'splash',
             biome: 'autumn',
