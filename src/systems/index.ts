@@ -36,6 +36,8 @@ export {
 
 // Splash effects
 export { SplashSystem } from './SplashSystem';
+export { default as WaterForceSystem } from './WaterForceSystem';
+export { injectSWEDisturbance } from './SWEHeightField';
 
 // Post-processing
 export { PostProcessing } from './PostProcessing';
@@ -77,4 +79,30 @@ export {
   awardDodgeBonus,
   awardWaterfallBonus,
   resetScoreSystemState,
+  commitJourneyScore,
 } from './ScoreSystem';
+
+// Persistence + ghost replay
+export {
+  loadPersistence,
+  savePersistence,
+  getRunBest,
+  updateRunBest,
+  buildRunKey,
+  STORAGE_KEY,
+  type PersistencePayload,
+  type RunBest,
+} from './PersistenceSystem';
+export { initPersistence } from './persistenceBootstrap';
+export {
+  encodeGhostSamples,
+  decodeGhost,
+  decodeGhostFromBase64,
+  GHOST_SAMPLE_HZ,
+  type GhostSample,
+} from './ghostCodec';
+export {
+  startGhostRecording,
+  tickGhostRecording,
+  persistGhostRecording,
+} from './GhostRecorder';

@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import * as THREE from 'three';
 
 import { createGameRenderer } from './createRenderer';
@@ -5,20 +6,20 @@ import { createRiverMaterial } from '../utils/RiverShader';
 import { createCanyonMaterial } from '../materials/CanyonMaterial';
 import { createRiverNodeMaterial } from '../materials/RiverNodeMaterial';
 
-jest.mock('./cspProbe', () => ({
-  isDataUrlConnectAllowed: jest.fn(),
+vi.mock('./cspProbe', () => ({
+  isDataUrlConnectAllowed: vi.fn(),
 }));
 
-jest.mock('./rendererConfig', () => ({
-  persistRendererPreference: jest.fn(),
+vi.mock('./rendererConfig', () => ({
+  persistRendererPreference: vi.fn(),
 }));
 
 import { isDataUrlConnectAllowed } from './cspProbe';
 
 beforeEach(() => {
-  // react-scripts sets resetMocks: true, which clears implementations set in
-  // jest.mock factories. Re-apply the CSP probe mock before every test.
-  (isDataUrlConnectAllowed as jest.Mock).mockResolvedValue(true);
+  // Vitest may reset mock implementations between tests. Re-apply the CSP
+  // probe mock before every test.
+  (isDataUrlConnectAllowed as Mock).mockResolvedValue(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -149,9 +150,9 @@ function createMockWebGLContext(canvas: HTMLCanvasElement): WebGLRenderingContex
     canvas,
     drawingBufferWidth: canvas.width,
     drawingBufferHeight: canvas.height,
-    getExtension: jest.fn(() => null),
-    getSupportedExtensions: jest.fn(() => []),
-    getParameter: jest.fn((p: number) => {
+    getExtension: vi.fn(() => null),
+    getSupportedExtensions: vi.fn(() => []),
+    getParameter: vi.fn((p: number) => {
       if (p === WEBGL_CONSTANTS.VERSION) return 'WebGL 1.0 (Mock)';
       if (p === WEBGL_CONSTANTS.VENDOR) return 'Mock Vendor';
       if (p === WEBGL_CONSTANTS.RENDERER) return 'Mock Renderer';
@@ -174,75 +175,75 @@ function createMockWebGLContext(canvas: HTMLCanvasElement): WebGLRenderingContex
       if (p === WEBGL_CONSTANTS.STENCIL_BITS) return 8;
       return 0;
     }),
-    getShaderPrecisionFormat: jest.fn(() => ({ precision: 23, rangeMin: 127, rangeMax: 127 })),
-    createShader: jest.fn(() => ({})),
-    shaderSource: jest.fn(),
-    compileShader: jest.fn(),
-    getShaderParameter: jest.fn(() => true),
-    getShaderInfoLog: jest.fn(() => ''),
-    deleteShader: jest.fn(),
-    createProgram: jest.fn(() => ({})),
-    attachShader: jest.fn(),
-    linkProgram: jest.fn(),
-    getProgramParameter: jest.fn(() => true),
-    getProgramInfoLog: jest.fn(() => ''),
-    deleteProgram: jest.fn(),
-    useProgram: jest.fn(),
-    createBuffer: jest.fn(() => ({})),
-    bindBuffer: jest.fn(),
-    bufferData: jest.fn(),
-    deleteBuffer: jest.fn(),
-    enableVertexAttribArray: jest.fn(),
-    vertexAttribPointer: jest.fn(),
-    disableVertexAttribArray: jest.fn(),
-    createTexture: jest.fn(() => ({})),
-    bindTexture: jest.fn(),
-    texImage2D: jest.fn(),
-    texParameteri: jest.fn(),
-    texParameterf: jest.fn(),
-    activeTexture: jest.fn(),
-    deleteTexture: jest.fn(),
-    createFramebuffer: jest.fn(() => ({})),
-    bindFramebuffer: jest.fn(),
-    framebufferTexture2D: jest.fn(),
-    checkFramebufferStatus: jest.fn(() => WEBGL_CONSTANTS.FRAMEBUFFER_COMPLETE),
-    deleteFramebuffer: jest.fn(),
-    createRenderbuffer: jest.fn(() => ({})),
-    bindRenderbuffer: jest.fn(),
-    renderbufferStorage: jest.fn(),
-    framebufferRenderbuffer: jest.fn(),
-    deleteRenderbuffer: jest.fn(),
-    viewport: jest.fn(),
-    scissor: jest.fn(),
-    clearColor: jest.fn(),
-    clear: jest.fn(),
-    enable: jest.fn(),
-    disable: jest.fn(),
-    blendFunc: jest.fn(),
-    blendFuncSeparate: jest.fn(),
-    depthFunc: jest.fn(),
-    depthMask: jest.fn(),
-    cullFace: jest.fn(),
-    frontFace: jest.fn(),
-    polygonOffset: jest.fn(),
-    lineWidth: jest.fn(),
-    pixelStorei: jest.fn(),
-    getError: jest.fn(() => 0),
-    readPixels: jest.fn(),
-    drawArrays: jest.fn(),
-    drawElements: jest.fn(),
-    uniform1f: jest.fn(),
-    uniform1i: jest.fn(),
-    uniform2f: jest.fn(),
-    uniform3f: jest.fn(),
-    uniform4f: jest.fn(),
-    uniformMatrix4fv: jest.fn(),
-    uniform1fv: jest.fn(),
-    uniform2fv: jest.fn(),
-    uniform3fv: jest.fn(),
-    uniform4fv: jest.fn(),
-    getAttribLocation: jest.fn(() => 0),
-    getUniformLocation: jest.fn(() => ({})),
+    getShaderPrecisionFormat: vi.fn(() => ({ precision: 23, rangeMin: 127, rangeMax: 127 })),
+    createShader: vi.fn(() => ({})),
+    shaderSource: vi.fn(),
+    compileShader: vi.fn(),
+    getShaderParameter: vi.fn(() => true),
+    getShaderInfoLog: vi.fn(() => ''),
+    deleteShader: vi.fn(),
+    createProgram: vi.fn(() => ({})),
+    attachShader: vi.fn(),
+    linkProgram: vi.fn(),
+    getProgramParameter: vi.fn(() => true),
+    getProgramInfoLog: vi.fn(() => ''),
+    deleteProgram: vi.fn(),
+    useProgram: vi.fn(),
+    createBuffer: vi.fn(() => ({})),
+    bindBuffer: vi.fn(),
+    bufferData: vi.fn(),
+    deleteBuffer: vi.fn(),
+    enableVertexAttribArray: vi.fn(),
+    vertexAttribPointer: vi.fn(),
+    disableVertexAttribArray: vi.fn(),
+    createTexture: vi.fn(() => ({})),
+    bindTexture: vi.fn(),
+    texImage2D: vi.fn(),
+    texParameteri: vi.fn(),
+    texParameterf: vi.fn(),
+    activeTexture: vi.fn(),
+    deleteTexture: vi.fn(),
+    createFramebuffer: vi.fn(() => ({})),
+    bindFramebuffer: vi.fn(),
+    framebufferTexture2D: vi.fn(),
+    checkFramebufferStatus: vi.fn(() => WEBGL_CONSTANTS.FRAMEBUFFER_COMPLETE),
+    deleteFramebuffer: vi.fn(),
+    createRenderbuffer: vi.fn(() => ({})),
+    bindRenderbuffer: vi.fn(),
+    renderbufferStorage: vi.fn(),
+    framebufferRenderbuffer: vi.fn(),
+    deleteRenderbuffer: vi.fn(),
+    viewport: vi.fn(),
+    scissor: vi.fn(),
+    clearColor: vi.fn(),
+    clear: vi.fn(),
+    enable: vi.fn(),
+    disable: vi.fn(),
+    blendFunc: vi.fn(),
+    blendFuncSeparate: vi.fn(),
+    depthFunc: vi.fn(),
+    depthMask: vi.fn(),
+    cullFace: vi.fn(),
+    frontFace: vi.fn(),
+    polygonOffset: vi.fn(),
+    lineWidth: vi.fn(),
+    pixelStorei: vi.fn(),
+    getError: vi.fn(() => 0),
+    readPixels: vi.fn(),
+    drawArrays: vi.fn(),
+    drawElements: vi.fn(),
+    uniform1f: vi.fn(),
+    uniform1i: vi.fn(),
+    uniform2f: vi.fn(),
+    uniform3f: vi.fn(),
+    uniform4f: vi.fn(),
+    uniformMatrix4fv: vi.fn(),
+    uniform1fv: vi.fn(),
+    uniform2fv: vi.fn(),
+    uniform3fv: vi.fn(),
+    uniform4fv: vi.fn(),
+    getAttribLocation: vi.fn(() => 0),
+    getUniformLocation: vi.fn(() => ({})),
   };
 
   return new Proxy({} as WebGLRenderingContext, {
@@ -251,7 +252,7 @@ function createMockWebGLContext(canvas: HTMLCanvasElement): WebGLRenderingContex
       if (key in handlers) return handlers[key];
       if (key in WEBGL_CONSTANTS) return WEBGL_CONSTANTS[key];
       if (key.toUpperCase() === key) return 0;
-      return jest.fn();
+      return vi.fn();
     },
   });
 }
@@ -291,7 +292,7 @@ describe('createGameRenderer', () => {
   });
 
   it('falls back to WebGLRenderer when preference is webgpu (legacy materials)', async () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const renderer = await createGameRenderer(canvasProps, { preference: 'webgpu' });
     expect(renderer.isWebGLRenderer).toBe(true);
     expect(warnSpy).toHaveBeenCalledWith(

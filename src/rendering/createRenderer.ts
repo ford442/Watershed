@@ -19,7 +19,7 @@ export interface GameRendererOptions {
  *   post-processing) are incompatible with WebGPURenderer's NodeMaterial
  *   pipeline and crashed production twice (PRs #252 and #253).
  *
- *   See docs/RENDERER_CONTRACT.md before changing the return type or fallback
+ *   See docs/reference/RENDERER_CONTRACT.md before changing the return type or fallback
  *   logic; issue #256 path A owns the real WebGPU/TSL migration.
  */
 export async function createGameRenderer(
@@ -60,7 +60,7 @@ export async function createGameRenderer(
 
   console.warn(
     '[Renderer] WebGPU preference is experimental/no-op — Legacy GLSL materials are incompatible ' +
-      'with WebGPURenderer, so the game falls back to WebGLRenderer. See docs/RENDERER_CONTRACT.md.'
+      'with WebGPURenderer, so the game falls back to WebGLRenderer. See docs/reference/RENDERER_CONTRACT.md.'
   );
   persistRendererPreference('webgl');
   return createWebGLRenderer();

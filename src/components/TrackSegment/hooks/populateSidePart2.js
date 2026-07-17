@@ -9,12 +9,14 @@ export function populateSidePart2(args) {
         wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
         birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
         ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
+        icicles, iceSheets,
         pathPoint, tangent, binormal, up, seedState, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
     } = args;
     const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
     const rockDensity = config?.rockDensity ?? biomeProfile?.rockDensity ?? 'low';
-    const isGlacier = biomeProfile?.id === 'glacier' || biome === 'glacier';
+    const isGlacier = biomeProfile?.id === 'glacier' || biomeProfile?.id === 'glacialMelt'
+        || biome === 'glacier' || biome === 'glacial' || biome === 'glacialMelt';
                 // 4.7 MUSHROOMS (New: Forest floor detail)
                 const mushroomChance = biome === 'autumn' ? 0.6 : 0.3;
                 if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > (1.0 - mushroomChance)) {
@@ -475,5 +477,44 @@ export function populateSidePart2(args) {
                             });
                         }
                     }
+                }
+
+                // 16. GLACIAL — icicles on rim overhangs
+                if (isGlacier && seededRandom(seedState.value++) > 0.55) {
+                    const dist = side * (bankEdge + 1.8 + seededRandom(seedState.value++) * 3.5);
+                    const offset = binormal.clone().multiplyScalar(dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    const normalizedDist = Math.abs(dist) / (canyonWidth * 0.45);
+                    let rimY = Math.pow(Math.max(0, normalizedDist), 2.2) * (biomeProfile?.wallHeight ?? 20);
+                    rimY += 2.0 + seededRandom(seedState.value++) * 4.0;
+                    position.y += rimY;
+                    const scaleY = 1.2 + seededRandom(seedState.value++) * 2.8;
+                    icicles.push({
+                        position,
+                        rotation: new THREE.Euler(
+                            (seededRandom(seedState.value++) - 0.5) * 0.15,
+                            seededRandom(seedState.value++) * Math.PI * 2,
+                            (seededRandom(seedState.value++) - 0.5) * 0.1,
+                        ),
+                        scale: new THREE.Vector3(0.7 + seededRandom(seedState.value++) * 0.6, scaleY, 0.7 + seededRandom(seedState.value++) * 0.5),
+                    });
+                }
+
+                // 17. GLACIAL — translucent ice shelves at the waterline
+                if (isGlacier && seededRandom(seedState.value++) > 0.62) {
+                    const dist = side * (bankStart + 0.4 + seededRandom(seedState.value++) * 1.2);
+                    const offset = binormal.clone().multiplyScalar(dist);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    position.y = waterLevel + 0.05 + seededRandom(seedState.value++) * 0.15;
+                    const span = 1.4 + seededRandom(seedState.value++) * 2.6;
+                    iceSheets.push({
+                        position,
+                        rotation: new THREE.Euler(
+                            (seededRandom(seedState.value++) - 0.5) * 0.2,
+                            Math.atan2(tangent.x, tangent.z),
+                            (seededRandom(seedState.value++) - 0.5) * 0.12,
+                        ),
+                        scale: new THREE.Vector3(span, 1, 0.5 + seededRandom(seedState.value++) * 0.8),
+                    });
                 }
 }

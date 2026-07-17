@@ -214,6 +214,8 @@ export const MOVEMENT = {
     SLIDE_FRICTION: 0.02,
     /** Maximum slope angle (degrees) for slide activation */
     SLIDE_MIN_SLOPE: 35,
+    /** Fraction of platform velocity transferred to the player */
+    PLAYER_MOMENTUM_TRANSFER: 0.3,
 } as const;
 
 export const FLOATING_OBJECT = {

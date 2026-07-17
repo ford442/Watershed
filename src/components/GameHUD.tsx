@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerBiome, useGameStore } from '../systems/GameState';
+import { getActiveLaunchAirSeconds } from '../systems/LaunchScoringSession';
 import {
   calculateBuoyancyAndDragFallback,
   getWasm,
@@ -24,6 +25,7 @@ const BIOME_LABELS: Record<string, string> = {
   midnightMist: 'MIDNIGHT MIST',
   slotCanyon: 'SLOT CANYON',
   glacier: 'GLACIER',
+  glacialMelt: 'GLACIAL MELT',
 };
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -53,6 +55,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   // Shelf launch popups — imperative DOM + CSS animation; no per-frame React state.
   const launchPopupRef = useRef<HTMLDivElement>(null);
   const rewardPopupRef = useRef<HTMLDivElement>(null);
+  const launchAirTimeRef = useRef<HTMLDivElement>(null);
   const launchPopupTimerRef = useRef<number | null>(null);
   const rewardPopupTimerRef = useRef<number | null>(null);
 
@@ -78,23 +81,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   };
 
   useEffect(() => {
-    const unsubLaunch = useGameStore.subscribe(
-      (s) => s.launchPopup,
-      (popup) => {
-        if (!popup) return;
+    let prevLaunchPopup = useGameStore.getState().launchPopup;
+    let prevReward = useGameStore.getState().latestReward;
+
+    const unsub = useGameStore.subscribe((state) => {
+      const popup = state.launchPopup;
+      if (popup && popup !== prevLaunchPopup) {
         showTransientPopup(
           launchPopupRef.current,
           launchPopupTimerRef,
           popup.label,
           'launch-popup',
         );
-      },
-    );
+      }
+      prevLaunchPopup = popup;
 
-    const unsubReward = useGameStore.subscribe(
-      (s) => s.latestReward,
-      (reward) => {
-        if (!reward || reward.score <= 0) return;
+      const reward = state.latestReward;
+      if (reward && reward !== prevReward && reward.score > 0) {
         const bonus = reward.clean ? ' + CLEAN' : '';
         showTransientPopup(
           rewardPopupRef.current,
@@ -102,12 +105,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           `+${reward.score}${bonus}`,
           'air-reward-popup',
         );
-      },
-    );
+      }
+      prevReward = reward;
+    });
 
     return () => {
-      unsubLaunch();
-      unsubReward();
+      unsub();
       if (launchPopupTimerRef.current !== null) {
         window.clearTimeout(launchPopupTimerRef.current);
       }
@@ -118,33 +121,55 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   }, []);
 
   useEffect(() => {
-    const unsub = useGameStore.subscribe(
-      (s) => s.sprintStamina,
-      (stamina) => {
-        const fill = staminaFillRef.current;
-        const bar = staminaBarRef.current;
-        if (!fill || !bar) return;
-
-        fill.style.width = `${Math.round(stamina * 100)}%`;
-
-        let color: string;
-        if (stamina >= 0.5) {
-          color = '#f8fafc'; // white
-        } else if (stamina >= 0.25) {
-          color = '#fbbf24'; // amber
+    let raf = 0;
+    const tick = () => {
+      const airSeconds = getActiveLaunchAirSeconds();
+      const el = launchAirTimeRef.current;
+      if (el) {
+        if (airSeconds > 0.05) {
+          el.textContent = `AIR! ${airSeconds.toFixed(1)}s`;
+          el.classList.add('launch-airtime-hud--visible');
         } else {
-          color = '#ef4444'; // red
-        }
-        fill.style.backgroundColor = color;
-
-        // Only toggle exhausted class when state changes to avoid redundant DOM ops
-        const nowExhausted = stamina === 0;
-        if (nowExhausted !== exhaustedRef.current) {
-          exhaustedRef.current = nowExhausted;
-          bar.classList.toggle('stamina-bar--exhausted', nowExhausted);
+          el.textContent = '';
+          el.classList.remove('launch-airtime-hud--visible');
         }
       }
-    );
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    let prevStamina = useGameStore.getState().sprintStamina;
+
+    const unsub = useGameStore.subscribe((state) => {
+      const stamina = state.sprintStamina;
+      if (stamina === prevStamina) return;
+      prevStamina = stamina;
+
+      const fill = staminaFillRef.current;
+      const bar = staminaBarRef.current;
+      if (!fill || !bar) return;
+
+      fill.style.width = `${Math.round(stamina * 100)}%`;
+
+      let color: string;
+      if (stamina >= 0.5) {
+        color = '#f8fafc';
+      } else if (stamina >= 0.25) {
+        color = '#fbbf24';
+      } else {
+        color = '#ef4444';
+      }
+      fill.style.backgroundColor = color;
+
+      const nowExhausted = stamina === 0;
+      if (nowExhausted !== exhaustedRef.current) {
+        exhaustedRef.current = nowExhausted;
+        bar.classList.toggle('stamina-bar--exhausted', nowExhausted);
+      }
+    });
     return unsub;
   }, []);
 
@@ -363,6 +388,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       )}
 
       <div ref={launchPopupRef} className="launch-popup" aria-live="polite" />
+      <div ref={launchAirTimeRef} className="launch-airtime-hud" aria-live="polite" />
       <div ref={rewardPopupRef} className="air-reward-popup" aria-live="polite" />
 
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 text-white/40 text-xs md:text-sm font-mono">

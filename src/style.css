@@ -678,6 +678,7 @@ canvas {
 .pause-menu-resume-btn,
 .pause-menu-restart-btn,
 .pause-menu-settings-btn,
+.pause-menu-ghost-btn,
 .pause-menu-quit-btn,
 .pause-menu-back-btn {
   border: none;
@@ -718,13 +719,21 @@ canvas {
 }
 
 .pause-menu-settings-btn,
+.pause-menu-ghost-btn,
 .pause-menu-back-btn {
   background: transparent;
   color: #9ca3af;
   border: 2px solid rgba(255,255,255,0.12);
 }
 
+.pause-menu-ghost-btn.active {
+  color: #7ec8ff;
+  border-color: rgba(126, 200, 255, 0.45);
+  background: rgba(126, 200, 255, 0.08);
+}
+
 .pause-menu-settings-btn:hover,
+.pause-menu-ghost-btn:hover,
 .pause-menu-back-btn:hover {
   background: rgba(255,255,255,0.06);
   border-color: rgba(255,255,255,0.25);
@@ -1053,6 +1062,27 @@ canvas {
 .launch-popup--visible,
 .air-reward-popup--visible {
   animation: launch-popup-burst 1.4s ease-out forwards;
+}
+
+.launch-airtime-hud {
+  position: fixed;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 800;
+  font-size: clamp(1rem, 2.5vw, 1.35rem);
+  letter-spacing: 0.1em;
+  color: rgba(248, 250, 252, 0.92);
+  text-shadow: 0 0 12px rgba(125, 211, 252, 0.45);
+  opacity: 0;
+  z-index: 39;
+  transition: opacity 0.12s ease;
+}
+
+.launch-airtime-hud--visible {
+  opacity: 1;
 }
 
 @keyframes launch-popup-burst {

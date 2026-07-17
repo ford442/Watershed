@@ -1,16 +1,29 @@
 /**
- * Jest stub for the ESM-only `three/webgpu` and `three/tsl` subpath exports.
+ * Test stub for the ESM-only `three/webgpu` and `three/tsl` subpath exports.
  *
- * `react-scripts` / Jest cannot resolve `three/webgpu` and `three/tsl` because
- * three.js only exposes them as ESM exports. This stub provides the minimal
- * shapes the regression guard needs so that `RiverNodeMaterial.ts` can be
- * imported and its factory called in unit tests.
- *
- * This file is ONLY used by Jest via `moduleNameMapper` in `package.json`.
- * Vite continues to use the real `three/webgpu` bundle in the browser.
+ * Vitest aliases these subpaths to this file (see vitest.config.ts) so unit
+ * tests can import `RiverNodeMaterial.ts` without loading the real WebGPU
+ * bundle. Vite continues to use the real `three/webgpu` bundle in the browser.
  */
 
 import * as THREE from 'three';
+
+export class MeshBasicNodeMaterial extends THREE.MeshBasicMaterial {
+  lights = true;
+  private _nodeProps: Record<string, unknown> = {};
+
+  constructor(parameters: THREE.MeshBasicMaterialParameters = {}) {
+    super(parameters);
+    (this as any).type = 'MeshBasicNodeMaterial';
+  }
+
+  set colorNode(value: unknown) {
+    this._nodeProps.colorNode = value;
+  }
+  get colorNode() {
+    return undefined;
+  }
+}
 
 export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
   private _nodeProps: Record<string, unknown> = {};
@@ -61,10 +74,9 @@ function createNode(label = 'node'): any {
 }
 
 // TSL-like node factory exports used by RiverNodeMaterial.ts and its helpers.
-export function Fn(builder: (args: any[]) => any) {
-  return (...args: any[]) => builder(args);
+export function Fn(builder: any) {
+  return (...args: any[]) => (typeof builder === 'function' ? builder(args) : builder);
 }
-
 export const float = createNode('float');
 export const vec2 = createNode('vec2');
 export const vec3 = createNode('vec3');

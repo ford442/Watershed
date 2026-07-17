@@ -8,11 +8,22 @@
  */
 
 import * as THREE from 'three';
-import { DefaultMapManager, calculateSegmentSpawns, generateSegmentPath } from '../MapSystem';
+import {
+  ProceduralMapManager,
+  calculateSegmentSpawns,
+  generateSegmentPath,
+} from '../MapSystem';
 import { ChunkManager } from '../ChunkManager';
-import { MEANDER_TO_WATERFALL_PROGRESSION } from '../../maps/meander_to_waterfall';
+import meanderLevel from '../../maps/meander_to_waterfall.json';
+import { MEANDER_FALLBACK_PROGRESSION } from '../../maps/meander_to_waterfall';
+import type { LevelData } from '../MapSystem';
 
 const SEED = 12345;
+const meanderMap = meanderLevel as unknown as LevelData;
+
+function createMapManager() {
+  return new ProceduralMapManager(meanderMap, MEANDER_FALLBACK_PROGRESSION, { seed: SEED });
+}
 
 function pointsEqual(a: THREE.Vector3[], b: THREE.Vector3[]): boolean {
   if (a.length !== b.length) return false;
@@ -33,8 +44,8 @@ function spawnsEqual(a: ReturnType<typeof calculateSegmentSpawns>, b: ReturnType
 
 describe('MapSystem determinism / parity', () => {
   it('DefaultMapManager produces identical chunks for the same seed and progression', () => {
-    const managerA = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
-    const managerB = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
+    const managerA = createMapManager();
+    const managerB = createMapManager();
 
     // Advance both managers through the same player positions so they generate
     // the same set of chunks.
@@ -62,7 +73,7 @@ describe('MapSystem determinism / parity', () => {
   });
 
   it('generateSegmentPath is deterministic for the same inputs', () => {
-    const mapManager = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
+    const mapManager = createMapManager();
     const progression = mapManager.getChunkConfig(14);
     const startPoint = new THREE.Vector3(0, -10, -400);
     const startDirection = new THREE.Vector3(0, -0.5, -1).normalize();
@@ -75,7 +86,7 @@ describe('MapSystem determinism / parity', () => {
   });
 
   it('calculateSegmentSpawns is deterministic for the same inputs', () => {
-    const mapManager = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
+    const mapManager = createMapManager();
     const progression = mapManager.getChunkConfig(5);
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(0, -6, 0),
@@ -92,8 +103,8 @@ describe('MapSystem determinism / parity', () => {
   });
 
   it('ChunkManager produces identical active segments for the same seed and progression', () => {
-    const mapManagerA = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
-    const mapManagerB = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
+    const mapManagerA = createMapManager();
+    const mapManagerB = createMapManager();
 
     const chunkManagerA = new ChunkManager({ mapManager: mapManagerA, startIndex: -3 });
     const chunkManagerB = new ChunkManager({ mapManager: mapManagerB, startIndex: -3 });
@@ -125,7 +136,7 @@ describe('MapSystem determinism / parity', () => {
   });
 
   it('waterfall segment (14) progression produces a steep vertical drop', () => {
-    const mapManager = new DefaultMapManager({ seed: SEED }, MEANDER_TO_WATERFALL_PROGRESSION);
+    const mapManager = createMapManager();
     const progression = mapManager.getChunkConfig(14);
 
     expect(progression.type).toBe('waterfall');

@@ -44,6 +44,8 @@ export function usePlacementData({
                 rimTrees: [],
                 rockFoam: [],
                 canyonDust: [],
+                icicles: [],
+                iceSheets: [],
             };
         }
 
@@ -78,6 +80,8 @@ export function usePlacementData({
         const pinecones = [];
         const mushrooms = [];
         const canyonDust = [];
+        const icicles = [];
+        const iceSheets = [];
         const rimTrees = [];
 
         const seedState = { value: segmentId * 1000 };
@@ -173,6 +177,7 @@ export function usePlacementData({
                     instanceIndex: rocks.length,
                     nearWall: Math.abs(localX) > bankStart + 3,
                     rockTypeOverride: rockType ?? null,
+                    crumbling: segmentId === 22 && rockType === 'column',
                 }));
             });
         }
@@ -188,12 +193,13 @@ export function usePlacementData({
             trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
             wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
             birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
-            ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust
+            ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
+            icicles, iceSheets
         });
 
 
 
-        return { rocks, scatterRocks, trees, cactus, desertSage, grass, canyonGrass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust };
+        return { rocks, scatterRocks, trees, cactus, desertSage, grass, canyonGrass, wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies, birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts, ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust, icicles, iceSheets };
     }, [segmentId, pathLength, segmentPath, canyonWidth, waterWidth, WATER_LEVEL, biome, type, flowSpeed, config, isSlotCanyon, biomeProfile]);
 
     return placementData;

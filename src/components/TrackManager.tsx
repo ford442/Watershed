@@ -18,13 +18,13 @@ import { WATER_LEVEL, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
 import { useNightMode } from '../hooks/useNightMode';
 import {
-  DefaultMapManager,
-  JSONMapManager,
+  ProceduralMapManager,
   type MapManager,
   type SegmentRange,
   type LevelData,
 } from '../systems/MapSystem';
-import { MEANDER_TO_WATERFALL_PROGRESSION } from '../maps/meander_to_waterfall';
+import { getActiveMap, getMapDefinition, type MapDefinition, type MapRegistryId } from '../maps/registry';
+import { getProceduralBaseSeed } from '../utils/runContext';
 import { ChunkManager } from '../systems/ChunkManager';
 import { createObstaclePool } from '../systems/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
@@ -43,7 +43,10 @@ export interface TrackManagerProps {
   reachSegments?: NormalizedSegment[] | null;
   reachId?: string | null;
   mapData?: LevelData | null;
+  mapId?: MapRegistryId;
+  mapDefinition?: MapDefinition;
   startIndex?: number;
+  /** @deprecated Use mapId / mapDefinition instead */
   mapProgression?: SegmentRange[];
 }
 
@@ -77,11 +80,19 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     reachSegments = null,
     reachId = null,
     mapData = null,
-    startIndex = 0,
-    mapProgression = MEANDER_TO_WATERFALL_PROGRESSION,
+    mapId,
+    mapDefinition,
+    startIndex,
+    mapProgression,
   },
   ref
 ) {
+  const resolvedMap = mapDefinition ?? (mapId ? getMapDefinition(mapId) : getActiveMap());
+  const effectiveStartIndex = startIndex ?? resolvedMap.startIndex;
+  const effectiveLevelData = mapData ?? resolvedMap.levelData;
+  const effectiveFallback =
+    mapProgression ?? resolvedMap.fallbackProgression;
+
   const { camera, scene } = useThree();
   const [poolVersion, setPoolVersion] = useState(0);
   const [obstaclePoolVersion, setObstaclePoolVersion] = useState(0);
@@ -105,7 +116,12 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   const forecastByIndexRef = useRef<Map<number, string>>(new Map());
   const weatherWetnessRef = useRef(0);
   const mapManagerRef = useRef<MapManager>(
-    mapData ? new JSONMapManager(mapData) : new DefaultMapManager({}, mapProgression)
+    new ProceduralMapManager(
+      effectiveLevelData,
+      effectiveFallback,
+      {},
+      resolvedMap.continuation ?? null,
+    ),
   );
   const reachSegmentsRef = useRef(reachSegments);
   const obstaclePoolRef = useRef(createObstaclePool(16));
@@ -131,21 +147,13 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   }, []);
 
   // PBR texture loading
-  const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture(
-    [
-      './Rock031_1K-JPG_Color.jpg',
-      './Rock031_1K-JPG_NormalGL.jpg',
-      './Rock031_1K-JPG_Roughness.jpg',
-      './Rock031_1K-JPG_AmbientOcclusion.jpg',
-      './Rock031_1K-JPG_Displacement.jpg',
-    ],
-    () => {
-      // Success
-    },
-    (error: any) => {
-      console.warn('[TrackManager] Texture loading failed, using fallback colors:', error);
-    }
-  );
+  const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
+    './Rock031_1K-JPG_Color.jpg',
+    './Rock031_1K-JPG_NormalGL.jpg',
+    './Rock031_1K-JPG_Roughness.jpg',
+    './Rock031_1K-JPG_AmbientOcclusion.jpg',
+    './Rock031_1K-JPG_Displacement.jpg',
+  ]);
 
   // Fallback texture generator
   const fallbackTextures = useMemo(() => {
@@ -190,24 +198,24 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
     if (reachId) {
       const manifest = AssetCache.reaches.get(reachId);
-      const rt = manifest?.requiredAssets?.rockTextures;
-      if (rt) {
-        const resolveTexture = (filename: string | undefined) => {
-          if (!filename) return null;
-          const url =
-            filename.startsWith('http://') ||
-            filename.startsWith('https://') ||
-            filename.startsWith('/')
-              ? filename
-              : `${REACH_API_BASE}/${reachId}/assets/${filename}`;
-          return AssetCache.textures.get(url) || null;
-        };
-        effectiveColorMap = resolveTexture(rt.color) || effectiveColorMap;
-        effectiveNormalMap = resolveTexture(rt.normal) || effectiveNormalMap;
-        effectiveRoughnessMap = resolveTexture(rt.roughness) || effectiveRoughnessMap;
-        effectiveAoMap = resolveTexture(rt.ao) || effectiveAoMap;
-        effectiveDisplacementMap = resolveTexture(rt.displacement) || effectiveDisplacementMap;
-      }
+      const reachTextures = manifest?.requiredAssets?.textures ?? [];
+      const textureById = new Map(reachTextures.map((asset) => [asset.id, asset.url]));
+      const resolveTexture = (role: string) => {
+        const filename = textureById.get(role);
+        if (!filename) return null;
+        const url =
+          filename.startsWith('http://') ||
+          filename.startsWith('https://') ||
+          filename.startsWith('/')
+            ? filename
+            : `${REACH_API_BASE}/${reachId}/assets/${filename}`;
+        return AssetCache.textures.get(url) || null;
+      };
+      effectiveColorMap = resolveTexture('color') || effectiveColorMap;
+      effectiveNormalMap = resolveTexture('normal') || effectiveNormalMap;
+      effectiveRoughnessMap = resolveTexture('roughness') || effectiveRoughnessMap;
+      effectiveAoMap = resolveTexture('ao') || effectiveAoMap;
+      effectiveDisplacementMap = resolveTexture('displacement') || effectiveDisplacementMap;
     }
 
     const hasRealTextures = !!(effectiveColorMap && effectiveNormalMap);
@@ -255,6 +263,20 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     }
   }, [forecastSamples]);
 
+  useEffect(() => {
+    mapManagerRef.current = new ProceduralMapManager(
+      effectiveLevelData,
+      effectiveFallback,
+      {},
+      resolvedMap.continuation ?? null,
+    );
+    if (chunkManagerRef.current?.isInitialized()) {
+      chunkManagerRef.current.reset(reachSegmentsRef.current);
+      chunkManagerRef.current.initializePool();
+      setPoolVersion((v) => v + 1);
+    }
+  }, [effectiveLevelData, effectiveFallback, resolvedMap.id, resolvedMap.continuation]);
+
   // Initialize ChunkManager when material is ready
   useEffect(() => {
     if (!rockMaterial || chunkManagerRef.current?.isInitialized()) return;
@@ -292,7 +314,8 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       reachSegments: reachSegmentsRef.current,
       forecastByIndex: forecastByIndexRef.current,
       callbacks,
-      startIndex,
+      startIndex: effectiveStartIndex,
+      proceduralBaseSeed: getProceduralBaseSeed(),
     });
 
     chunkManagerRef.current.initializePool();
@@ -314,7 +337,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       chunkManagerRef.current = null;
       pendingSynthesizesRef.current = [];
     };
-  }, [rockMaterial, onBiomeChange, reachSegments, startIndex]);
+  }, [rockMaterial, onBiomeChange, reachSegments, effectiveStartIndex]);
 
   // Night mode: update scene fog and background
   useEffect(() => {
@@ -413,8 +436,12 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       ))}
 
       <PooledObstacles slots={pooledObstacleSlots} rockMaterial={rockMaterial} />
-      <WaterFlowForces targetRef={raftRef} segments={activeSegments} reachId={reachId} />
-      <VehicleTuner targetRef={raftRef} segments={activeSegments} />
+      {raftRef && (
+        <>
+          <WaterFlowForces targetRef={raftRef} segments={activeSegments} reachId={reachId ?? undefined} />
+          <VehicleTuner targetRef={raftRef} segments={activeSegments} />
+        </>
+      )}
     </group>
   );
 });

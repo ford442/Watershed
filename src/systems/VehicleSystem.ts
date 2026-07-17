@@ -11,7 +11,7 @@
  */
 
 import * as THREE from 'three';
-import type { RigidBody } from '@react-three/rapier';
+import type { RapierRigidBody } from '@react-three/rapier';
 import { Ray } from '@dimforge/rapier3d-compat';
 
 // =============================================================================
@@ -126,7 +126,7 @@ export interface VehicleConfig {
 
 export abstract class BaseVehicle {
   /** Physics body reference */
-  protected body: RigidBody | null = null;
+  protected body: RapierRigidBody | null = null;
   /** Current vehicle state */
   protected state: VehicleState;
   /** Vehicle configuration */
@@ -174,7 +174,7 @@ export abstract class BaseVehicle {
   protected abstract getDefaultConfig(): VehicleConfig;
   
   /** Initialize with physics body */
-  initialize(body: RigidBody, startPosition?: THREE.Vector3): void {
+  initialize(body: RapierRigidBody, startPosition?: THREE.Vector3): void {
     this.body = body;
     if (startPosition) {
       this.body.setTranslation(startPosition, true);

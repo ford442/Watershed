@@ -176,6 +176,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
   const {
     loadingState,
     normalizedState,
+    levelData: loadedLevelData,
     error,
     loadFromJSON,
     loadFromURL,
@@ -263,7 +264,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
         <TrackManager 
           raftRef={raftRef}
           onBiomeChange={onBiomeChange}
-          levelState={normalizedState}
+          mapData={loadedLevelData}
         />
         {children}
       </>

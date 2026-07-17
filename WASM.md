@@ -73,6 +73,9 @@ The build script auto-discovers the SDK from common locations (`~/emsdk`,
 
 ### Manual (build.sh)
 
+`build.sh` is a thin wrapper around `CMakeLists.txt` — **all compile/link flags live in CMake**.
+Do not duplicate flags in the shell script.
+
 ```bash
 cd emscripten
 
@@ -86,12 +89,7 @@ cd emscripten
 ./build.sh --debug
 ```
 
-### CMake (alternative)
-
-```bash
-emcmake cmake -S emscripten -B emscripten/build -DCMAKE_BUILD_TYPE=Release
-cmake --build emscripten/build
-```
+CI sets `WATERSHED_REQUIRE_WASM=1` so missing Emscripten fails the WASM job instead of silently skipping.
 
 ---
 

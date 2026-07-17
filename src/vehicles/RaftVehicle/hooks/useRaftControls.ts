@@ -1,74 +1,129 @@
-import { useFrame, useThree } from '@react-three/fiber';
+import { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useRapier } from '@react-three/rapier';
-import { usePlayerControls } from '../../../hooks/usePlayerControls';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSystem';
-import { WATER_LEVEL, PLAYER_SPAWN } from '../../../constants/game';
-import { calculateFlowForce, applyWaterForce } from '../../../physics/WaterForces';
-import {
-    WATER_PHYSICS, DENSITY, TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED
-} from '../constants';
-import { playPaddleSound, playSplashSound, playCollisionSound, updateWaterRushingSound } from '../audio';
-import { triggerCameraShake } from '../../RunnerVehicle/utils';
-import {
-    tryFireShelfLaunch,
-    getShelfDownstreamSpeed,
-    isInsideShelfTrigger,
-    type ShelfTrigger,
-} from '../../utils/shelfLaunch';
+import { WATER_LEVEL } from '../../../constants/game';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { useGameStore } from '../../../systems/GameState';
+import { MATERIAL_FROM_BIOME, SurfaceMaterial } from '../../../systems/VehicleSystem';
+import { SHED, STAMINA, COLLISION, BIAS } from '../constants';
+import { playSplashSound } from '../audio';
+import { triggerCameraShake } from '../../RunnerVehicle/utils';
 import {
-    notifyShelfLaunchImpulse,
-    tickLaunchScoring,
-    hasActiveLaunch,
+  tryFireShelfLaunch,
+  getShelfDownstreamSpeed,
+  isInsideShelfTrigger,
+  type ShelfTrigger,
+} from '../../utils/shelfLaunch';
+import {
+  tickLaunchScoring,
+  hasActiveLaunch,
+  recordLaunchWallContact,
 } from '../../../systems/LaunchScoringSession';
+import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
+import type { RapierWorkerProxy } from '../../../physics/RapierWorkerProxy';
+import { createRaftPhysicsRuntime } from './raftPhysicsRuntime';
+import { isWaterForceSystemActive } from '../../../systems/WaterForceRegistry';
+
+export interface UseRaftControlsParams {
+  bodyRef: { current: any };
+  raftVehicle: { current: any };
+  camera: THREE.Camera;
+  controls: { getControls: () => any };
+  workerProxyRef: { current: RapierWorkerProxy | null };
+  workerReadyRef: { current: boolean };
+  useWorkerPhysics: boolean;
+  applyWorkerImpulse: (impulse: THREE.Vector3) => void;
+  stepWorkerProxy: (body: any, delta: number) => void;
+  buoyancyState: { current: any };
+  tippingState: { current: any };
+  paddleState: { current: any };
+  staminaState: { current: any };
+  stunState: { current: any };
+  forwardBiasState: { current: number };
+  shedParticles: { current: any[] };
+  collisionState: { current: any };
+  raftMaterialRef: { current: THREE.MeshStandardMaterial | null };
+  shelfLaunchFiredRef: { current: boolean };
+  shelfTriggerRef: { current: ShelfTrigger | null };
+}
 
 export function useRaftControls({
-    bodyRef, raftVehicle, camera, controls, workerProxy,
-    buoyancyState, tippingState, paddleState, staminaState,
-    stunState, forwardBiasState, shedParticles, collisionState,
-    lastWorkerSync, sharedPhysicsState,
-    shelfLaunchFiredRef, shelfTriggerRef
-}: {
-    bodyRef: { current: any };
-    raftVehicle: { current: any };
-    camera: any;
-    controls: any;
-    workerProxy: any;
-    buoyancyState: { current: any };
-    tippingState: { current: any };
-    paddleState: { current: any };
-    staminaState: { current: any };
-    stunState: { current: any };
-    forwardBiasState: { current: any };
-    shedParticles: { current: any };
-    collisionState: { current: any };
-    lastWorkerSync: { current: any };
-    sharedPhysicsState: { current: any };
-    shelfLaunchFiredRef: { current: boolean };
-    shelfTriggerRef: { current: ShelfTrigger | null };
-}) {
-    const { world, rapier } = useRapier();
+  bodyRef,
+  raftVehicle,
+  camera,
+  controls,
+  workerProxyRef,
+  workerReadyRef,
+  useWorkerPhysics,
+  applyWorkerImpulse,
+  stepWorkerProxy,
+  buoyancyState,
+  tippingState,
+  paddleState,
+  staminaState,
+  stunState,
+  forwardBiasState,
+  shedParticles,
+  collisionState,
+  raftMaterialRef,
+  shelfLaunchFiredRef,
+  shelfTriggerRef,
+}: UseRaftControlsParams) {
+  const raftBaseColor = useRef(new THREE.Color('saddlebrown'));
+  const nextShedId = useRef(0);
+  const shedTimer = useRef(0);
+  const timeRef = useRef(0);
+  const nextParticleId = useRef(0);
+  const currentFov = useRef(75);
+  const workerStepPendingRef = useRef(false);
 
-useFrame((state, delta) => {
-    if (!bodyRef.current || !world) return;
+  const runtimeRef = useRef<ReturnType<typeof createRaftPhysicsRuntime> | null>(null);
+  if (!runtimeRef.current) {
+    runtimeRef.current = createRaftPhysicsRuntime({
+      buoyancyState,
+      tippingState,
+      paddleState,
+      staminaState,
+      stunState,
+      forwardBiasTimer: forwardBiasState,
+      raftMaterialRef,
+      raftBaseColor,
+      shedParticles,
+      nextShedId,
+      shedTimer,
+      timeRef,
+      nextParticleId,
+      collisionState,
+      raftVehicle,
+      controls,
+      camera,
+      workerProxyRef,
+      workerReadyRef,
+      workerStepPendingRef,
+      useWorkerPhysics,
+      applyWorkerImpulse,
+      stepWorkerProxy,
+      currentFov,
+      shelfLaunchFiredRef,
+      shelfTriggerRef,
+    });
+  }
+
+  useFrame((_state, delta) => {
+    const runtime = runtimeRef.current;
+    if (!runtime || !bodyRef.current) return;
 
     const body = bodyRef.current;
     const pos = body.translation();
 
-    // Check if tipped and needs reset
     if (tippingState.current.isTipped) {
-      resetRaft(body);
+      runtime.resetRaft(body);
       return;
     }
 
     timeRef.current += delta;
+    runtime.updateStamina(delta);
 
-    // Update stamina regeneration
-    updateStamina(delta);
-
-    // Update stun timer
     if (stunState.current.active) {
       stunState.current.timer -= delta;
       if (stunState.current.timer <= 0) {
@@ -77,48 +132,42 @@ useFrame((state, delta) => {
       }
     }
 
-    if (useWorkerPhysics && workerProxyRef.current) {
-      updateWorkerPhysicsFrame(body, delta);
+    if (useWorkerPhysics && workerProxyRef.current && workerReadyRef.current) {
+      runtime.updateWorkerPhysicsFrame(body, delta);
       return;
     }
 
-    // Calculate submersion
-    const submergedRatio = calculateSubmergedRatio(pos.y);
+    const submergedRatio = runtime.calculateSubmergedRatio(pos.y);
     buoyancyState.current.submergedRatio = submergedRatio;
 
-    // Apply water physics
-    applyBuoyancy(body, submergedRatio, delta);
-
-    if (submergedRatio > 0) {
-      applyDrag(body, delta);
+    const wasmForcesActive = isWaterForceSystemActive();
+    if (!wasmForcesActive) {
+      runtime.applyBuoyancy(body, submergedRatio, delta);
+      if (submergedRatio > 0) {
+        runtime.applyDrag(body, delta);
+      }
+      if (submergedRatio > 0.1) {
+        runtime.applyFlowForce(body, delta);
+      }
     }
 
-    // Goal 2: Apply flow-map-based water force
-    if (submergedRatio > 0.1) {
-      applyFlowForce(body, delta);
-    }
+    runtime.applyTurbulence(body, timeRef.current, delta);
+    runtime.applyTippingForce(body, submergedRatio, delta);
+    runtime.dampenRotation(body, delta);
 
-    applyTurbulence(body, timeRef.current, delta);
-    applyTippingForce(body, submergedRatio, delta);
-    dampenRotation(body, delta);
-
-    // Handle tipping mechanics
-    const tipped = handleTipping(body, delta);
-    if (tipped) {
-      resetRaft(body);
+    if (runtime.handleTipping(body, delta)) {
+      runtime.resetRaft(body);
       return;
     }
 
-    // Apply paddle forces (overrides WASD for raft)
-    applyPaddleForces(body, delta);
+    runtime.applyPaddleForces(body, delta);
 
-    // Forward bias: carry post-paddle momentum by applying a mild fwd nudge
-    if (forwardBiasTimer.current > 0) {
-      forwardBiasTimer.current -= delta;
+    if (forwardBiasState.current > 0) {
+      forwardBiasState.current -= delta;
       if (!stunState.current.active) {
         const rot = body.rotation();
         const fwdDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
-        const biasFraction = forwardBiasTimer.current / BIAS.DURATION;
+        const biasFraction = forwardBiasState.current / BIAS.DURATION;
         body.applyImpulse({
           x: fwdDir.x * BIAS.FORCE * biasFraction * delta,
           y: 0,
@@ -127,34 +176,31 @@ useFrame((state, delta) => {
       }
     }
 
-    // Fallback WASD (strafing) if no paddle input
     const { leftward, rightward, backward, forward, paddleLeft, paddleRight } = controls.getControls();
 
-    // Brake mechanic: S/backward key applies broadside drag
     if (backward) {
-      applyBrake(body, delta);
+      runtime.applyBrake(body, delta);
     }
 
     if (!paddleLeft && !paddleRight && !forward) {
       if (leftward || rightward) {
-        vehicle.current.setInput({
+        raftVehicle.current.setInput({
           moveX: rightward ? 1 : leftward ? -1 : 0,
         });
-        vehicle.current.update(delta);
+        raftVehicle.current.update(delta);
       }
     }
 
-    // Subtle raft wetness: darken deck proportional to submersion + any spray
     if (raftMaterialRef.current) {
+      const vel = body.linvel();
+      const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
       const wetnessLevel = submergedRatio * 0.6 + (speed > 4 ? Math.min(0.25, (speed - 4) * 0.03) : 0);
       const darken = 1.0 - wetnessLevel * 0.35;
       raftMaterialRef.current.color.copy(raftBaseColor.current).multiplyScalar(darken);
     }
 
-    // === DYNAMIC CAMERA ===
-    const { vel, speed } = updateCameraFromBody(body);
+    const { vel, speed } = runtime.updateCameraFromBody(body);
 
-    // === WATERFALL LAUNCH-SHELF v2 (segment 14) ===
     try {
       const launch = tryFireShelfLaunch({
         currentSegmentIndex: useGameStore.getState().currentSegmentIndex,
@@ -169,7 +215,7 @@ useFrame((state, delta) => {
         body.applyImpulse(launch.impulse, true);
         triggerCameraShake(0.45, 0.25);
         playSplashSound(Math.min(1.5, speed));
-        notifyShelfLaunchImpulse({
+        emitShelfLaunch({
           bodyHandle: body.handle,
           launchPos: pos,
           downstreamSpeed: getShelfDownstreamSpeed(vel),
@@ -179,72 +225,69 @@ useFrame((state, delta) => {
       // Defensive: never let launch logic crash the physics step.
     }
 
-    // Update foam particles
     paddleState.current.foamParticles = paddleState.current.foamParticles
-      .map(p => ({
+      .map((p: any) => ({
         ...p,
         position: p.position.clone().add(p.velocity.clone().multiplyScalar(delta)),
         life: p.life - delta,
       }))
-      .filter(p => p.life > 0);
+      .filter((p: any) => p.life > 0);
 
-    // Goal 2: Update water-shedding particles (velocity-reactive emission rate)
     if (speed > SHED.MIN_SPEED && submergedRatio > SHED.MIN_SUBMERGED) {
       const speedRatio = Math.min(1, (speed - SHED.MIN_SPEED) / (SHED.SPEED_REF - SHED.MIN_SPEED));
       const emissionRate = SHED.EMISSION_RATE_BASE - speedRatio * (SHED.EMISSION_RATE_BASE - SHED.EMISSION_RATE_FAST);
       shedTimer.current += delta;
       if (shedTimer.current > emissionRate) {
         shedTimer.current = 0;
-        spawnShedParticle(body);
+        runtime.spawnShedParticle(body);
       }
     }
 
     shedParticles.current = shedParticles.current
-      .map(p => ({
+      .map((p: any) => ({
         ...p,
         position: p.position.clone().add(p.velocity.clone().multiplyScalar(delta)),
-        velocity: p.velocity.clone().add(new THREE.Vector3(0, -1.5 * delta, 0)), // gravity
+        velocity: p.velocity.clone().add(new THREE.Vector3(0, -1.5 * delta, 0)),
         life: p.life - delta,
       }))
-      .filter(p => p.life > 0);
+      .filter((p: any) => p.life > 0);
 
-    // === COLLISION DETECTION WITH ELASTIC BOUNCE ===
     const prevVel = collisionState.current.prevVelocity;
     const velocityDelta = new THREE.Vector3(vel.x - prevVel.x, vel.y - prevVel.y, vel.z - prevVel.z);
     const impactForce = velocityDelta.length() / delta;
 
-    // Detect collision with terrain (when not mostly submerged)
     if (impactForce > 6 && submergedRatio < 0.8) {
       const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
-      const contactPoint = new THREE.Vector3(pos.x, pos.y - WATER_PHYSICS.RAFT_HEIGHT / 2, pos.z);
+      const contactPoint = new THREE.Vector3(pos.x, pos.y - 0.3, pos.z);
 
-      vehicle.current.processCollision(
+      raftVehicle.current.processCollision(
         material,
         impactForce,
         contactPoint,
-        new THREE.Vector3(vel.x, vel.y, vel.z)
+        new THREE.Vector3(vel.x, vel.y, vel.z),
       );
 
       const forceFactor = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE);
-
-      // Determine if this is a lateral wall hit vs a head-on rock impact.
-      // Wall hits: |dx| >> |dz|.  Retain Z forward momentum for wall-riding feel.
       const dxAbs = Math.abs(velocityDelta.x);
       const dzAbs = Math.abs(velocityDelta.z);
       const isLateralWallHit = dxAbs > dzAbs * COLLISION.WALL_LATERAL_RATIO;
 
       if (isLateralWallHit) {
-        // Wall-ride: bounce X hard, retain most of Z forward velocity
+        if (hasActiveLaunch() && submergedRatio < 0.35) {
+          recordLaunchWallContact();
+        }
         const bounceX = -velocityDelta.x * forceFactor * COLLISION.BOUNCE_FORCE * 0.08;
         const popY = Math.abs(velocityDelta.x) * forceFactor * COLLISION.BOUNCE_VERTICAL_DAMPING * 0.06;
         body.applyImpulse({ x: bounceX, y: popY, z: 0 }, true);
       } else {
-        // Head-on: full reflect, vertical pop for waterfall rocks
         const bounceDir = velocityDelta.clone().normalize().multiplyScalar(-forceFactor * COLLISION.BOUNCE_FORCE * 0.1);
-        body.applyImpulse({ x: bounceDir.x, y: Math.abs(bounceDir.y) * COLLISION.BOUNCE_VERTICAL_DAMPING + 0.5, z: bounceDir.z }, true);
+        body.applyImpulse({
+          x: bounceDir.x,
+          y: Math.abs(bounceDir.y) * COLLISION.BOUNCE_VERTICAL_DAMPING + 0.5,
+          z: bounceDir.z,
+        }, true);
       }
 
-      // Spin on impact (satisfying rotation — stronger on glancing lateral hits)
       const spinDir = Math.sign(vel.x) || 1;
       const spinScale = isLateralWallHit ? 1.6 : 1.0;
       body.applyTorqueImpulse({
@@ -253,41 +296,34 @@ useFrame((state, delta) => {
         z: 0,
       }, true);
 
-      // Stun duration scales with impact force, capped at STUN_MAX
       if (impactForce > COLLISION.STUN_IMPACT_THRESHOLD) {
         const scaledStun = COLLISION.STUN_DURATION + forceFactor * (COLLISION.STUN_MAX - COLLISION.STUN_DURATION);
         stunState.current.active = true;
         stunState.current.timer = Math.min(scaledStun, COLLISION.STUN_MAX);
 
-        // Dispatch wall-impact event so camera shake can respond
         window.dispatchEvent(new CustomEvent('raft-wall-impact', {
           detail: { force: impactForce, isWall: isLateralWallHit },
         }));
       }
 
-      // Contact burst: shed particles scatter from impact point on any significant hit
       if (impactForce > 8) {
-        spawnContactBurst(body, contactPoint, impactForce);
+        runtime.spawnContactBurst(body, contactPoint, impactForce);
       }
 
-      // CollisionParticles for very hard hits
-      if (impactForce > vehicle.current['highImpactThreshold']) {
-        const newParticle = {
+      if (impactForce > raftVehicle.current.highImpactThreshold) {
+        collisionState.current.activeParticles.push({
           id: Date.now(),
           material,
           position: contactPoint.clone(),
           intensity: forceFactor,
-        };
-        collisionState.current.activeParticles.push(newParticle);
+        });
       }
     }
 
     collisionState.current.prevVelocity.set(vel.x, vel.y, vel.z);
 
-    // === SHELF LAUNCH AIR-TIME SCORING (physics-step time, raft lands in water) ===
     try {
-      const physicsDt =
-        typeof world.timestep === 'number' && world.timestep > 0 ? world.timestep : delta;
+      const physicsDt = delta;
       const raftContact = submergedRatio >= 0.35 ? 'water' : 'airborne';
       tickLaunchScoring({
         physicsDt,
@@ -308,15 +344,12 @@ useFrame((state, delta) => {
       // Never let scoring break the raft frame.
     }
 
-    // Dispatch stamina state for UI consumption
     window.dispatchEvent(new CustomEvent('raft-stamina', {
       detail: {
         current: staminaState.current.current,
         max: STAMINA.MAX,
         isExhausted: staminaState.current.isExhausted,
-      }
+      },
     }));
   });
-
-
 }

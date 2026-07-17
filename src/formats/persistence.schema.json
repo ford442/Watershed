@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://watershed.dev/schemas/persistence.schema.json",
+  "title": "WatershedPersistence",
+  "type": "object",
+  "required": ["version", "settings", "vehicleType", "ghostEnabled", "runs"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "settings": {
+      "type": "object",
+      "required": ["quality", "soundVolume"],
+      "additionalProperties": false,
+      "properties": {
+        "quality": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "ultra"]
+        },
+        "soundVolume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "vehicleType": {
+      "type": "string",
+      "enum": ["runner", "raft"]
+    },
+    "ghostEnabled": {
+      "type": "boolean"
+    },
+    "runs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["bestScore", "bestAirTime"],
+        "additionalProperties": false,
+        "properties": {
+          "bestScore": {
+            "type": "number",
+            "minimum": 0
+          },
+          "bestAirTime": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ghostData": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

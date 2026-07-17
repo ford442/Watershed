@@ -16,6 +16,9 @@ import {
   type RendererPreference,
 } from './rendering';
 import './style.css';
+import { initPersistence } from './systems/persistenceBootstrap';
+import { getActiveRunKey } from './utils/runContext';
+import { useGameStore } from './systems/GameState';
 
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only
@@ -88,6 +91,14 @@ function App() {
         .catch((err) => console.error('[App] Failed to load LevelEditor:', err));
     }
   }, []);
+
+  useEffect(() => {
+    initPersistence(getActiveRunKey());
+  }, []);
+
+  useEffect(() => {
+    useGameStore.getState().setIsPaused(phase === 'paused' || phase === 'menu');
+  }, [phase]);
 
   useEffect(() => {
     debug.runStage('appBootstrap', () => {

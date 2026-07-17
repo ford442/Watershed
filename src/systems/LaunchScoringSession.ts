@@ -2,6 +2,7 @@
  * LaunchScoringSession.ts — Runtime launch-session state for shelf air-time scoring.
  *
  * Air-time accumulates in physics-step time (world.timestep), not render frames.
+ * Transient flight state lives in module scope; Zustand receives popups + final reward only.
  */
 
 import { useGameStore } from './GameState';
@@ -12,8 +13,12 @@ import {
   predictLaunchTierLabel,
   tierDisplayLabel,
   type Vec3,
-} from './launchScoring';
+} from './scoreLaunch';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
+import { SHELF_LAUNCH_EVENT, type ShelfLaunchEventDetail } from './shelfLaunchEvents';
+import { updateRunBest } from './PersistenceSystem';
+import { persistGhostRecording } from './GhostRecorder';
+import { getActiveRunKey } from '../utils/runContext';
 
 export type ContactSurface = 'terrain' | 'water' | 'airborne';
 
@@ -25,30 +30,20 @@ const MAX_MULTIPLIER = 10;
 interface ActiveLaunch {
   sessionId: string;
   startStep: number;
-  cleanLaunch: boolean;
   launchPos: Vec3;
   pendingAirTime: number;
   hasLeftGround: boolean;
   airborneSteps: number;
   landingDebounceSteps: number;
   bodyHandle: number;
+  wallContactDuringFlight: boolean;
 }
 
 let activeLaunch: ActiveLaunch | null = null;
 let physicsStep = 0;
 let rewardIdCounter = 0;
 let popupIdCounter = 0;
-
-const HIGH_SCORE_KEY = 'watershed_highscore';
-
-const persistHighScore = (value: number): void => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(HIGH_SCORE_KEY, String(Math.floor(value)));
-  } catch {
-    // ignore storage failures
-  }
-};
+let shelfLaunchListenerAttached = false;
 
 export function getLaunchPhysicsStep(): number {
   return physicsStep;
@@ -63,10 +58,15 @@ export function hasActiveLaunch(): boolean {
   return activeLaunch !== null;
 }
 
+/** Measured air-time once the ascent debounce has cleared (for imperative HUD reads). */
+export function getActiveLaunchAirSeconds(): number {
+  if (!activeLaunch?.hasLeftGround) return 0;
+  return activeLaunch.pendingAirTime;
+}
+
 export function startLaunch(args: {
   sessionId: string;
   startStep: number;
-  cleanLaunch: boolean;
   launchPos: Vec3;
   bodyHandle: number;
   downstreamSpeed: number;
@@ -76,13 +76,13 @@ export function startLaunch(args: {
   activeLaunch = {
     sessionId: args.sessionId,
     startStep: args.startStep,
-    cleanLaunch: args.cleanLaunch,
     launchPos: { ...args.launchPos },
     pendingAirTime: 0,
     hasLeftGround: false,
     airborneSteps: 0,
     landingDebounceSteps: 0,
     bodyHandle: args.bodyHandle,
+    wallContactDuringFlight: false,
   };
 
   popupIdCounter += 1;
@@ -100,18 +100,28 @@ export function accumulateAir(physicsDt: number): void {
   activeLaunch.pendingAirTime += physicsDt;
 }
 
+export function recordLaunchWallContact(): void {
+  if (!activeLaunch?.hasLeftGround) return;
+  activeLaunch.wallContactDuringFlight = true;
+}
+
 export function cancelLaunch(): void {
   activeLaunch = null;
 }
 
-function commitActiveLaunch(landPos: Vec3): void {
+function commitActiveLaunch(landPos: Vec3, landedInSplashWater: boolean): void {
   if (!activeLaunch) return;
 
   const launch = activeLaunch;
   activeLaunch = null;
 
   const clearedGap = horizontalDistance(launch.launchPos, landPos) >= MIN_GAP_HORIZONTAL;
-  const result = calculateAirTimeScore(launch.pendingAirTime, launch.cleanLaunch, clearedGap);
+  const result = calculateAirTimeScore(
+    launch.pendingAirTime,
+    landedInSplashWater,
+    clearedGap,
+    launch.wallContactDuringFlight,
+  );
 
   if (result.score <= 0) return;
 
@@ -123,11 +133,15 @@ function commitActiveLaunch(landPos: Vec3): void {
     : state.multiplier;
 
   const score = state.score + result.score * Math.max(1, state.multiplier);
+  const runKey = getActiveRunKey();
   let highScore = state.highScore;
   if (score > highScore) {
     highScore = Math.floor(score);
-    persistHighScore(highScore);
+    updateRunBest(runKey, { bestScore: highScore });
+    persistGhostRecording(runKey);
   }
+
+  updateRunBest(runKey, { bestAirTime: launch.pendingAirTime });
 
   rewardIdCounter += 1;
   useGameStore.setState({
@@ -137,7 +151,7 @@ function commitActiveLaunch(landPos: Vec3): void {
     latestReward: {
       tier: result.tier,
       score: result.score,
-      clean: launch.cleanLaunch,
+      clean: result.clean,
       id: rewardIdCounter,
       label: tierDisplayLabel(result.tier),
     },
@@ -175,7 +189,8 @@ export function tickLaunchScoring(input: {
   }
 
   const validLanding =
-    (input.vehicle === 'runner' && input.contactSurface === 'terrain') ||
+    (input.vehicle === 'runner' &&
+      (input.contactSurface === 'terrain' || input.contactSurface === 'water')) ||
     (input.vehicle === 'raft' && input.contactSurface === 'water');
 
   if (!validLanding) {
@@ -185,7 +200,7 @@ export function tickLaunchScoring(input: {
 
   launch.landingDebounceSteps += 1;
   if (launch.landingDebounceSteps >= LANDING_DEBOUNCE_STEPS) {
-    commitActiveLaunch(input.position);
+    commitActiveLaunch(input.position, input.contactSurface === 'water');
   }
 }
 
@@ -195,16 +210,26 @@ export function notifyShelfLaunchImpulse(args: {
   downstreamSpeed: number;
 }): void {
   const step = bumpLaunchPhysicsStep();
-  const cleanLaunch = args.downstreamSpeed >= VEHICLE_TUNING.shelfLaunch.speedThreshold;
   const sessionId = `${args.bodyHandle}-${SLAB_ENTITY_ID}-${step}`;
 
   startLaunch({
     sessionId,
     startStep: step,
-    cleanLaunch,
     launchPos: args.launchPos,
     bodyHandle: args.bodyHandle,
     downstreamSpeed: args.downstreamSpeed,
+  });
+}
+
+/** Wire shelfLaunch CustomEvent → scoring session (call once at app boot). */
+export function initShelfLaunchScoringListener(): void {
+  if (shelfLaunchListenerAttached || typeof window === 'undefined') return;
+  shelfLaunchListenerAttached = true;
+
+  window.addEventListener(SHELF_LAUNCH_EVENT, (event) => {
+    const detail = (event as CustomEvent<ShelfLaunchEventDetail>).detail;
+    if (!detail) return;
+    notifyShelfLaunchImpulse(detail);
   });
 }
 

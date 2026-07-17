@@ -1,0 +1,330 @@
+{
+  "metadata": {
+    "name": "Glacial Source",
+    "author": "watershed",
+    "description": "Alpine ice cave opening into an ultra-fast meltwater tube, crevasse jump, and melt-out into the summer meander.",
+    "difficulty": "intermediate",
+    "estimatedDuration": 240,
+    "version": "1.0.0",
+    "tags": ["glacial", "alpine", "tube", "slush"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, 2, 40],
+        [0, 0, 10],
+        [1, -4, -20],
+        [3, -10, -70],
+        [2, -16, -140],
+        [0, -22, -220],
+        [-2, -28, -310],
+        [1, -32, -400]
+      ],
+      "segmentLength": 95,
+      "totalSegments": 18,
+      "width": 28,
+      "wallHeight": 22
+    },
+    "biome": {
+      "baseType": "glacial-melt",
+      "sky": {
+        "color": "#c8e4f8",
+        "cloudDensity": 0.25,
+        "cloudColor": "#f0f8ff"
+      },
+      "fog": {
+        "color": "#e8f4ff",
+        "near": 25,
+        "far": 140,
+        "density": 0.022
+      },
+      "lighting": {
+        "sunIntensity": 1.25,
+        "sunAngle": 28,
+        "sunColor": "#e8f6ff",
+        "ambientIntensity": 0.34,
+        "hemiSkyColor": "#b0d4f0",
+        "hemiGroundColor": "#506878"
+      },
+      "water": {
+        "tint": "#67c8e8",
+        "flowSpeed": 2.0,
+        "opacity": 0.78,
+        "surfaceRoughness": 0.35
+      }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "name": "Ice Cave Mouth",
+      "difficulty": 0.35,
+      "biomeOverride": "glacial-melt",
+      "width": 32,
+      "waterWidth": 9,
+      "meanderStrength": 0.15,
+      "verticalBias": -0.6,
+      "slipperiness": 0.75,
+      "physics": { "waterFlowIntensity": 1.6 },
+      "effects": { "particleCount": 60, "cameraShake": 0.08 },
+      "decorations": { "trees": 0, "rocks": 4 }
+    },
+    {
+      "index": 1,
+      "name": "Ice Cave Throat",
+      "difficulty": 0.45,
+      "biomeOverride": "glacial-melt",
+      "width": 28,
+      "waterWidth": 8,
+      "meanderStrength": 0.12,
+      "verticalBias": -0.9,
+      "slipperiness": 0.8,
+      "physics": { "waterFlowIntensity": 1.8 },
+      "effects": { "particleCount": 70, "cameraShake": 0.1 },
+      "decorations": { "trees": 0, "rocks": 5 }
+    },
+    {
+      "index": 2,
+      "name": "Cave Exit",
+      "difficulty": 0.5,
+      "biomeOverride": "glacial-melt",
+      "width": 26,
+      "waterWidth": 7,
+      "meanderStrength": 0.1,
+      "verticalBias": -1.1,
+      "slipperiness": 0.85,
+      "physics": { "waterFlowIntensity": 2.0 },
+      "effects": { "particleCount": 80, "cameraShake": 0.12 },
+      "decorations": { "trees": 0, "rocks": 6 }
+    },
+    {
+      "index": 3,
+      "name": "Tube Entry",
+      "difficulty": 0.6,
+      "biomeOverride": "glacial-melt",
+      "width": 25,
+      "waterWidth": 6,
+      "meanderStrength": 0.08,
+      "verticalBias": -1.4,
+      "slipperiness": 0.88,
+      "physics": { "waterFlowIntensity": 2.2 },
+      "effects": { "particleCount": 90, "cameraShake": 0.14 },
+      "decorations": { "trees": 0, "rocks": 7 }
+    },
+    {
+      "index": 4,
+      "difficulty": 0.65,
+      "biomeOverride": "glacial-melt",
+      "width": 24,
+      "waterWidth": 6,
+      "meanderStrength": 0.06,
+      "verticalBias": -1.6,
+      "slipperiness": 0.9,
+      "physics": { "waterFlowIntensity": 2.35 },
+      "effects": { "particleCount": 95, "cameraShake": 0.15 },
+      "decorations": { "trees": 0, "rocks": 8 }
+    },
+    {
+      "index": 5,
+      "difficulty": 0.7,
+      "biomeOverride": "glacial-melt",
+      "width": 24,
+      "waterWidth": 6,
+      "meanderStrength": 0.05,
+      "verticalBias": -1.8,
+      "slipperiness": 0.92,
+      "physics": { "waterFlowIntensity": 2.5 },
+      "effects": { "particleCount": 100, "cameraShake": 0.16 },
+      "decorations": { "trees": 0, "rocks": 8 }
+    },
+    {
+      "index": 6,
+      "difficulty": 0.72,
+      "biomeOverride": "glacial-melt",
+      "width": 23,
+      "waterWidth": 6,
+      "meanderStrength": 0.04,
+      "verticalBias": -2.0,
+      "slipperiness": 0.93,
+      "physics": { "waterFlowIntensity": 2.6 },
+      "effects": { "particleCount": 105, "cameraShake": 0.17 },
+      "decorations": { "trees": 0, "rocks": 9 }
+    },
+    {
+      "index": 7,
+      "difficulty": 0.75,
+      "biomeOverride": "glacial-melt",
+      "width": 23,
+      "waterWidth": 6,
+      "meanderStrength": 0.03,
+      "verticalBias": -2.1,
+      "slipperiness": 0.94,
+      "physics": { "waterFlowIntensity": 2.7 },
+      "effects": { "particleCount": 110, "cameraShake": 0.18 },
+      "decorations": { "trees": 0, "rocks": 9 }
+    },
+    {
+      "index": 8,
+      "difficulty": 0.78,
+      "biomeOverride": "glacial-melt",
+      "width": 22,
+      "waterWidth": 5,
+      "meanderStrength": 0.02,
+      "verticalBias": -2.2,
+      "slipperiness": 0.95,
+      "physics": { "waterFlowIntensity": 2.8 },
+      "effects": { "particleCount": 115, "cameraShake": 0.19 },
+      "decorations": { "trees": 0, "rocks": 10 }
+    },
+    {
+      "index": 9,
+      "difficulty": 0.8,
+      "biomeOverride": "glacial-melt",
+      "width": 22,
+      "waterWidth": 5,
+      "meanderStrength": 0.02,
+      "verticalBias": -2.3,
+      "slipperiness": 0.95,
+      "physics": { "waterFlowIntensity": 2.85 },
+      "effects": { "particleCount": 120, "cameraShake": 0.2 },
+      "decorations": { "trees": 0, "rocks": 10 }
+    },
+    {
+      "index": 10,
+      "name": "Tube Apex",
+      "difficulty": 0.82,
+      "biomeOverride": "glacial-melt",
+      "width": 21,
+      "waterWidth": 5,
+      "meanderStrength": 0.01,
+      "verticalBias": -2.4,
+      "slipperiness": 0.96,
+      "physics": { "waterFlowIntensity": 2.9 },
+      "effects": { "particleCount": 125, "cameraShake": 0.21 },
+      "decorations": { "trees": 0, "rocks": 11 }
+    },
+    {
+      "index": 11,
+      "name": "Crevasse Approach",
+      "difficulty": 0.75,
+      "biomeOverride": "glacial-melt",
+      "width": 24,
+      "waterWidth": 6,
+      "meanderStrength": 0.1,
+      "verticalBias": -2.0,
+      "slipperiness": 0.9,
+      "physics": { "waterFlowIntensity": 2.4 },
+      "effects": { "particleCount": 100, "cameraShake": 0.15 },
+      "decorations": { "trees": 0, "rocks": 8 }
+    },
+    {
+      "index": 12,
+      "name": "Crevasse Jump",
+      "difficulty": 0.85,
+      "type": "waterfall",
+      "biomeOverride": "glacial-melt",
+      "width": 26,
+      "waterWidth": 7,
+      "meanderStrength": 0.0,
+      "verticalBias": -2.8,
+      "forwardMomentum": 0.12,
+      "slipperiness": 0.85,
+      "physics": { "waterFlowIntensity": 2.2, "gravityMultiplier": 1.35 },
+      "effects": { "particleCount": 200, "cameraShake": 0.35 },
+      "decorations": {
+        "rocks": [
+          { "localX": -11, "localZ": -30, "scale": 3.5, "rotation": 0, "rockType": "slab" }
+        ]
+      },
+      "launchShelf": {
+        "rockRef": { "localX": -11, "localZ": -30, "scale": 3.5 },
+        "triggerHalfWidth": 8.0,
+        "triggerHalfLength": 6.5,
+        "triggerHeight": 5.5,
+        "triggerDownstreamOffset": 5.0,
+        "triggerYOffset": 0.8
+      }
+    },
+    {
+      "index": 13,
+      "name": "Crevasse Pool",
+      "difficulty": 0.55,
+      "type": "splash",
+      "biomeOverride": "glacial-melt",
+      "width": 30,
+      "waterWidth": 10,
+      "meanderStrength": 0.2,
+      "verticalBias": -0.8,
+      "slipperiness": 0.7,
+      "physics": { "waterFlowIntensity": 1.8 },
+      "effects": { "particleCount": 80, "cameraShake": 0.1 }
+    },
+    {
+      "index": 14,
+      "name": "Melt Widening",
+      "difficulty": 0.4,
+      "biomeOverride": "glacial-melt",
+      "width": 32,
+      "waterWidth": 11,
+      "meanderStrength": 0.35,
+      "verticalBias": -0.5,
+      "slipperiness": 0.5,
+      "physics": { "waterFlowIntensity": 1.4 },
+      "effects": { "particleCount": 60 },
+      "decorations": { "trees": 2, "rocks": 4 }
+    },
+    {
+      "index": 15,
+      "name": "Alpine Fringe",
+      "difficulty": 0.3,
+      "biomeOverride": "glacial-melt",
+      "width": 34,
+      "waterWidth": 13,
+      "meanderStrength": 0.5,
+      "verticalBias": -0.35,
+      "slipperiness": 0.3,
+      "physics": { "waterFlowIntensity": 1.1 },
+      "effects": { "particleCount": 50 },
+      "decorations": { "trees": 5, "rocks": 3 }
+    },
+    {
+      "index": 16,
+      "name": "Meadow Approach",
+      "difficulty": 0.2,
+      "biomeOverride": "glacial-melt",
+      "width": 35,
+      "waterWidth": 15,
+      "meanderStrength": 0.6,
+      "verticalBias": -0.2,
+      "slipperiness": 0.15,
+      "physics": { "waterFlowIntensity": 0.9 },
+      "effects": { "particleCount": 40 },
+      "decorations": { "trees": 8, "rocks": 2 }
+    },
+    {
+      "index": 17,
+      "name": "Melt-out",
+      "difficulty": 0.15,
+      "biomeOverride": "creek-summer",
+      "width": 35,
+      "waterWidth": 18,
+      "meanderStrength": 0.7,
+      "verticalBias": -0.1,
+      "slipperiness": 0.0,
+      "physics": { "waterFlowIntensity": 0.8 },
+      "effects": { "transitionDuration": 2000, "particleCount": 150 },
+      "decorations": { "trees": 12, "rocks": 1 }
+    }
+  ],
+  "spawns": {
+    "start": {
+      "position": [0, 4, -8],
+      "rotation": [0, 0, 0],
+      "velocity": [0, 0, 0]
+    },
+    "checkpoints": [
+      { "segment": 10, "position": [0, -18, -280], "radius": 25 },
+      { "segment": 12, "position": [0, -24, -380], "radius": 30 }
+    ]
+  }
+}

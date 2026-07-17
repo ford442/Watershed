@@ -11,7 +11,8 @@ export function populateZSteps(args) {
         trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
         wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
         birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
-        ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust
+        ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
+        icicles, iceSheets
     } = args;
     const getChannelShape = channelShapeFn;
     const waterLevel = WATER_LEVEL;
@@ -47,6 +48,7 @@ export function populateZSteps(args) {
                     wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
                     birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
                     ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
+                    icicles, iceSheets,
                     pathPoint, tangent, binormal, up, seedState, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
                 });
             }

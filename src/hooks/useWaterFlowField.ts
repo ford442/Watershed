@@ -2,6 +2,7 @@
 // Boss Fight: Make the raft feel the visual current
 
 import { useRef, useCallback } from 'react';
+import * as THREE from 'three';
 import { Vector3 } from 'three';
 import { useFrame } from '@react-three/fiber';
 

@@ -33,7 +33,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
   const resumeRef = useRef<HTMLButtonElement>(null);
 
   const settings = useGameStore((s) => s.settings);
+  const ghostEnabled = useGameStore((s) => s.ghostEnabled);
   const setSettings = useGameStore((s) => s.setSettings);
+  const setGhostEnabled = useGameStore((s) => s.setGhostEnabled);
 
   // Focus resume button when pause opens
   useEffect(() => {
@@ -104,6 +106,15 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               aria-label="Open Settings"
             >
               SETTINGS
+            </button>
+
+            <button
+              className={`pause-menu-ghost-btn ${ghostEnabled ? 'active' : ''}`}
+              onClick={() => setGhostEnabled(!ghostEnabled)}
+              aria-pressed={ghostEnabled}
+              aria-label={ghostEnabled ? 'Hide best-run ghost' : 'Show best-run ghost'}
+            >
+              GHOST: {ghostEnabled ? 'ON' : 'OFF'}
             </button>
 
             <button

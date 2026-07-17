@@ -1,0 +1,164 @@
+{
+  "metadata": {
+    "name": "Delta Rapids Continued",
+    "author": "watershed",
+    "description": "Toy second map: calm delta pond into narrowing autumn rapids.",
+    "difficulty": "beginner",
+    "estimatedDuration": 180,
+    "version": "1.0.0",
+    "tags": ["delta", "autumn", "stub"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, -2, 40],
+        [0, -2, 0],
+        [2, -4, -40],
+        [4, -8, -120],
+        [0, -12, -220]
+      ],
+      "segmentLength": 80,
+      "totalSegments": 9,
+      "width": 90,
+      "wallHeight": 12
+    },
+    "biome": {
+      "baseType": "midnight-mist",
+      "sky": { "color": "#c9a66b", "cloudDensity": 0.3 },
+      "fog": { "color": "#b8c4a8", "near": 30, "far": 180, "density": 0.02 },
+      "lighting": {
+        "sunIntensity": 0.9,
+        "sunAngle": 35,
+        "ambientIntensity": 0.45
+      },
+      "water": { "tint": "#6a8f6a", "flowSpeed": 0.35, "opacity": 0.8 }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "difficulty": 0.1,
+      "type": "pond",
+      "biomeOverride": "midnight-mist",
+      "width": 115,
+      "waterWidth": 42,
+      "verticalBias": -0.02,
+      "meanderStrength": 0.25,
+      "physics": { "waterFlowIntensity": 0.25 },
+      "treeDensity": 0.25,
+      "rockDensity": "low"
+    },
+    {
+      "index": 1,
+      "difficulty": 0.12,
+      "type": "pond",
+      "biomeOverride": "midnight-mist",
+      "width": 115,
+      "waterWidth": 42,
+      "verticalBias": -0.02,
+      "meanderStrength": 0.25,
+      "physics": { "waterFlowIntensity": 0.25 },
+      "treeDensity": 0.25,
+      "rockDensity": "low"
+    },
+    {
+      "index": 2,
+      "difficulty": 0.15,
+      "type": "pond",
+      "biomeOverride": "midnight-mist",
+      "width": 115,
+      "waterWidth": 42,
+      "verticalBias": -0.02,
+      "meanderStrength": 0.25,
+      "physics": { "waterFlowIntensity": 0.25 },
+      "treeDensity": 0.25,
+      "rockDensity": "low"
+    },
+    {
+      "index": 3,
+      "difficulty": 0.35,
+      "biomeOverride": "midnight-mist",
+      "width": 85,
+      "waterWidth": 30,
+      "verticalBias": -0.35,
+      "meanderStrength": 0.8,
+      "physics": { "waterFlowIntensity": 0.9 },
+      "treeDensity": 0.35,
+      "rockDensity": "medium",
+      "effects": { "particleCount": 120 }
+    },
+    {
+      "index": 4,
+      "difficulty": 0.4,
+      "biomeOverride": "midnight-mist",
+      "width": 85,
+      "waterWidth": 30,
+      "verticalBias": -0.35,
+      "meanderStrength": 0.8,
+      "physics": { "waterFlowIntensity": 0.9 },
+      "treeDensity": 0.35,
+      "rockDensity": "medium",
+      "effects": { "particleCount": 120 }
+    },
+    {
+      "index": 5,
+      "difficulty": 0.45,
+      "biomeOverride": "midnight-mist",
+      "width": 85,
+      "waterWidth": 30,
+      "verticalBias": -0.35,
+      "meanderStrength": 0.8,
+      "physics": { "waterFlowIntensity": 0.9 },
+      "treeDensity": 0.35,
+      "rockDensity": "medium",
+      "effects": { "particleCount": 120 }
+    },
+    {
+      "index": 6,
+      "difficulty": 0.55,
+      "biomeOverride": "creek-autumn",
+      "width": 62,
+      "waterWidth": 22,
+      "verticalBias": -0.55,
+      "meanderStrength": 1.2,
+      "physics": { "waterFlowIntensity": 1.15 },
+      "treeDensity": 0.55,
+      "rockDensity": "high",
+      "effects": { "particleCount": 220, "cameraShake": 0.12 }
+    },
+    {
+      "index": 7,
+      "difficulty": 0.6,
+      "biomeOverride": "creek-autumn",
+      "width": 62,
+      "waterWidth": 22,
+      "verticalBias": -0.55,
+      "meanderStrength": 1.2,
+      "physics": { "waterFlowIntensity": 1.15 },
+      "treeDensity": 0.55,
+      "rockDensity": "high",
+      "effects": { "particleCount": 220, "cameraShake": 0.12 }
+    },
+    {
+      "index": 8,
+      "difficulty": 0.3,
+      "type": "splash",
+      "biomeOverride": "midnight-mist",
+      "width": 100,
+      "waterWidth": 36,
+      "verticalBias": -0.08,
+      "meanderStrength": 0.1,
+      "physics": { "waterFlowIntensity": 0.35 },
+      "treeDensity": 0.2,
+      "rockDensity": "low",
+      "journeyComplete": true
+    }
+  ],
+  "spawns": {
+    "start": {
+      "position": [0, -2, -10],
+      "rotation": [0, 0, 0],
+      "velocity": [0, 0, 0]
+    }
+  }
+}

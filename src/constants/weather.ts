@@ -4,7 +4,7 @@
  * Tunable parameters for dynamic weather effects.
  */
 
-export type WeatherType = 'clear' | 'rain' | 'fog' | 'storm';
+export type WeatherType = 'clear' | 'rain' | 'fog' | 'storm' | 'snow';
 
 export const WEATHER_CONFIG = {
   /** Default weather when no manifest value is provided */
@@ -34,6 +34,22 @@ export const WEATHER_CONFIG = {
     splashBrightness: 0.7,
   },
 
+  snow: {
+    /** Total snow drift particles — lighter than rain for perf */
+    particleCount: 4500,
+    /** Slow tumble fall speed */
+    fallSpeed: 6,
+    /** Lateral wind drift */
+    windX: 1.8,
+    windZ: 0.8,
+    spawnWidth: 45,
+    spawnLength: 55,
+    spawnHeight: 28,
+    /** No water splashes for snow */
+    splashCount: 0,
+    splashBrightness: 0,
+  },
+
   fog: {
     /** Fog density in clear weather */
     clearDensity: 0.008,
@@ -43,6 +59,8 @@ export const WEATHER_CONFIG = {
     fogDensity: 0.045,
     /** Fog density in storm */
     stormDensity: 0.065,
+    /** Fog density in glacial snow drift */
+    snowDensity: 0.028,
     /** Fog color in clear weather (hex) */
     clearColor: '#a5d6ff',
     /** Fog color in rain (hex) */
@@ -51,6 +69,8 @@ export const WEATHER_CONFIG = {
     fogColor: '#4a5a6a',
     /** Fog color in storm (hex) */
     stormColor: '#3a4a5a',
+    /** Fog color in glacial snow (hex) */
+    snowColor: '#e0f0ff',
   },
 
   lighting: {

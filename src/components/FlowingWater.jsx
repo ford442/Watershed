@@ -7,6 +7,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { SHADERS, WATER_LEVEL, WATER_SHADER } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
+import { getSWEHeightFieldSnapshot, SWE_MEAN_DEPTH } from '../systems/SWEHeightField';
 
 let warnedInvalidWaterShader = false;
 let warnedWaterShaderCompile = false;
@@ -34,6 +35,7 @@ export default function FlowingWater({
   vehicleVelocity = null,
   weatherRipple = 0,
   wetness = 0,
+  slushiness = 0,
   waterSurfaceOffset = 0,
   sunWorldPosition = null,
   isPond = false,
@@ -46,7 +48,7 @@ export default function FlowingWater({
   const effectiveWaterColor = baseColor || biomeData.waterColor;
   const effectiveFoamColor = foamColor || biomeData.foamColor;
   const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
-  const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0);
+  const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0) * (1.0 + slushiness * 0.25);
   const effectiveFlowMap = heightmapFlow?.flowMapTexture || flowMap;
 
   useEffect(() => {
@@ -98,6 +100,7 @@ export default function FlowingWater({
     uniform float timeOfDay;
     uniform float weatherRipple;
     uniform float wetness;
+    uniform float slushiness;
     uniform vec3 vehiclePos;
     uniform vec3 vehicleVelocity;
     uniform sampler2D flowMap;
@@ -181,6 +184,8 @@ export default function FlowingWater({
       float wakeDisplacement = wakeMask * vWave * 0.15;
 
       float foam = clamp(foamStreak + edgeFoam + wakeFoam + eddyFoam + bubbleLines, 0.0, 1.0);
+      // Slush: brighter, denser foam and slightly milky water
+      foam = clamp(foam * (1.0 + slushiness * 0.85), 0.0, 1.0);
 
       float depthFactor = 1.0 - edgeDist * 2.0;
       depthFactor = clamp(depthFactor, 0.0, 1.0);
@@ -253,8 +258,8 @@ export default function FlowingWater({
       float nightDim = 1.0 - (timeOfDay * 0.4);
       col *= nightDim;
 
-      float alpha = 0.7 + vWave * 0.1 + foam * 0.08 + vCurrent * 0.06;
-      gl_FragColor = vec4(col, clamp(alpha, 0.62, 0.94));
+      float alpha = 0.7 + vWave * 0.1 + foam * 0.08 + vCurrent * 0.06 + slushiness * 0.06;
+      gl_FragColor = vec4(col, clamp(alpha, 0.62, 0.96));
     }
   `, [noiseHelpers]);
 
@@ -329,6 +334,7 @@ export default function FlowingWater({
           timeOfDay: { value: 0 },
           weatherRipple: { value: weatherRipple },
           wetness: { value: wetness },
+          slushiness: { value: slushiness },
           vehiclePos: { value: vehiclePos ? new THREE.Vector3().copy(vehiclePos) : new THREE.Vector3(99999.0, 99999.0, 99999.0) },
           vehicleVelocity: { value: vehicleVelocity ? new THREE.Vector3().copy(vehicleVelocity) : new THREE.Vector3() },
           flowMap: { value: effectiveFlowMap || null },
@@ -339,6 +345,13 @@ export default function FlowingWater({
           // World-space sun/moon position for specular catch-light
           sunWorldPos: { value: sunWorldPosition ? new THREE.Vector3().copy(sunWorldPosition) : new THREE.Vector3(100, 200, -100) },
           isPond: { value: isPond ? 1.0 : 0.0 },
+          sweHeightMap: { value: null },
+          sweOrigin: { value: new THREE.Vector2() },
+          sweCellSize: { value: 0.5 },
+          sweGridSize: { value: new THREE.Vector2(48, 32) },
+          sweMeanDepth: { value: SWE_MEAN_DEPTH },
+          sweDisplacementScale: { value: 0.22 },
+          sweEnabled: { value: 0.0 },
         },
         vertexShader: `
           uniform float time;
@@ -349,6 +362,13 @@ export default function FlowingWater({
           uniform vec3 vehiclePos;
           uniform vec3 vehicleVelocity;
           uniform float isPond;
+          uniform sampler2D sweHeightMap;
+          uniform vec2 sweOrigin;
+          uniform float sweCellSize;
+          uniform vec2 sweGridSize;
+          uniform float sweMeanDepth;
+          uniform float sweDisplacementScale;
+          uniform float sweEnabled;
 
           varying vec2 vUv;
           varying vec3 vWorldPos;
@@ -402,6 +422,15 @@ export default function FlowingWater({
             return (swell1 + swell2 + detail + chop + ripple + pondRipple) * scale * proximityScale + vehicleTurb;
           }
 
+          float sampleSWEDisplacement(vec2 worldXZ) {
+            if (sweEnabled < 0.5) return 0.0;
+            vec2 gridSpan = sweGridSize * sweCellSize;
+            vec2 local = (worldXZ - sweOrigin) / gridSpan;
+            if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) return 0.0;
+            float h = texture2D(sweHeightMap, local).r;
+            return (h - sweMeanDepth) * sweDisplacementScale;
+          }
+
           void main() {
             vUv = uv;
             vec3 pos = position;
@@ -418,15 +447,18 @@ export default function FlowingWater({
             #endif
 
             float d = getDisplacement(pos.xz, flowBias);
+            pos.y += sampleSWEDisplacement(worldPos.xz);
             pos.y += d;
 
             // 4-sample cross gradient for more accurate normals (reduces faceting in Fresnel)
             // WGSL migration: identical math, just dpdx/dpdy built-ins can replace this
             const float h = 0.08;
-            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias);
-            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias);
-            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias);
-            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias);
+            float sweD = sampleSWEDisplacement(worldPos.xz);
+            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(h, 0.0));
+            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(h, 0.0));
+            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(0.0, h));
+            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(0.0, h));
+            float dCenter = d + sweD;
             // Central-difference tangents give a smoother, analytically correct normal
             vec3 tangentX = normalize(vec3(2.0 * h, dR - dL, 0.0));
             vec3 tangentZ = normalize(vec3(0.0, dU - dD, 2.0 * h));
@@ -436,7 +468,7 @@ export default function FlowingWater({
             vViewDir = normalize(cameraPosition - worldPos);
             vWorldPos = worldPos;
 
-            vWave = clamp(d * 2.0 + 0.5, 0.0, 1.0);
+            vWave = clamp(dCenter * 2.0 + 0.5, 0.0, 1.0);
 
             float effFlow = flowSpeed;
             float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
@@ -490,6 +522,7 @@ export default function FlowingWater({
     effectiveFlowMap,
     heightmapFlow,
     noiseHelpers,
+    slushiness,
   ]);
 
   // Update uniforms with strong guards
@@ -520,6 +553,9 @@ export default function FlowingWater({
     if (mat.uniforms.wetness) {
       mat.uniforms.wetness.value = wetness;
     }
+    if (mat.uniforms.slushiness) {
+      mat.uniforms.slushiness.value = slushiness;
+    }
     if (mat.uniforms.flowMap) {
       mat.uniforms.flowMap.value = heightmapFlowRef.current?.flowMapTexture || flowMap || null;
     }
@@ -549,6 +585,23 @@ export default function FlowingWater({
     }
     if (mat.uniforms.isPond) {
       mat.uniforms.isPond.value = isPond ? 1.0 : 0.0;
+    }
+
+    const swe = getSWEHeightFieldSnapshot();
+    if (mat.uniforms.sweHeightMap) {
+      mat.uniforms.sweHeightMap.value = swe.texture;
+    }
+    if (mat.uniforms.sweOrigin) {
+      mat.uniforms.sweOrigin.value.set(swe.originX, swe.originZ);
+    }
+    if (mat.uniforms.sweCellSize) {
+      mat.uniforms.sweCellSize.value = swe.cellSize;
+    }
+    if (mat.uniforms.sweGridSize) {
+      mat.uniforms.sweGridSize.value.set(swe.width, swe.height);
+    }
+    if (mat.uniforms.sweEnabled) {
+      mat.uniforms.sweEnabled.value = swe.enabled && swe.texture ? 1.0 : 0.0;
     }
   });
 

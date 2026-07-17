@@ -18,10 +18,10 @@ import {
   type ShelfTrigger,
 } from '../../utils/shelfLaunch';
 import {
-  notifyShelfLaunchImpulse,
   tickLaunchScoring,
   hasActiveLaunch,
 } from '../../../systems/LaunchScoringSession';
+import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -245,7 +245,11 @@ export function updateRunnerPhysics({
         physicsDt,
         bodyHandle: body.handle,
         position: pos,
-        contactSurface: isGrounded ? 'terrain' : 'airborne',
+        contactSurface: isGrounded
+          ? 'terrain'
+          : pos.y < WATER_LEVEL + 0.55
+            ? 'water'
+            : 'airborne',
         vehicle: 'runner',
       });
 
@@ -366,7 +370,7 @@ export function updateRunnerPhysics({
         applyImpulseWithDebugTracking('shelfLaunch', launch.impulse);
         triggerCameraShake(0.45, 0.25);
         playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
-        notifyShelfLaunchImpulse({
+        emitShelfLaunch({
           bodyHandle: body.handle,
           launchPos: pos,
           downstreamSpeed: getShelfDownstreamSpeed(vel),
@@ -558,7 +562,8 @@ export function updateRunnerPhysics({
 
     handleDodgeAndCollision({
         dodgeState, dodgeJustPressed, isGrounded, camera, leftward, rightward, forward, backward, dt,
-        body, pos, vel, prevFrame, js, vehicle, collisionState, debugState, now
+        body, pos, vel, prevFrame, js, vehicle, collisionState, debugState, now,
+        applyImpulseWithDebugTracking, rapier, world,
     });
     // === FOOTSTEP AUDIO (F1) ===
     if (isGrounded && js.state === 'grounded') {
@@ -786,10 +791,10 @@ export function updateRunnerPhysics({
       debugState.current.recentImpulses.push({ tag, at: now, impulse });
     });
     debugState.current.recentImpulses = debugState.current.recentImpulses
-      .filter((entry) => now - entry.at <= 2000)
+      .filter((entry: { at: number }) => now - entry.at <= 2000)
       .slice(-16);
     debugState.current.recentContacts = debugState.current.recentContacts
-      .filter((entry) => now - entry.at <= 2500)
+      .filter((entry: { at: number }) => now - entry.at <= 2500)
       .slice(-8);
 
     const gravMult = useGameStore.getState().waterfallGravityMultiplier;

@@ -159,14 +159,14 @@ export const CollisionParticles: React.FC<CollisionParticlesProps> = ({
  * CollisionManager - Manages active collision particle systems
  */
 export const CollisionManager: React.FC = () => {
-  const [activeCollisions, setActiveCollisions] = React.useRef<
+  const activeCollisions = useRef<
     Array<{
       id: number;
       material: SurfaceMaterial;
       position: THREE.Vector3;
       intensity: number;
     }>
-  >({ current: [] });
+  >([]);
 
   React.useEffect(() => {
     const handleCollision = (event: Event) => {
@@ -190,12 +190,17 @@ export const CollisionManager: React.FC = () => {
   }, []);
 
   const removeCollision = (id: number) => {
-    activeCollisions.current = activeCollisions.current.filter(c => c.id !== id);
+    activeCollisions.current = activeCollisions.current.filter((c: { id: number }) => c.id !== id);
   };
 
   return (
     <>
-      {activeCollisions.current.map(collision => (
+      {activeCollisions.current.map((collision: {
+        id: number;
+        material: SurfaceMaterial;
+        position: THREE.Vector3;
+        intensity: number;
+      }) => (
         <CollisionParticles
           key={collision.id}
           material={collision.material}

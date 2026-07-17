@@ -160,7 +160,7 @@ export default function ReachManager({
   // will use createSegmentData() instead of adaptReachSegment().
   // Do NOT render ReactiveAudio/WeatherSystem on error to avoid hook errors.
   const segmentsForTrack = error ? undefined : reachSegments ?? undefined;
-  const fallbackWeather = { type: 'clear', intensity: 0.5 };
+  const fallbackWeather = { type: 'clear' as const, intensity: 0.5 };
 
   return (
     <>
@@ -176,12 +176,12 @@ export default function ReachManager({
           <ReactiveAudio
             targetRef={playerRef}
             reachId={reachId}
-            manifest={manifest}
+            manifest={manifest ?? undefined}
             reachSegments={reachSegments ?? []}
           />
           <WeatherSystem
             targetRef={playerRef}
-            weather={manifest?.weather || fallbackWeather}
+            weather={(manifest?.weather ?? fallbackWeather) as { type: import('../constants/weather').WeatherType; intensity: number }}
           />
         </>
       )}

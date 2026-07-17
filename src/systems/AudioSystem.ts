@@ -34,7 +34,7 @@ interface SoundDef {
 // Active sound tracking
 interface ActiveSound {
   name: string;
-  source: THREE.Audio | THREE.PositionalAudio;
+  source: THREE.Audio<AudioNode> | THREE.PositionalAudio;
   startTime: number;
 }
 
@@ -107,9 +107,9 @@ export class AudioManager {
   private listener: THREE.AudioListener;
   private loader: THREE.AudioLoader;
   private audioContext: AudioContext | null = null;
-  private sounds: Map<string, THREE.AudioBuffer> = new Map();
+  private sounds: Map<string, AudioBuffer> = new Map();
   private activeSounds: Map<string, ActiveSound[]> = new Map();
-  private ambientTrack: THREE.Audio | null = null;
+  private ambientTrack: THREE.Audio<AudioNode> | THREE.PositionalAudio | null = null;
   private isMuted: boolean = false;
   private masterVolume: number = 1.0;
   
@@ -177,7 +177,7 @@ export class AudioManager {
   /**
    * Load a sound file into memory
    */
-  async loadSound(name: string): Promise<THREE.AudioBuffer | null> {
+  async loadSound(name: string): Promise<AudioBuffer | null> {
     if (this.sounds.has(name)) {
       return this.sounds.get(name)!;
     }
@@ -253,15 +253,16 @@ export class AudioManager {
     }
     
     // Create audio source
-    let source: THREE.Audio | THREE.PositionalAudio;
+    let source: THREE.Audio<AudioNode> | THREE.PositionalAudio;
     if (position) {
-      source = new THREE.PositionalAudio(this.listener);
-      source.position.copy(position);
-      source.setRefDistance(10);
-      source.setRolloffFactor(1);
-      source.setDistanceModel('inverse');
+      const positional = new THREE.PositionalAudio(this.listener);
+      positional.position.copy(position);
+      (positional as THREE.PositionalAudio).setRefDistance(10);
+      (positional as THREE.PositionalAudio).setRolloffFactor(1);
+      (positional as THREE.PositionalAudio).setDistanceModel('inverse');
+      source = positional;
     } else {
-      source = new THREE.Audio(this.listener);
+      source = new THREE.Audio(this.listener) as THREE.Audio<AudioNode>;
     }
     
     // Set buffer
@@ -398,10 +399,11 @@ export class AudioManager {
     this.loadSound(trackName).then(buffer => {
       if (!buffer) return;
       
-      this.ambientTrack = new THREE.Audio(this.listener);
-      this.ambientTrack.setBuffer(buffer);
-      this.ambientTrack.setLoop(true);
-      this.ambientTrack.setVolume(0);
+      const track = new THREE.Audio(this.listener) as THREE.Audio<AudioNode>;
+      this.ambientTrack = track;
+      track.setBuffer(buffer);
+      track.setLoop(true);
+      track.setVolume(0);
       
       const def = SOUND_LIBRARY[trackName];
       const targetVol = (def?.baseVolume || 0.3) * this.masterVolume;
@@ -417,7 +419,7 @@ export class AudioManager {
         }
       };
       
-      this.ambientTrack.play();
+      track.play();
       fadeIn();
     });
   }

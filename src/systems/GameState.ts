@@ -60,6 +60,8 @@ export interface GameState {
   sprintStamina: number;
   /** Active vehicle type — gates HUD elements and post-processing. */
   vehicleType: 'runner' | 'raft';
+  /** Show best-run ghost replay during the current run. */
+  ghostEnabled: boolean;
   /** Instant tier label popup at shelf launch (not the committed score). */
   launchPopup: { label: string; id: number } | null;
   /** Committed air-time reward after a valid landing. */
@@ -95,6 +97,7 @@ export interface GameActions {
   /** Clamps value to [0, 1] before writing. Call from useFrame via getState() — never via the hook. */
   setSprintStamina: (v: number) => void;
   setVehicleType: (type: 'runner' | 'raft') => void;
+  setGhostEnabled: (enabled: boolean) => void;
   resetGameState: () => void;
 }
 
@@ -109,17 +112,6 @@ const DEFAULT_SETTINGS: GameSettings = {
   soundVolume: 0.8,
 };
 
-const readStoredHighScore = (): number => {
-  if (typeof window === 'undefined') return 0;
-  try {
-    const raw = window.localStorage.getItem('watershed_highscore');
-    const parsed = raw ? Number.parseInt(raw, 10) : 0;
-    return Number.isFinite(parsed) ? parsed : 0;
-  } catch {
-    return 0;
-  }
-};
-
 const INITIAL_STATE: GameState = {
   playerPosition: { x: 0, y: -6, z: -10 },
   currentSpeed: 0,
@@ -131,7 +123,7 @@ const INITIAL_STATE: GameState = {
   multiplier: 1,
   topSpeed: 0,
   comboLabel: '',
-  highScore: readStoredHighScore(),
+  highScore: 0,
   currentSegmentIndex: 0,
   isWipeout: false,
   isJourneyComplete: false,
@@ -142,6 +134,7 @@ const INITIAL_STATE: GameState = {
   settings: { ...DEFAULT_SETTINGS },
   sprintStamina: 1.0,
   vehicleType: 'runner',
+  ghostEnabled: true,
   launchPopup: null,
   latestReward: null,
 };
@@ -186,13 +179,6 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => {
       const finalScore = state.score;
       const newHighScore = Math.max(state.highScore, finalScore);
-      if (newHighScore > state.highScore && typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('watershed_highscore', String(newHighScore));
-        } catch {
-          // ignore storage errors
-        }
-      }
       return {
         isJourneyComplete: true,
         isPaused: true,
@@ -221,12 +207,16 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setVehicleType: (type) => set({ vehicleType: type }),
 
+  setGhostEnabled: (enabled) => set({ ghostEnabled: enabled }),
+
   resetGameState: () =>
-    set({
+    set((state) => ({
       ...INITIAL_STATE,
-      highScore: readStoredHighScore(),
-      settings: { ...DEFAULT_SETTINGS },
-    }),
+      highScore: state.highScore,
+      settings: { ...state.settings },
+      vehicleType: state.vehicleType,
+      ghostEnabled: state.ghostEnabled,
+    })),
 }));
 
 // =============================================================================

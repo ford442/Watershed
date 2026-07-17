@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FLOW_FORECAST_STATES, type FlowForecastState } from '../constants/game';
 
-export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon' | 'delta' | 'glacier';
+export type TrackBiomeId = 'summer' | 'autumn' | 'slotCanyon' | 'delta' | 'glacier' | 'glacialMelt';
 
 export type TreeSpeciesId = 'conifer' | 'broadleaf' | 'birch' | 'snag';
 
@@ -90,6 +90,25 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
       rim: { conifer: 0.2, broadleaf: 0.05, birch: 0.05, snag: 0.7 },
     },
   },
+  glacialMelt: {
+    id: 'glacialMelt',
+    waterWidth: 6,
+    canyonWidth: 25,
+    wallHeight: 22,
+    wallTightness: 0.72,
+    wallFriction: 0.14,
+    wallShadowStrength: 0.75,
+    vegetationDensity: 0.05,
+    rockDensity: 'medium' as const,
+    rockBaseColor: '#c8d8e8',
+    rockShadowColor: '#2a4858',
+    rockRimColor: '#f0f8ff',
+    decorationBias: { trees: 0.04, grasses: 0.02, reeds: 0.0, rocks: 1.4 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.15, broadleaf: 0.0, birch: 0.05, snag: 0.8 },
+      rim: { conifer: 0.2, broadleaf: 0.0, birch: 0.05, snag: 0.75 },
+    },
+  },
   glacier: {
     id: 'glacier',
     waterWidth: 7,
@@ -135,6 +154,12 @@ export const TRACK_BIOMES: Record<TrackBiomeId, TrackBiomeProfile> = {
   },
 };
 
+export function isGlacialBiome(biome: string, profile?: TrackBiomeProfile): boolean {
+  const id = profile?.id ?? biome;
+  return id === 'glacialMelt' || id === 'glacier'
+    || biome === 'glacialMelt' || biome === 'glacier' || biome === 'glacial';
+}
+
 export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
   if (biome === 'slot' || biome === 'slot-canyon') {
     return TRACK_BIOMES.slotCanyon;
@@ -146,6 +171,10 @@ export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
 
   if (biome === 'delta') {
     return TRACK_BIOMES.delta;
+  }
+
+  if (biome === 'glacialMelt' || biome === 'glacial-melt' || biome === 'alpine-glacial') {
+    return TRACK_BIOMES.glacialMelt;
   }
 
   if (biome === 'glacier' || biome === 'glacial') {

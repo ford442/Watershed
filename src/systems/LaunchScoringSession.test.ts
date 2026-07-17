@@ -7,20 +7,26 @@
 import { useGameStore } from './GameState';
 import {
   AIR_TIME_THRESHOLDS,
-  CLEAN_LAUNCH_BONUS,
+  CLEAN_LAUNCH_SCORE_MULTIPLIER,
   MIN_GAP_HORIZONTAL,
   TIER_SCORES,
-} from './launchScoring';
+} from './scoreLaunch';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
+import { SHELF_LAUNCH_EVENT } from './shelfLaunchEvents';
 import {
   cancelLaunch,
+  getActiveLaunchAirSeconds,
   hasActiveLaunch,
+  initShelfLaunchScoringListener,
   notifyShelfLaunchImpulse,
+  recordLaunchWallContact,
   resetLaunchScoringSession,
   startLaunch,
   tickLaunchScoring,
   type ContactSurface,
 } from './LaunchScoringSession';
+import { resetPersistenceForTests } from './PersistenceSystem';
+import { getActiveRunKey } from '../utils/runContext';
 
 const BODY_HANDLE = 42;
 const OTHER_BODY_HANDLE = 99;
@@ -53,7 +59,6 @@ function startDefaultLaunch(overrides: Partial<Parameters<typeof startLaunch>[0]
   startLaunch({
     sessionId: 'test-session',
     startStep: 1,
-    cleanLaunch: true,
     launchPos: LAUNCH_POS,
     bodyHandle: BODY_HANDLE,
     downstreamSpeed: 16,
@@ -77,7 +82,6 @@ function tick(input: {
   });
 }
 
-/** Consecutive airborne physics steps (includes ascent debounce window). */
 function tickAirborne(
   count: number,
   vehicle: 'runner' | 'raft' = 'runner',
@@ -99,7 +103,6 @@ function tickLanding(
   }
 }
 
-/** Airborne ticks after ascent gate, then landing debounce on the given surface. */
 function completeFlight(args: {
   airTicks: number;
   vehicle?: 'runner' | 'raft';
@@ -120,22 +123,24 @@ describe('LaunchScoringSession', () => {
     resetLaunchScoringSession();
     resetStore();
     localStorage.clear();
+    resetPersistenceForTests();
   });
 
   describe('ascent gate', () => {
     it('does not accumulate air-time before LEFT_GROUND_DEBOUNCE_STEPS airborne ticks', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS - 1);
       tickLanding(LANDING_DEBOUNCE_STEPS, 'runner', 'terrain');
 
       expect(hasActiveLaunch()).toBe(true);
+      expect(getActiveLaunchAirSeconds()).toBe(0);
       expect(useGameStore.getState().latestReward).toBeNull();
       expect(useGameStore.getState().score).toBe(0);
     });
 
     it('begins accumulation only after the ascent debounce clears', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS - 1);
       tickAirborne(1);
@@ -148,14 +153,13 @@ describe('LaunchScoringSession', () => {
     });
 
     it('resets airborne counter when terrain/water contact occurs before hasLeftGround', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS - 1);
       tick({ contactSurface: 'terrain' });
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS - 1);
       tickLanding(LANDING_DEBOUNCE_STEPS, 'runner', 'terrain');
 
-      // Interrupted ascent never opened accumulation; landing ticks are ignored pre-hasLeftGround.
       expect(hasActiveLaunch()).toBe(true);
       expect(useGameStore.getState().latestReward).toBeNull();
       expect(useGameStore.getState().score).toBe(0);
@@ -164,7 +168,7 @@ describe('LaunchScoringSession', () => {
 
   describe('air accumulation', () => {
     it('accumulates physicsDt once hasLeftGround and commits Nice tier score', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       completeFlight({ airTicks });
@@ -178,11 +182,17 @@ describe('LaunchScoringSession', () => {
       });
       expect(state.score).toBe(TIER_SCORES.Nice);
     });
+
+    it('exposes measured air-time for imperative HUD reads', () => {
+      startDefaultLaunch();
+      tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + 4);
+      expect(getActiveLaunchAirSeconds()).toBeCloseTo(0.4, 5);
+    });
   });
 
   describe('runner landing', () => {
     it('requires LANDING_DEBOUNCE_STEPS consecutive terrain ticks to commit', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks);
@@ -197,32 +207,35 @@ describe('LaunchScoringSession', () => {
       expect(useGameStore.getState().latestReward).not.toBeNull();
     });
 
-    it('does not commit on water contact for runner', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+    it('commits on splash-pool water contact for runner', () => {
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
-      tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks);
-      tickLanding(LANDING_DEBOUNCE_STEPS, 'runner', 'water');
+      completeFlight({ airTicks, landingSurface: 'water' });
 
-      expect(hasActiveLaunch()).toBe(true);
-      expect(useGameStore.getState().latestReward).toBeNull();
-      expect(useGameStore.getState().score).toBe(0);
+      expect(hasActiveLaunch()).toBe(false);
+      expect(useGameStore.getState().latestReward).toMatchObject({
+        tier: 'Nice',
+        clean: true,
+      });
     });
   });
 
   describe('raft landing', () => {
     it('commits on water, not terrain', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       completeFlight({ airTicks, vehicle: 'raft', landingSurface: 'water' });
 
       expect(useGameStore.getState().latestReward).not.toBeNull();
-      expect(useGameStore.getState().score).toBe(TIER_SCORES.Nice);
+      expect(useGameStore.getState().score).toBe(
+        Math.round(TIER_SCORES.Nice * CLEAN_LAUNCH_SCORE_MULTIPLIER),
+      );
 
       resetLaunchScoringSession();
       resetStore();
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks, 'raft');
       tickLanding(LANDING_DEBOUNCE_STEPS, 'raft', 'terrain');
 
@@ -231,14 +244,30 @@ describe('LaunchScoringSession', () => {
     });
   });
 
+  describe('clean launch rules', () => {
+    it('marks launch dirty after a wall contact during flight', () => {
+      startDefaultLaunch();
+
+      const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
+      tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks);
+      recordLaunchWallContact();
+      tickLanding(LANDING_DEBOUNCE_STEPS, 'runner', 'water');
+
+      expect(useGameStore.getState().latestReward).toMatchObject({
+        clean: false,
+        score: TIER_SCORES.Nice,
+      });
+    });
+  });
+
   describe('wrong-surface mid-landing', () => {
-    it('resets landing debounce without committing on invalid surface contact', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+    it('resets landing debounce when airborne interrupts touchdown', () => {
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks, 'runner');
       tickLanding(1, 'runner', 'terrain');
-      tick({ contactSurface: 'water', vehicle: 'runner', position: FAR_LAND_POS });
+      tick({ contactSurface: 'airborne', vehicle: 'runner', position: LAUNCH_POS });
       tickLanding(1, 'runner', 'terrain');
 
       expect(hasActiveLaunch()).toBe(true);
@@ -273,7 +302,7 @@ describe('LaunchScoringSession', () => {
     });
 
     it('ignores tickLaunchScoring when bodyHandle does not match', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks);
@@ -297,7 +326,7 @@ describe('LaunchScoringSession', () => {
 
   describe('gap gate', () => {
     it('commits no score when horizontal gap is below MIN_GAP_HORIZONTAL', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       completeFlight({ airTicks, landPos: NEAR_LAND_POS });
@@ -310,7 +339,7 @@ describe('LaunchScoringSession', () => {
 
   describe('wipeout guard', () => {
     it('does not commit rewards when isWipeout is true', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks);
@@ -322,13 +351,14 @@ describe('LaunchScoringSession', () => {
     });
 
     it('cancelLaunch clears the active session so subsequent ticks are inert', () => {
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
       tickAirborne(LEFT_GROUND_DEBOUNCE_STEPS + airTicks);
       cancelLaunch();
 
       expect(hasActiveLaunch()).toBe(false);
+      expect(getActiveLaunchAirSeconds()).toBe(0);
 
       tickLanding(LANDING_DEBOUNCE_STEPS, 'runner', 'terrain');
       expect(useGameStore.getState().latestReward).toBeNull();
@@ -337,14 +367,14 @@ describe('LaunchScoringSession', () => {
   });
 
   describe('commit side-effects', () => {
-    it('applies score with current multiplier and bumps combo on clean launch', () => {
+    it('applies score with current multiplier and bumps combo on clean splash landing', () => {
       resetStore({ multiplier: 3 });
-      startDefaultLaunch({ cleanLaunch: true });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
-      completeFlight({ airTicks });
+      completeFlight({ airTicks, landingSurface: 'water' });
 
-      const expectedBase = TIER_SCORES.Nice + CLEAN_LAUNCH_BONUS;
+      const expectedBase = Math.round(TIER_SCORES.Nice * CLEAN_LAUNCH_SCORE_MULTIPLIER);
       const state = useGameStore.getState();
       expect(state.score).toBe(expectedBase * 3);
       expect(state.multiplier).toBe(4);
@@ -357,17 +387,17 @@ describe('LaunchScoringSession', () => {
 
     it('caps multiplier at MAX_MULTIPLIER (10) on clean launch combo bump', () => {
       resetStore({ multiplier: 10 });
-      startDefaultLaunch({ cleanLaunch: true });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
-      completeFlight({ airTicks });
+      completeFlight({ airTicks, landingSurface: 'water' });
 
       expect(useGameStore.getState().multiplier).toBe(10);
     });
 
     it('persists highScore when the new total beats the previous record', () => {
       resetStore({ highScore: 100, score: 500 });
-      startDefaultLaunch({ cleanLaunch: false });
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.GREAT / PHYSICS_DT);
       completeFlight({ airTicks });
@@ -375,7 +405,8 @@ describe('LaunchScoringSession', () => {
       const state = useGameStore.getState();
       expect(state.score).toBeGreaterThan(100);
       expect(state.highScore).toBe(Math.floor(state.score));
-      expect(localStorage.getItem('watershed_highscore')).toBe(String(state.highScore));
+      const saved = JSON.parse(localStorage.getItem('watershed_save_v1') || '{}');
+      expect(saved.runs[getActiveRunKey()]?.bestScore).toBe(state.highScore);
     });
   });
 
@@ -397,11 +428,11 @@ describe('LaunchScoringSession', () => {
       expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'PERFECT?!' });
     });
 
-    it('sets latestReward with tier and clean flag on qualifying commit', () => {
-      startDefaultLaunch({ cleanLaunch: true });
+    it('sets latestReward with tier and clean flag on qualifying splash landing', () => {
+      startDefaultLaunch();
 
       const airTicks = Math.ceil(AIR_TIME_THRESHOLDS.MIN_REWARD / PHYSICS_DT);
-      completeFlight({ airTicks });
+      completeFlight({ airTicks, landingSurface: 'water' });
 
       expect(useGameStore.getState().latestReward).toMatchObject({
         tier: 'Nice',
@@ -412,7 +443,7 @@ describe('LaunchScoringSession', () => {
   });
 
   describe('notifyShelfLaunchImpulse', () => {
-    it('starts a session with cleanLaunch derived from speed threshold', () => {
+    it('starts a session and emits the predictive AIR! popup', () => {
       notifyShelfLaunchImpulse({
         bodyHandle: BODY_HANDLE,
         launchPos: LAUNCH_POS,
@@ -421,6 +452,25 @@ describe('LaunchScoringSession', () => {
 
       expect(hasActiveLaunch()).toBe(true);
       expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'AIR!' });
+    });
+  });
+
+  describe('shelfLaunch event bridge', () => {
+    it('starts a session when the shelfLaunch CustomEvent fires', () => {
+      initShelfLaunchScoringListener();
+
+      window.dispatchEvent(
+        new CustomEvent(SHELF_LAUNCH_EVENT, {
+          detail: {
+            bodyHandle: BODY_HANDLE,
+            launchPos: LAUNCH_POS,
+            downstreamSpeed: 18,
+          },
+        }),
+      );
+
+      expect(hasActiveLaunch()).toBe(true);
+      expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'GREAT!' });
     });
   });
 });

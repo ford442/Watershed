@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle, FoamParticle } from './ParticlePool';
 import { useBiomeMaterials } from './BiomeSystem';
+import { injectSWEDisturbance } from './SWEHeightField';
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -35,8 +36,8 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   const { water } = useBiomeMaterials();
   
   // Particle pools
-  const splashPoolRef = useRef<ParticlePool<VFXParticle>>();
-  const foamPoolRef = useRef<ParticlePool<FoamParticle>>();
+  const splashPoolRef = useRef<ParticlePool<VFXParticle> | null>(null);
+  const foamPoolRef = useRef<ParticlePool<FoamParticle> | null>(null);
   
   // Instanced mesh refs
   const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -126,11 +127,13 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       // Entered water - big splash
       const entryPos = new THREE.Vector3(playerPos.x, waterLevel, playerPos.z);
       spawnSplash(entryPos, 1.0);
+      injectSWEDisturbance(playerPos.x, playerPos.z, 2.2, 0.55);
       lastSplashTimeRef.current = state.clock.elapsedTime;
     } else if (!isInWater && wasInWaterRef.current) {
       // Exited water - smaller splash
       const exitPos = new THREE.Vector3(playerPos.x, waterLevel, playerPos.z);
       spawnSplash(exitPos, 0.5);
+      injectSWEDisturbance(playerPos.x, playerPos.z, 1.4, 0.28);
     }
     
     // Spawn foam trail while moving in water
@@ -144,6 +147,9 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       
       if (speed > 2 && Math.random() < 0.1 * speed) {
         spawnFoam(new THREE.Vector3(playerPos.x, waterLevel, playerPos.z));
+        if (Math.random() < 0.15) {
+          injectSWEDisturbance(playerPos.x, playerPos.z, 0.9, 0.08);
+        }
       }
     }
     

@@ -22,7 +22,7 @@ npm run build      # production build → build/
 | What | How |
 |------|-----|
 | Framework | React 19 + TypeScript |
-| 3D rendering | Three.js 0.160 + React Three Fiber 9.4 |
+| 3D rendering | Three.js 0.168 + React Three Fiber 9.4 |
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
 | Shaders | GLSL (injected via `onBeforeCompile`) — dead WGSL stubs have been removed; dormant TSL/NodeMaterial seeds retained for #256 path A |
@@ -32,158 +32,65 @@ npm run build      # production build → build/
 
 ## Directory Map
 
+Single canonical tree (matches `git ls-files src` layout; star-marked paths are primary touch points).
+
 ```
 src/
-├── App.tsx                    # Canvas config, error boundaries, loader gate
-├── Experience.jsx             # Scene root: lighting, physics world, sky, vehicle
-├── index.tsx                  # Entry point
-├── style.css                  # UI, loader, crosshair, overlay styles
+├── App.tsx                      # Canvas, renderer toggle, error boundaries
+├── Experience.tsx               # Scene root: LOD/Biome providers, InnerExperience
+├── index.tsx                    # Entry: Rapier pre-init, global handlers
+├── style.css                    # UI, loader, overlays
+│
+├── experience/                  # Scene composition split from legacy Experience
+│   ├── InnerExperience.tsx      # Track, vehicle, post-processing wiring
+│   ├── ExperienceUI.tsx           # HUD / menu shell
+│   ├── SceneLighting.tsx
+│   ├── VehicleMount.tsx
+│   ├── WaterStack.tsx
+│   ├── constants.ts
+│   └── hooks/                     # useExperienceWorld, lifecycle, inner state
 │
 ├── components/
-│   ├── TrackManager.jsx       # ★ Chunk treadmill orchestrator (wrapped by ReachManager)
-│   ├── TrackSegment/          # ★ One canyon chunk: geometry + PBR terrain + 25 env types
-│   ├── FlowingWater.jsx       # ★ Animated water surface (ShaderMaterial, GLSL)
-│   ├── EnhancedSky.jsx        # Biome-responsive sky (uses useBiome() + drei Sky + fogExp2)
-│   ├── WaterReflection.jsx    # Water reflection render pass (wired in Experience.jsx)
-│   ├── WaterInteraction.jsx   # Water-contact interaction effects (wired in Experience.jsx)
-│   ├── Player.jsx             # First-person capsule controller (Rapier RigidBody)
-│   ├── ReactiveAudio.tsx      # Biome/speed-reactive audio, rendered by ReachManager
-│   ├── WeatherSystem.tsx      # Weather particle/fog system, rendered by ReachManager
-│   ├── WaterReflection.jsx    # Water reflection plane, wired in Experience.jsx
-│   ├── WaterInteraction.jsx   # Player–water interaction events, wired in Experience.jsx
-│   ├── Raft.jsx               # (legacy) raft mesh
-│   ├── UI.tsx                 # Pause/start overlay, pointer lock, controls display
-│   ├── Loader.tsx             # Asset loading screen
-│   ├── ErrorBoundary.tsx
-│   │
-│   ├── Environment/           # 21 biome decoration components (all instanced/memoised)
-│   │   ├── Vegetation.jsx     # Trees with wind shader
-│   │   ├── Grass.jsx
-│   │   ├── Foliage.jsx
-│   │   ├── Reeds.jsx
-│   │   ├── Ferns.jsx
-│   │   ├── Fish.jsx
-│   │   ├── Birds.jsx
-│   │   ├── Fireflies.jsx
-│   │   ├── Mist.jsx
-│   │   ├── WaterfallParticles.jsx
-│   │   ├── WaterLilies.jsx
-│   │   ├── SunShafts.jsx
-│   │   ├── Dragonflies.jsx
-│   │   ├── Pebbles.jsx
-│   │   ├── Driftwood.jsx
-│   │   ├── FallingLeaves.jsx
-│   │   ├── Mushrooms.jsx
-│   │   ├── Pinecone.jsx
-│   │   ├── Rapids.jsx
-│   │   ├── RockFoam.jsx
-│   │   └── Wildflowers.jsx
-│   │
-│   ├── Obstacles/Rock.jsx     # Procedural rock formations with Rapier colliders
-│   └── VFX/SplashParticles.jsx
+│   ├── TrackManager.tsx         # ★ Chunk treadmill (map-driven via MapSystem)
+│   ├── TrackSegment/            # ★ Canyon chunk geometry + decorations
+│   ├── FlowingWater.jsx         # ★ Water surface shader (GLSL)
+│   ├── EnhancedSky.jsx          # Biome sky + fog (useBiome)
+│   ├── WaterReflection.jsx      # Planar reflection pass
+│   ├── WaterInteraction.jsx     # Player–water contact FX
+│   ├── ReactiveAudio.tsx        # Biome/speed-reactive audio
+│   ├── WeatherSystem.tsx        # Rain/snow/fog particles
+│   ├── Player.jsx               # First-person capsule (Rapier)
+│   ├── GameHUD.tsx / UI.tsx / PauseMenu.tsx / Loader.tsx
+│   ├── Environment/             # Instanced biome decorations (25+ types)
+│   ├── Obstacles/               # Rocks, pillar break VFX
+│   ├── VFX/                     # Splash particles
+│   └── LevelEditor/             # In-game level tools
 │
 ├── vehicles/
-│   ├── RunnerVehicle/         # ★ First-person foot runner (active default)
-│   └── RaftVehicle/           # Third-person raft (switch via vehicleType in Experience.jsx)
+│   ├── RunnerVehicle/           # ★ Default first-person runner
+│   └── RaftVehicle/             # Third-person raft mode
 │
-├── systems/
-│   ├── AudioSystem.ts
-│   ├── BiomeSystem.tsx
-│   ├── ChunkManager.ts
-│   ├── FloatingObjectRegistry.ts
-│   ├── GameState.ts           # Zustand shared-state backbone
-│   ├── LODManager.tsx
-│   ├── LevelLoader.tsx
-│   ├── MapSystem.ts           # ★ BaseMapChunk interface, SeededRandom, chunk pool
-│   ├── ObjectSystem.ts
-│   ├── ParticlePool.ts
-│   ├── PLAN.md
-│   ├── PostProcessing.tsx
-│   ├── ReachManager.tsx       # Reach orchestration layer (wraps TrackManager)
-│   ├── ReachNormalizer.ts
-│   ├── ReachStreamer.ts
-│   ├── SplashSystem.tsx
-│   ├── VehicleSystem.ts       # Vehicle base classes
-│   ├── WaterSystem.ts         # Water force/flow utilities
-│   ├── WatershedWasm.ts
-│   └── index.ts
+├── systems/                     # Core game systems (see SYSTEMS.md)
+│   ├── MapSystem.ts             # ★ JSON maps, chunk config, procedural fallback
+│   ├── ChunkManager.ts          # Segment pool / treadmill
+│   ├── ReachManager.tsx         # Reach streaming wrapper
+│   ├── BiomeSystem.tsx / LODManager.tsx / GameState.ts
+│   ├── SplashSystem.tsx / AudioSystem.ts / WatershedWasm.ts
+│   └── …
 │
-├── hooks/
-│   ├── index.ts
-│   ├── useCameraShake.ts
-│   ├── useChunkLoader.ts
-│   ├── useLevel.ts
-│   ├── useLevelEditor.ts
-│   ├── useNightMode.ts
-│   ├── usePlayerControls.ts
-│   ├── useRiverAudio.ts
-│   ├── useSegmentAudio.ts
-│   ├── useShaderBrowser.ts
-│   ├── useShaderLoader.ts
-│   ├── useVortexForce.ts
-│   └── useWaterFlowField.ts
-│
-├── configs/
-│   ├── BiomePalettes.ts
-│   └── TrackBiomes.ts
-│
-├── constants/
-│   ├── audioConfig.ts
-│   ├── biomes.ts
-│   ├── game.ts
-│   ├── nightMode.ts
-│   ├── vehicleTuning.ts
-│   ├── waterFlow.ts
-│   └── weather.ts
-│
-├── maps/
-│   ├── meander_to_waterfall.json
-│   └── meander_to_waterfall.ts
-│
-├── materials/
-│   ├── CausticsMaterial.js
-│   ├── CanyonMaterial.js
-│   └── EnhancedWaterMaterial.js
-│
-├── hooks/                     # 13 custom React hooks
-│   ├── useCameraShake.ts
-│   ├── useChunkLoader.ts
-│   ├── useLevel.ts
-│   ├── useLevelEditor.ts
-│   ├── useNightMode.ts
-│   ├── usePlayerControls.ts
-│   ├── useRiverAudio.ts
-│   ├── useSegmentAudio.ts
-│   ├── useShaderBrowser.ts
-│   ├── useShaderLoader.ts
-│   ├── useVortexForce.ts
-│   ├── useWaterFlowField.ts
-│   └── index.ts
-│
-├── configs/
-│   ├── BiomePalettes.ts       # Biome color/fog/lighting palettes + lerp helpers
-│   └── TrackBiomes.ts         # Wall profiles (canyon width, rock density, vegetation) per biome
-│
-├── constants/
-│   ├── audioConfig.ts
-│   ├── biomes.ts
-│   ├── game.ts                # REACH_API_BASE and other game-wide constants
-│   ├── nightMode.ts
-│   ├── vehicleTuning.ts
-│   ├── waterFlow.ts
-│   └── weather.ts
-│
-├── maps/
-│   ├── meander_to_waterfall.json   # Authored segment sequence (JSON)
-│   └── meander_to_waterfall.ts     # TypeScript wrapper for the map data
-│
-├── materials/
-│   └── EnhancedWaterMaterial.js    # Extended water ShaderMaterial
-│
-└── utils/
-    ├── reachValidator.ts
-    └── RiverShader.js         # extendRiverMaterial(): adds wetness, moss, caustics via onBeforeCompile
+├── maps/                        # Authored map JSON + registry.ts
+├── configs/                     # BiomePalettes.ts, TrackBiomes.ts
+├── constants/                   # game.ts, biomes.ts, weather.ts, …
+├── hooks/                       # useWaterFlowField, useShaderLoader, …
+├── materials/                   # CanyonMaterial, CausticsMaterial, EnhancedWaterMaterial
+├── rendering/                   # createRenderer, WireframeDebug, rendererConfig
+├── physics/                     # Rapier worker proxy, WaterForces
+├── shaders/                     # HeightmapFlow.ts
+├── utils/                       # RiverShader.js, levelValidator, reachValidator
+└── formats/                     # level.schema.json, reach.schema.json
 ```
+
+Full file listing: `git ls-files src`
 
 ---
 
@@ -200,9 +107,9 @@ Shared state flows through a Zustand store (`GameState.ts`).
 [`SYSTEMS.md`](./SYSTEMS.md).**
 
 ---
-Watershed now runs a live orchestration stack in `Experience.jsx`: `LODProvider` wraps `BiomeProvider`, which wraps scene systems including `ReachManager` (which wraps `TrackManager`, not replaces it) and `SplashSystem`. These systems, their contracts, and known constraints/pain points are documented in **[`SYSTEMS.md`](./SYSTEMS.md)** to keep this file readable and keep architecture details centralized.
+Watershed runs a live orchestration stack in `Experience.tsx`: `LODProvider` wraps `BiomeProvider`, which wraps `InnerExperience` (track, vehicle, water stack) plus `SplashSystem`. Contract details live in **[`SYSTEMS.md`](./SYSTEMS.md)**; extended docs in **[`docs/reference/DOCUMENTATION_INDEX.md`](./docs/reference/DOCUMENTATION_INDEX.md)**.
 
-### Track Treadmill (`TrackManager.jsx`)
+### Track Treadmill (`TrackManager.tsx`)
 
 - 7 active segments max, 10-slot pool (ID % 10 = pool index)
 - Generates next segment when camera is within 150 units of the last point
@@ -234,11 +141,7 @@ Player spawns at `[0, 10, -10]`. The initial river centerline is around Y = -6 t
 
 ### Vehicle Swap
 
-In `Experience.jsx`, change `vehicleType`:
-
-```jsx
-const [vehicleType, setVehicleType] = useState('runner'); // 'runner' | 'raft'
-```
+In `Experience.tsx` / `InnerExperience.tsx`, switch `vehicleType` via props or UI.
 
 ### Water Shader (`FlowingWater.jsx`)
 
@@ -312,11 +215,8 @@ The biggest single visual upgrade. Add `@react-three/postprocessing`:
 - **ChromaticAberration** (subtle, speed-triggered) — conveys velocity
 - **SSAO** (EffectComposer from `@react-three/postprocessing`) — ground truth ambient occlusion in crevices
 
-### Step 5 — Wire MapSystem.ts into TrackManager (3–5 hours)
-`MapSystem.ts` defines `BaseMapChunk`, `SeededRandom`, `generateRiverPath`, `calculateSpawns`, `ChunkPool` — but `TrackManager.jsx` duplicates this logic inline. Before authoring maps:
-- Replace `TrackManager`'s inline generation with `DefaultMapManager` from `MapSystem.ts`
-- Move `getSegmentConfig` into map config JSON (per `IMPROVEMENT_PLAN.md §2.2`)
-- This enables authored map files to override procedural generation per-segment
+### Step 5 — Map-driven TrackManager ✅
+`MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
 
 ### Step 6 — Author maps
 With the above in place:
@@ -363,7 +263,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 
 ---
 
-## Biome Roadmap (per `plan.md`)
+## Biome Roadmap (per `docs/reference/plan.md`)
 
 1. **Glacial Melt** (Source) — ice blue, narrow tube, ultra-fast, slush water
 2. **Lumber Flume** (Forest) — mossy wood, breakable planks, gap jumps
@@ -377,12 +277,14 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 
 | File | What to touch |
 |------|--------------|
-| `Experience.jsx` | Lighting, vehicle swap, physics gravity |
-| `TrackManager.jsx` | Segment generation, biome transitions, rock material |
-| `TrackSegment/` | Canyon geometry, decoration placement |
-| `FlowingWater.jsx` | Water shader uniforms and GLSL |
-| `RiverShader.js` | Wetness/moss/caustics injection |
-| `EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
-| `Player.jsx` | Movement, camera, jump |
-| `systems/MapSystem.ts` | Chunk interfaces, seeded RNG, spawn calc |
+| `src/Experience.tsx` | Scene providers, InnerExperience mount |
+| `src/experience/InnerExperience.tsx` | Track, vehicle, lighting, post-processing |
+| `src/components/TrackManager.tsx` | Segment pool, map-driven generation |
+| `src/components/TrackSegment/` | Canyon geometry, decoration placement |
+| `src/components/FlowingWater.jsx` | Water shader uniforms and GLSL |
+| `src/utils/RiverShader.js` | Wetness/moss/caustics injection |
+| `src/components/EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
+| `src/components/Player.jsx` | Movement, camera, jump |
+| `src/systems/MapSystem.ts` | Chunk interfaces, JSON maps, spawn calc |
+| `src/maps/registry.ts` | Active map switch point |
 | `src/style.css` | All UI chrome |

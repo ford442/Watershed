@@ -38,11 +38,13 @@ import CanyonGrass from '../Environment/CanyonGrass';
 import CanyonBackground from '../Environment/CanyonBackground';
 import Rock from '../Obstacles/Rock';
 import IceSpray from '../Environment/IceSpray';
+import Icicles from '../Environment/Icicles';
+import IceSheets from '../Environment/IceSheets';
 
 import { useLOD } from '../../systems/LODManager';
 import { useBiome } from '../../systems/BiomeSystem';
 import { useSunPosition } from '../../systems/SunPositionSystem';
-import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
+import { getTrackBiomeProfile, isGlacialBiome } from '../../configs/TrackBiomes';
 import { WALL_WATERLINE_Y } from '../../constants/game';
 import { createCanyonMaterial, updateCanyonMaterial } from '../../materials/CanyonMaterial';
 import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
@@ -84,7 +86,8 @@ export function TrackSegmentMeshes({
     const waterSurfaceOffset = (segmentState === 'downhill' || verticalBias <= -1.2) ? 0.6 : 0;
     const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
-    const isGlacier = biomeProfile.id === 'glacier';
+    const isGlacier = isGlacialBiome(biome, biomeProfile);
+    const slushiness = isGlacier ? (biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55) : 0;
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
     const batsActive = (biomeProfile.id === 'slotCanyon' || biome === 'autumn' || biome === 'canyon') && timeOfDay > 0.65;
     const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';
@@ -384,6 +387,7 @@ export function TrackSegmentMeshes({
                 flowSpeed={flowSpeed}
                 biome={biome}
                 isNight={isNight}
+                slushiness={slushiness}
                 baseColor={isGlacier ? '#a8d8ea' : (type === 'pond' ? '#1a4b6a' : undefined)}
                 foamColor={isGlacier ? '#e8f6ff' : undefined}
                 edgeHighlightColor={isGlacier ? '#c8eeff' : undefined}
@@ -402,6 +406,13 @@ export function TrackSegmentMeshes({
                     intensity={Math.min(1, playerVelocityForParticles / 8)}
                     active={vehiclePos.distanceTo(segmentCenterRef.current) < 60}
                 />
+            )}
+
+            {isGlacier && (
+                <>
+                    <Icicles transforms={placementData.icicles} />
+                    <IceSheets transforms={placementData.iceSheets} />
+                </>
             )}
 
             {plungeImpactPlacement && (
@@ -442,6 +453,7 @@ export function TrackSegmentMeshes({
                 transforms={usePooledStaticObstacles ? [] : placementData.rocks}
                 scatterTransforms={placementData.scatterRocks}
                 material={rockMaterial}
+                castShadow={lodQuality !== 'high'}
             />
 
             {/* Vegetation - Trees with Sway (ref for draw-distance culling) */}

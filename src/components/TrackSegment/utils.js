@@ -55,7 +55,7 @@ export const createFlowerPayload = ({ position, rotation, scale, biome, segmentI
     };
 };
 
-export const createRockPayload = ({ position, rotation, scale, biome, segmentId, instanceIndex, isScatter = false, nearWall = false, rockTypeOverride = null }) => {
+export const createRockPayload = ({ position, rotation, scale, biome, segmentId, instanceIndex, isScatter = false, nearWall = false, rockTypeOverride = null, crumbling = false }) => {
     let rockType = 'boulder';
 
     if (rockTypeOverride && ROCK_TYPES.includes(rockTypeOverride)) {
@@ -84,6 +84,7 @@ export const createRockPayload = ({ position, rotation, scale, biome, segmentId,
         scale: scaled,
         rockType: ROCK_TYPES.includes(rockType) ? rockType : 'boulder',
         color,
+        ...(crumbling ? { crumbling: true, segmentId, pillarIndex: instanceIndex } : {}),
     };
 };
 

@@ -3,7 +3,7 @@
 Reference for the Reach / Biome / LOD / Splash systems, live-wired water components,
 and the WASM acceleration module. Core orchestration lives in `src/systems/`; water
 reflection and interaction components live in `src/components/` but are mounted in
-`Experience.jsx`.
+`InnerExperience.tsx` (via `WaterStack`).
 
 For narrative context see [`CLAUDE.md`](./CLAUDE.md).
 
@@ -26,7 +26,7 @@ Player velocity/contacts ──> SplashSystem ──> ParticlePool ──> VFX (
 WaterReflection (LOD high/ultra) ──> WebGLRenderTarget (no live consumer — see card)
 ```
 
-### Live nesting in `Experience.jsx`
+### Live nesting in `Experience.tsx` / `InnerExperience.tsx`
 
 ```jsx
 <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>   // LODManager.tsx:110

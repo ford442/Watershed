@@ -17,8 +17,17 @@
 import * as THREE from 'three';
 import { GENERATION } from '../constants/game';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../configs/TrackBiomes';
-import { MapManager, generateSegmentPath, calculateSegmentSpawns } from './MapSystem';
-import type { DecorationPlacement, SpawnData } from './MapSystem';
+import {
+  MapManager,
+  buildProceduralSegment,
+  ChunkPool,
+  ensureTangentContinuity,
+  INITIAL_TREADMILL_POINTS,
+  type BaseMapChunk,
+  type DecorationPlacement,
+  type SpawnData,
+  type SegmentProgressionConfig,
+} from './MapSystem';
 import type { NormalizedSegment } from './ReachNormalizer';
 
 // =============================================================================
@@ -52,6 +61,8 @@ export interface SegmentData {
     decorations?: Record<string, number | DecorationPlacement[]>;
     launchShelf?: { rockRef: { localX: number; localZ: number; scale: number } };
   };
+  /** Backing MapSystem chunk for pool recycling. */
+  _baseChunk?: BaseMapChunk;
 }
 
 export interface RenderedSlot {
@@ -77,6 +88,8 @@ export interface ChunkManagerOptions {
    * to chain the glacier prelude before the meander.
    */
   startIndex?: number;
+  /** Base procedural seed (`?seed=` override or default map seed). */
+  proceduralBaseSeed?: number;
 }
 
 export interface ChunkManagerStats {
@@ -95,96 +108,25 @@ const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
 const GENERATION_THRESHOLD = GENERATION.THRESHOLD;
 const RECYCLE_MARGIN = GENERATION.RECYCLE_MARGIN;
 
-// Seed points used to derive the direction of segment 0. The LAST point becomes
-// segment 0's starting position, so it must sit near the player spawn (0, -4, -10).
-// XY must vary across the seeds — perfectly collinear seeds produced a numerically
-// degenerate path that crashed Rapier's trimesh collider during world.step.
-const INITIAL_POINTS = [
-  new THREE.Vector3(-4, -8, 90),
-  new THREE.Vector3(-2, -7, 60),
-  new THREE.Vector3(-1, -6.5, 30),
-  new THREE.Vector3(0, -6, 0),
-];
-
-// =============================================================================
-// PURE GEOMETRY UTILITIES
-// =============================================================================
-
-function createSpline(points: THREE.Vector3[], type: string): THREE.CatmullRomCurve3 {
-  const tension = type === 'pond' ? 0.1 : 0.5;
-  return new THREE.CatmullRomCurve3(points, false, 'catmullrom', tension);
-}
-
-/**
- * ensureTangentContinuity — forces the new segment's start tangent to match
- * the previous segment's end tangent. This eliminates NaNs in Catmull-Rom
- * derivative math at segment joints.
- */
-function ensureTangentContinuity(
-  prevPoints: THREE.Vector3[],
-  newPoints: THREE.Vector3[]
-): THREE.Vector3[] {
-  if (!prevPoints || prevPoints.length < 2 || newPoints.length < 2) {
-    return newPoints;
-  }
-
-  const lastTwo = prevPoints.slice(-2);
-  const prevTangent = new THREE.Vector3()
-    .subVectors(lastTwo[1], lastTwo[0])
-    .normalize();
-
-  if (!prevTangent.lengthSq() || !isFinite(prevTangent.x)) {
-    console.warn('[ensureTangentContinuity] Invalid previous tangent, skipping');
-    return newPoints;
-  }
-
-  const desiredStart = newPoints[0].clone().add(
-    prevTangent.multiplyScalar(0.01)
-  );
-  newPoints[0] = desiredStart;
-
-  return newPoints;
-}
-
 // =============================================================================
 // SEGMENT GENERATION
 // =============================================================================
 
-function createSegmentData(
-  index: number,
-  previousSegment: SegmentData | null,
+function baseChunkToSegmentData(
+  chunk: BaseMapChunk,
+  progression: SegmentProgressionConfig,
   forecastState: string,
-  mapManager: MapManager,
-  ensureContinuity = false
 ): SegmentData {
-  const progression = mapManager.getChunkConfig(index);
   const biomeProfile = getTrackBiomeProfile(progression.biome);
-  const seed = 12345 + index * 1000;
-
-  const lastPoints = previousSegment?.points ?? INITIAL_POINTS;
-  const lastPoint = lastPoints[lastPoints.length - 1].clone();
-  const prevPoint = (lastPoints[lastPoints.length - 2] ?? INITIAL_POINTS[0]).clone();
-  const startDirection = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
-
-  const points = generateSegmentPath(index, lastPoint, startDirection, progression, seed);
-
-  const continuousPoints =
-    ensureContinuity && previousSegment?.points
-      ? ensureTangentContinuity(previousSegment.points, points)
-      : points;
-
-  const segmentPath = createSpline(continuousPoints, progression.type);
-  const spawns = calculateSegmentSpawns(segmentPath, progression, index, seed);
-
   const forecastBoost =
     forecastState === 'Flooded' ? 1.45 : forecastState === 'HighFlow' ? 1.2 : 1;
 
   return {
-    id: index,
+    id: chunk.index,
     type: forecastState === 'Flooded' && progression.type === 'normal' ? 'pond' : progression.type,
     biome: biomeProfile.id === 'slotCanyon' ? 'slotCanyon' : progression.biome,
-    points: continuousPoints,
-    segmentPath,
+    points: chunk.pathPoints,
+    segmentPath: chunk.curve!,
     width: progression.width,
     waterWidth: progression.waterWidth,
     flowSpeed: progression.flowSpeed * forecastBoost,
@@ -198,11 +140,27 @@ function createSegmentData(
     meanderStrength: progression.meanderStrength,
     verticalBias: progression.verticalBias,
     gravityMultiplier: progression.gravityMultiplier,
-    spawns,
-    config: progression.decorations || progression.launchShelf
-      ? { decorations: progression.decorations, launchShelf: progression.launchShelf }
-      : undefined,
+    spawns: chunk.spawns,
+    config: chunk.config,
+    _baseChunk: chunk,
   };
+}
+
+function createSegmentData(
+  index: number,
+  previousSegment: SegmentData | null,
+  forecastState: string,
+  mapManager: MapManager,
+  ensureContinuity = false,
+  proceduralBaseSeed?: number,
+): SegmentData {
+  const previousPoints = previousSegment?.points ?? null;
+  const { chunk, progression } = buildProceduralSegment(index, previousPoints, mapManager, {
+    ensureContinuity: ensureContinuity && !!previousSegment?.points,
+    initialPoints: INITIAL_TREADMILL_POINTS,
+    baseSeed: proceduralBaseSeed,
+  });
+  return baseChunkToSegmentData(chunk, progression, forecastState);
 }
 
 // =============================================================================
@@ -224,6 +182,8 @@ export class ChunkManager {
   private biomeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingBiome: string | null = null;
   private startIndex: number;
+  private proceduralBaseSeed?: number;
+  private chunkPool = new ChunkPool();
 
   constructor(options: ChunkManagerOptions) {
     this.mapManager = options.mapManager;
@@ -231,6 +191,7 @@ export class ChunkManager {
     this.forecastByIndex = options.forecastByIndex ?? new Map();
     this.callbacks = options.callbacks ?? {};
     this.startIndex = options.startIndex ?? 0;
+    this.proceduralBaseSeed = options.proceduralBaseSeed;
   }
 
   // ---------------------------------------------------------------------------
@@ -251,7 +212,7 @@ export class ChunkManager {
       const index = this.startIndex + i;
       // reachSegments are always 0-based; only use them for non-negative indices
       const reachIdx = index - this.startIndex;
-      const segment =
+      const segment: SegmentData =
         segments && index >= 0 && segments[reachIdx]
           ? this.adaptReachSegment(segments[reachIdx], previousSegment)
           : this.buildSegment(index, previousSegment);
@@ -361,6 +322,11 @@ export class ChunkManager {
 
       if (slotToRecycle === undefined) {
         return { poolChanged: false };
+      }
+
+      const recycledSlot = pool[slotToRecycle];
+      if (recycledSlot?.segment?._baseChunk) {
+        this.chunkPool.release(recycledSlot.segment._baseChunk);
       }
 
       const previousSegment = activeSegments[activeSegments.length - 1];
@@ -537,7 +503,14 @@ export class ChunkManager {
     }
 
     const forecastState = this.forecastByIndex.get(index) || 'Normal';
-    return createSegmentData(index, previousSegment, forecastState, this.mapManager, ensureContinuity);
+    return createSegmentData(
+      index,
+      previousSegment,
+      forecastState,
+      this.mapManager,
+      ensureContinuity,
+      this.proceduralBaseSeed,
+    );
   }
 
   private adaptReachSegment(
@@ -549,10 +522,11 @@ export class ChunkManager {
         previousSegment.points,
         seg.points.map((p) => p.clone())
       );
+      const tension = seg.type === 'pond' ? 0.1 : 0.5;
       return {
         ...seg,
         points: continuousPoints,
-        segmentPath: createSpline(continuousPoints, seg.type),
+        segmentPath: new THREE.CatmullRomCurve3(continuousPoints, false, 'catmullrom', tension),
       };
     }
     return seg as SegmentData;

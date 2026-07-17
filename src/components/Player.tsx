@@ -1,13 +1,13 @@
 import React, { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { RigidBody, useRapier } from '@react-three/rapier';
+import { RigidBody, CapsuleCollider, useRapier, type RapierRigidBody } from '@react-three/rapier';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 export default function Player() {
-  const bodyRef = useRef(null);
+  const bodyRef = useRef<RapierRigidBody | null>(null);
   const { camera } = useThree();
-  const { world } = useRapier();
+  const { world, rapier } = useRapier();
 
   const [sub, get] = useKeyboardControls();
   const isGrounded = useRef(false);
@@ -48,7 +48,7 @@ export default function Player() {
 
     // ── GROUND CHECK ──
     if (world) {
-      const ray = new world.Ray({ x: pos.x, y: pos.y + 0.2, z: pos.z }, { x: 0, y: -1, z: 0 });
+      const ray = new rapier.Ray({ x: pos.x, y: pos.y + 0.2, z: pos.z }, { x: 0, y: -1, z: 0 });
       const hit = world.castRay(ray, 1.5, true);
       isGrounded.current = !!hit;
     }
@@ -62,13 +62,15 @@ export default function Player() {
     <RigidBody
       ref={bodyRef}
       type="dynamic"
-      colliders="capsule"
-      position={[0, 5, 0]}        // ← SAFE START (track should be right here)
+      colliders={false}
+      position={[0, 5, 0]}
       mass={75}
       friction={0.04}
       restitution={0.15}
       linearDamping={0.35}
       angularDamping={0.9}
-    />
+    >
+      <CapsuleCollider args={[0.5, 0.35]} />
+    </RigidBody>
   );
 }

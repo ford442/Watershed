@@ -1,8 +1,12 @@
 
 from playwright.sync_api import sync_playwright
+import os
 import time
 
+OUT_DIR = os.path.join(os.path.dirname(__file__), 'output')
+
 def verify_visuals():
+    os.makedirs(OUT_DIR, exist_ok=True)
     with sync_playwright() as p:
         # Launch Chromium with WebGL support (software rendering via SwiftShader)
         browser = p.chromium.launch(
@@ -27,7 +31,7 @@ def verify_visuals():
         page.goto("http://localhost:3000?no-pointer-lock")
 
         # Debug screenshot immediately after load
-        page.screenshot(path="verification/debug_page.png")
+        page.screenshot(path=os.path.join(OUT_DIR, "debug_page.png"))
         print("Debug page screenshot saved.")
 
         # Wait for UI overlay first
@@ -52,7 +56,7 @@ def verify_visuals():
 
         # Take screenshot of the start screen (should show river background)
         print("Taking screenshot...")
-        page.screenshot(path="verification/verification_visuals.png")
+        page.screenshot(path=os.path.join(OUT_DIR, "verification_visuals.png"))
 
         # Try to start the game to see the river more clearly
         # Simulate click on center of screen
@@ -65,10 +69,10 @@ def verify_visuals():
         time.sleep(30) # Wait for transition
 
         print("Taking in-game screenshot...")
-        page.screenshot(path="verification/verification_visuals_ingame.png")
+        page.screenshot(path=os.path.join(OUT_DIR, "verification_visuals_ingame.png"))
 
         browser.close()
-        print("Done.")
+        print(f"Done. Screenshots saved to {OUT_DIR}/")
 
 if __name__ == "__main__":
     verify_visuals()

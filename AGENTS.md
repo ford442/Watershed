@@ -656,7 +656,7 @@ playwright install chromium
 
 ## Renderer Toggle (WebGPU / WebGL2 Fallback)
 
-Watershed supports a toggleable renderer for visual debugging while sharing the same game state, level data, camera, and entities. See **[`docs/RENDERER.md`](./docs/RENDERER.md)** for full details.
+Watershed supports a toggleable renderer for visual debugging while sharing the same game state, level data, camera, and entities. See **[`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md)** for full details.
 
 | Mode | URL | Renderer |
 |------|-----|----------|
@@ -721,7 +721,7 @@ Planned for:
 | `src/App.tsx` | Canvas configuration, renderer toggle, error boundaries, progress tracking |
 | `src/rendering/createRenderer.ts` | WebGPU/WebGL2 renderer factory for R3F Canvas |
 | `src/rendering/WireframeDebug.tsx` | Scene-wide wireframe debug overlay |
-| `docs/RENDERER.md` | Renderer toggle documentation |
+| `docs/reference/RENDERER.md` | Renderer toggle documentation |
 | `src/Experience.jsx` | Scene composition, keyboard controls setup, lighting, biome/LOD providers |
 | `src/components/Player.jsx` | First-person controls, camera, physics |
 | `src/components/TrackManager.jsx` | Procedural generation orchestration |
@@ -759,21 +759,17 @@ Planned for:
 
 ## Documentation
 
-Additional documentation files in the project:
-- `README.md` - High-level project overview
-- `plan.md` - Development roadmap and phase planning
-- `src/LEVEL_DESIGN.md` - Track configuration and level design specifications
-- `TESTING.md` - Detailed testing procedures
-- `CODE_HEALTH_GUIDE.md` - Defensive coding patterns, shader/geometry validation, red flags
-- `STARTUP_DIAGNOSTICS.md` - Startup issue diagnostics
-- `QUICK_TROUBLESHOOTING.md` - Quick troubleshooting guide
-- `CHANGES_SUMMARY.md` - Recent changes log
-- `VISUAL_ENHANCEMENT_SUMMARY.md` - Visual enhancement log
-- `LEVEL_AUTHORING_SUMMARY.md` - Level authoring summary
-- `IMPROVEMENT_PLAN.md` - Improvement planning
-- `DOCUMENTATION_INDEX.md` - Documentation index
-- `PHYSICS_CONSTANTS.md` - Physics constants reference
-- `CLAUDE.md` - Claude-specific context
+**Start here:** [`docs/README.md`](./docs/README.md) → [`docs/reference/DOCUMENTATION_INDEX.md`](./docs/reference/DOCUMENTATION_INDEX.md)
+
+| Living (`docs/reference/`) | Archive (`docs/archive/`) |
+|--------------------------|---------------------------|
+| `TESTING.md`, `CODE_HEALTH_GUIDE.md`, `RENDERER.md`, `RENDERER_CONTRACT.md` | `CHANGES_SUMMARY.md`, `INVESTIGATION_SUMMARY.md`, `VISUAL_ENHANCEMENT_SUMMARY.md` |
+| `QUICK_TROUBLESHOOTING.md`, `STARTUP_DIAGNOSTICS.md`, `PHYSICS_CONSTANTS.md` | `LEVEL_AUTHORING_SUMMARY.md`, `IMPROVEMENT_PLAN.md`, `plan-dec-25.md` |
+| `plan.md`, `river_plan.md`, `integration_guides/` | `.swarm-state.md` (agent session artifact) |
+
+Root entry points: `CLAUDE.md`, `AGENTS.md`, `SYSTEMS.md`, `src/LEVEL_DESIGN.md`
+
+CI validates `src/` and `docs/reference/` / `docs/archive/` paths in markdown via `node scripts/validate-markdown-paths.js`.
 
 ---
 

@@ -10,6 +10,7 @@ export function populateSidePart1(args) {
         wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
         birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
         ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
+        icicles, iceSheets,
         pathPoint, tangent, binormal, up, seedState, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
     } = args;
     const isPond = type === 'pond';
@@ -18,7 +19,8 @@ export function populateSidePart1(args) {
     const treeDef = config?.decorations?.trees;
     const rockDensity = config?.rockDensity ?? biomeProfile?.rockDensity ?? 'low';
     const treeDensity = config?.treeDensity ?? biomeProfile?.treeDensity ?? 1;
-    const isGlacier = biomeProfile?.id === 'glacier' || biome === 'glacier';
+    const isGlacier = biomeProfile?.id === 'glacier' || biomeProfile?.id === 'glacialMelt'
+        || biome === 'glacier' || biome === 'glacial' || biome === 'glacialMelt';
 
 
 

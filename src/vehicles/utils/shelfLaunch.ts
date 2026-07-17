@@ -9,7 +9,8 @@
  * All math is plain object-based so this file is cheap to unit-test.
  */
 
-import { MEANDER_TO_WATERFALL_PROGRESSION } from '../../maps/meander_to_waterfall';
+import { getActiveMap } from '../../maps/registry';
+import { JSONMapManager } from '../../systems/MapSystem';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 
 /** Minimum downstream speed (m/s) required to trigger the launch shelf. */
@@ -95,19 +96,12 @@ function isFiniteVec3(v: Vec3 | null | undefined): v is Vec3 {
 }
 
 /**
- * Find the segment-14 launchShelf config from the authored progression.
- *
- * Note: the progression table may contain open-ended ranges that also cover 14,
- * so we prefer the most specific range (explicit indexTo) before falling back.
+ * Find the segment-14 launchShelf config from the active authored map JSON.
  */
 export function getSegment14LaunchShelfConfig() {
-  const exact = MEANDER_TO_WATERFALL_PROGRESSION.find(
-    (r) => r.indexFrom <= 14 && r.indexTo !== undefined && r.indexTo >= 14,
-  );
-  const fallback = MEANDER_TO_WATERFALL_PROGRESSION.find(
-    (r) => r.indexFrom <= 14 && r.indexTo === undefined,
-  );
-  return exact?.config?.launchShelf ?? fallback?.config?.launchShelf ?? null;
+  const map = getActiveMap();
+  const manager = new JSONMapManager(map.levelData);
+  return manager.getChunkConfig(14).launchShelf ?? null;
 }
 
 /**

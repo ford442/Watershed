@@ -89,6 +89,18 @@ describe('JSONMapManager — meander_to_waterfall', () => {
     expect(cfg.gravityMultiplier).toBeCloseTo(1.45);
   });
 
+  it('segment 14 (waterfall) exposes authored launch shelf from JSON', () => {
+    const cfg = manager.getChunkConfig(14);
+    expect(cfg.launchShelf).toBeDefined();
+    expect(cfg.launchShelf?.rockRef.localZ).toBe(-35);
+  });
+
+  it('segment -3 (glacier prelude) uses glacier biome and high slipperiness', () => {
+    const cfg = manager.getChunkConfig(-3);
+    expect(cfg.biome).toBe('glacier');
+    expect(cfg.slipperiness).toBeCloseTo(0.9);
+  });
+
   it('segment 15 (splash pool) resets gravityMultiplier to 1.0', () => {
     const cfg = manager.getChunkConfig(15);
     expect(cfg.gravityMultiplier).toBeCloseTo(1.0);

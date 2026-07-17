@@ -20,6 +20,8 @@ import { REACH_API_BASE } from '../constants/game';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
 import { useGameStore } from '../systems/GameState';
 import { useLOD } from '../systems/LODManager';
+import { PILLAR_BREAK_EVENT } from '../components/Obstacles/pillarBreakEvents';
+import { isGlacialBiome } from '../configs/TrackBiomes';
 import type { ReachManifest } from '../systems/ReachStreamer';
 import type { NormalizedSegment } from '../systems/ReachNormalizer';
 
@@ -81,6 +83,8 @@ export default function ReactiveAudio({
   // SFX layer refs
   const sfxRapidsRef = useRef<THREE.Audio | null>(null);
   const sfxWhooshRef = useRef<THREE.Audio | null>(null);
+  const sfxColdWindRef = useRef<THREE.Audio | null>(null);
+  const sfxIceCrackRef = useRef<THREE.Audio | null>(null);
   const posTransitionRef = useRef<THREE.PositionalAudio | null>(null);
 
   // Lerped volume targets
@@ -91,6 +95,8 @@ export default function ReactiveAudio({
     rapids: 0,
     whoosh: 0,
     transition: 0,
+    coldWind: 0,
+    iceCrack: 0,
   });
 
   const flowRef = useRef({
@@ -102,6 +108,7 @@ export default function ReactiveAudio({
   const splashCooldownRef = useRef(0);
   const [audioReady, setAudioReady] = useState(false);
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  const currentBiomeId = useGameStore((s) => s.currentBiome);
   const { quality } = useLOD();
 
   // ========================================================================
@@ -124,6 +131,8 @@ export default function ReactiveAudio({
         AUDIO_CONFIG.defaultSfxTracks.rapids,
         AUDIO_CONFIG.defaultSfxTracks.whoosh,
         AUDIO_CONFIG.defaultSfxTracks.splash,
+        AUDIO_CONFIG.defaultSfxTracks.coldWind,
+        AUDIO_CONFIG.defaultSfxTracks.iceCrack,
       ];
       await Promise.all(fallbackNames.map((n) => am.loadSound(n)));
 
@@ -132,6 +141,8 @@ export default function ReactiveAudio({
       const highBuf = resolveAudioBuffer(reachId, 'ambient_high', AUDIO_CONFIG.defaultAmbientTracks.high);
       const rapidsBuf = resolveAudioBuffer(reachId, 'sfx_rapids', AUDIO_CONFIG.defaultSfxTracks.rapids);
       const whooshBuf = resolveAudioBuffer(reachId, 'sfx_whoosh', AUDIO_CONFIG.defaultSfxTracks.whoosh);
+      const coldWindBuf = resolveAudioBuffer(reachId, 'sfx_cold_wind', AUDIO_CONFIG.defaultSfxTracks.coldWind);
+      const iceCrackBuf = resolveAudioBuffer(reachId, 'sfx_ice_crack', AUDIO_CONFIG.defaultSfxTracks.iceCrack);
 
       if (lowBuf) {
         ambientLowRef.current = new THREE.Audio(listener);
@@ -168,6 +179,21 @@ export default function ReactiveAudio({
         sfxWhooshRef.current.setVolume(0);
         sfxWhooshRef.current.play();
       }
+      if (coldWindBuf) {
+        sfxColdWindRef.current = new THREE.Audio(listener);
+        sfxColdWindRef.current.setBuffer(coldWindBuf);
+        sfxColdWindRef.current.setLoop(true);
+        sfxColdWindRef.current.setVolume(0);
+        sfxColdWindRef.current.play();
+      }
+      if (iceCrackBuf) {
+        sfxIceCrackRef.current = new THREE.Audio(listener);
+        sfxIceCrackRef.current.setBuffer(iceCrackBuf);
+        sfxIceCrackRef.current.setLoop(true);
+        sfxIceCrackRef.current.setVolume(0);
+        sfxIceCrackRef.current.setPlaybackRate(0.85);
+        sfxIceCrackRef.current.play();
+      }
 
       // Positional transition audio (waterfall / slot canyon roar)
       if (manifest && reachSegments) {
@@ -196,7 +222,7 @@ export default function ReactiveAudio({
     setup();
 
     return () => {
-      [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef].forEach((ref) => {
+      [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef, sfxColdWindRef, sfxIceCrackRef].forEach((ref) => {
         if (ref.current) {
           ref.current.stop();
           ref.current.disconnect();
@@ -249,14 +275,23 @@ export default function ReactiveAudio({
     };
     const onRunReset = () => {
       flowRef.current = { flowSpeed: 1, turbulence: 0, state: 'Normal' };
-      volumesRef.current = { low: 0, mid: 0, high: 0, rapids: 0, whoosh: 0, transition: 0 };
+      volumesRef.current = { low: 0, mid: 0, high: 0, rapids: 0, whoosh: 0, transition: 0, coldWind: 0, iceCrack: 0 };
       splashCooldownRef.current = 0;
+    };
+    const onPillarBreak = () => {
+      // Brief biome duck so the demolition rumble reads over ambient stems.
+      volumesRef.current.low *= 0.45;
+      volumesRef.current.mid *= 0.55;
+      volumesRef.current.high *= 0.65;
+      volumesRef.current.transition = Math.max(volumesRef.current.transition, 0.9);
     };
     window.addEventListener('water-flow-update', onFlow);
     window.addEventListener('watershed-run-reset', onRunReset);
+    window.addEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
     return () => {
       window.removeEventListener('water-flow-update', onFlow);
       window.removeEventListener('watershed-run-reset', onRunReset);
+      window.removeEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
     };
   }, []);
 
@@ -300,6 +335,12 @@ export default function ReactiveAudio({
       ? 0
       : THREE.MathUtils.clamp((playerSpeed - AUDIO_CONFIG.sfx.whooshStartSpeed) / whooshSpan, 0, 1);
 
+    const inGlacialBiome = isGlacialBiome(currentBiomeId);
+    const targetColdWind = inGlacialBiome ? AUDIO_CONFIG.glacial.coldWindVolume : 0;
+    const targetIceCrack = inGlacialBiome
+      ? AUDIO_CONFIG.glacial.iceCrackVolume * (0.35 + turbulence * 0.65)
+      : 0;
+
     // Smooth interpolation
     const lerp = AUDIO_CONFIG.ambient.crossfadeSpeed * delta;
     // Guard lerp against non-finite values
@@ -313,6 +354,8 @@ export default function ReactiveAudio({
     v.high += (targetHigh - v.high) * lerp;
     v.rapids += (targetRapids - v.rapids) * lerp;
     v.whoosh += (targetWhoosh - v.whoosh) * lerp;
+    v.coldWind += (targetColdWind - v.coldWind) * AUDIO_CONFIG.glacial.crossfadeSpeed * delta;
+    v.iceCrack += (targetIceCrack - v.iceCrack) * AUDIO_CONFIG.glacial.crossfadeSpeed * delta;
 
     // Harden: reset any NaN values back to 0
     if (!isFinite(v.low)) v.low = 0;
@@ -320,6 +363,8 @@ export default function ReactiveAudio({
     if (!isFinite(v.high)) v.high = 0;
     if (!isFinite(v.rapids)) v.rapids = 0;
     if (!isFinite(v.whoosh)) v.whoosh = 0;
+    if (!isFinite(v.coldWind)) v.coldWind = 0;
+    if (!isFinite(v.iceCrack)) v.iceCrack = 0;
 
     const master = AUDIO_CONFIG.masterVolume;
 
@@ -354,6 +399,18 @@ export default function ReactiveAudio({
       const whooshVol = v.whoosh * AUDIO_CONFIG.sfx.whooshMaxVolume * master;
       if (isFinite(whooshVol)) {
         sfxWhooshRef.current.setVolume(whooshVol);
+      }
+    }
+    if (sfxColdWindRef.current) {
+      const windVol = v.coldWind * master;
+      if (isFinite(windVol)) {
+        sfxColdWindRef.current.setVolume(windVol);
+      }
+    }
+    if (sfxIceCrackRef.current) {
+      const crackVol = v.iceCrack * master;
+      if (isFinite(crackVol)) {
+        sfxIceCrackRef.current.setVolume(crackVol);
       }
     }
 

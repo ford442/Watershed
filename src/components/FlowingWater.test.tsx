@@ -1,28 +1,45 @@
+import type { Mock } from 'vitest';
 import React from 'react';
 import { render } from '@testing-library/react';
-import '@testing-library/jest-dom';
-import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
-import FlowingWater from './FlowingWater';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 
-jest.mock('@react-three/fiber', () => ({
-  useFrame: jest.fn(),
-  useThree: jest.fn(),
+const shaderMaterialMock = vi.hoisted(() =>
+  vi.fn((params: any) => ({ uniforms: params.uniforms, userData: {} } as any)),
+);
+
+vi.mock('three', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('three')>();
+  return {
+    ...actual,
+    ShaderMaterial: shaderMaterialMock,
+  };
+});
+
+vi.mock('@react-three/fiber', () => ({
+  useFrame: vi.fn(),
+  useThree: vi.fn(),
 }));
 
-jest.mock('../hooks/useShaderLoader', () => ({
-  useShaderLoader: jest.fn(),
+vi.mock('../hooks/useShaderLoader', () => ({
+  useShaderLoader: vi.fn(),
 }));
+
+import * as THREE from 'three';
+import FlowingWater from './FlowingWater';
 
 describe('FlowingWater', () => {
   beforeEach(() => {
-    (useThree as jest.Mock).mockReturnValue({
+    shaderMaterialMock.mockImplementation((params: any) => ({
+      uniforms: params.uniforms,
+      userData: {},
+    }));
+    (useThree as Mock).mockReturnValue({
       camera: {
         position: new THREE.Vector3(),
       },
     });
-    (useShaderLoader as jest.Mock).mockReturnValue({
+    (useShaderLoader as Mock).mockReturnValue({
       code: null,
       loading: false,
       error: null,
@@ -30,14 +47,14 @@ describe('FlowingWater', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
+    shaderMaterialMock.mockImplementation((params: any) => ({
+      uniforms: params.uniforms,
+      userData: {},
+    }));
   });
 
   test('passes custom foam and highlight colors into shader uniforms', () => {
-    const shaderMaterialSpy = jest
-      .spyOn(THREE, 'ShaderMaterial')
-      .mockImplementation((params: any) => ({ uniforms: params.uniforms, userData: {} } as any));
-
     render(
       <FlowingWater
         geometry={new THREE.BufferGeometry()}
@@ -47,17 +64,17 @@ describe('FlowingWater', () => {
       />
     );
 
-    expect(shaderMaterialSpy).toHaveBeenCalledTimes(1);
-    const uniforms = shaderMaterialSpy.mock.calls[0][0].uniforms;
+    expect(shaderMaterialMock).toHaveBeenCalledTimes(1);
+    const uniforms = shaderMaterialMock.mock.calls[0][0].uniforms;
     expect(uniforms.foamColor.value.getHexString()).toBe('f0fbff');
     expect(uniforms.edgeHighlight.value.getHexString()).toBe('9cf2ff');
   });
 
   test('falls back to MeshBasicMaterial when shader setup throws', () => {
-    jest.spyOn(THREE, 'ShaderMaterial').mockImplementation(() => {
+    shaderMaterialMock.mockImplementation(() => {
       throw new Error('shader compile failed');
     });
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { container } = render(
       <FlowingWater geometry={new THREE.BufferGeometry()} baseColor="#1a7b9c" />
@@ -71,23 +88,20 @@ describe('FlowingWater', () => {
   });
 
   test('uses built-in shader when loaded fragment shader is invalid', () => {
-    (useShaderLoader as jest.Mock).mockReturnValue({
+    (useShaderLoader as Mock).mockReturnValue({
       code: 'void broken() {',
       loading: false,
       error: 'invalid shader',
     });
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const shaderMaterialSpy = jest
-      .spyOn(THREE, 'ShaderMaterial')
-      .mockImplementation((params: any) => ({ uniforms: params.uniforms, userData: {} } as any));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     render(<FlowingWater geometry={new THREE.BufferGeometry()} />);
 
     expect(warnSpy).toHaveBeenCalledWith(
       '[FlowingWater] Invalid fragment shader, using built-in fallback'
     );
-    expect(shaderMaterialSpy).toHaveBeenCalledTimes(1);
-    expect(shaderMaterialSpy.mock.calls[0][0].fragmentShader).toContain('gl_FragColor = vec4');
-    expect(shaderMaterialSpy.mock.calls[0][0].fragmentShader).not.toBe('void broken() {');
+    expect(shaderMaterialMock).toHaveBeenCalledTimes(1);
+    expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).toContain('gl_FragColor = vec4');
+    expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).not.toBe('void broken() {');
   });
 });
