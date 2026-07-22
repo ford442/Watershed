@@ -259,7 +259,7 @@ export interface PopulateSideArgs extends PlacementLists {
 export type SegmentState = FlowForecastState | string;
 
 export interface TrackSegmentProps {
-  segmentId: number;
+  segmentId?: number;
   type?: SegmentKind | string;
   segmentPath?: THREE.CatmullRomCurve3 | null;
   width?: number;
