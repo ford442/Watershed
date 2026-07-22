@@ -34,6 +34,17 @@ export const BIOME_LIGHTING: Record<string, BiomeLightingConfig> = {
     fillColor: '#ffc888',
     fillIntensity: 0.18,
   },
+  lumberFlume: {
+    ambientIntensity: 0.38,
+    hemiSky: '#90c0a0',
+    hemiGround: '#2a4030',
+    hemiIntensity: 0.75,
+    dirColor: '#ffe8c0',
+    dirIntensity: 1.05,
+    dirPosition: [8, 28, 14],
+    fillColor: '#b0d080',
+    fillIntensity: 0.28,
+  },
 };
 
 export const NOOP_DEBUG: DebugStageController = {

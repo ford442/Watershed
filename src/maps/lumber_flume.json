@@ -1,0 +1,298 @@
+{
+  "metadata": {
+    "name": "Lumber Flume",
+    "author": "watershed",
+    "description": "Forest approach into a mossy wooden aqueduct, gap jump over a broken trestle, and splash landing back into the river.",
+    "difficulty": "intermediate",
+    "estimatedDuration": 280,
+    "version": "1.0.0",
+    "tags": ["lumber", "flume", "forest", "gap"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, 1, 40],
+        [0, 0, 10],
+        [2, -2, -30],
+        [4, -5, -90],
+        [2, -8, -160],
+        [-1, -12, -240],
+        [1, -16, -330],
+        [0, -20, -420]
+      ],
+      "segmentLength": 95,
+      "totalSegments": 16,
+      "width": 28,
+      "wallHeight": 12
+    },
+    "biome": {
+      "baseType": "lumberFlume",
+      "sky": {
+        "color": "#6ba88a",
+        "cloudDensity": 0.45,
+        "cloudColor": "#d0e8d8"
+      },
+      "fog": {
+        "color": "#a8c8b0",
+        "near": 28,
+        "far": 160,
+        "density": 0.024
+      },
+      "lighting": {
+        "sunIntensity": 1.05,
+        "sunAngle": 42,
+        "sunColor": "#ffe8c0",
+        "ambientIntensity": 0.38,
+        "hemiSkyColor": "#90c0a0",
+        "hemiGroundColor": "#2a4030"
+      },
+      "water": {
+        "tint": "#3a7a58",
+        "flowSpeed": 1.55,
+        "opacity": 0.82,
+        "surfaceRoughness": 0.28
+      }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "name": "Forest Approach",
+      "difficulty": 0.2,
+      "biomeOverride": "lumberFlume",
+      "width": 34,
+      "waterWidth": 14,
+      "meanderStrength": 0.7,
+      "verticalBias": -0.25,
+      "physics": { "waterFlowIntensity": 0.9 },
+      "effects": { "particleCount": 40 },
+      "decorations": { "trees": 18, "rocks": 2, "ferns": 12, "sunShafts": 4, "driftwood": 4 }
+    },
+    {
+      "index": 1,
+      "name": "Timber Fringe",
+      "difficulty": 0.25,
+      "biomeOverride": "lumberFlume",
+      "width": 32,
+      "waterWidth": 12,
+      "meanderStrength": 0.65,
+      "verticalBias": -0.3,
+      "physics": { "waterFlowIntensity": 1.0 },
+      "effects": { "particleCount": 45 },
+      "decorations": { "trees": 20, "rocks": 2, "ferns": 14, "sunShafts": 5, "driftwood": 5 }
+    },
+    {
+      "index": 2,
+      "name": "Moss Banks",
+      "difficulty": 0.3,
+      "biomeOverride": "lumberFlume",
+      "width": 30,
+      "waterWidth": 11,
+      "meanderStrength": 0.55,
+      "verticalBias": -0.4,
+      "physics": { "waterFlowIntensity": 1.1 },
+      "effects": { "particleCount": 50 },
+      "decorations": { "trees": 22, "rocks": 3, "ferns": 16, "sunShafts": 6, "mushrooms": 8 }
+    },
+    {
+      "index": 3,
+      "name": "Flume Intake",
+      "difficulty": 0.4,
+      "biomeOverride": "lumberFlume",
+      "width": 28,
+      "waterWidth": 9,
+      "meanderStrength": 0.35,
+      "verticalBias": -0.55,
+      "physics": { "waterFlowIntensity": 1.3 },
+      "effects": { "particleCount": 60, "cameraShake": 0.05 },
+      "decorations": { "trees": 16, "rocks": 4, "ferns": 10, "sunShafts": 5, "driftwood": 8 }
+    },
+    {
+      "index": 4,
+      "name": "Elevated Flume",
+      "difficulty": 0.5,
+      "biomeOverride": "lumberFlume",
+      "width": 26,
+      "waterWidth": 8,
+      "meanderStrength": 0.2,
+      "verticalBias": -0.7,
+      "physics": { "waterFlowIntensity": 1.5 },
+      "effects": { "particleCount": 70, "cameraShake": 0.08 },
+      "decorations": { "trees": 14, "rocks": 3, "ferns": 8, "sunShafts": 7, "driftwood": 10 }
+    },
+    {
+      "index": 5,
+      "name": "Flume Straight",
+      "difficulty": 0.55,
+      "biomeOverride": "lumberFlume",
+      "width": 24,
+      "waterWidth": 7,
+      "meanderStrength": 0.12,
+      "verticalBias": -0.85,
+      "physics": { "waterFlowIntensity": 1.65 },
+      "effects": { "particleCount": 80, "cameraShake": 0.1 },
+      "decorations": { "trees": 12, "rocks": 2, "ferns": 6, "sunShafts": 6, "driftwood": 12 }
+    },
+    {
+      "index": 6,
+      "name": "Timber Chute",
+      "difficulty": 0.6,
+      "biomeOverride": "lumberFlume",
+      "width": 24,
+      "waterWidth": 7,
+      "meanderStrength": 0.08,
+      "verticalBias": -1.0,
+      "physics": { "waterFlowIntensity": 1.75 },
+      "effects": { "particleCount": 90, "cameraShake": 0.12 },
+      "decorations": { "trees": 10, "rocks": 2, "ferns": 5, "sunShafts": 5, "driftwood": 14 }
+    },
+    {
+      "index": 7,
+      "name": "Flume Bend",
+      "difficulty": 0.62,
+      "biomeOverride": "lumberFlume",
+      "width": 25,
+      "waterWidth": 7,
+      "meanderStrength": 0.45,
+      "verticalBias": -1.1,
+      "physics": { "waterFlowIntensity": 1.8 },
+      "effects": { "particleCount": 95, "cameraShake": 0.14 },
+      "decorations": { "trees": 11, "rocks": 3, "ferns": 6, "sunShafts": 4, "driftwood": 12 }
+    },
+    {
+      "index": 8,
+      "name": "High Flume",
+      "difficulty": 0.65,
+      "biomeOverride": "lumberFlume",
+      "width": 24,
+      "waterWidth": 6,
+      "meanderStrength": 0.1,
+      "verticalBias": -1.25,
+      "physics": { "waterFlowIntensity": 1.9 },
+      "effects": { "particleCount": 100, "cameraShake": 0.15 },
+      "decorations": { "trees": 9, "rocks": 2, "ferns": 4, "sunShafts": 5, "driftwood": 15 }
+    },
+    {
+      "index": 9,
+      "name": "Trestle Approach",
+      "difficulty": 0.7,
+      "biomeOverride": "lumberFlume",
+      "width": 26,
+      "waterWidth": 7,
+      "meanderStrength": 0.15,
+      "verticalBias": -1.4,
+      "physics": { "waterFlowIntensity": 2.0 },
+      "effects": { "particleCount": 110, "cameraShake": 0.18 },
+      "decorations": { "trees": 8, "rocks": 4, "ferns": 3, "sunShafts": 3, "driftwood": 16 }
+    },
+    {
+      "index": 10,
+      "name": "Gap Launch",
+      "difficulty": 0.8,
+      "type": "waterfall",
+      "biomeOverride": "lumberFlume",
+      "width": 28,
+      "waterWidth": 8,
+      "meanderStrength": 0.0,
+      "verticalBias": -2.7,
+      "forwardMomentum": 0.14,
+      "openFloor": true,
+      "physics": { "waterFlowIntensity": 2.1, "gravityMultiplier": 1.3 },
+      "effects": { "particleCount": 220, "cameraShake": 0.38 },
+      "decorations": {
+        "trees": 2,
+        "rocks": [
+          { "localX": -10, "localZ": -28, "scale": 3.2, "rotation": 0.1, "rockType": "slab" }
+        ],
+        "driftwood": 8
+      },
+      "launchShelf": {
+        "rockRef": { "localX": -10, "localZ": -28, "scale": 3.2 },
+        "triggerHalfWidth": 8.0,
+        "triggerHalfLength": 6.5,
+        "triggerHeight": 5.5,
+        "triggerDownstreamOffset": 5.0,
+        "triggerYOffset": 0.8
+      }
+    },
+    {
+      "index": 11,
+      "name": "Landing Pool",
+      "difficulty": 0.45,
+      "type": "splash",
+      "biomeOverride": "lumberFlume",
+      "width": 40,
+      "waterWidth": 16,
+      "meanderStrength": 0.25,
+      "verticalBias": -0.5,
+      "physics": { "waterFlowIntensity": 1.2, "gravityMultiplier": 1.0 },
+      "effects": { "particleCount": 160, "cameraShake": 0.2 },
+      "decorations": { "trees": 10, "rocks": 3, "ferns": 8, "mist": 6, "driftwood": 10 }
+    },
+    {
+      "index": 12,
+      "name": "Broken Trestle",
+      "difficulty": 0.55,
+      "biomeOverride": "lumberFlume",
+      "width": 30,
+      "waterWidth": 10,
+      "meanderStrength": 0.5,
+      "verticalBias": -0.6,
+      "physics": { "waterFlowIntensity": 1.35 },
+      "effects": { "particleCount": 90, "cameraShake": 0.1 },
+      "decorations": { "trees": 12, "rocks": 8, "ferns": 6, "driftwood": 18, "sunShafts": 4 }
+    },
+    {
+      "index": 13,
+      "name": "Trestle Wreckage",
+      "difficulty": 0.5,
+      "type": "rapids",
+      "biomeOverride": "lumberFlume",
+      "width": 32,
+      "waterWidth": 11,
+      "meanderStrength": 0.6,
+      "verticalBias": -0.45,
+      "physics": { "waterFlowIntensity": 1.25 },
+      "effects": { "particleCount": 120 },
+      "decorations": { "trees": 14, "rocks": 10, "ferns": 8, "driftwood": 20, "rapids": 8 }
+    },
+    {
+      "index": 14,
+      "name": "River Rejoin",
+      "difficulty": 0.3,
+      "biomeOverride": "lumberFlume",
+      "width": 34,
+      "waterWidth": 14,
+      "meanderStrength": 0.7,
+      "verticalBias": -0.25,
+      "physics": { "waterFlowIntensity": 1.0 },
+      "effects": { "particleCount": 60 },
+      "decorations": { "trees": 16, "rocks": 3, "ferns": 10, "sunShafts": 5, "driftwood": 8 }
+    },
+    {
+      "index": 15,
+      "name": "Meander Handoff",
+      "difficulty": 0.2,
+      "biomeOverride": "canyonSummer",
+      "width": 35,
+      "waterWidth": 18,
+      "meanderStrength": 0.75,
+      "verticalBias": -0.15,
+      "physics": { "waterFlowIntensity": 0.85 },
+      "effects": { "transitionDuration": 2000, "particleCount": 100 },
+      "decorations": { "trees": 14, "rocks": 2, "ferns": 6 }
+    }
+  ],
+  "spawns": {
+    "start": {
+      "position": [0, 3, -8],
+      "rotation": [0, 0, 0],
+      "velocity": [0, 0, 0]
+    },
+    "checkpoints": [
+      { "segment": 5, "position": [0, -8, -180], "radius": 25 },
+      { "segment": 10, "position": [0, -14, -320], "radius": 30 },
+      { "segment": 11, "position": [0, -18, -360], "radius": 35 }
+    ]
+  }
+}
