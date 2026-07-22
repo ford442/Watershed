@@ -99,6 +99,92 @@ function safePathPoint(segmentPath: THREE.CatmullRomCurve3, t: number, segmentId
   }
 }
 
+/** Visual canyon floor width subdivisions (PlaneGeometry segmentsX). */
+export const CANYON_VISUAL_SEGMENTS_X = 40;
+
+/**
+ * Collision mesh uses ~1/4 the visual XZ density so Rapier solves a much
+ * smaller trimesh while preserving the same U-profile for grounding / wall-ride.
+ */
+export const CANYON_COLLISION_SUBDIVISION_DIVISOR = 4;
+
+export interface CanyonHeightSample {
+  yHeight: number;
+  /** Channel shape at this sample — used for vertex coloring on the visual mesh. */
+  channelShape: ChannelShape;
+  normalizedDist: number;
+}
+
+/**
+ * Shared U-profile height used by visual and collision canyon meshes.
+ * Collision omits high-frequency rock noise so contacts stay smooth without
+ * changing bank angles enough to break wall-ride / grounding raycasts.
+ */
+export function computeCanyonFloorHeight(
+  xLocal: number,
+  zLocal: number,
+  pathLen: number,
+  canyonWidth: number,
+  waterWidth: number,
+  channelProfile: readonly ChannelProfileSample[],
+  isSlotCanyon: boolean,
+  options: { includeRockNoise?: boolean } = {}
+): CanyonHeightSample {
+  const { includeRockNoise = true } = options;
+  const t = (zLocal + pathLen / 2) / pathLen;
+  const safeT = Math.max(0, Math.min(1, t));
+  const channelShape = sampleChannelShape(channelProfile, waterWidth, safeT);
+  const signedBankWidth = xLocal < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
+  const corridorWidth = Math.max(1.2, channelShape.corridorHalfWidth);
+  const distFromCenter = Math.abs(xLocal);
+  const normalizedDist = distFromCenter / (canyonWidth * 0.45);
+  const bankRatio = distFromCenter / Math.max(0.001, signedBankWidth);
+  const gravelBarInfluence = channelShape.gravelBarSide === Math.sign(xLocal || 1) ? 1 : 0;
+  const undercutInfluence = channelShape.undercutSide === Math.sign(xLocal || 1) ? 1 : 0;
+
+  let yHeight = isSlotCanyon
+    ? 22 + Math.pow(Math.max(0, normalizedDist), 1.8) * 18
+    : Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+
+  if (distFromCenter < signedBankWidth) {
+    const inChannel = distFromCenter / Math.max(0.001, signedBankWidth);
+    const corridorEase = THREE.MathUtils.smoothstep(inChannel, 0, 1);
+    yHeight *= isSlotCanyon ? 0.18 : 0.1;
+    yHeight -= channelShape.floorDepth * 1.4;
+    yHeight += channelShape.floorWave * (distFromCenter < corridorWidth ? 0.2 : 0.55);
+    yHeight += Math.max(0, channelShape.riffleStrength) * inChannel * 0.35;
+    yHeight += Math.max(0, 1 - corridorEase) * 0.05;
+  } else {
+    const aboveBank = Math.max(0, bankRatio - 1);
+    yHeight += aboveBank * aboveBank * 4.5 * undercutInfluence;
+    yHeight -= aboveBank * 1.25 * gravelBarInfluence;
+  }
+
+  if (includeRockNoise) {
+    const rockNoise =
+      Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
+    yHeight += rockNoise * (0.5 + normalizedDist);
+  }
+
+  return { yHeight, channelShape, normalizedDist };
+}
+
+export function canyonSubdivisionCounts(
+  pathLen: number,
+  kind: 'visual' | 'collision'
+): { segmentsX: number; segmentsZ: number } {
+  if (kind === 'visual') {
+    return {
+      segmentsX: CANYON_VISUAL_SEGMENTS_X,
+      segmentsZ: Math.max(2, Math.floor(pathLen)),
+    };
+  }
+  return {
+    segmentsX: Math.max(4, Math.floor(CANYON_VISUAL_SEGMENTS_X / CANYON_COLLISION_SUBDIVISION_DIVISOR)),
+    segmentsZ: Math.max(2, Math.floor(pathLen / CANYON_COLLISION_SUBDIVISION_DIVISOR)),
+  };
+}
+
 /**
  * Build canyon floor BufferGeometry for a segment path.
  * Returns null when path length is invalid.
@@ -113,8 +199,7 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     return null;
   }
 
-  const segmentsX = 40;
-  const segmentsZ = Math.max(2, Math.floor(len));
+  const { segmentsX, segmentsZ } = canyonSubdivisionCounts(len, 'visual');
 
   const geo = new THREE.PlaneGeometry(canyonWidth, len, segmentsX, segmentsZ);
   geo.rotateX(-Math.PI / 2);
@@ -164,39 +249,18 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     vertex.fromBufferAttribute(positions, i);
     const xLocal = vertex.x;
     const zLocal = vertex.z;
+    const { yHeight, channelShape } = computeCanyonFloorHeight(
+      xLocal,
+      zLocal,
+      len,
+      canyonWidth,
+      waterWidth,
+      channelProfile,
+      isSlotCanyon,
+      { includeRockNoise: true }
+    );
     const t = (zLocal + len / 2) / len;
     const safeT = Math.max(0, Math.min(1, t));
-    const channelShape = sampleChannelShape(channelProfile, waterWidth, safeT);
-    const signedBankWidth = xLocal < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
-    const corridorWidth = Math.max(1.2, channelShape.corridorHalfWidth);
-    const distFromCenter = Math.abs(xLocal);
-    const normalizedDist = distFromCenter / (canyonWidth * 0.45);
-    const bankRatio = distFromCenter / Math.max(0.001, signedBankWidth);
-    const gravelBarInfluence = channelShape.gravelBarSide === Math.sign(xLocal || 1) ? 1 : 0;
-    const undercutInfluence = channelShape.undercutSide === Math.sign(xLocal || 1) ? 1 : 0;
-
-    let yHeight = isSlotCanyon
-      ? 22 + Math.pow(Math.max(0, normalizedDist), 1.8) * 18
-      : Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-
-    if (distFromCenter < signedBankWidth) {
-      const inChannel = distFromCenter / Math.max(0.001, signedBankWidth);
-      const corridorEase = THREE.MathUtils.smoothstep(inChannel, 0, 1);
-      yHeight *= isSlotCanyon ? 0.18 : 0.1;
-      yHeight -= channelShape.floorDepth * 1.4;
-      yHeight += channelShape.floorWave * (distFromCenter < corridorWidth ? 0.2 : 0.55);
-      yHeight += Math.max(0, channelShape.riffleStrength) * inChannel * 0.35;
-      yHeight += Math.max(0, 1 - corridorEase) * 0.05;
-    } else {
-      const aboveBank = Math.max(0, bankRatio - 1);
-      yHeight += aboveBank * aboveBank * 4.5 * undercutInfluence;
-      yHeight -= aboveBank * 1.25 * gravelBarInfluence;
-    }
-
-    const rockNoise =
-      Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
-    yHeight += rockNoise * (0.5 + normalizedDist);
-
     const point = safePathPoint(segmentPath, safeT, segmentId);
 
     const depthTint = THREE.MathUtils.clamp(-channelShape.floorDepth * 0.25, 0, 0.2);
@@ -230,6 +294,66 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     }
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  if (!sanitizePositionAttribute(positions)) {
+    geo.computeVertexNormals();
+  }
+  return geo;
+}
+
+/**
+ * Build a low-poly collision-only canyon mesh (same U-profile, ~1/4 XZ density,
+ * no vertex colors / decorative rock noise). Mounted invisible under a fixed
+ * trimesh RigidBody so the visual mesh no longer owns Rapier colliders.
+ */
+export function buildCollisionGeometry(ctx: GeometryBuildContext): THREE.BufferGeometry | null {
+  const { segmentPath, segmentId, canyonWidth, waterWidth, channelProfile, isSlotCanyon } = ctx;
+
+  const len = segmentPath.getLength();
+  if (!len || len <= 0 || !Number.isFinite(len)) {
+    console.warn(`[TrackSegment ${segmentId}] Invalid pathLength for collision: ${len}`);
+    return null;
+  }
+
+  const { segmentsX, segmentsZ } = canyonSubdivisionCounts(len, 'collision');
+  const geo = new THREE.PlaneGeometry(canyonWidth, len, segmentsX, segmentsZ);
+  geo.rotateX(-Math.PI / 2);
+
+  const positions = geo.attributes.position;
+  const vertex = new THREE.Vector3();
+
+  for (let i = 0; i < positions.count; i++) {
+    vertex.fromBufferAttribute(positions, i);
+    const xLocal = vertex.x;
+    const zLocal = vertex.z;
+    const { yHeight } = computeCanyonFloorHeight(
+      xLocal,
+      zLocal,
+      len,
+      canyonWidth,
+      waterWidth,
+      channelProfile,
+      isSlotCanyon,
+      { includeRockNoise: false }
+    );
+    const t = (zLocal + len / 2) / len;
+    const safeT = Math.max(0, Math.min(1, t));
+    const point = safePathPoint(segmentPath, safeT, segmentId);
+
+    const finalX = point.x + xLocal;
+    const finalY = point.y + yHeight;
+    const finalZ = point.z;
+
+    if (Number.isFinite(finalX) && Number.isFinite(finalY) && Number.isFinite(finalZ)) {
+      positions.setXYZ(i, finalX, finalY, finalZ);
+    } else {
+      positions.setXYZ(i, 0, 0, 0);
+    }
+  }
+
+  // Drop UVs — collision mesh is invisible and Rapier only needs positions + indices.
+  geo.deleteAttribute('uv');
+  geo.deleteAttribute('normal');
 
   if (!sanitizePositionAttribute(positions)) {
     geo.computeVertexNormals();

@@ -143,6 +143,8 @@ export interface PlungeImpactPlacement {
 
 export interface TrackSegmentGeometries {
   canyonGeometry: THREE.BufferGeometry | null;
+  /** Low-poly U-profile for Rapier trimesh; visual mesh stays collider-free. */
+  collisionGeometry: THREE.BufferGeometry | null;
   wallShellGeometry: THREE.BufferGeometry | null;
   waterGeometry: THREE.BufferGeometry | null;
   waterfallPos: THREE.Vector3 | null;
@@ -314,6 +316,7 @@ export interface TrackSegmentMeshesProps {
   showDebug?: boolean;
   placementData: PlacementData;
   canyonGeometry: THREE.BufferGeometry;
+  collisionGeometry: THREE.BufferGeometry;
   wallShellGeometry: THREE.BufferGeometry;
   waterGeometry: THREE.BufferGeometry;
   waterfallPos: THREE.Vector3 | null;
