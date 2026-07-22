@@ -136,6 +136,24 @@ export function awardDodgeBonus(): void {
   addScoreBonus(DODGE_BONUS);
 }
 
+/** Survive HighFlow / Flooded / WashedOut without wipeout — points from forecast effects table. */
+export function awardFloodSurviveBonus(points: number): void {
+  if (points <= 0) return;
+  const state = useGameStore.getState();
+  if (state.isWipeout) return;
+
+  addScoreBonus(points);
+  useGameStore.setState({
+    latestReward: {
+      tier: 'FloodSurvive',
+      score: Math.round(points),
+      clean: true,
+      id: Date.now(),
+      label: 'FLOOD SURVIVE',
+    },
+  });
+}
+
 /** Commit journey-end score to per-run persistence. */
 export function commitJourneyScore(): void {
   const { score, highScore } = useGameStore.getState();

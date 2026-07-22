@@ -135,6 +135,7 @@ export default function InnerExperience({
         enabled={debug.isStageEnabled('uiOverlay')}
         cleanTest={cleanTest}
         forecastSamples={state.forecastSamples}
+        damReleaseSchedule={DAM_RELEASE_SCHEDULE}
         isWipeout={state.isWipeout}
         isJourneyComplete={state.isJourneyComplete}
         onRespawn={state.handleRespawn}

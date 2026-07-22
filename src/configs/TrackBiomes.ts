@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLOW_FORECAST_STATES, type FlowForecastState } from '../constants/game';
+import type { FlowForecastState } from '../constants/game';
 import {
   type BiomeId,
   DEFAULT_BIOME_ID,
@@ -185,11 +185,11 @@ export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
   return TRACK_BIOMES[id] ?? TRACK_BIOMES[DEFAULT_BIOME_ID];
 }
 
-export function getForecastedBiomeState(flowRate: number): FlowForecastState {
-  if (flowRate >= 1.35) return FLOW_FORECAST_STATES.FLOODED;
-  if (flowRate >= 1.05) return FLOW_FORECAST_STATES.HIGH_FLOW;
-  return FLOW_FORECAST_STATES.NORMAL;
-}
+/** @deprecated Prefer `classifyFlow` from `systems/flowForecast` — kept as alias. */
+export { classifyFlow as getForecastedBiomeState } from '../systems/flowForecast';
+
+// Re-export for callers that still import the type via TrackBiomes.
+export type { FlowForecastState };
 
 export function lerpTrackBiomeColor(from: string, to: string, alpha: number): string {
   const color = new THREE.Color(from);

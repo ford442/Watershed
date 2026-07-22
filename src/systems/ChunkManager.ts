@@ -30,6 +30,12 @@ import {
   type SegmentProgressionConfig,
 } from './MapSystem';
 import type { NormalizedSegment } from './ReachNormalizer';
+import {
+  applyForecastToSegmentParams,
+  resolveForecastState,
+  type ForecastSegmentParams,
+} from './flowForecast';
+import { FLOW_FORECAST_STATES } from '../constants/game';
 
 // =============================================================================
 // TYPES
@@ -57,10 +63,20 @@ export interface SegmentData {
   gravityMultiplier?: number;
   /** Pre-calculated spawn data for objects. */
   spawns?: SpawnData[];
+  /** Forecast-driven washed-out bridge/gap flag. */
+  washedOutGap?: boolean;
+  /** Extra slipperiness layered on authored ice/biome slip (0–1). */
+  slipperinessAdd?: number;
+  /** Survive-this-state score bonus (awarded on clean exit). */
+  surviveBonus?: number;
+  /** Pre-forecast params so live forecast updates never double-multiply. */
+  _forecastBase?: ForecastSegmentParams;
   /** Authored decoration / launch-shelf overrides passed through to TrackSegment. */
   config?: {
     decorations?: Record<string, number | DecorationPlacement[]>;
     launchShelf?: { rockRef: { localX: number; localZ: number; scale: number } };
+    hasBridge?: boolean;
+    washedOutGap?: boolean;
   };
   /** Backing MapSystem chunk for pool recycling. */
   _baseChunk?: BaseMapChunk;
@@ -119,31 +135,82 @@ function baseChunkToSegmentData(
   forecastState: string,
 ): SegmentData {
   const biomeProfile = getTrackBiomeProfile(progression.biome);
-  const forecastBoost =
-    forecastState === 'Flooded' ? 1.45 : forecastState === 'HighFlow' ? 1.2 : 1;
+  const hasBridge = Boolean((chunk.config as { hasBridge?: boolean } | undefined)?.hasBridge);
+  const forecastBase: ForecastSegmentParams = {
+    type: progression.type,
+    width: progression.width,
+    waterWidth: progression.waterWidth,
+    flowSpeed: progression.flowSpeed,
+    particleCount: progression.particleCount || 0,
+    rockDensity: progression.rockDensity,
+    cameraShake: progression.cameraShake || 0,
+    hasBridge,
+    washedOutGap: Boolean((chunk.config as { washedOutGap?: boolean } | undefined)?.washedOutGap),
+  };
+  const applied = applyForecastToSegmentParams(forecastBase, forecastState);
 
   return {
     id: chunk.index,
-    type: forecastState === 'Flooded' && progression.type === 'normal' ? 'pond' : progression.type,
+    type: applied.type,
     biome: biomeProfile.id,
     points: chunk.pathPoints,
     segmentPath: chunk.curve!,
-    width: progression.width,
-    waterWidth: progression.waterWidth,
-    flowSpeed: progression.flowSpeed * forecastBoost,
-    particleCount: progression.particleCount || 0,
-    cameraShake: progression.cameraShake || 0,
+    width: applied.width,
+    waterWidth: applied.waterWidth,
+    flowSpeed: applied.flowSpeed,
+    particleCount: applied.particleCount,
+    cameraShake: applied.cameraShake ?? 0,
     treeDensity: progression.treeDensity,
-    rockDensity: progression.rockDensity,
-    segmentState: forecastState,
+    rockDensity: applied.rockDensity,
+    segmentState: applied.segmentState,
     wallProfile: biomeProfile,
     forwardMomentum: progression.forwardMomentum,
     meanderStrength: progression.meanderStrength,
     verticalBias: progression.verticalBias,
     gravityMultiplier: progression.gravityMultiplier,
     spawns: chunk.spawns,
-    config: chunk.config,
+    washedOutGap: applied.washedOutGap,
+    slipperinessAdd: applied.slipperinessAdd,
+    surviveBonus: applied.surviveBonus,
+    _forecastBase: forecastBase,
+    config: {
+      ...chunk.config,
+      washedOutGap: applied.washedOutGap,
+      hasBridge,
+    },
     _baseChunk: chunk,
+  };
+}
+
+function applyLiveForecast(
+  segment: SegmentData,
+  forecastState: string,
+): SegmentData {
+  const base = segment._forecastBase;
+  if (!base) {
+    return {
+      ...segment,
+      segmentState: resolveForecastState(undefined, 0, forecastState),
+    };
+  }
+  const applied = applyForecastToSegmentParams(base, forecastState);
+  return {
+    ...segment,
+    type: applied.type,
+    width: applied.width,
+    waterWidth: applied.waterWidth,
+    flowSpeed: applied.flowSpeed,
+    particleCount: applied.particleCount,
+    rockDensity: applied.rockDensity,
+    cameraShake: applied.cameraShake ?? 0,
+    segmentState: applied.segmentState,
+    washedOutGap: applied.washedOutGap,
+    slipperinessAdd: applied.slipperinessAdd,
+    surviveBonus: applied.surviveBonus,
+    config: {
+      ...segment.config,
+      washedOutGap: applied.washedOutGap,
+    },
   };
 }
 
@@ -213,9 +280,10 @@ export class ChunkManager {
       const index = this.startIndex + i;
       // reachSegments are always 0-based; only use them for non-negative indices
       const reachIdx = index - this.startIndex;
+      const forecastState = resolveForecastState(this.forecastByIndex, index);
       const segment: SegmentData =
         segments && index >= 0 && segments[reachIdx]
-          ? this.adaptReachSegment(segments[reachIdx], previousSegment)
+          ? this.adaptReachSegment(segments[reachIdx], previousSegment, forecastState)
           : this.buildSegment(index, previousSegment);
 
       pool[i] = { slotIndex: i, active: true, segment };
@@ -499,11 +567,12 @@ export class ChunkManager {
     ensureContinuity = false
   ): SegmentData {
     const segments = this.reachSegments;
+    const forecastState = resolveForecastState(this.forecastByIndex, index);
+
     if (segments && segments[index]) {
-      return this.adaptReachSegment(segments[index], previousSegment);
+      return this.adaptReachSegment(segments[index], previousSegment, forecastState);
     }
 
-    const forecastState = this.forecastByIndex.get(index) || 'Normal';
     return createSegmentData(
       index,
       previousSegment,
@@ -516,26 +585,76 @@ export class ChunkManager {
 
   private adaptReachSegment(
     seg: NormalizedSegment,
-    previousSegment: SegmentData | null
+    previousSegment: SegmentData | null,
+    forecastState: string = FLOW_FORECAST_STATES.NORMAL,
   ): SegmentData {
-    if (previousSegment?.points) {
-      const continuousPoints = ensureTangentContinuity(
-        previousSegment.points,
-        seg.points.map((p) => p.clone())
-      );
-      const tension = seg.type === 'pond' ? 0.1 : 0.5;
-      return {
-        ...seg,
-        points: continuousPoints,
-        segmentPath: new THREE.CatmullRomCurve3(continuousPoints, false, 'catmullrom', tension),
-      };
-    }
-    return seg as SegmentData;
+    const forecastBase: ForecastSegmentParams = seg._forecastBase ?? {
+      type: seg.type === 'pond' ? 'normal' : seg.type,
+      width: seg.width,
+      waterWidth: seg.waterWidth,
+      flowSpeed: seg.flowSpeed,
+      particleCount: seg.particleCount,
+      rockDensity: seg.rockDensity,
+      cameraShake: seg.cameraShake,
+      hasBridge: Boolean(seg.config?.hasBridge),
+      washedOutGap: Boolean(seg.config?.washedOutGap),
+    };
+
+    const points =
+      previousSegment?.points
+        ? ensureTangentContinuity(
+            previousSegment.points,
+            seg.points.map((p) => p.clone()),
+          )
+        : seg.points.map((p) => p.clone());
+
+    const applied = applyForecastToSegmentParams(forecastBase, forecastState);
+    const tension = applied.type === 'pond' ? 0.1 : 0.5;
+    const segmentPath = new THREE.CatmullRomCurve3(points, false, 'catmullrom', tension);
+
+    return {
+      ...seg,
+      points,
+      segmentPath,
+      type: applied.type,
+      width: applied.width,
+      waterWidth: applied.waterWidth,
+      flowSpeed: applied.flowSpeed,
+      particleCount: applied.particleCount,
+      rockDensity: applied.rockDensity,
+      cameraShake: applied.cameraShake ?? 0,
+      segmentState: applied.segmentState,
+      washedOutGap: applied.washedOutGap,
+      slipperinessAdd: applied.slipperinessAdd,
+      surviveBonus: applied.surviveBonus,
+      _forecastBase: forecastBase,
+      config: {
+        ...seg.config,
+        washedOutGap: applied.washedOutGap,
+      },
+    };
   }
 
-  // Allow external forecast updates without full reset
+  /** Live forecast updates — re-apply multipliers to the active pool without resetting geometry. */
   setForecastByIndex(forecastByIndex: Map<number, string>): void {
     this.forecastByIndex = forecastByIndex;
+    if (!this.initialized) return;
+
+    let changed = false;
+    for (const slotIndex of this.activeOrder) {
+      const slot = this.pool[slotIndex];
+      if (!slot?.segment) continue;
+
+      const nextState = resolveForecastState(this.forecastByIndex, slot.segment.id);
+      if (slot.segment.segmentState === nextState) continue;
+
+      slot.segment = applyLiveForecast(slot.segment, nextState);
+      changed = true;
+    }
+
+    if (changed) {
+      this.callbacks.onPoolChange?.();
+    }
   }
 
   setReachSegments(reachSegments: NormalizedSegment[] | null): void {

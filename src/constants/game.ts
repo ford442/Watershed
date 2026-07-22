@@ -187,6 +187,7 @@ export const FLOW_FORECAST_STATES = {
     NORMAL: 'Normal',
     HIGH_FLOW: 'HighFlow',
     FLOODED: 'Flooded',
+    WASHED_OUT: 'WashedOut',
 } as const;
 
 export type FlowForecastState = typeof FLOW_FORECAST_STATES[keyof typeof FLOW_FORECAST_STATES];

@@ -178,7 +178,8 @@ export default function WaterFlowForces({
     const segmentState = closestSample.state ?? 'Normal';
 
     let stateMultiplier = 1;
-    if (segmentState === 'Flooded') stateMultiplier = WATER_FLOW_CONFIG.floodedMultiplier;
+    if (segmentState === 'WashedOut') stateMultiplier = WATER_FLOW_CONFIG.floodedMultiplier * 1.15;
+    else if (segmentState === 'Flooded') stateMultiplier = WATER_FLOW_CONFIG.floodedMultiplier;
     else if (segmentState === 'HighFlow') stateMultiplier = WATER_FLOW_CONFIG.rapidsMultiplier;
     else if (rawFlowSpeed < 0.6) stateMultiplier = WATER_FLOW_CONFIG.poolMultiplier;
     else if (rawFlowSpeed > 1.3) stateMultiplier = WATER_FLOW_CONFIG.rapidsMultiplier;

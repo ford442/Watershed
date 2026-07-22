@@ -28,6 +28,7 @@ import { getProceduralBaseSeed } from '../utils/runContext';
 import { ChunkManager } from '../systems/ChunkManager';
 import { createObstaclePool } from '../systems/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
+import { samplesToForecastByIndex } from '../systems/flowForecast';
 import type { NormalizedSegment } from '../systems/ReachNormalizer';
 import type { BiomeId } from '../configs/biomes';
 
@@ -252,10 +253,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
   // Forecast updates
   useEffect(() => {
-    const nextForecastMap = new Map<number, string>();
-    forecastSamples.forEach((sample, index) => {
-      nextForecastMap.set(index, sample.state);
-    });
+    const nextForecastMap = samplesToForecastByIndex(forecastSamples);
     forecastByIndexRef.current = nextForecastMap;
 
     if (chunkManagerRef.current && chunkManagerRef.current.isInitialized()) {
@@ -294,12 +292,21 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
         const gravityMultiplier = entered?.gravityMultiplier;
         // slipperiness is stored on the config, not the live SegmentData — read from map manager
         const segCfg = mapManagerRef.current?.getChunkConfig?.(index);
-        const slipperiness = segCfg?.slipperiness ?? 0;
+        const slipperiness =
+          (segCfg?.slipperiness ?? 0) + (entered?.slipperinessAdd ?? 0);
         (window as any).__watershedFlowSpeed = flowSpeed;
         (window as any).__watershedSlipperiness = slipperiness;
         window.dispatchEvent(
           new CustomEvent('segment-enter', {
-            detail: { segmentIndex: index, flowSpeed, gravityMultiplier, slipperiness },
+            detail: {
+              segmentIndex: index,
+              flowSpeed,
+              gravityMultiplier,
+              slipperiness,
+              segmentState: entered?.segmentState ?? 'Normal',
+              surviveBonus: entered?.surviveBonus ?? 0,
+              washedOutGap: Boolean(entered?.washedOutGap),
+            },
           })
         );
 

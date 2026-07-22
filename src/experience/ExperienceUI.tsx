@@ -3,12 +3,14 @@ import GameHUD from '../components/GameHUD';
 import ForecastHUD from '../components/ForecastHUD';
 import AudioDiagnosticsOverlay from '../components/AudioDiagnosticsOverlay';
 import { ErrorDisplay, LoadingDisplay } from '../systems/LevelLoader';
-import type { FlowForecastSample } from '../components/FlowForecast';
+import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
+import { useGameStore } from '../systems/GameState';
 
 interface ExperienceUIProps {
   enabled: boolean;
   cleanTest: boolean;
   forecastSamples: FlowForecastSample[];
+  damReleaseSchedule?: ReadonlyArray<DamReleaseEntry>;
   isWipeout: boolean;
   isJourneyComplete: boolean;
   onRespawn: () => void;
@@ -30,6 +32,7 @@ export default function ExperienceUI({
   enabled,
   cleanTest,
   forecastSamples,
+  damReleaseSchedule = [],
   isWipeout,
   isJourneyComplete,
   onRespawn,
@@ -46,11 +49,19 @@ export default function ExperienceUI({
   onRetryReach,
   onDismissReachError,
 }: ExperienceUIProps) {
+  const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+
   if (!enabled) return null;
 
   return (
     <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-      {!cleanTest && <ForecastHUD samples={forecastSamples} />}
+      {!cleanTest && (
+        <ForecastHUD
+          samples={forecastSamples}
+          damReleaseSchedule={damReleaseSchedule}
+          currentSegmentIndex={currentSegmentIndex}
+        />
+      )}
 
       <div style={{ pointerEvents: isWipeout || isJourneyComplete ? 'auto' : 'none' }}>
         <GameHUD

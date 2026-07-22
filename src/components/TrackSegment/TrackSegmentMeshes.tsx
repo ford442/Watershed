@@ -187,12 +187,14 @@ export function TrackSegmentMeshes({
     );
 
     const highWaterMark = useMemo(() => {
+        if (segmentState === 'WashedOut') return 0.42;
         if (segmentState === 'Flooded') return 0.32;
         if (segmentState === 'HighFlow') return 0.24;
         return 0.15;
     }, [segmentState]);
 
     const highWaterIntensity = useMemo(() => {
+        if (segmentState === 'WashedOut') return 1.0;
         if (segmentState === 'Flooded') return 1.0;
         if (segmentState === 'HighFlow') return 0.7;
         return 0.35;
@@ -311,7 +313,7 @@ export function TrackSegmentMeshes({
                 parallaxScale: 0.025,
                 flowSpeed,
                 mossCoverage: 1.0,
-                highWaterMark: segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15,
+                highWaterMark: segmentState === 'WashedOut' ? 0.42 : segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15,
                 highWaterIntensity,
                 strata: SLOT_CANYON_STRATA,
             }) as WallMaterial;
@@ -372,7 +374,9 @@ export function TrackSegmentMeshes({
                 type="fixed"
                 colliders="trimesh"
                 friction={
-                    segmentState === 'Flooded'
+                    segmentState === 'WashedOut'
+                        ? 0.35
+                        : segmentState === 'Flooded'
                         ? 0.55
                         : segmentState === 'HighFlow'
                           ? 0.8

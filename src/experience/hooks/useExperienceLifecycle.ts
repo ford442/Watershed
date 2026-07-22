@@ -7,11 +7,13 @@ import {
   tickScoreSystem,
   awardDodgeBonus,
   awardWaterfallBonus,
+  awardFloodSurviveBonus,
   resetScoreSystemState,
   cancelLaunch,
 } from '../../systems/ScoreSystem';
 import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
 import { tickGhostRecording } from '../../systems/GhostRecorder';
+import { isElevatedRisk } from '../../systems/flowForecast';
 import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';
 
@@ -42,11 +44,23 @@ export function useExperienceLifecycle({
 
   const slowFrameCount = useRef(0);
   const warnedSlowFrames = useRef(false);
+  const previousRiskRef = useRef<{
+    segmentIndex: number;
+    state: string;
+    surviveBonus: number;
+  } | null>(null);
 
   useSegmentAudio(currentSegmentIndex);
 
   useEffect(() => {
+    if (isWipeout) {
+      previousRiskRef.current = null;
+    }
+  }, [isWipeout]);
+
+  useEffect(() => {
     resetScoreSystemState();
+    previousRiskRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -90,8 +104,33 @@ export function useExperienceLifecycle({
       debug.setStageLoading('stateManagement');
 
       const handleSegmentEnter = (e: Event) => {
-        const detail = (e as CustomEvent<{ segmentIndex?: number; gravityMultiplier?: number }>).detail;
+        const detail = (e as CustomEvent<{
+          segmentIndex?: number;
+          gravityMultiplier?: number;
+          segmentState?: string;
+          surviveBonus?: number;
+        }>).detail;
         const index = detail?.segmentIndex ?? 0;
+        const segmentState = detail?.segmentState ?? 'Normal';
+        const surviveBonus = detail?.surviveBonus ?? 0;
+
+        // Award flood-survive bonus when cleanly exiting an elevated-risk segment.
+        const previous = previousRiskRef.current;
+        if (
+          previous &&
+          previous.segmentIndex !== index &&
+          isElevatedRisk(previous.state) &&
+          previous.surviveBonus > 0 &&
+          !useGameStore.getState().isWipeout
+        ) {
+          awardFloodSurviveBonus(previous.surviveBonus);
+        }
+        previousRiskRef.current = {
+          segmentIndex: index,
+          state: segmentState,
+          surviveBonus,
+        };
+
         setCurrentSegmentIndex(index);
         setRespawnSegmentIndex(index);
 
