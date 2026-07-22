@@ -27,7 +27,7 @@ import {
 } from './lumber_flume';
 
 /** Stable registry keys — declared early so MapDefinition can reference them. */
-export type MapRegistryId = 'glacial' | 'meander' | 'delta';
+export type MapRegistryId = 'glacial' | 'lumber' | 'meander' | 'delta';
 
 export interface MapContinuation {
   /** Campaign target map when this map's journey completes (or for UI labels). */
@@ -60,6 +60,12 @@ export interface MapDefinition {
   nextMapId?: MapRegistryId;
   /** Optional second authored map chained after primary segments are exhausted. */
   continuation?: MapContinuation;
+  /**
+   * When true, the map is reachable via `?map=` deep link but omitted from the
+   * StartMenu campaign list (e.g. interstitial "Map 0.5" experiments outside the
+   * glacial → meander → delta chain).
+   */
+  menuHidden?: boolean;
 }
 
 export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
@@ -85,6 +91,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     fallbackProgression: LUMBER_FLUME_FALLBACK_PROGRESSION,
     startIndex: LUMBER_FLUME_START_INDEX,
     initialBiome: 'lumberFlume',
+    menuHidden: true,
     continuation: {
       levelData: meanderLevel as unknown as LevelData,
       startIndex: 0,
