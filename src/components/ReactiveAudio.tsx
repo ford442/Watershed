@@ -366,23 +366,29 @@ export default function ReactiveAudio({
     if (!isFinite(v.coldWind)) v.coldWind = 0;
     if (!isFinite(v.iceCrack)) v.iceCrack = 0;
 
-    const master = AUDIO_CONFIG.masterVolume;
+    // Channel multipliers from the settings panel, layered on TOP of the ducking
+    // above (never an override). `AUDIO_CONFIG.masterVolume` remains the baseline
+    // mix constant; the store channels scale it. Read transiently from the
+    // AudioManager singleton so slider drags don't re-render this subtree.
+    const amMix = getAudioManager();
+    const music = AUDIO_CONFIG.masterVolume * (amMix?.getMusicVolume() ?? 1);
+    const sfx = AUDIO_CONFIG.masterVolume * (amMix?.getSfxVolume() ?? 1);
 
     // Set ambient layer volumes with guards
     if (ambientLowRef.current) {
-      const lowVol = v.low * AUDIO_CONFIG.ambient.lowVolume * master;
+      const lowVol = v.low * AUDIO_CONFIG.ambient.lowVolume * music;
       if (isFinite(lowVol)) {
         ambientLowRef.current.setVolume(lowVol);
       }
     }
     if (ambientMidRef.current) {
-      const midVol = v.mid * AUDIO_CONFIG.ambient.midVolume * master;
+      const midVol = v.mid * AUDIO_CONFIG.ambient.midVolume * music;
       if (isFinite(midVol)) {
         ambientMidRef.current.setVolume(midVol);
       }
     }
     if (ambientHighRef.current) {
-      const highVol = v.high * AUDIO_CONFIG.ambient.highVolume * master;
+      const highVol = v.high * AUDIO_CONFIG.ambient.highVolume * music;
       if (isFinite(highVol)) {
         ambientHighRef.current.setVolume(highVol);
       }
@@ -392,23 +398,23 @@ export default function ReactiveAudio({
         v.rapids *
         THREE.MathUtils.lerp(AUDIO_CONFIG.sfx.rapidsBaseVolume, AUDIO_CONFIG.sfx.rapidsMaxVolume, intensity);
       if (isFinite(rapidsVol)) {
-        sfxRapidsRef.current.setVolume(rapidsVol * master);
+        sfxRapidsRef.current.setVolume(rapidsVol * sfx);
       }
     }
     if (sfxWhooshRef.current) {
-      const whooshVol = v.whoosh * AUDIO_CONFIG.sfx.whooshMaxVolume * master;
+      const whooshVol = v.whoosh * AUDIO_CONFIG.sfx.whooshMaxVolume * sfx;
       if (isFinite(whooshVol)) {
         sfxWhooshRef.current.setVolume(whooshVol);
       }
     }
     if (sfxColdWindRef.current) {
-      const windVol = v.coldWind * master;
+      const windVol = v.coldWind * sfx;
       if (isFinite(windVol)) {
         sfxColdWindRef.current.setVolume(windVol);
       }
     }
     if (sfxIceCrackRef.current) {
-      const crackVol = v.iceCrack * master;
+      const crackVol = v.iceCrack * sfx;
       if (isFinite(crackVol)) {
         sfxIceCrackRef.current.setVolume(crackVol);
       }
@@ -434,7 +440,7 @@ export default function ReactiveAudio({
       // Harden: reset any NaN values back to 0
       if (!isFinite(v.transition)) v.transition = 0;
       
-      const transitionVol = v.transition * master;
+      const transitionVol = v.transition * sfx;
       if (isFinite(transitionVol)) {
         posTransitionRef.current.setVolume(transitionVol);
       }
