@@ -274,6 +274,7 @@ export class ChunkManager {
     let previousSegment: SegmentData | null = null;
     const activeOrder: number[] = [];
     const segments = this.reachSegments;
+    const spawnBatch: Record<number, { x: number; y: number; z: number }> = {};
 
     for (let i = 0; i < MAX_ACTIVE_SEGMENTS; i += 1) {
       // startIndex allows the pool to begin at a negative offset (glacier prelude)
@@ -294,17 +295,23 @@ export class ChunkManager {
       if (segment) {
         const sp = segment.segmentPath.getPoint(0);
         this.spawnPoints.set(segment.id, sp);
-        window.dispatchEvent(
-          new CustomEvent('segment-spawn', {
-            detail: { segmentIndex: segment.id, spawnPoint: { x: sp.x, y: sp.y, z: sp.z } },
-          })
-        );
+        spawnBatch[segment.id] = { x: sp.x, y: sp.y, z: sp.z };
       }
     }
 
     this.pool = pool;
     this.activeOrder = activeOrder;
     this.initialized = true;
+
+    // One batched spawn update — avoids N Zustand/React flushes during cold boot.
+    if (Object.keys(spawnBatch).length > 0) {
+      window.dispatchEvent(
+        new CustomEvent('segment-spawns', {
+          detail: { points: spawnBatch },
+        })
+      );
+    }
+
     this.callbacks.onPoolChange?.();
   }
 

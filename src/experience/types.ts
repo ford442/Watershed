@@ -18,6 +18,11 @@ export interface InnerExperienceProps {
   physicsDebug?: boolean;
   wireframeDebug?: boolean;
   cleanTest?: boolean;
+  /**
+   * When false, skip Physics / track / vehicles so the Start Menu stays responsive.
+   * Cold boot previously locked the main thread building 7 trimesh segments under the menu.
+   */
+  worldEnabled?: boolean;
   /** Active campaign map — shared with StartMenu / URL resolver. */
   mapId?: import('../maps/registry').MapRegistryId;
   /** Called when continue / menu selection changes the active map. */

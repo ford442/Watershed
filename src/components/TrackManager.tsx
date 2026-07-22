@@ -116,6 +116,11 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   }));
 
   const forecastByIndexRef = useRef<Map<number, string>>(new Map());
+  // Keep callbacks in refs so ChunkManager init does not tear down / rebuild the
+  // pool when parent re-renders (e.g. Zustand setSpawnPoint during initializePool).
+  // That remount loop caused "Maximum update depth exceeded" and a hard load freeze.
+  const onBiomeChangeRef = useRef(onBiomeChange);
+  onBiomeChangeRef.current = onBiomeChange;
   const weatherWetnessRef = useRef(0);
   const mapManagerRef = useRef<MapManager>(
     new ProceduralMapManager(
@@ -251,14 +256,14 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     }
   }, [aoMap, colorMap, displacementMap, fallbackTextures, normalMap, reachId, roughnessMap]);
 
-  // Forecast updates
+  // Forecast updates — ChunkManager.applyLiveForecast remounts only when segment
+  // states actually change (via onPoolChange). Do not force a full pool remount here.
   useEffect(() => {
     const nextForecastMap = samplesToForecastByIndex(forecastSamples);
     forecastByIndexRef.current = nextForecastMap;
 
     if (chunkManagerRef.current && chunkManagerRef.current.isInitialized()) {
       chunkManagerRef.current.setForecastByIndex(nextForecastMap);
-      setPoolVersion((v) => v + 1);
     }
   }, [forecastSamples]);
 
@@ -283,7 +288,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     const callbacks = {
       onPoolChange: () => setPoolVersion((v) => v + 1),
       onBiomeChange: (biome: BiomeId, segmentIndex: number) => {
-        onBiomeChange?.(biome, segmentIndex);
+        onBiomeChangeRef.current?.(biome, segmentIndex);
       },
       onSegmentEnter: (index: number) => {
         const activeSegments = chunkManagerRef.current?.getActiveSegments?.() ?? [];
@@ -345,7 +350,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       chunkManagerRef.current = null;
       pendingSynthesizesRef.current = [];
     };
-  }, [rockMaterial, onBiomeChange, reachSegments, effectiveStartIndex]);
+  }, [rockMaterial, reachSegments, effectiveStartIndex]);
 
   // Night mode: update scene fog and background
   useEffect(() => {

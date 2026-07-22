@@ -41,6 +41,7 @@ export function useExperienceLifecycle({
   const setWaterfallGravityMultiplier = useGameStore((s) => s.setWaterfallGravityMultiplier);
   const setDistanceTraveled = useGameStore((s) => s.setDistanceTraveled);
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
+  const setSpawnPoints = useGameStore((s) => s.setSpawnPoints);
 
   const slowFrameCount = useRef(0);
   const warnedSlowFrames = useRef(false);
@@ -179,12 +180,23 @@ export function useExperienceLifecycle({
         }
       };
 
+      const handleSegmentSpawns = (e: Event) => {
+        const { points } =
+          (e as CustomEvent<{ points?: Record<number, { x: number; y: number; z: number }> }>).detail ??
+          {};
+        if (points && Object.keys(points).length > 0) {
+          setSpawnPoints(points);
+        }
+      };
+
       window.addEventListener('segment-enter', handleSegmentEnter);
       window.addEventListener('segment-spawn', handleSegmentSpawn);
+      window.addEventListener('segment-spawns', handleSegmentSpawns);
       debug.setStageSuccess('stateManagement');
       return () => {
         window.removeEventListener('segment-enter', handleSegmentEnter);
         window.removeEventListener('segment-spawn', handleSegmentSpawn);
+        window.removeEventListener('segment-spawns', handleSegmentSpawns);
       };
     } catch (error) {
       debug.setStageFailure('stateManagement', error);
@@ -196,6 +208,7 @@ export function useExperienceLifecycle({
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
     setSpawnPoint,
+    setSpawnPoints,
     setWaterfallGravityMultiplier,
   ]);
 

@@ -24,6 +24,7 @@ export default function Experience({
   rendererPreference = 'webgl',
   wireframeDebug = false,
   cleanTest = false,
+  worldEnabled = true,
   mapId,
   onMapChange,
   onReturnToMenu,
@@ -49,7 +50,7 @@ export default function Experience({
           { name: 'dodge', keys: ['AltLeft', 'AltRight'] },
         ]}
       >
-        <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>
+        <LODProvider initialQuality="medium" enableAdaptive targetFPS={60}>
           <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
             <SunPositionProvider>
               <BiomeTransition />
@@ -58,6 +59,7 @@ export default function Experience({
                 physicsDebug={physicsDebug}
                 wireframeDebug={wireframeDebug}
                 cleanTest={cleanTest}
+                worldEnabled={worldEnabled}
                 mapId={mapId}
                 onMapChange={onMapChange}
                 onReturnToMenu={onReturnToMenu}
