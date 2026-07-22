@@ -57,7 +57,7 @@ export interface MapDefinition {
   continuation?: MapContinuation;
 }
 
-export const MAP_REGISTRY = {
+export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   glacial: {
     id: 'glacial',
     label: 'Glacial Source',
@@ -96,7 +96,7 @@ export const MAP_REGISTRY = {
     estimatedDurationSec: 180,
     unlockAfter: 'meander',
   },
-} satisfies Record<MapRegistryId, MapDefinition>;
+};
 
 /** Code-level fallback when URL / menu / last-played are absent. */
 export const ACTIVE_MAP_ID: MapRegistryId = 'meander';

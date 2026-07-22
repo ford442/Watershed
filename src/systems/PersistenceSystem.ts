@@ -85,7 +85,7 @@ export function buildRunKey(mapId: string, seed: number): string {
 
 function normalizePayload(raw: unknown): PersistencePayload | null {
   if (!validatePersistence(raw)) return null;
-  const payload = raw as PersistencePayload;
+  const payload = raw as unknown as PersistencePayload;
   if (!Array.isArray(payload.completedMaps)) {
     payload.completedMaps = [];
   }
