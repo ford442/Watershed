@@ -15,7 +15,7 @@ import {
   syncMapUrl,
 } from '../../maps/campaign';
 import type { DebugStageController } from '../../debug/debugStages';
-import { DEFAULT_MAPS } from '../constants';
+import { DAM_RELEASE_SCHEDULE, DEFAULT_MAPS } from '../constants';
 import type { VehicleRigidBodyRef } from '../types';
 import {
   getGhostBestScoreForMap,
@@ -26,6 +26,29 @@ import {
 import { hydrateStoreForRun } from '../../systems/persistenceBootstrap';
 import { getActiveRunKey } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
+import { buildForecastSamples } from '../../systems/flowForecast';
+
+const DEFAULT_FORECAST_SAMPLES: FlowForecastSample[] = buildForecastSamples({
+  temperature: 8,
+  snowpackIndex: 0.65,
+  damReleaseSchedule: DAM_RELEASE_SCHEDULE,
+  startHour: 0,
+  horizonHours: 24,
+});
+
+function forecastSamplesEqual(
+  a: ReadonlyArray<FlowForecastSample>,
+  b: ReadonlyArray<FlowForecastSample>,
+): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].hour !== b[i].hour || a[i].flowRate !== b[i].flowRate || a[i].state !== b[i].state) {
+      return false;
+    }
+  }
+  return true;
+}
 
 interface UseExperienceWorldOptions {
   debug: DebugStageController;
@@ -71,7 +94,9 @@ export function useExperienceWorld({
   const [levelLoadError, setLevelLoadError] = useState<Error | string | null>(null);
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState<unknown>(null);
-  const [forecastSamples, setForecastSamples] = useState<FlowForecastSample[]>([]);
+  const [forecastSamples, setForecastSamples] = useState<FlowForecastSample[]>(
+    () => DEFAULT_FORECAST_SAMPLES,
+  );
   const [reachId, setReachId] = useState<string | null>(null);
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState<Error | string | null>(null);
@@ -343,7 +368,7 @@ export function useExperienceWorld({
         setWaterfallGravityMultiplier(1.0);
         snapBiomeContext(targetMap.initialBiome);
         useGameStore.setState({ currentBiome: targetMap.initialBiome, isPaused: false });
-        setForecastSamples([]);
+        setForecastSamples(DEFAULT_FORECAST_SAMPLES);
         awardedWaterfallSegmentsRef.current?.clear();
         resetScoreSystemState();
         resetRunSession({
@@ -409,6 +434,10 @@ export function useExperienceWorld({
     });
   }, [debug]);
 
+  const stableSetForecastSamples = useCallback((samples: FlowForecastSample[]) => {
+    setForecastSamples((prev) => (forecastSamplesEqual(prev, samples) ? prev : samples));
+  }, []);
+
   return {
     levelUrl,
     levelLoadError,
@@ -433,7 +462,7 @@ export function useExperienceWorld({
     handleContinueJourney,
     handleDefaultJourneyAction,
     handleReturnToMenu,
-    setForecastSamples,
+    setForecastSamples: stableSetForecastSamples,
     setLevelLoadError,
     setIsLoadingLevel,
     setLoadedLevelState,
