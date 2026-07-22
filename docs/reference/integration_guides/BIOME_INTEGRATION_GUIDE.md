@@ -11,7 +11,7 @@ STEP 1: Copy Files
 3. Copy LumberProps.tsx to src/components/LumberProps.tsx
 
 ================================================================
-STEP 2: Update TrackManager.jsx
+STEP 2: Update TrackManager.tsx
 ================================================================
 
 import { BIOMES, getNextBiome, type BiomeKey } from '../constants/biomes';
@@ -37,7 +37,7 @@ const buildSegment = (index, previousSegment) => {
 };
 
 ================================================================
-STEP 3: Update TrackSegment.jsx
+STEP 3: Update TrackSegment/
 ================================================================
 
 import { BIOMES, type BiomeKey } from '../constants/biomes';

@@ -6,31 +6,32 @@ The project has established a spline-based track system. The immediate focus is 
 
 ---
 
-## Phase 1: Core Engine (Current)
+## Phase 1: Core Engine ✅ Largely complete
 
-### Priority A: Treadmill/Chunking System ✅ In Progress
-- [x] Refactor track into reusable `TrackSegment` component
-- [x] Create `TrackManager` to orchestrate multiple segments
-- [ ] Implement dynamic segment loading based on player position
-- [ ] Add segment unloading for segments behind the player
-- [ ] Implement object pooling for performance
+### Priority A: Treadmill/Chunking System ✅
+- [x] Refactor track into reusable `TrackSegment` component (`TrackSegment/`)
+- [x] Create `TrackManager` to orchestrate multiple segments (`TrackManager.tsx`)
+- [x] Dynamic segment loading based on player position (`ChunkManager` / treadmill)
+- [x] Segment unloading / recycle behind the player
+- [x] Object pooling for segments
+- [x] Map-driven configs via `MapSystem.ts` + `src/maps/` (procedural fallback remains)
 
-### Priority B: Physics Optimization
+### Priority B: Physics Optimization ✅ / ongoing
 - [x] Create simplified collision geometry (low-poly walls)
-- [x] Separate visual mesh from physics mesh
-- [ ] Profile and optimize Rapier physics performance
-- [ ] Consider convex decomposition vs trimesh
+- [x] Separate visual mesh from physics mesh (`buildCanyonGeometry` vs `buildCollisionGeometry`)
+- [ ] Profile and optimize Rapier physics performance (ongoing)
+- [ ] Consider convex decomposition vs trimesh (optional)
 
 Collision mesh notes (`TrackSegment`):
 - Visual canyon (`buildCanyonGeometry`) is collider-free; Rapier uses invisible `buildCollisionGeometry` (~1/4 XZ density, shared U-profile, no rock noise / vertex colors).
 - Expected triangle reduction per segment ≈ 1/16 of the prior visual trimesh (e.g. ~48 m path: visual ~41×49 verts → collision ~11×13 verts).
 - Friction still comes from `biomeProfile.wallFriction` with Flooded/HighFlow overrides; restitution unchanged for slot canyon.
 
-### Priority C: Water Flow (Deferred / WebGPU)
-- [ ] Design water flow compute shader (experimental; live renderer remains WebGL2)
-- [ ] Implement flowmap-based displacement
-- [ ] Add normal reconstruction for lighting
-- [ ] Apply water forces to player rigid body
+### Priority C: Water Flow ✅ shipped (TypeScript + optional WASM)
+- [x] Apply water forces to player/raft rigid body (`physics/WaterForces.ts`, `WaterForceSystem`, `WaterFlowForces.tsx`)
+- [x] Optional Emscripten WASM path (`WatershedWasm` / SWE height field) with TS fallbacks
+- [ ] Experimental WebGPU compute flow shader (deferred; live renderer remains WebGL2)
+- [ ] Flowmap-based displacement / normal reconstruction polish
 
 ---
 
@@ -56,15 +57,15 @@ Based on the move from a static map to an infinite, procedural system (via `Trac
 	 - Vibe: Blinding white/blue, translucent ice, extremely fast, narrow.
 	 - Scene: Start in a melting ice cave — walls are semi-transparent blue ice and water is slushy / low friction.
 	 - Technical:
-		 - Geometry: In `RiverTrack.jsx` or `TrackSegment.jsx` produce inward-curving walls (reduce track width and curve wall vertices inward) to form a tube/tunnel.
+		 - Geometry: In `TrackSegment/` produce inward-curving walls (reduce track width and curve wall vertices inward) to form a tube/tunnel.
 		 - Shader: Extend `FlowingWater.jsx` to expose `baseColor` and `roughness` variants; use a white/blue base and higher roughness for slush.
-		 - Physics: In `TrackManager.jsx` bias generated segment control points to steeper Y drops (e.g., direction.y < -0.8) to create high acceleration sections.
+		 - Physics: In `TrackManager.tsx` / map JSON bias segment control points to steeper Y drops (e.g., direction.y < -0.8) to create high acceleration sections.
 
 2. The Lumber Flume (Forest / Industrial)
 	 - Vibe: Mossy wood, dappled sunlight, claustrophobic U-shaped flume.
 	 - Scene: Wooden aqueducts that can break, launching the player.
 	 - Exciting Interaction — The Jump:
-		 - Code: Generate a "Gap" segment in `TrackManager.jsx` (break continuity in spline or emit an air segment with no floor physics). Optionally spawn an invisible collider in the air for bounce or let gravity handle the fall.
+		 - Code: Generate a "Gap" segment in `TrackManager.tsx` / map config (break continuity in spline or emit an air segment with no floor physics). Optionally spawn an invisible collider in the air for bounce or let gravity handle the fall.
 		 - Props: Add wooden plank meshes and breakable colliders (simple kinematic rigid bodies).
 
 3. The Hydro-Dam (Obstacle Course)
@@ -78,7 +79,7 @@ Based on the move from a static map to an infinite, procedural system (via `Trac
 	 - Vibe: Red rock, sharp shadows, extreme vertical walls.
 	 - Scene: Narrow channel just big enough for the player; tall walls allow for risky wall-riding.
 	 - Mechanic — Wall Riding:
-		 - Physics/Materials: Increase friction on wall materials in `RiverTrack.jsx` (`friction` param or material-specific damping) so players can ride walls during high-G turns.
+		 - Physics/Materials: Increase friction on wall materials via `biomeProfile.wallFriction` / `TrackSegment` so players can ride walls during high-G turns.
 		 - Design: Tune spline curvature and wall profiles to create bankable turns.
 
 Summary: New Mechanics to Prototype
@@ -138,13 +139,14 @@ Prototype Todo: Implement a minimal `FlowForecast` simulation, wire forecasted s
 ## Technical Debt & Notes
 
 ### Known Issues
-- Trimesh colliders are expensive for long tracks (solved by chunking)
-- Water currently static (needs shader implementation)
+- Trimesh colliders are expensive for long tracks (mitigated by chunking + simplified collision mesh)
+- WebGPU/TSL materials remain experimental; live path is WebGL2 + GLSL injection
 
 ### Architecture Decisions
 - **Spline-Based Tracks**: Chosen over heightmaps for explicit "beat" design
-- **Segment System**: Enables infinite track generation
-- **React Three Fiber**: Provides declarative 3D scene management
+- **Segment System + MapSystem**: Authored maps with procedural fallback
+- **React Three Fiber**: Declarative 3D scene management
+- **Vehicles own the player**: `RunnerVehicle` / `RaftVehicle` (no top-level `Player` component)
 
 ---
 
@@ -152,13 +154,17 @@ Prototype Todo: Implement a minimal `FlowForecast` simulation, wire forecasted s
 
 ```
 src/
+├── Experience.tsx                 # LOD / Biome / SunPosition providers
+├── experience/
+│   ├── InnerExperience.tsx        # Track, vehicle, post-FX
+│   └── WaterStack.tsx             # Splash + WaterForceSystem + reflection
 ├── components/
-│   ├── Player.jsx          # Player physics & controls
-│   ├── TrackManager.jsx    # Segment orchestration
-│   ├── TrackSegment.jsx    # Individual track piece
-│   ├── RiverTrack.jsx      # Legacy single-track (deprecated)
-│   └── CreekCanyon.jsx     # Legacy heightmap (deprecated)
-├── Experience.jsx          # Main scene composition
-├── App.tsx                 # Canvas setup
-└── index.tsx              # Entry point
+│   ├── TrackManager.tsx           # Segment orchestration (MapSystem)
+│   ├── TrackSegment/              # Canyon chunk + decorations
+│   ├── FlowingWater.jsx
+│   └── PostProcessingPipeline.jsx
+├── vehicles/RunnerVehicle/ + RaftVehicle/
+├── systems/MapSystem.ts + …
+├── App.tsx
+└── index.tsx
 ```

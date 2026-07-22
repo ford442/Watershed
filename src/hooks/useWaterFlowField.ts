@@ -27,7 +27,7 @@ interface FlowSample {
 /**
  * useWaterFlowField — Sync raft physics to water shader flow field
  * 
- * Usage in Raft.jsx:
+ * Usage in RaftVehicle:
  *   const shaderMatRef = useRef<THREE.ShaderMaterial>(null);
  *   const rigidBodyRef = useRef<RapierRigidBody>(null);
  *   

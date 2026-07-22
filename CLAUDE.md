@@ -58,7 +58,7 @@ src/
 │   ├── WaterReflection.jsx      # Planar reflection pass
 │   ├── ReactiveAudio.tsx        # Biome/speed-reactive audio
 │   ├── WeatherSystem.tsx        # Rain/snow/fog particles
-│   ├── Player.jsx               # First-person capsule (Rapier)
+│   ├── PostProcessingPipeline.jsx
 │   ├── GameHUD.tsx / UI.tsx / PauseMenu.tsx / Loader.tsx
 │   ├── Environment/             # Instanced biome decorations (25+ types)
 │   ├── Obstacles/               # Rocks, pillar break VFX
@@ -98,15 +98,19 @@ Full file listing: `git ls-files src`
 ### Reach / Biome / LOD Systems
 
 Since April 2026, an orchestration layer wraps the track treadmill with streaming reaches,
-biome-context transitions, and adaptive LOD. The live wiring runs:
-`LODProvider` → `BiomeProvider` → `ReachManager` (wraps `TrackManager`) + `SplashSystem`.
+biome-context transitions, and adaptive LOD. The live wiring runs in `Experience.tsx`:
+`LODProvider` → `BiomeProvider` → `SunPositionProvider` → `InnerExperience`
+(track / vehicle / `WaterStack` with `SplashSystem` + `WaterForceSystem`).
 Shared state flows through a Zustand store (`GameState.ts`).
 
 **All details, contract cards, dependency graph, and architectural constraints are in
 [`SYSTEMS.md`](./SYSTEMS.md).**
 
 ---
-Watershed runs a live orchestration stack in `Experience.tsx`: `LODProvider` wraps `BiomeProvider`, which wraps `InnerExperience` (track, vehicle, water stack) plus `SplashSystem`. Contract details live in **[`SYSTEMS.md`](./SYSTEMS.md)**; extended docs in **[`docs/reference/DOCUMENTATION_INDEX.md`](./docs/reference/DOCUMENTATION_INDEX.md)**.
+
+Watershed scene composition is split: providers in `Experience.tsx`, graph wiring in
+`InnerExperience.tsx` / `WaterStack.tsx`. Contract details live in **[`SYSTEMS.md`](./SYSTEMS.md)**;
+extended docs in **[`docs/reference/DOCUMENTATION_INDEX.md`](./docs/reference/DOCUMENTATION_INDEX.md)**.
 
 ### Track Treadmill (`TrackManager.tsx`)
 
@@ -181,11 +185,12 @@ See `concepts/01_kinetic_flume.png` — first-person POV, narrow mossy rock chan
 
 The following are leftover debug elements that make the game look rough:
 
-1. **`App.tsx:69–88` — Green debug overlay** — Always-visible panel showing "Canvas Ready / Loading Active / Progress / Experience Error". Must be removed for any polished build.
-2. **`Player.jsx:126–129` — Yellow wireframe capsule** — A visible debug mesh rendered at the player position. Not needed in final game; remove or hide.
-3. **`RaftVehicle/` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
-4. **`App.tsx:92` — `antialias: false`** — Antialiasing is disabled. Switching to `antialias: true` will immediately improve edge quality at modest cost.
-5. **`EnhancedSky.jsx:72` — Stars always rendered** — Stars are visible even at noon. They are subtle but should be conditional on time-of-day or biome.
+1. **`App.tsx` — Green debug overlay** — Always-visible panel showing "Canvas Ready / Loading Active / Progress / Experience Error" (if still present). Must be removed for any polished build.
+2. **`RaftVehicle/` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
+3. **`App.tsx` — `antialias: false`** — Antialiasing disabled hurts edge quality; prefer `antialias: true` when polishing.
+4. **`EnhancedSky.jsx` — Stars always rendered** — Stars can be visible even at noon; gate on time-of-day or biome.
+
+Legacy top-level `Player` duals were removed; player movement lives under `src/vehicles/`.
 
 ---
 
@@ -193,9 +198,8 @@ The following are leftover debug elements that make the game look rough:
 
 Maps (authored segment sequences) require a stable visual baseline to test against. Here is the ordered path:
 
-### Step 1 — Strip debug artifacts (1–2 hours)
-- Remove the green debug panel from `App.tsx`
-- Remove the yellow wireframe mesh from `Player.jsx`
+### Step 1 — Strip debug artifacts
+- Remove the green debug panel from `App.tsx` (if still present)
 - Remove the hotpink box from `RaftVehicle/`
 - Enable `antialias: true` in Canvas
 
@@ -287,7 +291,9 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/components/FlowingWater.jsx` | Water shader uniforms and GLSL |
 | `src/utils/RiverShader.js` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
-| `src/components/Player.jsx` | Movement, camera, jump |
+| `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
+| `src/vehicles/RaftVehicle/` | Raft buoyancy / paddle |
+| `src/components/PostProcessingPipeline.jsx` | Live post-processing stack |
 | `src/systems/MapSystem.ts` | Chunk interfaces, JSON maps, spawn calc |
 | `src/maps/registry.ts` | Active map switch point |
 | `src/style.css` | All UI chrome |

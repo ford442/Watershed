@@ -293,7 +293,7 @@ describe('Material Creation', () => {
 ### Key Metrics to Track
 
 ```javascript
-// Add to useFrame in Experience.jsx
+// Add to useFrame in Experience.tsx
 useFrame((state) => {
     // Log FPS drops
     if (state.clock.elapsedTime > 5) { // After initial load
@@ -336,9 +336,9 @@ useEffect(() => {
 ```
 src/
 ├── components/
-│   ├── Player.jsx          # Physics & controls
-│   ├── TrackManager.jsx    # Procedural generation orchestration
-│   ├── TrackSegment.jsx    # Individual track piece
+│   ├── RunnerVehicle          # Physics & controls
+│   ├── TrackManager.tsx    # Procedural generation orchestration
+│   ├── TrackSegment/    # Individual track piece
 │   ├── FlowingWater.jsx    # Water shader
 │   └── Environment/        # Decorations (21 components)
 │       ├── Vegetation.jsx
@@ -352,7 +352,7 @@ src/
 
 ```
 App.tsx
-  └─ Experience.jsx
+  └─ Experience.tsx
       ├─ EnhancedSky
       └─ Physics
           ├─ Player (requires nothing)

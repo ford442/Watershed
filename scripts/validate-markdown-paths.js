@@ -8,11 +8,37 @@ const inputs = process.argv.slice(2);
 const LEADING_DELIMITERS = /^[(\[<`"']+/g;
 const TRAILING_DELIMITERS = /[)\],.;:'"`>]+$/g;
 
-const DEFAULT_INPUTS = ['CLAUDE.md', 'SYSTEMS.md', 'docs/reference'];
+const DEFAULT_INPUTS = [
+  'AGENTS.md',
+  'CLAUDE.md',
+  'SYSTEMS.md',
+  'docs/README.md',
+  'docs/reference',
+];
 
 const PATH_PATTERNS = [
   /src\/[A-Za-z0-9._/-]+/g,
   /docs\/(?:reference|archive)\/[A-Za-z0-9._/-]+/g,
+];
+
+/**
+ * Stale stems that must not appear in living markdown (archive/ is excluded).
+ * These files were renamed or deleted; citing them recreates agent churn.
+ */
+const BANNED_PATH_SUBSTRINGS = [
+  'Experience.jsx',
+  'TrackManager.jsx',
+  'TrackSegment.jsx',
+  'Player.jsx',
+  'Player.tsx',
+  'PostProcessingEffects.jsx',
+  'PostProcessingEffects.tsx',
+  'RiverTrack.jsx',
+  'CreekCanyon.jsx',
+  'Raft.jsx',
+  'WaterForces.jsx',
+  'WaterFlowForce.jsx',
+  'webgpu-react-app',
 ];
 
 function collectMarkdownFiles(entry) {
@@ -65,7 +91,9 @@ function stripNonProse(content) {
 }
 
 for (const file of markdownFiles) {
-  const content = stripNonProse(fs.readFileSync(file, 'utf8'));
+  const relative = path.relative(repoRoot, file);
+  const raw = fs.readFileSync(file, 'utf8');
+  const content = stripNonProse(raw);
   const matches = new Set();
 
   for (const pattern of PATH_PATTERNS) {
@@ -80,13 +108,20 @@ for (const file of markdownFiles) {
       .replace(TRAILING_DELIMITERS, '');
     const target = path.resolve(repoRoot, trimmed);
     if (!pathExistsAsModule(target)) {
-      failures.push(`${path.relative(repoRoot, file)}: ${trimmed}`);
+      failures.push(`${relative}: missing path ${trimmed}`);
+    }
+  }
+
+  // Banned stale stems — scan full file (including code fences) so examples stay honest.
+  for (const banned of BANNED_PATH_SUBSTRINGS) {
+    if (raw.includes(banned)) {
+      failures.push(`${relative}: banned stale reference "${banned}"`);
     }
   }
 }
 
 if (failures.length > 0) {
-  console.error('Broken markdown paths found:');
+  console.error('Broken / banned markdown paths found:');
   for (const failure of failures) {
     console.error(`- ${failure}`);
   }

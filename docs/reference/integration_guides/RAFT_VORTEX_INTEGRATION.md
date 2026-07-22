@@ -1,4 +1,4 @@
-// Raft.jsx — Full Vortex Integration
+// RaftVehicle — Full Vortex Integration
 // Complete integration of physics, visuals, and audio for vortex segments
 
 import { useRef, useMemo } from 'react';
@@ -123,7 +123,7 @@ export default function Raft({
 TRACKMANAGER INTEGRATION — Add Vortex Spawn Chance
 ================================================================
 
-In your TrackManager.jsx or createSegmentData function:
+In your TrackManager.tsx or createSegmentData function:
 
 const createSegmentData = (index, previousSegment) => {
   // ... existing segment creation logic ...
@@ -157,7 +157,7 @@ const createSegmentData = (index, previousSegment) => {
 TRACKSEGMENT INTEGRATION — Pass Props to Raft
 ================================================================
 
-In your TrackSegment.jsx:
+In your TrackSegment/:
 
 export default function TrackSegment({ segmentData, ... }) {
   const isVortexSegment = segmentData.type === 'vortex';
@@ -186,7 +186,7 @@ DEPLOY CHECKLIST
    - useVortexForce.ts → src/hooks/
    - VortexVisual.tsx → src/components/
    - Update useRiverAudio.ts with vortex extension
-   - Update Raft.jsx with integration
+   - Update RaftVehicle with integration
 
 2. Update TrackManager with 18% vortex spawn chance
 
