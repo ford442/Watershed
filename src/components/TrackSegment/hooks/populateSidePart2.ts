@@ -390,7 +390,10 @@ export function populateSidePart2(args: PopulateSideArgs): void {
                         });
                     }
                 } else if (!isAutumnLike(biome) || type === 'pond') { // More common in summer or open ponds
-                    if (seededRandom(seedState.value++) > 0.92) { // Occasional
+                    const isLumberFlume = biomeProfile?.id === 'lumberFlume' || biome === 'lumberFlume';
+                    // Lumber flume: denser dappled canopy shafts
+                    const shaftThreshold = isLumberFlume ? 0.72 : 0.92;
+                    if (seededRandom(seedState.value++) > shaftThreshold) { // Occasional
                         const dist = (seededRandom(seedState.value++) - 0.5) * canyonWidth * 0.6;
                         const offset = binormal.clone().multiplyScalar(dist);
                         const position = new THREE.Vector3().copy(pathPoint).add(offset);

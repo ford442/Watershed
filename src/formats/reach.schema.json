@@ -419,6 +419,11 @@
             "default": 1,
             "description": "Water current strength"
           },
+          "openFloor": {
+            "type": "boolean",
+            "default": false,
+            "description": "Skip floor trimesh collider for gap / air-corridor set-pieces"
+          },
           "decorations": {
             "type": "object",
             "properties": {

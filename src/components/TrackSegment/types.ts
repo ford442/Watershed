@@ -160,6 +160,8 @@ export interface TrackSegmentConfig {
   launchShelf?: {
     rockRef: { localX: number; localZ: number; scale: number };
   };
+  /** Skip floor trimesh collider (air corridor / broken trestle gap). */
+  openFloor?: boolean;
   lodQuality?: 'low' | 'medium' | 'high' | 'ultra' | string;
   particleCount?: number;
   rockDensity?: 'low' | 'medium' | 'high';

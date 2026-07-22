@@ -44,7 +44,7 @@ export const MATERIAL_FROM_BIOME: Record<string, SurfaceMaterial> = {
   delta: SurfaceMaterial.MOSS,
   cavern: SurfaceMaterial.CONCRETE,
   midnightMist: SurfaceMaterial.MOSS,
-  lumberFlume: SurfaceMaterial.ROCK,
+  lumberFlume: SurfaceMaterial.WOOD,
   hydroDam: SurfaceMaterial.CONCRETE,
   // Legacy aliases (map-load / events may still emit briefly)
   summer: SurfaceMaterial.ROCK,

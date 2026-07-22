@@ -95,6 +95,11 @@ export interface LevelSegment {
   slipperiness?: number;
   treeDensity?: number;
   rockDensity?: 'low' | 'medium' | 'high';
+  /**
+   * When true, TrackSegment skips the floor trimesh collider so the player
+   * flies an air corridor (gap / broken trestle set-pieces).
+   */
+  openFloor?: boolean;
 }
 
 export interface LevelSpawns {
@@ -147,10 +152,11 @@ export interface BaseMapChunk {
   canyonWidth: number;
   /** Pre-calculated spawn data for objects */
   spawns: SpawnData[];
-  /** Authored decoration / launch-shelf config passed through to TrackSegment */
+  /** Authored decoration / launch-shelf / gap config passed through to TrackSegment */
   config?: {
     decorations?: Record<string, number | DecorationPlacement[]>;
     launchShelf?: LaunchShelfConfig;
+    openFloor?: boolean;
   };
   /** Reference to physics collider */
   collider?: RapierRigidBody;
@@ -264,6 +270,11 @@ export interface SegmentProgressionConfig {
   decorations?: Record<string, number | DecorationPlacement[]>;
   /** Optional launch-shelf gameplay trigger for waterfall set-pieces. */
   launchShelf?: LaunchShelfConfig;
+  /**
+   * When true, the segment is an air corridor — no floor trimesh collider.
+   * Pair with a splash/pond landing segment for a playable gap jump.
+   */
+  openFloor?: boolean;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and
@@ -699,8 +710,12 @@ export function buildProceduralSegment(
     canyonWidth: progression.width,
     spawns,
     config:
-      progression.decorations || progression.launchShelf
-        ? { decorations: progression.decorations, launchShelf: progression.launchShelf }
+      progression.decorations || progression.launchShelf || progression.openFloor
+        ? {
+            decorations: progression.decorations,
+            launchShelf: progression.launchShelf,
+            openFloor: progression.openFloor,
+          }
         : undefined,
     active: true,
   };
@@ -1013,8 +1028,12 @@ export class JSONMapManager implements MapManager {
       waterWidth: config.waterWidth ?? this.levelData.world.track.width ?? DEFAULT_MAP_CONFIG.waterWidth,
       canyonWidth: config.width || this.levelData.world.track.width || DEFAULT_MAP_CONFIG.canyonWidth,
       spawns,
-      config: progression.decorations || progression.launchShelf
-        ? { decorations: progression.decorations, launchShelf: progression.launchShelf }
+      config: progression.decorations || progression.launchShelf || progression.openFloor
+        ? {
+            decorations: progression.decorations,
+            launchShelf: progression.launchShelf,
+            openFloor: progression.openFloor,
+          }
         : undefined,
       active: true,
     };
@@ -1105,6 +1124,7 @@ export class JSONMapManager implements MapManager {
       launchShelf: seg.launchShelf,
       journeyComplete: seg.journeyComplete,
       slipperiness: seg.slipperiness,
+      openFloor: seg.openFloor,
     };
   }
 }

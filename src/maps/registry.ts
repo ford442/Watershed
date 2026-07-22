@@ -10,6 +10,7 @@ import type { BiomeId } from '../configs/biomes';
 import glacialLevel from './glacial_source.json';
 import meanderLevel from './meander_to_waterfall.json';
 import deltaLevel from './delta_rapids.json';
+import lumberLevel from './lumber_flume.json';
 import {
   DELTA_RAPIDS_CONTINUED_START_INDEX,
   GLACIER_START_INDEX,
@@ -20,6 +21,10 @@ import {
   GLACIAL_SOURCE_START_INDEX,
   GLACIAL_SOURCE_FALLBACK_PROGRESSION,
 } from './glacial_source';
+import {
+  LUMBER_FLUME_START_INDEX,
+  LUMBER_FLUME_FALLBACK_PROGRESSION,
+} from './lumber_flume';
 
 /** Stable registry keys — declared early so MapDefinition can reference them. */
 export type MapRegistryId = 'glacial' | 'meander' | 'delta';
@@ -73,6 +78,18 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
       startIndex: 0,
     },
   },
+  lumber: {
+    id: 'lumber',
+    label: 'Map 0.5: Lumber Flume',
+    levelData: lumberLevel as unknown as LevelData,
+    fallbackProgression: LUMBER_FLUME_FALLBACK_PROGRESSION,
+    startIndex: LUMBER_FLUME_START_INDEX,
+    initialBiome: 'lumberFlume',
+    continuation: {
+      levelData: meanderLevel as unknown as LevelData,
+      startIndex: 0,
+    },
+  },
   meander: {
     id: 'meander',
     label: 'Meander to Waterfall',
@@ -107,4 +124,16 @@ export function getMapDefinition(mapId: MapRegistryId = ACTIVE_MAP_ID): MapDefin
 
 export function getActiveMap(): MapDefinition {
   return getMapDefinition(ACTIVE_MAP_ID);
+}
+
+/** Resolve `?map=` URL tokens (and registry ids) to a MapRegistryId. */
+export function resolveMapRegistryId(raw: string | null | undefined): MapRegistryId | null {
+  if (!raw) return null;
+  const key = raw.trim().toLowerCase();
+  if (key === 'lumber' || key === 'lumberflume' || key === 'flume') return 'lumber';
+  if (key === 'glacial' || key === 'glacier') return 'glacial';
+  if (key === 'delta') return 'delta';
+  if (key === 'meander') return 'meander';
+  if (key in MAP_REGISTRY) return key as MapRegistryId;
+  return null;
 }
