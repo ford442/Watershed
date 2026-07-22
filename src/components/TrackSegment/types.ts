@@ -58,6 +58,11 @@ export interface PlacementTransform {
   scale: THREE.Vector3;
 }
 
+/** Mist instances may carry a column/floor variant for shader selection. */
+export interface MistPlacement extends PlacementTransform {
+  type?: 'floor' | 'column' | string;
+}
+
 export interface TreePlacement extends PlacementTransform {
   species?: TreeSpeciesId;
   speciesIndex?: number;
@@ -110,7 +115,7 @@ export interface PlacementData {
   fish: PlacementTransform[];
   pebbles: PlacementTransform[];
   sandBars: SandBarPlacement[];
-  mist: PlacementTransform[];
+  mist: MistPlacement[];
   waterLilies: PlacementTransform[];
   sunShafts: PlacementTransform[];
   ferns: PlacementTransform[];
@@ -175,6 +180,11 @@ export interface UseGeometriesParams {
   biome: BiomeId | string;
 }
 
+/** Biome profile as seen by placement (optional treeDensity override from older maps). */
+export type PlacementBiomeProfile = TrackBiomeProfile & {
+  treeDensity?: number;
+};
+
 export interface UsePlacementDataParams {
   active: boolean;
   segmentPath: THREE.CatmullRomCurve3 | null | undefined;
@@ -188,7 +198,62 @@ export interface UsePlacementDataParams {
   channelProfile: readonly ChannelProfileSample[];
   bankStartOverride?: number;
   flowSpeed: number;
-  biomeProfile: TrackBiomeProfile;
+  biomeProfile: PlacementBiomeProfile;
+}
+
+export interface SeedState {
+  value: number;
+}
+
+/** Shared mutable placement context for populateZSteps / populateSide. */
+export interface PopulatePlacementArgs extends PlacementLists {
+  zSteps: number;
+  geoLength: number;
+  segmentPath: THREE.CatmullRomCurve3;
+  channelShapeFn: (t: number) => ChannelShape;
+  bankStart: number;
+  canyonWidth: number;
+  waterWidth: number;
+  biome: BiomeId | string;
+  segmentId: number;
+  rng: { next: () => number };
+  type: SegmentKind | string;
+  config?: TrackSegmentConfig | null;
+  flowSpeed: number;
+  isSlotCanyon: boolean;
+  biomeProfile: PlacementBiomeProfile;
+}
+
+export interface PopulateSideArgs extends PlacementLists {
+  side: number;
+  t: number;
+  zLocal: number;
+  geoLength: number;
+  segmentPath: THREE.CatmullRomCurve3;
+  channelShape: ChannelShape;
+  bankStart: number;
+  canyonWidth: number;
+  waterWidth: number;
+  waterLevel: number;
+  biome: BiomeId | string;
+  segmentId: number;
+  rng: { next: () => number };
+  type: SegmentKind | string;
+  config?: TrackSegmentConfig | null;
+  flowSpeed: number;
+  isSlotCanyon: boolean;
+  biomeProfile: PlacementBiomeProfile;
+  pathPoint: THREE.Vector3;
+  tangent: THREE.Vector3;
+  binormal: THREE.Vector3;
+  up: THREE.Vector3;
+  seedState: SeedState;
+  lodQuality: string;
+  particleCount: number;
+  curvatureStrength: number;
+  insideSide: number;
+  tNext: number;
+  tangentNext: THREE.Vector3;
 }
 
 export type SegmentState = FlowForecastState | string;

@@ -1,18 +1,15 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
-import { WATER_LEVEL } from '../../../constants/game';
+import { createFlowerPayload, createRockPayload, pickTreeSpecies, seededRandom } from '../utils';
 import { isAutumnLike, isSummerLike } from '../../../configs/biomes';
+import type { PopulateSideArgs } from '../types';
 
-export function populateSidePart1(args) {
+export function populateSidePart1(args: PopulateSideArgs): void {
     const {
-        side, t, zLocal, geoLength, segmentPath, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
-        biome, segmentId, rng, type, config, flowSpeed, isSlotCanyon, biomeProfile,
+        side, zLocal, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
+        biome, segmentId, rng, type, config, isSlotCanyon, biomeProfile,
         trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
-        wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
-        birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
-        ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
-        icicles, iceSheets,
-        pathPoint, tangent, binormal, up, seedState, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
+        wildflowers, pebbles, sandBars, ferns, pinecones, rockFoam,
+        pathPoint, tangent, binormal, seedState, particleCount, curvatureStrength, insideSide,
     } = args;
     const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
@@ -30,7 +27,7 @@ export function populateSidePart1(args) {
 
                 // 1. ROCKS (Large) — skip if explicit authored positions provided
                 if (!Array.isArray(rockDef)) {
-                const rockChanceMultipliers = { low: 0.4, high: 0.7 };
+                const rockChanceMultipliers: Record<string, number> = { low: 0.4, high: 0.7 };
                 const riffleBoost = Math.max(0, channelShape.riffleStrength) * 0.22;
                 const rockChance = isPond ? 0.3 : (isSlotCanyon ? 0.8 : (rockChanceMultipliers[rockDensity] || 0.4) + riffleBoost);
                 if (seededRandom(seedState.value++) > (1.0 - rockChance)) {
