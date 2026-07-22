@@ -339,7 +339,8 @@ export function populateSidePart1(args: PopulateSideArgs): void {
 
                 // 4.6 FERNS (New: Undergrowth clusters)
                 // Ferns like the "floor" of the forest, often near trees or walls
-                const fernChance = isAutumnLike(biome) ? 0.4 : 0.3;
+                const isLumberFlume = biomeProfile?.id === 'lumberFlume' || biome === 'lumberFlume';
+                const fernChance = isLumberFlume ? 0.7 : isAutumnLike(biome) ? 0.4 : 0.3;
                 if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > (1.0 - fernChance)) {
                     // Spawn a cluster
                     const clusterSize = 3 + Math.floor(seededRandom(seedState.value++) * 3);

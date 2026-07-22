@@ -7,7 +7,7 @@ import { resetScoreSystemState } from '../../systems/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
 import type { TrackManagerRef } from '../../components/TrackManager';
-import type { MapRegistryId } from '../../maps/registry';
+import { resolveMapRegistryId, type MapRegistryId } from '../../maps/registry';
 import type { DebugStageController } from '../../debug/debugStages';
 import { DEFAULT_MAPS } from '../constants';
 import type { VehicleRigidBodyRef } from '../types';
@@ -15,9 +15,7 @@ import type { VehicleRigidBodyRef } from '../types';
 function readDefaultMapIdFromUrl(): MapRegistryId {
   if (typeof window === 'undefined') return 'meander';
   const mapParam = new URLSearchParams(window.location.search).get('map');
-  if (mapParam === 'delta') return 'delta';
-  if (mapParam === 'glacial') return 'glacial';
-  return 'meander';
+  return resolveMapRegistryId(mapParam) ?? 'meander';
 }
 
 function readJourneyDefaultAction(): 'loop' | 'nextMap' {
@@ -64,7 +62,10 @@ export function useExperienceWorld({
   const [journeyDefaultAction] = useState(readJourneyDefaultAction);
 
   const activeDefaultMap = DEFAULT_MAPS[activeDefaultMapId] ?? DEFAULT_MAPS.meander;
-  const canContinueDefaultMap = activeDefaultMapId === 'meander' || activeDefaultMapId === 'glacial';
+  const canContinueDefaultMap =
+    activeDefaultMapId === 'meander' ||
+    activeDefaultMapId === 'glacial' ||
+    activeDefaultMapId === 'lumber';
 
   useEffect(() => {
     if (levelUrl || reachId) return;
@@ -334,6 +335,10 @@ export function useExperienceWorld({
     });
   }, [debug]);
 
+  const stableSetForecastSamples = useCallback((samples: FlowForecastSample[]) => {
+    setForecastSamples(samples);
+  }, []);
+
   return {
     levelUrl,
     levelLoadError,
@@ -354,7 +359,7 @@ export function useExperienceWorld({
     handleLoopCurrentMap,
     handleContinueJourney,
     handleDefaultJourneyAction,
-    setForecastSamples,
+    setForecastSamples: stableSetForecastSamples,
     setLevelLoadError,
     setIsLoadingLevel,
     setLoadedLevelState,

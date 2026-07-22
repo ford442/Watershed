@@ -57,10 +57,11 @@ export interface SegmentData {
   gravityMultiplier?: number;
   /** Pre-calculated spawn data for objects. */
   spawns?: SpawnData[];
-  /** Authored decoration / launch-shelf overrides passed through to TrackSegment. */
+  /** Authored decoration / launch-shelf / gap overrides passed through to TrackSegment. */
   config?: {
     decorations?: Record<string, number | DecorationPlacement[]>;
     launchShelf?: { rockRef: { localX: number; localZ: number; scale: number } };
+    openFloor?: boolean;
   };
   /** Backing MapSystem chunk for pool recycling. */
   _baseChunk?: BaseMapChunk;

@@ -83,10 +83,9 @@ export default function InnerExperience({
           <FlowForecast
             temperature={8}
             snowpackIndex={0.65}
-            damReleaseSchedule={[...DAM_RELEASE_SCHEDULE]}
+            damReleaseSchedule={DAM_RELEASE_SCHEDULE as Array<{ hour: number; release: number }>}
             onForecastChange={state.setForecastSamples}
           />
-
           {debug.isStageEnabled('dataProcessing') &&
             (state.levelUrl ? (
               <LevelLoader
