@@ -111,9 +111,25 @@ setInterval(() => {
 
 ## Automated Testing
 
+### Typecheck (required CI gate)
+
+`vite build` uses esbuild, which strips types without checking them, and Vitest only fails on runtime assertions — a broken `tsc` is invisible to both. The typed surface is gated separately:
+
+```bash
+pnpm typecheck
+# equivalent:
+npm run typecheck
+# → tsc -p tsconfig.typecheck.json --noEmit
+```
+
+**CI:** The Build workflow (`.github/workflows/build.yml`) runs a dedicated hard-fail **Typecheck** job (`pnpm typecheck`) on every `pull_request` and `push` to `main`. It is **not** `continue-on-error` and is separate from build/test so a red `tsc` shows up as its own check. Mark the GitHub check name **Typecheck** as a required status check on `main` so merges cannot skip it (repo currently has no branch protection — enable that in GitHub settings if unset).
+
+Registry/menu drift (e.g. adding a `MAP_REGISTRY` key without extending `MapRegistryId`) is also covered by `src/maps/registry.test.ts`.
+
 ### Unit Tests
 ```bash
-CI=true pnpm test --watchAll=false
+pnpm test
+# or: npx vitest run
 ```
 
 176 tests across 17 suites (components, systems, rendering, validators). See **2026-06 Live Test Gate** below for the full verification matrix.

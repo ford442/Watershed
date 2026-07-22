@@ -72,6 +72,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   glacial: {
     id: 'glacial',
     label: 'Glacial Source',
+    // intentional: JSON module has no LevelData schema at import
     levelData: glacialLevel as unknown as LevelData,
     fallbackProgression: GLACIAL_SOURCE_FALLBACK_PROGRESSION,
     startIndex: GLACIAL_SOURCE_START_INDEX,
@@ -80,6 +81,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     estimatedDurationSec: 240,
     continuation: {
       mapId: 'meander',
+      // intentional: JSON module has no LevelData schema at import
       levelData: meanderLevel as unknown as LevelData,
       startIndex: 0,
     },
@@ -87,12 +89,14 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   lumber: {
     id: 'lumber',
     label: 'Map 0.5: Lumber Flume',
+    // intentional: JSON module has no LevelData schema at import
     levelData: lumberLevel as unknown as LevelData,
     fallbackProgression: LUMBER_FLUME_FALLBACK_PROGRESSION,
     startIndex: LUMBER_FLUME_START_INDEX,
     initialBiome: 'lumberFlume',
     menuHidden: true,
     continuation: {
+      // intentional: JSON module has no LevelData schema at import
       levelData: meanderLevel as unknown as LevelData,
       startIndex: 0,
     },
@@ -100,6 +104,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   meander: {
     id: 'meander',
     label: 'Meander to Waterfall',
+    // intentional: JSON module has no LevelData schema at import
     levelData: meanderLevel as unknown as LevelData,
     fallbackProgression: MEANDER_FALLBACK_PROGRESSION,
     startIndex: GLACIER_START_INDEX,
@@ -112,6 +117,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   delta: {
     id: 'delta',
     label: 'Delta Rapids',
+    // intentional: JSON module has no LevelData schema at import
     levelData: deltaLevel as unknown as LevelData,
     fallbackProgression: DELTA_RAPIDS_CONTINUED_PROGRESSION,
     startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
@@ -124,6 +130,19 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
 
 /** Code-level fallback when URL / menu / last-played are absent. */
 export const ACTIVE_MAP_ID: MapRegistryId = 'meander';
+
+/**
+ * Stable registry id list in object-key order.
+ * intentional: Object.keys loses keyof — single cast at the registry boundary.
+ */
+export function mapRegistryIds(): MapRegistryId[] {
+  return Object.keys(MAP_REGISTRY) as Array<keyof typeof MAP_REGISTRY>;
+}
+
+/** True when `value` is a key of MAP_REGISTRY. */
+export function isMapRegistryId(value: string | null | undefined): value is MapRegistryId {
+  return typeof value === 'string' && value in MAP_REGISTRY;
+}
 
 export function getMapDefinition(mapId: MapRegistryId = ACTIVE_MAP_ID): MapDefinition {
   return MAP_REGISTRY[mapId];
@@ -141,6 +160,6 @@ export function resolveMapRegistryId(raw: string | null | undefined): MapRegistr
   if (key === 'glacial' || key === 'glacier') return 'glacial';
   if (key === 'delta') return 'delta';
   if (key === 'meander') return 'meander';
-  if (key in MAP_REGISTRY) return key as MapRegistryId;
+  if (isMapRegistryId(key)) return key;
   return null;
 }

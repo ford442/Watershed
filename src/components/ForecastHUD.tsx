@@ -37,7 +37,7 @@ export default function ForecastHUD({
   const summary = useMemo(() => {
     if (!samples.length) {
       return {
-        current: FLOW_FORECAST_STATES.NORMAL as FlowForecastState,
+        current: FLOW_FORECAST_STATES.NORMAL,
         maxFlow: 0,
         highRiskHours: 0,
       };

@@ -66,7 +66,12 @@ export default function InnerExperience({
       {debug.isStageEnabled('physics') && (
         <Physics debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
           {!state.noPointerLock && (
-            <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />
+            <PointerLockControls
+              makeDefault
+              onLock={() => {}}
+              // intentional: R3F PointerLockControls typings omit lockOnClick
+              {...({ lockOnClick: true } as object)}
+            />
           )}
 
           <VehicleMount
