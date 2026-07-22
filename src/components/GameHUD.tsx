@@ -10,10 +10,16 @@ import {
 interface GameHUDProps {
   isWipeout?: boolean;
   onRespawn?: () => void;
+  /** Default Enter action (continue when available, else retry). */
   onRestartJourney?: () => void;
   onLoopMap?: () => void;
   onContinueJourney?: () => void;
+  onReturnToMenu?: () => void;
   mapLabel?: string;
+  continueLabel?: string;
+  /** Final-map journey summary — show ghost best when no continuation. */
+  isFinalMap?: boolean;
+  ghostBestScore?: number;
 }
 
 const BIOME_LABELS: Record<string, string> = {
@@ -34,7 +40,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onRestartJourney,
   onLoopMap,
   onContinueJourney,
-  mapLabel = 'Map 1: Meander',
+  onReturnToMenu,
+  mapLabel = 'Meander to Waterfall',
+  continueLabel,
+  isFinalMap = false,
+  ghostBestScore = 0,
 }) => {
   const currentBiome = usePlayerBiome();
   const rawSpeed = useGameStore((s) => s.currentSpeed);
@@ -285,13 +295,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   if (isJourneyComplete) {
     const isNewHighScore = score >= highScore && score > 0;
+    const title = isFinalMap ? 'Campaign Complete' : 'Journey Complete';
     return (
       <div
         className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
       >
-        <div className="text-center">
+        <div className="text-center max-w-3xl px-4">
           <div className="text-5xl md:text-7xl font-black text-amber-300 mb-6 tracking-tighter">
-            Journey Complete
+            {title}
           </div>
 
           <div className="text-sm md:text-base text-white/45 font-mono uppercase tracking-[0.18em] mb-6">
@@ -312,18 +323,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             )}
           </div>
 
-          <div className="text-zinc-500 text-base mb-10">
+          <div className="text-zinc-500 text-base mb-2">
             Top Speed: <span className="font-mono text-white">{Math.round(topSpeed)} m/s</span>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+          {isFinalMap && (
+            <div className="text-zinc-500 text-base mb-2">
+              Ghost Best:{' '}
+              <span className="font-mono text-sky-300">
+                {ghostBestScore > 0 ? Math.floor(ghostBestScore).toLocaleString() : '—'}
+              </span>
+            </div>
+          )}
+
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4 mt-10">
             <button
               onClick={() => {
                 onLoopMap?.();
               }}
               className="px-10 py-5 bg-white text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
             >
-              LOOP MAP
+              RETRY MAP
             </button>
 
             {onContinueJourney && (
@@ -333,13 +353,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 }}
                 className="px-10 py-5 bg-amber-300 text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-sky-300 hover:scale-105 transition-all shadow-2xl"
               >
-                CONTINUE TO MAP 2
+                {continueLabel ?? 'CONTINUE'}
+              </button>
+            )}
+
+            {onReturnToMenu && (
+              <button
+                onClick={() => {
+                  onReturnToMenu();
+                }}
+                className="px-10 py-5 bg-transparent text-white/80 text-xl md:text-2xl font-black rounded-3xl border border-white/25 hover:bg-white/10 hover:scale-105 transition-all"
+              >
+                MENU
               </button>
             )}
           </div>
 
           <p className="mt-8 text-zinc-600 text-sm">
-            Press Enter for the configured default action
+            Press Enter to {onContinueJourney ? 'continue' : 'retry'}
           </p>
         </div>
       </div>

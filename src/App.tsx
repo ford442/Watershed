@@ -16,9 +16,12 @@ import {
   type RendererPreference,
 } from './rendering';
 import './style.css';
-import { initPersistence } from './systems/persistenceBootstrap';
-import { getActiveRunKey } from './utils/runContext';
+import { initPersistence, hydrateStoreForRun } from './systems/persistenceBootstrap';
+import { getActiveRunKey, getActiveMapId } from './utils/runContext';
 import { useGameStore } from './systems/GameState';
+import type { MapRegistryId } from './maps/registry';
+import { syncMapUrl } from './maps/campaign';
+import { setLastMapId } from './systems/PersistenceSystem';
 
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only
@@ -63,6 +66,7 @@ function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
+  const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
   const [physicsDebug, setPhysicsDebug] = useState(() => {
     if (isCleanTestMode()) return false;
@@ -93,7 +97,22 @@ function App() {
   }, []);
 
   useEffect(() => {
-    initPersistence(getActiveRunKey());
+    initPersistence(getActiveRunKey(selectedMapId));
+    syncMapUrl(selectedMapId);
+  }, []);
+
+  const handleSelectMap = useCallback((mapId: MapRegistryId) => {
+    setSelectedMapId(mapId);
+    syncMapUrl(mapId);
+    setLastMapId(mapId);
+    hydrateStoreForRun(getActiveRunKey(mapId));
+  }, []);
+
+  const handleMapChange = useCallback((mapId: MapRegistryId) => {
+    setSelectedMapId(mapId);
+    syncMapUrl(mapId);
+    setLastMapId(mapId);
+    hydrateStoreForRun(getActiveRunKey(mapId));
   }, []);
 
   useEffect(() => {
@@ -208,10 +227,14 @@ function App() {
     }
   }, []);
 
-  const handleStart = useCallback(() => {
-    setPhase('playing');
-    requestPointerLockSafely();
-  }, [requestPointerLockSafely]);
+  const handleStart = useCallback(
+    (mapId: MapRegistryId = selectedMapId) => {
+      handleSelectMap(mapId);
+      setPhase('playing');
+      requestPointerLockSafely();
+    },
+    [handleSelectMap, requestPointerLockSafely, selectedMapId],
+  );
 
   const handleResume = useCallback(() => {
     setPhase('playing');
@@ -225,6 +248,27 @@ function App() {
   const handleQuit = useCallback(() => {
     setPhase('menu');
   }, []);
+
+  const handleReturnToMenu = useCallback(() => {
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+    setPhase('menu');
+  }, []);
+
+  // Enter starts from the menu with the selected map.
+  useEffect(() => {
+    if (phase !== 'menu') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleStart(selectedMapId);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleStart, phase, selectedMapId]);
 
   return (
     <ErrorBoundary>
@@ -273,6 +317,9 @@ function App() {
                 rendererPreference={rendererPreference}
                 wireframeDebug={wireframeDebug}
                 cleanTest={cleanTest}
+                mapId={selectedMapId}
+                onMapChange={handleMapChange}
+                onReturnToMenu={handleReturnToMenu}
               />
             </React.Suspense>
           </Canvas>
@@ -281,8 +328,13 @@ function App() {
           {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
 
           {/* Goal 4: Start Menu — shown before first run */}
-          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && <StartMenu onStart={handleStart} />}
-
+          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && (
+            <StartMenu
+              onStart={handleStart}
+              selectedMapId={selectedMapId}
+              onSelectMap={handleSelectMap}
+            />
+          )}
           {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
           {debug.isStageEnabled('uiOverlay') && phase === 'paused' && (
             <PauseMenu

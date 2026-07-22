@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useGameStore } from './GameState';
 import {
   buildRunKey,
+  getCompletedMaps,
   getDefaultPersistence,
+  getLastMapId,
   getRunBest,
   loadPersistence,
+  markMapCompleted,
   resetPersistenceForTests,
+  setLastMapId,
   STORAGE_KEY,
   updateRunBest,
 } from './PersistenceSystem';
@@ -76,5 +80,21 @@ describe('PersistenceSystem', () => {
 
     expect(getRunBest(a).bestScore).toBe(100);
     expect(getRunBest(b).bestScore).toBe(250);
+  });
+
+  it('remembers last map and completed campaign maps', () => {
+    setLastMapId('glacial');
+    expect(getLastMapId()).toBe('glacial');
+
+    markMapCompleted('glacial');
+    markMapCompleted('glacial');
+    markMapCompleted('meander');
+
+    expect(getCompletedMaps()).toEqual(['glacial', 'meander']);
+    expect(getLastMapId()).toBe('meander');
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    expect(stored.completedMaps).toEqual(['glacial', 'meander']);
+    expect(stored.lastMapId).toBe('meander');
   });
 });

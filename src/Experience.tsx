@@ -24,6 +24,9 @@ export default function Experience({
   rendererPreference = 'webgl',
   wireframeDebug = false,
   cleanTest = false,
+  mapId,
+  onMapChange,
+  onReturnToMenu,
 }: ExperienceProps) {
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
 
@@ -55,6 +58,9 @@ export default function Experience({
                 physicsDebug={physicsDebug}
                 wireframeDebug={wireframeDebug}
                 cleanTest={cleanTest}
+                mapId={mapId}
+                onMapChange={onMapChange}
+                onReturnToMenu={onReturnToMenu}
               />
               <PerformanceMonitor visible={import.meta.env.DEV} />
               <RendererDiagnosticsMonitor preference={rendererPreference} />
