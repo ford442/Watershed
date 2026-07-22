@@ -72,7 +72,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // Listen for biome changes
     const handleBiomeChange = (event: Event) => {
       const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'summer';
+      const biome = customEvent.detail?.biome || 'canyonSummer';
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.ROCK;
       vehicle.current.setSurfaceMaterial(material);

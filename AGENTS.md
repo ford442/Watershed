@@ -86,7 +86,6 @@ The title has a double meaning:
 │   │   ├── PostProcessingEffects.jsx / .tsx # Bloom, vignette, SSAO, speed effects
 │   │   ├── EnhancedSky.jsx       # Sky dome with biome coloring
 │   │   ├── WaterReflection.jsx   # Planar water reflections
-│   │   ├── WaterInteraction.jsx  # Player-water interaction FX
 │   │   ├── ShaderBrowserPanel.tsx # In-game shader browser UI
 │   │   ├── CanyonDecorations.jsx # Canyon-specific decorations
 │   │   ├── CreekCanyon.jsx       # Canyon geometry component

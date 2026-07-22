@@ -1,9 +1,9 @@
 import type { RefObject } from 'react';
 import { WATER_LEVEL } from '../constants/game';
 import WaterReflection from '../components/WaterReflection';
-import WaterInteraction from '../components/WaterInteraction';
 import { SplashSystem } from '../systems/SplashSystem';
 import WaterForceSystem from '../systems/WaterForceSystem';
+import { useLOD } from '../systems/LODManager';
 import type { VehicleRigidBodyRef, VehicleType } from './types';
 
 interface WaterReflectionLayerProps {
@@ -13,9 +13,18 @@ interface WaterReflectionLayerProps {
 
 /** Planar water reflection pass — mounted outside the Rapier physics world. */
 export function WaterReflectionLayer({ enabled, enableReflections }: WaterReflectionLayerProps) {
-  if (!enabled || !enableReflections) return null;
+  const { config } = useLOD();
 
-  return <WaterReflection waterLevel={WATER_LEVEL} resolution={1024} updateInterval={2} />;
+  if (!enabled || !enableReflections || !config.enableReflections) return null;
+
+  return (
+    <WaterReflection
+      waterLevel={WATER_LEVEL}
+      resolution={config.reflectionResolution}
+      updateInterval={config.reflectionUpdateInterval}
+      reflectionStrength={config.reflectionStrength}
+    />
+  );
 }
 
 interface WaterPhysicsEffectsProps {
@@ -26,7 +35,7 @@ interface WaterPhysicsEffectsProps {
   wasmWaterTest?: boolean;
 }
 
-/** Splash particles and player–water interaction — mounted inside Physics. */
+/** Splash / mist / bow-wave water-contact VFX — mounted inside Physics. */
 export function WaterPhysicsEffects({
   vehicleRef,
   vehicleType,
@@ -51,11 +60,7 @@ export function WaterPhysicsEffects({
         waterLevel={WATER_LEVEL}
         waterWidth={12}
         flowSpeed={flowSpeed}
-      />
-      <WaterInteraction
-        target={vehicleRef}
         isRaft={vehicleType === 'raft'}
-        waterLevel={WATER_LEVEL}
         maxVelocity={15}
       />
     </>

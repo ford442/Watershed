@@ -350,7 +350,7 @@ audit confirmed them and surfaced two minor follow-ups. None block the live test
 | ID | Severity | Issue | Notes |
 |----|----------|-------|-------|
 | F-9 | **Fixed** | `teleportToSegment(38)` does **not** raise Journey Complete or apply the delta biome (overlay absent, HUD stays `CANYON SUMMER`). Root cause was **not** a config-plumbing gap in `MapSystem.ts` — `DefaultMapManager.getChunkConfig()` correctly spreads `journeyComplete: true` from `meander_to_waterfall.ts`. The real cause was an init race: `ChunkManager.synthesizeSegmentEnter()` silently no-ops when `!this.initialized`, and `ChunkManager` is constructed inside a `rockMaterial`-gated `useEffect` in `TrackManager.jsx`. If the screenshot teleport fired before that gate cleared, the entire replay loop (flow, biome, audio, journey-complete) was dropped. Fix: `TrackManager.jsx` now queues `synthesizeSegmentEnter` calls that arrive before initialization and flushes them in order once `ChunkManager.initializePool()` completes. | Repro: `verification/diag_reset.mjs`. |
-| F-10 | **Fixed** | HUD shows `CANYON SUMMER` during the glacier prelude (seg −3…−1) and the slot-canyon section instead of distinct labels. Root cause: `normalizeBiomeId()` / `BIOME_ID_MAP` in `BiomePalettes.ts` collapsed both `slotCanyon` and `glacier` to `canyonSummer` before the id reached the HUD label lookup, so adding label entries alone could not fix it. Fix: added distinct `slotCanyon` and `glacier` entries to `BiomePalettes` with their own palette ids, removed the `slotCanyon → canyonSummer` collapse from `BIOME_ID_MAP`, and added `glacier → GLACIER` to `GameHUD.tsx`'s `BIOME_LABELS`. The raw biome id now propagates through `BiomeSystem` into the Zustand store, so the HUD displays `SLOT CANYON` and `GLACIER` in the correct sections. | Screenshot-only cosmetic. |
+| F-10 | **Fixed** | HUD shows `CANYON SUMMER` during the glacier prelude (seg −3…−1) and the slot-canyon section instead of distinct labels. Root cause: earlier `BIOME_ID_MAP` collapsed both `slotCanyon` and `glacier`. Fix: distinct palette entries + no collapse. **2026-07 follow-up:** dual track/palette vocabularies unified onto canonical `BiomeId` (`src/configs/biomes.ts`); `normalizeBiomeId` is map-load-only; `glacier` stays distinct from `glacialMelt`. | Screenshot-only cosmetic. |
 
 ### Quick commands
 
@@ -442,7 +442,7 @@ Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc
 |-------|--------|-------|
 | `CI=true pnpm test --watchAll=false` | **182/182 pass** | 19 suites, post set-piece plumbing |
 | `pnpm build` | **Pass** | WASM skipped without Emscripten (expected) |
-| `SYSTEMS.md` contract cards | **Done** | `WaterReflection.jsx`, `WaterInteraction.jsx` cards + SplashSystem cross-ref |
+| `SYSTEMS.md` contract cards | **Done** | `WaterReflection.jsx`, SplashSystem (consolidated water-contact VFX; WaterInteraction removed) |
 | Set-piece plumbing (seg 14/22) | **Implemented** | `decorations` wired MapSystem → ChunkManager → TrackSegment; `rockType` override; authored in `meander_to_waterfall.ts` |
 | `diag_trials.mjs` (6 trials) | **Partial** | Trial 1 HEALTHY (seg −3, Y ≈ −5.2); trial 2 Chrome protocol timeout — headless load-sensitive per 2026-06-18 caveat |
 | `diag_reset.mjs` | *(see run below)* | Journey-complete restart plumbing |

@@ -16,7 +16,7 @@ export default function TrackSegment({
     waterWidth: waterWidthOverride,
     active = true,
     rockMaterial,
-    biome = 'summer',
+    biome = 'canyonSummer',
     waterMaterial,
     flowSpeed = 1.0,
     config = {},

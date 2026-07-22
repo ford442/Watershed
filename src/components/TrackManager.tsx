@@ -29,6 +29,7 @@ import { ChunkManager } from '../systems/ChunkManager';
 import { createObstaclePool } from '../systems/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
 import type { NormalizedSegment } from '../systems/ReachNormalizer';
+import type { BiomeId } from '../configs/biomes';
 
 export interface TrackManagerRef {
   synthesizeSegmentEnter: (index: number) => void;
@@ -37,7 +38,7 @@ export interface TrackManagerRef {
 }
 
 export interface TrackManagerProps {
-  onBiomeChange?: (biome: string, segmentIndex?: number) => void;
+  onBiomeChange?: (biome: BiomeId, segmentIndex?: number) => void;
   raftRef?: React.RefObject<any>;
   forecastSamples?: Array<{ state: string; [key: string]: unknown }>;
   reachSegments?: NormalizedSegment[] | null;
@@ -283,7 +284,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
     const callbacks = {
       onPoolChange: () => setPoolVersion((v) => v + 1),
-      onBiomeChange: (biome: string, segmentIndex: number) => {
+      onBiomeChange: (biome: BiomeId, segmentIndex: number) => {
         onBiomeChange?.(biome, segmentIndex);
       },
       onSegmentEnter: (index: number) => {
@@ -427,7 +428,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
           segmentPath={segment?.segmentPath}
           segmentState={segment?.segmentState || 'Normal'}
           waterWidth={segment?.waterWidth}
-          biome={segment?.biome || 'summer'}
+          biome={segment?.biome || 'canyonSummer'}
           isNight={isNight}
           weatherWetnessRef={weatherWetnessRef}
           usePooledStaticObstacles

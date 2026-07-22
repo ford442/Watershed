@@ -25,7 +25,7 @@ const COLOR_PALETTES = {
  * @param {string} props.biome - 'summer' or 'autumn' for color palette
  * @param {number} props.density - Multiplier for amount of foliage (0.5 to 2.0)
  */
-export default function Foliage({ transforms, biome = 'summer', density = 1.0 }) {
+export default function Foliage({ transforms, biome = 'canyonSummer', density = 1.0 }) {
   const bushesRef = useRef();
   const grassRef = useRef();
   const plantsRef = useRef();

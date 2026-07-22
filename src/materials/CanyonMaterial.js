@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three';
+import { isAutumnLike } from '../configs/biomes';
 
 // Geological layer definitions
 const GEOLOGICAL_LAYERS = {
@@ -372,7 +373,7 @@ const FRAGMENT_SHADER = `
  */
 export function createCanyonMaterial(options = {}) {
   const {
-    biome = 'summer',
+    biome = 'canyonSummer',
     wallHeight = 15,
     parallaxScale,
     time = 0,
@@ -419,9 +420,9 @@ export function createCanyonMaterial(options = {}) {
  * Create fallback MeshStandardMaterial for compatibility
  */
 export function createFallbackCanyonMaterial(options = {}) {
-  const { biome = 'summer' } = options;
+  const { biome = 'canyonSummer' } = options;
   
-  const baseColor = biome === 'autumn' 
+  const baseColor = isAutumnLike(biome) 
     ? new THREE.Color('#9c7850') 
     : new THREE.Color('#888880');
 

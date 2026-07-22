@@ -17,6 +17,8 @@
  */
 
 import { create } from 'zustand';
+import type { BiomeId } from '../configs/biomes';
+import { DEFAULT_BIOME_ID } from '../configs/biomes';
 
 // =============================================================================
 // TYPES
@@ -38,7 +40,7 @@ export interface SpawnPoint {
 export interface GameState {
   playerPosition: { x: number; y: number; z: number };
   currentSpeed: number;
-  currentBiome: string;
+  currentBiome: BiomeId;
   isPaused: boolean;
   distanceTraveled: number;
   distance: number;
@@ -77,7 +79,7 @@ export interface GameState {
 export interface GameActions {
   setPlayerPosition: (pos: { x: number; y: number; z: number }) => void;
   setCurrentSpeed: (speed: number) => void;
-  setCurrentBiome: (biome: string) => void;
+  setCurrentBiome: (biome: BiomeId) => void;
   setIsPaused: (paused: boolean) => void;
   setDistanceTraveled: (distance: number) => void;
   setDistance: (distance: number) => void;
@@ -115,7 +117,7 @@ const DEFAULT_SETTINGS: GameSettings = {
 const INITIAL_STATE: GameState = {
   playerPosition: { x: 0, y: -6, z: -10 },
   currentSpeed: 0,
-  currentBiome: 'canyonSummer',
+  currentBiome: DEFAULT_BIOME_ID,
   isPaused: false,
   distanceTraveled: 0,
   distance: 0,

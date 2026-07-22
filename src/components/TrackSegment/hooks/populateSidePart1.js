@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
 import { WATER_LEVEL } from '../../../constants/game';
+import { isAutumnLike, isSummerLike } from '../../../configs/biomes';
 
 export function populateSidePart1(args) {
     const {
@@ -129,7 +130,7 @@ export function populateSidePart1(args) {
                             }
                         }
                     } else {
-                        const baseTreeChance = (biome === 'autumn' || isPond) ? 0.6 : 0.3;
+                        const baseTreeChance = (isAutumnLike(biome) || isPond) ? 0.6 : 0.3;
                         const treeChance = baseTreeChance * treeDensity;
                         if (seededRandom(seedState.value++) > (1.0 - treeChance)) {
                             const dist = bankStart + 4 + seededRandom(seedState.value++) * 8;
@@ -222,7 +223,7 @@ export function populateSidePart1(args) {
 
                 // 3.6 SAND BARS (Point bars on inside bends, summer only)
                 if (
-                    biome === 'summer' &&
+                    isSummerLike(biome) &&
                     !isSlotCanyon &&
                     side === insideSide &&
                     curvatureStrength > 0.008 &&
@@ -307,14 +308,14 @@ export function populateSidePart1(args) {
 
                     const heightAboveWaterline = Math.max(0, (groundY - 0.5) - waterLevel);
                     const waterlineFactor = Math.min(1, heightAboveWaterline / bankHeight);
-                    const highNearWater = biome === 'autumn' ? 0.52 : 0.72;
-                    const lowAtRim = biome === 'autumn' ? 0.14 : 0.2;
+                    const highNearWater = isAutumnLike(biome) ? 0.52 : 0.72;
+                    const lowAtRim = isAutumnLike(biome) ? 0.14 : 0.2;
                     const wildflowerBoost = (type === 'normal' && particleCount > 0) ? Math.min(particleCount / 60, 2.5) : 1.0;
                     const spawnProbability = (highNearWater + (lowAtRim - highNearWater) * waterlineFactor) * wildflowerBoost;
 
                     if (seededRandom(seedState.value++) < spawnProbability) {
                         const clusterSize = 2 + Math.floor(seededRandom(seedState.value++) * 3);
-                        const baseScale = biome === 'autumn' ? 0.55 + seededRandom(seedState.value++) * 0.28 : 0.6 + seededRandom(seedState.value++) * 0.35;
+                        const baseScale = isAutumnLike(biome) ? 0.55 + seededRandom(seedState.value++) * 0.28 : 0.6 + seededRandom(seedState.value++) * 0.35;
 
                         for (let wf = 0; wf < clusterSize; wf++) {
                             const spreadAlong = wf === 0 ? 0 : (seededRandom(seedState.value++) - 0.5) * 1.2;
@@ -341,7 +342,7 @@ export function populateSidePart1(args) {
 
                 // 4.6 FERNS (New: Undergrowth clusters)
                 // Ferns like the "floor" of the forest, often near trees or walls
-                const fernChance = biome === 'autumn' ? 0.4 : 0.3;
+                const fernChance = isAutumnLike(biome) ? 0.4 : 0.3;
                 if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > (1.0 - fernChance)) {
                     // Spawn a cluster
                     const clusterSize = 3 + Math.floor(seededRandom(seedState.value++) * 3);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
+import { isAutumnLike } from '../../../configs/biomes';
 
 export function populateSidePart2(args) {
     const {
@@ -18,7 +19,7 @@ export function populateSidePart2(args) {
     const isGlacier = biomeProfile?.id === 'glacier' || biomeProfile?.id === 'glacialMelt'
         || biome === 'glacier' || biome === 'glacial' || biome === 'glacialMelt';
                 // 4.7 MUSHROOMS (New: Forest floor detail)
-                const mushroomChance = biome === 'autumn' ? 0.6 : 0.3;
+                const mushroomChance = isAutumnLike(biome) ? 0.6 : 0.3;
                 if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > (1.0 - mushroomChance)) {
                     // Cluster
                     const clusterSize = 3 + Math.floor(seededRandom(seedState.value++) * 5);
@@ -120,10 +121,10 @@ export function populateSidePart2(args) {
                 }
 
                 // 7. LEAVES (Falling - Enhanced)
-                const baseLeafChance = biome === 'autumn' ? 0.8 : 0.2;
+                const baseLeafChance = isAutumnLike(biome) ? 0.8 : 0.2;
                 if (seededRandom(seedState.value++) > (1.0 - baseLeafChance)) {
                     // Determine count - More in autumn
-                    const count = biome === 'autumn' ? 3 + Math.floor(seededRandom(seedState.value++) * 5) : 1;
+                    const count = isAutumnLike(biome) ? 3 + Math.floor(seededRandom(seedState.value++) * 5) : 1;
 
                     for (let l = 0; l < count; l++) {
                         const dist = (seededRandom(seedState.value++) - 0.5) * canyonWidth * 0.9; // Wide spread
@@ -205,7 +206,7 @@ export function populateSidePart2(args) {
                             birdPos.y += 5.5 + seededRandom(seedState.value++) * 4.0;
                         }
 
-                        if ((isSlotCanyon || biome === 'autumn') && bats.length < 12) {
+                        if ((isSlotCanyon || isAutumnLike(biome)) && bats.length < 12) {
                             const targetBatCount = 6 + Math.floor(seededRandom(seedState.value++) * 7);
                             const spawnChance = isSlotCanyon ? 0.5 : 0.42;
                             if (seededRandom(seedState.value++) < spawnChance) {
@@ -388,7 +389,7 @@ export function populateSidePart2(args) {
                             scale: new THREE.Vector3(scaleMod * 0.5, scaleMod * 2.5, scaleMod * 0.5)
                         });
                     }
-                } else if (biome !== 'autumn' || type === 'pond') { // More common in summer or open ponds
+                } else if (!isAutumnLike(biome) || type === 'pond') { // More common in summer or open ponds
                     if (seededRandom(seedState.value++) > 0.92) { // Occasional
                         const dist = (seededRandom(seedState.value++) - 0.5) * canyonWidth * 0.6;
                         const offset = binormal.clone().multiplyScalar(dist);
@@ -451,7 +452,7 @@ export function populateSidePart2(args) {
                 }
 
                 // 15. DRAGONFLIES (Daytime activity near water)
-                if (!isSlotCanyon && biome !== 'autumn' && type !== 'waterfall') {
+                if (!isSlotCanyon && !isAutumnLike(biome) && type !== 'waterfall') {
                     if (seededRandom(seedState.value++) > 0.7) { // 30% chance per step
                         const clusterSize = 1 + Math.floor(seededRandom(seedState.value++) * 3);
 

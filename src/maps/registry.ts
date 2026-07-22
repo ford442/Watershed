@@ -6,6 +6,7 @@
  */
 
 import type { LevelData, SegmentRange } from '../systems/MapSystem';
+import type { BiomeId } from '../configs/biomes';
 import glacialLevel from './glacial_source.json';
 import meanderLevel from './meander_to_waterfall.json';
 import deltaLevel from './delta_rapids.json';
@@ -32,7 +33,7 @@ export interface MapDefinition {
   levelData: LevelData;
   fallbackProgression: SegmentRange[];
   startIndex: number;
-  initialBiome: string;
+  initialBiome: BiomeId;
   /** Optional second authored map chained after primary segments are exhausted. */
   continuation?: MapContinuation;
 }

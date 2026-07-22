@@ -40,7 +40,7 @@ describe('JSONMapManager — meander_to_waterfall', () => {
     'segment %d (meander) has default summer biome and low rock density',
     (i) => {
       const cfg = manager.getChunkConfig(i);
-      expect(cfg.biome).toBe('summer');
+      expect(cfg.biome).toBe('canyonSummer');
       expect(cfg.type).toBe('normal');
       expect(cfg.rockDensity).toBe('low');
     }
@@ -52,7 +52,7 @@ describe('JSONMapManager — meander_to_waterfall', () => {
 
   it('segment 13 (approach) has correct meanderStrength and verticalBias', () => {
     const cfg = manager.getChunkConfig(13);
-    expect(cfg.biome).toBe('summer');
+    expect(cfg.biome).toBe('canyonSummer');
     expect(cfg.meanderStrength).toBeCloseTo(0.2);
     expect(cfg.verticalBias).toBeCloseTo(-1.2);
     expect(cfg.flowSpeed).toBeCloseTo(1.15);
@@ -70,7 +70,7 @@ describe('JSONMapManager — meander_to_waterfall', () => {
 
   it('segment 14 (waterfall) has biome summer', () => {
     const cfg = manager.getChunkConfig(14);
-    expect(cfg.biome).toBe('summer');
+    expect(cfg.biome).toBe('canyonSummer');
   });
 
   it('segment 14 (waterfall) has 400 particles and camera shake', () => {
@@ -119,7 +119,7 @@ describe('JSONMapManager — meander_to_waterfall', () => {
   it('segment 15 (splash pool) has type splash and autumn biome', () => {
     const cfg = manager.getChunkConfig(15);
     expect(cfg.type).toBe('splash');
-    expect(cfg.biome).toBe('autumn');
+    expect(cfg.biome).toBe('canyonAutumn');
   });
 
   it('segment 15 (splash pool) has wide canyon', () => {
@@ -134,7 +134,7 @@ describe('JSONMapManager — meander_to_waterfall', () => {
   it.each([16, 17, 18])('segment %d (pond) has type pond and autumn biome', (i) => {
     const cfg = manager.getChunkConfig(i);
     expect(cfg.type).toBe('pond');
-    expect(cfg.biome).toBe('autumn');
+    expect(cfg.biome).toBe('canyonAutumn');
     expect(cfg.width).toBe(70);
     expect(cfg.waterWidth).toBe(28);
   });
@@ -145,7 +145,7 @@ describe('JSONMapManager — meander_to_waterfall', () => {
 
   it('segment 19 (autumn rapids) has autumn biome and high rock density', () => {
     const cfg = manager.getChunkConfig(19);
-    expect(cfg.biome).toBe('autumn');
+    expect(cfg.biome).toBe('canyonAutumn');
     expect(cfg.rockDensity).toBe('high');
     expect(cfg.meanderStrength).toBeCloseTo(1.5);
   });

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { smoothNoise, hasFiniteCoordinates, lerpValue } from '../utils';
 import { WALL_WATERLINE_Y, SHADERS, WATER_LEVEL } from '../../../constants/game';
+import { isAutumnLike } from '../../../configs/biomes';
 
 export function useGeometries({
     active, segmentPath, pathLength, segmentId, type,
@@ -35,19 +36,19 @@ export function useGeometries({
         // Tuned to bridge smoothly from water-edge to dry bank
         const dryColor   = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_RIM)
                          : isGlacier    ? new THREE.Color('#c8dce8')   // pale ice-scoured granite
-                         : (biome === 'autumn' ? new THREE.Color('#b89868') : new THREE.Color('#9a8e78'));
+                         : (isAutumnLike(biome) ? new THREE.Color('#b89868') : new THREE.Color('#9a8e78'));
         const wetColor   = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_SHADOW)
                          : isGlacier    ? new THREE.Color('#2a4858')   // deep glacial shadow
-                         : (biome === 'autumn' ? new THREE.Color('#4a3828') : new THREE.Color('#3e5038'));
+                         : (isAutumnLike(biome) ? new THREE.Color('#4a3828') : new THREE.Color('#3e5038'));
         const shoreColor = isSlotCanyon ? new THREE.Color(SHADERS.SLOT_ROCK_BASE)
                          : isGlacier    ? new THREE.Color('#6a9ab0')   // submerged blue-grey stone
-                         : (biome === 'autumn' ? new THREE.Color('#685840') : new THREE.Color('#4a5c44'));
+                         : (isAutumnLike(biome) ? new THREE.Color('#685840') : new THREE.Color('#4a5c44'));
         const mossColor  = isSlotCanyon ? new THREE.Color('#7c4a2d')
                          : isGlacier    ? new THREE.Color('#4a7888')   // glacial algae / cryoconite
-                         : (biome === 'autumn' ? new THREE.Color('#7a6640') : new THREE.Color('#587248'));
+                         : (isAutumnLike(biome) ? new THREE.Color('#7a6640') : new THREE.Color('#587248'));
         const bankColor  = isSlotCanyon ? new THREE.Color('#bf7444')
                          : isGlacier    ? new THREE.Color('#a0b8c8')   // frost-dusted bank gravel
-                         : (biome === 'autumn' ? new THREE.Color('#907850') : new THREE.Color('#788860'));
+                         : (isAutumnLike(biome) ? new THREE.Color('#907850') : new THREE.Color('#788860'));
         const getChannelShape = (t) => {
             if (!channelProfile.length) {
                 return {

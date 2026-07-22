@@ -14,13 +14,14 @@ import ReactiveAudio from '../components/ReactiveAudio';
 import WeatherSystem from '../components/WeatherSystem';
 import { ReachStreamer, ReachManifest } from './ReachStreamer';
 import { normalizeReachManifest, NormalizedSegment } from './ReachNormalizer';
+import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
 // Removed DOM UI imports — overlays are lifted to Experience.jsx
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */
   playerRef: React.RefObject<any>;
   /** Biome change callback */
-  onBiomeChange?: (biome: string) => void;
+  onBiomeChange?: (biome: BiomeId) => void;
   /** Forecast samples for water flow override */
   forecastSamples?: any[];
   /** Reach identifier to load */
@@ -91,14 +92,7 @@ export default function ReachManager({
 
         // Trigger initial biome callback if provided
         if (onBiomeChange && result.manifest.world?.biome?.baseType) {
-          const biomeMap: Record<string, string> = {
-            'creek-summer': 'summer',
-            'creek-autumn': 'autumn',
-            'alpine-spring': 'summer',
-            'canyon-sunset': 'autumn',
-            'midnight-mist': 'autumn',
-          };
-          onBiomeChange(biomeMap[result.manifest.world.biome.baseType] || 'summer');
+          onBiomeChange(normalizeBiomeId(result.manifest.world.biome.baseType));
         }
       } catch (err) {
         if (cancelled) return;

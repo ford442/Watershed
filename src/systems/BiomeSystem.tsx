@@ -12,6 +12,7 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../configs/BiomePalettes';
+import { type BiomeId, DEFAULT_BIOME_ID, normalizeBiomeId } from '../configs/biomes';
 import { useGameStore } from './GameState';
 
 // Context for biome state
@@ -21,9 +22,9 @@ type BiomeContextType = {
   transitionProgress: number;
   isTransitioning: boolean;
   timeOfDay: number; // 0-1 (0=8am, 0.5=noon, 1=5pm)
-  setBiome: (biomeId: string, durationOverride?: number) => void;
+  setBiome: (biomeId: BiomeId, durationOverride?: number) => void;
   /** Instant biome snap — used on journey loop / respawn so delta/end palettes don't linger. */
-  snapBiome: (biomeId: string) => void;
+  snapBiome: (biomeId: BiomeId) => void;
   setTimeOfDay: (time: number) => void;
 };
 
@@ -38,7 +39,7 @@ export const useBiome = () => {
 // Props for the provider
 interface BiomeProviderProps {
   children: React.ReactNode;
-  initialBiome?: string;
+  initialBiome?: BiomeId;
   enableTimeOfDay?: boolean;
   timeOfDaySpeed?: number; // hours per second
 }
@@ -48,7 +49,7 @@ interface BiomeProviderProps {
  */
 export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   children,
-  initialBiome = 'canyonSummer',
+  initialBiome = DEFAULT_BIOME_ID,
   enableTimeOfDay = false,
   timeOfDaySpeed = 0.1, // 0.1 game hours per real second
 }) => {
@@ -70,9 +71,8 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   // Start biome transition.
   // BiomeProvider is the single source of truth for biome state; after updating
   // the internal transition target we immediately mirror the canonical palette id
-  // to the Zustand store so legacy consumers (EnhancedSky, GameHUD, BIOME_LIGHTING)
-  // stay in sync without any extra wiring.
-  const setBiome = useCallback((biomeId: string, durationOverride?: number) => {
+  // to the Zustand store so HUD / lighting consumers stay in sync.
+  const setBiome = useCallback((biomeId: BiomeId, durationOverride?: number) => {
     const newTarget = getBiomePalette(biomeId);
     if (newTarget.id === targetBiome.id) return;
     
@@ -91,7 +91,7 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     }
   }, [currentBiome, targetBiome]);
 
-  const snapBiome = useCallback((biomeId: string) => {
+  const snapBiome = useCallback((biomeId: BiomeId) => {
     const palette = getBiomePalette(biomeId);
     previousBiome.current = palette;
     setCurrentBiomeState(palette);
@@ -266,8 +266,8 @@ export const BiomeTransition: React.FC = () => {
  * BiomeDetector - Detects when player enters different biome segments
  */
 interface BiomeDetectorProps {
-  onBiomeChange?: (biomeId: string) => void;
-  segmentBiomes?: Record<number, string>;
+  onBiomeChange?: (biomeId: BiomeId) => void;
+  segmentBiomes?: Record<number, BiomeId | string>;
 }
 
 export const BiomeDetector: React.FC<BiomeDetectorProps> = ({
@@ -284,8 +284,9 @@ export const BiomeDetector: React.FC<BiomeDetectorProps> = ({
     const segmentLength = 40; // Approximate
     const segmentIndex = Math.floor(Math.abs(camZ) / segmentLength);
     
-    const biomeId = segmentBiomes[segmentIndex];
-    if (biomeId && biomeId !== lastBiomeRef.current) {
+    const raw = segmentBiomes[segmentIndex];
+    if (raw && raw !== lastBiomeRef.current) {
+      const biomeId = normalizeBiomeId(raw);
       lastBiomeRef.current = biomeId;
       setBiome(biomeId);
       onBiomeChange?.(biomeId);

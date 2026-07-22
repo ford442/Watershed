@@ -119,7 +119,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     const handleBiomeChange = (event: Event) => {
       const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'summer';
+      const biome = customEvent.detail?.biome || 'canyonSummer';
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.WATER;
       raftVehicle.current.setSurfaceMaterial(material);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isAutumnLike, isSummerLike } from '../../configs/biomes';
 
 // Simple seeded random function
 export const seededRandom = (seed) => {
@@ -19,7 +20,7 @@ export const pickTreeSpecies = ({ biomeProfile, biome, isRim, type, segmentId, i
         speciesWeights.broadleaf *= 0.75;
     }
 
-    if (biome === 'summer' && !isRim) {
+    if (isSummerLike(biome) && !isRim) {
         speciesWeights.conifer += 0.08;
     }
 
@@ -51,7 +52,7 @@ export const createFlowerPayload = ({ position, rotation, scale, biome, segmentI
         variantIndex,
         colorIndex: Math.floor(seededRandom(segmentId * 137 + instanceIndex * 89 + 31) * 6),
         hueJitter: seededRandom(segmentId * 137 + instanceIndex * 113 + 7) - 0.5,
-        lightnessJitter: seededRandom(segmentId * 137 + instanceIndex * 131 + (biome === 'autumn' ? 41 : 17)) - 0.5,
+        lightnessJitter: seededRandom(segmentId * 137 + instanceIndex * 131 + (isAutumnLike(biome) ? 41 : 17)) - 0.5,
     };
 };
 
@@ -67,7 +68,7 @@ export const createRockPayload = ({ position, rotation, scale, biome, segmentId,
         rockType = seededRandom(segmentId * 137 + instanceIndex * 47 + 13) > 0.58 ? 'slab' : 'boulder';
     }
 
-    const shadePalette = biome === 'autumn'
+    const shadePalette = isAutumnLike(biome)
         ? ['#8b7355', '#9f7b55', '#74563e']
         : biome === 'slotCanyon'
             ? ['#a65f3a', '#bf7444', '#8d4c2b']

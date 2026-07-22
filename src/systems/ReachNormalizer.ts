@@ -7,11 +7,12 @@
 import * as THREE from 'three';
 import { ReachManifest } from './ReachStreamer';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../configs/TrackBiomes';
+import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
 
 export interface NormalizedSegment {
   id: number;
   type: string;
-  biome: string;
+  biome: BiomeId;
   points: THREE.Vector3[];
   segmentPath: THREE.CatmullRomCurve3;
   width: number;
@@ -28,21 +29,6 @@ export interface NormalizedSegment {
   verticalBias: number;
   // Passthrough of original config for TrackSegment extras
   config: any;
-}
-
-function mapManifestBiomeToTrackBiome(baseType: string): string {
-  switch (baseType) {
-    case 'canyon-sunset':
-    case 'slot-canyon':
-      return 'slotCanyon';
-    case 'creek-autumn':
-    case 'midnight-mist':
-      return 'autumn';
-    case 'alpine-spring':
-    case 'creek-summer':
-    default:
-      return 'summer';
-  }
 }
 
 /**
@@ -87,7 +73,7 @@ export function normalizeReachManifest(
   previousSegment?: NormalizedSegment,
   forecastState: string = 'Normal'
 ): NormalizedSegment[] {
-  const baseBiome = mapManifestBiomeToTrackBiome(manifest.world?.biome?.baseType || 'creek-summer');
+  const baseBiome = normalizeBiomeId(manifest.world?.biome?.baseType || 'creek-summer');
   const baseBiomeProfile = getTrackBiomeProfile(baseBiome);
 
   const waypoints = manifest.world.track.waypoints.map(
@@ -107,7 +93,7 @@ export function normalizeReachManifest(
     }
 
     const biomeOverride = segConfig.biomeOverride
-      ? mapManifestBiomeToTrackBiome(segConfig.biomeOverride)
+      ? normalizeBiomeId(segConfig.biomeOverride)
       : undefined;
     const biome = biomeOverride || baseBiome;
     const wallProfile = getTrackBiomeProfile(biome);

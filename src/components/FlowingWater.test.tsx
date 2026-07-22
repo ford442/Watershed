@@ -104,4 +104,16 @@ describe('FlowingWater', () => {
     expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).toContain('gl_FragColor = vec4');
     expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).not.toBe('void broken() {');
   });
+
+  test('registers reflectionTexture and reflectionStrength uniforms for planar reflections', () => {
+    render(<FlowingWater geometry={new THREE.BufferGeometry()} />);
+
+    expect(shaderMaterialMock).toHaveBeenCalledTimes(1);
+    const uniforms = shaderMaterialMock.mock.calls[0][0].uniforms;
+    expect(uniforms.reflectionTexture).toBeDefined();
+    expect(uniforms.reflectionStrength).toBeDefined();
+    expect(uniforms.reflectionStrength.value).toBe(0);
+    expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).toContain('reflectionTexture');
+    expect(shaderMaterialMock.mock.calls[0][0].vertexShader).toContain('vReflectionUv');
+  });
 });

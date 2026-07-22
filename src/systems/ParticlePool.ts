@@ -237,6 +237,28 @@ export class FoamParticle extends VFXParticle {
 }
 
 /**
+ * Mist crown particle for raft spray — gentle upward drift, scale-fade via life ratio.
+ */
+export class MistParticle extends VFXParticle {
+  update(delta: number, _gravity = 0): boolean {
+    if (!this.active) return false;
+
+    this.position.x += this.velocity.x * delta;
+    this.position.y += this.velocity.y * delta;
+    this.position.z += this.velocity.z * delta;
+    this.rotation += this.rotationSpeed * delta;
+    this.life += delta;
+
+    if (this.life >= this.maxLife) {
+      this.active = false;
+      return false;
+    }
+
+    return true;
+  }
+}
+
+/**
  * Global particle manager singleton
  */
 class ParticleManager {

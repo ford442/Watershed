@@ -35,8 +35,20 @@ export const MATERIAL_FRICTION: Record<SurfaceMaterial, number> = {
 };
 
 export const MATERIAL_FROM_BIOME: Record<string, SurfaceMaterial> = {
-  'summer': SurfaceMaterial.ROCK,
-  'autumn': SurfaceMaterial.MOSS,
+  canyonSummer: SurfaceMaterial.ROCK,
+  canyonAutumn: SurfaceMaterial.MOSS,
+  alpineSpring: SurfaceMaterial.ROCK,
+  slotCanyon: SurfaceMaterial.CONCRETE,
+  glacialMelt: SurfaceMaterial.ROCK,
+  glacier: SurfaceMaterial.ROCK,
+  delta: SurfaceMaterial.MOSS,
+  cavern: SurfaceMaterial.CONCRETE,
+  midnightMist: SurfaceMaterial.MOSS,
+  lumberFlume: SurfaceMaterial.ROCK,
+  hydroDam: SurfaceMaterial.CONCRETE,
+  // Legacy aliases (map-load / events may still emit briefly)
+  summer: SurfaceMaterial.ROCK,
+  autumn: SurfaceMaterial.MOSS,
   'creek-summer': SurfaceMaterial.ROCK,
   'creek-autumn': SurfaceMaterial.MOSS,
   'alpine-spring': SurfaceMaterial.ROCK,

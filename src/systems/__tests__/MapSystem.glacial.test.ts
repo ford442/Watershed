@@ -45,7 +45,7 @@ describe('JSONMapManager — glacial_source', () => {
 
   it('segment 17 (melt-out) transitions to summer meander', () => {
     const cfg = manager.getChunkConfig(17);
-    expect(cfg.biome).toBe('summer');
+    expect(cfg.biome).toBe('canyonSummer');
   });
 });
 
@@ -59,7 +59,7 @@ describe('ProceduralMapManager — glacial → meander chaining', () => {
 
   it('segment 18 resolves to meander segment 0 (summer meander)', () => {
     const cfg = manager.getChunkConfig(18);
-    expect(cfg.biome).toBe('summer');
+    expect(cfg.biome).toBe('canyonSummer');
     expect(cfg.treeDensity).toBeGreaterThanOrEqual(10);
   });
 

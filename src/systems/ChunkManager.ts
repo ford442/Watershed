@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { GENERATION } from '../constants/game';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../configs/TrackBiomes';
+import type { BiomeId } from '../configs/biomes';
 import {
   MapManager,
   buildProceduralSegment,
@@ -73,7 +74,7 @@ export interface RenderedSlot {
 
 export interface ChunkManagerCallbacks {
   onPoolChange?: () => void;
-  onBiomeChange?: (biome: string, segmentIndex: number) => void;
+  onBiomeChange?: (biome: BiomeId, segmentIndex: number) => void;
   onSegmentEnter?: (segmentIndex: number) => void;
 }
 
@@ -124,7 +125,7 @@ function baseChunkToSegmentData(
   return {
     id: chunk.index,
     type: forecastState === 'Flooded' && progression.type === 'normal' ? 'pond' : progression.type,
-    biome: biomeProfile.id === 'slotCanyon' ? 'slotCanyon' : progression.biome,
+    biome: biomeProfile.id,
     points: chunk.pathPoints,
     segmentPath: chunk.curve!,
     width: progression.width,
@@ -176,7 +177,7 @@ export class ChunkManager {
   private reachSegments: NormalizedSegment[] | null;
   private forecastByIndex: Map<number, string>;
   private callbacks: ChunkManagerCallbacks;
-  private lastReportedBiome = 'summer';
+  private lastReportedBiome = 'canyonSummer';
   private spawnPoints = new Map<number, THREE.Vector3>();
   private lastEnteredSegment = -1;
   private biomeDebounceTimer: ReturnType<typeof setTimeout> | null = null;

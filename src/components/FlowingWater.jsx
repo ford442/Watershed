@@ -8,9 +8,23 @@ import { SHADERS, WATER_LEVEL, WATER_SHADER } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
 import { getSWEHeightFieldSnapshot, SWE_MEAN_DEPTH } from '../systems/SWEHeightField';
+import { useWaterReflectionStore } from '../systems/waterReflectionStore';
+
+/** Guard flag: FlowingWater samples planar reflectionTexture (XOR with unmounted pass). */
+export const FLOWING_WATER_SAMPLES_REFLECTION = true;
 
 let warnedInvalidWaterShader = false;
 let warnedWaterShaderCompile = false;
+let blackReflectionFallback = null;
+
+function getBlackReflectionFallback() {
+  if (!blackReflectionFallback) {
+    const data = new Uint8Array([0, 0, 0, 255]);
+    blackReflectionFallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
+    blackReflectionFallback.needsUpdate = true;
+  }
+  return blackReflectionFallback;
+}
 
 const isUsableFragmentShader = (source) => {
   if (typeof source !== 'string' || source.trim().length === 0) {
@@ -111,6 +125,8 @@ export default function FlowingWater({
     uniform vec3 sunWorldPos;
     // 0 = flowing river water, 1 = glassy pond/delta water
     uniform float isPond;
+    uniform sampler2D reflectionTexture;
+    uniform float reflectionStrength;
 
     varying vec2 vUv;
     varying vec3 vWorldPos;
@@ -119,6 +135,7 @@ export default function FlowingWater({
     varying float vWave;
     varying float vCurrent;
     varying float vCameraProximity;
+    varying vec4 vReflectionUv;
 
     ${noiseHelpers}
 
@@ -215,6 +232,13 @@ export default function FlowingWater({
       baseWater += edgeHighlight * causticsVal * 0.18 * depthFactor;
 
       vec3 col = mix(baseWater, foamColor, foam);
+      // Planar reflection from WaterReflection RT (strength 0 = disabled / unmounted)
+      if (reflectionStrength > 0.001) {
+        vec2 reflectionUv = vReflectionUv.xy / max(vReflectionUv.w, 0.0001) * 0.5 + 0.5;
+        reflectionUv += normalN.xz * 0.015;
+        vec3 reflection = texture2D(reflectionTexture, clamp(reflectionUv, 0.001, 0.999)).rgb;
+        col = mix(col, reflection, fresnel * reflectionStrength * (1.0 - foam * 0.55));
+      }
       col = mix(col, edgeHighlight, fresnel * 0.22);
       col += vec3(wakeDisplacement);
 
@@ -352,6 +376,8 @@ export default function FlowingWater({
           sweMeanDepth: { value: SWE_MEAN_DEPTH },
           sweDisplacementScale: { value: 0.22 },
           sweEnabled: { value: 0.0 },
+          reflectionTexture: { value: getBlackReflectionFallback() },
+          reflectionStrength: { value: 0.0 },
         },
         vertexShader: `
           uniform float time;
@@ -377,6 +403,7 @@ export default function FlowingWater({
           varying float vWave;
           varying float vCurrent;
           varying float vCameraProximity;
+          varying vec4 vReflectionUv;
 
           ${noiseHelpers}
 
@@ -478,7 +505,9 @@ export default function FlowingWater({
             float s2 = sin(dot(position.xz, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
             vCurrent = clamp((abs(s1) + abs(s2)) * scale, 0.0, 1.0);
 
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            vReflectionUv = projectionMatrix * mvPos;
+            gl_Position = vReflectionUv;
           }
         `,
         fragmentShader,
@@ -603,13 +632,31 @@ export default function FlowingWater({
     if (mat.uniforms.sweEnabled) {
       mat.uniforms.sweEnabled.value = swe.enabled && swe.texture ? 1.0 : 0.0;
     }
+
+    // Planar reflection texture published by WaterReflection (null when pass unmounted)
+    if (mat.uniforms.reflectionTexture) {
+      const { texture, strength } = useWaterReflectionStore.getState();
+      mat.uniforms.reflectionTexture.value = texture || getBlackReflectionFallback();
+      if (mat.uniforms.reflectionStrength) {
+        mat.uniforms.reflectionStrength.value = texture ? strength : 0.0;
+      }
+    }
   });
 
   return (
     <>
-      <mesh geometry={geometry} material={material} position={[0, -waterSurfaceOffset, 0]} />
+      <mesh
+        geometry={geometry}
+        material={material}
+        position={[0, -waterSurfaceOffset, 0]}
+        userData={{ isWaterSurface: true }}
+      />
       {shaderLoading && effectiveShaderId && (
-        <mesh geometry={geometry} position={[0, -waterSurfaceOffset, 0]}>
+        <mesh
+          geometry={geometry}
+          position={[0, -waterSurfaceOffset, 0]}
+          userData={{ isWaterSurface: true }}
+        >
           <meshBasicMaterial color="#1a6b8a" transparent opacity={0.35} side={THREE.DoubleSide} />
         </mesh>
       )}

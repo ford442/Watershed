@@ -45,6 +45,7 @@ import { useLOD } from '../../systems/LODManager';
 import { useBiome } from '../../systems/BiomeSystem';
 import { useSunPosition } from '../../systems/SunPositionSystem';
 import { getTrackBiomeProfile, isGlacialBiome } from '../../configs/TrackBiomes';
+import { isAutumnLike, isSummerLike } from '../../configs/biomes';
 import { WALL_WATERLINE_Y } from '../../constants/game';
 import { createCanyonMaterial, updateCanyonMaterial } from '../../materials/CanyonMaterial';
 import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
@@ -89,7 +90,7 @@ export function TrackSegmentMeshes({
     const isGlacier = isGlacialBiome(biome, biomeProfile);
     const slushiness = isGlacier ? (biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55) : 0;
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
-    const batsActive = (biomeProfile.id === 'slotCanyon' || biome === 'autumn' || biome === 'canyon') && timeOfDay > 0.65;
+    const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome) || biome === 'canyon') && timeOfDay > 0.65;
     const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef(null);
@@ -222,7 +223,7 @@ export function TrackSegmentMeshes({
     }, [segmentId, segmentPath, sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z, type]);
 
     const sandBarGeometry = useMemo(() => {
-        if (biome !== 'summer' || !Array.isArray(placementData.sandBars) || placementData.sandBars.length === 0) {
+        if (!isSummerLike(biome) || !Array.isArray(placementData.sandBars) || placementData.sandBars.length === 0) {
             return null;
         }
 
@@ -378,7 +379,7 @@ export function TrackSegmentMeshes({
                 />
             )}
 
-            {biome === 'summer' && sandBarGeometry && (
+            {isSummerLike(biome) && sandBarGeometry && (
                 <mesh geometry={sandBarGeometry} material={sandBarMaterial} receiveShadow />
             )}
 

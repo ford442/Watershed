@@ -22,6 +22,7 @@ import {
   hasActiveLaunch,
 } from '../../../systems/LaunchScoringSession';
 import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
+import { isAutumnLike } from '../../../configs/biomes';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -575,7 +576,7 @@ export function updateRunnerPhysics({
           footstepState.current.lastStepDistance = footstepState.current.distanceTraveled;
 
           // Determine material and wetness
-          const material = collisionState.current.currentBiome.includes('autumn') ? 'moss' : 'rock';
+          const material = isAutumnLike(collisionState.current.currentBiome) ? 'moss' : 'rock';
           const isWet = pos.y < WATER_LEVEL + 1.0;
 
           playFootstep(material, isWet);

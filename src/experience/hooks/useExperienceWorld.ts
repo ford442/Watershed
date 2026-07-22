@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/BiomeSystem';
+import { normalizeBiomeId } from '../../configs/biomes';
 import { resetScoreSystemState } from '../../systems/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
@@ -133,7 +134,7 @@ export function useExperienceWorld({
         setIsLoadingLevel(false);
 
         if (levelState?.biome?.baseType) {
-          setBiomeContext(levelState.biome.baseType);
+          setBiomeContext(normalizeBiomeId(levelState.biome.baseType));
         }
       });
     },
@@ -142,11 +143,12 @@ export function useExperienceWorld({
 
   const handleBiomeChange = useCallback(
     (newBiome: string, segmentIndex?: number) => {
+      const biomeId = normalizeBiomeId(newBiome);
       const isTransitionSegment = segmentIndex === 15 || segmentIndex === 17;
       const duration = isTransitionSegment ? 2.0 : undefined;
-      setBiomeContext(newBiome, duration);
+      setBiomeContext(biomeId, duration);
 
-      const isGlacial = newBiome === 'glacialMelt' || newBiome === 'glacier' || newBiome === 'glacial';
+      const isGlacial = biomeId === 'glacialMelt' || biomeId === 'glacier';
       window.dispatchEvent(
         new CustomEvent('weather-update', {
           detail: {

@@ -8,6 +8,7 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import * as THREE from 'three';
+import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
 // Import the JSON schema
 import levelSchema from '../formats/level.schema.json';
@@ -34,13 +35,10 @@ export interface ValidationResult {
   warnings: ValidationError[];
 }
 
-// Biome type mapping
+// Canonical BiomeId values plus deprecated aliases (accepted for one release)
 const BIOME_TYPES = [
-  'creek-summer',
-  'creek-autumn',
-  'alpine-spring',
-  'canyon-sunset',
-  'midnight-mist'
+  ...BIOME_IDS,
+  ...Object.keys(LEGACY_BIOME_ALIASES),
 ];
 
 // Segment type mapping

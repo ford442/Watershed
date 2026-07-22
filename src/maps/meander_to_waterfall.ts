@@ -25,7 +25,7 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
     indexFrom: 23,
     indexTo: 27,
     config: {
-      biome: 'summer',
+      biome: 'canyonSummer',
       type: 'normal',
       width: 28,
       waterWidth: 9,
@@ -40,7 +40,7 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
     indexFrom: 28,
     indexTo: 28,
     config: {
-      biome: 'summer',
+      biome: 'canyonSummer',
       type: 'normal',
       width: 22,
       waterWidth: 7,
@@ -55,7 +55,7 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
     indexFrom: 29,
     indexTo: 29,
     config: {
-      biome: 'summer',
+      biome: 'canyonSummer',
       type: 'waterfall',
       width: 40,
       waterWidth: 14,
@@ -71,7 +71,7 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
     indexFrom: 30,
     indexTo: 30,
     config: {
-      biome: 'autumn',
+      biome: 'canyonAutumn',
       type: 'splash',
       width: 75,
       waterWidth: 22,
@@ -86,7 +86,7 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
     indexFrom: 31,
     indexTo: 32,
     config: {
-      biome: 'autumn',
+      biome: 'canyonAutumn',
       type: 'normal',
       width: 80,
       waterWidth: 20,

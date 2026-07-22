@@ -24,13 +24,18 @@ export {
   LODObject,
   PerformanceMonitor,
   useLOD,
+  QUALITY_SETTINGS,
 } from './LODManager';
+
+// Planar water reflection texture publish/subscribe
+export { useWaterReflectionStore } from './waterReflectionStore';
 
 // Particles
 export {
   ParticlePool,
   VFXParticle,
   FoamParticle,
+  MistParticle,
   particleManager,
 } from './ParticlePool';
 
@@ -38,6 +43,14 @@ export {
 export { SplashSystem } from './SplashSystem';
 export { default as WaterForceSystem } from './WaterForceSystem';
 export { injectSWEDisturbance } from './SWEHeightField';
+export {
+  detectWaterContactEdge,
+  cruiseSplashCount,
+  mistSpawnCount,
+  resolveSplashFrameEvents,
+  raftSubmergedRatio,
+  entryExitSplashCount,
+} from './splashSpawnMath';
 
 // Post-processing
 export { PostProcessing } from './PostProcessing';

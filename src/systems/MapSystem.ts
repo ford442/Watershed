@@ -12,6 +12,11 @@
 
 import * as THREE from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
+import {
+  type BiomeId,
+  DEFAULT_BIOME_ID,
+  normalizeBiomeId,
+} from '../configs/biomes';
 
 // =============================================================================
 // JSON LEVEL FORMAT INTERFACES
@@ -130,8 +135,8 @@ export interface BaseMapChunk {
   curve?: THREE.CatmullRomCurve3;
   /** Chunk length along Z axis */
   length: number;
-  /** Biome identifier */
-  biome: string;
+  /** Canonical biome identifier */
+  biome: BiomeId;
   /** Flow speed multiplier (1.0 = normal) */
   flowSpeed: number;
   /** Water surface Y level */
@@ -239,7 +244,7 @@ export interface LaunchShelfConfig {
 }
 
 export interface SegmentProgressionConfig {
-  biome: string;
+  biome: BiomeId;
   type: 'normal' | 'waterfall' | 'splash' | 'pond' | 'rapids';
   width: number;
   waterWidth: number;
@@ -269,7 +274,7 @@ export interface SegmentProgressionConfig {
 }
 
 export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
-  biome: 'summer',
+  biome: DEFAULT_BIOME_ID,
   type: 'normal',
   width: 35,
   waterWidth: 10,
@@ -817,23 +822,14 @@ export class DefaultMapManager implements MapManager {
 }
 
 // =============================================================================
-// BIOME NAME MAPPING
+// BIOME NAME MAPPING (map-load only)
 // =============================================================================
 
 /**
- * Maps JSON-authored long-form biome names to the short TrackBiomeId values
- * used internally by TrackManager. Shared by both JSONMapManager.generateChunk
- * and JSONMapManager.getChunkConfig to keep naming consistent.
+ * @deprecated Use normalizeBiomeId from configs/biomes.ts.
+ * Kept as a re-export of LEGACY_BIOME_ALIASES for one-release compatibility.
  */
-export const JSON_BIOME_NAME_MAP: Record<string, string> = {
-  'creek-summer': 'summer',
-  'creek-autumn': 'autumn',
-  'alpine-spring': 'summer',
-  'alpine-glacial': 'glacialMelt',
-  'glacial-melt': 'glacialMelt',
-  'canyon-sunset': 'slotCanyon',
-  'midnight-mist': 'autumn',
-};
+export { LEGACY_BIOME_ALIASES as JSON_BIOME_NAME_MAP, normalizeBiomeId } from '../configs/biomes';
 
 // =============================================================================
 // JSON LEVEL LOADER
@@ -1011,7 +1007,7 @@ export class JSONMapManager implements MapManager {
       pathPoints,
       curve,
       length: pathLength,
-      biome: JSON_BIOME_NAME_MAP[biomeOverride] || 'summer',
+      biome: normalizeBiomeId(biomeOverride),
       flowSpeed: config.physics?.waterFlowIntensity || this.levelData.world.biome.water.flowSpeed,
       waterLevel: 0.5,
       waterWidth: config.waterWidth ?? this.levelData.world.track.width ?? DEFAULT_MAP_CONFIG.waterWidth,
@@ -1074,9 +1070,9 @@ export class JSONMapManager implements MapManager {
       return base;
     }
 
-    // Map JSON long-form biome name to internal short-form (e.g. 'creek-autumn' → 'autumn')
+    // Map authored biome string to canonical BiomeId (legacy aliases at load only)
     const rawBiome = seg.biomeOverride ?? this.levelData.world.biome.baseType;
-    const mappedBiome = JSON_BIOME_NAME_MAP[rawBiome] ?? rawBiome;
+    const mappedBiome = normalizeBiomeId(rawBiome);
 
     // Derive rockDensity from decoration counts: >= 15 rocks → 'high'
     let rockDensity: SegmentProgressionConfig['rockDensity'] =

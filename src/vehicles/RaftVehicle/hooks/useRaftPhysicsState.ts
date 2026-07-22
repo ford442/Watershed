@@ -39,7 +39,7 @@ export function useRaftPhysicsState() {
   const shedParticles = useRef<ShedParticle[]>([]);
 
   const collisionState = useRef({
-    currentBiome: 'summer',
+    currentBiome: 'canyonSummer',
     activeParticles: [] as Array<{
       id: number;
       material: SurfaceMaterial;

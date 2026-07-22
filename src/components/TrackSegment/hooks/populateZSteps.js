@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
 import { WATER_LEVEL } from '../../../constants/game';
 import { populateSide } from './populateSide';
+import { isAutumnLike } from '../../../configs/biomes';
 
 export function populateZSteps(args) {
     const {
@@ -112,7 +113,7 @@ export function populateZSteps(args) {
             }
         }
 
-        if (isSlotCanyon || biome === 'autumn') {
+        if (isSlotCanyon || isAutumnLike(biome)) {
             const minBats = 6;
             if (bats.length < minBats) {
                 const maxBats = 12;

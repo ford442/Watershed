@@ -56,7 +56,6 @@ src/
 │   ├── FlowingWater.jsx         # ★ Water surface shader (GLSL)
 │   ├── EnhancedSky.jsx          # Biome sky + fog (useBiome)
 │   ├── WaterReflection.jsx      # Planar reflection pass
-│   ├── WaterInteraction.jsx     # Player–water contact FX
 │   ├── ReactiveAudio.tsx        # Biome/speed-reactive audio
 │   ├── WeatherSystem.tsx        # Rain/snow/fog particles
 │   ├── Player.jsx               # First-person capsule (Rapier)
@@ -120,12 +119,16 @@ Watershed runs a live orchestration stack in `Experience.tsx`: `LODProvider` wra
 
 | Segment | Phase | Notes |
 |---------|-------|-------|
-| 0–12 | The Meander | Gentle summer river |
+| 0–12 | The Meander | Gentle river (`canyonSummer`) |
 | 13 | Approach | Steepens toward waterfall |
 | 14 | The Waterfall | verticalBias -3.0, 400 particles, camera shake |
-| 15 | Splash Pool | biome → autumn, width 70, 2 s transition |
+| 15 | Splash Pool | biome → `canyonAutumn`, width 70, 2 s transition |
 | 16–18 | The Pond | Wide, foggy, fewer trees |
 | 19+ | Autumn Rapids | High rock density, aggressive meander |
+
+Canonical biome IDs (`BiomeId` in `src/configs/biomes.ts`): `canyonSummer`, `canyonAutumn`,
+`slotCanyon`, `glacialMelt`, `glacier`, `delta`, …. Legacy map aliases (`summer`, `creek-summer`, …)
+normalize only at load via `normalizeBiomeId`.
 
 ### Coordinate System
 
