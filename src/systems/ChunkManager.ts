@@ -38,7 +38,7 @@ import type { NormalizedSegment } from './ReachNormalizer';
 export interface SegmentData {
   id: number;
   type: string;
-  biome: string;
+  biome: BiomeId;
   points: THREE.Vector3[];
   segmentPath: THREE.CatmullRomCurve3;
   width: number;
