@@ -335,6 +335,10 @@ export function useExperienceWorld({
     });
   }, [debug]);
 
+  const stableSetForecastSamples = useCallback((samples: FlowForecastSample[]) => {
+    setForecastSamples(samples);
+  }, []);
+
   return {
     levelUrl,
     levelLoadError,
@@ -355,7 +359,7 @@ export function useExperienceWorld({
     handleLoopCurrentMap,
     handleContinueJourney,
     handleDefaultJourneyAction,
-    setForecastSamples,
+    setForecastSamples: stableSetForecastSamples,
     setLevelLoadError,
     setIsLoadingLevel,
     setLoadedLevelState,
