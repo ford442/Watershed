@@ -20,6 +20,14 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
+  // Same COOP/COEP for `vite preview` so visual-smoke CI matches dev isolation.
+  preview: {
+    port: 4173,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
   // Treat .wasm files as assets so Vite copies them to the output directory.
   assetsInclude: ['**/*.wasm'],
   base: './',

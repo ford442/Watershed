@@ -219,6 +219,7 @@ Default WebGL2 (`?renderer=webgl`). WebGPU preference exists but forces WebGL2 b
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm test:visual-smoke   # headless WebGL gate (preview serving build/)
 node scripts/validate-markdown-paths.js
 ```
 
@@ -236,6 +237,7 @@ Single-service frontend — only the Vite dev server. Dependencies come from `pn
 | Tests | `pnpm test` | Vitest one-shot (`vitest run`) |
 | Typecheck | `pnpm typecheck` | Typed surface |
 | Build | `pnpm build` | Emscripten optional (skip if missing) |
+| Visual smoke | `pnpm test:visual-smoke` | Needs preview/dev + Chromium; see `docs/reference/TESTING.md` |
 | Docs paths | `node scripts/validate-markdown-paths.js` | Living docs + banned stale stems |
 
 **Do not** stand up a Reach API backend for local play. **Do not** reintroduce deleted dual Player/post-processing stems, legacy RiverTrack/CreekCanyon components, Howler, or `@xenova/transformers`.
