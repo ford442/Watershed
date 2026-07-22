@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { TrackSegmentGeometries, UseGeometriesParams } from '../types';
 import {
   buildCanyonGeometry,
+  buildCollisionGeometry,
   buildWallShellGeometry,
   buildWaterGeometry,
   computePlungeImpactPlacement,
@@ -55,6 +56,11 @@ export function useGeometries({
     return buildCanyonGeometry(buildCtx);
   }, [buildCtx, pathLength]);
 
+  const collisionGeometry = useMemo(() => {
+    if (!buildCtx) return null;
+    return buildCollisionGeometry(buildCtx);
+  }, [buildCtx, pathLength]);
+
   const wallShellGeometry = useMemo(() => {
     if (!buildCtx) return null;
     return buildWallShellGeometry(buildCtx);
@@ -75,5 +81,12 @@ export function useGeometries({
     return computePlungeImpactPlacement(segmentPath, type, waterfallPos, waterWidth, segmentId);
   }, [active, segmentId, segmentPath, type, waterfallPos, waterWidth]);
 
-  return { canyonGeometry, wallShellGeometry, waterGeometry, waterfallPos, plungeImpactPlacement };
+  return {
+    canyonGeometry,
+    collisionGeometry,
+    wallShellGeometry,
+    waterGeometry,
+    waterfallPos,
+    plungeImpactPlacement,
+  };
 }

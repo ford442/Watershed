@@ -16,10 +16,15 @@ The project has established a spline-based track system. The immediate focus is 
 - [ ] Implement object pooling for performance
 
 ### Priority B: Physics Optimization
-- [ ] Create simplified collision geometry (low-poly walls)
-- [ ] Separate visual mesh from physics mesh
+- [x] Create simplified collision geometry (low-poly walls)
+- [x] Separate visual mesh from physics mesh
 - [ ] Profile and optimize Rapier physics performance
 - [ ] Consider convex decomposition vs trimesh
+
+Collision mesh notes (`TrackSegment`):
+- Visual canyon (`buildCanyonGeometry`) is collider-free; Rapier uses invisible `buildCollisionGeometry` (~1/4 XZ density, shared U-profile, no rock noise / vertex colors).
+- Expected triangle reduction per segment ≈ 1/16 of the prior visual trimesh (e.g. ~48 m path: visual ~41×49 verts → collision ~11×13 verts).
+- Friction still comes from `biomeProfile.wallFriction` with Flooded/HighFlow overrides; restitution unchanged for slot canyon.
 
 ### Priority C: Water Flow (Deferred / WebGPU)
 - [ ] Design water flow compute shader (experimental; live renderer remains WebGL2)

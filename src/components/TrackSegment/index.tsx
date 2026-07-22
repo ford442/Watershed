@@ -106,23 +106,36 @@ export default function TrackSegment({
     biomeProfile,
   });
 
-  const { canyonGeometry, wallShellGeometry, waterGeometry, waterfallPos, plungeImpactPlacement } =
-    useGeometries({
-      active,
-      segmentPath,
-      pathLength,
-      segmentId,
-      type: segmentType,
-      channelProfile,
-      biomeProfile,
-      isSlotCanyon,
-      placementData,
-      canyonWidth,
-      waterWidth,
-      biome: biomeId,
-    });
+  const {
+    canyonGeometry,
+    collisionGeometry,
+    wallShellGeometry,
+    waterGeometry,
+    waterfallPos,
+    plungeImpactPlacement,
+  } = useGeometries({
+    active,
+    segmentPath,
+    pathLength,
+    segmentId,
+    type: segmentType,
+    channelProfile,
+    biomeProfile,
+    isSlotCanyon,
+    placementData,
+    canyonWidth,
+    waterWidth,
+    biome: biomeId,
+  });
 
-  if (!active || !rockMaterial || !canyonGeometry || !wallShellGeometry || !waterGeometry) {
+  if (
+    !active ||
+    !rockMaterial ||
+    !canyonGeometry ||
+    !collisionGeometry ||
+    !wallShellGeometry ||
+    !waterGeometry
+  ) {
     return null;
   }
 
@@ -143,6 +156,7 @@ export default function TrackSegment({
       showDebug={showDebug}
       placementData={placementData}
       canyonGeometry={canyonGeometry}
+      collisionGeometry={collisionGeometry}
       wallShellGeometry={wallShellGeometry}
       waterGeometry={waterGeometry}
       waterfallPos={waterfallPos}

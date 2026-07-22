@@ -68,6 +68,7 @@ export function TrackSegmentMeshes({
     segmentId,
     active,
     canyonGeometry,
+    collisionGeometry,
     wallShellGeometry,
     waterGeometry,
     rockMaterial,
@@ -362,8 +363,24 @@ export function TrackSegmentMeshes({
                     intensity={0.55}
                 />
             )}
-            <RigidBody key={`rb-${segmentId}`} type="fixed" colliders="trimesh" friction={segmentState === 'Flooded' ? 0.55 : segmentState === 'HighFlow' ? 0.8 : biomeProfile.wallFriction} restitution={biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1}>
-                <mesh geometry={canyonGeometry} material={rockMaterial} />
+            {/* Visual canyon — no Rapier collider (physics uses low-poly collisionGeometry). */}
+            <mesh geometry={canyonGeometry} material={rockMaterial} />
+
+            {/* Collision-only U-profile (~1/4 visual density). Invisible; preserves wallFriction / flood friction. */}
+            <RigidBody
+                key={`rb-collision-${segmentId}`}
+                type="fixed"
+                colliders="trimesh"
+                friction={
+                    segmentState === 'Flooded'
+                        ? 0.55
+                        : segmentState === 'HighFlow'
+                          ? 0.8
+                          : biomeProfile.wallFriction
+                }
+                restitution={biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1}
+            >
+                <mesh geometry={collisionGeometry} visible={false} />
             </RigidBody>
 
             {/* Goal 3: Splash pool invisible catch collider */}

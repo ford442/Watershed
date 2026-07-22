@@ -4,8 +4,11 @@ import { getTrackBiomeProfile } from '../../../configs/TrackBiomes';
 import type { ChannelProfileSample } from '../types';
 import {
   buildCanyonGeometry,
+  buildCollisionGeometry,
   buildWallShellGeometry,
   buildWaterGeometry,
+  canyonSubdivisionCounts,
+  CANYON_COLLISION_SUBDIVISION_DIVISOR,
   geometryHasFinitePositions,
   type GeometryBuildContext,
 } from './geometryBuilders';
@@ -95,7 +98,72 @@ describe('TrackSegment geometryBuilders', () => {
     const ctx = makeContext({ segmentPath: degenerate });
 
     expect(buildCanyonGeometry(ctx)).toBeNull();
+    expect(buildCollisionGeometry(ctx)).toBeNull();
     expect(buildWallShellGeometry(ctx)).toBeNull();
     expect(buildWaterGeometry(ctx)).toBeNull();
+  });
+
+  it('builds a collision mesh with far fewer vertices than the visual canyon mesh', () => {
+    const ctx = makeContext();
+    const pathLen = ctx.segmentPath.getLength();
+    const visualCounts = canyonSubdivisionCounts(pathLen, 'visual');
+    const collisionCounts = canyonSubdivisionCounts(pathLen, 'collision');
+
+    expect(collisionCounts.segmentsX).toBeLessThan(visualCounts.segmentsX);
+    expect(collisionCounts.segmentsZ).toBeLessThan(visualCounts.segmentsZ);
+    expect(collisionCounts.segmentsX * CANYON_COLLISION_SUBDIVISION_DIVISOR).toBeLessThanOrEqual(
+      visualCounts.segmentsX
+    );
+
+    const visual = buildCanyonGeometry(ctx);
+    const collision = buildCollisionGeometry(ctx);
+    expect(visual).not.toBeNull();
+    expect(collision).not.toBeNull();
+    expect(geometryHasFinitePositions(collision!)).toBe(true);
+
+    const visualVerts = visual!.attributes.position.count;
+    const collisionVerts = collision!.attributes.position.count;
+    // ~1/4 XZ density ⇒ roughly ≤ 1/16 vertices; assert a generous ≪ bound.
+    expect(collisionVerts).toBeLessThan(visualVerts / 4);
+    expect(collisionVerts).toBeLessThan(visualVerts);
+    // Collision mesh skips vertex colors (visual-only attribute).
+    expect(collision!.attributes.color).toBeUndefined();
+  });
+
+  it('keeps collision ≪ visual vertex counts on slot-canyon and waterfall-length paths', () => {
+    const cases: Array<{ label: string; overrides: Partial<GeometryBuildContext>; length: number }> = [
+      {
+        label: 'slot canyon',
+        length: 60,
+        overrides: {
+          biome: 'slotCanyon',
+          isSlotCanyon: true,
+          canyonWidth: getTrackBiomeProfile('slotCanyon').canyonWidth,
+          biomeProfile: getTrackBiomeProfile('slotCanyon'),
+        },
+      },
+      {
+        label: 'waterfall approach',
+        length: 90,
+        overrides: {
+          biome: 'canyonSummer',
+          isSlotCanyon: false,
+        },
+      },
+    ];
+
+    for (const { label, length, overrides } of cases) {
+      const ctx = makeContext({
+        segmentPath: makeStraightPath(length),
+        ...overrides,
+      });
+      const visual = buildCanyonGeometry(ctx);
+      const collision = buildCollisionGeometry(ctx);
+      expect(visual, label).not.toBeNull();
+      expect(collision, label).not.toBeNull();
+      const visualVerts = visual!.attributes.position.count;
+      const collisionVerts = collision!.attributes.position.count;
+      expect(collisionVerts, label).toBeLessThan(visualVerts / 4);
+    }
   });
 });

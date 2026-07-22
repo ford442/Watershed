@@ -35,7 +35,7 @@
 - [ ] Add more variation to canyon shape (width, depth changes)
 - [ ] Implement proper water physics interaction
 - [ ] Add edge details (rocks, debris on banks)
-- [ ] Optimize collision mesh (use simplified collider)
+- [ ] Optimize collision mesh (use simplified collider) — TrackSegment now mounts low-poly `collisionGeometry` under Rapier; visual canyon is collider-free. Further convex/heightfield work still open.
 
 ---
 
