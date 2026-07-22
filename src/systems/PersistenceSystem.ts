@@ -2,7 +2,8 @@
  * PersistenceSystem.ts — Versioned, schema-validated localStorage for Watershed saves.
  *
  * Stores per-map/seed bests, ghost payloads, graphics settings, vehicle preference,
- * and ghost visibility. Hydrates Zustand on boot; debounced subscribe for writes.
+ * ghost visibility, and campaign progress (last map + completed maps).
+ * Hydrates Zustand on boot; debounced subscribe for writes.
  */
 
 import Ajv from 'ajv';
@@ -30,6 +31,10 @@ export interface PersistencePayload {
   settings: GameSettings;
   vehicleType: 'runner' | 'raft';
   ghostEnabled: boolean;
+  /** Last map selected or completed — used by StartMenu / map resolver. */
+  lastMapId?: string;
+  /** Soft-lock progress for campaign maps. */
+  completedMaps?: string[];
   runs: Record<string, RunBest>;
 }
 
@@ -59,6 +64,8 @@ export function getDefaultPersistence(): PersistencePayload {
     settings: { ...DEFAULT_SETTINGS },
     vehicleType: 'runner',
     ghostEnabled: true,
+    lastMapId: undefined,
+    completedMaps: [],
     runs: {},
   };
 }
@@ -78,7 +85,11 @@ export function buildRunKey(mapId: string, seed: number): string {
 
 function normalizePayload(raw: unknown): PersistencePayload | null {
   if (!validatePersistence(raw)) return null;
-  return raw as unknown as PersistencePayload;
+  const payload = raw as unknown as PersistencePayload;
+  if (!Array.isArray(payload.completedMaps)) {
+    payload.completedMaps = [];
+  }
+  return payload;
 }
 
 export function loadPersistence(): PersistencePayload {
@@ -214,6 +225,64 @@ export function setRunGhostData(runKey: string, ghostData: string): void {
 
 export function getRunGhostData(runKey: string): string | undefined {
   return getRunBest(runKey).ghostData;
+}
+
+// =============================================================================
+// CAMPAIGN PROGRESS
+// =============================================================================
+
+export function getLastMapId(): string | undefined {
+  return loadPersistence().lastMapId;
+}
+
+export function setLastMapId(mapId: string): void {
+  touchCache((data) => {
+    data.lastMapId = mapId;
+  });
+  flushPersistence();
+}
+
+export function getCompletedMaps(): string[] {
+  return [...(loadPersistence().completedMaps ?? [])];
+}
+
+/** Marks a map complete (idempotent) and remembers it as last played. */
+export function markMapCompleted(mapId: string): string[] {
+  let next: string[] = [];
+  touchCache((data) => {
+    const current = data.completedMaps ?? [];
+    next = current.includes(mapId) ? [...current] : [...current, mapId];
+    data.completedMaps = next;
+    data.lastMapId = mapId;
+  });
+  flushPersistence();
+  return next;
+}
+
+/** Best score across all seeds for a map id (`mapId:*` run keys). */
+export function getBestScoreForMap(mapId: string): number {
+  const data = loadPersistence();
+  const prefix = `${mapId}:`;
+  let best = 0;
+  for (const [key, run] of Object.entries(data.runs)) {
+    if (key.startsWith(prefix)) {
+      best = Math.max(best, run.bestScore ?? 0);
+    }
+  }
+  return best;
+}
+
+/** Whether any ghost payload exists for this map (any seed). */
+export function getGhostBestScoreForMap(mapId: string): number {
+  const data = loadPersistence();
+  const prefix = `${mapId}:`;
+  let best = 0;
+  for (const [key, run] of Object.entries(data.runs)) {
+    if (key.startsWith(prefix) && run.ghostData) {
+      best = Math.max(best, run.bestScore ?? 0);
+    }
+  }
+  return best;
 }
 
 /** Test helper — reset module cache between unit tests. */

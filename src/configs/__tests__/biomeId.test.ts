@@ -78,6 +78,13 @@ describe('track + palette lookup for canonical ids', () => {
       expect(palette.id).toBe(id);
     }
   });
+
+  it('lumberFlume profile is not a summer clone', () => {
+    const lumber = getTrackBiomeProfile('lumberFlume');
+    const summer = getTrackBiomeProfile('canyonSummer');
+    expect(lumber.wallHeight).toBeLessThan(summer.wallHeight);
+    expect(lumber.vegetationDensity).toBeGreaterThan(summer.vegetationDensity);
+  });
 });
 
 describe('legacy map-load fixture', () => {

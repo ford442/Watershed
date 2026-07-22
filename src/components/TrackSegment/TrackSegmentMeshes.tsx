@@ -40,6 +40,7 @@ import Rock from '../Obstacles/Rock';
 import IceSpray from '../Environment/IceSpray';
 import Icicles from '../Environment/Icicles';
 import IceSheets from '../Environment/IceSheets';
+import LumberProps from '../LumberProps';
 
 import { useLOD } from '../../systems/LODManager';
 import { useBiome } from '../../systems/BiomeSystem';
@@ -92,6 +93,7 @@ export function TrackSegmentMeshes({
     weatherWetnessRef,
     isSlotCanyon = false,
     usePooledStaticObstacles = false,
+    config,
 }: TrackSegmentMeshesProps) {
     const { quality: lodQuality } = useLOD();
     const { timeOfDay } = useBiome();
@@ -100,12 +102,30 @@ export function TrackSegmentMeshes({
     const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
     const isGlacier = isGlacialBiome(biome, biomeProfile);
+    const isLumberFlume = biomeProfile.id === 'lumberFlume';
+    const openFloor = Boolean(config?.openFloor);
     const slushiness = isGlacier ? (biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55) : 0;
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
     const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome) || biome === 'canyon') && timeOfDay > 0.65;
     const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef<WallMaterial | null>(null);
+
+    // Static lumber debris positions (v1 — visual only, not breakable)
+    const lumberPropPositions = useMemo(() => {
+      if (!isLumberFlume) return [];
+      const fromDriftwood = (placementData.driftwood || [])
+        .slice(0, 10)
+        .map((t) => t.position.clone());
+      if (fromDriftwood.length > 0) return fromDriftwood;
+      // Fallback: a few props along the segment centerline
+      if (!segmentPath || pathLength <= 0) return [];
+      return [0.2, 0.45, 0.7].map((t) => {
+        const p = segmentPath.getPoint(t);
+        p.y = waterLevel + 0.15;
+        return p;
+      });
+    }, [isLumberFlume, placementData.driftwood, segmentPath, pathLength, waterLevel]);
 
     // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
     const playerVelocityRef = useRef(0);
@@ -368,7 +388,9 @@ export function TrackSegmentMeshes({
             {/* Visual canyon — no Rapier collider (physics uses low-poly collisionGeometry). */}
             <mesh geometry={canyonGeometry} material={rockMaterial} />
 
-            {/* Collision-only U-profile (~1/4 visual density). Invisible; preserves wallFriction / flood friction. */}
+            {/* Collision-only U-profile (~1/4 visual density). Invisible; preserves wallFriction / flood friction.
+                openFloor gaps skip the trimesh so the player flies an air corridor. */}
+            {!openFloor && (
             <RigidBody
                 key={`rb-collision-${segmentId}`}
                 type="fixed"
@@ -386,6 +408,7 @@ export function TrackSegmentMeshes({
             >
                 <mesh geometry={collisionGeometry} visible={false} />
             </RigidBody>
+            )}
 
             {/* Goal 3: Splash pool invisible catch collider */}
             {(type === 'splash' || type === 'pond') && (
@@ -526,6 +549,15 @@ export function TrackSegmentMeshes({
 
             {/* Driftwood - Along river banks */}
             <Driftwood transforms={placementData.driftwood} />
+
+            {/* Lumber Flume static plank / log / barrel props (v1 visual only) */}
+            {isLumberFlume && lumberPropPositions.length > 0 && (
+                <>
+                    <LumberProps type="plank" positions={lumberPropPositions.slice(0, 4)} />
+                    <LumberProps type="log" positions={lumberPropPositions.slice(2, 6)} />
+                    <LumberProps type="barrel" positions={lumberPropPositions.slice(5, 8)} />
+                </>
+            )}
 
             {/* Pinecones - Under trees */}
             <Pinecone transforms={placementData.pinecones} />

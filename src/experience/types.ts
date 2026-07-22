@@ -18,6 +18,12 @@ export interface InnerExperienceProps {
   physicsDebug?: boolean;
   wireframeDebug?: boolean;
   cleanTest?: boolean;
+  /** Active campaign map — shared with StartMenu / URL resolver. */
+  mapId?: import('../maps/registry').MapRegistryId;
+  /** Called when continue / menu selection changes the active map. */
+  onMapChange?: (mapId: import('../maps/registry').MapRegistryId) => void;
+  /** Journey-complete → return to StartMenu. */
+  onReturnToMenu?: () => void;
 }
 
 export interface ExperienceProps extends InnerExperienceProps {

@@ -167,7 +167,27 @@ export const TRACK_BIOMES: Record<BiomeId, TrackBiomeProfile> = {
   alpineSpring: { ...canyonSummerProfile, id: 'alpineSpring' },
   midnightMist: { ...canyonAutumnProfile, id: 'midnightMist' },
   cavern: { ...slotCanyonProfile, id: 'cavern' },
-  lumberFlume: { ...canyonSummerProfile, id: 'lumberFlume' },
+  lumberFlume: {
+    id: 'lumberFlume',
+    waterWidth: 8,
+    canyonWidth: 28,
+    // Lower walls than summer canyon — elevated wooden aqueduct read
+    wallHeight: 12,
+    wallTightness: 0.62,
+    wallFriction: 0.42,
+    wallShadowStrength: 0.7,
+    vegetationDensity: 1.35,
+    rockDensity: 'medium',
+    // Damp mossy timber / wet bark tones
+    rockBaseColor: '#5a4a38',
+    rockShadowColor: '#2a3a28',
+    rockRimColor: '#8a9a70',
+    decorationBias: { trees: 1.4, grasses: 0.9, reeds: 0.7, rocks: 0.6 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.55, broadleaf: 0.25, birch: 0.1, snag: 0.1 },
+      rim: { conifer: 0.65, broadleaf: 0.15, birch: 0.05, snag: 0.15 },
+    },
+  },
   hydroDam: { ...slotCanyonProfile, id: 'hydroDam' },
 };
 

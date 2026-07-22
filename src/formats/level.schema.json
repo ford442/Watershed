@@ -103,7 +103,7 @@
             "segmentLength": {
               "type": "number",
               "minimum": 20,
-              "maximum": 50,
+              "maximum": 150,
               "default": 30,
               "description": "Base length of each track segment"
             },
@@ -116,14 +116,14 @@
             "width": {
               "type": "number",
               "minimum": 20,
-              "maximum": 80,
+              "maximum": 120,
               "default": 35,
               "description": "Canyon width"
             },
             "wallHeight": {
               "type": "number",
               "minimum": 8,
-              "maximum": 20,
+              "maximum": 30,
               "default": 12,
               "description": "Canyon wall height"
             }
@@ -380,7 +380,7 @@
           "width": {
             "type": "number",
             "minimum": 20,
-            "maximum": 80,
+            "maximum": 120,
             "description": "Override canyon width"
           },
           "lengthMultiplier": {
@@ -410,6 +410,11 @@
             "default": 1,
             "description": "Water current strength"
           },
+          "openFloor": {
+            "type": "boolean",
+            "default": false,
+            "description": "Skip floor trimesh collider for gap / air-corridor set-pieces"
+          },
           "decorations": {
             "type": "object",
             "properties": {
@@ -424,9 +429,31 @@
                 "maximum": 100
               },
               "rocks": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 30
+                "oneOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "object",
+                      "required": ["localX", "localZ"],
+                      "properties": {
+                        "localX": { "type": "number" },
+                        "localZ": { "type": "number" },
+                        "scale": { "type": "number", "minimum": 0.1, "maximum": 20 },
+                        "rotation": { "type": "number" },
+                        "rockType": {
+                          "type": "string",
+                          "enum": ["boulder", "slab", "column"]
+                        }
+                      }
+                    }
+                  }
+                ]
               },
               "wildflowers": {
                 "type": "number",
@@ -582,6 +609,50 @@
                 "maximum": 10000
               }
             }
+          },
+          "waterWidth": {
+            "type": "number",
+            "minimum": 2,
+            "maximum": 80,
+            "description": "Override water surface width"
+          },
+          "slipperiness": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "treeDensity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50
+          },
+          "rockDensity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "journeyComplete": {
+            "type": "boolean",
+            "description": "Entering this segment triggers journey-complete"
+          },
+          "launchShelf": {
+            "type": "object",
+            "required": ["rockRef", "triggerHalfWidth", "triggerHalfLength", "triggerHeight", "triggerDownstreamOffset", "triggerYOffset"],
+            "properties": {
+              "rockRef": {
+                "type": "object",
+                "required": ["localX", "localZ", "scale"],
+                "properties": {
+                  "localX": { "type": "number" },
+                  "localZ": { "type": "number" },
+                  "scale": { "type": "number" }
+                }
+              },
+              "triggerHalfWidth": { "type": "number", "minimum": 0.5 },
+              "triggerHalfLength": { "type": "number", "minimum": 0.5 },
+              "triggerHeight": { "type": "number", "minimum": 0.5 },
+              "triggerDownstreamOffset": { "type": "number" },
+              "triggerYOffset": { "type": "number" }
+            }
           }
         }
       }
@@ -653,7 +724,7 @@
               "radius": {
                 "type": "number",
                 "minimum": 3,
-                "maximum": 20,
+                "maximum": 50,
                 "default": 5
               }
             }

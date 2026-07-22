@@ -17,7 +17,11 @@ interface ExperienceUIProps {
   onRestartJourney: () => void;
   onLoopMap: () => void;
   onContinueJourney?: () => void;
+  onReturnToMenu?: () => void;
   mapLabel: string;
+  continueLabel?: string;
+  isFinalMap?: boolean;
+  ghostBestScore?: number;
   isLoadingLevel: boolean;
   reachLoading: boolean;
   levelLoadError: Error | string | null;
@@ -39,7 +43,11 @@ export default function ExperienceUI({
   onRestartJourney,
   onLoopMap,
   onContinueJourney,
+  onReturnToMenu,
   mapLabel,
+  continueLabel,
+  isFinalMap = false,
+  ghostBestScore = 0,
   isLoadingLevel,
   reachLoading,
   levelLoadError,
@@ -70,7 +78,11 @@ export default function ExperienceUI({
           onRestartJourney={onRestartJourney}
           onLoopMap={onLoopMap}
           onContinueJourney={onContinueJourney}
+          onReturnToMenu={onReturnToMenu}
           mapLabel={mapLabel}
+          continueLabel={continueLabel}
+          isFinalMap={isFinalMap}
+          ghostBestScore={ghostBestScore}
         />
       </div>
 
