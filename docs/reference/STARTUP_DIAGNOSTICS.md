@@ -47,7 +47,7 @@ When path generation fails or returns invalid values, geometry creation in `Trac
 | index.tsx | ✅ Working | Entry point loads |
 | App.tsx | ✅ Working | Canvas setup complete |
 | Experience.tsx | ✅ Working | Scene composition OK |
-| Player.jsx | ✅ Working | Physics initialized |
+| RunnerVehicle | ✅ Working | Physics initialized |
 | TrackManager.tsx | ✅ Working | Textures load successfully |
 | TrackSegment/ | ⚠️ Partial | Geometry creates but shaders may fail |
 | RiverShader.js | ❌ Failing | Shader validation error |

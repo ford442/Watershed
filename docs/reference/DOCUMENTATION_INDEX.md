@@ -83,4 +83,4 @@ Point-in-time write-ups. Useful for archaeology; **not** authoritative for curre
 
 ---
 
-**Path validation:** CI runs `node scripts/validate-markdown-paths.js` against `CLAUDE.md`, `SYSTEMS.md`, and `docs/reference/` so broken `src/` links are caught on every PR.
+**Path validation:** CI runs `node scripts/validate-markdown-paths.js` against `AGENTS.md`, `CLAUDE.md`, `SYSTEMS.md`, `docs/README.md`, and `docs/reference/` so broken `src/` links and banned stale stems are caught on every PR.

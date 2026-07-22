@@ -31,11 +31,27 @@ WaterReflection (LOD high/ultra) ──> WebGLRenderTarget ──> waterReflecti
 ```jsx
 <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>   // LODManager.tsx
   <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}> // BiomeSystem.tsx
-    ...scene...
-    <ReachManager … />
-    {/* Inside Physics via WaterPhysicsEffects (WaterStack.tsx): */}
-    <SplashSystem playerRef={vehicleRef} isRaft={…} flowSpeed={…} />
-    <BiomeTransition/> <BiomeDetector/> <PerformanceMonitor/>
+    <SunPositionProvider>
+      <BiomeTransition />
+      <InnerExperience>
+        {/* visualization */}
+        <EnhancedSky />                         // reads useBiome() — no biome props
+        <SceneLighting … />
+        <WaterReflectionLayer … />              // WaterStack.tsx (outside Physics)
+
+        <Physics>
+          <VehicleMount … />                    // RunnerVehicle | RaftVehicle
+          <WaterPhysicsEffects … />             // WaterStack.tsx
+            <WaterForceSystem … />
+            <SplashSystem playerRef={vehicleRef} isRaft={…} flowSpeed={…} />
+          <TrackManager | ReachManager | LevelLoader … />
+        </Physics>
+
+        <PostProcessingPipeline … />
+        <ExperienceUI … />
+      </InnerExperience>
+      <PerformanceMonitor … />
+    </SunPositionProvider>
   </BiomeProvider>
 </LODProvider>
 ```
@@ -103,7 +119,7 @@ into TrackManager-compatible segments, and watches player position for transitio
 **Props:**
 - `playerRef` — Rapier rigid body ref for transition detection
 - `reachId?` — reach identifier; if absent, `TrackManager` runs in procedural mode
-- `onBiomeChange?`, `onLoadingChange?`, `onError?` — lifted callbacks for `Experience.jsx`
+- `onBiomeChange?`, `onLoadingChange?`, `onError?` — lifted callbacks for `InnerExperience` / `ExperienceUI`
 - `forecastSamples?`, `retryKey?`
 
 **Produces:**
@@ -115,7 +131,7 @@ into TrackManager-compatible segments, and watches player position for transitio
 - Do NOT mount `<TrackSegment>` directly from outside `TrackManager` — `ReachManager`
   wraps the treadmill; bypassing it breaks segment lifecycle and biome callbacks.
 - Do NOT add loading-spinner or error UI inside this component — overlays are lifted
-  to `Experience.jsx`.
+  to `ExperienceUI` / `InnerExperience`.
 
 **Known Pain:**
 - Transition detection uses Z-coordinate bounds only; there is no multi-Reach handoff yet
@@ -226,9 +242,11 @@ across the scene via React context. Provides `BiomeProvider`, `BiomeTransition`,
   timeOfDay, setBiome, setTimeOfDay }`
 - Per-frame mutations: fog color/near/far, ambient/hemi/sun/fill light colors and intensities,
   scene background color.
+- Consumed by `EnhancedSky` via `useBiome()` (no biome props from `InnerExperience`).
 
 **Boundaries (Do NOT):**
 - Do NOT call `useBiome()` outside a `<BiomeProvider>` — it throws.
+- Do NOT pass biome palette props into `EnhancedSky` — it reads context only.
 - Do NOT directly mutate `scene.fog` or light colors in other components while
   `BiomeTransition` is mounted — it will overwrite your values every frame.
 - Do NOT introduce a second biome vocabulary — all track, palette, HUD, and map
@@ -350,10 +368,10 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
 
 ---
 
-### `src/components/WaterInteraction.jsx` — removed
+### Water-contact particle path — consolidated
 
-Consolidated into `SplashSystem` (cruise splash, mist crown, bow-wave). Do not reintroduce
-a parallel water-contact particle path.
+Former parallel water-interaction component was removed. Contact VFX lives solely in
+`SplashSystem` (cruise splash, mist crown, bow-wave). Do not reintroduce a second path.
 
 ---
 

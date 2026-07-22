@@ -1,4 +1,4 @@
-// Raft.jsx Integration Guide
+// RaftVehicle Integration Guide
 // Boss Fight: Wire up useWaterFlowField to make the raft feel the current
 
 import React, { useRef } from 'react';

@@ -127,7 +127,7 @@ ls -la public/Rock031_1K-JPG_*.jpg
 ### Issue: Player Falls Through Floor
 
 **Cause:** Physics not initialized or spawn position wrong  
-**Fix:** Check src/components/Player.jsx line 135
+**Fix:** Check src/vehicles/RunnerVehicle/ line 135
 ```javascript
 position={[0, -4, -10]}  // Should be above track (Y=-6)
 ```
@@ -183,7 +183,7 @@ src/
 ├── App.tsx
 ├── Experience.tsx
 ├── components/
-│   ├── Player.jsx
+│   ├── RunnerVehicle
 │   ├── TrackManager.tsx
 │   ├── TrackSegment/
 │   ├── FlowingWater.jsx

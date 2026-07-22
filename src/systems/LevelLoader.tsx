@@ -10,8 +10,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Html } from '@react-three/drei';
 import { useLevel, NormalizedLevelState } from '../hooks/useLevel';
 import TrackManager from '../components/TrackManager';
-import RiverTrack from '../components/RiverTrack';
-import { Loader } from '../components/Loader';
 
 // Props interface
 interface LevelLoaderProps {
@@ -27,8 +25,6 @@ interface LevelLoaderProps {
   showLoader?: boolean;
   /** Whether to show the default error UI */
   showError?: boolean;
-  /** Whether to use legacy RiverTrack (default: false) */
-  useLegacyTrack?: boolean;
   /** Children components (will be rendered after level loads) */
   children?: React.ReactNode;
   /** Raft/player reference for TrackManager */
@@ -157,9 +153,8 @@ const LoadingDisplay: React.FC<{
 
 /**
  * LevelLoader Component
- * 
- * Loads and validates level data, then renders the appropriate
- * track system (TrackManager for dynamic levels, RiverTrack for legacy).
+ *
+ * Loads and validates level data, then renders TrackManager.
  */
 const LevelLoader: React.FC<LevelLoaderProps> = ({
   levelData,
@@ -168,7 +163,6 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
   onError,
   showLoader = true,
   showError = true,
-  useLegacyTrack = false,
   children,
   raftRef,
   onBiomeChange,
@@ -244,16 +238,6 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
           onDismiss={handleDismiss}
         />
       </Html>
-    );
-  }
-
-  // Render legacy track if requested
-  if (useLegacyTrack) {
-    return (
-      <>
-        <RiverTrack />
-        {children}
-      </>
     );
   }
 

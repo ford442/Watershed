@@ -1,4 +1,4 @@
-// Raft.jsx Integration — Audio Layer
+// RaftVehicle Integration — Audio Layer
 // Add this to your existing Raft component
 
 import { useRef } from 'react';
