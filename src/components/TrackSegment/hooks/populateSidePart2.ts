@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
+import { createRockPayload, seededRandom } from '../utils';
 import { isAutumnLike } from '../../../configs/biomes';
+import type { PopulateSideArgs } from '../types';
 
-export function populateSidePart2(args) {
+export function populateSidePart2(args: PopulateSideArgs): void {
     const {
-        side, t, zLocal, geoLength, segmentPath, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
-        biome, segmentId, rng, type, config, flowSpeed, isSlotCanyon, biomeProfile,
-        trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
-        wildflowers, reeds, driftwood, leaves, floatingLeaves, fireflies,
-        birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
-        ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
+        side, zLocal, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
+        biome, segmentId, type, config, flowSpeed, isSlotCanyon, biomeProfile,
+        rocks, reeds, driftwood, leaves, floatingLeaves, fireflies,
+        birds, bats, fish, mist, waterLilies, sunShafts,
+        rapids, dragonflies, mushrooms, rockFoam, canyonDust,
         icicles, iceSheets,
-        pathPoint, tangent, binormal, up, seedState, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
+        pathPoint, tangent, binormal, seedState, lodQuality, particleCount,
     } = args;
     const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;

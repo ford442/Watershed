@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, lerpValue, smoothNoise, pickTreeSpecies, seededRandom } from '../utils';
+import { pickTreeSpecies, seededRandom } from '../utils';
 import { WATER_LEVEL } from '../../../constants/game';
 import { populateSide } from './populateSide';
 import { isAutumnLike } from '../../../configs/biomes';
+import type { PopulatePlacementArgs } from '../types';
 
-export function populateZSteps(args) {
+export function populateZSteps(args: PopulatePlacementArgs): void {
     const {
         zSteps, geoLength, segmentPath, channelShapeFn,
         bankStart, canyonWidth, waterWidth, biome, segmentId, rng,
