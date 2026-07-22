@@ -17,6 +17,7 @@ import PillarDustVFX from '../components/Obstacles/PillarDustVFX';
 import PillarFragmentPool from '../components/Obstacles/PillarFragmentPool';
 import GhostReplayer from '../components/GhostReplayer';
 import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
+import SettingsLookSync from '../ui/SettingsLookSync';
 import { useInnerExperience } from './hooks/useInnerExperience';
 import type { InnerExperienceProps } from './types';
 
@@ -66,7 +67,10 @@ export default function InnerExperience({
       {debug.isStageEnabled('physics') && (
         <Physics debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
           {!state.noPointerLock && (
-            <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />
+            <>
+              <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />
+              <SettingsLookSync />
+            </>
           )}
 
           <VehicleMount

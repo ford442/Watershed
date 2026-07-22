@@ -1,8 +1,7 @@
 // src/components/StartMenu.tsx
 // Pre-game title screen with map select, start, and settings
 
-import React, { useMemo, useState } from 'react';
-import { useGameStore, type QualityPreset } from '../systems/GameState';
+import React, { useMemo } from 'react';
 import {
   formatDuration,
   isMapUnlocked,
@@ -20,14 +19,9 @@ interface StartMenuProps {
   onStart: (mapId: MapRegistryId) => void;
   selectedMapId: MapRegistryId;
   onSelectMap: (mapId: MapRegistryId) => void;
+  /** Open the full Options panel (audio, controls/rebinding, graphics). */
+  onOpenOptions: () => void;
 }
-
-const QUALITY_LABELS: Record<QualityPreset, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  ultra: 'Ultra',
-};
 
 const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
   beginner: 'Beginner',
@@ -50,18 +44,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onStart,
   selectedMapId,
   onSelectMap,
+  onOpenOptions,
 }) => {
-  const [showSettings, setShowSettings] = useState(false);
-  const settings = useGameStore((s) => s.settings);
-  const setSettings = useGameStore((s) => s.setSettings);
-
   const completedMaps = useMemo(() => getCompletedMaps(), []);
   const lastMapId = useMemo(() => getLastMapId(), []);
   const maps = useMemo(() => listMapsForMenu(), []);
-
-  const handleQualityChange = (quality: QualityPreset) => {
-    setSettings({ quality });
-  };
 
   return (
     <div className="start-menu-overlay">
@@ -73,7 +60,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           </p>
         </div>
 
-        {!showSettings ? (
+        {(
           <div className="start-menu-buttons">
             <div className="start-menu-map-select" role="listbox" aria-label="Select map">
               <div className="start-menu-map-select-label">Choose Map</div>
@@ -129,58 +116,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
             <button
               className="start-menu-settings-btn"
-              onClick={() => setShowSettings(true)}
-              aria-label="Open Settings"
+              onClick={onOpenOptions}
+              aria-label="Open Options"
             >
-              SETTINGS
-            </button>
-          </div>
-        ) : (
-          <div className="start-menu-settings" role="dialog" aria-label="Settings">
-            <h2 className="start-menu-settings-title">Settings</h2>
-
-            <div className="start-menu-setting-row">
-              <label className="start-menu-setting-label">Graphics Quality</label>
-              <div className="start-menu-quality-buttons">
-                {(Object.keys(QUALITY_LABELS) as QualityPreset[]).map((q) => (
-                  <button
-                    key={q}
-                    className={`start-menu-quality-btn ${settings.quality === q ? 'active' : ''}`}
-                    onClick={() => handleQualityChange(q)}
-                    aria-pressed={settings.quality === q}
-                  >
-                    {QUALITY_LABELS[q]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="start-menu-setting-row">
-              <label className="start-menu-setting-label" htmlFor="volume-slider">
-                Sound Volume
-              </label>
-              <input
-                id="volume-slider"
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={settings.soundVolume}
-                onChange={(e) => setSettings({ soundVolume: parseFloat(e.target.value) })}
-                className="start-menu-slider"
-                aria-label="Sound volume"
-              />
-              <span className="start-menu-volume-value">
-                {Math.round(settings.soundVolume * 100)}%
-              </span>
-            </div>
-
-            <button
-              className="start-menu-back-btn"
-              onClick={() => setShowSettings(false)}
-              aria-label="Back to main menu"
-            >
-              BACK
+              OPTIONS
             </button>
           </div>
         )}

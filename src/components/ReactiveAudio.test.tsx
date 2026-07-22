@@ -56,23 +56,25 @@ describe('ReactiveAudio', () => {
       'utf-8'
     );
     
-    // Check for guards before each setVolume() call
-    expect(sourceFile).toContain('const lowVol = v.low * AUDIO_CONFIG.ambient.lowVolume * master');
+    // Check for guards before each setVolume() call. Ambient stems scale by the
+    // `music` channel multiplier, SFX layers by the `sfx` channel multiplier
+    // (both layered on top of the biome/speed ducking).
+    expect(sourceFile).toContain('const lowVol = v.low * AUDIO_CONFIG.ambient.lowVolume * music');
     expect(sourceFile).toContain('if (isFinite(lowVol))');
     expect(sourceFile).toContain('ambientLowRef.current.setVolume(lowVol)');
-    
-    expect(sourceFile).toContain('const midVol = v.mid * AUDIO_CONFIG.ambient.midVolume * master');
+
+    expect(sourceFile).toContain('const midVol = v.mid * AUDIO_CONFIG.ambient.midVolume * music');
     expect(sourceFile).toContain('if (isFinite(midVol))');
     expect(sourceFile).toContain('ambientMidRef.current.setVolume(midVol)');
-    
-    expect(sourceFile).toContain('const highVol = v.high * AUDIO_CONFIG.ambient.highVolume * master');
+
+    expect(sourceFile).toContain('const highVol = v.high * AUDIO_CONFIG.ambient.highVolume * music');
     expect(sourceFile).toContain('if (isFinite(highVol))');
     expect(sourceFile).toContain('ambientHighRef.current.setVolume(highVol)');
-    
+
     expect(sourceFile).toContain('if (isFinite(rapidsVol))');
-    expect(sourceFile).toContain('sfxRapidsRef.current.setVolume(rapidsVol * master)');
-    
-    expect(sourceFile).toContain('const transitionVol = v.transition * master');
+    expect(sourceFile).toContain('sfxRapidsRef.current.setVolume(rapidsVol * sfx)');
+
+    expect(sourceFile).toContain('const transitionVol = v.transition * sfx');
     expect(sourceFile).toContain('if (isFinite(transitionVol))');
     expect(sourceFile).toContain('posTransitionRef.current.setVolume(transitionVol)');
   });

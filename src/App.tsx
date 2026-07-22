@@ -5,6 +5,9 @@ import { Loader } from './components/Loader';
 import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
+import { SettingsPanel } from './ui/SettingsPanel';
+import { SettingsSync } from './ui/SettingsSync';
+import { rehydrateSettings } from './systems/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
 import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -64,6 +67,7 @@ const isTypingTarget = (target: EventTarget | null) => {
 
 function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
   const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
@@ -99,6 +103,12 @@ function App() {
   useEffect(() => {
     initPersistence(getActiveRunKey(selectedMapId));
     syncMapUrl(selectedMapId);
+  }, []);
+
+  // Client-only rehydration of persisted settings (skipHydration in the store).
+  // Flips `_hasHydrated`, which gates the panel + all setting application.
+  useEffect(() => {
+    rehydrateSettings();
   }, []);
 
   const handleSelectMap = useCallback((mapId: MapRegistryId) => {
@@ -287,6 +297,7 @@ function App() {
         )
       ) : (
         <>
+          <SettingsSync />
           <Canvas
             key={`renderer-${rendererPreference}`}
             gl={async (props) =>
@@ -328,20 +339,31 @@ function App() {
           {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
 
           {/* Goal 4: Start Menu — shown before first run */}
-          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && (
+          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && !settingsOpen && (
             <StartMenu
               onStart={handleStart}
               selectedMapId={selectedMapId}
               onSelectMap={handleSelectMap}
+              onOpenOptions={() => setSettingsOpen(true)}
             />
           )}
           {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
-          {debug.isStageEnabled('uiOverlay') && phase === 'paused' && (
+          {debug.isStageEnabled('uiOverlay') && phase === 'paused' && !settingsOpen && (
             <PauseMenu
               onResume={handleResume}
               onRestart={handleRestart}
               onQuit={handleQuit}
+              onOpenOptions={() => setSettingsOpen(true)}
             />
+          )}
+          {/* Options — reachable from StartMenu and PauseMenu. Rendered in the
+              unlocked (menu/paused) state so key/mouse capture never fights
+              pointer lock. Closing returns to the parent menu; from the pause
+              menu that lands on RESUME, which re-locks on the user's click. */}
+          {debug.isStageEnabled('uiOverlay') && settingsOpen && (phase === 'menu' || phase === 'paused') && (
+            <div className="settings-panel-overlay">
+              <SettingsPanel onClose={() => setSettingsOpen(false)} />
+            </div>
           )}
           {debug.debugEnabled && !cleanTest && (
             <DebugPanel
