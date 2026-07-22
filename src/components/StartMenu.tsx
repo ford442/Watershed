@@ -1,11 +1,25 @@
 // src/components/StartMenu.tsx
-// Pre-game title screen with start and settings
+// Pre-game title screen with map select, start, and settings
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useGameStore, type QualityPreset } from '../systems/GameState';
+import {
+  formatDuration,
+  isMapUnlocked,
+  listMapsForMenu,
+  type MapMenuEntry,
+} from '../maps/campaign';
+import type { MapRegistryId } from '../maps/registry';
+import {
+  getBestScoreForMap,
+  getCompletedMaps,
+  getLastMapId,
+} from '../systems/PersistenceSystem';
 
 interface StartMenuProps {
-  onStart: () => void;
+  onStart: (mapId: MapRegistryId) => void;
+  selectedMapId: MapRegistryId;
+  onSelectMap: (mapId: MapRegistryId) => void;
 }
 
 const QUALITY_LABELS: Record<QualityPreset, string> = {
@@ -15,19 +29,35 @@ const QUALITY_LABELS: Record<QualityPreset, string> = {
   ultra: 'Ultra',
 };
 
+const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
+  beginner: 'Beginner',
+  intermediate: 'Intermediate',
+  advanced: 'Advanced',
+  expert: 'Expert',
+};
+
 /**
  * StartMenu — Title screen that appears before the first run.
  *
  * Features:
  * - Animated title with tagline
+ * - Map select from MAP_REGISTRY (URL + last-played parity)
  * - Start button (engages pointer lock)
  * - Settings panel toggle (graphics quality)
  * - Keyboard shortcut: Enter to start
  */
-export const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
+export const StartMenu: React.FC<StartMenuProps> = ({
+  onStart,
+  selectedMapId,
+  onSelectMap,
+}) => {
   const [showSettings, setShowSettings] = useState(false);
   const settings = useGameStore((s) => s.settings);
   const setSettings = useGameStore((s) => s.setSettings);
+
+  const completedMaps = useMemo(() => getCompletedMaps(), []);
+  const lastMapId = useMemo(() => getLastMapId(), []);
+  const maps = useMemo(() => listMapsForMenu(), []);
 
   const handleQualityChange = (quality: QualityPreset) => {
     setSettings({ quality });
@@ -35,8 +65,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
 
   return (
     <div className="start-menu-overlay">
-      <div className="start-menu-card">
-        {/* Title */}
+      <div className="start-menu-card start-menu-card--wide">
         <div className="start-menu-title-group">
           <h1 className="start-menu-title">WATERSHED</h1>
           <p className="start-menu-tagline">
@@ -44,12 +73,53 @@ export const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
           </p>
         </div>
 
-        {/* Buttons */}
         {!showSettings ? (
           <div className="start-menu-buttons">
+            <div className="start-menu-map-select" role="listbox" aria-label="Select map">
+              <div className="start-menu-map-select-label">Choose Map</div>
+              {maps.map((map) => {
+                const unlocked = isMapUnlocked(map.id, completedMaps);
+                const best = getBestScoreForMap(map.id);
+                const isSelected = selectedMapId === map.id;
+                const isLast = lastMapId === map.id;
+
+                return (
+                  <button
+                    key={map.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`start-menu-map-option ${isSelected ? 'active' : ''} ${
+                      unlocked ? '' : 'soft-locked'
+                    }`}
+                    onClick={() => onSelectMap(map.id)}
+                  >
+                    <div className="start-menu-map-option-main">
+                      <span className="start-menu-map-option-title">{map.label}</span>
+                      <span className="start-menu-map-option-meta">
+                        {DIFFICULTY_LABELS[map.difficulty]} · {formatDuration(map.estimatedDurationSec)}
+                      </span>
+                    </div>
+                    <div className="start-menu-map-option-side">
+                      {isLast && <span className="start-menu-map-badge">Last</span>}
+                      {!unlocked && <span className="start-menu-map-badge muted">Locked</span>}
+                      {best > 0 && (
+                        <span className="start-menu-map-best">
+                          Best {Math.floor(best).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+              <p className="start-menu-map-hint">
+                Soft-lock marks campaign order — every map stays playable.
+              </p>
+            </div>
+
             <button
               className="start-menu-start-btn"
-              onClick={onStart}
+              onClick={() => onStart(selectedMapId)}
               aria-label="Start Game - Click or Press Enter"
               autoFocus
             >
@@ -69,7 +139,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
           <div className="start-menu-settings" role="dialog" aria-label="Settings">
             <h2 className="start-menu-settings-title">Settings</h2>
 
-            {/* Graphics Quality */}
             <div className="start-menu-setting-row">
               <label className="start-menu-setting-label">Graphics Quality</label>
               <div className="start-menu-quality-buttons">
@@ -86,7 +155,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
               </div>
             </div>
 
-            {/* Sound Volume */}
             <div className="start-menu-setting-row">
               <label className="start-menu-setting-label" htmlFor="volume-slider">
                 Sound Volume
@@ -117,7 +185,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({ onStart }) => {
           </div>
         )}
 
-        {/* Controls hint */}
         <div className="start-menu-controls-hint">
           <div className="start-menu-hint-row">
             <span className="start-menu-hint-key">WASD</span>

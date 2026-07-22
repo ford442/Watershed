@@ -412,6 +412,109 @@ canvas {
   box-shadow: 0 24px 48px rgba(0,0,0,0.6);
 }
 
+.start-menu-card--wide {
+  max-width: 560px;
+}
+
+.start-menu-map-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.start-menu-map-select-label {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 4px;
+}
+
+.start-menu-map-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.start-menu-map-option:hover {
+  border-color: rgba(79, 209, 199, 0.45);
+  background: rgba(79, 209, 199, 0.08);
+}
+
+.start-menu-map-option.active {
+  border-color: rgba(79, 209, 199, 0.8);
+  background: rgba(59, 130, 246, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(79, 209, 199, 0.25);
+}
+
+.start-menu-map-option.soft-locked {
+  opacity: 0.72;
+}
+
+.start-menu-map-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.start-menu-map-option-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.start-menu-map-option-meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.start-menu-map-option-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.start-menu-map-badge {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(79, 209, 199, 0.2);
+  color: #9ae6d8;
+}
+
+.start-menu-map-badge.muted {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.start-menu-map-best {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgba(110, 231, 183, 0.9);
+}
+
+.start-menu-map-hint {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.4;
+}
+
 .start-menu-title-group {
   margin-bottom: 32px;
 }

@@ -17,7 +17,12 @@ export function useInnerExperience({
   debug,
   physicsDebug = false,
   cleanTest = false,
-}: Pick<InnerExperienceProps, 'physicsDebug' | 'cleanTest'> & { debug: DebugStageController }) {
+  mapId,
+  onMapChange,
+  onReturnToMenu,
+}: Pick<InnerExperienceProps, 'physicsDebug' | 'cleanTest' | 'mapId' | 'onMapChange' | 'onReturnToMenu'> & {
+  debug: DebugStageController;
+}) {
   const [vehicleType, setVehicleTypeLocal] = useState<VehicleType>(readVehicleTypeFromUrl);
   const [noPointerLock] = useState(
     () => typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock'),
@@ -70,6 +75,9 @@ export function useInnerExperience({
     vehicleRef,
     trackManagerRef,
     awardedWaterfallSegmentsRef,
+    mapId,
+    onMapChange,
+    onReturnToMenu,
   });
 
   return {

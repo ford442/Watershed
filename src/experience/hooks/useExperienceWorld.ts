@@ -1,35 +1,50 @@
-import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
-import { resetScoreSystemState } from '../../systems/ScoreSystem';
+import { commitJourneyScore, resetScoreSystemState } from '../../systems/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
 import type { TrackManagerRef } from '../../components/TrackManager';
-import { resolveMapRegistryId, type MapRegistryId } from '../../maps/registry';
+import type { MapRegistryId } from '../../maps/registry';
+import {
+  getJourneyCompletionDecision,
+  parseUrlMapId,
+  resolveMapId,
+  syncMapUrl,
+} from '../../maps/campaign';
 import type { DebugStageController } from '../../debug/debugStages';
 import { DEFAULT_MAPS } from '../constants';
 import type { VehicleRigidBodyRef } from '../types';
-
-function readDefaultMapIdFromUrl(): MapRegistryId {
-  if (typeof window === 'undefined') return 'meander';
-  const mapParam = new URLSearchParams(window.location.search).get('map');
-  return resolveMapRegistryId(mapParam) ?? 'meander';
-}
-
-function readJourneyDefaultAction(): 'loop' | 'nextMap' {
-  if (typeof window === 'undefined') return 'loop';
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('loop') === '1') return 'loop';
-  return params.get('nextMap') === 'delta' ? 'nextMap' : 'loop';
-}
+import {
+  getGhostBestScoreForMap,
+  getLastMapId,
+  markMapCompleted,
+  setLastMapId,
+} from '../../systems/PersistenceSystem';
+import { hydrateStoreForRun } from '../../systems/persistenceBootstrap';
+import { getActiveRunKey } from '../../utils/runContext';
+import { ACTIVE_MAP_ID } from '../../maps/registry';
 
 interface UseExperienceWorldOptions {
   debug: DebugStageController;
   vehicleRef: RefObject<VehicleRigidBodyRef | null>;
   trackManagerRef: RefObject<TrackManagerRef | null>;
   awardedWaterfallSegmentsRef: RefObject<Set<number>>;
+  /** Controlled map id from App / StartMenu (URL parity). */
+  mapId?: MapRegistryId;
+  onMapChange?: (mapId: MapRegistryId) => void;
+  onReturnToMenu?: () => void;
+}
+
+function resolveInitialMapId(controlled?: MapRegistryId): MapRegistryId {
+  return resolveMapId({
+    selection: controlled ?? null,
+    urlMap: parseUrlMapId(),
+    lastPlayed: getLastMapId() ?? null,
+    fallback: ACTIVE_MAP_ID,
+  });
 }
 
 export function useExperienceWorld({
@@ -37,10 +52,14 @@ export function useExperienceWorld({
   vehicleRef,
   trackManagerRef,
   awardedWaterfallSegmentsRef,
+  mapId: controlledMapId,
+  onMapChange,
+  onReturnToMenu,
 }: UseExperienceWorldOptions) {
   const { setBiome: setBiomeContext, snapBiome: snapBiomeContext } = useBiome();
 
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
   const setIsWipeout = useGameStore((s) => s.setIsWipeout);
   const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
   const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
@@ -58,14 +77,48 @@ export function useExperienceWorld({
   const [reachError, setReachError] = useState<Error | string | null>(null);
   const [reachRetryKey, setReachRetryKey] = useState(0);
   const [defaultMapRunKey, setDefaultMapRunKey] = useState(0);
-  const [activeDefaultMapId, setActiveDefaultMapId] = useState<MapRegistryId>(readDefaultMapIdFromUrl);
-  const [journeyDefaultAction] = useState(readJourneyDefaultAction);
+  const [activeDefaultMapId, setActiveDefaultMapId] = useState<MapRegistryId>(() =>
+    resolveInitialMapId(controlledMapId),
+  );
 
   const activeDefaultMap = DEFAULT_MAPS[activeDefaultMapId] ?? DEFAULT_MAPS.meander;
-  const canContinueDefaultMap =
-    activeDefaultMapId === 'meander' ||
-    activeDefaultMapId === 'glacial' ||
-    activeDefaultMapId === 'lumber';
+  const journeyDecision = useMemo(
+    () => getJourneyCompletionDecision(activeDefaultMapId),
+    [activeDefaultMapId],
+  );
+  const canContinueDefaultMap = journeyDecision.kind === 'continue';
+  const continueLabel =
+    journeyDecision.kind === 'continue'
+      ? `CONTINUE TO ${journeyDecision.nextLabel.toUpperCase()}`
+      : undefined;
+  const isFinalMap = journeyDecision.kind === 'summary';
+  const ghostBestScore = useMemo(
+    () => (isFinalMap ? getGhostBestScoreForMap(activeDefaultMapId) : 0),
+    [activeDefaultMapId, isFinalMap, isJourneyComplete],
+  );
+
+  // Keep local map state in sync when App / StartMenu changes selection.
+  useEffect(() => {
+    if (!controlledMapId || controlledMapId === activeDefaultMapId) return;
+
+    const targetMap = DEFAULT_MAPS[controlledMapId] ?? DEFAULT_MAPS.meander;
+    setActiveDefaultMapId(controlledMapId);
+    setCurrentSegmentIndex(targetMap.startIndex);
+    setRespawnSegmentIndex(targetMap.startIndex);
+    snapBiomeContext(targetMap.initialBiome);
+    useGameStore.setState({ currentBiome: targetMap.initialBiome });
+    if (!levelUrl && !reachId) {
+      setDefaultMapRunKey((key) => key + 1);
+    }
+  }, [
+    activeDefaultMapId,
+    controlledMapId,
+    levelUrl,
+    reachId,
+    setCurrentSegmentIndex,
+    setRespawnSegmentIndex,
+    snapBiomeContext,
+  ]);
 
   useEffect(() => {
     if (levelUrl || reachId) return;
@@ -127,6 +180,13 @@ export function useExperienceWorld({
       debug.setStageSuccess('reachStreaming');
     }
   }, [debug, reachError, reachLoading]);
+
+  // Persist campaign progress once when a map journey completes.
+  useEffect(() => {
+    if (!isJourneyComplete) return;
+    markMapCompleted(activeDefaultMapId);
+    commitJourneyScore();
+  }, [isJourneyComplete, activeDefaultMapId]);
 
   const handleLevelLoad = useCallback(
     (levelState: { biome?: { baseType?: string } } | null) => {
@@ -271,9 +331,13 @@ export function useExperienceWorld({
       const targetMap = DEFAULT_MAPS[targetMapId] ?? DEFAULT_MAPS.meander;
 
       try {
+        syncMapUrl(targetMapId);
+        setLastMapId(targetMapId);
+        hydrateStoreForRun(getActiveRunKey(targetMapId));
         useGameStore.getState().resetGameState();
         setIsWipeout(false);
         setActiveDefaultMapId(targetMapId);
+        onMapChange?.(targetMapId);
         setCurrentSegmentIndex(targetMap.startIndex);
         setRespawnSegmentIndex(targetMap.startIndex);
         setWaterfallGravityMultiplier(1.0);
@@ -300,6 +364,7 @@ export function useExperienceWorld({
       awardedWaterfallSegmentsRef,
       debug,
       levelUrl,
+      onMapChange,
       reachId,
       setCurrentSegmentIndex,
       setIsWipeout,
@@ -315,16 +380,25 @@ export function useExperienceWorld({
   }, [activeDefaultMapId, resetDefaultMapRun]);
 
   const handleContinueJourney = useCallback(() => {
-    resetDefaultMapRun('delta');
-  }, [resetDefaultMapRun]);
+    const decision = getJourneyCompletionDecision(activeDefaultMapId);
+    if (decision.kind !== 'continue') return;
+    resetDefaultMapRun(decision.nextMapId);
+  }, [activeDefaultMapId, resetDefaultMapRun]);
 
   const handleDefaultJourneyAction = useCallback(() => {
-    if (journeyDefaultAction === 'nextMap' && canContinueDefaultMap) {
-      resetDefaultMapRun('delta');
+    const decision = getJourneyCompletionDecision(activeDefaultMapId);
+    if (decision.kind === 'continue') {
+      resetDefaultMapRun(decision.nextMapId);
       return;
     }
     resetDefaultMapRun(activeDefaultMapId);
-  }, [activeDefaultMapId, canContinueDefaultMap, journeyDefaultAction, resetDefaultMapRun]);
+  }, [activeDefaultMapId, resetDefaultMapRun]);
+
+  const handleReturnToMenu = useCallback(() => {
+    setLastMapId(activeDefaultMapId);
+    useGameStore.getState().resetGameState();
+    onReturnToMenu?.();
+  }, [activeDefaultMapId, onReturnToMenu]);
 
   useEffect(() => {
     const trackedStages = ['physics', 'visualization', 'worldSystems', 'postProcessing', 'uiOverlay'] as const;
@@ -334,10 +408,6 @@ export function useExperienceWorld({
       }
     });
   }, [debug]);
-
-  const stableSetForecastSamples = useCallback((samples: FlowForecastSample[]) => {
-    setForecastSamples(samples);
-  }, []);
 
   return {
     levelUrl,
@@ -352,6 +422,9 @@ export function useExperienceWorld({
     activeDefaultMapId,
     activeDefaultMap,
     canContinueDefaultMap,
+    continueLabel,
+    isFinalMap,
+    ghostBestScore,
     handleLevelLoad,
     handleBiomeChange,
     handleLevelError,
@@ -359,7 +432,8 @@ export function useExperienceWorld({
     handleLoopCurrentMap,
     handleContinueJourney,
     handleDefaultJourneyAction,
-    setForecastSamples: stableSetForecastSamples,
+    handleReturnToMenu,
+    setForecastSamples,
     setLevelLoadError,
     setIsLoadingLevel,
     setLoadedLevelState,

@@ -28,8 +28,18 @@ export default function InnerExperience({
   physicsDebug = false,
   wireframeDebug = false,
   cleanTest = false,
+  mapId,
+  onMapChange,
+  onReturnToMenu,
 }: InnerExperienceProps) {
-  const state = useInnerExperience({ debug, physicsDebug, cleanTest });
+  const state = useInnerExperience({
+    debug,
+    physicsDebug,
+    cleanTest,
+    mapId,
+    onMapChange,
+    onReturnToMenu,
+  });
   const { config: lodConfig, quality: lodQuality } = useLOD();
 
   const isTightCanyon = isTightCanyonSegment(state.currentSegmentIndex);
@@ -140,7 +150,11 @@ export default function InnerExperience({
         onRestartJourney={state.handleDefaultJourneyAction}
         onLoopMap={state.handleLoopCurrentMap}
         onContinueJourney={state.canContinueDefaultMap ? state.handleContinueJourney : undefined}
+        onReturnToMenu={state.handleReturnToMenu}
         mapLabel={state.activeDefaultMap.label}
+        continueLabel={state.continueLabel}
+        isFinalMap={state.isFinalMap}
+        ghostBestScore={state.ghostBestScore}
         isLoadingLevel={state.isLoadingLevel}
         reachLoading={state.reachLoading}
         levelLoadError={state.levelLoadError}

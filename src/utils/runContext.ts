@@ -3,8 +3,9 @@
  */
 
 import { ACTIVE_MAP_ID, type MapRegistryId } from '../maps/registry';
+import { parseUrlMapId, resolveMapId } from '../maps/campaign';
 import { DEFAULT_MAP_CONFIG } from '../systems/MapSystem';
-import { buildRunKey } from '../systems/PersistenceSystem';
+import { buildRunKey, getLastMapId } from '../systems/PersistenceSystem';
 
 /** Parse `?seed=` from the URL; returns null when absent or invalid. */
 export function parseUrlSeed(): number | null {
@@ -20,8 +21,17 @@ export function getProceduralBaseSeed(): number {
   return parseUrlSeed() ?? DEFAULT_MAP_CONFIG.seed;
 }
 
-export function getActiveMapId(): MapRegistryId {
-  return ACTIVE_MAP_ID;
+/**
+ * Active map id shared by scoring/persistence and TrackManager defaults.
+ * URL `?map=` and last-played persistence share one resolver with StartMenu.
+ */
+export function getActiveMapId(selection?: MapRegistryId | null): MapRegistryId {
+  return resolveMapId({
+    selection: selection ?? null,
+    urlMap: parseUrlMapId(),
+    lastPlayed: getLastMapId() ?? null,
+    fallback: ACTIVE_MAP_ID,
+  });
 }
 
 /** Persistence key for the active map + seed (`meander:12345`). */

@@ -313,6 +313,7 @@
       "slipperiness": 0.0,
       "physics": { "waterFlowIntensity": 0.8 },
       "effects": { "transitionDuration": 2000, "particleCount": 150 },
+      "journeyComplete": true,
       "decorations": { "trees": 12, "rocks": 1 }
     }
   ],

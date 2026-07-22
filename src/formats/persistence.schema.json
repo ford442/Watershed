@@ -33,6 +33,18 @@
     "ghostEnabled": {
       "type": "boolean"
     },
+    "lastMapId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completedMaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
     "runs": {
       "type": "object",
       "additionalProperties": {
