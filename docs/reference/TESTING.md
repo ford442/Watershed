@@ -357,12 +357,55 @@ audit confirmed them and surfaced two minor follow-ups. None block the live test
 ```bash
 pnpm install
 pnpm dev                    # http://localhost:3000
-CI=true pnpm test --watchAll=false
+pnpm test
 pnpm build
-node verification/webgl_screenshots.mjs   # headless WebGL captures (CI parity)
+pnpm preview --host 127.0.0.1 --port 4173
+node verification/webgl_screenshots.mjs   # headless WebGL captures (telemetry; F-1 sky-only)
+WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke   # CI visual gate
 ```
 
 Use **`?renderer=webgl`** for the supported test path. Add **`?cleanTest=1`** (or use **`?screenshot=1`**, which enables clean mode automatically) to hide the debug panel, Flow Forecast HUD, audio diagnostics, wireframe overlay (G), and physics debug (F) for polished screenshots and live test runs.
+
+### CI visual smoke (`visual-smoke` job)
+
+PR CI runs a headless capture path (no manual steps) in `.github/workflows/build.yml`:
+
+1. `pnpm build` (Emscripten **not** required — WASM compile is skipped when `emcc` is absent)
+2. `vite preview` on `127.0.0.1:4173`
+3. `pnpm test:visual-smoke` → `verification/visual_smoke.mjs`
+
+The harness opens Chromium with SwiftShader, hits `?cleanTest=1&renderer=webgl&screenshot=1`, and captures:
+
+| Shot | Mode | Gate |
+|------|------|------|
+| `00_start_menu` | prestart (capture immediately on menu) | **Required** — pixelmatch vs baseline |
+| `01_spawn_topdown` | `no-pointer-lock` + teleport −3 | Best-effort (skipped on F-8) |
+| `02_waterfall_topdown` | teleport 14 | Best-effort |
+| `03_slot_topdown` | teleport 21 | Best-effort |
+
+Captured PNGs are compared to `verification/baselines/visual-smoke/` via **pixelmatch** (default max diff ratio **5%**, threshold **0.15**). On failure (or always when configured), CI uploads `verification/output/visual-smoke/` (actuals + `*.diff.png` + `report.json`).
+
+The job is **`continue-on-error: true`** for the first week while SwiftShader flakiness is measured; promote to a required check once runs are stable.
+
+#### One-command baseline refresh
+
+```bash
+pnpm build && pnpm preview --host 127.0.0.1 --port 4173 &
+UPDATE_BASELINES=1 WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke:update
+```
+
+Commit the updated PNGs only when the visual change is intentional. See `verification/baselines/visual-smoke/README.md`.
+
+#### SwiftShader limitations (do not false-fail on sky-only)
+
+| Limitation | Mitigation |
+|------------|------------|
+| First-person post-start frames are often sky-only (~4 KB) under headless SwiftShader (**F-1**) | Gate only on **prestart** and **`?no-pointer-lock=1` top-down** shots — never first-person in-run |
+| Post-start topdown boots may hit Maximum update depth (**F-8**) | Those shots are **skipped** (soft); start-menu pixel gate still runs. Not treated as a sky-only regression |
+| WebGPU default throws under SwiftShader (`lightNodeClass`) | Always force `?renderer=webgl` |
+| Pixel variance across runners | Tolerant pixelmatch ratio; refresh baselines deliberately |
+
+`verification/webgl_screenshots.mjs` remains useful telemetry (fails only on page errors / missing WebGL). It is **not** the visual gate. `verification/webgl_capture.py` is the Playwright sibling of the same top-down approach.
 
 ### Manual tester script (real Chrome, decent GPU)
 
