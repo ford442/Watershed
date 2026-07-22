@@ -8,6 +8,8 @@
 import {
   ACTIVE_MAP_ID,
   MAP_REGISTRY,
+  isMapRegistryId,
+  mapRegistryIds,
   type MapDefinition,
   type MapRegistryId,
 } from './registry';
@@ -35,12 +37,8 @@ export type JourneyCompletionDecision =
       kind: 'summary';
     };
 
-const VALID_MAP_IDS = new Set<string>(Object.keys(MAP_REGISTRY));
-
-/** True when `value` is a registered map id. */
-export function isMapRegistryId(value: string | null | undefined): value is MapRegistryId {
-  return typeof value === 'string' && VALID_MAP_IDS.has(value);
-}
+/** Re-export so campaign callers keep a single import surface. */
+export { isMapRegistryId };
 
 /**
  * Resolve which map to load.
@@ -121,7 +119,7 @@ function difficultyFromMeta(def: MapDefinition): MapDifficulty {
 
 /** Stable menu list for StartMenu (registry order). */
 export function listMapsForMenu(): MapMenuEntry[] {
-  return (Object.keys(MAP_REGISTRY) as MapRegistryId[])
+  return mapRegistryIds()
     .filter((id) => !MAP_REGISTRY[id].menuHidden)
     .map((id) => {
       const def = MAP_REGISTRY[id];

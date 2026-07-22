@@ -67,7 +67,8 @@ const isTypingTarget = (target: EventTarget | null) => {
 
 function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Heavy Physics/track mount — deferred after Start so the menu can unmount first. */
+  const [worldEnabled, setWorldEnabled] = useState(false);
   const [skipLoader, setSkipLoader] = useState(false);
   const debug = useDebugStages();
   const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
@@ -241,6 +242,13 @@ function App() {
     (mapId: MapRegistryId = selectedMapId) => {
       handleSelectMap(mapId);
       setPhase('playing');
+      // Defer world mount by two frames so StartMenu can unmount and paint
+      // before Rapier + 7 track segments block the main thread.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setWorldEnabled(true);
+        });
+      });
       requestPointerLockSafely();
     },
     [handleSelectMap, requestPointerLockSafely, selectedMapId],
@@ -256,6 +264,7 @@ function App() {
   }, []);
 
   const handleQuit = useCallback(() => {
+    setWorldEnabled(false);
     setPhase('menu');
   }, []);
 
@@ -263,6 +272,7 @@ function App() {
     if (document.pointerLockElement) {
       document.exitPointerLock();
     }
+    setWorldEnabled(false);
     setPhase('menu');
   }, []);
 
@@ -321,13 +331,21 @@ function App() {
               debug.runStage('visualization', () => undefined);
             }}
           >
-            <React.Suspense fallback={null}>
+            <React.Suspense
+              fallback={
+                <mesh>
+                  <boxGeometry args={[0.5, 0.5, 0.5]} />
+                  <meshBasicMaterial color="#1a2a3a" />
+                </mesh>
+              }
+            >
               <Experience
                 debug={debug}
                 physicsDebug={physicsDebug}
                 rendererPreference={rendererPreference}
                 wireframeDebug={wireframeDebug}
                 cleanTest={cleanTest}
+                worldEnabled={worldEnabled}
                 mapId={selectedMapId}
                 onMapChange={handleMapChange}
                 onReturnToMenu={handleReturnToMenu}

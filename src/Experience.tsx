@@ -26,6 +26,7 @@ export default function Experience({
   rendererPreference = 'webgl',
   wireframeDebug = false,
   cleanTest = false,
+  worldEnabled = true,
   mapId,
   onMapChange,
   onReturnToMenu,
@@ -45,7 +46,18 @@ export default function Experience({
   return (
     <>
       {isDebug && <Stats />}
-      <KeyboardControls map={keyboardMap}>
+      <KeyboardControls
+        map={[
+          { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
+          { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
+          { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
+          { name: 'rightward', keys: ['ArrowRight', 'KeyD'] },
+          { name: 'jump', keys: ['Space'] },
+          { name: 'sprint', keys: ['ShiftLeft', 'ShiftRight'] },
+          { name: 'brake', keys: ['ControlLeft', 'ControlRight'] },
+          { name: 'dodge', keys: ['AltLeft', 'AltRight'] },
+        ]}
+      >
         <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>
           <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
             <SunPositionProvider>
@@ -55,6 +67,7 @@ export default function Experience({
                 physicsDebug={physicsDebug}
                 wireframeDebug={wireframeDebug}
                 cleanTest={cleanTest}
+                worldEnabled={worldEnabled}
                 mapId={mapId}
                 onMapChange={onMapChange}
                 onReturnToMenu={onReturnToMenu}

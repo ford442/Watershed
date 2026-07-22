@@ -195,11 +195,15 @@ export function buildForecastSamples(options: {
   return samples;
 }
 
-export function getForecastEffects(state: string): ForecastSegmentEffects {
-  if (state === FLOW_FORECAST_STATES.WASHED_OUT) return FORECAST_EFFECTS[FLOW_FORECAST_STATES.WASHED_OUT];
-  if (state === FLOW_FORECAST_STATES.FLOODED) return FORECAST_EFFECTS[FLOW_FORECAST_STATES.FLOODED];
-  if (state === FLOW_FORECAST_STATES.HIGH_FLOW) return FORECAST_EFFECTS[FLOW_FORECAST_STATES.HIGH_FLOW];
-  return FORECAST_EFFECTS[FLOW_FORECAST_STATES.NORMAL];
+function coerceForecastState(state: string): FlowForecastState {
+  if (state === FLOW_FORECAST_STATES.WASHED_OUT) return FLOW_FORECAST_STATES.WASHED_OUT;
+  if (state === FLOW_FORECAST_STATES.FLOODED) return FLOW_FORECAST_STATES.FLOODED;
+  if (state === FLOW_FORECAST_STATES.HIGH_FLOW) return FLOW_FORECAST_STATES.HIGH_FLOW;
+  return FLOW_FORECAST_STATES.NORMAL;
+}
+
+export function getForecastEffects(state: FlowForecastState | string): ForecastSegmentEffects {
+  return FORECAST_EFFECTS[coerceForecastState(state)];
 }
 
 export function bumpRockDensity(
@@ -219,7 +223,7 @@ export function bumpRockDensity(
  */
 export function applyForecastToSegmentParams(
   base: ForecastSegmentParams,
-  state: string,
+  state: FlowForecastState | string,
 ): AppliedForecastParams {
   const effects = getForecastEffects(state);
   const type =
@@ -252,22 +256,22 @@ export function applyForecastToSegmentParams(
 
 /** Map hourly samples → segment-index forecast states (1:1 prototype mapping). */
 export function samplesToForecastByIndex(
-  samples: ReadonlyArray<{ state: string }>,
+  samples: ReadonlyArray<{ state: FlowForecastState | string }>,
 ): Map<number, FlowForecastState> {
   const map = new Map<number, FlowForecastState>();
   samples.forEach((sample, index) => {
-    map.set(index, getForecastEffects(sample.state).state);
+    map.set(index, coerceForecastState(sample.state));
   });
   return map;
 }
 
 export function resolveForecastState(
-  forecastByIndex: Map<number, string> | undefined,
+  forecastByIndex: Map<number, FlowForecastState | string> | undefined,
   index: number,
-  fallback: string = FLOW_FORECAST_STATES.NORMAL,
+  fallback: FlowForecastState | string = FLOW_FORECAST_STATES.NORMAL,
 ): FlowForecastState {
   const raw = forecastByIndex?.get(index) ?? fallback;
-  return getForecastEffects(raw).state;
+  return coerceForecastState(raw);
 }
 
 /**
@@ -302,6 +306,6 @@ export function upcomingRiskStrip(
   return samples.slice(0, lookahead);
 }
 
-export function isElevatedRisk(state: string): boolean {
-  return state !== FLOW_FORECAST_STATES.NORMAL;
+export function isElevatedRisk(state: FlowForecastState | string): boolean {
+  return coerceForecastState(state) !== FLOW_FORECAST_STATES.NORMAL;
 }

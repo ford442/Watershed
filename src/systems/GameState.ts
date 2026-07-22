@@ -95,6 +95,8 @@ export interface GameActions {
   setRespawnSegmentIndex: (index: number) => void;
   setWaterfallGravityMultiplier: (multiplier: number) => void;
   setSpawnPoint: (segmentIndex: number, point: SpawnPoint) => void;
+  /** Merge many spawn points in one store update (pool init / reset). */
+  setSpawnPoints: (points: Record<number, SpawnPoint>) => void;
   setSettings: (settings: Partial<GameSettings>) => void;
   /** Clamps value to [0, 1] before writing. Call from useFrame via getState() — never via the hook. */
   setSprintStamina: (v: number) => void;
@@ -110,7 +112,7 @@ export type GameStore = GameState & GameActions;
 // =============================================================================
 
 const DEFAULT_SETTINGS: GameSettings = {
-  quality: 'high',
+  quality: 'medium',
   soundVolume: 0.8,
 };
 
@@ -196,9 +198,41 @@ export const useGameStore = create<GameStore>((set) => ({
     set({ waterfallGravityMultiplier: multiplier }),
 
   setSpawnPoint: (segmentIndex, point) =>
-    set((state) => ({
-      spawnPoints: { ...state.spawnPoints, [segmentIndex]: point },
-    })),
+    set((state) => {
+      const prev = state.spawnPoints[segmentIndex];
+      if (
+        prev &&
+        prev.x === point.x &&
+        prev.y === point.y &&
+        prev.z === point.z
+      ) {
+        return state;
+      }
+      return {
+        spawnPoints: { ...state.spawnPoints, [segmentIndex]: point },
+      };
+    }),
+
+  setSpawnPoints: (points) =>
+    set((state) => {
+      let changed = false;
+      const next = { ...state.spawnPoints };
+      for (const key of Object.keys(points)) {
+        const segmentIndex = Number(key);
+        const point = points[segmentIndex];
+        const prev = next[segmentIndex];
+        if (
+          !prev ||
+          prev.x !== point.x ||
+          prev.y !== point.y ||
+          prev.z !== point.z
+        ) {
+          next[segmentIndex] = point;
+          changed = true;
+        }
+      }
+      return changed ? { spawnPoints: next } : state;
+    }),
 
   setSettings: (partial) =>
     set((state) => ({

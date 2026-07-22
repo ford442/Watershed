@@ -29,6 +29,7 @@ export default function InnerExperience({
   physicsDebug = false,
   wireframeDebug = false,
   cleanTest = false,
+  worldEnabled = true,
   mapId,
   onMapChange,
   onReturnToMenu,
@@ -59,12 +60,14 @@ export default function InnerExperience({
         enabled={debug.isStageEnabled('visualization')}
       />
 
-      <WaterReflectionLayer
-        enabled={debug.isStageEnabled('worldSystems')}
-        enableReflections={lodConfig.enableReflections}
-      />
+      {worldEnabled && (
+        <WaterReflectionLayer
+          enabled={debug.isStageEnabled('worldSystems')}
+          enableReflections={lodConfig.enableReflections}
+        />
+      )}
 
-      {debug.isStageEnabled('physics') && (
+      {worldEnabled && debug.isStageEnabled('physics') && (
         <Physics debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
           {!state.noPointerLock && (
             <>
@@ -109,12 +112,12 @@ export default function InnerExperience({
                 showLoader={false}
                 showError={false}
                 raftRef={state.vehicleRef}
-                onBiomeChange={(biome) => state.handleBiomeChange(biome, state.currentSegmentIndex)}
+                onBiomeChange={state.handleBiomeChange}
               />
             ) : state.reachId ? (
               <ReachManager
                 playerRef={state.vehicleRef}
-                onBiomeChange={(biome) => state.handleBiomeChange(biome, state.currentSegmentIndex)}
+                onBiomeChange={state.handleBiomeChange}
                 forecastSamples={state.forecastSamples}
                 reachId={state.reachId}
                 onLoadingChange={state.setReachLoading}
@@ -125,7 +128,7 @@ export default function InnerExperience({
               <TrackManager
                 ref={state.trackManagerRef}
                 key={state.defaultMapRunKey}
-                onBiomeChange={(biome) => state.handleBiomeChange(biome, state.currentSegmentIndex)}
+                onBiomeChange={state.handleBiomeChange}
                 raftRef={state.vehicleRef}
                 forecastSamples={state.forecastSamples}
                 startIndex={state.activeDefaultMap.startIndex}
@@ -135,7 +138,7 @@ export default function InnerExperience({
         </Physics>
       )}
 
-      {debug.isStageEnabled('postProcessing') && (
+      {worldEnabled && debug.isStageEnabled('postProcessing') && (
         <PostProcessingPipeline
           quality={state.quality}
           vehicleRef={state.vehicleRef}
