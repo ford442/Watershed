@@ -121,17 +121,19 @@ function difficultyFromMeta(def: MapDefinition): MapDifficulty {
 
 /** Stable menu list for StartMenu (registry order). */
 export function listMapsForMenu(): MapMenuEntry[] {
-  return (Object.keys(MAP_REGISTRY) as MapRegistryId[]).map((id) => {
-    const def = MAP_REGISTRY[id];
-    return {
-      id,
-      label: def.label,
-      difficulty: difficultyFromMeta(def),
-      estimatedDurationSec: def.estimatedDurationSec ?? 300,
-      unlockAfter: def.unlockAfter,
-      nextMapId: getContinuationTarget(id) ?? undefined,
-    };
-  });
+  return (Object.keys(MAP_REGISTRY) as MapRegistryId[])
+    .filter((id) => !MAP_REGISTRY[id].menuHidden)
+    .map((id) => {
+      const def = MAP_REGISTRY[id];
+      return {
+        id,
+        label: def.label,
+        difficulty: difficultyFromMeta(def),
+        estimatedDurationSec: def.estimatedDurationSec ?? 300,
+        unlockAfter: def.unlockAfter,
+        nextMapId: getContinuationTarget(id) ?? undefined,
+      };
+    });
 }
 
 export function formatDuration(seconds: number): string {
