@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 
-import FlowingWater from '../FlowingWater';
+import FlowingWaterJs from '../FlowingWater';
 import CanyonDecorations from '../CanyonDecorations';
 import Vegetation from '../Environment/Vegetation';
 import Grass from '../Environment/Grass';
@@ -16,14 +16,14 @@ import Birds from '../Environment/Birds';
 import Bats from '../Environment/Bats';
 import Fish from '../Environment/Fish';
 import Pebbles from '../Environment/Pebbles';
-import Mist from '../Environment/Mist';
+import MistJs from '../Environment/Mist';
 import WaterLilies from '../Environment/WaterLilies';
 import SunShafts from '../Environment/SunShafts';
 import Rainbow from '../Environment/Rainbow';
 import Ferns from '../Environment/Ferns';
 import Rapids from '../Environment/Rapids';
 import Dragonflies from '../Environment/Dragonflies';
-import Pinecone from '../Environment/Pinecone';
+import PineconeJs from '../Environment/Pinecone';
 import Mushrooms from '../Environment/Mushrooms';
 import RockFoam from '../Environment/RockFoam';
 import Wildflowers from '../Environment/Wildflowers';
@@ -31,7 +31,7 @@ import WaterfallParticles from '../Environment/WaterfallParticles';
 import WaterfallSheet from '../Environment/WaterfallSheet';
 import WaterfallImpactZone from '../Environment/WaterfallImpactZone';
 import FloatingObjectManager from '../Environment/FloatingObjectManager';
-import CanyonDust from '../Environment/CanyonDust';
+import CanyonDustJs from '../Environment/CanyonDust';
 import Cactus from '../Environment/Cactus';
 import DesertSage from '../Environment/DesertSage';
 import CanyonGrass from '../Environment/CanyonGrass';
@@ -49,9 +49,20 @@ import { isAutumnLike, isSummerLike } from '../../configs/biomes';
 import { WALL_WATERLINE_Y } from '../../constants/game';
 import { createCanyonMaterial, updateCanyonMaterial } from '../../materials/CanyonMaterial';
 import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
-import { AssetCache } from '../../systems/ReachStreamer';
 import PondFog from './PondFog';
 import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
+import type { TrackSegmentMeshesProps } from './types';
+
+/** JS children whose allowJs inference collapses optional props to `null` only. */
+type UntypedSceneComponent = React.ComponentType<Record<string, unknown>>;
+const FlowingWater = FlowingWaterJs as unknown as UntypedSceneComponent;
+const Mist = MistJs as unknown as UntypedSceneComponent;
+const CanyonDust = CanyonDustJs as unknown as UntypedSceneComponent;
+const Pinecone = PineconeJs as unknown as UntypedSceneComponent;
+
+type WallMaterial = THREE.Material & {
+  uniforms?: Record<string, { value: unknown }>;
+};
 
 export function TrackSegmentMeshes({
     segmentId,
@@ -69,7 +80,7 @@ export function TrackSegmentMeshes({
     waterfallPos,
     plungeImpactPlacement,
     particleCount,
-    particleDensity,
+    particleDensity = 0,
     waterWidth,
     pathLength,
     segmentPath,
@@ -80,7 +91,7 @@ export function TrackSegmentMeshes({
     weatherWetnessRef,
     isSlotCanyon = false,
     usePooledStaticObstacles = false,
-}) {
+}: TrackSegmentMeshesProps) {
     const { quality: lodQuality } = useLOD();
     const { timeOfDay } = useBiome();
     const { sunWorldPosition } = useSunPosition();
@@ -93,21 +104,23 @@ export function TrackSegmentMeshes({
     const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome) || biome === 'canyon') && timeOfDay > 0.65;
     const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';
     // Clone material for wall to apply RiverShader effects
-    const wallMaterialRef = useRef(null);
+    const wallMaterialRef = useRef<WallMaterial | null>(null);
 
     // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
     const playerVelocityRef = useRef(0);
     const [playerVelocityForParticles, setPlayerVelocityForParticles] = useState(0);
     const playerVelocitySyncAccumulator = useRef(0);
-    const [canyonRockFoam, setCanyonRockFoam] = useState([]);
+    const [canyonRockFoam, setCanyonRockFoam] = useState<
+      Array<{ position: THREE.Vector3; rotation: THREE.Euler; scale: THREE.Vector3 }>
+    >([]);
 
     // Vehicle position/velocity for FlowingWater
     const vehiclePos = useMemo(() => new THREE.Vector3(), []);
     const vehicleVelocity = useMemo(() => new THREE.Vector3(), []);
 
     // Pond draw distance culling (Goal 3)
-    const vegetationGroupRef = useRef();
-    const rimVegetationGroupRef = useRef();
+    const vegetationGroupRef = useRef<THREE.Group>(null);
+    const rimVegetationGroupRef = useRef<THREE.Group>(null);
     const { camera, scene } = useThree();
     const segmentCenterRef = useRef(new THREE.Vector3());
 
@@ -157,7 +170,7 @@ export function TrackSegmentMeshes({
         }
     });
 
-    const handleCanyonRockFoamUpdate = useCallback((foamTransforms) => {
+    const handleCanyonRockFoamUpdate = useCallback((foamTransforms: unknown) => {
         setCanyonRockFoam(Array.isArray(foamTransforms) ? foamTransforms : []);
     }, []);
 
@@ -227,9 +240,9 @@ export function TrackSegmentMeshes({
             return null;
         }
 
-        const positions = [];
-        const uvs = [];
-        const indices = [];
+        const positions: number[] = [];
+        const uvs: number[] = [];
+        const indices: number[] = [];
         let baseIndex = 0;
 
         for (let i = 0; i < placementData.sandBars.length; i++) {
@@ -287,7 +300,7 @@ export function TrackSegmentMeshes({
         };
     }, [sandBarMaterial]);
 
-    const wallMaterial = useMemo(() => {
+    const wallMaterial = useMemo((): WallMaterial | null => {
         if (!rockMaterial) return null;
 
         if (isSlotCanyon) {
@@ -300,7 +313,7 @@ export function TrackSegmentMeshes({
                 highWaterMark: segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15,
                 highWaterIntensity,
                 strata: SLOT_CANYON_STRATA,
-            });
+            }) as WallMaterial;
         }
 
         return extendRiverMaterial(rockMaterial.clone(), {
@@ -309,7 +322,7 @@ export function TrackSegmentMeshes({
             enableTriplanar: true,
             waterLevel: WALL_WATERLINE_Y,
             wetnessRange: type === 'waterfall' || type === 'splash' ? 7.5 : 4.0
-        });
+        }) as WallMaterial;
     }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type, segmentState]);
 
     wallMaterialRef.current = wallMaterial;
@@ -344,7 +357,7 @@ export function TrackSegmentMeshes({
         <group name={`track-segment-${segmentId}`} visible={true}>
             {isSlotCanyon && (
                 <hemisphereLight
-                    skyColor="#ff8c4a"
+                    color="#ff8c4a"
                     groundColor="#3d1a0a"
                     intensity={0.55}
                 />
@@ -368,7 +381,7 @@ export function TrackSegmentMeshes({
             {/* Goal 3: Pond fog override */}
             {type === 'pond' && <PondFog segmentCenter={segmentCenterRef.current} waterLevel={waterLevel} />}
 
-            <mesh geometry={wallShellGeometry} material={wallMaterial} />
+            <mesh geometry={wallShellGeometry} material={wallMaterial ?? undefined} />
 
             {showCanyonBackground && (
                 <CanyonBackground
@@ -453,7 +466,7 @@ export function TrackSegmentMeshes({
             <Rock
                 transforms={usePooledStaticObstacles ? [] : placementData.rocks}
                 scatterTransforms={placementData.scatterRocks}
-                material={rockMaterial}
+                material={rockMaterial as THREE.MeshStandardMaterial}
                 castShadow={lodQuality !== 'high'}
             />
 
