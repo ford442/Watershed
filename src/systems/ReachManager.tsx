@@ -15,6 +15,8 @@ import WeatherSystem from '../components/WeatherSystem';
 import { ReachStreamer, ReachManifest } from './ReachStreamer';
 import { normalizeReachManifest, NormalizedSegment } from './ReachNormalizer';
 import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
+import { samplesToForecastByIndex } from './flowForecast';
+import { FLOW_FORECAST_STATES } from '../constants/game';
 // Removed DOM UI imports — overlays are lifted to Experience.jsx
 
 interface ReachManagerProps {
@@ -23,7 +25,7 @@ interface ReachManagerProps {
   /** Biome change callback */
   onBiomeChange?: (biome: BiomeId) => void;
   /** Forecast samples for water flow override */
-  forecastSamples?: any[];
+  forecastSamples?: Array<{ state: string; [key: string]: unknown }>;
   /** Reach identifier to load */
   reachId?: string;
   /** Called when loading state changes */
@@ -82,9 +84,14 @@ export default function ReachManager({
         const result = await ReachStreamer.preloadReach(reachId);
         if (cancelled) return;
 
-        const forecastState =
-          forecastSamples.length > 0 ? forecastSamples[0].state : 'Normal';
-        const segments = normalizeReachManifest(result.manifest, undefined, forecastState);
+        const forecastByIndex = samplesToForecastByIndex(forecastSamples);
+        const segments = normalizeReachManifest(result.manifest, undefined, {
+          forecastByIndex,
+          forecastState:
+            forecastSamples.length > 0
+              ? forecastSamples[0].state
+              : FLOW_FORECAST_STATES.NORMAL,
+        });
 
         setManifest(result.manifest);
         setReachSegments(segments);
@@ -109,6 +116,9 @@ export default function ReachManager({
     return () => {
       cancelled = true;
     };
+    // Forecast samples are applied live via TrackManager.setForecastByIndex;
+    // do not re-fetch the reach when only the forecast changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reachId, onBiomeChange, retryKey]);
 
   // Watch player position for transition entry

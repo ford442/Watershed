@@ -210,8 +210,9 @@ continuity from the previous segment.
   computed once and baked in.
 
 **Known Pain:**
-- `forecastState = 'Flooded'` silently overrides `type = 'normal'` → `'pond'`; there is no
-  per-segment flood override.
+- Per-segment flood overrides now flow through `forecastByIndex` + shared
+  `applyForecastToSegmentParams` (same table as ChunkManager). Live forecast
+  updates re-apply multipliers without remeshing the spline.
 
 ---
 

@@ -2,12 +2,20 @@
  * ReachNormalizer.ts
  *
  * Converts a validated Reach manifest into TrackManager-ready segment data.
+ * Forecast multipliers use the same pure `applyForecastToSegmentParams` as
+ * ChunkManager so Reach and map-driven paths never desync.
  */
 
 import * as THREE from 'three';
 import { ReachManifest } from './ReachStreamer';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../configs/TrackBiomes';
 import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
+import { FLOW_FORECAST_STATES } from '../constants/game';
+import {
+  applyForecastToSegmentParams,
+  resolveForecastState,
+  type ForecastSegmentParams,
+} from './flowForecast';
 
 export interface NormalizedSegment {
   id: number;
@@ -27,6 +35,11 @@ export interface NormalizedSegment {
   forwardMomentum: number;
   meanderStrength: number;
   verticalBias: number;
+  washedOutGap?: boolean;
+  slipperinessAdd?: number;
+  surviveBonus?: number;
+  /** Pre-forecast params for live re-application in ChunkManager. */
+  _forecastBase?: ForecastSegmentParams;
   // Passthrough of original config for TrackSegment extras
   config: any;
 }
@@ -65,14 +78,26 @@ function createSpline(points: THREE.Vector3[], type: string): THREE.CatmullRomCu
   return new THREE.CatmullRomCurve3(points, false, 'catmullrom', tension);
 }
 
+export type NormalizeReachOptions = {
+  /** Single state applied to every segment (legacy). */
+  forecastState?: string;
+  /** Per-index states — preferred; mirrors TrackManager forecastByIndex. */
+  forecastByIndex?: Map<number, string>;
+};
+
 /**
  * Normalize a Reach manifest into an array of TrackManager-compatible segments.
  */
 export function normalizeReachManifest(
   manifest: ReachManifest,
   previousSegment?: NormalizedSegment,
-  forecastState: string = 'Normal'
+  forecastStateOrOptions: string | NormalizeReachOptions = FLOW_FORECAST_STATES.NORMAL,
 ): NormalizedSegment[] {
+  const options: NormalizeReachOptions =
+    typeof forecastStateOrOptions === 'string'
+      ? { forecastState: forecastStateOrOptions }
+      : forecastStateOrOptions;
+
   const baseBiome = normalizeBiomeId(manifest.world?.biome?.baseType || 'creek-summer');
   const baseBiomeProfile = getTrackBiomeProfile(baseBiome);
 
@@ -115,9 +140,7 @@ export function normalizeReachManifest(
         ? ensureTangentContinuity(previousSegment.points, points)
         : points;
 
-    const segmentPath = createSpline(continuousPoints, segConfig.type || 'normal');
-
-    // Resolve runtime fields
+    // Resolve runtime base fields (pre-forecast)
     const width =
       segConfig.width !== undefined ? segConfig.width : wallProfile.canyonWidth;
     const waterWidth =
@@ -134,25 +157,50 @@ export function normalizeReachManifest(
         ? segConfig.decorations.trees / 50 // normalize to 0-1 range
         : wallProfile.vegetationDensity;
     const rockDensity = segConfig.rockDensity || wallProfile.rockDensity;
+    const baseType = segConfig.type || 'normal';
 
-    normalized.push({
-      id: i,
-      type: forecastState === 'Flooded' && segConfig.type === 'normal' ? 'pond' : segConfig.type || 'normal',
-      biome,
-      points: continuousPoints,
-      segmentPath,
+    const forecastBase: ForecastSegmentParams = {
+      type: baseType,
       width,
       waterWidth,
       flowSpeed,
       particleCount,
-      cameraShake,
-      treeDensity,
       rockDensity,
-      segmentState: forecastState,
+      cameraShake,
+      hasBridge: Boolean(segConfig.hasBridge),
+      washedOutGap: Boolean(segConfig.washedOutGap),
+    };
+
+    const forecastState = resolveForecastState(
+      options.forecastByIndex,
+      i,
+      options.forecastState ?? FLOW_FORECAST_STATES.NORMAL,
+    );
+    const applied = applyForecastToSegmentParams(forecastBase, forecastState);
+    const segmentPath = createSpline(continuousPoints, applied.type);
+
+    normalized.push({
+      id: i,
+      type: applied.type,
+      biome,
+      points: continuousPoints,
+      segmentPath,
+      width: applied.width,
+      waterWidth: applied.waterWidth,
+      flowSpeed: applied.flowSpeed,
+      particleCount: applied.particleCount,
+      cameraShake: applied.cameraShake ?? 0,
+      treeDensity,
+      rockDensity: applied.rockDensity as 'low' | 'medium' | 'high',
+      segmentState: applied.segmentState,
       wallProfile,
       forwardMomentum: segConfig.forwardMomentum !== undefined ? segConfig.forwardMomentum : 1,
       meanderStrength: segConfig.meanderStrength !== undefined ? segConfig.meanderStrength : 1.2,
       verticalBias: segConfig.verticalBias !== undefined ? segConfig.verticalBias : -0.5,
+      washedOutGap: applied.washedOutGap,
+      slipperinessAdd: applied.slipperinessAdd,
+      surviveBonus: applied.surviveBonus,
+      _forecastBase: forecastBase,
       config: segConfig,
     });
   }

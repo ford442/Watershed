@@ -101,7 +101,15 @@ Implementation notes:
 - UI: add a preview tool for the next 24 hours with predicted hazards and alerts; optional player-facing map overlay for portage scouting.
 - Data & Authoring: support both procedural forecasts and authored schedules for set-pieces (dam releases, storm windows).
 
-Prototype Todo: Implement a minimal `FlowForecast` simulation, wire forecasted segment state changes into `TrackManager`, and add simple portage route markers and cache placement mechanics.
+### Status (v1)
+
+- [x] Pure forecast → state mapping (`src/systems/flowForecast.ts`) with unit tests
+- [x] ChunkManager + ReachNormalizer share `applyForecastToSegmentParams` (width / flowSpeed / rockDensity / particleCount / washedOutGap)
+- [x] Forecast HUD: next-N segment risk strip + dam-release countdown
+- [x] Survive elevated-flow segments for score bonus (`awardFloodSurviveBonus`)
+- [ ] v2: portage waypoints + cache placement (deferred)
+
+Prototype Todo: ~~Implement a minimal `FlowForecast` simulation…~~ → v1 complete; follow-up is portage / cache mechanics.
 
 ---
 

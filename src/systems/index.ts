@@ -91,6 +91,7 @@ export {
   tickScoreSystem,
   awardDodgeBonus,
   awardWaterfallBonus,
+  awardFloodSurviveBonus,
   resetScoreSystemState,
   commitJourneyScore,
 } from './ScoreSystem';
