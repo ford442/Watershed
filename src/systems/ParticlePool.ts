@@ -214,23 +214,46 @@ export class FoamParticle extends VFXParticle {
     this.driftSpeed = 1.0;
   }
 
-  update(delta: number, flowDirection: THREE.Vector3, flowSpeed: number): boolean {
+  update(delta: number, gravityOrFlow: number | THREE.Vector3 = -9.8, flowSpeed = 0): boolean {
+    if (gravityOrFlow instanceof THREE.Vector3) {
+      if (!this.active) return false;
+
+      this.position.x += gravityOrFlow.x * flowSpeed * this.driftSpeed * delta;
+      this.position.z += gravityOrFlow.z * flowSpeed * this.driftSpeed * delta;
+      this.position.y += Math.sin(this.life * 3) * 0.02;
+
+      this.life += delta;
+
+      if (this.life >= this.maxLife) {
+        this.active = false;
+        return false;
+      }
+
+      return true;
+    }
+
+    return super.update(delta, gravityOrFlow);
+  }
+}
+
+/**
+ * Mist crown particle for raft spray — gentle upward drift, scale-fade via life ratio.
+ */
+export class MistParticle extends VFXParticle {
+  update(delta: number, _gravity = 0): boolean {
     if (!this.active) return false;
-    
-    // Follow water flow
-    this.position.x += flowDirection.x * flowSpeed * this.driftSpeed * delta;
-    this.position.z += flowDirection.z * flowSpeed * this.driftSpeed * delta;
-    
-    // Slight bobbing
-    this.position.y += Math.sin(this.life * 3) * 0.02;
-    
+
+    this.position.x += this.velocity.x * delta;
+    this.position.y += this.velocity.y * delta;
+    this.position.z += this.velocity.z * delta;
+    this.rotation += this.rotationSpeed * delta;
     this.life += delta;
-    
+
     if (this.life >= this.maxLife) {
       this.active = false;
       return false;
     }
-    
+
     return true;
   }
 }

@@ -186,6 +186,17 @@ export const VEHICLE_TUNING = {
      *  surface rather than the waterline. */
     triggerYOffset: 1.0,
   },
+
+  // ===========================================================================
+  // 7. Crumbling slot-canyon pillars (segment 22)
+  // ===========================================================================
+  pillarCrumble: {
+    /** Minimum player speed (m/s) to shatter an authored column pillar. */
+    speedThreshold: 10.0,
+
+    /** Outward scatter impulse per debris chunk (kg·m/s). */
+    fragmentImpulse: 18.0,
+  },
 } as const;
 
 export type VehicleTuningConfig = typeof VEHICLE_TUNING;

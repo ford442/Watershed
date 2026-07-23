@@ -21,7 +21,7 @@ export default function RendererDiagnosticsMonitor({ preference }: RendererDiagn
   const { gl } = useThree();
 
   useEffect(() => {
-    const activeBackend = detectActiveBackend(gl);
+    const activeBackend = detectActiveBackend(gl as Parameters<typeof detectActiveBackend>[0]);
     updateRendererDiagnostics({
       preference,
       activeBackend,

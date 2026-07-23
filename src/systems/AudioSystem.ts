@@ -34,7 +34,7 @@ interface SoundDef {
 // Active sound tracking
 interface ActiveSound {
   name: string;
-  source: THREE.Audio | THREE.PositionalAudio;
+  source: THREE.Audio<AudioNode> | THREE.PositionalAudio;
   startTime: number;
 }
 
@@ -107,12 +107,17 @@ export class AudioManager {
   private listener: THREE.AudioListener;
   private loader: THREE.AudioLoader;
   private audioContext: AudioContext | null = null;
-  private sounds: Map<string, THREE.AudioBuffer> = new Map();
+  private sounds: Map<string, AudioBuffer> = new Map();
   private activeSounds: Map<string, ActiveSound[]> = new Map();
-  private ambientTrack: THREE.Audio | null = null;
+  private ambientTrack: THREE.Audio<AudioNode> | THREE.PositionalAudio | null = null;
   private isMuted: boolean = false;
   private masterVolume: number = 1.0;
-  
+  // Per-channel multipliers driven by the settings panel. Applied on TOP of the
+  // biome/speed ducking (never an override): master is the global listener gain,
+  // music scales ambient stems, sfx scales one-shots + reactive sfx layers.
+  private musicVolume: number = 1.0;
+  private sfxVolume: number = 1.0;
+
   // Category limits tracking
   private categoryCounts: Map<SoundCategory, number> = new Map();
   
@@ -177,7 +182,7 @@ export class AudioManager {
   /**
    * Load a sound file into memory
    */
-  async loadSound(name: string): Promise<THREE.AudioBuffer | null> {
+  async loadSound(name: string): Promise<AudioBuffer | null> {
     if (this.sounds.has(name)) {
       return this.sounds.get(name)!;
     }
@@ -253,22 +258,25 @@ export class AudioManager {
     }
     
     // Create audio source
-    let source: THREE.Audio | THREE.PositionalAudio;
+    let source: THREE.Audio<AudioNode> | THREE.PositionalAudio;
     if (position) {
-      source = new THREE.PositionalAudio(this.listener);
-      source.position.copy(position);
-      source.setRefDistance(10);
-      source.setRolloffFactor(1);
-      source.setDistanceModel('inverse');
+      const positional = new THREE.PositionalAudio(this.listener);
+      positional.position.copy(position);
+      (positional as THREE.PositionalAudio).setRefDistance(10);
+      (positional as THREE.PositionalAudio).setRolloffFactor(1);
+      (positional as THREE.PositionalAudio).setDistanceModel('inverse');
+      source = positional;
     } else {
-      source = new THREE.Audio(this.listener);
+      source = new THREE.Audio(this.listener) as THREE.Audio<AudioNode>;
     }
     
     // Set buffer
     source.setBuffer(buffer);
     
-    // Apply parametric controls
-    const finalVolume = Math.max(0, Math.min(1, volume * def.baseVolume * this.masterVolume));
+    // Apply parametric controls. Master is handled by the listener's global gain
+    // (setMasterVolume), so one-shots only scale by the SFX channel here to avoid
+    // squaring the master multiplier.
+    const finalVolume = Math.max(0, Math.min(1, volume * def.baseVolume * this.sfxVolume));
     const finalPitch = Math.max(0.5, Math.min(2.0, pitch * def.basePitch));
     const finalPlaybackRate = Math.max(0.5, Math.min(2.0, pitch)); // For pitch shifting
     
@@ -398,13 +406,14 @@ export class AudioManager {
     this.loadSound(trackName).then(buffer => {
       if (!buffer) return;
       
-      this.ambientTrack = new THREE.Audio(this.listener);
-      this.ambientTrack.setBuffer(buffer);
-      this.ambientTrack.setLoop(true);
-      this.ambientTrack.setVolume(0);
+      const track = new THREE.Audio(this.listener) as THREE.Audio<AudioNode>;
+      this.ambientTrack = track;
+      track.setBuffer(buffer);
+      track.setLoop(true);
+      track.setVolume(0);
       
       const def = SOUND_LIBRARY[trackName];
-      const targetVol = (def?.baseVolume || 0.3) * this.masterVolume;
+      const targetVol = (def?.baseVolume || 0.3) * this.musicVolume;
       const fadeStart = Date.now();
       
       const fadeIn = () => {
@@ -417,7 +426,7 @@ export class AudioManager {
         }
       };
       
-      this.ambientTrack.play();
+      track.play();
       fadeIn();
     });
   }
@@ -427,9 +436,29 @@ export class AudioManager {
    */
   setMasterVolume(volume: number): void {
     this.masterVolume = Math.max(0, Math.min(1, volume));
-    this.listener.setMasterVolume(this.masterVolume);
+    if (!this.isMuted) {
+      this.listener.setMasterVolume(this.masterVolume);
+    }
   }
-  
+
+  /** Music-channel multiplier (ambient stems). Read transiently by ReactiveAudio. */
+  setMusicVolume(volume: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
+  }
+
+  getMusicVolume(): number {
+    return this.musicVolume;
+  }
+
+  /** SFX-channel multiplier (one-shots + reactive sfx). Read transiently by ReactiveAudio. */
+  setSfxVolume(volume: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+  }
+
+  getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
   /**
    * Mute/unmute all audio
    */

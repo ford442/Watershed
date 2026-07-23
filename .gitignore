@@ -7,4 +7,17 @@ package-lock.json
 # Build output
 build/
 
+# Ephemeral screenshot / diagnostic outputs (repo root)
+/screenshot*.png
+/screenshot*.log.txt
+/*.log
+/canvas_*.png
+/ingame_delay_*.png
+/inspect_*.png
+/inspect_*.json
+/diagnosis_screenshot.png
+
+# Ephemeral verification harness outputs
+verification/output/
+
 .aider*

@@ -1,14 +1,34 @@
 /**
  * BiomePalettes - Complete visual profiles for environmental storytelling
  * 
- * Defines 6 distinct biomes with comprehensive color, lighting, and atmospheric
+ * Defines distinct biomes with comprehensive color, lighting, and atmospheric
  * configurations for smooth transitions and immersive environment variation.
+ *
+ * Canonical IDs live in `./biomes.ts` (BiomeId). Legacy aliases are resolved
+ * only at map-load via normalizeBiomeId — getBiomePalette expects BiomeId.
  */
 
 import * as THREE from 'three';
+import {
+  type BiomeId,
+  DEFAULT_BIOME_ID,
+  isBiomeId,
+  normalizeBiomeId,
+} from './biomes';
+
+export type { BiomeId } from './biomes';
+export {
+  BIOME_IDS,
+  DEFAULT_BIOME_ID,
+  LEGACY_BIOME_ALIASES,
+  isAutumnLike,
+  isBiomeId,
+  isSummerLike,
+  normalizeBiomeId,
+} from './biomes';
 
 export interface BiomePalette {
-  id: string;
+  id: BiomeId;
   name: string;
   description: string;
   // Sky & Atmosphere
@@ -61,7 +81,7 @@ export interface BiomePalette {
   transitionDuration: number; // seconds
 }
 
-export const BiomePalettes: Record<string, BiomePalette> = {
+export const BiomePalettes: Record<BiomeId, BiomePalette> = {
   alpineSpring: {
     id: 'alpineSpring',
     name: 'Alpine Spring',
@@ -264,6 +284,58 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     fallingLeaves: false,
 
     transitionDuration: 5,
+  },
+
+  glacialMelt: {
+    id: 'glacialMelt',
+    name: 'Glacial Melt',
+    description: 'Alpine source chute — ice-blue slush, narrow tube canyon, ultra-fast meltwater',
+
+    // Sky & Atmosphere — pale high-altitude light, dense blue-white fog
+    skyColor: '#C8E4F8',
+    fogColor: '#E8F4FF',
+    fogDensity: 0.022,
+    fogNear: 35,
+    fogFar: 200,
+
+    // Water — milky ice-blue slush, brightest foam in the game
+    waterColor: '#67C8E8',
+    waterDeepColor: '#1A5A78',
+    foamColor: '#F0FAFF',
+    causticsIntensity: 0.35,
+    waterOpacity: 0.78,
+    flowSpeed: 1.85,
+
+    // Lighting — low sun, cold and flat at altitude
+    lightTemp: 8200,
+    sunColor: '#E8F6FF',
+    sunIntensity: 1.25,
+    ambientIntensity: 0.34,
+    hemiSkyColor: '#B0D4F0',
+    hemiGroundColor: '#506878',
+    fillColor: '#A0C8E8',
+    fillIntensity: 0.18,
+
+    // Canyon — white-grey ice-scoured rock, no moss
+    rockBaseColor: '#C8D8E8',
+    rockMossColor: '#4A6878',
+    weatheringIntensity: 0.45,
+
+    // Vegetation — nearly absent at the source
+    vegetationColor: '#6A7A7A',
+    vegetationDensity: 0.08,
+    treeDensity: 0.05,
+    grassDensity: 0.02,
+    wildflowerColors: ['#a8c8d8', '#c0dce8', '#d8ecf8'],
+
+    // Effects
+    fireflyCount: 0,
+    mistDensity: 0.45,
+    sunShaftIntensity: 0.55,
+    fallingLeaves: false,
+    ambientAudio: 'ambient-glacial-wind',
+
+    transitionDuration: 2,
   },
 
   glacier: {
@@ -469,42 +541,104 @@ export const BiomePalettes: Record<string, BiomePalette> = {
     
     transitionDuration: 5,
   },
+
+  lumberFlume: {
+    id: 'lumberFlume',
+    name: 'Lumber Flume',
+    description: 'Mossy wooden aqueduct through dense forest — dappled sun shafts, damp timber greens',
+
+    // Filtered canopy sky, soft green haze
+    skyColor: '#6BA88A',
+    fogColor: '#A8C8B0',
+    fogDensity: 0.024,
+    fogNear: 28,
+    fogFar: 160,
+
+    // Tea-stained flume water
+    waterColor: '#3A7A58',
+    waterDeepColor: '#1a4030',
+    foamColor: '#D8F0E0',
+    causticsIntensity: 0.45,
+    waterOpacity: 0.82,
+    flowSpeed: 1.55,
+
+    // Warm dappled noon through canopy gaps
+    lightTemp: 5200,
+    sunColor: '#FFE8C0',
+    sunIntensity: 1.05,
+    ambientIntensity: 0.38,
+    hemiSkyColor: '#90C0A0',
+    hemiGroundColor: '#2a4030',
+    fillColor: '#B0D080',
+    fillIntensity: 0.28,
+
+    // Wet bark / mossy timber canyon walls
+    rockBaseColor: '#5a4a38',
+    rockMossColor: '#2a5a2a',
+    weatheringIntensity: 0.85,
+
+    // Dense forest floor
+    vegetationColor: '#2d6a2d',
+    vegetationDensity: 1.35,
+    treeDensity: 1.45,
+    grassDensity: 1.0,
+    wildflowerColors: ['#c8e070', '#e0a060', '#70b070', '#f0d898'],
+
+    fireflyCount: 10,
+    mistDensity: 0.42,
+    sunShaftIntensity: 0.95,
+    fallingLeaves: false,
+    ambientAudio: 'ambient-flume-001',
+
+    transitionDuration: 4,
+  },
+  hydroDam: {
+    id: 'hydroDam',
+    name: 'Hydro-Dam',
+    description: 'Industrial concrete channel — stub palette pending content',
+    skyColor: '#6a7a8a',
+    fogColor: '#8a9aaa',
+    fogDensity: 0.025,
+    fogNear: 30,
+    fogFar: 180,
+    waterColor: '#2a4a5a',
+    waterDeepColor: '#0a2a3a',
+    foamColor: '#c0d0d8',
+    causticsIntensity: 0.3,
+    waterOpacity: 0.9,
+    flowSpeed: 1.8,
+    lightTemp: 6000,
+    sunColor: '#e0e8f0',
+    sunIntensity: 0.9,
+    ambientIntensity: 0.4,
+    hemiSkyColor: '#6a7a8a',
+    hemiGroundColor: '#3a3a3a',
+    fillColor: '#5a6a7a',
+    fillIntensity: 0.3,
+    rockBaseColor: '#6a6a6a',
+    rockMossColor: '#3a4a3a',
+    weatheringIntensity: 0.4,
+    vegetationColor: '#3a4a3a',
+    vegetationDensity: 0.2,
+    treeDensity: 0.1,
+    grassDensity: 0.15,
+    wildflowerColors: ['#808080', '#607060'],
+    fireflyCount: 0,
+    mistDensity: 0.4,
+    sunShaftIntensity: 0.25,
+    fallingLeaves: false,
+    transitionDuration: 3,
+  },
 };
 
 /**
- * Maps legacy/track vocabulary and JSON-authored biome names to canonical
- * BiomePalette IDs. Any ID already in the canonical vocabulary passes through
- * unchanged (the `?? id` fallback in normalizeBiomeId).
+ * Get biome palette by canonical BiomeId.
+ * For raw authored strings, call normalizeBiomeId at the map-load boundary first.
+ * (Still accepts legacy strings for one release via normalizeBiomeId.)
  */
-export const BIOME_ID_MAP: Record<string, string> = {
-  // Track geometry vocabulary (src/configs/TrackBiomes.ts TrackBiomeId)
-  summer: 'canyonSummer',
-  autumn: 'canyonAutumn',
-  // slotCanyon and glacier now have their own palettes/HUD labels.
-  // JSON authored vocabulary (src/formats/LevelFormat.md BiomeType)
-  'creek-summer': 'canyonSummer',
-  'creek-autumn': 'canyonAutumn',
-  'alpine-spring': 'alpineSpring',
-  'canyon-sunset': 'canyonAutumn',
-  'midnight-mist': 'midnightMist',
-};
-
-/**
- * Normalise any biome identifier to a canonical BiomePalette key.
- * IDs already in the canonical vocabulary (e.g. 'canyonSummer') are returned
- * as-is so callers do not need to know which vocabulary is in use.
- */
-export function normalizeBiomeId(id: string): string {
-  return BIOME_ID_MAP[id] ?? id;
-}
-
-/**
- * Get biome palette by ID.
- * Accepts both the canonical BiomePalette vocabulary and legacy/track IDs —
- * normalizeBiomeId converts them to the canonical key before lookup.
- */
-export function getBiomePalette(biomeId: string): BiomePalette {
-  return BiomePalettes[normalizeBiomeId(biomeId)] || BiomePalettes.canyonSummer;
+export function getBiomePalette(biomeId: BiomeId | string): BiomePalette {
+  const id = isBiomeId(biomeId) ? biomeId : normalizeBiomeId(biomeId);
+  return BiomePalettes[id] ?? BiomePalettes[DEFAULT_BIOME_ID];
 }
 
 /**

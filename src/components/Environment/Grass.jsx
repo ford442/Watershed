@@ -50,7 +50,7 @@ const buildBlade = (height, width, curve, baseColor, tipColor) => {
   return geo;
 };
 
-export default function Grass({ transforms, biome = 'summer' }) {
+export default function Grass({ transforms, biome = 'canyonSummer' }) {
   const grassRef = useRef(null);
   const baseColor = biome === 'slotCanyon' ? BASE_COLORS.slotCanyon : BASE_COLORS.default;
   const tipColor = biome === 'slotCanyon' ? TIP_COLORS.slotCanyon : TIP_COLORS.default;

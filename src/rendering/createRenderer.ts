@@ -12,17 +12,15 @@ export interface GameRendererOptions {
 /**
  * Creates the Three.js renderer for the game Canvas.
  *
- * - `webgl`:  THREE.WebGLRenderer — production path for legacy GLSL materials.
- * - `webgpu`: Falls back to WebGLRenderer until legacy materials migrate to
- *   NodeMaterial/TSL (WebGPURenderer rejects onBeforeCompile + ShaderMaterial).
+ * @invariant This function ALWAYS returns a THREE.WebGLRenderer today.
+ *   The `webgpu` preference is intentionally a no-op fallback to WebGL2.
+ *   There is no live WebGPURenderer path; legacy GLSL materials
+ *   (RiverShader onBeforeCompile, FlowingWater ShaderMaterial, GLSL
+ *   post-processing) are incompatible with WebGPURenderer's NodeMaterial
+ *   pipeline and crashed production twice (PRs #252 and #253).
  *
- * Legacy materials (RiverShader onBeforeCompile, FlowingWater ShaderMaterial,
- * post-processing GLSL) are incompatible with WebGPURenderer's NodeMaterial
- * pipeline even when `forceWebGL: true`.
- *
- * @invariant This function always returns a THREE.WebGLRenderer today. See
- *   docs/RENDERER_CONTRACT.md before changing the return type or fallback
- *   logic; PRs #252 and #253 established this contract.
+ *   See docs/reference/RENDERER_CONTRACT.md before changing the return type or fallback
+ *   logic; issue #256 path A owns the real WebGPU/TSL migration.
  */
 export async function createGameRenderer(
   canvasProps: THREE.WebGLRendererParameters,
@@ -41,29 +39,28 @@ export async function createGameRenderer(
       powerPreference,
     });
 
-  // Production path: custom GLSL shaders require the classic WebGLRenderer.
+  // Live renderer: custom GLSL shaders require the classic WebGLRenderer.
   if (preference === 'webgl') {
     return createWebGLRenderer();
   }
 
-  // WebGPURenderer ships WGSL as data:text/wgsl;base64,... internal modules.
-  // Strict CSP (connect-src without data:) blocks those fetches and leaves a
-  // blank canvas with shader validation errors in the console.
+  // `preference === 'webgpu'` is currently a deliberate no-op fallback.
+  // WebGPURenderer is NOT instantiated because legacy GLSL materials crash
+  // inside its NodeMaterial pipeline. Issue #256 path A will replace the
+  // legacy materials with NodeMaterial/TSL before re-enabling WebGPURenderer.
   const dataUrlsAllowed = await isDataUrlConnectAllowed();
   if (!dataUrlsAllowed) {
     console.warn(
-      '[Renderer] CSP blocks data: URLs required by WebGPURenderer — using WebGLRenderer. ' +
-        'Add data: to connect-src or use ?renderer=webgl.'
+      '[Renderer] WebGPU preference is experimental/no-op and CSP blocks data: URLs — using WebGLRenderer. ' +
+        'Force the safe path with ?renderer=webgl.'
     );
     persistRendererPreference('webgl');
     return createWebGLRenderer();
   }
 
-  // forceWebGL still routes materials through NodeMaterial, which rejects
-  // legacy MeshStandardMaterial.onBeforeCompile and ShaderMaterial.
   console.warn(
-    '[Renderer] Legacy GLSL materials are incompatible with WebGPURenderer — using WebGLRenderer. ' +
-      'Use ?renderer=webgl or wait for NodeMaterial migration.'
+    '[Renderer] WebGPU preference is experimental/no-op — Legacy GLSL materials are incompatible ' +
+      'with WebGPURenderer, so the game falls back to WebGLRenderer. See docs/reference/RENDERER_CONTRACT.md.'
   );
   persistRendererPreference('webgl');
   return createWebGLRenderer();

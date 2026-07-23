@@ -5,6 +5,9 @@ import { Loader } from './components/Loader';
 import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
+import { SettingsPanel } from './ui/SettingsPanel';
+import { SettingsSync } from './ui/SettingsSync';
+import { rehydrateSettings } from './systems/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
 import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -16,6 +19,12 @@ import {
   type RendererPreference,
 } from './rendering';
 import './style.css';
+import { initPersistence, hydrateStoreForRun } from './systems/persistenceBootstrap';
+import { getActiveRunKey, getActiveMapId } from './utils/runContext';
+import { useGameStore } from './systems/GameState';
+import type { MapRegistryId } from './maps/registry';
+import { syncMapUrl } from './maps/campaign';
+import { setLastMapId } from './systems/PersistenceSystem';
 
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only
@@ -58,8 +67,12 @@ const isTypingTarget = (target: EventTarget | null) => {
 
 function App() {
   const [phase, setPhase] = useState<GamePhase>('menu');
+  /** Heavy Physics/track mount — deferred after Start so the menu can unmount first. */
+  const [worldEnabled, setWorldEnabled] = useState(false);
   const [skipLoader, setSkipLoader] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const debug = useDebugStages();
+  const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
   const [physicsDebug, setPhysicsDebug] = useState(() => {
     if (isCleanTestMode()) return false;
@@ -88,6 +101,35 @@ function App() {
         .catch((err) => console.error('[App] Failed to load LevelEditor:', err));
     }
   }, []);
+
+  useEffect(() => {
+    initPersistence(getActiveRunKey(selectedMapId));
+    syncMapUrl(selectedMapId);
+  }, []);
+
+  // Client-only rehydration of persisted settings (skipHydration in the store).
+  // Flips `_hasHydrated`, which gates the panel + all setting application.
+  useEffect(() => {
+    rehydrateSettings();
+  }, []);
+
+  const handleSelectMap = useCallback((mapId: MapRegistryId) => {
+    setSelectedMapId(mapId);
+    syncMapUrl(mapId);
+    setLastMapId(mapId);
+    hydrateStoreForRun(getActiveRunKey(mapId));
+  }, []);
+
+  const handleMapChange = useCallback((mapId: MapRegistryId) => {
+    setSelectedMapId(mapId);
+    syncMapUrl(mapId);
+    setLastMapId(mapId);
+    hydrateStoreForRun(getActiveRunKey(mapId));
+  }, []);
+
+  useEffect(() => {
+    useGameStore.getState().setIsPaused(phase === 'paused' || phase === 'menu');
+  }, [phase]);
 
   useEffect(() => {
     debug.runStage('appBootstrap', () => {
@@ -197,10 +239,21 @@ function App() {
     }
   }, []);
 
-  const handleStart = useCallback(() => {
-    setPhase('playing');
-    requestPointerLockSafely();
-  }, [requestPointerLockSafely]);
+  const handleStart = useCallback(
+    (mapId: MapRegistryId = selectedMapId) => {
+      handleSelectMap(mapId);
+      setPhase('playing');
+      // Defer world mount by two frames so StartMenu can unmount and paint
+      // before Rapier + 7 track segments block the main thread.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setWorldEnabled(true);
+        });
+      });
+      requestPointerLockSafely();
+    },
+    [handleSelectMap, requestPointerLockSafely, selectedMapId],
+  );
 
   const handleResume = useCallback(() => {
     setPhase('playing');
@@ -212,8 +265,31 @@ function App() {
   }, []);
 
   const handleQuit = useCallback(() => {
+    setWorldEnabled(false);
     setPhase('menu');
   }, []);
+
+  const handleReturnToMenu = useCallback(() => {
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+    setWorldEnabled(false);
+    setPhase('menu');
+  }, []);
+
+  // Enter starts from the menu with the selected map.
+  useEffect(() => {
+    if (phase !== 'menu') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleStart(selectedMapId);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleStart, phase, selectedMapId]);
 
   return (
     <ErrorBoundary>
@@ -232,6 +308,7 @@ function App() {
         )
       ) : (
         <>
+          <SettingsSync />
           <Canvas
             key={`renderer-${rendererPreference}`}
             gl={async (props) =>
@@ -255,13 +332,24 @@ function App() {
               debug.runStage('visualization', () => undefined);
             }}
           >
-            <React.Suspense fallback={null}>
+            <React.Suspense
+              fallback={
+                <mesh>
+                  <boxGeometry args={[0.5, 0.5, 0.5]} />
+                  <meshBasicMaterial color="#1a2a3a" />
+                </mesh>
+              }
+            >
               <Experience
                 debug={debug}
                 physicsDebug={physicsDebug}
                 rendererPreference={rendererPreference}
                 wireframeDebug={wireframeDebug}
                 cleanTest={cleanTest}
+                worldEnabled={worldEnabled}
+                mapId={selectedMapId}
+                onMapChange={handleMapChange}
+                onReturnToMenu={handleReturnToMenu}
               />
             </React.Suspense>
           </Canvas>
@@ -270,15 +358,31 @@ function App() {
           {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
 
           {/* Goal 4: Start Menu — shown before first run */}
-          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && <StartMenu onStart={handleStart} />}
-
+          {debug.isStageEnabled('uiOverlay') && phase === 'menu' && !settingsOpen && (
+            <StartMenu
+              onStart={handleStart}
+              selectedMapId={selectedMapId}
+              onSelectMap={handleSelectMap}
+              onOpenOptions={() => setSettingsOpen(true)}
+            />
+          )}
           {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
-          {debug.isStageEnabled('uiOverlay') && phase === 'paused' && (
+          {debug.isStageEnabled('uiOverlay') && phase === 'paused' && !settingsOpen && (
             <PauseMenu
               onResume={handleResume}
               onRestart={handleRestart}
               onQuit={handleQuit}
+              onOpenOptions={() => setSettingsOpen(true)}
             />
+          )}
+          {/* Options — reachable from StartMenu and PauseMenu. Rendered in the
+              unlocked (menu/paused) state so key/mouse capture never fights
+              pointer lock. Closing returns to the parent menu; from the pause
+              menu that lands on RESUME, which re-locks on the user's click. */}
+          {debug.isStageEnabled('uiOverlay') && settingsOpen && (phase === 'menu' || phase === 'paused') && (
+            <div className="settings-panel-overlay">
+              <SettingsPanel onClose={() => setSettingsOpen(false)} />
+            </div>
           )}
           {debug.debugEnabled && !cleanTest && (
             <DebugPanel

@@ -3,15 +3,14 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { InstancedRigidBodies } from '@react-three/rapier';
 import {
-  calculateDragForce,
-  calculateFlowForce,
-} from '../../physics/WaterForces';
-import { getWasm, WatershedNativeModule } from '../../systems/WatershedWasm';
-import {
   registerFloatingPlatform,
   unregisterFloatingPlatform,
 } from '../../systems/FloatingObjectRegistry';
-import { WATER_LEVEL, WATER_DENSITY, GRAVITY } from '../../constants/game';
+import {
+  registerFloatingWaterBody,
+  unregisterFloatingWaterBody,
+} from '../../systems/WaterForceRegistry';
+import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
 
 // =============================================================================
@@ -37,23 +36,7 @@ const material = new THREE.MeshStandardMaterial({
 });
 
 // =============================================================================
-// FORCE CONFIG
-// =============================================================================
-const FORCE_CONFIG = {
-  flowSpeed: 2.0,
-  maxForce: 8,
-  turbulence: 0.2,
-  turbulenceFreq: 1.5,
-};
-
-// =============================================================================
-// WASM lazy-load
-// =============================================================================
-let wasmModule: WatershedNativeModule | null = null;
-getWasm().then(m => { wasmModule = m; }).catch(() => {}); // best-effort, not required
-
-// =============================================================================
-// COMPONENT
+// FORCE CONFIG (centering only — buoyancy/drag handled by WaterForceSystem)
 // =============================================================================
 interface FloatingObjectManagerProps {
   /** The CatmullRomCurve3 for this segment */
@@ -169,6 +152,7 @@ export default function FloatingObjectManager({
     return () => {
       registeredHandlesRef.current.forEach((handle) => {
         unregisterFloatingPlatform(handle);
+        unregisterFloatingWaterBody(handle);
       });
       registeredHandlesRef.current.clear();
       handleToApiRef.current.clear();
@@ -182,16 +166,23 @@ export default function FloatingObjectManager({
       const api = arr[i];
       if (api && api.handle !== undefined && !registeredHandlesRef.current.has(api.handle)) {
         registerFloatingPlatform(api.handle);
+        registerFloatingWaterBody(api.handle, {
+          handle: api.handle,
+          translation: () => api.translation(),
+          linvel: () => api.linvel(),
+          applyImpulse: (impulse, wake) => api.applyImpulse(impulse, wake),
+          volume: FLOATING_OBJECT.DEBRIS_VOLUME,
+          dragCoefficient: FLOATING_OBJECT.DRAG_COEFFICIENT,
+          frontalArea: FLOATING_OBJECT.DRAG_AREA,
+          sideArea: FLOATING_OBJECT.DRAG_AREA * 0.6,
+        });
         registeredHandlesRef.current.add(api.handle);
         handleToApiRef.current.set(api.handle, api);
       }
     }
   });
 
-  // Physics scaling: mass is scaled by 0.001, so forces must match
-  const PHYSICS_SCALE = 0.001;
-
-  // Per-frame physics: buoyancy, drag, flow force + centering
+  // Per-frame channel centering (independent of WASM water forces)
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     timeRef.current += dt;
@@ -218,64 +209,6 @@ export default function FloatingObjectManager({
           api.setAngvel({ x: 0, y: 0, z: 0 }, true);
           continue;
         }
-
-        // === BUOYANCY ===
-        const submergedDepth = waterLevel - pos.y;
-        const submergedRatio = THREE.MathUtils.clamp(submergedDepth / 0.5, 0, 1);
-
-        if (submergedRatio > 0) {
-          const submergedVolume = FLOATING_OBJECT.DEBRIS_VOLUME * submergedRatio;
-          const buoyancyForce = wasmModule
-            ? wasmModule.computeBuoyancy(submergedVolume, WATER_DENSITY, GRAVITY)
-            : submergedVolume * WATER_DENSITY * GRAVITY; // JS fallback
-
-          if (isFinite(buoyancyForce)) {
-            api.applyImpulse({ x: 0, y: buoyancyForce * dt * PHYSICS_SCALE, z: 0 }, true);
-          }
-        }
-
-        // === DRAG ===
-        const velocity = new THREE.Vector3(vel.x, vel.y, vel.z);
-        const dragForce = calculateDragForce(
-          velocity,
-          FLOATING_OBJECT.DRAG_COEFFICIENT,
-          FLOATING_OBJECT.DRAG_AREA,
-          1000
-        );
-
-        api.applyImpulse(
-          {
-            x: dragForce.x * dt * PHYSICS_SCALE,
-            y: dragForce.y * dt * PHYSICS_SCALE,
-            z: dragForce.z * dt * PHYSICS_SCALE,
-          },
-          true
-        );
-
-        // === FLOW FORCE ===
-        const positionVec = new THREE.Vector3(pos.x, pos.y, pos.z);
-        const flowForce = calculateFlowForce(
-          positionVec,
-          null,
-          {
-            flowSpeed: FORCE_CONFIG.flowSpeed * flowSpeed * FLOATING_OBJECT.FLOW_INFLUENCE,
-            maxForce: FORCE_CONFIG.maxForce,
-            turbulence: FORCE_CONFIG.turbulence,
-            turbulenceFreq: FORCE_CONFIG.turbulenceFreq,
-          },
-          timeRef.current
-        );
-
-        // Empirical extra scale so objects visibly drift downstream while staying stable
-        const FLOW_SCALE = 0.01;
-        api.applyImpulse(
-          {
-            x: flowForce.x * dt * FLOW_SCALE,
-            y: flowForce.y * dt * FLOW_SCALE,
-            z: flowForce.z * dt * FLOW_SCALE,
-          },
-          true
-        );
 
         // === CENTERING FORCE (keep objects in channel) ===
         const tNearest = Math.max(0, Math.min(1, i / instances.length));
@@ -306,7 +239,7 @@ export default function FloatingObjectManager({
   return (
     <InstancedRigidBodies
       ref={bodiesRef}
-      instances={instances}
+      instances={instances as any}
       type="dynamic"
       colliders="cuboid"
       mass={FLOATING_OBJECT.DEBRIS_DENSITY * FLOATING_OBJECT.DEBRIS_VOLUME * 0.001}

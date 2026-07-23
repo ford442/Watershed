@@ -6,7 +6,7 @@ Watershed uses Three.js coordinate system:
 - **Y-axis**: Down (-) to Up (+)
 - **Z-axis**: Forward (+) to Back (-)
 
-## RiverTrack Geometry
+## Canyon Geometry (`TrackSegment`)
 
 ### Cross-Section (U-Shape)
 The river canyon has a U-shaped profile:

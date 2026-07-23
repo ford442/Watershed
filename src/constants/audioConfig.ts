@@ -72,6 +72,14 @@ export const AUDIO_CONFIG = {
     transition: 'rapids_roar',
     splash: 'collide_water',
     whoosh: 'water_whoosh',
+    coldWind: 'ambient_wind',
+    iceCrack: 'collide_rock',
+  },
+
+  glacial: {
+    coldWindVolume: 0.35,
+    iceCrackVolume: 0.22,
+    crossfadeSpeed: 1.8,
   },
 } as const;
 

@@ -1,11 +1,11 @@
+import type { Mock } from 'vitest';
 import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { UI } from './UI';
 import { useProgress } from '@react-three/drei';
 
-jest.mock('@react-three/drei', () => ({
-  useProgress: jest.fn(),
+vi.mock('@react-three/drei', () => ({
+  useProgress: vi.fn(),
 }));
 
 describe('UI Component New Features', () => {
@@ -16,10 +16,10 @@ describe('UI Component New Features', () => {
   });
 
   beforeEach(() => {
-    (useProgress as unknown as jest.Mock).mockReturnValue({ active: false, progress: 100 });
+    (useProgress as unknown as Mock).mockReturnValue({ active: false, progress: 100 });
     // Mock requestPointerLock
     const canvas = document.createElement('canvas');
-    canvas.requestPointerLock = jest.fn();
+    canvas.requestPointerLock = vi.fn();
     document.body.appendChild(canvas);
   });
 
@@ -30,7 +30,7 @@ describe('UI Component New Features', () => {
     } else {
       delete (document as any).pointerLockElement;
     }
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('Escape key dismisses the restart confirmation dialog', () => {
@@ -76,7 +76,7 @@ describe('UI Component New Features', () => {
 
   test('Enter key does NOT resume game when in confirmation dialog', () => {
     const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-    const requestPointerLockSpy = jest.spyOn(canvas, 'requestPointerLock');
+    const requestPointerLockSpy = vi.spyOn(canvas, 'requestPointerLock');
 
     render(<UI />);
 

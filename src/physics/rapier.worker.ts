@@ -75,30 +75,30 @@ const createStaticBox = (collider: StaticBoxColliderSpec) => {
 const initWorld = async (payload: RapierWorkerInitPayload = {}) => {
   await ensureRapier();
 
-  const merged = {
-    gravity: payload.gravity ?? DEFAULT_RAFT_WORKER_INIT.gravity,
-    raft: {
-      ...DEFAULT_RAFT_WORKER_INIT.raft,
-      ...(payload.raft ?? {}),
-    },
-    staticColliders: payload.staticColliders ?? DEFAULT_RAFT_WORKER_INIT.staticColliders,
+  const raft = {
+    ...DEFAULT_RAFT_WORKER_INIT.raft!,
+    ...(payload.raft ?? {}),
   };
+  const gravity = payload.gravity ?? DEFAULT_RAFT_WORKER_INIT.gravity!;
+  const staticColliders = payload.staticColliders ?? DEFAULT_RAFT_WORKER_INIT.staticColliders;
 
   world?.free?.();
-  world = new RAPIER.World(vec3(merged.gravity));
+  world = new RAPIER.World(vec3(gravity));
 
-  for (const collider of merged.staticColliders) {
+  for (const collider of staticColliders) {
     createStaticBox(collider);
   }
 
+  const [px, py, pz] = raft.position!;
+  const [hx, hy, hz] = raft.halfExtents!;
   const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-    .setTranslation(...merged.raft.position)
-    .setLinearDamping(merged.raft.linearDamping)
-    .setAngularDamping(merged.raft.angularDamping);
+    .setTranslation(px, py, pz)
+    .setLinearDamping(raft.linearDamping!)
+    .setAngularDamping(raft.angularDamping!);
 
   raftBody = world.createRigidBody(bodyDesc);
   world.createCollider(
-    RAPIER.ColliderDesc.cuboid(...merged.raft.halfExtents).setMass(merged.raft.mass),
+    RAPIER.ColliderDesc.cuboid(hx, hy, hz).setMass(raft.mass!),
     raftBody
   );
 };

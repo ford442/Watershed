@@ -3,9 +3,30 @@ import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSy
 import { MOVEMENT } from '../../../constants/game';
 import { useGameStore } from '../../../systems/GameState';
 import { DodgeState, DebugContact } from '../constants';
-import { RAYCAST_ORIGIN_OFFSET, RAYCAST_DISTANCE, SLOPE_RANGES } from '../constants';
+import {
+  RAYCAST_ORIGIN_OFFSET,
+  RAYCAST_DISTANCE,
+  SLOPE_RANGES,
+  NEAR_MISS_SPEED_THRESHOLD,
+  NEAR_MISS_RAY_LENGTH,
+  NEAR_MISS_TOI_MIN,
+  NEAR_MISS_TOI_MAX,
+} from '../constants';
+import { playDodgeSound } from '../audio';
+import { triggerCameraShake } from '../utils';
+import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/LaunchScoringSession';
 
-export function calculateSlopeAngle({ body, world, rapier, slopeState }): number {
+export function calculateSlopeAngle({
+  body,
+  world,
+  rapier,
+  slopeState,
+}: {
+  body: any;
+  world: any;
+  rapier: any;
+  slopeState: any;
+}): number {
   if (!body || !world) return 0;
 
   const pos = body.translation();
@@ -144,8 +165,49 @@ export function calculateSlopeMultiplier(angle: number): number {
 }
 
 export function handleDodgeAndCollision({
-    dodgeState, dodgeJustPressed, isGrounded, camera, leftward, rightward, forward, backward, dt,
-    body, pos, vel, prevFrame, js, vehicle, collisionState, debugState, now
+  dodgeState,
+  dodgeJustPressed,
+  isGrounded,
+  camera,
+  leftward,
+  rightward,
+  forward,
+  backward,
+  dt,
+  body,
+  pos,
+  vel,
+  prevFrame,
+  js,
+  vehicle,
+  collisionState,
+  debugState,
+  now,
+  applyImpulseWithDebugTracking,
+  rapier,
+  world,
+}: {
+  dodgeState: any;
+  dodgeJustPressed: boolean;
+  isGrounded: boolean;
+  camera: THREE.Camera;
+  leftward: boolean;
+  rightward: boolean;
+  forward: boolean;
+  backward: boolean;
+  dt: number;
+  body: any;
+  pos: { x: number; y: number; z: number };
+  vel: { x: number; y: number; z: number };
+  prevFrame: any;
+  js: any;
+  vehicle: any;
+  collisionState: any;
+  debugState: any;
+  now: number;
+  applyImpulseWithDebugTracking: (tag: string, impulse: { x: number; y: number; z: number }) => void;
+  rapier: any;
+  world: any;
 }) {
     // === DODGE STATE MACHINE (Goal 2) ===
     const ds = dodgeState.current;
@@ -169,7 +231,7 @@ export function handleDodgeAndCollision({
             ds.direction.sub(rightDir);
           } else if (rightward) {
             ds.direction.add(rightDir);
-          } else if (controls.getControls().backward) {
+          } else if (backward) {
             ds.direction.sub(forwardDir);
           } else {
             ds.direction.add(forwardDir);
@@ -262,6 +324,9 @@ export function handleDodgeAndCollision({
     // Detect high-impact collision (skip if dodging with i-frames)
     const isDodging = ds.state === 'dodging' && ds.timer > (MOVEMENT.DODGE_DURATION - MOVEMENT.DODGE_I_FRAMES);
     if (impactForce > 8 && !isGrounded && !isDodging) {
+      if (hasActiveLaunch()) {
+        recordLaunchWallContact();
+      }
       const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
       const contactPoint = new THREE.Vector3(pos.x, pos.y - 0.5, pos.z);
 

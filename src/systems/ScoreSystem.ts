@@ -1,5 +1,8 @@
 import { useGameStore } from './GameState';
 import { resetLaunchScoringSession, cancelLaunch } from './LaunchScoringSession';
+import { getRunBest, updateRunBest } from './PersistenceSystem';
+import { persistGhostRecording, startGhostRecording } from './GhostRecorder';
+import { getActiveRunKey } from '../utils/runContext';
 
 const HIGH_SPEED_THRESHOLD = 15;
 const RESET_SPEED_THRESHOLD = 8;
@@ -8,7 +11,6 @@ const MAX_MULTIPLIER = 10;
 const MAX_FRAME_DELTA = 0.1;
 const DODGE_BONUS = 200;
 const WATERFALL_BONUS = 500;
-const HIGH_SCORE_KEY = 'watershed_highscore';
 
 const COMBO_LABELS: Record<number, string> = {
   2: 'FLOW STATE',
@@ -21,41 +23,39 @@ let highSpeedAccum = 0;
 let belowResetAccum = 0;
 let comboFlashRemaining = 0;
 
-const readStoredHighScore = (): number => {
-  if (typeof window === 'undefined') return 0;
-  try {
-    const raw = window.localStorage.getItem(HIGH_SCORE_KEY);
-    const parsed = raw ? Number.parseInt(raw, 10) : 0;
-    return Number.isFinite(parsed) ? parsed : 0;
-  } catch {
-    return 0;
-  }
-};
+function maybeBeatHighScore(score: number): number {
+  const state = useGameStore.getState();
+  const floored = Math.floor(score);
+  if (floored <= state.highScore) return state.highScore;
 
-const persistHighScore = (value: number): void => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(HIGH_SCORE_KEY, String(Math.floor(value)));
-  } catch {
-    // Ignore storage failures in restrictive/private browser contexts.
-  }
-};
+  const runKey = getActiveRunKey();
+  updateRunBest(runKey, { bestScore: floored });
+  persistGhostRecording(runKey);
+  return floored;
+}
 
 export function resetScoreSystemState(): void {
   highSpeedAccum = 0;
   belowResetAccum = 0;
   comboFlashRemaining = 0;
   resetLaunchScoringSession();
-  const highScore = Math.max(useGameStore.getState().highScore, readStoredHighScore());
+
+  const runKey = getActiveRunKey();
+  const best = getRunBest(runKey);
   useGameStore.setState({
     score: 0,
     multiplier: 1,
     topSpeed: 0,
     comboLabel: '',
-    highScore,
+    highScore: best.bestScore,
     launchPopup: null,
     latestReward: null,
   });
+
+  startGhostRecording();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('watershed-run-reset'));
+  }
 }
 
 export { cancelLaunch };
@@ -106,8 +106,7 @@ export function tickScoreSystem(deltaTime: number, speed: number): void {
   }
 
   if (score > highScore) {
-    highScore = Math.floor(score);
-    persistHighScore(highScore);
+    highScore = maybeBeatHighScore(score);
   }
 
   useGameStore.setState({
@@ -125,11 +124,7 @@ function addScoreBonus(points: number): void {
 
   const delta = points * Math.max(1, state.multiplier);
   const score = state.score + delta;
-  let highScore = state.highScore;
-  if (score > highScore) {
-    highScore = Math.floor(score);
-    persistHighScore(highScore);
-  }
+  const highScore = score > state.highScore ? maybeBeatHighScore(score) : state.highScore;
   useGameStore.setState({ score, highScore });
 }
 
@@ -139,4 +134,32 @@ export function awardWaterfallBonus(): void {
 
 export function awardDodgeBonus(): void {
   addScoreBonus(DODGE_BONUS);
+}
+
+/** Survive HighFlow / Flooded / WashedOut without wipeout — points from forecast effects table. */
+export function awardFloodSurviveBonus(points: number): void {
+  if (points <= 0) return;
+  const state = useGameStore.getState();
+  if (state.isWipeout) return;
+
+  addScoreBonus(points);
+  useGameStore.setState({
+    latestReward: {
+      tier: 'FloodSurvive',
+      score: Math.round(points),
+      clean: true,
+      id: Date.now(),
+      label: 'FLOOD SURVIVE',
+    },
+  });
+}
+
+/** Commit journey-end score to per-run persistence. */
+export function commitJourneyScore(): void {
+  const { score, highScore } = useGameStore.getState();
+  const floored = Math.floor(score);
+  if (floored > highScore) {
+    const next = maybeBeatHighScore(score);
+    useGameStore.setState({ highScore: next });
+  }
 }

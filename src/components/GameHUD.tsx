@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerBiome, useGameStore } from '../systems/GameState';
+import { getActiveLaunchAirSeconds } from '../systems/LaunchScoringSession';
 import {
   calculateBuoyancyAndDragFallback,
   getWasm,
@@ -9,10 +10,16 @@ import {
 interface GameHUDProps {
   isWipeout?: boolean;
   onRespawn?: () => void;
+  /** Default Enter action (continue when available, else retry). */
   onRestartJourney?: () => void;
   onLoopMap?: () => void;
   onContinueJourney?: () => void;
+  onReturnToMenu?: () => void;
   mapLabel?: string;
+  continueLabel?: string;
+  /** Final-map journey summary — show ghost best when no continuation. */
+  isFinalMap?: boolean;
+  ghostBestScore?: number;
 }
 
 const BIOME_LABELS: Record<string, string> = {
@@ -24,6 +31,7 @@ const BIOME_LABELS: Record<string, string> = {
   midnightMist: 'MIDNIGHT MIST',
   slotCanyon: 'SLOT CANYON',
   glacier: 'GLACIER',
+  glacialMelt: 'GLACIAL MELT',
 };
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -32,7 +40,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onRestartJourney,
   onLoopMap,
   onContinueJourney,
-  mapLabel = 'Map 1: Meander',
+  onReturnToMenu,
+  mapLabel = 'Meander to Waterfall',
+  continueLabel,
+  isFinalMap = false,
+  ghostBestScore = 0,
 }) => {
   const currentBiome = usePlayerBiome();
   const rawSpeed = useGameStore((s) => s.currentSpeed);
@@ -53,6 +65,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   // Shelf launch popups — imperative DOM + CSS animation; no per-frame React state.
   const launchPopupRef = useRef<HTMLDivElement>(null);
   const rewardPopupRef = useRef<HTMLDivElement>(null);
+  const launchAirTimeRef = useRef<HTMLDivElement>(null);
   const launchPopupTimerRef = useRef<number | null>(null);
   const rewardPopupTimerRef = useRef<number | null>(null);
 
@@ -78,23 +91,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   };
 
   useEffect(() => {
-    const unsubLaunch = useGameStore.subscribe(
-      (s) => s.launchPopup,
-      (popup) => {
-        if (!popup) return;
+    let prevLaunchPopup = useGameStore.getState().launchPopup;
+    let prevReward = useGameStore.getState().latestReward;
+
+    const unsub = useGameStore.subscribe((state) => {
+      const popup = state.launchPopup;
+      if (popup && popup !== prevLaunchPopup) {
         showTransientPopup(
           launchPopupRef.current,
           launchPopupTimerRef,
           popup.label,
           'launch-popup',
         );
-      },
-    );
+      }
+      prevLaunchPopup = popup;
 
-    const unsubReward = useGameStore.subscribe(
-      (s) => s.latestReward,
-      (reward) => {
-        if (!reward || reward.score <= 0) return;
+      const reward = state.latestReward;
+      if (reward && reward !== prevReward && reward.score > 0) {
         const bonus = reward.clean ? ' + CLEAN' : '';
         showTransientPopup(
           rewardPopupRef.current,
@@ -102,12 +115,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           `+${reward.score}${bonus}`,
           'air-reward-popup',
         );
-      },
-    );
+      }
+      prevReward = reward;
+    });
 
     return () => {
-      unsubLaunch();
-      unsubReward();
+      unsub();
       if (launchPopupTimerRef.current !== null) {
         window.clearTimeout(launchPopupTimerRef.current);
       }
@@ -118,33 +131,55 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   }, []);
 
   useEffect(() => {
-    const unsub = useGameStore.subscribe(
-      (s) => s.sprintStamina,
-      (stamina) => {
-        const fill = staminaFillRef.current;
-        const bar = staminaBarRef.current;
-        if (!fill || !bar) return;
-
-        fill.style.width = `${Math.round(stamina * 100)}%`;
-
-        let color: string;
-        if (stamina >= 0.5) {
-          color = '#f8fafc'; // white
-        } else if (stamina >= 0.25) {
-          color = '#fbbf24'; // amber
+    let raf = 0;
+    const tick = () => {
+      const airSeconds = getActiveLaunchAirSeconds();
+      const el = launchAirTimeRef.current;
+      if (el) {
+        if (airSeconds > 0.05) {
+          el.textContent = `AIR! ${airSeconds.toFixed(1)}s`;
+          el.classList.add('launch-airtime-hud--visible');
         } else {
-          color = '#ef4444'; // red
-        }
-        fill.style.backgroundColor = color;
-
-        // Only toggle exhausted class when state changes to avoid redundant DOM ops
-        const nowExhausted = stamina === 0;
-        if (nowExhausted !== exhaustedRef.current) {
-          exhaustedRef.current = nowExhausted;
-          bar.classList.toggle('stamina-bar--exhausted', nowExhausted);
+          el.textContent = '';
+          el.classList.remove('launch-airtime-hud--visible');
         }
       }
-    );
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    let prevStamina = useGameStore.getState().sprintStamina;
+
+    const unsub = useGameStore.subscribe((state) => {
+      const stamina = state.sprintStamina;
+      if (stamina === prevStamina) return;
+      prevStamina = stamina;
+
+      const fill = staminaFillRef.current;
+      const bar = staminaBarRef.current;
+      if (!fill || !bar) return;
+
+      fill.style.width = `${Math.round(stamina * 100)}%`;
+
+      let color: string;
+      if (stamina >= 0.5) {
+        color = '#f8fafc';
+      } else if (stamina >= 0.25) {
+        color = '#fbbf24';
+      } else {
+        color = '#ef4444';
+      }
+      fill.style.backgroundColor = color;
+
+      const nowExhausted = stamina === 0;
+      if (nowExhausted !== exhaustedRef.current) {
+        exhaustedRef.current = nowExhausted;
+        bar.classList.toggle('stamina-bar--exhausted', nowExhausted);
+      }
+    });
     return unsub;
   }, []);
 
@@ -260,13 +295,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   if (isJourneyComplete) {
     const isNewHighScore = score >= highScore && score > 0;
+    const title = isFinalMap ? 'Campaign Complete' : 'Journey Complete';
     return (
       <div
         className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
       >
-        <div className="text-center">
+        <div className="text-center max-w-3xl px-4">
           <div className="text-5xl md:text-7xl font-black text-amber-300 mb-6 tracking-tighter">
-            Journey Complete
+            {title}
           </div>
 
           <div className="text-sm md:text-base text-white/45 font-mono uppercase tracking-[0.18em] mb-6">
@@ -287,18 +323,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             )}
           </div>
 
-          <div className="text-zinc-500 text-base mb-10">
+          <div className="text-zinc-500 text-base mb-2">
             Top Speed: <span className="font-mono text-white">{Math.round(topSpeed)} m/s</span>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+          {isFinalMap && (
+            <div className="text-zinc-500 text-base mb-2">
+              Ghost Best:{' '}
+              <span className="font-mono text-sky-300">
+                {ghostBestScore > 0 ? Math.floor(ghostBestScore).toLocaleString() : '—'}
+              </span>
+            </div>
+          )}
+
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4 mt-10">
             <button
               onClick={() => {
                 onLoopMap?.();
               }}
               className="px-10 py-5 bg-white text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
             >
-              LOOP MAP
+              RETRY MAP
             </button>
 
             {onContinueJourney && (
@@ -308,13 +353,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 }}
                 className="px-10 py-5 bg-amber-300 text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-sky-300 hover:scale-105 transition-all shadow-2xl"
               >
-                CONTINUE TO MAP 2
+                {continueLabel ?? 'CONTINUE'}
+              </button>
+            )}
+
+            {onReturnToMenu && (
+              <button
+                onClick={() => {
+                  onReturnToMenu();
+                }}
+                className="px-10 py-5 bg-transparent text-white/80 text-xl md:text-2xl font-black rounded-3xl border border-white/25 hover:bg-white/10 hover:scale-105 transition-all"
+              >
+                MENU
               </button>
             )}
           </div>
 
           <p className="mt-8 text-zinc-600 text-sm">
-            Press Enter for the configured default action
+            Press Enter to {onContinueJourney ? 'continue' : 'retry'}
           </p>
         </div>
       </div>
@@ -363,6 +419,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       )}
 
       <div ref={launchPopupRef} className="launch-popup" aria-live="polite" />
+      <div ref={launchAirTimeRef} className="launch-airtime-hud" aria-live="polite" />
       <div ref={rewardPopupRef} className="air-reward-popup" aria-live="polite" />
 
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 text-white/40 text-xs md:text-sm font-mono">

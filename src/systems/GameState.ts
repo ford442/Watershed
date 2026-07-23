@@ -17,6 +17,8 @@
  */
 
 import { create } from 'zustand';
+import type { BiomeId } from '../configs/biomes';
+import { DEFAULT_BIOME_ID } from '../configs/biomes';
 
 // =============================================================================
 // TYPES
@@ -38,7 +40,7 @@ export interface SpawnPoint {
 export interface GameState {
   playerPosition: { x: number; y: number; z: number };
   currentSpeed: number;
-  currentBiome: string;
+  currentBiome: BiomeId;
   isPaused: boolean;
   distanceTraveled: number;
   distance: number;
@@ -60,6 +62,8 @@ export interface GameState {
   sprintStamina: number;
   /** Active vehicle type — gates HUD elements and post-processing. */
   vehicleType: 'runner' | 'raft';
+  /** Show best-run ghost replay during the current run. */
+  ghostEnabled: boolean;
   /** Instant tier label popup at shelf launch (not the committed score). */
   launchPopup: { label: string; id: number } | null;
   /** Committed air-time reward after a valid landing. */
@@ -75,7 +79,7 @@ export interface GameState {
 export interface GameActions {
   setPlayerPosition: (pos: { x: number; y: number; z: number }) => void;
   setCurrentSpeed: (speed: number) => void;
-  setCurrentBiome: (biome: string) => void;
+  setCurrentBiome: (biome: BiomeId) => void;
   setIsPaused: (paused: boolean) => void;
   setDistanceTraveled: (distance: number) => void;
   setDistance: (distance: number) => void;
@@ -91,10 +95,13 @@ export interface GameActions {
   setRespawnSegmentIndex: (index: number) => void;
   setWaterfallGravityMultiplier: (multiplier: number) => void;
   setSpawnPoint: (segmentIndex: number, point: SpawnPoint) => void;
+  /** Merge many spawn points in one store update (pool init / reset). */
+  setSpawnPoints: (points: Record<number, SpawnPoint>) => void;
   setSettings: (settings: Partial<GameSettings>) => void;
   /** Clamps value to [0, 1] before writing. Call from useFrame via getState() — never via the hook. */
   setSprintStamina: (v: number) => void;
   setVehicleType: (type: 'runner' | 'raft') => void;
+  setGhostEnabled: (enabled: boolean) => void;
   resetGameState: () => void;
 }
 
@@ -105,25 +112,14 @@ export type GameStore = GameState & GameActions;
 // =============================================================================
 
 const DEFAULT_SETTINGS: GameSettings = {
-  quality: 'high',
+  quality: 'medium',
   soundVolume: 0.8,
-};
-
-const readStoredHighScore = (): number => {
-  if (typeof window === 'undefined') return 0;
-  try {
-    const raw = window.localStorage.getItem('watershed_highscore');
-    const parsed = raw ? Number.parseInt(raw, 10) : 0;
-    return Number.isFinite(parsed) ? parsed : 0;
-  } catch {
-    return 0;
-  }
 };
 
 const INITIAL_STATE: GameState = {
   playerPosition: { x: 0, y: -6, z: -10 },
   currentSpeed: 0,
-  currentBiome: 'canyonSummer',
+  currentBiome: DEFAULT_BIOME_ID,
   isPaused: false,
   distanceTraveled: 0,
   distance: 0,
@@ -131,7 +127,7 @@ const INITIAL_STATE: GameState = {
   multiplier: 1,
   topSpeed: 0,
   comboLabel: '',
-  highScore: readStoredHighScore(),
+  highScore: 0,
   currentSegmentIndex: 0,
   isWipeout: false,
   isJourneyComplete: false,
@@ -142,6 +138,7 @@ const INITIAL_STATE: GameState = {
   settings: { ...DEFAULT_SETTINGS },
   sprintStamina: 1.0,
   vehicleType: 'runner',
+  ghostEnabled: true,
   launchPopup: null,
   latestReward: null,
 };
@@ -186,13 +183,6 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => {
       const finalScore = state.score;
       const newHighScore = Math.max(state.highScore, finalScore);
-      if (newHighScore > state.highScore && typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('watershed_highscore', String(newHighScore));
-        } catch {
-          // ignore storage errors
-        }
-      }
       return {
         isJourneyComplete: true,
         isPaused: true,
@@ -208,9 +198,41 @@ export const useGameStore = create<GameStore>((set) => ({
     set({ waterfallGravityMultiplier: multiplier }),
 
   setSpawnPoint: (segmentIndex, point) =>
-    set((state) => ({
-      spawnPoints: { ...state.spawnPoints, [segmentIndex]: point },
-    })),
+    set((state) => {
+      const prev = state.spawnPoints[segmentIndex];
+      if (
+        prev &&
+        prev.x === point.x &&
+        prev.y === point.y &&
+        prev.z === point.z
+      ) {
+        return state;
+      }
+      return {
+        spawnPoints: { ...state.spawnPoints, [segmentIndex]: point },
+      };
+    }),
+
+  setSpawnPoints: (points) =>
+    set((state) => {
+      let changed = false;
+      const next = { ...state.spawnPoints };
+      for (const key of Object.keys(points)) {
+        const segmentIndex = Number(key);
+        const point = points[segmentIndex];
+        const prev = next[segmentIndex];
+        if (
+          !prev ||
+          prev.x !== point.x ||
+          prev.y !== point.y ||
+          prev.z !== point.z
+        ) {
+          next[segmentIndex] = point;
+          changed = true;
+        }
+      }
+      return changed ? { spawnPoints: next } : state;
+    }),
 
   setSettings: (partial) =>
     set((state) => ({
@@ -221,12 +243,16 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setVehicleType: (type) => set({ vehicleType: type }),
 
+  setGhostEnabled: (enabled) => set({ ghostEnabled: enabled }),
+
   resetGameState: () =>
-    set({
+    set((state) => ({
       ...INITIAL_STATE,
-      highScore: readStoredHighScore(),
-      settings: { ...DEFAULT_SETTINGS },
-    }),
+      highScore: state.highScore,
+      settings: { ...state.settings },
+      vehicleType: state.vehicleType,
+      ghostEnabled: state.ghostEnabled,
+    })),
 }));
 
 // =============================================================================

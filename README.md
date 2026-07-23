@@ -29,7 +29,7 @@ The project uses a hybrid architecture to achieve high performance and realism w
 
 *   **UI and Orchestration:** [React](https://react.dev/) with [React Three Fiber (R3F)](https://docs.pmnd.rs/react-three-fiber/getting-started/introduction) for rendering 3D scenes.
 *   **Physics:** [Rapier](https://rapier.rs/) running in a Web Worker, compiled to Wasm for near-native performance. This keeps the main thread free from heavy physics calculations.
-*   **Water Simulation:** Custom [WebGPU](https://www.w3.org/TR/webgpu/) compute shaders (WGSL) for realistic water surface deformation, flow, and interaction.
+*   **Water Simulation:** Custom GLSL shaders injected via `onBeforeCompile` and `ShaderMaterial` (in `FlowingWater.jsx`, `RiverShader.js`, and `CanyonMaterial.js`) drive the live water surface, wetness, moss, and caustics. A separate experimental WebGPU compute path (`HeightmapFlow.ts`) may run on a secondary GPU device when available, but the renderer itself is WebGL2-only. WebGPU/TSL migration is deferred to issue #256 path A.
 *   **Asset Streaming:** A "treadmill" or chunk-based system loads and unloads parts of the world as the player moves, with object pooling to minimize garbage collection.
 
 ## Project Structure
@@ -49,7 +49,7 @@ For detailed information on the game's level design, including segment configura
 
 The current development priorities are:
 
-- [ ] Prototype a WebGPU compute shader that updates a small heightmap (flowmap + normal reconstruction).
+- [ ] Prototype a WebGPU compute shader that updates a small heightmap (flowmap + normal reconstruction) — experimental/future; the live renderer remains WebGL2-only.
 - [ ] Move a minimal Rapier physics example into a Web Worker and verify round-trip state updates.
 - [ ] Implement a simple treadmill/chunk streaming prototype and object pooling for static obstacles.
 - [ ] Integrate water flow forces to influence a rigid-body raft.

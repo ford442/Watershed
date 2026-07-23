@@ -72,7 +72,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     // Listen for biome changes
     const handleBiomeChange = (event: Event) => {
       const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'summer';
+      const biome = customEvent.detail?.biome || 'canyonSummer';
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.ROCK;
       vehicle.current.setSurfaceMaterial(material);
@@ -258,6 +258,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         restitution={0.15}
         linearDamping={0.35}
         angularDamping={0.9}
+        userData={{ isPlayer: true }}
       >
         <CapsuleCollider args={[0.4, 0.5]} />
       </RigidBody>
@@ -271,7 +272,10 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
           material={particle.material}
           position={particle.position}
           intensity={particle.intensity}
-          onComplete={() => removeParticle(particle.id)}
+          onComplete={() => {
+            collisionState.current.activeParticles =
+              collisionState.current.activeParticles.filter((p) => p.id !== particle.id);
+          }}
         />
       ))}
     </>

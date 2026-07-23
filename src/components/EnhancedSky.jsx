@@ -64,6 +64,20 @@ const SKY_OVERRIDES = {
         mieCoefficient: 0.009,
         mieDirectionalG: 0.88,
     },
+    glacialMelt: {
+        sunPosition: [70, 48, 40],
+        turbidity: 4.2,
+        rayleigh: 4.8,
+        mieCoefficient: 0.0025,
+        mieDirectionalG: 0.76,
+    },
+    glacier: {
+        sunPosition: [75, 50, 45],
+        turbidity: 4.5,
+        rayleigh: 4.6,
+        mieCoefficient: 0.0028,
+        mieDirectionalG: 0.78,
+    },
 };
 
 // Two cloud layers at different "altitudes" (Y position) get slightly different

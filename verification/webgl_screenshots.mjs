@@ -5,7 +5,7 @@
  *   pnpm dev
  *   node verification/webgl_screenshots.mjs
  *
- * Output: verification/webgl/*.png + capture_report.json
+ * Output: verification/output/webgl/*.png + capture_report.json
  */
 
 import puppeteer from 'puppeteer';
@@ -14,7 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = path.join(__dirname, 'webgl');
+const OUT_DIR = path.join(__dirname, 'output', 'webgl');
 const BASE_URL = process.env.WATERSHED_URL ?? 'http://localhost:3000';
 const URL = `${BASE_URL}?renderer=webgl&screenshot=1`;
 

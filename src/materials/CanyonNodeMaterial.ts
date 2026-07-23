@@ -1,3 +1,8 @@
+/**
+ * DORMANT WebGPU migration seed — not wired into the live renderer.
+ * Retained as the subject of the #255 guard. See docs/reference/RENDERER_CONTRACT.md.
+ */
+
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
@@ -22,6 +27,7 @@ import {
   step,
 } from 'three/tsl';
 import { fbm4 } from './tsl/noise';
+import { isAutumnLike } from '../configs/biomes';
 
 const GEOLOGICAL_LAYERS = {
   bedrock: '#3d3530',
@@ -230,7 +236,7 @@ function buildCanyonColorNode(uniforms: CanyonUniformRefs) {
 
 export function createCanyonNodeMaterial(options: CanyonMaterialOptions = {}): MeshBasicNodeMaterial {
   const {
-    biome = 'summer',
+    biome = 'canyonSummer',
     wallHeight = 15,
     parallaxScale,
     time = 0,
@@ -290,8 +296,8 @@ export function updateCanyonNodeMaterial(
 }
 
 export function createFallbackCanyonMaterial(options: { biome?: string } = {}) {
-  const { biome = 'summer' } = options;
-  const baseColor = biome === 'autumn' ? '#9c7850' : '#888880';
+  const { biome = 'canyonSummer' } = options;
+  const baseColor = isAutumnLike(biome) ? '#9c7850' : '#888880';
   return new THREE.MeshStandardMaterial({
     color: baseColor,
     roughness: 0.8,

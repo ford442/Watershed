@@ -90,7 +90,7 @@ export class RapierWorkerProxy {
     this.worker.terminate?.();
   }
 
-  private request(command: Omit<RapierWorkerCommand, 'id'>): Promise<RapierWorkerResponse> {
+  private request(command: Record<string, unknown> & { type: RapierWorkerCommand['type'] }): Promise<RapierWorkerResponse> {
     const id = this.nextId++;
     const message = { ...command, id } as RapierWorkerCommand;
 

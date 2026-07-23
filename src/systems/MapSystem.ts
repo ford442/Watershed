@@ -11,7 +11,12 @@
  */
 
 import * as THREE from 'three';
-import type { RigidBody } from '@react-three/rapier';
+import type { RapierRigidBody } from '@react-three/rapier';
+import {
+  type BiomeId,
+  DEFAULT_BIOME_ID,
+  normalizeBiomeId,
+} from '../configs/biomes';
 
 // =============================================================================
 // JSON LEVEL FORMAT INTERFACES
@@ -85,6 +90,16 @@ export interface LevelSegment {
     fogDensity?: number;
     transitionDuration?: number;
   };
+  launchShelf?: LaunchShelfConfig;
+  journeyComplete?: boolean;
+  slipperiness?: number;
+  treeDensity?: number;
+  rockDensity?: 'low' | 'medium' | 'high';
+  /**
+   * When true, TrackSegment skips the floor trimesh collider so the player
+   * flies an air corridor (gap / broken trestle set-pieces).
+   */
+  openFloor?: boolean;
 }
 
 export interface LevelSpawns {
@@ -125,8 +140,8 @@ export interface BaseMapChunk {
   curve?: THREE.CatmullRomCurve3;
   /** Chunk length along Z axis */
   length: number;
-  /** Biome identifier */
-  biome: string;
+  /** Canonical biome identifier */
+  biome: BiomeId;
   /** Flow speed multiplier (1.0 = normal) */
   flowSpeed: number;
   /** Water surface Y level */
@@ -137,8 +152,14 @@ export interface BaseMapChunk {
   canyonWidth: number;
   /** Pre-calculated spawn data for objects */
   spawns: SpawnData[];
+  /** Authored decoration / launch-shelf / gap config passed through to TrackSegment */
+  config?: {
+    decorations?: Record<string, number | DecorationPlacement[]>;
+    launchShelf?: LaunchShelfConfig;
+    openFloor?: boolean;
+  };
   /** Reference to physics collider */
-  collider?: RigidBody;
+  collider?: RapierRigidBody;
   /** Is this chunk currently visible/active */
   active: boolean;
 }
@@ -190,6 +211,17 @@ export const DEFAULT_MAP_CONFIG: MapConfig = {
   seed: 12345,
 };
 
+/**
+ * Seed polyline used to derive segment 0's start point and tangent.
+ * The LAST point becomes segment 0's starting position (near player spawn).
+ */
+export const INITIAL_TREADMILL_POINTS = [
+  new THREE.Vector3(-4, -8, 90),
+  new THREE.Vector3(-2, -7, 60),
+  new THREE.Vector3(-1, -6.5, 30),
+  new THREE.Vector3(0, -6, 0),
+];
+
 // =============================================================================
 // SEGMENT PROGRESSION CONFIG
 // =============================================================================
@@ -218,8 +250,8 @@ export interface LaunchShelfConfig {
 }
 
 export interface SegmentProgressionConfig {
-  biome: string;
-  type: 'normal' | 'waterfall' | 'splash' | 'pond';
+  biome: BiomeId;
+  type: 'normal' | 'waterfall' | 'splash' | 'pond' | 'rapids';
   width: number;
   waterWidth: number;
   meanderStrength: number;
@@ -239,6 +271,11 @@ export interface SegmentProgressionConfig {
   /** Optional launch-shelf gameplay trigger for waterfall set-pieces. */
   launchShelf?: LaunchShelfConfig;
   /**
+   * When true, the segment is an air corridor — no floor trimesh collider.
+   * Pair with a splash/pond landing segment for a playable gap jump.
+   */
+  openFloor?: boolean;
+  /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and
    * add a persistent downstream slide bias when > 0.
@@ -248,7 +285,7 @@ export interface SegmentProgressionConfig {
 }
 
 export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
-  biome: 'summer',
+  biome: DEFAULT_BIOME_ID,
   type: 'normal',
   width: 35,
   waterWidth: 10,
@@ -348,6 +385,67 @@ export function generateRiverPath(
 }
 
 /**
+ * Generate a river path for a single treadmill segment.
+ *
+ * This is the ChunkManager-compatible variant of `generateRiverPath`:
+ * it uses the segment's authored progression (meanderStrength, verticalBias,
+ * type) and a configurable step distance to produce 4 Catmull-Rom control
+ * points that connect end-to-end with the previous segment.
+ */
+export function generateSegmentPath(
+  index: number,
+  startPoint: THREE.Vector3,
+  startDirection: THREE.Vector3,
+  progression: SegmentProgressionConfig,
+  seed: number,
+  options: {
+    stepCount?: number;
+    stepDistanceMin?: number;
+    stepDistanceMax?: number;
+  } = {}
+): THREE.Vector3[] {
+  const rng = new SeededRandom(seed);
+  const points: THREE.Vector3[] = [startPoint.clone()];
+
+  let currentPos = startPoint.clone();
+  let direction = startDirection.clone().normalize();
+
+  const meanderStrength = progression.meanderStrength ?? DEFAULT_SEGMENT_PROGRESSION.meanderStrength;
+  const verticalBias = progression.verticalBias ?? DEFAULT_SEGMENT_PROGRESSION.verticalBias;
+  const type = progression.type ?? DEFAULT_SEGMENT_PROGRESSION.type;
+
+  const stepCount = options.stepCount ?? 3;
+  const stepDistanceMin = options.stepDistanceMin ?? 30;
+  const stepDistanceMax = options.stepDistanceMax ?? 40;
+
+  for (let step = 0; step < stepCount; step += 1) {
+    const turnFactor = Math.sin(index * 0.5 + step) * meanderStrength;
+    direction.x += turnFactor * 0.3 + (rng.next() - 0.5) * 0.2;
+    direction.y += rng.next() * 0.2 + verticalBias * 0.2;
+
+    const maxUpward = type === 'pond' ? -0.01 : -0.1;
+    if (direction.y > maxUpward) direction.y = maxUpward;
+
+    direction.normalize();
+
+    if (type !== 'waterfall') {
+      if (direction.z > -0.5) direction.z = -0.5;
+    } else {
+      direction.z = -0.12;
+      direction.y = Math.min(direction.y, -0.92);
+    }
+
+    direction.normalize();
+
+    const distance = stepDistanceMin + rng.next() * (stepDistanceMax - stepDistanceMin);
+    currentPos.add(direction.clone().multiplyScalar(distance));
+    points.push(currentPos.clone());
+  }
+
+  return points;
+}
+
+/**
  * Calculate spawn positions along a river path
  * SWARM: Add new object types here
  */
@@ -423,6 +521,208 @@ export function calculateSpawns(
   return spawns;
 }
 
+/**
+ * Calculate spawn positions for a segment using its authored progression.
+ *
+ * Tree/rock counts are taken from `progression.decorations` when available
+ * (matching the JSON level format), otherwise derived from `treeDensity` /
+ * `rockDensity`. This is the shared helper used by both DefaultMapManager and
+ * JSONMapManager so spawn placement has a single deterministic source.
+ */
+export function calculateSegmentSpawns(
+  curve: THREE.CatmullRomCurve3,
+  progression: SegmentProgressionConfig,
+  index: number,
+  seed: number
+): SpawnData[] {
+  const rng = new SeededRandom(seed + index * 1000);
+  const spawns: SpawnData[] = [];
+
+  const pathLength = curve.getLength();
+  const steps = Math.max(1, Math.floor(pathLength / 2));
+
+  const canyonWidth = progression.width ?? DEFAULT_SEGMENT_PROGRESSION.width;
+  const waterWidth = progression.waterWidth ?? DEFAULT_SEGMENT_PROGRESSION.waterWidth;
+  const decorations = progression.decorations || {};
+
+  // Resolve counts. JSON-authored maps use integer decoration counts;
+  // procedural fallback uses treeDensity / rockDensity normalized to counts.
+  const treeCount =
+    typeof decorations.trees === 'number'
+      ? decorations.trees
+      : Math.round((progression.treeDensity ?? DEFAULT_SEGMENT_PROGRESSION.treeDensity) * 8);
+  const rockCount =
+    typeof decorations.rocks === 'number'
+      ? decorations.rocks
+      : progression.rockDensity === 'high'
+      ? 12
+      : progression.rockDensity === 'medium'
+      ? 6
+      : 2;
+
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    const point = curve.getPoint(t);
+    const tangent = curve.getTangent(t).normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+
+    for (const side of [-1, 1]) {
+      const bankStart = waterWidth / 2;
+
+      // Trees
+      const treeChance = treeCount / steps;
+      if (rng.next() < treeChance) {
+        const dist = bankStart + 4 + rng.next() * 8;
+        const offset = binormal.clone().multiplyScalar(side * dist);
+        const pos = point.clone().add(offset);
+
+        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+        const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+        pos.y += height - 0.5;
+
+        spawns.push({
+          type: 'tree',
+          position: pos,
+          rotation: new THREE.Euler(0, rng.next() * Math.PI * 2, 0),
+          scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng.next() * 0.5),
+          meta: { variant: rng.nextInt(0, 3) }
+        });
+      }
+
+      // Rocks
+      const rockChance = rockCount / steps;
+      if (rng.next() < rockChance) {
+        const dist = bankStart + 1 + rng.next() * 4;
+        const offset = binormal.clone().multiplyScalar(side * dist);
+        const pos = point.clone().add(offset);
+
+        const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
+        const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
+        pos.y += height;
+
+        spawns.push({
+          type: 'rock',
+          position: pos,
+          rotation: new THREE.Euler(
+            rng.next() * Math.PI,
+            rng.next() * Math.PI,
+            rng.next() * Math.PI
+          ),
+          scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.8),
+          meta: { collider: true }
+        });
+      }
+    }
+  }
+
+  return spawns;
+}
+
+// =============================================================================
+// TREADMILL SEGMENT BUILDER (shared by ChunkManager + DefaultMapManager)
+// =============================================================================
+
+function createSegmentCurve(
+  points: THREE.Vector3[],
+  type: SegmentProgressionConfig['type'],
+): THREE.CatmullRomCurve3 {
+  const tension = type === 'pond' ? 0.1 : 0.5;
+  return new THREE.CatmullRomCurve3(points, false, 'catmullrom', tension);
+}
+
+/**
+ * Forces the new segment's start tangent to match the previous segment's end
+ * tangent. Eliminates NaNs in Catmull-Rom derivative math at segment joints.
+ */
+export function ensureTangentContinuity(
+  prevPoints: THREE.Vector3[],
+  newPoints: THREE.Vector3[],
+): THREE.Vector3[] {
+  if (!prevPoints || prevPoints.length < 2 || newPoints.length < 2) {
+    return newPoints;
+  }
+
+  const lastTwo = prevPoints.slice(-2);
+  const prevTangent = new THREE.Vector3()
+    .subVectors(lastTwo[1], lastTwo[0])
+    .normalize();
+
+  if (!prevTangent.lengthSq() || !isFinite(prevTangent.x)) {
+    console.warn('[ensureTangentContinuity] Invalid previous tangent, skipping');
+    return newPoints;
+  }
+
+  const desiredStart = newPoints[0].clone().add(prevTangent.multiplyScalar(0.01));
+  newPoints[0] = desiredStart;
+  return newPoints;
+}
+
+export interface BuildProceduralSegmentOptions {
+  seed?: number;
+  baseSeed?: number;
+  ensureContinuity?: boolean;
+  initialPoints?: THREE.Vector3[];
+}
+
+/**
+ * Build a single treadmill segment using MapManager progression config and
+ * deterministic SeededRandom path/spawn placement.
+ */
+export function buildProceduralSegment(
+  index: number,
+  previousPoints: THREE.Vector3[] | null,
+  mapManager: MapManager,
+  options: BuildProceduralSegmentOptions = {},
+): { chunk: BaseMapChunk; progression: SegmentProgressionConfig } {
+  const progression = mapManager.getChunkConfig(index);
+  const baseSeed = options.baseSeed ?? DEFAULT_MAP_CONFIG.seed;
+  const seed = options.seed ?? baseSeed + index * 1000;
+  const initialPoints = options.initialPoints ?? INITIAL_TREADMILL_POINTS;
+
+  const lastPoints = previousPoints ?? initialPoints;
+  const lastPoint = lastPoints[lastPoints.length - 1].clone();
+  const prevPoint = (lastPoints[lastPoints.length - 2] ?? initialPoints[0]).clone();
+  const startDirection = new THREE.Vector3().subVectors(lastPoint, prevPoint).normalize();
+
+  let points = generateSegmentPath(index, lastPoint, startDirection, progression, seed);
+
+  if (options.ensureContinuity && previousPoints) {
+    points = ensureTangentContinuity(previousPoints, points);
+  }
+
+  const curve = createSegmentCurve(points, progression.type);
+  const pathLength = curve.getLength();
+  const centerPoint = curve.getPoint(0.5);
+  const spawns = calculateSegmentSpawns(curve, progression, index, seed);
+
+  const chunk: BaseMapChunk = {
+    id: `chunk-${index}`,
+    index,
+    position: centerPoint,
+    pathPoints: points,
+    curve,
+    length: pathLength,
+    biome: progression.biome,
+    flowSpeed: progression.flowSpeed,
+    waterLevel: 0.5,
+    waterWidth: progression.waterWidth,
+    canyonWidth: progression.width,
+    spawns,
+    config:
+      progression.decorations || progression.launchShelf || progression.openFloor
+        ? {
+            decorations: progression.decorations,
+            launchShelf: progression.launchShelf,
+            openFloor: progression.openFloor,
+          }
+        : undefined,
+    active: true,
+  };
+
+  return { chunk, progression };
+}
+
 // =============================================================================
 // MAP MANAGER INTERFACE
 // =============================================================================
@@ -465,7 +765,7 @@ export class DefaultMapManager implements MapManager {
 
     // Generate initial chunks
     for (let i = 0; i < this.config.chunksAhead + 1; i++) {
-      this.chunks.push(this.generateChunk(i));
+      this.chunks.push(this.generateChunk(i, this.chunks[this.chunks.length - 1]));
     }
   }
 
@@ -495,49 +795,13 @@ export class DefaultMapManager implements MapManager {
     }) || null;
   }
 
-  generateChunk(index: number): BaseMapChunk {
-    // SWARM: Override this in biome implementations
-    const seed = this.config.seed + index * 1000;
-    const rng = new SeededRandom(seed);
-
-    const startPoint = index === 0
-      ? new THREE.Vector3(0, -6, -10)
-      : this.chunks[this.chunks.length - 1]?.pathPoints.slice(-1)[0] || new THREE.Vector3(0, -6, -index * this.config.chunkLength);
-
-    const pathPoints = generateRiverPath(
-      startPoint,
-      new THREE.Vector3(0, -0.2, -1),
-      this.config,
-      seed,
-      1.2 // meanderStrength
-    );
-
-    const curve = new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.5);
-    const pathLength = curve.getLength();
-
-    // Calculate center position
-    const centerPoint = curve.getPoint(0.5);
-
-    const chunk: BaseMapChunk = {
-      id: `chunk-${this.nextChunkId++}`,
-      index,
-      position: centerPoint,
-      pathPoints,
-      curve,
-      length: pathLength,
-      biome: 'canyon',
-      flowSpeed: this.config.baseFlowSpeed,
-      waterLevel: 0.5,
-      waterWidth: this.config.waterWidth,
-      canyonWidth: this.config.canyonWidth,
-      spawns: calculateSpawns(curve, index, this.config, seed, {
-        trees: 0.3,
-        rocks: 0.2,
-        collectibles: 0.1
-      }),
-      active: true,
-    };
-
+  generateChunk(index: number, previousChunk?: BaseMapChunk): BaseMapChunk {
+    const previousPoints = previousChunk?.pathPoints ?? null;
+    const { chunk } = buildProceduralSegment(index, previousPoints, this, {
+      seed: this.config.seed + index * 1000,
+      ensureContinuity: !!previousChunk,
+    });
+    chunk.id = `chunk-${this.nextChunkId++}`;
     return chunk;
   }
 
@@ -551,7 +815,8 @@ export class DefaultMapManager implements MapManager {
     // Generate ahead if needed
     const maxIndex = Math.max(...this.chunks.map(c => c.index), 0);
     if (maxIndex < this.currentChunkIndex + this.config.chunksAhead) {
-      this.chunks.push(this.generateChunk(maxIndex + 1));
+      const previousChunk = this.chunks.find(c => c.index === maxIndex);
+      this.chunks.push(this.generateChunk(maxIndex + 1, previousChunk));
     }
 
     // Remove far behind chunks
@@ -572,21 +837,14 @@ export class DefaultMapManager implements MapManager {
 }
 
 // =============================================================================
-// BIOME NAME MAPPING
+// BIOME NAME MAPPING (map-load only)
 // =============================================================================
 
 /**
- * Maps JSON-authored long-form biome names to the short TrackBiomeId values
- * used internally by TrackManager. Shared by both JSONMapManager.generateChunk
- * and JSONMapManager.getChunkConfig to keep naming consistent.
+ * @deprecated Use normalizeBiomeId from configs/biomes.ts.
+ * Kept as a re-export of LEGACY_BIOME_ALIASES for one-release compatibility.
  */
-export const JSON_BIOME_NAME_MAP: Record<string, string> = {
-  'creek-summer': 'summer',
-  'creek-autumn': 'autumn',
-  'alpine-spring': 'summer',
-  'canyon-sunset': 'slotCanyon',
-  'midnight-mist': 'autumn',
-};
+export { LEGACY_BIOME_ALIASES as JSON_BIOME_NAME_MAP, normalizeBiomeId } from '../configs/biomes';
 
 // =============================================================================
 // JSON LEVEL LOADER
@@ -740,12 +998,19 @@ export class JSONMapManager implements MapManager {
     }
 
     // Create segment curve
-    const curve = new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.5);
+    const curve = new THREE.CatmullRomCurve3(
+      pathPoints,
+      false,
+      'catmullrom',
+      config.type === 'pond' ? 0.1 : 0.5
+    );
     const pathLength = curve.getLength();
     const centerPoint = curve.getPoint(0.5);
 
-    // Calculate spawns based on segment config
-    const spawns = this.calculateSegmentSpawns(curve, config, index);
+    // Calculate spawns from the authored progression config
+    const progression = this.getChunkConfig(index);
+    const seed = 12345 + index * 1000;
+    const spawns = calculateSegmentSpawns(curve, progression, index, seed);
 
     // Map biome type
     const biomeOverride = config.biomeOverride || this.levelData.world.biome.baseType;
@@ -757,83 +1022,23 @@ export class JSONMapManager implements MapManager {
       pathPoints,
       curve,
       length: pathLength,
-      biome: JSON_BIOME_NAME_MAP[biomeOverride] || 'summer',
+      biome: normalizeBiomeId(biomeOverride),
       flowSpeed: config.physics?.waterFlowIntensity || this.levelData.world.biome.water.flowSpeed,
       waterLevel: 0.5,
-      waterWidth: config.waterWidth ?? this.levelData.world.track.waterWidth ?? DEFAULT_MAP_CONFIG.waterWidth,
+      waterWidth: config.waterWidth ?? this.levelData.world.track.width ?? DEFAULT_MAP_CONFIG.waterWidth,
       canyonWidth: config.width || this.levelData.world.track.width || DEFAULT_MAP_CONFIG.canyonWidth,
       spawns,
+      config: progression.decorations || progression.launchShelf || progression.openFloor
+        ? {
+            decorations: progression.decorations,
+            launchShelf: progression.launchShelf,
+            openFloor: progression.openFloor,
+          }
+        : undefined,
       active: true,
     };
 
     return chunk;
-  }
-
-  private calculateSegmentSpawns(
-    curve: THREE.CatmullRomCurve3,
-    config: LevelSegment,
-    index: number
-  ): SpawnData[] {
-    const spawns: SpawnData[] = [];
-    const rng = new SeededRandom(index * 1000);
-    const decorations = config.decorations || {};
-    const pathLength = curve.getLength();
-    const steps = Math.floor(pathLength / 2);
-
-    for (let i = 0; i < steps; i++) {
-      const t = i / steps;
-      const point = curve.getPoint(t);
-      const tangent = curve.getTangent(t).normalize();
-      const up = new THREE.Vector3(0, 1, 0);
-      const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
-      const canyonWidth = config.width || 35;
-      const waterWidth = 10;
-
-      for (const side of [-1, 1]) {
-        // Trees
-        const treeCount = decorations.trees || 0;
-        const treeChance = treeCount / steps;
-        if (rng.next() < treeChance) {
-          const dist = waterWidth / 2 + 4 + rng.next() * 8;
-          const offset = binormal.clone().multiplyScalar(side * dist);
-          const pos = point.clone().add(offset);
-          const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
-          const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-          pos.y += height - 0.5;
-
-          spawns.push({
-            type: 'tree',
-            position: pos,
-            rotation: new THREE.Euler(0, rng.next() * Math.PI * 2, 0),
-            scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng.next() * 0.5),
-            meta: { variant: rng.nextInt(0, 3) }
-          });
-        }
-
-        // Rocks
-        const rockCount = decorations.rocks || 0;
-        const rockChance = rockCount / steps;
-        if (rng.next() < rockChance) {
-          const dist = waterWidth / 2 + 1 + rng.next() * 4;
-          const offset = binormal.clone().multiplyScalar(side * dist);
-          const pos = point.clone().add(offset);
-          const normalizedDist = Math.abs(side * dist) / (canyonWidth * 0.45);
-          const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-          pos.y += height;
-
-          spawns.push({
-            type: 'rock',
-            position: pos,
-            rotation: new THREE.Euler(rng.next() * Math.PI, rng.next() * Math.PI, rng.next() * Math.PI),
-            scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.8),
-            meta: { collider: true }
-          });
-        }
-      }
-    }
-
-    return spawns;
   }
 
   update(playerPosition: THREE.Vector3): void {
@@ -884,14 +1089,16 @@ export class JSONMapManager implements MapManager {
       return base;
     }
 
-    // Map JSON long-form biome name to internal short-form (e.g. 'creek-autumn' → 'autumn')
+    // Map authored biome string to canonical BiomeId (legacy aliases at load only)
     const rawBiome = seg.biomeOverride ?? this.levelData.world.biome.baseType;
-    const mappedBiome = JSON_BIOME_NAME_MAP[rawBiome] ?? rawBiome;
+    const mappedBiome = normalizeBiomeId(rawBiome);
 
     // Derive rockDensity from decoration counts: >= 15 rocks → 'high'
-    let rockDensity: 'low' | 'high' = base.rockDensity;
-    if (seg.decorations?.rocks !== undefined) {
-      rockDensity = seg.decorations.rocks >= 15 ? 'high' : 'low';
+    let rockDensity: SegmentProgressionConfig['rockDensity'] =
+      seg.rockDensity ?? base.rockDensity;
+    const rockDecorations = seg.decorations?.rocks;
+    if (!seg.rockDensity && typeof rockDecorations === 'number') {
+      rockDensity = rockDecorations >= 15 ? 'high' : 'low';
     }
 
     return {
@@ -903,14 +1110,96 @@ export class JSONMapManager implements MapManager {
       meanderStrength: seg.meanderStrength ?? base.meanderStrength,
       verticalBias: seg.verticalBias ?? base.verticalBias,
       flowSpeed: seg.physics?.waterFlowIntensity ?? base.flowSpeed,
-      treeDensity: seg.decorations?.treeDensity ?? base.treeDensity,
+      treeDensity:
+        seg.treeDensity ??
+        (typeof seg.decorations?.trees === 'number'
+          ? seg.decorations.trees
+          : base.treeDensity),
       rockDensity,
       forwardMomentum: seg.forwardMomentum,
       particleCount: seg.effects?.particleCount,
       cameraShake: seg.effects?.cameraShake,
       gravityMultiplier: seg.physics?.gravityMultiplier,
       decorations: seg.decorations,
+      launchShelf: seg.launchShelf,
+      journeyComplete: seg.journeyComplete,
+      slipperiness: seg.slipperiness,
+      openFloor: seg.openFloor,
     };
+  }
+}
+
+// =============================================================================
+// PROCEDURAL MAP MANAGER (JSON-authored config + procedural treadmill paths)
+// =============================================================================
+
+/**
+ * Combines JSON level segment configs with procedural path generation.
+ * Authored segments resolve via JSONMapManager.getChunkConfig; indices beyond
+ * the authored sequence fall back to DefaultMapManager progression ranges.
+ */
+export class ProceduralMapManager implements MapManager {
+  chunks: BaseMapChunk[] = [];
+  currentChunkIndex = 0;
+  private config: MapConfig;
+  private levelData: LevelData | null;
+  private jsonManager: JSONMapManager | null;
+  private continuationManager: JSONMapManager | null;
+  private continuationStartIndex: number;
+  private fallbackManager: DefaultMapManager;
+
+  constructor(
+    levelData?: LevelData | null,
+    fallbackProgression: SegmentRange[] = [],
+    config: Partial<MapConfig> = {},
+    continuation?: { levelData: LevelData; startIndex?: number } | null,
+  ) {
+    this.config = { ...DEFAULT_MAP_CONFIG, ...config };
+    this.levelData = levelData ?? null;
+    this.jsonManager = levelData ? new JSONMapManager(levelData) : null;
+    this.continuationManager = continuation?.levelData
+      ? new JSONMapManager(continuation.levelData)
+      : null;
+    this.continuationStartIndex = continuation?.startIndex ?? 0;
+    this.fallbackManager = new DefaultMapManager(config, fallbackProgression);
+  }
+
+  getChunkConfig(index: number): SegmentProgressionConfig {
+    if (this.jsonManager && this.levelData) {
+      const totalSegments = this.levelData.world.track.totalSegments;
+      const hasExplicit = this.levelData.segments.some((segment) => segment.index === index);
+      if (hasExplicit || index < totalSegments) {
+        return this.jsonManager.getChunkConfig(index);
+      }
+      if (this.continuationManager) {
+        const continuationIndex = this.continuationStartIndex + (index - totalSegments);
+        return this.continuationManager.getChunkConfig(continuationIndex);
+      }
+    }
+    return this.fallbackManager.getChunkConfig(index);
+  }
+
+  getChunkAtPosition(position: THREE.Vector3): BaseMapChunk | null {
+    return this.fallbackManager.getChunkAtPosition(position);
+  }
+
+  generateChunk(index: number, previousChunk?: BaseMapChunk): BaseMapChunk {
+    const previousPoints = previousChunk?.pathPoints ?? null;
+    const { chunk } = buildProceduralSegment(index, previousPoints, this, {
+      seed: this.config.seed + index * 1000,
+      ensureContinuity: !!previousChunk,
+    });
+    return chunk;
+  }
+
+  update(playerPosition: THREE.Vector3): void {
+    this.fallbackManager.update(playerPosition);
+    this.chunks = this.fallbackManager.chunks;
+    this.currentChunkIndex = this.fallbackManager.currentChunkIndex;
+  }
+
+  getFlowAtPosition(position: THREE.Vector3): THREE.Vector3 {
+    return this.fallbackManager.getFlowAtPosition(position);
   }
 }
 
@@ -928,15 +1217,23 @@ export class ChunkPool {
   private pool: BaseMapChunk[] = [];
 
   acquire(): BaseMapChunk {
-    return this.pool.pop() || ({} as BaseMapChunk);
+    const chunk = this.pool.pop();
+    if (chunk) {
+      chunk.active = true;
+      return chunk;
+    }
+    return {} as BaseMapChunk;
   }
 
-  release(chunk: BaseMapChunk) {
+  release(chunk: BaseMapChunk): void {
     chunk.active = false;
-    // clear expensive references to help GC
     delete chunk.curve;
     delete chunk.collider;
     this.pool.push(chunk);
+  }
+
+  get size(): number {
+    return this.pool.length;
   }
 }
 

@@ -222,12 +222,16 @@ let _modulePromise: Promise<WatershedNativeModule> | null = null;
 function resolvePublicAsset(path: string): string {
   const rawBase = getAssetBaseUrl();
   const baseWithSlash = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+  const envBase =
+    typeof process !== 'undefined' && typeof process.env.WATERSHED_WASM_BASE === 'string'
+      ? process.env.WATERSHED_WASM_BASE
+      : undefined;
   const runtimeHref =
     typeof window !== 'undefined'
       ? window.location.href
       : typeof globalThis.location?.href === 'string'
         ? globalThis.location.href
-        : undefined;
+        : envBase;
   const absoluteBase =
     runtimeHref
       ? new URL(baseWithSlash, runtimeHref).href
@@ -253,11 +257,12 @@ export async function getWasm(): Promise<WatershedNativeModule> {
     // if the project is ever processed by webpack.
     // Use eval-like dynamic import to prevent bundlers from trying to resolve
     // the WASM glue JS at build time (the file is produced by Emscripten).
-    const dynamicImport = new Function('url', 'return import(url)') as (url: string) => Promise<unknown>;
     const wasmJsUrl = resolvePublicAsset('watershed_native.js');
-    const mod = await dynamicImport(wasmJsUrl) as {
-      default: WatershedNativeFactory;
-    };
+    const mod = typeof process !== 'undefined' && process.env.WATERSHED_WASM_INTEGRATION === '1'
+      ? await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory }
+      : await (new Function('url', 'return import(url)') as (url: string) => Promise<unknown>)(wasmJsUrl) as {
+          default: WatershedNativeFactory;
+        };
 
     const factory = mod.default;
     return factory({

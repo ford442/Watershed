@@ -95,12 +95,22 @@ interface BiomeConfig {
   water: WaterConfig;
 }
 
-type BiomeType = 
-  | "creek-summer"    // Lush green, bright, fireflies
-  | "creek-autumn"    // Golden tones, falling leaves
-  | "alpine-spring"   // Snowmelt, clear water, cold tones
-  | "canyon-sunset"   // Warm oranges, long shadows
-  | "midnight-mist";  // Dark blue, heavy fog, fireflies
+type BiomeType =
+  | "canyonSummer"    // Lush green, bright, fireflies
+  | "canyonAutumn"    // Golden foliage, falling leaves
+  | "alpineSpring"    // Snowmelt, evergreens, crisp air
+  | "slotCanyon"      // Warm oranges, red rock slot
+  | "midnightMist"    // Dark fog, mysterious
+  | "glacialMelt"     // Ice-blue meltwater source
+  | "glacier"         // Ice chute
+  | "delta"           // Wide calm water
+  | "cavern"          // Underground
+  | "lumberFlume"     // Stub — content pending
+  | "hydroDam";       // Stub — content pending
+
+// Deprecated aliases (map-load only via normalizeBiomeId):
+// summer/creek-summer → canyonSummer, autumn/creek-autumn → canyonAutumn,
+// canyon-sunset → slotCanyon, midnight-mist → midnightMist, glacial-melt → glacialMelt, …
 
 interface SkyConfig {
   color: string;           // Hex color (e.g., "#87CEEB")

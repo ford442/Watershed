@@ -9,7 +9,7 @@ import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
 import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
 import type { WorkerRaftState } from '../physics/rapierWorkerProtocol';
 import { usePlayerControls } from '../hooks/usePlayerControls';
-import { WATER_PHYSICS } from './RaftVehicle/constants';
+import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
@@ -72,12 +72,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     const vel = body.linvel();
     const angvel = body.angvel();
 
-    proxy.step({
-      position: [pos.x, pos.y, pos.z],
-      rotation: [rot.x, rot.y, rot.z, rot.w],
-      velocity: [vel.x, vel.y, vel.z],
-      angularVelocity: [angvel.x, angvel.y, angvel.z],
-    }, delta).then((workerState) => {
+    proxy.step(delta).then((workerState) => {
       if (workerState) syncBodyFromWorkerState(bodyRef.current, workerState);
     }).finally(() => {
       workerStepPendingRef.current = false;
@@ -124,7 +119,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     const handleBiomeChange = (event: Event) => {
       const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'summer';
+      const biome = customEvent.detail?.biome || 'canyonSummer';
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.WATER;
       raftVehicle.current.setSurfaceMaterial(material);
@@ -151,11 +146,26 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   }, [useWorkerPhysics]);
 
   useRaftControls({
-    bodyRef, raftVehicle, camera, controls, workerProxy: workerProxyRef.current,
-    buoyancyState, tippingState, paddleState, staminaState,
-    stunState, forwardBiasState, shedParticles, collisionState,
-    lastWorkerSync, sharedPhysicsState, raftMaterialRef, useWorkerPhysics, applyWorkerImpulse, stepWorkerProxy,
-    shelfLaunchFiredRef, shelfTriggerRef
+    bodyRef,
+    raftVehicle,
+    camera,
+    controls,
+    workerProxyRef,
+    workerReadyRef,
+    useWorkerPhysics,
+    applyWorkerImpulse,
+    stepWorkerProxy,
+    buoyancyState,
+    tippingState,
+    paddleState,
+    staminaState,
+    stunState,
+    forwardBiasState,
+    shedParticles,
+    collisionState,
+    raftMaterialRef,
+    shelfLaunchFiredRef,
+    shelfTriggerRef,
   });
 
   return (
@@ -168,6 +178,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         linearDamping={2.0}
         angularDamping={2.5}
         position={PLAYER_SPAWN.position}
+        userData={{ isPlayer: true }}
       >
         <mesh castShadow receiveShadow>
           <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH, WATER_PHYSICS.RAFT_HEIGHT, WATER_PHYSICS.RAFT_LENGTH]} />

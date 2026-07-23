@@ -1,3 +1,8 @@
+/**
+ * DORMANT WebGPU migration seed — not wired into the live renderer.
+ * Retained as the subject of the #255 guard. See docs/reference/RENDERER_CONTRACT.md.
+ */
+
 /** Moss height fade band above waterline (world-space meters). */
 export const MOSS_HEIGHT_FADE = { low: 2.0, high: 4.5 } as const;
 

@@ -1,3 +1,9 @@
+/**
+ * DORMANT / EXPERIMENTAL WebGPU compute shader — not wired into the live renderer.
+ * Fetched at runtime by src/shaders/HeightmapFlow.ts as an optional compute path.
+ * The game renderer remains WebGL2-only. See docs/RENDERER_CONTRACT.md.
+ */
+
 struct HeightmapFlowParams {
   texelSize: vec2<f32>,
   deltaTime: f32,
