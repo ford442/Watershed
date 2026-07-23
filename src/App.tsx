@@ -70,6 +70,7 @@ function App() {
   /** Heavy Physics/track mount — deferred after Start so the menu can unmount first. */
   const [worldEnabled, setWorldEnabled] = useState(false);
   const [skipLoader, setSkipLoader] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const debug = useDebugStages();
   const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
