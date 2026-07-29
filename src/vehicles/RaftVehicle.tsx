@@ -6,8 +6,15 @@ import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME }
 import { CollisionParticles } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
+import { buildRaftWorkerWaterForceConfig } from '../physics/physicsWorkerConfig';
+import {
+  getPhysicsWorkerTickParams,
+  setPhysicsWorkerActive,
+  setPhysicsWorkerDiagnostics,
+} from '../physics/physicsWorkerRegistry';
 import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
-import type { WorkerRaftState } from '../physics/rapierWorkerProtocol';
+import type { Vec3Tuple, WorkerRaftState } from '../physics/rapierWorkerProtocol';
+import { isPhysicsWorkerEnabled } from '../utils/physicsWorkerFlag';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
@@ -19,8 +26,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const raftMaterialRef = useRef<any>(null);
   const { camera } = useThree();
   const { world } = useRapier();
-  const useWorkerPhysics = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('raftWorker') === '1';
+  const useWorkerPhysics = isPhysicsWorkerEnabled();
 
   const controls = usePlayerControls();
   const raftVehicle = useRef(new RaftVehicleClass());
@@ -62,18 +68,36 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     });
   };
 
-  const stepWorkerProxy = (body: any, delta: number) => {
+  const stepWorkerProxy = (body: any, delta: number, impulses: Vec3Tuple[] = []) => {
     const proxy = workerProxyRef.current;
     if (!proxy || !workerReadyRef.current || workerStepPendingRef.current) return;
 
     workerStepPendingRef.current = true;
-    const pos = body.translation();
-    const rot = body.rotation();
-    const vel = body.linvel();
-    const angvel = body.angvel();
+    const tickParams = getPhysicsWorkerTickParams();
+    const waterForce = buildRaftWorkerWaterForceConfig(
+      tickParams,
+      performance.now() / 1000,
+      true,
+    );
 
-    proxy.step(delta).then((workerState) => {
+    proxy.step(delta, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
       if (workerState) syncBodyFromWorkerState(bodyRef.current, workerState);
+      if (diagnostics) {
+        setPhysicsWorkerDiagnostics(diagnostics);
+        if (typeof window !== 'undefined' && import.meta.env.DEV) {
+          (window as any).__watershedPhysicsWorker = {
+            wasmAvailable: proxy.isWasmAvailable,
+            waterForce: diagnostics,
+            tickOrder: [
+              'read-rapier-state',
+              'compute-water-forces-batch',
+              'apply-impulses',
+              'rapier-step',
+              'post-snapshot',
+            ],
+          };
+        }
+      }
     }).finally(() => {
       workerStepPendingRef.current = false;
     });
@@ -102,11 +126,13 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
           ],
         }).then((workerState) => {
           workerReadyRef.current = true;
+          setPhysicsWorkerActive(true);
           syncBodyFromWorkerState(bodyRef.current, workerState);
           return proxy.applyImpulse([0, 2, 0]);
         }).catch((error) => {
           console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
           workerReadyRef.current = false;
+          setPhysicsWorkerActive(false);
           workerProxyRef.current?.dispose();
           workerProxyRef.current = null;
           bodyRef.current?.applyImpulse?.({ x: 0, y: 2, z: 0 }, true);
@@ -140,6 +166,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     return () => {
       window.removeEventListener('biome-change', handleBiomeChange);
       window.removeEventListener('segment-spawn', handleSegmentSpawn);
+      setPhysicsWorkerActive(false);
+      setPhysicsWorkerDiagnostics(null);
       workerProxyRef.current?.dispose();
       workerProxyRef.current = null;
     };

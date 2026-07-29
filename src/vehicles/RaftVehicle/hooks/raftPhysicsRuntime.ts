@@ -43,7 +43,7 @@ export interface RaftPhysicsRuntimeDeps {
   workerStepPendingRef: { current: boolean };
   useWorkerPhysics: boolean;
   applyWorkerImpulse: (impulse: THREE.Vector3) => void;
-  stepWorkerProxy: (body: any, delta: number) => void;
+  stepWorkerProxy: (body: any, delta: number, impulses?: [number, number, number][]) => void;
   currentFov: { current: number };
   shelfLaunchFiredRef: { current: boolean };
   shelfTriggerRef: { current: any };
@@ -541,27 +541,48 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
   const rot = body.rotation();
   const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
   const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
+  const impulses: [number, number, number][] = [];
 
   if ((paddleLeft && paddleRight) || forward) {
     const power = consumeStamina();
     if (power > 0) {
-      deps.applyWorkerImpulse(forwardDir.multiplyScalar(PADDLE.THRUST_FORCE * power * delta));
+      impulses.push([
+        forwardDir.x * PADDLE.THRUST_FORCE * power * delta,
+        forwardDir.y * PADDLE.THRUST_FORCE * power * delta,
+        forwardDir.z * PADDLE.THRUST_FORCE * power * delta,
+      ]);
     }
   } else if (paddleLeft) {
     const power = consumeStamina();
     if (power > 0) {
-      deps.applyWorkerImpulse(forwardDir.multiplyScalar(PADDLE.THRUST_FORCE * 0.7 * power * delta));
-      deps.applyWorkerImpulse(rightDir.multiplyScalar(PADDLE.THRUST_FORCE * 0.5 * power * delta));
+      impulses.push([
+        forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
+        forwardDir.y * PADDLE.THRUST_FORCE * 0.7 * power * delta,
+        forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * power * delta,
+      ]);
+      impulses.push([
+        rightDir.x * PADDLE.THRUST_FORCE * 0.5 * power * delta,
+        rightDir.y * PADDLE.THRUST_FORCE * 0.5 * power * delta,
+        rightDir.z * PADDLE.THRUST_FORCE * 0.5 * power * delta,
+      ]);
     }
   } else if (paddleRight) {
     const power = consumeStamina();
     if (power > 0) {
-      deps.applyWorkerImpulse(forwardDir.multiplyScalar(PADDLE.THRUST_FORCE * 0.7 * power * delta));
-      deps.applyWorkerImpulse(rightDir.multiplyScalar(-PADDLE.THRUST_FORCE * 0.5 * power * delta));
+      impulses.push([
+        forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
+        forwardDir.y * PADDLE.THRUST_FORCE * 0.7 * power * delta,
+        forwardDir.z * PADDLE.THRUST_FORCE * 0.7 * power * delta,
+      ]);
+      impulses.push([
+        -rightDir.x * PADDLE.THRUST_FORCE * 0.5 * power * delta,
+        -rightDir.y * PADDLE.THRUST_FORCE * 0.5 * power * delta,
+        -rightDir.z * PADDLE.THRUST_FORCE * 0.5 * power * delta,
+      ]);
     }
   }
 
-  deps.stepWorkerProxy(body, delta);
+  deps.stepWorkerProxy(body, delta, impulses);
   updateCameraFromBody(body);
 
   window.dispatchEvent(new CustomEvent('raft-stamina', {

@@ -33,7 +33,7 @@ export interface UseRaftControlsParams {
   workerReadyRef: { current: boolean };
   useWorkerPhysics: boolean;
   applyWorkerImpulse: (impulse: THREE.Vector3) => void;
-  stepWorkerProxy: (body: any, delta: number) => void;
+  stepWorkerProxy: (body: any, delta: number, impulses?: [number, number, number][]) => void;
   buoyancyState: { current: any };
   tippingState: { current: any };
   paddleState: { current: any };

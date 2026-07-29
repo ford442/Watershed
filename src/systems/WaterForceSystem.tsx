@@ -35,6 +35,10 @@ import {
   setWaterForceSystemActive,
   type WaterForceBody,
 } from './WaterForceRegistry';
+import {
+  isPhysicsWorkerActive,
+  setPhysicsWorkerTickParams,
+} from '../physics/physicsWorkerRegistry';
 import type { VehicleRigidBodyRef, VehicleType } from '../experience/types';
 
 const PHYSICS_SCALE = 0.001;
@@ -238,6 +242,15 @@ export function WaterForceSystem({
 
     const dt = Math.min(delta, 0.05);
     const timeSeconds = state.clock.elapsedTime;
+    const workerOwnsVehicleForces = isPhysicsWorkerActive();
+    setPhysicsWorkerTickParams({
+      flowSpeed,
+      waterLevel,
+      turbulenceStrength,
+      turbulenceFrequency,
+      flowDirX: 0,
+      flowDirZ: -1,
+    });
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
     const originX = anchor.x - (SWE_GRID_WIDTH * SWE_CELL_SIZE) * 0.5;
     const originZ = anchor.z - (SWE_GRID_HEIGHT * SWE_CELL_SIZE) * 0.5;
@@ -286,6 +299,9 @@ export function WaterForceSystem({
           if (!pos || !vel) continue;
 
           const isVehicle = i === 0 && vehicleBody != null;
+          if (isVehicle && workerOwnsVehicleForces) {
+            continue;
+          }
           const config = isVehicle
             ? vehicleConfig
             : floatingForceConfig(
@@ -334,6 +350,9 @@ export function WaterForceSystem({
           if (!pos || !vel) continue;
 
           const isVehicle = i === 0 && vehicleBody != null;
+          if (isVehicle && workerOwnsVehicleForces) {
+            continue;
+          }
           const config = isVehicle
             ? vehicleConfig
             : floatingForceConfig(
@@ -373,6 +392,10 @@ export function WaterForceSystem({
         status: statusRef.current,
         origin: originRef.current,
         sampleCount: bodies.length,
+        workerOwnsVehicleForces,
+        workerDiagnostics: workerOwnsVehicleForces
+          ? (window as any).__watershedPhysicsWorker?.waterForce
+          : undefined,
       };
     }
   });
