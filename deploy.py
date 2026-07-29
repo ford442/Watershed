@@ -38,9 +38,11 @@ BUILD_DIR: str = 'build'
 CONTABO_BASE_URL: str = "https://storage.noahcohn.com"
 DEPLOY_FOLDER: str = ""  # override remote target folder; empty = use PROJECT_NAME
 
-# Deploy token is required for authenticated uploads.
-# Set via environment: export DEPLOY_TOKEN="your_long_token_from_vps_env"
-# There is no baked-in fallback — a real deploy fails loudly if this is unset.
+# Deploy token — REQUIRED. Read from the environment; never hard-code secrets here.
+#   export DEPLOY_TOKEN="your_long_token_from_vps_env"
+# SECURITY: a token was previously hard-coded here and is now in git history — it
+# MUST be treated as compromised. Rotating it on the VPS and scrubbing git history
+# remain manual owner actions; this code change only stops new leaks.
 DEPLOY_TOKEN: Optional[str] = os.environ.get("DEPLOY_TOKEN")
 # ============================================================
 
@@ -134,14 +136,20 @@ def main():
         print("Please run your build command first (e.g. `npm run build`).")
         sys.exit(1)
 
-    if not args.dry_run:
-        try:
-            health = requests.get(f"{CONTABO_BASE_URL}/api/deploy/health", timeout=10)
-            if health.status_code == 200:
-                print(f"Contabo deploy service: {health.json().get('status', 'unknown')}")
-        except Exception:
-            print("Warning: Could not contact storage.noahcohn.com (continuing anyway).")
-        print()
+    if not DEPLOY_TOKEN:
+        print(
+            "ERROR: DEPLOY_TOKEN is not set. Export the deploy token before deploying:\n"
+            '  export DEPLOY_TOKEN="<your_token_from_vps_env>"',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        health = requests.get(f"{CONTABO_BASE_URL}/api/deploy/health", timeout=10)
+        if health.status_code == 200:
+            print(f"Contabo deploy service: {health.json().get('status', 'unknown')}")
+    except Exception:
+        print("Warning: Could not contact storage.noahcohn.com (continuing anyway).")
 
     success = deploy_bundle(build_path, dry_run=args.dry_run)
 
