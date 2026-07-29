@@ -433,6 +433,45 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 
 ---
 
+## Physics Worker (ADR v1)
+
+### `src/physics/rapier.worker.ts` + `RapierWorkerProxy`
+
+**Purpose:** Co-locate Rapier rigid-body stepping with C++ `watershed_native` batch water
+forces in a single worker tick. Enabled via `?physicsWorker=1` (legacy alias:
+`?raftWorker=1`). Default off — main-thread `@react-three/rapier` remains the stable path
+for visual-smoke and CI.
+
+**Tick order (worker path, per `docs/reference/ADR_WASM_RAPIER_WATER_FORCES.md`):**
+
+```txt
+1. Read raft Rapier state (position, velocity)
+2. Pack 8-float input stride → computeWaterForcesBatch (or TS fallback)
+3. Apply water-force impulses (force × dt × 0.001)
+4. Apply external impulses (paddle, etc.)
+5. world.step()
+6. postMessage body snapshot + force diagnostics to render thread
+```
+
+**Data boundary:** 8-float input `[posXYZ, velXYZ, flowDirXZ]` and 8-float output
+`[forceXYZ, buoyancy, drag, flow, turbulence, submergedRatio]` per sample.
+
+**Render thread responsibilities:** visuals, input, camera, HUD, SWE height texture upload
+(`WaterForceSystem` still owns SWE for `FlowingWater`; only raft force application moves
+into the worker when the flag is on).
+
+**Fallback:** Missing `watershed_native.wasm` → worker uses `calculateWaterForceFallback`
+inside the same tick (no extra frame of lag). Flag off → existing main-thread
+`WaterForceSystem` + Rapier path.
+
+**Phase 2 protocol (collider registration):** `ADD_STATIC_COLLIDER`, `REMOVE_STATIC_COLLIDER`,
+`CLEAR_STATIC_COLLIDERS` — segment treadmill meshes can be streamed without a second worker.
+
+**Debug:** `window.__watershedPhysicsWorker` (dev) exposes `waterForce` diagnostics and tick
+order when the worker path is active.
+
+---
+
 ## WASM Module
 
 ### `src/systems/WatershedWasm.ts` + `emscripten/`

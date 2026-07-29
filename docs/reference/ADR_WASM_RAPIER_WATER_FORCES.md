@@ -170,6 +170,17 @@ This mounts `WasmWaterForceTest`:
 
 The POC is intentionally isolated behind a URL flag and does not replace the normal raft controller.
 
+### Production worker rollout
+
+Run raft mode with co-located Rapier + C++ water forces:
+
+```txt
+?physicsWorker=1&vehicle=raft
+```
+
+(`?raftWorker=1` remains a legacy alias.) Default path is unchanged when the flag is absent.
+Worker diagnostics are exposed at `window.__watershedPhysicsWorker` in development builds.
+
 ## Biome Math V1
 
 Slot canyon:
