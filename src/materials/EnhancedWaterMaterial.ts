@@ -11,6 +11,47 @@
 
 import * as THREE from 'three';
 
+/** GLSL uniform bag for the enhanced (reflective) water shader. */
+export interface EnhancedWaterMaterialUniforms {
+  /** Index signature required by THREE.ShaderMaterialParameters. */
+  [uniform: string]: THREE.IUniform;
+  reflectionTexture: THREE.IUniform<THREE.Texture | null>;
+  refractionTexture: THREE.IUniform<THREE.Texture | null>;
+  normalMap: THREE.IUniform<THREE.Texture | null>;
+  causticsTexture: THREE.IUniform<THREE.Texture | null>;
+  waterColor: THREE.IUniform<THREE.Color>;
+  deepColor: THREE.IUniform<THREE.Color>;
+  foamColor: THREE.IUniform<THREE.Color>;
+  highlightColor: THREE.IUniform<THREE.Color>;
+  time: THREE.IUniform<number>;
+  flowSpeed: THREE.IUniform<number>;
+  opacity: THREE.IUniform<number>;
+  causticsIntensity: THREE.IUniform<number>;
+  reflectivity: THREE.IUniform<number>;
+  waterLevel: THREE.IUniform<number>;
+}
+
+/** A ShaderMaterial whose uniforms are known to be the enhanced-water bag. */
+export type EnhancedWaterMaterial = THREE.ShaderMaterial & {
+  uniforms: EnhancedWaterMaterialUniforms;
+};
+
+/** Options accepted by {@link createEnhancedWaterMaterial}. */
+export interface EnhancedWaterMaterialOptions {
+  waterColor?: THREE.ColorRepresentation;
+  deepColor?: THREE.ColorRepresentation;
+  foamColor?: THREE.ColorRepresentation;
+  highlightColor?: THREE.ColorRepresentation;
+  flowSpeed?: number;
+  opacity?: number;
+  causticsIntensity?: number;
+  reflectivity?: number;
+  waterLevel?: number;
+  reflectionTexture?: THREE.Texture | null;
+  refractionTexture?: THREE.Texture | null;
+  time?: number;
+}
+
 const VERTEX_SHADER = `
   uniform float time;
   uniform float flowSpeed;
@@ -164,7 +205,9 @@ const FRAGMENT_SHADER = `
 /**
  * Create enhanced water material
  */
-export function createEnhancedWaterMaterial(options = {}) {
+export function createEnhancedWaterMaterial(
+  options: EnhancedWaterMaterialOptions = {},
+): EnhancedWaterMaterial {
   const {
     waterColor = '#1a7b9c',
     deepColor = '#0d4a5a',
@@ -180,29 +223,31 @@ export function createEnhancedWaterMaterial(options = {}) {
     time = 0,
   } = options;
 
+  const uniforms: EnhancedWaterMaterialUniforms = {
+    reflectionTexture: { value: reflectionTexture },
+    refractionTexture: { value: refractionTexture },
+    normalMap: { value: null },
+    causticsTexture: { value: null },
+    waterColor: { value: new THREE.Color(waterColor) },
+    deepColor: { value: new THREE.Color(deepColor) },
+    foamColor: { value: new THREE.Color(foamColor) },
+    highlightColor: { value: new THREE.Color(highlightColor) },
+    time: { value: time },
+    flowSpeed: { value: flowSpeed },
+    opacity: { value: opacity },
+    causticsIntensity: { value: causticsIntensity },
+    reflectivity: { value: reflectivity },
+    waterLevel: { value: waterLevel },
+  };
+
   return new THREE.ShaderMaterial({
-    uniforms: {
-      reflectionTexture: { value: reflectionTexture },
-      refractionTexture: { value: refractionTexture },
-      normalMap: { value: null },
-      causticsTexture: { value: null },
-      waterColor: { value: new THREE.Color(waterColor) },
-      deepColor: { value: new THREE.Color(deepColor) },
-      foamColor: { value: new THREE.Color(foamColor) },
-      highlightColor: { value: new THREE.Color(highlightColor) },
-      time: { value: time },
-      flowSpeed: { value: flowSpeed },
-      opacity: { value: opacity },
-      causticsIntensity: { value: causticsIntensity },
-      reflectivity: { value: reflectivity },
-      waterLevel: { value: waterLevel },
-    },
+    uniforms,
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-  });
+  }) as EnhancedWaterMaterial;
 }
 
 export default createEnhancedWaterMaterial;

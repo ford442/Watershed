@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "homepage": ".",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",
     "@react-three/drei": "^10.7.7",

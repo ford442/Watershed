@@ -7,6 +7,37 @@
 
 import * as THREE from 'three';
 
+/** GLSL uniform bag for the caustics projection shader. */
+export interface CausticsMaterialUniforms {
+  /** Index signature required by THREE.ShaderMaterialParameters. */
+  [uniform: string]: THREE.IUniform;
+  time: THREE.IUniform<number>;
+  waterColor: THREE.IUniform<THREE.Color>;
+  causticsIntensity: THREE.IUniform<number>;
+  causticsScale: THREE.IUniform<number>;
+  causticsSpeed: THREE.IUniform<number>;
+  waterLevel: THREE.IUniform<number>;
+  maxDepth: THREE.IUniform<number>;
+  causticsTexture: THREE.IUniform<THREE.Texture | null>;
+}
+
+/** A ShaderMaterial whose uniforms are known to be the caustics bag. */
+export type CausticsMaterial = THREE.ShaderMaterial & {
+  uniforms: CausticsMaterialUniforms;
+};
+
+/** Options accepted by {@link createCausticsMaterial}. */
+export interface CausticsMaterialOptions {
+  waterColor?: THREE.ColorRepresentation;
+  causticsIntensity?: number;
+  causticsScale?: number;
+  causticsSpeed?: number;
+  waterLevel?: number;
+  maxDepth?: number;
+  causticsTexture?: THREE.Texture | null;
+  time?: number;
+}
+
 const VERTEX_SHADER = `
   varying vec2 vUv;
   varying vec3 vWorldPos;
@@ -126,7 +157,9 @@ const FRAGMENT_SHADER = `
 /**
  * Create caustics projection material
  */
-export function createCausticsMaterial(options = {}) {
+export function createCausticsMaterial(
+  options: CausticsMaterialOptions = {},
+): CausticsMaterial {
   const {
     waterColor = '#1a7b9c',
     causticsIntensity = 0.5,
@@ -140,17 +173,19 @@ export function createCausticsMaterial(options = {}) {
 
   const defines = causticsTexture ? { USE_CAUSTICS_TEXTURE: '' } : {};
 
+  const uniforms: CausticsMaterialUniforms = {
+    time: { value: time },
+    waterColor: { value: new THREE.Color(waterColor) },
+    causticsIntensity: { value: causticsIntensity },
+    causticsScale: { value: causticsScale },
+    causticsSpeed: { value: causticsSpeed },
+    waterLevel: { value: waterLevel },
+    maxDepth: { value: maxDepth },
+    causticsTexture: { value: causticsTexture },
+  };
+
   return new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: time },
-      waterColor: { value: new THREE.Color(waterColor) },
-      causticsIntensity: { value: causticsIntensity },
-      causticsScale: { value: causticsScale },
-      causticsSpeed: { value: causticsSpeed },
-      waterLevel: { value: waterLevel },
-      maxDepth: { value: maxDepth },
-      causticsTexture: { value: causticsTexture },
-    },
+    uniforms,
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     defines,
@@ -158,15 +193,18 @@ export function createCausticsMaterial(options = {}) {
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
-  });
+  }) as CausticsMaterial;
 }
 
 /**
  * CausticsProjector - Component that projects caustics onto canyon floor
  */
-export function createCausticsProjector(geometry, options = {}) {
+export function createCausticsProjector(
+  geometry: THREE.BufferGeometry,
+  options: CausticsMaterialOptions = {},
+): { mesh: THREE.Mesh; material: CausticsMaterial } {
   const material = createCausticsMaterial(options);
-  
+
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = 1; // Render after water, before opaque objects
   mesh.position.y += 0.05; // Slightly above floor to avoid z-fighting
@@ -177,7 +215,10 @@ export function createCausticsProjector(geometry, options = {}) {
 /**
  * Update caustics material time uniform
  */
-export function updateCausticsMaterial(material, elapsedTime) {
+export function updateCausticsMaterial(
+  material: (THREE.Material & { uniforms?: Record<string, { value: any }> }) | null | undefined,
+  elapsedTime: number,
+): void {
   if (material && material.uniforms) {
     material.uniforms.time.value = elapsedTime;
   }
