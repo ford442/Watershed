@@ -1,4 +1,4 @@
-import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier } from './RunnerPhysicsHelpers';
+import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier, castPlayerGroundRay, isTerrainGroundHit } from './RunnerPhysicsHelpers';
 import * as THREE from 'three';
 import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSystem';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../../../constants/game';
@@ -7,6 +7,7 @@ import { isFloatingPlatform } from '../../../systems/FloatingObjectRegistry';
 import { useGameStore } from '../../../systems/GameState';
 import {
     RAYCAST_ORIGIN_OFFSET, RAYCAST_DISTANCE, SMOOTHING_FACTOR, DEG_TO_RAD,
+    RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET,
     JUMP_CONFIG, SLOPE_RANGES, BANK_CONFIG, NEAR_MISS_SPEED_THRESHOLD, NEAR_MISS_RAY_LENGTH, NEAR_MISS_TOI_MIN, NEAR_MISS_TOI_MAX, RUNNER_SPRINT
 } from '../constants';
 import { playJumpSound, playLandSound, playFootstep, playDodgeSound } from '../audio';
@@ -188,26 +189,25 @@ export function updateRunnerPhysics({
     // === SLOPE DETECTION ===
     const slopeAngle = calculateSlopeAngle({ body, world, rapier, slopeState });
 
-    const groundRay = new rapier.Ray(
-      { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z },
-      { x: 0, y: -1, z: 0 }
+    const groundRayOrigin = { x: pos.x, y: pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, z: pos.z };
+    const { hit: groundHit, toi: groundRayDistance, ray: groundRay } = castPlayerGroundRay(
+      world,
+      rapier,
+      body,
+      groundRayOrigin,
     );
-    const groundHit = world.castRay(groundRay, RAYCAST_DISTANCE, true);
-    const groundRayDistance = groundHit
-      ? (typeof (groundHit as any).timeOfImpact === 'function'
-          ? (groundHit as any).timeOfImpact()
-          : groundHit.timeOfImpact)
-      : null;
     const groundRayHitPoint = groundRayDistance !== null
       ? {
-          x: pos.x,
-          y: pos.y + RAYCAST_ORIGIN_OFFSET - groundRayDistance,
-          z: pos.z,
+          x: groundRayOrigin.x,
+          y: groundRayOrigin.y - groundRayDistance,
+          z: groundRayOrigin.z,
         }
       : null;
-    if (typeof (groundRay as any).free === 'function') (groundRay as any).free();
+    if (typeof (groundRay as { free?: () => void }).free === 'function') {
+      (groundRay as { free: () => void }).free();
+    }
 
-    if (groundHit) {
+    if (isTerrainGroundHit(groundRayDistance)) {
       bodyUserData.__terrainReady = true;
     }
     const terrainWarm = !!bodyUserData.__terrainReady;
@@ -226,7 +226,7 @@ export function updateRunnerPhysics({
 
     // Hysteresis: require GROUNDED_HYSTERESIS_FRAMES consecutive misses before going airborne.
     // This prevents spurious state changes when the player skims over small rocks/lips.
-    const rawGrounded = !!groundHit;
+    const rawGrounded = isTerrainGroundHit(groundRayDistance);
     if (rawGrounded) {
       ungroundedFramesRef.current = 0;
     } else {
@@ -269,7 +269,7 @@ export function updateRunnerPhysics({
     // Goal 2: Platform detection via raycast handle registry
     platformState.current.isOnPlatform = false;
     platformState.current.platformBody = null;
-    if (groundHit) {
+    if (rawGrounded && groundHit) {
       try {
         const collider = groundHit.collider;
         const parent = collider?.parent?.();
@@ -277,8 +277,10 @@ export function updateRunnerPhysics({
           if (isFloatingPlatform(parent.handle)) {
             platformState.current.isOnPlatform = true;
             platformState.current.platformBody = true; // used only as boolean at line 709
-            const pVel = parent.linvel();
-            platformState.current.platformVelocity.set(pVel.x, pVel.y, pVel.z);
+            const pVel = parent.linvel?.();
+            if (pVel) {
+              platformState.current.platformVelocity.set(pVel.x, pVel.y, pVel.z);
+            }
           }
           if (typeof (parent as any).free === 'function') (parent as any).free();
         }
@@ -830,7 +832,7 @@ export function updateRunnerPhysics({
     snapshot.extraGravity = PHYSICS.GRAVITY * (gravMultCurrent - 1);
     snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
     snapshot.groundRay = {
-      origin: { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z },
+      origin: { x: pos.x, y: pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, z: pos.z },
       hitPoint: groundRayHitPoint,
       distance: groundRayDistance,
     };
