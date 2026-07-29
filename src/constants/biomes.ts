@@ -89,6 +89,19 @@ export const BIOMES: Record<string, BiomeConfig> = {
     // Fast-moving meltwater — steeper gradient than glacial biome
     flowMultiplier: 1.6,
   },
+
+  hydroDam: {
+    name: 'Hydro-Dam',
+    waterSpeed: 1.85,
+    waterColor: '#2a4a5a',
+    deepColor: '#0a2a3a',
+    foamColor: '#c0d0d8',
+    edgeHighlight: '#7a9aaa',
+    props: ['pipes', 'railings', 'catwalks', 'gates'],
+    vortexChance: 0.35,
+    musicId: 'ambient-dam-001',
+    flowMultiplier: 1.35,
+  },
 };
 
 export type BiomeKey = keyof typeof BIOMES;
@@ -106,6 +119,8 @@ export const getNextBiome = (current: BiomeKey): BiomeKey => {
     canyon: ['river', 'flume'],
     flume: ['canyon', 'river'],
     glacial: ['river'],
+    glacier: ['glacial', 'river'],
+    hydroDam: ['river', 'canyon'],
   };
   
   const options = transitions[current] || Object.keys(BIOMES) as BiomeKey[];

@@ -46,6 +46,12 @@ export const playCollisionSound = (material: string, impactForce: number) => {
   audioManager.playSound(soundName, volume, pitch);
 };
 
+export const playRaftTipSound = () => {
+  initAudio();
+  if (!audioManager) return;
+  audioManager.playSound('raft_tip', 0.9, 0.85);
+};
+
 export const updateWaterRushingSound = (speed: number) => {
   initAudio();
   if (!audioManager) return;

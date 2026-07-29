@@ -14,7 +14,7 @@ const hash = (n) => {
     return x - Math.floor(x);
 };
 
-export default function Mushrooms({ transforms, biome = 'summer' }) {
+export default function Mushrooms({ transforms, biome = 'canyonSummer' }) {
     // 1. Geometries - several cap silhouettes + a gill disc tucked underneath
     const { capGeometries, stemGeometries, gillGeometry } = useMemo(() => {
         // Button: classic squashed hemisphere

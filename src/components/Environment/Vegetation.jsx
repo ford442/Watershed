@@ -5,6 +5,7 @@ import { useTreeAssets } from './TreeAssets';
 import { useFrame } from '@react-three/fiber';
 import { extendTreeMaterial, updateTreeMaterial } from '../../utils/TreeShader';
 import { WATER_LEVEL } from '../../constants/game';
+import { isAutumnLike } from '../../configs/biomes';
 
 // Warm backlight tints used for the foliage SSS/translucency approximation
 const SSS_TINTS = {
@@ -24,7 +25,7 @@ const RIM_PALETTES = {
   slotCanyon: ['#1a1714', '#211d19', '#27221e'],
 };
 
-export default function Vegetation({ transforms, biome = 'summer', isRim = false }) {
+export default function Vegetation({ transforms, biome = 'canyonSummer', isRim = false }) {
   const { variants } = useTreeAssets();
   const safeTransforms = Array.isArray(transforms) ? transforms : [];
 
@@ -53,7 +54,7 @@ export default function Vegetation({ transforms, biome = 'summer', isRim = false
       } else if (species === 'birch') {
         color.lerp(new THREE.Color('#eef3dd'), 0.55);
       } else if (species === 'broadleaf') {
-        color.lerp(new THREE.Color('#ffd0a2'), biome === 'autumn' ? 0.35 : 0.15);
+        color.lerp(new THREE.Color('#ffd0a2'), isAutumnLike(biome) ? 0.35 : 0.15);
       }
 
       color.multiplyScalar(shade);

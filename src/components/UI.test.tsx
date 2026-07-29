@@ -1,11 +1,11 @@
+import type { Mock } from 'vitest';
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { UI } from './UI';
 import { useProgress } from '@react-three/drei';
 
-jest.mock('@react-three/drei', () => ({
-  useProgress: jest.fn(),
+vi.mock('@react-three/drei', () => ({
+  useProgress: vi.fn(),
 }));
 
 describe('UI Component', () => {
@@ -16,7 +16,7 @@ describe('UI Component', () => {
   });
 
   beforeEach(() => {
-    (useProgress as unknown as jest.Mock).mockReturnValue({ active: false, progress: 100 });
+    (useProgress as unknown as Mock).mockReturnValue({ active: false, progress: 100 });
   });
 
   afterEach(() => {
@@ -111,7 +111,7 @@ describe('UI Component', () => {
   });
 
   test('disables start button when loading', () => {
-    (useProgress as unknown as jest.Mock).mockReturnValue({ active: true, progress: 50 });
+    (useProgress as unknown as Mock).mockReturnValue({ active: true, progress: 50 });
     render(<UI />);
     const startButton = screen.getByRole('button');
     expect(startButton).toBeDisabled();
@@ -120,7 +120,7 @@ describe('UI Component', () => {
 
   test('provides a restart button with confirmation when paused', () => {
     // Mock window.location.reload
-    const reloadMock = jest.fn();
+    const reloadMock = vi.fn();
     const originalLocation = window.location;
 
     delete (window as any).location;

@@ -10,10 +10,14 @@ Run with: python3 verification/verify_visuals_playwright.py
 Requires: playwright install chromium
 """
 from playwright.sync_api import sync_playwright
+import os
 import time
 import sys
 
+OUT_DIR = os.path.join(os.path.dirname(__file__), 'output')
+
 def verify_visuals():
+    os.makedirs(OUT_DIR, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1280, "height": 720})
@@ -26,11 +30,11 @@ def verify_visuals():
         try:
             page.wait_for_selector(".start-menu-overlay", timeout=30000)
             time.sleep(1)
-            page.screenshot(path="verification/verification_start_menu.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "verification_start_menu.png"))
             print("✓ Start menu screenshot saved")
         except Exception as e:
             print(f"✗ Start menu not found: {e}")
-            page.screenshot(path="verification/verification_timeout.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "verification_timeout.png"))
             browser.close()
             return False
 
@@ -53,24 +57,24 @@ def verify_visuals():
         try:
             # Wait for HUD elements
             page.wait_for_selector("text=km/h", timeout=10000)
-            page.screenshot(path="verification/verification_gameplay.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "verification_gameplay.png"))
             print("✓ Gameplay screenshot saved")
         except Exception as e:
             print(f"⚠ HUD not fully loaded: {e}")
-            page.screenshot(path="verification/verification_gameplay_partial.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "verification_gameplay_partial.png"))
 
         # --- 4. Pause Menu Screenshot ---
         print("Opening pause menu (Esc)...")
         try:
             page.keyboard.press("Escape")
             time.sleep(1)
-            page.screenshot(path="verification/verification_pause_menu.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "verification_pause_menu.png"))
             print("✓ Pause menu screenshot saved")
         except Exception as e:
             print(f"⚠ Pause menu capture failed: {e}")
 
         browser.close()
-        print("\nAll screenshots saved to verification/")
+        print(f"\nAll screenshots saved to {OUT_DIR}/")
         return True
 
 if __name__ == "__main__":

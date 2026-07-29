@@ -6,6 +6,9 @@
  *
  * Exposed functions (via Embind):
  *   getVersion()
+ *   calculateBuoyancyAndDrag(...)
+ *   calculateWaterForce(...)
+ *   computeWaterForcesBatch(...)
  *   computeBuoyancy(submergedVolume, waterDensity, gravity)
  *   computeDragForce(vx, vy, vz, cd, area, density)
  *   computeFlowForce(vx,vy,vz, fx,fy,fz, flowSpeed, mass, submergedRatio, cd, area) → Vec3
@@ -50,12 +53,23 @@ struct Vec3 {
     float x = 0.f, y = 0.f, z = 0.f;
 };
 
+struct WaterForceResult {
+    float forceX = 0.f;
+    float forceY = 0.f;
+    float forceZ = 0.f;
+    float buoyancy = 0.f;
+    float drag = 0.f;
+    float flow = 0.f;
+    float turbulence = 0.f;
+    float submergedRatio = 0.f;
+};
+
 // ---------------------------------------------------------------------------
 // Version / sanity check
 // ---------------------------------------------------------------------------
 /** Returns the module version integer (bump when ABI changes). */
 int getVersion() noexcept {
-    return 1;
+    return 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +102,30 @@ float computeDragForce(float vx, float vy, float vz,
     const float speedSq = vx*vx + vy*vy + vz*vz;
     if (speedSq <= 0.f) return 0.f;
     return 0.5f * density * speedSq * cd * area;
+}
+
+// ---------------------------------------------------------------------------
+// Browser smoke-test helper.
+//
+// Returns a single positive scalar that combines upward buoyancy and horizontal
+// current drag. This is intentionally small and stable so the TypeScript side
+// can prove C++ -> WASM -> browser wiring before deeper fluid math lands.
+// ---------------------------------------------------------------------------
+extern "C" EMSCRIPTEN_KEEPALIVE
+float calculateBuoyancyAndDrag(float raftMass,
+                               float submergedVolume,
+                               float waterVelocityX,
+                               float waterVelocityZ) noexcept {
+    const float buoyancy = computeBuoyancy(
+        submergedVolume,
+        WATER_DENSITY_DEFAULT,
+        GRAVITY_DEFAULT
+    );
+    const float waterSpeedSq = waterVelocityX * waterVelocityX + waterVelocityZ * waterVelocityZ;
+    const float projectedArea = 1.8f;
+    const float drag = 0.5f * WATER_DENSITY_DEFAULT * waterSpeedSq * 0.47f * projectedArea;
+    const float weight = std::max(0.f, raftMass) * GRAVITY_DEFAULT;
+    return std::max(0.f, buoyancy - weight) + drag;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +166,132 @@ Vec3 computeFlowForce(float vx, float vy, float vz,
     const float inv      = forceMag / speed;
 
     return { rwx * inv, rwy * inv, rwz * inv };
+}
+
+WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
+                                     float velX, float velY, float velZ,
+                                     float flowDirX, float flowDirZ,
+                                     float flowSpeed,
+                                     float waterLevel,
+                                     float raftMass,
+                                     float raftVolume,
+                                     float dragCoefficient,
+                                     float frontalArea,
+                                     float sideArea,
+                                     float timeSeconds,
+                                     float turbulenceStrength,
+                                     float turbulenceFrequency) noexcept {
+    WaterForceResult result;
+
+    const float raftHeight = 0.35f;
+    const float bottomY = posY - raftHeight * 0.5f;
+    result.submergedRatio = clampf((waterLevel - bottomY) / raftHeight, 0.f, 1.f);
+    if (result.submergedRatio <= 0.f) return result;
+
+    const float displacedVolume = std::max(0.f, raftVolume) * result.submergedRatio;
+    result.buoyancy = computeBuoyancy(displacedVolume, WATER_DENSITY_DEFAULT, GRAVITY_DEFAULT);
+    const float weight = std::max(0.f, raftMass) * GRAVITY_DEFAULT;
+    result.forceY += std::max(0.f, result.buoyancy - weight * 0.35f);
+
+    float flowLen = std::sqrt(flowDirX * flowDirX + flowDirZ * flowDirZ);
+    if (flowLen <= 0.0001f) {
+        flowDirX = 0.f;
+        flowDirZ = -1.f;
+        flowLen = 1.f;
+    }
+    flowDirX /= flowLen;
+    flowDirZ /= flowLen;
+
+    const float relX = flowDirX * flowSpeed - velX;
+    const float relZ = flowDirZ * flowSpeed - velZ;
+    const float relSpeedSq = relX * relX + relZ * relZ;
+    if (relSpeedSq > 0.000001f) {
+        const float relSpeed = std::sqrt(relSpeedSq);
+        const float projectedArea =
+            frontalArea * std::abs(flowDirZ) +
+            sideArea * std::abs(flowDirX);
+        result.flow = 0.5f * WATER_DENSITY_DEFAULT * relSpeedSq *
+            dragCoefficient * std::max(0.f, projectedArea) * result.submergedRatio;
+        result.forceX += relX / relSpeed * result.flow;
+        result.forceZ += relZ / relSpeed * result.flow;
+    }
+
+    const float speedSq = velX * velX + velY * velY + velZ * velZ;
+    if (speedSq > 0.000001f) {
+        const float speed = std::sqrt(speedSq);
+        const float dragArea = frontalArea + sideArea * 0.35f;
+        result.drag = 0.5f * WATER_DENSITY_DEFAULT * speedSq *
+            dragCoefficient * std::max(0.f, dragArea) * result.submergedRatio;
+        result.forceX -= velX / speed * result.drag;
+        result.forceY -= velY / speed * result.drag * 0.2f;
+        result.forceZ -= velZ / speed * result.drag;
+    }
+
+    if (turbulenceStrength > 0.f) {
+        const float turbX = std::sin(timeSeconds * turbulenceFrequency + posZ * 0.37f);
+        const float turbZ = std::cos(timeSeconds * turbulenceFrequency * 1.31f + posX * 0.29f);
+        result.turbulence = turbulenceStrength * WATER_DENSITY_DEFAULT *
+            result.submergedRatio;
+        result.forceX += turbX * result.turbulence;
+        result.forceZ += turbZ * result.turbulence;
+    }
+
+    return result;
+}
+
+// Batch ABI for workers:
+// input stride = 8 floats per raft/sample:
+//   [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
+// output stride = 8 floats per raft/sample:
+//   [forceX, forceY, forceZ, buoyancy, drag, flow, turbulence, submergedRatio]
+void computeWaterForcesBatch(uintptr_t inputPtr,
+                             uintptr_t outputPtr,
+                             int sampleCount,
+                             float flowSpeed,
+                             float waterLevel,
+                             float raftMass,
+                             float raftVolume,
+                             float dragCoefficient,
+                             float frontalArea,
+                             float sideArea,
+                             float timeSeconds,
+                             float turbulenceStrength,
+                             float turbulenceFrequency) noexcept {
+    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0) return;
+
+    const float* input = reinterpret_cast<const float*>(inputPtr);
+    float* output = reinterpret_cast<float*>(outputPtr);
+    constexpr int IN_STRIDE = 8;
+    constexpr int OUT_STRIDE = 8;
+
+    for (int i = 0; i < sampleCount; ++i) {
+        const float* s = input + i * IN_STRIDE;
+        const WaterForceResult r = calculateWaterForce(
+            s[0], s[1], s[2],
+            s[3], s[4], s[5],
+            s[6], s[7],
+            flowSpeed,
+            waterLevel,
+            raftMass,
+            raftVolume,
+            dragCoefficient,
+            frontalArea,
+            sideArea,
+            timeSeconds,
+            turbulenceStrength,
+            turbulenceFrequency
+        );
+
+        float* o = output + i * OUT_STRIDE;
+        o[0] = r.forceX;
+        o[1] = r.forceY;
+        o[2] = r.forceZ;
+        o[3] = r.buoyancy;
+        o[4] = r.drag;
+        o[5] = r.flow;
+        o[6] = r.turbulence;
+        o[7] = r.submergedRatio;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +393,9 @@ void freeGrid(uintptr_t ptr) {
 // ---------------------------------------------------------------------------
 EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("getVersion",       &getVersion);
+    emscripten::function("calculateBuoyancyAndDrag", &calculateBuoyancyAndDrag);
+    emscripten::function("calculateWaterForce", &calculateWaterForce);
+    emscripten::function("computeWaterForcesBatch", &computeWaterForcesBatch);
     emscripten::function("computeBuoyancy",  &computeBuoyancy);
     emscripten::function("computeDragForce", &computeDragForce);
     emscripten::function("computeFlowForce", &computeFlowForce);
@@ -240,4 +407,14 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
         .field("x", &Vec3::x)
         .field("y", &Vec3::y)
         .field("z", &Vec3::z);
+
+    emscripten::value_object<WaterForceResult>("WaterForceResult")
+        .field("forceX", &WaterForceResult::forceX)
+        .field("forceY", &WaterForceResult::forceY)
+        .field("forceZ", &WaterForceResult::forceZ)
+        .field("buoyancy", &WaterForceResult::buoyancy)
+        .field("drag", &WaterForceResult::drag)
+        .field("flow", &WaterForceResult::flow)
+        .field("turbulence", &WaterForceResult::turbulence)
+        .field("submergedRatio", &WaterForceResult::submergedRatio);
 }

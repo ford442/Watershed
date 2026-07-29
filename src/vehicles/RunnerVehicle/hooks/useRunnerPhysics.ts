@@ -77,7 +77,7 @@ export function useRunnerPhysicsState() {
 
   // Collision & material state
   const collisionState = useRef({
-    currentBiome: 'summer' as string,
+    currentBiome: 'canyonSummer' as string,
     activeParticles: [] as Array<{
       id: number;
       material: SurfaceMaterial;

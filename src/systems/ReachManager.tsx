@@ -14,15 +14,18 @@ import ReactiveAudio from '../components/ReactiveAudio';
 import WeatherSystem from '../components/WeatherSystem';
 import { ReachStreamer, ReachManifest } from './ReachStreamer';
 import { normalizeReachManifest, NormalizedSegment } from './ReachNormalizer';
+import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
+import { samplesToForecastByIndex } from './flowForecast';
+import { FLOW_FORECAST_STATES } from '../constants/game';
 // Removed DOM UI imports — overlays are lifted to Experience.jsx
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */
   playerRef: React.RefObject<any>;
   /** Biome change callback */
-  onBiomeChange?: (biome: string) => void;
+  onBiomeChange?: (biome: BiomeId) => void;
   /** Forecast samples for water flow override */
-  forecastSamples?: any[];
+  forecastSamples?: Array<{ state: string; [key: string]: unknown }>;
   /** Reach identifier to load */
   reachId?: string;
   /** Called when loading state changes */
@@ -81,9 +84,14 @@ export default function ReachManager({
         const result = await ReachStreamer.preloadReach(reachId);
         if (cancelled) return;
 
-        const forecastState =
-          forecastSamples.length > 0 ? forecastSamples[0].state : 'Normal';
-        const segments = normalizeReachManifest(result.manifest, undefined, forecastState);
+        const forecastByIndex = samplesToForecastByIndex(forecastSamples);
+        const segments = normalizeReachManifest(result.manifest, undefined, {
+          forecastByIndex,
+          forecastState:
+            forecastSamples.length > 0
+              ? forecastSamples[0].state
+              : FLOW_FORECAST_STATES.NORMAL,
+        });
 
         setManifest(result.manifest);
         setReachSegments(segments);
@@ -91,14 +99,7 @@ export default function ReachManager({
 
         // Trigger initial biome callback if provided
         if (onBiomeChange && result.manifest.world?.biome?.baseType) {
-          const biomeMap: Record<string, string> = {
-            'creek-summer': 'summer',
-            'creek-autumn': 'autumn',
-            'alpine-spring': 'summer',
-            'canyon-sunset': 'autumn',
-            'midnight-mist': 'autumn',
-          };
-          onBiomeChange(biomeMap[result.manifest.world.biome.baseType] || 'summer');
+          onBiomeChange(normalizeBiomeId(result.manifest.world.biome.baseType));
         }
       } catch (err) {
         if (cancelled) return;
@@ -115,6 +116,9 @@ export default function ReachManager({
     return () => {
       cancelled = true;
     };
+    // Forecast samples are applied live via TrackManager.setForecastByIndex;
+    // do not re-fetch the reach when only the forecast changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reachId, onBiomeChange, retryKey]);
 
   // Watch player position for transition entry
@@ -160,7 +164,7 @@ export default function ReachManager({
   // will use createSegmentData() instead of adaptReachSegment().
   // Do NOT render ReactiveAudio/WeatherSystem on error to avoid hook errors.
   const segmentsForTrack = error ? undefined : reachSegments ?? undefined;
-  const fallbackWeather = { type: 'clear', intensity: 0.5 };
+  const fallbackWeather = { type: 'clear' as const, intensity: 0.5 };
 
   return (
     <>
@@ -176,12 +180,12 @@ export default function ReachManager({
           <ReactiveAudio
             targetRef={playerRef}
             reachId={reachId}
-            manifest={manifest}
+            manifest={manifest ?? undefined}
             reachSegments={reachSegments ?? []}
           />
           <WeatherSystem
             targetRef={playerRef}
-            weather={manifest?.weather || fallbackWeather}
+            weather={(manifest?.weather ?? fallbackWeather) as { type: import('../constants/weather').WeatherType; intensity: number }}
           />
         </>
       )}

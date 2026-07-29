@@ -4,7 +4,7 @@
 Requires: playwright (`pip install playwright && playwright install chromium`)
            dev server on localhost:3000 (`pnpm dev`)
 
-Output: verification/webgl/*.png + capture_report.json
+Output: verification/output/webgl/*.png + capture_report.json
 """
 
 from playwright.sync_api import sync_playwright
@@ -13,7 +13,7 @@ import os
 import json
 import sys
 
-OUT_DIR = os.path.join(os.path.dirname(__file__), 'webgl')
+OUT_DIR = os.path.join(os.path.dirname(__file__), 'output', 'webgl')
 BASE = os.environ.get('WATERSHED_URL', 'http://launchhost:3000').replace('launchhost', 'localhost')
 
 SHOTS = [

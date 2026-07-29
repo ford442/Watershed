@@ -4,7 +4,10 @@ import {
   RapierWorkerInitPayload,
   RapierWorkerLike,
   RapierWorkerResponse,
+  StaticBoxColliderSpec,
   Vec3Tuple,
+  WaterForceDiagnostics,
+  WaterForceTickConfig,
   WorkerRaftState,
 } from './rapierWorkerProtocol';
 
@@ -21,6 +24,8 @@ export class RapierWorkerProxy {
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
   private state: WorkerRaftState | null = null;
+  private waterForce: WaterForceDiagnostics | null = null;
+  private wasmAvailable = false;
   private totalLatencyMs = 0;
   private latencySamples = 0;
   private onMessage = (event: MessageEvent<RapierWorkerResponse>) => {
@@ -35,6 +40,12 @@ export class RapierWorkerProxy {
 
     if ('state' in response) {
       this.state = response.state;
+    }
+    if ('waterForce' in response && response.waterForce) {
+      this.waterForce = response.waterForce;
+    }
+    if (response.type === 'READY' && 'wasmAvailable' in response) {
+      this.wasmAvailable = Boolean(response.wasmAvailable);
     }
 
     if (response.type === 'ERROR') {
@@ -54,6 +65,14 @@ export class RapierWorkerProxy {
     return this.state;
   }
 
+  get latestWaterForce(): WaterForceDiagnostics | null {
+    return this.waterForce;
+  }
+
+  get isWasmAvailable(): boolean {
+    return this.wasmAvailable;
+  }
+
   get averageLatencyMs(): number {
     return this.latencySamples > 0 ? this.totalLatencyMs / this.latencySamples : 0;
   }
@@ -61,14 +80,31 @@ export class RapierWorkerProxy {
   init(payload: RapierWorkerInitPayload = DEFAULT_RAFT_WORKER_INIT): Promise<WorkerRaftState> {
     return this.request({ type: 'INIT', payload }).then((response) => {
       if (!('state' in response)) throw new Error('INIT did not return raft state');
+      if (response.type === 'READY') {
+        this.wasmAvailable = Boolean(response.wasmAvailable);
+      }
       return response.state;
     });
   }
 
-  step(delta: number): Promise<WorkerRaftState> {
-    return this.request({ type: 'STEP', delta }).then((response) => {
-      if (!('state' in response)) throw new Error('STEP did not return raft state');
-      return response.state;
+  step(
+    delta: number,
+    options: {
+      impulses?: Vec3Tuple[];
+      waterForce?: WaterForceTickConfig;
+    } = {},
+  ): Promise<{ state: WorkerRaftState; waterForce?: WaterForceDiagnostics }> {
+    return this.request({
+      type: 'STEP',
+      delta,
+      impulses: options.impulses,
+      waterForce: options.waterForce,
+    }).then((response) => {
+      if (response.type !== 'STATE') throw new Error('STEP did not return raft state');
+      return {
+        state: response.state,
+        waterForce: response.waterForce,
+      };
     });
   }
 
@@ -83,6 +119,23 @@ export class RapierWorkerProxy {
     });
   }
 
+  addStaticCollider(collider: StaticBoxColliderSpec, handle?: number): Promise<number> {
+    return this.request({ type: 'ADD_STATIC_COLLIDER', collider, handle }).then((response) => {
+      if (response.type !== 'ACK' || response.handle == null) {
+        throw new Error('ADD_STATIC_COLLIDER did not return a handle');
+      }
+      return response.handle;
+    });
+  }
+
+  removeStaticCollider(handle: number): Promise<void> {
+    return this.request({ type: 'REMOVE_STATIC_COLLIDER', handle }).then(() => undefined);
+  }
+
+  clearStaticColliders(): Promise<void> {
+    return this.request({ type: 'CLEAR_STATIC_COLLIDERS' }).then(() => undefined);
+  }
+
   dispose(): void {
     this.worker.removeEventListener('message', this.onMessage);
     this.pending.forEach((request) => request.reject(new Error('Rapier worker disposed')));
@@ -90,7 +143,7 @@ export class RapierWorkerProxy {
     this.worker.terminate?.();
   }
 
-  private request(command: Omit<RapierWorkerCommand, 'id'>): Promise<RapierWorkerResponse> {
+  private request(command: Record<string, unknown> & { type: RapierWorkerCommand['type'] }): Promise<RapierWorkerResponse> {
     const id = this.nextId++;
     const message = { ...command, id } as RapierWorkerCommand;
 

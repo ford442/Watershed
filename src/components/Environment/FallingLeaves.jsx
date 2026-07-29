@@ -8,7 +8,7 @@ const LEAF_PALETTES = {
 
 const DUMMY_OBJ = new THREE.Object3D();
 
-export default function FallingLeaves({ transforms, biome = 'summer', floating = false }) {
+export default function FallingLeaves({ transforms, biome = 'canyonSummer', floating = false }) {
   const meshRef = useRef();
 
   // Create a simple leaf geometry (low poly diamond shape)

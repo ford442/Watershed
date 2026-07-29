@@ -71,6 +71,19 @@ const RAIN_FRAGMENT_SHADER = `
   }
 `;
 
+const SNOW_FRAGMENT_SHADER = `
+  varying float vAlpha;
+  uniform float globalAlpha;
+
+  void main() {
+    vec2 uv = gl_PointCoord - vec2(0.5);
+    float d = length(uv);
+    float a = 1.0 - smoothstep(0.2, 0.5, d);
+    if (a < 0.05) discard;
+    gl_FragColor = vec4(0.95, 0.98, 1.0, a * vAlpha * globalAlpha);
+  }
+`;
+
 const SPLASH_VERTEX_SHADER = `
   uniform float time;
   attribute float spawnTime;
@@ -116,6 +129,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
   const transitionRef = useRef(0); // 0 = clear, 1 = full weather
 
   const rainRef = useRef<THREE.Points | null>(null);
+  const snowRef = useRef<THREE.Points | null>(null);
   const splashRef = useRef<THREE.Points | null>(null);
   const splashDataRef = useRef({
     spawnTimes: new Float32Array(WEATHER_CONFIG.rain.splashCount),
@@ -174,7 +188,44 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     });
   }, []);
 
-  // Splash geometry
+  const snowMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        time: { value: 0 },
+        fallSpeed: { value: WEATHER_CONFIG.snow.fallSpeed },
+        windX: { value: WEATHER_CONFIG.snow.windX },
+        windZ: { value: WEATHER_CONFIG.snow.windZ },
+        cameraPos: { value: new THREE.Vector3() },
+        globalAlpha: { value: 0 },
+      },
+      vertexShader: RAIN_VERTEX_SHADER,
+      fragmentShader: SNOW_FRAGMENT_SHADER,
+    });
+  }, []);
+
+  const snowGeometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    const count = WEATHER_CONFIG.snow.particleCount;
+    const positions = new Float32Array(count * 3);
+    const offsets = new Float32Array(count);
+    const speedVars = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * WEATHER_CONFIG.snow.spawnWidth;
+      positions[i * 3 + 1] = Math.random() * WEATHER_CONFIG.snow.spawnHeight;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * WEATHER_CONFIG.snow.spawnLength;
+      offsets[i] = Math.random() * 100;
+      speedVars[i] = 0.6 + Math.random() * 0.8;
+    }
+
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('offset', new THREE.BufferAttribute(offsets, 1));
+    geo.setAttribute('speedVar', new THREE.BufferAttribute(speedVars, 1));
+    return geo;
+  }, []);
   const splashGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     const count = WEATHER_CONFIG.rain.splashCount;
@@ -248,7 +299,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     const targetInt = targetIntensityRef.current;
 
     // Smoothly transition weather type and intensity
-    const isWeatherActive = targetType === 'rain' || targetType === 'storm' || targetType === 'fog';
+    const isWeatherActive = targetType === 'rain' || targetType === 'storm' || targetType === 'fog' || targetType === 'snow';
     const targetTransition = isWeatherActive ? targetInt : 0;
     const speed = WEATHER_CONFIG.transitionSpeed * delta;
     transitionRef.current += (targetTransition - transitionRef.current) * speed;
@@ -275,6 +326,17 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
       rainMaterial.uniforms.windX.value = WEATHER_CONFIG.rain.windX * (weatherType === 'storm' ? 2.2 : 1);
       rainMaterial.uniforms.windZ.value = WEATHER_CONFIG.rain.windZ * (weatherType === 'storm' ? 1.8 : 1);
       rainRef.current.visible = showRain;
+    }
+
+    if (snowRef.current) {
+      const showSnow = weatherType === 'snow' && t > 0.05;
+      snowMaterial.uniforms.time.value = state.clock.elapsedTime;
+      snowMaterial.uniforms.cameraPos.value.set(playerPos.x, playerPos.y, playerPos.z);
+      snowMaterial.uniforms.globalAlpha.value = showSnow ? t : 0;
+      snowMaterial.uniforms.fallSpeed.value = WEATHER_CONFIG.snow.fallSpeed;
+      snowMaterial.uniforms.windX.value = WEATHER_CONFIG.snow.windX;
+      snowMaterial.uniforms.windZ.value = WEATHER_CONFIG.snow.windZ;
+      snowRef.current.visible = showSnow;
     }
 
     // ======================================================================
@@ -327,7 +389,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     // 3. Fog modulation
     // ======================================================================
     const cfg = WEATHER_CONFIG.fog;
-    let targetFogDensity = cfg.clearDensity;
+    let targetFogDensity: number = cfg.clearDensity;
     let targetFogColor = new THREE.Color(cfg.clearColor);
 
     switch (weatherType) {
@@ -342,6 +404,10 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
       case 'storm':
         targetFogDensity = cfg.stormDensity;
         targetFogColor.set(cfg.stormColor);
+        break;
+      case 'snow':
+        targetFogDensity = cfg.snowDensity;
+        targetFogColor.set(cfg.snowColor);
         break;
       default:
         targetFogDensity = cfg.clearDensity;
@@ -445,6 +511,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
   return (
     <>
       <points ref={rainRef} geometry={rainGeometry} material={rainMaterial} frustumCulled={false} />
+      <points ref={snowRef} geometry={snowGeometry} material={snowMaterial} frustumCulled={false} />
       <points ref={splashRef} geometry={splashGeometry} material={splashMaterial} frustumCulled={false} />
     </>
   );

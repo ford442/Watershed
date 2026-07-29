@@ -7,7 +7,8 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import type { WeatherType } from '../constants/weather';
 import { validateReach, ValidationResult, formatValidationErrors } from '../utils/reachValidator';
 import { REACH_API_BASE } from '../constants/game';
 
@@ -55,6 +56,13 @@ export interface ReachManifest {
   requiredAssets: ReachRequiredAssets;
   transition: ReachTransition;
   decorationPools?: any;
+  weather?: { type: WeatherType; intensity: number };
+}
+
+export interface FlowMapData {
+  data: Float32Array;
+  width: number;
+  height: number;
 }
 
 export interface StreamResult {
@@ -81,6 +89,7 @@ export const AssetCache = {
   audioBuffers: new Map<string, AudioBuffer>(),
   shaders: new Map<string, string>(),
   flowMaps: new Map<string, THREE.Texture | THREE.DataTexture>(),
+  flowMapData: new Map<string, FlowMapData>(),
   reaches: new Map<string, ReachManifest>(),
 };
 
@@ -361,7 +370,13 @@ async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.T
   }
   AssetCache.flowMapData.set(fullUrl, { data: cpuData, width, height });
 
-  const dataTexture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);
+  const dataTexture = new THREE.DataTexture(
+    data as unknown as BufferSource,
+    width,
+    height,
+    THREE.RGBAFormat,
+    THREE.FloatType,
+  );
   dataTexture.needsUpdate = true;
   AssetCache.flowMaps.set(fullUrl, dataTexture);
   return dataTexture;

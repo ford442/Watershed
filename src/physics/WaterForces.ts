@@ -13,7 +13,7 @@
  */
 
 import * as THREE from 'three';
-import type { RigidBody } from '@react-three/rapier';
+import type { RapierRigidBody } from '@react-three/rapier';
 
 // =============================================================================
 // TYPES
@@ -227,7 +227,7 @@ export function calculateDragForce(
  * @param wake — Whether to wake the body (default true)
  */
 export function applyWaterForce(
-  body: RigidBody,
+  body: RapierRigidBody,
   force: THREE.Vector3,
   delta: number,
   wake = true
@@ -256,7 +256,7 @@ export function applyWaterForce(
  * @param gravity — Default 9.80665
  */
 export function applyBuoyancyForce(
-  body: RigidBody,
+  body: RapierRigidBody,
   submergedRatio: number,
   volume: number,
   delta: number,
@@ -279,7 +279,7 @@ export function applyBuoyancyForce(
  * @param delta — Frame delta time
  */
 export function applyDragForce(
-  body: RigidBody,
+  body: RapierRigidBody,
   dragCoefficient = 0.47,
   crossSectionalArea = 0.6,
   waterDensity = 1000,

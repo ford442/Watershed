@@ -11,11 +11,12 @@ import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShade
  * @param {Array} transforms - Array of {position, rotation, scale} objects
  */
 export default function Pinecone({ transforms }) {
-  const { geometry, material } = usePineconeAssets();
+  const { geometry, material: baseMaterial } = usePineconeAssets();
 
-  useMemo(() => {
-    extendRiverMaterial(material);
-  }, [material]);
+  const material = useMemo(
+    () => extendRiverMaterial(baseMaterial, { enableMoss: false }),
+    [baseMaterial]
+  );
 
   useFrame((state) => {
     updateRiverMaterial(material, state.clock.elapsedTime);

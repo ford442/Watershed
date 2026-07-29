@@ -8,6 +8,7 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import * as THREE from 'three';
+import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
 // Import the JSON schema
 import levelSchema from '../formats/level.schema.json';
@@ -34,13 +35,10 @@ export interface ValidationResult {
   warnings: ValidationError[];
 }
 
-// Biome type mapping
+// Canonical BiomeId values plus deprecated aliases (accepted for one release)
 const BIOME_TYPES = [
-  'creek-summer',
-  'creek-autumn',
-  'alpine-spring',
-  'canyon-sunset',
-  'midnight-mist'
+  ...BIOME_IDS,
+  ...Object.keys(LEGACY_BIOME_ALIASES),
 ];
 
 // Segment type mapping
@@ -52,10 +50,10 @@ const DIFFICULTY_TYPES = ['beginner', 'intermediate', 'expert', 'custom'];
 // Numeric ranges for validation
 const RANGES = {
   difficulty: { min: 0, max: 1 },
-  segmentLength: { min: 20, max: 50 },
+  segmentLength: { min: 20, max: 150 },
   totalSegments: { min: 1, max: 50 },
-  width: { min: 20, max: 80 },
-  wallHeight: { min: 8, max: 20 },
+  width: { min: 20, max: 120 },
+  wallHeight: { min: 8, max: 30 },
   meanderStrength: { min: 0, max: 3 },
   verticalBias: { min: -3, max: 0 },
   forwardMomentum: { min: 0.1, max: 2 },

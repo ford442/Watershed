@@ -8,6 +8,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Dedicated hard-fail gate: vite/esbuild strips types and vitest only asserts
+  # runtime behavior, so a red `tsc` is otherwise invisible. Keep this job
+  # separate from build/test so failures are legible as the "Typecheck" check.
+  # Intended as a required status check on main (see docs/reference/TESTING.md).
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      PUPPETEER_SKIP_DOWNLOAD: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (typed surface)
+        run: pnpm typecheck
+
   build-without-emscripten:
     name: Build without Emscripten
     runs-on: ubuntu-latest
@@ -19,10 +51,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
 
       - name: Confirm Emscripten is absent
         run: |
@@ -31,17 +69,153 @@ jobs:
             exit 1
           fi
 
-      - name: Create npm lockfile for CI install
-        run: npm install --package-lock-only --ignore-scripts
-
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate documentation paths
+        run: node scripts/validate-markdown-paths.js
 
       - name: Build production bundle
-        run: npm run build
+        run: pnpm build
 
       - name: Assert build output exists
         run: test -f build/index.html
 
       - name: Run test suite
-        run: npm test -- --watchAll=false
+        run: pnpm test
+
+  # Headless WebGL visual smoke (SwiftShader). Allow-failure while baselines
+  # and SwiftShader flakiness settle; promote to required after ~1 week of green runs.
+  visual-smoke:
+    name: Visual smoke (WebGL)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      CI: true
+      WATERSHED_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Confirm Emscripten is absent
+        run: |
+          if command -v emcc >/dev/null 2>&1; then
+            echo "emcc is unexpectedly available on this runner"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Puppeteer
+        run: pnpm exec puppeteer browsers install chrome
+
+      - name: Build production bundle (no Emscripten required)
+        run: pnpm build
+
+      - name: Start Vite preview
+        run: |
+          pnpm exec vite preview --host 127.0.0.1 --port 4173 &
+          echo $! > /tmp/vite-preview.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+              echo "preview ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "preview failed to start"
+          exit 1
+
+      - name: Run visual smoke harness
+        env:
+          VISUAL_BOOT_RETRIES: "2"
+        run: pnpm test:visual-smoke
+        timeout-minutes: 20
+
+      - name: Upload visual-smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-smoke-output
+          path: |
+            verification/output/visual-smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop Vite preview
+        if: always()
+        run: |
+          if [ -f /tmp/vite-preview.pid ]; then
+            kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
+          fi
+
+  build-with-emscripten:
+    name: Build with Emscripten
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_REQUIRE_WASM: "1"
+      WATERSHED_WASM_INTEGRATION: "1"
+      WATERSHED_WASM_MAX_BYTES: "131072"
+      PUPPETEER_SKIP_DOWNLOAD: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.56
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate documentation paths
+        run: node scripts/validate-markdown-paths.js
+
+      - name: Compile watershed_native.wasm
+        run: pnpm build:wasm
+
+      - name: Assert WASM artifact exists and is within budget
+        run: |
+          test -f public/watershed_native.wasm
+          test -f public/watershed_native.js
+          WASM_SIZE=$(wc -c < public/watershed_native.wasm)
+          echo "watershed_native.wasm size: ${WASM_SIZE} bytes"
+          test "${WASM_SIZE}" -lt 131072
+
+      - name: Run WASM integration tests against real binary
+        run: |
+          node emscripten/smoke_test.mjs
+          pnpm test:wasm
+
+      - name: Compile threaded WASM variant
+        run: pnpm build:wasm:threads
+
+      - name: Assert threaded WASM artifact exists
+        run: test -f public/watershed_native.wasm

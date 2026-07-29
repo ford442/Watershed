@@ -17,13 +17,19 @@ import { useGameStore } from './GameState';
 // Quality levels
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
 
-interface LODConfig {
+export interface LODConfig {
   particleDensity: number;
   shadowMapSize: number;
   // Shadow acne/peter-panning bias, tuned per shadow map resolution.
   shadowBias: number;
   shadowNormalBias: number;
   enableReflections: boolean;
+  /** Planar reflection RT width/height when enableReflections is true. */
+  reflectionResolution: number;
+  /** Render reflection every N frames when enableReflections is true. */
+  reflectionUpdateInterval: number;
+  /** Fresnel mix weight for FlowingWater reflection sampling (0 = off). */
+  reflectionStrength: number;
   enableCaustics: boolean;
   enableGodRays: boolean;
   enableMotionBlur: boolean;
@@ -33,13 +39,17 @@ interface LODConfig {
   viewDistance: number;
 }
 
-const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
+/** Per-quality budgets — exported for wiring guard tests. */
+export const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   low: {
     particleDensity: 0.4,
     shadowMapSize: 1024,
     shadowBias: -0.0015,
     shadowNormalBias: 0.025,
     enableReflections: false,
+    reflectionResolution: 256,
+    reflectionUpdateInterval: 4,
+    reflectionStrength: 0,
     enableCaustics: false,
     enableGodRays: false,
     enableMotionBlur: false,
@@ -54,6 +64,9 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
     shadowBias: -0.0009,
     shadowNormalBias: 0.018,
     enableReflections: false,
+    reflectionResolution: 256,
+    reflectionUpdateInterval: 4,
+    reflectionStrength: 0,
     enableCaustics: true,
     enableGodRays: true,
     enableMotionBlur: false,
@@ -68,6 +81,9 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
     shadowBias: -0.0006,
     shadowNormalBias: 0.012,
     enableReflections: true,
+    reflectionResolution: 512,
+    reflectionUpdateInterval: 3,
+    reflectionStrength: 0.45,
     enableCaustics: true,
     enableGodRays: true,
     enableMotionBlur: false,
@@ -82,6 +98,9 @@ const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
     shadowBias: -0.0004,
     shadowNormalBias: 0.008,
     enableReflections: true,
+    reflectionResolution: 1024,
+    reflectionUpdateInterval: 2,
+    reflectionStrength: 0.6,
     enableCaustics: true,
     enableGodRays: true,
     enableMotionBlur: true,

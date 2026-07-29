@@ -5,7 +5,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { DefaultMapManager, BaseMapChunk } from '../systems/MapSystem';
 
 /**
- * CanyonBiome.tsx - refactored from original CreekCanyon.jsx
+ * CanyonBiome.tsx — canyon biome renderer (legacy CreekCanyon heightmap path removed)
  *
  * This component keeps the exact same visual track as before but
  * is driven by the standardized MapSystem.  Chunks are generated

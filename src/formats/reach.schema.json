@@ -4,7 +4,15 @@
   "title": "Watershed Reach Format",
   "description": "Schema for Watershed River Reach definitions",
   "type": "object",
-  "required": ["reachId", "metadata", "world", "segments", "spawns", "requiredAssets", "transition"],
+  "required": [
+    "reachId",
+    "metadata",
+    "world",
+    "segments",
+    "spawns",
+    "requiredAssets",
+    "transition"
+  ],
   "properties": {
     "reachId": {
       "type": "string",
@@ -14,7 +22,13 @@
     },
     "metadata": {
       "type": "object",
-      "required": ["name", "author", "difficulty", "version", "estimatedDuration"],
+      "required": [
+        "name",
+        "author",
+        "difficulty",
+        "version",
+        "estimatedDuration"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -35,7 +49,12 @@
         },
         "difficulty": {
           "type": "string",
-          "enum": ["beginner", "intermediate", "expert", "custom"],
+          "enum": [
+            "beginner",
+            "intermediate",
+            "expert",
+            "custom"
+          ],
           "description": "Difficulty classification"
         },
         "estimatedDuration": {
@@ -62,11 +81,18 @@
     },
     "world": {
       "type": "object",
-      "required": ["track", "biome"],
+      "required": [
+        "track",
+        "biome"
+      ],
       "properties": {
         "track": {
           "type": "object",
-          "required": ["waypoints", "segmentLength", "totalSegments"],
+          "required": [
+            "waypoints",
+            "segmentLength",
+            "totalSegments"
+          ],
           "properties": {
             "waypoints": {
               "type": "array",
@@ -77,7 +103,9 @@
                 "type": "array",
                 "minItems": 3,
                 "maxItems": 3,
-                "items": { "type": "number" },
+                "items": {
+                  "type": "number"
+                },
                 "description": "[X, Y, Z] coordinate"
               }
             },
@@ -112,16 +140,48 @@
         },
         "biome": {
           "type": "object",
-          "required": ["baseType", "sky", "fog", "lighting", "water"],
+          "required": [
+            "baseType",
+            "sky",
+            "fog",
+            "lighting",
+            "water"
+          ],
           "properties": {
             "baseType": {
               "type": "string",
-              "enum": ["creek-summer", "creek-autumn", "alpine-spring", "canyon-sunset", "midnight-mist"],
+              "enum": [
+                "canyonSummer",
+                "canyonAutumn",
+                "slotCanyon",
+                "glacialMelt",
+                "glacier",
+                "delta",
+                "alpineSpring",
+                "cavern",
+                "midnightMist",
+                "lumberFlume",
+                "hydroDam",
+                "summer",
+                "autumn",
+                "creek-summer",
+                "creek-autumn",
+                "alpine-spring",
+                "alpine-glacial",
+                "glacial-melt",
+                "glacial",
+                "canyon-sunset",
+                "slot",
+                "slot-canyon",
+                "midnight-mist"
+              ],
               "description": "Base biome type"
             },
             "sky": {
               "type": "object",
-              "required": ["color"],
+              "required": [
+                "color"
+              ],
               "properties": {
                 "color": {
                   "type": "string",
@@ -144,7 +204,11 @@
             },
             "fog": {
               "type": "object",
-              "required": ["color", "near", "far"],
+              "required": [
+                "color",
+                "near",
+                "far"
+              ],
               "properties": {
                 "color": {
                   "type": "string",
@@ -173,7 +237,10 @@
             },
             "lighting": {
               "type": "object",
-              "required": ["sunIntensity", "sunAngle"],
+              "required": [
+                "sunIntensity",
+                "sunAngle"
+              ],
               "properties": {
                 "sunIntensity": {
                   "type": "number",
@@ -213,7 +280,10 @@
             },
             "water": {
               "type": "object",
-              "required": ["tint", "flowSpeed"],
+              "required": [
+                "tint",
+                "flowSpeed"
+              ],
               "properties": {
                 "tint": {
                   "type": "string",
@@ -252,7 +322,11 @@
       "description": "Segment configurations",
       "items": {
         "type": "object",
-        "required": ["index", "difficulty", "decorations"],
+        "required": [
+          "index",
+          "difficulty",
+          "decorations"
+        ],
         "properties": {
           "index": {
             "type": "number",
@@ -267,13 +341,43 @@
           },
           "type": {
             "type": "string",
-            "enum": ["normal", "waterfall", "pond", "splash", "rapids"],
+            "enum": [
+              "normal",
+              "waterfall",
+              "pond",
+              "splash",
+              "rapids"
+            ],
             "default": "normal",
             "description": "Segment behavior type"
           },
           "biomeOverride": {
             "type": "string",
-            "enum": ["creek-summer", "creek-autumn", "alpine-spring", "canyon-sunset", "midnight-mist"],
+            "enum": [
+              "canyonSummer",
+              "canyonAutumn",
+              "slotCanyon",
+              "glacialMelt",
+              "glacier",
+              "delta",
+              "alpineSpring",
+              "cavern",
+              "midnightMist",
+              "lumberFlume",
+              "hydroDam",
+              "summer",
+              "autumn",
+              "creek-summer",
+              "creek-autumn",
+              "alpine-spring",
+              "alpine-glacial",
+              "glacial-melt",
+              "glacial",
+              "canyon-sunset",
+              "slot",
+              "slot-canyon",
+              "midnight-mist"
+            ],
             "description": "Optional biome override"
           },
           "difficulty": {
@@ -315,56 +419,182 @@
             "default": 1,
             "description": "Water current strength"
           },
+          "openFloor": {
+            "type": "boolean",
+            "default": false,
+            "description": "Skip floor trimesh collider for gap / air-corridor set-pieces"
+          },
           "decorations": {
             "type": "object",
             "properties": {
-              "trees": { "type": "number", "minimum": 0, "maximum": 50 },
-              "grass": { "type": "number", "minimum": 0, "maximum": 100 },
-              "rocks": { "type": "number", "minimum": 0, "maximum": 30 },
-              "wildflowers": { "type": "number", "minimum": 0, "maximum": 50 },
-              "ferns": { "type": "number", "minimum": 0, "maximum": 40 },
-              "mushrooms": { "type": "number", "minimum": 0, "maximum": 30 },
-              "reeds": { "type": "number", "minimum": 0, "maximum": 40 },
-              "driftwood": { "type": "number", "minimum": 0, "maximum": 30 },
-              "pebbles": { "type": "number", "minimum": 0, "maximum": 60 },
-              "pinecones": { "type": "number", "minimum": 0, "maximum": 40 },
-              "fireflies": { "type": "number", "minimum": 0, "maximum": 20 },
-              "birds": { "type": "number", "minimum": 0, "maximum": 15 },
-              "fish": { "type": "number", "minimum": 0, "maximum": 20 },
-              "dragonflies": { "type": "number", "minimum": 0, "maximum": 15 },
-              "fallingLeaves": { "type": "number", "minimum": 0, "maximum": 30 },
-              "floatingLeaves": { "type": "number", "minimum": 0, "maximum": 20 },
-              "mist": { "type": "number", "minimum": 0, "maximum": 15 },
-              "waterLilies": { "type": "number", "minimum": 0, "maximum": 20 },
-              "sunShafts": { "type": "number", "minimum": 0, "maximum": 10 },
-              "rapids": { "type": "number", "minimum": 0, "maximum": 20 }
+              "trees": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "grass": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "rocks": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30
+              },
+              "wildflowers": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50
+              },
+              "ferns": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 40
+              },
+              "mushrooms": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30
+              },
+              "reeds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 40
+              },
+              "driftwood": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30
+              },
+              "pebbles": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 60
+              },
+              "pinecones": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 40
+              },
+              "fireflies": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "birds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 15
+              },
+              "fish": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "dragonflies": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 15
+              },
+              "fallingLeaves": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30
+              },
+              "floatingLeaves": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "mist": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 15
+              },
+              "waterLilies": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "sunShafts": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "rapids": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              }
             }
           },
           "physics": {
             "type": "object",
             "properties": {
-              "gravityMultiplier": { "type": "number", "minimum": 0.5, "maximum": 2 },
-              "waterFlowIntensity": { "type": "number", "minimum": 0, "maximum": 3 },
-              "friction": { "type": "number", "minimum": 0, "maximum": 1 },
-              "restitution": { "type": "number", "minimum": 0, "maximum": 1 }
+              "gravityMultiplier": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 2
+              },
+              "waterFlowIntensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "friction": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "restitution": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
             }
           },
           "safeZone": {
             "type": "object",
-            "required": ["yMin", "yMax"],
+            "required": [
+              "yMin",
+              "yMax"
+            ],
             "properties": {
-              "yMin": { "type": "number" },
-              "yMax": { "type": "number" },
-              "respawnAt": { "type": "number" }
+              "yMin": {
+                "type": "number"
+              },
+              "yMax": {
+                "type": "number"
+              },
+              "respawnAt": {
+                "type": "number"
+              }
             }
           },
           "effects": {
             "type": "object",
             "properties": {
-              "particleCount": { "type": "number", "minimum": 0, "maximum": 500 },
-              "cameraShake": { "type": "number", "minimum": 0, "maximum": 1 },
-              "fogDensity": { "type": "number", "minimum": 0, "maximum": 1 },
-              "transitionDuration": { "type": "number", "minimum": 0, "maximum": 10000 }
+              "particleCount": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 500
+              },
+              "cameraShake": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "fogDensity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "transitionDuration": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000
+              }
             }
           }
         }
@@ -372,11 +602,18 @@
     },
     "weather": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["clear", "rain", "fog", "storm"],
+          "enum": [
+            "clear",
+            "rain",
+            "fog",
+            "storm"
+          ],
           "description": "Current weather condition"
         },
         "intensity": {
@@ -390,31 +627,41 @@
     },
     "spawns": {
       "type": "object",
-      "required": ["start"],
+      "required": [
+        "start"
+      ],
       "properties": {
         "start": {
           "type": "object",
-          "required": ["position"],
+          "required": [
+            "position"
+          ],
           "properties": {
             "position": {
               "type": "array",
               "minItems": 3,
               "maxItems": 3,
-              "items": { "type": "number" },
+              "items": {
+                "type": "number"
+              },
               "description": "[X, Y, Z] spawn position"
             },
             "rotation": {
               "type": "array",
               "minItems": 3,
               "maxItems": 3,
-              "items": { "type": "number" },
+              "items": {
+                "type": "number"
+              },
               "description": "[pitch, yaw, roll] in degrees"
             },
             "velocity": {
               "type": "array",
               "minItems": 3,
               "maxItems": 3,
-              "items": { "type": "number" },
+              "items": {
+                "type": "number"
+              },
               "description": "Initial velocity [X, Y, Z]"
             }
           }
@@ -424,16 +671,30 @@
           "maxItems": 10,
           "items": {
             "type": "object",
-            "required": ["segment", "position"],
+            "required": [
+              "segment",
+              "position"
+            ],
             "properties": {
-              "segment": { "type": "number", "minimum": 0, "maximum": 49 },
+              "segment": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 49
+              },
               "position": {
                 "type": "array",
                 "minItems": 3,
                 "maxItems": 3,
-                "items": { "type": "number" }
+                "items": {
+                  "type": "number"
+                }
               },
-              "radius": { "type": "number", "minimum": 3, "maximum": 20, "default": 5 }
+              "radius": {
+                "type": "number",
+                "minimum": 3,
+                "maximum": 20,
+                "default": 5
+              }
             }
           }
         }
@@ -441,17 +702,33 @@
     },
     "requiredAssets": {
       "type": "object",
-      "required": ["textures", "models", "audio", "shaders"],
+      "required": [
+        "textures",
+        "models",
+        "audio",
+        "shaders"
+      ],
       "properties": {
         "textures": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "url"],
+            "required": [
+              "id",
+              "url"
+            ],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1 },
-              "type": { "type": "string" }
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string"
+              }
             }
           }
         },
@@ -459,11 +736,22 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "url"],
+            "required": [
+              "id",
+              "url"
+            ],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1 },
-              "type": { "type": "string" }
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string"
+              }
             }
           }
         },
@@ -471,10 +759,19 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "url"],
+            "required": [
+              "id",
+              "url"
+            ],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1 }
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },
@@ -482,11 +779,22 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "url"],
+            "required": [
+              "id",
+              "url"
+            ],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1 },
-              "category": { "type": "string" }
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "type": "string"
+              }
             }
           }
         },
@@ -494,13 +802,27 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "url"],
+            "required": [
+              "id",
+              "url"
+            ],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1 },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
               "category": {
                 "type": "string",
-                "enum": ["generative", "reactive", "transition", "filter"]
+                "enum": [
+                  "generative",
+                  "reactive",
+                  "transition",
+                  "filter"
+                ]
               }
             }
           }
@@ -509,13 +831,26 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "url"],
+            "required": [
+              "id",
+              "url"
+            ],
             "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1 },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
               "format": {
                 "type": "string",
-                "enum": ["png", "raw", "json"],
+                "enum": [
+                  "png",
+                  "raw",
+                  "json"
+                ],
                 "default": "png"
               }
             }
@@ -525,18 +860,37 @@
           "type": "object",
           "description": "Optional per-reach rock PBR texture overrides",
           "properties": {
-            "color": { "type": "string", "description": "URL or filename for albedo map" },
-            "normal": { "type": "string", "description": "URL or filename for normal map" },
-            "roughness": { "type": "string", "description": "URL or filename for roughness map" },
-            "displacement": { "type": "string", "description": "URL or filename for displacement/height map" },
-            "ao": { "type": "string", "description": "URL or filename for ambient occlusion map" }
+            "color": {
+              "type": "string",
+              "description": "URL or filename for albedo map"
+            },
+            "normal": {
+              "type": "string",
+              "description": "URL or filename for normal map"
+            },
+            "roughness": {
+              "type": "string",
+              "description": "URL or filename for roughness map"
+            },
+            "displacement": {
+              "type": "string",
+              "description": "URL or filename for displacement/height map"
+            },
+            "ao": {
+              "type": "string",
+              "description": "URL or filename for ambient occlusion map"
+            }
           }
         }
       }
     },
     "transition": {
       "type": "object",
-      "required": ["segmentIndex", "type", "durationSeconds"],
+      "required": [
+        "segmentIndex",
+        "type",
+        "durationSeconds"
+      ],
       "properties": {
         "segmentIndex": {
           "type": "number",
@@ -546,7 +900,11 @@
         },
         "type": {
           "type": "string",
-          "enum": ["waterfall", "slotCanyon", "splash"],
+          "enum": [
+            "waterfall",
+            "slotCanyon",
+            "splash"
+          ],
           "description": "Transition geometry type"
         },
         "durationSeconds": {
@@ -563,11 +921,15 @@
       "properties": {
         "treeTypes": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "rockTypes": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

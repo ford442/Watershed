@@ -1,8 +1,12 @@
 
 from playwright.sync_api import sync_playwright
+import os
 import time
 
+OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'verification', 'output')
+
 def verify_visuals():
+    os.makedirs(OUT_DIR, exist_ok=True)
     with sync_playwright() as p:
         # Launch Chromium with software rendering enabled
         browser = p.chromium.launch(
@@ -26,8 +30,8 @@ def verify_visuals():
             time.sleep(5)
 
             # Take screenshot of the "Summer" state (start of game)
-            page.screenshot(path="./verification/summer_start.png")
-            print("Captured summer_start.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "summer_start.png"))
+            print(f"Captured {os.path.join(OUT_DIR, 'summer_start.png')}")
 
         except Exception as e:
             print(f"Error: {e}")

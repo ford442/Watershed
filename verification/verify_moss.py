@@ -1,9 +1,12 @@
 
 from playwright.sync_api import sync_playwright
-import time
 import os
+import time
+
+OUT_DIR = os.path.join(os.path.dirname(__file__), 'output')
 
 def verify_moss():
+    os.makedirs(OUT_DIR, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -16,7 +19,7 @@ def verify_moss():
 
         try:
             print("Navigating to app...")
-            page.goto("http://localhost:8000")
+            page.goto("http://localhost:3000")
 
             # Wait for canvas
             page.wait_for_selector("canvas", timeout=30000)
@@ -24,11 +27,8 @@ def verify_moss():
 
             # Wait for loading to finish (Button text changes)
             print("Waiting for loading to finish...")
-            # The button text should contain "CLICK TO ENGAGE"
             start_button = page.locator(".start-button")
 
-            # Wait up to 60 seconds for loading
-            expect_text = "CLICK TO ENGAGE"
             for i in range(60):
                 text = start_button.inner_text()
                 if "CLICK TO ENGAGE" in text:
@@ -38,26 +38,20 @@ def verify_moss():
                 time.sleep(1)
             else:
                 print("Timed out waiting for loading.")
-                # Take debug screenshot
-                page.screenshot(path="/home/jules/verification/timeout_loading.png")
+                page.screenshot(path=os.path.join(OUT_DIR, "timeout_loading.png"))
                 return
 
-            # Click the start button
             print("Clicking start button...")
             start_button.click()
-
-            # Wait for transition
             time.sleep(5)
 
-            # Take screenshot of the game
-            os.makedirs("/home/jules/verification", exist_ok=True)
-            output_path = "/home/jules/verification/moss_verification.png"
+            output_path = os.path.join(OUT_DIR, "moss_verification.png")
             page.screenshot(path=output_path)
             print(f"Captured {output_path}")
 
         except Exception as e:
             print(f"Error: {e}")
-            page.screenshot(path="/home/jules/verification/error_script.png")
+            page.screenshot(path=os.path.join(OUT_DIR, "error_script.png"))
         finally:
             browser.close()
 

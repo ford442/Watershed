@@ -1,7 +1,15 @@
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 
-export const RAYCAST_ORIGIN_OFFSET = 0.5;
+export const RAYCAST_ORIGIN_OFFSET = 0.1;
 export const RAYCAST_DISTANCE = 5.0;
+/** Runner capsule collider half-height + radius (matches CapsuleCollider args in RunnerVehicle). */
+export const RUNNER_CAPSULE_HALF_HEIGHT = 0.4;
+export const RUNNER_CAPSULE_RADIUS = 0.5;
+/** World-space Y for downward ground rays: capsule top + small clearance. */
+export const RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET =
+  RUNNER_CAPSULE_HALF_HEIGHT + RUNNER_CAPSULE_RADIUS + RAYCAST_ORIGIN_OFFSET;
+/** Ignore ground hits at or inside the player capsule (self-intersection TOI ≈ 0). */
+export const GROUND_RAY_MIN_TOI = 0.02;
 export const SMOOTHING_FACTOR = 5.0;
 export const DEG_TO_RAD = Math.PI / 180;
 

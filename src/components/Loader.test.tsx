@@ -1,10 +1,9 @@
 import React from 'react';
 import { render } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { Loader } from './Loader';
 
 // Mock useProgress to simulate loading state
-jest.mock('@react-three/drei', () => ({
+vi.mock('@react-three/drei', () => ({
   useProgress: () => ({
     active: true,
     progress: 50,

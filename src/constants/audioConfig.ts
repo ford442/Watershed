@@ -40,6 +40,25 @@ export const AUDIO_CONFIG = {
     whooshFullSpeed: 28.0,
   },
 
+  /**
+   * Continuous speed-based wind bed (feel-of-velocity).
+   * Distinct from glacial coldWind (biome-gated) and whoosh (high-speed rush).
+   */
+  wind: {
+    /** Peak wind loop volume at fullSpeed (before SFX/master multipliers). */
+    maxVolume: 0.42,
+    /** Horizontal speed where wind becomes audible. */
+    startSpeed: 0.75,
+    /** Horizontal speed where wind gain reaches 1. */
+    fullSpeed: 22,
+    /** Volume lerp rate — keep high enough to track speed, low enough to avoid zipper. */
+    crossfadeSpeed: 3.2,
+    /** Lowpass cutoff (Hz) while stopped. */
+    cutoffAtRest: 380,
+    /** Lowpass cutoff (Hz) at fullSpeed — brighter rush. */
+    cutoffAtFull: 5200,
+  },
+
   positional: {
     /** Reference distance for transition (waterfall) positional audio */
     transitionRefDistance: 18,
@@ -72,6 +91,16 @@ export const AUDIO_CONFIG = {
     transition: 'rapids_roar',
     splash: 'collide_water',
     whoosh: 'water_whoosh',
+    coldWind: 'ambient_wind',
+    /** Continuous speed wind bed — stub reuses ambient_wind until a dedicated loop lands. */
+    speedWind: 'ambient_wind',
+    iceCrack: 'collide_rock',
+  },
+
+  glacial: {
+    coldWindVolume: 0.35,
+    iceCrackVolume: 0.22,
+    crossfadeSpeed: 1.8,
   },
 } as const;
 

@@ -151,8 +151,8 @@ export const PostProcessing: React.FC<PostProcessingProps> = ({
   const { size, scene, camera, gl } = useThree();
   
   // Render targets
-  const renderTargetRef = useRef<THREE.WebGLRenderTarget>();
-  const bloomTargetRef = useRef<THREE.WebGLRenderTarget>();
+  const renderTargetRef = useRef<THREE.WebGLRenderTarget | null>(null);
+  const bloomTargetRef = useRef<THREE.WebGLRenderTarget | null>(null);
   
   // Shader materials
   const motionBlurMat = useMemo(() => new THREE.ShaderMaterial({

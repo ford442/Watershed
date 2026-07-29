@@ -5,6 +5,7 @@ import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { isAutumnLike } from '../../configs/biomes';
 
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'];
 
@@ -54,7 +55,7 @@ const buildCrossPetals = (width, height, y, count = 3) => {
   return geometries;
 };
 
-export default function Wildflowers({ transforms, biome = 'summer' }) {
+export default function Wildflowers({ transforms, biome = 'canyonSummer' }) {
   const flowerRefs = useRef({});
 
   const variants = useMemo(() => {
@@ -137,8 +138,8 @@ export default function Wildflowers({ transforms, biome = 'summer' }) {
       const paletteIndex = t.colorIndex ?? (i % palette.length);
       const color = new THREE.Color(palette[paletteIndex % palette.length]);
       const hueJitter = (t.hueJitter ?? 0) * 0.08;
-      const lightnessJitter = (t.lightnessJitter ?? 0) * (biome === 'autumn' ? 0.05 : 0.09);
-      color.offsetHSL(hueJitter, biome === 'autumn' ? -0.1 : 0.04, lightnessJitter);
+      const lightnessJitter = (t.lightnessJitter ?? 0) * (isAutumnLike(biome) ? 0.05 : 0.09);
+      color.offsetHSL(hueJitter, isAutumnLike(biome) ? -0.1 : 0.04, lightnessJitter);
 
       // A handful of blooms are past their prime - droop and fade toward seed-head brown
       const wiltRoll = ((Math.sin((t.position.x * 12.9898 + t.position.z * 78.233 + i) * 43758.5453) % 1) + 1) % 1;

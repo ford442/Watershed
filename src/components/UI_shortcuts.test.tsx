@@ -1,12 +1,12 @@
+import type { Mock } from 'vitest';
 import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { UI } from './UI';
 import { useProgress } from '@react-three/drei';
 
 // Mock dependencies
-jest.mock('@react-three/drei', () => ({
-  useProgress: jest.fn(),
+vi.mock('@react-three/drei', () => ({
+  useProgress: vi.fn(),
 }));
 
 describe('UI Shortcuts', () => {
@@ -17,7 +17,7 @@ describe('UI Shortcuts', () => {
   });
 
   beforeEach(() => {
-    (useProgress as unknown as jest.Mock).mockReturnValue({ active: false, progress: 100 });
+    (useProgress as unknown as Mock).mockReturnValue({ active: false, progress: 100 });
     // Reset mocked pointer lock
     if (originalPointerLockElement) {
         Object.defineProperty(document, 'pointerLockElement', originalPointerLockElement);
@@ -27,7 +27,7 @@ describe('UI Shortcuts', () => {
   });
 
   afterEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     if (originalPointerLockElement) {
       Object.defineProperty(document, 'pointerLockElement', originalPointerLockElement);
     } else {

@@ -11,7 +11,7 @@
  */
 
 import * as THREE from 'three';
-import type { RigidBody } from '@react-three/rapier';
+import type { RapierRigidBody } from '@react-three/rapier';
 
 // =============================================================================
 // OBJECT POOL
@@ -144,7 +144,7 @@ export abstract class SpawnableObject implements IPoolable {
   /** Configuration */
   config: ObjectConfig;
   /** Physics body (if applicable) */
-  body: RigidBody | null = null;
+  body: RapierRigidBody | null = null;
   /** Three.js mesh */
   mesh: THREE.Mesh | null = null;
   

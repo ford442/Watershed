@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { isAutumnLike } from '../../configs/biomes';
 
 const mergeCompatibleGeometries = (geometries) => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -25,7 +26,7 @@ const mergeCompatibleGeometries = (geometries) => {
     }
 };
 
-export default function Ferns({ transforms, biome = 'summer' }) {
+export default function Ferns({ transforms, biome = 'canyonSummer' }) {
     // 1. Geometry Construction
     const geometry = useMemo(() => {
         const frondCount = 7;
@@ -123,7 +124,7 @@ export default function Ferns({ transforms, biome = 'summer' }) {
             // Summer: Green variations
             // Autumn: Brown/Orange variations
             let baseColor;
-            if (biome === 'autumn') {
+            if (isAutumnLike(biome)) {
                 const isGreen = Math.random() > 0.8; // Some still green
                 baseColor = isGreen ? new THREE.Color('#2d5a27') : new THREE.Color('#8b4513');
                 if (!isGreen) baseColor.lerp(new THREE.Color('#d2691e'), Math.random());

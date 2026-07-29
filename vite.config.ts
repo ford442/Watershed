@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  define: {
+    __WATERSHED_ASSET_BASE__: JSON.stringify('./'),
+  },
   plugins: [react()],
   resolve: {
     // Prevent duplicate Three.js when three/webgpu is lazy-loaded in a separate chunk.
@@ -14,6 +17,14 @@ export default defineConfig({
       // and also by Rapier's multithreaded physics worker).
       // Safe to enable unconditionally in development.
       'Cross-Origin-Opener-Policy':   'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+  // Same COOP/COEP for `vite preview` so visual-smoke CI matches dev isolation.
+  preview: {
+    port: 4173,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },

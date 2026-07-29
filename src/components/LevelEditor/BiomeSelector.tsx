@@ -21,8 +21,8 @@ interface BiomeDefinition {
 
 const BIOMES: BiomeDefinition[] = [
   {
-    id: 'creek-summer',
-    name: 'Creek Summer',
+    id: 'canyonSummer',
+    name: 'Canyon Summer',
     description: 'Lush green banks, bright skies, abundant wildlife',
     skyColor: '#87CEEB',
     fogColor: '#D4E9F7',
@@ -32,8 +32,8 @@ const BIOMES: BiomeDefinition[] = [
     preview: '🌲',
   },
   {
-    id: 'creek-autumn',
-    name: 'Creek Autumn',
+    id: 'canyonAutumn',
+    name: 'Canyon Autumn',
     description: 'Golden foliage, falling leaves, mushrooms',
     skyColor: '#E8C070',
     fogColor: '#B89868',
@@ -43,7 +43,7 @@ const BIOMES: BiomeDefinition[] = [
     preview: '🍂',
   },
   {
-    id: 'alpine-spring',
+    id: 'alpineSpring',
     name: 'Alpine Spring',
     description: 'Snowmelt streams, evergreens, crisp air',
     skyColor: '#B0D4F0',
@@ -54,8 +54,8 @@ const BIOMES: BiomeDefinition[] = [
     preview: '⛰️',
   },
   {
-    id: 'canyon-sunset',
-    name: 'Canyon Sunset',
+    id: 'slotCanyon',
+    name: 'Slot Canyon',
     description: 'Warm oranges, long shadows, desert vegetation',
     skyColor: '#FF8C60',
     fogColor: '#FFB090',
@@ -65,7 +65,7 @@ const BIOMES: BiomeDefinition[] = [
     preview: '🌅',
   },
   {
-    id: 'midnight-mist',
+    id: 'midnightMist',
     name: 'Midnight Mist',
     description: 'Dark atmosphere, heavy fog, mysterious',
     skyColor: '#1a2030',
@@ -74,6 +74,28 @@ const BIOMES: BiomeDefinition[] = [
     lightingTemp: 'cool',
     features: ['Heavy fog', 'Fireflies', 'Dark water', 'Mysterious'],
     preview: '🌙',
+  },
+  {
+    id: 'glacialMelt',
+    name: 'Glacial Melt',
+    description: 'Ice-blue meltwater, sparse vegetation, alpine cold',
+    skyColor: '#A8C8E0',
+    fogColor: '#D0E8F8',
+    waterColor: '#2A8BA8',
+    lightingTemp: 'cool',
+    features: ['Ice walls', 'Cold mist', 'Sparse snags'],
+    preview: '🧊',
+  },
+  {
+    id: 'delta',
+    name: 'Delta',
+    description: 'Wide calm water, reeds, sunset rafting',
+    skyColor: '#F0C080',
+    fogColor: '#E0D0B0',
+    waterColor: '#3A7A8A',
+    lightingTemp: 'warm',
+    features: ['Reeds', 'Wide channel', 'Calm water'],
+    preview: '🌅',
   },
 ];
 

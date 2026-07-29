@@ -19,6 +19,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { useSettingsStore } from '../systems/useSettingsStore';
+import { bindingsToMouseMap, type SettingsAction } from '../systems/settingsDerive';
 
 export interface PlayerControls {
   /** Forward input (W / ArrowUp) */
@@ -66,6 +68,9 @@ export function usePlayerControls(camera?: THREE.Camera): PlayerControlVectors &
 
   // Refs for high-frequency keys — always fresh inside useFrame
   const extraKeysRef = useRef({ q: false, e: false, shift: false, alt: false });
+  // Pressed mouse buttons ('Mouse0'|'Mouse1'|'Mouse2') for mouse-bound actions
+  // (e.g. right-click-forward). Read transiently in getControls.
+  const mouseButtonsRef = useRef<Set<string>>(new Set());
   const [isPointerLocked, setIsPointerLocked] = useState(false);
 
   // Track pointer lock state (low frequency, OK to use state)
@@ -104,19 +109,65 @@ export function usePlayerControls(camera?: THREE.Camera): PlayerControlVectors &
     };
   }, []);
 
+  // Mouse-button bindings (right-click-forward etc.). Track pressed buttons and
+  // suppress the context menu while any mouse button is a binding so a bound
+  // right-click drives movement instead of popping the browser menu.
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      mouseButtonsRef.current.add(`Mouse${e.button}`);
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      mouseButtonsRef.current.delete(`Mouse${e.button}`);
+    };
+    const clear = () => mouseButtonsRef.current.clear();
+    const onContextMenu = (e: MouseEvent) => {
+      const mouseMap = bindingsToMouseMap(useSettingsStore.getState().bindings);
+      if (Object.values(mouseMap).includes('Mouse2')) e.preventDefault();
+    };
+
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('blur', clear);
+    window.addEventListener('contextmenu', onContextMenu);
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', clear);
+      window.removeEventListener('contextmenu', onContextMenu);
+    };
+  }, []);
+
   // Imperative accessor — safe to call inside useFrame every tick
   const getControls = useCallback((): PlayerControls => {
     const keys = getKeys();
     const extra = extraKeysRef.current;
-    return {
+
+    // Base state from the drei KeyboardControls map (rebindable keys).
+    const state: Record<SettingsAction, boolean> = {
       forward: keys.forward ?? false,
       backward: keys.backward ?? false,
       leftward: keys.leftward ?? false,
       rightward: keys.rightward ?? false,
       jump: keys.jump ?? false,
-      sprint: extra.shift,
-      brake: false, // Reserved for future mapping
-      dodge: (keys as any).dodge || extra.alt,
+      // Sprint/dodge now flow through the rebindable map; keep the legacy raw
+      // Shift/Alt refs as a fallback so held modifiers still register.
+      sprint: (keys as Record<string, boolean>).sprint || extra.shift,
+      brake: (keys as Record<string, boolean>).brake ?? false,
+      dodge: (keys as Record<string, boolean>).dodge || extra.alt,
+    };
+
+    // Merge mouse-bound actions (e.g. right-click-forward).
+    const pressed = mouseButtonsRef.current;
+    if (pressed.size > 0) {
+      const mouseMap = bindingsToMouseMap(useSettingsStore.getState().bindings);
+      for (const action of Object.keys(mouseMap) as SettingsAction[]) {
+        const code = mouseMap[action];
+        if (code && pressed.has(code)) state[action] = true;
+      }
+    }
+
+    return {
+      ...state,
       paddleLeft: extra.q,
       paddleRight: extra.e,
       isPointerLocked,

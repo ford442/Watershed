@@ -24,18 +24,33 @@ export {
   LODObject,
   PerformanceMonitor,
   useLOD,
+  QUALITY_SETTINGS,
 } from './LODManager';
+
+// Planar water reflection texture publish/subscribe
+export { useWaterReflectionStore } from './waterReflectionStore';
 
 // Particles
 export {
   ParticlePool,
   VFXParticle,
   FoamParticle,
+  MistParticle,
   particleManager,
 } from './ParticlePool';
 
 // Splash effects
 export { SplashSystem } from './SplashSystem';
+export { default as WaterForceSystem } from './WaterForceSystem';
+export { injectSWEDisturbance } from './SWEHeightField';
+export {
+  detectWaterContactEdge,
+  cruiseSplashCount,
+  mistSpawnCount,
+  resolveSplashFrameEvents,
+  raftSubmergedRatio,
+  entryExitSplashCount,
+} from './splashSpawnMath';
 
 // Post-processing
 export { PostProcessing } from './PostProcessing';
@@ -76,5 +91,38 @@ export {
   tickScoreSystem,
   awardDodgeBonus,
   awardWaterfallBonus,
+  awardFloodSurviveBonus,
   resetScoreSystemState,
+  commitJourneyScore,
 } from './ScoreSystem';
+
+// Persistence + ghost replay
+export {
+  loadPersistence,
+  savePersistence,
+  getRunBest,
+  updateRunBest,
+  buildRunKey,
+  getLastMapId,
+  setLastMapId,
+  getCompletedMaps,
+  markMapCompleted,
+  getBestScoreForMap,
+  getGhostBestScoreForMap,
+  STORAGE_KEY,
+  type PersistencePayload,
+  type RunBest,
+} from './PersistenceSystem';
+export { initPersistence } from './persistenceBootstrap';
+export {
+  encodeGhostSamples,
+  decodeGhost,
+  decodeGhostFromBase64,
+  GHOST_SAMPLE_HZ,
+  type GhostSample,
+} from './ghostCodec';
+export {
+  startGhostRecording,
+  tickGhostRecording,
+  persistGhostRecording,
+} from './GhostRecorder';

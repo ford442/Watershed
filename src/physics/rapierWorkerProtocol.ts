@@ -14,6 +14,35 @@ export interface StaticBoxColliderSpec {
   rotation?: QuatTuple;
 }
 
+export interface WaterForceTickConfig {
+  enabled: boolean;
+  flowSpeed: number;
+  waterLevel: number;
+  raftMass: number;
+  raftVolume: number;
+  dragCoefficient: number;
+  frontalArea: number;
+  sideArea: number;
+  timeSeconds: number;
+  turbulenceStrength: number;
+  turbulenceFrequency: number;
+  flowDirX: number;
+  flowDirZ: number;
+  impulseScale?: number;
+}
+
+export interface WaterForceDiagnostics {
+  source: 'wasm' | 'fallback' | 'disabled';
+  forceX: number;
+  forceY: number;
+  forceZ: number;
+  buoyancy: number;
+  drag: number;
+  flow: number;
+  turbulence: number;
+  submergedRatio: number;
+}
+
 export interface RapierWorkerInitPayload {
   gravity?: Vec3Tuple;
   raft?: {
@@ -28,14 +57,35 @@ export interface RapierWorkerInitPayload {
 
 export type RapierWorkerCommand =
   | { id: number; type: 'INIT'; payload?: RapierWorkerInitPayload }
-  | { id: number; type: 'STEP'; delta: number }
+  | {
+      id: number;
+      type: 'STEP';
+      delta: number;
+      impulses?: Vec3Tuple[];
+      waterForce?: WaterForceTickConfig;
+    }
   | { id: number; type: 'APPLY_IMPULSE'; impulse: Vec3Tuple; wake?: boolean }
-  | { id: number; type: 'GET_STATE' };
+  | { id: number; type: 'GET_STATE' }
+  | { id: number; type: 'ADD_STATIC_COLLIDER'; collider: StaticBoxColliderSpec; handle?: number }
+  | { id: number; type: 'REMOVE_STATIC_COLLIDER'; handle: number }
+  | { id: number; type: 'CLEAR_STATIC_COLLIDERS' };
 
 export type RapierWorkerResponse =
-  | { id: number; type: 'READY'; state: WorkerRaftState; latencyMs?: number }
-  | { id: number; type: 'STATE'; state: WorkerRaftState; latencyMs?: number }
-  | { id: number; type: 'ACK'; latencyMs?: number }
+  | {
+      id: number;
+      type: 'READY';
+      state: WorkerRaftState;
+      wasmAvailable?: boolean;
+      latencyMs?: number;
+    }
+  | {
+      id: number;
+      type: 'STATE';
+      state: WorkerRaftState;
+      waterForce?: WaterForceDiagnostics;
+      latencyMs?: number;
+    }
+  | { id: number; type: 'ACK'; handle?: number; latencyMs?: number }
   | { id: number; type: 'ERROR'; error: string; latencyMs?: number };
 
 export interface RapierWorkerLike {

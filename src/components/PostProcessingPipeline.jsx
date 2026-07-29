@@ -13,6 +13,8 @@ import { useBiome } from '../systems/BiomeSystem';
 import { useSunPosition } from '../systems/SunPositionSystem';
 import { GOD_RAYS_SHADER, getGodRaySunColor } from '../systems/volumetric/VolumetricGodRays';
 import { useGameStore } from '../systems/GameState';
+import { useSettingsStore } from '../systems/useSettingsStore';
+import { qualityToEffects } from '../systems/settingsDerive';
 
 const CHROMATIC_ABERRATION_SHADER = {
   name: 'ChromaticAberrationShader',
@@ -186,6 +188,8 @@ export function PostProcessingPipeline({
   const { config } = useLOD();
   const { timeOfDay, currentBiome } = useBiome();
   const { sunWorldPosition } = useSunPosition();
+  const settingsQuality = useSettingsStore((s) => (s._hasHydrated ? s.quality : 'high'));
+  const effectPresence = useMemo(() => qualityToEffects(settingsQuality), [settingsQuality]);
 
   // Refs for smooth animation values
   const smoothed = useRef({
@@ -366,9 +370,21 @@ export function PostProcessingPipeline({
     smoothed.current.saturation += (targetSaturation - smoothed.current.saturation) * t;
     smoothed.current.vignetteBoost += (targetVignetteBoost - smoothed.current.vignetteBoost) * t;
 
-    // Apply to passes
+    // Apply to passes — effect *toggles* from the settings quality preset apply
+    // live via pass.enabled; resolution/multisampling stay on the LOD path.
+    if (passes.bloomPass) {
+      passes.bloomPass.enabled = effectPresence.bloom;
+    }
+    if (passes.vignettePass) {
+      passes.vignettePass.enabled = effectPresence.vignette;
+    }
+    if (passes.chromaticPass) {
+      passes.chromaticPass.enabled = effectPresence.chromaticAberration;
+    }
+
     if (passes.godRaysPass) {
       const shouldRenderGodRays =
+        effectPresence.godRays &&
         (isTightCanyon || waterfallBoost > 0.2) &&
         (quality === 'medium' || quality === 'high' || quality === 'ultra') &&
         (config.enableGodRays || quality === 'medium');

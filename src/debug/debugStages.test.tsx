@@ -1,6 +1,5 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { DebugStageController, DEBUG_STAGES, useDebugStages } from './debugStages';
 import { DebugPanel } from '../components/DebugPanel';
 
@@ -53,12 +52,12 @@ describe('debug stage system', () => {
         acc[key as keyof typeof DEBUG_STAGES] = { status: 'idle' };
         return acc;
       }, {} as DebugStageController['stageRuntime']),
-      isStageEnabled: jest.fn(() => true),
-      setStageEnabled: jest.fn(),
-      runStage: jest.fn(),
-      setStageLoading: jest.fn(),
-      setStageSuccess: jest.fn(),
-      setStageFailure: jest.fn(),
+      isStageEnabled: vi.fn(() => true),
+      setStageEnabled: vi.fn(),
+      runStage: vi.fn(),
+      setStageLoading: vi.fn(),
+      setStageSuccess: vi.fn(),
+      setStageFailure: vi.fn(),
     };
 
     const disabledPanel = render(
@@ -95,14 +94,14 @@ describe('debug stage system', () => {
         acc[key as keyof typeof DEBUG_STAGES] = { status: 'idle' };
         return acc;
       }, {} as DebugStageController['stageRuntime']),
-      isStageEnabled: jest.fn(() => true),
-      setStageEnabled: jest.fn(),
-      runStage: jest.fn(),
-      setStageLoading: jest.fn(),
-      setStageSuccess: jest.fn(),
-      setStageFailure: jest.fn(),
+      isStageEnabled: vi.fn(() => true),
+      setStageEnabled: vi.fn(),
+      runStage: vi.fn(),
+      setStageLoading: vi.fn(),
+      setStageSuccess: vi.fn(),
+      setStageFailure: vi.fn(),
     };
-    const onTogglePhysicsDebug = jest.fn();
+    const onTogglePhysicsDebug = vi.fn();
 
     render(
       <DebugPanel

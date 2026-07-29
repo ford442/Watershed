@@ -48,7 +48,13 @@ function createInitialFlowData(size: number): Float32Array {
 }
 
 function createDataTexture(size: number, data: Float32Array): THREE.DataTexture {
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.FloatType);
+  const texture = new THREE.DataTexture(
+    data as unknown as BufferSource,
+    size,
+    size,
+    THREE.RGBAFormat,
+    THREE.FloatType,
+  );
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.minFilter = THREE.LinearFilter;
@@ -161,8 +167,18 @@ export class HeightmapFlowController {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    device.queue.writeTexture({ texture: heightTextures[0] }, this.heightData, { bytesPerRow: this.size * 16 }, [this.size, this.size]);
-    device.queue.writeTexture({ texture: flowTextures[0] }, this.flowData, { bytesPerRow: this.size * 16 }, [this.size, this.size]);
+    device.queue.writeTexture(
+      { texture: heightTextures[0] },
+      this.heightData as unknown as GPUAllowSharedBufferSource,
+      { bytesPerRow: this.size * 16 },
+      [this.size, this.size],
+    );
+    device.queue.writeTexture(
+      { texture: flowTextures[0] },
+      this.flowData as unknown as GPUAllowSharedBufferSource,
+      { bytesPerRow: this.size * 16 },
+      [this.size, this.size],
+    );
 
     const bindGroups = [0, 1].map((readIndex) => pipeline.getBindGroupLayout(0)).map((layout, readIndex) => {
       const writeIndex = 1 - readIndex;

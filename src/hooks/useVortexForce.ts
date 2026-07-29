@@ -1,94 +1,93 @@
 // src/hooks/useVortexForce.ts
-// Vortex physics — inward pull + rotational spin
+// Vortex physics — inward pull + rotational spin + downward drain suction
 
 import { useRef } from 'react';
 import { Vector3 } from 'three';
 import { useFrame } from '@react-three/fiber';
+import {
+  computeVortexForces,
+  resolveVortexConfig,
+  type VortexForceConfig,
+} from '../physics/vortexForces';
 
-interface VortexOptions {
-  /** Pull strength (arbitrary force units) */
-  strength?: number;
-  /** Rotation multiplier for torque */
-  spinMultiplier?: number;
-  /** Vortex radius in world units */
-  radius?: number;
-  /** Inner "eye" radius where pull weakens */
-  eyeRadius?: number;
-  /** Vertical lift force (suction upward) */
+interface VortexOptions extends Partial<VortexForceConfig> {
+  /** @deprecated Prefer downwardForce — kept for older call sites. */
   liftForce?: number;
+  /** Extra multiplier (forecast gate strength, etc.). */
+  strengthMult?: number;
 }
 
 /**
- * useVortexForce — Applies whirlpool physics to a Rapier rigid body
- * 
- * Features:
- * - Inward pull that strengthens near the edge, weakens at center
- * - Rotational torque that spins the raft
- * - Optional vertical lift (suction)
- * - Smooth falloff using distance-based attenuation
+ * useVortexForce — Applies whirlpool physics to a Rapier rigid body.
+ *
+ * Uses the pure `computeVortexForces` helper so unit tests cover the funnel
+ * model without mounting R3F / Rapier.
  */
 export const useVortexForce = (
   rigidBodyRef: React.MutableRefObject<any>,
   isInVortex: boolean,
   vortexCenter: Vector3,
-  options: VortexOptions = {}
+  options: VortexOptions = {},
 ) => {
   const {
-    strength = 48,
-    spinMultiplier = 2.1,
-    radius = 8,
-    eyeRadius = 2,
-    liftForce = 5,
+    liftForce,
+    strengthMult = 1,
+    ...forcePartial
   } = options;
 
-  const pullVector = useRef(new Vector3());
-  const tempPos = useRef(new Vector3());
+  // Legacy liftForce mapped to a mild upward bias; Hydro-Dam prefers downward.
+  const config = resolveVortexConfig({
+    ...forcePartial,
+    downwardForce:
+      forcePartial.downwardForce ??
+      (typeof liftForce === 'number' ? -liftForce : undefined),
+  });
 
-  useFrame(() => {
+  const lastForce = useRef({ x: 0, y: 0, z: 0 });
+
+  useFrame((_, delta) => {
     if (!isInVortex || !rigidBodyRef.current) return;
 
     const rbPos = rigidBodyRef.current.translation();
-    tempPos.current.set(rbPos.x, rbPos.y, rbPos.z);
+    const result = computeVortexForces(
+      { x: rbPos.x, y: rbPos.y, z: rbPos.z },
+      { x: vortexCenter.x, y: vortexCenter.y, z: vortexCenter.z },
+      config,
+      strengthMult,
+    );
+    if (!result.inside) return;
 
-    // Vector from raft to vortex center
-    pullVector.current.subVectors(vortexCenter, tempPos.current);
-    const dist = pullVector.current.length();
+    const dtScale = Math.min(delta, 0.05) * 60;
+    lastForce.current = result.force;
 
-    // Only apply force if within vortex radius
-    if (dist > radius) return;
+    if (typeof rigidBodyRef.current.applyImpulse === 'function') {
+      rigidBodyRef.current.applyImpulse(
+        {
+          x: result.force.x * dtScale * 0.016,
+          y: result.force.y * dtScale * 0.016,
+          z: result.force.z * dtScale * 0.016,
+        },
+        true,
+      );
+    } else {
+      rigidBodyRef.current.addForce?.(result.force, true);
+    }
 
-    // Normalize direction
-    pullVector.current.normalize();
-
-    // Pull strength: strongest at edge, weaker at center (eye)
-    // Creates a "funnel" feel
-    const distFactor = Math.max(0, (dist - eyeRadius) / (radius - eyeRadius));
-    const pullMagnitude = strength * distFactor * distFactor; // Quadratic falloff
-
-    // Apply inward pull
-    const force = pullVector.current.clone().multiplyScalar(pullMagnitude);
-    rigidBodyRef.current.addForce(force, true);
-
-    // Rotational torque — perpendicular to pull direction
-    // Creates the spinning "whirlpool" feel
-    const spinAxis = new Vector3(0, 1, 0); // Y-axis rotation
-    const tangent = new Vector3().crossVectors(pullVector.current, spinAxis).normalize();
-    
-    // Torque magnitude based on pull strength + spin multiplier
-    const spinMagnitude = pullMagnitude * spinMultiplier;
-    const torque = tangent.multiplyScalar(spinMagnitude);
-    
-    // Add some randomness to spin for organic feel
-    torque.y += (Math.random() - 0.5) * spinMagnitude * 0.3;
-    
-    rigidBodyRef.current.addTorque(torque, true);
-
-    // Optional lift force (suction) — pulls raft slightly upward near center
-    if (dist < eyeRadius * 2 && liftForce > 0) {
-      const lift = new Vector3(0, 1, 0).multiplyScalar(liftForce * (1 - dist / (eyeRadius * 2)));
-      rigidBodyRef.current.addForce(lift, true);
+    if (typeof rigidBodyRef.current.applyTorqueImpulse === 'function') {
+      rigidBodyRef.current.applyTorqueImpulse(
+        {
+          x: result.torque.x * dtScale * 0.016,
+          y: result.torque.y * dtScale * 0.016,
+          z: result.torque.z * dtScale * 0.016,
+        },
+        true,
+      );
+    } else {
+      rigidBodyRef.current.addTorque?.(result.torque, true);
     }
   });
+
+  return lastForce;
 };
 
 export default useVortexForce;

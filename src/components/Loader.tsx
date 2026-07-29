@@ -20,9 +20,8 @@ export const Loader = () => {
   // Match the logic above: if !active, start fading
   const isFading = !active;
 
-  // Show 100% if total is 0 to avoid "0%" confusion
-  // Updated to avoid 0%
-  const displayProgress = Math.max(1, Math.round(progress));
+  // Show 0% until progress reports; avoid a stuck "1%" idle flash
+  const displayProgress = Math.round(progress);
 
   return (
     <div className={`loader-overlay ${isFading ? 'fade-out' : ''}`}>

@@ -187,6 +187,7 @@ export const FLOW_FORECAST_STATES = {
     NORMAL: 'Normal',
     HIGH_FLOW: 'HighFlow',
     FLOODED: 'Flooded',
+    WASHED_OUT: 'WashedOut',
 } as const;
 
 export type FlowForecastState = typeof FLOW_FORECAST_STATES[keyof typeof FLOW_FORECAST_STATES];
@@ -214,6 +215,8 @@ export const MOVEMENT = {
     SLIDE_FRICTION: 0.02,
     /** Maximum slope angle (degrees) for slide activation */
     SLIDE_MIN_SLOPE: 35,
+    /** Fraction of platform velocity transferred to the player */
+    PLAYER_MOMENTUM_TRANSFER: 0.3,
 } as const;
 
 export const FLOATING_OBJECT = {

@@ -3,9 +3,82 @@ import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSy
 import { MOVEMENT } from '../../../constants/game';
 import { useGameStore } from '../../../systems/GameState';
 import { DodgeState, DebugContact } from '../constants';
-import { RAYCAST_ORIGIN_OFFSET, RAYCAST_DISTANCE, SLOPE_RANGES } from '../constants';
+import {
+  RAYCAST_ORIGIN_OFFSET,
+  RAYCAST_DISTANCE,
+  GROUND_RAY_MIN_TOI,
+  RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET,
+  SLOPE_RANGES,
+  NEAR_MISS_SPEED_THRESHOLD,
+  NEAR_MISS_RAY_LENGTH,
+  NEAR_MISS_TOI_MIN,
+  NEAR_MISS_TOI_MAX,
+} from '../constants';
+import { playDodgeSound } from '../audio';
+import { triggerCameraShake } from '../utils';
+import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/LaunchScoringSession';
 
-export function calculateSlopeAngle({ body, world, rapier, slopeState }): number {
+type RapierRayHit = {
+  timeOfImpact?: number | (() => number);
+  free?: () => void;
+  collider?: { parent?: () => { handle?: number; linvel?: () => { x: number; y: number; z: number }; free?: () => void } | null };
+};
+
+export function getRayTimeOfImpact(hit: RapierRayHit | null | undefined): number | null {
+  if (!hit) return null;
+  const toi = typeof hit.timeOfImpact === 'function' ? hit.timeOfImpact() : hit.timeOfImpact;
+  return typeof toi === 'number' && Number.isFinite(toi) ? toi : null;
+}
+
+/** Downward ground ray that excludes the player's rigid body (avoids capsule self-hit at TOI 0). */
+export function castPlayerGroundRay(
+  world: {
+    castRay: (
+      ray: unknown,
+      maxToi: number,
+      solid: boolean,
+      filterFlags?: unknown,
+      filterGroups?: unknown,
+      filterExcludeCollider?: unknown,
+      filterExcludeRigidBody?: unknown,
+    ) => RapierRayHit | null;
+    castRayAndGetNormal?: (
+      ray: unknown,
+      maxToi: number,
+      solid: boolean,
+      filterFlags?: unknown,
+      filterGroups?: unknown,
+      filterExcludeCollider?: unknown,
+      filterExcludeRigidBody?: unknown,
+    ) => RapierRayHit | null;
+  },
+  rapier: { Ray: new (origin: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }) => unknown },
+  body: unknown,
+  origin: { x: number; y: number; z: number },
+  maxDist: number = RAYCAST_DISTANCE,
+): { hit: RapierRayHit | null; toi: number | null; ray: unknown } {
+  const ray = new rapier.Ray(origin, { x: 0, y: -1, z: 0 });
+  const hit = body
+    ? world.castRay(ray, maxDist, true, undefined, undefined, undefined, body)
+    : world.castRay(ray, maxDist, true);
+  return { hit, toi: getRayTimeOfImpact(hit), ray };
+}
+
+export function isTerrainGroundHit(toi: number | null): boolean {
+  return toi !== null && toi >= GROUND_RAY_MIN_TOI && toi <= RAYCAST_DISTANCE;
+}
+
+export function calculateSlopeAngle({
+  body,
+  world,
+  rapier,
+  slopeState,
+}: {
+  body: any;
+  world: any;
+  rapier: any;
+  slopeState: any;
+}): number {
   if (!body || !world) return 0;
 
   const pos = body.translation();
@@ -15,14 +88,25 @@ export function calculateSlopeAngle({ body, world, rapier, slopeState }): number
   // which the height-gradient fallback cannot capture for near-vertical faces.
   // Note: castRayAndGetNormal exists in rapier3d-compat 0.19+ but @react-three/rapier's
   // TypeScript types may not declare it, hence the runtime presence check via `as any`.
-  const centerOrigin = { x: pos.x, y: pos.y + RAYCAST_ORIGIN_OFFSET, z: pos.z };
+  const centerOrigin = { x: pos.x, y: pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, z: pos.z };
   const centerNormalRay = new rapier.Ray(centerOrigin, { x: 0, y: -1, z: 0 });
-  const normalHit = (world as any).castRayAndGetNormal
-    ? (world as any).castRayAndGetNormal(centerNormalRay, RAYCAST_DISTANCE, true)
+  const normalHit = world.castRayAndGetNormal
+    ? world.castRayAndGetNormal(
+        centerNormalRay,
+        RAYCAST_DISTANCE,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        body,
+      )
     : null;
-  if (typeof (centerNormalRay as any).free === 'function') (centerNormalRay as any).free();
+  if (typeof (centerNormalRay as { free?: () => void }).free === 'function') {
+    (centerNormalRay as { free: () => void }).free();
+  }
 
-  if (normalHit) {
+  const normalToi = getRayTimeOfImpact(normalHit);
+  if (normalHit && isTerrainGroundHit(normalToi)) {
     const n = normalHit.normal ?? normalHit;
     const nLen = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
     if (nLen > 0.001) {
@@ -46,16 +130,18 @@ export function calculateSlopeAngle({ body, world, rapier, slopeState }): number
   const castRay = (offsetX: number, offsetZ: number): number | null => {
     const origin = {
       x: pos.x + offsetX,
-      y: pos.y + RAYCAST_ORIGIN_OFFSET,
+      y: pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET,
       z: pos.z + offsetZ
     };
     const ray = new rapier.Ray(origin, { x: 0, y: -1, z: 0 });
-    const hit = world.castRay(ray, rayLength, true);
-    const toi = hit ? (typeof (hit as any).timeOfImpact === 'function' ? (hit as any).timeOfImpact() : hit.timeOfImpact) : null;
-    if (hit && typeof (hit as any).free === 'function') (hit as any).free();
-    if (typeof (ray as any).free === 'function') (ray as any).free();
-    if (toi === null) return null;
-    return origin.y - toi;
+    const hit = world.castRay(ray, rayLength, true, undefined, undefined, undefined, body);
+    const toi = getRayTimeOfImpact(hit);
+    if (hit && typeof hit.free === 'function') hit.free();
+    if (typeof (ray as { free?: () => void }).free === 'function') {
+      (ray as { free: () => void }).free();
+    }
+    if (!isTerrainGroundHit(toi)) return null;
+    return origin.y - toi!;
   };
 
   const sampleDist = 0.5;
@@ -144,8 +230,49 @@ export function calculateSlopeMultiplier(angle: number): number {
 }
 
 export function handleDodgeAndCollision({
-    dodgeState, dodgeJustPressed, isGrounded, camera, leftward, rightward, forward, backward, dt,
-    body, pos, vel, prevFrame, js, vehicle, collisionState, debugState, now
+  dodgeState,
+  dodgeJustPressed,
+  isGrounded,
+  camera,
+  leftward,
+  rightward,
+  forward,
+  backward,
+  dt,
+  body,
+  pos,
+  vel,
+  prevFrame,
+  js,
+  vehicle,
+  collisionState,
+  debugState,
+  now,
+  applyImpulseWithDebugTracking,
+  rapier,
+  world,
+}: {
+  dodgeState: any;
+  dodgeJustPressed: boolean;
+  isGrounded: boolean;
+  camera: THREE.Camera;
+  leftward: boolean;
+  rightward: boolean;
+  forward: boolean;
+  backward: boolean;
+  dt: number;
+  body: any;
+  pos: { x: number; y: number; z: number };
+  vel: { x: number; y: number; z: number };
+  prevFrame: any;
+  js: any;
+  vehicle: any;
+  collisionState: any;
+  debugState: any;
+  now: number;
+  applyImpulseWithDebugTracking: (tag: string, impulse: { x: number; y: number; z: number }) => void;
+  rapier: any;
+  world: any;
 }) {
     // === DODGE STATE MACHINE (Goal 2) ===
     const ds = dodgeState.current;
@@ -169,7 +296,7 @@ export function handleDodgeAndCollision({
             ds.direction.sub(rightDir);
           } else if (rightward) {
             ds.direction.add(rightDir);
-          } else if (controls.getControls().backward) {
+          } else if (backward) {
             ds.direction.sub(forwardDir);
           } else {
             ds.direction.add(forwardDir);
@@ -262,6 +389,9 @@ export function handleDodgeAndCollision({
     // Detect high-impact collision (skip if dodging with i-frames)
     const isDodging = ds.state === 'dodging' && ds.timer > (MOVEMENT.DODGE_DURATION - MOVEMENT.DODGE_I_FRAMES);
     if (impactForce > 8 && !isGrounded && !isDodging) {
+      if (hasActiveLaunch()) {
+        recordLaunchWallContact();
+      }
       const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
       const contactPoint = new THREE.Vector3(pos.x, pos.y - 0.5, pos.z);
 
