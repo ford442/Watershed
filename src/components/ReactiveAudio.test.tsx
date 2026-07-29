@@ -100,6 +100,15 @@ describe('ReactiveAudio', () => {
     expect(sourceFile).toContain('isFinite(rawFlowSpeed) ? rawFlowSpeed : 1');
   });
 
+  it('mounts SpeedWindAudio for the continuous speed wind bed', () => {
+    const sourceFile = fs.readFileSync(
+      path.join(__dirname, 'ReactiveAudio.tsx'),
+      'utf-8'
+    );
+    expect(sourceFile).toContain("import SpeedWindAudio from './SpeedWindAudio'");
+    expect(sourceFile).toContain('<SpeedWindAudio targetRef={targetRef}');
+  });
+
   describe('Math validation', () => {
     it('should correctly evaluate isFinite for NaN values', () => {
       // Unit test to verify isFinite behavior with non-finite values

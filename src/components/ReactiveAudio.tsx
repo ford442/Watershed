@@ -6,6 +6,7 @@
  * - SFX loop scales rapids roar with current strength
  * - Positional audio for transition segments (waterfall roar)
  * - Splash one-shots triggered by speed + turbulence
+ * - Speed-based wind bed via SpeedWindAudio (feel-of-velocity)
  *
  * Uses Three.js native Audio / PositionalAudio with buffers from AssetCache.audioBuffers
  * and falls back to AudioManager SOUND_LIBRARY for local dev.
@@ -22,6 +23,7 @@ import { useGameStore } from '../systems/GameState';
 import { useLOD } from '../systems/LODManager';
 import { PILLAR_BREAK_EVENT } from '../components/Obstacles/pillarBreakEvents';
 import { isGlacialBiome } from '../configs/TrackBiomes';
+import SpeedWindAudio from './SpeedWindAudio';
 import type { ReachManifest } from '../systems/ReachStreamer';
 import type { NormalizedSegment } from '../systems/ReachNormalizer';
 
@@ -479,5 +481,6 @@ export default function ReactiveAudio({
     }
   });
 
-  return null;
+  // Speed-based wind bed — shared component; does not alter other channels.
+  return <SpeedWindAudio targetRef={targetRef} />;
 }
