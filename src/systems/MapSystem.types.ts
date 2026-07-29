@@ -55,6 +55,19 @@ export interface DecorationPlacement {
   rockType?: 'boulder' | 'slab' | 'column';
 }
 
+/** Authored vortex drain field for hydro / pond set-pieces. */
+export interface VortexConfig {
+  /** Path parameter 0–1 along the segment curve (default 0.5). */
+  centerT?: number;
+  /** Lateral offset from centerline in meters. */
+  lateralOffset?: number;
+  radius: number;
+  eyeRadius: number;
+  pullStrength: number;
+  spinStrength: number;
+  downwardForce: number;
+}
+
 export interface LevelSegment {
   index: number;
   name?: string;
@@ -93,6 +106,8 @@ export interface LevelSegment {
   openFloor?: boolean;
   /** Authored bridge/trestle — WashedOut forecast can force a gap. */
   hasBridge?: boolean;
+  /** Optional vortex drain field (Hydro-Dam chamber / throat). */
+  vortex?: VortexConfig;
 }
 
 export interface LevelSpawns {
@@ -151,6 +166,7 @@ export interface BaseMapChunk {
     launchShelf?: LaunchShelfConfig;
     openFloor?: boolean;
     hasBridge?: boolean;
+    vortex?: VortexConfig;
   };
   /** Reference to physics collider */
   collider?: RapierRigidBody;
@@ -245,6 +261,8 @@ export interface SegmentProgressionConfig {
   openFloor?: boolean;
   /** Authored bridge/trestle — WashedOut forecast can force a gap. */
   hasBridge?: boolean;
+  /** Optional vortex drain field (Hydro-Dam chamber / throat). */
+  vortex?: VortexConfig;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and

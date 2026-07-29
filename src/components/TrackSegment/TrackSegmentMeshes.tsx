@@ -41,6 +41,9 @@ import IceSpray from '../Environment/IceSpray';
 import Icicles from '../Environment/Icicles';
 import IceSheets from '../Environment/IceSheets';
 import LumberProps from '../LumberProps';
+import IndustrialProps from '../IndustrialProps';
+import VortexVisual from '../VortexVisual';
+import { effectiveVortexStrength } from '../../physics/vortexForces';
 
 import { useLOD } from '../../systems/LODManager';
 import { useBiome } from '../../systems/BiomeSystem';
@@ -103,7 +106,10 @@ export function TrackSegmentMeshes({
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
     const isGlacier = isGlacialBiome(biome, biomeProfile);
     const isLumberFlume = biomeProfile.id === 'lumberFlume';
-    const openFloor = Boolean(config?.openFloor);
+    const isHydroDam = biomeProfile.id === 'hydroDam';
+    const openFloor = Boolean(config?.openFloor) || Boolean(config?.washedOutGap);
+    const vortexConfig = config?.vortex;
+    const catwalkWashedOut = Boolean(config?.washedOutGap) && Boolean(config?.hasBridge);
     const slushiness = isGlacier ? (biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55) : 0;
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
     const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome) || biome === 'canyon') && timeOfDay > 0.65;
@@ -126,6 +132,43 @@ export function TrackSegmentMeshes({
         return p;
       });
     }, [isLumberFlume, placementData.driftwood, segmentPath, pathLength, waterLevel]);
+
+    // Industrial props for Hydro-Dam (pipes / railings / catwalks / gates)
+    const industrialPositions = useMemo(() => {
+      if (!isHydroDam || !segmentPath || pathLength <= 0) {
+        return { pipes: [] as THREE.Vector3[], railings: [] as THREE.Vector3[], catwalks: [] as THREE.Vector3[], gates: [] as THREE.Vector3[] };
+      }
+      const sample = (ts: number[], lateral: number, yOff: number) =>
+        ts.map((t) => {
+          const p = segmentPath.getPoint(t);
+          const tangent = segmentPath.getTangent(t).normalize();
+          const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+          p.addScaledVector(binormal, lateral);
+          p.y = waterLevel + yOff;
+          return p;
+        });
+      return {
+        pipes: sample([0.2, 0.55, 0.85], 4.5, 1.2),
+        railings: sample([0.3, 0.6], 3.2, 1.6),
+        catwalks: config?.hasBridge ? sample([0.5], 0, 2.2) : sample([0.45], 2.8, 1.8),
+        gates: vortexConfig ? sample([vortexConfig.centerT ?? 0.55], 0, 1.4) : [],
+      };
+    }, [isHydroDam, segmentPath, pathLength, waterLevel, config?.hasBridge, vortexConfig]);
+
+    const vortexCenter = useMemo(() => {
+      if (!vortexConfig || !segmentPath) return null;
+      const t = THREE.MathUtils.clamp(vortexConfig.centerT ?? 0.55, 0, 1);
+      const p = segmentPath.getPoint(t);
+      const tangent = segmentPath.getTangent(t).normalize();
+      const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+      p.addScaledVector(binormal, vortexConfig.lateralOffset ?? 0);
+      return p;
+    }, [vortexConfig, segmentPath]);
+
+    const vortexVisualIntensity = useMemo(() => {
+      if (!vortexConfig) return 0;
+      return effectiveVortexStrength(segmentState, flowSpeed);
+    }, [vortexConfig, segmentState, flowSpeed]);
 
     // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
     const playerVelocityRef = useRef(0);
@@ -446,16 +489,35 @@ export function TrackSegmentMeshes({
                 biome={biome}
                 isNight={isNight}
                 slushiness={slushiness}
-                baseColor={isGlacier ? '#a8d8ea' : (type === 'pond' ? '#1a4b6a' : undefined)}
-                foamColor={isGlacier ? '#e8f6ff' : undefined}
-                edgeHighlightColor={isGlacier ? '#c8eeff' : undefined}
+                baseColor={
+                  isHydroDam
+                    ? '#2a4a5a'
+                    : isGlacier
+                      ? '#a8d8ea'
+                      : (type === 'pond' ? '#1a4b6a' : undefined)
+                }
+                foamColor={isGlacier ? '#e8f6ff' : isHydroDam ? '#c0d0d8' : undefined}
+                edgeHighlightColor={isGlacier ? '#c8eeff' : isHydroDam ? '#7a9aaa' : undefined}
                 flowMap={flowMap}
                 vehiclePos={vehiclePos}
                 vehicleVelocity={vehicleVelocity}
                 waterSurfaceOffset={waterSurfaceOffset}
                 sunWorldPosition={sunWorldPosition}
                 isPond={type === 'pond'}
+                vortexCenter={vortexCenter ?? undefined}
+                vortexRadius={vortexConfig?.radius}
+                vortexIntensity={vortexVisualIntensity}
             />
+
+            {vortexCenter && vortexConfig && (
+                <VortexVisual
+                    center={vortexCenter}
+                    radius={vortexConfig.radius}
+                    intensity={vortexVisualIntensity}
+                    particleCount={56}
+                    color="#5a9ae9"
+                />
+            )}
 
             {/* Glacier: ice-crystal spray bursts at the segment midpoint, scale with player speed */}
             {isGlacier && active && (
@@ -556,6 +618,24 @@ export function TrackSegmentMeshes({
                     <LumberProps type="plank" positions={lumberPropPositions.slice(0, 4)} />
                     <LumberProps type="log" positions={lumberPropPositions.slice(2, 6)} />
                     <LumberProps type="barrel" positions={lumberPropPositions.slice(5, 8)} />
+                </>
+            )}
+
+            {/* Hydro-Dam industrial set dressing */}
+            {isHydroDam && (
+                <>
+                    <IndustrialProps type="pipe" positions={industrialPositions.pipes} />
+                    <IndustrialProps
+                      type="railing"
+                      positions={industrialPositions.railings}
+                      washedOut={catwalkWashedOut}
+                    />
+                    <IndustrialProps
+                      type="catwalk"
+                      positions={industrialPositions.catwalks}
+                      washedOut={catwalkWashedOut}
+                    />
+                    <IndustrialProps type="gate" positions={industrialPositions.gates} />
                 </>
             )}
 

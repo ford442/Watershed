@@ -162,6 +162,20 @@ export interface TrackSegmentConfig {
   };
   /** Skip floor trimesh collider (air corridor / broken trestle gap). */
   openFloor?: boolean;
+  /** Forecast-driven washed-out bridge / catwalk gap. */
+  washedOutGap?: boolean;
+  /** Authored bridge/trestle present on this segment. */
+  hasBridge?: boolean;
+  /** Optional vortex drain field. */
+  vortex?: {
+    centerT?: number;
+    lateralOffset?: number;
+    radius: number;
+    eyeRadius: number;
+    pullStrength: number;
+    spinStrength: number;
+    downwardForce: number;
+  };
   lodQuality?: 'low' | 'medium' | 'high' | 'ultra' | string;
   particleCount?: number;
   rockDensity?: 'low' | 'medium' | 'high';

@@ -66,6 +66,12 @@ export interface FlowingWaterProps {
   sunWorldPosition?: THREE.Vector3 | null;
   /** Pond segments use calmer waves and a stronger specular. */
   isPond?: boolean;
+  /** World-space vortex drain center for Hydro-Dam UV swirl. */
+  vortexCenter?: THREE.Vector3 | null;
+  /** Vortex influence radius in world units. */
+  vortexRadius?: number;
+  /** Swirl intensity multiplier (0 = off). */
+  vortexIntensity?: number;
 }
 
 /** True when the water shader samples the planar reflection target. */

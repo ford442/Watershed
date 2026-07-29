@@ -85,6 +85,15 @@ describe('track + palette lookup for canonical ids', () => {
     expect(lumber.wallHeight).toBeLessThan(summer.wallHeight);
     expect(lumber.vegetationDensity).toBeGreaterThan(summer.vegetationDensity);
   });
+
+  it('hydroDam profile is not a slot-canyon clone', () => {
+    const hydro = getTrackBiomeProfile('hydroDam');
+    const slot = getTrackBiomeProfile('slotCanyon');
+    expect(hydro.id).toBe('hydroDam');
+    expect(hydro.rockBaseColor).not.toBe(slot.rockBaseColor);
+    expect(hydro.wallFriction).not.toBe(slot.wallFriction);
+    expect(hydro.canyonWidth).not.toBe(slot.canyonWidth);
+  });
 });
 
 describe('legacy map-load fixture', () => {

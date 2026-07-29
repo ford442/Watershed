@@ -1,0 +1,307 @@
+{
+  "metadata": {
+    "name": "Hydro-Dam",
+    "author": "watershed",
+    "description": "Concrete approach flume into a stilling basin, vortex drain chamber, overflow pipe, and outfall toward the delta.",
+    "difficulty": "expert",
+    "estimatedDuration": 300,
+    "version": "1.0.0",
+    "tags": ["hydro", "dam", "industrial", "vortex"]
+  },
+  "world": {
+    "track": {
+      "waypoints": [
+        [0, 2, 40],
+        [0, 1, 10],
+        [1, -1, -40],
+        [0, -3, -110],
+        [-1, -4, -190],
+        [0, -5, -280],
+        [1, -8, -370],
+        [0, -14, -460]
+      ],
+      "segmentLength": 95,
+      "totalSegments": 16,
+      "width": 32,
+      "wallHeight": 18
+    },
+    "biome": {
+      "baseType": "hydroDam",
+      "sky": {
+        "color": "#6a7a8a",
+        "cloudDensity": 0.55,
+        "cloudColor": "#c0c8d0"
+      },
+      "fog": {
+        "color": "#8a9aaa",
+        "near": 30,
+        "far": 180,
+        "density": 0.025
+      },
+      "lighting": {
+        "sunIntensity": 0.9,
+        "sunAngle": 48,
+        "sunColor": "#e0e8f0",
+        "ambientIntensity": 0.4,
+        "hemiSkyColor": "#6a7a8a",
+        "hemiGroundColor": "#3a3a3a"
+      },
+      "water": {
+        "tint": "#2a4a5a",
+        "flowSpeed": 1.8,
+        "opacity": 0.9,
+        "surfaceRoughness": 0.22
+      }
+    }
+  },
+  "segments": [
+    {
+      "index": 0,
+      "name": "Service Road Approach",
+      "difficulty": 0.35,
+      "biomeOverride": "hydroDam",
+      "width": 36,
+      "waterWidth": 12,
+      "meanderStrength": 0.25,
+      "verticalBias": -0.35,
+      "physics": { "waterFlowIntensity": 1.15 },
+      "effects": { "particleCount": 40 },
+      "decorations": { "trees": 2, "rocks": 4 }
+    },
+    {
+      "index": 1,
+      "name": "Intake Flume",
+      "difficulty": 0.4,
+      "biomeOverride": "hydroDam",
+      "width": 30,
+      "waterWidth": 10,
+      "meanderStrength": 0.15,
+      "verticalBias": -0.45,
+      "physics": { "waterFlowIntensity": 1.35 },
+      "effects": { "particleCount": 55, "cameraShake": 0.04 },
+      "decorations": { "trees": 1, "rocks": 3 }
+    },
+    {
+      "index": 2,
+      "name": "Penstock Channel",
+      "difficulty": 0.45,
+      "biomeOverride": "hydroDam",
+      "width": 28,
+      "waterWidth": 9,
+      "meanderStrength": 0.1,
+      "verticalBias": -0.55,
+      "physics": { "waterFlowIntensity": 1.5 },
+      "effects": { "particleCount": 70, "cameraShake": 0.06 },
+      "decorations": { "trees": 0, "rocks": 2 }
+    },
+    {
+      "index": 3,
+      "name": "Basin Approach",
+      "difficulty": 0.5,
+      "biomeOverride": "hydroDam",
+      "type": "rapids",
+      "width": 40,
+      "waterWidth": 18,
+      "meanderStrength": 0.12,
+      "verticalBias": -0.4,
+      "physics": { "waterFlowIntensity": 1.25 },
+      "effects": { "particleCount": 90, "cameraShake": 0.08 },
+      "decorations": { "trees": 0, "rocks": 5 }
+    },
+    {
+      "index": 4,
+      "name": "Stilling Basin",
+      "difficulty": 0.45,
+      "biomeOverride": "hydroDam",
+      "type": "pond",
+      "width": 56,
+      "waterWidth": 34,
+      "meanderStrength": 0.05,
+      "verticalBias": -0.08,
+      "physics": { "waterFlowIntensity": 0.7 },
+      "effects": { "particleCount": 110 },
+      "decorations": { "trees": 0, "rocks": 2 }
+    },
+    {
+      "index": 5,
+      "name": "Vortex Chamber",
+      "difficulty": 0.75,
+      "biomeOverride": "hydroDam",
+      "type": "pond",
+      "width": 52,
+      "waterWidth": 32,
+      "meanderStrength": 0.04,
+      "verticalBias": -0.12,
+      "physics": { "waterFlowIntensity": 0.85 },
+      "effects": { "particleCount": 180, "cameraShake": 0.18 },
+      "decorations": { "trees": 0, "rocks": 1 },
+      "vortex": {
+        "centerT": 0.55,
+        "lateralOffset": 0,
+        "radius": 11,
+        "eyeRadius": 2.4,
+        "pullStrength": 54,
+        "spinStrength": 2.4,
+        "downwardForce": 11
+      }
+    },
+    {
+      "index": 6,
+      "name": "Drain Throat",
+      "difficulty": 0.8,
+      "biomeOverride": "hydroDam",
+      "type": "rapids",
+      "width": 22,
+      "waterWidth": 8,
+      "meanderStrength": 0.05,
+      "verticalBias": -1.4,
+      "physics": { "waterFlowIntensity": 2.2, "gravityMultiplier": 1.15 },
+      "effects": { "particleCount": 200, "cameraShake": 0.28 },
+      "decorations": { "trees": 0, "rocks": 0 },
+      "vortex": {
+        "centerT": 0.35,
+        "lateralOffset": 0,
+        "radius": 7,
+        "eyeRadius": 1.6,
+        "pullStrength": 42,
+        "spinStrength": 1.8,
+        "downwardForce": 14
+      }
+    },
+    {
+      "index": 7,
+      "name": "Overflow Pipe",
+      "difficulty": 0.9,
+      "biomeOverride": "hydroDam",
+      "type": "waterfall",
+      "width": 20,
+      "waterWidth": 6,
+      "meanderStrength": 0.02,
+      "verticalBias": -2.8,
+      "forwardMomentum": 0.16,
+      "openFloor": true,
+      "physics": { "waterFlowIntensity": 2.4, "gravityMultiplier": 1.35 },
+      "effects": { "particleCount": 260, "cameraShake": 0.4 },
+      "decorations": { "trees": 0, "rocks": 0 }
+    },
+    {
+      "index": 8,
+      "name": "Outfall Splash",
+      "difficulty": 0.55,
+      "biomeOverride": "hydroDam",
+      "type": "splash",
+      "width": 44,
+      "waterWidth": 22,
+      "meanderStrength": 0.15,
+      "verticalBias": -0.2,
+      "physics": { "waterFlowIntensity": 1.4 },
+      "effects": { "particleCount": 220, "cameraShake": 0.22 },
+      "decorations": { "trees": 0, "rocks": 4 }
+    },
+    {
+      "index": 9,
+      "name": "Tailrace Channel",
+      "difficulty": 0.5,
+      "biomeOverride": "hydroDam",
+      "width": 34,
+      "waterWidth": 12,
+      "meanderStrength": 0.2,
+      "verticalBias": -0.45,
+      "physics": { "waterFlowIntensity": 1.45 },
+      "effects": { "particleCount": 80, "cameraShake": 0.08 },
+      "decorations": { "trees": 1, "rocks": 3 }
+    },
+    {
+      "index": 10,
+      "name": "Service Gallery",
+      "difficulty": 0.48,
+      "biomeOverride": "hydroDam",
+      "width": 32,
+      "waterWidth": 11,
+      "meanderStrength": 0.18,
+      "verticalBias": -0.4,
+      "physics": { "waterFlowIntensity": 1.3 },
+      "effects": { "particleCount": 60 },
+      "decorations": { "trees": 1, "rocks": 2 }
+    },
+    {
+      "index": 11,
+      "name": "Spillway Bend",
+      "difficulty": 0.55,
+      "biomeOverride": "hydroDam",
+      "type": "rapids",
+      "width": 30,
+      "waterWidth": 10,
+      "meanderStrength": 0.35,
+      "verticalBias": -0.55,
+      "physics": { "waterFlowIntensity": 1.6 },
+      "effects": { "particleCount": 100, "cameraShake": 0.1 },
+      "decorations": { "trees": 0, "rocks": 4 }
+    },
+    {
+      "index": 12,
+      "name": "Catwalk Gate",
+      "difficulty": 0.65,
+      "biomeOverride": "hydroDam",
+      "width": 28,
+      "waterWidth": 10,
+      "meanderStrength": 0.12,
+      "verticalBias": -0.35,
+      "hasBridge": true,
+      "physics": { "waterFlowIntensity": 1.35 },
+      "effects": { "particleCount": 90, "cameraShake": 0.12 },
+      "decorations": { "trees": 0, "rocks": 2 }
+    },
+    {
+      "index": 13,
+      "name": "Portage Ledge",
+      "difficulty": 0.5,
+      "biomeOverride": "hydroDam",
+      "width": 36,
+      "waterWidth": 14,
+      "meanderStrength": 0.2,
+      "verticalBias": -0.3,
+      "physics": { "waterFlowIntensity": 1.15 },
+      "effects": { "particleCount": 50 },
+      "decorations": { "trees": 2, "rocks": 3 }
+    },
+    {
+      "index": 14,
+      "name": "Valley Connector",
+      "difficulty": 0.4,
+      "biomeOverride": "hydroDam",
+      "width": 38,
+      "waterWidth": 14,
+      "meanderStrength": 0.3,
+      "verticalBias": -0.35,
+      "physics": { "waterFlowIntensity": 1.1 },
+      "effects": { "particleCount": 45 },
+      "decorations": { "trees": 3, "rocks": 3 }
+    },
+    {
+      "index": 15,
+      "name": "Delta Handoff",
+      "difficulty": 0.35,
+      "biomeOverride": "delta",
+      "width": 48,
+      "waterWidth": 22,
+      "meanderStrength": 0.4,
+      "verticalBias": -0.25,
+      "journeyComplete": true,
+      "physics": { "waterFlowIntensity": 0.95 },
+      "effects": { "particleCount": 40 },
+      "decorations": { "trees": 6, "rocks": 2 }
+    }
+  ],
+  "spawns": {
+    "start": {
+      "position": [0, 4, -8],
+      "rotation": [0, 0, 0],
+      "velocity": [0, 0, 0]
+    },
+    "checkpoints": [
+      { "segment": 4, "position": [0, -4, -190], "radius": 35 },
+      { "segment": 8, "position": [0, -16, -480], "radius": 30 }
+    ]
+  }
+}

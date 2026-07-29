@@ -453,12 +453,17 @@ export function buildProceduralSegment(
     canyonWidth: progression.width,
     spawns,
     config:
-      progression.decorations || progression.launchShelf || progression.openFloor || progression.hasBridge
+      progression.decorations ||
+      progression.launchShelf ||
+      progression.openFloor ||
+      progression.hasBridge ||
+      progression.vortex
         ? {
             decorations: progression.decorations,
             launchShelf: progression.launchShelf,
             openFloor: progression.openFloor,
             hasBridge: progression.hasBridge,
+            vortex: progression.vortex,
           }
         : undefined,
     active: true,

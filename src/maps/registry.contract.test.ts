@@ -112,6 +112,8 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
       lumberflume: 'lumber',
       flume: 'lumber',
       glacier: 'glacial',
+      hydrodam: 'hydro',
+      dam: 'hydro',
     };
     for (const [alias, expected] of Object.entries(aliases)) {
       expect(resolveMapRegistryId(alias)).toBe(expected);

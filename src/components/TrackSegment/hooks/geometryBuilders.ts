@@ -209,10 +209,13 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
   const colors = new Float32Array(positions.count * 3);
   const color = new THREE.Color();
 
+  const isHydro = biome === 'hydroDam';
   const dryColor = isSlotCanyon
     ? new THREE.Color(SHADERS.SLOT_ROCK_RIM)
     : isGlacier
       ? new THREE.Color('#c8dce8')
+      : isHydro
+        ? new THREE.Color('#9aa0a6')
       : isAutumnLike(biome)
         ? new THREE.Color('#b89868')
         : new THREE.Color('#9a8e78');
@@ -220,6 +223,8 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     ? new THREE.Color(SHADERS.SLOT_ROCK_SHADOW)
     : isGlacier
       ? new THREE.Color('#2a4858')
+      : isHydro
+        ? new THREE.Color('#2e3236')
       : isAutumnLike(biome)
         ? new THREE.Color('#4a3828')
         : new THREE.Color('#3e5038');
@@ -227,6 +232,8 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     ? new THREE.Color(SHADERS.SLOT_ROCK_BASE)
     : isGlacier
       ? new THREE.Color('#6a9ab0')
+      : isHydro
+        ? new THREE.Color('#6a6e72')
       : isAutumnLike(biome)
         ? new THREE.Color('#685840')
         : new THREE.Color('#4a5c44');
@@ -234,6 +241,8 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     ? new THREE.Color('#7c4a2d')
     : isGlacier
       ? new THREE.Color('#4a7888')
+      : isHydro
+        ? new THREE.Color('#4a5054')
       : isAutumnLike(biome)
         ? new THREE.Color('#7a6640')
         : new THREE.Color('#587248');
@@ -241,6 +250,8 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     ? new THREE.Color('#bf7444')
     : isGlacier
       ? new THREE.Color('#a0b8c8')
+      : isHydro
+        ? new THREE.Color('#7a8088')
       : isAutumnLike(biome)
         ? new THREE.Color('#907850')
         : new THREE.Color('#788860');

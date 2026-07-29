@@ -10,6 +10,7 @@ import {
   MAP_REGISTRY,
   isMapRegistryId,
   mapRegistryIds,
+  resolveMapRegistryId,
   type MapDefinition,
   type MapRegistryId,
 } from './registry';
@@ -53,10 +54,12 @@ export function resolveMapId(options: {
   fallback?: MapRegistryId;
 } = {}): MapRegistryId {
   const fallback = options.fallback ?? ACTIVE_MAP_ID;
-  if (isMapRegistryId(options.selection)) return options.selection;
-  if (isMapRegistryId(options.urlMap)) return options.urlMap;
-  if (isMapRegistryId(options.lastPlayed)) return options.lastPlayed;
-  return fallback;
+  return (
+    resolveMapRegistryId(options.selection) ??
+    resolveMapRegistryId(options.urlMap) ??
+    resolveMapRegistryId(options.lastPlayed) ??
+    fallback
+  );
 }
 
 /** Parse `?map=` from a search string or the current window location. */
@@ -65,7 +68,7 @@ export function parseUrlMapId(search?: string): MapRegistryId | null {
     search ??
     (typeof window !== 'undefined' ? window.location.search : '');
   const value = new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get('map');
-  return isMapRegistryId(value) ? value : null;
+  return resolveMapRegistryId(value);
 }
 
 /** Write `?map=` into the current URL without reloading (no-op off-window). */
