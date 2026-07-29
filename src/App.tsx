@@ -24,7 +24,8 @@ import { getActiveRunKey, getActiveMapId } from './utils/runContext';
 import { useGameStore } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
-import { setLastMapId } from './systems/PersistenceSystem';
+import { setLastMapId, getLaunchHour } from './systems/PersistenceSystem';
+import { initRunSession } from './systems/runSession';
 
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only
@@ -77,6 +78,7 @@ function App() {
   }, [settingsOpen]);
   const debug = useDebugStages();
   const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
+  const [activeLaunchHour, setActiveLaunchHour] = useState(() => getLaunchHour());
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
   const [physicsDebug, setPhysicsDebug] = useState(() => {
     if (isCleanTestMode()) return false;
@@ -246,8 +248,17 @@ function App() {
   }, []);
 
   const handleStart = useCallback(
-    (mapId: MapRegistryId = selectedMapId) => {
+    (
+      mapId: MapRegistryId = selectedMapId,
+      options?: { launchHour?: number; placedCacheIds?: string[] },
+    ) => {
       handleSelectMap(mapId);
+      initRunSession({
+        mapId,
+        launchHour: options?.launchHour,
+        placedCacheIds: options?.placedCacheIds,
+      });
+      setActiveLaunchHour(options?.launchHour ?? getLaunchHour());
       setPhase('playing');
       // Defer world mount by two frames so StartMenu can unmount and paint
       // before Rapier + 7 track segments block the main thread.
@@ -290,7 +301,7 @@ function App() {
       if (isTypingTarget(e.target)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
-        handleStart(selectedMapId);
+        handleStart(selectedMapId, { launchHour: undefined, placedCacheIds: [] });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -356,6 +367,7 @@ function App() {
                 mapId={selectedMapId}
                 onMapChange={handleMapChange}
                 onReturnToMenu={handleReturnToMenu}
+                launchHour={activeLaunchHour}
               />
             </React.Suspense>
           </Canvas>

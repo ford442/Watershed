@@ -27,14 +27,22 @@ import { hydrateStoreForRun } from '../../systems/persistenceBootstrap';
 import { getActiveRunKey } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 import { buildForecastSamples } from '../../systems/flowForecast';
+import { initRunSession, getActiveLaunchHour, getRunSession } from '../../systems/runSession';
+import { getLaunchHour } from '../../systems/PersistenceSystem';
 
-const DEFAULT_FORECAST_SAMPLES: FlowForecastSample[] = buildForecastSamples({
+const DEFAULT_FORECAST_OPTIONS = {
   temperature: 8,
   snowpackIndex: 0.65,
   damReleaseSchedule: DAM_RELEASE_SCHEDULE,
-  startHour: 0,
   horizonHours: 24,
-});
+} as const;
+
+function buildDefaultForecastSamples(launchHour: number): FlowForecastSample[] {
+  return buildForecastSamples({
+    ...DEFAULT_FORECAST_OPTIONS,
+    startHour: launchHour,
+  });
+}
 
 function forecastSamplesEqual(
   a: ReadonlyArray<FlowForecastSample>,
@@ -59,6 +67,7 @@ interface UseExperienceWorldOptions {
   mapId?: MapRegistryId;
   onMapChange?: (mapId: MapRegistryId) => void;
   onReturnToMenu?: () => void;
+  launchHour?: number;
 }
 
 function resolveInitialMapId(controlled?: MapRegistryId): MapRegistryId {
@@ -78,7 +87,9 @@ export function useExperienceWorld({
   mapId: controlledMapId,
   onMapChange,
   onReturnToMenu,
+  launchHour: controlledLaunchHour,
 }: UseExperienceWorldOptions) {
+  const launchHour = controlledLaunchHour ?? getActiveLaunchHour() ?? getLaunchHour();
   const { setBiome: setBiomeContext, snapBiome: snapBiomeContext } = useBiome();
 
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
@@ -95,7 +106,7 @@ export function useExperienceWorld({
   const [isLoadingLevel, setIsLoadingLevel] = useState(false);
   const [loadedLevelState, setLoadedLevelState] = useState<unknown>(null);
   const [forecastSamples, setForecastSamples] = useState<FlowForecastSample[]>(
-    () => DEFAULT_FORECAST_SAMPLES,
+    () => buildDefaultForecastSamples(launchHour),
   );
   const [reachId, setReachId] = useState<string | null>(null);
   const [reachLoading, setReachLoading] = useState(false);
@@ -121,6 +132,10 @@ export function useExperienceWorld({
     () => (isFinalMap ? getGhostBestScoreForMap(activeDefaultMapId) : 0),
     [activeDefaultMapId, isFinalMap, isJourneyComplete],
   );
+
+  useEffect(() => {
+    setForecastSamples(buildDefaultForecastSamples(launchHour));
+  }, [launchHour]);
 
   // Keep local map state in sync when App / StartMenu changes selection.
   useEffect(() => {
@@ -359,6 +374,11 @@ export function useExperienceWorld({
         syncMapUrl(targetMapId);
         setLastMapId(targetMapId);
         hydrateStoreForRun(getActiveRunKey(targetMapId));
+        initRunSession({
+          mapId: targetMapId,
+          launchHour: getActiveLaunchHour(),
+          placedCacheIds: getRunSession()?.placedCacheIds ?? [],
+        });
         useGameStore.getState().resetGameState();
         setIsWipeout(false);
         setActiveDefaultMapId(targetMapId);
@@ -368,7 +388,7 @@ export function useExperienceWorld({
         setWaterfallGravityMultiplier(1.0);
         snapBiomeContext(targetMap.initialBiome);
         useGameStore.setState({ currentBiome: targetMap.initialBiome, isPaused: false });
-        setForecastSamples(DEFAULT_FORECAST_SAMPLES);
+        setForecastSamples(buildDefaultForecastSamples(launchHour));
         awardedWaterfallSegmentsRef.current?.clear();
         resetScoreSystemState();
         resetRunSession({
@@ -443,6 +463,7 @@ export function useExperienceWorld({
     levelLoadError,
     isLoadingLevel,
     forecastSamples,
+    launchHour,
     reachId,
     reachLoading,
     reachError,

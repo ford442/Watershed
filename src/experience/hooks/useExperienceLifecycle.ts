@@ -8,12 +8,18 @@ import {
   awardDodgeBonus,
   awardWaterfallBonus,
   awardFloodSurviveBonus,
+  awardCacheRetrievalBonus,
+  applyCacheLostPenalty,
+  applyPortageFailPenalty,
   resetScoreSystemState,
   cancelLaunch,
 } from '../../systems/ScoreSystem';
 import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
 import { tickGhostRecording } from '../../systems/GhostRecorder';
 import { isElevatedRisk } from '../../systems/flowForecast';
+import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
+import { countLostCaches, requiresPortageForSegment } from '../../systems/portageCache';
+import { dispatchPortageCacheEvent, getRunSession } from '../../systems/runSession';
 import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';
 
@@ -49,14 +55,36 @@ export function useExperienceLifecycle({
     segmentIndex: number;
     state: string;
     surviveBonus: number;
+    requiresPortage: boolean;
   } | null>(null);
 
   useSegmentAudio(currentSegmentIndex);
 
   useEffect(() => {
-    if (isWipeout) {
-      previousRiskRef.current = null;
+    if (!isWipeout) return;
+    const session = getRunSession();
+    const segmentIndex = useGameStore.getState().currentSegmentIndex;
+    if (session) {
+      const beforeLost = countLostCaches(session.portageCache);
+      const survivalMeta = getMapSurvivalMetadata(session.mapId);
+      const segmentState = previousRiskRef.current?.state ?? 'Normal';
+      const requiresPortage = requiresPortageForSegment(
+        survivalMeta.portageRoutes ?? [],
+        segmentIndex,
+        segmentState,
+      );
+      dispatchPortageCacheEvent({ type: 'WIPEOUT', segmentIndex });
+      const afterSession = getRunSession();
+      const afterLost = afterSession ? countLostCaches(afterSession.portageCache) : beforeLost;
+      const newlyLost = afterLost - beforeLost;
+      if (newlyLost > 0) {
+        applyCacheLostPenalty(newlyLost);
+      }
+      if (requiresPortage || previousRiskRef.current?.requiresPortage) {
+        applyPortageFailPenalty();
+      }
     }
+    previousRiskRef.current = null;
   }, [isWipeout]);
 
   useEffect(() => {
@@ -114,6 +142,13 @@ export function useExperienceLifecycle({
         const index = detail?.segmentIndex ?? 0;
         const segmentState = detail?.segmentState ?? 'Normal';
         const surviveBonus = detail?.surviveBonus ?? 0;
+        const session = getRunSession();
+        const survivalMeta = session ? getMapSurvivalMetadata(session.mapId) : {};
+        const requiresPortage = requiresPortageForSegment(
+          survivalMeta.portageRoutes ?? [],
+          index,
+          segmentState,
+        );
 
         // Award flood-survive bonus when cleanly exiting an elevated-risk segment.
         const previous = previousRiskRef.current;
@@ -124,12 +159,33 @@ export function useExperienceLifecycle({
           previous.surviveBonus > 0 &&
           !useGameStore.getState().isWipeout
         ) {
-          awardFloodSurviveBonus(previous.surviveBonus);
+          awardFloodSurviveBonus(previous.surviveBonus, previous.state);
         }
+        if (previous && previous.segmentIndex !== index) {
+          dispatchPortageCacheEvent({
+            type: 'EXIT_SEGMENT',
+            segmentIndex: previous.segmentIndex,
+            survived: !useGameStore.getState().isWipeout,
+          });
+          if (previous.requiresPortage && useGameStore.getState().isWipeout) {
+            applyPortageFailPenalty();
+          }
+        }
+
+        if (session) {
+          dispatchPortageCacheEvent({
+            type: 'ENTER_SEGMENT',
+            segmentIndex: index,
+            requiresPortage,
+          });
+          awardCacheRetrievalBonus(index);
+        }
+
         previousRiskRef.current = {
           segmentIndex: index,
           state: segmentState,
           surviveBonus,
+          requiresPortage,
         };
 
         setCurrentSegmentIndex(index);

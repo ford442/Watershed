@@ -309,3 +309,64 @@ export function upcomingRiskStrip(
 export function isElevatedRisk(state: FlowForecastState | string): boolean {
   return coerceForecastState(state) !== FLOW_FORECAST_STATES.NORMAL;
 }
+
+/** Score multiplier for launching during elevated forecast risk at segment 0. */
+export function launchHourScoreMultiplier(state: FlowForecastState | string): number {
+  const normalized = coerceForecastState(state);
+  if (normalized === FLOW_FORECAST_STATES.WASHED_OUT) return 1.5;
+  if (normalized === FLOW_FORECAST_STATES.FLOODED) return 1.25;
+  if (normalized === FLOW_FORECAST_STATES.HIGH_FLOW) return 1.1;
+  return 1;
+}
+
+export type ForecastBuildOptions = {
+  temperature: number;
+  snowpackIndex: number;
+  damReleaseSchedule?: ReadonlyArray<DamReleaseEntry>;
+  startHour?: number;
+  horizonHours?: number;
+};
+
+/** Build the frozen hourly forecast for a run starting at `launchHour`. */
+export function buildLaunchForecast(options: ForecastBuildOptions): FlowForecastSample[] {
+  return buildForecastSamples(options);
+}
+
+/**
+ * Deterministic segment params for a launch hour + segment index.
+ * Segment index maps 1:1 to forecast sample offset from launch hour.
+ */
+export function segmentParamsAtLaunchHour(
+  base: ForecastSegmentParams,
+  launchHour: number,
+  segmentIndex: number,
+  forecastOptions: Omit<ForecastBuildOptions, 'startHour'>,
+): AppliedForecastParams {
+  const samples = buildLaunchForecast({
+    ...forecastOptions,
+    startHour: launchHour,
+    horizonHours: Math.max(24, segmentIndex + 1),
+  });
+  const state = samples[segmentIndex]?.state ?? FLOW_FORECAST_STATES.NORMAL;
+  return applyForecastToSegmentParams(base, state);
+}
+
+/** Next peak flow in the lookahead strip (hours until higher flow than now). */
+export function nextPeakCountdown(
+  samples: ReadonlyArray<FlowForecastSample>,
+): { hour: number; flowRate: number; hoursUntil: number } | null {
+  if (samples.length < 2) return null;
+
+  const current = samples[0];
+  let best: { hour: number; flowRate: number; hoursUntil: number } | null = null;
+
+  for (let i = 1; i < samples.length; i += 1) {
+    const sample = samples[i];
+    if (sample.flowRate <= current.flowRate + 0.02) continue;
+    if (!best || sample.flowRate > best.flowRate) {
+      best = { hour: sample.hour, flowRate: sample.flowRate, hoursUntil: i };
+    }
+  }
+
+  return best;
+}

@@ -3,6 +3,13 @@ import { resetLaunchScoringSession, cancelLaunch } from './LaunchScoringSession'
 import { getRunBest, updateRunBest } from './PersistenceSystem';
 import { persistGhostRecording, startGhostRecording } from './GhostRecorder';
 import { getActiveRunKey } from '../utils/runContext';
+import { launchHourScoreMultiplier } from './flowForecast';
+import {
+  CACHE_LOST_PENALTY,
+  PORTAGE_FAIL_PENALTY,
+  pendingRetrievalBonus,
+} from './portageCache';
+import { getRunSession, markCacheBonusAwarded } from './runSession';
 
 const HIGH_SPEED_THRESHOLD = 15;
 const RESET_SPEED_THRESHOLD = 8;
@@ -137,21 +144,69 @@ export function awardDodgeBonus(): void {
 }
 
 /** Survive HighFlow / Flooded / WashedOut without wipeout — points from forecast effects table. */
-export function awardFloodSurviveBonus(points: number): void {
+export function awardFloodSurviveBonus(points: number, segmentState?: string): void {
   if (points <= 0) return;
   const state = useGameStore.getState();
   if (state.isWipeout) return;
 
-  addScoreBonus(points);
+  const multiplier = segmentState ? launchHourScoreMultiplier(segmentState) : 1;
+  const scaled = Math.round(points * multiplier);
+  addScoreBonus(scaled);
   useGameStore.setState({
     latestReward: {
       tier: 'FloodSurvive',
-      score: Math.round(points),
+      score: scaled,
       clean: true,
       id: Date.now(),
-      label: 'FLOOD SURVIVE',
+      label: multiplier > 1 ? `FLOOD SURVIVE x${multiplier.toFixed(2)}` : 'FLOOD SURVIVE',
     },
   });
+}
+
+export function awardCacheRetrievalBonus(segmentIndex: number): void {
+  const session = getRunSession();
+  if (!session) return;
+  if (!markCacheBonusAwarded(segmentIndex)) return;
+
+  const bonus = pendingRetrievalBonus(session.portageCache, segmentIndex);
+  if (bonus <= 0) return;
+
+  addScoreBonus(bonus);
+  useGameStore.setState({
+    latestReward: {
+      tier: 'CacheRetrieve',
+      score: bonus,
+      clean: true,
+      id: Date.now(),
+      label: 'CACHE RETRIEVED',
+    },
+  });
+}
+
+export function applySurvivalPenalty(points: number, label: string): void {
+  const state = useGameStore.getState();
+  if (state.isWipeout) return;
+
+  const nextScore = Math.max(0, state.score - points);
+  useGameStore.setState({
+    score: nextScore,
+    latestReward: {
+      tier: 'SurvivalPenalty',
+      score: -points,
+      clean: false,
+      id: Date.now(),
+      label,
+    },
+  });
+}
+
+export function applyCacheLostPenalty(lostCount: number): void {
+  if (lostCount <= 0) return;
+  applySurvivalPenalty(lostCount * CACHE_LOST_PENALTY, 'GEAR LOST');
+}
+
+export function applyPortageFailPenalty(): void {
+  applySurvivalPenalty(PORTAGE_FAIL_PENALTY, 'PORTAGE FAILED');
 }
 
 /** Commit journey-end score to per-run persistence. */

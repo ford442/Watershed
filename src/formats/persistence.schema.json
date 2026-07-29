@@ -45,6 +45,11 @@
       },
       "uniqueItems": true
     },
+    "launchHour": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 23
+    },
     "runs": {
       "type": "object",
       "additionalProperties": {

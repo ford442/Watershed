@@ -91,6 +91,8 @@ export interface LevelSegment {
    * flies an air corridor (gap / broken trestle set-pieces).
    */
   openFloor?: boolean;
+  /** Authored bridge/trestle — WashedOut forecast can force a gap. */
+  hasBridge?: boolean;
 }
 
 export interface LevelSpawns {
@@ -148,6 +150,7 @@ export interface BaseMapChunk {
     decorations?: Record<string, number | DecorationPlacement[]>;
     launchShelf?: LaunchShelfConfig;
     openFloor?: boolean;
+    hasBridge?: boolean;
   };
   /** Reference to physics collider */
   collider?: RapierRigidBody;
@@ -240,6 +243,8 @@ export interface SegmentProgressionConfig {
    * Pair with a splash/pond landing segment for a playable gap jump.
    */
   openFloor?: boolean;
+  /** Authored bridge/trestle — WashedOut forecast can force a gap. */
+  hasBridge?: boolean;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and

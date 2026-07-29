@@ -35,6 +35,8 @@ export interface PersistencePayload {
   lastMapId?: string;
   /** Soft-lock progress for campaign maps. */
   completedMaps?: string[];
+  /** Last selected pre-run launch hour (0–23). */
+  launchHour?: number;
   runs: Record<string, RunBest>;
 }
 
@@ -66,6 +68,7 @@ export function getDefaultPersistence(): PersistencePayload {
     ghostEnabled: true,
     lastMapId: undefined,
     completedMaps: [],
+    launchHour: 6,
     runs: {},
   };
 }
@@ -88,6 +91,11 @@ function normalizePayload(raw: unknown): PersistencePayload | null {
   const payload = raw as unknown as PersistencePayload;
   if (!Array.isArray(payload.completedMaps)) {
     payload.completedMaps = [];
+  }
+  if (payload.launchHour === undefined) {
+    payload.launchHour = 6;
+  } else {
+    payload.launchHour = Math.max(0, Math.min(23, Math.floor(payload.launchHour)));
   }
   return payload;
 }
@@ -257,6 +265,19 @@ export function markMapCompleted(mapId: string): string[] {
   });
   flushPersistence();
   return next;
+}
+
+export function getLaunchHour(): number {
+  return loadPersistence().launchHour ?? 6;
+}
+
+export function setLaunchHour(hour: number): number {
+  const normalized = Math.max(0, Math.min(23, Math.floor(hour)));
+  touchCache((data) => {
+    data.launchHour = normalized;
+  });
+  flushPersistence();
+  return normalized;
 }
 
 /** Best score across all seeds for a map id (`mapId:*` run keys). */
