@@ -12,8 +12,101 @@
 import * as THREE from 'three';
 import { isAutumnLike } from '../configs/biomes';
 
+/** A single procedural geological stratum. */
+interface GeologicalLayer {
+  color: THREE.Color;
+  roughness: number;
+  metalness: number;
+  /** Normalised [low, high] band of wall height this layer occupies. */
+  heightRange: [number, number];
+}
+
+/**
+ * Per-biome colour/weathering overrides.
+ *
+ * Only `slotCanyon` overrides the bedrock/sedimentary/granite bands, hence the
+ * optional fields — `createCanyonMaterial` falls back to `GEOLOGICAL_LAYERS`.
+ */
+interface BiomeAdaptation {
+  mossColor: THREE.Color;
+  soilColor: THREE.Color;
+  weatheringIntensity: number;
+  bedrockColor?: THREE.Color;
+  sedimentaryColor?: THREE.Color;
+  graniteColor?: THREE.Color;
+}
+
+/** GLSL uniform bag for the canyon wall shader. */
+export interface CanyonMaterialUniforms {
+  /** Index signature required by THREE.ShaderMaterialParameters. */
+  [uniform: string]: THREE.IUniform;
+  time: THREE.IUniform<number>;
+  wallHeight: THREE.IUniform<number>;
+  bedrockColor: THREE.IUniform<THREE.Color>;
+  sedimentaryColor: THREE.IUniform<THREE.Color>;
+  graniteColor: THREE.IUniform<THREE.Color>;
+  mossColor: THREE.IUniform<THREE.Color>;
+  soilColor: THREE.IUniform<THREE.Color>;
+  roughness: THREE.IUniform<number>;
+  metalness: THREE.IUniform<number>;
+  weatheringIntensity: THREE.IUniform<number>;
+  sunDirection: THREE.IUniform<THREE.Vector3>;
+  parallaxScale: THREE.IUniform<number>;
+  flowSpeed: THREE.IUniform<number>;
+  mossCoverage: THREE.IUniform<number>;
+  highWaterMark: THREE.IUniform<number>;
+  highWaterIntensity: THREE.IUniform<number>;
+}
+
+/** A ShaderMaterial whose uniforms are known to be the canyon bag. */
+export type CanyonMaterial = THREE.ShaderMaterial & {
+  uniforms: CanyonMaterialUniforms;
+};
+
+/**
+ * Structural view accepted by {@link updateCanyonMaterial}.
+ *
+ * Call sites hold a wall material that may be either a CanyonMaterial or the
+ * MeshStandardMaterial fallback, so the updater accepts "any material that
+ * might carry uniforms" and guards at runtime, as it always has.
+ */
+export type CanyonUniformCarrier = THREE.Material & {
+  uniforms?: Record<string, { value: any }>;
+};
+
+/**
+ * Live-tunable canyon uniforms, shared by {@link createCanyonMaterial} and
+ * {@link updateCanyonMaterial} so the two stay in lockstep.
+ */
+export interface CanyonMaterialUpdate {
+  flowSpeed?: number;
+  mossCoverage?: number;
+  highWaterMark?: number;
+  highWaterIntensity?: number;
+}
+
+/** Options accepted by {@link createCanyonMaterial}. */
+export interface CanyonMaterialOptions extends CanyonMaterialUpdate {
+  /**
+   * Biome key. Deliberately a plain string, not `keyof BIOME_ADAPTATIONS`:
+   * callers pass canonical `BiomeId`s (e.g. `canyonSummer`) that are not
+   * adaptation keys, and the lookup falls back to `summer` by design.
+   */
+  biome?: string;
+  wallHeight?: number;
+  parallaxScale?: number;
+  time?: number;
+  /** Authored strata payload — accepted and currently unused by the shader. */
+  strata?: Record<string, unknown>;
+}
+
+/** Options accepted by {@link createFallbackCanyonMaterial}. */
+export interface FallbackCanyonMaterialOptions {
+  biome?: string;
+}
+
 // Geological layer definitions
-const GEOLOGICAL_LAYERS = {
+const GEOLOGICAL_LAYERS: Record<string, GeologicalLayer> = {
   bedrock: {
     color: new THREE.Color('#3d3530'),
     roughness: 0.85,
@@ -47,7 +140,7 @@ const GEOLOGICAL_LAYERS = {
 };
 
 // Biome color adaptations
-const BIOME_ADAPTATIONS = {
+const BIOME_ADAPTATIONS: Record<string, BiomeAdaptation> = {
   summer: {
     mossColor: new THREE.Color('#587248'),
     soilColor: new THREE.Color('#5a5040'),
@@ -371,7 +464,9 @@ const FRAGMENT_SHADER = `
 /**
  * Create enhanced canyon material with geological layering
  */
-export function createCanyonMaterial(options = {}) {
+export function createCanyonMaterial(
+  options: CanyonMaterialOptions = {},
+): CanyonMaterial {
   const {
     biome = 'canyonSummer',
     wallHeight = 15,
@@ -389,29 +484,31 @@ export function createCanyonMaterial(options = {}) {
   const clampedHighWaterMark = Math.min(0.4, Math.max(0.0, highWaterMark));
   const clampedMossCoverage = Math.max(0.0, mossCoverage);
 
+  const uniforms: CanyonMaterialUniforms = {
+    time: { value: time },
+    wallHeight: { value: wallHeight },
+    bedrockColor: { value: biomeAdapt.bedrockColor || GEOLOGICAL_LAYERS.bedrock.color },
+    sedimentaryColor: { value: biomeAdapt.sedimentaryColor || GEOLOGICAL_LAYERS.sedimentary.color },
+    graniteColor: { value: biomeAdapt.graniteColor || GEOLOGICAL_LAYERS.granite.color },
+    mossColor: { value: biomeAdapt.mossColor },
+    soilColor: { value: biomeAdapt.soilColor },
+    roughness: { value: 0.75 },
+    metalness: { value: 0.08 },
+    weatheringIntensity: { value: biomeAdapt.weatheringIntensity },
+    sunDirection: { value: new THREE.Vector3(0.5, 1, 0.3).normalize() },
+    parallaxScale: { value: parallaxScale ?? defaultParallaxScale },
+    flowSpeed: { value: flowSpeed },
+    mossCoverage: { value: clampedMossCoverage },
+    highWaterMark: { value: clampedHighWaterMark },
+    highWaterIntensity: { value: Math.max(0.0, highWaterIntensity) },
+  };
+
   const material = new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: time },
-      wallHeight: { value: wallHeight },
-      bedrockColor: { value: biomeAdapt.bedrockColor || GEOLOGICAL_LAYERS.bedrock.color },
-      sedimentaryColor: { value: biomeAdapt.sedimentaryColor || GEOLOGICAL_LAYERS.sedimentary.color },
-      graniteColor: { value: biomeAdapt.graniteColor || GEOLOGICAL_LAYERS.granite.color },
-      mossColor: { value: biomeAdapt.mossColor },
-      soilColor: { value: biomeAdapt.soilColor },
-      roughness: { value: 0.75 },
-      metalness: { value: 0.08 },
-      weatheringIntensity: { value: biomeAdapt.weatheringIntensity },
-      sunDirection: { value: new THREE.Vector3(0.5, 1, 0.3).normalize() },
-      parallaxScale: { value: parallaxScale ?? defaultParallaxScale },
-      flowSpeed: { value: flowSpeed },
-      mossCoverage: { value: clampedMossCoverage },
-      highWaterMark: { value: clampedHighWaterMark },
-      highWaterIntensity: { value: Math.max(0.0, highWaterIntensity) },
-    },
+    uniforms,
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     side: THREE.DoubleSide,
-  });
+  }) as CanyonMaterial;
 
   return material;
 }
@@ -419,7 +516,9 @@ export function createCanyonMaterial(options = {}) {
 /**
  * Create fallback MeshStandardMaterial for compatibility
  */
-export function createFallbackCanyonMaterial(options = {}) {
+export function createFallbackCanyonMaterial(
+  options: FallbackCanyonMaterialOptions = {},
+): THREE.MeshStandardMaterial {
   const { biome = 'canyonSummer' } = options;
   
   const baseColor = isAutumnLike(biome) 
@@ -435,14 +534,21 @@ export function createFallbackCanyonMaterial(options = {}) {
 }
 
 /**
- * Update material uniforms (call in useFrame)
+ * Update material uniforms (call in useFrame).
+ *
+ * The second parameter is an update bag; the legacy positional `deltaTime`
+ * number is still accepted and ignored, exactly as before.
  */
-export function updateCanyonMaterial(material, deltaTime, elapsedTime) {
+export function updateCanyonMaterial(
+  material: CanyonUniformCarrier | null | undefined,
+  deltaTime: CanyonMaterialUpdate | number | null | undefined,
+  elapsedTime: number,
+): void {
   if (!material || !material.uniforms) return;
 
   material.uniforms.time.value = elapsedTime;
 
-  const options = (typeof deltaTime === 'object' && deltaTime !== null)
+  const options: CanyonMaterialUpdate = (typeof deltaTime === 'object' && deltaTime !== null)
     ? deltaTime
     : {};
 
