@@ -415,6 +415,25 @@
             "default": false,
             "description": "Skip floor trimesh collider for gap / air-corridor set-pieces"
           },
+          "hasBridge": {
+            "type": "boolean",
+            "default": false,
+            "description": "Authored bridge/catwalk — WashedOut forecast can force a gap"
+          },
+          "vortex": {
+            "type": "object",
+            "description": "Vortex drain field for hydro stilling-basin set-pieces",
+            "required": ["radius", "eyeRadius", "pullStrength", "spinStrength", "downwardForce"],
+            "properties": {
+              "centerT": { "type": "number", "minimum": 0, "maximum": 1 },
+              "lateralOffset": { "type": "number" },
+              "radius": { "type": "number", "minimum": 0.5, "maximum": 40 },
+              "eyeRadius": { "type": "number", "minimum": 0, "maximum": 20 },
+              "pullStrength": { "type": "number", "minimum": 0, "maximum": 200 },
+              "spinStrength": { "type": "number", "minimum": 0, "maximum": 10 },
+              "downwardForce": { "type": "number", "minimum": 0, "maximum": 50 }
+            }
+          },
           "decorations": {
             "type": "object",
             "properties": {

@@ -46,6 +46,28 @@ const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
       },
     ],
   },
+  hydro: {
+    checkpoints: [
+      {
+        segment: 4,
+        label: 'Stilling basin',
+        position: [0, -4, -190],
+        radius: 35,
+      },
+      {
+        segment: 8,
+        label: 'Outfall splash',
+        position: [0, -16, -480],
+        radius: 30,
+      },
+    ],
+    portageRoutes: [
+      {
+        segmentIndex: 13,
+        label: 'Portage ledge above the catwalk gate',
+      },
+    ],
+  },
 };
 
 export function getMapSurvivalMetadata(mapId: MapRegistryId): MapSurvivalMetadata {

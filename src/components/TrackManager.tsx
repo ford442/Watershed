@@ -29,6 +29,7 @@ import { ChunkManager } from '../systems/ChunkManager';
 import { createObstaclePool } from '../systems/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
 import { samplesToForecastByIndex } from '../systems/flowForecast';
+import VortexForceSystem from '../systems/VortexForceSystem';
 import type { NormalizedSegment } from '../systems/ReachNormalizer';
 import type { BiomeId } from '../configs/biomes';
 
@@ -452,6 +453,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       {raftRef && (
         <>
           <WaterFlowForces targetRef={raftRef} segments={activeSegments} reachId={reachId ?? undefined} />
+          <VortexForceSystem targetRef={raftRef} segments={activeSegments} />
           <VehicleTuner targetRef={raftRef} segments={activeSegments} />
         </>
       )}

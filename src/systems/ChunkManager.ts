@@ -28,6 +28,7 @@ import {
   type DecorationPlacement,
   type SpawnData,
   type SegmentProgressionConfig,
+  type VortexConfig,
 } from './MapSystem';
 import type { NormalizedSegment } from './ReachNormalizer';
 import {
@@ -77,6 +78,8 @@ export interface SegmentData {
     launchShelf?: { rockRef: { localX: number; localZ: number; scale: number } };
     hasBridge?: boolean;
     washedOutGap?: boolean;
+    openFloor?: boolean;
+    vortex?: VortexConfig;
   };
   /** Backing MapSystem chunk for pool recycling. */
   _baseChunk?: BaseMapChunk;
@@ -148,6 +151,10 @@ function baseChunkToSegmentData(
     washedOutGap: Boolean((chunk.config as { washedOutGap?: boolean } | undefined)?.washedOutGap),
   };
   const applied = applyForecastToSegmentParams(forecastBase, forecastState);
+  const authoredOpenFloor = Boolean(
+    (chunk.config as { openFloor?: boolean } | undefined)?.openFloor,
+  );
+  const vortex = (chunk.config as { vortex?: VortexConfig } | undefined)?.vortex;
 
   return {
     id: chunk.index,
@@ -177,6 +184,9 @@ function baseChunkToSegmentData(
       ...chunk.config,
       washedOutGap: applied.washedOutGap,
       hasBridge,
+      // Washed-out bridges / catwalks become air corridors.
+      openFloor: authoredOpenFloor || applied.washedOutGap,
+      vortex,
     },
     _baseChunk: chunk,
   };
@@ -194,6 +204,10 @@ function applyLiveForecast(
     };
   }
   const applied = applyForecastToSegmentParams(base, forecastState);
+  // Prefer chunk-authored openFloor; always OR with live washedOutGap.
+  const baseOpenFloor = Boolean(
+    (segment._baseChunk?.config as { openFloor?: boolean } | undefined)?.openFloor,
+  );
   return {
     ...segment,
     type: applied.type,
@@ -210,6 +224,7 @@ function applyLiveForecast(
     config: {
       ...segment.config,
       washedOutGap: applied.washedOutGap,
+      openFloor: baseOpenFloor || applied.washedOutGap,
     },
   };
 }

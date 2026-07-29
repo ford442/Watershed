@@ -23,7 +23,7 @@ import { MAP_REGISTRY, type MapDefinition, type MapRegistryId } from './registry
  * assertions below fail `pnpm typecheck` if this list and `MapRegistryId`
  * and `MAP_REGISTRY`'s keys ever disagree in either direction.
  */
-export const CANONICAL_MAP_REGISTRY_IDS = ['glacial', 'lumber', 'meander', 'delta'] as const;
+export const CANONICAL_MAP_REGISTRY_IDS = ['glacial', 'lumber', 'meander', 'hydro', 'delta'] as const;
 
 export type CanonicalMapRegistryId = (typeof CANONICAL_MAP_REGISTRY_IDS)[number];
 

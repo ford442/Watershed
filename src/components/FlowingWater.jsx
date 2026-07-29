@@ -53,6 +53,9 @@ export default function FlowingWater({
   waterSurfaceOffset = 0,
   sunWorldPosition = null,
   isPond = false,
+  vortexCenter = null,
+  vortexRadius = 10,
+  vortexIntensity = 0,
 }) {
   const materialRef = useRef(null);
   const { camera } = useThree();
@@ -127,6 +130,10 @@ export default function FlowingWater({
     uniform float isPond;
     uniform sampler2D reflectionTexture;
     uniform float reflectionStrength;
+    // Vortex drain swirl (Hydro-Dam chamber)
+    uniform vec3 vortexCenter;
+    uniform float vortexRadius;
+    uniform float vortexIntensity;
 
     varying vec2 vUv;
     varying vec3 vWorldPos;
@@ -146,18 +153,29 @@ export default function FlowingWater({
         flowBias = texture2D(flowMap, vUv * 0.5).rg * 2.0 - 1.0;
       #endif
 
+      // Vortex UV swirl around the drain center (XZ world space)
+      vec2 vortexDelta = vWorldPos.xz - vortexCenter.xz;
+      float vortexDist = length(vortexDelta);
+      float vortexMask = (1.0 - smoothstep(0.0, max(vortexRadius, 0.01), vortexDist)) * vortexIntensity;
+      vec2 vortexTangent = normalize(vec2(-vortexDelta.y, vortexDelta.x) + 0.0001);
+      vec2 vortexUvOffset = vortexTangent * time * flowSpeed * 0.12 * vortexMask;
+
       // Rapids: foam streaks scroll faster proportional to flowSpeed.
       // At flowSpeed ≥ RAPIDS_FOAM_SPEED_MULT the scroll rate doubles for churning whitewater.
       float rapidsBoost = max(1.0, flowSpeed / RAPIDS_FOAM_SPEED_MULT);
       vec2 streakUv = vWorldPos.xz * vec2(0.15, 0.6) * FLOW_INFLUENCE
                     + vec2(time * flowSpeed * 0.05 * flowBias.x * rapidsBoost,
-                           -time * flowSpeed * 0.15 * rapidsBoost);
+                           -time * flowSpeed * 0.15 * rapidsBoost)
+                    + vortexUvOffset;
       float streakNoise = fbm3(streakUv);
       // Second streak layer offset in time — adds turbulent overlap at high speed
       vec2 streakUv2 = vWorldPos.xz * vec2(0.12, 0.5) * FLOW_INFLUENCE
-                     + vec2(-time * flowSpeed * 0.04 * rapidsBoost, -time * flowSpeed * 0.19 * rapidsBoost);
+                     + vec2(-time * flowSpeed * 0.04 * rapidsBoost, -time * flowSpeed * 0.19 * rapidsBoost)
+                     + vortexUvOffset * 0.7;
       float streakNoise2 = fbm2(streakUv2);
       float foamStreak = smoothstep(0.45, 0.75, max(streakNoise, streakNoise2 * 0.85)) * FOAM_INTENSITY;
+      // Vortex eye foam ring
+      foamStreak += vortexMask * smoothstep(0.15, 0.55, vortexDist / max(vortexRadius, 0.01)) * 0.45;
 
       // Sharpened edge foam using EDGE_FOAM_WIDTH and normal test
       float edgeDist = abs(vUv.x - 0.5);
@@ -378,6 +396,13 @@ export default function FlowingWater({
           sweEnabled: { value: 0.0 },
           reflectionTexture: { value: getBlackReflectionFallback() },
           reflectionStrength: { value: 0.0 },
+          vortexCenter: {
+            value: vortexCenter
+              ? new THREE.Vector3().copy(vortexCenter)
+              : new THREE.Vector3(99999.0, 0.0, 99999.0),
+          },
+          vortexRadius: { value: vortexRadius || 10 },
+          vortexIntensity: { value: vortexIntensity || 0 },
         },
         vertexShader: `
           uniform float time;
@@ -614,6 +639,19 @@ export default function FlowingWater({
     }
     if (mat.uniforms.isPond) {
       mat.uniforms.isPond.value = isPond ? 1.0 : 0.0;
+    }
+    if (mat.uniforms.vortexCenter) {
+      if (vortexCenter) {
+        mat.uniforms.vortexCenter.value.copy(vortexCenter);
+      } else {
+        mat.uniforms.vortexCenter.value.set(99999.0, 0.0, 99999.0);
+      }
+    }
+    if (mat.uniforms.vortexRadius) {
+      mat.uniforms.vortexRadius.value = vortexRadius || 10;
+    }
+    if (mat.uniforms.vortexIntensity) {
+      mat.uniforms.vortexIntensity.value = vortexIntensity || 0;
     }
 
     const swe = getSWEHeightFieldSnapshot();

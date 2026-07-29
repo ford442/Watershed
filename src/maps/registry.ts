@@ -1,5 +1,5 @@
 /**
- * Map registry — single switch point for authored map content.
+ * MAP_REGISTRY — single switch point for authored map content.
  *
  * Runtime map selection prefers URL `?map=` / StartMenu via `resolveMapId`
  * in `campaign.ts`. `ACTIVE_MAP_ID` remains the code-level fallback default.
@@ -11,6 +11,7 @@ import glacialLevel from './glacial_source.json';
 import meanderLevel from './meander_to_waterfall.json';
 import deltaLevel from './delta_rapids.json';
 import lumberLevel from './lumber_flume.json';
+import hydroLevel from './hydro_dam.json';
 import {
   DELTA_RAPIDS_CONTINUED_START_INDEX,
   GLACIER_START_INDEX,
@@ -25,9 +26,13 @@ import {
   LUMBER_FLUME_START_INDEX,
   LUMBER_FLUME_FALLBACK_PROGRESSION,
 } from './lumber_flume';
+import {
+  HYDRO_DAM_START_INDEX,
+  HYDRO_DAM_FALLBACK_PROGRESSION,
+} from './hydro_dam';
 
 /** Stable registry keys — declared early so MapDefinition can reference them. */
-export type MapRegistryId = 'glacial' | 'lumber' | 'meander' | 'delta';
+export type MapRegistryId = 'glacial' | 'lumber' | 'meander' | 'hydro' | 'delta';
 
 export interface MapContinuation {
   /** Campaign target map when this map's journey completes (or for UI labels). */
@@ -112,7 +117,26 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     difficulty: 'beginner',
     estimatedDurationSec: 480,
     unlockAfter: 'glacial',
+    nextMapId: 'hydro',
+  },
+  hydro: {
+    id: 'hydro',
+    label: 'Hydro-Dam',
+    // intentional: JSON module has no LevelData schema at import
+    levelData: hydroLevel as unknown as LevelData,
+    fallbackProgression: HYDRO_DAM_FALLBACK_PROGRESSION,
+    startIndex: HYDRO_DAM_START_INDEX,
+    initialBiome: 'hydroDam',
+    difficulty: 'advanced',
+    estimatedDurationSec: 300,
+    unlockAfter: 'meander',
     nextMapId: 'delta',
+    continuation: {
+      mapId: 'delta',
+      // intentional: JSON module has no LevelData schema at import
+      levelData: deltaLevel as unknown as LevelData,
+      startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
+    },
   },
   delta: {
     id: 'delta',
@@ -124,7 +148,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     initialBiome: 'delta',
     difficulty: 'beginner',
     estimatedDurationSec: 180,
-    unlockAfter: 'meander',
+    unlockAfter: 'hydro',
   },
 };
 
@@ -158,6 +182,7 @@ export function resolveMapRegistryId(raw: string | null | undefined): MapRegistr
   const key = raw.trim().toLowerCase();
   if (key === 'lumber' || key === 'lumberflume' || key === 'flume') return 'lumber';
   if (key === 'glacial' || key === 'glacier') return 'glacial';
+  if (key === 'hydro' || key === 'hydrodam' || key === 'dam') return 'hydro';
   if (key === 'delta') return 'delta';
   if (key === 'meander') return 'meander';
   if (isMapRegistryId(key)) return key;

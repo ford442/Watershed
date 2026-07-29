@@ -68,8 +68,16 @@ describe('getJourneyCompletionDecision', () => {
     expect(getContinuationTarget('glacial')).toBe('meander');
   });
 
-  it('continues meander into delta via nextMapId', () => {
+  it('continues meander into hydro via nextMapId', () => {
     expect(getJourneyCompletionDecision('meander')).toEqual({
+      kind: 'continue',
+      nextMapId: 'hydro',
+      nextLabel: 'Hydro-Dam',
+    });
+  });
+
+  it('continues hydro into delta via nextMapId', () => {
+    expect(getJourneyCompletionDecision('hydro')).toEqual({
       kind: 'continue',
       nextMapId: 'delta',
       nextLabel: 'Delta Rapids',
@@ -85,7 +93,7 @@ describe('getJourneyCompletionDecision', () => {
 describe('campaign menu helpers', () => {
   it('lists all registered maps with duration and difficulty', () => {
     const maps = listMapsForMenu();
-    expect(maps.map((m) => m.id)).toEqual(['glacial', 'meander', 'delta']);
+    expect(maps.map((m) => m.id)).toEqual(['glacial', 'meander', 'hydro', 'delta']);
     expect(maps[0].estimatedDurationSec).toBe(240);
     expect(maps[0].difficulty).toBe('intermediate');
     expect(formatDuration(240)).toBe('~4 min');
@@ -95,12 +103,15 @@ describe('campaign menu helpers', () => {
     expect(isMapUnlocked('glacial', [])).toBe(true);
     expect(isMapUnlocked('meander', [])).toBe(false);
     expect(isMapUnlocked('meander', ['glacial'])).toBe(true);
-    expect(isMapUnlocked('delta', ['glacial'])).toBe(false);
-    expect(isMapUnlocked('delta', ['meander'])).toBe(true);
+    expect(isMapUnlocked('hydro', ['glacial'])).toBe(false);
+    expect(isMapUnlocked('hydro', ['meander'])).toBe(true);
+    expect(isMapUnlocked('delta', ['meander'])).toBe(false);
+    expect(isMapUnlocked('delta', ['hydro'])).toBe(true);
   });
 
   it('type-guards registry ids', () => {
     expect(isMapRegistryId('glacial')).toBe(true);
+    expect(isMapRegistryId('hydro')).toBe(true);
     expect(isMapRegistryId('nope')).toBe(false);
   });
 });

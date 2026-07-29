@@ -188,7 +188,26 @@ export const TRACK_BIOMES: Record<BiomeId, TrackBiomeProfile> = {
       rim: { conifer: 0.65, broadleaf: 0.15, birch: 0.05, snag: 0.15 },
     },
   },
-  hydroDam: { ...slotCanyonProfile, id: 'hydroDam' },
+  hydroDam: {
+    id: 'hydroDam',
+    waterWidth: 12,
+    canyonWidth: 32,
+    wallHeight: 18,
+    wallTightness: 0.78,
+    wallFriction: 0.8,
+    wallShadowStrength: 0.85,
+    vegetationDensity: 0.15,
+    rockDensity: 'low',
+    // Weathered concrete / wet metal industrial tones
+    rockBaseColor: '#6a6e72',
+    rockShadowColor: '#2e3236',
+    rockRimColor: '#9aa0a6',
+    decorationBias: { trees: 0.08, grasses: 0.12, reeds: 0.15, rocks: 0.35 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0.2, broadleaf: 0.2, birch: 0.1, snag: 0.5 },
+      rim: { conifer: 0.15, broadleaf: 0.15, birch: 0.1, snag: 0.6 },
+    },
+  },
 };
 
 export function isGlacialBiome(biome: string, profile?: TrackBiomeProfile): boolean {

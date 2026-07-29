@@ -46,6 +46,7 @@ export type {
   SegmentProgressionConfig,
   SegmentRange,
   SpawnData,
+  VortexConfig,
 } from './MapSystem.types';
 
 export {
@@ -342,14 +343,20 @@ export class JSONMapManager implements MapManager {
       waterWidth: config.waterWidth ?? this.levelData.world.track.width ?? DEFAULT_MAP_CONFIG.waterWidth,
       canyonWidth: config.width || this.levelData.world.track.width || DEFAULT_MAP_CONFIG.canyonWidth,
       spawns,
-      config: progression.decorations || progression.launchShelf || progression.openFloor || progression.hasBridge
-        ? {
-            decorations: progression.decorations,
-            launchShelf: progression.launchShelf,
-            openFloor: progression.openFloor,
-            hasBridge: progression.hasBridge,
-          }
-        : undefined,
+      config:
+        progression.decorations ||
+        progression.launchShelf ||
+        progression.openFloor ||
+        progression.hasBridge ||
+        progression.vortex
+          ? {
+              decorations: progression.decorations,
+              launchShelf: progression.launchShelf,
+              openFloor: progression.openFloor,
+              hasBridge: progression.hasBridge,
+              vortex: progression.vortex,
+            }
+          : undefined,
       active: true,
     };
 
@@ -441,6 +448,7 @@ export class JSONMapManager implements MapManager {
       slipperiness: seg.slipperiness,
       openFloor: seg.openFloor,
       hasBridge: seg.hasBridge,
+      vortex: seg.vortex,
     };
   }
 }
