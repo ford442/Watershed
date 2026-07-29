@@ -124,7 +124,7 @@ npm run typecheck
 
 **CI:** The Build workflow (`.github/workflows/build.yml`) runs a dedicated hard-fail **Typecheck** job (`pnpm typecheck`) on every `pull_request` and `push` to `main`. It is **not** `continue-on-error` and is separate from build/test so a red `tsc` shows up as its own check. Mark the GitHub check name **Typecheck** as a required status check on `main` so merges cannot skip it (repo currently has no branch protection — enable that in GitHub settings if unset).
 
-Registry/menu drift (e.g. adding a `MAP_REGISTRY` key without extending `MapRegistryId`) is also covered by `src/maps/registry.test.ts`.
+Registry/menu drift (e.g. adding a `MAP_REGISTRY` key without extending `MapRegistryId`) is covered by `src/maps/registry.contract.ts` (compile-time) and `src/maps/registry.contract.test.ts` (runtime). `src/maps/registry.test.ts` is a lighter second opinion.
 
 ### Unit Tests
 ```bash
