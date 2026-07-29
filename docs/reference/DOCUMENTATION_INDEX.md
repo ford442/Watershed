@@ -41,6 +41,7 @@
 |-----|----------------|
 | [`PHYSICS_CONSTANTS.md`](./PHYSICS_CONSTANTS.md) | Tunable physics values |
 | [`MAPSYSTEM_STEP5_CONTRACT.md`](./MAPSYSTEM_STEP5_CONTRACT.md) | MapSystem ↔ TrackManager contract |
+| [`SURVIVAL_LAYER.md`](./SURVIVAL_LAYER.md) | Wetness, exposure, loadout, checkpoints (Track A) |
 | [`IMPROVEMENT_PLAN.md`](../archive/IMPROVEMENT_PLAN.md) | Longer-term engineering backlog (aspirational) |
 | [`plan.md`](./plan.md) | Biome / feature roadmap |
 | [`river_plan.md`](./river_plan.md) | River systems planning notes |

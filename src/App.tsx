@@ -250,13 +250,14 @@ function App() {
   const handleStart = useCallback(
     (
       mapId: MapRegistryId = selectedMapId,
-      options?: { launchHour?: number; placedCacheIds?: string[] },
+      options?: { launchHour?: number; placedCacheIds?: string[]; loadoutId?: string },
     ) => {
       handleSelectMap(mapId);
       initRunSession({
         mapId,
         launchHour: options?.launchHour,
         placedCacheIds: options?.placedCacheIds,
+        loadoutId: options?.loadoutId,
       });
       setActiveLaunchHour(options?.launchHour ?? getLaunchHour());
       setPhase('playing');

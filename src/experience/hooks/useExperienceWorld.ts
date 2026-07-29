@@ -378,6 +378,7 @@ export function useExperienceWorld({
           mapId: targetMapId,
           launchHour: getActiveLaunchHour(),
           placedCacheIds: getRunSession()?.placedCacheIds ?? [],
+          loadoutId: getRunSession()?.loadoutId,
         });
         useGameStore.getState().resetGameState();
         setIsWipeout(false);

@@ -1,8 +1,8 @@
 /**
- * runSession.ts — Per-run session state (launch hour, cache placements).
+ * runSession.ts — Per-run session state (launch hour, cache placements, survival).
  *
  * Not written to Zustand each frame; initialized at run start from persistence +
- * StartMenu choices, then read by forecast / scoring systems.
+ * StartMenu choices, then read by forecast / scoring / physics systems.
  */
 
 import type { MapRegistryId } from '../maps/registry';
@@ -16,12 +16,25 @@ import {
   DEFAULT_MAX_CACHE_PLACEMENTS,
 } from './portageCache';
 import { getLaunchHour } from './PersistenceSystem';
+import {
+  createSurvivalState,
+  getLoadoutDefinition,
+  getSurvivalModifiers,
+  resolveLoadoutId,
+  tickSurvivalState,
+  type LoadoutId,
+  type SurvivalModifiers,
+  type SurvivalState,
+  type SurvivalTickInput,
+} from './survival';
 
 export interface RunSessionSnapshot {
   mapId: MapRegistryId;
   launchHour: number;
   placedCacheIds: string[];
+  loadoutId: LoadoutId;
   portageCache: PortageCacheRunState;
+  survival: SurvivalState;
 }
 
 let activeSession: RunSessionSnapshot | null = null;
@@ -31,10 +44,12 @@ export function initRunSession(options: {
   mapId: MapRegistryId;
   launchHour?: number;
   placedCacheIds?: string[];
+  loadoutId?: LoadoutId | string;
 }): RunSessionSnapshot {
   const survival = getMapSurvivalMetadata(options.mapId);
   const launchHour = normalizeHour(options.launchHour ?? getLaunchHour());
   const maxPlacements = survival.maxCachePlacements ?? DEFAULT_MAX_CACHE_PLACEMENTS;
+  const loadoutId = resolveLoadoutId(options.loadoutId);
 
   let portageCache = createPortageCacheRunState({
     cacheSlots: survival.cacheSlots,
@@ -55,7 +70,9 @@ export function initRunSession(options: {
     mapId: options.mapId,
     launchHour,
     placedCacheIds,
+    loadoutId,
     portageCache,
+    survival: createSurvivalState(),
   };
   awardedCacheSegments = new Set();
   return activeSession;
@@ -67,6 +84,37 @@ export function getRunSession(): RunSessionSnapshot | null {
 
 export function getActiveLaunchHour(): number {
   return activeSession?.launchHour ?? getLaunchHour();
+}
+
+export function getActiveLoadoutId(): LoadoutId {
+  return activeSession?.loadoutId ?? resolveLoadoutId(undefined);
+}
+
+export function getActiveSurvivalState(): SurvivalState | null {
+  return activeSession?.survival ?? null;
+}
+
+export function getActiveSurvivalModifiers(biomeId: SurvivalTickInput['biomeId']): SurvivalModifiers | null {
+  if (!activeSession) return null;
+  return getSurvivalModifiers(
+    activeSession.survival,
+    biomeId,
+    getLoadoutDefinition(activeSession.loadoutId),
+  );
+}
+
+export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
+  if (!activeSession) return null;
+  const loadout = getLoadoutDefinition(activeSession.loadoutId);
+  activeSession = {
+    ...activeSession,
+    survival: tickSurvivalState(
+      activeSession.survival,
+      { ...input, launchHour: activeSession.launchHour },
+      loadout,
+    ),
+  };
+  return getSurvivalModifiers(activeSession.survival, input.biomeId, loadout);
 }
 
 export function dispatchPortageCacheEvent(event: PortageCacheEvent): PortageCacheRunState | null {

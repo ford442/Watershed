@@ -20,10 +20,15 @@ import {
 import { DAM_RELEASE_SCHEDULE } from '../experience/constants';
 import LaunchHourPicker from './LaunchHourPicker';
 import CachePlacementPanel from './CachePlacementPanel';
+import LoadoutPicker from './LoadoutPicker';
 import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/portageCache';
+import { DEFAULT_LOADOUT_ID, type LoadoutId } from '../systems/survival';
 
 interface StartMenuProps {
-  onStart: (mapId: MapRegistryId, options: { launchHour: number; placedCacheIds: string[] }) => void;
+  onStart: (
+    mapId: MapRegistryId,
+    options: { launchHour: number; placedCacheIds: string[]; loadoutId: LoadoutId },
+  ) => void;
   selectedMapId: MapRegistryId;
   onSelectMap: (mapId: MapRegistryId) => void;
   /** Open the full Options panel (audio, controls/rebinding, graphics). */
@@ -58,6 +63,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const maps = useMemo(() => listMapsForMenu(), []);
   const [launchHour, setLaunchHourLocal] = useState(() => getLaunchHour());
   const [placedCacheIds, setPlacedCacheIds] = useState<string[]>([]);
+  const [loadoutId, setLoadoutId] = useState<LoadoutId>(DEFAULT_LOADOUT_ID);
 
   const survivalMeta = useMemo(
     () => getMapSurvivalMetadata(selectedMapId),
@@ -145,6 +151,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               damReleaseSchedule={DAM_RELEASE_SCHEDULE}
             />
 
+            <LoadoutPicker selectedId={loadoutId} onSelect={setLoadoutId} />
+
             {showSurvival && (
               <CachePlacementPanel
                 slots={survivalMeta.cacheSlots ?? []}
@@ -156,7 +164,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
             <button
               className="start-menu-start-btn"
-              onClick={() => onStart(selectedMapId, { launchHour, placedCacheIds })}
+              onClick={() => onStart(selectedMapId, { launchHour, placedCacheIds, loadoutId })}
               aria-label="Start Game - Click or Press Enter"
               autoFocus
             >

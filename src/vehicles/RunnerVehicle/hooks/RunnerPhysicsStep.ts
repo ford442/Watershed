@@ -22,7 +22,8 @@ import {
   hasActiveLaunch,
 } from '../../../systems/LaunchScoringSession';
 import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
-import { isAutumnLike } from '../../../configs/biomes';
+import { isAutumnLike, isBiomeId, type BiomeId } from '../../../configs/biomes';
+import { tickRunSurvival } from '../../../systems/runSession';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -400,6 +401,20 @@ export function updateRunnerPhysics({
     const storeState = useGameStore.getState();
     let stamina = storeState.sprintStamina;
 
+    const biomeId: BiomeId = isBiomeId(storeState.currentBiome)
+      ? storeState.currentBiome
+      : 'canyonSummer';
+    const horizontalSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+    const survivalMods = tickRunSurvival({
+      dt,
+      biomeId,
+      inWater: pos.y < WATER_LEVEL + 0.55,
+      windSpeed: horizontalSpeed,
+    });
+    const staminaDrainMul = survivalMods?.staminaDrainMultiplier ?? 1;
+    const staminaRegenMul = survivalMods?.staminaRegenMultiplier ?? 1;
+    const movementMul = survivalMods?.movementMultiplier ?? 1;
+
     // Hysteresis: once exhausted, lock sprint until RECOVERY_THRESHOLD is reached
     if (stamina <= RUNNER_SPRINT.EXHAUSTION_THRESHOLD) {
       sprintLockedRef.current = true;
@@ -413,13 +428,13 @@ export function updateRunnerPhysics({
 
     if (isSprinting) {
       // Drain while grounded and sprinting
-      stamina = Math.max(0, stamina - RUNNER_SPRINT.DRAIN_RATE * dt);
+      stamina = Math.max(0, stamina - RUNNER_SPRINT.DRAIN_RATE * staminaDrainMul * dt);
     } else if (isAirborne) {
       // Faster recovery while airborne
-      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_AIRBORNE * dt);
+      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_AIRBORNE * staminaRegenMul * dt);
     } else {
       // Normal grounded recovery when not sprinting
-      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_GROUNDED * dt);
+      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_GROUNDED * staminaRegenMul * dt);
     }
     storeState.setSprintStamina(stamina);
 
@@ -620,7 +635,7 @@ export function updateRunnerPhysics({
 
     const baseSpeed = VEHICLE_TUNING.baseSpeed;
     const sprintMultiplier = isSprinting ? RUNNER_SPRINT.SPEED_MULTIPLIER : 1.0;
-    const speed = baseSpeed * flowMultiplier * recoveryFactor * sprintMultiplier;
+    const speed = baseSpeed * flowMultiplier * recoveryFactor * sprintMultiplier * movementMul;
 
     if (forward) {
       applyImpulseWithDebugTracking('forwardInput', {
