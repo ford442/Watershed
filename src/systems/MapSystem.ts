@@ -342,11 +342,12 @@ export class JSONMapManager implements MapManager {
       waterWidth: config.waterWidth ?? this.levelData.world.track.width ?? DEFAULT_MAP_CONFIG.waterWidth,
       canyonWidth: config.width || this.levelData.world.track.width || DEFAULT_MAP_CONFIG.canyonWidth,
       spawns,
-      config: progression.decorations || progression.launchShelf || progression.openFloor
+      config: progression.decorations || progression.launchShelf || progression.openFloor || progression.hasBridge
         ? {
             decorations: progression.decorations,
             launchShelf: progression.launchShelf,
             openFloor: progression.openFloor,
+            hasBridge: progression.hasBridge,
           }
         : undefined,
       active: true,
@@ -439,6 +440,7 @@ export class JSONMapManager implements MapManager {
       journeyComplete: seg.journeyComplete,
       slipperiness: seg.slipperiness,
       openFloor: seg.openFloor,
+      hasBridge: seg.hasBridge,
     };
   }
 }

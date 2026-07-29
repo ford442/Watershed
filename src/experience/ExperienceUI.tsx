@@ -10,6 +10,7 @@ interface ExperienceUIProps {
   enabled: boolean;
   cleanTest: boolean;
   forecastSamples: FlowForecastSample[];
+  launchHour?: number;
   damReleaseSchedule?: ReadonlyArray<DamReleaseEntry>;
   isWipeout: boolean;
   isJourneyComplete: boolean;
@@ -36,6 +37,7 @@ export default function ExperienceUI({
   enabled,
   cleanTest,
   forecastSamples,
+  launchHour,
   damReleaseSchedule = [],
   isWipeout,
   isJourneyComplete,
@@ -66,6 +68,7 @@ export default function ExperienceUI({
       {!cleanTest && (
         <ForecastHUD
           samples={forecastSamples}
+          launchHour={launchHour}
           damReleaseSchedule={damReleaseSchedule}
           currentSegmentIndex={currentSegmentIndex}
         />

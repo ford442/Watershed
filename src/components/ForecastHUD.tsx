@@ -4,6 +4,7 @@ import {
   FORECAST_HUD_LOOKAHEAD,
   isElevatedRisk,
   nextDamReleaseCountdown,
+  nextPeakCountdown,
   upcomingRiskStrip,
   type DamReleaseEntry,
   type FlowForecastSample,
@@ -11,6 +12,7 @@ import {
 
 type ForecastHUDProps = {
   samples: FlowForecastSample[];
+  launchHour?: number;
   damReleaseSchedule?: ReadonlyArray<DamReleaseEntry>;
   currentSegmentIndex?: number;
 };
@@ -31,6 +33,7 @@ const STATE_COLORS: Record<FlowForecastState, string> = {
 
 export default function ForecastHUD({
   samples,
+  launchHour,
   damReleaseSchedule = [],
   currentSegmentIndex = 0,
 }: ForecastHUDProps) {
@@ -56,9 +59,11 @@ export default function ForecastHUD({
   );
 
   const damCountdown = useMemo(() => {
-    const currentHour = samples[0]?.hour ?? 0;
+    const currentHour = samples[0]?.hour ?? launchHour ?? 0;
     return nextDamReleaseCountdown(damReleaseSchedule, currentHour);
-  }, [damReleaseSchedule, samples]);
+  }, [damReleaseSchedule, launchHour, samples]);
+
+  const peakCountdown = useMemo(() => nextPeakCountdown(samples), [samples]);
 
   const nextHazard = riskStrip.find((sample, index) => index > 0 && isElevatedRisk(sample.state));
 
@@ -87,6 +92,9 @@ export default function ForecastHUD({
       >
         <div style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>
           Flow Forecast
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
+          Launch H{(launchHour ?? samples[0]?.hour ?? 0).toString().padStart(2, '0')}:00
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
           <div
@@ -140,6 +148,7 @@ export default function ForecastHUD({
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.88 }}>
           Peak {summary.maxFlow.toFixed(2)}x · {summary.highRiskHours} risky hrs
           {nextHazard ? ` · hazard in ${riskStrip.indexOf(nextHazard)} seg` : ''}
+          {peakCountdown ? ` · next peak T+${peakCountdown.hoursUntil}h` : ''}
         </div>
 
         {damCountdown && (

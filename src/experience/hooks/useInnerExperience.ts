@@ -20,7 +20,11 @@ export function useInnerExperience({
   mapId,
   onMapChange,
   onReturnToMenu,
-}: Pick<InnerExperienceProps, 'physicsDebug' | 'cleanTest' | 'mapId' | 'onMapChange' | 'onReturnToMenu'> & {
+  launchHour,
+}: Pick<
+  InnerExperienceProps,
+  'physicsDebug' | 'cleanTest' | 'mapId' | 'onMapChange' | 'onReturnToMenu' | 'launchHour'
+> & {
   debug: DebugStageController;
 }) {
   const [vehicleType, setVehicleTypeLocal] = useState<VehicleType>(readVehicleTypeFromUrl);
@@ -78,6 +82,7 @@ export function useInnerExperience({
     mapId,
     onMapChange,
     onReturnToMenu,
+    launchHour,
   });
 
   return {

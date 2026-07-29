@@ -29,6 +29,8 @@ export interface InnerExperienceProps {
   onMapChange?: (mapId: import('../maps/registry').MapRegistryId) => void;
   /** Journey-complete → return to StartMenu. */
   onReturnToMenu?: () => void;
+  /** Frozen launch hour selected pre-run (0–23). */
+  launchHour?: number;
 }
 
 export interface ExperienceProps extends InnerExperienceProps {

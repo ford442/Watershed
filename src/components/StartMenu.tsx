@@ -1,7 +1,7 @@
 // src/components/StartMenu.tsx
 // Pre-game title screen with map select, start, and settings
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   formatDuration,
   isMapUnlocked,
@@ -9,14 +9,21 @@ import {
   type MapMenuEntry,
 } from '../maps/campaign';
 import type { MapRegistryId } from '../maps/registry';
+import { getMapSurvivalMetadata, mapHasSurvivalFeatures } from '../maps/survivalMetadata';
 import {
   getBestScoreForMap,
   getCompletedMaps,
   getLastMapId,
+  getLaunchHour,
+  setLaunchHour,
 } from '../systems/PersistenceSystem';
+import { DAM_RELEASE_SCHEDULE } from '../experience/constants';
+import LaunchHourPicker from './LaunchHourPicker';
+import CachePlacementPanel from './CachePlacementPanel';
+import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/portageCache';
 
 interface StartMenuProps {
-  onStart: (mapId: MapRegistryId) => void;
+  onStart: (mapId: MapRegistryId, options: { launchHour: number; placedCacheIds: string[] }) => void;
   selectedMapId: MapRegistryId;
   onSelectMap: (mapId: MapRegistryId) => void;
   /** Open the full Options panel (audio, controls/rebinding, graphics). */
@@ -49,6 +56,34 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const completedMaps = useMemo(() => getCompletedMaps(), []);
   const lastMapId = useMemo(() => getLastMapId(), []);
   const maps = useMemo(() => listMapsForMenu(), []);
+  const [launchHour, setLaunchHourLocal] = useState(() => getLaunchHour());
+  const [placedCacheIds, setPlacedCacheIds] = useState<string[]>([]);
+
+  const survivalMeta = useMemo(
+    () => getMapSurvivalMetadata(selectedMapId),
+    [selectedMapId],
+  );
+  const maxCachePlacements = survivalMeta.maxCachePlacements ?? DEFAULT_MAX_CACHE_PLACEMENTS;
+  const showSurvival = mapHasSurvivalFeatures(selectedMapId);
+
+  const handleLaunchHourChange = (hour: number) => {
+    setLaunchHourLocal(hour);
+    setLaunchHour(hour);
+  };
+
+  const handleCacheToggle = (slotId: string) => {
+    setPlacedCacheIds((prev) => {
+      if (prev.includes(slotId)) {
+        return prev.filter((id) => id !== slotId);
+      }
+      if (prev.length >= maxCachePlacements) return prev;
+      return [...prev, slotId];
+    });
+  };
+
+  useEffect(() => {
+    setPlacedCacheIds([]);
+  }, [selectedMapId]);
 
   return (
     <div className="start-menu-overlay">
@@ -104,9 +139,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </p>
             </div>
 
+            <LaunchHourPicker
+              value={launchHour}
+              onChange={handleLaunchHourChange}
+              damReleaseSchedule={DAM_RELEASE_SCHEDULE}
+            />
+
+            {showSurvival && (
+              <CachePlacementPanel
+                slots={survivalMeta.cacheSlots ?? []}
+                selectedIds={placedCacheIds}
+                maxPlacements={maxCachePlacements}
+                onToggle={handleCacheToggle}
+              />
+            )}
+
             <button
               className="start-menu-start-btn"
-              onClick={() => onStart(selectedMapId)}
+              onClick={() => onStart(selectedMapId, { launchHour, placedCacheIds })}
               aria-label="Start Game - Click or Press Enter"
               autoFocus
             >

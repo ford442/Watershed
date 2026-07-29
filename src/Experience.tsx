@@ -30,6 +30,7 @@ export default function Experience({
   mapId,
   onMapChange,
   onReturnToMenu,
+  launchHour,
 }: ExperienceProps) {
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
 
@@ -60,6 +61,7 @@ export default function Experience({
                 mapId={mapId}
                 onMapChange={onMapChange}
                 onReturnToMenu={onReturnToMenu}
+                launchHour={launchHour}
               />
               <PerformanceMonitor visible={import.meta.env.DEV} />
               <RendererDiagnosticsMonitor preference={rendererPreference} />

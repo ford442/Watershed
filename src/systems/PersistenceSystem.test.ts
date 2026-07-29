@@ -5,11 +5,13 @@ import {
   getCompletedMaps,
   getDefaultPersistence,
   getLastMapId,
+  getLaunchHour,
   getRunBest,
   loadPersistence,
   markMapCompleted,
   resetPersistenceForTests,
   setLastMapId,
+  setLaunchHour,
   STORAGE_KEY,
   updateRunBest,
 } from './PersistenceSystem';
@@ -96,5 +98,12 @@ describe('PersistenceSystem', () => {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     expect(stored.completedMaps).toEqual(['glacial', 'meander']);
     expect(stored.lastMapId).toBe('meander');
+  });
+
+  it('persists launch hour in campaign progress', () => {
+    expect(setLaunchHour(17)).toBe(17);
+    expect(getLaunchHour()).toBe(17);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    expect(stored.launchHour).toBe(17);
   });
 });

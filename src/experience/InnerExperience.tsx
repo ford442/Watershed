@@ -33,6 +33,7 @@ export default function InnerExperience({
   mapId,
   onMapChange,
   onReturnToMenu,
+  launchHour,
 }: InnerExperienceProps) {
   const state = useInnerExperience({
     debug,
@@ -41,6 +42,7 @@ export default function InnerExperience({
     mapId,
     onMapChange,
     onReturnToMenu,
+    launchHour,
   });
   const { config: lodConfig, quality: lodQuality } = useLOD();
 
@@ -101,6 +103,7 @@ export default function InnerExperience({
             temperature={8}
             snowpackIndex={0.65}
             damReleaseSchedule={DAM_RELEASE_SCHEDULE}
+            startHour={state.launchHour}
             onForecastChange={state.setForecastSamples}
           />
           {debug.isStageEnabled('dataProcessing') &&
@@ -151,6 +154,7 @@ export default function InnerExperience({
         enabled={debug.isStageEnabled('uiOverlay')}
         cleanTest={cleanTest}
         forecastSamples={state.forecastSamples}
+        launchHour={state.launchHour}
         damReleaseSchedule={DAM_RELEASE_SCHEDULE}
         isWipeout={state.isWipeout}
         isJourneyComplete={state.isJourneyComplete}
