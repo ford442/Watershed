@@ -147,6 +147,8 @@ pnpm typecheck    # tsc -p tsconfig.typecheck.json --noEmit
 pnpm build        # optional emscripten WASM + vite → build/
 ```
 
+Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; do not commit `package-lock.json` (it is gitignored).
+
 `pnpm build` runs `emscripten/build.sh` first; if Emscripten is missing it prints a skip message and exits 0, then Vite proceeds.
 
 ---

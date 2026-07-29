@@ -14,8 +14,9 @@ To get the project running locally, follow these steps:
 
 1.  **Install dependencies:**
     ```bash
-    npm install
+    pnpm install
     ```
+    > Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; do not commit `package-lock.json`.
 2.  **Start the development server:**
     ```bash
     npm start
