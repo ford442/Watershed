@@ -2,6 +2,79 @@ import * as THREE from 'three';
 import { WALL_WATERLINE_Y, SHADERS, ROCK_SHADER } from '../constants/game';
 
 /**
+ * Minimal structural view of the object Three.js hands to `onBeforeCompile`.
+ *
+ * Declared locally rather than importing `WebGLProgramParametersWithUniforms`
+ * so the handler stays assignable under `strictFunctionTypes` (a narrower
+ * parameter type is a supertype here) and so unit tests can drive
+ * `onBeforeCompile` with a uniforms-only stub, as they do today.
+ */
+export interface RiverShaderProgram {
+  uniforms: Record<string, THREE.IUniform>;
+  vertexShader: string;
+  fragmentShader: string;
+}
+
+/** Configuration accepted by {@link extendRiverMaterial}. */
+export interface RiverMaterialOptions {
+  /** Darken + smooth surfaces near the waterline. */
+  enableWetness?: boolean;
+  /** Moss/lichen bands driven by the `mossMask` / `highWaterMask` attributes. */
+  enableMoss?: boolean;
+  /** Blend a secondary `uv2` projection to break texture tiling. */
+  enableTriplanar?: boolean;
+  /** World-space Y of the water surface. */
+  waterLevel?: number;
+  /** Height above `waterLevel` over which wetness fades out. */
+  wetnessRange?: number;
+}
+
+/** Per-frame values accepted by {@link updateRiverMaterial}. */
+export interface RiverMaterialUpdate {
+  waterLevel?: number;
+  weatherWetness?: number;
+}
+
+/** Snapshot stored on `material.userData.riverShader` at extend time. */
+export interface RiverShaderUserData {
+  waterLevel: number;
+  wetnessRange: number;
+  time: number;
+}
+
+/**
+ * The GLSL uniform bag injected by {@link extendRiverMaterial}.
+ *
+ * Moss uniforms are only present when `enableMoss` is set, which is why they
+ * are optional — the vertex/fragment preambles are built to match.
+ */
+export interface RiverShaderUniforms {
+  uWaterLevel: THREE.IUniform<number>;
+  uWetnessRange: THREE.IUniform<number>;
+  uTime: THREE.IUniform<number>;
+  uWeatherWetness: THREE.IUniform<number>;
+  uDisplacementMap: THREE.IUniform<THREE.Texture>;
+  uDisplacementScale: THREE.IUniform<number>;
+  uCrackIntensity: THREE.IUniform<number>;
+  uCrackScale: THREE.IUniform<number>;
+  uStratificationStrength: THREE.IUniform<number>;
+  uStratificationScale: THREE.IUniform<number>;
+  uWarmColor: THREE.IUniform<THREE.Color>;
+  uCoolColor: THREE.IUniform<THREE.Color>;
+  uColorVariationStrength: THREE.IUniform<number>;
+  uMossColor?: THREE.IUniform<THREE.Color>;
+  uLichenColor?: THREE.IUniform<THREE.Color>;
+  uMossIntensity?: THREE.IUniform<number>;
+}
+
+/** Materials whose optional PBR fields RiverShader reads or degrades onto. */
+type RiverCapableMaterial = THREE.Material & {
+  displacementMap?: THREE.Texture | null;
+  color?: THREE.Color;
+  roughness?: number;
+};
+
+/**
  * RiverShader - Enhanced wetness, moss, triplanar texture, parallax, cracks, and weather effects
  *
  * This version uses shader injection via onBeforeCompile for:
@@ -37,7 +110,12 @@ const WHITE_TEXTURE = (() => {
     return tex;
 })();
 
-function injectShaderChunk(source, marker, replacement, label) {
+function injectShaderChunk(
+    source: string,
+    marker: string,
+    replacement: string,
+    label: string,
+): string {
     if (!source.includes(marker)) {
         throw new Error(`RiverShader: Missing shader marker "${marker}" in ${label}`);
     }
@@ -46,12 +124,17 @@ function injectShaderChunk(source, marker, replacement, label) {
 }
 
 /**
- * Extends a material with river-aware shader effects
- * @param {THREE.Material} material - The material to extend
- * @param {Object} options - Optional configuration
+ * Extends a material with river-aware shader effects.
+ *
+ * Returns the same material instance so call sites can chain off a `.clone()`.
+ * The falsy guard is retained for the untyped `.jsx` decoration call sites that
+ * may hand over an unresolved material.
  */
-export function extendRiverMaterial(material, options = {}) {
-    if (!material) return;
+export function extendRiverMaterial<T extends THREE.Material>(
+    material: T,
+    options: RiverMaterialOptions = {},
+): T {
+    if (!material) return material;
 
     const {
         enableWetness = true,
@@ -63,33 +146,43 @@ export function extendRiverMaterial(material, options = {}) {
 
     try {
         // Store shader reference for updates
-        material.userData.riverShader = {
+        const riverShaderUserData: RiverShaderUserData = {
             waterLevel,
             wetnessRange,
             time: 0
         };
+        material.userData.riverShader = riverShaderUserData;
 
-        material.onBeforeCompile = (shader) => {
+        material.onBeforeCompile = (shader: RiverShaderProgram) => {
             try {
-                shader.uniforms.uWaterLevel = { value: waterLevel };
-                shader.uniforms.uWetnessRange = { value: wetnessRange };
-                shader.uniforms.uTime = { value: 0 };
-                shader.uniforms.uWeatherWetness = { value: 0 };
-                shader.uniforms.uDisplacementMap = { value: material.displacementMap || WHITE_TEXTURE };
-                shader.uniforms.uDisplacementScale = { value: ROCK_SHADER.DISPLACEMENT_SCALE };
-                shader.uniforms.uCrackIntensity = { value: ROCK_SHADER.CRACK_INTENSITY };
-                shader.uniforms.uCrackScale = { value: ROCK_SHADER.CRACK_SCALE };
-                shader.uniforms.uStratificationStrength = { value: ROCK_SHADER.STRATIFICATION_STRENGTH };
-                shader.uniforms.uStratificationScale = { value: ROCK_SHADER.STRATIFICATION_SCALE };
-                shader.uniforms.uWarmColor = { value: new THREE.Color(ROCK_SHADER.WARM_COLOR) };
-                shader.uniforms.uCoolColor = { value: new THREE.Color(ROCK_SHADER.COOL_COLOR) };
-                shader.uniforms.uColorVariationStrength = { value: ROCK_SHADER.COLOR_VARIATION_STRENGTH };
+                // Typed uniform bag — RiverShaderUniforms is the declared contract
+                // between this injection and the GLSL preambles built below, so a
+                // renamed or retyped uniform fails `pnpm typecheck`.
+                const riverUniforms: RiverShaderUniforms = {
+                    uWaterLevel: { value: waterLevel },
+                    uWetnessRange: { value: wetnessRange },
+                    uTime: { value: 0 },
+                    uWeatherWetness: { value: 0 },
+                    uDisplacementMap: {
+                        value: (material as RiverCapableMaterial).displacementMap || WHITE_TEXTURE,
+                    },
+                    uDisplacementScale: { value: ROCK_SHADER.DISPLACEMENT_SCALE },
+                    uCrackIntensity: { value: ROCK_SHADER.CRACK_INTENSITY },
+                    uCrackScale: { value: ROCK_SHADER.CRACK_SCALE },
+                    uStratificationStrength: { value: ROCK_SHADER.STRATIFICATION_STRENGTH },
+                    uStratificationScale: { value: ROCK_SHADER.STRATIFICATION_SCALE },
+                    uWarmColor: { value: new THREE.Color(ROCK_SHADER.WARM_COLOR) },
+                    uCoolColor: { value: new THREE.Color(ROCK_SHADER.COOL_COLOR) },
+                    uColorVariationStrength: { value: ROCK_SHADER.COLOR_VARIATION_STRENGTH },
+                };
 
                 if (enableMoss) {
-                    shader.uniforms.uMossColor = { value: MOSS_COLOR };
-                    shader.uniforms.uLichenColor = { value: LICHEN_COLOR };
-                    shader.uniforms.uMossIntensity = { value: MOSS_INTENSITY };
+                    riverUniforms.uMossColor = { value: MOSS_COLOR };
+                    riverUniforms.uLichenColor = { value: LICHEN_COLOR };
+                    riverUniforms.uMossIntensity = { value: MOSS_INTENSITY };
                 }
+
+                Object.assign(shader.uniforms, riverUniforms);
 
                 // Build vertex shader preamble conditionally to avoid declaring
                 // attributes that are not present on every geometry.
@@ -349,9 +442,12 @@ export function extendRiverMaterial(material, options = {}) {
             } catch (error) {
                 material.userData.shader = null;
                 material.userData.shaderFailed = true;
+                // Tests and defensive call sites may pass a partial program, so the
+                // diagnostic reads through an optional view rather than the strict one.
+                const partial = shader as Partial<RiverShaderProgram> | undefined;
                 console.error('RiverShader: Error compiling shader injection:', error);
-                console.error('RiverShader: Vertex shader:', shader?.vertexShader?.substring?.(0, 500));
-                console.error('RiverShader: Fragment shader:', shader?.fragmentShader?.substring?.(0, 500));
+                console.error('RiverShader: Vertex shader:', partial?.vertexShader?.substring?.(0, 500));
+                console.error('RiverShader: Fragment shader:', partial?.fragmentShader?.substring?.(0, 500));
                 fallbackExtend(material);
             }
         };
@@ -371,13 +467,14 @@ export function extendRiverMaterial(material, options = {}) {
 /**
  * Fallback property-based material extension
  */
-function fallbackExtend(material) {
+function fallbackExtend(material: THREE.Material): void {
     try {
-        if (material.color) {
-            material.color.multiplyScalar(WETNESS_DARKEN_FACTOR);
+        const target = material as RiverCapableMaterial;
+        if (target.color) {
+            target.color.multiplyScalar(WETNESS_DARKEN_FACTOR);
         }
-        if (material.roughness !== undefined) {
-            material.roughness = Math.max(0.25, material.roughness - WETNESS_ROUGHNESS_REDUCTION);
+        if (target.roughness !== undefined) {
+            target.roughness = Math.max(0.25, target.roughness - WETNESS_ROUGHNESS_REDUCTION);
         }
         material.needsUpdate = true;
     } catch (e) {
@@ -386,39 +483,47 @@ function fallbackExtend(material) {
 }
 
 /**
- * Update shader uniforms (call in useFrame)
- * @param {THREE.Material} material - The material to update
- * @param {number} time - Current elapsed time
- * @param {Object|number} options - Options object or legacy waterLevel number
+ * Update shader uniforms (call in useFrame).
+ *
+ * `options` accepts the legacy positional `waterLevel` number for older call
+ * sites; both forms are preserved verbatim.
  */
-export function updateRiverMaterial(material, time, options = {}) {
+export function updateRiverMaterial(
+    material: THREE.Material | null | undefined,
+    time: number,
+    options: RiverMaterialUpdate | number = {},
+): void {
     if (!material || !material.userData.shader) return;
 
-    const shader = material.userData.shader;
+    const shader = material.userData.shader as RiverShaderProgram;
     if (shader.uniforms) {
-        shader.uniforms.uTime.value = time;
+        // Read through the declared bag so uniform names stay checked here too.
+        // Partial<> because a material may have been compiled before this
+        // extension ran, or stubbed by a test.
+        const uniforms = shader.uniforms as Partial<RiverShaderUniforms>;
+        uniforms.uTime!.value = time;
         if (typeof options === 'number') {
             // backward compatibility: third arg used to be waterLevel
-            if (shader.uniforms.uWaterLevel) {
-                shader.uniforms.uWaterLevel.value = options;
+            if (uniforms.uWaterLevel) {
+                uniforms.uWaterLevel.value = options;
             }
         } else if (options && typeof options === 'object') {
-            if (options.waterLevel !== undefined && shader.uniforms.uWaterLevel) {
-                shader.uniforms.uWaterLevel.value = options.waterLevel;
+            if (options.waterLevel !== undefined && uniforms.uWaterLevel) {
+                uniforms.uWaterLevel.value = options.waterLevel;
             }
-            if (options.weatherWetness !== undefined && shader.uniforms.uWeatherWetness) {
-                shader.uniforms.uWeatherWetness.value = options.weatherWetness;
+            if (options.weatherWetness !== undefined && uniforms.uWeatherWetness) {
+                uniforms.uWeatherWetness.value = options.weatherWetness;
             }
         }
     }
 }
 
 /**
- * Create a river-aware material with all effects pre-configured
- * @param {Object} parameters - Base material parameters
- * @returns {THREE.MeshStandardMaterial}
+ * Create a river-aware material with all effects pre-configured.
  */
-export function createRiverMaterial(parameters = {}) {
+export function createRiverMaterial(
+    parameters: THREE.MeshStandardMaterialParameters = {},
+): THREE.MeshStandardMaterial {
     const material = new THREE.MeshStandardMaterial({
         roughness: 0.9,
         metalness: 0.1,
