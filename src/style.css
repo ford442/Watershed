@@ -600,6 +600,46 @@ canvas {
   color: rgba(255, 255, 255, 0.55);
 }
 
+.start-menu-loadout-panel {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(120, 180, 255, 0.06);
+  border: 1px solid rgba(120, 180, 255, 0.18);
+}
+
+.start-menu-loadout-option {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.18);
+  color: #f4efe3;
+  cursor: pointer;
+  text-align: left;
+}
+
+.start-menu-loadout-option.active {
+  border-color: rgba(120, 180, 255, 0.65);
+  background: rgba(120, 180, 255, 0.14);
+}
+
+.start-menu-loadout-option-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.start-menu-loadout-option-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .start-menu-title-group {
   margin-bottom: 32px;
 }
@@ -1216,6 +1256,62 @@ canvas {
 @keyframes stamina-pulse {
   from { opacity: 0.3; }
   to   { opacity: 1.0; }
+}
+
+/* ===== SURVIVAL HUD (wetness / exposure) ===== */
+.survival-hud-stack {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (min-width: 768px) {
+  .survival-hud-stack {
+    bottom: 1.5rem;
+    left: 1.5rem;
+  }
+}
+
+.survival-hud-stack .stamina-bar {
+  position: static;
+}
+
+.survival-loadout-badge {
+  margin-top: 6px;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.survival-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.survival-bar__label {
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.38);
+  text-transform: uppercase;
+}
+
+.survival-bar__track {
+  width: 120px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.survival-fill {
+  height: 100%;
+  border-radius: 2px;
+  will-change: width;
 }
 
 /* ===== SHELF LAUNCH AIR-TIME POPUPS ===== */

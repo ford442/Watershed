@@ -20,6 +20,7 @@ import { isElevatedRisk } from '../../systems/flowForecast';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
 import { countLostCaches, requiresPortageForSegment } from '../../systems/portageCache';
 import { dispatchPortageCacheEvent, getRunSession } from '../../systems/runSession';
+import { resolveRespawnSegment } from '../../systems/survival';
 import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';
 
@@ -189,7 +190,8 @@ export function useExperienceLifecycle({
         };
 
         setCurrentSegmentIndex(index);
-        setRespawnSegmentIndex(index);
+        const respawnSegment = resolveRespawnSegment(survivalMeta.checkpoints ?? [], index);
+        setRespawnSegmentIndex(respawnSegment);
 
         if (detail?.gravityMultiplier !== undefined) {
           setWaterfallGravityMultiplier(detail.gravityMultiplier);

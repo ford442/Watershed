@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerBiome, useGameStore } from '../systems/GameState';
 import { getActiveLaunchAirSeconds } from '../systems/LaunchScoringSession';
 import {
+  getActiveLoadoutId,
+  getActiveSurvivalModifiers,
+  getActiveSurvivalState,
+  getRunSession,
+} from '../systems/runSession';
+import { getLoadoutDefinition } from '../systems/survival';
+import {
   calculateBuoyancyAndDragFallback,
   getWasm,
   type NativeWaterForceResult,
@@ -61,6 +68,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const staminaFillRef = useRef<HTMLDivElement>(null);
   const staminaBarRef = useRef<HTMLDivElement>(null);
   const exhaustedRef = useRef(false);
+
+  const wetnessFillRef = useRef<HTMLDivElement>(null);
+  const exposureFillRef = useRef<HTMLDivElement>(null);
+  const loadoutLabelRef = useRef<HTMLSpanElement>(null);
 
   // Shelf launch popups — imperative DOM + CSS animation; no per-frame React state.
   const launchPopupRef = useRef<HTMLDivElement>(null);
@@ -144,6 +155,39 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           el.classList.remove('launch-airtime-hud--visible');
         }
       }
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const loadoutEl = loadoutLabelRef.current;
+      if (loadoutEl) {
+        const loadout = getLoadoutDefinition(getActiveLoadoutId());
+        loadoutEl.textContent = loadout.shortLabel;
+      }
+
+      const survival = getActiveSurvivalState();
+      const mods = getActiveSurvivalModifiers(useGameStore.getState().currentBiome);
+      const wetFill = wetnessFillRef.current;
+      const exposureFill = exposureFillRef.current;
+
+      if (survival && wetFill) {
+        wetFill.style.width = `${Math.round(survival.wetness * 100)}%`;
+        wetFill.style.backgroundColor =
+          survival.wetness > 0.65 ? '#38bdf8' : survival.wetness > 0.3 ? '#7dd3fc' : '#94a3b8';
+      }
+
+      if (mods && exposureFill) {
+        const stress = mods.exposureStress;
+        exposureFill.style.width = `${Math.round(stress * 100)}%`;
+        exposureFill.style.backgroundColor =
+          stress > 0.6 ? '#ef4444' : stress > 0.3 ? '#fbbf24' : '#86efac';
+      }
+
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
@@ -382,7 +426,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   return (
     <>
       <div className="fixed top-4 left-4 md:top-6 md:left-6 text-xs font-mono text-white/50 tracking-[0.12em]">
-        {biomeLabel}
+        <div>{biomeLabel}</div>
+        <div className="survival-loadout-badge">
+          LOADOUT <span ref={loadoutLabelRef}>—</span>
+        </div>
       </div>
 
       <div className="fixed top-4 right-4 md:top-6 md:right-6 bg-black/55 backdrop-blur-md text-right px-4 py-3 md:px-5 md:py-4 rounded-2xl border border-white/10 shadow-lg font-mono text-[#f5f1e8] min-w-[220px]">
@@ -437,11 +484,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {vehicleType === 'runner' && (
-        <div className="stamina-bar" ref={staminaBarRef}>
-          <div className="stamina-bar__label">SPRINT</div>
-          <div className="stamina-bar__track">
-            <div className="stamina-fill" ref={staminaFillRef} style={{ width: '100%', backgroundColor: '#f8fafc' }} />
+        <div className="survival-hud-stack">
+          <div className="stamina-bar" ref={staminaBarRef}>
+            <div className="stamina-bar__label">SPRINT</div>
+            <div className="stamina-bar__track">
+              <div className="stamina-fill" ref={staminaFillRef} style={{ width: '100%', backgroundColor: '#f8fafc' }} />
+            </div>
           </div>
+
+          {getRunSession() && (
+            <>
+              <div className="survival-bar">
+                <div className="survival-bar__label">WET</div>
+                <div className="survival-bar__track">
+                  <div className="survival-fill" ref={wetnessFillRef} style={{ width: '0%' }} />
+                </div>
+              </div>
+              <div className="survival-bar">
+                <div className="survival-bar__label">EXPOSURE</div>
+                <div className="survival-bar__track">
+                  <div className="survival-fill" ref={exposureFillRef} style={{ width: '0%' }} />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </>
