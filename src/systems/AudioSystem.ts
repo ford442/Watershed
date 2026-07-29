@@ -45,6 +45,8 @@ interface ReactiveVolumes {
   rapids: number;
   whoosh: number;
   transition: number;
+  /** Normalized speed-wind gain 0–1 (pre SFX/master multipliers). */
+  wind?: number;
 }
 
 // Default sound library
@@ -124,8 +126,16 @@ export class AudioManager {
   // Load status tracking
   private failedSounds: Set<string> = new Set();
   
-  // Reactive audio volumes (populated by ReactiveAudio if mounted)
-  private reactiveVolumes: ReactiveVolumes = { low: 0, mid: 0, high: 0, rapids: 0, whoosh: 0, transition: 0 };
+  // Reactive audio volumes (populated by ReactiveAudio / SpeedWindAudio if mounted)
+  private reactiveVolumes: ReactiveVolumes = {
+    low: 0,
+    mid: 0,
+    high: 0,
+    rapids: 0,
+    whoosh: 0,
+    transition: 0,
+    wind: 0,
+  };
 
   // Canyon acoustic state
   private canyonAcoustics = {

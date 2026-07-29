@@ -4,6 +4,7 @@ import EnhancedSky from '../components/EnhancedSky';
 import FlowForecast from '../components/FlowForecast';
 import { PostProcessingPipeline } from '../components/PostProcessingPipeline';
 import TrackManager from '../components/TrackManager';
+import SpeedWindAudio from '../components/SpeedWindAudio';
 import LevelLoader from '../systems/LevelLoader';
 import ReachManager from '../systems/ReachManager';
 import { useLOD } from '../systems/LODManager';
@@ -128,15 +129,19 @@ export default function InnerExperience({
                 retryKey={state.reachRetryKey}
               />
             ) : (
-              <TrackManager
-                ref={state.trackManagerRef}
-                key={state.defaultMapRunKey}
-                onBiomeChange={state.handleBiomeChange}
-                raftRef={state.vehicleRef}
-                forecastSamples={state.forecastSamples}
-                startIndex={state.activeDefaultMap.startIndex}
-                mapId={state.activeDefaultMapId}
-              />
+              <>
+                <TrackManager
+                  ref={state.trackManagerRef}
+                  key={state.defaultMapRunKey}
+                  onBiomeChange={state.handleBiomeChange}
+                  raftRef={state.vehicleRef}
+                  forecastSamples={state.forecastSamples}
+                  startIndex={state.activeDefaultMap.startIndex}
+                  mapId={state.activeDefaultMapId}
+                />
+                {/* Speed wind for default (non-Reach) maps — Reach path gets it via ReactiveAudio. */}
+                <SpeedWindAudio targetRef={state.vehicleRef} />
+              </>
             ))}
         </Physics>
       )}
