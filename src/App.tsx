@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import Experience from './Experience';
 import { Loader } from './components/Loader';
@@ -71,6 +71,10 @@ function App() {
   const [worldEnabled, setWorldEnabled] = useState(false);
   const [skipLoader, setSkipLoader] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpenRef = useRef(settingsOpen);
+  useEffect(() => {
+    settingsOpenRef.current = settingsOpen;
+  }, [settingsOpen]);
   const debug = useDebugStages();
   const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
@@ -203,7 +207,9 @@ function App() {
         try {
           const locked = !!document.pointerLockElement;
           setPhase((prev) => {
-            if (locked && prev === 'paused') return 'playing';
+            // Don't auto-resume while the Options panel is open — the player
+            // must dismiss settings and click RESUME (user gesture) to re-lock.
+            if (locked && prev === 'paused' && !settingsOpenRef.current) return 'playing';
             if (!locked && prev === 'playing') return 'paused';
             return prev;
           });
