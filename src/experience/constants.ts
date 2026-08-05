@@ -58,6 +58,18 @@ export const BIOME_LIGHTING: Record<string, BiomeLightingConfig> = {
     fillColor: '#5a6a7a',
     fillIntensity: 0.32,
   },
+  delta: {
+    ambientIntensity: 0.42,
+    hemiSky: '#f0c080',
+    hemiGround: '#5a6a48',
+    hemiIntensity: 0.7,
+    dirColor: '#ffb060',
+    dirIntensity: 0.95,
+    // Low sun — golden-hour bias for the raft finale
+    dirPosition: [28, 8, 14],
+    fillColor: '#c08050',
+    fillIntensity: 0.28,
+  },
 };
 
 export const NOOP_DEBUG: DebugStageController = {

@@ -88,6 +88,10 @@ export const RAFT = {
     TIP_THRESHOLD_SPEED: 3,
     TIP_SUBMERGE_THRESHOLD: 0.5,
     TIP_FORCE_MAGNITUDE: 8,
+    /** Calm-water (delta) tip/turbulence scale — keeps raft stable on wide marsh flow. */
+    CALM_TIP_SCALE: 0.35,
+    CALM_TURBULENCE_SCALE: 0.4,
+    CALM_TIP_THRESHOLD_SPEED: 5.5,
     ROTATION_DAMPING: 0.95,
     RIGHTING_THRESHOLD_DEG: 45,
     RIGHTING_TORQUE: 15,

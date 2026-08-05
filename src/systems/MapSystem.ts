@@ -445,6 +445,7 @@ export class JSONMapManager implements MapManager {
       decorations: seg.decorations,
       launchShelf: seg.launchShelf,
       journeyComplete: seg.journeyComplete,
+      forceVehicle: seg.forceVehicle,
       slipperiness: seg.slipperiness,
       openFloor: seg.openFloor,
       hasBridge: seg.hasBridge,

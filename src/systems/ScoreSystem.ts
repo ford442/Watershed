@@ -9,7 +9,7 @@ import {
   PORTAGE_FAIL_PENALTY,
   pendingRetrievalBonus,
 } from './portageCache';
-import { getRunSession, markCacheBonusAwarded } from './runSession';
+import { getRunSession, markCacheBonusAwarded, getJourneyResultsSummary } from './runSession';
 
 const HIGH_SPEED_THRESHOLD = 15;
 const RESET_SPEED_THRESHOLD = 8;
@@ -18,6 +18,8 @@ const MAX_MULTIPLIER = 10;
 const MAX_FRAME_DELTA = 0.1;
 const DODGE_BONUS = 200;
 const WATERFALL_BONUS = 500;
+/** Score points per upright raft meter at journey end. */
+const UPRIGHT_DISTANCE_SCORE_PER_METER = 2;
 
 const COMBO_LABELS: Record<number, string> = {
   2: 'FLOW STATE',
@@ -211,6 +213,23 @@ export function applyPortageFailPenalty(): void {
 
 /** Commit journey-end score to per-run persistence. */
 export function commitJourneyScore(): void {
+  const summary = getJourneyResultsSummary();
+  if (summary && summary.uprightDistanceMeters > 0) {
+    const uprightBonus = Math.floor(summary.uprightDistanceMeters * UPRIGHT_DISTANCE_SCORE_PER_METER);
+    if (uprightBonus > 0) {
+      addScoreBonus(uprightBonus);
+      useGameStore.setState({
+        latestReward: {
+          tier: 'UprightRun',
+          score: uprightBonus,
+          clean: true,
+          id: Date.now(),
+          label: 'UPRIGHT RUN',
+        },
+      });
+    }
+  }
+
   const { score, highScore } = useGameStore.getState();
   const floored = Math.floor(score);
   if (floored > highScore) {

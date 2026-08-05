@@ -400,6 +400,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
               segmentState: entered?.segmentState ?? 'Normal',
               surviveBonus: entered?.surviveBonus ?? 0,
               washedOutGap: Boolean(entered?.washedOutGap),
+              forceVehicle: segCfg?.forceVehicle ?? null,
             },
           })
         );

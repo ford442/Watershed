@@ -5,6 +5,7 @@ import {
   getActiveLoadoutId,
   getActiveSurvivalModifiers,
   getActiveSurvivalState,
+  getJourneyResultsSummary,
   getRunSession,
 } from '../systems/runSession';
 import { getLoadoutDefinition } from '../systems/survival';
@@ -340,6 +341,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   if (isJourneyComplete) {
     const isNewHighScore = score >= highScore && score > 0;
     const title = isFinalMap ? 'Campaign Complete' : 'Journey Complete';
+    const journeyResults = getJourneyResultsSummary();
     return (
       <div
         className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
@@ -370,6 +372,36 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="text-zinc-500 text-base mb-2">
             Top Speed: <span className="font-mono text-white">{Math.round(topSpeed)} m/s</span>
           </div>
+
+          {journeyResults && (
+            <div className="mt-4 mb-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-left max-w-lg mx-auto text-zinc-400 text-sm md:text-base">
+              <div>
+                Launch hour:{' '}
+                <span className="font-mono text-amber-200">
+                  H{String(journeyResults.launchHour).padStart(2, '0')}:00
+                </span>
+              </div>
+              <div>
+                Peak wetness:{' '}
+                <span className="font-mono text-sky-300">
+                  {Math.round(journeyResults.peakWetness * 100)}%
+                </span>
+              </div>
+              <div>
+                Upright distance:{' '}
+                <span className="font-mono text-emerald-300">
+                  {Math.round(journeyResults.uprightDistanceMeters)} m
+                </span>
+              </div>
+              <div>
+                Caches:{' '}
+                <span className="font-mono text-white">
+                  {journeyResults.cachesRetrieved} recovered
+                  {journeyResults.cachesLost > 0 ? ` / ${journeyResults.cachesLost} lost` : ''}
+                </span>
+              </div>
+            </div>
+          )}
 
           {isFinalMap && (
             <div className="text-zinc-500 text-base mb-2">

@@ -7,10 +7,23 @@ import type { DebugStageController } from '../../debug/debugStages';
 import type { InnerExperienceProps, VehicleRigidBodyRef, VehicleType } from '../types';
 import { useExperienceLifecycle } from './useExperienceLifecycle';
 import { useExperienceWorld } from './useExperienceWorld';
+import { getMapDefinition, isMapRegistryId } from '../../maps/registry';
 
-function readVehicleTypeFromUrl(): VehicleType {
-  if (typeof window === 'undefined') return 'runner';
-  return new URLSearchParams(window.location.search).get('vehicle') === 'raft' ? 'raft' : 'runner';
+function readVehicleTypeFromUrl(): VehicleType | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('vehicle');
+  if (raw === 'raft' || raw === 'runner') return raw;
+  return null;
+}
+
+function resolveInitialVehicle(mapId?: string): VehicleType {
+  const fromUrl = readVehicleTypeFromUrl();
+  if (fromUrl) return fromUrl;
+  if (mapId && isMapRegistryId(mapId)) {
+    const preferred = getMapDefinition(mapId).preferredVehicle;
+    if (preferred) return preferred;
+  }
+  return 'runner';
 }
 
 export function useInnerExperience({
@@ -27,7 +40,7 @@ export function useInnerExperience({
 > & {
   debug: DebugStageController;
 }) {
-  const [vehicleType, setVehicleTypeLocal] = useState<VehicleType>(readVehicleTypeFromUrl);
+  const [vehicleType, setVehicleTypeLocal] = useState<VehicleType>(() => resolveInitialVehicle(mapId));
   const [noPointerLock] = useState(
     () => typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock'),
   );
@@ -41,6 +54,7 @@ export function useInnerExperience({
   const trackManagerRef = useRef<TrackManagerRef | null>(null);
   const playerVelocityRef = useRef(0);
   const awardedWaterfallSegmentsRef = useRef(new Set<number>());
+  const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null);
 
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   const physicsDebugEnabled =
@@ -66,6 +80,32 @@ export function useInnerExperience({
   useEffect(() => {
     setVehicleTypeStore(vehicleType);
   }, [setVehicleTypeStore, vehicleType]);
+
+  // Map preferredVehicle when StartMenu / continue changes the active map.
+  // URL `?vehicle=` wins for the whole session once present.
+  useEffect(() => {
+    if (!mapId || urlVehicleOverrideRef.current) return;
+    const preferred = getMapDefinition(mapId).preferredVehicle;
+    if (preferred && preferred !== vehicleType) {
+      setVehicleType(preferred);
+    }
+  }, [mapId, setVehicleType, vehicleType]);
+
+  // Segment-authored forceVehicle (delta raft launch, hydro→delta continuation).
+  useEffect(() => {
+    if (typeof window === 'undefined' || urlVehicleOverrideRef.current) return;
+
+    const onSegmentEnter = (event: Event) => {
+      const detail = (event as CustomEvent<{ forceVehicle?: VehicleType | null }>).detail;
+      const next = detail?.forceVehicle;
+      if (next === 'raft' || next === 'runner') {
+        setVehicleType(next);
+      }
+    };
+
+    window.addEventListener('segment-enter', onSegmentEnter);
+    return () => window.removeEventListener('segment-enter', onSegmentEnter);
+  }, [setVehicleType]);
 
   useExperienceLifecycle({
     debug,

@@ -68,6 +68,49 @@ const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
       },
     ],
   },
+  delta: {
+    checkpoints: [
+      {
+        segment: 2,
+        label: 'Raft launch',
+        position: [0, -3, -90],
+        radius: 40,
+      },
+      {
+        segment: 6,
+        label: 'Open water',
+        position: [0, -5, -280],
+        radius: 45,
+      },
+      {
+        segment: 14,
+        label: 'Channels rejoin',
+        position: [0, -6, -620],
+        radius: 40,
+      },
+      {
+        segment: 21,
+        label: 'Beach landing',
+        position: [0, -6, -920],
+        radius: 50,
+      },
+    ],
+    maxCachePlacements: 1,
+    cacheSlots: [
+      {
+        id: 'delta-sandbar-8',
+        segmentIndex: 8,
+        label: 'Sandbar cache above the braid',
+        retrievalBonus: 300,
+      },
+    ],
+    portageRoutes: [
+      {
+        segmentIndex: 11,
+        label: 'Side washout past the forecast fork',
+      },
+    ],
+  },
 };
 
 export function getMapSurvivalMetadata(mapId: MapRegistryId): MapSurvivalMetadata {

@@ -82,7 +82,7 @@ describe('getJourneyCompletionDecision', () => {
     expect(getJourneyCompletionDecision('hydro')).toEqual({
       kind: 'continue',
       nextMapId: 'delta',
-      nextLabel: 'Delta Rapids',
+      nextLabel: 'River Delta',
     });
   });
 
@@ -106,6 +106,8 @@ describe('campaign menu helpers', () => {
     expect(maps.map((m) => m.id)).toEqual(['glacial', 'meander', 'hydro', 'delta']);
     expect(maps[0].estimatedDurationSec).toBe(240);
     expect(maps[0].difficulty).toBe('intermediate');
+    expect(maps.find((m) => m.id === 'delta')?.estimatedDurationSec).toBe(360);
+    expect(maps.find((m) => m.id === 'delta')?.difficulty).toBe('intermediate');
     expect(formatDuration(240)).toBe('~4 min');
   });
 

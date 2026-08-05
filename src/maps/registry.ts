@@ -14,11 +14,14 @@ import lumberLevel from './lumber_flume.json';
 import hydroLevel from './hydro_dam.json';
 import { assertLevelData } from './assertLevelData';
 import {
-  DELTA_RAPIDS_CONTINUED_START_INDEX,
   GLACIER_START_INDEX,
   MEANDER_FALLBACK_PROGRESSION,
-  DELTA_RAPIDS_CONTINUED_PROGRESSION,
 } from './meander_to_waterfall';
+import {
+  DELTA_RAPIDS_FALLBACK_PROGRESSION,
+  DELTA_RAPIDS_START_INDEX,
+  DELTA_RAPIDS_CONTINUED_START_INDEX,
+} from './delta_rapids';
 import {
   GLACIAL_SOURCE_START_INDEX,
   GLACIAL_SOURCE_FALLBACK_PROGRESSION,
@@ -64,6 +67,11 @@ export interface MapDefinition {
    * Falls back to `continuation.mapId` when omitted.
    */
   nextMapId?: MapRegistryId;
+  /**
+   * Preferred vehicle when this map becomes active (URL `?vehicle=` still wins
+   * at boot; segment `forceVehicle` can override mid-run).
+   */
+  preferredVehicle?: 'runner' | 'raft';
   /** Optional second authored map chained after primary segments are exhausted. */
   continuation?: MapContinuation;
   /**
@@ -134,14 +142,15 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   },
   delta: {
     id: 'delta',
-    label: 'Delta Rapids',
+    label: 'River Delta',
     levelData: assertLevelData(deltaLevel, 'delta'),
-    fallbackProgression: DELTA_RAPIDS_CONTINUED_PROGRESSION,
-    startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
+    fallbackProgression: DELTA_RAPIDS_FALLBACK_PROGRESSION,
+    startIndex: DELTA_RAPIDS_START_INDEX,
     initialBiome: 'delta',
-    difficulty: 'beginner',
-    estimatedDurationSec: 180,
+    difficulty: 'intermediate',
+    estimatedDurationSec: 360,
     unlockAfter: 'hydro',
+    preferredVehicle: 'raft',
   },
 };
 
