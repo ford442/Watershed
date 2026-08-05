@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { QUALITY_SETTINGS } from '../systems/LODManager';
 import {
   DEFAULT_TONE_MAPPING_EXPOSURE,
+  LOGARITHMIC_DEPTH_BUFFER_ENABLED,
   deriveRendererContextOptions,
   resolveCanvasDpr,
   shadowModeToCanvasProp,
@@ -58,6 +60,27 @@ describe('deriveRendererContextOptions', () => {
     const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 1 });
     expect(opts.shadowMapSize).toBe(2048);
     expect(opts.dprMax).toBe(1);
+  });
+
+  it('keeps logarithmic depth disabled (evaluated, deferred)', () => {
+    expect(LOGARITHMIC_DEPTH_BUFFER_ENABLED).toBe(false);
+  });
+});
+
+describe('LOD ↔ renderer shadow map contract', () => {
+  it('aligns static LOD shadowMapSize baselines with deriveRendererContextOptions', () => {
+    expect(QUALITY_SETTINGS.medium.shadowMapSize).toBe(
+      deriveRendererContextOptions('medium').shadowMapSize
+    );
+    expect(QUALITY_SETTINGS.high.shadowMapSize).toBe(
+      deriveRendererContextOptions('high').shadowMapSize
+    );
+    // Ultra LOD table stores the retina max; live lights use derive (DPR-aware).
+    expect(QUALITY_SETTINGS.ultra.shadowMapSize).toBe(
+      deriveRendererContextOptions('ultra', { devicePixelRatio: 2 }).shadowMapSize
+    );
+    expect(deriveRendererContextOptions('low').shadowMapSize).toBeNull();
+    expect(QUALITY_SETTINGS.low.shadowMapSize).toBe(1024);
   });
 });
 
