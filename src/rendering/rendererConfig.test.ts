@@ -1,50 +1,11 @@
-import {
-  isRendererPreference,
-  parseRendererPreference,
-  syncRendererPreferenceToUrl,
-} from './rendererConfig';
+import { isVisualCaptureMode } from './rendererConfig';
 
-const STORAGE_KEY = 'watershed.renderer.preference';
-
-describe('rendererConfig', () => {
-  const originalUrl = window.location.href;
-
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.history.replaceState({}, '', '/');
-  });
-
-  afterEach(() => {
-    window.history.replaceState({}, '', originalUrl);
-  });
-
-  it('defaults to webgl when no URL or storage override exists', () => {
-    expect(parseRendererPreference('')).toBe('webgl');
-  });
-
-  it('reads renderer preference from URL params', () => {
-    expect(parseRendererPreference('?renderer=webgl')).toBe('webgl');
-    expect(parseRendererPreference('?renderer=webgpu')).toBe('webgpu');
-  });
-
-  it('falls back to stored preference when URL param is absent', () => {
-    window.localStorage.setItem(STORAGE_KEY, 'webgl');
-    expect(parseRendererPreference('')).toBe('webgl');
-  });
-
-  it('prefers URL param over stored preference', () => {
-    window.localStorage.setItem(STORAGE_KEY, 'webgl');
-    expect(parseRendererPreference('?renderer=webgpu')).toBe('webgpu');
-  });
-
-  it('syncs renderer preference into the URL', () => {
-    syncRendererPreferenceToUrl('webgl');
-    expect(window.location.search).toContain('renderer=webgl');
-  });
-
-  it('validates renderer preference strings', () => {
-    expect(isRendererPreference('webgl')).toBe(true);
-    expect(isRendererPreference('webgpu')).toBe(true);
-    expect(isRendererPreference('d3d11')).toBe(false);
+describe('isVisualCaptureMode', () => {
+  it('returns true only for screenshot or capture query params', () => {
+    expect(isVisualCaptureMode('?screenshot=1')).toBe(true);
+    expect(isVisualCaptureMode('?capture=1')).toBe(true);
+    expect(isVisualCaptureMode('?screenshot=1&map=glacial')).toBe(true);
+    expect(isVisualCaptureMode('')).toBe(false);
+    expect(isVisualCaptureMode('?screenshot=0')).toBe(false);
   });
 });

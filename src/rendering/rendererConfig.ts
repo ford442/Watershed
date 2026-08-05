@@ -45,3 +45,14 @@ export function persistRendererPreference(preference: RendererPreference): void 
   }
   syncRendererPreferenceToUrl(preference);
 }
+
+/**
+ * Visual capture harnesses (?screenshot=1 / ?capture=1) require preserveDrawingBuffer.
+ * Never enable it outside those modes — it costs GPU memory and hurts performance.
+ */
+export function isVisualCaptureMode(search?: string): boolean {
+  const raw =
+    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const params = new URLSearchParams(raw);
+  return params.get('screenshot') === '1' || params.get('capture') === '1';
+}

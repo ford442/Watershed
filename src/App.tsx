@@ -14,14 +14,17 @@ import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import {
   createGameRenderer,
+  deriveRendererContextOptions,
+  isVisualCaptureMode,
   parseRendererPreference,
   persistRendererPreference,
+  shadowModeToCanvasProp,
   type RendererPreference,
 } from './rendering';
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
-import { useGameStore } from './systems/GameState';
+import { useGameStore, useQualityPreset } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/PersistenceSystem';
@@ -89,6 +92,12 @@ function App() {
   const [rendererPreference, setRendererPreference] = useState<RendererPreference>(() =>
     parseRendererPreference()
   );
+  const qualityPreset = useQualityPreset();
+  const [canvasEpoch, setCanvasEpoch] = useState(0);
+  const [webglRecovering, setWebglRecovering] = useState(false);
+  const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
+    devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+  });
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
     const params = new URLSearchParams(window.location.search);
@@ -328,26 +337,40 @@ function App() {
         <>
           <SettingsSync />
           <Canvas
-            key={`renderer-${rendererPreference}`}
+            key={`renderer-${rendererPreference}-quality-${qualityPreset}-epoch-${canvasEpoch}`}
+            dpr={[1, rendererContextOptions.dprMax]}
             gl={async (props) =>
               createGameRenderer(
                 {
                   ...props,
-                  preserveDrawingBuffer:
-                    urlParams.get('screenshot') === '1' || urlParams.get('capture') === '1',
+                  preserveDrawingBuffer: isVisualCaptureMode(),
                 },
                 {
                   preference: rendererPreference,
-                  antialias: true,
-                  powerPreference: 'high-performance',
+                  antialias: rendererContextOptions.antialias,
+                  powerPreference: rendererContextOptions.powerPreference,
+                  contextOptions: rendererContextOptions,
                 }
               )
             }
             camera={{ position: [0, 10, -10], fov: 75 }}
-            shadows="soft"
+            shadows={shadowModeToCanvasProp(rendererContextOptions.shadowMode)}
             frameloop="always"
-            onCreated={() => {
+            onCreated={({ gl }) => {
               debug.runStage('visualization', () => undefined);
+              const canvas = gl.domElement;
+              const onContextLost = (event: Event) => {
+                event.preventDefault();
+                setWebglRecovering(true);
+                console.warn('[App] WebGL context lost — waiting for restore');
+              };
+              const onContextRestored = () => {
+                console.info('[App] WebGL context restored — remounting Canvas');
+                setWebglRecovering(false);
+                setCanvasEpoch((epoch) => epoch + 1);
+              };
+              canvas.addEventListener('webglcontextlost', onContextLost);
+              canvas.addEventListener('webglcontextrestored', onContextRestored);
             }}
           >
             <React.Suspense
@@ -372,6 +395,29 @@ function App() {
               />
             </React.Suspense>
           </Canvas>
+
+          {webglRecovering && (
+            <div
+              role="status"
+              style={{
+                position: 'fixed',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 25000,
+                padding: '10px 16px',
+                borderRadius: 8,
+                border: '1px solid rgba(255,200,80,0.35)',
+                background: 'rgba(12,10,8,0.92)',
+                color: '#f5e6c8',
+                fontFamily: 'system-ui, sans-serif',
+                fontSize: 13,
+                pointerEvents: 'none',
+              }}
+            >
+              Graphics paused — recovering…
+            </div>
+          )}
 
           {/* Asset loading overlay */}
           {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}

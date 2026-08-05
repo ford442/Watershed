@@ -2,6 +2,8 @@ import type { Mock } from 'vitest';
 import * as THREE from 'three';
 
 import { createGameRenderer } from './createRenderer';
+import { getRendererShadowMapSize } from './applyRendererContextOptions';
+import { deriveRendererContextOptions } from './deriveRendererContextOptions';
 import { createRiverMaterial } from '../utils/RiverShader';
 import { createCanyonMaterial } from '../materials/CanyonMaterial';
 import { createRiverNodeMaterial } from '../materials/RiverNodeMaterial';
@@ -299,6 +301,32 @@ describe('createGameRenderer', () => {
       expect.stringContaining('Legacy GLSL materials are incompatible with WebGPURenderer')
     );
     warnSpy.mockRestore();
+    renderer.dispose();
+  });
+
+  it('applies quality-derived tone mapping and color space at setup', async () => {
+    const contextOptions = deriveRendererContextOptions('high');
+    const renderer = await createGameRenderer(canvasProps, {
+      preference: 'webgl',
+      contextOptions,
+    });
+    expect(renderer.outputColorSpace).toBe(contextOptions.outputColorSpace);
+    expect(renderer.toneMapping).toBe(contextOptions.toneMapping);
+    expect(renderer.toneMappingExposure).toBe(contextOptions.toneMappingExposure);
+    expect(renderer.shadowMap.enabled).toBe(true);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
+    expect(getRendererShadowMapSize(renderer)).toBe(2048);
+    renderer.dispose();
+  });
+
+  it('disables shadow maps for low quality context options', async () => {
+    const contextOptions = deriveRendererContextOptions('low');
+    const renderer = await createGameRenderer(canvasProps, {
+      preference: 'webgl',
+      contextOptions,
+    });
+    expect(renderer.shadowMap.enabled).toBe(false);
+    expect(getRendererShadowMapSize(renderer)).toBeNull();
     renderer.dispose();
   });
 });
