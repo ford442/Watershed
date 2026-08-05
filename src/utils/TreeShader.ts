@@ -1,43 +1,34 @@
 import * as THREE from 'three';
 
-/**
- * TreeShader - Per-vertex wind, leaf-card flutter, player rustle, and wet-leaf
- * sheen for instanced trees. Uses shader injection via onBeforeCompile,
- * following the same pattern as RiverShader.js.
- *
- * Geometry-driven attributes (baked in TreeAssets.js):
- *   - windFactor: per-vertex sway strength (0 at trunk base, higher in canopy/vines)
- *   - isFoliage: 0/1 mask used for the foliage backlight (translucency) term
- *   - isFoliageCard: 0/1 mask marking alpha-tested leaf/needle card quads
- *   - leafSeed: per-card random phase (shared by all 4 verts of a card) for
- *     individual leaf flutter
- *   - cardUv: copy of the plane's UV, used to carve a leaf silhouette out of
- *     each card via discard (no textures required)
- *
- * Behaviors:
- *   - Branch/canopy sway: low-frequency displacement scaled by windFactor + a
- *     per-instance phase derived from instanceMatrix, so each tree sways on
- *     its own.
- *   - Leaf flutter: a faster, per-card secondary motion layered on top for
- *     individual leaf/needle movement.
- *   - Player rustle: trees within uRustleRadius of uPlayerPos sway and flutter
- *     harder, as if disturbed by the player rushing past.
- *   - Foliage backlight: cheap fresnel rim term tinted by uSSSColor, masked by
- *     isFoliage, approximating leaf subsurface scattering.
- *   - Wet sheen: foliage near uWaterLevel gets a roughness reduction, reading
- *     as damp/glossy leaves near waterfalls and splash pools.
- *   - Leaf silhouette: isFoliageCard quads discard fragments outside a
- *     serrated leaf/needle shape derived from cardUv.
- */
+export interface TreeShaderOptions {
+  windStrength?: number;
+  windSpeed?: number;
+  sssColor?: string;
+  sssStrength?: number;
+  waterLevel?: number;
+  rustleRadius?: number;
+  rustleStrength?: number;
+}
 
-function injectShaderChunk(source, marker, replacement, label) {
+type TreeMaterial = THREE.Material & {
+  userData: {
+    treeUniforms?: { uPlayerPos: { value: THREE.Vector3 } };
+    treeShader?: THREE.WebGLProgramParametersWithUniforms | null;
+    treeShaderFailed?: boolean;
+  };
+  onBeforeCompile?: (shader: THREE.WebGLProgramParametersWithUniforms, renderer?: THREE.WebGLRenderer) => void;
+  side: THREE.Side;
+  needsUpdate: boolean;
+};
+
+function injectShaderChunk(source: string, marker: string, replacement: string, label: string): string {
     if (!source.includes(marker)) {
         throw new Error(`TreeShader: Missing shader marker "${marker}" in ${label}`);
     }
     return source.replace(marker, replacement);
 }
 
-export function extendTreeMaterial(material, options = {}) {
+export function extendTreeMaterial(material: TreeMaterial | null | undefined, options: TreeShaderOptions = {}): void {
     if (!material) return;
 
     const {
@@ -65,7 +56,7 @@ export function extendTreeMaterial(material, options = {}) {
                 shader.uniforms.uWaterLevel = { value: waterLevel };
                 shader.uniforms.uRustleRadius = { value: rustleRadius };
                 shader.uniforms.uRustleStrength = { value: rustleStrength };
-                shader.uniforms.uPlayerPos = material.userData.treeUniforms.uPlayerPos;
+                shader.uniforms.uPlayerPos = material.userData.treeUniforms!.uPlayerPos;
 
                 const vertexPreamble = [
                     'attribute float windFactor;',
@@ -207,7 +198,11 @@ export function extendTreeMaterial(material, options = {}) {
  * @param {number} time
  * @param {THREE.Vector3} [playerPos] - world-space position used for the rustle effect
  */
-export function updateTreeMaterial(material, time, playerPos) {
+export function updateTreeMaterial(
+  material: TreeMaterial | null | undefined,
+  time: number,
+  playerPos?: THREE.Vector3,
+): void {
     if (!material) return;
     if (material.userData.treeUniforms && playerPos) {
         material.userData.treeUniforms.uPlayerPos.value.copy(playerPos);

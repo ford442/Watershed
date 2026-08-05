@@ -10,20 +10,28 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useWaterReflectionStore } from '../systems/waterReflectionStore';
 
+export interface WaterReflectionProps {
+  waterLevel?: number;
+  resolution?: number;
+  /** Update every N frames */
+  updateInterval?: number;
+  reflectionStrength?: number;
+}
+
 /**
  * WaterReflection component - Manages reflection rendering
  */
 export default function WaterReflection({
   waterLevel = 0.5,
   resolution = 1024,
-  updateInterval = 2, // Update every N frames
+  updateInterval = 2,
   reflectionStrength = 0.6,
-}) {
+}: WaterReflectionProps) {
   const { scene, camera, gl } = useThree();
-  const reflectionCameraRef = useRef();
-  const renderTargetRef = useRef();
+  const reflectionCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const renderTargetRef = useRef<THREE.WebGLRenderTarget | null>(null);
   const frameCount = useRef(0);
-  const hiddenWaterRef = useRef([]);
+  const hiddenWaterRef = useRef<THREE.Mesh[]>([]);
 
   // Create reflection camera and render target; publish texture to store
   useEffect(() => {
@@ -35,11 +43,12 @@ export default function WaterReflection({
     });
     renderTargetRef.current = rt;
 
+    const perspectiveCamera = camera as THREE.PerspectiveCamera;
     reflectionCameraRef.current = new THREE.PerspectiveCamera(
-      camera.fov,
-      camera.aspect,
-      camera.near,
-      camera.far,
+      perspectiveCamera.fov,
+      perspectiveCamera.aspect,
+      perspectiveCamera.near,
+      perspectiveCamera.far,
     );
 
     const store = useWaterReflectionStore.getState();
@@ -51,7 +60,7 @@ export default function WaterReflection({
       rt.dispose();
       renderTargetRef.current = null;
     };
-  }, [resolution, camera]);
+  }, [resolution, camera, reflectionStrength]);
 
   // Keep strength in sync when LOD / prop changes without recreating the RT
   useEffect(() => {
@@ -69,6 +78,8 @@ export default function WaterReflection({
     const renderTarget = renderTargetRef.current;
 
     if (!reflectCam || !renderTarget) return;
+
+    const perspectiveCamera = camera as THREE.PerspectiveCamera;
 
     // Calculate reflected camera position
     const cameraDistance = camera.position.y - waterLevel;
@@ -89,7 +100,7 @@ export default function WaterReflection({
     reflectCam.lookAt(lookAtPos);
 
     // Update projection
-    reflectCam.projectionMatrix.copy(camera.projectionMatrix);
+    reflectCam.projectionMatrix.copy(perspectiveCamera.projectionMatrix);
 
     // Snapshot GL state
     const currentRenderTarget = gl.getRenderTarget();
@@ -102,9 +113,10 @@ export default function WaterReflection({
     const hidden = hiddenWaterRef.current;
     hidden.length = 0;
     scene.traverse((obj) => {
-      if (obj.isMesh && obj.userData?.isWaterSurface && obj.visible) {
-        hidden.push(obj);
-        obj.visible = false;
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.userData?.isWaterSurface && mesh.visible) {
+        hidden.push(mesh);
+        mesh.visible = false;
       }
     });
 
