@@ -1,8 +1,25 @@
-# Renderer — WebGL2-only with experimental WebGPU preference
+# Renderer — WebGL2-only with adaptive quality presets
 
 Watershed runs a **single live renderer: `THREE.WebGLRenderer`**. The `?renderer=webgpu` URL parameter is accepted for compatibility and testing, but it currently falls back to WebGL2 and does **not** instantiate `WebGPURenderer`.
 
-Game state, level data, camera, physics, and entities are shared; only the Canvas key changes when the preference is toggled, which remounts the scene.
+Graphics quality presets (`low` / `medium` / `high` / `ultra` from `GameState.settings.quality`, synced via `SettingsSync` → `LODManager`) now drive the most expensive WebGL context knobs: device pixel ratio, antialiasing, shadow mode, shadow map size, tone mapping, and output color space. Changing the preset remounts the Canvas (same pattern as the renderer-preference toggle).
+
+Game state, level data, camera, physics, and entities are shared; the Canvas `key` changes when renderer preference **or** quality preset changes.
+
+## Quality → renderer context matrix
+
+Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/deriveRendererContextOptions.ts` and applied at Canvas creation in `App.tsx` + `createGameRenderer()`.
+
+| Preset | DPR clamp `[1, max]` | Antialias | Shadows | Shadow map size | Notes |
+|--------|----------------------|-----------|---------|-----------------|-------|
+| `low` | `1.0` | off | off | — | Minimal GPU cost |
+| `medium` | `1.25` | on | basic | 1024 | |
+| `high` | `2` | on | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`, `antialias: true`) |
+| `ultra` | native `devicePixelRatio` | on | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Uncapped DPR on retina |
+
+All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` once at renderer setup via `applyRendererContextOptions()`.
+
+Per-light shadow map sizes in `SceneLighting` still follow `LODManager.QUALITY_SETTINGS`; the renderer contract stores the configured size via `getRendererShadowMapSize()` for diagnostics and tests.
 
 ## Quick Start
 
@@ -10,13 +27,19 @@ Game state, level data, camera, physics, and entities are shared; only the Canva
 |-----------|----------------|----------|
 | `?renderer=webgl` (default) | `WebGLRenderer` | Production path; custom GLSL shaders, post-processing |
 | `?renderer=webgpu` | `WebGLRenderer` (fallback) | Experimental/no-op today; reserved for future #256 path A migration |
+| `?screenshot=1` or `?capture=1` | (any) | Enables `preserveDrawingBuffer` for visual-smoke harness only |
 
 Examples:
 
 ```
 http://localhost:3000/?renderer=webgl
 http://localhost:3000/?debug=1&renderer=webgl&wireframe=1&physicsDebug=1
+http://localhost:3000/?screenshot=1
 ```
+
+## WebGL context loss recovery
+
+`App.tsx` registers `webglcontextlost` (with `preventDefault`) and `webglcontextrestored` on the Canvas element. On loss, a minimal “Graphics paused — recovering…” toast appears; on restore, the Canvas remounts via an epoch counter in its React `key`.
 
 ## Why there is no live WebGPU renderer
 
@@ -41,9 +64,10 @@ Enable the debug panel with `?debug=1`:
 
 ```
 App.tsx
-  └─ Canvas (key=renderer preference)
+  └─ Canvas (key = renderer preference + quality preset + recovery epoch)
+       ├─ dpr / shadows / gl.antialias from deriveRendererContextOptions()
        └─ createGameRenderer()  ← async gl factory
-            ├─ webgl  → THREE.WebGLRenderer
+            ├─ webgl  → THREE.WebGLRenderer + applyRendererContextOptions()
             └─ webgpu → THREE.WebGLRenderer (deliberate fallback)
        └─ Experience (shared scene graph)
             ├─ RendererDiagnosticsMonitor → rendererState store
@@ -75,10 +99,12 @@ Module-level stores cross the Canvas boundary:
 
 | File | Purpose |
 |------|---------|
+| `src/rendering/deriveRendererContextOptions.ts` | Pure quality → DPR/shadow/tone-mapping matrix |
+| `src/rendering/applyRendererContextOptions.ts` | Apply derived options once at renderer setup |
 | `src/rendering/createRenderer.ts` | Async renderer factory (WebGL-only today) |
-| `src/rendering/rendererConfig.ts` | URL param + localStorage parsing |
+| `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode gate |
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
-| `src/App.tsx` | Canvas wiring + keyboard shortcuts |
+| `src/App.tsx` | Canvas wiring, quality remount, context-loss recovery |
 | `docs/reference/RENDERER_CONTRACT.md` | Contract enforced by the regression guard |

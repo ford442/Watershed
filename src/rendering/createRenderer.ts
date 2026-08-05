@@ -2,11 +2,15 @@ import * as THREE from 'three';
 import type { RendererPreference } from './types';
 import { isDataUrlConnectAllowed } from './cspProbe';
 import { persistRendererPreference } from './rendererConfig';
+import { applyRendererContextOptions } from './applyRendererContextOptions';
+import type { RendererContextOptions } from './deriveRendererContextOptions';
 
 export interface GameRendererOptions {
   preference: RendererPreference;
   antialias?: boolean;
   powerPreference?: WebGLPowerPreference;
+  /** Quality-derived tone mapping, color space, and shadow configuration. */
+  contextOptions?: RendererContextOptions;
 }
 
 /**
@@ -30,14 +34,20 @@ export async function createGameRenderer(
     preference,
     antialias = true,
     powerPreference = 'high-performance',
+    contextOptions,
   } = options;
 
-  const createWebGLRenderer = () =>
-    new THREE.WebGLRenderer({
+  const createWebGLRenderer = () => {
+    const renderer = new THREE.WebGLRenderer({
       ...canvasProps,
       antialias,
       powerPreference,
     });
+    if (contextOptions) {
+      applyRendererContextOptions(renderer, contextOptions);
+    }
+    return renderer;
+  };
 
   // Live renderer: custom GLSL shaders require the classic WebGLRenderer.
   if (preference === 'webgl') {
