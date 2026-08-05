@@ -91,6 +91,8 @@ export interface GameActions {
   setCurrentSegmentIndex: (index: number) => void;
   setIsWipeout: (wipeout: boolean) => void;
   setJourneyComplete: () => void;
+  /** Clear journey-complete overlay without a full run reset (seamless handoff). */
+  clearJourneyComplete: () => void;
   setIsDodging: (dodging: boolean) => void;
   setRespawnSegmentIndex: (index: number) => void;
   setWaterfallGravityMultiplier: (multiplier: number) => void;
@@ -188,6 +190,12 @@ export const useGameStore = create<GameStore>((set) => ({
         isPaused: true,
         highScore: newHighScore,
       };
+    }),
+
+  clearJourneyComplete: () =>
+    set({
+      isJourneyComplete: false,
+      isPaused: false,
     }),
 
   setIsDodging: (dodging) => set({ isDodging: dodging }),

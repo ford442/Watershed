@@ -50,6 +50,76 @@
   margin-bottom: 4px;
 }
 
+.start-menu-mode-select {
+  margin-bottom: 12px;
+  text-align: left;
+}
+
+.start-menu-mode-row {
+  display: flex;
+  gap: 8px;
+}
+
+.start-menu-mode-option {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.start-menu-mode-option:hover {
+  border-color: rgba(79, 209, 199, 0.4);
+}
+
+.start-menu-mode-option.active {
+  border-color: rgba(79, 209, 199, 0.85);
+  background: rgba(59, 130, 246, 0.16);
+  color: #fff;
+}
+
+.start-menu-journey-stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.start-menu-journey-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.start-menu-journey-index {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: rgba(79, 209, 199, 0.2);
+  color: #9fe8e0;
+}
+
+.start-menu-journey-label {
+  font-size: 14px;
+  color: #fff;
+}
+
 .start-menu-map-option {
   display: flex;
   align-items: center;

@@ -4,8 +4,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  buildCampaignStack,
   formatDuration,
   getContinuationTarget,
+  getDefaultJourneyStack,
   getJourneyCompletionDecision,
   isMapRegistryId,
   isMapUnlocked,
@@ -87,6 +89,14 @@ describe('getJourneyCompletionDecision', () => {
   it('shows summary for the final map', () => {
     expect(getJourneyCompletionDecision('delta')).toEqual({ kind: 'summary' });
     expect(getContinuationTarget('delta')).toBeNull();
+  });
+});
+
+describe('buildCampaignStack', () => {
+  it('chains glacial → meander → hydro → delta', () => {
+    expect(buildCampaignStack('glacial')).toEqual(['glacial', 'meander', 'hydro', 'delta']);
+    expect(buildCampaignStack('hydro')).toEqual(['hydro', 'delta']);
+    expect(getDefaultJourneyStack()[0]).toBe('glacial');
   });
 });
 

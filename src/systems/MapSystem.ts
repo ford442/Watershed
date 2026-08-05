@@ -472,6 +472,16 @@ export class ProceduralMapManager implements MapManager {
   private continuationManager: JSONMapManager | null;
   private continuationStartIndex: number;
   private fallbackManager: DefaultMapManager;
+  /** Global treadmill index where continuation levelData begins (primary totalSegments by default). */
+  private continuationGlobalStart: number | null = null;
+  /** Optional width/water overrides at the handoff seam (segmentOffset → blend). */
+  private handoffWidthBlend: Map<number, { width: number; waterWidth: number }> = new Map();
+  /**
+   * When true, primary journeyComplete is suppressed so the treadmill can keep
+   * generating into an attached handoff continuation. Initial registry
+   * continuation must NOT set this — single-map hydro still needs its overlay.
+   */
+  private suppressTerminalComplete = false;
 
   constructor(
     levelData?: LevelData | null,
@@ -489,16 +499,65 @@ export class ProceduralMapManager implements MapManager {
     this.fallbackManager = new DefaultMapManager(config, fallbackProgression);
   }
 
+  /** Authored segment count of the primary map (0 when procedural-only). */
+  getPrimarySegmentCount(): number {
+    return this.levelData?.world.track.totalSegments ?? 0;
+  }
+
+  /**
+   * Attach or replace the continuation map used when the primary authored range
+   * is exhausted. Does not reset the treadmill — call from seamless handoff.
+   */
+  attachContinuation(
+    continuation: { levelData: LevelData; startIndex?: number },
+    options?: {
+      globalStartIndex?: number;
+      widthBlend?: Array<{ segmentOffset: number; width: number; waterWidth: number }>;
+    },
+  ): void {
+    this.continuationManager = new JSONMapManager(continuation.levelData);
+    this.continuationStartIndex = continuation.startIndex ?? 0;
+    this.continuationGlobalStart =
+      options?.globalStartIndex ?? this.getPrimarySegmentCount();
+    this.suppressTerminalComplete = true;
+    this.handoffWidthBlend.clear();
+    for (const step of options?.widthBlend ?? []) {
+      this.handoffWidthBlend.set(step.segmentOffset, {
+        width: step.width,
+        waterWidth: step.waterWidth,
+      });
+    }
+  }
+
   getChunkConfig(index: number): SegmentProgressionConfig {
     if (this.jsonManager && this.levelData) {
       const totalSegments = this.levelData.world.track.totalSegments;
       const hasExplicit = this.levelData.segments.some((segment) => segment.index === index);
       if (hasExplicit || index < totalSegments) {
-        return this.jsonManager.getChunkConfig(index);
+        const cfg = this.jsonManager.getChunkConfig(index);
+        if (this.suppressTerminalComplete && cfg.journeyComplete) {
+          return { ...cfg, journeyComplete: false };
+        }
+        return cfg;
       }
       if (this.continuationManager) {
-        const continuationIndex = this.continuationStartIndex + (index - totalSegments);
-        return this.continuationManager.getChunkConfig(continuationIndex);
+        const globalStart = this.continuationGlobalStart ?? totalSegments;
+        const continuationIndex =
+          this.continuationStartIndex + (index - globalStart);
+        const cfg = this.continuationManager.getChunkConfig(continuationIndex);
+        const blend = this.handoffWidthBlend.get(index - globalStart);
+        if (blend) {
+          return {
+            ...cfg,
+            width: blend.width,
+            waterWidth: blend.waterWidth,
+            journeyComplete: false,
+          };
+        }
+        return {
+          ...cfg,
+          journeyComplete: index - globalStart === 0 ? false : cfg.journeyComplete,
+        };
       }
     }
     return this.fallbackManager.getChunkConfig(index);
