@@ -1,36 +1,38 @@
 import * as THREE from 'three';
 
-/**
- * RockShader - Procedural geological detail for instanced decor rocks (boulders,
- * slabs, columns, scree, pebbles). Uses shader injection via onBeforeCompile,
- * following the same pattern as RiverShader.js / TreeShader.js.
- *
- * Everything here is derived purely from world position + world normal, so it
- * needs no extra geometry attributes and works unchanged across instancing.
- *
- * Effects (each independently tunable per material instance via `options`,
- * which lets a single shared geometry/shader express different "geological
- * personalities" — river-worn boulders, sedimentary slabs, fractured columns):
- *   - Moss/lichen on upward-facing surfaces near the waterline
- *   - Iron-oxide / water-staining drip streaks (fbm-driven)
- *   - Sedimentary stratification bands (horizontal color banding)
- *   - Dust/sand accumulation on upward-facing low-slope surfaces
- *   - Wetness darkening + roughness reduction near the waterline
- *   - Fresnel rim/edge lighting to read silhouettes at speed
- *
- * A per-instance seed is derived from the resolved diffuse color (instance
- * color x vertex color), so streaks/dust phase vary per instance without any
- * additional attributes.
- */
+export interface RockShaderOptions {
+  waterLevel?: number;
+  mossStrength?: number;
+  mossColor?: string;
+  lichenColor?: string;
+  streakStrength?: number;
+  streakColor?: string;
+  bandStrength?: number;
+  bandScale?: number;
+  dustStrength?: number;
+  dustColor?: string;
+  wetnessRange?: number;
+  rimStrength?: number;
+  rimColor?: string;
+}
 
-function injectShaderChunk(source, marker, replacement, label) {
+type ShaderCompileTarget = THREE.Material & {
+  userData: Record<string, unknown>;
+  onBeforeCompile?: (shader: THREE.WebGLProgramParametersWithUniforms, renderer?: THREE.WebGLRenderer) => void;
+  needsUpdate: boolean;
+};
+
+function injectShaderChunk(source: string, marker: string, replacement: string, label: string): string {
     if (!source.includes(marker)) {
         throw new Error(`RockShader: Missing shader marker "${marker}" in ${label}`);
     }
     return source.replace(marker, replacement);
 }
 
-export function extendRockMaterial(material, options = {}) {
+export function extendRockMaterial(
+  material: THREE.Material | null | undefined,
+  options: RockShaderOptions = {},
+): THREE.Material | null | undefined {
     if (!material) return material;
 
     const {

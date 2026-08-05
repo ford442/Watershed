@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 
-import FlowingWaterJs from '../FlowingWater';
+import FlowingWater from '../FlowingWater';
 import CanyonDecorations from '../CanyonDecorations';
 import Vegetation from '../Environment/Vegetation';
 import Grass from '../Environment/Grass';
@@ -59,7 +59,6 @@ import type { TrackSegmentMeshesProps } from './types';
 
 /** JS children whose allowJs inference collapses optional props to `null` only. */
 type UntypedSceneComponent = React.ComponentType<Record<string, unknown>>;
-const FlowingWater = FlowingWaterJs as unknown as UntypedSceneComponent;
 const Mist = MistJs as unknown as UntypedSceneComponent;
 const CanyonDust = CanyonDustJs as unknown as UntypedSceneComponent;
 const Pinecone = PineconeJs as unknown as UntypedSceneComponent;

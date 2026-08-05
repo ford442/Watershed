@@ -219,11 +219,24 @@ Default WebGL2 (`?renderer=webgl`). WebGPU preference exists but forces WebGL2 b
 
 ```bash
 pnpm test
-pnpm typecheck
+pnpm typecheck          # tsc + untyped-surface allowlist guard
 pnpm build
 pnpm test:visual-smoke   # headless WebGL gate (preview serving build/)
 node scripts/validate-markdown-paths.js
 ```
+
+### Typecheck surface (honest foundation)
+
+`tsconfig.typecheck.json` type-checks `src/**/*.ts` and `src/**/*.tsx` only. Residual `.js` / `.jsx` modules are tracked in `scripts/untyped-allowlist.json`; `pnpm typecheck` runs `scripts/check-typecheck-surface.js` to fail CI if the allowlist drifts.
+
+| Status | Module group | Notes |
+|--------|--------------|-------|
+| **Typed** | `FlowingWater`, `EnhancedSky`, `PostProcessingPipeline`, `WaterReflection` | Frame-hot render hosts (`.tsx`) |
+| **Typed** | `ObstaclePool`, `RockShader`, `TreeShader`, `VegetationShader` | Pure logic / shader injection (`.ts`) |
+| **Typed** | `maps/registry.ts` | `assertLevelData()` at load — no silent `as unknown as LevelData` |
+| **Residual (~40)** | `Environment/*`, `CanyonDecorations`, `PooledObstacles`, `TreeSystem`, `SplashParticles` | Excluded from `tsc`; shrink allowlist per PR |
+
+Shared decoration prop shapes live in `src/components/Environment/types.ts` (`BiomeDecorationProps`). Map schema debt signatures live in `src/maps/levelSchemaDebt.ts`.
 
 Manual smoke: spawn, WASD + pointer lock, track generates (−Z), textures visible, no console errors, no debug wireframes in polished mode.
 

@@ -1,5 +1,23 @@
 import * as THREE from 'three';
 
+export type VegetationShaderMode = 'blade' | 'bob';
+
+export interface VegetationShaderOptions {
+  plantHeight?: number;
+  windStrength?: number;
+  windSpeed?: number;
+  mode?: VegetationShaderMode;
+}
+
+type VegetationMaterial = THREE.Material & {
+  userData: {
+    vegetationShader?: VegetationShaderOptions;
+    shader?: THREE.WebGLProgramParametersWithUniforms;
+  };
+  onBeforeCompile?: (shader: THREE.WebGLProgramParametersWithUniforms) => void;
+  needsUpdate: boolean;
+};
+
 /**
  * VegetationShader - cheap per-vertex wind animation for instanced foliage.
  *
@@ -14,7 +32,10 @@ import * as THREE from 'three';
  *  - 'blade' (default): lateral sway, scaled by height-from-ground.
  *  - 'bob': gentle vertical bob + drift, used for flat things like lily pads.
  */
-export function extendVegetationMaterial(material, options = {}) {
+export function extendVegetationMaterial(
+  material: VegetationMaterial | null | undefined,
+  options: VegetationShaderOptions = {},
+): void {
     if (!material) return;
 
     const {
@@ -82,7 +103,11 @@ float vegWindPhase = vegInstancePos.x * 0.9 + vegInstancePos.z * 1.4;
  * @param {number} time - elapsed time
  * @param {number} intensity - 0-1 multiplier (e.g. weather gust strength)
  */
-export function updateVegetationMaterial(material, time, intensity = 1) {
+export function updateVegetationMaterial(
+  material: VegetationMaterial | null | undefined,
+  time: number,
+  intensity = 1,
+): void {
     if (!material?.userData?.shader) return;
     const shader = material.userData.shader;
     const base = material.userData.vegetationShader || {};

@@ -24,6 +24,10 @@ import {
   registeredLevelDataEntries,
 } from './registry.contract';
 import { validateLevel } from '../utils/levelValidator';
+import {
+  KNOWN_LEVEL_SCHEMA_DEBT,
+  levelErrorSignature,
+} from './levelSchemaDebt';
 
 describe('map registry contract — (a) keys are assignable to MapRegistryId', () => {
   it('every Object.keys(MAP_REGISTRY) entry is a MapRegistryId at runtime', () => {
@@ -133,20 +137,8 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
  * an ajv assert at import time would refuse to boot the game today.
  *
  * Instead: any schema violation OUTSIDE the documented debt list fails CI, and
- * the invariants MapSystem actually reads at runtime are asserted directly.
+ * registry load uses `assertLevelData()` with the same debt filter.
  */
-const KNOWN_SCHEMA_DEBT: readonly string[] = [
-  // Authored segments routinely omit `decorations` and fall back to biome defaults.
-  "segments.*.decorations :: must have required property 'decorations'",
-  // meander_to_waterfall uses negative indices for pre-roll segments ahead of index 0.
-  'segments.*.index :: must be >= 0',
-];
-
-/** Collapse array indices so one debt entry covers every offending segment. */
-function errorSignature(field: string, error: string): string {
-  return `${field.replace(/\.\d+\./g, '.*.')} :: ${error}`;
-}
-
 describe('map registry contract — authored JSON shape drift (ajv)', () => {
   const entries = registeredLevelDataEntries();
 
@@ -159,8 +151,8 @@ describe('map registry contract — authored JSON shape drift (ajv)', () => {
     (label, levelData) => {
       const result = validateLevel(levelData);
       const unexpected = result.errors
-        .map((err) => errorSignature(err.field, err.error))
-        .filter((signature) => !KNOWN_SCHEMA_DEBT.includes(signature));
+        .map((err) => levelErrorSignature(err.field, err.error))
+        .filter((signature) => !KNOWN_LEVEL_SCHEMA_DEBT.includes(signature));
       expect(
         [...new Set(unexpected)],
         `${label} has new schema violations — fix the JSON or extend KNOWN_SCHEMA_DEBT deliberately`,
