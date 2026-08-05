@@ -26,6 +26,18 @@ export interface RendererContextOptions {
 export const DEFAULT_TONE_MAPPING_EXPOSURE = 1.0;
 
 /**
+ * Logarithmic depth is intentionally off for all presets.
+ *
+ * Evaluated for long canyon Z ranges (#337): the track treadmill keeps only
+ * ~7 active segments (~hundreds of units of Z), fog far is typically ≤220, and
+ * shadow cameras use far=200. Enabling `logarithmicDepthBuffer` would require
+ * log-depth chunks in every custom ShaderMaterial (FlowingWater, CanyonMaterial,
+ * RiverShader injections) for modest Z-fighting benefit. Keep the THREE default
+ * (false); revisit only if a non-treadmill long-haul camera path ships.
+ */
+export const LOGARITHMIC_DEPTH_BUFFER_ENABLED = false;
+
+/**
  * Pure quality → WebGL context options. No React or DOM side effects.
  *
  * `high` matches the pre-contract Canvas defaults: antialias on, soft shadows,
