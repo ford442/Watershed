@@ -37,6 +37,8 @@ export interface ReachTransition {
   segmentIndex: number;
   type: 'waterfall' | 'slotCanyon' | 'splash';
   durationSeconds: number;
+  /** Optional next reach for multi-Reach seamless handoff. */
+  nextReachId?: string;
 }
 
 export interface ReachManifest {

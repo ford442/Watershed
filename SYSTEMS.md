@@ -17,9 +17,10 @@ GameState (Zustand) ── shared state ─────────────�
 LODProvider ──quality/config──> BiomeProvider ──biome palette──> scene
                                       │
 ReachStreamer ──ReachManifest──> ReachNormalizer ──NormalizedSegment[]──> ReachManager ──wraps──> TrackManager ──> TrackSegment
-  (fetch /api/reaches)                                                         │
-                                                                               ├──> ReactiveAudio
-                                                                               └──> WeatherSystem
+  (fetch /api/reaches)                     │                                    │
+                                           │                                    ├──> ReactiveAudio
+journeyContinuity / journeyHandoff ────────┴── seamless append / map handoff    └──> WeatherSystem
+runSession (journeyMode + mapStack + survival carry)
 
 Player velocity/contacts ──> SplashSystem ──> ParticlePool ──> splash/foam/mist InstancedMesh + raft bow-wave
                                          └──> injectSWEDisturbance ──> WaterForceSystem / SWEHeightField
@@ -124,7 +125,10 @@ into TrackManager-compatible segments, and watches player position for transitio
 
 **Produces:**
 - Renders `<TrackManager reachSegments={...} />` (plus `ReactiveAudio`, `WeatherSystem`).
-- Logs transition entry/exit to console when player crosses `manifest.transition.segmentIndex`.
+- On transition entry: prefetches `transition.nextReachId` (when authored), joins
+  waypoints with control-point continuity, appends normalized segments, cross-fades
+  biome via `BiomeProvider.setBiome`, and emits `reach-exit` / `reach-enter` /
+  `journey-handoff` CustomEvents. Autosaves a journey checkpoint.
 - On load error: renders `TrackManager` without segments so procedural generation takes over.
 
 **Boundaries (Do NOT):**
@@ -132,10 +136,16 @@ into TrackManager-compatible segments, and watches player position for transitio
   wraps the treadmill; bypassing it breaks segment lifecycle and biome callbacks.
 - Do NOT add loading-spinner or error UI inside this component — overlays are lifted
   to `ExperienceUI` / `InnerExperience`.
+- Do NOT call `ReachStreamer.preloadReach` inside `useFrame` — handoff schedules it
+  from the transition act path (async), never as a blocking frame body.
 
-**Known Pain:**
-- Transition detection uses Z-coordinate bounds only; there is no multi-Reach handoff yet
-  (transition entry is logged, not acted upon).
+**Residual limits:**
+- Transition Z-bounds remain a coarse trigger (not a full multi-axis portal volume).
+- Reach HTTP 404 still falls back to procedural; handoff then checkpoints without
+  appending remote segments.
+- Map-campaign seamless handoff (Journey mode / Continue) is owned by
+  `TrackManager.handoffToMap` + `useExperienceWorld.performSeamlessMapHandoff`,
+  not by ReachManager alone.
 
 ---
 

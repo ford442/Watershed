@@ -141,3 +141,25 @@ export function formatDuration(seconds: number): string {
   const mins = Math.max(1, Math.round(seconds / 60));
   return `~${mins} min`;
 }
+
+/**
+ * Campaign descent stack for Journey mode.
+ * Starts at `fromMapId` (default glacial) and follows nextMapId / continuation
+ * until the final map. Lumber stays out of the default chain (menuHidden).
+ */
+export function buildCampaignStack(fromMapId: MapRegistryId = 'glacial'): MapRegistryId[] {
+  const stack: MapRegistryId[] = [];
+  let cursor: MapRegistryId | null = fromMapId;
+  const guard = new Set<MapRegistryId>();
+  while (cursor && !guard.has(cursor)) {
+    stack.push(cursor);
+    guard.add(cursor);
+    cursor = getContinuationTarget(cursor);
+  }
+  return stack;
+}
+
+/** Canonical full descent used by Journey mode StartMenu. */
+export function getDefaultJourneyStack(): MapRegistryId[] {
+  return buildCampaignStack('glacial');
+}
