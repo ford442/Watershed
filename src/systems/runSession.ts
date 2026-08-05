@@ -11,6 +11,7 @@ import {
   createPortageCacheRunState,
   placeCache,
   reducePortageCacheState,
+  totalCacheRetrievalBonus,
   type PortageCacheEvent,
   type PortageCacheRunState,
   DEFAULT_MAX_CACHE_PLACEMENTS,
@@ -35,6 +36,10 @@ export interface RunSessionSnapshot {
   loadoutId: LoadoutId;
   portageCache: PortageCacheRunState;
   survival: SurvivalState;
+  /** Peak wetness observed during the run (0–1). */
+  peakWetness: number;
+  /** Meters traveled while raft was upright (tip danger not active). */
+  uprightDistanceMeters: number;
 }
 
 let activeSession: RunSessionSnapshot | null = null;
@@ -73,6 +78,8 @@ export function initRunSession(options: {
     loadoutId,
     portageCache,
     survival: createSurvivalState(),
+    peakWetness: 0,
+    uprightDistanceMeters: 0,
   };
   awardedCacheSegments = new Set();
   return activeSession;
@@ -106,15 +113,51 @@ export function getActiveSurvivalModifiers(biomeId: SurvivalTickInput['biomeId']
 export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
   if (!activeSession) return null;
   const loadout = getLoadoutDefinition(activeSession.loadoutId);
+  const survival = tickSurvivalState(
+    activeSession.survival,
+    { ...input, launchHour: activeSession.launchHour },
+    loadout,
+  );
   activeSession = {
     ...activeSession,
-    survival: tickSurvivalState(
-      activeSession.survival,
-      { ...input, launchHour: activeSession.launchHour },
-      loadout,
-    ),
+    survival,
+    peakWetness: Math.max(activeSession.peakWetness, survival.wetness),
   };
   return getSurvivalModifiers(activeSession.survival, input.biomeId, loadout);
+}
+
+/** Accumulate upright raft distance for journey-results scoring. */
+export function recordUprightDistance(meters: number): void {
+  if (!activeSession || !Number.isFinite(meters) || meters <= 0) return;
+  activeSession = {
+    ...activeSession,
+    uprightDistanceMeters: activeSession.uprightDistanceMeters + meters,
+  };
+}
+
+export interface JourneyResultsSummary {
+  mapId: MapRegistryId;
+  launchHour: number;
+  peakWetness: number;
+  uprightDistanceMeters: number;
+  cachesRetrieved: number;
+  cachesLost: number;
+  cacheRetrievalBonus: number;
+}
+
+export function getJourneyResultsSummary(): JourneyResultsSummary | null {
+  if (!activeSession) return null;
+  const retrieved = activeSession.portageCache.cacheSlots.filter((s) => s.status === 'retrieved').length;
+  const lost = activeSession.portageCache.cacheSlots.filter((s) => s.status === 'lost').length;
+  return {
+    mapId: activeSession.mapId,
+    launchHour: activeSession.launchHour,
+    peakWetness: activeSession.peakWetness,
+    uprightDistanceMeters: activeSession.uprightDistanceMeters,
+    cachesRetrieved: retrieved,
+    cachesLost: lost,
+    cacheRetrievalBonus: totalCacheRetrievalBonus(activeSession.portageCache),
+  };
 }
 
 export function dispatchPortageCacheEvent(event: PortageCacheEvent): PortageCacheRunState | null {

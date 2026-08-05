@@ -355,7 +355,9 @@ export function PostProcessingPipeline({
 
     // Biome/weather mood — slot canyons get a more artistic, claustrophobic
     // vignette; overcast/storm desaturate and soften the whole frame.
+    // Delta finale: soft bloom/vignette bias for golden-hour beach landing.
     const isSlotCanyon = currentBiome?.id === 'slotCanyon';
+    const isDelta = currentBiome?.id === 'delta';
     const overcastBlend = weatherType === 'storm' ? 1
       : weatherType === 'overcast' ? 0.6
       : weatherType === 'fog' ? 0.35
@@ -367,8 +369,8 @@ export function PostProcessingPipeline({
     const targetChromatic =
       chromaticBaseOffset + (chromaticMaxOffset - chromaticBaseOffset) * speedFactor + boostScale * 0.0025 + waterfallBoost * 0.0009;
 
-    // Saturation target
-    let targetSaturation = 1.0;
+    // Saturation target — delta keeps warmer saturation at low speed
+    let targetSaturation = isDelta ? 1.08 : 1.0;
     if (velocity > 5) {
       if (velocity <= 15) {
         targetSaturation = 1.0 - ((velocity - 5) / 10) * 0.3;
@@ -377,6 +379,7 @@ export function PostProcessingPipeline({
       } else {
         targetSaturation = 0.5;
       }
+      if (isDelta) targetSaturation = Math.min(1.1, targetSaturation + 0.12);
     }
     targetSaturation = Math.min(1, targetSaturation + boostScale * 0.15);
     // Overcast/storm/fog wash the color out of the whole scene.
@@ -394,7 +397,7 @@ export function PostProcessingPipeline({
     const sprintVignetteBoost = isSprintingAtSpeed ? 0.18 : 0;
     // Slot canyons get a deliberately tighter, more cinematic vignette to sell
     // the claustrophobic walls; storms tighten it further for drama.
-    const biomeVignetteBoost = (isSlotCanyon ? 0.12 : 0) + overcastBlend * 0.08;
+    const biomeVignetteBoost = (isSlotCanyon ? 0.12 : 0) + (isDelta ? 0.06 : 0) + overcastBlend * 0.08;
     const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08 + sprintVignetteBoost + biomeVignetteBoost;
 
     // Smooth transitions
@@ -407,6 +410,10 @@ export function PostProcessingPipeline({
     // live via pass.enabled; resolution/multisampling stay on the LOD path.
     if (passes.bloomPass) {
       passes.bloomPass.enabled = effectPresence.bloom;
+      if (isDelta && passes.bloomPass.enabled && typeof passes.bloomPass.strength === 'number') {
+        // Soft sunset bloom bias — brighter water highlights without blowing highlights.
+        passes.bloomPass.strength = bloomIntensity * 1.15;
+      }
     }
     if (passes.vignettePass) {
       passes.vignettePass.enabled = effectPresence.vignette;

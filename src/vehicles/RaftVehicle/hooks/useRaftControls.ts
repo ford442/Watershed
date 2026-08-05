@@ -23,6 +23,7 @@ import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
 import type { RapierWorkerProxy } from '../../../physics/RapierWorkerProxy';
 import { createRaftPhysicsRuntime } from './raftPhysicsRuntime';
 import { isWaterForceSystemActive } from '../../../systems/WaterForceRegistry';
+import { recordUprightDistance } from '../../../systems/runSession';
 
 export interface UseRaftControlsParams {
   bodyRef: { current: any };
@@ -158,6 +159,15 @@ export function useRaftControls({
     if (runtime.handleTipping(body, delta)) {
       runtime.resetRaft(body);
       return;
+    }
+
+    // Journey-results: upright distance while not in tip danger.
+    if (tippingState.current.dangerTime <= 0) {
+      const vel = body.linvel();
+      const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+      if (speed > 0.05) {
+        recordUprightDistance(speed * delta);
+      }
     }
 
     runtime.applyPaddleForces(body, delta);

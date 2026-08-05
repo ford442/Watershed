@@ -90,9 +90,9 @@ describe('ProceduralMapManager — hydro → delta chaining', () => {
 
   it('segment 16 resolves via delta continuation', () => {
     const cfg = manager.getChunkConfig(16);
-    // delta_rapids.json segment 0 is authored as a wide midnightMist pond
-    expect(cfg.type).toBe('pond');
-    expect(cfg.width).toBeGreaterThanOrEqual(100);
+    // delta_rapids.json segment 0 is authored as canyon mouth into wide delta
+    expect(cfg.biome).toBe('delta');
+    expect(cfg.width).toBeGreaterThanOrEqual(70);
   });
 });
 

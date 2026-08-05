@@ -13,9 +13,6 @@ import type { SegmentRange } from '../systems/MapSystem';
 /** First segment ID of the early-game glacier/alpine prelude. */
 export const GLACIER_START_INDEX = -3;
 
-/** Start index for the toy delta map. */
-export const DELTA_RAPIDS_CONTINUED_START_INDEX = 0;
-
 /**
  * Procedural fallback once `meander_to_waterfall.json` segments are exhausted.
  * Ranges use "first match wins" semantics.
@@ -163,5 +160,8 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
 /** @deprecated Use MEANDER_FALLBACK_PROGRESSION — kept for parity tests during migration. */
 export const MEANDER_TO_WATERFALL_PROGRESSION = MEANDER_FALLBACK_PROGRESSION;
 
-/** Delta map has no post-authored fallback — the JSON sequence is self-contained. */
-export const DELTA_RAPIDS_CONTINUED_PROGRESSION: SegmentRange[] = [];
+/** Re-export delta constants so older hydro/meander imports keep resolving. */
+export {
+  DELTA_RAPIDS_START_INDEX as DELTA_RAPIDS_CONTINUED_START_INDEX,
+  DELTA_RAPIDS_FALLBACK_PROGRESSION as DELTA_RAPIDS_CONTINUED_PROGRESSION,
+} from './delta_rapids';

@@ -1,164 +1,533 @@
 {
   "metadata": {
-    "name": "Delta Rapids Continued",
+    "name": "River Delta",
     "author": "watershed",
-    "description": "Toy second map: calm delta pond into narrowing autumn rapids.",
-    "difficulty": "beginner",
-    "estimatedDuration": 180,
-    "version": "1.0.0",
-    "tags": ["delta", "autumn", "stub"]
+    "description": "Sunset raft finale: canyon walls fall away into a wide braided delta, sandbar islands, and a beach landing.",
+    "difficulty": "intermediate",
+    "estimatedDuration": 360,
+    "version": "2.0.0",
+    "tags": ["delta", "raft", "finale", "sunset", "beach"]
   },
   "world": {
     "track": {
       "waypoints": [
         [0, -2, 40],
         [0, -2, 0],
-        [2, -4, -40],
-        [4, -8, -120],
-        [0, -12, -220]
+        [3, -3, -50],
+        [6, -4, -120],
+        [2, -5, -200],
+        [-4, -5, -280],
+        [4, -6, -360],
+        [0, -6, -450],
+        [-3, -6, -540],
+        [2, -7, -640],
+        [0, -7, -740],
+        [1, -7, -840]
       ],
-      "segmentLength": 80,
-      "totalSegments": 9,
-      "width": 90,
-      "wallHeight": 12
+      "segmentLength": 95,
+      "totalSegments": 22,
+      "width": 100,
+      "wallHeight": 8
     },
     "biome": {
-      "baseType": "midnightMist",
-      "sky": { "color": "#c9a66b", "cloudDensity": 0.3 },
-      "fog": { "color": "#b8c4a8", "near": 30, "far": 180, "density": 0.02 },
-      "lighting": {
-        "sunIntensity": 0.9,
-        "sunAngle": 35,
-        "ambientIntensity": 0.45
+      "baseType": "delta",
+      "sky": {
+        "color": "#e8a060",
+        "cloudDensity": 0.35,
+        "cloudColor": "#f5c98a"
       },
-      "water": { "tint": "#6a8f6a", "flowSpeed": 0.35, "opacity": 0.8 }
+      "fog": {
+        "color": "#d4b896",
+        "near": 45,
+        "far": 240,
+        "density": 0.018
+      },
+      "lighting": {
+        "sunIntensity": 0.95,
+        "sunAngle": 12,
+        "sunColor": "#ffb060",
+        "ambientIntensity": 0.42,
+        "hemiSkyColor": "#f0c080",
+        "hemiGroundColor": "#5a6a48"
+      },
+      "water": {
+        "tint": "#5a8f8a",
+        "flowSpeed": 0.28,
+        "opacity": 0.72,
+        "surfaceRoughness": 0.22
+      }
     }
   },
   "segments": [
     {
       "index": 0,
-      "difficulty": 0.1,
-      "type": "pond",
-      "biomeOverride": "midnightMist",
-      "width": 115,
-      "waterWidth": 42,
-      "verticalBias": -0.02,
-      "meanderStrength": 0.25,
-      "physics": { "waterFlowIntensity": 0.25 },
-      "treeDensity": 0.25,
-      "rockDensity": "low"
+      "name": "Canyon Mouth",
+      "difficulty": 0.25,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 72,
+      "waterWidth": 28,
+      "verticalBias": -0.2,
+      "meanderStrength": 0.45,
+      "physics": { "waterFlowIntensity": 0.55 },
+      "treeDensity": 0.45,
+      "rockDensity": "low",
+      "effects": { "particleCount": 30 },
+      "decorations": { "trees": 8, "rocks": 4, "reeds": 6 }
     },
     {
       "index": 1,
-      "difficulty": 0.12,
-      "type": "pond",
-      "biomeOverride": "midnightMist",
-      "width": 115,
-      "waterWidth": 42,
-      "verticalBias": -0.02,
-      "meanderStrength": 0.25,
-      "physics": { "waterFlowIntensity": 0.25 },
-      "treeDensity": 0.25,
-      "rockDensity": "low"
+      "name": "Walls Fall Away",
+      "difficulty": 0.2,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 88,
+      "waterWidth": 36,
+      "verticalBias": -0.12,
+      "meanderStrength": 0.35,
+      "physics": { "waterFlowIntensity": 0.45 },
+      "treeDensity": 0.4,
+      "rockDensity": "low",
+      "effects": { "particleCount": 25, "fogDensity": 0.02 },
+      "decorations": { "trees": 6, "rocks": 3, "reeds": 10, "grass": 12 }
     },
     {
       "index": 2,
+      "name": "Raft Launch",
       "difficulty": 0.15,
       "type": "pond",
-      "biomeOverride": "midnightMist",
-      "width": 115,
-      "waterWidth": 42,
-      "verticalBias": -0.02,
-      "meanderStrength": 0.25,
-      "physics": { "waterFlowIntensity": 0.25 },
-      "treeDensity": 0.25,
-      "rockDensity": "low"
+      "biomeOverride": "delta",
+      "width": 100,
+      "waterWidth": 48,
+      "verticalBias": -0.05,
+      "meanderStrength": 0.2,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.32 },
+      "treeDensity": 0.3,
+      "rockDensity": "low",
+      "effects": { "particleCount": 20, "transitionDuration": 2 },
+      "decorations": {
+        "trees": 4,
+        "reeds": 16,
+        "waterLilies": 8,
+        "rocks": [
+          { "localX": 18, "localZ": -20, "scale": 3.2, "rotation": 0.4, "rockType": "slab" },
+          { "localX": -22, "localZ": 10, "scale": 2.8, "rotation": -0.3, "rockType": "slab" }
+        ]
+      }
     },
     {
       "index": 3,
-      "difficulty": 0.35,
-      "biomeOverride": "midnightMist",
-      "width": 85,
-      "waterWidth": 30,
-      "verticalBias": -0.35,
-      "meanderStrength": 0.8,
-      "physics": { "waterFlowIntensity": 0.9 },
-      "treeDensity": 0.35,
-      "rockDensity": "medium",
-      "effects": { "particleCount": 120 }
+      "name": "Sky Opens",
+      "difficulty": 0.15,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 108,
+      "waterWidth": 55,
+      "verticalBias": -0.04,
+      "meanderStrength": 0.18,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.3 },
+      "treeDensity": 0.28,
+      "rockDensity": "low",
+      "effects": { "particleCount": 18 },
+      "decorations": { "trees": 3, "reeds": 18, "waterLilies": 10, "grass": 14 }
     },
     {
       "index": 4,
-      "difficulty": 0.4,
-      "biomeOverride": "midnightMist",
-      "width": 85,
-      "waterWidth": 30,
-      "verticalBias": -0.35,
-      "meanderStrength": 0.8,
-      "physics": { "waterFlowIntensity": 0.9 },
-      "treeDensity": 0.35,
-      "rockDensity": "medium",
-      "effects": { "particleCount": 120 }
+      "name": "Marsh Approach",
+      "difficulty": 0.18,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 110,
+      "waterWidth": 58,
+      "verticalBias": -0.03,
+      "meanderStrength": 0.22,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.28 },
+      "treeDensity": 0.25,
+      "rockDensity": "low",
+      "decorations": {
+        "trees": 2,
+        "reeds": 20,
+        "waterLilies": 12,
+        "rocks": [
+          { "localX": 8, "localZ": -15, "scale": 4.5, "rotation": 0.2, "rockType": "slab" },
+          { "localX": -12, "localZ": 25, "scale": 3.8, "rotation": 1.1, "rockType": "slab" }
+        ]
+      }
     },
     {
       "index": 5,
-      "difficulty": 0.45,
-      "biomeOverride": "midnightMist",
-      "width": 85,
-      "waterWidth": 30,
-      "verticalBias": -0.35,
-      "meanderStrength": 0.8,
-      "physics": { "waterFlowIntensity": 0.9 },
-      "treeDensity": 0.35,
-      "rockDensity": "medium",
-      "effects": { "particleCount": 120 }
+      "name": "First Sandbar",
+      "difficulty": 0.2,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 112,
+      "waterWidth": 62,
+      "verticalBias": -0.02,
+      "meanderStrength": 0.25,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.26 },
+      "treeDensity": 0.22,
+      "rockDensity": "low",
+      "decorations": {
+        "trees": 2,
+        "reeds": 22,
+        "waterLilies": 14,
+        "pebbles": 8,
+        "rocks": [
+          { "localX": 6, "localZ": 0, "scale": 5.5, "rotation": 0.5, "rockType": "slab" },
+          { "localX": -16, "localZ": -30, "scale": 3.5, "rotation": -0.8, "rockType": "slab" },
+          { "localX": 20, "localZ": 35, "scale": 2.6, "rotation": 0.1, "rockType": "boulder" }
+        ]
+      }
     },
     {
       "index": 6,
-      "difficulty": 0.55,
-      "biomeOverride": "canyonAutumn",
-      "width": 62,
-      "waterWidth": 22,
-      "verticalBias": -0.55,
-      "meanderStrength": 1.2,
-      "physics": { "waterFlowIntensity": 1.15 },
-      "treeDensity": 0.55,
-      "rockDensity": "high",
-      "effects": { "particleCount": 220, "cameraShake": 0.12 }
+      "name": "Open Water",
+      "difficulty": 0.15,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 118,
+      "waterWidth": 70,
+      "verticalBias": -0.02,
+      "meanderStrength": 0.12,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.24 },
+      "treeDensity": 0.18,
+      "rockDensity": "low",
+      "effects": { "particleCount": 12, "fogDensity": 0.016 },
+      "decorations": {
+        "trees": 1,
+        "reeds": 14,
+        "waterLilies": 16,
+        "rocks": [
+          { "localX": -10, "localZ": 20, "scale": 4.0, "rotation": 0.7, "rockType": "slab" }
+        ]
+      }
     },
     {
       "index": 7,
-      "difficulty": 0.6,
-      "biomeOverride": "canyonAutumn",
-      "width": 62,
-      "waterWidth": 22,
-      "verticalBias": -0.55,
-      "meanderStrength": 1.2,
-      "physics": { "waterFlowIntensity": 1.15 },
-      "treeDensity": 0.55,
-      "rockDensity": "high",
-      "effects": { "particleCount": 220, "cameraShake": 0.12 }
+      "name": "Reed Beds",
+      "difficulty": 0.18,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 115,
+      "waterWidth": 65,
+      "verticalBias": -0.03,
+      "meanderStrength": 0.2,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.26 },
+      "treeDensity": 0.2,
+      "rockDensity": "low",
+      "decorations": { "trees": 2, "reeds": 28, "waterLilies": 10, "grass": 16, "driftwood": 4 }
     },
     {
       "index": 8,
-      "difficulty": 0.3,
-      "type": "splash",
-      "biomeOverride": "midnightMist",
-      "width": 100,
-      "waterWidth": 36,
-      "verticalBias": -0.08,
-      "meanderStrength": 0.1,
-      "physics": { "waterFlowIntensity": 0.35 },
+      "name": "Sandbar Chain",
+      "difficulty": 0.22,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 114,
+      "waterWidth": 64,
+      "verticalBias": -0.03,
+      "meanderStrength": 0.28,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.28 },
       "treeDensity": 0.2,
       "rockDensity": "low",
-      "journeyComplete": true
+      "decorations": {
+        "trees": 2,
+        "reeds": 18,
+        "waterLilies": 12,
+        "rocks": [
+          { "localX": 10, "localZ": -25, "scale": 4.8, "rotation": 0.3, "rockType": "slab" },
+          { "localX": -8, "localZ": 5, "scale": 5.2, "rotation": -0.5, "rockType": "slab" },
+          { "localX": 14, "localZ": 40, "scale": 3.4, "rotation": 1.2, "rockType": "slab" }
+        ]
+      }
+    },
+    {
+      "index": 9,
+      "name": "Braid Entry",
+      "difficulty": 0.28,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 105,
+      "waterWidth": 52,
+      "verticalBias": -0.06,
+      "meanderStrength": 0.55,
+      "forceVehicle": "raft",
+      "hasBridge": true,
+      "physics": { "waterFlowIntensity": 0.4 },
+      "treeDensity": 0.3,
+      "rockDensity": "medium",
+      "effects": { "particleCount": 40 },
+      "decorations": { "trees": 4, "rocks": 5, "reeds": 12 }
+    },
+    {
+      "index": 10,
+      "name": "Left Channel",
+      "difficulty": 0.3,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 98,
+      "waterWidth": 45,
+      "verticalBias": -0.08,
+      "meanderStrength": 0.7,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.48 },
+      "treeDensity": 0.32,
+      "rockDensity": "medium",
+      "decorations": {
+        "trees": 5,
+        "reeds": 10,
+        "rocks": [
+          { "localX": -20, "localZ": 0, "scale": 3.0, "rotation": 0.2, "rockType": "boulder" },
+          { "localX": 8, "localZ": -30, "scale": 4.2, "rotation": 0.9, "rockType": "slab" }
+        ]
+      }
+    },
+    {
+      "index": 11,
+      "name": "Washout Fork",
+      "difficulty": 0.35,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 100,
+      "waterWidth": 48,
+      "verticalBias": -0.1,
+      "meanderStrength": 0.65,
+      "forceVehicle": "raft",
+      "hasBridge": true,
+      "physics": { "waterFlowIntensity": 0.55 },
+      "treeDensity": 0.28,
+      "rockDensity": "medium",
+      "effects": { "particleCount": 60, "cameraShake": 0.04 },
+      "decorations": { "trees": 3, "rocks": 6, "reeds": 8 }
+    },
+    {
+      "index": 12,
+      "name": "Right Braid",
+      "difficulty": 0.32,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 102,
+      "waterWidth": 50,
+      "verticalBias": -0.08,
+      "meanderStrength": 0.6,
+      "forceVehicle": "raft",
+      "hasBridge": true,
+      "physics": { "waterFlowIntensity": 0.5 },
+      "treeDensity": 0.3,
+      "rockDensity": "medium",
+      "decorations": {
+        "trees": 4,
+        "reeds": 14,
+        "rocks": [
+          { "localX": 12, "localZ": 15, "scale": 4.0, "rotation": -0.4, "rockType": "slab" },
+          { "localX": -14, "localZ": -20, "scale": 3.6, "rotation": 0.6, "rockType": "slab" }
+        ]
+      }
+    },
+    {
+      "index": 13,
+      "name": "Forecast Cut",
+      "difficulty": 0.38,
+      "type": "normal",
+      "biomeOverride": "delta",
+      "width": 96,
+      "waterWidth": 42,
+      "verticalBias": -0.12,
+      "meanderStrength": 0.75,
+      "forceVehicle": "raft",
+      "hasBridge": true,
+      "physics": { "waterFlowIntensity": 0.62 },
+      "treeDensity": 0.35,
+      "rockDensity": "medium",
+      "effects": { "particleCount": 70 },
+      "decorations": { "trees": 5, "rocks": 7, "reeds": 6 }
+    },
+    {
+      "index": 14,
+      "name": "Channels Rejoin",
+      "difficulty": 0.25,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 110,
+      "waterWidth": 60,
+      "verticalBias": -0.04,
+      "meanderStrength": 0.3,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.35 },
+      "treeDensity": 0.22,
+      "rockDensity": "low",
+      "effects": { "particleCount": 25, "transitionDuration": 1.5 },
+      "decorations": {
+        "trees": 3,
+        "reeds": 20,
+        "waterLilies": 12,
+        "rocks": [
+          { "localX": 0, "localZ": -10, "scale": 5.0, "rotation": 0.15, "rockType": "slab" }
+        ]
+      }
+    },
+    {
+      "index": 15,
+      "name": "Golden Marsh",
+      "difficulty": 0.18,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 115,
+      "waterWidth": 66,
+      "verticalBias": -0.02,
+      "meanderStrength": 0.18,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.25 },
+      "treeDensity": 0.18,
+      "rockDensity": "low",
+      "effects": { "fogDensity": 0.015 },
+      "decorations": { "trees": 2, "reeds": 24, "waterLilies": 18, "grass": 12 }
+    },
+    {
+      "index": 16,
+      "name": "Slow Drift",
+      "difficulty": 0.12,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 118,
+      "waterWidth": 72,
+      "verticalBias": -0.015,
+      "meanderStrength": 0.1,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.2 },
+      "treeDensity": 0.15,
+      "rockDensity": "low",
+      "decorations": {
+        "trees": 1,
+        "reeds": 16,
+        "waterLilies": 14,
+        "rocks": [
+          { "localX": -18, "localZ": 30, "scale": 3.8, "rotation": 0.4, "rockType": "slab" }
+        ]
+      }
+    },
+    {
+      "index": 17,
+      "name": "Tide Flats",
+      "difficulty": 0.12,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 120,
+      "waterWidth": 74,
+      "verticalBias": -0.01,
+      "meanderStrength": 0.08,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.18 },
+      "treeDensity": 0.12,
+      "rockDensity": "low",
+      "decorations": { "trees": 1, "reeds": 12, "waterLilies": 10, "pebbles": 10, "grass": 18 }
+    },
+    {
+      "index": 18,
+      "name": "Shore Sight",
+      "difficulty": 0.1,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 120,
+      "waterWidth": 68,
+      "verticalBias": -0.01,
+      "meanderStrength": 0.06,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.15 },
+      "treeDensity": 0.15,
+      "rockDensity": "low",
+      "decorations": {
+        "trees": 3,
+        "reeds": 10,
+        "grass": 20,
+        "pebbles": 12,
+        "rocks": [
+          { "localX": 22, "localZ": -15, "scale": 2.8, "rotation": 0.2, "rockType": "boulder" },
+          { "localX": -25, "localZ": 20, "scale": 3.2, "rotation": -0.3, "rockType": "slab" }
+        ]
+      }
+    },
+    {
+      "index": 19,
+      "name": "Shoaling",
+      "difficulty": 0.08,
+      "type": "pond",
+      "biomeOverride": "delta",
+      "width": 115,
+      "waterWidth": 55,
+      "verticalBias": 0,
+      "meanderStrength": 0.04,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.12 },
+      "treeDensity": 0.2,
+      "rockDensity": "low",
+      "decorations": { "trees": 4, "reeds": 8, "grass": 24, "pebbles": 14, "driftwood": 6 }
+    },
+    {
+      "index": 20,
+      "name": "Beach Approach",
+      "difficulty": 0.05,
+      "type": "splash",
+      "biomeOverride": "delta",
+      "width": 110,
+      "waterWidth": 42,
+      "verticalBias": 0,
+      "meanderStrength": 0.02,
+      "forceVehicle": "raft",
+      "physics": { "waterFlowIntensity": 0.1 },
+      "treeDensity": 0.25,
+      "rockDensity": "low",
+      "effects": { "particleCount": 40 },
+      "safeZone": { "yMin": -12, "yMax": 8, "respawnAt": 20 },
+      "decorations": { "trees": 6, "grass": 28, "pebbles": 16, "reeds": 6, "driftwood": 4 }
+    },
+    {
+      "index": 21,
+      "name": "Beach Landing",
+      "difficulty": 0.05,
+      "type": "splash",
+      "biomeOverride": "delta",
+      "width": 110,
+      "waterWidth": 32,
+      "verticalBias": 0,
+      "meanderStrength": 0,
+      "forceVehicle": "raft",
+      "journeyComplete": true,
+      "physics": { "waterFlowIntensity": 0.08 },
+      "treeDensity": 0.3,
+      "rockDensity": "low",
+      "effects": { "particleCount": 20, "fogDensity": 0.012 },
+      "safeZone": { "yMin": -10, "yMax": 10, "respawnAt": 21 },
+      "decorations": {
+        "trees": 8,
+        "grass": 32,
+        "pebbles": 18,
+        "driftwood": 8,
+        "rocks": [
+          { "localX": 28, "localZ": 0, "scale": 2.4, "rotation": 0.1, "rockType": "boulder" },
+          { "localX": -30, "localZ": -10, "scale": 2.8, "rotation": 0.5, "rockType": "boulder" }
+        ]
+      }
     }
   ],
   "spawns": {
     "start": {
-      "position": [0, -2, -10],
+      "position": [0, -1, -10],
       "rotation": [0, 0, 0],
       "velocity": [0, 0, 0]
-    }
+    },
+    "checkpoints": [
+      { "segment": 2, "position": [0, -3, -90], "radius": 40 },
+      { "segment": 6, "position": [0, -5, -280], "radius": 45 },
+      { "segment": 14, "position": [0, -6, -620], "radius": 40 },
+      { "segment": 21, "position": [0, -6, -920], "radius": 50 }
+    ]
   }
 }
