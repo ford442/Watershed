@@ -2,17 +2,60 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three-stdlib';
 
-const TREE_SPECIES = ['conifer', 'broadleaf', 'birch', 'snag'];
+export type TreeSpecies = 'conifer' | 'broadleaf' | 'birch' | 'snag';
 
-const mergeCompatibleGeometries = (geometries) => {
+export interface TreeVariant {
+  type: TreeSpecies;
+  geometry: THREE.BufferGeometry;
+  swayAmount: number;
+  baseTint: string;
+}
+
+export interface TreeAssetsResult {
+  variants: TreeVariant[];
+  species: TreeSpecies[];
+}
+
+interface WindFoliageOptions {
+  isFoliage?: boolean;
+  windBase?: number;
+  windHeightScale?: number;
+}
+
+interface LeafCardOptions {
+  width: number;
+  height: number;
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  seed: number;
+  color: string;
+  windBase: number;
+  windHeightScale: number;
+}
+
+interface ScatterLeafCardsOptions {
+  centers: [number, number, number][];
+  count: number;
+  sizeRange: [number, number];
+  color: string;
+  windBase: number;
+  windHeightScale: number;
+  seed: number;
+  spread?: number;
+  elongated?: boolean;
+}
+
+const TREE_SPECIES: TreeSpecies[] = ['conifer', 'broadleaf', 'birch', 'snag'];
+
+const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
   if (!geometries.length) return new THREE.BufferGeometry();
   const normalized = geometries.map((g) => g.index ? g.toNonIndexed() : g);
-  const attrNames = new Set();
+  const attrNames = new Set<string>();
   normalized.forEach((g) => Object.keys(g.attributes).forEach((n) => attrNames.add(n)));
   normalized.forEach((g) => {
     attrNames.forEach((name) => {
       if (!g.getAttribute(name)) {
-        const ref = normalized.find((h) => h.getAttribute(name)).getAttribute(name);
+        const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
         g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
       }
     });
@@ -25,8 +68,8 @@ const mergeCompatibleGeometries = (geometries) => {
 };
 
 // Adds vertical ridge displacement to trunk/branch cylinders for a barky silhouette.
-const addBarkRidges = (geometry, amplitude = 0.035, ridges = 8) => {
-  const pos = geometry.getAttribute('position');
+const addBarkRidges = (geometry: THREE.BufferGeometry, amplitude = 0.035, ridges = 8): THREE.BufferGeometry => {
+  const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
@@ -43,8 +86,8 @@ const addBarkRidges = (geometry, amplitude = 0.035, ridges = 8) => {
 };
 
 // Bakes per-vertex wind sway strength + a foliage mask used by TreeShader.
-const addWindAndFoliageAttrs = (geometry, { isFoliage = false, windBase = 0, windHeightScale = 0.05 } = {}) => {
-  const pos = geometry.getAttribute('position');
+const addWindAndFoliageAttrs = (geometry: THREE.BufferGeometry, { isFoliage = false, windBase = 0, windHeightScale = 0.05 }: WindFoliageOptions = {}): THREE.BufferGeometry => {
+  const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
   const wind = new Float32Array(pos.count);
   const foliage = new Float32Array(pos.count).fill(isFoliage ? 1 : 0);
   for (let i = 0; i < pos.count; i++) {
@@ -56,8 +99,8 @@ const addWindAndFoliageAttrs = (geometry, { isFoliage = false, windBase = 0, win
   return geometry;
 };
 
-const applyVertexColor = (geometry, color) => {
-  const attribute = geometry.getAttribute('position');
+const applyVertexColor = (geometry: THREE.BufferGeometry, color: string): THREE.BufferGeometry => {
+  const attribute = geometry.getAttribute('position') as THREE.BufferAttribute;
   const colors = new Float32Array(attribute.count * 3);
   const swatch = new THREE.Color(color);
 
@@ -72,7 +115,7 @@ const applyVertexColor = (geometry, color) => {
 };
 
 // Deterministic pseudo-random generator (mulberry32) for repeatable scatter patterns.
-const seededRandom = (seed) => {
+const seededRandom = (seed: number): () => number => {
   let a = seed >>> 0;
   return () => {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -84,8 +127,8 @@ const seededRandom = (seed) => {
 
 // Adds a per-vertex isFoliageCard mask + per-card leafSeed + cardUv (copy of uv),
 // used by TreeShader to flutter and carve a leaf/needle silhouette out of a quad.
-const markAsLeafCard = (geometry, seed) => {
-  const uv = geometry.getAttribute('uv');
+const markAsLeafCard = (geometry: THREE.BufferGeometry, seed: number): THREE.BufferGeometry => {
+  const uv = geometry.getAttribute('uv') as THREE.BufferAttribute | undefined;
   const count = geometry.getAttribute('position').count;
   geometry.setAttribute('cardUv', new THREE.BufferAttribute(uv ? uv.array.slice() : new Float32Array(count * 2), 2));
   geometry.setAttribute('isFoliageCard', new THREE.Float32BufferAttribute(new Float32Array(count).fill(1), 1));
@@ -95,7 +138,7 @@ const markAsLeafCard = (geometry, seed) => {
 
 // Small alpha-carved leaf/needle card: a plane positioned/rotated within the canopy,
 // flagged for per-card flutter and silhouette discard via TreeShader.
-const createLeafCard = ({ width, height, position, rotation = [0, 0, 0], seed, color, windBase, windHeightScale }) => {
+const createLeafCard = ({ width, height, position, rotation = [0, 0, 0], seed, color, windBase, windHeightScale }: LeafCardOptions): THREE.BufferGeometry => {
   const geo = new THREE.PlaneGeometry(width, height, 1, 1);
   geo.rotateX(rotation[0]);
   geo.rotateY(rotation[1]);
@@ -108,9 +151,9 @@ const createLeafCard = ({ width, height, position, rotation = [0, 0, 0], seed, c
 };
 
 // Scatters leaf/needle cards around a set of canopy cluster centers.
-const scatterLeafCards = ({ centers, count, sizeRange, color, windBase, windHeightScale, seed, spread = 0.6, elongated = false }) => {
+const scatterLeafCards = ({ centers, count, sizeRange, color, windBase, windHeightScale, seed, spread = 0.6, elongated = false }: ScatterLeafCardsOptions): THREE.BufferGeometry[] => {
   const rand = seededRandom(seed);
-  const cards = [];
+  const cards: THREE.BufferGeometry[] = [];
   for (let i = 0; i < count; i++) {
     const center = centers[i % centers.length];
     const px = center[0] + (rand() - 0.5) * spread;
@@ -119,7 +162,7 @@ const scatterLeafCards = ({ centers, count, sizeRange, color, windBase, windHeig
     const size = sizeRange[0] + rand() * (sizeRange[1] - sizeRange[0]);
     const width = elongated ? size * 0.35 : size;
     const height = elongated ? size : size * 1.15;
-    const rotation = [rand() * Math.PI, rand() * Math.PI, rand() * Math.PI];
+    const rotation: [number, number, number] = [rand() * Math.PI, rand() * Math.PI, rand() * Math.PI];
     cards.push(createLeafCard({
       width, height,
       position: [px, py, pz],
@@ -134,7 +177,7 @@ const scatterLeafCards = ({ centers, count, sizeRange, color, windBase, windHeig
 };
 
 // Hangs a thin drooping vine from an attachment point; sway increases toward the tip.
-const createVine = (attachPoint, length, seed) => {
+const createVine = (attachPoint: [number, number, number], length: number, seed: number): THREE.BufferGeometry => {
   const rand = seededRandom(seed);
   const lean = (rand() - 0.5) * 0.5;
   const geo = new THREE.CylinderGeometry(0.012, 0.035, length, 4, 3)
@@ -142,7 +185,7 @@ const createVine = (attachPoint, length, seed) => {
     .translate(attachPoint[0], attachPoint[1], attachPoint[2]);
 
   // Lean the vine outward slightly along its length for a draped look
-  const pos = geo.getAttribute('position');
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
     const dropFactor = (attachPoint[1] - y) / length;
@@ -165,7 +208,7 @@ const createVine = (attachPoint, length, seed) => {
 };
 
 // Bracket-fungus shelf jutting from a trunk: stark, rigid, gives dead trees character.
-const createFungusShelf = (height, angle, size = 0.16) => {
+const createFungusShelf = (height: number, angle: number, size = 0.16): THREE.BufferGeometry => {
   const geo = new THREE.CircleGeometry(size, 6, 0, Math.PI);
   geo.rotateX(-Math.PI / 2 + 0.15);
   geo.rotateY(angle);
@@ -175,7 +218,7 @@ const createFungusShelf = (height, angle, size = 0.16) => {
   return addWindAndFoliageAttrs(geo, { isFoliage: false, windBase: 0, windHeightScale: 0 });
 };
 
-const createBranch = (length, radius, rotationZ, y) => {
+const createBranch = (length: number, radius: number, rotationZ: number, y: number): THREE.BufferGeometry => {
   const branch = new THREE.CylinderGeometry(radius * 0.45, radius, length, 5);
   branch.translate(0, length * 0.5, 0);
   branch.rotateZ(rotationZ);
@@ -183,7 +226,7 @@ const createBranch = (length, radius, rotationZ, y) => {
   return branch;
 };
 
-export function useTreeAssets() {
+export function useTreeAssets(): TreeAssetsResult {
   const variants = useMemo(() => {
     const coniferTrunk = addWindAndFoliageAttrs(
       addBarkRidges(applyVertexColor(
@@ -222,7 +265,7 @@ export function useTreeAssets() {
       addBarkRidges(applyVertexColor(geo, '#5a4132')),
       { isFoliage: false, windBase: 0.01, windHeightScale: 0.015 }
     ));
-    const broadleafCanopyCenters = [
+    const broadleafCanopyCenters: [number, number, number][] = [
       [-0.35, 2.9, 0.15],
       [0.45, 3.3, -0.05],
       [0.1, 3.8, 0.35],
@@ -257,7 +300,7 @@ export function useTreeAssets() {
 
     const birchTrunk = (() => {
       const geo = new THREE.CylinderGeometry(0.09, 0.12, 3.7, 6).translate(0, 1.85, 0);
-      const positions = geo.getAttribute('position');
+      const positions = geo.getAttribute('position') as THREE.BufferAttribute;
       const colors = new Float32Array(positions.count * 3);
       for (let i = 0; i < positions.count; i++) {
         const y = positions.getY(i);
@@ -271,7 +314,7 @@ export function useTreeAssets() {
       addWindAndFoliageAttrs(geo, { isFoliage: false, windBase: 0.01, windHeightScale: 0.012 });
       return geo;
     })();
-    const birchCanopyCenters = [
+    const birchCanopyCenters: [number, number, number][] = [
       [-0.25, 4.0, 0],
       [0.2, 4.4, 0.15],
       [0.05, 4.85, -0.15],
@@ -314,7 +357,7 @@ export function useTreeAssets() {
       createFungusShelf(2.2, -1.1, 0.18),
     ];
 
-    const speciesVariants = [
+    const speciesVariants: TreeVariant[] = [
       {
         type: 'conifer',
         geometry: mergeCompatibleGeometries([coniferTrunk, ...coniferFoliage, ...coniferNeedles]),
