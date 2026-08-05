@@ -138,6 +138,8 @@ export default function InnerExperience({
                   forecastSamples={state.forecastSamples}
                   startIndex={state.activeDefaultMap.startIndex}
                   mapId={state.activeDefaultMapId}
+                  seamlessJourney={state.seamlessJourney}
+                  onSeamlessHandoff={state.handleSeamlessHandoffFromTrack}
                 />
                 {/* Speed wind for default (non-Reach) maps — Reach path gets it via ReactiveAudio. */}
                 <SpeedWindAudio targetRef={state.vehicleRef} />

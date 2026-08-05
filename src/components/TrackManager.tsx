@@ -37,6 +37,14 @@ export interface TrackManagerRef {
   synthesizeSegmentEnter: (index: number) => void;
   isInitialized: () => boolean;
   getLastEnteredSegment: () => number;
+  /**
+   * Seamless map handoff: attach next map configs without remounting the
+   * TrackManager React tree or wiping the live segment pool.
+   */
+  handoffToMap: (options: {
+    nextMapId: MapRegistryId;
+    plan: import('../systems/journeyContinuity').HandoffPlan;
+  }) => boolean;
 }
 
 export interface TrackManagerProps {
@@ -51,6 +59,16 @@ export interface TrackManagerProps {
   startIndex?: number;
   /** @deprecated Use mapId / mapDefinition instead */
   mapProgression?: SegmentRange[];
+  /**
+   * When true, journeyComplete segments trigger seamless handoff via
+   * `onSeamlessHandoff` instead of pausing the run.
+   */
+  seamlessJourney?: boolean;
+  /** Called when a journeyComplete segment is entered in seamless mode. */
+  onSeamlessHandoff?: (info: {
+    segmentIndex: number;
+    fromMapId: MapRegistryId;
+  }) => void;
 }
 
 interface RenderSlot {
@@ -87,6 +105,8 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     mapDefinition,
     startIndex,
     mapProgression,
+    seamlessJourney = false,
+    onSeamlessHandoff,
   },
   ref
 ) {
@@ -103,6 +123,15 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
   const chunkManagerRef = useRef<ChunkManager | null>(null);
   const pendingSynthesizesRef = useRef<number[]>([]);
+  const seamlessJourneyRef = useRef(seamlessJourney);
+  seamlessJourneyRef.current = seamlessJourney;
+  const onSeamlessHandoffRef = useRef(onSeamlessHandoff);
+  onSeamlessHandoffRef.current = onSeamlessHandoff;
+  const activeMapIdRef = useRef<MapRegistryId>(resolvedMap.id as MapRegistryId);
+  activeMapIdRef.current = (mapId ?? resolvedMap.id) as MapRegistryId;
+  const handoffInFlightRef = useRef(false);
+  /** Set by handoffToMap so the mapId prop sync does not wipe the live pool. */
+  const skipNextMapEffectResetRef = useRef(false);
 
   useImperativeHandle(ref, () => ({
     synthesizeSegmentEnter: (index: number) => {
@@ -114,6 +143,38 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     },
     isInitialized: () => chunkManagerRef.current?.isInitialized() ?? false,
     getLastEnteredSegment: () => chunkManagerRef.current?.getLastEnteredSegment?.() ?? -1,
+    handoffToMap: ({ nextMapId, plan }) => {
+      const cm = chunkManagerRef.current;
+      if (!cm?.isInitialized()) return false;
+
+      const nextDef = getMapDefinition(nextMapId);
+      let manager = mapManagerRef.current;
+      if (!(manager instanceof ProceduralMapManager)) {
+        manager = new ProceduralMapManager(
+          effectiveLevelData,
+          effectiveFallback,
+          {},
+          null,
+        );
+        mapManagerRef.current = manager;
+        cm.setMapManager(manager);
+      }
+
+      (manager as ProceduralMapManager).attachContinuation(
+        {
+          levelData: nextDef.levelData,
+          startIndex: plan.toMapLocalStartIndex,
+        },
+        {
+          globalStartIndex: plan.nextMapStartIndex,
+          widthBlend: plan.widthBlend,
+        },
+      );
+      activeMapIdRef.current = nextMapId;
+      handoffInFlightRef.current = false;
+      skipNextMapEffectResetRef.current = true;
+      return true;
+    },
   }));
 
   const forecastByIndexRef = useRef<Map<number, string>>(new Map());
@@ -134,14 +195,31 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   const reachSegmentsRef = useRef(reachSegments);
   const obstaclePoolRef = useRef(createObstaclePool(16));
 
-  // Keep reachSegments ref in sync
+  // Keep reachSegments ref in sync — soft update on append (seamless handoff),
+  // hard reset only when the array identity is a full reload (null → data or shrink).
   useEffect(() => {
+    const prev = reachSegmentsRef.current;
     reachSegmentsRef.current = reachSegments;
-    if (chunkManagerRef.current && chunkManagerRef.current.isInitialized()) {
-      chunkManagerRef.current.reset(reachSegments);
-      chunkManagerRef.current.initializePool();
-      setPoolVersion((v) => v + 1);
+
+    const cm = chunkManagerRef.current;
+    if (!cm?.isInitialized()) return;
+
+    const prevLen = prev?.length ?? 0;
+    const nextLen = reachSegments?.length ?? 0;
+    const isAppend =
+      prev &&
+      reachSegments &&
+      nextLen > prevLen &&
+      prev[0]?.id === reachSegments[0]?.id;
+
+    if (isAppend) {
+      cm.setReachSegments(reachSegments);
+      return;
     }
+
+    cm.reset(reachSegments);
+    cm.initializePool();
+    setPoolVersion((v) => v + 1);
   }, [reachSegments]);
 
   // Weather listener
@@ -269,6 +347,16 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   }, [forecastSamples]);
 
   useEffect(() => {
+    if (skipNextMapEffectResetRef.current) {
+      skipNextMapEffectResetRef.current = false;
+      // Keep the live ProceduralMapManager that already has continuation attached.
+      // Still point ChunkManager at it in case React remounted nothing.
+      if (chunkManagerRef.current && mapManagerRef.current) {
+        chunkManagerRef.current.setMapManager(mapManagerRef.current);
+      }
+      return;
+    }
+
     mapManagerRef.current = new ProceduralMapManager(
       effectiveLevelData,
       effectiveFallback,
@@ -318,7 +406,15 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
         const segmentConfig = mapManagerRef.current?.getChunkConfig?.(index);
         if (segmentConfig?.journeyComplete && !useGameStore.getState().isJourneyComplete) {
-          useGameStore.getState().setJourneyComplete();
+          if (seamlessJourneyRef.current && !handoffInFlightRef.current) {
+            handoffInFlightRef.current = true;
+            onSeamlessHandoffRef.current?.({
+              segmentIndex: index,
+              fromMapId: activeMapIdRef.current,
+            });
+          } else if (!seamlessJourneyRef.current) {
+            useGameStore.getState().setJourneyComplete();
+          }
         }
       },
     };
