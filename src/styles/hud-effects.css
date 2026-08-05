@@ -1,0 +1,199 @@
+/* Journey Complete overlay fade-in */
+.journey-complete-overlay {
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.journey-complete-overlay.visible {
+  opacity: 1;
+}
+
+/* ===== SPRINT STAMINA BAR ===== */
+/* Bottom-left, below speed readout. Imperative width/color updates — no React re-renders. */
+.stamina-bar {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (min-width: 768px) {
+  .stamina-bar {
+    bottom: 1.5rem;
+    left: 1.5rem;
+  }
+}
+
+.stamina-bar__label {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+}
+
+.stamina-bar__track {
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stamina-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: background-color 0.15s ease;
+  will-change: width;
+}
+
+/* Pulse when fully exhausted (class toggled imperatively) */
+.stamina-bar--exhausted .stamina-fill {
+  animation: stamina-pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes stamina-pulse {
+  from { opacity: 0.3; }
+  to   { opacity: 1.0; }
+}
+
+/* ===== SURVIVAL HUD (wetness / exposure) ===== */
+.survival-hud-stack {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (min-width: 768px) {
+  .survival-hud-stack {
+    bottom: 1.5rem;
+    left: 1.5rem;
+  }
+}
+
+.survival-hud-stack .stamina-bar {
+  position: static;
+}
+
+.survival-loadout-badge {
+  margin-top: 6px;
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.survival-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.survival-bar__label {
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.38);
+  text-transform: uppercase;
+}
+
+.survival-bar__track {
+  width: 120px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.survival-fill {
+  height: 100%;
+  border-radius: 2px;
+  will-change: width;
+}
+
+/* ===== SHELF LAUNCH AIR-TIME POPUPS ===== */
+.launch-popup,
+.air-reward-popup {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%) scale(0.85);
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  z-index: 40;
+  will-change: transform, opacity;
+}
+
+.launch-popup {
+  color: #f8fafc;
+  font-size: clamp(1.6rem, 4vw, 2.6rem);
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+}
+
+.air-reward-popup {
+  color: #fbbf24;
+  font-size: clamp(1.3rem, 3vw, 2rem);
+  text-shadow: 0 0 16px rgba(251, 191, 36, 0.55);
+}
+
+.launch-popup--visible,
+.air-reward-popup--visible {
+  animation: launch-popup-burst 1.4s ease-out forwards;
+}
+
+.launch-airtime-hud {
+  position: fixed;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 800;
+  font-size: clamp(1rem, 2.5vw, 1.35rem);
+  letter-spacing: 0.1em;
+  color: rgba(248, 250, 252, 0.92);
+  text-shadow: 0 0 12px rgba(125, 211, 252, 0.45);
+  opacity: 0;
+  z-index: 39;
+  transition: opacity 0.12s ease;
+}
+
+.launch-airtime-hud--visible {
+  opacity: 1;
+}
+
+@keyframes launch-popup-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.7);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -55%) scale(1.08);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -62%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -78%) scale(0.95);
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
