@@ -113,7 +113,11 @@ const applyTurbulence = (body: any, time: number, delta: number) => {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   const speedFactor = Math.min(1, speed / 5);
-  const amp = WATER_PHYSICS.TURBULENCE_AMP * speedFactor;
+  const calm = useGameStore.getState().currentBiome === 'delta';
+  const amp =
+    WATER_PHYSICS.TURBULENCE_AMP *
+    speedFactor *
+    (calm ? WATER_PHYSICS.CALM_TURBULENCE_SCALE : 1);
 
   const pitchWobble = Math.sin(time * WATER_PHYSICS.TURBULENCE_FREQ) * amp +
     Math.sin(time * WATER_PHYSICS.TURBULENCE_FREQ * 1.7) * amp * 0.3;
@@ -132,13 +136,19 @@ const applyTurbulence = (body: any, time: number, delta: number) => {
 const applyTippingForce = (body: any, submergedRatio: number, delta: number) => {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+  const calm = useGameStore.getState().currentBiome === 'delta';
+  const tipThreshold = calm
+    ? WATER_PHYSICS.CALM_TIP_THRESHOLD_SPEED
+    : WATER_PHYSICS.TIP_THRESHOLD_SPEED;
 
-  if (speed < WATER_PHYSICS.TIP_THRESHOLD_SPEED || submergedRatio < WATER_PHYSICS.TIP_SUBMERGE_THRESHOLD) {
+  if (speed < tipThreshold || submergedRatio < WATER_PHYSICS.TIP_SUBMERGE_THRESHOLD) {
     return;
   }
 
-  const tipMagnitude = WATER_PHYSICS.TIP_FORCE_MAGNITUDE *
-    ((speed - WATER_PHYSICS.TIP_THRESHOLD_SPEED) / 5);
+  const tipMagnitude =
+    WATER_PHYSICS.TIP_FORCE_MAGNITUDE *
+    ((speed - tipThreshold) / 5) *
+    (calm ? WATER_PHYSICS.CALM_TIP_SCALE : 1);
 
   body.applyTorqueImpulse({
     x: vel.z * tipMagnitude * delta * 0.1,

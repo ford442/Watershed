@@ -4,8 +4,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  buildCampaignStack,
   formatDuration,
   getContinuationTarget,
+  getDefaultJourneyStack,
   getJourneyCompletionDecision,
   isMapRegistryId,
   isMapUnlocked,
@@ -80,7 +82,7 @@ describe('getJourneyCompletionDecision', () => {
     expect(getJourneyCompletionDecision('hydro')).toEqual({
       kind: 'continue',
       nextMapId: 'delta',
-      nextLabel: 'Delta Rapids',
+      nextLabel: 'River Delta',
     });
   });
 
@@ -90,12 +92,22 @@ describe('getJourneyCompletionDecision', () => {
   });
 });
 
+describe('buildCampaignStack', () => {
+  it('chains glacial → meander → hydro → delta', () => {
+    expect(buildCampaignStack('glacial')).toEqual(['glacial', 'meander', 'hydro', 'delta']);
+    expect(buildCampaignStack('hydro')).toEqual(['hydro', 'delta']);
+    expect(getDefaultJourneyStack()[0]).toBe('glacial');
+  });
+});
+
 describe('campaign menu helpers', () => {
   it('lists all registered maps with duration and difficulty', () => {
     const maps = listMapsForMenu();
     expect(maps.map((m) => m.id)).toEqual(['glacial', 'meander', 'hydro', 'delta']);
     expect(maps[0].estimatedDurationSec).toBe(240);
     expect(maps[0].difficulty).toBe('intermediate');
+    expect(maps.find((m) => m.id === 'delta')?.estimatedDurationSec).toBe(360);
+    expect(maps.find((m) => m.id === 'delta')?.difficulty).toBe('intermediate');
     expect(formatDuration(240)).toBe('~4 min');
   });
 

@@ -454,6 +454,19 @@ Materials need textures, geometries need valid paths. Always:
 
 ---
 
+## Type safety inventory
+
+`pnpm typecheck` gates two layers:
+
+1. **`tsc -p tsconfig.typecheck.json`** — all `.ts` / `.tsx` under `src/`.
+2. **`scripts/check-typecheck-surface.js`** — the untyped allowlist (`scripts/untyped-allowlist.json`) must match every remaining `.js` / `.jsx` file exactly.
+
+When migrating a module to TypeScript, remove it from the allowlist in the same PR. Do not add new `.jsx` files without either typing them or updating the allowlist deliberately.
+
+Frame-hot hosts and registry load validation are the highest-priority typed surfaces; see `AGENTS.md` for the current inventory table.
+
+---
+
 ## 🔄 Update Procedures
 
 ### When Updating Three.js

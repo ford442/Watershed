@@ -6,8 +6,17 @@ import { useBiome } from '../systems/BiomeSystem';
 import { useSunPosition } from '../systems/SunPositionSystem';
 import { BiomePalettes } from '../configs/BiomePalettes';
 import { useGameStore } from '../systems/GameState';
+import type { BiomeId } from '../configs/biomes';
 
-const SKY_OVERRIDES = {
+interface SkyProfile {
+  sunPosition: [number, number, number];
+  turbidity: number;
+  rayleigh: number;
+  mieCoefficient: number;
+  mieDirectionalG: number;
+}
+
+const SKY_OVERRIDES: Partial<Record<BiomeId | 'pond' | 'slotCanyon', SkyProfile>> = {
     alpineSpring: {
         sunPosition: [90, 42, 65],
         turbidity: 5.8,
@@ -185,8 +194,15 @@ const STAR_FRAGMENT = `
   }
 `;
 
+interface StarFieldOptions {
+  radiusMin: number;
+  radiusMax: number;
+  band?: boolean;
+  seedOffset?: number;
+}
+
 // Builds a star field as a flat attribute set for THREE.BufferGeometry.
-const buildStarField = (count, { radiusMin, radiusMax, band = false, seedOffset = 0 }) => {
+const buildStarField = (count: number, { radiusMin, radiusMax, band = false, seedOffset = 0 }: StarFieldOptions) => {
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -194,7 +210,7 @@ const buildStarField = (count, { radiusMin, radiusMax, band = false, seedOffset 
     const speeds = new Float32Array(count);
     const tmpColor = new THREE.Color();
 
-    const hash = (n) => {
+    const hash = (n: number) => {
         const x = Math.sin(n * 17.31 + seedOffset) * 43758.5453;
         return x - Math.floor(x);
     };
@@ -259,7 +275,7 @@ const MOON_PHASE = 0.32; // 0 = new, 0.5 = full, 1 = new again (waxing gibbous)
 const buildMoonGeometry = () => {
     const geo = new THREE.IcosahedronGeometry(1, 4);
     const positions = geo.attributes.position;
-    const hash = (n) => {
+    const hash = (n: number) => {
         const x = Math.sin(n * 91.7) * 43758.5453;
         return x - Math.floor(x);
     };
@@ -275,11 +291,34 @@ const buildMoonGeometry = () => {
     return geo;
 };
 
-const getSkyProfile = (biomeId, isSlotCanyon) => {
+const getSkyProfile = (biomeId: string, isSlotCanyon: boolean): SkyProfile => {
     if (isSlotCanyon && SKY_OVERRIDES.slotCanyon) {
         return SKY_OVERRIDES.slotCanyon;
     }
-    return SKY_OVERRIDES[biomeId] || SKY_OVERRIDES.canyonSummer;
+    return SKY_OVERRIDES[biomeId as keyof typeof SKY_OVERRIDES] || SKY_OVERRIDES.canyonSummer!;
+};
+
+type CloudShaderMaterial = THREE.ShaderMaterial & {
+    uniforms: {
+        time: { value: number };
+        opacity: { value: number };
+        sunsetBlend: { value: number };
+        overcastBlend: { value: number };
+        sunDir2D: { value: THREE.Vector3 };
+        cloudColorA?: { value: THREE.Color };
+        cloudColorB?: { value: THREE.Color };
+    };
+};
+
+type StarShaderMaterial = THREE.ShaderMaterial & {
+    uniforms: {
+        uTime: { value: number };
+        uOpacity: { value: number };
+    };
+};
+
+type MoonMaterial = THREE.MeshStandardMaterial & {
+    userData: { shader?: THREE.WebGLProgramParametersWithUniforms };
 };
 
 export default function EnhancedSky() {
@@ -290,14 +329,14 @@ export default function EnhancedSky() {
     const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
     const [weatherType, setWeatherType] = useState('clear');
 
-    const fogObjRef = useRef();
-    const cloudMatNearRef = useRef();
-    const cloudMatFarRef = useRef();
-    const starsMatRef = useRef();
-    const milkyMatRef = useRef();
-    const moonGroupRef = useRef();
-    const moonLightRef = useRef();
-    const sunGlowRef = useRef();
+    const fogObjRef = useRef<THREE.Fog | null>(null);
+    const cloudMatNearRef = useRef<CloudShaderMaterial | null>(null);
+    const cloudMatFarRef = useRef<CloudShaderMaterial | null>(null);
+    const starsMatRef = useRef<StarShaderMaterial | null>(null);
+    const milkyMatRef = useRef<StarShaderMaterial | null>(null);
+    const moonGroupRef = useRef<THREE.Group | null>(null);
+    const moonLightRef = useRef<THREE.PointLight | null>(null);
+    const sunGlowRef = useRef<THREE.Sprite | null>(null);
     const sunWorldPosRef = useRef(new THREE.Vector3());
     const moonWorldPosRef = useRef(new THREE.Vector3());
     const fogStateRef = useRef({
@@ -318,22 +357,22 @@ export default function EnhancedSky() {
     const dayPhase = Math.abs(timeOfDay - 0.5) * 2;
     const nightFactor = THREE.MathUtils.smoothstep(dayPhase, 0.6, 0.85);
 
-    const skySunPosition = useMemo(() => {
+    const skySunPosition = useMemo((): [number, number, number] => {
         const dayArc = (timeOfDay - 0.5) * Math.PI;
         const base = skyProfile.sunPosition;
         const x = base[0] + Math.sin(dayArc) * (isSlotCanyon ? 8 : 24);
         const y = Math.max(8, base[1] + Math.cos(dayArc * 0.85) * 18);
         const z = base[2] + Math.cos(dayArc) * (isSlotCanyon ? 6 : 14);
-        return [x, y, z];
+        return [x, y, z] as [number, number, number];
     }, [isSlotCanyon, skyProfile.sunPosition, timeOfDay]);
 
     // Moon rides the opposite side of the sky from the sun, on the same arc.
-    const moonWorldPosition = useMemo(() => {
+    const moonWorldPosition = useMemo((): [number, number, number] => {
         const dayArc = (timeOfDay - 0.5) * Math.PI + Math.PI;
         const x = Math.sin(dayArc) * 130;
         const y = Math.max(15, Math.cos(dayArc * 0.85) * 70 + 30);
         const z = Math.cos(dayArc) * 110;
-        return [x, y, z];
+        return [x, y, z] as [number, number, number];
     }, [timeOfDay]);
 
     const sunGlowTexture = useMemo(() => {
@@ -342,6 +381,7 @@ export default function EnhancedSky() {
         canvas.width = size;
         canvas.height = size;
         const ctx = canvas.getContext('2d');
+        if (!ctx) return new THREE.Texture();
         const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
         gradient.addColorStop(0, 'rgba(255,255,255,1.0)');
         gradient.addColorStop(0.18, 'rgba(255,250,235,0.85)');
@@ -393,8 +433,8 @@ gl_FragColor.rgb *= mix(0.18, 1.0, terminator);
     }, []);
 
     useEffect(() => {
-        const onWeatherUpdate = (event) => {
-            const incoming = event?.detail?.type;
+        const onWeatherUpdate = (event: Event) => {
+            const incoming = (event as CustomEvent<{ type?: string }>)?.detail?.type;
             if (typeof incoming === 'string') setWeatherType(incoming);
         };
         window.addEventListener('weather-update', onWeatherUpdate);

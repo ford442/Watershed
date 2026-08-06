@@ -12,12 +12,16 @@ import meanderLevel from './meander_to_waterfall.json';
 import deltaLevel from './delta_rapids.json';
 import lumberLevel from './lumber_flume.json';
 import hydroLevel from './hydro_dam.json';
+import { assertLevelData } from './assertLevelData';
 import {
-  DELTA_RAPIDS_CONTINUED_START_INDEX,
   GLACIER_START_INDEX,
   MEANDER_FALLBACK_PROGRESSION,
-  DELTA_RAPIDS_CONTINUED_PROGRESSION,
 } from './meander_to_waterfall';
+import {
+  DELTA_RAPIDS_FALLBACK_PROGRESSION,
+  DELTA_RAPIDS_START_INDEX,
+  DELTA_RAPIDS_CONTINUED_START_INDEX,
+} from './delta_rapids';
 import {
   GLACIAL_SOURCE_START_INDEX,
   GLACIAL_SOURCE_FALLBACK_PROGRESSION,
@@ -63,6 +67,11 @@ export interface MapDefinition {
    * Falls back to `continuation.mapId` when omitted.
    */
   nextMapId?: MapRegistryId;
+  /**
+   * Preferred vehicle when this map becomes active (URL `?vehicle=` still wins
+   * at boot; segment `forceVehicle` can override mid-run).
+   */
+  preferredVehicle?: 'runner' | 'raft';
   /** Optional second authored map chained after primary segments are exhausted. */
   continuation?: MapContinuation;
   /**
@@ -77,8 +86,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   glacial: {
     id: 'glacial',
     label: 'Glacial Source',
-    // intentional: JSON module has no LevelData schema at import
-    levelData: glacialLevel as unknown as LevelData,
+    levelData: assertLevelData(glacialLevel, 'glacial'),
     fallbackProgression: GLACIAL_SOURCE_FALLBACK_PROGRESSION,
     startIndex: GLACIAL_SOURCE_START_INDEX,
     initialBiome: 'glacialMelt',
@@ -86,31 +94,27 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     estimatedDurationSec: 240,
     continuation: {
       mapId: 'meander',
-      // intentional: JSON module has no LevelData schema at import
-      levelData: meanderLevel as unknown as LevelData,
+      levelData: assertLevelData(meanderLevel, 'glacial → meander continuation'),
       startIndex: 0,
     },
   },
   lumber: {
     id: 'lumber',
     label: 'Map 0.5: Lumber Flume',
-    // intentional: JSON module has no LevelData schema at import
-    levelData: lumberLevel as unknown as LevelData,
+    levelData: assertLevelData(lumberLevel, 'lumber'),
     fallbackProgression: LUMBER_FLUME_FALLBACK_PROGRESSION,
     startIndex: LUMBER_FLUME_START_INDEX,
     initialBiome: 'lumberFlume',
     menuHidden: true,
     continuation: {
-      // intentional: JSON module has no LevelData schema at import
-      levelData: meanderLevel as unknown as LevelData,
+      levelData: assertLevelData(meanderLevel, 'glacial → meander continuation'),
       startIndex: 0,
     },
   },
   meander: {
     id: 'meander',
     label: 'Meander to Waterfall',
-    // intentional: JSON module has no LevelData schema at import
-    levelData: meanderLevel as unknown as LevelData,
+    levelData: assertLevelData(meanderLevel, 'meander'),
     fallbackProgression: MEANDER_FALLBACK_PROGRESSION,
     startIndex: GLACIER_START_INDEX,
     initialBiome: 'canyonSummer',
@@ -122,8 +126,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   hydro: {
     id: 'hydro',
     label: 'Hydro-Dam',
-    // intentional: JSON module has no LevelData schema at import
-    levelData: hydroLevel as unknown as LevelData,
+    levelData: assertLevelData(hydroLevel, 'hydro'),
     fallbackProgression: HYDRO_DAM_FALLBACK_PROGRESSION,
     startIndex: HYDRO_DAM_START_INDEX,
     initialBiome: 'hydroDam',
@@ -133,22 +136,21 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     nextMapId: 'delta',
     continuation: {
       mapId: 'delta',
-      // intentional: JSON module has no LevelData schema at import
-      levelData: deltaLevel as unknown as LevelData,
+      levelData: assertLevelData(deltaLevel, 'hydro → delta continuation'),
       startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
     },
   },
   delta: {
     id: 'delta',
-    label: 'Delta Rapids',
-    // intentional: JSON module has no LevelData schema at import
-    levelData: deltaLevel as unknown as LevelData,
-    fallbackProgression: DELTA_RAPIDS_CONTINUED_PROGRESSION,
-    startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
+    label: 'River Delta',
+    levelData: assertLevelData(deltaLevel, 'delta'),
+    fallbackProgression: DELTA_RAPIDS_FALLBACK_PROGRESSION,
+    startIndex: DELTA_RAPIDS_START_INDEX,
     initialBiome: 'delta',
-    difficulty: 'beginner',
-    estimatedDurationSec: 180,
+    difficulty: 'intermediate',
+    estimatedDurationSec: 360,
     unlockAfter: 'hydro',
+    preferredVehicle: 'raft',
   },
 };
 

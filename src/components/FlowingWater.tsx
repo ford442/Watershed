@@ -1,10 +1,10 @@
-// src/components/FlowingWater.jsx
+// src/components/FlowingWater.tsx
 // Water shader overhaul: Gerstner swells, fbm detail, flowMap, vehicle wake, caustics, weather wetness
 
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { SHADERS, WATER_LEVEL, WATER_SHADER } from '../constants/game';
+import { WATER_LEVEL, WATER_SHADER } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
 import { getSWEHeightFieldSnapshot, SWE_MEAN_DEPTH } from '../systems/SWEHeightField';
@@ -13,11 +13,61 @@ import { useWaterReflectionStore } from '../systems/waterReflectionStore';
 /** Guard flag: FlowingWater samples planar reflectionTexture (XOR with unmounted pass). */
 export const FLOWING_WATER_SAMPLES_REFLECTION = true;
 
+/**
+ * GPU flow-field handle produced by the heightmap flow system.
+ */
+export interface HeightmapFlowHandle {
+  flowMapTexture?: THREE.Texture | null;
+  initWebGPU?: () => Promise<unknown>;
+  update?: (delta: number, time: number, options: { flowStrength: number }) => void;
+  [key: string]: unknown;
+}
+
+export interface FlowingWaterProps {
+  geometry: THREE.BufferGeometry;
+  flowSpeed?: number;
+  baseColor?: THREE.ColorRepresentation;
+  foamColor?: THREE.ColorRepresentation;
+  edgeHighlightColor?: THREE.ColorRepresentation;
+  shaderId?: string | null;
+  onShaderLoad?: (code: string | null, error: string | null) => void;
+  biome?: string;
+  isNight?: boolean;
+  flowMap?: THREE.Texture | null;
+  heightmapFlow?: HeightmapFlowHandle | null;
+  vehiclePos?: THREE.Vector3 | null;
+  vehicleVelocity?: THREE.Vector3 | null;
+  weatherRipple?: number;
+  wetness?: number;
+  slushiness?: number;
+  waterSurfaceOffset?: number;
+  sunWorldPosition?: THREE.Vector3 | null;
+  isPond?: boolean;
+  vortexCenter?: THREE.Vector3 | null;
+  vortexRadius?: number;
+  vortexIntensity?: number;
+}
+
+type WaterMaterial = THREE.ShaderMaterial & {
+  uniforms: Record<string, { value: unknown }>;
+  userData: {
+    waterFlowField?: {
+      waterLevel: number;
+      flowSpeed: number;
+      heightmapFlow?: HeightmapFlowHandle | null;
+      sampleAt: (position: THREE.Vector3, time: number) => {
+        direction: THREE.Vector3;
+        speed: number;
+      };
+    };
+  };
+};
+
 let warnedInvalidWaterShader = false;
 let warnedWaterShaderCompile = false;
-let blackReflectionFallback = null;
+let blackReflectionFallback: THREE.DataTexture | null = null;
 
-function getBlackReflectionFallback() {
+function getBlackReflectionFallback(): THREE.DataTexture {
   if (!blackReflectionFallback) {
     const data = new Uint8Array([0, 0, 0, 255]);
     blackReflectionFallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
@@ -26,7 +76,7 @@ function getBlackReflectionFallback() {
   return blackReflectionFallback;
 }
 
-const isUsableFragmentShader = (source) => {
+const isUsableFragmentShader = (source: string | null | undefined): boolean => {
   if (typeof source !== 'string' || source.trim().length === 0) {
     return false;
   }
@@ -56,12 +106,12 @@ export default function FlowingWater({
   vortexCenter = null,
   vortexRadius = 10,
   vortexIntensity = 0,
-}) {
-  const materialRef = useRef(null);
+}: FlowingWaterProps) {
+  const materialRef = useRef<WaterMaterial | THREE.MeshBasicMaterial | null>(null);
   const { camera } = useThree();
-  const heightmapFlowRef = useRef(heightmapFlow);
+  const heightmapFlowRef = useRef<HeightmapFlowHandle | null>(heightmapFlow);
 
-  const biomeData = BIOMES[biome] || BIOMES.river;
+  const biomeData = BIOMES[biome as keyof typeof BIOMES] || BIOMES.river;
   const effectiveWaterColor = baseColor || biomeData.waterColor;
   const effectiveFoamColor = foamColor || biomeData.foamColor;
   const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
@@ -307,8 +357,14 @@ export default function FlowingWater({
 
   // Load dynamic shader
   const effectiveShaderId = shaderId || biomeData.shaderId;
+function isWaterShaderMaterial(
+  mat: WaterMaterial | THREE.MeshBasicMaterial | null,
+): mat is WaterMaterial {
+  return !!mat && 'uniforms' in mat;
+}
+
   const { code: dynamicShaderCode, loading: shaderLoading, error: shaderError } =
-    useShaderLoader(effectiveShaderId, builtinFragmentShader);
+    useShaderLoader(effectiveShaderId ?? null, builtinFragmentShader);
 
   useEffect(() => {
     if (onShaderLoad && !shaderLoading) {
@@ -543,7 +599,7 @@ export default function FlowingWater({
         waterLevel: WATER_LEVEL,
         flowSpeed: effectiveFlowSpeed,
         heightmapFlow,
-        sampleAt: (position, time) => {
+        sampleAt: (position: THREE.Vector3, time: number) => {
           const x = position.x * 0.35;
           const z = position.z * 0.28 - time * effectiveFlowSpeed * 0.15;
           return {
@@ -553,12 +609,13 @@ export default function FlowingWater({
         },
       };
 
-      materialRef.current = mat;
+      materialRef.current = mat as WaterMaterial;
       return mat;
-    } catch (e) {
+    } catch (e: unknown) {
       if (!warnedWaterShaderCompile) {
         warnedWaterShaderCompile = true;
-        console.warn('[FlowingWater] Shader compile failed, using basic material:', e?.message ?? e);
+        const message = e instanceof Error ? e.message : String(e);
+        console.warn('[FlowingWater] Shader compile failed, using basic material:', message);
       }
       return new THREE.MeshBasicMaterial({
         color: new THREE.Color(effectiveWaterColor),
@@ -587,7 +644,7 @@ export default function FlowingWater({
         flowStrength: effectiveFlowSpeed,
       });
     }
-    if (!mat?.uniforms?.time) return;
+    if (!isWaterShaderMaterial(mat) || !mat.uniforms?.time) return;
 
     mat.uniforms.time.value = state.clock.elapsedTime;
 

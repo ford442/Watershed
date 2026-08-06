@@ -19,7 +19,13 @@ Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/
 
 All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` once at renderer setup via `applyRendererContextOptions()`.
 
-Per-light shadow map sizes in `SceneLighting` still follow `LODManager.QUALITY_SETTINGS`; the renderer contract stores the configured size via `getRendererShadowMapSize()` for diagnostics and tests.
+Per-light shadow map sizes in `SceneLighting` follow the same contract: `deriveRendererContextOptions(quality)` drives `castShadow` and `shadow-mapSize`, with `LODManager.QUALITY_SETTINGS.shadowMapSize` kept as an aligned static fallback (ultra table stores the 4096 retina max; live path is DPR-aware). The configured size is also stored via `getRendererShadowMapSize()` for diagnostics and tests.
+
+## Logarithmic depth buffer
+
+**Decision: leave `logarithmicDepthBuffer` off** (`LOGARITHMIC_DEPTH_BUFFER_ENABLED = false`).
+
+Evaluated for long canyon Z ranges. The track treadmill keeps ~7 active segments (hundreds of units of Z, not kilometers), fog far is typically ≤220, and the sun shadow camera uses `far = 200`. Turning on logarithmic depth would require log-depth shader chunks in every custom `ShaderMaterial` / `onBeforeCompile` path (`FlowingWater`, `CanyonMaterial`, `RiverShader`) for little practical Z-fighting relief. Revisit only if a non-treadmill long-haul camera path ships.
 
 ## Quick Start
 
@@ -105,6 +111,8 @@ Module-level stores cross the Canvas boundary:
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode gate |
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
+| `src/experience/SceneLighting.tsx` | Per-light shadows from quality contract |
+| `src/systems/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
 | `src/App.tsx` | Canvas wiring, quality remount, context-loss recovery |
 | `docs/reference/RENDERER_CONTRACT.md` | Contract enforced by the regression guard |

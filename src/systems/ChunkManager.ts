@@ -683,6 +683,23 @@ export class ChunkManager {
     this.reachSegments = reachSegments ?? null;
   }
 
+  /**
+   * Hot-swap the config source without wiping the live pool / vehicle continuity.
+   * Used by seamless map handoff so the treadmill keeps generating from the
+   * current nextSegmentId.
+   */
+  setMapManager(mapManager: MapManager): void {
+    this.mapManager = mapManager;
+  }
+
+  getMapManager(): MapManager {
+    return this.mapManager;
+  }
+
+  getNextSegmentId(): number {
+    return this.nextSegmentId;
+  }
+
   private clearBiomeDebounce(): void {
     if (this.biomeDebounceTimer) {
       clearTimeout(this.biomeDebounceTimer);

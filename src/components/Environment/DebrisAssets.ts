@@ -2,15 +2,20 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeBufferGeometries } from 'three-stdlib';
 
-const mergeCompatibleGeometries = (geometries) => {
+interface AssetResult {
+  geometry: THREE.BufferGeometry;
+  material: THREE.MeshStandardMaterial;
+}
+
+const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
     if (!geometries.length) return new THREE.BufferGeometry();
     const normalized = geometries.map((g) => g.index ? g.toNonIndexed() : g);
-    const attrNames = new Set();
+    const attrNames = new Set<string>();
     normalized.forEach((g) => Object.keys(g.attributes).forEach((n) => attrNames.add(n)));
     normalized.forEach((g) => {
         attrNames.forEach((name) => {
             if (!g.getAttribute(name)) {
-                const ref = normalized.find((h) => h.getAttribute(name)).getAttribute(name);
+                const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
                 g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
             }
         });
@@ -22,9 +27,9 @@ const mergeCompatibleGeometries = (geometries) => {
     }
 };
 
-export function useDriftwoodAssets() {
+export function useDriftwoodAssets(): AssetResult {
     const geometry = useMemo(() => {
-        const geos = [];
+        const geos: THREE.BufferGeometry[] = [];
 
         // 1. Main Trunk Log
         // Radius top 0.12, bottom 0.22, length 4.5
@@ -59,13 +64,13 @@ export function useDriftwoodAssets() {
     return { geometry, material };
 }
 
-export function usePineconeAssets() {
+export function usePineconeAssets(): AssetResult {
     const geometry = useMemo(() => {
         // Create a cone for the basic pinecone shape
         const coneGeo = new THREE.ConeGeometry(0.3, 0.8, 8, 4);
 
         // Modify vertices to create scale-like bumps
-        const positions = coneGeo.attributes.position;
+        const positions = coneGeo.attributes.position as THREE.BufferAttribute;
         const vertex = new THREE.Vector3();
 
         for (let i = 0; i < positions.count; i++) {

@@ -10,7 +10,6 @@
   ],
   "exclude": [
     "src/**/*.jsx",
-    "src/**/*.js",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "node_modules"

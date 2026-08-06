@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/BiomeSystem';
@@ -27,8 +27,17 @@ import { hydrateStoreForRun } from '../../systems/persistenceBootstrap';
 import { getActiveRunKey } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 import { buildForecastSamples } from '../../systems/flowForecast';
-import { initRunSession, getActiveLaunchHour, getRunSession } from '../../systems/runSession';
+import {
+  initRunSession,
+  getActiveLaunchHour,
+  getRunSession,
+  isJourneyMode,
+  advanceRunSessionMap,
+  saveJourneyCheckpoint,
+} from '../../systems/runSession';
 import { getLaunchHour } from '../../systems/PersistenceSystem';
+import { kickoffMapHandoff } from '../../systems/journeyHandoff';
+import { planMapHandoff } from '../../systems/journeyContinuity';
 
 const DEFAULT_FORECAST_OPTIONS = {
   temperature: 8,
@@ -116,8 +125,11 @@ export function useExperienceWorld({
   const [activeDefaultMapId, setActiveDefaultMapId] = useState<MapRegistryId>(() =>
     resolveInitialMapId(controlledMapId),
   );
+  /** Suppress remount / snap when App mapId updates from a seamless handoff. */
+  const seamlessHandoffRef = useRef(false);
 
   const activeDefaultMap = DEFAULT_MAPS[activeDefaultMapId] ?? DEFAULT_MAPS.meander;
+  const journeyModeActive = isJourneyMode();
   const journeyDecision = useMemo(
     () => getJourneyCompletionDecision(activeDefaultMapId),
     [activeDefaultMapId],
@@ -141,6 +153,13 @@ export function useExperienceWorld({
   useEffect(() => {
     if (!controlledMapId || controlledMapId === activeDefaultMapId) return;
 
+    if (seamlessHandoffRef.current) {
+      // App URL sync after seamless handoff — adopt id without remount/snap.
+      setActiveDefaultMapId(controlledMapId);
+      seamlessHandoffRef.current = false;
+      return;
+    }
+
     const targetMap = DEFAULT_MAPS[controlledMapId] ?? DEFAULT_MAPS.meander;
     setActiveDefaultMapId(controlledMapId);
     setCurrentSegmentIndex(targetMap.startIndex);
@@ -162,6 +181,10 @@ export function useExperienceWorld({
 
   useEffect(() => {
     if (levelUrl || reachId) return;
+    if (seamlessHandoffRef.current) return;
+
+    // Only snap spawn/biome on hard map loads (TrackManager remount key), not
+    // seamless handoffs that update activeDefaultMapId in place.
     const syncMapStartState = () => {
       setCurrentSegmentIndex(activeDefaultMap.startIndex);
       setRespawnSegmentIndex(activeDefaultMap.startIndex);
@@ -173,13 +196,15 @@ export function useExperienceWorld({
     const timeout = window.setTimeout(syncMapStartState, 0);
     return () => window.clearTimeout(timeout);
   }, [
-    activeDefaultMap.initialBiome,
-    activeDefaultMap.startIndex,
+    defaultMapRunKey,
     levelUrl,
     reachId,
     snapBiomeContext,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
+    // intentional: read latest map from closure when remount key changes
+    activeDefaultMap.initialBiome,
+    activeDefaultMap.startIndex,
   ]);
 
   useEffect(() => {
@@ -379,6 +404,7 @@ export function useExperienceWorld({
           launchHour: getActiveLaunchHour(),
           placedCacheIds: getRunSession()?.placedCacheIds ?? [],
           loadoutId: getRunSession()?.loadoutId,
+          journeyMode: getRunSession()?.journeyMode,
         });
         useGameStore.getState().resetGameState();
         setIsWipeout(false);
@@ -421,6 +447,88 @@ export function useExperienceWorld({
     ],
   );
 
+  /**
+   * Seamless campaign handoff: no TrackManager remount, preserve vehicle
+   * velocity + survival wetness/exposure, cross-fade biome, emit boundary events.
+   */
+  const performSeamlessMapHandoff = useCallback(
+    (fromMapId: MapRegistryId, segmentIndex: number) => {
+      const decision = getJourneyCompletionDecision(fromMapId);
+      if (decision.kind !== 'continue') {
+        // Final map — fall through to classic journey-complete overlay.
+        if (!useGameStore.getState().isJourneyComplete) {
+          useGameStore.getState().setJourneyComplete();
+        }
+        return false;
+      }
+
+      const nextMapId = decision.nextMapId;
+      const plan =
+        planMapHandoff({
+          fromMapId,
+          toMapId: nextMapId,
+          lastSegmentIndex: segmentIndex,
+        }) ?? null;
+
+      if (!plan) return false;
+
+      const kickoff = kickoffMapHandoff({
+        fromMapId,
+        toMapId: nextMapId,
+        segmentIndex,
+      });
+      if (!kickoff) return false;
+
+      const attached = trackManagerRef.current?.handoffToMap?.({
+        nextMapId,
+        plan: kickoff.plan,
+      });
+      if (!attached) {
+        console.warn(
+          `[useExperienceWorld] Seamless handoff attach failed for ${fromMapId} → ${nextMapId}; falling back to remount`,
+        );
+        resetDefaultMapRun(nextMapId);
+        return false;
+      }
+
+      seamlessHandoffRef.current = true;
+
+      const score = useGameStore.getState().score;
+      advanceRunSessionMap(nextMapId, { score, segmentIndex: plan.nextMapStartIndex });
+      saveJourneyCheckpoint({
+        mapId: nextMapId,
+        segmentIndex: plan.nextMapStartIndex,
+        score,
+      });
+
+      // Cross-fade biome (no snap); keep Canvas + vehicle motion.
+      setBiomeContext(kickoff.biomeKickoff.biomeId, kickoff.biomeKickoff.durationSeconds);
+      useGameStore.getState().clearJourneyComplete();
+      useGameStore.setState({
+        currentBiome: kickoff.biomeKickoff.biomeId,
+        isPaused: false,
+      });
+
+      setActiveDefaultMapId(nextMapId);
+      syncMapUrl(nextMapId);
+      onMapChange?.(nextMapId);
+
+      // Do NOT teleport, reset score, or remount TrackManager.
+      console.log(
+        `[useExperienceWorld] Seamless map handoff ${fromMapId} → ${nextMapId} (segment ${segmentIndex})`,
+      );
+      return true;
+    },
+    [onMapChange, resetDefaultMapRun, setBiomeContext, trackManagerRef],
+  );
+
+  const handleSeamlessHandoffFromTrack = useCallback(
+    (info: { segmentIndex: number; fromMapId: MapRegistryId }) => {
+      performSeamlessMapHandoff(info.fromMapId, info.segmentIndex);
+    },
+    [performSeamlessMapHandoff],
+  );
+
   const handleLoopCurrentMap = useCallback(() => {
     resetDefaultMapRun(activeDefaultMapId);
   }, [activeDefaultMapId, resetDefaultMapRun]);
@@ -428,17 +536,26 @@ export function useExperienceWorld({
   const handleContinueJourney = useCallback(() => {
     const decision = getJourneyCompletionDecision(activeDefaultMapId);
     if (decision.kind !== 'continue') return;
-    resetDefaultMapRun(decision.nextMapId);
-  }, [activeDefaultMapId, resetDefaultMapRun]);
+
+    // Prefer seamless handoff (no Canvas / TrackManager remount).
+    const segmentIndex =
+      useGameStore.getState().currentSegmentIndex ??
+      DEFAULT_MAPS[activeDefaultMapId]?.startIndex ??
+      0;
+    const ok = performSeamlessMapHandoff(activeDefaultMapId, segmentIndex);
+    if (!ok) {
+      resetDefaultMapRun(decision.nextMapId);
+    }
+  }, [activeDefaultMapId, performSeamlessMapHandoff, resetDefaultMapRun]);
 
   const handleDefaultJourneyAction = useCallback(() => {
     const decision = getJourneyCompletionDecision(activeDefaultMapId);
     if (decision.kind === 'continue') {
-      resetDefaultMapRun(decision.nextMapId);
+      handleContinueJourney();
       return;
     }
     resetDefaultMapRun(activeDefaultMapId);
-  }, [activeDefaultMapId, resetDefaultMapRun]);
+  }, [activeDefaultMapId, handleContinueJourney, resetDefaultMapRun]);
 
   const handleReturnToMenu = useCallback(() => {
     setLastMapId(activeDefaultMapId);
@@ -476,6 +593,9 @@ export function useExperienceWorld({
     continueLabel,
     isFinalMap,
     ghostBestScore,
+    /** Journey mode auto-handoffs at boundaries; single-map still seamless on Continue. */
+    seamlessJourney: journeyModeActive,
+    handleSeamlessHandoffFromTrack,
     handleLevelLoad,
     handleBiomeChange,
     handleLevelError,

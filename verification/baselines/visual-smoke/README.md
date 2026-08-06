@@ -8,6 +8,8 @@ Committed reference PNGs for `verification/visual_smoke.mjs` (CI job `visual-smo
 | `01_spawn_topdown.png` | Glacier/spawn top-down (`no-pointer-lock`, segment −3) | Best-effort (skipped on F-8) |
 | `02_waterfall_topdown.png` | Waterfall top-down (segment 14) | Best-effort |
 | `03_slot_topdown.png` | Slot canyon top-down (segment 21) | Best-effort |
+| `04_delta_open_water.png` | Delta open water (`?map=delta&vehicle=raft`, segment 6) | Best-effort |
+| `05_delta_beach.png` | Delta beach landing (`?map=delta&vehicle=raft`, segment 21) | Best-effort |
 
 Top-down baselines were seeded from historical `verification/webgl/*` captures. Refresh them on a host that can complete a healthy post-start SwiftShader boot (or a real GPU).
 

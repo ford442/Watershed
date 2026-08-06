@@ -84,6 +84,8 @@ export function isSummerLike(id: BiomeId | string): boolean {
   return (
     canonical === 'canyonSummer' ||
     canonical === 'alpineSpring' ||
-    canonical === 'lumberFlume'
+    canonical === 'lumberFlume' ||
+    // Delta finale reuses summer sandbar / marsh vegetation branching.
+    canonical === 'delta'
   );
 }

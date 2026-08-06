@@ -443,49 +443,49 @@ export const BiomePalettes: Record<BiomeId, BiomePalette> = {
   delta: {
     id: 'delta',
     name: 'River Delta',
-    description: 'Wide marshy waters with calm flows and aquatic plants',
+    description: 'Wide marshy waters at golden hour — calm flows, sandbars, beach landing',
     
-    // Sky & Atmosphere
-    skyColor: '#87CEEB',
-    fogColor: '#C8E6F0',
-    fogDensity: 0.02,
-    fogNear: 40,
-    fogFar: 220,
+    // Sky & Atmosphere — warm launch-hour / sunset
+    skyColor: '#E8A060',
+    fogColor: '#D4B896',
+    fogDensity: 0.018,
+    fogNear: 45,
+    fogFar: 240,
     
-    // Water
-    waterColor: '#4A90A4',
-    waterDeepColor: '#2a6070',
-    foamColor: '#E6F7FF',
-    causticsIntensity: 0.45,
-    waterOpacity: 0.6,
-    flowSpeed: 0.4,
+    // Water — slower marsh tones
+    waterColor: '#5A8F8A',
+    waterDeepColor: '#2A5A58',
+    foamColor: '#F0E8D8',
+    causticsIntensity: 0.35,
+    waterOpacity: 0.62,
+    flowSpeed: 0.28,
     
-    // Lighting - Bright midday
-    lightTemp: 6000,
-    sunColor: '#FFFFFF',
-    sunIntensity: 1.35,
-    ambientIntensity: 0.45,
-    hemiSkyColor: '#B0E0E6',
-    hemiGroundColor: '#4a5a4a',
-    fillColor: '#90C0D0',
-    fillIntensity: 0.2,
+    // Lighting — low sun / golden hour
+    lightTemp: 3200,
+    sunColor: '#FFB060',
+    sunIntensity: 0.95,
+    ambientIntensity: 0.42,
+    hemiSkyColor: '#F0C080',
+    hemiGroundColor: '#5A6A48',
+    fillColor: '#C08050',
+    fillIntensity: 0.28,
     
-    // Canyon
-    rockBaseColor: '#696969',
-    rockMossColor: '#4a6a40',
-    weatheringIntensity: 0.75,
+    // Canyon — low sandy banks
+    rockBaseColor: '#9A9A78',
+    rockMossColor: '#5A7A50',
+    weatheringIntensity: 0.85,
     
-    // Vegetation - Marsh greens
+    // Vegetation — marsh greens
     vegetationColor: '#3d7c3d',
     vegetationDensity: 0.9,
-    treeDensity: 0.6,
-    grassDensity: 1.3,
+    treeDensity: 0.35,
+    grassDensity: 1.35,
     wildflowerColors: ['#f0c95d', '#d4e27a', '#80cfa9', '#d7eef8'],
     
-    // Effects
-    fireflyCount: 5,
-    mistDensity: 0.6,
-    sunShaftIntensity: 0.5,
+    // Effects — soft sunset shafts, long mist
+    fireflyCount: 8,
+    mistDensity: 0.55,
+    sunShaftIntensity: 0.75,
     fallingLeaves: false,
     
     transitionDuration: 5,

@@ -2,19 +2,62 @@ import * as THREE from 'three';
 
 const HIDDEN_POSITION = new THREE.Vector3(0, -1000, 0);
 
-const seededRandom = (seed) => {
+export type ObstacleType = 'rock' | 'log';
+
+export interface ObstacleSlot {
+  poolIndex: number;
+  active: boolean;
+  key: string | null;
+  segmentId: number | null;
+  type: ObstacleType;
+  position: THREE.Vector3;
+  rotation: THREE.Euler;
+  scale: THREE.Vector3;
+  colliderHalfExtents: THREE.Vector3;
+}
+
+export interface ObstaclePoolOptions {
+  key?: string;
+  segmentId?: number;
+  rotation?: THREE.Euler;
+  scale?: THREE.Vector3 | number;
+  colliderHalfExtents?: THREE.Vector3;
+}
+
+export interface SegmentObstacleSource {
+  id: number;
+  segmentPath?: THREE.CatmullRomCurve3;
+  rockDensity?: string;
+  flowSpeed?: number;
+  type?: string;
+  waterWidth?: number;
+  width?: number;
+}
+
+export interface ObstaclePlacementRequest extends ObstaclePoolOptions {
+  key: string;
+  segmentId: number;
+  type: ObstacleType;
+  position: THREE.Vector3;
+}
+
+const seededRandom = (seed: number): number => {
   const x = Math.sin(seed) * 10000;
   return x - Math.floor(x);
 };
 
-const isFiniteVector = (value) => (
-  value &&
-  Number.isFinite(value.x) &&
-  Number.isFinite(value.y) &&
-  Number.isFinite(value.z)
+const isFiniteVector = (value: THREE.Vector3 | null | undefined): boolean => (
+  !!value
+  && Number.isFinite(value.x)
+  && Number.isFinite(value.y)
+  && Number.isFinite(value.z)
 );
 
 export class ObstaclePool {
+  readonly size: number;
+
+  readonly slots: ObstacleSlot[];
+
   constructor(size = 16) {
     this.size = Math.max(12, Math.min(16, size));
     this.slots = Array.from({ length: this.size }, (_, index) => ({
@@ -30,7 +73,7 @@ export class ObstaclePool {
     }));
   }
 
-  getSnapshot() {
+  getSnapshot(): ObstacleSlot[] {
     return this.slots.map((slot) => ({
       ...slot,
       position: slot.position.clone(),
@@ -40,7 +83,11 @@ export class ObstaclePool {
     }));
   }
 
-  getPooledObstacle(type, position, options = {}) {
+  getPooledObstacle(
+    type: ObstacleType,
+    position: THREE.Vector3,
+    options: ObstaclePoolOptions = {},
+  ): ObstacleSlot | null {
     if (!isFiniteVector(position)) return null;
 
     const key = options.key ?? `${options.segmentId ?? 'manual'}:${type}:${position.x.toFixed(1)}:${position.z.toFixed(1)}`;
@@ -64,21 +111,21 @@ export class ObstaclePool {
         type === 'log'
           ? new THREE.Vector3(1.45 * scale.x, 0.22 * scale.y, 0.28 * scale.z)
           : new THREE.Vector3(0.65 * scale.x, 0.45 * scale.y, 0.65 * scale.z)
-      )
+      ),
     );
 
     return slot;
   }
 
-  syncSegments(segments = []) {
-    const desired = [];
+  syncSegments(segments: SegmentObstacleSource[] = []): ObstacleSlot[] {
+    const desired: ObstaclePlacementRequest[] = [];
     for (const segment of segments) {
       desired.push(...buildSegmentObstacleRequests(segment));
     }
 
     const desiredKeys = new Set(desired.map((request) => request.key));
     for (const slot of this.slots) {
-      if (slot.active && !desiredKeys.has(slot.key)) {
+      if (slot.active && slot.key && !desiredKeys.has(slot.key)) {
         this.releaseSlot(slot);
       }
     }
@@ -90,7 +137,7 @@ export class ObstaclePool {
     return this.getSnapshot();
   }
 
-  releaseSegment(segmentId) {
+  releaseSegment(segmentId: number): void {
     for (const slot of this.slots) {
       if (slot.segmentId === segmentId) {
         this.releaseSlot(slot);
@@ -98,7 +145,7 @@ export class ObstaclePool {
     }
   }
 
-  releaseSlot(slot) {
+  releaseSlot(slot: ObstacleSlot): void {
     slot.active = false;
     slot.key = null;
     slot.segmentId = null;
@@ -109,11 +156,11 @@ export class ObstaclePool {
   }
 }
 
-export function buildSegmentObstacleRequests(segment) {
+export function buildSegmentObstacleRequests(segment: SegmentObstacleSource): ObstaclePlacementRequest[] {
   if (!segment?.segmentPath) return [];
 
-  const requests = [];
-  const highDensity = segment.rockDensity === 'high' || segment.flowSpeed >= 1.25 || segment.type === 'waterfall';
+  const requests: ObstaclePlacementRequest[] = [];
+  const highDensity = segment.rockDensity === 'high' || (segment.flowSpeed ?? 0) >= 1.25 || segment.type === 'waterfall';
   const isPond = segment.type === 'pond' || segment.type === 'splash';
   const count = highDensity ? 3 : isPond ? 1 : 2;
   const waterWidth = segment.waterWidth ?? 12;
@@ -133,7 +180,7 @@ export function buildSegmentObstacleRequests(segment) {
     const position = point.clone().add(lateral.multiplyScalar(side * bankOffset));
     position.y += segment.type === 'waterfall' ? 0.6 : 0.25 + seededRandom(seed + 11) * 0.5;
 
-    const type = isPond && index === 0 ? 'log' : 'rock';
+    const type: ObstacleType = isPond && index === 0 ? 'log' : 'rock';
     const yaw = Math.atan2(tangent.x, tangent.z) + (seededRandom(seed + 17) - 0.5) * Math.PI;
     const scaleValue = type === 'log'
       ? 0.85 + seededRandom(seed + 19) * 0.35
@@ -154,10 +201,15 @@ export function buildSegmentObstacleRequests(segment) {
   return requests;
 }
 
-export function createObstaclePool(size) {
+export function createObstaclePool(size?: number): ObstaclePool {
   return new ObstaclePool(size);
 }
 
-export function getPooledObstacle(pool, type, position, options = {}) {
+export function getPooledObstacle(
+  pool: ObstaclePool | null | undefined,
+  type: ObstacleType,
+  position: THREE.Vector3,
+  options: ObstaclePoolOptions = {},
+): ObstacleSlot | null {
   return pool?.getPooledObstacle?.(type, position, options) ?? null;
 }

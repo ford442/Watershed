@@ -4,11 +4,15 @@ export {
   resolveCanvasDpr,
   shadowModeToCanvasProp,
   DEFAULT_TONE_MAPPING_EXPOSURE,
+  LOGARITHMIC_DEPTH_BUFFER_ENABLED,
   type RendererContextOptions,
   type RendererContextSettings,
   type ShadowMode,
 } from './deriveRendererContextOptions';
-export { applyRendererContextOptions } from './applyRendererContextOptions';
+export {
+  applyRendererContextOptions,
+  getRendererShadowMapSize,
+} from './applyRendererContextOptions';
 export {
   parseRendererPreference,
   persistRendererPreference,

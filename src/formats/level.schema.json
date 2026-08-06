@@ -653,6 +653,11 @@
             "type": "boolean",
             "description": "Entering this segment triggers journey-complete"
           },
+          "forceVehicle": {
+            "type": "string",
+            "enum": ["runner", "raft"],
+            "description": "Force vehicle swap when the player enters this segment"
+          },
           "launchShelf": {
             "type": "object",
             "required": ["rockRef", "triggerHalfWidth", "triggerHalfLength", "triggerHeight", "triggerDownstreamOffset", "triggerYOffset"],

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useMemo, useRef, useEffect, useState, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -15,6 +15,9 @@ import { GOD_RAYS_SHADER, getGodRaySunColor } from '../systems/volumetric/Volume
 import { useGameStore } from '../systems/GameState';
 import { useSettingsStore } from '../systems/useSettingsStore';
 import { qualityToEffects } from '../systems/settingsDerive';
+import type { VehicleRigidBodyRef } from '../experience/types';
+
+type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
 
 const CHROMATIC_ABERRATION_SHADER = {
   name: 'ChromaticAberrationShader',
@@ -122,6 +125,10 @@ const RAINBOW_SHADER = {
 };
 
 class GodRaysPass extends Pass {
+  material: THREE.ShaderMaterial;
+
+  fsQuad: FullScreenQuad;
+
   constructor() {
     super();
     this.material = new THREE.ShaderMaterial({
@@ -136,7 +143,7 @@ class GodRaysPass extends Pass {
     this.fsQuad = new FullScreenQuad(this.material);
   }
 
-  render(renderer, writeBuffer, readBuffer) {
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
     this.material.uniforms.tDiffuse.value = readBuffer.texture;
     this.material.uniforms.tDepth.value = readBuffer.depthTexture || readBuffer.texture;
 
@@ -156,6 +163,32 @@ class GodRaysPass extends Pass {
     this.fsQuad.dispose();
   }
 }
+
+interface PostProcessingPipelineProps {
+  quality?: QualityLevel;
+  vehicleRef?: RefObject<VehicleRigidBodyRef | null>;
+  isTightCanyon?: boolean;
+  waterfallIntensity?: number;
+  bloomIntensity?: number;
+  bloomThreshold?: number;
+  bloomSmoothing?: number;
+  bloomRadius?: number;
+  vignetteOffset?: number;
+  vignetteDarkness?: number;
+  chromaticBaseOffset?: number;
+  chromaticMaxOffset?: number;
+}
+
+interface ComposerPassBundle {
+  godRaysPass: GodRaysPass;
+  bloomPass: UnrealBloomPass;
+  hueSatPass: ShaderPass;
+  chromaticPass: ShaderPass;
+  vignettePass: ShaderPass;
+  rainbowPass: ShaderPass;
+}
+
+type WatershedComposer = EffectComposer & { userData: ComposerPassBundle };
 
 /**
  * PostProcessingPipeline - Imperative EffectComposer for R3F v9
@@ -183,7 +216,7 @@ export function PostProcessingPipeline({
 
   chromaticBaseOffset = 0.001,
   chromaticMaxOffset = 0.002,
-}) {
+}: PostProcessingPipelineProps) {
   const { gl, scene, camera, size } = useThree();
   const { config } = useLOD();
   const { timeOfDay, currentBiome } = useBiome();
@@ -202,8 +235,8 @@ export function PostProcessingPipeline({
 
   // Listen for boost events
   useEffect(() => {
-    const onBoost = (e) => {
-      const detail = e.detail || {};
+    const onBoost = (e: Event) => {
+      const detail = (e as CustomEvent<{ duration?: number; intensity?: number }>).detail || {};
       boostRef.current.active = detail.duration ?? 0.8;
       boostRef.current.intensity = detail.intensity ?? 1.5;
     };
@@ -214,8 +247,8 @@ export function PostProcessingPipeline({
   // Listen for weather changes — desaturates and softens the scene under
   // overcast/storm, and tightens the vignette for stormy drama.
   useEffect(() => {
-    const onWeatherUpdate = (e) => {
-      const incoming = e?.detail?.type;
+    const onWeatherUpdate = (e: Event) => {
+      const incoming = (e as CustomEvent<{ type?: string }>)?.detail?.type;
       if (typeof incoming === 'string') setWeatherType(incoming);
     };
     window.addEventListener('weather-update', onWeatherUpdate);
@@ -223,55 +256,55 @@ export function PostProcessingPipeline({
   }, []);
 
   // Build composer once gl/scene/camera are ready
-  const composer = useMemo(() => {
+  const composer = useMemo((): WatershedComposer | null => {
     if (!gl || !scene || !camera) return null;
 
-    const composer = new EffectComposer(gl);
-    composer.renderTarget1.depthBuffer = true;
-    composer.renderTarget2.depthBuffer = true;
-    composer.renderTarget1.depthTexture = new THREE.DepthTexture(size.width, size.height, THREE.UnsignedShortType);
-    composer.renderTarget2.depthTexture = new THREE.DepthTexture(size.width, size.height, THREE.UnsignedShortType);
-    composer.addPass(new RenderPass(scene, camera));
+    const watershedComposer = new EffectComposer(gl) as WatershedComposer;
+    watershedComposer.renderTarget1.depthBuffer = true;
+    watershedComposer.renderTarget2.depthBuffer = true;
+    watershedComposer.renderTarget1.depthTexture = new THREE.DepthTexture(size.width, size.height, THREE.UnsignedShortType);
+    watershedComposer.renderTarget2.depthTexture = new THREE.DepthTexture(size.width, size.height, THREE.UnsignedShortType);
+    watershedComposer.addPass(new RenderPass(scene, camera));
 
     const resolution = new THREE.Vector2(size.width, size.height);
 
     // Volumetric god rays (slot canyons)
     const godRaysPass = new GodRaysPass();
     godRaysPass.enabled = false;
-    composer.addPass(godRaysPass);
+    watershedComposer.addPass(godRaysPass);
 
     // Bloom
     const strength = bloomIntensity;
     const radius = bloomRadius;
     const threshold = bloomThreshold;
     const bloomPass = new UnrealBloomPass(resolution, strength, radius, threshold);
-    composer.addPass(bloomPass);
+    watershedComposer.addPass(bloomPass);
 
     // Hue / Saturation (speed-based desaturation)
     const hueSatPass = new ShaderPass(HueSaturationShader);
     hueSatPass.uniforms.hue.value = 0;
     hueSatPass.uniforms.saturation.value = 0;
-    composer.addPass(hueSatPass);
+    watershedComposer.addPass(hueSatPass);
 
     // Chromatic aberration
     const chromaticPass = new ShaderPass(CHROMATIC_ABERRATION_SHADER);
     chromaticPass.uniforms.amount.value = chromaticBaseOffset;
-    composer.addPass(chromaticPass);
+    watershedComposer.addPass(chromaticPass);
 
     // Vignette
     const vignettePass = new ShaderPass(VignetteShader);
     vignettePass.uniforms.offset.value = vignetteOffset;
     vignettePass.uniforms.darkness.value = vignetteDarkness;
-    composer.addPass(vignettePass);
+    watershedComposer.addPass(vignettePass);
 
     // Rainbow god-ray overlay (waterfall mist prismatic arc)
     const rainbowPass = new ShaderPass(RAINBOW_SHADER);
     rainbowPass.uniforms.intensity.value = 0;
     rainbowPass.uniforms.aspectRatio.value = size.width / Math.max(1, size.height);
-    composer.addPass(rainbowPass);
+    watershedComposer.addPass(rainbowPass);
 
     // Store passes for imperative updates
-    composer.userData = {
+    watershedComposer.userData = {
       godRaysPass,
       bloomPass,
       hueSatPass,
@@ -280,7 +313,7 @@ export function PostProcessingPipeline({
       rainbowPass,
     };
 
-    return composer;
+    return watershedComposer;
   }, [gl, scene, camera, size.height, size.width]);
 
   // Handle resize
@@ -322,7 +355,9 @@ export function PostProcessingPipeline({
 
     // Biome/weather mood — slot canyons get a more artistic, claustrophobic
     // vignette; overcast/storm desaturate and soften the whole frame.
+    // Delta finale: soft bloom/vignette bias for golden-hour beach landing.
     const isSlotCanyon = currentBiome?.id === 'slotCanyon';
+    const isDelta = currentBiome?.id === 'delta';
     const overcastBlend = weatherType === 'storm' ? 1
       : weatherType === 'overcast' ? 0.6
       : weatherType === 'fog' ? 0.35
@@ -334,8 +369,8 @@ export function PostProcessingPipeline({
     const targetChromatic =
       chromaticBaseOffset + (chromaticMaxOffset - chromaticBaseOffset) * speedFactor + boostScale * 0.0025 + waterfallBoost * 0.0009;
 
-    // Saturation target
-    let targetSaturation = 1.0;
+    // Saturation target — delta keeps warmer saturation at low speed
+    let targetSaturation = isDelta ? 1.08 : 1.0;
     if (velocity > 5) {
       if (velocity <= 15) {
         targetSaturation = 1.0 - ((velocity - 5) / 10) * 0.3;
@@ -344,6 +379,7 @@ export function PostProcessingPipeline({
       } else {
         targetSaturation = 0.5;
       }
+      if (isDelta) targetSaturation = Math.min(1.1, targetSaturation + 0.12);
     }
     targetSaturation = Math.min(1, targetSaturation + boostScale * 0.15);
     // Overcast/storm/fog wash the color out of the whole scene.
@@ -361,7 +397,7 @@ export function PostProcessingPipeline({
     const sprintVignetteBoost = isSprintingAtSpeed ? 0.18 : 0;
     // Slot canyons get a deliberately tighter, more cinematic vignette to sell
     // the claustrophobic walls; storms tighten it further for drama.
-    const biomeVignetteBoost = (isSlotCanyon ? 0.12 : 0) + overcastBlend * 0.08;
+    const biomeVignetteBoost = (isSlotCanyon ? 0.12 : 0) + (isDelta ? 0.06 : 0) + overcastBlend * 0.08;
     const targetVignetteBoost = (velocity > 25 * 0.9 ? 0.3 : 0) + waterfallBoost * 0.08 + sprintVignetteBoost + biomeVignetteBoost;
 
     // Smooth transitions
@@ -374,6 +410,10 @@ export function PostProcessingPipeline({
     // live via pass.enabled; resolution/multisampling stay on the LOD path.
     if (passes.bloomPass) {
       passes.bloomPass.enabled = effectPresence.bloom;
+      if (isDelta && passes.bloomPass.enabled && typeof passes.bloomPass.strength === 'number') {
+        // Soft sunset bloom bias — brighter water highlights without blowing highlights.
+        passes.bloomPass.strength = bloomIntensity * 1.15;
+      }
     }
     if (passes.vignettePass) {
       passes.vignettePass.enabled = effectPresence.vignette;

@@ -1,0 +1,48 @@
+/* Responsive */
+@media (max-width: 768px) {
+  .ui-card,
+  .start-menu-card,
+  .pause-menu-card {
+    padding: 32px 24px;
+    margin: 20px;
+  }
+
+  .start-menu-controls-hint {
+    grid-template-columns: 1fr;
+  }
+
+  .start-button,
+  .restart-button,
+  .confirm-yes,
+  .confirm-no,
+  .start-menu-start-btn,
+  .start-menu-settings-btn,
+  .start-menu-back-btn,
+  .pause-menu-resume-btn,
+  .pause-menu-restart-btn,
+  .pause-menu-settings-btn,
+  .pause-menu-quit-btn,
+  .pause-menu-back-btn {
+    padding: 14px 24px;
+    font-size: 15px;
+    min-height: 48px;
+  }
+
+  .key {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .key-wide {
+    width: 60px;
+  }
+}
+
+/* High DPI Displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .crosshair::before,
+  .crosshair::after {
+    background: #fff;
+  }
+}

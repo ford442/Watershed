@@ -316,6 +316,7 @@ describe('createGameRenderer', () => {
     expect(renderer.shadowMap.enabled).toBe(true);
     expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
     expect(getRendererShadowMapSize(renderer)).toBe(2048);
+    expect(renderer.logarithmicDepthBuffer).toBeFalsy();
     renderer.dispose();
   });
 

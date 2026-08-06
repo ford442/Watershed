@@ -40,9 +40,15 @@ export interface LODConfig {
 }
 
 /** Per-quality budgets — exported for wiring guard tests. */
+/**
+ * Per-quality budgets. `shadowMapSize` baselines match
+ * `deriveRendererContextOptions()` (see RENDERER.md). Live lights prefer the
+ * derived size (DPR-aware on ultra); these values are the static LOD fallback.
+ */
 export const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   low: {
     particleDensity: 0.4,
+    // Shadows off at Canvas for low; size retained for adaptive upgrades.
     shadowMapSize: 1024,
     shadowBias: -0.0015,
     shadowNormalBias: 0.025,
@@ -60,7 +66,7 @@ export const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   },
   medium: {
     particleDensity: 0.7,
-    shadowMapSize: 2048,
+    shadowMapSize: 1024,
     shadowBias: -0.0009,
     shadowNormalBias: 0.018,
     enableReflections: false,
@@ -77,7 +83,7 @@ export const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   },
   high: {
     particleDensity: 1.0,
-    shadowMapSize: 3072,
+    shadowMapSize: 2048,
     shadowBias: -0.0006,
     shadowNormalBias: 0.012,
     enableReflections: true,

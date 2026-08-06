@@ -90,6 +90,22 @@ const SHOTS = [
     segment: 21,
     settleMs: 2_500,
   },
+  {
+    label: '04_delta_open_water',
+    mode: 'topdown',
+    required: false,
+    query: 'map=delta&vehicle=raft&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 6,
+    settleMs: 2_500,
+  },
+  {
+    label: '05_delta_beach',
+    mode: 'topdown',
+    required: false,
+    query: 'map=delta&vehicle=raft&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 21,
+    settleMs: 2_500,
+  },
 ];
 
 function sleep(ms) {

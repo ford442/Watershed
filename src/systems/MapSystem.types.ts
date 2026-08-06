@@ -96,6 +96,11 @@ export interface LevelSegment {
   };
   launchShelf?: LaunchShelfConfig;
   journeyComplete?: boolean;
+  /**
+   * Force a vehicle swap when the player enters this segment
+   * (e.g. raft at delta entry).
+   */
+  forceVehicle?: 'runner' | 'raft';
   slipperiness?: number;
   treeDensity?: number;
   rockDensity?: 'low' | 'medium' | 'high';
@@ -250,6 +255,8 @@ export interface SegmentProgressionConfig {
   gravityMultiplier?: number;
   /** When true, entering this segment triggers the journey-complete sequence. */
   journeyComplete?: boolean;
+  /** Force vehicle swap on segment entry (delta raft launch, etc.). */
+  forceVehicle?: 'runner' | 'raft';
   /** Authored decoration positions (array) or procedural density counts (number). */
   decorations?: Record<string, number | DecorationPlacement[]>;
   /** Optional launch-shelf gameplay trigger for waterfall set-pieces. */

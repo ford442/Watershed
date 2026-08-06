@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../systems/LODManager';
 import { useSunPosition } from '../systems/SunPositionSystem';
+import { deriveRendererContextOptions } from '../rendering';
 import { BIOME_LIGHTING } from './constants';
 
 interface SceneLightingProps {
@@ -36,8 +37,19 @@ export default function SceneLighting({
   playerVelocityRef,
   enabled,
 }: SceneLightingProps) {
-  const { config: lodConfig } = useLOD();
+  const { quality, config: lodConfig } = useLOD();
   const { sunWorldPosition } = useSunPosition();
+
+  // Prefer the renderer quality contract (DPR-aware ultra map size; shadows off on low).
+  const shadowContract = useMemo(
+    () =>
+      deriveRendererContextOptions(quality, {
+        devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+      }),
+    [quality],
+  );
+  const castShadows = shadowContract.shadowMode !== 'off';
+  const shadowMapSize = shadowContract.shadowMapSize ?? lodConfig.shadowMapSize;
 
   const L = BIOME_LIGHTING[biome] ?? BIOME_LIGHTING.canyonSummer;
   const isTightCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
@@ -111,8 +123,8 @@ export default function SceneLighting({
         color={L.dirColor}
         position={sharedSunPosition}
         intensity={L.dirIntensity}
-        castShadow
-        shadow-mapSize={[lodConfig.shadowMapSize, lodConfig.shadowMapSize]}
+        castShadow={castShadows}
+        shadow-mapSize={[shadowMapSize, shadowMapSize]}
         shadow-bias={lodConfig.shadowBias}
         shadow-normalBias={lodConfig.shadowNormalBias}
         shadow-camera-near={1}
