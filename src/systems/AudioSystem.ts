@@ -108,6 +108,8 @@ const FALLBACK_URLS: Record<string, string> = {};
 export class AudioManager {
   private listener: THREE.AudioListener;
   private loader: THREE.AudioLoader;
+  /** Isolated from THREE.DefaultLoadingManager so boot SFX preload does not block the UI loader. */
+  private readonly audioLoadingManager = new THREE.LoadingManager();
   private audioContext: AudioContext | null = null;
   private sounds: Map<string, AudioBuffer> = new Map();
   private activeSounds: Map<string, ActiveSound[]> = new Map();
@@ -148,8 +150,8 @@ export class AudioManager {
     this.listener = new THREE.AudioListener();
     camera.add(this.listener);
     
-    // Create audio loader
-    this.loader = new THREE.AudioLoader();
+    // Create audio loader (private manager — avoid polluting drei's useProgress overlay)
+    this.loader = new THREE.AudioLoader(this.audioLoadingManager);
     
     // Cache the underlying Web Audio context for introspection
     this.audioContext = this.listener.context as AudioContext;

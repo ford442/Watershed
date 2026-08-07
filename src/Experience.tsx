@@ -5,6 +5,7 @@ import { LODProvider, PerformanceMonitor } from './systems/LODManager';
 import { SunPositionProvider } from './systems/SunPositionSystem';
 import PerfCheckpointMonitor from './debug/PerfCheckpointMonitor';
 import RendererDiagnosticsMonitor from './rendering/RendererDiagnosticsMonitor';
+import BootAssetPreloader from './components/BootAssetPreloader';
 import InnerExperience from './experience/InnerExperience';
 import { NOOP_DEBUG } from './experience/constants';
 import { initShelfLaunchScoringListener } from './systems/LaunchScoringSession';
@@ -47,6 +48,7 @@ export default function Experience({
   return (
     <>
       {isDebug && <Stats />}
+      <BootAssetPreloader />
       <KeyboardControls map={keyboardMap}>
         <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>
           <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>

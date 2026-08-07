@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import Experience from './Experience';
 import { Loader } from './components/Loader';
+import { useProgress } from '@react-three/drei';
 import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
@@ -93,7 +94,10 @@ function App() {
     parseRendererPreference()
   );
   const qualityPreset = useQualityPreset();
+  const { active: assetsLoading } = useProgress();
   const [canvasEpoch, setCanvasEpoch] = useState(0);
+  const [canvasReady, setCanvasReady] = useState(false);
+  const bootReady = canvasReady && !assetsLoading;
   const [webglRecovering, setWebglRecovering] = useState(false);
   const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
     devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
@@ -116,6 +120,10 @@ function App() {
         .catch((err) => console.error('[App] Failed to load LevelEditor:', err));
     }
   }, []);
+
+  useEffect(() => {
+    setCanvasReady(false);
+  }, [canvasEpoch]);
 
   useEffect(() => {
     initPersistence(getActiveRunKey(selectedMapId));
@@ -316,13 +324,14 @@ function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.key === 'Enter') {
+        if (!bootReady) return;
         e.preventDefault();
         handleStart(selectedMapId, { launchHour: undefined, placedCacheIds: [] });
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleStart, phase, selectedMapId]);
+  }, [bootReady, handleStart, phase, selectedMapId]);
 
   return (
     <ErrorBoundary>
@@ -364,6 +373,7 @@ function App() {
             frameloop="always"
             onCreated={({ gl }) => {
               debug.runStage('visualization', () => undefined);
+              setCanvasReady(true);
               const canvas = gl.domElement;
               const onContextLost = (event: Event) => {
                 event.preventDefault();
@@ -426,7 +436,9 @@ function App() {
           )}
 
           {/* Asset loading overlay */}
-          {debug.isStageEnabled('uiOverlay') && !skipLoader && <Loader />}
+          {debug.isStageEnabled('uiOverlay') && !skipLoader && (
+            <Loader gamePhase={phase} canvasReady={canvasReady} worldEnabled={worldEnabled} />
+          )}
 
           {/* Goal 4: Start Menu — shown before first run */}
           {debug.isStageEnabled('uiOverlay') && phase === 'menu' && !settingsOpen && (
@@ -435,6 +447,7 @@ function App() {
               selectedMapId={selectedMapId}
               onSelectMap={handleSelectMap}
               onOpenOptions={() => setSettingsOpen(true)}
+              bootReady={bootReady}
             />
           )}
           {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}

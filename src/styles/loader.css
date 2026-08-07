@@ -60,3 +60,13 @@
   font-size: 14px;
   opacity: 0.7;
 }
+
+.loader-item--warning {
+  margin-top: 12px;
+  color: #fbbf24;
+  opacity: 0.95;
+}
+
+.loader-overlay.ready-state .loader-text {
+  color: #4fd1c7;
+}
