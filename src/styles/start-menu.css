@@ -351,6 +351,28 @@
   letter-spacing: 0.05em;
 }
 
+.start-menu-boot-status {
+  margin: 12px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 200, 120, 0.85);
+}
+
+.start-menu-boot-status--ready {
+  color: rgba(79, 209, 199, 0.95);
+}
+
+.start-menu-start-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  filter: grayscale(0.2);
+}
+
+.start-menu-start-btn:disabled .start-menu-keyhint {
+  display: none;
+}
+
 .start-menu-buttons {
   display: flex;
   flex-direction: column;

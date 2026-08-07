@@ -41,6 +41,8 @@ interface StartMenuProps {
   onSelectMap: (mapId: MapRegistryId) => void;
   /** Open the full Options panel (audio, controls/rebinding, graphics). */
   onOpenOptions: () => void;
+  /** False while the boot loader is still warming WebGL / preloading assets. */
+  bootReady?: boolean;
 }
 
 const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
@@ -65,6 +67,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   selectedMapId,
   onSelectMap,
   onOpenOptions,
+  bootReady = true,
 }) => {
   const completedMaps = useMemo(() => getCompletedMaps(), []);
   const lastMapId = useMemo(() => getLastMapId(), []);
@@ -118,6 +121,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           <p className="start-menu-tagline">
             From alpine source to valley delta — shed the water.
           </p>
+          {!bootReady && (
+            <p className="start-menu-boot-status" role="status" aria-live="polite">
+              Preparing game assets…
+            </p>
+          )}
+          {bootReady && (
+            <p className="start-menu-boot-status start-menu-boot-status--ready" role="status">
+              Ready — press START RUN or Enter
+            </p>
+          )}
         </div>
 
         {(
@@ -229,11 +242,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <button
               className="start-menu-start-btn"
               onClick={() => onStart(effectiveMapId, startOptions)}
-              aria-label="Start Game - Click or Press Enter"
+              aria-label={bootReady ? 'Start Game - Click or Press Enter' : 'Preparing game assets'}
               autoFocus
+              disabled={!bootReady}
             >
-              {playMode === 'journey' ? 'START JOURNEY' : 'START RUN'}
-              <span className="start-menu-keyhint">ENTER</span>
+              {bootReady
+                ? playMode === 'journey'
+                  ? 'START JOURNEY'
+                  : 'START RUN'
+                : 'PREPARING…'}
+              {bootReady && <span className="start-menu-keyhint">ENTER</span>}
             </button>
 
             <button

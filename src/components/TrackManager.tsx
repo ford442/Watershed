@@ -9,6 +9,7 @@ import React, {
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
+import { TRACK_ROCK_TEXTURE_PATHS } from '../constants/trackTextures';
 import TrackSegment from './TrackSegment';
 import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
@@ -234,11 +235,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
   // PBR texture loading
   const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
-    './Rock031_1K-JPG_Color.jpg',
-    './Rock031_1K-JPG_NormalGL.jpg',
-    './Rock031_1K-JPG_Roughness.jpg',
-    './Rock031_1K-JPG_AmbientOcclusion.jpg',
-    './Rock031_1K-JPG_Displacement.jpg',
+    ...TRACK_ROCK_TEXTURE_PATHS,
   ]);
 
   // Fallback texture generator
