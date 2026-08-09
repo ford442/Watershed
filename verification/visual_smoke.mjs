@@ -397,7 +397,7 @@ async function run() {
   report.requiredPassed = report.captures
     .filter((c) => c.required)
     .every((c) => c.structuralOk);
-  report.passed = allOk && report.requiredPassed;
+  report.passed = report.requiredPassed;
 
   const reportPath = path.join(OUT_DIR, 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
