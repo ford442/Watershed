@@ -17,7 +17,7 @@ WebGL: INVALID_OPERATION: useProgram: program not valid
 
 The custom shader modifications in two files are failing to compile:
 
-1. **src/utils/RiverShader.js** - Material extension for wetness/moss/caustics
+1. **src/utils/RiverShader.ts** - Material extension for wetness/moss/caustics
 2. **src/components/FlowingWater.jsx** - Water surface shader
 
 ### Secondary Issue: Geometry Creation with Invalid Values

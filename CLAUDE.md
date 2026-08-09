@@ -289,7 +289,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/components/TrackManager.tsx` | Segment pool, map-driven generation |
 | `src/components/TrackSegment/` | Canyon geometry, decoration placement |
 | `src/components/FlowingWater.jsx` | Water shader uniforms and GLSL |
-| `src/utils/RiverShader.js` | Wetness/moss/caustics injection |
+| `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
 | `src/vehicles/RaftVehicle/` | Raft buoyancy / paddle |
