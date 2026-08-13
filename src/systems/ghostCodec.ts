@@ -3,8 +3,12 @@
  *
  * Each sample is 7 floats: position (x,y,z) + quaternion (x,y,z,w).
  * First sample is absolute; subsequent samples store deltas from the previous.
+ *
+ * Codec version history:
+ *   1 — Initial release: 7-float delta-encoded samples, base64 payload.
  */
 
+export const GHOST_CODEC_VERSION = 1 as const;
 export const GHOST_FLOATS_PER_SAMPLE = 7;
 export const GHOST_BYTES_PER_SAMPLE = GHOST_FLOATS_PER_SAMPLE * 4;
 export const GHOST_SAMPLE_HZ = 10;

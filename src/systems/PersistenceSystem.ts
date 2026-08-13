@@ -23,6 +23,8 @@ const PERSIST_DEBOUNCE_MS = 400;
 export interface RunBest {
   bestScore: number;
   bestAirTime: number;
+  /** Fastest completion time in milliseconds (lower = better). Absent until first timed finish. */
+  bestTimeMs?: number;
   ghostData?: string;
 }
 
@@ -209,9 +211,18 @@ export function getRunBest(runKey: string): RunBest {
 
 export function updateRunBest(runKey: string, patch: Partial<RunBest>): RunBest {
   const current = getRunBest(runKey);
+
+  let bestTimeMs: number | undefined;
+  if (patch.bestTimeMs !== undefined && current.bestTimeMs !== undefined) {
+    bestTimeMs = Math.min(current.bestTimeMs, patch.bestTimeMs);
+  } else {
+    bestTimeMs = patch.bestTimeMs ?? current.bestTimeMs;
+  }
+
   const next: RunBest = {
     bestScore: Math.max(current.bestScore, patch.bestScore ?? current.bestScore),
     bestAirTime: Math.max(current.bestAirTime, patch.bestAirTime ?? current.bestAirTime),
+    bestTimeMs,
     ghostData: patch.ghostData ?? current.ghostData,
   };
 
@@ -221,6 +232,23 @@ export function updateRunBest(runKey: string, patch: Partial<RunBest>): RunBest 
   flushPersistence();
 
   return next;
+}
+
+/**
+ * Persist a ghost payload only when the new run time is a personal best (lower is better).
+ * Returns true when the ghost was updated, false when the existing PB is retained.
+ */
+export function updatePBGhost(runKey: string, timeMs: number, ghostData: string): boolean {
+  const current = getRunBest(runKey);
+  if (current.bestTimeMs !== undefined && current.bestTimeMs <= timeMs) {
+    return false;
+  }
+  touchCache((data) => {
+    const run = data.runs[runKey] ?? { bestScore: 0, bestAirTime: 0 };
+    data.runs[runKey] = { ...run, bestTimeMs: timeMs, ghostData };
+  });
+  flushPersistence();
+  return true;
 }
 
 export function setRunGhostData(runKey: string, ghostData: string): void {
