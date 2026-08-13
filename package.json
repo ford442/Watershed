@@ -45,7 +45,8 @@
     "build:wasm_colab": "cd emscripten && bash build_colab.sh",
     "build:wasm:threads": "cd emscripten && bash build.sh --threads",
     "build:wasm:threads_colab": "cd emscripten && bash build_colab.sh --threads",
-    "build:wasm:debug": "cd emscripten && bash build.sh --debug"
+    "build:wasm:debug": "cd emscripten && bash build.sh --debug",
+    "test:wasm:parity": "WATERSHED_WASM_INTEGRATION=1 vitest run src/physics/__tests__/waterForceParity.test.ts"
   },
   "browserslist": {
     "production": [

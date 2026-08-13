@@ -2,6 +2,11 @@ import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { DebugStageController, DebugStageId, DebugStageStatus } from '../debug/debugStages';
 import { getPerfMetrics, subscribePerfMetrics } from '../debug/perfMetrics';
 import { getRendererDiagnostics, subscribeRendererDiagnostics } from '../rendering/rendererState';
+import {
+  getPhysicsWorkerStatus,
+  subscribePhysicsWorkerStatus,
+} from '../physics/physicsWorkerRegistry';
+import { PHYSICS_WORKER_REASON_LABELS } from '../utils/physicsWorkerFlag';
 import type { RendererPreference } from '../rendering/types';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -125,6 +130,11 @@ export function DebugPanel({
   // Subscribe to live perf metrics from PerfCheckpointMonitor (inside Canvas)
   const metrics = useSyncExternalStore(subscribePerfMetrics, getPerfMetrics);
   const rendererDiagnostics = useSyncExternalStore(subscribeRendererDiagnostics, getRendererDiagnostics);
+  const physicsWorker = useSyncExternalStore(
+    subscribePhysicsWorkerStatus,
+    getPhysicsWorkerStatus,
+    getPhysicsWorkerStatus,
+  );
 
   if (!debug.debugEnabled) return null;
 
@@ -227,6 +237,51 @@ export function DebugPanel({
       <MetricRow
         label="Textures (GPU)"
         value={metrics.textures === 0 ? '—' : String(metrics.textures)}
+        t="ok"
+      />
+
+      <Divider />
+
+      {/* ── Physics worker / native water ───────────────────────────────── */}
+      <SectionTitle>Physics worker — Rapier + watershed_native</SectionTitle>
+      <MetricRow
+        label="Worker"
+        value={
+          physicsWorker.active
+            ? 'active'
+            : physicsWorker.enabled
+              ? 'starting'
+              : 'off'
+        }
+        t={physicsWorker.enabled ? (physicsWorker.active ? 'ok' : 'warn') : 'warn'}
+        hint={
+          physicsWorker.reason
+            ? PHYSICS_WORKER_REASON_LABELS[physicsWorker.reason]
+            : 'no vehicle mounted yet'
+        }
+      />
+      <MetricRow
+        label="Force path"
+        value={physicsWorker.path}
+        t={physicsWorker.path === 'fallback' ? 'warn' : 'ok'}
+        hint={
+          physicsWorker.path === 'fallback'
+            ? 'watershed_native.wasm did not load — TypeScript force math in use'
+            : undefined
+        }
+      />
+      <MetricRow
+        label="Last batch"
+        value={
+          physicsWorker.lastBatchMicros == null
+            ? '—'
+            : `${physicsWorker.lastBatchMicros} µs`
+        }
+        t="ok"
+      />
+      <MetricRow
+        label="SWE displacement"
+        value={physicsWorker.sweEnabled ? (physicsWorker.sweGrid ?? 'on') : 'off (quality)'}
         t="ok"
       />
 

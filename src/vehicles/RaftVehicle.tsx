@@ -10,11 +10,13 @@ import { buildRaftWorkerWaterForceConfig } from '../physics/physicsWorkerConfig'
 import {
   getPhysicsWorkerTickParams,
   setPhysicsWorkerActive,
+  setPhysicsWorkerDecision,
   setPhysicsWorkerDiagnostics,
 } from '../physics/physicsWorkerRegistry';
 import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
 import type { Vec3Tuple, WorkerRaftState } from '../physics/rapierWorkerProtocol';
-import { isPhysicsWorkerEnabled } from '../utils/physicsWorkerFlag';
+import { resolvePhysicsWorker } from '../utils/physicsWorkerFlag';
+import { useSettingsStore } from '../systems/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
@@ -26,7 +28,19 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const raftMaterialRef = useRef<any>(null);
   const { camera } = useThree();
   const { world } = useRapier();
-  const useWorkerPhysics = isPhysicsWorkerEnabled();
+  // Default-on: the worker runs unless the browser can't host it, the player
+  // turned it off, or ?physicsWorker=0 is set. Read once per mount — switching
+  // mid-session would strand the Rapier body between two authorities.
+  const physicsWorkerPreference = useSettingsStore((s) => s.physicsWorker);
+  const workerDecision = React.useMemo(
+    () => resolvePhysicsWorker({ preference: physicsWorkerPreference }),
+    [physicsWorkerPreference],
+  );
+  const useWorkerPhysics = workerDecision.enabled;
+
+  useEffect(() => {
+    setPhysicsWorkerDecision(workerDecision.enabled, workerDecision.reason);
+  }, [workerDecision]);
 
   const controls = usePlayerControls();
   const raftVehicle = useRef(new RaftVehicleClass());

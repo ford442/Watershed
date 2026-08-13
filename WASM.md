@@ -28,9 +28,12 @@ TypeScript bindings are in `src/systems/WatershedWasm.ts`.
 
 ```
 emscripten/
-├── main.cpp          # C++ source — all exported functions
-├── build.sh          # Bash build script (wraps em++)
-└── CMakeLists.txt    # CMake build configuration (alternative to build.sh)
+├── watershed_native.h # Shared declarations, constants, value types
+├── forces.cpp        # Buoyancy / drag / flow / batched water forces
+├── swe.cpp           # Shallow-water solver + heap grid helpers
+├── bindings.cpp      # getVersion() + the Embind surface (the ABI)
+├── build.sh          # Bash build script (wraps CMake)
+└── CMakeLists.txt    # CMake build configuration — ALL compile/link flags live here
 
 src/systems/
 └── WatershedWasm.ts  # TypeScript bindings + SWEGrid helper
@@ -100,7 +103,20 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module version integer. Bump when the API changes.
+Returns the module ABI version integer. Bump in `bindings.cpp` whenever the
+exported surface or a batch stride changes.
+
+| Version | Change |
+|---------|--------|
+| 1 | Initial buoyancy / drag / flow surface |
+| 2 | Batched `computeWaterForcesBatch` + SWE grid helpers |
+| 3 | Split into `forces.cpp` / `swe.cpp` / `bindings.cpp` (no signature changes) |
+
+### Adding a translation unit
+
+Add the `.cpp` to `set(SOURCES …)` in `CMakeLists.txt` **and** to the `em++`
+invocation in `build_colab.sh`, declare its exports in `watershed_native.h`, and
+bind them in `bindings.cpp`. Never put compile or link flags in a shell script.
 
 ### `computeBuoyancy(submergedVolume, waterDensity, gravity): number`
 
@@ -213,9 +229,23 @@ const grid = createSWEGrid(wasm, 32, 32, 0.5);
 grid.dispose();
 ```
 
-Pure-TypeScript fallbacks (`buoyancyFallback`, `dragForceFallback`) are also
-exported and match the C++ implementations exactly — useful in unit tests where
-the WASM module is unavailable.
+Pure-TypeScript fallbacks (`buoyancyFallback`, `dragForceFallback`,
+`calculateWaterForceFallback`) are also exported and match the C++
+implementations — they are what runs when `watershed_native.wasm` fails to load,
+so the two must stay in lockstep.
+
+### Parity + integration tests
+
+```bash
+pnpm test                 # includes the TS-side fixture pins (no WASM needed)
+pnpm test:wasm            # WATERSHED_WASM_INTEGRATION=1 — loads the built module
+pnpm test:wasm:parity     # native vs TypeScript force math, per fixture
+```
+
+`pnpm test:wasm` and `pnpm test:wasm:parity` require `pnpm build:wasm` to have
+produced `public/watershed_native.{js,wasm}` first; without the env var the
+native blocks are skipped so CI stays green on a machine with no Emscripten.
+Fixtures live in `src/physics/__tests__/waterForceFixtures.ts`.
 
 ---
 

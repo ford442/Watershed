@@ -26,6 +26,7 @@ import {
   type SettingsQuality,
   type VolumeChannel,
 } from '../systems/settingsDerive';
+import type { PhysicsWorkerPreference } from '../utils/physicsWorkerFlag';
 
 interface SettingsPanelProps {
   /** Called when the player dismisses the panel (returns to the parent menu). */
@@ -104,6 +105,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const setSensitivity = useSettingsStore((s) => s.setSensitivity);
   const setInvertY = useSettingsStore((s) => s.setInvertY);
   const setQuality = useSettingsStore((s) => s.setQuality);
+  const physicsWorker = useSettingsStore((s) => s.physicsWorker);
+  const setPhysicsWorker = useSettingsStore((s) => s.setPhysicsWorker);
   const bindAction = useSettingsStore((s) => s.bindAction);
   const unbindAction = useSettingsStore((s) => s.unbindAction);
   const resetToDefaults = useSettingsStore((s) => s.resetToDefaults);
@@ -273,6 +276,37 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         </div>
         <p className="settings-panel-note">
           Effect toggles apply immediately. Resolution changes apply on next map load.
+          Water surface displacement is off on Low.
+        </p>
+      </section>
+
+      <section className="settings-panel-section" aria-label="Physics">
+        <h3 className="settings-panel-section-title">Physics</h3>
+        <div className="settings-panel-row">
+          <label className="settings-panel-label">Physics worker</label>
+          <div className="settings-panel-quality-buttons">
+            {(
+              [
+                ['auto', 'Auto'],
+                ['on', 'On'],
+                ['off', 'Off'],
+              ] as [PhysicsWorkerPreference, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`settings-panel-quality-btn ${physicsWorker === value ? 'active' : ''}`}
+                onClick={() => setPhysicsWorker(value)}
+                aria-pressed={physicsWorker === value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="settings-panel-note">
+          Auto runs Rapier and the native water forces in a worker wherever the browser
+          supports it. Turn it off if the raft feels wrong; applies on next map load.
         </p>
       </section>
 

@@ -727,6 +727,10 @@ function isWaterShaderMaterial(
     if (mat.uniforms.sweEnabled) {
       mat.uniforms.sweEnabled.value = swe.enabled && swe.texture ? 1.0 : 0.0;
     }
+    if (mat.uniforms.sweDisplacementScale) {
+      // Quality-budgeted amplitude (sweQuality.ts) — 0 on the low preset.
+      mat.uniforms.sweDisplacementScale.value = swe.displacementScale;
+    }
 
     // Planar reflection texture published by WaterReflection (null when pass unmounted)
     if (mat.uniforms.reflectionTexture) {
