@@ -2,15 +2,12 @@ import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import * as THREE from 'three';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeDecorationProps } from './types';
 
-export interface RockFoamProps {
-  transforms?: PlacementTransform[];
-  flowSpeed?: number;
-}
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
-export default function RockFoam({ transforms, flowSpeed = 1.0 }: RockFoamProps) {
-  // Geometry: Plane (1x1)
+export default function RockFoam({ transforms, flowSpeed = 1.0 }: BiomeDecorationProps) {
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   const material = useMemo(() => {
@@ -21,7 +18,7 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: RockFoamProps)
       uniforms: {
         time: { value: 0 },
         flowSpeed: { value: flowSpeed },
-        colorBase: { value: new THREE.Color('#d8f0f4') }, // Cool white-blue matching water foam
+        colorBase: { value: new THREE.Color('#d8f0f4') },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -36,7 +33,6 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: RockFoamProps)
         uniform vec3 colorBase;
         varying vec2 vUv;
 
-        // Simple Noise
         float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
         float noise(vec2 p) {
             vec2 i = floor(p);
@@ -47,22 +43,17 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: RockFoamProps)
         }
 
         void main() {
-          // Circular Mask
           float dist = distance(vUv, vec2(0.5));
           float mask = smoothstep(0.5, 0.0, dist);
           mask = pow(mask, 2.0);
 
-          // Scrolling Noise
           float flow = time * flowSpeed;
-
           float n1 = noise(vUv * 8.0 + vec2(0.0, -flow * 2.0));
           float n2 = noise(vUv * 3.0 + vec2(0.0, -flow * 0.8));
-
           float foam = n1 * 0.6 + n2 * 0.4;
           foam = smoothstep(0.3, 0.9, foam);
 
           float alpha = mask * foam * 0.6;
-
           gl_FragColor = vec4(colorBase, alpha);
         }
       `
@@ -84,8 +75,8 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: RockFoamProps)
             <Instance
                 key={i}
                 position={t.position}
-                rotation={t.rotation}
-                scale={t.scale}
+                rotation={t.rotation ?? DEFAULT_ROTATION}
+                scale={t.scale ?? DEFAULT_SCALE}
             />
         ))}
     </Instances>

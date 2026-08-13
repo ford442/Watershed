@@ -3,17 +3,19 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
 import { useSunPosition } from '../../systems/SunPositionSystem';
-import type { BiomeDecorationProps } from './types';
-import type { PlacementTransform } from '../TrackSegment/types';
+
+import type { BiomeDecorationTransform, WeatherAwareDecorationProps, WeatherUpdateEvent } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 const MOTES_PER_SHAFT = 6;
 const MAX_DUST_SHAFTS = 24;
 
 // Build a static GPU-driven dust mote field scattered through each shaft's
 // cylindrical volume. Motion (rise + drift + twinkle) is computed entirely in
 // the vertex shader from per-vertex attributes, so no per-frame CPU work.
-const buildDustMotes = (transforms: PlacementTransform[]) => {
+const buildDustMotes = (transforms: BiomeDecorationTransform[]): THREE.BufferGeometry => {
   const shaftCount = Math.min(transforms.length, MAX_DUST_SHAFTS);
   const total = shaftCount * MOTES_PER_SHAFT;
 
@@ -111,7 +113,7 @@ export default function SunShafts({
   transforms,
   flowSpeed = 1.0,
   isSlotCanyon = false,
-}: BiomeDecorationProps) {
+}: WeatherAwareDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dustRef = useRef<THREE.InstancedMesh>(null);
   const motesRef = useRef<THREE.Points>(null);
@@ -123,12 +125,12 @@ export default function SunShafts({
   const [weatherType, setWeatherType] = useState('clear');
 
   useEffect(() => {
-    const onWeatherUpdate = (event: Event) => {
-      const incoming = (event as CustomEvent<{ type?: string }>).detail?.type;
+    const onWeatherUpdate = (event: WeatherUpdateEvent) => {
+      const incoming = event?.detail?.type;
       if (typeof incoming === 'string') setWeatherType(incoming);
     };
-    window.addEventListener('weather-update', onWeatherUpdate);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate);
+    window.addEventListener('weather-update', onWeatherUpdate as EventListener);
+    return () => window.removeEventListener('weather-update', onWeatherUpdate as EventListener);
   }, []);
 
   // Geometry: Cone/Cylinder representing the light beam
@@ -363,19 +365,18 @@ export default function SunShafts({
 
   // Setup Instances
   useEffect(() => {
-    if (!meshRef.current || !transforms || transforms.length === 0) return;
-
     const mesh = meshRef.current;
     const dustMesh = dustRef.current;
+    if (!mesh || !transforms || transforms.length === 0) return;
 
-    transforms.forEach((t, i) => {
+    transforms.forEach((t: BiomeDecorationTransform, i: number) => {
       DUMMY_OBJ.position.copy(t.position);
-      DUMMY_OBJ.rotation.copy(t.rotation);
-      DUMMY_OBJ.scale.copy(t.scale);
+      DUMMY_OBJ.rotation.copy(t.rotation ?? DEFAULT_ROTATION);
+      DUMMY_OBJ.scale.copy(t.scale ?? DEFAULT_SCALE);
       DUMMY_OBJ.updateMatrix();
       mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
       if (dustMesh) {
-        const dustScale = t.scale.clone().multiply(new THREE.Vector3(0.18, 0.55, 0.18));
+        const dustScale = (t.scale ?? DEFAULT_SCALE).clone().multiply(new THREE.Vector3(0.18, 0.55, 0.18));
         DUMMY_OBJ.scale.copy(dustScale);
         DUMMY_OBJ.updateMatrix();
         dustMesh.setMatrixAt(i, DUMMY_OBJ.matrix);

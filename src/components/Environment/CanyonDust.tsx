@@ -2,21 +2,15 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
-import type { BiomeDecorationProps } from './types';
+import type { BiomeDecorationTransform, CanyonDustProps } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
-// Dry/autumn biomes kick up noticeably more dust than lush summer canyons.
 const DUST_DENSITY_BY_BIOME: Record<string, number> = {
   canyonAutumn: 1.8,
   slotCanyon: 1.4,
   cavern: 1.2,
 };
-
-interface CanyonDustProps extends BiomeDecorationProps {
-  count?: number;
-  maxDistance?: number;
-}
 
 export default function CanyonDust({
   transforms,
@@ -134,9 +128,9 @@ export default function CanyonDust({
         DUMMY_OBJ.updateMatrix();
         mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
 
-        scaleData[i * 3] = t?.scale?.x ?? 0.2;
-        scaleData[i * 3 + 1] = t?.scale?.y ?? 0.25;
-        scaleData[i * 3 + 2] = t?.scale?.z ?? 0.2;
+        scaleData[i * 3] = t.scale?.x ?? 0.2;
+        scaleData[i * 3 + 1] = t.scale?.y ?? 0.25;
+        scaleData[i * 3 + 2] = t.scale?.z ?? 0.2;
       } else {
         DUMMY_OBJ.position.set(0, -1000, 0);
         DUMMY_OBJ.updateMatrix();

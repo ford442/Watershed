@@ -2,22 +2,8 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
-import type { BiomeDecorationProps, PlacementTransform } from './types';
-
-type DragonfliesProps = BiomeDecorationProps;
-
-interface SwarmState {
-  base: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: number;
-  phase: number;
-  spiralRadius: number;
-  spiralSpeed: number;
-  spiralVertical: number;
-  angleOffset: number;
-  colorIndex: number;
-  hueJitter: number;
-}
+import type { BiomeDecorationProps } from './types';
+import { materialShaderUserData } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -32,10 +18,7 @@ const hash = (n: number): number => {
 };
 
 // Normalize attribute sets across geometries (fills missing attrs with zeros) before merging.
-const mergeCompatibleGeometries = (
-  geometries: THREE.BufferGeometry[],
-  useGroups = false
-): THREE.BufferGeometry => {
+const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[], useGroups = false): THREE.BufferGeometry => {
   if (!geometries.length) return new THREE.BufferGeometry();
   const normalized = geometries.map((g) => (g.index ? g.toNonIndexed() : g));
   const attrNames = new Set<string>();
@@ -43,8 +26,11 @@ const mergeCompatibleGeometries = (
   normalized.forEach((g) => {
     attrNames.forEach((name) => {
       if (!g.getAttribute(name)) {
-        const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
-        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+        const refGeo = normalized.find((h) => h.getAttribute(name));
+        const positionAttr = g.getAttribute('position');
+        if (!refGeo || !positionAttr) return;
+        const ref = refGeo.getAttribute(name);
+        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(positionAttr.count * ref.itemSize), ref.itemSize));
       }
     });
   });
@@ -77,7 +63,7 @@ const buildWing = (
   height: number,
   hingeX: number,
   frontBack: number,
-  mirrorZ: number
+  mirrorZ: number,
 ): THREE.BufferGeometry => {
   const geo = new THREE.PlaneGeometry(width, height, 2, 1);
   geo.translate(width / 2, 0, 0); // hinge edge at local x=0
@@ -88,7 +74,7 @@ const buildWing = (
   return geo;
 };
 
-export default function Dragonflies({ transforms }: DragonfliesProps) {
+export default function Dragonflies({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const trailRef = useRef<THREE.InstancedMesh>(null);
   const stateRef = useRef<unknown[]>([]);
@@ -224,9 +210,9 @@ if (aFlap != 0.0) {
   }), []);
 
   // Per-instance state: base position, swarm spiral params, flap phase
-  const swarms = useMemo((): SwarmState[] => {
+  const swarms = useMemo(() => {
     if (!transforms) return [];
-    return transforms.map((t: PlacementTransform, i: number): SwarmState => {
+    return transforms.map((t, i) => {
       const seed = t.position.x * 0.37 + t.position.z * 0.29 + i * 1.71;
       return {
         base: t.position.clone(),
@@ -280,10 +266,12 @@ if (aFlap != 0.0) {
     }
   }, [swarms]);
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     const t = state.clock.elapsedTime;
-    bodyMaterial.userData.shader && (bodyMaterial.userData.shader.uniforms.uTime.value = t);
-    wingMaterial.userData.shader && (wingMaterial.userData.shader.uniforms.uTime.value = t);
+    const bodyShader = materialShaderUserData(bodyMaterial).shader;
+    const wingShader = materialShaderUserData(wingMaterial).shader;
+    if (bodyShader?.uniforms.uTime) bodyShader.uniforms.uTime.value = t;
+    if (wingShader?.uniforms.uTime) wingShader.uniforms.uTime.value = t;
 
     if (!meshRef.current || !swarms.length) return;
     const mesh = meshRef.current;

@@ -3,26 +3,15 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeDecorationProps } from './types';
+import { toVegetationMaterial } from './types';
 
 const hash = (n: number): number => {
   const x = Math.sin(n * 9.173) * 43758.5453;
   return x - Math.floor(x);
 };
 
-interface CanyonGrassProps {
-  transforms?: PlacementTransform[];
-}
-
-interface CanyonGrassInstanceData {
-  key: string;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-  color: THREE.Color;
-}
-
-export default function CanyonGrass({ transforms }: CanyonGrassProps) {
+export default function CanyonGrass({ transforms }: BiomeDecorationProps) {
   const grassRef = useRef<THREE.InstancedMesh>(null);
   const safeTransforms = Array.isArray(transforms) ? transforms : [];
 
@@ -53,27 +42,29 @@ export default function CanyonGrass({ transforms }: CanyonGrassProps) {
       side: THREE.DoubleSide,
       vertexColors: true,
     });
-    extendVegetationMaterial(mat as unknown as Parameters<typeof extendVegetationMaterial>[0], { plantHeight: 0.65, windStrength: 0.05, windSpeed: 1.3 });
+    extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: 0.65, windStrength: 0.05, windSpeed: 1.3 });
     return mat;
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(material as unknown as Parameters<typeof updateVegetationMaterial>[0], state.clock.elapsedTime);
+    updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
   });
 
-  const instances = useMemo<CanyonGrassInstanceData[]>(() => safeTransforms.map((transform, index) => {
+  const instances = useMemo(() => safeTransforms.map((transform, index) => {
     const position = transform.position;
+    const rotation = transform.rotation ?? new THREE.Euler();
+    const scale = transform.scale ?? new THREE.Vector3(1, 1, 1);
     const seed = position.x * 0.43 + position.z * 0.29 + index * 1.33;
-    const yaw = transform.rotation.y + (hash(seed + 0.7) - 0.5) * 0.4;
+    const yaw = rotation.y + (hash(seed + 0.7) - 0.5) * 0.4;
     const lean = (hash(seed + 1.4) - 0.5) * 0.35;
     return {
       key: `canyon-grass-${index}`,
       position,
       rotation: new THREE.Euler(lean, yaw, (hash(seed + 2.1) - 0.5) * 0.12),
       scale: new THREE.Vector3(
-        transform.scale.x * (0.85 + hash(seed + 2.9) * 0.35),
-        transform.scale.y * (0.9 + hash(seed + 3.6) * 0.6),
-        transform.scale.z
+        scale.x * (0.85 + hash(seed + 2.9) * 0.35),
+        scale.y * (0.9 + hash(seed + 3.6) * 0.6),
+        scale.z
       ),
       color: new THREE.Color(0xffffff).multiplyScalar(0.82 + hash(seed + 4.2) * 0.25),
     };

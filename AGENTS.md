@@ -33,10 +33,10 @@ App.tsx
             │    └─ SplashSystem
             ├─ VehicleMount → RunnerVehicle | RaftVehicle
             ├─ TrackManager | ReachManager | LevelLoader
-            └─ PostProcessingPipeline.tsx
+            └─ PostProcessingPipeline.jsx
 ```
 
-Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.tsx`**. Water forces live in **`physics/WaterForces.ts`** + **`WaterForceSystem`** / **`WaterFlowForces.tsx`**.
+Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.jsx`**. Water forces live in **`physics/WaterForces.ts`** + **`WaterForceSystem`** / **`WaterFlowForces.tsx`**.
 
 CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; bans renamed/deleted dual stems — see the script).
 
@@ -48,7 +48,7 @@ CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; 
 |-------|------------|---------|
 | UI/Framework | React 19 + TypeScript 5.9 | Component architecture, state |
 | 3D Rendering | Three.js 0.168 + React Three Fiber 9.4 | Scene graph, rendering |
-| Post-processing | `@react-three/postprocessing` + `postprocessing` via `PostProcessingPipeline.tsx` | Bloom, vignette, SSAO, speed FX |
+| Post-processing | `@react-three/postprocessing` + `postprocessing` via `PostProcessingPipeline.jsx` | Bloom, vignette, SSAO, speed FX |
 | Physics | Rapier 0.19 (WASM) via `@react-three/rapier` | Rigid bodies, collisions |
 | Build | Vite 7.3 | Dev server + production bundle → `build/` |
 | Tests | Vitest + Testing Library | Unit / component tests |
@@ -105,12 +105,12 @@ src/
 ├── components/
 │   ├── TrackManager.tsx         # ★ Chunk treadmill (MapSystem-driven)
 │   ├── TrackSegment/            # ★ Canyon geometry + decorations
-│   ├── FlowingWater.tsx         # ★ Water surface GLSL
-│   ├── PostProcessingPipeline.tsx
-│   ├── EnhancedSky.tsx          # useBiome() sky / fog
-│   ├── WaterReflection.tsx
+│   ├── FlowingWater.jsx         # ★ Water surface GLSL
+│   ├── PostProcessingPipeline.jsx
+│   ├── EnhancedSky.jsx          # useBiome() sky / fog
+│   ├── WaterReflection.jsx
 │   ├── WaterFlowForces.tsx      # Segment flow samples → raft impulses
-│   ├── Environment/             # ~34 biome decorations (all `.tsx`)
+│   ├── Environment/             # 25+ biome decorations
 │   ├── Obstacles/ / VFX/ / LevelEditor/
 │   └── GameHUD.tsx / UI.tsx / Loader.tsx / …
 │
@@ -204,8 +204,8 @@ Default WebGL2 (`?renderer=webgl`). WebGPU preference exists but forces WebGL2 b
 | `src/experience/WaterStack.tsx` | Reflection + water force + splash mount points |
 | `src/components/TrackManager.tsx` | Segment pool / map treadmill |
 | `src/components/TrackSegment/` | Canyon meshes + placement |
-| `src/components/FlowingWater.tsx` | Water shader |
-| `src/components/PostProcessingPipeline.tsx` | Live post-processing stack |
+| `src/components/FlowingWater.jsx` | Water shader |
+| `src/components/PostProcessingPipeline.jsx` | Live post-processing stack |
 | `src/vehicles/RunnerVehicle/` / `RaftVehicle/` | Player vehicles |
 | `src/systems/MapSystem.ts` | Maps, chunks, spawn |
 | `src/systems/BiomeSystem.tsx` | Biome context (`useBiome`) |
@@ -227,16 +227,16 @@ node scripts/validate-markdown-paths.js
 
 ### Typecheck surface (honest foundation)
 
-`tsconfig.typecheck.json` type-checks all of `src/**/*.ts` and `src/**/*.tsx` — no `.js` / `.jsx` exclusion remains. `pnpm typecheck` runs `scripts/check-typecheck-surface.mjs` to fail CI if any untyped `.js` / `.jsx` module reappears under `src/` without being added to `scripts/untyped-allowlist.json` (currently empty).
+`tsconfig.typecheck.json` type-checks all `src/**/*.ts` and `src/**/*.tsx` (tests excluded). Residual untyped `.js` / `.jsx` modules, if any appear, are tracked in `scripts/untyped-allowlist.json`; `pnpm typecheck` runs `scripts/check-typecheck-surface.mjs` to fail CI if the allowlist drifts.
 
 | Status | Module group | Notes |
 |--------|--------------|-------|
+| **Typed** | `Environment/*`, `CanyonDecorations`, `PooledObstacles`, `TreeSystem`, `VFX/SplashParticles` | Decoration hosts (`.tsx`); shared props in `Environment/types.ts` |
 | **Typed** | `FlowingWater`, `EnhancedSky`, `PostProcessingPipeline`, `WaterReflection` | Frame-hot render hosts (`.tsx`) |
 | **Typed** | `ObstaclePool`, `RockShader`, `TreeShader`, `VegetationShader` | Pure logic / shader injection (`.ts`) |
-| **Typed** | `maps/registry.ts` | `assertLevelData()` at load — no silent `as unknown as LevelData` |
-| **Typed** | `Environment/*` (all ~34 decoration hosts), `CanyonDecorations`, `PooledObstacles`, `TreeSystem`, `VFX/SplashParticles` | Converted to `.tsx`; `scripts/untyped-allowlist.json` is empty |
+| **Typed** | `maps/registry.ts` | `assertLevelData()` at load — shipped maps validate under `level.schema.json` |
 
-Shared decoration prop shapes live in `src/components/Environment/types.ts` (`BiomeDecorationProps` / `WeatherAwareDecorationProps`, built on `PlacementTransform` / `TreePlacement` / `FlowerPlacement` / `MistPlacement` from `src/components/TrackSegment/types.ts`). Map schema debt signatures live in `src/maps/levelSchemaDebt.ts` (currently empty — all shipped maps validate cleanly under ajv).
+Shared decoration prop shapes live in `src/components/Environment/types.ts` (`BiomeDecorationProps`, built on `PlacementTransform` / `TreePlacement` / `FlowerPlacement` / `MistPlacement` from `TrackSegment/types.ts`). `KNOWN_LEVEL_SCHEMA_DEBT` is empty.
 
 Manual smoke: spawn, WASD + pointer lock, track generates (−Z), textures visible, no console errors, no debug wireframes in polished mode.
 

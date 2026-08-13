@@ -1,28 +1,14 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeDecorationProps } from './types';
 
 const hash = (n: number): number => {
   const x = Math.sin(n * 12.9898) * 43758.5453;
   return x - Math.floor(x);
 };
 
-interface CactusProps {
-  transforms?: PlacementTransform[];
-}
-
-interface CactusInstanceData {
-  key: string;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-  padOffset: THREE.Vector3;
-  padScale: THREE.Vector3;
-  spineYaw: number;
-}
-
-export default function Cactus({ transforms }: CactusProps) {
+export default function Cactus({ transforms }: BiomeDecorationProps) {
   const safeTransforms = Array.isArray(transforms) ? transforms : [];
 
   const barrelGeometry = useMemo(() => {
@@ -70,10 +56,10 @@ export default function Cactus({ transforms }: CactusProps) {
     })
   ), []);
 
-  const instances = useMemo<CactusInstanceData[]>(() => safeTransforms.map((transform, index) => {
+  const instances = useMemo(() => safeTransforms.map((transform, index) => {
     const position = transform.position;
-    const rotation = transform.rotation;
-    const scale = transform.scale;
+    const rotation = transform.rotation ?? new THREE.Euler();
+    const scale = transform.scale ?? new THREE.Vector3(1, 1, 1);
     const seed = position.x * 0.33 + position.z * 0.17 + index * 1.91;
     const padOffset = new THREE.Vector3(
       (hash(seed + 0.7) - 0.5) * 0.24,

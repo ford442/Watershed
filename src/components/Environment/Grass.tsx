@@ -4,15 +4,15 @@ import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
-import type { BiomeId } from '../../configs/biomes';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeScopedDecorationProps } from './types';
+import { toVegetationMaterial } from './types';
 
-const BASE_COLORS: Record<string, string> = {
+const BASE_COLORS = {
   default: '#4e7336',
   slotCanyon: '#c8a86e',
 };
 
-const TIP_COLORS: Record<string, string> = {
+const TIP_COLORS = {
   default: '#9bcf5a',
   slotCanyon: '#e0c98a',
 };
@@ -22,26 +22,12 @@ const hash = (n: number): number => {
   return x - Math.floor(x);
 };
 
-interface GrassProps {
-  transforms?: PlacementTransform[];
-  biome?: BiomeId | string;
-}
-
-interface GrassInstanceData {
-  key: string;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-  color: THREE.Color;
-}
-
-// Build a single tapered grass blade card, base at origin, tip at y = height.
 const buildBlade = (
   height: number,
   width: number,
   curve: number,
   baseColor: THREE.Color,
-  tipColor: THREE.Color
+  tipColor: THREE.Color,
 ): THREE.BufferGeometry => {
   const geo = new THREE.PlaneGeometry(width, height, 1, 4);
   geo.translate(0, height / 2, 0);
@@ -71,7 +57,7 @@ const buildBlade = (
   return geo;
 };
 
-export default function Grass({ transforms, biome = 'canyonSummer' }: GrassProps) {
+export default function Grass({ transforms, biome = 'canyonSummer' }: BiomeScopedDecorationProps) {
   const grassRef = useRef<THREE.InstancedMesh>(null);
   const baseColor = biome === 'slotCanyon' ? BASE_COLORS.slotCanyon : BASE_COLORS.default;
   const tipColor = biome === 'slotCanyon' ? TIP_COLORS.slotCanyon : TIP_COLORS.default;
@@ -101,15 +87,15 @@ export default function Grass({ transforms, biome = 'canyonSummer' }: GrassProps
       side: THREE.DoubleSide,
       vertexColors: true,
     });
-    extendVegetationMaterial(mat as unknown as Parameters<typeof extendVegetationMaterial>[0], { plantHeight: 1.0, windStrength: 0.07, windSpeed: 1.6 });
+    extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: 1.0, windStrength: 0.07, windSpeed: 1.6 });
     return mat;
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(material as unknown as Parameters<typeof updateVegetationMaterial>[0], state.clock.elapsedTime);
+    updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
   });
 
-  const instances = useMemo<GrassInstanceData[]>(() => {
+  const instances = useMemo(() => {
     if (!transforms) return [];
     return transforms.map((t, i) => {
         const seed = t.position.x * 0.31 + t.position.z * 0.19 + i * 1.17;

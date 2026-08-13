@@ -5,67 +5,72 @@ import { useTreeAssets } from './TreeAssets';
 import { useFrame } from '@react-three/fiber';
 import { extendTreeMaterial, updateTreeMaterial } from '../../utils/TreeShader';
 import { WATER_LEVEL } from '../../constants/game';
-import { isAutumnLike, type BiomeId } from '../../configs/biomes';
-import type { TreeSpecies } from './TreeAssets';
-import type { TreePlacement } from '../TrackSegment/types';
+import { isAutumnLike } from '../../configs/biomes';
+import type { TreePlacement, VegetationProps } from './types';
+import { toTreeMaterial } from './types';
 
-// Warm backlight tints used for the foliage SSS/translucency approximation
-const SSS_TINTS: Record<string, string> = {
+type PaletteSeason = 'summer' | 'autumn';
+type TreeSpecies = 'conifer' | 'broadleaf' | 'birch' | 'snag';
+
+interface VegetationInstance {
+  key: string;
+  position: THREE.Vector3;
+  rotation?: THREE.Euler;
+  scale?: THREE.Vector3;
+  color: THREE.Color;
+}
+
+const SSS_TINTS: Record<PaletteSeason, string> = {
   summer: '#dff0a8',
   autumn: '#ffd27a',
 };
 
-// Color Palettes
-const PALETTES: Record<string, string[]> = {
+const PALETTES: Record<PaletteSeason, string[]> = {
   summer: ['#2d4c1e', '#228b22', '#556b2f', '#1e3312'],
-  autumn: ['#d35400', '#e67e22', '#f1c40f', '#c0392b', '#8e44ad', '#dbc632']
+  autumn: ['#d35400', '#e67e22', '#f1c40f', '#c0392b', '#8e44ad', '#dbc632'],
 };
 
-const RIM_PALETTES: Record<string, string[]> = {
+const RIM_PALETTES: Record<PaletteSeason | 'slotCanyon', string[]> = {
   summer: ['#1c2518', '#1f2b1b', '#233321'],
   autumn: ['#2a1e17', '#33261e', '#3d3027'],
   slotCanyon: ['#1a1714', '#211d19', '#27221e'],
 };
 
-interface VegetationProps {
-  transforms?: TreePlacement[];
-  biome?: BiomeId | string;
-  isRim?: boolean;
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
+
+function resolvePaletteSeason(biome: string): PaletteSeason {
+  return biome.includes('autumn') ? 'autumn' : 'summer';
 }
 
-interface VegetationInstanceData {
-  key: string;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-  color: THREE.Color;
+function resolveSpecies(species: string | undefined): TreeSpecies {
+  if (species === 'broadleaf' || species === 'birch' || species === 'snag') return species;
+  return 'conifer';
 }
-
-type InstancesBySpecies = Record<TreeSpecies, VegetationInstanceData[]>;
 
 export default function Vegetation({ transforms, biome = 'canyonSummer', isRim = false }: VegetationProps) {
   const { variants } = useTreeAssets();
-  const safeTransforms: TreePlacement[] = Array.isArray(transforms) ? transforms : [];
+  const safeTransforms = Array.isArray(transforms) ? transforms : [];
 
-  const instancesBySpecies = useMemo<InstancesBySpecies>(() => {
-    // Select palette based on biome, default to summer if invalid
+  const instancesBySpecies = useMemo(() => {
+    const season = resolvePaletteSeason(biome);
     const palette = isRim
-      ? (biome === 'slotCanyon' ? RIM_PALETTES.slotCanyon : (RIM_PALETTES[biome] || RIM_PALETTES.summer))
-      : (PALETTES[biome] || PALETTES.summer);
+      ? (biome === 'slotCanyon' ? RIM_PALETTES.slotCanyon : RIM_PALETTES[season])
+      : PALETTES[season];
 
-    const grouped: InstancesBySpecies = {
+    const grouped: Record<TreeSpecies, VegetationInstance[]> = {
       conifer: [],
       broadleaf: [],
       birch: [],
       snag: [],
     };
 
-    safeTransforms.forEach((t, i) => {
-      const colorHex = palette[i % palette.length];
+    safeTransforms.forEach((t: TreePlacement, i: number) => {
+      const colorHex = palette[i % palette.length] ?? palette[0];
       const color = new THREE.Color(colorHex);
       const shadeSeed = (t.speciesIndex ?? i) * 31 + i * 17;
       const shade = 0.82 + (shadeSeed % 19) / 100;
-      const species: TreeSpecies = (t.species && grouped[t.species]) ? t.species : 'conifer';
+      const species = resolveSpecies(t.species);
 
       if (species === 'snag') {
         color.lerp(new THREE.Color('#8c7866'), 0.65);
@@ -80,8 +85,8 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
       grouped[species].push({
         key: `veg-${i}`,
         position: t.position,
-        rotation: t.rotation,
-        scale: t.scale,
+        rotation: t.rotation ?? DEFAULT_ROTATION,
+        scale: t.scale ?? DEFAULT_SCALE,
         color,
       });
     });
@@ -90,7 +95,8 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
   }, [safeTransforms, biome, isRim]);
 
   const speciesMaterials = useMemo(() => {
-    const sssColor = SSS_TINTS[biome] || SSS_TINTS.summer;
+    const season = resolvePaletteSeason(biome);
+    const sssColor = SSS_TINTS[season];
     const map: Partial<Record<TreeSpecies, THREE.MeshStandardMaterial>> = {};
     variants.forEach((variant) => {
       const material = new THREE.MeshStandardMaterial({
@@ -99,7 +105,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
         metalness: 0,
         vertexColors: true,
       });
-      extendTreeMaterial(material as unknown as Parameters<typeof extendTreeMaterial>[0], {
+      extendTreeMaterial(toTreeMaterial(material), {
         windStrength: variant.swayAmount * 1.6,
         windSpeed: 1.35,
         sssColor,
@@ -108,15 +114,17 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
         rustleRadius: 6.0,
         rustleStrength: 2.5,
       });
-      map[variant.type] = material;
+      map[variant.type as TreeSpecies] = material;
     });
     return map;
   }, [variants, biome]);
 
-  // Per-vertex wind sway, leaf flutter, player rustle + foliage backlight, driven by TreeShader
   useFrame((state) => {
     variants.forEach((variant) => {
-      updateTreeMaterial(speciesMaterials[variant.type] as unknown as Parameters<typeof updateTreeMaterial>[0], state.clock.elapsedTime, state.camera.position);
+      const mat = speciesMaterials[variant.type as TreeSpecies];
+      if (mat) {
+        updateTreeMaterial(toTreeMaterial(mat), state.clock.elapsedTime, state.camera.position);
+      }
     });
   });
 
@@ -125,15 +133,18 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
   return (
     <group>
       {variants.map((variant) => {
-        const instances = instancesBySpecies[variant.type] || [];
+        const instances = instancesBySpecies[variant.type as TreeSpecies] || [];
         if (instances.length === 0) return null;
+
+        const material = speciesMaterials[variant.type as TreeSpecies];
+        if (!material) return null;
 
         return (
           <group key={variant.type}>
             <Instances
               range={instances.length}
               geometry={variant.geometry}
-              material={speciesMaterials[variant.type]}
+              material={material}
               castShadow
               receiveShadow
             >

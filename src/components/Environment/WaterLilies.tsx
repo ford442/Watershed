@@ -2,21 +2,18 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeDecorationProps } from './types';
+import { toVegetationMaterial } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const PAD_COLOR = new THREE.Color('#3a8c40');
 const VEIN_COLOR = new THREE.Color('#2a6630');
 const RIM_COLOR = new THREE.Color('#4fae54');
+const DEFAULT_ROTATION = new THREE.Euler();
 
-interface WaterLiliesProps {
-  transforms?: PlacementTransform[];
-}
-
-export default function WaterLilies({ transforms }: WaterLiliesProps) {
+export default function WaterLilies({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
-  // Geometry: Lily pad disc with radial venation + lighter rim, baked as vertex colors
   const geometry = useMemo(() => {
     const segments = 12;
     const geo = new THREE.CylinderGeometry(0.4, 0.4, 0.02, segments);
@@ -32,11 +29,8 @@ export default function WaterLilies({ transforms }: WaterLiliesProps) {
       const radius = Math.sqrt(x * x + z * z);
       const angle = Math.atan2(z, x);
 
-      // Radial veins: darker streaks at regular angular intervals, fading toward center
       const veinPattern = Math.pow(Math.abs(Math.cos(angle * (segments / 2))), 8);
       const veinStrength = veinPattern * THREE.MathUtils.smoothstep(radius, 0.05, 0.35);
-
-      // Lighter rim toward the pad's outer edge
       const rimStrength = THREE.MathUtils.smoothstep(radius, 0.3, 0.4);
 
       c.copy(PAD_COLOR).lerp(VEIN_COLOR, veinStrength * 0.6).lerp(RIM_COLOR, rimStrength * 0.5);
@@ -59,30 +53,30 @@ export default function WaterLilies({ transforms }: WaterLiliesProps) {
       side: THREE.DoubleSide,
       vertexColors: true,
     });
-    // Gentle independent bob/drift per pad, as if resting on tiny ripples
-    extendVegetationMaterial(mat as unknown as Parameters<typeof extendVegetationMaterial>[0], { windStrength: 0.035, windSpeed: 1.0, mode: 'bob' });
+    extendVegetationMaterial(toVegetationMaterial(mat), { windStrength: 0.035, windSpeed: 1.0, mode: 'bob' });
     return mat;
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(material as unknown as Parameters<typeof updateVegetationMaterial>[0], state.clock.elapsedTime);
+    updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
   });
 
   useEffect(() => {
-    if (!meshRef.current || !transforms) return;
+    const mesh = meshRef.current;
+    if (!mesh || !transforms) return;
 
     transforms.forEach((t, i) => {
       DUMMY_OBJ.position.copy(t.position);
-      DUMMY_OBJ.rotation.copy(t.rotation);
+      DUMMY_OBJ.rotation.copy(t.rotation ?? DEFAULT_ROTATION);
 
       const scale = t.scale ? t.scale.x : 1.0;
       DUMMY_OBJ.scale.setScalar(scale);
 
       DUMMY_OBJ.updateMatrix();
-      meshRef.current!.setMatrixAt(i, DUMMY_OBJ.matrix);
+      mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
     });
 
-    meshRef.current.instanceMatrix.needsUpdate = true;
+    mesh.instanceMatrix.needsUpdate = true;
   }, [transforms]);
 
   if (!transforms || transforms.length === 0) return null;

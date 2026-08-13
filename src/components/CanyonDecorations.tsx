@@ -2,38 +2,11 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useFrame } from '@react-three/fiber';
-import type { PlacementTransform } from './TrackSegment/types';
+import type { BiomeDecorationTransform, CanyonDecorationsProps } from './Environment/types';
 
-/**
- * CanyonDecorations - Rocks, boulders, and vegetation along canyon walls
- *
- * Adds visual detail to the canyon environment with:
- * - Large boulders on canyon floor
- * - Smaller rocks scattered on walls
- * - Vegetation patches (bushes/grass clusters)
- *
- * Uses instanced rendering for performance.
- */
-interface CanyonDecorationsProps {
-    /** The river curve (can also accept segmentPath from TrackSegment) */
-    riverPath?: THREE.CatmullRomCurve3 | null;
-    /** Width of the river track */
-    trackWidth?: number;
-    /** Height of canyon walls */
-    wallHeight?: number;
-    /** Deterministic seed for layout stability */
-    segmentSeed?: number;
-    /** Canyon tightness factor (0-1) */
-    wallTightness?: number;
-    /** Waterline Y used for foam generation */
-    waterLevel?: number;
-    /** Biome rock density multiplier */
-    rockDensityBias?: number;
-    /** Callback with wake transforms */
-    onRockFoamUpdate?: (foam: PlacementTransform[]) => void;
-}
+type EulerTuple = [number, number, number];
 
-interface BoulderInstance {
+interface BoulderData {
     side: number;
     lateralOffset: number;
     tangent: THREE.Vector3;
@@ -42,45 +15,36 @@ interface BoulderInstance {
     alongOffset: number;
     position: THREE.Vector3;
     scale: number;
-    rotation: [number, number, number];
+    rotation: EulerTuple;
 }
 
-interface WallRockInstance {
+interface RockPlacement {
     position: THREE.Vector3;
     scale: number;
-    rotation: [number, number, number];
+    rotation: EulerTuple;
 }
 
-interface VegetationInstance {
+interface VegetationPlacement {
     position: THREE.Vector3;
     scale: number;
     rotation: number;
 }
 
-interface HangingGrowthInstance {
+interface HangingGrowthPlacement {
     position: THREE.Vector3;
     scale: THREE.Vector3;
-    rotation: [number, number, number];
+    rotation: EulerTuple;
     color: string;
 }
 
 interface DecorationData {
-    largeBoulders: BoulderInstance[];
-    smallBoulders: BoulderInstance[];
-    wallRocks: WallRockInstance[];
-    vegetation: VegetationInstance[];
-    hangingGrowth: HangingGrowthInstance[];
-    rockFoam: PlacementTransform[];
+    largeBoulders: BoulderData[];
+    smallBoulders: BoulderData[];
+    wallRocks: RockPlacement[];
+    vegetation: VegetationPlacement[];
+    hangingGrowth: HangingGrowthPlacement[];
+    rockFoam: BiomeDecorationTransform[];
 }
-
-const EMPTY_DECORATION_DATA: DecorationData = {
-    largeBoulders: [],
-    smallBoulders: [],
-    wallRocks: [],
-    vegetation: [],
-    hangingGrowth: [],
-    rockFoam: [],
-};
 
 const seededRandom = (seed: number): number => {
     const x = Math.sin(seed) * 10000;
@@ -88,7 +52,7 @@ const seededRandom = (seed: number): number => {
 };
 
 const isFiniteVec3 = (v: THREE.Vector3 | null | undefined): v is THREE.Vector3 =>
-    Boolean(v) && isFinite(v!.x) && isFinite(v!.y) && isFinite(v!.z);
+    !!v && isFinite(v.x) && isFinite(v.y) && isFinite(v.z);
 
 export default function CanyonDecorations({
     riverPath,
@@ -101,15 +65,15 @@ export default function CanyonDecorations({
     onRockFoamUpdate,
 }: CanyonDecorationsProps) {
     // Generate deterministic decoration positions
-    const decorationData = useMemo<DecorationData>(() => {
+    const decorationData = useMemo((): DecorationData => {
         if (!riverPath) {
-            return EMPTY_DECORATION_DATA;
+            return { largeBoulders: [], smallBoulders: [], wallRocks: [], vegetation: [], hangingGrowth: [], rockFoam: [] };
         }
 
-        const boulders: BoulderInstance[] = [];
-        const wallRocks: WallRockInstance[] = [];
-        const vegetation: VegetationInstance[] = [];
-        const hangingGrowth: HangingGrowthInstance[] = [];
+        const boulders: BoulderData[] = [];
+        const wallRocks: RockPlacement[] = [];
+        const vegetation: VegetationPlacement[] = [];
+        const hangingGrowth: HangingGrowthPlacement[] = [];
         const sampleCount = 17;
         let seed = Math.max(1, segmentSeed);
 
@@ -120,7 +84,7 @@ export default function CanyonDecorations({
             point: THREE.Vector3,
             right: THREE.Vector3,
             tangent: THREE.Vector3,
-        ): BoulderInstance | null => {
+        ): BoulderData | null => {
             if (seededRandom(seed++) > boulderChance) return null;
 
             const lateralMin = trackWidth * 0.24;
@@ -145,11 +109,11 @@ export default function CanyonDecorations({
                     seededRandom(seed++) * 0.9,
                     seededRandom(seed++) * Math.PI * 2,
                     seededRandom(seed++) * 0.8,
-                ],
+                ] as EulerTuple,
             };
         };
 
-        const updateBoulderPosition = (boulder: BoulderInstance) => {
+        const updateBoulderPosition = (boulder: BoulderData): void => {
             boulder.position = boulder.centerPoint.clone()
                 .add(boulder.right.clone().multiplyScalar(boulder.side * boulder.lateralOffset))
                 .add(boulder.tangent.clone().multiplyScalar(boulder.alongOffset));
@@ -209,7 +173,7 @@ export default function CanyonDecorations({
                             seededRandom(seed++) * Math.PI,
                             seededRandom(seed++) * Math.PI * 2,
                             seededRandom(seed++) * Math.PI,
-                        ],
+                        ] as EulerTuple,
                     });
                 }
 
@@ -231,7 +195,7 @@ export default function CanyonDecorations({
                                 seededRandom(seed++) * Math.PI * 0.6,
                                 seededRandom(seed++) * Math.PI * 2,
                                 seededRandom(seed++) * Math.PI * 0.6,
-                            ],
+                            ] as EulerTuple,
                         });
                     }
                 }
@@ -276,7 +240,7 @@ export default function CanyonDecorations({
                                 0.05 + seededRandom(seed++) * 0.12,
                                 seededRandom(seed++) * Math.PI * 2,
                                 side * (0.12 + seededRandom(seed++) * 0.18),
-                            ],
+                            ] as EulerTuple,
                             color: seededRandom(seed++) > 0.45 ? '#4b5f32' : '#6b7d46',
                         });
                     }
@@ -327,15 +291,41 @@ export default function CanyonDecorations({
         return geo;
     }, []);
     
+    const smallBoulderMaterial = useMemo(
+        () => new THREE.MeshStandardMaterial({ color: '#6a4b38', roughness: 0.92, metalness: 0.04 }),
+        [],
+    );
+    const wallRockMaterial = useMemo(
+        () => new THREE.MeshStandardMaterial({ color: '#6b5a4a', roughness: 0.95 }),
+        [],
+    );
+    const vegetationMaterial = useMemo(
+        () => new THREE.MeshStandardMaterial({ color: '#3a4a2a', roughness: 0.9 }),
+        [],
+    );
+    const hangingGrowthMaterial = useMemo(
+        () => new THREE.MeshStandardMaterial({
+            color: '#5a6b3d',
+            roughness: 0.92,
+            metalness: 0.0,
+            vertexColors: true,
+            side: THREE.DoubleSide,
+        }),
+        [],
+    );
+    
     // Update instance matrices
     useEffect(() => {
         const matrix = new THREE.Matrix4();
         const position = new THREE.Vector3();
         const quaternion = new THREE.Quaternion();
         const scale = new THREE.Vector3();
+        const smallBouldersMesh = smallBouldersRef.current;
+        const wallRocksMesh = wallRocksRef.current;
+        const vegetationMesh = vegetationRef.current;
+        const hangingGrowthMesh = hangingGrowthRef.current;
 
         // Update small visual-only boulders
-        const smallBouldersMesh = smallBouldersRef.current;
         if (smallBouldersMesh && decorationData.smallBoulders.length > 0) {
             decorationData.smallBoulders.forEach((boulder, i) => {
                 if (!isFiniteVec3(boulder.position)) return;
@@ -349,7 +339,6 @@ export default function CanyonDecorations({
         }
 
         // Update wall rocks
-        const wallRocksMesh = wallRocksRef.current;
         if (wallRocksMesh && decorationData.wallRocks.length > 0) {
             decorationData.wallRocks.forEach((rock, i) => {
                 if (!isFiniteVec3(rock.position)) return;
@@ -363,7 +352,6 @@ export default function CanyonDecorations({
         }
 
         // Update vegetation
-        const vegetationMesh = vegetationRef.current;
         if (vegetationMesh && decorationData.vegetation.length > 0) {
             decorationData.vegetation.forEach((veg, i) => {
                 if (!isFiniteVec3(veg.position)) return;
@@ -376,7 +364,6 @@ export default function CanyonDecorations({
             vegetationMesh.instanceMatrix.needsUpdate = true;
         }
 
-        const hangingGrowthMesh = hangingGrowthRef.current;
         if (hangingGrowthMesh && decorationData.hangingGrowth.length > 0) {
             decorationData.hangingGrowth.forEach((growth, i) => {
                 if (!isFiniteVec3(growth.position)) return;
@@ -395,9 +382,10 @@ export default function CanyonDecorations({
     }, [decorationData]);
 
     useFrame((state) => {
-        if (!hangingGrowthRef.current) return;
-        hangingGrowthRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.55 + segmentSeed * 0.01) * 0.045;
-        hangingGrowthRef.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.35 + segmentSeed * 0.015) * 0.018;
+        const hangingGrowthMesh = hangingGrowthRef.current;
+        if (!hangingGrowthMesh) return;
+        hangingGrowthMesh.rotation.z = Math.sin(state.clock.elapsedTime * 0.55 + segmentSeed * 0.01) * 0.045;
+        hangingGrowthMesh.rotation.x = Math.cos(state.clock.elapsedTime * 0.35 + segmentSeed * 0.015) * 0.018;
     });
     
     if (!riverPath) return null;
@@ -425,63 +413,39 @@ export default function CanyonDecorations({
             {decorationData.smallBoulders.length > 0 && (
                 <instancedMesh
                     ref={smallBouldersRef}
-                    args={[boulderGeometry, undefined, decorationData.smallBoulders.length]}
+                    args={[boulderGeometry, smallBoulderMaterial, decorationData.smallBoulders.length]}
                     castShadow
                     receiveShadow
-                >
-                    <meshStandardMaterial
-                        color="#6a4b38"
-                        roughness={0.92}
-                        metalness={0.04}
-                    />
-                </instancedMesh>
+                />
             )}
             
             {/* Wall and wall-clinging rocks */}
             {decorationData.wallRocks.length > 0 && (
                 <instancedMesh
                     ref={wallRocksRef}
-                    args={[wallRockGeometry, undefined, decorationData.wallRocks.length]}
+                    args={[wallRockGeometry, wallRockMaterial, decorationData.wallRocks.length]}
                     castShadow
                     receiveShadow
-                >
-                    <meshStandardMaterial
-                        color="#6b5a4a"
-                        roughness={0.95}
-                    />
-                </instancedMesh>
+                />
             )}
             
             {/* Vegetation patches - small bushes */}
             {decorationData.vegetation.length > 0 && (
                 <instancedMesh
                     ref={vegetationRef}
-                    args={[vegetationGeometry, undefined, decorationData.vegetation.length]}
+                    args={[vegetationGeometry, vegetationMaterial, decorationData.vegetation.length]}
                     castShadow
                     receiveShadow
-                >
-                    <meshStandardMaterial
-                        color="#3a4a2a"
-                        roughness={0.9}
-                    />
-                </instancedMesh>
+                />
             )}
 
             {decorationData.hangingGrowth.length > 0 && (
                 <instancedMesh
                     ref={hangingGrowthRef}
-                    args={[hangingGrowthGeometry, undefined, decorationData.hangingGrowth.length]}
+                    args={[hangingGrowthGeometry, hangingGrowthMaterial, decorationData.hangingGrowth.length]}
                     castShadow
                     receiveShadow
-                >
-                    <meshStandardMaterial
-                        color="#5a6b3d"
-                        roughness={0.92}
-                        metalness={0.0}
-                        vertexColors
-                        side={THREE.DoubleSide}
-                    />
-                </instancedMesh>
+                />
             )}
         </group>
     );

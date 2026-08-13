@@ -3,15 +3,12 @@ import * as THREE from 'three';
 import { RigidBody, CuboidCollider, type RapierRigidBody } from '@react-three/rapier';
 import { extendRockMaterial } from '../utils/RockShader';
 import type { ObstacleSlot } from '../systems/ObstaclePool';
+import type { PooledObstaclesProps } from './Environment/types';
 
 const HIDDEN_POSITION: [number, number, number] = [0, -1000, 0];
+const HIDDEN_VECTOR = new THREE.Vector3(...HIDDEN_POSITION);
 
-interface PooledObstaclesProps {
-  slots: ObstacleSlot[];
-  rockMaterial?: THREE.Material | null;
-}
-
-function createRockGeometry(): THREE.BufferGeometry {
+function createRockGeometry() {
   const geometry = new THREE.DodecahedronGeometry(1, 1);
   const position = geometry.getAttribute('position');
   const normal = geometry.getAttribute('normal');
@@ -30,7 +27,7 @@ function createRockGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
-function createLogGeometry(): THREE.BufferGeometry {
+function createLogGeometry() {
   const geometry = new THREE.CylinderGeometry(0.28, 0.34, 2.9, 8);
   geometry.rotateZ(Math.PI / 2);
   geometry.computeVertexNormals();
@@ -40,7 +37,7 @@ function createLogGeometry(): THREE.BufferGeometry {
 export default function PooledObstacles({ slots, rockMaterial }: PooledObstaclesProps) {
   const rockMeshRef = useRef<THREE.InstancedMesh>(null);
   const logMeshRef = useRef<THREE.InstancedMesh>(null);
-  const bodyRefs = useRef<Array<RapierRigidBody | undefined>>([]);
+  const bodyRefs = useRef<(RapierRigidBody | null)[]>([]);
 
   const rockGeometry = useMemo(() => createRockGeometry(), []);
   const logGeometry = useMemo(() => createLogGeometry(), []);
@@ -68,7 +65,11 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
 
   useEffect(() => {
     const matrix = new THREE.Matrix4();
-    const hiddenMatrix = new THREE.Matrix4().makeTranslation(...HIDDEN_POSITION);
+    const hiddenMatrix = new THREE.Matrix4().makeTranslation(
+      HIDDEN_POSITION[0],
+      HIDDEN_POSITION[1],
+      HIDDEN_POSITION[2],
+    );
     const quaternion = new THREE.Quaternion();
     const rockMesh = rockMeshRef.current;
     const logMesh = logMeshRef.current;
@@ -76,11 +77,11 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
     let rockIndex = 0;
     let logIndex = 0;
 
-    slots.forEach((slot, poolIndex) => {
+    slots.forEach((slot: ObstacleSlot, poolIndex: number) => {
       const active = slot.active && slot.position;
       const body = bodyRefs.current[poolIndex];
       if (body) {
-        body.setTranslation(active ? slot.position : { x: HIDDEN_POSITION[0], y: HIDDEN_POSITION[1], z: HIDDEN_POSITION[2] }, true);
+        body.setTranslation(active ? slot.position : HIDDEN_VECTOR, true);
         if (active) {
           quaternion.setFromEuler(slot.rotation ?? new THREE.Euler());
           body.setRotation({ x: quaternion.x, y: quaternion.y, z: quaternion.z, w: quaternion.w }, true);
@@ -91,9 +92,9 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
 
       quaternion.setFromEuler(slot.rotation ?? new THREE.Euler());
       matrix.compose(
-        active ? slot.position : new THREE.Vector3(...HIDDEN_POSITION),
+        active ? slot.position : HIDDEN_VECTOR,
         quaternion,
-        active ? slot.scale : new THREE.Vector3(0.001, 0.001, 0.001)
+        active ? slot.scale : new THREE.Vector3(0.001, 0.001, 0.001),
       );
 
       if (slot.type === 'log') {
@@ -128,7 +129,7 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
     <group name="pooled-static-obstacles">
       <instancedMesh
         ref={rockMeshRef}
-        args={[rockGeometry, pooledRockMaterial ?? undefined, slots.length]}
+        args={[rockGeometry, pooledRockMaterial, slots.length]}
         castShadow
         receiveShadow
       />
@@ -139,10 +140,10 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
         receiveShadow
       />
 
-      {slots.map((slot, index) => (
+      {slots.map((slot: ObstacleSlot, index: number) => (
         <RigidBody
           key={`pooled-obstacle-${index}`}
-          ref={(node: RapierRigidBody | null) => {
+          ref={(node) => {
             if (node) bodyRefs.current[index] = node;
             else delete bodyRefs.current[index];
           }}

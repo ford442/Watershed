@@ -1,12 +1,8 @@
-// Icicles.tsx — instanced hanging ice spikes along canyon rim (glacial biomes).
+// Icicles — instanced hanging ice spikes along canyon rim (glacial biomes).
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
-import type { PlacementTransform } from '../TrackSegment/types';
-
-export interface IciclesProps {
-  transforms?: PlacementTransform[];
-}
+import type { BiomeDecorationProps } from './types';
 
 const ICICLE_GEO = (() => {
   const geo = new THREE.ConeGeometry(0.08, 1.0, 5);
@@ -31,8 +27,8 @@ interface IcicleInstance {
   scale: THREE.Vector3;
 }
 
-export default function Icicles({ transforms }: IciclesProps) {
-  const instances = useMemo<IcicleInstance[]>(() => {
+export default function Icicles({ transforms }: BiomeDecorationProps) {
+  const instances = useMemo((): IcicleInstance[] => {
     if (!transforms?.length) return [];
     return transforms.map((t, i) => ({
       key: `icicle-${i}`,

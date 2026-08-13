@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { usePineconeAssets } from './DebrisAssets';
@@ -8,16 +9,13 @@ import {
 } from '../../materials/river/createRiverSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PlacementTransform } from '../TrackSegment/types';
+import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
+import type { BiomeDecorationProps } from './types';
 
-interface PineconeProps {
-  transforms?: PlacementTransform[];
-}
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
-/**
- * Pinecone - Realistic pinecone geometry for creek environment
- * Creates a simple but recognizable pinecone shape using cones and spheres
- */
-export default function Pinecone({ transforms }: PineconeProps) {
+export default function Pinecone({ transforms }: BiomeDecorationProps) {
   const { geometry, material: baseMaterial } = usePineconeAssets();
 
   const material = useMemo(
@@ -37,8 +35,8 @@ export default function Pinecone({ transforms }: PineconeProps) {
         <Instance
           key={i}
           position={t.position}
-          rotation={t.rotation}
-          scale={t.scale}
+          rotation={t.rotation ?? DEFAULT_ROTATION}
+          scale={t.scale ?? DEFAULT_SCALE}
           castShadow
           receiveShadow
         />

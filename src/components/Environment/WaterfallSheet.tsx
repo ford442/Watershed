@@ -1,13 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-
-export interface WaterfallSheetProps {
-  width?: number;
-  height?: number;
-  flowSpeed?: number;
-  fanAngle?: number;
-}
+import type { WaterfallSheetProps } from './types';
 
 const noiseHelpers = `
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -136,11 +130,13 @@ export default function WaterfallSheet({
   const overlayMaterial = useMemo(() => makeMaterial(1.45, 0.34, 1.7), [flowSpeed]);
 
   useFrame((state) => {
-    if (coreRef.current) {
-      (coreRef.current.material as THREE.ShaderMaterial).uniforms.time.value = state.clock.elapsedTime;
+    const coreMat = coreRef.current?.material;
+    if (coreMat instanceof THREE.ShaderMaterial && coreMat.uniforms) {
+      coreMat.uniforms.time.value = state.clock.elapsedTime;
     }
-    if (overlayRef.current) {
-      (overlayRef.current.material as THREE.ShaderMaterial).uniforms.time.value = state.clock.elapsedTime;
+    const overlayMat = overlayRef.current?.material;
+    if (overlayMat instanceof THREE.ShaderMaterial && overlayMat.uniforms) {
+      overlayMat.uniforms.time.value = state.clock.elapsedTime;
     }
   });
 

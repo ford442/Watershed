@@ -2,25 +2,17 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { extendRockMaterial } from '../../utils/RockShader';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { PebblesProps } from './types';
 
-export interface PebblesProps {
-  transforms?: PlacementTransform[];
-  material?: THREE.Material;
-}
+type PebbleShape = 'round' | 'flat' | 'angular';
 
 interface PebbleInstance {
   key: string;
   position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3 | [number, number, number];
+  rotation?: THREE.Euler;
+  scale: THREE.Vector3;
 }
 
-type PebbleShape = 'round' | 'flat' | 'angular';
-
-// A handful of low-poly shapes so a streambed reads as a mix of worn pebbles,
-// flatter river stones and the occasional angular fragment - not identical
-// blobs.
 const PEBBLE_GEOMETRIES: Record<PebbleShape, () => THREE.BufferGeometry> = {
   round: () => new THREE.IcosahedronGeometry(0.2, 1),
   flat: () => {
@@ -32,24 +24,26 @@ const PEBBLE_GEOMETRIES: Record<PebbleShape, () => THREE.BufferGeometry> = {
   angular: () => new THREE.OctahedronGeometry(0.2, 0),
 };
 
-const SHAPE_KEYS = Object.keys(PEBBLE_GEOMETRIES) as PebbleShape[];
+const SHAPE_KEYS: PebbleShape[] = ['round', 'flat', 'angular'];
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
 export default function Pebbles({ transforms, material }: PebblesProps) {
   const geometries = useMemo(() => {
-    const lib: Partial<Record<PebbleShape, THREE.BufferGeometry>> = {};
-    Object.entries(PEBBLE_GEOMETRIES).forEach(([key, make]) => {
-      lib[key as PebbleShape] = make();
+    const lib = {} as Record<PebbleShape, THREE.BufferGeometry>;
+    (Object.entries(PEBBLE_GEOMETRIES) as [PebbleShape, () => THREE.BufferGeometry][]).forEach(([key, make]) => {
+      lib[key] = make();
     });
-    return lib as Record<PebbleShape, THREE.BufferGeometry>;
+    return lib;
   }, []);
 
-  // Fallback material if none provided (though we expect rockMaterial)
-  const defaultMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#666660', roughness: 0.85, metalness: 0.0 }), []);
+  const defaultMaterial = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: '#666660', roughness: 0.85, metalness: 0.0 }),
+    [],
+  );
 
-  // Pebbles sit right at the waterline, so lean into wetness/moss/dust streaks
-  // rather than the rim lighting that reads better on tall rocks.
   const pebbleMaterial = useMemo(() => {
-    const base = (material || defaultMaterial).clone();
+    const base = (material ?? defaultMaterial).clone() as THREE.MeshStandardMaterial;
     extendRockMaterial(base, {
       mossStrength: 0.45,
       streakStrength: 0.25,
@@ -67,19 +61,15 @@ export default function Pebbles({ transforms, material }: PebblesProps) {
 
     transforms.forEach((t, i) => {
       const shape = SHAPE_KEYS[i % SHAPE_KEYS.length];
-      // Occasional "hero stone": noticeably larger than the surrounding scatter.
       const isHero = i % 17 === 0;
       const heroScale = isHero ? 2.4 : 1;
-      const scale: THREE.Vector3 | [number, number, number] = Array.isArray(t.scale)
-        ? ((t.scale as number[]).map((s) => s * heroScale) as [number, number, number])
-        : (t.scale?.isVector3
-          ? t.scale.clone().multiplyScalar(heroScale)
-          : t.scale);
+      const baseScale = t.scale ?? DEFAULT_SCALE;
+      const scale = baseScale.clone().multiplyScalar(heroScale);
 
       byShape[shape].push({
         key: `pebble-${i}`,
         position: t.position,
-        rotation: t.rotation,
+        rotation: t.rotation ?? DEFAULT_ROTATION,
         scale,
       });
     });

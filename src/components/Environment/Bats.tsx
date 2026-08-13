@@ -1,14 +1,22 @@
 import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { BiomeDecorationProps, PlacementTransform } from './types';
+import type { BatsProps } from './types';
 
-interface BatsProps extends BiomeDecorationProps {
-  visible?: boolean;
-  waterLevel?: number;
-}
+const DUMMY = new THREE.Object3D();
+const TEMP_POS = new THREE.Vector3();
+const TEMP_FORWARD = new THREE.Vector3();
+const TEMP_OFFSET = new THREE.Vector3();
+const BASE_FORWARD = new THREE.Vector3(0, 0, 1);
+const TEMP_UP = new THREE.Vector3(0, 1, 0);
+const TEMP_QUAT = new THREE.Quaternion();
+const LEFT_FLAP_QUAT = new THREE.Quaternion();
+const RIGHT_FLAP_QUAT = new THREE.Quaternion();
+const ROLL_QUAT = new THREE.Quaternion();
+const PREV_POS = new THREE.Vector3();
+const MAX_BATS = 12;
 
-interface BatState {
+interface BatPathState {
   seed: number;
   scale: number;
   flapFreq: number;
@@ -29,19 +37,6 @@ interface BatState {
   lastForward: THREE.Vector3;
 }
 
-const DUMMY = new THREE.Object3D();
-const TEMP_POS = new THREE.Vector3();
-const TEMP_FORWARD = new THREE.Vector3();
-const TEMP_OFFSET = new THREE.Vector3();
-const BASE_FORWARD = new THREE.Vector3(0, 0, 1);
-const TEMP_UP = new THREE.Vector3(0, 1, 0);
-const TEMP_QUAT = new THREE.Quaternion();
-const LEFT_FLAP_QUAT = new THREE.Quaternion();
-const RIGHT_FLAP_QUAT = new THREE.Quaternion();
-const ROLL_QUAT = new THREE.Quaternion();
-const PREV_POS = new THREE.Vector3();
-const MAX_BATS = 12;
-
 const hash = (n: number): number => {
   const x = Math.sin(n) * 43758.5453123;
   return x - Math.floor(x);
@@ -53,7 +48,7 @@ const cubicBezier = (
   p1: THREE.Vector3,
   p2: THREE.Vector3,
   p3: THREE.Vector3,
-  out: THREE.Vector3
+  out: THREE.Vector3,
 ): THREE.Vector3 => {
   const inv = 1 - target;
   const inv2 = inv * inv;
@@ -84,7 +79,7 @@ const createWingGeometry = (side: number): THREE.BufferGeometry => {
   return geo;
 };
 
-const chooseNextPath = (bat: BatState, seedBias = 0): void => {
+const chooseNextPath = (bat: BatPathState, seedBias = 0): void => {
   const seed = bat.seed + bat.hopCount * 17.0 + seedBias;
   const lateral = (hash(seed + 1.3) - 0.5) * bat.rangeX;
   const forward = (hash(seed + 2.6) - 0.5) * bat.rangeZ;
@@ -124,7 +119,7 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }: 
   );
 
   const bats = useMemo(() => {
-    return activeTransforms.map((transform: PlacementTransform, index: number): BatState => {
+    return activeTransforms.map((transform, index) => {
       const basePos = transform.position || new THREE.Vector3();
       const seed = basePos.x * 11.7 + basePos.z * 4.3 + index * 23.1;
       const scale = 0.24 + hash(seed + 0.9) * 0.14;
@@ -185,11 +180,11 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }: 
   }, []);
 
   useFrame(({ clock }, delta) => {
-    if (!visible || !bodyRef.current || !leftWingRef.current || !rightWingRef.current || bats.length === 0) return;
-
     const bodyMesh = bodyRef.current;
     const leftWingMesh = leftWingRef.current;
     const rightWingMesh = rightWingRef.current;
+    if (!visible || !bodyMesh || !leftWingMesh || !rightWingMesh || bats.length === 0) return;
+
     const now = clock.elapsedTime;
     bats.forEach((bat, index) => {
       bat.progress += delta / Math.max(0.12, bat.duration);

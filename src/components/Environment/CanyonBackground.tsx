@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { getBiomePalette } from '../../configs/BiomePalettes';
+import type { CanyonBackgroundProps } from './types';
 
-interface BackgroundLayer {
+interface BackgroundLayerConfig {
   depthOffset: number;
   desaturation: number;
   opacity: number;
@@ -14,21 +15,31 @@ interface BackgroundLayer {
   towers: boolean;
 }
 
-const LAYERS: BackgroundLayer[] = [
+interface BackgroundLayer extends BackgroundLayerConfig {
+  geometry: THREE.BufferGeometry;
+  material: THREE.MeshBasicMaterial;
+}
+
+const LAYERS: BackgroundLayerConfig[] = [
   { depthOffset: -120, desaturation: 0.35, opacity: 0.78, width: 420, heightVariance: 5.2, rimY: 28, parallax: 0.08, towers: true },
   { depthOffset: -220, desaturation: 0.72, opacity: 0.48, width: 520, heightVariance: 6.8, rimY: 30, parallax: 0.045, towers: false },
   { depthOffset: -350, desaturation: 0.94, opacity: 0.24, width: 680, heightVariance: 8.0, rimY: 33, parallax: 0.02, towers: false },
 ];
 
-const hash = (n: number) => {
+const hash = (n: number): number => {
   const x = Math.sin(n * 12.9898) * 43758.5453;
   return x - Math.floor(x);
 };
 
-function createRidgelineGeometry(seed: number, width: number, heightVariance: number, addTowers = false) {
+function createRidgelineGeometry(
+  seed: number,
+  width: number,
+  heightVariance: number,
+  addTowers = false,
+): THREE.BufferGeometry {
   const segCount = 14;
-  const positions = [];
-  const indices = [];
+  const positions: number[] = [];
+  const indices: number[] = [];
   const halfWidth = width * 0.5;
   const step = width / segCount;
   const floorY = -22;
@@ -63,19 +74,17 @@ function createRidgelineGeometry(seed: number, width: number, heightVariance: nu
   return geo;
 }
 
-interface CanyonBackgroundProps {
-  segmentId: number;
-  segmentCenter?: THREE.Vector3 | null;
-  baseColor?: string;
-  biome?: string;
-}
-
-export default function CanyonBackground({ segmentId, segmentCenter, baseColor = '#9f5c2a', biome = 'slotCanyon' }: CanyonBackgroundProps) {
+export default function CanyonBackground({
+  segmentId,
+  segmentCenter,
+  baseColor = '#9f5c2a',
+  biome = 'slotCanyon',
+}: CanyonBackgroundProps) {
   const groupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const safeCenter = segmentCenter || new THREE.Vector3();
 
-  const layers = useMemo(() => {
+  const layers = useMemo((): BackgroundLayer[] => {
     const fogColor = new THREE.Color(getBiomePalette(biome).fogColor);
     return LAYERS.map((layer, index) => {
       const seed = segmentId * 3.7 + index * 11.3;
@@ -107,10 +116,11 @@ export default function CanyonBackground({ segmentId, segmentCenter, baseColor =
   }, [layers]);
 
   useFrame(() => {
-    if (!groupRef.current) return;
+    const group = groupRef.current;
+    if (!group) return;
     const offsetX = camera.position.x - safeCenter.x;
     const offsetZ = camera.position.z - safeCenter.z;
-    groupRef.current.children.forEach((child, index) => {
+    group.children.forEach((child, index) => {
       const layer = LAYERS[index];
       if (!layer) return;
       child.position.x = safeCenter.x + offsetX * layer.parallax;

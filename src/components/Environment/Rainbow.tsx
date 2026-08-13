@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { RainbowProps } from './types';
 
 const VERTEX_SHADER = `
   varying vec2 vUv;
@@ -59,42 +60,35 @@ const FRAGMENT_SHADER = `
   }
 `;
 
-interface RainbowProps {
-  opacity?: number;
-  sunDirection?: THREE.Vector3;
-}
-
 export default function Rainbow({
   opacity = 0.4,
   sunDirection = new THREE.Vector3(0.1, 1.0, 0.1),
 }: RainbowProps) {
-  const geometry = useMemo(() => {
-    // Arc radius ~8 units, half-torus segment.
-    const geo = new THREE.TorusGeometry(8, 0.55, 8, 64, Math.PI);
-    return geo;
-  }, []);
+  const meshRef = useRef<THREE.Mesh>(null);
 
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
-      uniforms: {
-        time: { value: 0 },
-        opacity: { value: opacity },
-        sunDirection: { value: sunDirection.clone().normalize() },
-      },
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-  }, []);
+  const geometry = useMemo(() => new THREE.TorusGeometry(8, 0.55, 8, 64, Math.PI), []);
+
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: VERTEX_SHADER,
+    fragmentShader: FRAGMENT_SHADER,
+    uniforms: {
+      time: { value: 0 },
+      opacity: { value: opacity },
+      sunDirection: { value: sunDirection.clone().normalize() },
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  }), [opacity, sunDirection]);
 
   useFrame((state) => {
-    material.uniforms.time.value = state.clock.elapsedTime;
-    material.uniforms.opacity.value = opacity;
-    material.uniforms.sunDirection.value.copy(sunDirection).normalize();
+    const mat = meshRef.current?.material;
+    if (!(mat instanceof THREE.ShaderMaterial) || !mat.uniforms) return;
+    mat.uniforms.time.value = state.clock.elapsedTime;
+    mat.uniforms.opacity.value = opacity;
+    mat.uniforms.sunDirection.value.copy(sunDirection).normalize();
   });
 
-  return <mesh geometry={geometry} material={material} />;
+  return <mesh ref={meshRef} geometry={geometry} material={material} />;
 }

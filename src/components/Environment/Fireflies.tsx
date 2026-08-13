@@ -1,21 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { BiomeDecorationProps, PlacementTransform } from './types';
-
-type FirefliesProps = BiomeDecorationProps;
-
-interface GlowFireflyState {
-  base: THREE.Vector3;
-  rand: number;
-  rand2: number;
-  swarmSpeed: number;
-  swarmRadius: number;
-  floatSpeed: number;
-  floatAmp: number;
-  blinkSpeed: number;
-  blinkPhase: number;
-}
+import type { BiomeDecorationProps } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const MAX_LIGHTS = 5;
@@ -26,7 +12,7 @@ const hash = (n: number): number => {
   return x - Math.floor(x);
 };
 
-export default function Fireflies({ transforms }: FirefliesProps) {
+export default function Fireflies({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const lightRefs = useRef<(THREE.PointLight | null)[]>([]);
 
@@ -127,13 +113,13 @@ export default function Fireflies({ transforms }: FirefliesProps) {
   }, []);
 
   // A handful of fireflies cast a soft, flickering glow onto nearby geometry/water
-  const glowFireflies = useMemo((): GlowFireflyState[] => {
+  const glowFireflies = useMemo(() => {
     if (!transforms || transforms.length === 0) return [];
     const count = Math.min(transforms.length, MAX_LIGHTS);
     const step = Math.max(1, Math.floor(transforms.length / count));
-    const picked: GlowFireflyState[] = [];
+    const picked = [];
     for (let i = 0; i < transforms.length && picked.length < count; i += step) {
-      const t: PlacementTransform = transforms[i];
+      const t = transforms[i];
       const seed = t.position.x * 0.51 + t.position.z * 0.27 + i * 1.13;
       picked.push({
         base: t.position.clone(),
@@ -203,7 +189,7 @@ export default function Fireflies({ transforms }: FirefliesProps) {
       {glowFireflies.map((f, i) => (
         <pointLight
           key={`firefly-glow-${i}`}
-          ref={(el: THREE.PointLight | null) => { lightRefs.current[i] = el; }}
+          ref={(el) => { lightRefs.current[i] = el; }}
           color="#ffdd55"
           intensity={0.3}
           distance={3}

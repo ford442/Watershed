@@ -2,14 +2,9 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
-import type { BiomeDecorationProps } from './types';
-import type { MistPlacement } from '../TrackSegment/types';
+import type { MistPlacement, MistProps, WeatherUpdateEvent } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
-
-interface MistProps extends Omit<BiomeDecorationProps, 'transforms'> {
-  transforms?: MistPlacement[];
-}
 
 export default function Mist({
   transforms,
@@ -23,12 +18,12 @@ export default function Mist({
   const [weatherType, setWeatherType] = useState('clear');
 
   useEffect(() => {
-    const onWeatherUpdate = (event: Event) => {
-      const incoming = (event as CustomEvent<{ type?: string }>).detail?.type;
+    const onWeatherUpdate = (event: WeatherUpdateEvent) => {
+      const incoming = event?.detail?.type;
       if (typeof incoming === 'string') setWeatherType(incoming);
     };
-    window.addEventListener('weather-update', onWeatherUpdate);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate);
+    window.addEventListener('weather-update', onWeatherUpdate as EventListener);
+    return () => window.removeEventListener('weather-update', onWeatherUpdate as EventListener);
   }, []);
 
   // Geometry: Simple Plane
@@ -187,26 +182,25 @@ export default function Mist({
 
   // Setup Instances
   useEffect(() => {
-    if (!meshRef.current || !transforms || transforms.length === 0) return;
-
     const mesh = meshRef.current;
+    if (!mesh || !transforms || transforms.length === 0) return;
 
     const scaleData = new Float32Array(transforms.length * 3);
     const typeData = new Float32Array(transforms.length);
 
-    transforms.forEach((t, i) => {
+    transforms.forEach((t: MistPlacement, i: number) => {
       // We only need position from transform for our billboard shader logic
       DUMMY_OBJ.position.copy(t.position);
       DUMMY_OBJ.updateMatrix();
       mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
 
-      const sx = t?.scale?.x ?? 1;
-      const sy = t?.scale?.y ?? 1;
-      const sz = t?.scale?.z ?? 1;
+      const sx = t.scale?.x ?? 1;
+      const sy = t.scale?.y ?? 1;
+      const sz = t.scale?.z ?? 1;
       scaleData[i * 3] = sx;
       scaleData[i * 3 + 1] = sy;
       scaleData[i * 3 + 2] = sz;
-      typeData[i] = t?.type === 'column' ? 1 : 0;
+      typeData[i] = t.type === 'column' ? 1 : 0;
     });
 
     mesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scaleData, 3));

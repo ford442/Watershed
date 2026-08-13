@@ -5,29 +5,14 @@ import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
-import { isAutumnLike, type BiomeId } from '../../configs/biomes';
-import type { FlowerPlacement, FlowerVariantId } from '../TrackSegment/types';
+import { isAutumnLike } from '../../configs/biomes';
+import type { FlowerPlacement, WildflowersProps } from './types';
+import { toVegetationMaterial } from './types';
 
-const FLOWER_VARIANTS: FlowerVariantId[] = ['bloom', 'spike', 'daisy', 'bell'];
+const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'] as const;
+type FlowerVariant = typeof FLOWER_VARIANTS[number];
 
-const STAMEN_COLOR = new THREE.Color('#f4d35e');
-const WHITE = new THREE.Color('#ffffff');
-const WILT_COLOR = new THREE.Color('#8a7048');
-
-interface WildflowersProps {
-  transforms?: FlowerPlacement[];
-  biome?: BiomeId | string;
-}
-
-interface WildflowerVariant {
-  type: FlowerVariantId;
-  geometry: THREE.BufferGeometry;
-  plantHeight: number;
-  windStrength: number;
-  windSpeed: number;
-}
-
-interface WildflowerInstanceData {
+interface FlowerInstance {
   key: string;
   position: THREE.Vector3;
   rotation: THREE.Euler;
@@ -35,9 +20,12 @@ interface WildflowerInstanceData {
   color: THREE.Color;
 }
 
-type InstancesByVariant = Record<FlowerVariantId, WildflowerInstanceData[]>;
+const STAMEN_COLOR = new THREE.Color('#f4d35e');
+const WHITE = new THREE.Color('#ffffff');
+const WILT_COLOR = new THREE.Color('#8a7048');
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
-// Tag every vertex of a geometry with a flat vertex color
 const paintFlat = (geo: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry => {
   const positions = geo.attributes.position;
   const colors = new Float32Array(positions.count * 3);
@@ -50,20 +38,23 @@ const paintFlat = (geo: THREE.BufferGeometry, color: THREE.Color): THREE.BufferG
 
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
   if (!geometries.length) return new THREE.BufferGeometry();
-  const normalized = geometries.map((g) => g.index ? g.toNonIndexed() : g);
+  const normalized = geometries.map((g) => (g.index ? g.toNonIndexed() : g));
   const attrNames = new Set<string>();
   normalized.forEach((g) => Object.keys(g.attributes).forEach((n) => attrNames.add(n)));
   normalized.forEach((g) => {
     attrNames.forEach((name) => {
       if (!g.getAttribute(name)) {
-        const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
-        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+        const refGeo = normalized.find((h) => h.getAttribute(name));
+        const positionAttr = g.getAttribute('position');
+        if (!refGeo || !positionAttr) return;
+        const ref = refGeo.getAttribute(name);
+        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(positionAttr.count * ref.itemSize), ref.itemSize));
       }
     });
   });
   try {
     return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
-  } catch (e) {
+  } catch {
     return new THREE.BufferGeometry();
   }
 };
@@ -79,11 +70,13 @@ const buildCrossPetals = (width: number, height: number, y: number, count = 3): 
   return geometries;
 };
 
-export default function Wildflowers({ transforms, biome = 'canyonSummer' }: WildflowersProps) {
-  const flowerRefs = useRef<Record<string, THREE.InstancedMesh | null>>({});
+function resolveVariant(variant: string | undefined): FlowerVariant {
+  if (variant === 'spike' || variant === 'daisy' || variant === 'bell') return variant;
+  return 'bloom';
+}
 
-  const variants = useMemo<WildflowerVariant[]>(() => {
-    // Bloom: round cluster of petals + a small stamen cap that catches the light
+export default function Wildflowers({ transforms, biome = 'canyonSummer' }: WildflowersProps) {
+  const variants = useMemo(() => {
     const bloomPetals = new THREE.IcosahedronGeometry(0.4, 0);
     bloomPetals.scale(1, 0.8, 1);
     bloomPetals.translate(0, 0.3, 0);
@@ -106,7 +99,6 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
       ...buildCrossPetals(0.22, 0.16, 0.35, 2).map((geo) => geo.translate(0.16, 0, 0)),
       ...buildCrossPetals(0.2, 0.15, 0.33, 2).map((geo) => geo.translate(-0.14, 0, 0.08)),
     ].map((geo) => paintFlat(geo, WHITE));
-    // Stamen disc - small bright center where all the petals converge
     const daisyStamen = paintFlat(new THREE.SphereGeometry(0.07, 6, 4).translate(0, 0.41, 0), STAMEN_COLOR);
     const daisy = [daisyStem, ...daisyBlossoms, daisyStamen];
 
@@ -119,24 +111,24 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
     const bell = [bellStem, ...bellBlossoms];
 
     return [
-      { type: 'bloom', geometry: bloom, plantHeight: 0.6, windStrength: 0.05, windSpeed: 1.7 },
-      { type: 'spike', geometry: mergeCompatibleGeometries(spike), plantHeight: 1.5, windStrength: 0.07, windSpeed: 1.2 },
-      { type: 'daisy', geometry: mergeCompatibleGeometries(daisy), plantHeight: 0.65, windStrength: 0.04, windSpeed: 1.8 },
-      { type: 'bell', geometry: mergeCompatibleGeometries(bell), plantHeight: 1.1, windStrength: 0.06, windSpeed: 1.4 },
+      { type: 'bloom' as const, geometry: bloom, plantHeight: 0.6, windStrength: 0.05, windSpeed: 1.7 },
+      { type: 'spike' as const, geometry: mergeCompatibleGeometries(spike), plantHeight: 1.5, windStrength: 0.07, windSpeed: 1.2 },
+      { type: 'daisy' as const, geometry: mergeCompatibleGeometries(daisy), plantHeight: 0.65, windStrength: 0.04, windSpeed: 1.8 },
+      { type: 'bell' as const, geometry: mergeCompatibleGeometries(bell), plantHeight: 1.1, windStrength: 0.06, windSpeed: 1.4 },
     ];
   }, []);
 
   const materials = useMemo(() => {
-    const result: Partial<Record<FlowerVariantId, THREE.MeshStandardMaterial>> = {};
+    const result: Partial<Record<FlowerVariant, THREE.MeshStandardMaterial>> = {};
     variants.forEach((variant) => {
       const mat = new THREE.MeshStandardMaterial({
-          color: '#ffffff',
-          roughness: 0.85,
-          metalness: 0,
-          side: THREE.DoubleSide,
-          vertexColors: true,
+        color: '#ffffff',
+        roughness: 0.85,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        vertexColors: true,
       });
-      extendVegetationMaterial(mat as unknown as Parameters<typeof extendVegetationMaterial>[0], {
+      extendVegetationMaterial(toVegetationMaterial(mat), {
         plantHeight: variant.plantHeight,
         windStrength: variant.windStrength,
         windSpeed: variant.windSpeed,
@@ -146,35 +138,35 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
     return result;
   }, [variants]);
 
-  const instancesByVariant = useMemo<Partial<InstancesByVariant>>(() => {
-    if (!transforms) return {};
-
-    const grouped: InstancesByVariant = {
+  const instancesByVariant = useMemo(() => {
+    const grouped: Record<FlowerVariant, FlowerInstance[]> = {
       bloom: [],
       spike: [],
       daisy: [],
       bell: [],
     };
+    if (!transforms) return grouped;
+
     const palette = getBiomePalette(biome).wildflowerColors;
 
-    transforms.forEach((t, i) => {
-      const variant: FlowerVariantId = grouped[t.variant] ? t.variant : 'bloom';
+    transforms.forEach((t: FlowerPlacement, i: number) => {
+      const variant = resolveVariant(t.variant);
       const paletteIndex = t.colorIndex ?? (i % palette.length);
       const color = new THREE.Color(palette[paletteIndex % palette.length]);
       const hueJitter = (t.hueJitter ?? 0) * 0.08;
       const lightnessJitter = (t.lightnessJitter ?? 0) * (isAutumnLike(biome) ? 0.05 : 0.09);
       color.offsetHSL(hueJitter, isAutumnLike(biome) ? -0.1 : 0.04, lightnessJitter);
 
-      // A handful of blooms are past their prime - droop and fade toward seed-head brown
       const wiltRoll = ((Math.sin((t.position.x * 12.9898 + t.position.z * 78.233 + i) * 43758.5453) % 1) + 1) % 1;
       const isWilted = wiltRoll < 0.12;
-      let rotation = t.rotation;
+      const baseRotation = t.rotation ?? DEFAULT_ROTATION;
+      let rotation = baseRotation;
       if (isWilted) {
         color.lerp(WILT_COLOR, 0.65);
         rotation = new THREE.Euler(
-          t.rotation.x + 0.6 + wiltRoll * 0.5,
-          t.rotation.y,
-          t.rotation.z + (wiltRoll - 0.06) * 0.8
+          baseRotation.x + 0.6 + wiltRoll * 0.5,
+          baseRotation.y,
+          baseRotation.z + (wiltRoll - 0.06) * 0.8,
         );
       }
 
@@ -182,7 +174,7 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
         key: `flower-${i}`,
         position: t.position,
         rotation,
-        scale: t.scale,
+        scale: t.scale ?? DEFAULT_SCALE,
         color,
       });
     });
@@ -192,7 +184,10 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
 
   useFrame((state) => {
     variants.forEach((variant) => {
-      updateVegetationMaterial(materials[variant.type] as unknown as Parameters<typeof updateVegetationMaterial>[0], state.clock.elapsedTime);
+      const mat = materials[variant.type];
+      if (mat) {
+        updateVegetationMaterial(toVegetationMaterial(mat), state.clock.elapsedTime);
+      }
     });
   });
 
@@ -202,10 +197,11 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
     <group>
       {variants.map((variant) => {
         const instances = instancesByVariant[variant.type] || [];
-        if (instances.length === 0) return null;
+        const material = materials[variant.type];
+        if (instances.length === 0 || !material) return null;
 
         return (
-          <Instances key={variant.type} range={instances.length} geometry={variant.geometry} material={materials[variant.type]} receiveShadow>
+          <Instances key={variant.type} range={instances.length} geometry={variant.geometry} material={material} receiveShadow>
             {instances.map((data) => (
               <Instance
                 key={data.key}

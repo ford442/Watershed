@@ -1,53 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { BiomeDecorationProps, PlacementTransform } from './types';
-
-interface BirdsProps extends BiomeDecorationProps {
-  birdType?: string;
-  isNight?: boolean;
-}
-
-interface WingGeometryConfig {
-  span: number;
-  chord: number;
-  sweep: number;
-  tipDrop: number;
-}
-
-interface HawkBirdState {
-  anchor: THREE.Vector3;
-  phase: number;
-  motionFreq: number;
-  flapFreq: number;
-  radiusX: number;
-  radiusZ: number;
-  riseAmp: number;
-  wingRootOffset: number;
-  wingRootLift: number;
-  scale: number;
-}
-
-interface SongbirdState {
-  anchor: THREE.Vector3;
-  phase: number;
-  motionFreq: number;
-  flapFreq: number;
-  hopX: number;
-  hopZ: number;
-  hopY: number;
-  hopHeight: number;
-  jitterAmp: number;
-  wingRootOffset: number;
-  wingRootLift: number;
-  scale: number;
-}
-
-type BirdState = HawkBirdState | SongbirdState;
-
-interface BirdMotion {
-  flap: number;
-}
+import type { BirdsProps } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
@@ -65,11 +19,48 @@ const FLEE_DIR = new THREE.Vector3();
 const MAX_BIRDS = 8;
 const STARTLE_RADIUS = 7;
 
-interface Point3 {
+interface WingGeometryConfig {
+  span: number;
+  chord: number;
+  sweep: number;
+  tipDrop: number;
+}
+
+interface BirdMotionPoint {
   x: number;
   y: number;
   z: number;
 }
+
+interface SongbirdState {
+  anchor: THREE.Vector3;
+  phase: number;
+  motionFreq: number;
+  flapFreq: number;
+  hopX: number;
+  hopZ: number;
+  hopY: number;
+  hopHeight: number;
+  jitterAmp: number;
+  wingRootOffset: number;
+  wingRootLift: number;
+  scale: number;
+}
+
+interface HawkState {
+  anchor: THREE.Vector3;
+  phase: number;
+  motionFreq: number;
+  flapFreq: number;
+  radiusX: number;
+  radiusZ: number;
+  riseAmp: number;
+  wingRootOffset: number;
+  wingRootLift: number;
+  scale: number;
+}
+
+type BirdState = SongbirdState | HawkState;
 
 const hash = (n: number): number => {
   const x = Math.sin(n) * 43758.5453123;
@@ -101,7 +92,12 @@ const createWingGeometry = (side: number, config: WingGeometryConfig): THREE.Buf
   return geo;
 };
 
-const quadraticBezier = (target: number, p0: Point3, p1: Point3, p2: Point3): Point3 => {
+const quadraticBezier = (
+  target: number,
+  p0: BirdMotionPoint,
+  p1: BirdMotionPoint,
+  p2: BirdMotionPoint,
+): BirdMotionPoint => {
   const inv = 1 - target;
   const inv2 = inv * inv;
   const t2 = target * target;
@@ -116,8 +112,8 @@ const evaluateSongbird = (
   bird: SongbirdState,
   time: number,
   outPos: THREE.Vector3,
-  outVel: THREE.Vector3
-): BirdMotion => {
+  outVel: THREE.Vector3,
+): { flap: number } => {
   const cycle = (time * bird.motionFreq + bird.phase) % 1;
   const hopFraction = 0.38;
   const hopTarget = { x: bird.hopX, y: bird.hopY, z: bird.hopZ };
@@ -166,11 +162,11 @@ const evaluateSongbird = (
 };
 
 const evaluateHawk = (
-  bird: HawkBirdState,
+  bird: HawkState,
   time: number,
   outPos: THREE.Vector3,
-  outVel: THREE.Vector3
-): BirdMotion => {
+  outVel: THREE.Vector3,
+): { flap: number } => {
   const angle = time * bird.motionFreq + bird.phase * Math.PI * 2;
   const angle2 = angle * 0.83 + bird.phase * 0.5;
 
@@ -201,9 +197,9 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
    [transforms]
   );
 
-  const birds = useMemo((): BirdState[] => {
+  const birds = useMemo(() => {
    const isHawk = birdType === 'hawk';
-   return activeTransforms.map((transform: PlacementTransform, index: number): BirdState => {
+   return activeTransforms.map((transform, index) => {
      const basePos = transform.position || new THREE.Vector3();
      const seedBase = (basePos.x * 13.31) + (basePos.y * 7.17) + (basePos.z * 5.27) + index * 17.11;
      const r1 = hash(seedBase);
@@ -286,21 +282,18 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
   }, [birdType]);
 
   useFrame(({ clock, camera }) => {
-   if (!bodyRef.current || !leftWingRef.current || !rightWingRef.current || birds.length === 0) return;
-
    const bodyMesh = bodyRef.current;
    const leftWingMesh = leftWingRef.current;
    const rightWingMesh = rightWingRef.current;
-   const now = clock.elapsedTime;
-   const evaluate = (birdType === 'hawk' ? evaluateHawk : evaluateSongbird) as (
-     bird: BirdState,
-     time: number,
-     outPos: THREE.Vector3,
-     outVel: THREE.Vector3
-   ) => BirdMotion;
+   if (!bodyMesh || !leftWingMesh || !rightWingMesh || birds.length === 0) return;
 
-   birds.forEach((bird: BirdState, index: number) => {
-     const motion = evaluate(bird, now, TEMP_POS, TEMP_VEL);
+   const now = clock.elapsedTime;
+   const isHawk = birdType === 'hawk';
+
+   birds.forEach((bird, index) => {
+     const motion = isHawk
+       ? evaluateHawk(bird as HawkState, now, TEMP_POS, TEMP_VEL)
+       : evaluateSongbird(bird as SongbirdState, now, TEMP_POS, TEMP_VEL);
 
      if (TEMP_VEL.lengthSq() < 1e-4) {
        TEMP_VEL.set(0, 0, 1);
@@ -320,7 +313,11 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
      TEMP_QUAT.setFromUnitVectors(LOCAL_FORWARD, TEMP_VEL);
 
      // Banking tilt: roll into turns based on heading change over a short window
-     evaluate(bird, now - 0.08, PREV_POS, PREV_VEL);
+     if (isHawk) {
+       evaluateHawk(bird as HawkState, now - 0.08, PREV_POS, PREV_VEL);
+     } else {
+       evaluateSongbird(bird as SongbirdState, now - 0.08, PREV_POS, PREV_VEL);
+     }
      if (PREV_VEL.lengthSq() < 1e-4) PREV_VEL.set(0, 0, 1);
      const heading = Math.atan2(TEMP_VEL.x, TEMP_VEL.z);
      const headingPrev = Math.atan2(PREV_VEL.x, PREV_VEL.z);
