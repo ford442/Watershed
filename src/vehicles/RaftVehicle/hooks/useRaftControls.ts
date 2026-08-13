@@ -123,6 +123,14 @@ export function useRaftControls({
     }
 
     timeRef.current += delta;
+
+    // Survival (wetness / core temp) ticks before stamina so this frame's paddle
+    // economy already reflects it. No run session (free play, editor) → null, and
+    // the modifiers stay at 1.
+    const survivalMods = runtime.tickRaftSurvival(body, delta);
+    runtime.paddleModifiers.cost = survivalMods?.paddleCostMultiplier ?? 1;
+    runtime.paddleModifiers.regen = survivalMods?.paddleRegenMultiplier ?? 1;
+
     runtime.updateStamina(delta);
 
     if (stunState.current.active) {

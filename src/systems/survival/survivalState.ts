@@ -32,6 +32,13 @@ export interface SurvivalModifiers {
   exposureStress: number;
   /** Wetness-based SFX attenuation (1 = dry, lower = muffled). */
   sfxWetnessMultiplier: number;
+  /**
+   * Raft paddle stroke cost multiplier (≥1). Cold, stiff hands and a soaked
+   * jacket make each stroke cost more stamina.
+   */
+  paddleCostMultiplier: number;
+  /** Raft paddle stamina regen multiplier (≤1). Shivering recovers slower. */
+  paddleRegenMultiplier: number;
 }
 
 export const SURVIVAL_INITIAL: SurvivalState = {
@@ -62,6 +69,18 @@ const WETNESS_DRY_BASE = 0.08;
 const WETNESS_WIND_DRY_SCALE = 0.025;
 const TEMP_LERP_RATE = 0.35;
 const WETNESS_COLD_PENALTY = 0.18;
+
+/**
+ * Raft paddle coupling. The raft has no sprint, so wetness/exposure land on the
+ * paddle economy instead: strokes cost more and the bar refills slower. Bounds
+ * are deliberately gentler than the runner's sprint penalties — the raft cannot
+ * choose to stop paddling in a rapid, so a harsh curve reads as unfair rather
+ * than tense.
+ */
+const PADDLE_COST_WETNESS = 0.2;
+const PADDLE_COST_EXPOSURE = 0.35;
+const PADDLE_REGEN_WETNESS = 0.18;
+const PADDLE_REGEN_EXPOSURE = 0.4;
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -146,11 +165,21 @@ export function getSurvivalModifiers(
 
   const sfxWetnessMultiplier = 1 - state.wetness * 0.35;
 
+  // Raft paddle economy — see the PADDLE_* constants above.
+  const paddleCostMultiplier =
+    loadout.staminaDrainMultiplier *
+    (1 + state.wetness * PADDLE_COST_WETNESS + exposureStress * PADDLE_COST_EXPOSURE);
+  const paddleRegenMultiplier =
+    loadout.staminaRegenMultiplier *
+    clamp01(1 - state.wetness * PADDLE_REGEN_WETNESS - exposureStress * PADDLE_REGEN_EXPOSURE);
+
   return {
     staminaDrainMultiplier: staminaDrainMul,
     staminaRegenMultiplier: staminaRegenMul,
     movementMultiplier: movementMul,
     exposureStress,
     sfxWetnessMultiplier,
+    paddleCostMultiplier,
+    paddleRegenMultiplier,
   };
 }

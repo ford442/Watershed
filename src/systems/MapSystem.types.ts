@@ -272,9 +272,12 @@ export interface SegmentProgressionConfig {
   vortex?: VortexConfig;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
-   * Consumed by WaterFlowForces / RaftVehicle to reduce lateral drag and
-   * add a persistent downstream slide bias when > 0.
-   * TODO: wire into Rapier contact material override per segment.
+   *
+   * Two consumers, on disjoint interactions (never double-count them):
+   * - WaterFlowForces / RaftVehicle — reduces water lateral drag and adds a
+   *   downstream slide bias.
+   * - systems/surfaceFriction.ts — sets Rapier contact friction on the segment
+   *   collision mesh, so wall and floor impacts feel slippery too.
    */
   slipperiness?: number;
 }

@@ -19,6 +19,8 @@ import {
   tickLaunchScoring,
   hasActiveLaunch,
 } from '../../../systems/LaunchScoringSession';
+import { tickRunSurvival } from '../../../systems/runSession';
+import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 
 export interface RaftPhysicsRuntimeDeps {
   buoyancyState: { current: any };
@@ -215,6 +217,34 @@ const handleTipping = (body: any, delta: number): boolean => {
 };
 
 /**
+ * Survival coupling for the raft (Track A v2).
+ *
+ * The runner ticks survival from RunnerPhysicsStep; the raft is the other half of
+ * that loop. `inWater` is the raft actually floating rather than a height test —
+ * a raft riding a wave crest is still soaking its occupant.
+ *
+ * Returns the live modifiers so the paddle economy can read them; null when no
+ * run session is active (free-play / editor), in which case stamina behaves
+ * exactly as it did before survival existed.
+ */
+const tickRaftSurvival = (body: any, delta: number) => {
+  const vel = body?.linvel?.();
+  const windSpeed = vel ? Math.sqrt(vel.x * vel.x + vel.z * vel.z) : 0;
+  const storeBiome = useGameStore.getState().currentBiome;
+  const biomeId: BiomeId = isBiomeId(storeBiome) ? storeBiome : 'canyonSummer';
+
+  return tickRunSurvival({
+    dt: delta,
+    biomeId,
+    inWater: deps.buoyancyState.current.isFloating === true,
+    windSpeed,
+  });
+};
+
+/** Paddle-economy multipliers from the last survival tick (1 = unaffected). */
+const paddleModifiers = { cost: 1, regen: 1 };
+
+/**
  * Update stamina state each frame (regen, exhaustion tracking)
  */
 const updateStamina = (delta: number) => {
@@ -226,9 +256,12 @@ const updateStamina = (delta: number) => {
     return;
   }
 
-  // Regenerate stamina
+  // Regenerate stamina — wetness and cold exposure slow the refill.
   if (st.current < STAMINA.MAX) {
-    st.current = Math.min(STAMINA.MAX, st.current + STAMINA.REGEN_RATE * delta);
+    st.current = Math.min(
+      STAMINA.MAX,
+      st.current + STAMINA.REGEN_RATE * paddleModifiers.regen * delta,
+    );
   }
 
   // Clear exhaustion when recovered enough
@@ -248,7 +281,8 @@ const consumeStamina = (): number => {
     return 0;
   }
 
-  st.current = Math.max(0, st.current - STAMINA.COST);
+  // Cold, stiff hands and a soaked jacket make each stroke cost more.
+  st.current = Math.max(0, st.current - STAMINA.COST * paddleModifiers.cost);
   st.regenDelay = STAMINA.REGEN_DELAY;
 
   if (st.current < STAMINA.EXHAUSTED_THRESHOLD) {
@@ -613,6 +647,8 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
     applyTippingForce,
     dampenRotation,
     handleTipping,
+    tickRaftSurvival,
+    paddleModifiers,
     updateStamina,
     consumeStamina,
     applyBrake,

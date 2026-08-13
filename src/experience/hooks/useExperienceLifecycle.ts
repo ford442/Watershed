@@ -18,7 +18,11 @@ import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
 import { tickGhostRecording } from '../../systems/GhostRecorder';
 import { isElevatedRisk } from '../../systems/flowForecast';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
-import { countLostCaches, requiresPortageForSegment } from '../../systems/portageCache';
+import {
+  countLostCaches,
+  portageRouteStatus,
+  requiresPortageForSegment,
+} from '../../systems/portageCache';
 import { dispatchPortageCacheEvent, getRunSession } from '../../systems/runSession';
 import { resolveRespawnSegment } from '../../systems/survival';
 import type { DebugStageController } from '../../debug/debugStages';
@@ -163,12 +167,18 @@ export function useExperienceLifecycle({
           awardFloodSurviveBonus(previous.surviveBonus, previous.state);
         }
         if (previous && previous.segmentIndex !== index) {
-          dispatchPortageCacheEvent({
+          const afterExit = dispatchPortageCacheEvent({
             type: 'EXIT_SEGMENT',
             segmentIndex: previous.segmentIndex,
             survived: !useGameStore.getState().isWipeout,
           });
-          if (previous.requiresPortage && useGameStore.getState().isWipeout) {
+          // A required portage fails by being skipped, not only by wiping out —
+          // running the flooded line instead of walking around it is the choice
+          // the penalty is pricing.
+          const routeStatus = afterExit
+            ? portageRouteStatus(afterExit, previous.segmentIndex)
+            : null;
+          if (previous.requiresPortage && routeStatus === 'failed') {
             applyPortageFailPenalty();
           }
         }

@@ -51,7 +51,22 @@ export function isRiverNodeSurface(material: THREE.Material | null | undefined):
  *
  * A non-standard source material (Basic/Phong/ShaderMaterial) has no node
  * equivalent here, so it stays on the GLSL path even when TSL is requested.
+ *
+ * The overload preserves `MeshStandardMaterial` for standard sources so call sites
+ * can keep passing the result to consumers that read standard-material properties.
+ * `MeshStandardNodeMaterial` mirrors that property surface (map, roughness,
+ * metalness, …), so the narrowing holds at runtime on both backends.
  */
+export function createRiverSurfaceMaterial(
+  backend: MaterialBackend,
+  source: THREE.MeshStandardMaterial,
+  options?: RiverSurfaceOptions,
+): THREE.MeshStandardMaterial;
+export function createRiverSurfaceMaterial(
+  backend: MaterialBackend,
+  source: THREE.Material,
+  options?: RiverSurfaceOptions,
+): THREE.Material;
 export function createRiverSurfaceMaterial(
   backend: MaterialBackend,
   source: THREE.Material,

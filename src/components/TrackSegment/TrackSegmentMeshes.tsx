@@ -63,6 +63,10 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import PondFog from './PondFog';
 import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 import type { TrackSegmentMeshesProps } from './types';
+import {
+    resolveSegmentFriction,
+    resolveSegmentRestitution,
+} from '../../systems/surfaceFriction';
 
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;
@@ -80,6 +84,7 @@ export function TrackSegmentMeshes({
     flowSpeed,
     type,
     segmentState,
+    slipperiness = 0,
     placementData,
     biome,
     waterfallPos,
@@ -440,16 +445,15 @@ export function TrackSegmentMeshes({
                 key={`rb-collision-${segmentId}`}
                 type="fixed"
                 colliders="trimesh"
-                friction={
-                    segmentState === 'WashedOut'
-                        ? 0.35
-                        : segmentState === 'Flooded'
-                        ? 0.55
-                        : segmentState === 'HighFlow'
-                          ? 0.8
-                          : biomeProfile.wallFriction
-                }
-                restitution={biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1}
+                friction={resolveSegmentFriction({
+                    baseFriction: biomeProfile.wallFriction,
+                    slipperiness,
+                    segmentState,
+                })}
+                restitution={resolveSegmentRestitution(
+                    biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1,
+                    slipperiness,
+                )}
             >
                 <mesh geometry={collisionGeometry} visible={false} />
             </RigidBody>
