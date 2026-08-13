@@ -18,9 +18,10 @@ export interface GhostTimeDeltaProps {
 
 function formatDelta(seconds: number): string {
   const sign = seconds >= 0 ? '+' : '−';
-  const abs = Math.abs(seconds);
+  // Round to centiseconds before splitting to avoid floating-point 59.999… → 60.00
+  const abs = Math.abs(Math.round(seconds * 100) / 100);
   const mins = Math.floor(abs / 60);
-  const secs = (abs % 60).toFixed(2).padStart(5, '0');
+  const secs = Math.min(abs % 60, 59.99).toFixed(2).padStart(5, '0');
   return mins > 0 ? `${sign}${mins}:${secs}` : `${sign}${secs}`;
 }
 

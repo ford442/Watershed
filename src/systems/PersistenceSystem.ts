@@ -211,10 +211,18 @@ export function getRunBest(runKey: string): RunBest {
 
 export function updateRunBest(runKey: string, patch: Partial<RunBest>): RunBest {
   const current = getRunBest(runKey);
+
+  let bestTimeMs: number | undefined;
+  if (patch.bestTimeMs !== undefined && current.bestTimeMs !== undefined) {
+    bestTimeMs = Math.min(current.bestTimeMs, patch.bestTimeMs);
+  } else {
+    bestTimeMs = patch.bestTimeMs ?? current.bestTimeMs;
+  }
+
   const next: RunBest = {
     bestScore: Math.max(current.bestScore, patch.bestScore ?? current.bestScore),
     bestAirTime: Math.max(current.bestAirTime, patch.bestAirTime ?? current.bestAirTime),
-    bestTimeMs: patch.bestTimeMs ?? current.bestTimeMs,
+    bestTimeMs,
     ghostData: patch.ghostData ?? current.ghostData,
   };
 
