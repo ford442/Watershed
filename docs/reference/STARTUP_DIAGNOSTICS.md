@@ -18,7 +18,7 @@ WebGL: INVALID_OPERATION: useProgram: program not valid
 The custom shader modifications in two files are failing to compile:
 
 1. **src/utils/RiverShader.ts** - Material extension for wetness/moss/caustics
-2. **src/components/FlowingWater.jsx** - Water surface shader
+2. **src/components/FlowingWater.tsx** - Water surface shader
 
 ### Secondary Issue: Geometry Creation with Invalid Values
 
@@ -50,8 +50,8 @@ When path generation fails or returns invalid values, geometry creation in `Trac
 | RunnerVehicle | ✅ Working | Physics initialized |
 | TrackManager.tsx | ✅ Working | Textures load successfully |
 | TrackSegment/ | ⚠️ Partial | Geometry creates but shaders may fail |
-| RiverShader.js | ❌ Failing | Shader validation error |
-| FlowingWater.jsx | ❌ Failing | Shader validation error |
+| RiverShader.ts | ❌ Failing | Shader validation error |
+| FlowingWater.tsx | ❌ Failing | Shader validation error |
 
 ### 3. Console Log Analysis
 
@@ -96,7 +96,7 @@ The shader injection code uses string replacement to modify GLSL. Potential issu
 
 ### Priority 1: Add Defensive Checks to Geometry Creation
 
-**File: `src/components/TrackSegment/`** (hooks + `TrackSegmentMeshes.jsx`)
+**File: `src/components/TrackSegment/`** (hooks + `TrackSegmentMeshes.tsx`)
 
 ```javascript
 // Canyon Geometry - Add validation
@@ -119,7 +119,7 @@ const canyonGeometry = useMemo(() => {
 
 ### Priority 2: Add Try-Catch to Shader Compilation
 
-**File: src/components/FlowingWater.jsx**
+**File: src/components/FlowingWater.tsx**
 
 ```javascript
 mat.onBeforeCompile = (shader) => {

@@ -348,7 +348,7 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
   (spawn-count scale)
 - `injectSWEDisturbance` from `SWEHeightField`
 - `useFrame` from `@react-three/fiber`
-- **Does NOT import `SplashParticles.jsx`** — that is a separate unused legacy component.
+- **Does NOT import `SplashParticles.tsx`** — that is a separate unused legacy component.
 - **Does NOT import `useRiverAudio`.**
 
 **Props:**
@@ -386,7 +386,7 @@ Former parallel water-interaction component was removed. Contact VFX lives solel
 
 ---
 
-### `src/components/WaterReflection.jsx`
+### `src/components/WaterReflection.tsx`
 
 **Purpose:** Planar reflection pass — renders the full scene from a camera mirrored below
 the water plane into an offscreen `WebGLRenderTarget`, clipped to geometry above
@@ -419,7 +419,7 @@ or mesh output).
 - Populated `WebGLRenderTarget` held in `renderTargetRef` (RGBA, no depth)
 - Store publish: `setTexture(rt.texture)` + `setStrength(reflectionStrength)` on mount;
   `clear()` on unmount so disabled LOD never leaves a stale sampler
-- Live consumer: `FlowingWater.jsx` samples `reflectionTexture` under Fresnel
+- Live consumer: `FlowingWater.tsx` samples `reflectionTexture` under Fresnel
   (`FLOWING_WATER_SAMPLES_REFLECTION === true`)
 
 **Update Cadence:** Throttled — `useFrame` skips unless `frameCount % updateInterval === 0`.
@@ -433,7 +433,7 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 **Boundaries (Do NOT):**
 - Do NOT mount without the LOD gate — duplicate scene renders are expensive.
 - Do NOT assume `EnhancedWaterMaterial.js` is live — it remains an unused legacy sample
-  reference; the production consumer is `FlowingWater.jsx`.
+  reference; the production consumer is `FlowingWater.tsx`.
 - Do NOT leave the store populated after unmount — always `clear()` in the dispose path.
 
 **Known Pain:**

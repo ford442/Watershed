@@ -16,14 +16,14 @@ import Birds from '../Environment/Birds';
 import Bats from '../Environment/Bats';
 import Fish from '../Environment/Fish';
 import Pebbles from '../Environment/Pebbles';
-import MistJs from '../Environment/Mist';
+import Mist from '../Environment/Mist';
 import WaterLilies from '../Environment/WaterLilies';
 import SunShafts from '../Environment/SunShafts';
 import Rainbow from '../Environment/Rainbow';
 import Ferns from '../Environment/Ferns';
 import Rapids from '../Environment/Rapids';
 import Dragonflies from '../Environment/Dragonflies';
-import PineconeJs from '../Environment/Pinecone';
+import Pinecone from '../Environment/Pinecone';
 import Mushrooms from '../Environment/Mushrooms';
 import RockFoam from '../Environment/RockFoam';
 import Wildflowers from '../Environment/Wildflowers';
@@ -31,7 +31,7 @@ import WaterfallParticles from '../Environment/WaterfallParticles';
 import WaterfallSheet from '../Environment/WaterfallSheet';
 import WaterfallImpactZone from '../Environment/WaterfallImpactZone';
 import FloatingObjectManager from '../Environment/FloatingObjectManager';
-import CanyonDustJs from '../Environment/CanyonDust';
+import CanyonDust from '../Environment/CanyonDust';
 import Cactus from '../Environment/Cactus';
 import DesertSage from '../Environment/DesertSage';
 import CanyonGrass from '../Environment/CanyonGrass';
@@ -56,12 +56,6 @@ import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShade
 import PondFog from './PondFog';
 import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 import type { TrackSegmentMeshesProps } from './types';
-
-/** JS children whose allowJs inference collapses optional props to `null` only. */
-type UntypedSceneComponent = React.ComponentType<Record<string, unknown>>;
-const Mist = MistJs as unknown as UntypedSceneComponent;
-const CanyonDust = CanyonDustJs as unknown as UntypedSceneComponent;
-const Pinecone = PineconeJs as unknown as UntypedSceneComponent;
 
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;

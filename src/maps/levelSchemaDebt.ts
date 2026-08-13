@@ -1,13 +1,12 @@
 /**
  * Documented schema debt shared between registry load-time validation and
  * `registry.contract.test.ts`. New violations outside this list fail CI.
+ *
+ * Empty: authored maps now emit explicit `decorations: {}` where they have
+ * none, and `level.schema.json` legalizes meander's negative pre-roll
+ * segment indices (down to -10) instead of allowlisting the violation.
  */
-export const KNOWN_LEVEL_SCHEMA_DEBT: readonly string[] = [
-  // Authored segments routinely omit `decorations` and fall back to biome defaults.
-  "segments.*.decorations :: must have required property 'decorations'",
-  // meander_to_waterfall uses negative indices for pre-roll segments ahead of index 0.
-  'segments.*.index :: must be >= 0',
-];
+export const KNOWN_LEVEL_SCHEMA_DEBT: readonly string[] = [];
 
 /** Collapse array indices so one debt entry covers every offending segment. */
 export function levelErrorSignature(field: string, error: string): string {

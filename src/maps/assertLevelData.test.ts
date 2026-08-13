@@ -26,7 +26,7 @@ describe('assertLevelData', () => {
     expect(() => assertLevelData(level, 'bad fixture')).toThrow(/failed level validation/);
   });
 
-  it('documents at least the known debt signatures', () => {
-    expect(KNOWN_LEVEL_SCHEMA_DEBT.length).toBeGreaterThanOrEqual(2);
+  it('has no documented debt — all shipped maps fully validate under ajv', () => {
+    expect(KNOWN_LEVEL_SCHEMA_DEBT.length).toBe(0);
   });
 });

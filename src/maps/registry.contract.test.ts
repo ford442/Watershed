@@ -129,15 +129,11 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
 /**
  * Authored JSON shape drift.
  *
- * The registered map JSONs do NOT currently satisfy `level.schema.json` — see
- * KNOWN_SCHEMA_DEBT below. That is pre-existing, load-bearing authored content
- * (meander's negative pre-roll segment indices, omitted `decorations` blocks),
- * so this suite does not assert `valid === true` and the load-time
- * `as unknown as LevelData` casts in registry.ts are intentionally left alone —
- * an ajv assert at import time would refuse to boot the game today.
- *
- * Instead: any schema violation OUTSIDE the documented debt list fails CI, and
- * registry load uses `assertLevelData()` with the same debt filter.
+ * The registered map JSONs fully satisfy `level.schema.json` — meander's
+ * negative pre-roll segment indices are legalized directly in the schema
+ * (`segments.*.index` allows down to -10) and every segment carries an
+ * explicit `decorations` block. `KNOWN_LEVEL_SCHEMA_DEBT` is empty; any
+ * schema violation fails CI via `assertLevelData()` at registry load time.
  */
 describe('map registry contract — authored JSON shape drift (ajv)', () => {
   const entries = registeredLevelDataEntries();

@@ -22,7 +22,7 @@ When docs disagree, trust **code + these living sources** (in order):
 - Water adjuncts: `src/experience/WaterStack.tsx`
 - Track treadmill: `src/components/TrackManager.tsx`
 - Player: `src/vehicles/RunnerVehicle/` / `RaftVehicle/`
-- Post-FX: `src/components/PostProcessingPipeline.jsx`
+- Post-FX: `src/components/PostProcessingPipeline.tsx`
 
 CI: `node scripts/validate-markdown-paths.js` checks living markdown for broken `src/` / `docs/` paths and bans renamed/deleted dual stems (see the script’s ban list).
 
