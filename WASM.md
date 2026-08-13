@@ -28,10 +28,12 @@ TypeScript bindings are in `src/systems/WatershedWasm.ts`.
 
 ```
 emscripten/
-├── watershed_native.h # Shared declarations, constants, value types
+├── common.h          # Shared constants, Vec3, clampf — Embind-free
+├── forces.h          # WaterForceResult + water-force declarations — Embind-free
 ├── forces.cpp        # Buoyancy / drag / flow / batched water forces
+├── swe.h             # Shallow-water solver + heap grid declarations — Embind-free
 ├── swe.cpp           # Shallow-water solver + heap grid helpers
-├── bindings.cpp      # getVersion() + the Embind surface (the ABI)
+├── bindings.cpp      # getVersion() + the ONLY <emscripten/bind.h> include (the ABI)
 ├── build.sh          # Bash build script (wraps CMake)
 └── CMakeLists.txt    # CMake build configuration — ALL compile/link flags live here
 
@@ -103,20 +105,24 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer. Bump in `bindings.cpp` whenever the
-exported surface or a batch stride changes.
+Returns the module ABI version integer (currently 4). Bump in `bindings.cpp`
+whenever the exported surface or a batch stride changes. `WatershedWasm.ts`
+asserts with `>=` so a future minor bump never breaks existing callers.
 
 | Version | Change |
 |---------|--------|
 | 1 | Initial buoyancy / drag / flow surface |
 | 2 | Batched `computeWaterForcesBatch` + SWE grid helpers |
 | 3 | Split into `forces.cpp` / `swe.cpp` / `bindings.cpp` (no signature changes) |
+| 4 | Split shared header into `common.h` / `forces.h` / `swe.h`; reordered Embind `value_object` registration ahead of the functions that use them; added `static_assert` non-polymorphic guards (no signature changes) |
 
 ### Adding a translation unit
 
 Add the `.cpp` to `set(SOURCES …)` in `CMakeLists.txt` **and** to the `em++`
-invocation in `build_colab.sh`, declare its exports in `watershed_native.h`, and
-bind them in `bindings.cpp`. Never put compile or link flags in a shell script.
+invocation in `build_colab.sh`, declare its exports in a Embind-free header
+(`common.h`, or a new `<unit>.h` that includes it), and bind them in
+`bindings.cpp` — the only file allowed to include `<emscripten/bind.h>`. Never
+put compile or link flags in a shell script.
 
 ### `computeBuoyancy(submergedVolume, waterDensity, gravity): number`
 

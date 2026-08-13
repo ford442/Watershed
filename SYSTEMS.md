@@ -512,10 +512,10 @@ gameplay-affecting and must run identically at every preset.
 
 ### `src/systems/WatershedWasm.ts` + `emscripten/`
 
-**Layout:** `emscripten/watershed_native.h` (shared declarations) + `forces.cpp` (water force
-math) + `swe.cpp` (solver + heap grids) + `bindings.cpp` (Embind surface, `getVersion()` — 3).
-All compile/link flags live in `CMakeLists.txt`; `build.sh` and the `SOURCES` list are the only
-places a new translation unit must be registered.
+**Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
+math) + `swe.h`/`swe.cpp` (solver + heap grids) + `bindings.cpp` (the only `<emscripten/bind.h>`
+include; Embind surface, `getVersion()` — 4). All compile/link flags live in `CMakeLists.txt`;
+`build.sh` and the `SOURCES` list are the only places a new translation unit must be registered.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
 Archimedes buoyancy, drag force, river-current flow force, and a linearised

@@ -1,38 +1,14 @@
 /**
- * watershed_native.h — shared declarations for the Watershed WASM module.
+ * forces.h — public declarations for water-force math.
  *
- * Translation units:
- *   forces.cpp    — buoyancy, drag, flow, per-body and batched water forces
- *   swe.cpp       — shallow-water solver + WASM heap grid helpers
- *   bindings.cpp  — getVersion() + the Embind surface
- *
- * All compile/link flags live in CMakeLists.txt — build.sh is a thin wrapper.
+ * Implemented in forces.cpp. Embind-free — bindings.cpp includes this header
+ * and registers the Embind surface separately.
  */
 
-#ifndef WATERSHED_NATIVE_H
-#define WATERSHED_NATIVE_H
+#ifndef WATERSHED_FORCES_H
+#define WATERSHED_FORCES_H
 
-#include <cstdint>
-
-// ---------------------------------------------------------------------------
-// Compile-time constants
-// ---------------------------------------------------------------------------
-static constexpr float WATER_DENSITY_DEFAULT = 1000.0f;  // kg/m³  (fresh water)
-static constexpr float GRAVITY_DEFAULT       = 9.80665f; // m/s² (standard gravity)
-static constexpr float DAMPING_COEFF         = 0.1f;     // velocity damping per second
-
-/** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in WatershedWasm.ts. */
-static constexpr int WATER_FORCE_INPUT_STRIDE  = 8;
-static constexpr int WATER_FORCE_OUTPUT_STRIDE = 8;
-
-// ---------------------------------------------------------------------------
-// Value types crossing the Embind boundary
-// ---------------------------------------------------------------------------
-
-/** 3-component float vector (returned by computeFlowForce). */
-struct Vec3 {
-    float x = 0.f, y = 0.f, z = 0.f;
-};
+#include "common.h"
 
 struct WaterForceResult {
     float forceX = 0.f;
@@ -44,27 +20,6 @@ struct WaterForceResult {
     float turbulence = 0.f;
     float submergedRatio = 0.f;
 };
-
-// ---------------------------------------------------------------------------
-// Utility
-// ---------------------------------------------------------------------------
-inline float clampf(float v, float lo, float hi) noexcept {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
-// ---------------------------------------------------------------------------
-// bindings.cpp
-// ---------------------------------------------------------------------------
-
-/**
- * Module ABI version. Bump whenever the exported surface or a batch stride
- * changes; WatershedWasm.ts documents what each version added.
- */
-int getVersion() noexcept;
-
-// ---------------------------------------------------------------------------
-// forces.cpp
-// ---------------------------------------------------------------------------
 
 /** Archimedes buoyancy: F_b = ρ · V_displaced · g (N). */
 float computeBuoyancy(float submergedVolume,
@@ -123,19 +78,4 @@ void computeWaterForcesBatch(uintptr_t inputPtr,
                              float turbulenceStrength,
                              float turbulenceFrequency) noexcept;
 
-// ---------------------------------------------------------------------------
-// swe.cpp
-// ---------------------------------------------------------------------------
-
-/** Advance the linearised shallow-water grid one CFL-clamped time step. */
-void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr,
-                      int width, int height,
-                      float dt, float g, float dx, float H);
-
-/** Allocate `count` zero-initialised floats in the WASM heap; returns a byte offset. */
-uintptr_t allocateGrid(int count);
-
-/** Free a pointer previously returned by allocateGrid. */
-void freeGrid(uintptr_t ptr);
-
-#endif  // WATERSHED_NATIVE_H
+#endif  // WATERSHED_FORCES_H

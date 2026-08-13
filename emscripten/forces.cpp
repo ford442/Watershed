@@ -7,7 +7,7 @@
  * Change one, change the other.
  */
 
-#include "watershed_native.h"
+#include "forces.h"
 
 #include <emscripten/emscripten.h>
 #include <cmath>
@@ -180,7 +180,7 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
     return result;
 }
 
-// Batch ABI for workers — strides documented in watershed_native.h.
+// Batch ABI for workers — strides documented in common.h.
 void computeWaterForcesBatch(uintptr_t inputPtr,
                              uintptr_t outputPtr,
                              int sampleCount,
