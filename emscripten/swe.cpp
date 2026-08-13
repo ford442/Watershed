@@ -13,6 +13,16 @@
 #include <cstdlib>
 #include <algorithm>
 
+namespace {
+
+float cflSafeDt(float dt, float g, float dx, float H) {
+    const float waveSpeed = std::sqrt(g * H);
+    const float cflMax    = dx / (waveSpeed * 1.5f);
+    return std::min(dt, cflMax);
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // Shallow Water Equations (SWE) — one time step
 //
@@ -49,10 +59,8 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr,
     float* u = reinterpret_cast<float*>(uPtr);
     float* w = reinterpret_cast<float*>(wPtr);
 
-    // Enforce CFL stability: dt ≤ dx / (c · √2),  c = √(g·H)
-    const float waveSpeed = std::sqrt(g * H);
-    const float cflMax    = dx / (waveSpeed * 1.5f);
-    const float safeDt    = std::min(dt, cflMax);
+    // Enforce CFL stability: dt ≤ dx / (c · 1.5),  c = √(g·H)
+    const float safeDt = cflSafeDt(dt, g, dx, H);
 
     // --- Step 1: update velocities from pressure gradients ---
     for (int z = 0; z < height; ++z) {

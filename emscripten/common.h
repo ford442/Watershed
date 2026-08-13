@@ -4,6 +4,7 @@
  * Included by forces.h and swe.h (and transitively by forces.cpp / swe.cpp /
  * bindings.cpp). Embind-free by design: <emscripten/bind.h> is quarantined
  * to bindings.cpp only, so this header must never pull it in.
+ * Types that cross the JS↔C++ boundary must stay concrete and non-polymorphic.
  */
 
 #ifndef WATERSHED_COMMON_H
@@ -23,8 +24,13 @@ static constexpr int WATER_FORCE_INPUT_STRIDE  = 8;
 static constexpr int WATER_FORCE_OUTPUT_STRIDE = 8;
 
 // ---------------------------------------------------------------------------
-// Value types crossing the Embind boundary
+// Value types (Embind-registered in bindings.cpp only)
 // ---------------------------------------------------------------------------
+
+/** 2-component float vector (sampling / flow-direction helpers). Not bound. */
+struct Vec2 {
+    float x = 0.f, z = 0.f;
+};
 
 /** 3-component float vector (returned by computeFlowForce). */
 struct Vec3 {
@@ -32,7 +38,7 @@ struct Vec3 {
 };
 
 // ---------------------------------------------------------------------------
-// Utility
+// Math helpers
 // ---------------------------------------------------------------------------
 inline float clampf(float v, float lo, float hi) noexcept {
     return v < lo ? lo : (v > hi ? hi : v);

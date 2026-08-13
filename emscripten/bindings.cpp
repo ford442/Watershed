@@ -1,5 +1,5 @@
 /**
- * bindings.cpp — Embind surface for the Watershed WASM module.
+ * bindings.cpp — the ONLY Embind surface for the Watershed WASM module.
  *
  * This is the ABI: anything reachable from TypeScript is listed here, and
  * src/systems/WatershedWasm.ts declares the matching types. Adding, removing, or
@@ -29,10 +29,10 @@
 //   1 — initial buoyancy/drag/flow surface
 //   2 — batched computeWaterForcesBatch + SWE grid helpers
 //   3 — split into forces.cpp / swe.cpp / bindings.cpp (no signature changes)
-//   4 — split shared header into common.h / forces.h / swe.h; reordered
-//       Embind value_object registration ahead of the functions that use
-//       them; added static_assert non-polymorphic guards (no signature
-//       changes)
+//   4 — split shared header into common.h / forces.h / swe.h; Embind
+//       quarantined here; reordered Embind value_object registration ahead
+//       of the functions that use them; added static_assert non-polymorphic
+//       guards (no signature changes)
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
     return 4;
@@ -40,8 +40,9 @@ int getVersion() noexcept {
 
 // ---------------------------------------------------------------------------
 // RTTI safety: every type crossing the Embind boundary must be concrete and
-// non-polymorphic (Embind needs RTTI to resolve base-class pointers, which
-// this module doesn't have — it's built with -fno-rtti).
+// non-polymorphic. Compute TUs (forces.cpp / swe.cpp) are built with
+// -fno-rtti; this bindings TU keeps RTTI so Embind type IDs match the
+// embind library.
 // ---------------------------------------------------------------------------
 static_assert(!std::is_polymorphic_v<Vec3>,
               "Vec3 must be non-polymorphic to cross the Embind boundary");

@@ -4,6 +4,7 @@
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
  * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 4).
+ * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION.
  *
  * Quick start
  * -----------
@@ -87,6 +88,7 @@ export interface WatershedNativeModule {
    *   1 — initial buoyancy/drag/flow surface
    *   2 — batched computeWaterForcesBatch + SWE grid helpers
    *   3 — C++ split into forces.cpp / swe.cpp / bindings.cpp
+   *   4 — header split (common.h / forces.h / swe.h); Embind quarantined
    */
   getVersion(): number;
 
@@ -223,6 +225,9 @@ type WatershedNativeFactory = (options?: {
 // ---------------------------------------------------------------------------
 // Singleton loader
 // ---------------------------------------------------------------------------
+/** Minimum ABI accepted by this TypeScript surface. Use >= so a future minor bump does not break. */
+export const MIN_WASM_ABI_VERSION = 4;
+
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 
 function resolvePublicAsset(path: string): string {
@@ -271,13 +276,20 @@ export async function getWasm(): Promise<WatershedNativeModule> {
         };
 
     const factory = mod.default;
-    return factory({
+    const loaded = await factory({
       locateFile: (path: string, _prefix: string) => {
         // Direct the glue JS to load all auxiliary files (including .wasm)
         // from the public root, regardless of the Vite base path.
         return resolvePublicAsset(path);
       },
     });
+    const version = loaded.getVersion();
+    if (version < MIN_WASM_ABI_VERSION) {
+      throw new Error(
+        `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
+      );
+    }
+    return loaded;
   })();
 
   return _modulePromise;

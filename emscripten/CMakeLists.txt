@@ -5,6 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Translation units — keep this list in sync with WASM.md's directory layout.
+# Compile flags (optimisation, SIMD, no-RTTI) go on target_compile_options.
+# Link flags (MODULARIZE / EXPORT_ES6 / -s* / --bind) go on target_link_options
+# only — passing them at compile time makes Emscripten warn about unused args.
 set(SOURCES
     forces.cpp
     swe.cpp
@@ -27,6 +30,8 @@ if(EMSCRIPTEN)
         set(EM_OPT_FLAGS "-O3 -s ASSERTIONS=0")
     endif()
 
+    # Default production path MUST NOT require SharedArrayBuffer.
+    # Threads are a separate opt-in CMake option (build.sh --threads), never default-on.
     option(WATERSHED_THREADS "Enable Emscripten pthreads" OFF)
     if(WATERSHED_THREADS)
         set(EM_THREAD_FLAGS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='web,worker'")
@@ -42,15 +47,21 @@ if(EMSCRIPTEN)
             -mbulk-memory
         )
     else()
+        # Compute TUs stay -fno-rtti / -fno-exceptions.
+        # bindings.cpp keeps RTTI: Embind type IDs must match the embind
+        # library (typeid). Compiling the bindings TU with -fno-rtti plus
+        # -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0 leaves every function
+        # unbound at runtime (CanonicalizedID addresses do not merge with
+        # the prebuilt embind objects).
         target_compile_options(watershed_native PRIVATE
             -O3
             -ffast-math
-            -fno-exceptions
-            -fno-rtti
-            -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0
             -funroll-loops
             -msimd128
             -mbulk-memory
+        )
+        set_source_files_properties(forces.cpp swe.cpp PROPERTIES
+            COMPILE_OPTIONS "-fno-exceptions;-fno-rtti"
         )
     endif()
 

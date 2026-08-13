@@ -9,6 +9,7 @@
 #define WATERSHED_FORCES_H
 
 #include "common.h"
+#include <cstdint>
 
 struct WaterForceResult {
     float forceX = 0.f;

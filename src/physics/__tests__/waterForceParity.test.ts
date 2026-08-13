@@ -125,7 +125,7 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
   });
 
   it('exposes the expected ABI version', () => {
-    expect(wasm.getVersion()).toBeGreaterThanOrEqual(3);
+    expect(wasm.getVersion()).toBeGreaterThanOrEqual(4);
   });
 
   it('agrees with the TS fallback on every fixture (single-sample call)', () => {

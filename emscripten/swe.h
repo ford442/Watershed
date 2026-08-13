@@ -9,6 +9,7 @@
 #define WATERSHED_SWE_H
 
 #include "common.h"
+#include <cstdint>
 
 /** Advance the linearised shallow-water grid one CFL-clamped time step. */
 void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr,

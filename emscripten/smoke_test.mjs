@@ -29,4 +29,14 @@ if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
   throw new Error(`Unexpected _calculateBuoyancyAndDrag(): ${buoyancy}`);
 }
 
-console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)})`);
+const version = wasm.getVersion();
+if (!Number.isInteger(version) || version < 4) {
+  throw new Error(`Unexpected getVersion(): ${version}`);
+}
+
+const archimedes = wasm.computeBuoyancy(1, 1000, 9.80665);
+if (!Number.isFinite(archimedes) || Math.abs(archimedes - 9806.65) > 0.1) {
+  throw new Error(`Unexpected computeBuoyancy(): ${archimedes}`);
+}
+
+console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)} abi=${version})`);

@@ -20,6 +20,7 @@ import {
   dragForceFallback,
   createSWEGrid,
   getWasm,
+  MIN_WASM_ABI_VERSION,
   type Vec3,
   type WatershedNativeModule,
   type SWEGrid,
@@ -32,6 +33,10 @@ import {
 describe('WatershedWasm — module exports', () => {
   it('exports getWasm function', () => {
     expect(typeof getWasm).toBe('function');
+  });
+
+  it('exports a minimum ABI version of 4', () => {
+    expect(MIN_WASM_ABI_VERSION).toBeGreaterThanOrEqual(4);
   });
 
   it('exports createSWEGrid function', () => {
