@@ -51,9 +51,9 @@ http://localhost:3000/?screenshot=1
 
 The production pipeline uses legacy GLSL materials that crash inside `WebGPURenderer`'s `NodeMaterial` / TSL pipeline:
 
-- `RiverShader.js` — `MeshStandardMaterial` with `onBeforeCompile` injection.
+- `RiverShader.ts` — `MeshStandardMaterial` with `onBeforeCompile` injection.
 - `CanyonMaterial.js` — custom `ShaderMaterial`.
-- `FlowingWater.jsx` — custom `ShaderMaterial`.
+- `FlowingWater.tsx` — custom `ShaderMaterial`.
 - Post-processing — GLSL passes from `postprocessing` / `@react-three/postprocessing` v6.
 
 Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. Issue #256 path A owns the real migration, which must replace every legacy material with a `NodeMaterial` / TSL equivalent before `createGameRenderer()` may return anything other than `THREE.WebGLRenderer`.
@@ -91,7 +91,7 @@ Module-level stores cross the Canvas boundary:
 
 - **WebGL2 (`?renderer=webgl`, default)** is the only production path.
 - **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op; it falls back to WebGL2.
-- A separate experimental WebGPU compute path in `src/shaders/HeightmapFlow.ts` may run on a secondary `GPUDevice` when available, but its output is consumed by the WebGL2 `FlowingWater.jsx` shader and is independent of the renderer backend.
+- A separate experimental WebGPU compute path in `src/shaders/HeightmapFlow.ts` may run on a secondary `GPUDevice` when available, but its output is consumed by the WebGL2 `FlowingWater.tsx` shader and is independent of the renderer backend.
 
 ## Keyboard Shortcuts (debug mode)
 

@@ -131,13 +131,17 @@ function validateSemantics(levelData: any, errors: ValidationError[], warnings: 
     validateWaypoints(world.track.waypoints, errors, warnings);
   }
 
-  // Validate segments count matches totalSegments
+  // Validate segments count matches totalSegments. Negative indices are
+  // authored pre-roll segments (see level.schema.json's `segments.*.index`
+  // doc) that play before the map's nominal index 0 and are intentionally
+  // excluded from totalSegments.
   if (world?.track?.totalSegments !== undefined && segments) {
-    if (segments.length !== world.track.totalSegments) {
+    const nonPreRollCount = segments.filter((seg: { index: number }) => seg.index >= 0).length;
+    if (nonPreRollCount !== world.track.totalSegments) {
       errors.push({
         field: 'segments',
-        error: `Segment count (${segments.length}) doesn't match totalSegments (${world.track.totalSegments})`,
-        suggestion: `Set totalSegments to ${segments.length} or add/remove segments`,
+        error: `Segment count (${nonPreRollCount}) doesn't match totalSegments (${world.track.totalSegments})`,
+        suggestion: `Set totalSegments to ${nonPreRollCount} or add/remove segments`,
       });
     }
 

@@ -58,7 +58,7 @@ Based on the move from a static map to an infinite, procedural system (via `Trac
 	 - Scene: Start in a melting ice cave — walls are semi-transparent blue ice and water is slushy / low friction.
 	 - Technical:
 		 - Geometry: In `TrackSegment/` produce inward-curving walls (reduce track width and curve wall vertices inward) to form a tube/tunnel.
-		 - Shader: Extend `FlowingWater.jsx` to expose `baseColor` and `roughness` variants; use a white/blue base and higher roughness for slush.
+		 - Shader: Extend `FlowingWater.tsx` to expose `baseColor` and `roughness` variants; use a white/blue base and higher roughness for slush.
 		 - Physics: In `TrackManager.tsx` / map JSON bias segment control points to steeper Y drops (e.g., direction.y < -0.8) to create high acceleration sections.
 
 2. The Lumber Flume (Forest / Industrial)
@@ -73,7 +73,7 @@ Based on the move from a static map to an infinite, procedural system (via `Trac
 	 - Scene: A hydro pool with a vortex that sucks the player into an overflow pipe.
 	 - Watery Interaction — The Vortex:
 		 - Physics: Add a `CylinderCollider` sensor (Rapier) at pool center and apply centripetal impulses to player rigid body when inside.
-		 - Shader: Update `FlowingWater.jsx` to accept a `center` uniform and apply a UV swirl around that center for visual feedback.
+		 - Shader: Update `FlowingWater.tsx` to accept a `center` uniform and apply a UV swirl around that center for visual feedback.
 
 4. The Slot Canyon (Tech Demo)
 	 - Vibe: Red rock, sharp shadows, extreme vertical walls.
@@ -169,8 +169,8 @@ src/
 ├── components/
 │   ├── TrackManager.tsx           # Segment orchestration (MapSystem)
 │   ├── TrackSegment/              # Canyon chunk + decorations
-│   ├── FlowingWater.jsx
-│   └── PostProcessingPipeline.jsx
+│   ├── FlowingWater.tsx
+│   └── PostProcessingPipeline.tsx
 ├── vehicles/RunnerVehicle/ + RaftVehicle/
 ├── systems/MapSystem.ts + …
 ├── App.tsx

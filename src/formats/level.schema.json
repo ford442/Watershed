@@ -321,9 +321,9 @@
         "properties": {
           "index": {
             "type": "number",
-            "minimum": 0,
+            "minimum": -10,
             "maximum": 49,
-            "description": "Segment index (0-based)"
+            "description": "Segment index (0-based). Negative indices (down to -10) are reserved for authored pre-roll segments that play before the map's nominal index 0 (e.g. meander_to_waterfall's glacier/alpine prelude, GLACIER_START_INDEX = -3)."
           },
           "name": {
             "type": "string",

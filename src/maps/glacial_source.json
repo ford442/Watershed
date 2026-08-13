@@ -249,6 +249,7 @@
       "index": 13,
       "name": "Crevasse Pool",
       "difficulty": 0.55,
+      "decorations": {},
       "type": "splash",
       "biomeOverride": "glacialMelt",
       "width": 30,

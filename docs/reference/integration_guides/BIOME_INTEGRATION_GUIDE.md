@@ -7,7 +7,7 @@ STEP 1: Copy Files
 ================================================================
 
 1. Copy biomes.ts to src/constants/biomes.ts
-2. Replace FlowingWater.jsx with FlowingWater-Biome.jsx (or merge changes)
+2. Replace FlowingWater.tsx with FlowingWater-Biome.tsx (or merge changes)
 3. Copy LumberProps.tsx to src/components/LumberProps.tsx
 
 ================================================================

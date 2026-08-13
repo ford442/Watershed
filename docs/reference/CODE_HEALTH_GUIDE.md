@@ -339,12 +339,12 @@ src/
 │   ├── RunnerVehicle          # Physics & controls
 │   ├── TrackManager.tsx    # Procedural generation orchestration
 │   ├── TrackSegment/    # Individual track piece
-│   ├── FlowingWater.jsx    # Water shader
-│   └── Environment/        # Decorations (21 components)
-│       ├── Vegetation.jsx
+│   ├── FlowingWater.tsx    # Water shader
+│   └── Environment/        # Decorations (~34 components)
+│       ├── Vegetation.tsx
 │       └── ...
 ├── utils/
-│   └── RiverShader.js      # Shared material extensions
+│   └── RiverShader.ts      # Shared material extensions
 └── systems/                # (Future: Complex logic)
 ```
 
@@ -458,10 +458,10 @@ Materials need textures, geometries need valid paths. Always:
 
 `pnpm typecheck` gates two layers:
 
-1. **`tsc -p tsconfig.typecheck.json`** — all `.ts` / `.tsx` under `src/`.
-2. **`scripts/check-typecheck-surface.js`** — the untyped allowlist (`scripts/untyped-allowlist.json`) must match every remaining `.js` / `.jsx` file exactly.
+1. **`tsc -p tsconfig.typecheck.json`** — all `.ts` / `.tsx` under `src/` (no `.jsx` exclusion — the whole `src/` tree is typed).
+2. **`scripts/check-typecheck-surface.mjs`** — the untyped allowlist (`scripts/untyped-allowlist.json`) must match every remaining `.js` / `.jsx` file exactly; it is currently empty.
 
-When migrating a module to TypeScript, remove it from the allowlist in the same PR. Do not add new `.jsx` files without either typing them or updating the allowlist deliberately.
+If a new `.js` / `.jsx` file is ever added under `src/`, either type it as `.ts` / `.tsx` in the same PR or add it to the allowlist deliberately — do not let it merge silently.
 
 Frame-hot hosts and registry load validation are the highest-priority typed surfaces; see `AGENTS.md` for the current inventory table.
 
