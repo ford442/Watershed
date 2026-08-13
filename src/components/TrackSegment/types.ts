@@ -291,6 +291,8 @@ export interface TrackSegmentProps {
   showDebug?: boolean;
   waterLevel?: number;
   segmentState?: SegmentState;
+  /** Authored surface slipperiness 0–1 (+ forecast slipperinessAdd). Drives Rapier contact friction. */
+  slipperiness?: number;
   particleCount?: number;
   particleDensity?: number;
   raftRef?: RefObject<{
@@ -340,6 +342,8 @@ export interface TrackSegmentMeshesProps {
   isSlotCanyon: boolean;
   waterLevel: number;
   segmentState: SegmentState;
+  /** Authored surface slipperiness 0–1 (+ forecast slipperinessAdd). Drives Rapier contact friction. */
+  slipperiness?: number;
   particleCount?: number;
   particleDensity?: number;
   raftRef?: TrackSegmentProps['raftRef'];

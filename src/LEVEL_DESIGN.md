@@ -138,8 +138,12 @@ player with a calm, visually rich recovery (alpine) before the main descent.
 - Adds a `0.18 × flowSpeed × slipperiness` slide bias along the downstream tangent each frame.
 - Net feel: high speed, minimal control, survive-the-chute tension.
 
-> **TODO:** Wire `slipperiness` into a Rapier `ContactMaterial` friction override so
-> wall impacts also feel slippery (friction ≈ `biomeProfile.wallFriction = 0.18`).
+`slipperiness` also drives **Rapier contact friction** on the segment's collision mesh
+(`systems/surfaceFriction.ts` → `TrackSegmentMeshes`), so wall and floor impacts feel
+slippery too: the flood state sets the baseline, then slipperiness interpolates it
+toward `ICE_MIN_FRICTION` (0.04). Water-borne lateral drag (above) and contact friction
+act on disjoint interactions and must not be double-counted — see
+[`SURVIVAL_LAYER.md`](../docs/reference/SURVIVAL_LAYER.md#surface-friction-v2).
 
 ### Visual Style
 

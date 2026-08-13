@@ -541,6 +541,10 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
           weatherWetnessRef={weatherWetnessRef}
           usePooledStaticObstacles
           {...(segment || {})}
+          slipperiness={
+            (mapManagerRef.current?.getChunkConfig?.(segment?.id ?? 0)?.slipperiness ?? 0) +
+            (segment?.slipperinessAdd ?? 0)
+          }
         />
       ))}
 

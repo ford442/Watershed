@@ -25,6 +25,7 @@ export default function TrackSegment({
   showDebug = false,
   waterLevel = WATER_LEVEL,
   segmentState = 'Normal',
+  slipperiness = 0,
   particleCount,
   particleDensity,
   raftRef,
@@ -164,6 +165,7 @@ export default function TrackSegment({
       isSlotCanyon={isSlotCanyon}
       waterLevel={waterLevel}
       segmentState={segmentState}
+      slipperiness={slipperiness}
       particleCount={particleCount}
       particleDensity={particleDensity}
       raftRef={raftRef}

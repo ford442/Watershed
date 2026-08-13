@@ -15,6 +15,7 @@ import HeadlessSkySphere from './HeadlessSkySphere';
 import SceneLighting, { isTightCanyonSegment, waterfallFxIntensityForSegment } from './SceneLighting';
 import VehicleMount from './VehicleMount';
 import PillarDustVFX from '../components/Obstacles/PillarDustVFX';
+import SurvivalMarkers from '../components/Survival/SurvivalMarkers';
 import PillarFragmentPool from '../components/Obstacles/PillarFragmentPool';
 import GhostReplayer from '../components/GhostReplayer';
 import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
@@ -95,6 +96,9 @@ export default function InnerExperience({
             flowSpeed={state.biomeMaterials.water.flowSpeed}
             wasmWaterTest={state.wasmWaterTest}
           />
+
+          {/* Spatial portage / cache markers for the active map (survival v2). */}
+          <SurvivalMarkers vehicleRef={state.vehicleRef} />
 
           <PillarFragmentPool castShadow={lodQuality !== 'high'} />
           <PillarDustVFX />

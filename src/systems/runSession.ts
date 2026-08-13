@@ -206,6 +206,34 @@ export function getJourneyResultsSummary(): JourneyResultsSummary | null {
   };
 }
 
+/**
+ * Dry gear + a hot drink. Retrieving a cache is the only mid-run way to undo
+ * wetness, which is what makes placing one before a cold reach a real decision:
+ * you trade a scoring bonus slot for insurance against the glacier leg.
+ */
+export const CACHE_WETNESS_RECOVERY = 0.45;
+export const CACHE_WARMTH_RECOVERY = 0.25;
+
+/**
+ * Apply a retrieved cache's survival relief. Returns the new survival state, or
+ * null when no run is active. Idempotence is the caller's job — retrieval is
+ * gated by the state machine, which only flips a slot to 'retrieved' once.
+ */
+export function applyCacheRecovery(): SurvivalState | null {
+  if (!activeSession) return null;
+  const survival = {
+    wetness: Math.max(0, activeSession.survival.wetness - CACHE_WETNESS_RECOVERY),
+    coreTemp: Math.min(1, activeSession.survival.coreTemp + CACHE_WARMTH_RECOVERY),
+  };
+  activeSession = { ...activeSession, survival };
+  return survival;
+}
+
+/** Live portage/cache state — read by the world markers. */
+export function getPortageCacheState(): PortageCacheRunState | null {
+  return activeSession?.portageCache ?? null;
+}
+
 export function dispatchPortageCacheEvent(event: PortageCacheEvent): PortageCacheRunState | null {
   if (!activeSession) return null;
   activeSession = {
