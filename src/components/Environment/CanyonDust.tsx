@@ -109,7 +109,7 @@ export default function CanyonDust({
     if (material.uniforms) {
       material.uniforms.time.value = state.clock.elapsedTime;
       material.uniforms.flowSpeed.value = flowSpeed;
-      material.uniforms.playerVelocity.value = playerVelocityRef?.current?.length() ?? 0;
+      material.uniforms.playerVelocity.value = playerVelocityRef?.current ?? 0;
       material.uniforms.densityMul.value = densityMul;
       material.uniforms.colorBase.value.set(currentBiome.id === 'canyonAutumn' ? '#e8c79a' : '#f7e9cf');
     }

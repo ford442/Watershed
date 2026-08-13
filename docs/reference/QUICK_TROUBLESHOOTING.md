@@ -34,7 +34,7 @@ const canyonGeometry = useMemo(() => {
 
 **Quick Fix - Add Error Handling:**
 ```javascript
-// In src/components/FlowingWater.jsx, line ~35
+// In src/components/FlowingWater.tsx, line ~35
 mat.onBeforeCompile = (shader) => {
     try {
         // existing shader code
@@ -186,13 +186,13 @@ src/
 │   ├── RunnerVehicle
 │   ├── TrackManager.tsx
 │   ├── TrackSegment/
-│   ├── FlowingWater.jsx
-│   ├── EnhancedSky.jsx
+│   ├── FlowingWater.tsx
+│   ├── EnhancedSky.tsx
 │   ├── UI.tsx
 │   ├── Loader.tsx
 │   └── ErrorBoundary.tsx
 └── utils/
-    └── RiverShader.js
+    └── RiverShader.ts
 ```
 
 ---

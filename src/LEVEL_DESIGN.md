@@ -68,7 +68,7 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 | Feature | Status | File(s) |
 |--------|--------|---------|
 | Segment configs (0-19+) | ✅ | `src/maps/meander_to_waterfall.ts` |
-| Waterfall: 400 particles | ✅ | `src/components/Environment/WaterfallParticles.jsx` |
+| Waterfall: 400 particles | ✅ | `src/components/Environment/WaterfallParticles.tsx` |
 | Waterfall: camera shake 0.5 | ✅ | `src/maps/meander_to_waterfall.ts` |
 | Waterfall: gravity shift | ✅ | `src/Experience.jsx` |
 | Waterfall: sound fade | ✅ | `src/hooks/useSegmentAudio.ts` |
@@ -80,7 +80,7 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 | Rapids: high rock density | ✅ | `src/maps/meander_to_waterfall.ts` |
 | Biome transition 2000ms | ✅ | `src/systems/BiomeSystem.tsx` |
 | Debounced onBiomeChange | ✅ | `src/systems/ChunkManager.ts` |
-| Particle LOD (400→100) | ✅ | `src/components/Environment/WaterfallParticles.jsx` |
+| Particle LOD (400→100) | ✅ | `src/components/Environment/WaterfallParticles.tsx` |
 
 ## 🎨 Required Assets
 
@@ -160,7 +160,7 @@ player with a calm, visually rich recovery (alpine) before the main descent.
 
 ### VFX: IceSpray & Wildflowers
 
-- **IceSpray:** `src/components/Environment/IceSpray.jsx` renders up to 20 billboarded crystal sprites
+- **IceSpray:** `src/components/Environment/IceSpray.tsx` renders up to 20 billboarded crystal sprites
   per active glacier segment. Particles burst from `vehiclePos` when `playerVelocityForParticles > 0`.
   Intensity = `min(1, speed / 8)` — no spray at rest, full burst at 8 m/s+.
 - **Wildflower boost:** For normal segments with `particleCount > 0`, `TrackSegment.jsx` multiplies
@@ -220,8 +220,8 @@ import { GLACIER_START_INDEX } from '../maps/meander_to_waterfall';
 | God rays | `src/systems/volumetric/VolumetricGodRays.tsx` | Screen-space ray marching |
 | Sun shafts | `src/components/TrackSegment.jsx` (placement) | Narrow vertical beams from above |
 | Mist/spray | `src/components/TrackSegment.jsx` (placement) | Enhanced density, taller mist columns |
-| Floating debris | `src/components/Environment/FloatingDebris.jsx` | Physics-enabled driftwood/pinecones |
-| Rock decorations | `src/components/CanyonDecorations.jsx` | Instanced boulders with colliders |
+| Floating debris | `src/components/Environment/FloatingDebris.tsx` | Physics-enabled driftwood/pinecones |
+| Rock decorations | `src/components/CanyonDecorations.tsx` | Instanced boulders with colliders |
 | Canyon biome component | `src/biomes/CanyonBiome.tsx` | Procedural canyon floor geometry |
 
 ### Performance Budget

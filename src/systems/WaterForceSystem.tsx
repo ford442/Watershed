@@ -6,7 +6,7 @@
  * - Falls back to pure TypeScript force math when WASM is unavailable.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../constants/game';
@@ -21,14 +21,14 @@ import {
   type WatershedNativeModule,
 } from './WatershedWasm';
 import {
-  SWE_CELL_SIZE,
-  SWE_GRID_HEIGHT,
-  SWE_GRID_WIDTH,
   SWE_MEAN_DEPTH,
   consumeSWEDisturbances,
+  setSWEActiveBudget,
   updateSWEHeightFieldSnapshot,
   clearSWEHeightField,
 } from './SWEHeightField';
+import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuality';
+import { useQualityPreset } from './GameState';
 import {
   collectWaterForceBodies,
   registerVehicleWaterBody,
@@ -38,6 +38,7 @@ import {
 import {
   isPhysicsWorkerActive,
   setPhysicsWorkerTickParams,
+  setSWEStatus,
 } from '../physics/physicsWorkerRegistry';
 import type { VehicleRigidBodyRef, VehicleType } from '../experience/types';
 
@@ -116,10 +117,11 @@ function worldToGridIndex(
   worldZ: number,
   originX: number,
   originZ: number,
+  budget: SWEBudget,
 ): { gx: number; gz: number } | null {
-  const gx = Math.round((worldX - originX) / SWE_CELL_SIZE);
-  const gz = Math.round((worldZ - originZ) / SWE_CELL_SIZE);
-  if (gx < 0 || gx >= SWE_GRID_WIDTH || gz < 0 || gz >= SWE_GRID_HEIGHT) return null;
+  const gx = Math.round((worldX - originX) / budget.cellSize);
+  const gz = Math.round((worldZ - originZ) / budget.cellSize);
+  if (gx < 0 || gx >= budget.width || gz < 0 || gz >= budget.height) return null;
   return { gx, gz };
 }
 
@@ -128,18 +130,19 @@ function applyDisturbances(
   originX: number,
   originZ: number,
   disturbances: ReturnType<typeof consumeSWEDisturbances>,
+  budget: SWEBudget,
 ): void {
   for (const d of disturbances) {
-    const center = worldToGridIndex(d.worldX, d.worldZ, originX, originZ);
+    const center = worldToGridIndex(d.worldX, d.worldZ, originX, originZ, budget);
     if (!center) continue;
 
-    const radiusCells = Math.max(1, Math.ceil(d.radius / SWE_CELL_SIZE));
+    const radiusCells = Math.max(1, Math.ceil(d.radius / budget.cellSize));
     for (let dz = -radiusCells; dz <= radiusCells; dz += 1) {
       for (let dx = -radiusCells; dx <= radiusCells; dx += 1) {
         const gx = center.gx + dx;
         const gz = center.gz + dz;
         if (gx < 0 || gx >= grid.width || gz < 0 || gz >= grid.height) continue;
-        const dist = Math.hypot(dx, dz) * SWE_CELL_SIZE;
+        const dist = Math.hypot(dx, dz) * budget.cellSize;
         if (dist > d.radius) continue;
         const falloff = Math.exp(-(dist * dist) / Math.max(d.radius * d.radius, 0.01));
         const idx = gz * grid.width + gx;
@@ -154,16 +157,18 @@ function uploadHeightTexture(
   texture: THREE.DataTexture,
   originX: number,
   originZ: number,
+  budget: SWEBudget,
 ): void {
-  texture.image.data.set(grid.h);
+  (texture.image.data as unknown as Float32Array).set(grid.h);
   texture.needsUpdate = true;
   updateSWEHeightFieldSnapshot({
     texture,
     originX,
     originZ,
-    cellSize: SWE_CELL_SIZE,
-    width: SWE_GRID_WIDTH,
-    height: SWE_GRID_HEIGHT,
+    cellSize: budget.cellSize,
+    width: budget.width,
+    height: budget.height,
+    displacementScale: budget.displacementScale,
     enabled: true,
   });
 }
@@ -181,7 +186,13 @@ export function WaterForceSystem({
   const textureRef = useRef<THREE.DataTexture | null>(null);
   const originRef = useRef({ x: 0, z: 0 });
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
-  const gridInitializedRef = useRef(false);
+  const stepAccumulatorRef = useRef(0);
+  const [wasmReady, setWasmReady] = useState(false);
+
+  // Visual SWE budget follows the live quality preset (LODManager may downgrade
+  // it adaptively). Force math below is NOT gated — it is gameplay-affecting.
+  const quality = useQualityPreset();
+  const budget = useMemo(() => sweBudgetForQuality(quality), [quality]);
 
   useEffect(() => {
     setWaterForceSystemActive(true);
@@ -192,20 +203,45 @@ export function WaterForceSystem({
         if (cancelled) return;
         wasmRef.current = wasm;
         statusRef.current = 'ready';
-        gridRef.current = createSWEGrid(wasm, SWE_GRID_WIDTH, SWE_GRID_HEIGHT, SWE_CELL_SIZE);
-        gridRef.current.h.fill(SWE_MEAN_DEPTH);
+        setWasmReady(true);
       })
       .catch((error) => {
         if (cancelled) return;
         statusRef.current = 'fallback';
         console.warn('[WaterForceSystem] WASM unavailable; using TypeScript fallbacks', error);
         updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+        setSWEStatus(false, null);
       });
 
+    return () => {
+      cancelled = true;
+      setWaterForceSystemActive(false);
+      registerVehicleWaterBody(null);
+      clearSWEHeightField();
+      setSWEStatus(false, null);
+    };
+  }, []);
+
+  // Grid + upload texture are sized by the budget, so a quality change
+  // reallocates both. `low` allocates nothing at all.
+  useEffect(() => {
+    setSWEActiveBudget(budget);
+
+    const wasm = wasmRef.current;
+    if (!budget.enabled || !wasm) {
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+      setSWEStatus(false, null);
+      return;
+    }
+
+    const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize);
+    grid.h.fill(SWE_MEAN_DEPTH);
+    gridRef.current = grid;
+
     const texture = new THREE.DataTexture(
-      new Float32Array(SWE_GRID_WIDTH * SWE_GRID_HEIGHT),
-      SWE_GRID_WIDTH,
-      SWE_GRID_HEIGHT,
+      new Float32Array(budget.width * budget.height),
+      budget.width,
+      budget.height,
       THREE.RedFormat,
       THREE.FloatType,
     );
@@ -214,18 +250,18 @@ export function WaterForceSystem({
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
     textureRef.current = texture;
+    stepAccumulatorRef.current = 0;
+    setSWEStatus(true, `${budget.width}x${budget.height}`);
 
     return () => {
-      cancelled = true;
-      setWaterForceSystemActive(false);
-      registerVehicleWaterBody(null);
-      gridRef.current?.dispose();
+      grid.dispose();
       gridRef.current = null;
       texture.dispose();
       textureRef.current = null;
-      clearSWEHeightField();
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+      setSWEStatus(false, null);
     };
-  }, []);
+  }, [budget, wasmReady]);
 
   useFrame((state, delta) => {
     const vehicleBody = vehicleRef.current;
@@ -252,33 +288,41 @@ export function WaterForceSystem({
       flowDirZ: -1,
     });
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
-    const originX = anchor.x - (SWE_GRID_WIDTH * SWE_CELL_SIZE) * 0.5;
-    const originZ = anchor.z - (SWE_GRID_HEIGHT * SWE_CELL_SIZE) * 0.5;
+    const originX = anchor.x - (budget.width * budget.cellSize) * 0.5;
+    const originZ = anchor.z - (budget.height * budget.cellSize) * 0.5;
     originRef.current = { x: originX, z: originZ };
 
     const grid = gridRef.current;
     const texture = textureRef.current;
-    if (grid && texture && wasmRef.current) {
-      if (!gridInitializedRef.current) {
-        grid.h.fill(SWE_MEAN_DEPTH);
-        gridInitializedRef.current = true;
+    if (budget.enabled && grid && texture && wasmRef.current) {
+      // Step-rate budget: accumulate render deltas and take one SWE step per
+      // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
+      const interval = sweStepInterval(budget);
+      stepAccumulatorRef.current += dt;
+      if (stepAccumulatorRef.current >= interval) {
+        const stepDt = Math.min(stepAccumulatorRef.current, 0.05);
+        stepAccumulatorRef.current = 0;
+
+        applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
+
+        wasmRef.current.stepShallowWater(
+          grid.hPtr,
+          grid.uPtr,
+          grid.wPtr,
+          grid.width,
+          grid.height,
+          stepDt,
+          9.80665,
+          grid.dx,
+          SWE_MEAN_DEPTH,
+        );
+
+        uploadHeightTexture(grid, texture, originX, originZ, budget);
+      } else {
+        // Grid didn't step, but the player moved — keep the sampling window
+        // anchored so the displacement doesn't lag behind the camera.
+        updateSWEHeightFieldSnapshot({ originX, originZ });
       }
-
-      applyDisturbances(grid, originX, originZ, consumeSWEDisturbances());
-
-      wasmRef.current.stepShallowWater(
-        grid.hPtr,
-        grid.uPtr,
-        grid.wPtr,
-        grid.width,
-        grid.height,
-        dt,
-        9.80665,
-        grid.dx,
-        SWE_MEAN_DEPTH,
-      );
-
-      uploadHeightTexture(grid, texture, originX, originZ);
     }
 
     const vehicleConfig = vehicleForceConfig(
@@ -392,6 +436,7 @@ export function WaterForceSystem({
         status: statusRef.current,
         origin: originRef.current,
         sampleCount: bodies.length,
+        sweBudget: budget,
         workerOwnsVehicleForces,
         workerDiagnostics: workerOwnsVehicleForces
           ? (window as any).__watershedPhysicsWorker?.waterForce

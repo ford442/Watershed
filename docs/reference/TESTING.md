@@ -501,7 +501,7 @@ Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc
 |-------|--------|-------|
 | `CI=true pnpm test --watchAll=false` | **182/182 pass** | 19 suites, post set-piece plumbing |
 | `pnpm build` | **Pass** | WASM skipped without Emscripten (expected) |
-| `SYSTEMS.md` contract cards | **Done** | `WaterReflection.jsx`, SplashSystem (consolidated water-contact VFX; WaterInteraction removed) |
+| `SYSTEMS.md` contract cards | **Done** | `WaterReflection.tsx`, SplashSystem (consolidated water-contact VFX; WaterInteraction removed) |
 | Set-piece plumbing (seg 14/22) | **Implemented** | `decorations` wired MapSystem → ChunkManager → TrackSegment; `rockType` override; authored in `meander_to_waterfall.ts` |
 | `diag_trials.mjs` (6 trials) | **Partial** | Trial 1 HEALTHY (seg −3, Y ≈ −5.2); trial 2 Chrome protocol timeout — headless load-sensitive per 2026-06-18 caveat |
 | `diag_reset.mjs` | *(see run below)* | Journey-complete restart plumbing |

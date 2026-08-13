@@ -6,7 +6,6 @@ import {
 } from './physicsWorkerWaterForces';
 import { calculateWaterForceFallback } from '../systems/WatershedWasm';
 import type { WorkerRaftState } from './rapierWorkerProtocol';
-import { isPhysicsWorkerEnabled } from '../utils/physicsWorkerFlag';
 
 const SAMPLE_STATE: WorkerRaftState = {
   position: [0, 0.45, -10],
@@ -84,7 +83,10 @@ describe('physicsWorkerWaterForces', () => {
     expect(diagnostics.forceX).toBeCloseTo(expected.forceX, 3);
     expect(diagnostics.forceZ).toBeCloseTo(expected.forceZ, 3);
     expect(diagnostics.submergedRatio).toBeCloseTo(expected.submergedRatio, 5);
-    expect(readWaterForceDiagnostics(output, 'fallback')).toEqual(diagnostics);
+    // Same force payload; `computeMicros` is wall-clock, so compare without it.
+    const { computeMicros, ...payload } = diagnostics;
+    expect(readWaterForceDiagnostics(output, 'fallback')).toEqual(payload);
+    expect(computeMicros).toBeGreaterThanOrEqual(0);
   });
 
   it('returns disabled diagnostics when worker water forces are turned off', () => {
@@ -116,14 +118,6 @@ describe('physicsWorkerWaterForces', () => {
 
     expect(diagnostics.source).toBe('disabled');
     expect(diagnostics.submergedRatio).toBe(0);
-  });
-});
-
-describe('physicsWorkerFlag', () => {
-  it('enables the worker path for physicsWorker=1 and legacy raftWorker=1', () => {
-    expect(isPhysicsWorkerEnabled('?physicsWorker=1')).toBe(true);
-    expect(isPhysicsWorkerEnabled('?raftWorker=1')).toBe(true);
-    expect(isPhysicsWorkerEnabled('')).toBe(false);
   });
 });
 

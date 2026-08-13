@@ -2,36 +2,30 @@ import type { RefObject } from 'react';
 import type * as THREE from 'three';
 import type { BiomeId } from '../../configs/biomes';
 import type { ObstacleSlot } from '../../systems/ObstaclePool';
+import type {
+  FlowerPlacement,
+  MistPlacement,
+  PlacementTransform,
+  TreePlacement,
+} from '../TrackSegment/types';
 import { extendTreeMaterial } from '../../utils/TreeShader';
 import { extendVegetationMaterial } from '../../utils/VegetationShader';
 
+export type { FlowerPlacement, MistPlacement, PlacementTransform, TreePlacement };
+
 /**
  * Shared placement contract for biome decoration components.
- * Matches TrackSegment `PlacementTransform` (Vector3 position/rotation/scale).
+ * Matches TrackSegment placement output (`PlacementTransform` and extensions).
  */
-export interface BiomeDecorationTransform {
-  position: THREE.Vector3;
-  rotation?: THREE.Euler;
-  scale?: THREE.Vector3;
-  /** Optional placement tag (e.g. mist column vs floor). */
-  type?: string;
-  /** Tree species tag from TrackSegment vegetation placement. */
-  species?: 'conifer' | 'broadleaf' | 'birch' | 'snag' | string;
-  speciesIndex?: number;
-  /** Wildflower variant id from placement. */
-  variant?: 'bloom' | 'spike' | 'daisy' | 'bell' | string;
-  colorIndex?: number;
-  hueJitter?: number;
-  lightnessJitter?: number;
-}
+export type BiomeDecorationTransform = PlacementTransform;
 
 export interface BiomeDecorationProps {
   /** Instanced transforms from TrackSegment placement. */
-  transforms?: BiomeDecorationTransform[];
+  transforms?: PlacementTransform[];
   /** Segment flow speed — drives wind/scroll rates. */
   flowSpeed?: number;
-  /** World-space player/vehicle velocity for rustle effects. */
-  playerVelocityRef?: RefObject<THREE.Vector3 | null>;
+  /** Player/vehicle speed (scalar, units/sec) for rustle/wake effects. */
+  playerVelocityRef?: RefObject<number>;
   /** Slot-canyon segments tighten fog/mist behaviour. */
   isSlotCanyon?: boolean;
   /** Active biome id for palette selection. */
@@ -61,8 +55,13 @@ export interface FoliageProps extends BiomeScopedDecorationProps {
   density?: number;
 }
 
-export interface VegetationProps extends BiomeScopedDecorationProps {
+export interface VegetationProps extends Omit<BiomeDecorationProps, 'transforms'> {
+  transforms?: TreePlacement[];
   isRim?: boolean;
+}
+
+export interface WildflowersProps extends Omit<BiomeScopedDecorationProps, 'transforms'> {
+  transforms?: FlowerPlacement[];
 }
 
 export interface FallingLeavesProps extends BiomeScopedDecorationProps {
@@ -73,8 +72,8 @@ export interface PebblesProps extends BiomeDecorationProps {
   material?: THREE.Material;
 }
 
-export interface MistProps extends Omit<BiomeDecorationProps, 'playerVelocityRef'> {
-  playerVelocityRef?: RefObject<THREE.Vector3 | null> | null;
+export interface MistProps extends BiomeDecorationProps {
+  transforms?: MistPlacement[];
 }
 
 export interface CanyonDustProps extends MistProps {
@@ -139,7 +138,7 @@ export interface CanyonDecorationsProps {
   wallTightness?: number;
   waterLevel?: number;
   rockDensityBias?: number;
-  onRockFoamUpdate?: (foam: BiomeDecorationTransform[]) => void;
+  onRockFoamUpdate?: (foam: PlacementTransform[]) => void;
 }
 
 export interface TreeSystemProps {

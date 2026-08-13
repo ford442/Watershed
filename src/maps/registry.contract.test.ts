@@ -23,9 +23,9 @@ import {
   menuMetadataViolation,
   registeredLevelDataEntries,
 } from './registry.contract';
+import { validateLevel } from '../utils/levelValidator';
 import {
   KNOWN_LEVEL_SCHEMA_DEBT,
-  collectLevelSchemaErrors,
   levelErrorSignature,
 } from './levelSchemaDebt';
 
@@ -129,10 +129,11 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
 /**
  * Authored JSON shape drift.
  *
- * Registered map JSONs must satisfy `level.schema.json` (decorations optional;
- * negative segment indices legal for pre-roll segments). Registry load uses
- * `assertLevelData()` with the same debt filter — keep KNOWN_LEVEL_SCHEMA_DEBT
- * empty unless a deliberate temporary exception is documented.
+ * Registered map JSONs satisfy `level.schema.json` (optional `decorations`,
+ * negative pre-roll indices down to -10). `levelValidator` excludes pre-roll
+ * segments from `totalSegments` count checks. Registry load uses
+ * `assertLevelData()` — keep `KNOWN_LEVEL_SCHEMA_DEBT` empty unless documenting
+ * a deliberate temporary exception.
  */
 describe('map registry contract — authored JSON shape drift (ajv)', () => {
   const entries = registeredLevelDataEntries();
@@ -144,7 +145,8 @@ describe('map registry contract — authored JSON shape drift (ajv)', () => {
   it.each(entries.map((entry) => [entry.label, entry.levelData] as const))(
     '%s introduces no schema violations outside the documented debt list',
     (label, levelData) => {
-      const unexpected = collectLevelSchemaErrors(levelData)
+      const result = validateLevel(levelData);
+      const unexpected = result.errors
         .map((err) => levelErrorSignature(err.field, err.error))
         .filter((signature) => !KNOWN_LEVEL_SCHEMA_DEBT.includes(signature));
       expect(

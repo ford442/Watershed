@@ -348,7 +348,7 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
   (spawn-count scale)
 - `injectSWEDisturbance` from `SWEHeightField`
 - `useFrame` from `@react-three/fiber`
-- **Does NOT import `SplashParticles.jsx`** — that is a separate unused legacy component.
+- **Does NOT import `SplashParticles.tsx`** — that is a separate unused legacy component.
 - **Does NOT import `useRiverAudio`.**
 
 **Props:**
@@ -386,7 +386,7 @@ Former parallel water-interaction component was removed. Contact VFX lives solel
 
 ---
 
-### `src/components/WaterReflection.jsx`
+### `src/components/WaterReflection.tsx`
 
 **Purpose:** Planar reflection pass — renders the full scene from a camera mirrored below
 the water plane into an offscreen `WebGLRenderTarget`, clipped to geometry above
@@ -419,7 +419,7 @@ or mesh output).
 - Populated `WebGLRenderTarget` held in `renderTargetRef` (RGBA, no depth)
 - Store publish: `setTexture(rt.texture)` + `setStrength(reflectionStrength)` on mount;
   `clear()` on unmount so disabled LOD never leaves a stale sampler
-- Live consumer: `FlowingWater.jsx` samples `reflectionTexture` under Fresnel
+- Live consumer: `FlowingWater.tsx` samples `reflectionTexture` under Fresnel
   (`FLOWING_WATER_SAMPLES_REFLECTION === true`)
 
 **Update Cadence:** Throttled — `useFrame` skips unless `frameCount % updateInterval === 0`.
@@ -433,7 +433,7 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 **Boundaries (Do NOT):**
 - Do NOT mount without the LOD gate — duplicate scene renders are expensive.
 - Do NOT assume `EnhancedWaterMaterial.js` is live — it remains an unused legacy sample
-  reference; the production consumer is `FlowingWater.jsx`.
+  reference; the production consumer is `FlowingWater.tsx`.
 - Do NOT leave the store populated after unmount — always `clear()` in the dispose path.
 
 **Known Pain:**
@@ -448,9 +448,12 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 ### `src/physics/rapier.worker.ts` + `RapierWorkerProxy`
 
 **Purpose:** Co-locate Rapier rigid-body stepping with C++ `watershed_native` batch water
-forces in a single worker tick. Enabled via `?physicsWorker=1` (legacy alias:
-`?raftWorker=1`). Default off — main-thread `@react-three/rapier` remains the stable path
-for visual-smoke and CI.
+forces in a single worker tick. **Default on** wherever the browser exposes `Worker` +
+`WebAssembly`. Kill switches, in precedence order: `?physicsWorker=0` (legacy alias
+`?raftWorker=0`) > capability detection > `?physicsWorker=1` > Settings → Physics >
+default on. The decision is made once per vehicle mount by `resolvePhysicsWorker`
+(`src/utils/physicsWorkerFlag.ts`); switching mid-session would strand the Rapier body
+between two authorities.
 
 **Tick order (worker path, per `docs/reference/ADR_WASM_RAPIER_WATER_FORCES.md`):**
 
@@ -471,20 +474,48 @@ for visual-smoke and CI.
 into the worker when the flag is on).
 
 **Fallback:** Missing `watershed_native.wasm` → worker uses `calculateWaterForceFallback`
-inside the same tick (no extra frame of lag). Flag off → existing main-thread
-`WaterForceSystem` + Rapier path.
+inside the same tick (no extra frame of lag); parity with the C++ path is pinned by
+`src/physics/__tests__/waterForceParity.test.ts`. Worker init failure or an explicit off →
+existing main-thread `WaterForceSystem` + Rapier path.
 
 **Phase 2 protocol (collider registration):** `ADD_STATIC_COLLIDER`, `REMOVE_STATIC_COLLIDER`,
 `CLEAR_STATIC_COLLIDERS` — segment treadmill meshes can be streamed without a second worker.
 
-**Debug:** `window.__watershedPhysicsWorker` (dev) exposes `waterForce` diagnostics and tick
-order when the worker path is active.
+**Debug:** DebugPanel (`?debug=1`) has a *Physics worker* section: worker state + the reason
+it resolved that way, active force path (`wasm` / `fallback`), last force-batch cost in µs,
+and the live SWE grid. `window.__watershedPhysicsWorker` (dev) still exposes raw `waterForce`
+diagnostics and tick order.
+
+### SWE quality budgets — `src/systems/sweQuality.ts`
+
+The SWE height field is a visual system and is budgeted by the live quality preset
+(`useQualityPreset`, which LODManager may downgrade adaptively):
+
+| Preset | Grid | Cell | Step rate | Displacement |
+|--------|------|------|-----------|--------------|
+| low | — | — | off | 0 |
+| medium | 32×24 | 0.75 m | 30 Hz | 0.14 |
+| high | 48×32 | 0.5 m | 60 Hz | 0.22 |
+| ultra | 64×40 | 0.5 m | 60 Hz | 0.26 |
+
+`WaterForceSystem` reallocates the grid + upload texture when the budget changes, steps at
+most `stepHz` times per second, and publishes `displacementScale` through the height-field
+snapshot to `FlowingWater`. `injectSWEDisturbance` no-ops while the budget is disabled, and
+the pending queue is capped, so splashes can't accumulate work nobody drains.
+
+**Constraint:** do NOT quality-gate the force math. Buoyancy / drag / flow are
+gameplay-affecting and must run identically at every preset.
 
 ---
 
 ## WASM Module
 
 ### `src/systems/WatershedWasm.ts` + `emscripten/`
+
+**Layout:** `emscripten/watershed_native.h` (shared declarations) + `forces.cpp` (water force
+math) + `swe.cpp` (solver + heap grids) + `bindings.cpp` (Embind surface, `getVersion()` — 3).
+All compile/link flags live in `CMakeLists.txt`; `build.sh` and the `SOURCES` list are the only
+places a new translation unit must be registered.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
 Archimedes buoyancy, drag force, river-current flow force, and a linearised

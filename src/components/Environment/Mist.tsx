@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
-import type { BiomeDecorationTransform, MistProps, WeatherUpdateEvent } from './types';
+import type { MistPlacement, MistProps, WeatherUpdateEvent } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
@@ -160,7 +160,7 @@ export default function Mist({
       material.uniforms.time.value = state.clock.elapsedTime;
       material.uniforms.flowSpeed.value = flowSpeed;
       material.uniforms.isSlotCanyon.value = isSlotCanyon ? 1.0 : 0.0;
-      material.uniforms.playerVelocity.value = playerVelocityRef?.current?.length() ?? 0;
+      material.uniforms.playerVelocity.value = playerVelocityRef?.current ?? 0;
       material.uniforms.playerPos.value.copy(camera.position);
 
       // Tint toward warm sunlight at golden hour, cool moonlight at night.
@@ -188,7 +188,7 @@ export default function Mist({
     const scaleData = new Float32Array(transforms.length * 3);
     const typeData = new Float32Array(transforms.length);
 
-    transforms.forEach((t: BiomeDecorationTransform, i: number) => {
+    transforms.forEach((t: MistPlacement, i: number) => {
       // We only need position from transform for our billboard shader logic
       DUMMY_OBJ.position.copy(t.position);
       DUMMY_OBJ.updateMatrix();

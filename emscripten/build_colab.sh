@@ -132,7 +132,9 @@ rm -f "$OUTPUT_JS" \
 # ---------------------------------------------------------------------------
 echo "Compiling & Linking..."
 # shellcheck disable=SC2086  # word-splitting on FLAGS is intentional
-em++ "$SCRIPT_DIR/main.cpp" \
+em++ "$SCRIPT_DIR/forces.cpp" \
+    "$SCRIPT_DIR/swe.cpp" \
+    "$SCRIPT_DIR/bindings.cpp" \
     -o "$OUTPUT_JS" \
     $COMPILE_FLAGS \
     $LINK_FLAGS

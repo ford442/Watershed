@@ -6,7 +6,7 @@ import { mergeBufferGeometries } from 'three-stdlib';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
 import { isAutumnLike } from '../../configs/biomes';
-import type { BiomeDecorationTransform, BiomeScopedDecorationProps } from './types';
+import type { FlowerPlacement, WildflowersProps } from './types';
 import { toVegetationMaterial } from './types';
 
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'] as const;
@@ -75,7 +75,7 @@ function resolveVariant(variant: string | undefined): FlowerVariant {
   return 'bloom';
 }
 
-export default function Wildflowers({ transforms, biome = 'canyonSummer' }: BiomeScopedDecorationProps) {
+export default function Wildflowers({ transforms, biome = 'canyonSummer' }: WildflowersProps) {
   const variants = useMemo(() => {
     const bloomPetals = new THREE.IcosahedronGeometry(0.4, 0);
     bloomPetals.scale(1, 0.8, 1);
@@ -149,7 +149,7 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Biom
 
     const palette = getBiomePalette(biome).wildflowerColors;
 
-    transforms.forEach((t: BiomeDecorationTransform, i: number) => {
+    transforms.forEach((t: FlowerPlacement, i: number) => {
       const variant = resolveVariant(t.variant);
       const paletteIndex = t.colorIndex ?? (i % palette.length);
       const color = new THREE.Color(palette[paletteIndex % palette.length]);

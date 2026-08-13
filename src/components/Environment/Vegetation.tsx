@@ -6,7 +6,7 @@ import { useFrame } from '@react-three/fiber';
 import { extendTreeMaterial, updateTreeMaterial } from '../../utils/TreeShader';
 import { WATER_LEVEL } from '../../constants/game';
 import { isAutumnLike } from '../../configs/biomes';
-import type { BiomeDecorationTransform, VegetationProps } from './types';
+import type { TreePlacement, VegetationProps } from './types';
 import { toTreeMaterial } from './types';
 
 type PaletteSeason = 'summer' | 'autumn';
@@ -65,7 +65,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
       snag: [],
     };
 
-    safeTransforms.forEach((t: BiomeDecorationTransform, i: number) => {
+    safeTransforms.forEach((t: TreePlacement, i: number) => {
       const colorHex = palette[i % palette.length] ?? palette[0];
       const color = new THREE.Color(colorHex);
       const shadeSeed = (t.speciesIndex ?? i) * 31 + i * 17;

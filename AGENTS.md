@@ -227,16 +227,16 @@ node scripts/validate-markdown-paths.js
 
 ### Typecheck surface (honest foundation)
 
-`tsconfig.typecheck.json` type-checks all `src/**/*.ts` and `src/**/*.tsx` (tests excluded). Residual untyped `.js` / `.jsx` modules, if any appear, are tracked in `scripts/untyped-allowlist.json`; `pnpm typecheck` runs `scripts/check-typecheck-surface.js` to fail CI if the allowlist drifts.
+`tsconfig.typecheck.json` type-checks all `src/**/*.ts` and `src/**/*.tsx` (tests excluded). Residual untyped `.js` / `.jsx` modules, if any appear, are tracked in `scripts/untyped-allowlist.json`; `pnpm typecheck` runs `scripts/check-typecheck-surface.mjs` to fail CI if the allowlist drifts.
 
 | Status | Module group | Notes |
 |--------|--------------|-------|
 | **Typed** | `Environment/*`, `CanyonDecorations`, `PooledObstacles`, `TreeSystem`, `VFX/SplashParticles` | Decoration hosts (`.tsx`); shared props in `Environment/types.ts` |
 | **Typed** | `FlowingWater`, `EnhancedSky`, `PostProcessingPipeline`, `WaterReflection` | Frame-hot render hosts (`.tsx`) |
 | **Typed** | `ObstaclePool`, `RockShader`, `TreeShader`, `VegetationShader` | Pure logic / shader injection (`.ts`) |
-| **Typed** | `maps/registry.ts` | `assertLevelData()` at load — shipped maps validate against `level.schema.json` |
+| **Typed** | `maps/registry.ts` | `assertLevelData()` at load — shipped maps validate under `level.schema.json` |
 
-Shared decoration prop shapes live in `src/components/Environment/types.ts` (`BiomeDecorationProps`). `KNOWN_LEVEL_SCHEMA_DEBT` in `src/maps/levelSchemaDebt.ts` is empty — new schema violations fail CI.
+Shared decoration prop shapes live in `src/components/Environment/types.ts` (`BiomeDecorationProps`, built on `PlacementTransform` / `TreePlacement` / `FlowerPlacement` / `MistPlacement` from `TrackSegment/types.ts`). `KNOWN_LEVEL_SCHEMA_DEBT` is empty.
 
 Manual smoke: spawn, WASD + pointer lock, track generates (−Z), textures visible, no console errors, no debug wireframes in polished mode.
 

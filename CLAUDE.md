@@ -53,14 +53,14 @@ src/
 ├── components/
 │   ├── TrackManager.tsx         # ★ Chunk treadmill (map-driven via MapSystem)
 │   ├── TrackSegment/            # ★ Canyon chunk geometry + decorations
-│   ├── FlowingWater.jsx         # ★ Water surface shader (GLSL)
-│   ├── EnhancedSky.jsx          # Biome sky + fog (useBiome)
-│   ├── WaterReflection.jsx      # Planar reflection pass
+│   ├── FlowingWater.tsx         # ★ Water surface shader (GLSL)
+│   ├── EnhancedSky.tsx          # Biome sky + fog (useBiome)
+│   ├── WaterReflection.tsx      # Planar reflection pass
 │   ├── ReactiveAudio.tsx        # Biome/speed-reactive audio
 │   ├── WeatherSystem.tsx        # Rain/snow/fog particles
-│   ├── PostProcessingPipeline.jsx
+│   ├── PostProcessingPipeline.tsx
 │   ├── GameHUD.tsx / UI.tsx / PauseMenu.tsx / Loader.tsx
-│   ├── Environment/             # Instanced biome decorations (25+ types)
+│   ├── Environment/             # Instanced biome decorations (~34 types, all `.tsx`)
 │   ├── Obstacles/               # Rocks, pillar break VFX
 │   ├── VFX/                     # Splash particles
 │   └── LevelEditor/             # In-game level tools
@@ -75,6 +75,7 @@ src/
 │   ├── ReachManager.tsx         # Reach streaming wrapper
 │   ├── BiomeSystem.tsx / LODManager.tsx / GameState.ts
 │   ├── SplashSystem.tsx / AudioSystem.ts / WatershedWasm.ts
+│   ├── sweQuality.ts            # SWE grid/step/displacement budget per quality preset
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts
@@ -85,7 +86,7 @@ src/
 ├── rendering/                   # createRenderer, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, WaterForces
 ├── shaders/                     # HeightmapFlow.ts
-├── utils/                       # RiverShader.js, levelValidator, reachValidator
+├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
 
@@ -150,11 +151,11 @@ Player spawns at `[0, 10, -10]`. The initial river centerline is around Y = -6 t
 
 In `Experience.tsx` / `InnerExperience.tsx`, switch `vehicleType` via props or UI.
 
-### Water Shader (`FlowingWater.jsx`)
+### Water Shader (`FlowingWater.tsx`)
 
 Pure `ShaderMaterial`. Two-layer fbm foam, Fresnel highlight, depth gradient, current streaks. Uniforms: `time`, `flowSpeed`, `waterColor`, `deepColor`, `foamColor`, `edgeHighlight`.
 
-### Material Extensions (`RiverShader.js`)
+### Material Extensions (`RiverShader.ts`)
 
 `extendRiverMaterial(mat)` injects: **wetness** (darken surfaces near Y=0.5), **moss** (green on upward slopes), **caustics** (animated light patterns below water).
 
@@ -188,7 +189,7 @@ The following are leftover debug elements that make the game look rough:
 1. **`App.tsx` — Green debug overlay** — Always-visible panel showing "Canvas Ready / Loading Active / Progress / Experience Error" (if still present). Must be removed for any polished build.
 2. **`RaftVehicle/` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
 3. **`App.tsx` — `antialias: false`** — Antialiasing disabled hurts edge quality; prefer `antialias: true` when polishing.
-4. **`EnhancedSky.jsx` — Stars always rendered** — Stars can be visible even at noon; gate on time-of-day or biome.
+4. **`EnhancedSky.tsx` — Stars always rendered** — Stars can be visible even at noon; gate on time-of-day or biome.
 
 Legacy top-level `Player` duals were removed; player movement lives under `src/vehicles/`.
 
@@ -208,16 +209,16 @@ The canyon walls currently use a U-shaped extrusion + Rock031 PBR textures. The 
 - Add **vertex color variation** to the upper canyon walls (darker, more saturated at the waterline; lighter/tan at the rim)
 - Introduce **secondary UV channel** or triplanar projection to break up tiling
 - Add **moss/lichen vertex color bands** at the waterline (already supported by `extendRiverMaterial`)
-- The `RiverShader.js` moss effect needs the terrain mesh to pass correct world normals — verify this is wired correctly in `TrackSegment/`
+- The `RiverShader.ts` moss effect needs the terrain mesh to pass correct world normals — verify this is wired correctly in `TrackSegment/`
 
 ### Step 3 — Water visual quality (1–2 hours)
 The water shader is solid. Two tweaks to match the concept:
-- Increase foam density near canyon walls (bank foam mask already exists — tune `bankFoamMask` threshold at `FlowingWater.jsx:111`)
+- Increase foam density near canyon walls (bank foam mask already exists — tune `bankFoamMask` threshold at `FlowingWater.tsx:111`)
 - Add a very slight camera-height turbulence (wave amplitude scales with camera proximity to water surface)
 
 ### Step 4 — Post-processing / atmosphere (2–3 hours)
 The biggest single visual upgrade. Add `@react-three/postprocessing`:
-- **Bloom** — brightest water highlights, sun shafts (`SunShafts.jsx` exists but needs bloom to read)
+- **Bloom** — brightest water highlights, sun shafts (`SunShafts.tsx` exists but needs bloom to read)
 - **Vignette** — reinforce canyon tunnel feel
 - **ChromaticAberration** (subtle, speed-triggered) — conveys velocity
 - **SSAO** (EffectComposer from `@react-three/postprocessing`) — ground truth ambient occlusion in crevices
@@ -288,12 +289,12 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/experience/InnerExperience.tsx` | Track, vehicle, lighting, post-processing |
 | `src/components/TrackManager.tsx` | Segment pool, map-driven generation |
 | `src/components/TrackSegment/` | Canyon geometry, decoration placement |
-| `src/components/FlowingWater.jsx` | Water shader uniforms and GLSL |
+| `src/components/FlowingWater.tsx` | Water shader uniforms and GLSL |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
-| `src/components/EnhancedSky.jsx` | Sky, fog biome transitions via `useBiome()` |
+| `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
 | `src/vehicles/RaftVehicle/` | Raft buoyancy / paddle |
-| `src/components/PostProcessingPipeline.jsx` | Live post-processing stack |
+| `src/components/PostProcessingPipeline.tsx` | Live post-processing stack |
 | `src/systems/MapSystem.ts` | Chunk interfaces, JSON maps, spawn calc |
 | `src/maps/registry.ts` | Active map switch point |
 | `src/style.css` | All UI chrome |
