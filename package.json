@@ -9,7 +9,7 @@
     "@dimforge/rapier3d-compat": "0.19.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
-    "@react-three/postprocessing": "^3.0.4",
+    "@react-three/postprocessing": "3.0.4",
     "@react-three/rapier": "^2.2.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.8.0",
@@ -65,7 +65,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@dimforge/rapier3d-compat": "0.19.2"
+      "@dimforge/rapier3d-compat": "0.19.2",
+      "@react-three/postprocessing": "3.0.4"
     }
   },
   "devDependencies": {

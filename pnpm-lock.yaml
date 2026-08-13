@@ -6,6 +6,7 @@ settings:
 
 overrides:
   '@dimforge/rapier3d-compat': 0.19.2
+  '@react-three/postprocessing': 3.0.4
 
 importers:
 
@@ -21,7 +22,7 @@ importers:
         specifier: ^9.4.0
         version: 9.4.2(@types/react@19.2.7)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.168.0)
       '@react-three/postprocessing':
-        specifier: ^3.0.4
+        specifier: 3.0.4
         version: 3.0.4(@react-three/fiber@9.4.2(@types/react@19.2.7)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.168.0))(@types/three@0.168.0)(react@19.2.3)(three@0.168.0)
       '@react-three/rapier':
         specifier: ^2.2.0
