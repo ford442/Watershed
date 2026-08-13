@@ -23,9 +23,9 @@ import {
   menuMetadataViolation,
   registeredLevelDataEntries,
 } from './registry.contract';
-import { validateLevel } from '../utils/levelValidator';
 import {
   KNOWN_LEVEL_SCHEMA_DEBT,
+  collectLevelSchemaErrors,
   levelErrorSignature,
 } from './levelSchemaDebt';
 
@@ -129,15 +129,10 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
 /**
  * Authored JSON shape drift.
  *
- * The registered map JSONs do NOT currently satisfy `level.schema.json` — see
- * KNOWN_SCHEMA_DEBT below. That is pre-existing, load-bearing authored content
- * (meander's negative pre-roll segment indices, omitted `decorations` blocks),
- * so this suite does not assert `valid === true` and the load-time
- * `as unknown as LevelData` casts in registry.ts are intentionally left alone —
- * an ajv assert at import time would refuse to boot the game today.
- *
- * Instead: any schema violation OUTSIDE the documented debt list fails CI, and
- * registry load uses `assertLevelData()` with the same debt filter.
+ * Registered map JSONs must satisfy `level.schema.json` (decorations optional;
+ * negative segment indices legal for pre-roll segments). Registry load uses
+ * `assertLevelData()` with the same debt filter — keep KNOWN_LEVEL_SCHEMA_DEBT
+ * empty unless a deliberate temporary exception is documented.
  */
 describe('map registry contract — authored JSON shape drift (ajv)', () => {
   const entries = registeredLevelDataEntries();
@@ -149,8 +144,7 @@ describe('map registry contract — authored JSON shape drift (ajv)', () => {
   it.each(entries.map((entry) => [entry.label, entry.levelData] as const))(
     '%s introduces no schema violations outside the documented debt list',
     (label, levelData) => {
-      const result = validateLevel(levelData);
-      const unexpected = result.errors
+      const unexpected = collectLevelSchemaErrors(levelData)
         .map((err) => levelErrorSignature(err.field, err.error))
         .filter((signature) => !KNOWN_LEVEL_SCHEMA_DEBT.includes(signature));
       expect(

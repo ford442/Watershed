@@ -4,7 +4,7 @@ import { KNOWN_LEVEL_SCHEMA_DEBT } from './levelSchemaDebt';
 import meanderLevel from './meander_to_waterfall.json';
 
 describe('assertLevelData', () => {
-  it('accepts production meander map (only documented schema debt)', () => {
+  it('accepts production meander map without schema debt', () => {
     expect(() => assertLevelData(meanderLevel, 'meander')).not.toThrow();
     expect(assertLevelData(meanderLevel, 'meander')).toBe(meanderLevel);
   });
@@ -26,7 +26,7 @@ describe('assertLevelData', () => {
     expect(() => assertLevelData(level, 'bad fixture')).toThrow(/failed level validation/);
   });
 
-  it('documents at least the known debt signatures', () => {
-    expect(KNOWN_LEVEL_SCHEMA_DEBT.length).toBeGreaterThanOrEqual(2);
+  it('keeps KNOWN_LEVEL_SCHEMA_DEBT empty once debt is retired', () => {
+    expect(KNOWN_LEVEL_SCHEMA_DEBT).toEqual([]);
   });
 });
