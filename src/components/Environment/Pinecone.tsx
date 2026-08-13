@@ -2,7 +2,11 @@ import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { usePineconeAssets } from './DebrisAssets';
-import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
+import {
+  createRiverSurfaceMaterial,
+  updateRiverSurfaceMaterial,
+} from '../../materials/river/createRiverSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PlacementTransform } from '../TrackSegment/types';
 
 interface PineconeProps {
@@ -17,12 +21,12 @@ export default function Pinecone({ transforms }: PineconeProps) {
   const { geometry, material: baseMaterial } = usePineconeAssets();
 
   const material = useMemo(
-    () => extendRiverMaterial(baseMaterial, { enableMoss: false }),
+    () => createRiverSurfaceMaterial(resolveMaterialBackend().backend, baseMaterial, { enableMoss: false }),
     [baseMaterial]
   );
 
   useFrame((state) => {
-    updateRiverMaterial(material, state.clock.elapsedTime);
+    updateRiverSurfaceMaterial(material, state.clock.elapsedTime);
   });
 
   if (!transforms || transforms.length === 0) return null;

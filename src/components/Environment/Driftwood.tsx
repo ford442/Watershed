@@ -2,7 +2,11 @@ import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { useDriftwoodAssets } from './DebrisAssets';
-import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
+import {
+  createRiverSurfaceMaterial,
+  updateRiverSurfaceMaterial,
+} from '../../materials/river/createRiverSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PlacementTransform } from '../TrackSegment/types';
 
 export interface DriftwoodProps {
@@ -13,12 +17,12 @@ export default function Driftwood({ transforms }: DriftwoodProps) {
   const { geometry, material: baseMaterial } = useDriftwoodAssets();
 
   const material = useMemo(
-    () => extendRiverMaterial(baseMaterial, { enableMoss: false }),
+    () => createRiverSurfaceMaterial(resolveMaterialBackend().backend, baseMaterial, { enableMoss: false }),
     [baseMaterial]
   );
 
   useFrame((state) => {
-    updateRiverMaterial(material, state.clock.elapsedTime);
+    updateRiverSurfaceMaterial(material, state.clock.elapsedTime);
   });
 
   const instances = useMemo(() => {

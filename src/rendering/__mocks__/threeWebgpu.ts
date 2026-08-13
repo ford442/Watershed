@@ -8,6 +8,17 @@
 
 import * as THREE from 'three';
 
+/**
+ * The node getters intentionally return undefined so the stub behaves like a
+ * plain material, but tests still need to see that a graph was assigned — so
+ * each assignment is mirrored into `userData.__nodeSlots`.
+ */
+function recordNodeSlot(material: THREE.Material, slot: string, value: unknown): void {
+  const slots = (material.userData.__nodeSlots ?? {}) as Record<string, unknown>;
+  slots[slot] = value;
+  material.userData.__nodeSlots = slots;
+}
+
 export class MeshBasicNodeMaterial extends THREE.MeshBasicMaterial {
   lights = true;
   private _nodeProps: Record<string, unknown> = {};
@@ -19,8 +30,17 @@ export class MeshBasicNodeMaterial extends THREE.MeshBasicMaterial {
 
   set colorNode(value: unknown) {
     this._nodeProps.colorNode = value;
+    recordNodeSlot(this, 'colorNode', value);
   }
   get colorNode() {
+    return undefined;
+  }
+
+  set positionNode(value: unknown) {
+    this._nodeProps.positionNode = value;
+    recordNodeSlot(this, 'positionNode', value);
+  }
+  get positionNode() {
     return undefined;
   }
 }
@@ -44,6 +64,7 @@ export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
   // Jest WebGLRenderer stub compiles this as a plain MeshStandardMaterial.
   set colorNode(value: unknown) {
     this._nodeProps.colorNode = value;
+    recordNodeSlot(this, 'colorNode', value);
   }
   get colorNode() {
     return undefined;
@@ -57,18 +78,54 @@ export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
   }
 }
 
-function createNode(label = 'node'): any {
+/**
+ * Minimal WebGPURenderer double. Unit tests never touch a GPU, so this behaves
+ * like a WebGLRenderer that reports `isWebGPURenderer` and a WebGL backend —
+ * which is exactly what `forceWebGL: true` produces in the browser.
+ */
+export class WebGPURenderer extends THREE.WebGLRenderer {
+  isWebGPURenderer = true;
+  backend: { isWebGPUBackend: boolean };
+
+  constructor(parameters: THREE.WebGLRendererParameters & { forceWebGL?: boolean } = {}) {
+    const { forceWebGL, ...rest } = parameters;
+    super(rest);
+    this.backend = { isWebGPUBackend: !forceWebGL };
+  }
+
+  async init(): Promise<void> {
+    // no-op: the real renderer negotiates an adapter here
+  }
+}
+
+/**
+ * Node test double. Any property access returns another node, so the fluent TSL
+ * chains in the real materials build without a WebGPU runtime.
+ *
+ * `.value` is real state, not a constant: uniform nodes are how the render loop
+ * talks to a material every frame, so tests need writes to stick and read back.
+ */
+function createNode(label = 'node', seed?: unknown): any {
+  const state = { value: seed ?? 0 };
   return new Proxy(function () {}, {
     get(_, prop) {
       if (prop === 'toString') return () => `[Node ${label}]`;
       if (prop === Symbol.toPrimitive) return () => 0;
-      if (prop === 'value') return 0;
+      if (prop === 'value') return state.value;
       if (prop === 'type') return 'Node';
       if (prop === 'isNode') return true;
       return createNode(`${label}.${String(prop)}`);
     },
+    set(_, prop, next) {
+      if (prop === 'value') {
+        state.value = next;
+      }
+      return true;
+    },
     apply(_, __, args) {
-      return createNode(`${label}(...)`);
+      // `uniform(x)` / `texture(x)` seed their node with the initial value, which
+      // is what a material's constructor-time defaults rely on.
+      return createNode(`${label}(...)`, args[0]);
     },
   });
 }
@@ -101,5 +158,11 @@ export const step = createNode('step');
 export const fract = createNode('fract');
 export const floor = createNode('floor');
 export const mul = createNode('mul');
+export const cos = createNode('cos');
+export const cross = createNode('cross');
+export const length = createNode('length');
+export const reflect = createNode('reflect');
+export const positionLocal = createNode('positionLocal');
+export const vec4 = createNode('vec4');
 export const materialColor = createNode('materialColor');
 export const materialRoughness = createNode('materialRoughness');

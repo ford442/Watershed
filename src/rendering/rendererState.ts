@@ -10,6 +10,7 @@ const _diagnostics: RendererDiagnostics = {
   activeBackend: 'webgl',
   rendererName: 'WebGLRenderer',
   webgpuAvailable: false,
+  materialBackend: 'glsl',
 };
 
 type Listener = () => void;

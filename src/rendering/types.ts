@@ -1,3 +1,5 @@
+import type { MaterialBackend } from './materialBackend';
+
 /** Requested renderer backend via URL param or debug UI. */
 export type RendererPreference = 'webgl' | 'webgpu';
 
@@ -9,4 +11,6 @@ export interface RendererDiagnostics {
   activeBackend: ActiveRendererBackend;
   rendererName: string;
   webgpuAvailable: boolean;
+  /** Material implementation actually in use ('glsl' legacy, 'tsl' NodeMaterial). */
+  materialBackend: MaterialBackend;
 }

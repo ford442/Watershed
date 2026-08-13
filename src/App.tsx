@@ -22,6 +22,11 @@ import {
   shadowModeToCanvasProp,
   type RendererPreference,
 } from './rendering';
+import {
+  persistMaterialBackend,
+  resolveMaterialBackend,
+  type MaterialBackend,
+} from './rendering/materialBackend';
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
@@ -92,6 +97,11 @@ function App() {
   });
   const [rendererPreference, setRendererPreference] = useState<RendererPreference>(() =>
     parseRendererPreference()
+  );
+  // #256 path A: which material implementation the scene builds. Changing it
+  // remounts the Canvas, because the renderer class itself depends on it.
+  const [materialBackend, setMaterialBackend] = useState<MaterialBackend>(
+    () => resolveMaterialBackend().backend
   );
   const qualityPreset = useQualityPreset();
   const { active: assetsLoading } = useProgress();
@@ -187,6 +197,11 @@ function App() {
   const handleRendererPreferenceChange = useCallback((next: RendererPreference) => {
     persistRendererPreference(next);
     setRendererPreference(next);
+  }, []);
+
+  const handleMaterialBackendChange = useCallback((next: MaterialBackend) => {
+    persistMaterialBackend(next);
+    setMaterialBackend(next);
   }, []);
 
   useEffect(() => {
@@ -352,7 +367,7 @@ function App() {
         <>
           <SettingsSync />
           <Canvas
-            key={`renderer-${rendererPreference}-quality-${qualityPreset}-epoch-${canvasEpoch}`}
+            key={`renderer-${rendererPreference}-material-${materialBackend}-quality-${qualityPreset}-epoch-${canvasEpoch}`}
             dpr={[1, rendererContextOptions.dprMax]}
             gl={async (props) =>
               createGameRenderer(
@@ -365,6 +380,7 @@ function App() {
                   antialias: rendererContextOptions.antialias,
                   powerPreference: rendererContextOptions.powerPreference,
                   contextOptions: rendererContextOptions,
+                  materialBackend,
                 }
               )
             }
@@ -475,6 +491,8 @@ function App() {
               onTogglePhysicsDebug={setPhysicsDebug}
               rendererPreference={rendererPreference}
               onRendererPreferenceChange={handleRendererPreferenceChange}
+              materialBackend={materialBackend}
+              onMaterialBackendChange={handleMaterialBackendChange}
               wireframeDebug={wireframeDebug}
               onToggleWireframeDebug={setWireframeDebug}
               onEnableCleanTest={() => {

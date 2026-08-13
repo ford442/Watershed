@@ -14,7 +14,8 @@ import TrackSegment from './TrackSegment';
 import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
 import PooledObstacles from './PooledObstacles';
-import { extendRiverMaterial } from '../utils/RiverShader';
+import { createRiverSurfaceMaterial } from '../materials/river/createRiverSurfaceMaterial';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { WATER_LEVEL, REACH_API_BASE } from '../constants/game';
 import { AssetCache } from '../systems/ReachStreamer';
 import { useNightMode } from '../hooks/useNightMode';
@@ -321,7 +322,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     material.displacementMap = effectiveDisplacementMap as THREE.Texture;
 
     try {
-      return extendRiverMaterial(material, {
+      return createRiverSurfaceMaterial(resolveMaterialBackend().backend, material, {
         waterLevel: WATER_LEVEL,
         enableMoss: false,
         enableTriplanar: false,

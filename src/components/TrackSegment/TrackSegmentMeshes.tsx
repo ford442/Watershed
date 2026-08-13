@@ -51,8 +51,15 @@ import { useSunPosition } from '../../systems/SunPositionSystem';
 import { getTrackBiomeProfile, isGlacialBiome } from '../../configs/TrackBiomes';
 import { isAutumnLike, isSummerLike } from '../../configs/biomes';
 import { WALL_WATERLINE_Y } from '../../constants/game';
-import { createCanyonMaterial, updateCanyonMaterial } from '../../materials/CanyonMaterial';
-import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
+import {
+    createRiverSurfaceMaterial,
+    updateRiverSurfaceMaterial,
+} from '../../materials/river/createRiverSurfaceMaterial';
+import {
+    createCanyonSurfaceMaterial,
+    updateCanyonSurfaceMaterial,
+} from '../../materials/canyon/createCanyonSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import PondFog from './PondFog';
 import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 import type { TrackSegmentMeshesProps } from './types';
@@ -363,7 +370,7 @@ export function TrackSegmentMeshes({
         if (!rockMaterial) return null;
 
         if (isSlotCanyon) {
-            return createCanyonMaterial({
+            return createCanyonSurfaceMaterial(resolveMaterialBackend().backend, {
                 biome: 'slotCanyon',
                 wallHeight: biomeProfile.wallHeight || 26,
                 parallaxScale: 0.025,
@@ -375,7 +382,7 @@ export function TrackSegmentMeshes({
             }) as WallMaterial;
         }
 
-        return extendRiverMaterial(rockMaterial.clone(), {
+        return createRiverSurfaceMaterial(resolveMaterialBackend().backend, rockMaterial.clone(), {
             enableWetness: true,
             enableMoss: true,
             enableTriplanar: true,
@@ -388,15 +395,17 @@ export function TrackSegmentMeshes({
 
     // Update shader uniforms each frame
     useFrame((state) => {
-        if (isSlotCanyon && wallMaterialRef.current?.uniforms) {
-            updateCanyonMaterial(wallMaterialRef.current, {
+        // No `.uniforms` test here: the TSL canyon material keeps its uniform
+        // bag in userData, and the host dispatches on whichever it was handed.
+        if (isSlotCanyon && wallMaterialRef.current) {
+            updateCanyonSurfaceMaterial(wallMaterialRef.current, {
                 flowSpeed,
                 mossCoverage: 1.0,
                 highWaterMark,
                 highWaterIntensity,
             }, state.clock.elapsedTime);
         } else if (wallMaterialRef.current) {
-            updateRiverMaterial(wallMaterialRef.current, state.clock.elapsedTime, {
+            updateRiverSurfaceMaterial(wallMaterialRef.current, state.clock.elapsedTime, {
                 waterLevel: WALL_WATERLINE_Y,
                 weatherWetness: weatherWetnessRef?.current || 0,
             });

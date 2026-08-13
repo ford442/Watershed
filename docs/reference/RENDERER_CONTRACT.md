@@ -2,9 +2,9 @@
 
 ## Current Invariant
 
-**`createGameRenderer()` always returns `THREE.WebGLRenderer` today.**
+**On the default material backend, `createGameRenderer()` always returns `THREE.WebGLRenderer`.**
 
-There is no live `WebGPURenderer` path. The `webgpu` renderer preference is a *deliberate no-op fallback* to `WebGLRenderer`. The production rendering pipeline is 100 % legacy GLSL/WebGL:
+The `webgpu` renderer preference remains a *deliberate no-op fallback* to `WebGLRenderer`. The production rendering pipeline is 100 % legacy GLSL/WebGL:
 
 - `RiverShader.ts` — `MeshStandardMaterial` with `onBeforeCompile` shader injection.
 - `CanyonMaterial.js` — custom `ShaderMaterial`.
@@ -18,6 +18,15 @@ These materials are incompatible with `WebGPURenderer`/`NodeMaterial`/`TSL`. Rou
 
 This fallback was established by emergency hot-fixes **PR #252** and **PR #253**.
 
+### The one sanctioned exception: `?material=tsl` (#256 path A)
+
+A node-capable renderer is created **only** when the material backend is `tsl`, i.e. when no legacy GLSL material will be built for the migrated surfaces. Two properties keep this from re-running the #252/#253 failure:
+
+1. **Materials decide the renderer, not the other way round.** `materialBackend: 'tsl'` is what selects `WebGPURenderer`; there is no path where a legacy material meets a node renderer by default.
+2. **`forceWebGL: true` unless WebGPU is explicitly requested.** The graphics API stays WebGL2, so only the material pipeline is under test.
+
+Anything not yet migrated (VFX `ShaderMaterial`s, GLSL post-processing) is skipped by three with a non-fatal `NodeMaterial: Material "ShaderMaterial" is not compatible` log on that path. That is the tracking metric for the remaining migration: **the TSL path is finished when that log count reaches zero.**
+
 ## Material ↔ Renderer Compatibility Matrix
 
 | Material | Production renderer | Works with `WebGLRenderer` | Works with `WebGPURenderer` | Notes |
@@ -26,8 +35,9 @@ This fallback was established by emergency hot-fixes **PR #252** and **PR #253**
 | `CanyonMaterial.js` (`ShaderMaterial`) | Yes | **Yes** | **No** | Pure GLSL; NodeMaterial cannot consume it. |
 | `FlowingWater.tsx` (`ShaderMaterial`) | Yes | **Yes** | **No** | Same constraint as `CanyonMaterial`. |
 | Post-processing GLSL passes | Yes | **Yes** | **No** | `postprocessing` v6 is WebGL2-only. |
-| `RiverNodeMaterial.ts` (`MeshStandardNodeMaterial`) | **No** | Not applicable | Dormant migration seed for **#256** | Not wired into the live renderer; retained as a guard subject. |
-| `CanyonNodeMaterial.ts` (`MeshBasicNodeMaterial`) | **No** | Not applicable | Dormant migration seed for **#256** | Not wired into the live renderer; retained as a guard subject. |
+| `WaterNodeMaterial.ts` (`MeshBasicNodeMaterial`) | Opt-in `?material=tsl` | **No** | **Yes** | Water surface on the TSL backend. |
+| `RiverNodeMaterial.ts` (`MeshStandardNodeMaterial`) | Opt-in `?material=tsl` | **No** | **Yes** | Canyon rock / river banks on the TSL backend. |
+| `CanyonNodeMaterial.ts` (`MeshBasicNodeMaterial`) | Opt-in `?material=tsl` | **No** | **Yes** | Slot-canyon walls on the TSL backend. |
 
 ## Single Rule for the Future WebGPU Migration (#256)
 
@@ -36,6 +46,8 @@ When issue **#256** migrates the pipeline to `WebGPURenderer` / `NodeMaterial` /
 > **Do not route legacy GLSL materials through `WebGPURenderer`.**
 >
 > Either replace every legacy material with its `NodeMaterial`/`TSL` equivalent first, or keep `createGameRenderer()` returning `WebGLRenderer` until the replacement is complete.
+
+The material-host pattern is how that rule is enforced in code rather than by convention: each host (`materials/water/createWaterMaterial.ts`, `materials/river/createRiverSurfaceMaterial.ts`, `materials/canyon/createCanyonSurfaceMaterial.ts`) takes the backend as an argument and can only ever return a material valid for it. Adding a new material to the scene means adding a host, not a branch at the call site.
 
 A partial migration that instantiates `WebGPURenderer` while `RiverShader.ts`, `CanyonMaterial.js`, `FlowingWater.tsx`, or GLSL post-processing are still in use will reintroduce the crashes that PRs #252 and #253 fixed.
 
@@ -47,9 +59,14 @@ The regression guard in `src/rendering/createRenderer.test.ts` locks this contra
 
 - Asserts `createGameRenderer({ preference: 'webgl' })` returns a `WebGLRenderer`.
 - Asserts `createGameRenderer({ preference: 'webgpu' })` returns a `WebGLRenderer`.
+- Asserts that omitting `materialBackend` — what production does — is identical to `'glsl'`.
 - Constructs `RiverShader`, `CanyonMaterial`, and `RiverNodeMaterial`.
 - Verifies the legacy materials can be prepared against the returned renderer without throwing a NodeMaterial-incompatibility error.
-- If `createGameRenderer` is reverted to return a `WebGPURenderer`, the guard fails loudly.
+- If `createGameRenderer` is reverted to return a `WebGPURenderer` on the default path, the guard fails loudly.
+
+A second block locks the path A contract: `materialBackend: 'tsl'` yields a `WebGPURenderer`, with `backend.isWebGPUBackend === false` unless `?renderer=webgpu` is also set, and the produced material backend is published to renderer diagnostics.
+
+Host-level guards live in `src/materials/water/createWaterMaterial.test.ts` and `src/materials/materialHosts.test.ts`: identical uniform key sets across backends, `.value`-writability of every uniform, and GLSL fallback when the node module is missing or throws.
 
 ## References
 

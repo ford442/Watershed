@@ -8,6 +8,11 @@ import {
 } from '../physics/physicsWorkerRegistry';
 import { PHYSICS_WORKER_REASON_LABELS } from '../utils/physicsWorkerFlag';
 import type { RendererPreference } from '../rendering/types';
+import {
+  MATERIAL_BACKEND_REASON_LABELS,
+  resolveMaterialBackend,
+  type MaterialBackend,
+} from '../rendering/materialBackend';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -106,6 +111,9 @@ export interface DebugPanelProps {
   onTogglePhysicsDebug?: (val: boolean) => void;
   rendererPreference?: RendererPreference;
   onRendererPreferenceChange?: (preference: RendererPreference) => void;
+  /** #256 path A — which material implementation the scene builds. */
+  materialBackend?: MaterialBackend;
+  onMaterialBackendChange?: (backend: MaterialBackend) => void;
   wireframeDebug?: boolean;
   onToggleWireframeDebug?: (val: boolean) => void;
   /** Hide panel + debug overlays for screenshots / live test runs */
@@ -120,6 +128,8 @@ export function DebugPanel({
   onTogglePhysicsDebug,
   rendererPreference = 'webgl',
   onRendererPreferenceChange,
+  materialBackend = 'glsl',
+  onMaterialBackendChange,
   wireframeDebug = false,
   onToggleWireframeDebug,
   onEnableCleanTest,
@@ -284,6 +294,51 @@ export function DebugPanel({
         value={physicsWorker.sweEnabled ? (physicsWorker.sweGrid ?? 'on') : 'off (quality)'}
         t="ok"
       />
+
+      <Divider />
+
+      {/* ── Material backend toggle (#256 path A) ───────────────────────── */}
+      <SectionTitle>Materials — GLSL (live) / TSL (migration)</SectionTitle>
+      <MetricRow
+        label="Active backend"
+        value={rendererDiagnostics.materialBackend}
+        t={rendererDiagnostics.materialBackend === materialBackend ? 'ok' : 'warn'}
+        hint={
+          rendererDiagnostics.materialBackend === materialBackend
+            ? MATERIAL_BACKEND_REASON_LABELS[resolveMaterialBackend().reason]
+            : 'requested TSL but the node renderer or material could not be built'
+        }
+      />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        {(['glsl', 'tsl'] as MaterialBackend[]).map((backend) => (
+          <button
+            key={backend}
+            type="button"
+            onClick={() => onMaterialBackendChange?.(backend)}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              borderRadius: 4,
+              border: materialBackend === backend
+                ? '1px solid #6dde7a'
+                : '1px solid rgba(255,255,255,0.18)',
+              background: materialBackend === backend
+                ? 'rgba(109,222,122,0.15)'
+                : 'rgba(255,255,255,0.04)',
+              color: materialBackend === backend ? '#6dde7a' : '#ccc',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 11,
+            }}
+          >
+            {backend.toUpperCase()}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 10, color: '#888', marginBottom: 6 }}>
+        URL: <code>?material=glsl</code> (live) or <code>?material=tsl</code> (NodeMaterial;
+        remounts the Canvas onto WebGPURenderer with a WebGL2 backend)
+      </div>
 
       <Divider />
 

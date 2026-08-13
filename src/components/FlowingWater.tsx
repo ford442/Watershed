@@ -9,6 +9,21 @@ import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
 import { getSWEHeightFieldSnapshot, SWE_MEAN_DEPTH } from '../systems/SWEHeightField';
 import { useWaterReflectionStore } from '../systems/waterReflectionStore';
+import { createWaterMaterial } from '../materials/water/createWaterMaterial';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
+import { updateRendererDiagnostics } from '../rendering/rendererState';
+import type { MaterialBackend } from '../rendering/materialBackend';
+
+/**
+ * Publish which water backend actually got built so DebugPanel can show it.
+ * A requested TSL material that failed to build reports `glsl` plus the reason.
+ */
+function publishWaterMaterialBackend(backend: MaterialBackend, fallbackReason?: string): void {
+  updateRendererDiagnostics({ materialBackend: backend });
+  if (fallbackReason) {
+    console.warn('[FlowingWater] TSL water material unavailable:', fallbackReason);
+  }
+}
 
 /** Guard flag: FlowingWater samples planar reflectionTexture (XOR with unmounted pass). */
 export const FLOWING_WATER_SAMPLES_REFLECTION = true;
@@ -48,8 +63,13 @@ export interface FlowingWaterProps {
   vortexIntensity?: number;
 }
 
-type WaterMaterial = THREE.ShaderMaterial & {
-  uniforms: Record<string, { value: unknown }>;
+/**
+ * Either backend's water material, seen through the shared uniform contract.
+ * The TSL material is a NodeMaterial, so this is deliberately widened from
+ * ShaderMaterial to Material — everything below only touches `uniforms`/`userData`.
+ */
+type WaterMaterial = THREE.Material & {
+  uniforms: Record<string, THREE.IUniform>;
   userData: {
     waterFlowField?: {
       waterLevel: number;
@@ -109,6 +129,9 @@ export default function FlowingWater({
 }: FlowingWaterProps) {
   const materialRef = useRef<WaterMaterial | THREE.MeshBasicMaterial | null>(null);
   const { camera } = useThree();
+  // Which material implementation to build (#256 path A). Resolved once — the
+  // Canvas is remounted when the debug toggle changes it.
+  const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
   const heightmapFlowRef = useRef<HeightmapFlowHandle | null>(heightmapFlow);
 
   const biomeData = BIOMES[biome as keyof typeof BIOMES] || BIOMES.river;
@@ -153,6 +176,140 @@ export default function FlowingWater({
       return v;
     }
   `, []);
+
+  // Built-in vertex shader — displacement + analytic normals. Shared with the
+  // GLSL backend only; the TSL backend rebuilds this math as a node graph.
+  const builtinVertexShader = useMemo(() => `
+          uniform float time;
+          uniform float flowSpeed;
+          uniform float weatherRipple;
+          uniform float cameraHeight;
+          uniform sampler2D flowMap;
+          uniform vec3 vehiclePos;
+          uniform vec3 vehicleVelocity;
+          uniform float isPond;
+          uniform sampler2D sweHeightMap;
+          uniform vec2 sweOrigin;
+          uniform float sweCellSize;
+          uniform vec2 sweGridSize;
+          uniform float sweMeanDepth;
+          uniform float sweDisplacementScale;
+          uniform float sweEnabled;
+
+          varying vec2 vUv;
+          varying vec3 vWorldPos;
+          varying vec3 vNormal;
+          varying vec3 vViewDir;
+          varying float vWave;
+          varying float vCurrent;
+          varying float vCameraProximity;
+          varying vec4 vReflectionUv;
+
+          ${noiseHelpers}
+
+          float getDisplacement(vec2 p, vec2 fb) {
+            float effFlow = flowSpeed;
+            float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
+            // Glassy pond/delta water: flatten the big swells almost completely.
+            scale *= mix(1.0, POND_CALM_MULTIPLIER * 0.5, isPond);
+
+            vec2 d1 = normalize(vec2(fb.x * 0.3, -1.0));
+            float swell1 = sin(dot(p, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
+
+            vec2 d2 = normalize(vec2(fb.x * 0.5 + 0.2, -1.0));
+            float swell2 = sin(dot(p, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
+
+            float detail = fbm3(p * 1.5 + vec2(time * effFlow * 0.2, -time * effFlow * 0.3)) * 0.25;
+
+            // Fine choppiness: extra high-frequency layer that scales with
+            // flow speed so rapids look broken-up while calm water stays smooth.
+            float choppiness = clamp(effFlow - 0.8, 0.0, 2.5);
+            float chop = fbm3(p * 4.0 + vec2(-time * effFlow * 0.6, time * effFlow * 0.45)) * 0.18 * choppiness;
+            chop *= mix(1.0, POND_CALM_MULTIPLIER * 0.3, isPond);
+
+            float ripple = sin(p.x * 8.0 * RIPPLE_SCALE + time * 4.0)
+                         * cos(p.y * 7.5 * RIPPLE_SCALE + time * 3.5)
+                         * weatherRipple * 0.08;
+
+            // Pond/delta: subtle slow concentric ripples instead of choppiness.
+            float pondRipple = sin(length(p - vehiclePos.xz) * 1.4 - time * 1.5) * 0.04 * isPond;
+
+            float waterLevel = 0.5;
+            float heightDiff = abs(cameraHeight - waterLevel);
+            float heightProx = 1.0 - smoothstep(0.0, 6.0, heightDiff);
+            float proximityScale = 1.0 + heightProx * 0.35;
+
+            // Velocity-driven turbulence near the player/raft — the surface
+            // churns harder right where the vehicle is moving fast.
+            float distToVehicle = length(p - vehiclePos.xz);
+            float vehicleProx = 1.0 - smoothstep(0.0, 9.0, distToVehicle);
+            float velLen = length(vehicleVelocity);
+            float vehicleTurb = fbm3(p * 3.0 + vec2(time * 1.7, -time * 1.3)) * vehicleProx * clamp(velLen, 0.0, 45.0) * 0.012;
+
+            return (swell1 + swell2 + detail + chop + ripple + pondRipple) * scale * proximityScale + vehicleTurb;
+          }
+
+          float sampleSWEDisplacement(vec2 worldXZ) {
+            if (sweEnabled < 0.5) return 0.0;
+            vec2 gridSpan = sweGridSize * sweCellSize;
+            vec2 local = (worldXZ - sweOrigin) / gridSpan;
+            if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) return 0.0;
+            float h = texture2D(sweHeightMap, local).r;
+            return (h - sweMeanDepth) * sweDisplacementScale;
+          }
+
+          void main() {
+            vUv = uv;
+            vec3 pos = position;
+
+            vec4 worldPos4 = modelMatrix * vec4(pos, 1.0);
+            vec3 worldPos = worldPos4.xyz;
+
+            float distToCamera = distance(worldPos, cameraPosition);
+            vCameraProximity = 1.0 - smoothstep(5.0, 25.0, distToCamera);
+
+            vec2 flowBias = vec2(sin(time * 0.1), -1.0);
+            #ifdef USE_FLOWMAP
+              flowBias = texture2D(flowMap, uv * 0.5).rg * 2.0 - 1.0;
+            #endif
+
+            float d = getDisplacement(pos.xz, flowBias);
+            pos.y += sampleSWEDisplacement(worldPos.xz);
+            pos.y += d;
+
+            // 4-sample cross gradient for more accurate normals (reduces faceting in Fresnel)
+            // WGSL migration: identical math, just dpdx/dpdy built-ins can replace this
+            const float h = 0.08;
+            float sweD = sampleSWEDisplacement(worldPos.xz);
+            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(h, 0.0));
+            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(h, 0.0));
+            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(0.0, h));
+            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(0.0, h));
+            float dCenter = d + sweD;
+            // Central-difference tangents give a smoother, analytically correct normal
+            vec3 tangentX = normalize(vec3(2.0 * h, dR - dL, 0.0));
+            vec3 tangentZ = normalize(vec3(0.0, dU - dD, 2.0 * h));
+            vec3 newNormal = normalize(cross(tangentZ, tangentX));
+
+            vNormal = normalMatrix * newNormal;
+            vViewDir = normalize(cameraPosition - worldPos);
+            vWorldPos = worldPos;
+
+            vWave = clamp(dCenter * 2.0 + 0.5, 0.0, 1.0);
+
+            float effFlow = flowSpeed;
+            float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
+            vec2 d1 = normalize(vec2(flowBias.x * 0.3, -1.0));
+            float s1 = sin(dot(position.xz, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
+            vec2 d2 = normalize(vec2(flowBias.x * 0.5 + 0.2, -1.0));
+            float s2 = sin(dot(position.xz, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
+            vCurrent = clamp((abs(s1) + abs(s2)) * scale, 0.0, 1.0);
+
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            vReflectionUv = projectionMatrix * mvPos;
+            gl_Position = vReflectionUv;
+          }
+        `, [noiseHelpers]);
 
   // Built-in fallback fragment shader with all upgraded features
   const builtinFragmentShader = useMemo(() => `
@@ -416,183 +573,34 @@ function isWaterShaderMaterial(
         ...(effectiveFlowMap ? { USE_FLOWMAP: '1' } : {}),
       };
 
-      const mat = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        defines,
-        uniforms: {
-          time: { value: 0 },
-          flowSpeed: { value: effectiveFlowSpeed },
-          waterColor: { value: new THREE.Color(effectiveWaterColor) },
-          deepColor: { value: deepColor },
-          foamColor: { value: new THREE.Color(effectiveFoamColor) },
-          edgeHighlight: { value: new THREE.Color(effectiveEdgeColor) },
-          bioLuminescence: { value: 0 },
-          timeOfDay: { value: 0 },
-          weatherRipple: { value: weatherRipple },
-          wetness: { value: wetness },
-          slushiness: { value: slushiness },
-          vehiclePos: { value: vehiclePos ? new THREE.Vector3().copy(vehiclePos) : new THREE.Vector3(99999.0, 99999.0, 99999.0) },
-          vehicleVelocity: { value: vehicleVelocity ? new THREE.Vector3().copy(vehicleVelocity) : new THREE.Vector3() },
-          flowMap: { value: effectiveFlowMap || null },
-          cameraHeight: { value: 0.0 },
-          // God-ray uniforms — driven by biome in useFrame
-          sunDir: { value: new THREE.Vector3(0.3, 1.0, -0.4).normalize() },
-          godRayStrength: { value: 0.0 },
-          // World-space sun/moon position for specular catch-light
-          sunWorldPos: { value: sunWorldPosition ? new THREE.Vector3().copy(sunWorldPosition) : new THREE.Vector3(100, 200, -100) },
-          isPond: { value: isPond ? 1.0 : 0.0 },
-          sweHeightMap: { value: null },
-          sweOrigin: { value: new THREE.Vector2() },
-          sweCellSize: { value: 0.5 },
-          sweGridSize: { value: new THREE.Vector2(48, 32) },
-          sweMeanDepth: { value: SWE_MEAN_DEPTH },
-          sweDisplacementScale: { value: 0.22 },
-          sweEnabled: { value: 0.0 },
-          reflectionTexture: { value: getBlackReflectionFallback() },
-          reflectionStrength: { value: 0.0 },
-          vortexCenter: {
-            value: vortexCenter
-              ? new THREE.Vector3().copy(vortexCenter)
-              : new THREE.Vector3(99999.0, 0.0, 99999.0),
-          },
-          vortexRadius: { value: vortexRadius || 10 },
-          vortexIntensity: { value: vortexIntensity || 0 },
+      const { material: mat, backend: activeBackend, fallbackReason } = createWaterMaterial({
+        backend: materialBackend,
+        init: {
+          flowSpeed: effectiveFlowSpeed,
+          waterColor: effectiveWaterColor,
+          deepColor,
+          foamColor: effectiveFoamColor,
+          edgeHighlight: effectiveEdgeColor,
+          weatherRipple,
+          wetness,
+          slushiness,
+          isPond,
+          vehiclePos,
+          vehicleVelocity,
+          flowMap: effectiveFlowMap,
+          sunWorldPosition,
+          reflectionFallback: getBlackReflectionFallback(),
+          vortexCenter,
+          vortexRadius,
+          vortexIntensity,
         },
-        vertexShader: `
-          uniform float time;
-          uniform float flowSpeed;
-          uniform float weatherRipple;
-          uniform float cameraHeight;
-          uniform sampler2D flowMap;
-          uniform vec3 vehiclePos;
-          uniform vec3 vehicleVelocity;
-          uniform float isPond;
-          uniform sampler2D sweHeightMap;
-          uniform vec2 sweOrigin;
-          uniform float sweCellSize;
-          uniform vec2 sweGridSize;
-          uniform float sweMeanDepth;
-          uniform float sweDisplacementScale;
-          uniform float sweEnabled;
-
-          varying vec2 vUv;
-          varying vec3 vWorldPos;
-          varying vec3 vNormal;
-          varying vec3 vViewDir;
-          varying float vWave;
-          varying float vCurrent;
-          varying float vCameraProximity;
-          varying vec4 vReflectionUv;
-
-          ${noiseHelpers}
-
-          float getDisplacement(vec2 p, vec2 fb) {
-            float effFlow = flowSpeed;
-            float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
-            // Glassy pond/delta water: flatten the big swells almost completely.
-            scale *= mix(1.0, POND_CALM_MULTIPLIER * 0.5, isPond);
-
-            vec2 d1 = normalize(vec2(fb.x * 0.3, -1.0));
-            float swell1 = sin(dot(p, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
-
-            vec2 d2 = normalize(vec2(fb.x * 0.5 + 0.2, -1.0));
-            float swell2 = sin(dot(p, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
-
-            float detail = fbm3(p * 1.5 + vec2(time * effFlow * 0.2, -time * effFlow * 0.3)) * 0.25;
-
-            // Fine choppiness: extra high-frequency layer that scales with
-            // flow speed so rapids look broken-up while calm water stays smooth.
-            float choppiness = clamp(effFlow - 0.8, 0.0, 2.5);
-            float chop = fbm3(p * 4.0 + vec2(-time * effFlow * 0.6, time * effFlow * 0.45)) * 0.18 * choppiness;
-            chop *= mix(1.0, POND_CALM_MULTIPLIER * 0.3, isPond);
-
-            float ripple = sin(p.x * 8.0 * RIPPLE_SCALE + time * 4.0)
-                         * cos(p.y * 7.5 * RIPPLE_SCALE + time * 3.5)
-                         * weatherRipple * 0.08;
-
-            // Pond/delta: subtle slow concentric ripples instead of choppiness.
-            float pondRipple = sin(length(p - vehiclePos.xz) * 1.4 - time * 1.5) * 0.04 * isPond;
-
-            float waterLevel = 0.5;
-            float heightDiff = abs(cameraHeight - waterLevel);
-            float heightProx = 1.0 - smoothstep(0.0, 6.0, heightDiff);
-            float proximityScale = 1.0 + heightProx * 0.35;
-
-            // Velocity-driven turbulence near the player/raft — the surface
-            // churns harder right where the vehicle is moving fast.
-            float distToVehicle = length(p - vehiclePos.xz);
-            float vehicleProx = 1.0 - smoothstep(0.0, 9.0, distToVehicle);
-            float velLen = length(vehicleVelocity);
-            float vehicleTurb = fbm3(p * 3.0 + vec2(time * 1.7, -time * 1.3)) * vehicleProx * clamp(velLen, 0.0, 45.0) * 0.012;
-
-            return (swell1 + swell2 + detail + chop + ripple + pondRipple) * scale * proximityScale + vehicleTurb;
-          }
-
-          float sampleSWEDisplacement(vec2 worldXZ) {
-            if (sweEnabled < 0.5) return 0.0;
-            vec2 gridSpan = sweGridSize * sweCellSize;
-            vec2 local = (worldXZ - sweOrigin) / gridSpan;
-            if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) return 0.0;
-            float h = texture2D(sweHeightMap, local).r;
-            return (h - sweMeanDepth) * sweDisplacementScale;
-          }
-
-          void main() {
-            vUv = uv;
-            vec3 pos = position;
-
-            vec4 worldPos4 = modelMatrix * vec4(pos, 1.0);
-            vec3 worldPos = worldPos4.xyz;
-
-            float distToCamera = distance(worldPos, cameraPosition);
-            vCameraProximity = 1.0 - smoothstep(5.0, 25.0, distToCamera);
-
-            vec2 flowBias = vec2(sin(time * 0.1), -1.0);
-            #ifdef USE_FLOWMAP
-              flowBias = texture2D(flowMap, uv * 0.5).rg * 2.0 - 1.0;
-            #endif
-
-            float d = getDisplacement(pos.xz, flowBias);
-            pos.y += sampleSWEDisplacement(worldPos.xz);
-            pos.y += d;
-
-            // 4-sample cross gradient for more accurate normals (reduces faceting in Fresnel)
-            // WGSL migration: identical math, just dpdx/dpdy built-ins can replace this
-            const float h = 0.08;
-            float sweD = sampleSWEDisplacement(worldPos.xz);
-            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(h, 0.0));
-            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(h, 0.0));
-            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(0.0, h));
-            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(0.0, h));
-            float dCenter = d + sweD;
-            // Central-difference tangents give a smoother, analytically correct normal
-            vec3 tangentX = normalize(vec3(2.0 * h, dR - dL, 0.0));
-            vec3 tangentZ = normalize(vec3(0.0, dU - dD, 2.0 * h));
-            vec3 newNormal = normalize(cross(tangentZ, tangentX));
-
-            vNormal = normalMatrix * newNormal;
-            vViewDir = normalize(cameraPosition - worldPos);
-            vWorldPos = worldPos;
-
-            vWave = clamp(dCenter * 2.0 + 0.5, 0.0, 1.0);
-
-            float effFlow = flowSpeed;
-            float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
-            vec2 d1 = normalize(vec2(flowBias.x * 0.3, -1.0));
-            float s1 = sin(dot(position.xz, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
-            vec2 d2 = normalize(vec2(flowBias.x * 0.5 + 0.2, -1.0));
-            float s2 = sin(dot(position.xz, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
-            vCurrent = clamp((abs(s1) + abs(s2)) * scale, 0.0, 1.0);
-
-            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
-            vReflectionUv = projectionMatrix * mvPos;
-            gl_Position = vReflectionUv;
-          }
-        `,
-        fragmentShader,
+        glsl: {
+          vertexShader: builtinVertexShader,
+          fragmentShader,
+          defines,
+        },
       });
+      publishWaterMaterialBackend(activeBackend, fallbackReason);
 
       // Expose flow field sampler
       mat.userData.waterFlowField = {
@@ -634,6 +642,17 @@ function isWaterShaderMaterial(
     heightmapFlow,
     noiseHelpers,
     slushiness,
+    builtinVertexShader,
+    materialBackend,
+    weatherRipple,
+    wetness,
+    isPond,
+    vehiclePos,
+    vehicleVelocity,
+    sunWorldPosition,
+    vortexCenter,
+    vortexRadius,
+    vortexIntensity,
   ]);
 
   // Update uniforms with strong guards
