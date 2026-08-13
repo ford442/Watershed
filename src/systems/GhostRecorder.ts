@@ -10,7 +10,7 @@ import {
   GHOST_SAMPLE_INTERVAL,
   type GhostSample,
 } from './ghostCodec';
-import { setRunGhostData } from './PersistenceSystem';
+import { setRunGhostData, updatePBGhost } from './PersistenceSystem';
 
 export { GHOST_SAMPLE_HZ, GHOST_SAMPLE_INTERVAL };
 export const GHOST_MAX_SAMPLES = 3000; // ~5 minutes at 10 Hz
@@ -73,11 +73,20 @@ export function tickGhostRecording(delta: number, sample: GhostSample): void {
   }
 }
 
-/** Delta-encode the current buffer and persist as base64 on the run key. */
-export function persistGhostRecording(runKey: string): void {
+/** Delta-encode the current buffer and persist as base64 on the run key.
+ * @param runKey Persistence key for this map + seed.
+ * @param runTimeMs Completion time in ms; when provided, only persists if this beats the existing PB.
+ *                  Omit (or pass undefined) to always persist (legacy behaviour).
+ */
+export function persistGhostRecording(runKey: string, runTimeMs?: number): void {
   if (writeIndex <= 0) return;
 
   const encoded = encodeGhostBuffer(buffer, writeIndex);
   const payload = encodeGhostToBase64(encoded);
-  setRunGhostData(runKey, payload);
+
+  if (runTimeMs !== undefined) {
+    updatePBGhost(runKey, runTimeMs, payload);
+  } else {
+    setRunGhostData(runKey, payload);
+  }
 }

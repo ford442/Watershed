@@ -65,6 +65,10 @@
             "type": "number",
             "minimum": 0
           },
+          "bestTimeMs": {
+            "type": "number",
+            "minimum": 0
+          },
           "ghostData": {
             "type": "string",
             "minLength": 1
