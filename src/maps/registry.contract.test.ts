@@ -129,11 +129,11 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
 /**
  * Authored JSON shape drift.
  *
- * The registered map JSONs fully satisfy `level.schema.json` — meander's
- * negative pre-roll segment indices are legalized directly in the schema
- * (`segments.*.index` allows down to -10) and every segment carries an
- * explicit `decorations` block. `KNOWN_LEVEL_SCHEMA_DEBT` is empty; any
- * schema violation fails CI via `assertLevelData()` at registry load time.
+ * Registered map JSONs satisfy `level.schema.json` (optional `decorations`,
+ * negative pre-roll indices down to -10). `levelValidator` excludes pre-roll
+ * segments from `totalSegments` count checks. Registry load uses
+ * `assertLevelData()` — keep `KNOWN_LEVEL_SCHEMA_DEBT` empty unless documenting
+ * a deliberate temporary exception.
  */
 describe('map registry contract — authored JSON shape drift (ajv)', () => {
   const entries = registeredLevelDataEntries();

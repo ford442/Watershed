@@ -1,25 +1,7 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-
-interface SplashTarget {
-  translation: () => { x: number; y: number; z: number };
-  linvel: () => { x: number; y: number; z: number };
-}
-
-interface SplashParticlesProps {
-  target?: React.RefObject<SplashTarget | null> | null;
-  count?: number;
-}
-
-interface SplashParticle {
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  life: number;
-  maxLife: number;
-  scale: number;
-  rotation: number;
-}
+import type { SplashParticlesProps } from '../Environment/types';
 
 export default function SplashParticles({ target, count = 60 }: SplashParticlesProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -37,7 +19,7 @@ export default function SplashParticles({ target, count = 60 }: SplashParticlesP
   }), []);
 
   // Particle state pool
-  const particles = useMemo<SplashParticle[]>(() => {
+  const particles = useMemo(() => {
     return new Array(count).fill(0).map(() => ({
       position: new THREE.Vector3(),
       velocity: new THREE.Vector3(),
@@ -50,11 +32,12 @@ export default function SplashParticles({ target, count = 60 }: SplashParticlesP
 
   useFrame((state, delta) => {
     const mesh = meshRef.current;
-    if (!mesh || !target || !target.current) return;
+    const targetBody = target.current;
+    if (!mesh || !targetBody) return;
 
     // 1. Get Player Data
-    const playerPos = target.current.translation();
-    const playerVel = target.current.linvel();
+    const playerPos = targetBody.translation();
+    const playerVel = targetBody.linvel();
 
     // Calculate speed in XZ plane (ignore vertical movement for splash trigger)
     const speed = Math.sqrt(playerVel.x * playerVel.x + playerVel.z * playerVel.z);

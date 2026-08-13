@@ -106,7 +106,7 @@
     { "index": 10, "difficulty": 0.58, "meanderStrength": 0.75, "verticalBias": -0.85, "waterWidth": 13, "decorations": { "trees": 5,  "rocks": 7 } },
     { "index": 11, "difficulty": 0.62, "meanderStrength": 0.50, "verticalBias": -1.00, "waterWidth": 11, "hasBridge": true, "decorations": { "trees": 3,  "rocks": 8 } },
     { "index": 12, "difficulty": 0.65, "meanderStrength": 0.30, "verticalBias": -1.10, "waterWidth": 10, "decorations": { "trees": 2,  "rocks": 10 } },
-    { "index": 13, "difficulty": 0.3, "decorations": {}, "meanderStrength": 0.2, "verticalBias": -1.2, "waterWidth": 10, "physics": { "waterFlowIntensity": 1.15 } },
+    { "index": 13, "difficulty": 0.3, "meanderStrength": 0.2, "verticalBias": -1.2, "waterWidth": 10, "physics": { "waterFlowIntensity": 1.15 }, "decorations": {} },
     {
       "index": 14,
       "difficulty": 0.7,
@@ -134,7 +134,6 @@
     {
       "index": 15,
       "difficulty": 0.4,
-      "decorations": {},
       "type": "splash",
       "biomeOverride": "canyonAutumn",
       "width": 70,

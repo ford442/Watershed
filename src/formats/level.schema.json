@@ -315,15 +315,14 @@
         "type": "object",
         "required": [
           "index",
-          "difficulty",
-          "decorations"
+          "difficulty"
         ],
         "properties": {
           "index": {
             "type": "number",
             "minimum": -10,
             "maximum": 49,
-            "description": "Segment index (0-based). Negative indices (down to -10) are reserved for authored pre-roll segments that play before the map's nominal index 0 (e.g. meander_to_waterfall's glacier/alpine prelude, GLACIER_START_INDEX = -3)."
+            "description": "Segment index (0-based). Negative values are pre-roll segments streamed before index 0 (e.g. glacier intro ahead of the spawn segment)."
           },
           "name": {
             "type": "string",
@@ -436,6 +435,7 @@
           },
           "decorations": {
             "type": "object",
+            "description": "Optional decoration counts; omitted segments fall back to biome defaults.",
             "properties": {
               "trees": {
                 "type": "number",

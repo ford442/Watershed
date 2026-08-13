@@ -4,21 +4,9 @@ import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
-import { isAutumnLike, type BiomeId } from '../../configs/biomes';
-import type { PlacementTransform } from '../TrackSegment/types';
-
-interface FernsProps {
-    transforms?: PlacementTransform[];
-    biome?: BiomeId | string;
-}
-
-interface FernInstanceData {
-    key: string;
-    position: THREE.Vector3;
-    rotation: THREE.Euler;
-    scale: THREE.Vector3;
-    color: THREE.Color;
-}
+import { isAutumnLike } from '../../configs/biomes';
+import type { BiomeScopedDecorationProps } from './types';
+import { toVegetationMaterial } from './types';
 
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -28,8 +16,11 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
     normalized.forEach((g) => {
         attrNames.forEach((name) => {
             if (!g.getAttribute(name)) {
-                const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
-                g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+                const refGeo = normalized.find((h) => h.getAttribute(name));
+                const positionAttr = g.getAttribute('position');
+                if (!refGeo || !positionAttr) return;
+                const ref = refGeo.getAttribute(name);
+                g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(positionAttr.count * ref.itemSize), ref.itemSize));
             }
         });
     });
@@ -40,11 +31,11 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
     }
 };
 
-export default function Ferns({ transforms, biome = 'canyonSummer' }: FernsProps) {
+export default function Ferns({ transforms, biome = 'canyonSummer' }: BiomeScopedDecorationProps) {
     // 1. Geometry Construction
     const geometry = useMemo(() => {
         const frondCount = 7;
-        const frondGeos: THREE.BufferGeometry[] = [];
+        const frondGeos = [];
 
         for(let i=0; i<frondCount; i++) {
             // Frond: Plane 0.3 width, 1.2 length, 2 width segs, 5 height segs
@@ -97,7 +88,7 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: FernsProps
 
         const merged = mergeCompatibleGeometries(frondGeos);
         if (!merged) return new THREE.BufferGeometry();
-
+        
         // Validate positions before computing normals
         const pos = merged.attributes.position;
         if (pos) {
@@ -110,7 +101,7 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: FernsProps
                 }
             }
         }
-
+        
         merged.computeVertexNormals();
         return merged;
     }, []);
@@ -123,21 +114,21 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: FernsProps
             metalness: 0,
             side: THREE.DoubleSide,
         });
-        extendVegetationMaterial(mat as unknown as Parameters<typeof extendVegetationMaterial>[0], { plantHeight: 1.2, windStrength: 0.05, windSpeed: 1.0 });
+        extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: 1.2, windStrength: 0.05, windSpeed: 1.0 });
         return mat;
     }, []);
 
     useFrame((state) => {
-        updateVegetationMaterial(material as unknown as Parameters<typeof updateVegetationMaterial>[0], state.clock.elapsedTime);
+        updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
     });
 
-    const instances = useMemo<FernInstanceData[]>(() => {
+    const instances = useMemo(() => {
         if (!transforms) return [];
         return transforms.map((t, i) => {
             // Biome Colors
             // Summer: Green variations
             // Autumn: Brown/Orange variations
-            let baseColor: THREE.Color;
+            let baseColor;
             if (isAutumnLike(biome)) {
                 const isGreen = Math.random() > 0.8; // Some still green
                 baseColor = isGreen ? new THREE.Color('#2d5a27') : new THREE.Color('#8b4513');

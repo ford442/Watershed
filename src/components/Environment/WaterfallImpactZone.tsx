@@ -1,8 +1,17 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import type { WaterfallImpactZoneProps } from './types';
 
 const MAX_DROPLETS = 180;
+
+interface ImpactDroplet {
+  angle: number;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  life: number;
+  scale: number;
+}
 
 const plumeNoise = `
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -13,22 +22,6 @@ const plumeNoise = `
                mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
   }
 `;
-
-export interface WaterfallImpactZoneProps {
-  width?: number;
-  flowSpeed?: number;
-  intensity?: number;
-  particleDensity?: number;
-  playerVelocity?: number;
-}
-
-interface Droplet {
-  angle: number;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  life: number;
-  scale: number;
-}
 
 export default function WaterfallImpactZone({
   width = 10,
@@ -152,16 +145,17 @@ export default function WaterfallImpactZone({
   }, []);
 
   useEffect(() => {
-    if (!plumeRef.current) return;
+    const plumeMesh = plumeRef.current;
+    if (!plumeMesh) return;
     plumeInstances.forEach((instance, index) => {
       dummy.position.copy(instance);
       dummy.updateMatrix();
-      plumeRef.current!.setMatrixAt(index, dummy.matrix);
+      plumeMesh.setMatrixAt(index, dummy.matrix);
     });
-    plumeRef.current.instanceMatrix.needsUpdate = true;
+    plumeMesh.instanceMatrix.needsUpdate = true;
   }, [plumeInstances, dummy]);
 
-  const droplets = useMemo<Droplet[]>(() => {
+  const droplets = useMemo((): ImpactDroplet[] => {
     const velocityScale = Math.min(1.8, 0.8 + playerVelocity * 0.015 + particleDensity * 0.25);
     return Array.from({ length: MAX_DROPLETS }, (_, i) => {
       const angle = (i / MAX_DROPLETS) * Math.PI * 2;
@@ -171,12 +165,12 @@ export default function WaterfallImpactZone({
         position: new THREE.Vector3(
           Math.cos(angle) * 0.6,
           ((i * 13) % 21) / 21,
-          Math.sin(angle) * 0.6
+          Math.sin(angle) * 0.6,
         ),
         velocity: new THREE.Vector3(
           Math.cos(angle) * burst * velocityScale,
           (2.6 + ((i * 7) % 11) * 0.22) * velocityScale,
-          Math.sin(angle) * burst * 0.7 * velocityScale
+          Math.sin(angle) * burst * 0.7 * velocityScale,
         ),
         life: ((i * 19) % 100) / 100,
         scale: 0.6 + ((i * 29) % 9) * 0.08,
@@ -186,10 +180,20 @@ export default function WaterfallImpactZone({
 
   useFrame((state, delta) => {
     const time = state.clock.elapsedTime;
-    if (plumeRef.current) (plumeRef.current.material as THREE.ShaderMaterial).uniforms.time.value = time;
-    if (foamRef.current) ((foamRef.current.material) as THREE.ShaderMaterial).uniforms.time.value = time;
+    const plumeMesh = plumeRef.current;
+    const foamMesh = foamRef.current;
+    const dropletMesh = dropletRef.current;
 
-    if (!dropletRef.current) return;
+    const plumeMat = plumeMesh?.material;
+    if (plumeMat instanceof THREE.ShaderMaterial && plumeMat.uniforms) {
+      plumeMat.uniforms.time.value = time;
+    }
+    const foamMat = foamMesh?.material;
+    if (foamMat instanceof THREE.ShaderMaterial && foamMat.uniforms) {
+      foamMat.uniforms.time.value = time;
+    }
+
+    if (!dropletMesh) return;
 
     const spawnScale = THREE.MathUtils.clamp(intensity * (0.75 + particleDensity * 0.35), 0.4, 1.7);
     droplets.forEach((droplet, index) => {
@@ -204,15 +208,14 @@ export default function WaterfallImpactZone({
       dummy.scale.setScalar(scale);
       dummy.rotation.set(age * 4.0, droplet.angle + age * 3.0, age * 2.0);
       dummy.updateMatrix();
-      dropletRef.current!.setMatrixAt(index, dummy.matrix);
+      dropletMesh.setMatrixAt(index, dummy.matrix);
     });
-    dropletRef.current.instanceMatrix.needsUpdate = true;
+    dropletMesh.instanceMatrix.needsUpdate = true;
   });
 
   return (
     <group>
-      <instancedMesh ref={plumeRef} args={[plumeGeometry, plumeMaterial, plumeInstances.length]} frustumCulled={false}>
-      </instancedMesh>
+      <instancedMesh ref={plumeRef} args={[plumeGeometry, plumeMaterial, plumeInstances.length]} frustumCulled={false} />
       <mesh
         ref={foamRef}
         geometry={foamGeometry}

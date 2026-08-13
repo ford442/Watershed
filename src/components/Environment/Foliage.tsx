@@ -1,33 +1,17 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import type { BiomeId } from '../../configs/biomes';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeDecorationTransform, FoliageProps } from './types';
 
-// Color Palettes for varied greens
-const COLOR_PALETTES: Record<string, { tree: string[]; bush: string[]; grass: string[] }> = {
-  summer: {
-    tree: ['#2a4f2a', '#3a6f3a', '#2d5c2d', '#3d7a3d', '#1e401e'],
-    bush: ['#3a5f3a', '#4a7f4a', '#4d8c4d', '#5a9d5a', '#3d6b3d'],
-    grass: ['#4a6f3a', '#5a8f4a', '#6a9f5a', '#5c8f3d', '#4d7a3d']
-  },
-  autumn: {
-    tree: ['#8b4513', '#a0522d', '#cd853f', '#d2691e', '#b8860b'],
-    bush: ['#9acd32', '#6b8e23', '#556b2f', '#8fbc8f', '#808000'],
-    grass: ['#bdb76b', '#9acd32', '#808000', '#6b8e23', '#556b2f']
-  }
-};
+type PaletteSeason = 'summer' | 'autumn';
 
-interface FoliageProps {
-  /** Array of {position, rotation, scale} for placement */
-  transforms?: PlacementTransform[];
-  /** Biome id for color palette */
-  biome?: BiomeId | string;
-  /** Multiplier for amount of foliage (0.5 to 2.0) */
-  density?: number;
+interface ColorPalette {
+  tree: string[];
+  bush: string[];
+  grass: string[];
 }
 
-interface FoliageInstanceData {
+interface FoliageInstance {
   position: THREE.Vector3;
   rotation: THREE.Euler;
   scale: THREE.Vector3;
@@ -35,34 +19,51 @@ interface FoliageInstanceData {
 }
 
 interface FoliageData {
-  bushes: FoliageInstanceData[];
-  grass: FoliageInstanceData[];
-  plants: FoliageInstanceData[];
+  bushes: FoliageInstance[];
+  grass: FoliageInstance[];
+  plants: FoliageInstance[];
 }
 
-/**
- * Foliage Component - Adds variety of vegetation (bushes, grass blades, small plants)
- * Uses instanced rendering for performance with many small objects
- */
+const COLOR_PALETTES: Record<PaletteSeason, ColorPalette> = {
+  summer: {
+    tree: ['#2a4f2a', '#3a6f3a', '#2d5c2d', '#3d7a3d', '#1e401e'],
+    bush: ['#3a5f3a', '#4a7f4a', '#4d8c4d', '#5a9d5a', '#3d6b3d'],
+    grass: ['#4a6f3a', '#5a8f4a', '#6a9f5a', '#5c8f3d', '#4d7a3d'],
+  },
+  autumn: {
+    tree: ['#8b4513', '#a0522d', '#cd853f', '#d2691e', '#b8860b'],
+    bush: ['#9acd32', '#6b8e23', '#556b2f', '#8fbc8f', '#808000'],
+    grass: ['#bdb76b', '#9acd32', '#808000', '#6b8e23', '#556b2f'],
+  },
+};
+
+const DEFAULT_ROTATION = new THREE.Euler();
+const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
+
+function resolvePaletteSeason(biome: string): PaletteSeason {
+  return biome.includes('autumn') ? 'autumn' : 'summer';
+}
+
 export default function Foliage({ transforms, biome = 'canyonSummer', density = 1.0 }: FoliageProps) {
   const bushesRef = useRef<THREE.InstancedMesh>(null);
   const grassRef = useRef<THREE.InstancedMesh>(null);
   const plantsRef = useRef<THREE.InstancedMesh>(null);
 
-  // Get color palette based on biome
-  const palette = COLOR_PALETTES[biome] || COLOR_PALETTES.summer;
+  const palette = COLOR_PALETTES[resolvePaletteSeason(biome)];
 
   // Generate foliage data with variety
-  const foliageData = useMemo<FoliageData>(() => {
+  const foliageData = useMemo((): FoliageData => {
     if (!transforms || transforms.length === 0) {
       return { bushes: [], grass: [], plants: [] };
     }
 
-    const bushes: FoliageInstanceData[] = [];
-    const grass: FoliageInstanceData[] = [];
-    const plants: FoliageInstanceData[] = [];
+    const bushes: FoliageInstance[] = [];
+    const grass: FoliageInstance[] = [];
+    const plants: FoliageInstance[] = [];
 
-    transforms.forEach((t, i) => {
+    transforms.forEach((t: BiomeDecorationTransform, i: number) => {
+      const baseScale = (t.scale ?? DEFAULT_SCALE).x;
+      const baseRotation = t.rotation ?? DEFAULT_ROTATION;
       const seed = i * 123.45;
       const rand = () => {
         const x = Math.sin(seed + Math.random() * 100) * 10000;
@@ -71,22 +72,22 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
 
       // Determine type based on random chance
       const typeRoll = rand();
-
+      
       if (typeRoll > 0.6) {
         // Bush - rounded shrub
         const bushColors = palette.bush;
         const colorHex = bushColors[Math.floor(rand() * bushColors.length)];
         const color = new THREE.Color(colorHex);
-
+        
         // Add brightness variation
         const shade = 0.85 + rand() * 0.3;
         color.multiplyScalar(shade);
 
-        const scale = t.scale.x * (0.8 + rand() * 0.6) * density;
-
+        const scale = baseScale * (0.8 + rand() * 0.6) * density;
+        
         bushes.push({
           position: t.position,
-          rotation: t.rotation,
+          rotation: baseRotation,
           scale: new THREE.Vector3(scale, scale * (0.7 + rand() * 0.4), scale),
           color
         });
@@ -95,7 +96,7 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
         const grassColors = palette.grass;
         const colorHex = grassColors[Math.floor(rand() * grassColors.length)];
         const color = new THREE.Color(colorHex);
-
+        
         const shade = 0.9 + rand() * 0.2;
         color.multiplyScalar(shade);
 
@@ -105,19 +106,19 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
           const spread = 0.8;
           const offsetX = (rand() - 0.5) * spread;
           const offsetZ = (rand() - 0.5) * spread;
-
+          
           const pos = t.position.clone();
           pos.x += offsetX;
           pos.z += offsetZ;
 
-          const heightScale = t.scale.x * (0.5 + rand() * 0.8) * density;
-          const widthScale = t.scale.x * (0.15 + rand() * 0.1) * density;
+          const heightScale = baseScale * (0.5 + rand() * 0.8) * density;
+          const widthScale = baseScale * (0.15 + rand() * 0.1) * density;
 
           grass.push({
             position: pos,
             rotation: new THREE.Euler(
               (rand() - 0.5) * 0.3,
-              t.rotation.y + (rand() - 0.5) * 0.5,
+              baseRotation.y + (rand() - 0.5) * 0.5,
               (rand() - 0.5) * 0.3
             ),
             scale: new THREE.Vector3(widthScale, heightScale, widthScale),
@@ -129,15 +130,15 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
         const plantColors = palette.grass;
         const colorHex = plantColors[Math.floor(rand() * plantColors.length)];
         const color = new THREE.Color(colorHex);
-
+        
         const shade = 0.85 + rand() * 0.25;
         color.multiplyScalar(shade);
 
-        const scale = t.scale.x * (0.6 + rand() * 0.5) * density;
-
+        const scale = baseScale * (0.6 + rand() * 0.5) * density;
+        
         plants.push({
           position: t.position,
-          rotation: new THREE.Euler(0, t.rotation.y + rand() * Math.PI, 0),
+          rotation: new THREE.Euler(0, baseRotation.y + rand() * Math.PI, 0),
           scale: new THREE.Vector3(scale, scale * 0.5, scale),
           color
         });
@@ -161,17 +162,17 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
     // Grass blade - tapered plane
     const geo = new THREE.PlaneGeometry(1, 1, 1, 3);
     const positions = geo.attributes.position;
-
+    
     // Taper the grass blade to be wider at bottom, narrow at top
     for (let i = 0; i < positions.count; i++) {
       const y = positions.getY(i);
       const x = positions.getX(i);
-
+      
       // Taper width based on height (-0.5 to 0.5)
       const taperFactor = 0.3 + 0.7 * ((y + 0.5) / 1.0); // 0.3 at bottom, 1.0 at top
       positions.setX(i, x * taperFactor);
     }
-
+    
     geo.translate(0, 0.5, 0); // Pivot at bottom
     geo.computeVertexNormals();
     return geo;
@@ -220,51 +221,55 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
     const quaternion = new THREE.Quaternion();
     const scale = new THREE.Vector3();
 
+    const bushesMesh = bushesRef.current;
+    const grassMesh = grassRef.current;
+    const plantsMesh = plantsRef.current;
+
     // Update bushes
-    if (bushesRef.current && foliageData.bushes.length > 0) {
+    if (bushesMesh && foliageData.bushes.length > 0) {
       foliageData.bushes.forEach((bush, i) => {
         position.copy(bush.position);
         quaternion.setFromEuler(bush.rotation);
         scale.copy(bush.scale);
         matrix.compose(position, quaternion, scale);
-        bushesRef.current!.setMatrixAt(i, matrix);
-        bushesRef.current!.setColorAt(i, bush.color);
+        bushesMesh.setMatrixAt(i, matrix);
+        bushesMesh.setColorAt(i, bush.color);
       });
-      bushesRef.current.instanceMatrix.needsUpdate = true;
-      if (bushesRef.current.instanceColor) {
-        bushesRef.current.instanceColor.needsUpdate = true;
+      bushesMesh.instanceMatrix.needsUpdate = true;
+      if (bushesMesh.instanceColor) {
+        bushesMesh.instanceColor.needsUpdate = true;
       }
     }
 
     // Update grass
-    if (grassRef.current && foliageData.grass.length > 0) {
+    if (grassMesh && foliageData.grass.length > 0) {
       foliageData.grass.forEach((blade, i) => {
         position.copy(blade.position);
         quaternion.setFromEuler(blade.rotation);
         scale.copy(blade.scale);
         matrix.compose(position, quaternion, scale);
-        grassRef.current!.setMatrixAt(i, matrix);
-        grassRef.current!.setColorAt(i, blade.color);
+        grassMesh.setMatrixAt(i, matrix);
+        grassMesh.setColorAt(i, blade.color);
       });
-      grassRef.current.instanceMatrix.needsUpdate = true;
-      if (grassRef.current.instanceColor) {
-        grassRef.current.instanceColor.needsUpdate = true;
+      grassMesh.instanceMatrix.needsUpdate = true;
+      if (grassMesh.instanceColor) {
+        grassMesh.instanceColor.needsUpdate = true;
       }
     }
 
     // Update plants
-    if (plantsRef.current && foliageData.plants.length > 0) {
+    if (plantsMesh && foliageData.plants.length > 0) {
       foliageData.plants.forEach((plant, i) => {
         position.copy(plant.position);
         quaternion.setFromEuler(plant.rotation);
         scale.copy(plant.scale);
         matrix.compose(position, quaternion, scale);
-        plantsRef.current!.setMatrixAt(i, matrix);
-        plantsRef.current!.setColorAt(i, plant.color);
+        plantsMesh.setMatrixAt(i, matrix);
+        plantsMesh.setColorAt(i, plant.color);
       });
-      plantsRef.current.instanceMatrix.needsUpdate = true;
-      if (plantsRef.current.instanceColor) {
-        plantsRef.current.instanceColor.needsUpdate = true;
+      plantsMesh.instanceMatrix.needsUpdate = true;
+      if (plantsMesh.instanceColor) {
+        plantsMesh.instanceColor.needsUpdate = true;
       }
     }
   }, [foliageData]);
@@ -272,16 +277,19 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
   // Wind sway animation
   useFrame((state) => {
     const time = state.clock.elapsedTime;
-
-    if (bushesRef.current) {
-      bushesRef.current.rotation.z = Math.sin(time * 1.2) * 0.02;
+    const bushesMesh = bushesRef.current;
+    const grassMesh = grassRef.current;
+    const plantsMesh = plantsRef.current;
+    
+    if (bushesMesh) {
+      bushesMesh.rotation.z = Math.sin(time * 1.2) * 0.02;
     }
-    if (grassRef.current) {
-      grassRef.current.rotation.z = Math.sin(time * 2.5) * 0.05;
-      grassRef.current.rotation.x = Math.cos(time * 1.8) * 0.02;
+    if (grassMesh) {
+      grassMesh.rotation.z = Math.sin(time * 2.5) * 0.05;
+      grassMesh.rotation.x = Math.cos(time * 1.8) * 0.02;
     }
-    if (plantsRef.current) {
-      plantsRef.current.rotation.z = Math.sin(time * 1.5) * 0.03;
+    if (plantsMesh) {
+      plantsMesh.rotation.z = Math.sin(time * 1.5) * 0.03;
     }
   });
 

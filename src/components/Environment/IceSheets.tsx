@@ -1,12 +1,8 @@
-// IceSheets.tsx — translucent shelf slabs at the waterline (glacial biomes).
+// IceSheets — translucent shelf slabs at the waterline (glacial biomes).
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
-import type { PlacementTransform } from '../TrackSegment/types';
-
-export interface IceSheetsProps {
-  transforms?: PlacementTransform[];
-}
+import type { BiomeDecorationProps } from './types';
 
 const SHEET_GEO = (() => {
   const geo = new THREE.BoxGeometry(1, 0.12, 0.6);
@@ -27,15 +23,15 @@ const SHEET_MAT = new THREE.MeshPhysicalMaterial({
   side: THREE.DoubleSide,
 });
 
-interface SheetInstance {
+interface IceSheetInstance {
   key: string;
   position: THREE.Vector3;
   rotation: THREE.Euler;
   scale: THREE.Vector3;
 }
 
-export default function IceSheets({ transforms }: IceSheetsProps) {
-  const instances = useMemo<SheetInstance[]>(() => {
+export default function IceSheets({ transforms }: BiomeDecorationProps) {
+  const instances = useMemo((): IceSheetInstance[] => {
     if (!transforms?.length) return [];
     return transforms.map((t, i) => ({
       key: `ice-sheet-${i}`,

@@ -3,28 +3,8 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { WATER_LEVEL } from '../../constants/game';
-import type { BiomeDecorationProps, PlacementTransform } from './types';
-
-type FishProps = BiomeDecorationProps;
-
-interface FishState {
-  base: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: number;
-  color: THREE.Color;
-  phase: number;
-  freq: number;
-  wanderRadius: number;
-  wanderSpeed: number;
-  angleOffset: number;
-  jumpPeriod: number;
-  jumpStart: number;
-  nearSurface: boolean;
-  wasJumping: boolean;
-  ringLife: number;
-  ringX: number;
-  ringZ: number;
-}
+import type { BiomeDecorationProps } from './types';
+import { materialShaderUserData } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -56,8 +36,11 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
   normalized.forEach((g) => {
     attrNames.forEach((name) => {
       if (!g.getAttribute(name)) {
-        const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
-        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+        const refGeo = normalized.find((h) => h.getAttribute(name));
+        const positionAttr = g.getAttribute('position');
+        if (!refGeo || !positionAttr) return;
+        const ref = refGeo.getAttribute(name);
+        g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(positionAttr.count * ref.itemSize), ref.itemSize));
       }
     });
   });
@@ -81,7 +64,7 @@ const paintTailWeight = (geo: THREE.BufferGeometry): THREE.BufferGeometry => {
   return geo;
 };
 
-export default function Fish({ transforms }: FishProps) {
+export default function Fish({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const ringRef = useRef<THREE.InstancedMesh>(null);
 
@@ -180,9 +163,9 @@ transformed.x += swimWave * 0.16 * aTailWeight;
   }, []);
 
   // Per-fish behaviour state: base transform, schooling wander params, jump timing
-  const fish = useMemo((): FishState[] => {
+  const fish = useMemo(() => {
     if (!transforms) return [];
-    return transforms.map((t: PlacementTransform, i: number): FishState => {
+    return transforms.map((t, i) => {
       const seed = t.position.x * 0.43 + t.position.z * 0.31 + i * 1.61;
       const isSilver = hash(seed) > 0.45;
       const palette = isSilver ? SILVER_PALETTE : DARK_PALETTE;
@@ -251,8 +234,9 @@ transformed.x += swimWave * 0.16 * aTailWeight;
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
-    if (material.userData.shader) {
-      material.userData.shader.uniforms.uTime.value = t;
+    const shader = materialShaderUserData(material).shader;
+    if (shader?.uniforms.uTime) {
+      shader.uniforms.uTime.value = t;
     }
 
     if (!meshRef.current || !fish.length) return;
@@ -328,9 +312,9 @@ transformed.x += swimWave * 0.16 * aTailWeight;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
-    if (ring && ringsChanged) {
+    if (ring && ringsChanged && ringAlphas) {
       ring.instanceMatrix.needsUpdate = true;
-      ringAlphas!.needsUpdate = true;
+      ringAlphas.needsUpdate = true;
     }
   });
 

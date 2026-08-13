@@ -4,7 +4,8 @@ import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
-import type { PlacementTransform } from '../TrackSegment/types';
+import type { BiomeDecorationProps } from './types';
+import { toVegetationMaterial } from './types';
 
 const STALK_GREEN = new THREE.Color('#3f6b34');
 const STALK_TIP = new THREE.Color('#7da84a');
@@ -14,24 +15,12 @@ const BROKEN_TIP = new THREE.Color('#8a7250');
 
 const PLANT_HEIGHT = 2.0;
 
-interface ReedsProps {
-  transforms?: PlacementTransform[];
-}
-
-interface ReedsInstanceData {
-  key: string;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-  color: THREE.Color;
-}
-
 const paintGradient = (
   geo: THREE.BufferGeometry,
   fromColor: THREE.Color,
   toColor: THREE.Color,
   minY: number,
-  maxY: number
+  maxY: number,
 ): THREE.BufferGeometry => {
     const positions = geo.attributes.position;
     const colors = new Float32Array(positions.count * 3);
@@ -54,8 +43,11 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
     normalized.forEach((g) => {
         attrNames.forEach((name) => {
             if (!g.getAttribute(name)) {
-                const ref = normalized.find((h) => h.getAttribute(name))!.getAttribute(name);
-                g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * ref.itemSize), ref.itemSize));
+                const refGeo = normalized.find((h) => h.getAttribute(name));
+                const positionAttr = g.getAttribute('position');
+                if (!refGeo || !positionAttr) return;
+                const ref = refGeo.getAttribute(name);
+                g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(positionAttr.count * ref.itemSize), ref.itemSize));
             }
         });
     });
@@ -66,11 +58,11 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
     }
 };
 
-export default function Reeds({ transforms }: ReedsProps) {
+export default function Reeds({ transforms }: BiomeDecorationProps) {
   // Geometry: Cluster of cattails with a couple of weather-broken stalks for character
   const geometry = useMemo(() => {
     try {
-        const geos: THREE.BufferGeometry[] = [];
+        const geos = [];
         const count = 5; // Reeds per clump
 
         for (let i = 0; i < count; i++) {
@@ -151,15 +143,15 @@ export default function Reeds({ transforms }: ReedsProps) {
         side: THREE.DoubleSide,
         vertexColors: true,
     });
-    extendVegetationMaterial(mat as unknown as Parameters<typeof extendVegetationMaterial>[0], { plantHeight: PLANT_HEIGHT, windStrength: 0.09, windSpeed: 1.1 });
+    extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: PLANT_HEIGHT, windStrength: 0.09, windSpeed: 1.1 });
     return mat;
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(reedsMaterial as unknown as Parameters<typeof updateVegetationMaterial>[0], state.clock.elapsedTime);
+    updateVegetationMaterial(toVegetationMaterial(reedsMaterial), state.clock.elapsedTime);
   });
 
-  const instances = useMemo<ReedsInstanceData[]>(() => {
+  const instances = useMemo(() => {
       if (!transforms) return [];
       return transforms.map((t, i) => {
           const isDry = Math.random() > 0.7;
