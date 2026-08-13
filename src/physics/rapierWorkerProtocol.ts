@@ -41,6 +41,8 @@ export interface WaterForceDiagnostics {
   flow: number;
   turbulence: number;
   submergedRatio: number;
+  /** Wall time of the force batch inside the worker, in microseconds. */
+  computeMicros?: number;
 }
 
 export interface RapierWorkerInitPayload {

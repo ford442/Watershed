@@ -4,7 +4,12 @@ project(WatershedNative CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(SOURCES main.cpp)
+# Translation units — keep this list in sync with WASM.md's directory layout.
+set(SOURCES
+    forces.cpp
+    swe.cpp
+    bindings.cpp
+)
 add_executable(watershed_native ${SOURCES})
 
 if(EMSCRIPTEN)

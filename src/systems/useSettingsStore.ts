@@ -29,6 +29,7 @@ import {
   type SettingsQuality,
   type VolumeChannel,
 } from './settingsDerive';
+import type { PhysicsWorkerPreference } from '../utils/physicsWorkerFlag';
 
 // ---------------------------------------------------------------------------
 // State + actions
@@ -42,6 +43,12 @@ export interface SettingsState {
   mouseSensitivity: number;
   invertY: boolean;
   quality: SettingsQuality;
+  /**
+   * Physics-worker preference. 'auto' means "on wherever the browser supports
+   * Worker + WebAssembly" — see resolvePhysicsWorker. 'off' is the in-game kill
+   * switch that mirrors `?physicsWorker=0`.
+   */
+  physicsWorker: PhysicsWorkerPreference;
   bindings: Bindings;
   /** Flipped true once persisted state has rehydrated (or confirmed absent). */
   _hasHydrated: boolean;
@@ -52,6 +59,7 @@ export interface SettingsActions {
   setSensitivity: (value: number) => void;
   setInvertY: (value: boolean) => void;
   setQuality: (quality: SettingsQuality) => void;
+  setPhysicsWorker: (preference: PhysicsWorkerPreference) => void;
   /**
    * Bind a physical input to an action. Performs conflict detection: if the
    * input is already bound to another action, the two are SWAPPED rather than
@@ -75,6 +83,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
   mouseSensitivity: 1.0,
   invertY: false,
   quality: 'high',
+  physicsWorker: 'auto',
   bindings: { ...DEFAULT_BINDINGS },
   _hasHydrated: false,
 };
@@ -183,6 +192,10 @@ export function migrateSettings(
       p.quality === 'low' || p.quality === 'med' || p.quality === 'high'
         ? p.quality
         : base.quality,
+    physicsWorker:
+      p.physicsWorker === 'auto' || p.physicsWorker === 'on' || p.physicsWorker === 'off'
+        ? p.physicsWorker
+        : base.physicsWorker,
     bindings: mergedBindings,
     // Never trust a persisted hydration flag.
     _hasHydrated: false,
@@ -213,6 +226,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setInvertY: (value) => set({ invertY: value }),
 
       setQuality: (quality) => set({ quality }),
+
+      setPhysicsWorker: (preference) => set({ physicsWorker: preference }),
 
       bindAction: (action, binding) =>
         set((state) => {
@@ -247,6 +262,7 @@ export const useSettingsStore = create<SettingsStore>()(
           mouseSensitivity: DEFAULT_SETTINGS.mouseSensitivity,
           invertY: DEFAULT_SETTINGS.invertY,
           quality: DEFAULT_SETTINGS.quality,
+          physicsWorker: DEFAULT_SETTINGS.physicsWorker,
           bindings: { ...DEFAULT_BINDINGS },
         }),
 
@@ -274,6 +290,7 @@ export const useSettingsStore = create<SettingsStore>()(
         mouseSensitivity: state.mouseSensitivity,
         invertY: state.invertY,
         quality: state.quality,
+        physicsWorker: state.physicsWorker,
         bindings: state.bindings,
       }),
       onRehydrateStorage: () => (state) => {

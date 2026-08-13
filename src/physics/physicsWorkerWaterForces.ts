@@ -21,6 +21,11 @@ import {
 import type { Vec3Tuple, WorkerRaftState } from './rapierWorkerProtocol';
 import type { WaterForceDiagnostics } from './physicsWorkerRegistry';
 
+/** High-resolution clock, degrading to Date.now where performance is absent. */
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
 /** Matches WaterForceSystem impulse scaling to Rapier game units. */
 export const PHYSICS_WORKER_IMPULSE_SCALE = 0.001;
 
@@ -109,9 +114,11 @@ export function toNativeWaterForceConfig(
 export function readWaterForceDiagnostics(
   output: Float32Array,
   source: WaterForceDiagnostics['source'],
+  computeMicros?: number,
 ): WaterForceDiagnostics {
   return {
     source,
+    ...(computeMicros === undefined ? {} : { computeMicros }),
     forceX: output[0],
     forceY: output[1],
     forceZ: output[2],
@@ -145,6 +152,7 @@ export function computePhysicsWorkerWaterForces(
 
   packRaftWaterSample(state, config.flowDirX, config.flowDirZ, batch.input);
   const nativeConfig = toNativeWaterForceConfig(config);
+  const startedAt = now();
 
   if (wasm) {
     wasm.computeWaterForcesBatch(
@@ -162,7 +170,7 @@ export function computePhysicsWorkerWaterForces(
       nativeConfig.turbulenceStrength,
       nativeConfig.turbulenceFrequency,
     );
-    return readWaterForceDiagnostics(batch.output, 'wasm');
+    return readWaterForceDiagnostics(batch.output, 'wasm', (now() - startedAt) * 1000);
   }
 
   const fallback = calculateWaterForceFallback(
@@ -183,7 +191,7 @@ export function computePhysicsWorkerWaterForces(
   batch.output[6] = fallback.turbulence;
   batch.output[7] = fallback.submergedRatio;
 
-  return readWaterForceDiagnostics(batch.output, 'fallback');
+  return readWaterForceDiagnostics(batch.output, 'fallback', (now() - startedAt) * 1000);
 }
 
 export function applyWaterForceImpulse(

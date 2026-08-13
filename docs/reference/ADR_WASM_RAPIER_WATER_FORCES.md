@@ -1,6 +1,6 @@
 # ADR: Rapier and C++ WASM Water-Force Coupling
 
-Status: accepted for v1
+Status: accepted for v1; worker path default-on since the productization pass
 
 ## Context
 
@@ -172,14 +172,49 @@ The POC is intentionally isolated behind a URL flag and does not replace the nor
 
 ### Production worker rollout
 
-Run raft mode with co-located Rapier + C++ water forces:
+The co-located Rapier + C++ water-force worker is the **default** path. It runs on any
+browser that exposes `Worker` and `WebAssembly`; no query parameter is needed.
 
-```txt
-?physicsWorker=1&vehicle=raft
-```
+Resolution order (`src/utils/physicsWorkerFlag.ts`, `resolvePhysicsWorker`):
 
-(`?raftWorker=1` remains a legacy alias.) Default path is unchanged when the flag is absent.
-Worker diagnostics are exposed at `window.__watershedPhysicsWorker` in development builds.
+| Precedence | Input | Result |
+|-----------|-------|--------|
+| 1 | `?physicsWorker=0` (or legacy `?raftWorker=0`) | off — kill switch, wins over everything |
+| 2 | no `Worker` / no `WebAssembly` | off — `no-worker` / `no-wasm` |
+| 3 | `?physicsWorker=1` (or `?raftWorker=1`) | on — overrides the stored setting |
+| 4 | Settings → Physics → Physics worker (`auto`/`on`/`off`) | per preference |
+| 5 | nothing set | on — `default-on` |
+
+Two independent fallbacks sit under that decision, so no single failure strands the raft:
+
+1. **Worker init fails** → `RaftVehicle` disposes the proxy and keeps the main-thread
+   Rapier body authoritative.
+2. **`watershed_native.wasm` fails to load inside the worker** → `getWorkerWasm()` returns
+   null and the worker runs the TypeScript force math (`calculateWaterForceFallback`).
+   Parity between the two is pinned by `src/physics/__tests__/waterForceParity.test.ts`.
+
+No `SharedArrayBuffer` / COOP+COEP requirement is introduced for the default path — the
+single-threaded build stays the shipping artefact.
+
+Diagnostics: the DebugPanel (`?debug=1`) shows worker state and why, the active force path
+(`wasm` / `fallback`), the last force-batch cost in µs, and the active SWE grid. Development
+builds also expose `window.__watershedPhysicsWorker`.
+
+### SWE quality budgets
+
+The shallow-water height field is a *visual* system and is budgeted per quality preset in
+`src/systems/sweQuality.ts`:
+
+| Preset | Grid | Cell | Step rate | Displacement |
+|--------|------|------|-----------|--------------|
+| low | — | — | off | 0 |
+| medium | 32×24 | 0.75 m | 30 Hz | 0.14 |
+| high | 48×32 | 0.5 m | 60 Hz | 0.22 |
+| ultra | 64×40 | 0.5 m | 60 Hz | 0.26 |
+
+`injectSWEDisturbance` is gated by the same budget, so splash events don't queue work that
+nobody drains on `low`. Force math is **not** quality-gated — buoyancy, drag, and flow are
+gameplay-affecting and run at every preset.
 
 ## Biome Math V1
 
@@ -195,6 +230,20 @@ Glacial melt:
 - `flowSpeed`: 1.5 to 3.0 m/s
 - `turbulenceStrength`: 0.02 to 0.06
 - Lower base momentum, later augmented with sharper lateral fields around ice and rocks.
+
+## C++ Module Layout
+
+The native module is split by concern so hull sampling and multi-grid work don't land in
+one growing translation unit:
+
+| File | Owns |
+|------|------|
+| `emscripten/watershed_native.h` | Shared constants, `Vec3` / `WaterForceResult`, declarations |
+| `emscripten/forces.cpp` | Buoyancy, drag, flow, `calculateWaterForce`, `computeWaterForcesBatch` |
+| `emscripten/swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid` |
+| `emscripten/bindings.cpp` | `getVersion()` and the Embind surface — the ABI |
+
+`getVersion()` is 3 as of the split. All compile/link flags stay in `CMakeLists.txt`.
 
 ## Consequences
 

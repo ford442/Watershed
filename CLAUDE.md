@@ -75,6 +75,7 @@ src/
 │   ├── ReachManager.tsx         # Reach streaming wrapper
 │   ├── BiomeSystem.tsx / LODManager.tsx / GameState.ts
 │   ├── SplashSystem.tsx / AudioSystem.ts / WatershedWasm.ts
+│   ├── sweQuality.ts            # SWE grid/step/displacement budget per quality preset
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts

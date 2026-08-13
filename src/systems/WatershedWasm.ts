@@ -2,7 +2,8 @@
  * WatershedWasm.ts — TypeScript bindings for the Watershed C++ WASM module
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
- * which is compiled from `emscripten/main.cpp` via `npm run build:wasm`.
+ * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 3).
  *
  * Quick start
  * -----------
@@ -81,7 +82,12 @@ export interface WatershedNativeModule {
   HEAPU8:  Uint8Array;
 
   // ---- Module version ----
-  /** Returns the integer module version (bump on ABI changes). */
+  /**
+   * Returns the integer module ABI version (bump on ABI changes).
+   *   1 — initial buoyancy/drag/flow surface
+   *   2 — batched computeWaterForcesBatch + SWE grid helpers
+   *   3 — C++ split into forces.cpp / swe.cpp / bindings.cpp
+   */
   getVersion(): number;
 
   calculateBuoyancyAndDrag(
