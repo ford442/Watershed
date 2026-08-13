@@ -13,7 +13,8 @@ npm test           # unit tests (Jest/RTL)
 npm run build      # production build → build/
 ```
 
-> Requires Chrome 90+ for WebGL 2.0. The live renderer is WebGL2-only; WebGPU/TSL migration is deferred to issue #256 path A.
+> Requires Chrome 90+ for WebGL 2.0. The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
+> NodeMaterial/TSL backend (still WebGL2 on the wire) — see [`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md).
 
 ---
 
@@ -25,7 +26,7 @@ npm run build      # production build → build/
 | 3D rendering | Three.js 0.168 + React Three Fiber 9.4 |
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
-| Shaders | GLSL (injected via `onBeforeCompile`) — dead WGSL stubs have been removed; dormant TSL/NodeMaterial seeds retained for #256 path A |
+| Shaders | GLSL (injected via `onBeforeCompile`) by default; opt-in NodeMaterial/TSL backend via `?material=tsl` (#256 path A) |
 | Package manager | pnpm (npm also works) |
 
 ---
@@ -83,6 +84,9 @@ src/
 ├── constants/                   # game.ts, biomes.ts, weather.ts, …
 ├── hooks/                       # useWaterFlowField, useShaderLoader, …
 ├── materials/                   # CanyonMaterial, CausticsMaterial, EnhancedWaterMaterial
+│   ├── water/                   # ★ Water material host (GLSL | TSL) + node material
+│   ├── river/ canyon/           # Surface hosts routing GLSL vs TSL (#256 path A)
+│   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, WaterForces
 ├── shaders/                     # HeightmapFlow.ts
@@ -290,6 +294,8 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/components/TrackManager.tsx` | Segment pool, map-driven generation |
 | `src/components/TrackSegment/` | Canyon geometry, decoration placement |
 | `src/components/FlowingWater.tsx` | Water shader uniforms and GLSL |
+| `src/materials/water/createWaterMaterial.ts` | Water material host — picks GLSL vs TSL backend |
+| `src/rendering/materialBackend.ts` | `?material=glsl\|tsl` resolution (#256 path A) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

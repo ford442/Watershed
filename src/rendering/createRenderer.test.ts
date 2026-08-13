@@ -7,6 +7,8 @@ import { deriveRendererContextOptions } from './deriveRendererContextOptions';
 import { createRiverMaterial } from '../utils/RiverShader';
 import { createCanyonMaterial } from '../materials/CanyonMaterial';
 import { createRiverNodeMaterial } from '../materials/RiverNodeMaterial';
+import { createWaterMaterial } from '../materials/water/createWaterMaterial';
+import { getRendererDiagnostics } from './rendererState';
 
 vi.mock('./cspProbe', () => ({
   isDataUrlConnectAllowed: vi.fn(),
@@ -343,10 +345,13 @@ describe('createGameRenderer legacy material pipeline guard', () => {
    * setupLightsNode, "Cannot read properties of undefined (reading 'replace')"
    * during shader compile).
    *
-   * This test locks the current contract: createGameRenderer MUST return a
-   * THREE.WebGLRenderer for both 'webgl' and 'webgpu' preferences, and the
-   * production materials MUST be preparable against that renderer without
-   * throwing a NodeMaterial-incompatibility error.
+   * This test locks the current contract: on the DEFAULT material backend,
+   * createGameRenderer MUST return a THREE.WebGLRenderer for both 'webgl' and
+   * 'webgpu' preferences, and the production materials MUST be preparable against
+   * that renderer without throwing a NodeMaterial-incompatibility error.
+   *
+   * `materialBackend: 'tsl'` (#256 path A) is the one sanctioned exception and is
+   * covered by its own block below — legacy GLSL materials never travel that path.
    */
 
   function createSceneWithMaterials(materials: THREE.Material[]) {
@@ -413,5 +418,121 @@ describe('createGameRenderer legacy material pipeline guard', () => {
 
       renderer.dispose();
     });
+  });
+});
+
+describe('createGameRenderer material backend routing (#256 path A)', () => {
+  /**
+   * Path A contract. Two rules, both of which the migration depends on:
+   *
+   *   1. Omitting `materialBackend` (production) is byte-identical to today —
+   *      a classic WebGLRenderer, no node pipeline anywhere near it.
+   *   2. `materialBackend: 'tsl'` opts into the node renderer, and does so with a
+   *      WebGL2 backend unless WebGPU is *also* explicitly preferred. Flipping the
+   *      graphics API is a separate, later decision (phase 3).
+   */
+
+  it('defaults to the classic WebGLRenderer when no backend is given', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl' }
+    );
+
+    expect(renderer.isWebGLRenderer).toBe(true);
+    expect((renderer as any).isWebGPURenderer).toBeFalsy();
+    renderer.dispose();
+  });
+
+  it('keeps the classic renderer for an explicit glsl backend', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'glsl' }
+    );
+
+    expect((renderer as any).isWebGPURenderer).toBeFalsy();
+    renderer.dispose();
+  });
+
+  it('selects the node renderer with a WebGL2 backend for tsl + webgl', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl' }
+    );
+
+    expect((renderer as any).isWebGPURenderer).toBe(true);
+    // forceWebGL: WebGL2 on the wire, node materials above it.
+    expect((renderer as any).backend?.isWebGPUBackend).toBe(false);
+    renderer.dispose();
+  });
+
+  it('only negotiates a real WebGPU backend when tsl AND webgpu are requested', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgpu', materialBackend: 'tsl' }
+    );
+
+    expect((renderer as any).isWebGPURenderer).toBe(true);
+    expect((renderer as any).backend?.isWebGPUBackend).toBe(true);
+    renderer.dispose();
+  });
+
+  it('publishes the material backend it actually produced', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl' }
+    );
+
+    expect(getRendererDiagnostics().materialBackend).toBe('tsl');
+    renderer.dispose();
+  });
+
+  it('applies tone mapping and shadow settings to the node renderer too', async () => {
+    const contextOptions = deriveRendererContextOptions({ quality: 'high' });
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl', contextOptions }
+    );
+
+    expect(renderer.outputColorSpace).toBe(contextOptions.outputColorSpace);
+    expect(renderer.toneMapping).toBe(contextOptions.toneMapping);
+    expect(getRendererShadowMapSize(renderer)).toBe(contextOptions.shadowMapSize);
+    renderer.dispose();
+  });
+
+  it('pairs the TSL water material with the node renderer', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl' }
+    );
+
+    const water = createWaterMaterial({
+      backend: 'tsl',
+      init: {
+        flowSpeed: 1.2,
+        waterColor: '#2a6f8a',
+        deepColor: '#123a4a',
+        foamColor: '#ffffff',
+        edgeHighlight: '#9fe8ff',
+      },
+      glsl: {
+        vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
+        fragmentShader: 'void main() { gl_FragColor = vec4(1.0); }',
+        defines: {},
+      },
+    });
+
+    expect(water.backend).toBe('tsl');
+    expect(water.material.type).toBe('MeshBasicNodeMaterial');
+    expect((renderer as any).isWebGPURenderer).toBe(true);
+
+    // NOTE: node materials cannot be *compiled* in jsdom — the test double for
+    // WebGPURenderer is a classic WebGLRenderer, which has no node pipeline (the
+    // very reason this migration exists). Real compilation is covered by the
+    // ?material=tsl visual smoke run on a GPU.
+    const scene = new THREE.Scene();
+    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), water.material));
+    expect(scene.children).toHaveLength(1);
+
+    renderer.dispose();
   });
 });

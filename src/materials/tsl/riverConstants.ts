@@ -1,6 +1,9 @@
 /**
- * DORMANT WebGPU migration seed — not wired into the live renderer.
- * Retained as the subject of the #255 guard. See docs/reference/RENDERER_CONTRACT.md.
+ * LIVE under the `?material=tsl` backend (#256 path A) — no longer dormant.
+ *
+ * Reached through the material hosts (src/materials/{river,canyon}/…), which are
+ * what the scene calls; nothing constructs this directly. The default `glsl`
+ * backend never loads this module. See docs/reference/RENDERER_CONTRACT.md.
  */
 
 /** Moss height fade band above waterline (world-space meters). */

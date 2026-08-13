@@ -3,6 +3,12 @@ import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import * as THREE from 'three';
 import { useDriftwoodAssets } from './DebrisAssets';
+import {
+  createRiverSurfaceMaterial,
+  updateRiverSurfaceMaterial,
+} from '../../materials/river/createRiverSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import type { PlacementTransform } from '../TrackSegment/types';
 import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 import type { BiomeDecorationProps } from './types';
 
@@ -20,12 +26,12 @@ export default function Driftwood({ transforms }: BiomeDecorationProps) {
   const { geometry, material: baseMaterial } = useDriftwoodAssets();
 
   const material = useMemo(
-    () => extendRiverMaterial(baseMaterial, { enableMoss: false }),
+    () => createRiverSurfaceMaterial(resolveMaterialBackend().backend, baseMaterial, { enableMoss: false }),
     [baseMaterial]
   );
 
   useFrame((state) => {
-    updateRiverMaterial(material, state.clock.elapsedTime);
+    updateRiverSurfaceMaterial(material, state.clock.elapsedTime);
   });
 
   const instances = useMemo((): DriftwoodInstance[] => {

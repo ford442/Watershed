@@ -43,6 +43,23 @@ const UPDATE_BASELINES = process.env.UPDATE_BASELINES === '1' || process.env.UPD
 const MAX_DIFF_RATIO = Number(process.env.VISUAL_MAX_DIFF_RATIO ?? '0.05');
 const PIXEL_THRESHOLD = Number(process.env.VISUAL_THRESHOLD ?? '0.15');
 const BOOT_RETRIES = Math.max(1, Number(process.env.VISUAL_BOOT_RETRIES ?? '3'));
+/**
+ * Extra query appended to every shot, e.g. VISUAL_EXTRA_QUERY='material=tsl' for
+ * the #256 path A matrix. Capture/baseline names get a suffix so a TSL run never
+ * overwrites the GLSL baselines.
+ */
+const EXTRA_QUERY = (process.env.VISUAL_EXTRA_QUERY ?? '').replace(/^[?&]/, '');
+const LABEL_SUFFIX = process.env.VISUAL_LABEL_SUFFIX ?? (EXTRA_QUERY ? `__${EXTRA_QUERY.replace(/[^a-z0-9]+/gi, '-')}` : '');
+
+/** Full query string for a shot, including any matrix-wide extra. */
+function shotQuery(shot) {
+  return EXTRA_QUERY ? `${shot.query}&${EXTRA_QUERY}` : shot.query;
+}
+
+/** Capture/baseline label for a shot, namespaced per matrix variant. */
+function shotLabel(shot) {
+  return `${shot.label}${LABEL_SUFFIX}`;
+}
 const VIEWPORT = { width: 1280, height: 720 };
 const MIN_GOOD_BYTES = 50_000;
 const SOFT_PAGE_ERROR = /Maximum update depth|Minified React error #185|error #185/i;
@@ -231,7 +248,7 @@ async function attemptPrestart(shot) {
     await page.setViewport(VIEWPORT);
     page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
 
-    await page.goto(`${BASE_URL}/?${shot.query}`, {
+    await page.goto(`${BASE_URL}/?${shotQuery(shot)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
     });
@@ -240,7 +257,7 @@ async function attemptPrestart(shot) {
       timeout: 45_000,
     });
     // Capture immediately — any settle wait invites F-8 main-thread storms.
-    const outPath = path.join(OUT_DIR, `${shot.label}.png`);
+    const outPath = path.join(OUT_DIR, `${shotLabel(shot)}.png`);
     const capture = await capturePng(page, outPath);
     return {
       ok: capture.bytes >= MIN_GOOD_BYTES,
@@ -264,7 +281,7 @@ async function attemptTopdown(shot) {
     await page.setViewport(VIEWPORT);
     page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
 
-    await page.goto(`${BASE_URL}/?${shot.query}`, {
+    await page.goto(`${BASE_URL}/?${shotQuery(shot)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
     });
@@ -297,7 +314,7 @@ async function attemptTopdown(shot) {
     }
     await sleep(shot.settleMs ?? 2_500);
 
-    const outPath = path.join(OUT_DIR, `${shot.label}.png`);
+    const outPath = path.join(OUT_DIR, `${shotLabel(shot)}.png`);
     const capture = await capturePng(page, outPath);
     return {
       ok: capture.bytes >= MIN_GOOD_BYTES,
@@ -318,7 +335,7 @@ async function attemptTopdown(shot) {
 
 async function captureShot(shot, report) {
   console.log(`\n[shot] ${shot.label} (${shot.mode}${shot.required ? ', required' : ', best-effort'})`);
-  console.log(`  → ${BASE_URL}/?${shot.query}`);
+  console.log(`  → ${BASE_URL}/?${shotQuery(shot)}`);
 
   let last = null;
   const attempts = shot.mode === 'prestart' ? 2 : BOOT_RETRIES;
@@ -335,7 +352,7 @@ async function captureShot(shot, report) {
   if (!last?.ok) {
     const soft = !shot.required && (last?.softSkip || classifyPageErrors(last?.pageErrors || []).soft.length > 0);
     report.captures.push({
-      label: shot.label,
+      label: shotLabel(shot),
       mode: shot.mode,
       required: !!shot.required,
       structuralOk: false,
@@ -344,7 +361,7 @@ async function captureShot(shot, report) {
     });
     if (soft) {
       console.log(`  ⚠ ${shot.label} skipped (SwiftShader/F-8) — not a sky-only false fail`);
-      report.comparisons.push({ label: shot.label, status: 'skipped-f8' });
+      report.comparisons.push({ label: shotLabel(shot), status: 'skipped-f8' });
       return true;
     }
     console.error(`  ✗ ${shot.label} failed (${last?.reason})`);
@@ -353,7 +370,7 @@ async function captureShot(shot, report) {
 
   const { hard } = classifyPageErrors(last.pageErrors || []);
   report.captures.push({
-    label: shot.label,
+    label: shotLabel(shot),
     mode: shot.mode,
     required: !!shot.required,
     file: last.outPath,
@@ -369,7 +386,7 @@ async function captureShot(shot, report) {
     return false;
   }
 
-  return compareToBaseline(shot.label, last.outPath, report);
+  return compareToBaseline(shotLabel(shot), last.outPath, report);
 }
 
 async function run() {
@@ -391,6 +408,7 @@ async function run() {
       'First-person post-start SwiftShader frames are sky-only — never gate on them.',
       'Force ?renderer=webgl; WebGPU errors under SwiftShader (lightNodeClass).',
       'Refresh baselines: UPDATE_BASELINES=1 pnpm test:visual-smoke:update (prefer a machine that can boot topdown).',
+      'Material matrix: VISUAL_EXTRA_QUERY=material=tsl pnpm test:visual-smoke captures the #256 path A backend into __material-tsl baselines.',
     ],
   };
 
