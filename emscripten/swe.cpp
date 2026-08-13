@@ -7,7 +7,7 @@
  * solver must stay size-agnostic — never assume the 48x32 baseline.
  */
 
-#include "watershed_native.h"
+#include "swe.h"
 
 #include <cmath>
 #include <cstdlib>

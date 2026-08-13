@@ -2,9 +2,9 @@
 
 Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_WATER_FORCES.md).
 
-Watershed's native module lives in `emscripten/` — `forces.cpp` (water force math),
-`swe.cpp` (shallow-water solver + heap grids), `bindings.cpp` (the Embind ABI), with
-shared declarations in `watershed_native.h`. It builds to:
+Watershed's native module lives in `emscripten/` — `forces.h`/`forces.cpp` (water force math),
+`swe.h`/`swe.cpp` (shallow-water solver + heap grids), `bindings.cpp` (the only file including
+`<emscripten/bind.h>`; the Embind ABI), with shared constants/types in `common.h`. It builds to:
 
 - `public/watershed_native.js`
 - `public/watershed_native.wasm`

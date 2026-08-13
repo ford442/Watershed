@@ -238,12 +238,13 @@ one growing translation unit:
 
 | File | Owns |
 |------|------|
-| `emscripten/watershed_native.h` | Shared constants, `Vec3` / `WaterForceResult`, declarations |
-| `emscripten/forces.cpp` | Buoyancy, drag, flow, `calculateWaterForce`, `computeWaterForcesBatch` |
-| `emscripten/swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid` |
-| `emscripten/bindings.cpp` | `getVersion()` and the Embind surface — the ABI |
+| `emscripten/common.h` | Shared constants, `Vec3`, `clampf` — Embind-free |
+| `emscripten/forces.h` / `forces.cpp` | `WaterForceResult`; buoyancy, drag, flow, `calculateWaterForce`, `computeWaterForcesBatch` |
+| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid` |
+| `emscripten/bindings.cpp` | `getVersion()` and the Embind surface — the ABI; the only file including `<emscripten/bind.h>` |
 
-`getVersion()` is 3 as of the split. All compile/link flags stay in `CMakeLists.txt`.
+`getVersion()` is 4 as of the header split (registration order + static_assert guards added).
+All compile/link flags stay in `CMakeLists.txt`.
 
 ## Consequences
 

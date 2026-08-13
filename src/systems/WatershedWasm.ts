@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 3).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 4).
  *
  * Quick start
  * -----------
