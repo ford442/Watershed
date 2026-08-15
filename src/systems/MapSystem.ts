@@ -239,8 +239,15 @@ export class JSONMapManager implements MapManager {
   private nextChunkId = 0;
   private fallbackManager: DefaultMapManager;
 
-  constructor(levelData?: LevelData) {
-    this.fallbackManager = new DefaultMapManager();
+  /**
+   * @param levelData - Parsed JSON level to serve authored segments from.
+   * @param fallbackProgression - SegmentRange table used for indices beyond
+   *   totalSegments. Defaults to an empty table (yields DEFAULT_SEGMENT_PROGRESSION).
+   *   Prefer passing the map's authored fallback so the same progression table
+   *   governs both direct JSONMapManager callers and ProceduralMapManager wrappers.
+   */
+  constructor(levelData?: LevelData, fallbackProgression: SegmentRange[] = []) {
+    this.fallbackManager = new DefaultMapManager({}, fallbackProgression);
     if (levelData) {
       this.loadLevel(levelData);
     }
@@ -491,17 +498,37 @@ export class ProceduralMapManager implements MapManager {
   ) {
     this.config = { ...DEFAULT_MAP_CONFIG, ...config };
     this.levelData = levelData ?? null;
-    this.jsonManager = levelData ? new JSONMapManager(levelData) : null;
+    // Pass the authored fallback progression so JSONMapManager's own fallback
+    // table is consistent with ProceduralMapManager's fallback (same object).
+    this.jsonManager = levelData ? new JSONMapManager(levelData, fallbackProgression) : null;
     this.continuationManager = continuation?.levelData
       ? new JSONMapManager(continuation.levelData)
       : null;
     this.continuationStartIndex = continuation?.startIndex ?? 0;
     this.fallbackManager = new DefaultMapManager(config, fallbackProgression);
+
+    if (levelData) {
+      const total = levelData.world.track.totalSegments;
+      const segCount = levelData.segments.length;
+      console.log(
+        `[MapSystem] ProceduralMapManager bound to "${levelData.metadata.name}" ` +
+        `(${segCount} authored segments, totalSegments=${total}, ` +
+        `fallback ranges: ${fallbackProgression.length})`,
+      );
+    }
   }
 
   /** Authored segment count of the primary map (0 when procedural-only). */
   getPrimarySegmentCount(): number {
     return this.levelData?.world.track.totalSegments ?? 0;
+  }
+
+  /**
+   * Number of *explicit* authored segment entries in the JSON (may be less than
+   * `totalSegments` when some indices rely on defaults).
+   */
+  getExplicitSegmentCount(): number {
+    return this.levelData?.segments.length ?? 0;
   }
 
   /**
