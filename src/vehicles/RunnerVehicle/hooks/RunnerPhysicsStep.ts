@@ -1,16 +1,37 @@
-import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier, castPlayerGroundRay, isTerrainGroundHit } from './RunnerPhysicsHelpers';
+import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier } from './RunnerPhysicsHelpers';
+import {
+  buildGroundRayOrigin,
+  updateUngroundedHysteresis,
+  resolvePlayerGroundRay,
+  isTerrainGroundHit,
+} from './runnerGroundRay';
+import {
+  POSITION_SANE,
+  isFiniteVec3,
+  isFiniteImpulse,
+  isCameraWarm,
+  resetCameraToSpawn,
+  getHorizontalCameraForward,
+  isPositionSane,
+  holdBodyAtSpawn,
+  computeStrafeEligibility,
+  buildCameraRelativeDirs,
+  tickSprintStamina,
+  tickJumpStateMachine,
+  tickFootstepAudio,
+  applyRunnerCameraFollow,
+  updateRunnerFovKick,
+} from './runnerAirControl';
 import * as THREE from 'three';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../../../constants/game';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { isFloatingPlatform } from '../../../systems/pools/FloatingObjectRegistry';
 import { useGameStore } from '../../../systems/GameState';
 import {
-    RAYCAST_ORIGIN_OFFSET, RAYCAST_DISTANCE, SMOOTHING_FACTOR, DEG_TO_RAD,
-    RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET,
-    JUMP_CONFIG, SLOPE_RANGES, BANK_CONFIG, NEAR_MISS_SPEED_THRESHOLD, NEAR_MISS_RAY_LENGTH, NEAR_MISS_TOI_MIN, NEAR_MISS_TOI_MAX, RUNNER_SPRINT
+    SMOOTHING_FACTOR, DEG_TO_RAD,
+    BANK_CONFIG, RUNNER_SPRINT
 } from '../constants';
-import { playJumpSound, playLandSound, playFootstep, playDodgeSound } from '../audio';
+import { playJumpSound } from '../audio';
 import { triggerCameraShake } from '../utils';
 import {
   tryFireShelfLaunch,
@@ -23,67 +44,8 @@ import {
   hasActiveLaunch,
 } from '../../../systems/score/LaunchScoringSession';
 import { emitShelfLaunch } from '../../../systems/score/shelfLaunchEvents';
-import { isAutumnLike, isBiomeId, type BiomeId } from '../../../configs/biomes';
-import { tickRunSurvival } from '../../../systems/journey/runSession';
 
 type Vec3 = { x: number; y: number; z: number };
-
-const isFiniteVec3 = (v: Vec3) =>
-  Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-
-const isFiniteImpulse = (impulse: Vec3) => isFiniteVec3(impulse);
-
-const isCameraWarm = (camera: THREE.Camera) => {
-  const camPos = camera.position;
-  if (!Number.isFinite(camPos.x) || !Number.isFinite(camPos.y) || !Number.isFinite(camPos.z)) {
-    return false;
-  }
-  return camera.matrixWorld.elements.every(Number.isFinite);
-};
-
-const resetCameraToSpawn = (camera: THREE.Camera, noPointerLock: boolean) => {
-  const [sx, sy, sz] = PLAYER_SPAWN.position;
-  const [cx, cy, cz] = PLAYER_SPAWN.fallbackCamera;
-  if (noPointerLock) {
-    camera.position.set(sx, sy + 40, sz);
-    camera.lookAt(sx, sy, sz);
-  } else {
-    camera.position.set(cx, cy, cz);
-    camera.rotation.set(0, 0, 0);
-  }
-  camera.updateMatrixWorld(true);
-};
-
-const getHorizontalCameraForward = (
-  camera: THREE.Camera,
-  cameraWarm: boolean,
-  out: THREE.Vector3,
-) => {
-  if (cameraWarm) {
-    camera.getWorldDirection(out);
-    out.y = 0;
-    if (out.lengthSq() > 0.001) {
-      out.normalize();
-      return out;
-    }
-  }
-  return out.set(0, 0, -1);
-};
-
-const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 };
-
-const isPositionSane = (pos: Vec3) =>
-  pos.y >= POSITION_SANE.yMin &&
-  pos.y <= POSITION_SANE.yMax &&
-  Math.abs(pos.x) <= POSITION_SANE.xzMax &&
-  Math.abs(pos.z) <= POSITION_SANE.xzMax;
-
-const holdBodyAtSpawn = (body: { setTranslation: Function; setLinvel: Function; setAngvel: Function }) => {
-  const [sx, sy, sz] = PLAYER_SPAWN.position;
-  body.setTranslation({ x: sx, y: sy, z: sz }, true);
-  body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-};
 
 export function updateRunnerPhysics({
   state, delta: dt, world, body, rapier, camera, controls, vehicleState,
@@ -189,23 +151,12 @@ export function updateRunnerPhysics({
     // === SLOPE DETECTION ===
     const slopeAngle = calculateSlopeAngle({ body, world, rapier, slopeState });
 
-    const groundRayOrigin = { x: pos.x, y: pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, z: pos.z };
-    const { hit: groundHit, toi: groundRayDistance, ray: groundRay } = castPlayerGroundRay(
-      world,
-      rapier,
-      body,
-      groundRayOrigin,
-    );
-    const groundRayHitPoint = groundRayDistance !== null
-      ? {
-          x: groundRayOrigin.x,
-          y: groundRayOrigin.y - groundRayDistance,
-          z: groundRayOrigin.z,
-        }
-      : null;
-    if (typeof (groundRay as { free?: () => void }).free === 'function') {
-      (groundRay as { free: () => void }).free();
-    }
+    const {
+      hit: groundHit,
+      toi: groundRayDistance,
+      hitPoint: groundRayHitPoint,
+      rawGrounded,
+    } = resolvePlayerGroundRay(world, rapier, body, pos);
 
     if (isTerrainGroundHit(groundRayDistance)) {
       bodyUserData.__terrainReady = true;
@@ -226,17 +177,12 @@ export function updateRunnerPhysics({
 
     // Hysteresis: require GROUNDED_HYSTERESIS_FRAMES consecutive misses before going airborne.
     // This prevents spurious state changes when the player skims over small rocks/lips.
-    const rawGrounded = isTerrainGroundHit(groundRayDistance);
-    if (rawGrounded) {
-      ungroundedFramesRef.current = 0;
-    } else {
-      // Cap at threshold so the counter doesn't grow unbounded while airborne
-      ungroundedFramesRef.current = Math.min(
-        ungroundedFramesRef.current + 1,
-        JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES
-      );
-    }
-    const isGrounded = rawGrounded || ungroundedFramesRef.current < JUMP_CONFIG.GROUNDED_HYSTERESIS_FRAMES;
+    const groundedHysteresis = updateUngroundedHysteresis(
+      ungroundedFramesRef.current,
+      rawGrounded,
+    );
+    ungroundedFramesRef.current = groundedHysteresis.ungroundedFrames;
+    const isGrounded = groundedHysteresis.isGrounded;
     slopeState.current.isGrounded = isGrounded;
 
     // === SHELF LAUNCH AIR-TIME SCORING (physics-step time) ===
@@ -399,184 +345,29 @@ export function updateRunnerPhysics({
     const dodgeJustPressed = dodge && !prevFrame.current.dodgePressed;
 
     // === SPRINT STAMINA (Zustand-backed, no stale closures) ===
-    // Read via getState() to avoid stale closure; never use the hook form in useFrame.
-    const storeState = useGameStore.getState();
-    let stamina = storeState.sprintStamina;
-
-    const biomeId: BiomeId = isBiomeId(storeState.currentBiome)
-      ? storeState.currentBiome
-      : 'canyonSummer';
-    const horizontalSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-    const survivalMods = tickRunSurvival({
+    const { isSprinting, movementMul } = tickSprintStamina({
       dt,
-      biomeId,
-      inWater: pos.y < WATER_LEVEL + 0.55,
-      windSpeed: horizontalSpeed,
+      posY: pos.y,
+      vel,
+      sprint,
+      jumpState: js,
+      sprintLockedRef,
     });
-    const staminaDrainMul = survivalMods?.staminaDrainMultiplier ?? 1;
-    const staminaRegenMul = survivalMods?.staminaRegenMultiplier ?? 1;
-    const movementMul = survivalMods?.movementMultiplier ?? 1;
 
-    // Hysteresis: once exhausted, lock sprint until RECOVERY_THRESHOLD is reached
-    if (stamina <= RUNNER_SPRINT.EXHAUSTION_THRESHOLD) {
-      sprintLockedRef.current = true;
-    } else if (sprintLockedRef.current && stamina >= RUNNER_SPRINT.RECOVERY_THRESHOLD) {
-      sprintLockedRef.current = false;
-    }
-
-    // Airborne sprint intent is ignored — no drain, faster recovery instead
-    const isAirborne = js.state === 'airborne';
-    const isSprinting = sprint && !sprintLockedRef.current && !isAirborne;
-
-    if (isSprinting) {
-      // Drain while grounded and sprinting
-      stamina = Math.max(0, stamina - RUNNER_SPRINT.DRAIN_RATE * staminaDrainMul * dt);
-    } else if (isAirborne) {
-      // Faster recovery while airborne
-      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_AIRBORNE * staminaRegenMul * dt);
-    } else {
-      // Normal grounded recovery when not sprinting
-      stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_GROUNDED * staminaRegenMul * dt);
-    }
-    storeState.setSprintStamina(stamina);
-
-    // Goal 2: Update coyote time
-    if (isGrounded) {
-      js.timeSinceGrounded = 0;
-    } else {
-      js.timeSinceGrounded += dt;
-    }
-
-    // State transitions
-    switch (js.state) {
-      case 'grounded': {
-        if (!isGrounded) {
-          // Left ground - became airborne
-          js.state = 'airborne';
-          js.hasDoubleJumped = false;
-          js.airTime = 0;
-          js.verticalVelocityOnLeave = vel.y;
-          js.lastGroundY = pos.y;
-        } else if (jumpJustPressed) {
-          // Initiate jump with forward slope bias so downhill jumps carry momentum
-          const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
-          // Add a forward component proportional to slope steepness
-          const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
-          // On steep banks, blend a kick-off component along the surface normal's XZ plane
-          // so the player bounces away from the wall rather than straight up.
-          const gn = slopeState.current.lastGroundNormal;
-          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
-          applyImpulseWithDebugTracking('jump', {
-            x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
-            y: jumpForce,
-            z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
-          });
-
-          js.state = 'airborne';
-          js.hasDoubleJumped = false;
-          js.airTime = 0;
-          js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
-          js.verticalVelocityOnLeave = jumpForce;
-          js.jumpReleased = false;
-
-          // F1: Play jump sound with velocity-scaled pitch
-          playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
-        }
-        break;
-      }
-
-      case 'airborne': {
-        js.airTime += dt;
-
-        // Commit phase - disable strafe
-        if (js.commitTimer > 0) {
-          js.commitTimer -= dt;
-        }
-
-        // Goal 2: Variable jump height - early release cuts upward velocity
-        if (!jump && !js.jumpReleased && vel.y > 0) {
-          js.jumpReleased = true;
-          setLinvelSafe({
-            x: vel.x,
-            y: vel.y * MOVEMENT.JUMP_CUT_MULTIPLIER,
-            z: vel.z
-          });
-        }
-
-        // Goal 2: Coyote time jump - if we just left ground, still allow jump
-        if (jumpJustPressed && js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME && js.airTime < 0.15 && !js.hasDoubleJumped) {
-          const jumpForce = JUMP_CONFIG.FORCE * 0.9;
-          const forwardBias = jumpForce * sinSlope * JUMP_CONFIG.SLOPE_FORWARD_BIAS;
-          // Apply same bank kick-off bias as regular jump
-          const gn = slopeState.current.lastGroundNormal;
-          const bankBlend = Math.min(0.5, Math.abs(slopeState.current.bankAngle) / BANK_CONFIG.KICKOFF_MAX_BANK_DEG);
-          applyImpulseWithDebugTracking('coyoteJump', {
-            x: jumpForwardDir.x * forwardBias + gn.x * jumpForce * bankBlend,
-            y: jumpForce,
-            z: jumpForwardDir.z * forwardBias + gn.z * jumpForce * bankBlend,
-          });
-          js.hasDoubleJumped = false;
-          js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
-          js.jumpReleased = false;
-          playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
-          // Remain airborne but reset timers
-          js.airTime = 0;
-          js.timeSinceGrounded = 999;
-        }
-
-        // Double jump
-        if (jumpJustPressed && !js.hasDoubleJumped && js.airTime > 0.05) {
-          const doubleJumpForce = JUMP_CONFIG.DOUBLE_JUMP_FORCE;
-          // Cancel some downward velocity for responsive feel
-          const newVelY = Math.max(vel.y * 0.3, 0) + doubleJumpForce;
-          setLinvelSafe({ x: vel.x, y: newVelY, z: vel.z });
-
-          js.hasDoubleJumped = true;
-          js.jumpReleased = false;
-          // F1: Play double jump sound
-          playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z), true);
-        }
-
-        // Landing detection
-        if (isGrounded && js.airTime > 0.05) {
-          js.state = 'landing';
-
-          // Calculate impact velocity
-          const impactVel = Math.abs(vel.y);
-
-          // F1: Play landing sound scaled by impact force
-          playLandSound(impactVel);
-
-          // High impact landing check
-          if (impactVel > JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) {
-            const shakeIntensity = Math.min(1.0, (impactVel - JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) / 10);
-            triggerCameraShake(shakeIntensity);
-          }
-        }
-        break;
-      }
-
-      case 'landing': {
-        // Immediate transition to recovery
-        js.state = 'recovering';
-        js.recoveryTimer = JUMP_CONFIG.RECOVERY_DURATION;
-        break;
-      }
-
-      case 'recovering': {
-        js.recoveryTimer -= dt;
-
-        if (js.recoveryTimer <= 0) {
-          if (isGrounded) {
-            js.state = 'grounded';
-          } else {
-            js.state = 'airborne';
-          }
-        }
-        break;
-      }
-    }
-
+    tickJumpStateMachine({
+      js,
+      dt,
+      isGrounded,
+      jump,
+      jumpJustPressed,
+      vel,
+      pos,
+      sinSlope,
+      jumpForwardDir,
+      slopeState,
+      applyImpulseWithDebugTracking,
+      setLinvelSafe,
+    });
 
     handleDodgeAndCollision({
         dodgeState, dodgeJustPressed, isGrounded, camera, leftward, rightward, forward, backward, dt,
@@ -584,22 +375,15 @@ export function updateRunnerPhysics({
         applyImpulseWithDebugTracking, rapier, world,
     });
     // === FOOTSTEP AUDIO (F1) ===
-    if (isGrounded && js.state === 'grounded') {
-      const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-      if (speed > 0.5) {
-        footstepState.current.distanceTraveled += speed * dt;
-
-        if (footstepState.current.distanceTraveled - footstepState.current.lastStepDistance >= footstepState.current.stepInterval) {
-          footstepState.current.lastStepDistance = footstepState.current.distanceTraveled;
-
-          // Determine material and wetness
-          const material = isAutumnLike(collisionState.current.currentBiome) ? 'moss' : 'rock';
-          const isWet = pos.y < WATER_LEVEL + 1.0;
-
-          playFootstep(material, isWet);
-        }
-      }
-    }
+    tickFootstepAudio({
+      isGrounded,
+      jumpState: js.state,
+      vel,
+      posY: pos.y,
+      dt,
+      footstepState,
+      currentBiome: collisionState.current.currentBiome,
+    });
 
     // Store previous frame state
     prevFrame.current.wasGrounded = isGrounded;
@@ -610,17 +394,7 @@ export function updateRunnerPhysics({
     // === MOVEMENT INPUT ===
     // forward/backward already read above to avoid TDZ in handleDodgeAndCollision.
 
-    // Camera-relative direction
-    const forwardDir = new THREE.Vector3();
-    getHorizontalCameraForward(camera, cameraWarm, forwardDir);
-
-    const rightDir = new THREE.Vector3();
-    rightDir.crossVectors(forwardDir, camera.up);
-    if (rightDir.lengthSq() > 0.001) {
-      rightDir.normalize();
-    } else {
-      rightDir.set(1, 0, 0);
-    }
+    const { forwardDir, rightDir } = buildCameraRelativeDirs(camera, cameraWarm);
 
     // === APPLY FORCES ===
     const flowResponsiveness = VEHICLE_TUNING.flowResponsiveness;
@@ -655,8 +429,11 @@ export function updateRunnerPhysics({
     }
 
     // Strafe with commit/recovery restrictions
-    const inCommitPhase = js.state === 'airborne' && js.commitTimer > 0;
-    const canStrafe = !inCommitPhase && js.state !== 'recovering' && dodgeState.current.state !== 'dodging';
+    const canStrafe = computeStrafeEligibility(
+      js.state,
+      js.commitTimer,
+      dodgeState.current.state,
+    );
 
     if (canStrafe) {
       if (leftward) {
@@ -764,44 +541,16 @@ export function updateRunnerPhysics({
     }
 
     // Camera follow (first-person, smooth)
-    // Guard against NaN from Rapier during physics init — lerping NaN permanently corrupts camera matrix
-    if (posOk) {
-      // If a previous frame or external system left the camera position malformed,
-      // snap it back to the body before any lerp/set so we don't propagate NaN/null.
-      const camPos = camera.position;
-      if (!Number.isFinite(camPos.x) || !Number.isFinite(camPos.y) || !Number.isFinite(camPos.z)) {
-        camPos.set(pos.x, pos.y + 1.65, pos.z);
-      }
-
-      if (noPointerLock) {
-        // Headless/screenshot mode: straight top-down view so the generated river/canyon is visible
-        // even when PointerLockControls is unavailable.
-        camera.position.set(pos.x, pos.y + 40, pos.z);
-        camera.lookAt(pos.x, pos.y, pos.z);
-      } else {
-        const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
-        camera.position.lerp(targetPos, 0.12);
-      }
-
-      // Final safety: if lerp somehow produced non-finite values, reset to body.
-      if (!Number.isFinite(camera.position.x) || !Number.isFinite(camera.position.y) || !Number.isFinite(camera.position.z)) {
-        camera.position.set(pos.x, pos.y + 1.65, pos.z);
-      }
-    }
+    applyRunnerCameraFollow({ camera, pos, posOk, noPointerLock });
 
     // FOV kick — speed-based expansion + waterfall punch
-    {
-      const segIdx = useGameStore.getState().currentSegmentIndex;
-      const isWaterfallSeg = segIdx === 14 || segIdx === 29;
-      // Horizontal speed only — vertical drops shouldn't affect FOV alone
-      const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-      const targetFov = 75 + Math.min(12, hSpeed * 0.45) + (isWaterfallSeg ? 10 : 0);
-      fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-dt * 5));
-      if (Math.abs(camera.fov - fovRef.current) > 0.05) {
-        camera.fov = fovRef.current;
-        camera.updateProjectionMatrix();
-      }
-    }
+    updateRunnerFovKick({
+      camera,
+      vel,
+      dt,
+      fovRef,
+      currentSegmentIndex: useGameStore.getState().currentSegmentIndex,
+    });
 
     frameImpulses.forEach((impulse, tag) => {
       const mag = Math.sqrt(impulse.x * impulse.x + impulse.y * impulse.y + impulse.z * impulse.z);
@@ -832,7 +581,7 @@ export function updateRunnerPhysics({
     snapshot.extraGravity = PHYSICS.GRAVITY * (gravMultCurrent - 1);
     snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
     snapshot.groundRay = {
-      origin: { x: pos.x, y: pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, z: pos.z },
+      origin: buildGroundRayOrigin(pos),
       hitPoint: groundRayHitPoint,
       distance: groundRayDistance,
     };

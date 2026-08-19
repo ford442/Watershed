@@ -1,47 +1,18 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
-
 import FlowingWater from '../FlowingWater';
 import CanyonDecorations from '../CanyonDecorations';
-import Vegetation from '../Environment/Vegetation';
-import Grass from '../Environment/Grass';
-import Foliage from '../Environment/Foliage';
-import Reeds from '../Environment/Reeds';
-import Driftwood from '../Environment/Driftwood';
-import FallingLeaves from '../Environment/FallingLeaves';
-import Fireflies from '../Environment/Fireflies';
-import Birds from '../Environment/Birds';
-import Bats from '../Environment/Bats';
-import Fish from '../Environment/Fish';
-import Pebbles from '../Environment/Pebbles';
-import Mist from '../Environment/Mist';
-import WaterLilies from '../Environment/WaterLilies';
-import SunShafts from '../Environment/SunShafts';
 import Rainbow from '../Environment/Rainbow';
-import Ferns from '../Environment/Ferns';
-import Rapids from '../Environment/Rapids';
-import Dragonflies from '../Environment/Dragonflies';
-import Pinecone from '../Environment/Pinecone';
-import Mushrooms from '../Environment/Mushrooms';
-import RockFoam from '../Environment/RockFoam';
-import Wildflowers from '../Environment/Wildflowers';
 import WaterfallParticles from '../Environment/WaterfallParticles';
 import WaterfallSheet from '../Environment/WaterfallSheet';
 import WaterfallImpactZone from '../Environment/WaterfallImpactZone';
 import FloatingObjectManager from '../Environment/FloatingObjectManager';
-import CanyonDust from '../Environment/CanyonDust';
-import Cactus from '../Environment/Cactus';
-import DesertSage from '../Environment/DesertSage';
-import CanyonGrass from '../Environment/CanyonGrass';
 import CanyonBackground from '../Environment/CanyonBackground';
 import Rock from '../Obstacles/Rock';
 import IceSpray from '../Environment/IceSpray';
 import Icicles from '../Environment/Icicles';
 import IceSheets from '../Environment/IceSheets';
-import LumberProps from '../LumberProps';
-import IndustrialProps from '../IndustrialProps';
 import VortexVisual from '../VortexVisual';
 import { effectiveVortexStrength } from '../../physics/vortexForces';
 
@@ -61,12 +32,15 @@ import {
 } from '../../materials/canyon/createCanyonSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import PondFog from './PondFog';
+import { TrackSegmentCollisionMeshes } from './TrackSegmentCollisionMeshes';
+import { TrackSegmentDecorations } from './TrackSegmentDecorations';
+import {
+    buildIndustrialPositions,
+    buildLumberPropPositions,
+    buildVortexCenter,
+} from './trackSegmentPropLayouts';
 import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 import type { TrackSegmentMeshesProps } from './types';
-import {
-    resolveSegmentFriction,
-    resolveSegmentRestitution,
-} from '../../systems/survival/surfaceFriction';
 
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;
@@ -123,52 +97,36 @@ export function TrackSegmentMeshes({
     const wallMaterialRef = useRef<WallMaterial | null>(null);
 
     // Static lumber debris positions (v1 — visual only, not breakable)
-    const lumberPropPositions = useMemo(() => {
-      if (!isLumberFlume) return [];
-      const fromDriftwood = (placementData.driftwood || [])
-        .slice(0, 10)
-        .map((t) => t.position.clone());
-      if (fromDriftwood.length > 0) return fromDriftwood;
-      // Fallback: a few props along the segment centerline
-      if (!segmentPath || pathLength <= 0) return [];
-      return [0.2, 0.45, 0.7].map((t) => {
-        const p = segmentPath.getPoint(t);
-        p.y = waterLevel + 0.15;
-        return p;
-      });
-    }, [isLumberFlume, placementData.driftwood, segmentPath, pathLength, waterLevel]);
+    const lumberPropPositions = useMemo(
+      () =>
+        buildLumberPropPositions({
+          isLumberFlume,
+          driftwood: placementData.driftwood,
+          segmentPath,
+          pathLength,
+          waterLevel,
+        }),
+      [isLumberFlume, placementData.driftwood, segmentPath, pathLength, waterLevel],
+    );
 
     // Industrial props for Hydro-Dam (pipes / railings / catwalks / gates)
-    const industrialPositions = useMemo(() => {
-      if (!isHydroDam || !segmentPath || pathLength <= 0) {
-        return { pipes: [] as THREE.Vector3[], railings: [] as THREE.Vector3[], catwalks: [] as THREE.Vector3[], gates: [] as THREE.Vector3[] };
-      }
-      const sample = (ts: number[], lateral: number, yOff: number) =>
-        ts.map((t) => {
-          const p = segmentPath.getPoint(t);
-          const tangent = segmentPath.getTangent(t).normalize();
-          const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-          p.addScaledVector(binormal, lateral);
-          p.y = waterLevel + yOff;
-          return p;
-        });
-      return {
-        pipes: sample([0.2, 0.55, 0.85], 4.5, 1.2),
-        railings: sample([0.3, 0.6], 3.2, 1.6),
-        catwalks: config?.hasBridge ? sample([0.5], 0, 2.2) : sample([0.45], 2.8, 1.8),
-        gates: vortexConfig ? sample([vortexConfig.centerT ?? 0.55], 0, 1.4) : [],
-      };
-    }, [isHydroDam, segmentPath, pathLength, waterLevel, config?.hasBridge, vortexConfig]);
+    const industrialPositions = useMemo(
+      () =>
+        buildIndustrialPositions({
+          isHydroDam,
+          segmentPath,
+          pathLength,
+          waterLevel,
+          hasBridge: config?.hasBridge,
+          vortexConfig,
+        }),
+      [isHydroDam, segmentPath, pathLength, waterLevel, config?.hasBridge, vortexConfig],
+    );
 
-    const vortexCenter = useMemo(() => {
-      if (!vortexConfig || !segmentPath) return null;
-      const t = THREE.MathUtils.clamp(vortexConfig.centerT ?? 0.55, 0, 1);
-      const p = segmentPath.getPoint(t);
-      const tangent = segmentPath.getTangent(t).normalize();
-      const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      p.addScaledVector(binormal, vortexConfig.lateralOffset ?? 0);
-      return p;
-    }, [vortexConfig, segmentPath]);
+    const vortexCenter = useMemo(
+      () => buildVortexCenter(vortexConfig, segmentPath),
+      [vortexConfig, segmentPath],
+    );
 
     const vortexVisualIntensity = useMemo(() => {
       if (!vortexConfig) return 0;
@@ -438,38 +396,16 @@ export function TrackSegmentMeshes({
             {/* Visual canyon — no Rapier collider (physics uses low-poly collisionGeometry). */}
             <mesh geometry={canyonGeometry} material={rockMaterial} />
 
-            {/* Collision-only U-profile (~1/4 visual density). Invisible; preserves wallFriction / flood friction.
-                openFloor gaps skip the trimesh so the player flies an air corridor. */}
-            {!openFloor && (
-            <RigidBody
-                key={`rb-collision-${segmentId}`}
-                type="fixed"
-                colliders="trimesh"
-                friction={resolveSegmentFriction({
-                    baseFriction: biomeProfile.wallFriction,
-                    slipperiness,
-                    segmentState,
-                })}
-                restitution={resolveSegmentRestitution(
-                    biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1,
-                    slipperiness,
-                )}
-            >
-                <mesh geometry={collisionGeometry} visible={false} />
-            </RigidBody>
-            )}
-
-            {/* Goal 3: Splash pool invisible catch collider */}
-            {(type === 'splash' || type === 'pond') && (
-                <RigidBody type="fixed" colliders={false}>
-                    <CuboidCollider
-                        args={[60, 0.5, 60]}
-                        position={[segmentCenterRef.current.x, -8, segmentCenterRef.current.z]}
-                        friction={0.9}
-                        restitution={0.1}
-                    />
-                </RigidBody>
-            )}
+            <TrackSegmentCollisionMeshes
+                segmentId={segmentId}
+                openFloor={openFloor}
+                collisionGeometry={collisionGeometry}
+                biomeProfile={biomeProfile}
+                slipperiness={slipperiness}
+                segmentState={segmentState}
+                type={type}
+                segmentCenter={segmentCenterRef.current}
+            />
 
             {/* Goal 3: Pond fog override */}
             {type === 'pond' && <PondFog segmentCenter={segmentCenterRef.current} waterLevel={waterLevel} />}
@@ -582,126 +518,27 @@ export function TrackSegmentMeshes({
                 castShadow={lodQuality !== 'high'}
             />
 
-            {/* Vegetation - Trees with Sway (ref for draw-distance culling) */}
-            <group ref={vegetationGroupRef}>
-                {isSlotCanyon ? (
-                    <>
-                        <Cactus transforms={placementData.cactus} />
-                        <DesertSage transforms={placementData.desertSage} />
-                        <CanyonGrass transforms={placementData.canyonGrass} />
-                    </>
-                ) : (
-                    <Vegetation transforms={placementData.trees} biome={biome} />
-                )}
-
-            {/* Grass Bushes */}
-            <Grass transforms={placementData.grass} biome={biome} />
-
-            {/* Foliage Variety - Bushes, Grass Blades, Ground Plants */}
-            <Foliage transforms={placementData.grass} biome={biome} density={1.2} />
-
-            {/* Wildflowers - Pops of color on the banks */}
-            <Wildflowers transforms={placementData.wildflowers} biome={biome} />
-
-            {/* Ferns - Forest floor undergrowth */}
-            <Ferns transforms={placementData.ferns} biome={biome} />
-
-            {/* Mushrooms - Forest floor detail */}
-            <Mushrooms transforms={placementData.mushrooms} biome={biome} />
-
-            {/* Reeds - Shoreline cattails */}
-            <Reeds transforms={placementData.reeds} />
-
-            {/* Pebbles - Shoreline scatter */}
-            <Pebbles transforms={placementData.pebbles} material={rockMaterial} />
-
-            {/* Driftwood - Along river banks */}
-            <Driftwood transforms={placementData.driftwood} />
-
-            {/* Lumber Flume static plank / log / barrel props (v1 visual only) */}
-            {isLumberFlume && lumberPropPositions.length > 0 && (
-                <>
-                    <LumberProps type="plank" positions={lumberPropPositions.slice(0, 4)} />
-                    <LumberProps type="log" positions={lumberPropPositions.slice(2, 6)} />
-                    <LumberProps type="barrel" positions={lumberPropPositions.slice(5, 8)} />
-                </>
-            )}
-
-            {/* Hydro-Dam industrial set dressing */}
-            {isHydroDam && (
-                <>
-                    <IndustrialProps type="pipe" positions={industrialPositions.pipes} />
-                    <IndustrialProps
-                      type="railing"
-                      positions={industrialPositions.railings}
-                      washedOut={catwalkWashedOut}
-                    />
-                    <IndustrialProps
-                      type="catwalk"
-                      positions={industrialPositions.catwalks}
-                      washedOut={catwalkWashedOut}
-                    />
-                    <IndustrialProps type="gate" positions={industrialPositions.gates} />
-                </>
-            )}
-
-            {/* Pinecones - Under trees */}
-            <Pinecone transforms={placementData.pinecones} />
-
-            {/* Falling Leaves */}
-            <FallingLeaves transforms={placementData.leaves} biome={biome} />
-
-            {/* Floating Leaves on water surface (ponds) */}
-            <FallingLeaves transforms={placementData.floatingLeaves} biome={biome} floating={true} />
-
-            {/* Water Lilies (ponds) */}
-            <WaterLilies transforms={placementData.waterLilies} />
-
-            {/* Mist - Atmospheric patches over water */}
-            <Mist
-                transforms={placementData.mist}
+            <TrackSegmentDecorations
+                vegetationGroupRef={vegetationGroupRef}
+                rimVegetationGroupRef={rimVegetationGroupRef}
+                placementData={placementData}
+                biome={biome}
+                isSlotCanyon={isSlotCanyon}
+                isLumberFlume={isLumberFlume}
+                isHydroDam={isHydroDam}
+                lumberPropPositions={lumberPropPositions}
+                industrialPositions={industrialPositions}
+                catwalkWashedOut={catwalkWashedOut}
+                rockMaterial={rockMaterial}
                 flowSpeed={flowSpeed}
                 playerVelocityRef={playerVelocityRef}
-                isSlotCanyon={isSlotCanyon}
+                allowCanyonDust={allowCanyonDust}
+                birdType={birdType}
+                isNight={isNight}
+                batsActive={batsActive}
+                waterLevel={waterLevel}
+                mergedRockFoam={mergedRockFoam}
             />
-
-            {isSlotCanyon && allowCanyonDust && (
-                <CanyonDust
-                    transforms={placementData.canyonDust}
-                    playerVelocityRef={playerVelocityRef}
-                    flowSpeed={flowSpeed}
-                    count={64}
-                    maxDistance={30}
-                />
-            )}
-
-            {/* Fireflies */}
-            <Fireflies transforms={placementData.fireflies} />
-
-            {/* Dragonflies */}
-            <Dragonflies transforms={placementData.dragonflies} />
-
-            {/* Birds */}
-            <Birds transforms={placementData.birds} birdType={birdType} isNight={isNight || batsActive} />
-
-            <Bats transforms={placementData.bats} visible={batsActive} waterLevel={waterLevel} />
-
-            {/* Fish (ponds/deep water) */}
-            <Fish transforms={placementData.fish} />
-
-            {/* Rapids - Whitewater foam */}
-            <Rapids transforms={placementData.rapids} flowSpeed={flowSpeed} />
-
-            {/* Rock Foam - Wake effects around rocks */}
-            <RockFoam transforms={mergedRockFoam} flowSpeed={flowSpeed} />
-
-            {/* Sun Shafts - Atmospheric light rays */}
-            <SunShafts transforms={placementData.sunShafts} flowSpeed={flowSpeed} isSlotCanyon={isSlotCanyon} />
-            </group>
-
-            <group ref={rimVegetationGroupRef}>
-                <Vegetation transforms={placementData.rimTrees} biome={biome} isRim={true} />
-            </group>
 
             {/* Goal 2: Dynamic floating objects (logs, tires, boats, debris) */}
             {segmentPath && (

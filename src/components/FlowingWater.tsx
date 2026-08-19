@@ -7,36 +7,24 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { WATER_LEVEL, WATER_SHADER } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
-import { getSWEHeightFieldSnapshot, SWE_MEAN_DEPTH } from '../systems/water/SWEHeightField';
-import { useWaterReflectionStore } from '../systems/water/waterReflectionStore';
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
-import { updateRendererDiagnostics } from '../rendering/rendererState';
-import type { MaterialBackend } from '../rendering/materialBackend';
+import {
+  createWaterBasicFallback,
+  getBlackReflectionFallback,
+  isUsableFragmentShader,
+  publishWaterMaterialBackend,
+  resolveWaterFragmentShader,
+  updateFlowingWaterUniforms,
+  warnWaterShaderCompileOnce,
+  type HeightmapFlowHandle,
+  type WaterMaterial,
+} from './waterUniforms';
 
-/**
- * Publish which water backend actually got built so DebugPanel can show it.
- * A requested TSL material that failed to build reports `glsl` plus the reason.
- */
-function publishWaterMaterialBackend(backend: MaterialBackend, fallbackReason?: string): void {
-  updateRendererDiagnostics({ materialBackend: backend });
-  if (fallbackReason) {
-    console.warn('[FlowingWater] TSL water material unavailable:', fallbackReason);
-  }
-}
+export type { HeightmapFlowHandle } from './waterUniforms';
 
 /** Guard flag: FlowingWater samples planar reflectionTexture (XOR with unmounted pass). */
 export const FLOWING_WATER_SAMPLES_REFLECTION = true;
-
-/**
- * GPU flow-field handle produced by the heightmap flow system.
- */
-export interface HeightmapFlowHandle {
-  flowMapTexture?: THREE.Texture | null;
-  initWebGPU?: () => Promise<unknown>;
-  update?: (delta: number, time: number, options: { flowStrength: number }) => void;
-  [key: string]: unknown;
-}
 
 export interface FlowingWaterProps {
   geometry: THREE.BufferGeometry;
@@ -62,46 +50,6 @@ export interface FlowingWaterProps {
   vortexRadius?: number;
   vortexIntensity?: number;
 }
-
-/**
- * Either backend's water material, seen through the shared uniform contract.
- * The TSL material is a NodeMaterial, so this is deliberately widened from
- * ShaderMaterial to Material — everything below only touches `uniforms`/`userData`.
- */
-type WaterMaterial = THREE.Material & {
-  uniforms: Record<string, THREE.IUniform>;
-  userData: {
-    waterFlowField?: {
-      waterLevel: number;
-      flowSpeed: number;
-      heightmapFlow?: HeightmapFlowHandle | null;
-      sampleAt: (position: THREE.Vector3, time: number) => {
-        direction: THREE.Vector3;
-        speed: number;
-      };
-    };
-  };
-};
-
-let warnedInvalidWaterShader = false;
-let warnedWaterShaderCompile = false;
-let blackReflectionFallback: THREE.DataTexture | null = null;
-
-function getBlackReflectionFallback(): THREE.DataTexture {
-  if (!blackReflectionFallback) {
-    const data = new Uint8Array([0, 0, 0, 255]);
-    blackReflectionFallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
-    blackReflectionFallback.needsUpdate = true;
-  }
-  return blackReflectionFallback;
-}
-
-const isUsableFragmentShader = (source: string | null | undefined): boolean => {
-  if (typeof source !== 'string' || source.trim().length === 0) {
-    return false;
-  }
-  return source.includes('void main') && source.includes('gl_FragColor');
-};
 
 export default function FlowingWater({
   geometry,
@@ -514,11 +462,6 @@ export default function FlowingWater({
 
   // Load dynamic shader
   const effectiveShaderId = shaderId || biomeData.shaderId;
-function isWaterShaderMaterial(
-  mat: WaterMaterial | THREE.MeshBasicMaterial | null,
-): mat is WaterMaterial {
-  return !!mat && 'uniforms' in mat;
-}
 
   const { code: dynamicShaderCode, loading: shaderLoading, error: shaderError } =
     useShaderLoader(effectiveShaderId ?? null, builtinFragmentShader);
@@ -529,27 +472,15 @@ function isWaterShaderMaterial(
     }
   }, [dynamicShaderCode, shaderError, shaderLoading, onShaderLoad]);
 
-  const fragmentShader = useMemo(() => {
-    const candidateShader = dynamicShaderCode || builtinFragmentShader;
-    if (isUsableFragmentShader(candidateShader)) {
-      return candidateShader;
-    }
-    if (!warnedInvalidWaterShader) {
-      warnedInvalidWaterShader = true;
-      console.warn('[FlowingWater] Invalid fragment shader, using built-in fallback');
-    }
-    return builtinFragmentShader;
-  }, [builtinFragmentShader, dynamicShaderCode]);
+  const fragmentShader = useMemo(
+    () => resolveWaterFragmentShader(dynamicShaderCode, builtinFragmentShader),
+    [builtinFragmentShader, dynamicShaderCode],
+  );
 
   // Create material with upgraded shader + defines
   const material = useMemo(() => {
     if (!isUsableFragmentShader(fragmentShader)) {
-      return new THREE.MeshBasicMaterial({
-        color: new THREE.Color(effectiveWaterColor),
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide,
-      });
+      return createWaterBasicFallback(effectiveWaterColor);
     }
 
     try {
@@ -620,17 +551,8 @@ function isWaterShaderMaterial(
       materialRef.current = mat as WaterMaterial;
       return mat;
     } catch (e: unknown) {
-      if (!warnedWaterShaderCompile) {
-        warnedWaterShaderCompile = true;
-        const message = e instanceof Error ? e.message : String(e);
-        console.warn('[FlowingWater] Shader compile failed, using basic material:', message);
-      }
-      return new THREE.MeshBasicMaterial({
-        color: new THREE.Color(effectiveWaterColor),
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide,
-      });
+      warnWaterShaderCompileOnce(e);
+      return createWaterBasicFallback(effectiveWaterColor);
     }
   }, [
     effectiveWaterColor,
@@ -657,108 +579,30 @@ function isWaterShaderMaterial(
 
   // Update uniforms with strong guards
   useFrame((state, delta) => {
-    const mat = materialRef.current;
     if (heightmapFlowRef.current?.update) {
       heightmapFlowRef.current.update(delta, state.clock.elapsedTime, {
         flowStrength: effectiveFlowSpeed,
       });
     }
-    if (!isWaterShaderMaterial(mat) || !mat.uniforms?.time) return;
-
-    mat.uniforms.time.value = state.clock.elapsedTime;
-
-    if (mat.uniforms.vehiclePos && vehiclePos) {
-      mat.uniforms.vehiclePos.value.copy(vehiclePos);
-    } else if (mat.uniforms.vehiclePos) {
-      mat.uniforms.vehiclePos.value.set(99999.0, 99999.0, 99999.0);
-    }
-    if (mat.uniforms.vehicleVelocity && vehicleVelocity) {
-      mat.uniforms.vehicleVelocity.value.copy(vehicleVelocity);
-    } else if (mat.uniforms.vehicleVelocity) {
-      mat.uniforms.vehicleVelocity.value.set(0.0, 0.0, 0.0);
-    }
-    if (mat.uniforms.weatherRipple) {
-      mat.uniforms.weatherRipple.value = weatherRipple;
-    }
-    if (mat.uniforms.wetness) {
-      mat.uniforms.wetness.value = wetness;
-    }
-    if (mat.uniforms.slushiness) {
-      mat.uniforms.slushiness.value = slushiness;
-    }
-    if (mat.uniforms.flowMap) {
-      mat.uniforms.flowMap.value = heightmapFlowRef.current?.flowMapTexture || flowMap || null;
-    }
-
-    if (mat.uniforms.bioLuminescence) {
-      const isGlacial = biome === 'glacial';
-      mat.uniforms.bioLuminescence.value = (isNight && isGlacial) ? 1.0 : 0.0;
-    }
-    if (mat.uniforms.timeOfDay) {
-      mat.uniforms.timeOfDay.value = isNight ? 1.0 : 0.0;
-    }
-    if (mat.uniforms.cameraHeight) {
-      mat.uniforms.cameraHeight.value = camera.position.y;
-    }
-    // God rays: slot canyon biome gets shafts; other biomes fade out over ~1s
-    if (mat.uniforms.godRayStrength) {
-      const targetGodRay = (biome === 'canyon') ? 0.18 : 0.0;
-      mat.uniforms.godRayStrength.value += (targetGodRay - mat.uniforms.godRayStrength.value) * Math.min(1, delta * 1.5);
-    }
-    // Animate sun azimuth slowly for shifting canyon light feel
-    if (mat.uniforms.sunDir) {
-      const t = state.clock.elapsedTime * 0.04;
-      mat.uniforms.sunDir.value.set(Math.sin(t) * 0.4, 1.0, Math.cos(t) * 0.3 - 0.4).normalize();
-    }
-    if (mat.uniforms.sunWorldPos && sunWorldPosition) {
-      mat.uniforms.sunWorldPos.value.copy(sunWorldPosition);
-    }
-    if (mat.uniforms.isPond) {
-      mat.uniforms.isPond.value = isPond ? 1.0 : 0.0;
-    }
-    if (mat.uniforms.vortexCenter) {
-      if (vortexCenter) {
-        mat.uniforms.vortexCenter.value.copy(vortexCenter);
-      } else {
-        mat.uniforms.vortexCenter.value.set(99999.0, 0.0, 99999.0);
-      }
-    }
-    if (mat.uniforms.vortexRadius) {
-      mat.uniforms.vortexRadius.value = vortexRadius || 10;
-    }
-    if (mat.uniforms.vortexIntensity) {
-      mat.uniforms.vortexIntensity.value = vortexIntensity || 0;
-    }
-
-    const swe = getSWEHeightFieldSnapshot();
-    if (mat.uniforms.sweHeightMap) {
-      mat.uniforms.sweHeightMap.value = swe.texture;
-    }
-    if (mat.uniforms.sweOrigin) {
-      mat.uniforms.sweOrigin.value.set(swe.originX, swe.originZ);
-    }
-    if (mat.uniforms.sweCellSize) {
-      mat.uniforms.sweCellSize.value = swe.cellSize;
-    }
-    if (mat.uniforms.sweGridSize) {
-      mat.uniforms.sweGridSize.value.set(swe.width, swe.height);
-    }
-    if (mat.uniforms.sweEnabled) {
-      mat.uniforms.sweEnabled.value = swe.enabled && swe.texture ? 1.0 : 0.0;
-    }
-    if (mat.uniforms.sweDisplacementScale) {
-      // Quality-budgeted amplitude (sweQuality.ts) — 0 on the low preset.
-      mat.uniforms.sweDisplacementScale.value = swe.displacementScale;
-    }
-
-    // Planar reflection texture published by WaterReflection (null when pass unmounted)
-    if (mat.uniforms.reflectionTexture) {
-      const { texture, strength } = useWaterReflectionStore.getState();
-      mat.uniforms.reflectionTexture.value = texture || getBlackReflectionFallback();
-      if (mat.uniforms.reflectionStrength) {
-        mat.uniforms.reflectionStrength.value = texture ? strength : 0.0;
-      }
-    }
+    updateFlowingWaterUniforms(materialRef.current, {
+      elapsedTime: state.clock.elapsedTime,
+      delta,
+      cameraY: camera.position.y,
+      biome,
+      isNight,
+      flowMap,
+      heightmapFlow: heightmapFlowRef.current,
+      vehiclePos,
+      vehicleVelocity,
+      weatherRipple,
+      wetness,
+      slushiness,
+      sunWorldPosition,
+      isPond,
+      vortexCenter,
+      vortexRadius,
+      vortexIntensity,
+    });
   });
 
   return (
