@@ -49,12 +49,8 @@ const canyonGeometry = useMemo(() => {
 const segmentsZ = Math.floor(pathLength); // Could be 0 or NaN
 ```
 
-### 3. **Log Component State**
-Every major component should log its initialization:
-
-```javascript
-console.log(`[ComponentName] Rendering - active: ${active}, data: ${!!data}`);
-```
+### 3. **Keep production boots quiet**
+Do not leave always-on `console.log` / `console.info` in frame-hot or boot paths (HUD, TrackManager, MapSystem). Prefer a gated debug panel or `?debug=true` when you need smoke values.
 
 ---
 
@@ -335,34 +331,36 @@ useEffect(() => {
 
 ```
 src/
+├── experience/             # InnerExperience, VehicleMount, WaterStack
+├── vehicles/
+│   ├── RunnerVehicle/      # Default first-person runner
+│   └── RaftVehicle/        # Raft buoyancy / paddle
 ├── components/
-│   ├── RunnerVehicle          # Physics & controls
-│   ├── TrackManager.tsx    # Procedural generation orchestration
-│   ├── TrackSegment/    # Individual track piece
-│   ├── FlowingWater.tsx    # Water shader
-│   └── Environment/        # Decorations (~34 components)
-│       ├── Vegetation.tsx
-│       └── ...
-├── utils/
-│   └── RiverShader.ts      # Shared material extensions
-└── systems/                # (Future: Complex logic)
+│   ├── TrackManager.tsx    # Map-driven treadmill orchestration
+│   ├── TrackSegment/       # Canyon geometry + decorations
+│   ├── FlowingWater.tsx    # Water surface host
+│   ├── PostProcessingPipeline.tsx  # Live post stack
+│   └── Environment/        # Biome decorations
+└── systems/                # Domain folders (journey/, water/, map/, …) + GameState
 ```
 
 ### Dependency Flow
 
 ```
 App.tsx
-  └─ Experience.tsx
-      ├─ EnhancedSky
-      └─ Physics
-          ├─ Player (requires nothing)
-          └─ TrackManager
-              └─ TrackSegment (requires textures from TrackManager)
-                  ├─ FlowingWater (requires geometry from TrackSegment)
-                  └─ Environment components
+  └─ Experience.tsx          # LODProvider → BiomeProvider → SunPositionProvider
+       └─ InnerExperience.tsx
+            ├─ EnhancedSky (useBiome())
+            ├─ WaterStack → SplashSystem + WaterForceSystem
+            ├─ VehicleMount → RunnerVehicle | RaftVehicle
+            ├─ TrackManager | ReachManager | LevelLoader
+            │    └─ TrackSegment
+            │         ├─ FlowingWater
+            │         └─ Environment components
+            └─ PostProcessingPipeline
 ```
 
-**Rule**: Never create circular dependencies. Always pass data down.
+**Rule**: Never create circular dependencies. Always pass data down. Player movement lives under `src/vehicles/` — do not reintroduce a top-level `Player` dual.
 
 ---
 

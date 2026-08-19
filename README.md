@@ -48,12 +48,18 @@ For detailed information on the game's level design, including segment configura
 
 ## Roadmap
 
-The current development priorities are:
+Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`, water flow forces (`physics/WaterForces` + `WaterForceSystem`), typed `src/` surface, Rapier in-app physics with optional worker proxy paths as already wired.
 
-- [ ] Prototype a WebGPU compute shader that updates a small heightmap (flowmap + normal reconstruction) — experimental/future; the live renderer remains WebGL2-only.
-- [ ] Move a minimal Rapier physics example into a Web Worker and verify round-trip state updates.
-- [ ] Implement a simple treadmill/chunk streaming prototype and object pooling for static obstacles.
-- [ ] Integrate water flow forces to influence a rigid-body raft.
+Open board (unchecked = genuinely open):
+
+- [ ] [#369](https://github.com/ford442/Watershed/issues/369) — gpu-chores: blur/hist/reduce helpers (SWE / heightmap flow stays domain)
+- [ ] [#370](https://github.com/ford442/Watershed/issues/370) — WebGPU required: hard-fail boot probe (Chrome/Edge)
+- [ ] [#372](https://github.com/ford442/Watershed/issues/372) — C++ toolchain honesty (compile_commands, host tests, water-force ABI)
+- [ ] [#373](https://github.com/ford442/Watershed/issues/373) — WebGL context contract: apply quality without remounting Rapier
+- [ ] [#374](https://github.com/ford442/Watershed/issues/374) — Hydrology as identity (nonlinear SWE, bathymetry, authored river events)
+- [ ] [#375](https://github.com/ford442/Watershed/issues/375) — Ghost league Phase C (rival race, checkpoint splits, results screen)
+
+See also [`docs/reference/plan.md`](docs/reference/plan.md) and [`AGENTS.md`](AGENTS.md) for live architecture.
 
 ## For AI Agents
 
