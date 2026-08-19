@@ -6,7 +6,7 @@
  * self-contained (campaign terminal map).
  */
 
-import type { SegmentRange } from '../systems/MapSystem';
+import type { SegmentRange } from '../systems/map/MapSystem';
 
 /** First segment index of the delta climax map. */
 export const DELTA_RAPIDS_START_INDEX = 0;

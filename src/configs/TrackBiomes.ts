@@ -224,8 +224,8 @@ export function getTrackBiomeProfile(biome: string): TrackBiomeProfile {
   return TRACK_BIOMES[id] ?? TRACK_BIOMES[DEFAULT_BIOME_ID];
 }
 
-/** @deprecated Prefer `classifyFlow` from `systems/flowForecast` — kept as alias. */
-export { classifyFlow as getForecastedBiomeState } from '../systems/flowForecast';
+/** @deprecated Prefer `classifyFlow` from `systems/map/flowForecast` — kept as alias. */
+export { classifyFlow as getForecastedBiomeState } from '../systems/map/flowForecast';
 
 // Re-export for callers that still import the type via TrackBiomes.
 export type { FlowForecastState };

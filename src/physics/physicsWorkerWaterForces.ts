@@ -17,7 +17,7 @@ import {
   calculateWaterForceFallback,
   type NativeWaterForceConfig,
   type WatershedNativeModule,
-} from '../systems/WatershedWasm';
+} from '../systems/water/WatershedWasm';
 import type { Vec3Tuple, WorkerRaftState } from './rapierWorkerProtocol';
 import type { WaterForceDiagnostics } from './physicsWorkerRegistry';
 

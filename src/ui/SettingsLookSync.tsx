@@ -15,7 +15,7 @@
 import { useEffect } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useSettingsStore } from '../systems/useSettingsStore';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
 
 const HALF_PI = Math.PI / 2;
 

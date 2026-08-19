@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { BuoyancyState, TippingState, PaddleState, StaminaState, StunState, ShedParticle, STAMINA } from '../constants';
-import { SurfaceMaterial } from '../../../systems/VehicleSystem';
+import { SurfaceMaterial } from '../../../systems/vehicle/VehicleSystem';
 
 export function useRaftPhysicsState() {
   const buoyancyState = useRef<BuoyancyState>({

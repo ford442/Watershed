@@ -6,7 +6,7 @@
  * `meander_to_waterfall.json` is handled by MapRegistry continuation wiring.
  */
 
-import type { SegmentRange } from '../systems/MapSystem';
+import type { SegmentRange } from '../systems/map/MapSystem';
 
 /** First segment index of the lumber flume map. */
 export const LUMBER_FLUME_START_INDEX = 0;

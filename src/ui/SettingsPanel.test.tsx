@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SettingsPanel } from './SettingsPanel';
-import { useSettingsStore, DEFAULT_SETTINGS } from '../systems/useSettingsStore';
-import { DEFAULT_BINDINGS } from '../systems/settingsDerive';
+import { useSettingsStore, DEFAULT_SETTINGS } from '../systems/settings/useSettingsStore';
+import { DEFAULT_BINDINGS } from '../systems/settings/settingsDerive';
 
 beforeEach(() => {
   useSettingsStore.setState({

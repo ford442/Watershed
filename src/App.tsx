@@ -8,7 +8,7 @@ import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { SettingsSync } from './ui/SettingsSync';
-import { rehydrateSettings } from './systems/useSettingsStore';
+import { rehydrateSettings } from './systems/settings/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
 import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -28,13 +28,13 @@ import {
   type MaterialBackend,
 } from './rendering/materialBackend';
 import './style.css';
-import { initPersistence, hydrateStoreForRun } from './systems/persistenceBootstrap';
+import { initPersistence, hydrateStoreForRun } from './systems/persistence/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
 import { useGameStore, useQualityPreset } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
-import { setLastMapId, getLaunchHour } from './systems/PersistenceSystem';
-import { initRunSession } from './systems/runSession';
+import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
+import { initRunSession } from './systems/journey/runSession';
 
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only

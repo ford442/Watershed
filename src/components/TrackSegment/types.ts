@@ -3,7 +3,7 @@ import type * as THREE from 'three';
 import type { BiomeId } from '../../configs/biomes';
 import type { TrackBiomeProfile, TreeSpeciesId } from '../../configs/TrackBiomes';
 import type { FlowForecastState } from '../../constants/game';
-import type { DecorationPlacement } from '../../systems/MapSystem';
+import type { DecorationPlacement } from '../../systems/map/MapSystem';
 
 /** Segment kind used by TrackSegment geometry and placement. */
 export type SegmentKind = 'normal' | 'waterfall' | 'splash' | 'pond' | 'rapids';

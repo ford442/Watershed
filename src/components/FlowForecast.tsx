@@ -3,7 +3,7 @@ import {
   buildForecastSamples,
   type DamReleaseEntry,
   type FlowForecastSample,
-} from '../systems/flowForecast';
+} from '../systems/map/flowForecast';
 
 export type { FlowForecastSample, DamReleaseEntry };
 

@@ -12,7 +12,7 @@ import { InstancedRigidBodies, type RapierRigidBody } from '@react-three/rapier'
 import {
   clearPillarFragmentRegistry,
   releasePillarFragmentSlots,
-} from '../../systems/PillarFragmentRegistry';
+} from '../../systems/pools/PillarFragmentRegistry';
 import {
   PILLAR_FRAGMENT_LIFETIME_S,
   type PillarFragmentSpawn,

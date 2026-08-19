@@ -5,7 +5,7 @@ import {
   classifyFlow,
   type DamReleaseEntry,
   type FlowForecastSample,
-} from '../systems/flowForecast';
+} from '../systems/map/flowForecast';
 
 const STATE_COLORS: Record<string, string> = {
   [FLOW_FORECAST_STATES.NORMAL]: '#89d18b',

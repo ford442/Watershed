@@ -16,7 +16,7 @@ import { useRapier } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useRef, useEffect } from 'react';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
-import { getAudioManager, AudioManager } from '../systems/AudioSystem';
+import { getAudioManager, AudioManager } from '../systems/audio/AudioSystem';
 import { WATER_LEVEL } from '../constants/game';
 import { sampleSegmentFlow } from '../utils/segmentSampler';
 

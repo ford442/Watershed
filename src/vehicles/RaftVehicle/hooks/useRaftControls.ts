@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../../../constants/game';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { useGameStore } from '../../../systems/GameState';
-import { MATERIAL_FROM_BIOME, SurfaceMaterial } from '../../../systems/VehicleSystem';
+import { MATERIAL_FROM_BIOME, SurfaceMaterial } from '../../../systems/vehicle/VehicleSystem';
 import { SHED, STAMINA, COLLISION, BIAS } from '../constants';
 import { playSplashSound } from '../audio';
 import { triggerCameraShake } from '../../RunnerVehicle/utils';
@@ -18,12 +18,12 @@ import {
   tickLaunchScoring,
   hasActiveLaunch,
   recordLaunchWallContact,
-} from '../../../systems/LaunchScoringSession';
-import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
+} from '../../../systems/score/LaunchScoringSession';
+import { emitShelfLaunch } from '../../../systems/score/shelfLaunchEvents';
 import type { RapierWorkerProxy } from '../../../physics/RapierWorkerProxy';
 import { createRaftPhysicsRuntime } from './raftPhysicsRuntime';
-import { isWaterForceSystemActive } from '../../../systems/WaterForceRegistry';
-import { recordUprightDistance } from '../../../systems/runSession';
+import { isWaterForceSystemActive } from '../../../systems/water/WaterForceRegistry';
+import { recordUprightDistance } from '../../../systems/journey/runSession';
 
 export interface UseRaftControlsParams {
   bodyRef: { current: any };

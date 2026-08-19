@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useFrame, useThree } from '@react-three/fiber';
-import { DefaultMapManager, BaseMapChunk } from '../systems/MapSystem';
+import { DefaultMapManager, BaseMapChunk } from '../systems/map/MapSystem';
 
 /**
  * CanyonBiome.tsx — canyon biome renderer (legacy CreekCanyon heightmap path removed)

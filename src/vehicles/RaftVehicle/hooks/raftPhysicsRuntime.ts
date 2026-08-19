@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { calculateFlowForce, applyWaterForce } from '../../../physics/WaterForces';
 import { WATER_DENSITY } from '../../../constants/game';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSystem';
+import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { useGameStore } from '../../../systems/GameState';
 import {
   WATER_PHYSICS, DENSITY, TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
@@ -18,8 +18,8 @@ import {
   // Shelf launch air-time scoring (physics-step time)
   tickLaunchScoring,
   hasActiveLaunch,
-} from '../../../systems/LaunchScoringSession';
-import { tickRunSurvival } from '../../../systems/runSession';
+} from '../../../systems/score/LaunchScoringSession';
+import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 
 export interface RaftPhysicsRuntimeDeps {

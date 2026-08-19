@@ -1,4 +1,4 @@
-import type { LevelData } from '../systems/MapSystem';
+import type { LevelData } from '../systems/map/MapSystem';
 import { validateLevel } from '../utils/levelValidator';
 import { filterUnexpectedLevelErrors } from './levelSchemaDebt';
 

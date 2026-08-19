@@ -1,4 +1,4 @@
-import { getAudioManager, AudioManager } from '../../systems/AudioSystem';
+import { getAudioManager, AudioManager } from '../../systems/audio/AudioSystem';
 
 // Audio manager reference
 let audioManager: AudioManager | null = null;

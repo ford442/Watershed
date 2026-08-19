@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSystem';
+import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { MOVEMENT } from '../../../constants/game';
 import { useGameStore } from '../../../systems/GameState';
 import { DodgeState, DebugContact } from '../constants';
@@ -16,7 +16,7 @@ import {
 } from '../constants';
 import { playDodgeSound } from '../audio';
 import { triggerCameraShake } from '../utils';
-import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/LaunchScoringSession';
+import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/score/LaunchScoringSession';
 
 type RapierRayHit = {
   timeOfImpact?: number | (() => number);

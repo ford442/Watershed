@@ -15,9 +15,9 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ChunkManager, ChunkManagerCallbacks, RenderedSlot } from '../systems/ChunkManager';
-import { MapManager } from '../systems/MapSystem';
-import type { NormalizedSegment } from '../systems/ReachNormalizer';
+import { ChunkManager, ChunkManagerCallbacks, RenderedSlot } from '../systems/map/ChunkManager';
+import { MapManager } from '../systems/map/MapSystem';
+import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
 
 export interface UseChunkLoaderOptions {
   mapManager: MapManager;
@@ -35,7 +35,7 @@ export interface UseChunkLoaderResult {
   /** Currently rendered pool slots */
   renderedSlots: RenderedSlot[];
   /** Only the active (visible) segments */
-  activeSegments: import('../systems/ChunkManager').SegmentData[];
+  activeSegments: import('../systems/map/ChunkManager').SegmentData[];
   /** True while the initial pool is being built */
   isInitializing: boolean;
   /** Total number of segments generated so far */

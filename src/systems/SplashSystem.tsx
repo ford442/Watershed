@@ -14,9 +14,9 @@ import {
   VFXParticle,
   FoamParticle,
   MistParticle,
-} from './ParticlePool';
+} from './pools/ParticlePool';
 import { useBiomeMaterials } from './BiomeSystem';
-import { injectSWEDisturbance } from './SWEHeightField';
+import { injectSWEDisturbance } from './water/SWEHeightField';
 import { useLOD } from './LODManager';
 import {
   CRUISE_COOLDOWN,
@@ -26,7 +26,7 @@ import {
   mistSpawnCount,
   raftSubmergedRatio,
   resolveSplashFrameEvents,
-} from './splashSpawnMath';
+} from './water/splashSpawnMath';
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;

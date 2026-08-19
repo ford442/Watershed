@@ -5,7 +5,7 @@
  * in `campaign.ts`. `ACTIVE_MAP_ID` remains the code-level fallback default.
  */
 
-import type { LevelData, SegmentRange } from '../systems/MapSystem';
+import type { LevelData, SegmentRange } from '../systems/map/MapSystem';
 import type { BiomeId } from '../configs/biomes';
 import glacialLevel from './glacial_source.json';
 import meanderLevel from './meander_to_waterfall.json';

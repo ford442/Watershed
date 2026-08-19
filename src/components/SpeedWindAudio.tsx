@@ -13,13 +13,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getAudioManager } from '../systems/AudioSystem';
+import { getAudioManager } from '../systems/audio/AudioSystem';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
 import {
   mapSpeedToWind,
   sanitizeAudioGain,
   sanitizeCutoffHz,
-} from '../systems/speedWind';
+} from '../systems/audio/speedWind';
 
 interface SpeedWindAudioProps {
   /** Vehicle rigid body ref — same speed source as ReactiveAudio whoosh ducking. */

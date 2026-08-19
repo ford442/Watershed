@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import { WATER_LEVEL } from '../constants/game';
 import WaterReflection from '../components/WaterReflection';
 import { SplashSystem } from '../systems/SplashSystem';
-import WaterForceSystem from '../systems/WaterForceSystem';
+import WaterForceSystem from '../systems/water/WaterForceSystem';
 import { useLOD } from '../systems/LODManager';
 import type { VehicleRigidBodyRef, VehicleType } from './types';
 

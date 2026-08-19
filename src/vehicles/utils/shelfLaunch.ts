@@ -10,7 +10,7 @@
  */
 
 import { getActiveMap } from '../../maps/registry';
-import { JSONMapManager } from '../../systems/MapSystem';
+import { JSONMapManager } from '../../systems/map/MapSystem';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 
 /** Minimum downstream speed (m/s) required to trigger the launch shelf. */

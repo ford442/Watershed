@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { JumpState, DodgeState, DebugImpulse, DebugContact, PhysicsDebugSnapshot } from '../constants';
-import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial } from '../../../systems/VehicleSystem';
+import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial } from '../../../systems/vehicle/VehicleSystem';
 import { PHYSICS } from '../../../constants/game';
 
 export function useRunnerPhysicsState() {

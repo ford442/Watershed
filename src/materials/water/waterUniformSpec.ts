@@ -14,7 +14,7 @@
  */
 
 import * as THREE from 'three';
-import { SWE_MEAN_DEPTH } from '../../systems/SWEHeightField';
+import { SWE_MEAN_DEPTH } from '../../systems/water/SWEHeightField';
 
 /** Every uniform the water surface understands, in declaration order. */
 export const WATER_UNIFORM_NAMES = [

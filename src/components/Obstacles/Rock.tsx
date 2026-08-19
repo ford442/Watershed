@@ -15,7 +15,7 @@ import {
 } from './pillarCrumble';
 import { emitPillarBreak } from './pillarBreakEvents';
 import { enqueuePillarFragments } from './PillarFragmentPool';
-import { tryAcquirePillarFragmentSlots } from '../../systems/PillarFragmentRegistry';
+import { tryAcquirePillarFragmentSlots } from '../../systems/pools/PillarFragmentRegistry';
 
 const VARIANTS_BY_TYPE = {
   boulder: ['boulderRiverworn', 'boulderAngular'],

@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../systems/GameState';
-import { getRunGhostData } from '../systems/PersistenceSystem';
+import { getRunGhostData } from '../systems/persistence/PersistenceSystem';
 import { getActiveRunKey } from '../utils/runContext';
 import {
   getGhostDurationSec,
   interpolateGhost,
   loadGhostFromBase64,
   type GhostPose,
-} from '../systems/ghostPlayback';
-import type { DecodedGhost } from '../systems/ghostCodec';
+} from '../systems/ghost/ghostPlayback';
+import type { DecodedGhost } from '../systems/ghost/ghostCodec';
 
 interface GhostReplayerProps {
   runKey?: string;

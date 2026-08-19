@@ -6,7 +6,7 @@
  * by MapRegistry `nextMapId` / continuation wiring.
  */
 
-import type { SegmentRange } from '../systems/MapSystem';
+import type { SegmentRange } from '../systems/map/MapSystem';
 
 /** First segment index of the hydro dam map. */
 export const HYDRO_DAM_START_INDEX = 0;

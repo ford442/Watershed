@@ -5,11 +5,11 @@ import { InstancedRigidBodies } from '@react-three/rapier';
 import {
   registerFloatingPlatform,
   unregisterFloatingPlatform,
-} from '../../systems/FloatingObjectRegistry';
+} from '../../systems/pools/FloatingObjectRegistry';
 import {
   registerFloatingWaterBody,
   unregisterFloatingWaterBody,
-} from '../../systems/WaterForceRegistry';
+} from '../../systems/water/WaterForceRegistry';
 import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
 

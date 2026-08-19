@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CacheSlotDefinition } from '../systems/portageCache';
+import type { CacheSlotDefinition } from '../systems/survival/portageCache';
 
 type CachePlacementPanelProps = {
   slots: ReadonlyArray<CacheSlotDefinition>;

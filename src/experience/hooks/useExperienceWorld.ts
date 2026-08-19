@@ -3,7 +3,7 @@ import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
-import { commitJourneyScore, resetScoreSystemState } from '../../systems/ScoreSystem';
+import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -22,11 +22,11 @@ import {
   getLastMapId,
   markMapCompleted,
   setLastMapId,
-} from '../../systems/PersistenceSystem';
-import { hydrateStoreForRun } from '../../systems/persistenceBootstrap';
+} from '../../systems/persistence/PersistenceSystem';
+import { hydrateStoreForRun } from '../../systems/persistence/persistenceBootstrap';
 import { getActiveRunKey } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
-import { buildForecastSamples } from '../../systems/flowForecast';
+import { buildForecastSamples } from '../../systems/map/flowForecast';
 import {
   initRunSession,
   getActiveLaunchHour,
@@ -34,10 +34,10 @@ import {
   isJourneyMode,
   advanceRunSessionMap,
   saveJourneyCheckpoint,
-} from '../../systems/runSession';
-import { getLaunchHour } from '../../systems/PersistenceSystem';
-import { kickoffMapHandoff } from '../../systems/journeyHandoff';
-import { planMapHandoff } from '../../systems/journeyContinuity';
+} from '../../systems/journey/runSession';
+import { getLaunchHour } from '../../systems/persistence/PersistenceSystem';
+import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
+import { planMapHandoff } from '../../systems/journey/journeyContinuity';
 
 const DEFAULT_FORECAST_OPTIONS = {
   temperature: 8,

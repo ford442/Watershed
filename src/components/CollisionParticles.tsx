@@ -1,7 +1,7 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SurfaceMaterial } from '../systems/VehicleSystem';
+import { SurfaceMaterial } from '../systems/vehicle/VehicleSystem';
 
 interface Particle {
   id: number;

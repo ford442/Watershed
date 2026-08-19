@@ -10,11 +10,11 @@ import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationSha
 import * as THREE from 'three';
 import { useLOD } from '../systems/LODManager';
 import { useBiome } from '../systems/BiomeSystem';
-import { useSunPosition } from '../systems/SunPositionSystem';
+import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { GOD_RAYS_SHADER, getGodRaySunColor } from '../systems/volumetric/VolumetricGodRays';
 import { useGameStore } from '../systems/GameState';
-import { useSettingsStore } from '../systems/useSettingsStore';
-import { qualityToEffects } from '../systems/settingsDerive';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
+import { qualityToEffects } from '../systems/settings/settingsDerive';
 import type { VehicleRigidBodyRef } from '../experience/types';
 
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';

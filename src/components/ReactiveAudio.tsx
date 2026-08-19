@@ -15,8 +15,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getAudioManager } from '../systems/AudioSystem';
-import { AssetCache } from '../systems/ReachStreamer';
+import { getAudioManager } from '../systems/audio/AudioSystem';
+import { AssetCache } from '../systems/reach/ReachStreamer';
 import { REACH_API_BASE } from '../constants/game';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
 import { useGameStore } from '../systems/GameState';
@@ -24,8 +24,8 @@ import { useLOD } from '../systems/LODManager';
 import { PILLAR_BREAK_EVENT } from '../components/Obstacles/pillarBreakEvents';
 import { isGlacialBiome } from '../configs/TrackBiomes';
 import SpeedWindAudio from './SpeedWindAudio';
-import type { ReachManifest } from '../systems/ReachStreamer';
-import type { NormalizedSegment } from '../systems/ReachNormalizer';
+import type { ReachManifest } from '../systems/reach/ReachStreamer';
+import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
 
 interface ReactiveAudioProps {
   /** Vehicle rigid body ref */

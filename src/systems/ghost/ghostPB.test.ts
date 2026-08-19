@@ -1,0 +1,145 @@
+/**
+ * ghostPB.test.ts — Tests for:
+ *   - PB ghost replace-only-if-faster rule
+ *   - Ghost codec size budget (GHOST_MAX_SAMPLES)
+ *   - Export/import round-trip
+ *   - mapId mismatch rejection
+ */
+
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  buildRunKey,
+  getRunBest,
+  resetPersistenceForTests,
+  updatePBGhost,
+} from '../persistence/PersistenceSystem';
+import {
+  encodeGhostSamples,
+  encodeGhostToBase64,
+  GHOST_CODEC_VERSION,
+  GHOST_FLOATS_PER_SAMPLE,
+  type GhostSample,
+} from './ghostCodec';
+import { GHOST_MAX_SAMPLES } from './GhostRecorder';
+import {
+  exportGhostToJson,
+  importGhostFromJson,
+} from './ghostExport';
+
+const SAMPLE: GhostSample = { px: 1, py: 2, pz: -3, qx: 0, qy: 0, qz: 0, qw: 1 };
+
+function makeGhostPayload(sampleCount = 3): string {
+  const samples: GhostSample[] = Array.from({ length: sampleCount }, () => ({ ...SAMPLE }));
+  return encodeGhostToBase64(encodeGhostSamples(samples));
+}
+
+describe('updatePBGhost — replace only if faster', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetPersistenceForTests();
+  });
+
+  it('stores ghost on first finish (no prior PB)', () => {
+    const key = buildRunKey('meander', 1);
+    const updated = updatePBGhost(key, 90_000, makeGhostPayload());
+    expect(updated).toBe(true);
+    expect(getRunBest(key).bestTimeMs).toBe(90_000);
+    expect(getRunBest(key).ghostData).toBeTruthy();
+  });
+
+  it('replaces ghost when new time is faster', () => {
+    const key = buildRunKey('meander', 2);
+    updatePBGhost(key, 90_000, makeGhostPayload());
+    const fasterPayload = makeGhostPayload(2);
+    const updated = updatePBGhost(key, 80_000, fasterPayload);
+    expect(updated).toBe(true);
+    expect(getRunBest(key).bestTimeMs).toBe(80_000);
+    expect(getRunBest(key).ghostData).toBe(fasterPayload);
+  });
+
+  it('keeps existing ghost when new time is slower', () => {
+    const key = buildRunKey('meander', 3);
+    const originalPayload = makeGhostPayload();
+    updatePBGhost(key, 80_000, originalPayload);
+    const updated = updatePBGhost(key, 95_000, makeGhostPayload(5));
+    expect(updated).toBe(false);
+    expect(getRunBest(key).bestTimeMs).toBe(80_000);
+    expect(getRunBest(key).ghostData).toBe(originalPayload);
+  });
+
+  it('keeps existing ghost when new time exactly equals PB', () => {
+    const key = buildRunKey('meander', 4);
+    const originalPayload = makeGhostPayload();
+    updatePBGhost(key, 80_000, originalPayload);
+    const updated = updatePBGhost(key, 80_000, makeGhostPayload(5));
+    expect(updated).toBe(false);
+    expect(getRunBest(key).ghostData).toBe(originalPayload);
+  });
+});
+
+describe('ghost codec size budget', () => {
+  it('GHOST_MAX_SAMPLES fits in the 5-minute budget at 10 Hz', () => {
+    // 5 minutes × 10 Hz = 3000 samples
+    expect(GHOST_MAX_SAMPLES).toBe(3000);
+  });
+
+  it('max payload is within a reasonable localStorage budget (< 350 KB)', () => {
+    // 3000 samples × 7 floats × 4 bytes → base64 overhead ~4/3 → ~112 KB
+    const maxBytes = GHOST_MAX_SAMPLES * GHOST_FLOATS_PER_SAMPLE * 4;
+    const maxBase64 = Math.ceil(maxBytes * (4 / 3));
+    expect(maxBase64).toBeLessThan(350_000);
+  });
+});
+
+describe('ghostExport / importGhostFromJson', () => {
+  const GHOST = makeGhostPayload();
+
+  it('round-trips export → import successfully', () => {
+    const json = exportGhostToJson('meander', 75_000, GHOST);
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.mapId).toBe('meander');
+    expect(result.file.timeMs).toBe(75_000);
+    expect(result.file.ghostData).toBe(GHOST);
+    expect(result.file.codecVersion).toBe(GHOST_CODEC_VERSION);
+  });
+
+  it('rejects malformed JSON', () => {
+    const result = importGhostFromJson('not-json', 'meander');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('invalid_json');
+  });
+
+  it('rejects missing required fields', () => {
+    const result = importGhostFromJson('{"codecVersion":1}', 'meander');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('invalid_format');
+  });
+
+  it('rejects wrong codec version', () => {
+    const json = JSON.stringify({
+      codecVersion: GHOST_CODEC_VERSION + 1,
+      mapId: 'meander',
+      timeMs: 60_000,
+      ghostData: GHOST,
+      exportedAt: Date.now(),
+    });
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('version_mismatch');
+  });
+
+  it('rejects ghost recorded on a different map', () => {
+    const json = exportGhostToJson('glacier', 60_000, GHOST);
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('map_mismatch');
+  });
+
+  it('accepts ghost without expectedMapId check (no filter)', () => {
+    const json = exportGhostToJson('glacier', 60_000, GHOST);
+    const result = importGhostFromJson(json);
+    expect(result.ok).toBe(true);
+  });
+});

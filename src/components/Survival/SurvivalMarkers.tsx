@@ -33,14 +33,14 @@ import {
   type CacheSlotDefinition,
   type CacheSlotStatus,
   type PortageRouteDefinition,
-} from '../../systems/portageCache';
+} from '../../systems/survival/portageCache';
 import {
   applyCacheRecovery,
   dispatchPortageCacheEvent,
   getPortageCacheState,
   getRunSession,
-} from '../../systems/runSession';
-import { awardCacheRetrievalBonus } from '../../systems/ScoreSystem';
+} from '../../systems/journey/runSession';
+import { awardCacheRetrievalBonus } from '../../systems/score/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import type { VehicleRigidBodyRef } from '../../experience/types';
 

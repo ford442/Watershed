@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getAudioManager } from '../systems/AudioSystem';
+import { getAudioManager } from '../systems/audio/AudioSystem';
 import { useGameStore } from '../systems/GameState';
 
 export type SegmentAudioPhase = 'meander' | 'approach' | 'waterfall' | 'splash' | 'pond' | 'rapids';

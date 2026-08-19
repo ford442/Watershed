@@ -13,7 +13,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getAudioManager } from '../systems/AudioSystem';
+import { getAudioManager } from '../systems/audio/AudioSystem';
 import { useGameStore } from '../systems/GameState';
 
 export type SegmentAudioPhase = 'meander' | 'approach' | 'waterfall' | 'splash' | 'pond' | 'rapids';

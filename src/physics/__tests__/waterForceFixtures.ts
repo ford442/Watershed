@@ -14,7 +14,7 @@
 import type {
   NativeWaterForceConfig,
   NativeWaterForceSample,
-} from '../../systems/WatershedWasm';
+} from '../../systems/water/WatershedWasm';
 
 export interface WaterForceFixture {
   name: string;

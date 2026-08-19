@@ -3,7 +3,7 @@
  */
 
 import type { MapRegistryId } from './registry';
-import type { CacheSlotDefinition, PortageRouteDefinition } from '../systems/portageCache';
+import type { CacheSlotDefinition, PortageRouteDefinition } from '../systems/survival/portageCache';
 import type { CheckpointDefinition } from '../systems/survival';
 
 /**

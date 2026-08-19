@@ -19,8 +19,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { useSettingsStore } from '../systems/useSettingsStore';
-import { bindingsToMouseMap, type SettingsAction } from '../systems/settingsDerive';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
+import { bindingsToMouseMap, type SettingsAction } from '../systems/settings/settingsDerive';
 
 export interface PlayerControls {
   /** Forward input (W / ArrowUp) */

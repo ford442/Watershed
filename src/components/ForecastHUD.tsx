@@ -8,7 +8,7 @@ import {
   upcomingRiskStrip,
   type DamReleaseEntry,
   type FlowForecastSample,
-} from '../systems/flowForecast';
+} from '../systems/map/flowForecast';
 
 type ForecastHUDProps = {
   samples: FlowForecastSample[];

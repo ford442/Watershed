@@ -6,7 +6,7 @@
  * continuation wiring (no TrackManager edits).
  */
 
-import type { SegmentRange } from '../systems/MapSystem';
+import type { SegmentRange } from '../systems/map/MapSystem';
 
 /** First segment index of the glacial source map. */
 export const GLACIAL_SOURCE_START_INDEX = 0;

@@ -2,7 +2,7 @@ import React, { useRef, useEffect, forwardRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, useRapier } from '@react-three/rapier';
 import * as THREE from 'three';
-import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
+import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
@@ -16,7 +16,7 @@ import {
 import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
 import type { Vec3Tuple, WorkerRaftState } from '../physics/rapierWorkerProtocol';
 import { resolvePhysicsWorker } from '../utils/physicsWorkerFlag';
-import { useSettingsStore } from '../systems/useSettingsStore';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';

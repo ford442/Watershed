@@ -1,19 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayerBiome, useGameStore } from '../systems/GameState';
-import { getActiveLaunchAirSeconds } from '../systems/LaunchScoringSession';
+import { getActiveLaunchAirSeconds } from '../systems/score/LaunchScoringSession';
 import {
   getActiveLoadoutId,
   getActiveSurvivalModifiers,
   getActiveSurvivalState,
   getJourneyResultsSummary,
   getRunSession,
-} from '../systems/runSession';
+} from '../systems/journey/runSession';
 import { getLoadoutDefinition } from '../systems/survival';
 import {
   calculateBuoyancyAndDragFallback,
   getWasm,
   type NativeWaterForceResult,
-} from '../systems/WatershedWasm';
+} from '../systems/water/WatershedWasm';
 
 interface GameHUDProps {
   isWipeout?: boolean;

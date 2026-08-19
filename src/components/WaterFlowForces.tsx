@@ -14,8 +14,8 @@ import * as THREE from 'three';
 import { sampleSegmentFlow } from '../utils/segmentSampler';
 import { WATER_FLOW_CONFIG } from '../constants/waterFlow';
 import { RAFT, WATER_LEVEL } from '../constants/game';
-import { AssetCache } from '../systems/ReachStreamer';
-import { getAudioManager } from '../systems/AudioSystem';
+import { AssetCache } from '../systems/reach/ReachStreamer';
+import { getAudioManager } from '../systems/audio/AudioSystem';
 
 const tmpPoint = new THREE.Vector3();
 const tmpForward = new THREE.Vector3();

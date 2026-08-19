@@ -2,7 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCameraShake } from '../../hooks/useCameraShake';
 import { useSegmentAudio } from '../../hooks/useSegmentAudio';
-import { initAudio, getAudioManager } from '../../systems/AudioSystem';
+import { initAudio, getAudioManager } from '../../systems/audio/AudioSystem';
 import {
   tickScoreSystem,
   awardDodgeBonus,
@@ -13,17 +13,17 @@ import {
   applyPortageFailPenalty,
   resetScoreSystemState,
   cancelLaunch,
-} from '../../systems/ScoreSystem';
+} from '../../systems/score/ScoreSystem';
 import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
-import { tickGhostRecording } from '../../systems/GhostRecorder';
-import { isElevatedRisk } from '../../systems/flowForecast';
+import { tickGhostRecording } from '../../systems/ghost/GhostRecorder';
+import { isElevatedRisk } from '../../systems/map/flowForecast';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
 import {
   countLostCaches,
   portageRouteStatus,
   requiresPortageForSegment,
-} from '../../systems/portageCache';
-import { dispatchPortageCacheEvent, getRunSession } from '../../systems/runSession';
+} from '../../systems/survival/portageCache';
+import { dispatchPortageCacheEvent, getRunSession } from '../../systems/journey/runSession';
 import { resolveRespawnSegment } from '../../systems/survival';
 import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';

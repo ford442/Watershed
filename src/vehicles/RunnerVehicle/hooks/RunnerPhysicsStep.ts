@@ -1,9 +1,9 @@
 import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier, castPlayerGroundRay, isTerrainGroundHit } from './RunnerPhysicsHelpers';
 import * as THREE from 'three';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/VehicleSystem';
+import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../../../constants/game';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
-import { isFloatingPlatform } from '../../../systems/FloatingObjectRegistry';
+import { isFloatingPlatform } from '../../../systems/pools/FloatingObjectRegistry';
 import { useGameStore } from '../../../systems/GameState';
 import {
     RAYCAST_ORIGIN_OFFSET, RAYCAST_DISTANCE, SMOOTHING_FACTOR, DEG_TO_RAD,
@@ -21,10 +21,10 @@ import {
 import {
   tickLaunchScoring,
   hasActiveLaunch,
-} from '../../../systems/LaunchScoringSession';
-import { emitShelfLaunch } from '../../../systems/shelfLaunchEvents';
+} from '../../../systems/score/LaunchScoringSession';
+import { emitShelfLaunch } from '../../../systems/score/shelfLaunchEvents';
 import { isAutumnLike, isBiomeId, type BiomeId } from '../../../configs/biomes';
-import { tickRunSurvival } from '../../../systems/runSession';
+import { tickRunSurvival } from '../../../systems/journey/runSession';
 
 type Vec3 = { x: number; y: number; z: number };
 

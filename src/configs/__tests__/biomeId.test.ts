@@ -15,7 +15,7 @@ import { getBiomePalette } from '../BiomePalettes';
 import {
   JSONMapManager,
   type LevelData,
-} from '../../systems/MapSystem';
+} from '../../systems/map/MapSystem';
 
 describe('normalizeBiomeId', () => {
   it('maps every legacy alias to its canonical BiomeId', () => {

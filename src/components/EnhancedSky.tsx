@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
 import { useBiome } from '../systems/BiomeSystem';
-import { useSunPosition } from '../systems/SunPositionSystem';
+import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { BiomePalettes } from '../configs/BiomePalettes';
 import { useGameStore } from '../systems/GameState';
 import type { BiomeId } from '../configs/biomes';

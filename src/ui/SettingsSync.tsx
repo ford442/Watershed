@@ -13,9 +13,9 @@
  */
 
 import { useEffect } from 'react';
-import { useSettingsStore } from '../systems/useSettingsStore';
-import { settingsQualityToLOD } from '../systems/settingsDerive';
-import { getAudioManager } from '../systems/AudioSystem';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
+import { settingsQualityToLOD } from '../systems/settings/settingsDerive';
+import { getAudioManager } from '../systems/audio/AudioSystem';
 import { useGameStore } from '../systems/GameState';
 
 export const SettingsSync: React.FC = () => {

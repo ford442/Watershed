@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
-import { useSunPosition } from '../../systems/SunPositionSystem';
+import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 
 import type { BiomeDecorationTransform, WeatherAwareDecorationProps, WeatherUpdateEvent } from './types';
 

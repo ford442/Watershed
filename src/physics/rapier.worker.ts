@@ -23,7 +23,7 @@ import {
   type PhysicsWorkerWaterBatch,
 } from './physicsWorkerWaterForces';
 import { getWorkerWasm } from './workerWasm';
-import type { WatershedNativeModule } from '../systems/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
 
 let world: RAPIER.World | null = null;
 let raftBody: RAPIER.RigidBody | null = null;

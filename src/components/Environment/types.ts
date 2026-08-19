@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import type * as THREE from 'three';
 import type { BiomeId } from '../../configs/biomes';
-import type { ObstacleSlot } from '../../systems/ObstaclePool';
+import type { ObstacleSlot } from '../../systems/pools/ObstaclePool';
 import type {
   FlowerPlacement,
   MistPlacement,

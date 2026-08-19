@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { validateLevel, ValidationResult, formatValidationErrors } from '../utils/levelValidator';
-import { DecorationPlacement } from '../systems/MapSystem';
+import { DecorationPlacement } from '../systems/map/MapSystem';
 
 // Level state types
 export type LevelLoadingState = 'idle' | 'loading' | 'loaded' | 'error';

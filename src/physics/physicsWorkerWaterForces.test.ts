@@ -4,7 +4,7 @@ import {
   PHYSICS_WORKER_IMPULSE_SCALE,
   readWaterForceDiagnostics,
 } from './physicsWorkerWaterForces';
-import { calculateWaterForceFallback } from '../systems/WatershedWasm';
+import { calculateWaterForceFallback } from '../systems/water/WatershedWasm';
 import type { WorkerRaftState } from './rapierWorkerProtocol';
 
 const SAMPLE_STATE: WorkerRaftState = {

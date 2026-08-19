@@ -47,7 +47,7 @@ import { effectiveVortexStrength } from '../../physics/vortexForces';
 
 import { useLOD } from '../../systems/LODManager';
 import { useBiome } from '../../systems/BiomeSystem';
-import { useSunPosition } from '../../systems/SunPositionSystem';
+import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 import { getTrackBiomeProfile, isGlacialBiome } from '../../configs/TrackBiomes';
 import { isAutumnLike, isSummerLike } from '../../configs/biomes';
 import { WALL_WATERLINE_Y } from '../../constants/game';
@@ -66,7 +66,7 @@ import type { TrackSegmentMeshesProps } from './types';
 import {
     resolveSegmentFriction,
     resolveSegmentRestitution,
-} from '../../systems/surfaceFriction';
+} from '../../systems/survival/surfaceFriction';
 
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;

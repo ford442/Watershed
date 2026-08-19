@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import type { WatershedNativeModule } from '../systems/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
 
 type WatershedNativeFactory = (options?: {
   locateFile?: (path: string, prefix: string) => string;

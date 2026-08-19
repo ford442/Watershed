@@ -9,7 +9,7 @@ import {
   type NativeWaterForceConfig,
   type NativeWaterForceResult,
   type WatershedNativeModule,
-} from '../systems/WatershedWasm';
+} from '../systems/water/WatershedWasm';
 
 const TEST_CONFIG: NativeWaterForceConfig = {
   flowSpeed: 5.2,

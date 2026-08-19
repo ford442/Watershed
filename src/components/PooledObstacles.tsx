@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider, type RapierRigidBody } from '@react-three/rapier';
 import { extendRockMaterial } from '../utils/RockShader';
-import type { ObstacleSlot } from '../systems/ObstaclePool';
+import type { ObstacleSlot } from '../systems/pools/ObstaclePool';
 import type { PooledObstaclesProps } from './Environment/types';
 
 const HIDDEN_POSITION: [number, number, number] = [0, -1000, 0];

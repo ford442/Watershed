@@ -4,8 +4,8 @@
 
 import { ACTIVE_MAP_ID, type MapRegistryId } from '../maps/registry';
 import { parseUrlMapId, resolveMapId } from '../maps/campaign';
-import { DEFAULT_MAP_CONFIG } from '../systems/MapSystem';
-import { buildRunKey, getLastMapId } from '../systems/PersistenceSystem';
+import { DEFAULT_MAP_CONFIG } from '../systems/map/MapSystem';
+import { buildRunKey, getLastMapId } from '../systems/persistence/PersistenceSystem';
 
 /** Parse `?seed=` from the URL; returns null when absent or invalid. */
 export function parseUrlSeed(): number | null {

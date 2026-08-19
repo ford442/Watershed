@@ -2,7 +2,7 @@ import { Html } from '@react-three/drei';
 import GameHUD from '../components/GameHUD';
 import ForecastHUD from '../components/ForecastHUD';
 import AudioDiagnosticsOverlay from '../components/AudioDiagnosticsOverlay';
-import { ErrorDisplay, LoadingDisplay } from '../systems/LevelLoader';
+import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoader';
 import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
 import { useGameStore } from '../systems/GameState';
 

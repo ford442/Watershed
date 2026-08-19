@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   useSettingsStore,
-} from '../systems/useSettingsStore';
+} from '../systems/settings/useSettingsStore';
 import {
   ACTION_LABELS,
   QUALITY_LABELS,
@@ -25,7 +25,7 @@ import {
   type SettingsAction,
   type SettingsQuality,
   type VolumeChannel,
-} from '../systems/settingsDerive';
+} from '../systems/settings/settingsDerive';
 import type { PhysicsWorkerPreference } from '../utils/physicsWorkerFlag';
 
 interface SettingsPanelProps {

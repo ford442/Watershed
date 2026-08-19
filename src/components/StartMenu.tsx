@@ -18,14 +18,14 @@ import {
   getLastMapId,
   getLaunchHour,
   setLaunchHour,
-} from '../systems/PersistenceSystem';
+} from '../systems/persistence/PersistenceSystem';
 import { DAM_RELEASE_SCHEDULE } from '../experience/constants';
 import LaunchHourPicker from './LaunchHourPicker';
 import CachePlacementPanel from './CachePlacementPanel';
 import LoadoutPicker from './LoadoutPicker';
-import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/portageCache';
+import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/survival/portageCache';
 import { DEFAULT_LOADOUT_ID, type LoadoutId } from '../systems/survival';
-import type { JourneyMode } from '../systems/runSession';
+import type { JourneyMode } from '../systems/journey/runSession';
 
 interface StartMenuProps {
   onStart: (

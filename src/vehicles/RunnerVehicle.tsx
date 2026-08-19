@@ -4,11 +4,11 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider, useRapier } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import * as THREE from 'three';
-import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/VehicleSystem';
+import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
 import { CollisionParticles } from '../components/CollisionParticles';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../constants/game';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
-import { isFloatingPlatform } from '../systems/FloatingObjectRegistry';
+import { isFloatingPlatform } from '../systems/pools/FloatingObjectRegistry';
 import { useGameStore } from '../systems/GameState';
 
 import {

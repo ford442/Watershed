@@ -17,22 +17,22 @@ import PooledObstacles from './PooledObstacles';
 import { createRiverSurfaceMaterial } from '../materials/river/createRiverSurfaceMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { WATER_LEVEL, REACH_API_BASE } from '../constants/game';
-import { AssetCache } from '../systems/ReachStreamer';
+import { AssetCache } from '../systems/reach/ReachStreamer';
 import { useNightMode } from '../hooks/useNightMode';
 import {
   ProceduralMapManager,
   type MapManager,
   type SegmentRange,
   type LevelData,
-} from '../systems/MapSystem';
+} from '../systems/map/MapSystem';
 import { getActiveMap, getMapDefinition, type MapDefinition, type MapRegistryId } from '../maps/registry';
 import { getProceduralBaseSeed } from '../utils/runContext';
-import { ChunkManager } from '../systems/ChunkManager';
-import { createObstaclePool } from '../systems/ObstaclePool';
+import { ChunkManager } from '../systems/map/ChunkManager';
+import { createObstaclePool } from '../systems/pools/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
-import { samplesToForecastByIndex } from '../systems/flowForecast';
-import VortexForceSystem from '../systems/VortexForceSystem';
-import type { NormalizedSegment } from '../systems/ReachNormalizer';
+import { samplesToForecastByIndex } from '../systems/map/flowForecast';
+import VortexForceSystem from '../systems/water/VortexForceSystem';
+import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
 import type { BiomeId } from '../configs/biomes';
 
 export interface TrackManagerRef {
@@ -45,7 +45,7 @@ export interface TrackManagerRef {
    */
   handoffToMap: (options: {
     nextMapId: MapRegistryId;
-    plan: import('../systems/journeyContinuity').HandoffPlan;
+    plan: import('../systems/journey/journeyContinuity').HandoffPlan;
   }) => boolean;
 }
 

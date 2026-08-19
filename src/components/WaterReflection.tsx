@@ -8,7 +8,7 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useWaterReflectionStore } from '../systems/waterReflectionStore';
+import { useWaterReflectionStore } from '../systems/water/waterReflectionStore';
 
 export interface WaterReflectionProps {
   waterLevel?: number;

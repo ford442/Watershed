@@ -17,7 +17,7 @@ import {
   getWasm,
   type NativeWaterForceResult,
   type WatershedNativeModule,
-} from '../../systems/WatershedWasm';
+} from '../../systems/water/WatershedWasm';
 import { WATER_FORCE_FIXTURES } from './waterForceFixtures';
 
 /** Committed TS-fallback results, rounded to 4dp. Regenerate deliberately. */

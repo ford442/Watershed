@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { SeededRandom } from '../../../systems/MapSystem';
-import type { DecorationPlacement } from '../../../systems/MapSystem';
+import { SeededRandom } from '../../../systems/map/MapSystem';
+import type { DecorationPlacement } from '../../../systems/map/MapSystem';
 import { createRockPayload, lerpValue } from '../utils';
 import type {
   ChannelShape,

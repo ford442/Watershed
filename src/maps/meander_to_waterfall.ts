@@ -8,7 +8,7 @@
  * To swap maps without code edits, change `ACTIVE_MAP_ID` in `registry.ts`.
  */
 
-import type { SegmentRange } from '../systems/MapSystem';
+import type { SegmentRange } from '../systems/map/MapSystem';
 
 /** First segment ID of the early-game glacier/alpine prelude. */
 export const GLACIER_START_INDEX = -3;

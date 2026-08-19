@@ -3,7 +3,7 @@
  * Keeps audio, weather, flow, and canyon acoustics from sticking in end-of-map mode.
  */
 
-import { getAudioManager } from '../systems/AudioSystem';
+import { getAudioManager } from '../systems/audio/AudioSystem';
 
 export type RunSessionResetDetail = {
   biome?: string;
