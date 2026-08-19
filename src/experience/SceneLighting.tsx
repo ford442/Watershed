@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import type * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../systems/LODManager';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
@@ -50,6 +51,22 @@ export default function SceneLighting({
   );
   const castShadows = shadowContract.shadowMode !== 'off';
   const shadowMapSize = shadowContract.shadowMapSize ?? lodConfig.shadowMapSize;
+
+  // Quality can now change mid-run without remounting the Canvas, so the sun's
+  // shadow map has to be resized in place. `shadow.mapSize` alone is inert once
+  // the render target exists — three allocates it on the first shadow pass and
+  // never reallocates. Dispose it and let the next pass rebuild at the new size.
+  const sunRef = useRef<THREE.DirectionalLight>(null);
+  useEffect(() => {
+    const sun = sunRef.current;
+    if (!sun) return;
+    const map = sun.shadow.map;
+    if (map && (map.width !== shadowMapSize || map.height !== shadowMapSize)) {
+      map.dispose();
+      sun.shadow.map = null as unknown as typeof sun.shadow.map;
+    }
+    sun.shadow.needsUpdate = true;
+  }, [shadowMapSize, castShadows]);
 
   const L = BIOME_LIGHTING[biome] ?? BIOME_LIGHTING.canyonSummer;
   const isTightCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
@@ -120,6 +137,7 @@ export default function SceneLighting({
       <ambientLight intensity={ambientIntensity} />
       <hemisphereLight color={hemiSkyColor} groundColor={hemiGroundColor} intensity={hemiIntensity} />
       <directionalLight
+        ref={sunRef}
         color={L.dirColor}
         position={sharedSunPosition}
         intensity={L.dirIntensity}

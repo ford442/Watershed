@@ -3,7 +3,10 @@ import type { RendererPreference } from './types';
 import { isDataUrlConnectAllowed } from './cspProbe';
 import { persistRendererPreference } from './rendererConfig';
 import { applyRendererContextOptions } from './applyRendererContextOptions';
-import type { RendererContextOptions } from './deriveRendererContextOptions';
+import {
+  toContextAttributes,
+  type RendererContextOptions,
+} from './deriveRendererContextOptions';
 import type { MaterialBackend } from './materialBackend';
 import { updateRendererDiagnostics } from './rendererState';
 import { loadNodeMaterials } from '../materials/nodeMaterials';
@@ -60,11 +63,17 @@ export async function createGameRenderer(
     materialBackend = 'glsl',
   } = options;
 
+  // Quality-derived context attributes (alpha/depth/stencil/caveat/…) when the
+  // caller passed a contract; otherwise just the two legacy knobs. These are
+  // creation-time only — see `applyRendererQualityUpdate` for what changes live.
+  const contextAttributes = contextOptions
+    ? toContextAttributes(contextOptions)
+    : { antialias, powerPreference };
+
   const createWebGLRenderer = () => {
     const renderer = new THREE.WebGLRenderer({
       ...canvasProps,
-      antialias,
-      powerPreference,
+      ...contextAttributes,
     });
     if (contextOptions) {
       applyRendererContextOptions(renderer, contextOptions);
@@ -161,8 +170,9 @@ async function createNodeRenderer(
     ]);
     const renderer = new WebGPURenderer({
       ...request.canvasProps,
-      antialias: request.antialias,
-      powerPreference: request.powerPreference,
+      ...(request.contextOptions
+        ? toContextAttributes(request.contextOptions)
+        : { antialias: request.antialias, powerPreference: request.powerPreference }),
       forceWebGL: request.forceWebGL,
     });
     await renderer.init();

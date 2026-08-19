@@ -48,3 +48,85 @@ export function applyRendererContextOptions(
   // contract size for diagnostics and tests.
   shadowMapSizeByRenderer.set(renderer, options.shadowMapSize);
 }
+
+/** Minimal scene surface the live quality update walks. */
+export interface RendererQualityScene {
+  traverse(callback: (object: unknown) => void): void;
+}
+
+interface MaybeMaterialHolder {
+  material?: unknown;
+}
+
+function forEachMaterial(
+  scene: RendererQualityScene,
+  visit: (material: { needsUpdate: boolean }) => void
+): void {
+  scene.traverse((object) => {
+    const material = (object as MaybeMaterialHolder)?.material;
+    if (!material) return;
+    if (Array.isArray(material)) {
+      for (const entry of material) {
+        if (entry) visit(entry as { needsUpdate: boolean });
+      }
+    } else {
+      visit(material as { needsUpdate: boolean });
+    }
+  });
+}
+
+/** What `applyRendererQualityUpdate` actually changed on the renderer. */
+export interface RendererQualityUpdateResult {
+  shadowConfigChanged: boolean;
+  toneMappingChanged: boolean;
+}
+
+/**
+ * Re-apply the quality-derived renderer *properties* on a live renderer, without
+ * recreating the WebGL context.
+ *
+ * The subtle part is shadow mode. `WebGLRenderer.shadowMap.type` is baked into
+ * each material's compiled program as the `SHADOWMAP_TYPE_*` define, and three's
+ * `needsProgramChange` check in `setProgram` does **not** include the shadow map
+ * type — so flipping `basic` ↔ `soft` (or shadows on ↔ off) keeps rendering the
+ * old program until every material is invalidated. `shadowMap.needsUpdate` only
+ * re-renders the shadow *maps*; it does not recompile anything. Hence the scene
+ * walk: it is what makes a mid-run `medium` → `high` switch actually look
+ * different instead of only costing more.
+ *
+ * Pass the scene whenever one is available; omitting it skips the recompile and
+ * is only correct when nothing has been rendered yet.
+ */
+export function applyRendererQualityUpdate(
+  renderer: RendererContextTarget & { shadowMap: { needsUpdate?: boolean } },
+  options: RendererContextOptions,
+  scene?: RendererQualityScene
+): RendererQualityUpdateResult {
+  const previousShadowEnabled = renderer.shadowMap.enabled;
+  const previousShadowType = renderer.shadowMap.type;
+  const previousToneMapping = renderer.toneMapping;
+  const previousExposure = renderer.toneMappingExposure;
+  const previousColorSpace = renderer.outputColorSpace;
+
+  applyRendererContextOptions(renderer, options);
+
+  const shadowConfigChanged =
+    previousShadowEnabled !== renderer.shadowMap.enabled ||
+    previousShadowType !== renderer.shadowMap.type;
+  const toneMappingChanged =
+    previousToneMapping !== renderer.toneMapping ||
+    previousExposure !== renderer.toneMappingExposure ||
+    previousColorSpace !== renderer.outputColorSpace;
+
+  if (shadowConfigChanged) {
+    renderer.shadowMap.needsUpdate = true;
+  }
+
+  if ((shadowConfigChanged || toneMappingChanged) && scene) {
+    forEachMaterial(scene, (material) => {
+      material.needsUpdate = true;
+    });
+  }
+
+  return { shadowConfigChanged, toneMappingChanged };
+}

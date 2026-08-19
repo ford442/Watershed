@@ -56,3 +56,20 @@ export function isVisualCaptureMode(search?: string): boolean {
   const params = new URLSearchParams(raw);
   return params.get('screenshot') === '1' || params.get('capture') === '1';
 }
+
+/**
+ * True when software GL (SwiftShader, llvmpipe) is an acceptable backend.
+ *
+ * Production pins `failIfMajorPerformanceCaveat: true` above the `low` preset so
+ * a software rasterizer cannot silently boot and read as a shipped GPU. The
+ * visual-smoke harness and CI *do* run on SwiftShader, so they opt out
+ * explicitly: `?screenshot=1` / `?capture=1` already mark a capture run, and
+ * `?softwareGl=1` covers a manual or headless run that is not capturing.
+ */
+export function isSoftwareRendererAllowed(search?: string): boolean {
+  const raw =
+    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  if (isVisualCaptureMode(raw)) return true;
+  const params = new URLSearchParams(raw);
+  return params.get('softwareGl') === '1';
+}

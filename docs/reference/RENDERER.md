@@ -4,9 +4,9 @@ Watershed's **production** renderer is `THREE.WebGLRenderer`. The `?renderer=web
 
 Since #256 path A there is a second, opt-in path: `?material=tsl` builds NodeMaterial/TSL materials, which require a node-capable renderer. See [Material backends](#material-backends-256-path-a).
 
-Graphics quality presets (`low` / `medium` / `high` / `ultra` from `GameState.settings.quality`, synced via `SettingsSync` → `LODManager`) now drive the most expensive WebGL context knobs: device pixel ratio, antialiasing, shadow mode, shadow map size, tone mapping, and output color space. Changing the preset remounts the Canvas (same pattern as the renderer-preference toggle).
+Graphics quality presets (`low` / `medium` / `high` / `ultra` from `GameState.settings.quality`, synced via `SettingsSync` → `LODManager`) drive the most expensive WebGL context knobs: device pixel ratio, antialiasing, shadow mode, shadow map size, tone mapping, and output color space.
 
-Game state, level data, camera, physics, and entities are shared; the Canvas `key` changes when renderer preference **or** quality preset changes.
+Most of that now applies **live**. The Canvas `key` carries only what genuinely needs a fresh WebGL context — renderer preference, material backend, the creation-only context attributes, and the context-loss epoch — so `medium` ↔ `high` ↔ `ultra` mid-run keeps Rapier, the 7-segment treadmill, the WASM SWE grids, audio, and the vehicle body alive. See [Live quality apply](#live-quality-apply).
 
 ## Quality → renderer context matrix
 
@@ -19,7 +19,48 @@ Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/
 | `high` | `2` | on | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`, `antialias: true`) |
 | `ultra` | native `devicePixelRatio` | on | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Uncapped DPR on retina |
 
-All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` once at renderer setup via `applyRendererContextOptions()`.
+All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` at renderer setup via `applyRendererContextOptions()`, and re-apply them on every preset change via `applyRendererQualityUpdate()`.
+
+### Pinned context attributes
+
+These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`), but they are pinned rather than left to THREE's defaults so a version bump cannot move them silently:
+
+| Attribute | Value | Why |
+|-----------|-------|-----|
+| `alpha` | `false` | Opaque game view. THREE r168 always *requests* the GL context with `alpha: true`, so this drives `WebGLBackground` — the drawing buffer is cleared fully opaque instead of letting the page show through. |
+| `premultipliedAlpha` | `true` | Not just compositing: `WebGLState.setBlending` picks premultiplied blend functions from this flag, so every transparent material in the game (splash, water, weather, VFX) is authored against `true`. Flipping it would change how all of them blend. |
+| `depth` | `true` | Required by every 3D pass and by SSAO. THREE default. |
+| `stencil` | `true` | **Not** THREE's default (off since r163). Enabled for the post stack's mask/outline passes. |
+| `failIfMajorPerformanceCaveat` | `true` above `low` | Software GL (SwiftShader, llvmpipe) must not silently boot and read as a shipped GPU. `low` accepts it — `low` is the fallback a weak machine is meant to land on. |
+| `logarithmicDepthBuffer` | `false` | See below. |
+| `desynchronized` | not set | THREE r168's `WebGLRenderer` never forwards it to `getContext`, so setting it would be decoration. It is also the wrong trade here: it can tear and reorders readback, which `?screenshot=1` depends on. |
+
+**Software-GL opt-out.** Visual smoke and CI run headless Chromium on SwiftShader, which *is* a major performance caveat — with the check on, the context request fails and the harness captures a black canvas. `isSoftwareRendererAllowed()` turns the check off for `?screenshot=1` / `?capture=1` (every visual-smoke shot already carries one) and for an explicit `?softwareGl=1`. Production never sets it.
+
+## Live quality apply
+
+Changing quality used to remount the Canvas, which tore down Rapier, the track treadmill, WASM SWE grids, audio, and the vehicle body just to flip DPR or shadow filtering. Now the split is by *what the attribute actually is*:
+
+| Knob | Changes live? | Applied by |
+|------|---------------|------------|
+| DPR (`dprMax`) | Yes | R3F `dpr` Canvas prop + `RendererQualitySync` |
+| `shadowMap.enabled` / `.type` | Yes | R3F `shadows` Canvas prop + `applyRendererQualityUpdate()` |
+| Per-light `shadow.mapSize` | Yes | `SceneLighting` (disposes the old shadow render target so it reallocates) |
+| Tone mapping / exposure / color space | Yes | `applyRendererQualityUpdate()` |
+| SWE grid/step budget | Yes | `sweQuality.ts` via `useQualityPreset()` |
+| Post-processing intensity | Yes | already quality-gated |
+| `antialias` | **No** | Context attribute — requires a new context |
+| `alpha` / `depth` / `stencil` / `premultipliedAlpha` / `failIfMajorPerformanceCaveat` / `powerPreference` | **No** | Context attributes |
+
+**Consequence:** `medium` ↔ `high` ↔ `ultra` mid-run does **not** remount — no spawn pop, no WASM reload, no lost wipeout/ghost state. `high` → `low` (or back) **does** remount, because `low` turns antialias off and antialias cannot change on a live WebGL context. `low` also relaxes `failIfMajorPerformanceCaveat`, which is a context attribute too.
+
+`rendererContextCreationKey()` is the single place that decides this: it serializes exactly the creation-only attributes, and `buildCanvasIdentityKey()` composes the Canvas `key` from that plus renderer preference, material backend, and the context-loss epoch. The quality preset is deliberately absent from the key.
+
+### Why a scene walk on shadow changes
+
+`RendererQualitySync` does more than assign `shadowMap.type`. THREE bakes the `SHADOWMAP_TYPE_*` define into each compiled program, and its `needsProgramChange` check in `setProgram` does **not** include the shadow map type — so flipping `basic` ↔ `soft` keeps rendering the old programs. `shadowMap.needsUpdate` only re-renders the shadow *maps*; it recompiles nothing. `applyRendererQualityUpdate()` therefore walks the scene and marks every material `needsUpdate` when the shadow configuration (or tone mapping) actually changed — and skips the walk when only DPR moved.
+
+Per-light shadow map size has the same class of problem: `light.shadow.mapSize` is inert once the render target exists, because THREE allocates it on the first shadow pass and never reallocates. `SceneLighting` disposes the old map so the next pass rebuilds it at the new size.
 
 Per-light shadow map sizes in `SceneLighting` follow the same contract: `deriveRendererContextOptions(quality)` drives `castShadow` and `shadow-mapSize`, with `LODManager.QUALITY_SETTINGS.shadowMapSize` kept as an aligned static fallback (ultra table stores the 4096 retina max; live path is DPR-aware). The configured size is also stored via `getRendererShadowMapSize()` for diagnostics and tests.
 
@@ -38,7 +79,8 @@ Evaluated for long canyon Z ranges. The track treadmill keeps ~7 active segments
 | `?material=glsl` (default) | `WebGLRenderer` | Legacy GLSL materials — the production path |
 | `?material=tsl` | `WebGPURenderer` (WebGL2 backend) | #256 path A — NodeMaterial pipeline, same graphics API |
 | `?material=tsl&renderer=webgpu` | `WebGPURenderer` (WebGPU backend) | Phase 3 preview; only sound once every material is TSL |
-| `?screenshot=1` or `?capture=1` | (any) | Enables `preserveDrawingBuffer` for visual-smoke harness only |
+| `?screenshot=1` or `?capture=1` | (any) | Enables `preserveDrawingBuffer` and allows software GL, for the visual-smoke harness only |
+| `?softwareGl=1` | (any) | Allows software GL (SwiftShader) without enabling capture mode |
 
 Examples:
 
@@ -114,6 +156,10 @@ The production pipeline uses legacy GLSL materials that crash inside `WebGPURend
 
 Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constraint is unchanged for `?material=glsl`: while legacy materials are in use, `createGameRenderer()` returns `THREE.WebGLRenderer` regardless of renderer preference. The node renderer is reachable *only* by opting into TSL materials, which is precisely the invariant the guard in `createRenderer.test.ts` locks.
 
+## Non-gameplay Canvases
+
+The Level Editor Canvas consumes the same contract (`deriveEditorContextOptions()` → `createGameRenderer()`), not a raw `gl={{ antialias: true }}`. It pins the `high` preset — an authoring tool wants the default look, not whatever the player last picked for performance — and allows software GL, because a slow editor beats an editor that will not boot. Any future offscreen or debug Canvas should do the same: one derive function, one apply function, so a change to the contract cannot silently skip a surface.
+
 ## Debug UI
 
 Enable the debug panel with `?debug=1`:
@@ -127,8 +173,10 @@ Enable the debug panel with `?debug=1`:
 
 ```
 App.tsx
-  └─ Canvas (key = renderer preference + material backend + quality preset + recovery epoch)
-       ├─ dpr / shadows / gl.antialias from deriveRendererContextOptions()
+  └─ Canvas (key = buildCanvasIdentityKey: renderer preference + material backend
+     +          + creation-only context attributes + recovery epoch — NOT quality)
+       ├─ dpr / shadows / gl context attributes from deriveRendererContextOptions()
+       ├─ RendererQualitySync → applyRendererQualityUpdate() on preset change
        └─ createGameRenderer()  ← async gl factory
             ├─ material=glsl + webgl  → THREE.WebGLRenderer + applyRendererContextOptions()
             ├─ material=glsl + webgpu → THREE.WebGLRenderer (deliberate fallback)
@@ -179,14 +227,16 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | File | Purpose |
 |------|---------|
 | `src/rendering/deriveRendererContextOptions.ts` | Pure quality → DPR/shadow/tone-mapping matrix |
-| `src/rendering/applyRendererContextOptions.ts` | Apply derived options once at renderer setup |
+| `src/rendering/applyRendererContextOptions.ts` | Apply derived options at setup + `applyRendererQualityUpdate()` for live changes |
+| `src/rendering/RendererQualitySync.tsx` | In-Canvas live quality apply (no remount) |
 | `src/rendering/createRenderer.ts` | Async renderer factory (WebGL-only today) |
-| `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode gate |
+| `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode and software-GL gates |
+| `src/components/LevelEditor/LevelEditor.tsx` | Editor Canvas on the shared contract |
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
 | `src/experience/SceneLighting.tsx` | Per-light shadows from quality contract |
 | `src/systems/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
-| `src/App.tsx` | Canvas wiring, quality remount, context-loss recovery |
+| `src/App.tsx` | Canvas wiring, context-loss recovery |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); not SWE |
 | `docs/reference/RENDERER_CONTRACT.md` | Contract enforced by the regression guard |
