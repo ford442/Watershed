@@ -296,6 +296,8 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/components/FlowingWater.tsx` | Water shader uniforms and GLSL |
 | `src/materials/water/createWaterMaterial.ts` | Water material host — picks GLSL vs TSL backend |
 | `src/rendering/materialBackend.ts` | `?material=glsl\|tsl` resolution (#256 path A) |
+| `src/rendering/deriveRendererContextOptions.ts` | Quality → WebGL context attributes; Canvas remount key |
+| `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |

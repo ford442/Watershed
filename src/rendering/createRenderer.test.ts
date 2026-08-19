@@ -322,6 +322,98 @@ describe('createGameRenderer', () => {
     renderer.dispose();
   });
 
+  it('forwards the derived context attributes to the GL context request', async () => {
+    const requested: Array<Record<string, unknown>> = [];
+    const canvas = document.createElement('canvas');
+    const spy = vi
+      .spyOn(canvas, 'getContext')
+      .mockImplementation((type: string, options?: unknown) => {
+        if (typeof options === 'object' && options !== null) {
+          requested.push(options as Record<string, unknown>);
+        }
+        return createMockWebGLContext(canvas) as unknown as RenderingContext;
+      });
+
+    const contextOptions = deriveRendererContextOptions('high');
+    const renderer = await createGameRenderer({ canvas }, {
+      preference: 'webgl',
+      contextOptions,
+    });
+
+    expect(requested.length).toBeGreaterThan(0);
+    // THREE r168 builds its own attribute object; these are the entries it
+    // forwards from the constructor parameters we pass.
+    expect(requested[0]).toMatchObject({
+      antialias: true,
+      depth: true,
+      stencil: true,
+      premultipliedAlpha: true,
+      failIfMajorPerformanceCaveat: true,
+      powerPreference: 'high-performance',
+    });
+
+    spy.mockRestore();
+    renderer.dispose();
+  });
+
+  it('accepts software GL for the low preset and for the capture opt-out', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const canvas = document.createElement('canvas');
+    const spy = vi
+      .spyOn(canvas, 'getContext')
+      .mockImplementation((type: string, options?: unknown) => {
+        if (typeof options === 'object' && options !== null) {
+          seen.push(options as Record<string, unknown>);
+        }
+        return createMockWebGLContext(canvas) as unknown as RenderingContext;
+      });
+
+    const low = await createGameRenderer({ canvas }, {
+      preference: 'webgl',
+      contextOptions: deriveRendererContextOptions('low'),
+    });
+    const captured = await createGameRenderer({ canvas }, {
+      preference: 'webgl',
+      contextOptions: deriveRendererContextOptions('ultra', {
+        allowSoftwareFallback: true,
+      }),
+    });
+
+    // Visual smoke / CI run headless Chromium on SwiftShader: if either of these
+    // requested the caveat check, the harness would get no context at all.
+    expect(seen.every((attrs) => attrs.failIfMajorPerformanceCaveat === false)).toBe(true);
+
+    spy.mockRestore();
+    low.dispose();
+    captured.dispose();
+  });
+
+  it('does not let the contract clobber the caller preserveDrawingBuffer', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const canvas = document.createElement('canvas');
+    const spy = vi
+      .spyOn(canvas, 'getContext')
+      .mockImplementation((type: string, options?: unknown) => {
+        if (typeof options === 'object' && options !== null) {
+          seen.push(options as Record<string, unknown>);
+        }
+        return createMockWebGLContext(canvas) as unknown as RenderingContext;
+      });
+
+    const renderer = await createGameRenderer(
+      { canvas, preserveDrawingBuffer: true },
+      { preference: 'webgl', contextOptions: deriveRendererContextOptions('high') }
+    );
+
+    // ?screenshot=1 sets this on the Canvas side; the derived attributes are
+    // spread after canvasProps, so they must not carry a preserveDrawingBuffer
+    // of their own.
+    expect(seen[0]?.preserveDrawingBuffer).toBe(true);
+
+    spy.mockRestore();
+    renderer.dispose();
+  });
+
   it('disables shadow maps for low quality context options', async () => {
     const contextOptions = deriveRendererContextOptions('low');
     const renderer = await createGameRenderer(canvasProps, {

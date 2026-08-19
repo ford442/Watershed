@@ -53,6 +53,19 @@ A partial migration that instantiates `WebGPURenderer` while `RiverShader.ts`, `
 
 > **Note on `HeightmapFlow.ts` and gpu-chores (#369):** Domain flow compute and chores **adopt** the renderer-owned session `GPUDevice` when Three's backend is native WebGPU. They never call `requestAdapter`/`requestDevice`. A WebGL2 session registers no compute device, so a GL context and a WebGPU device cannot both be live for HUD analysis. See [`GPU_CHORES.md`](./GPU_CHORES.md). HeightmapFlow is **not** part of the renderer backend and does not change the GLSL vs TSL contract above.
 
+## Context attributes and live quality
+
+`createGameRenderer()` no longer takes only `antialias` + `powerPreference`: when a caller passes `contextOptions`, `toContextAttributes()` supplies the full creation-time attribute set (`antialias`, `alpha`, `premultipliedAlpha`, `depth`, `stencil`, `failIfMajorPerformanceCaveat`, `powerPreference`, `logarithmicDepthBuffer`). Those attributes are spread **after** `canvasProps`, so the contract wins over R3F defaults while the caller's `preserveDrawingBuffer` (capture mode) survives.
+
+Two rules follow, and both are locked by tests:
+
+1. **Creation-time attributes are the only reason to remount the Canvas.** `rendererContextCreationKey()` serializes exactly that set; `buildCanvasIdentityKey()` composes the Canvas `key` from it plus renderer preference, material backend, and the context-loss epoch. The quality preset is not in the key. `medium` ↔ `high` ↔ `ultra` therefore keeps Physics, `TrackManager`, and the vehicle mounted; `low` still remounts because it turns antialias off.
+2. **Everything else is applied live, including the recompile.** `applyRendererQualityUpdate()` re-applies tone mapping, color space, and shadow configuration on the existing renderer, and marks scene materials `needsUpdate` when the shadow configuration changed — THREE's `needsProgramChange` does not track `shadowMap.type`, so without that the old programs keep drawing. `SceneLighting` disposes the sun's shadow render target so a new `mapSize` takes effect.
+
+`failIfMajorPerformanceCaveat` is on above `low`. Headless CI and the visual-smoke harness run on SwiftShader and opt out explicitly through `isSoftwareRendererAllowed()` (`?screenshot=1` / `?capture=1` / `?softwareGl=1`); production never does.
+
+Every Canvas consumes this contract, including the Level Editor (`deriveEditorContextOptions()`). A new Canvas that hand-rolls its `gl` prop is a contract violation, not a shortcut.
+
 ## Enforcement
 
 The regression guard in `src/rendering/createRenderer.test.ts` locks this contract:
@@ -64,6 +77,12 @@ The regression guard in `src/rendering/createRenderer.test.ts` locks this contra
 - Verifies the legacy materials can be prepared against the returned renderer without throwing a NodeMaterial-incompatibility error.
 - If `createGameRenderer` is reverted to return a `WebGPURenderer` on the default path, the guard fails loudly.
 
+A third block locks the context-attribute and live-quality contract:
+
+- `createRenderer.test.ts` spies on `getContext` and asserts the derived attributes reach the context request, that `low` and the capture opt-out both request `failIfMajorPerformanceCaveat: false`, and that `preserveDrawingBuffer` from the caller is not clobbered.
+- `deriveRendererContextOptions.test.ts` asserts the pinned attributes per preset, that `toContextAttributes()` contains no live-applicable property, and that `buildCanvasIdentityKey()` is identical across `medium`/`high`/`ultra` but differs for `low`, for a renderer/material change, and for the epoch.
+- `applyRendererContextOptions.test.ts` asserts materials are invalidated on a shadow-configuration change and left alone when only DPR moves.
+
 A second block locks the path A contract: `materialBackend: 'tsl'` yields a `WebGPURenderer`, with `backend.isWebGPUBackend === false` unless `?renderer=webgpu` is also set, and the produced material backend is published to renderer diagnostics.
 
 Host-level guards live in `src/materials/water/createWaterMaterial.test.ts` and `src/materials/materialHosts.test.ts`: identical uniform key sets across backends, `.value`-writability of every uniform, and GLSL fallback when the node module is missing or throws.
@@ -74,3 +93,8 @@ Host-level guards live in `src/materials/water/createWaterMaterial.test.ts` and 
 - `src/rendering/createRenderer.test.ts` — regression guard.
 - Issue **#256** / **#355** — TSL material path A (shipped). Out of scope for the GLSL default contract.
 - Issue **#369** — gpu-chores (HUD helpers). Independent of this renderer contract.
+- `src/rendering/deriveRendererContextOptions.ts` — context attributes, creation key, Canvas identity key.
+- `src/rendering/RendererQualitySync.tsx` — live quality apply inside the Canvas.
+- `docs/reference/RENDERER.md` — the quality matrix and the live-vs-remount table.
+
+Unchanged by this work: `logarithmicDepthBuffer` stays `false`, and there is still **no WebGPU-required boot** — `?renderer=webgpu` remains the documented no-op fallback on the default material backend ([#370](https://github.com/ford442/Watershed/issues/370) is a separate research probe). The WebGL rescue path is intact.

@@ -16,9 +16,12 @@ import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import {
   createGameRenderer,
   deriveRendererContextOptions,
+  isSoftwareRendererAllowed,
   isVisualCaptureMode,
   parseRendererPreference,
   persistRendererPreference,
+  buildCanvasIdentityKey,
+  RendererQualitySync,
   shadowModeToCanvasProp,
   type RendererPreference,
 } from './rendering';
@@ -111,6 +114,18 @@ function App() {
   const [webglRecovering, setWebglRecovering] = useState(false);
   const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
     devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+    allowSoftwareFallback: isSoftwareRendererAllowed(),
+  });
+  // Only creation-time context attributes belong in the Canvas key. DPR, shadow
+  // mode, and shadow map size are re-applied live by RendererQualitySync +
+  // SceneLighting, so medium ↔ high ↔ ultra mid-run keeps Rapier, the track
+  // treadmill, WASM SWE grids, audio, and the vehicle body alive. Only a preset
+  // that flips antialias (i.e. to/from `low`) forces a new WebGL context.
+  const canvasKey = buildCanvasIdentityKey({
+    rendererPreference,
+    materialBackend,
+    contextOptions: rendererContextOptions,
+    epoch: canvasEpoch,
   });
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
@@ -367,7 +382,7 @@ function App() {
         <>
           <SettingsSync />
           <Canvas
-            key={`renderer-${rendererPreference}-material-${materialBackend}-quality-${qualityPreset}-epoch-${canvasEpoch}`}
+            key={canvasKey}
             dpr={[1, rendererContextOptions.dprMax]}
             gl={async (props) =>
               createGameRenderer(
@@ -405,6 +420,7 @@ function App() {
               canvas.addEventListener('webglcontextrestored', onContextRestored);
             }}
           >
+            <RendererQualitySync />
             <React.Suspense
               fallback={
                 <mesh>

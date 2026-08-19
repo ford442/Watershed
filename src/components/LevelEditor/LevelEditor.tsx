@@ -17,7 +17,22 @@ import { BiomeSelector } from './BiomeSelector';
 import { ErrorPanel } from './ErrorPanel';
 import { PathVisualizer } from './PathVisualizer';
 import { useLevelEditor, EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import {
+  createGameRenderer,
+  deriveEditorContextOptions,
+  shadowModeToCanvasProp,
+} from '../../rendering';
 import { validateEditorLevel, EditorValidationError } from '../../utils/levelEditorValidator';
+
+/**
+ * The editor Canvas honours the same renderer contract as the game Canvas
+ * (#337 / this issue's phase C) instead of a bare `gl={{ antialias: true }}`:
+ * one derive function, one apply function, so a change to the contract cannot
+ * silently skip the editor. It pins the `high` preset — an authoring tool wants
+ * the default look, not whatever the player last chose for performance — and
+ * allows software GL, because a slow editor beats an editor that will not boot.
+ */
+const EDITOR_CONTEXT_OPTIONS = deriveEditorContextOptions();
 
 interface LevelEditorProps {
   initialLevelData?: any;
@@ -307,7 +322,15 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
                 fov: 50,
                 up: [0, 1, 0],
               }}
-              gl={{ antialias: true }}
+              dpr={[1, EDITOR_CONTEXT_OPTIONS.dprMax]}
+              shadows={shadowModeToCanvasProp(EDITOR_CONTEXT_OPTIONS.shadowMode)}
+              gl={async (props) =>
+                createGameRenderer(props, {
+                  preference: 'webgl',
+                  contextOptions: EDITOR_CONTEXT_OPTIONS,
+                  materialBackend: 'glsl',
+                })
+              }
             >
               <ambientLight intensity={0.5} />
               <directionalLight position={[10, 20, 10]} intensity={1} />
