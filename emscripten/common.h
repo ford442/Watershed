@@ -12,6 +12,15 @@
 
 #include <cstdint>
 
+// Portable keep-alive: used on Emscripten so hello-world C exports survive DCE.
+// A no-op on host. Never include <emscripten/emscripten.h> from compute TUs —
+// that header is WASM-only and kills the host build.
+#if defined(__EMSCRIPTEN__)
+#  define WATERSHED_KEEPALIVE __attribute__((used))
+#else
+#  define WATERSHED_KEEPALIVE
+#endif
+
 // ---------------------------------------------------------------------------
 // Compile-time constants
 // ---------------------------------------------------------------------------

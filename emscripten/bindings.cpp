@@ -2,12 +2,12 @@
  * bindings.cpp — the ONLY Embind surface for the Watershed WASM module.
  *
  * This is the ABI: anything reachable from TypeScript is listed here, and
- * src/systems/WatershedWasm.ts declares the matching types. Adding, removing, or
+ * src/systems/water/WatershedWasm.ts declares the matching types. Adding, removing, or
  * changing a signature (or a batch stride) means bumping getVersion() below and
  * updating WASM.md.
  *
  * This is the only translation unit that includes <emscripten/bind.h> — every
- * other header (common.h, forces.h, swe.h) stays Embind-free.
+ * other header (common.h, forces.h, swe.h, chores.h) stays Embind-free.
  *
  * Build:
  *   cd emscripten && ./build.sh
@@ -20,6 +20,7 @@
 
 #include "forces.h"
 #include "swe.h"
+#include "chores.h"
 
 #include <emscripten/bind.h>
 #include <type_traits>
@@ -33,9 +34,11 @@
 //       quarantined here; reordered Embind value_object registration ahead
 //       of the functions that use them; added static_assert non-polymorphic
 //       guards (no signature changes)
+//   5 — optional gpu-chores (reduce/hist/downsample/blur). Additive; TS
+//       MIN_WASM_ABI_VERSION stays 4 so older binaries still load for forces.
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
-    return 4;
+    return 5;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,4 +80,9 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("stepShallowWater", &stepShallowWater);
     emscripten::function("allocateGrid",     &allocateGrid);
     emscripten::function("freeGrid",         &freeGrid);
+    emscripten::function("reduceF32Grid",    &reduceF32Grid);
+    emscripten::function("histogramF32",     &histogramF32);
+    emscripten::function("lumaHistogramU8",  &lumaHistogramU8);
+    emscripten::function("downsampleF32",    &downsampleF32);
+    emscripten::function("blurSeparableF32", &blurSeparableF32);
 }

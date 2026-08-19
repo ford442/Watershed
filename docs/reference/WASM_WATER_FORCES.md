@@ -4,7 +4,9 @@ Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_W
 
 Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `swe.h`
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
-and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 4).
+`chores.cpp` (optional gpu-chores; not SWE),
+and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 5 in source,
+`MIN_WASM_ABI_VERSION` = 4).
 It builds to:
 
 - `public/watershed_native.js`
@@ -30,10 +32,10 @@ npm run build:wasm:threads
 
 ## TypeScript Import
 
-Use `src/systems/WatershedWasm.ts`:
+Use `src/systems/water/WatershedWasm.ts`:
 
 ```ts
-import { getWasm, createWaterForceBatch } from '../systems/WatershedWasm';
+import { getWasm, createWaterForceBatch } from '../systems/water/WatershedWasm';
 
 const wasm = await getWasm();
 const smoke = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);

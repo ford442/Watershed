@@ -12,6 +12,7 @@ import {
   updateRendererDiagnostics,
 } from './rendererState';
 import type { RendererPreference } from './types';
+import { extractRendererGpuDevice, registerSessionGpuDevice } from './gpuChores/device';
 
 export interface RendererDiagnosticsMonitorProps {
   preference: RendererPreference;
@@ -28,6 +29,10 @@ export default function RendererDiagnosticsMonitor({ preference }: RendererDiagn
       rendererName: getRendererDisplayName(preference, activeBackend),
       webgpuAvailable: isWebGpuNavigatorAvailable(),
     });
+    registerSessionGpuDevice(extractRendererGpuDevice(gl));
+    return () => {
+      registerSessionGpuDevice(null);
+    };
   }, [gl, preference]);
 
   return null;

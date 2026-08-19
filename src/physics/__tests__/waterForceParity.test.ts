@@ -11,10 +11,12 @@
  * watershed_native and asserts native ≈ TS within a float epsilon.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   calculateWaterForceFallback,
   createWaterForceBatch,
-  getWasm,
   type NativeWaterForceResult,
   type WatershedNativeModule,
 } from '../../systems/water/WatershedWasm';
@@ -113,15 +115,37 @@ describe('water-force fixtures — TypeScript fallback', () => {
 });
 
 // The native module is only present after `pnpm build:wasm`, so this block is
-// opt-in via WATERSHED_WASM_INTEGRATION=1 exactly like the other WASM tests.
-const runNative = process.env.WATERSHED_WASM_INTEGRATION === '1';
+// opt-in via WATERSHED_WASM_INTEGRATION=1. Load from disk (file:// + instantiateWasm)
+// the same way emscripten/smoke_test.mjs does — getWasm() uses the Vite public URL
+// which jsdom cannot import.
+const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
+const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const gluePath = resolve(publicDir, 'watershed_native.js');
+const runNative =
+  process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath) && existsSync(gluePath);
 const describeNative = runNative ? describe : describe.skip;
+
+async function loadNativeFromDisk(): Promise<WatershedNativeModule> {
+  const wasmBinary = readFileSync(wasmPath);
+  const { default: createWatershedNative } = await import(pathToFileURL(gluePath).href);
+  return createWatershedNative({
+    instantiateWasm: (
+      imports: WebAssembly.Imports,
+      receiveInstance: (instance: WebAssembly.Instance) => void,
+    ) => {
+      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => {
+        receiveInstance(instance);
+      });
+      return {};
+    },
+  });
+}
 
 describeNative('water-force parity — native C++ vs TypeScript', () => {
   let wasm: WatershedNativeModule;
 
   beforeAll(async () => {
-    wasm = await getWasm();
+    wasm = await loadNativeFromDisk();
   });
 
   it('exposes the expected ABI version', () => {

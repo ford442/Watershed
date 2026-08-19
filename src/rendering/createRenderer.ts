@@ -7,6 +7,7 @@ import type { RendererContextOptions } from './deriveRendererContextOptions';
 import type { MaterialBackend } from './materialBackend';
 import { updateRendererDiagnostics } from './rendererState';
 import { loadNodeMaterials } from '../materials/nodeMaterials';
+import { extractRendererGpuDevice, registerSessionGpuDevice } from './gpuChores/device';
 
 export interface GameRendererOptions {
   preference: RendererPreference;
@@ -68,6 +69,7 @@ export async function createGameRenderer(
     if (contextOptions) {
       applyRendererContextOptions(renderer, contextOptions);
     }
+    registerSessionGpuDevice(null);
     return renderer;
   };
 
@@ -169,6 +171,8 @@ async function createNodeRenderer(
       applyRendererContextOptions(renderer, request.contextOptions);
     }
     updateRendererDiagnostics({ materialBackend: 'tsl' });
+    const device = extractRendererGpuDevice(renderer);
+    registerSessionGpuDevice(device);
     return renderer;
   } catch (error) {
     console.warn('[Renderer] WebGPURenderer initialization failed', error);

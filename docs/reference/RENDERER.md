@@ -145,13 +145,26 @@ Module-level stores cross the Canvas boundary:
 
 - `src/rendering/rendererState.ts` — active backend name + active material backend (read by DebugPanel)
 - `src/debug/perfMetrics.ts` — draw calls, FPS, heap
+- `src/rendering/gpuChores/statsStore.ts` — SWE height min/mean/max + chore backend (read by DebugPanel)
+
+## Domain vs chores vs TSL (#369)
+
+These are three separate GPU/compute stories. Do not treat them as one “WebGPU path.”
+
+| Layer | What it is | Device |
+|-------|------------|--------|
+| **Domain hydrology** | WASM SWE visual heightfield; dormant `heightmap_flow.wgsl` | CPU WASM. Flow compute adopts the session `GPUDevice` if one exists; it never `requestDevice()`s. |
+| **TSL path** | NodeMaterial shading (`?material=tsl`) | `WebGPURenderer` with WebGL2 on the wire, or real WebGPU if `?renderer=webgpu`. **Not a sim.** |
+| **Chores** | `grid-reduce` / `luma-histogram` / `downsample-2d` / blur for HUD thumbs | Adopt that session device; else WASM → JS. See [`GPU_CHORES.md`](./GPU_CHORES.md). |
+
+One sim backend per heightfield. Missing WebGPU does not change production water (GLSL + WASM SWE). `?no_gpu_compute` closes chores/flow compute only.
 
 ## Visual notes
 
 - **WebGL2 (`?renderer=webgl`, default)** is the only production path.
 - **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op on the default material backend; it falls back to WebGL2.
 - **`?material=tsl`** boots and renders through the node renderer on a WebGL2 backend. It is not yet at visual parity — see the gap list above — and is not the production path.
-- A separate experimental WebGPU compute path in `src/shaders/HeightmapFlow.ts` may run on a secondary `GPUDevice` when available, but its output is consumed by the WebGL2 `FlowingWater.tsx` shader and is independent of the renderer backend.
+- HeightmapFlow is dormant domain compute. It adopts the renderer session device when native WebGPU is active; it does **not** allocate a second `GPUDevice`. Live water displacement is WASM SWE, not this WGSL.
 
 ## Keyboard Shortcuts (debug mode)
 
@@ -175,4 +188,5 @@ Module-level stores cross the Canvas boundary:
 | `src/systems/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
 | `src/App.tsx` | Canvas wiring, quality remount, context-loss recovery |
+| `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); not SWE |
 | `docs/reference/RENDERER_CONTRACT.md` | Contract enforced by the regression guard |

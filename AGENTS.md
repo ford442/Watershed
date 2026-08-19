@@ -188,6 +188,10 @@ Spawn defaults are map-driven; see `MapSystem` / active map registry.
 
 Default WebGL2 (`?renderer=webgl`). WebGPU preference exists but forces WebGL2 backend while legacy GLSL materials remain. See [`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md).
 
+### gpu-chores (#369)
+
+HUD/minimap helpers (`grid-reduce`, `luma-histogram`, `downsample-2d`, blur) live in [`src/rendering/gpuChores/`](src/rendering/gpuChores/). Backend order: **WebGPU → WASM → JS**. The kit adopts the renderer session `GPUDevice` when Three's backend is native WebGPU; it never `requestDevice()`s. `?no_gpu_compute` closes that WebGPU lane only — WASM water and WASM/TS chores still run. SWE / `heightmap_flow.wgsl` / TSL water materials stay domain. See [`docs/reference/GPU_CHORES.md`](docs/reference/GPU_CHORES.md).
+
 ### Reach API
 
 `ReachStreamer` hits `/api/reaches/...`. There is **no** backend in this repo — 404s fall back to procedural / map mode. Expected in cloud/dev.
@@ -207,6 +211,7 @@ Default WebGL2 (`?renderer=webgl`). WebGPU preference exists but forces WebGL2 b
 | `src/components/FlowingWater.jsx` | Water shader |
 | `src/components/PostProcessingPipeline.jsx` | Live post-processing stack |
 | `src/vehicles/RunnerVehicle/` / `RaftVehicle/` | Player vehicles |
+| `src/rendering/createRenderer.ts` / `gpuChores/` | Renderer factory + HUD hist/reduce helpers |
 | `src/systems/MapSystem.ts` | Maps, chunks, spawn |
 | `src/systems/BiomeSystem.tsx` | Biome context (`useBiome`) |
 | `src/systems/AudioSystem.ts` | Three.js audio |
@@ -223,6 +228,7 @@ pnpm typecheck          # tsc + untyped-surface allowlist guard
 pnpm build
 pnpm test:visual-smoke   # headless WebGL gate (preview serving build/)
 node scripts/validate-markdown-paths.js
+# chore goldens: src/rendering/gpuChores/reduceParity.test.ts (not pixelmatch)
 ```
 
 ### Typecheck surface (honest foundation)

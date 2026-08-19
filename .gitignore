@@ -6,6 +6,9 @@ package-lock.json
 
 # Build output
 build/
+emscripten/build/
+emscripten/build-host/
+emscripten/compile_commands.json
 
 # Ephemeral screenshot / diagnostic outputs (repo root)
 /screenshot*.png

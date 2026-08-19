@@ -40,6 +40,7 @@ import {
   setPhysicsWorkerTickParams,
   setSWEStatus,
 } from '../../physics/physicsWorkerRegistry';
+import { bindChoreWasm, runHeightfieldChores } from '../../rendering/gpuChores';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 
 const PHYSICS_SCALE = 0.001;
@@ -203,12 +204,14 @@ export function WaterForceSystem({
         if (cancelled) return;
         wasmRef.current = wasm;
         statusRef.current = 'ready';
+        bindChoreWasm(wasm);
         setWasmReady(true);
       })
       .catch((error) => {
         if (cancelled) return;
         statusRef.current = 'fallback';
         console.warn('[WaterForceSystem] WASM unavailable; using TypeScript fallbacks', error);
+        bindChoreWasm(null);
         updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
         setSWEStatus(false, null);
       });
@@ -318,6 +321,7 @@ export function WaterForceSystem({
         );
 
         uploadHeightTexture(grid, texture, originX, originZ, budget);
+        runHeightfieldChores(grid.h, grid.width, grid.height);
       } else {
         // Grid didn't step, but the player moved — keep the sampling window
         // anchored so the displacement doesn't lag behind the camera.

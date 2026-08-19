@@ -238,12 +238,19 @@ one growing translation unit:
 
 | File | Owns |
 |------|------|
-| `emscripten/common.h` | Shared constants, `Vec2` / `Vec3`, `clampf` — Embind-free |
+| `emscripten/common.h` | Shared constants, `Vec2` / `Vec3`, `clampf`, `WATERSHED_KEEPALIVE` — Embind-free |
 | `emscripten/forces.h` / `forces.cpp` | `WaterForceResult`; buoyancy, drag, flow, `calculateWaterForce`, `computeWaterForcesBatch` |
-| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid` |
+| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid`; SIMD damping + two grid sweeps |
+| `emscripten/simdf32.h` | Portable `f32x4` (wasm_simd128 / SSE2 / NEON) |
 | `emscripten/bindings.cpp` | `getVersion()` and the Embind surface — the ABI; the only file including `<emscripten/bind.h>` |
+| `emscripten/host_smoke.cpp` | Host assert runner (no Embind) |
 
-`getVersion()` is 4 as of the header split (registration order + static_assert guards added).
+`getVersion()` is **5** (chores exports). `MIN_WASM_ABI_VERSION` stays **4**. No bump for the host/SIMD pass — signatures unchanged.
+
+Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Exactly one owner applies it per raft tick (`resolveRaftWaterForceOwner`: worker, main-thread ABI, or local ABI). `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
+
+Authored segment currents (`WaterFlowForces`) and vortex fields stay separate gameplay systems; they are not this ABI and were not ported to C++.
+
 All compile/link flags stay in `CMakeLists.txt`. The default target does not set
 `-pthread` or `SHARED_MEMORY`.
 

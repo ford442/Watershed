@@ -510,23 +510,26 @@ gameplay-affecting and must run identically at every preset.
 
 ## WASM Module
 
-### `src/systems/WatershedWasm.ts` + `emscripten/`
+### `src/systems/water/WatershedWasm.ts` + `emscripten/`
 
-**Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
-math) + `swe.h`/`swe.cpp` (solver + heap grids) + `bindings.cpp` (the only `<emscripten/bind.h>`
-include; Embind surface, `getVersion()` — 4). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION`.
-All compile/link flags live in `CMakeLists.txt`; `build.sh` and the `SOURCES` list are the only
-places a new translation unit must be registered.
+**Layout:** `emscripten/common.h` (shared constants/types, `WATERSHED_KEEPALIVE`) + `forces.h`/`forces.cpp` (water force
+math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
+not SWE) + `bindings.cpp` (the only `<emscripten/bind.h>` include; Embind surface,
+`getVersion()` — 5 in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**4**).
+All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
 Archimedes buoyancy, drag force, river-current flow force, and a linearised
 Shallow Water Equations (SWE) grid simulator. A pure-TypeScript fallback is provided
 for every calculation so the game runs correctly when the WASM binary is absent.
+SWE is **domain hydrology**, not gpu-chores. HUD reduce/hist/downsample live in
+`src/rendering/gpuChores/` and optionally call `chores.cpp`. Independent of `?material=tsl`.
 
 **Lazy-load pattern:**
 
 ```ts
-import { getWasm } from '../systems/WatershedWasm';
+import { getWasm } from '../systems/water/WatershedWasm';
 
 // Call once (e.g., in a useEffect or game-init hook):
 const wasm = await getWasm();

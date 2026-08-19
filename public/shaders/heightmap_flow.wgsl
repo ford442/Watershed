@@ -1,7 +1,9 @@
 /**
- * DORMANT / EXPERIMENTAL WebGPU compute shader — not wired into the live renderer.
+ * DORMANT / EXPERIMENTAL **domain** WebGPU flow shader — not a gpu-chores kernel.
  * Fetched at runtime by src/shaders/HeightmapFlow.ts as an optional compute path.
- * The game renderer remains WebGL2-only. See docs/RENDERER_CONTRACT.md.
+ * Adopts the session GPUDevice when native WebGPU is active; never requestDevice().
+ * Live water displacement is WASM SWE. See docs/reference/GPU_CHORES.md and
+ * docs/reference/RENDERER_CONTRACT.md.
  */
 
 struct HeightmapFlowParams {

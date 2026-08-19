@@ -30,7 +30,8 @@ Collision mesh notes (`TrackSegment`):
 ### Priority C: Water Flow ✅ shipped (TypeScript + optional WASM)
 - [x] Apply water forces to player/raft rigid body (`physics/WaterForces.ts`, `WaterForceSystem`, `WaterFlowForces.tsx`)
 - [x] Optional Emscripten WASM path (`WatershedWasm` / SWE height field) with TS fallbacks
-- [ ] Experimental WebGPU compute flow shader (deferred; live renderer remains WebGL2)
+- [ ] Experimental WebGPU **domain** flow shader (`heightmap_flow.wgsl`; dormant; adopts session device, no second `GPUDevice`)
+- [x] gpu-chores HUD helpers (`src/rendering/gpuChores/`; reduce/hist/downsample — not SWE)
 - [ ] Flowmap-based displacement / normal reconstruction polish
 
 ---

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { calculateFlowForce, applyWaterForce } from '../../../physics/WaterForces';
-import { WATER_DENSITY } from '../../../constants/game';
+import { applyLocalAbiWaterForceIfOwner } from '../../../physics/waterForceAuthority';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { useGameStore } from '../../../systems/GameState';
@@ -65,48 +64,32 @@ const calculateSubmergedRatio = (raftY: number): number => {
   return Math.max(0, Math.min(1, submergedHeight / WATER_PHYSICS.RAFT_HEIGHT));
 };
 
-/** Apply scientifically accurate buoyancy force */
-const applyBuoyancy = (body: any, submergedRatio: number, delta: number) => {
-  if (submergedRatio <= 0) return;
-
-  const displacedVolume = WATER_PHYSICS.RAFT_VOLUME * submergedRatio;
-  const maxBuoyancy = WATER_PHYSICS.BUOYANCY_MAX_FORCE;
-  const buoyancyForce = maxBuoyancy * submergedRatio;
-
-  body.applyImpulse({
-    x: 0,
-    y: buoyancyForce * delta,
-    z: 0
-  }, true);
-
-  deps.buoyancyState.current.buoyancyForce = buoyancyForce;
-  deps.buoyancyState.current.isFloating = submergedRatio > 0.1;
-};
-
-/** Apply scientifically accurate water drag */
-const applyDrag = (body: any, delta: number) => {
-  const vel = body.linvel();
-  const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-
-  if (speed < 0.1) return;
-
-  const dragMagnitude = WATER_PHYSICS.DRAG_COEFFICIENT * speed * speed * WATER_DENSITY / 1000;
-  const dragX = -(vel.x / speed) * dragMagnitude * delta;
-  const dragZ = -(vel.z / speed) * dragMagnitude * delta;
-
-  body.applyImpulse({ x: dragX, y: 0, z: dragZ }, true);
-};
-
-/** Goal 2: Apply flow-map-based water current force */
-const applyFlowForce = (body: any, delta: number) => {
-  const pos = body.translation();
-  const flowForce = calculateFlowForce(
-    new THREE.Vector3(pos.x, pos.y, pos.z),
-    null, // No CPU flow map yet; downstream default is used
-    { flowSpeed: 1.2, maxForce: 8, turbulence: 0.1, turbulenceFreq: 2.0 },
-    deps.timeRef.current
+/**
+ * Local ABI water force — same math as WaterForceSystem / the physics worker.
+ * Caller must only invoke this when resolveRaftWaterForceOwner === 'local-abi'.
+ */
+const applyAbiWaterForce = (body: any, delta: number) => {
+  const force = applyLocalAbiWaterForceIfOwner(
+    'local-abi',
+    body,
+    {
+      flowSpeed: 1.2,
+      waterLevel: WATER_PHYSICS.LEVEL,
+      raftMass: WATER_PHYSICS.RAFT_MASS,
+      raftVolume: WATER_PHYSICS.RAFT_VOLUME,
+      dragCoefficient: WATER_PHYSICS.DRAG_COEFFICIENT,
+      frontalArea: WATER_PHYSICS.RAFT_WIDTH * WATER_PHYSICS.RAFT_HEIGHT,
+      sideArea: WATER_PHYSICS.RAFT_LENGTH * WATER_PHYSICS.RAFT_HEIGHT,
+      timeSeconds: deps.timeRef.current,
+      turbulenceStrength: 0.1,
+      turbulenceFrequency: 2.4,
+    },
+    delta,
   );
-  applyWaterForce(body, flowForce, delta, true);
+  if (!force) return;
+  deps.buoyancyState.current.buoyancyForce = force.buoyancy;
+  deps.buoyancyState.current.submergedRatio = force.submergedRatio;
+  deps.buoyancyState.current.isFloating = force.submergedRatio > 0.1;
 };
 
 const applyTurbulence = (body: any, time: number, delta: number) => {
@@ -640,9 +623,7 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
 
   return {
     calculateSubmergedRatio,
-    applyBuoyancy,
-    applyDrag,
-    applyFlowForce,
+    applyAbiWaterForce,
     applyTurbulence,
     applyTippingForce,
     dampenRotation,

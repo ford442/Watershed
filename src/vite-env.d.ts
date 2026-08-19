@@ -13,4 +13,22 @@ interface Window {
     teleportToSegment: (segmentIndex: number) => boolean;
     getSpawnPoints: () => Record<number, { x: number; y: number; z: number }>;
   };
+  gpuComputeAvailable?: boolean;
+  gpuComputeReason?: string | null;
+  gpuComputeDiagnostics?: {
+    vendor: string;
+    architecture: string;
+    device: string;
+    description: string;
+    features: string[];
+    limits: {
+      maxTextureDimension2D: number;
+      maxComputeWorkgroupSizeX: number;
+      maxComputeWorkgroupSizeY: number;
+      maxComputeInvocationsPerWorkgroup: number;
+      maxStorageBufferBindingSize: number;
+    };
+  } | null;
+  gpuChoreBackend?: string | null;
+  gpuChoreReason?: string | null;
 }

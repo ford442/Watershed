@@ -69,6 +69,9 @@ jobs:
       - name: Validate documentation paths
         run: node scripts/validate-markdown-paths.js
 
+      - name: Host C++ smoke (no Emscripten)
+        run: pnpm test:native
+
       - name: Build production bundle
         run: pnpm build
 
@@ -201,6 +204,7 @@ jobs:
         run: |
           node emscripten/smoke_test.mjs
           pnpm test:wasm
+          pnpm test:wasm:parity
 
       - name: Compile threaded WASM variant
         run: pnpm build:wasm:threads

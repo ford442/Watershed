@@ -2,14 +2,13 @@
  * forces.cpp — water-force math (buoyancy, drag, flow, turbulence).
  *
  * Every function here is mirrored by a pure-TypeScript fallback in
- * src/systems/WatershedWasm.ts (`*Fallback`), and the two are held to an
+ * src/systems/water/WatershedWasm.ts (`*Fallback`), and the two are held to an
  * epsilon by the parity tests in src/physics/__tests__/waterForceParity.test.ts.
  * Change one, change the other.
  */
 
 #include "forces.h"
 
-#include <emscripten/emscripten.h>
 #include <cmath>
 #include <algorithm>
 
@@ -52,7 +51,7 @@ float computeDragForce(float vx, float vy, float vz,
 // current drag. This is intentionally small and stable so the TypeScript side
 // can prove C++ -> WASM -> browser wiring before deeper fluid math lands.
 // ---------------------------------------------------------------------------
-extern "C" EMSCRIPTEN_KEEPALIVE
+extern "C" WATERSHED_KEEPALIVE
 float calculateBuoyancyAndDrag(float raftMass,
                                float submergedVolume,
                                float waterVelocityX,

@@ -89,6 +89,7 @@ export interface WatershedNativeModule {
    *   2 — batched computeWaterForcesBatch + SWE grid helpers
    *   3 — C++ split into forces.cpp / swe.cpp / bindings.cpp
    *   4 — header split (common.h / forces.h / swe.h); Embind quarantined
+   *   5 — optional gpu-chores (reduce/hist/downsample/blur); MIN_WASM_ABI_VERSION stays 4
    */
   getVersion(): number;
 
@@ -213,6 +214,29 @@ export interface WatershedNativeModule {
 
   /** Free a pointer returned by allocateGrid. */
   freeGrid(ptr: number): void;
+
+  /**
+   * Optional gpu-chores (ABI 5+). Absent on older binaries — the wasm chore
+   * lane declines and TypeScript kernels run instead. MIN_WASM_ABI_VERSION is 4.
+   */
+  reduceF32Grid?(srcPtr: number, count: number, out3Ptr: number): void;
+  histogramF32?(
+    srcPtr: number,
+    count: number,
+    rangeMin: number,
+    rangeMax: number,
+    binsPtr: number,
+  ): void;
+  lumaHistogramU8?(rgbaPtr: number, pixelCount: number, binsPtr: number): void;
+  downsampleF32?(
+    srcPtr: number,
+    srcW: number,
+    srcH: number,
+    dstPtr: number,
+    dstW: number,
+    dstH: number,
+  ): void;
+  blurSeparableF32?(srcPtr: number, dstPtr: number, width: number, height: number): void;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { getSessionGpuDevice } from '../rendering/gpuChores/device';
+import { isGpuComputeDisabledByFlag } from '../rendering/gpuChores/support';
 
 export interface HeightmapFlowOptions {
   size?: number;
@@ -129,17 +131,17 @@ export class HeightmapFlowController {
       this.gpuState.uniformBuffer.destroy();
       this.gpuState.heightTextures.forEach((texture) => texture.destroy());
       this.gpuState.flowTextures.forEach((texture) => texture.destroy());
+      // Device is session-owned — do not destroy it.
     }
     this.gpuState = null;
   }
 
   private async createGpuState(): Promise<void> {
-    if (!('gpu' in navigator) || !navigator.gpu) return;
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) return;
-
-    const device = await adapter.requestDevice();
+    // Adopt the session renderer device only. Never requestAdapter/requestDevice
+    // — a WebGL session must not grow a second compute context (#369).
+    if (isGpuComputeDisabledByFlag()) return;
+    const device = getSessionGpuDevice();
+    if (!device) return;
     const source = await fetch(this.shaderUrl).then((response) => response.text());
     const module = device.createShaderModule({ code: source });
     const pipeline = device.createComputePipeline({

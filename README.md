@@ -52,7 +52,7 @@ Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`
 
 Open board (unchecked = genuinely open):
 
-- [ ] [#369](https://github.com/ford442/Watershed/issues/369) — gpu-chores: blur/hist/reduce helpers (SWE / heightmap flow stays domain)
+- [x] [#369](https://github.com/ford442/Watershed/issues/369) — gpu-chores: blur/hist/reduce helpers (SWE / heightmap flow stays domain)
 - [ ] [#370](https://github.com/ford442/Watershed/issues/370) — WebGPU required: hard-fail boot probe (Chrome/Edge)
 - [ ] [#372](https://github.com/ford442/Watershed/issues/372) — C++ toolchain honesty (compile_commands, host tests, water-force ABI)
 - [ ] [#373](https://github.com/ford442/Watershed/issues/373) — WebGL context contract: apply quality without remounting Rapier

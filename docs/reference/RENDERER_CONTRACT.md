@@ -51,7 +51,7 @@ The material-host pattern is how that rule is enforced in code rather than by co
 
 A partial migration that instantiates `WebGPURenderer` while `RiverShader.ts`, `CanyonMaterial.js`, `FlowingWater.tsx`, or GLSL post-processing are still in use will reintroduce the crashes that PRs #252 and #253 fixed.
 
-> **Note on `HeightmapFlow.ts`:** This module may use a separate `GPUDevice` for optional compute work, but it is **not** part of the renderer backend and does not change the contract above. Its output is consumed by the WebGL2 `FlowingWater.tsx` shader.
+> **Note on `HeightmapFlow.ts` and gpu-chores (#369):** Domain flow compute and chores **adopt** the renderer-owned session `GPUDevice` when Three's backend is native WebGPU. They never call `requestAdapter`/`requestDevice`. A WebGL2 session registers no compute device, so a GL context and a WebGPU device cannot both be live for HUD analysis. See [`GPU_CHORES.md`](./GPU_CHORES.md). HeightmapFlow is **not** part of the renderer backend and does not change the GLSL vs TSL contract above.
 
 ## Enforcement
 
@@ -72,4 +72,5 @@ Host-level guards live in `src/materials/water/createWaterMaterial.test.ts` and 
 
 - `src/rendering/createRenderer.ts` — implementation of the fallback.
 - `src/rendering/createRenderer.test.ts` — regression guard.
-- Issue **#256** — future WebGPU/TSL migration (out of scope for this contract).
+- Issue **#256** / **#355** — TSL material path A (shipped). Out of scope for the GLSL default contract.
+- Issue **#369** — gpu-chores (HUD helpers). Independent of this renderer contract.

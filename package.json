@@ -48,6 +48,7 @@
     "build:wasm:threads_colab": "cd emscripten && bash build_colab.sh --threads",
     "build:wasm:debug": "cd emscripten && bash build.sh --debug",
     "test:wasm:parity": "WATERSHED_WASM_INTEGRATION=1 vitest run src/physics/__tests__/waterForceParity.test.ts",
+    "test:native": "cmake -S emscripten -B emscripten/build-host && cmake --build emscripten/build-host && emscripten/build-host/watershed_host_smoke",
     "test:visual-smoke:tsl": "VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
     "test:visual-smoke:tsl:update": "UPDATE_BASELINES=1 VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs"
   },

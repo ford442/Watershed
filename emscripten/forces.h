@@ -32,7 +32,7 @@ float computeDragForce(float vx, float vy, float vz,
                        float cd, float area, float density) noexcept;
 
 /** Browser smoke-test helper — combines upward buoyancy and current drag. */
-extern "C" float calculateBuoyancyAndDrag(float raftMass,
+extern "C" WATERSHED_KEEPALIVE float calculateBuoyancyAndDrag(float raftMass,
                                           float submergedVolume,
                                           float waterVelocityX,
                                           float waterVelocityZ) noexcept;

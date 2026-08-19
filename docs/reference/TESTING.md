@@ -130,7 +130,11 @@ Registry/menu drift (e.g. adding a `MAP_REGISTRY` key without extending `MapRegi
 ```bash
 pnpm test
 # or: npx vitest run
+pnpm test:native   # host C++ smoke: cmake -S emscripten -B emscripten/build-host
+pnpm test:wasm:parity   # native vs TS fixtures; needs pnpm build:wasm (CI Emscripten job)
 ```
+
+Host C++ (`watershed_host_smoke`) covers buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping). The **Build without Emscripten** CI job runs `pnpm test:native`. The **Build with Emscripten** job runs `pnpm test:wasm:parity` after the module is built.
 
 176 tests across 17 suites (components, systems, rendering, validators). See **2026-06 Live Test Gate** below for the full verification matrix.
 
@@ -381,6 +385,16 @@ WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke   # CI visual gate
 ```
 
 Use **`?renderer=webgl`** for the supported test path. Add **`?cleanTest=1`** (or use **`?screenshot=1`**, which enables clean mode automatically) to hide the debug panel, Flow Forecast HUD, audio diagnostics, wireframe overlay (G), and physics debug (F) for polished screenshots and live test runs.
+
+### gpu-chores goldens (#369)
+
+HUD hist/reduce/downsample helpers are **numerical**, not pixelmatch:
+
+```bash
+pnpm exec vitest run src/rendering/gpuChores
+```
+
+`reduceParity.test.ts` pins an 8×8 height fixture (min/max/mean + 256-bin hist) against `cpuMath.ts`. Optional native parity: `WATERSHED_WASM_INTEGRATION=1` after `pnpm build:wasm`. These tests do **not** replace `pnpm test:visual-smoke`. See [`GPU_CHORES.md`](./GPU_CHORES.md).
 
 ### CI visual smoke (`visual-smoke` job)
 

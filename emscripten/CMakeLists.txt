@@ -3,19 +3,23 @@ project(WatershedNative CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Translation units — keep this list in sync with WASM.md's directory layout.
-# Compile flags (optimisation, SIMD, no-RTTI) go on target_compile_options.
-# Link flags (MODULARIZE / EXPORT_ES6 / -s* / --bind) go on target_link_options
-# only — passing them at compile time makes Emscripten warn about unused args.
-set(SOURCES
+# Compute TUs are Embind-free and compile on host and WASM.
+# bindings.cpp is WASM-only (Embind). Keep this list in sync with WASM.md.
+set(COMPUTE_SOURCES
     forces.cpp
     swe.cpp
-    bindings.cpp
+    chores.cpp
 )
-add_executable(watershed_native ${SOURCES})
+
+add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
+target_include_directories(watershed_compute PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(EMSCRIPTEN)
+    add_executable(watershed_native bindings.cpp)
+    target_link_libraries(watershed_native PRIVATE watershed_compute)
+
     set_target_properties(watershed_native PROPERTIES
         SUFFIX ".js"
     )
@@ -40,12 +44,14 @@ if(EMSCRIPTEN)
     endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_compile_options(watershed_native PRIVATE
+        set(EM_COMPILE_FLAGS
             -O0
             -g3
             -msimd128
             -mbulk-memory
         )
+        target_compile_options(watershed_compute PRIVATE ${EM_COMPILE_FLAGS})
+        target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS})
     else()
         # Compute TUs stay -fno-rtti / -fno-exceptions.
         # bindings.cpp keeps RTTI: Embind type IDs must match the embind
@@ -53,19 +59,23 @@ if(EMSCRIPTEN)
         # -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0 leaves every function
         # unbound at runtime (CanonicalizedID addresses do not merge with
         # the prebuilt embind objects).
-        target_compile_options(watershed_native PRIVATE
+        set(EM_COMPILE_FLAGS
             -O3
             -ffast-math
             -funroll-loops
             -msimd128
             -mbulk-memory
         )
-        set_source_files_properties(forces.cpp swe.cpp PROPERTIES
-            COMPILE_OPTIONS "-fno-exceptions;-fno-rtti"
+        target_compile_options(watershed_compute PRIVATE
+            ${EM_COMPILE_FLAGS}
+            -fno-exceptions
+            -fno-rtti
         )
+        target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS})
     endif()
 
     if(WATERSHED_THREADS)
+        target_compile_options(watershed_compute PRIVATE -pthread)
         target_compile_options(watershed_native PRIVATE -pthread)
     endif()
 
@@ -90,6 +100,19 @@ if(EMSCRIPTEN)
         RUNTIME_OUTPUT_DIRECTORY "${WATERSHED_OUTPUT_DIR}"
     )
 else()
-    # Native host build (local smoke tests only — not used in browser CI)
-    target_compile_options(watershed_native PRIVATE -O2 -Wall -Wextra)
+    # Native host build — clangd / host smoke. No Embind, no -s flags, no -ffast-math.
+    add_executable(watershed_host_smoke host_smoke.cpp)
+    target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
+    target_compile_options(watershed_compute PRIVATE -O2 -Wall -Wextra)
+    target_compile_options(watershed_host_smoke PRIVATE -O2 -Wall -Wextra)
+
+    # Copy compile_commands.json next to the sources so clangd finds it without
+    # a .clangd CompilationDatabase. WASM configures must not overwrite this
+    # (they write emscripten/build/compile_commands.json only).
+    add_custom_target(sync_compile_commands ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_BINARY_DIR}/compile_commands.json"
+            "${CMAKE_SOURCE_DIR}/compile_commands.json"
+        COMMENT "Sync host compile_commands.json for clangd"
+    )
 endif()

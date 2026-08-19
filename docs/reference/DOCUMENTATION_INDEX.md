@@ -32,6 +32,7 @@
 |-----|----------------|
 | [`RENDERER.md`](./RENDERER.md) | WebGL2 renderer toggle, debug overlays |
 | [`RENDERER_CONTRACT.md`](./RENDERER_CONTRACT.md) | WebGPU preference invariant + material guard |
+| [`GPU_CHORES.md`](./GPU_CHORES.md) | Domain vs chores vs TSL; hist/reduce/downsample HUD helpers |
 | [`WASM.md`](./WASM.md) | Native module layout + ABI version |
 | [`WASM_WATER_FORCES.md`](./WASM_WATER_FORCES.md) | Emscripten build and TS bindings |
 | [`ADR_WASM_RAPIER_WATER_FORCES.md`](./ADR_WASM_RAPIER_WATER_FORCES.md) | Rapier ↔ WASM coupling decision |
