@@ -434,15 +434,6 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     // map is active and that the JSON binding is live.
     if (typeof window !== 'undefined') {
       const mm = mapManagerRef.current as ProceduralMapManager;
-      (window as any).__watershedMapInfo = {
-        mapId: resolvedMap.id,
-        mapLabel: resolvedMap.levelData?.metadata?.name ?? '(procedural)',
-        authoredSegments: mm.getPrimarySegmentCount?.() ?? 0,
-        explicitSegments: (mm as any).getExplicitSegmentCount?.() ?? 0,
-        startIndex: effectiveStartIndex,
-        fallbackRanges: effectiveFallback.length,
-      };
-      console.log('[TrackManager] Map binding confirmed:', (window as any).__watershedMapInfo);
     }
 
     // Flush any synthesizeSegmentEnter calls that arrived before the

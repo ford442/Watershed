@@ -289,17 +289,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           0.08,
           2.4,
         );
-        console.info('[Watershed WASM] hello-world water force', {
-          moduleVersion: wasm.getVersion(),
-          buoyancyAndDrag: value,
-          force,
-        });
         setWasmSmoke({ status: 'ready', value, force });
       })
-      .catch((error) => {
+      .catch(() => {
         if (cancelled) return;
         const value = calculateBuoyancyAndDragFallback(150, 0.4, 0, -3);
-        console.warn('[Watershed WASM] module unavailable; using TS fallback smoke value', error);
         setWasmSmoke({ status: 'fallback', value });
       });
 

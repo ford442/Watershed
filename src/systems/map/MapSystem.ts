@@ -510,11 +510,6 @@ export class ProceduralMapManager implements MapManager {
     if (levelData) {
       const total = levelData.world.track.totalSegments;
       const segCount = levelData.segments.length;
-      console.log(
-        `[MapSystem] ProceduralMapManager bound to "${levelData.metadata.name}" ` +
-        `(${segCount} authored segments, totalSegments=${total}, ` +
-        `fallback ranges: ${fallbackProgression.length})`,
-      );
     }
   }
 

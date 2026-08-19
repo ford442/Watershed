@@ -26,12 +26,11 @@ if (banned.length > 0) {
 }
 
 const rootTsx = readdirSync(systemsDir).filter((name) => name.endsWith('.tsx'));
-/** Deferred Experience hosts. PostProcessing.tsx is a dead dual — remove in #371 Phase D. */
+/** Deferred Experience hosts only (do not add PostProcessing — deleted dead dual). */
 const ALLOWED_ROOT_TSX = new Set([
   'BiomeSystem.tsx',
   'LODManager.tsx',
   'SplashSystem.tsx',
-  'PostProcessing.tsx', // temporary until Phase D delete
 ]);
 const bannedTsx = rootTsx.filter((name) => !ALLOWED_ROOT_TSX.has(name));
 if (bannedTsx.length > 0) {
