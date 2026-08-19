@@ -2,7 +2,7 @@
 
 ## What changed
 
-`src/systems/MapSystem.ts` is now the single source of truth for treadmill segment generation. The following helpers were added or promoted to public exports:
+`src/systems/map/MapSystem.ts` is now the single source of truth for treadmill segment generation. The following helpers were added or promoted to public exports:
 
 - `generateSegmentPath(index, startPoint, startDirection, progression, seed, options?)`
   - Generates 4 Catmull-Rom control points for one segment using the authored `SegmentProgressionConfig` (`meanderStrength`, `verticalBias`, `type`) and `SeededRandom`.

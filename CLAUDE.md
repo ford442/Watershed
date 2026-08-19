@@ -304,6 +304,6 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
 | `src/vehicles/RaftVehicle/` | Raft buoyancy / paddle |
 | `src/components/PostProcessingPipeline.tsx` | Live post-processing stack |
-| `src/systems/MapSystem.ts` | Chunk interfaces, JSON maps, spawn calc |
+| `src/systems/map/MapSystem.ts` | Chunk interfaces, JSON maps, spawn calc |
 | `src/maps/registry.ts` | Active map switch point |
 | `src/style.css` | All UI chrome |

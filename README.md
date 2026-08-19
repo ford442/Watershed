@@ -53,9 +53,10 @@ Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`
 Open board (unchecked = genuinely open):
 
 - [x] [#369](https://github.com/ford442/Watershed/issues/369) — gpu-chores: blur/hist/reduce helpers (SWE / heightmap flow stays domain)
+- [x] [#371](https://github.com/ford442/Watershed/issues/371) — org/TS: retire stale plans, namespace `src/systems/`, split 800-LOC hosts, delete dead duals
 - [ ] [#370](https://github.com/ford442/Watershed/issues/370) — WebGPU required: hard-fail boot probe (Chrome/Edge)
 - [ ] [#372](https://github.com/ford442/Watershed/issues/372) — C++ toolchain honesty (compile_commands, host tests, water-force ABI)
-- [ ] [#373](https://github.com/ford442/Watershed/issues/373) — WebGL context contract: apply quality without remounting Rapier
+- [x] [#373](https://github.com/ford442/Watershed/issues/373) — WebGL context contract: apply quality without remounting Rapier
 - [ ] [#374](https://github.com/ford442/Watershed/issues/374) — Hydrology as identity (nonlinear SWE, bathymetry, authored river events)
 - [ ] [#375](https://github.com/ford442/Watershed/issues/375) — Ghost league Phase C (rival race, checkpoint splits, results screen)
 

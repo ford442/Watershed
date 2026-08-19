@@ -203,7 +203,7 @@ builds also expose `window.__watershedPhysicsWorker`.
 ### SWE quality budgets
 
 The shallow-water height field is a *visual* system and is budgeted per quality preset in
-`src/systems/sweQuality.ts`:
+`src/systems/water/sweQuality.ts`:
 
 | Preset | Grid | Cell | Step rate | Displacement |
 |--------|------|------|-----------|--------------|
