@@ -104,7 +104,7 @@ Implementation notes:
 
 ### Status (v1)
 
-- [x] Pure forecast → state mapping (`src/systems/flowForecast.ts`) with unit tests
+- [x] Pure forecast → state mapping (`src/systems/map/flowForecast.ts`) with unit tests
 - [x] ChunkManager + ReachNormalizer share `applyForecastToSegmentParams` (width / flowSpeed / rockDensity / particleCount / washedOutGap)
 - [x] Forecast HUD: next-N segment risk strip + dam-release countdown
 - [x] Survive elevated-flow segments for score bonus (`awardFloodSurviveBonus`)

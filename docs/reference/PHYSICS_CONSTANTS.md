@@ -104,12 +104,12 @@ Linear damping values in Rapier are kept for gameplay feel rather than strict ph
 |------|---------|
 | `src/Experience.tsx` | Gravity: -20 → -9.8 |
 | `src/constants/game.ts` | Added scientific constants, updated jump forces |
-| `src/systems/VehicleSystem.ts` | Mass: 1→75, 5→150; added physics documentation |
+| `src/systems/vehicle/VehicleSystem.ts` | Mass: 1→75, 5→150; added physics documentation |
 | `src/vehicles/RunnerVehicle.tsx` | Mass: 1→75, Jump: 22→45, DoubleJump: 18→37 |
 | `src/vehicles/RaftVehicle.tsx` | Mass: 5→150, updated buoyancy calculations |
 | `src/vehicles/RunnerVehicle/` | Mass: 1→75 |
 | `src/vehicles/RaftVehicle/` | Mass: 5→150 |
-| `src/systems/WaterSystem.ts` | Added scientific calculation methods |
+| `src/systems/water/WaterSystem.ts` | Added scientific calculation methods |
 
 ---
 

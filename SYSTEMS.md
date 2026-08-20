@@ -98,7 +98,7 @@ HUD components, and physics callers.
 
 ---
 
-### `src/systems/ReachManager.tsx`
+### `src/systems/reach/ReachManager.tsx`
 
 **Purpose:** Orchestrates a single Reach lifecycle — streams the manifest, normalizes it
 into TrackManager-compatible segments, and watches player position for transition entry.
@@ -149,7 +149,7 @@ into TrackManager-compatible segments, and watches player position for transitio
 
 ---
 
-### `src/systems/ReachStreamer.ts`
+### `src/systems/reach/ReachStreamer.ts`
 
 **Purpose:** Background asset streaming for Watershed Reaches — fetches manifests and assets
 (textures, GLTFs, audio, shaders, flow maps) from the FastAPI backend and caches them in
@@ -189,7 +189,7 @@ module-level Maps to prevent duplicate loads and GPU re-uploads.
 
 ---
 
-### `src/systems/ReachNormalizer.ts`
+### `src/systems/reach/ReachNormalizer.ts`
 
 **Purpose:** Converts a validated `ReachManifest` into an array of `NormalizedSegment[]`
 that `TrackManager` can consume directly, applying biome profiles and Catmull-Rom tangent
@@ -339,10 +339,10 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
 **Exports:**
 - `SplashSystem` (named React component)
 - `default SplashSystem`
-- Pure helpers in `src/systems/splashSpawnMath.ts` (edge detection, cruise/mist counts)
+- Pure helpers in `src/systems/water/splashSpawnMath.ts` (edge detection, cruise/mist counts)
 
 **Consumes:**
-- `ParticlePool`, `VFXParticle`, `FoamParticle`, `MistParticle` from `src/systems/ParticlePool`
+- `ParticlePool`, `VFXParticle`, `FoamParticle`, `MistParticle` from `src/systems/pools/ParticlePool`
 - `useBiomeMaterials` from `BiomeSystem` (foam/water color)
 - `useLOD` from `LODManager` — `config.maxParticles` (instance cap) and `config.particleDensity`
   (spawn-count scale)
@@ -404,7 +404,7 @@ or mesh output).
 - `useThree()` — `scene`, `camera`, `gl`
 - `useFrame` from `@react-three/fiber`
 - `THREE.WebGLRenderTarget`, `THREE.PerspectiveCamera`, clip planes
-- `useWaterReflectionStore` (`src/systems/waterReflectionStore.ts`) — publish/clear texture
+- `useWaterReflectionStore` (`src/systems/water/waterReflectionStore.ts`) — publish/clear texture
 - Parent gate: `lodConfig.enableReflections` from `useLOD()` (`true` only for `high` /
   `ultra` presets in `LODManager.tsx`) and `debug.isStageEnabled('worldSystems')` in
   `InnerExperience.tsx` / `WaterStack.tsx`
@@ -486,7 +486,7 @@ it resolved that way, active force path (`wasm` / `fallback`), last force-batch 
 and the live SWE grid. `window.__watershedPhysicsWorker` (dev) still exposes raw `waterForce`
 diagnostics and tick order.
 
-### SWE quality budgets — `src/systems/sweQuality.ts`
+### SWE quality budgets — `src/systems/water/sweQuality.ts`
 
 The SWE height field is a visual system and is budgeted by the live quality preset
 (`useQualityPreset`, which LODManager may downgrade adaptively):

@@ -208,13 +208,13 @@ HUD/minimap helpers (`grid-reduce`, `luma-histogram`, `downsample-2d`, blur) liv
 | `src/experience/WaterStack.tsx` | Reflection + water force + splash mount points |
 | `src/components/TrackManager.tsx` | Segment pool / map treadmill |
 | `src/components/TrackSegment/` | Canyon meshes + placement |
-| `src/components/FlowingWater.jsx` | Water shader |
-| `src/components/PostProcessingPipeline.jsx` | Live post-processing stack |
+| `src/components/FlowingWater.tsx` | Water shader |
+| `src/components/PostProcessingPipeline.tsx` | Live post-processing stack |
 | `src/vehicles/RunnerVehicle/` / `RaftVehicle/` | Player vehicles |
 | `src/rendering/createRenderer.ts` / `gpuChores/` | Renderer factory + HUD hist/reduce helpers |
-| `src/systems/MapSystem.ts` | Maps, chunks, spawn |
+| `src/systems/map/MapSystem.ts` | Maps, chunks, spawn |
 | `src/systems/BiomeSystem.tsx` | Biome context (`useBiome`) |
-| `src/systems/AudioSystem.ts` | Three.js audio |
+| `src/systems/audio/AudioSystem.ts` | Three.js audio |
 | `src/physics/WaterForces.ts` | Flow force math |
 | `vite.config.ts` | Vite build |
 
