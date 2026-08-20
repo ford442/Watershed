@@ -203,7 +203,10 @@ builds also expose `window.__watershedPhysicsWorker`.
 ### SWE quality budgets
 
 The shallow-water height field is a *visual* system and is budgeted per quality preset in
-`src/systems/water/sweQuality.ts`:
+`src/systems/water/sweQuality.ts`. Since ABI 6 the solver is nonlinear and
+well-balanced with wetting/drying (see [`WASM.md`](./WASM.md#shallow-water-solver));
+the budgets below are unchanged by that, because the scheme is still one pass over
+the same grid.
 
 | Preset | Grid | Cell | Step rate | Displacement |
 |--------|------|------|-----------|--------------|
@@ -240,12 +243,12 @@ one growing translation unit:
 |------|------|
 | `emscripten/common.h` | Shared constants, `Vec2` / `Vec3`, `clampf`, `WATERSHED_KEEPALIVE` — Embind-free |
 | `emscripten/forces.h` / `forces.cpp` | `WaterForceResult`; buoyancy, drag, flow, `calculateWaterForce`, `computeWaterForcesBatch` |
-| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid`; SIMD damping + two grid sweeps |
+| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid`; nonlinear well-balanced HLL solver + SIMD damping |
 | `emscripten/simdf32.h` | Portable `f32x4` (wasm_simd128 / SSE2 / NEON) |
 | `emscripten/bindings.cpp` | `getVersion()` and the Embind surface — the ABI; the only file including `<emscripten/bind.h>` |
 | `emscripten/host_smoke.cpp` | Host assert runner (no Embind) |
 
-`getVersion()` is **5** (chores exports). `MIN_WASM_ABI_VERSION` stays **4**. No bump for the host/SIMD pass — signatures unchanged.
+`getVersion()` is **6** (nonlinear SWE + bed pointer). `MIN_WASM_ABI_VERSION` is **6**: unlike the additive 1–5 bumps, ABI 6 changed `stepShallowWater`'s arity, so a pre-6 binary cannot be called at all.
 
 Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Exactly one owner applies it per raft tick (`resolveRaftWaterForceOwner`: worker, main-thread ABI, or local ABI). `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
 

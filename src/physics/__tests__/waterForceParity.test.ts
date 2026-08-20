@@ -149,7 +149,8 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
   });
 
   it('exposes the expected ABI version', () => {
-    expect(wasm.getVersion()).toBeGreaterThanOrEqual(4);
+    // ABI 6 = nonlinear SWE + bed pointer. Older binaries cannot be called.
+    expect(wasm.getVersion()).toBeGreaterThanOrEqual(6);
   });
 
   it('agrees with the TS fallback on every fixture (single-sample call)', () => {

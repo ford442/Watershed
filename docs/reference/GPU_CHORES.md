@@ -23,7 +23,7 @@ webgpu  →  wasm  →  ts
 
 - **WebGPU** is registered only when Three's backend is real WebGPU (`renderer.backend.isWebGPUBackend`) **and** `?no_gpu_compute` is absent. The kit **never** calls `requestAdapter` / `requestDevice`.
 - A default WebGL2 session registers **no** webgpu lane, so a GL context and a compute device cannot both be live for one job.
-- **WASM** is optional ABI 5 (`emscripten/chores.cpp`). Missing exports make the lane decline. `MIN_WASM_ABI_VERSION` stays **4** so older binaries still load for water forces.
+- **WASM** is optional ABI 5 (`emscripten/chores.cpp`). Missing exports make the lane decline. `MIN_WASM_ABI_VERSION` is now **6** (nonlinear SWE changed `stepShallowWater`'s arity), so any binary the loader accepts already carries the chore exports — the decline path remains for safety, not as a supported configuration.
 - **JS** (`src/rendering/gpuChores/cpuMath.ts`) is the terminal lane. Goldens pin it.
 - WebGL2 FBO chores are out of scope.
 
@@ -71,5 +71,5 @@ These are **numerical goldens**, not visual-smoke pixelmatch.
 ## Related
 
 - [`RENDERER.md`](./RENDERER.md) / [`RENDERER_CONTRACT.md`](./RENDERER_CONTRACT.md) — renderer vs TSL vs chores
-- [`WASM.md`](../../WASM.md) — optional ABI 5 chore exports
+- [`WASM.md`](../../WASM.md) — ABI table and chore exports
 - Issue [#369](https://github.com/ford442/Watershed/issues/369). **#370** (WebGPU-required hard-fail boot) is a separate epic and must not become default boot.
