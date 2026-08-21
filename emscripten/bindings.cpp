@@ -36,9 +36,14 @@
 //       guards (no signature changes)
 //   5 — optional gpu-chores (reduce/hist/downsample/blur). Additive; TS
 //       MIN_WASM_ABI_VERSION stays 4 so older binaries still load for forces.
+//   6 — nonlinear well-balanced SWE with wetting/drying. stepShallowWater
+//       takes a bed pointer (4th arg, 0 = flat bed). BREAKING: the arity
+//       changed, so TS MIN_WASM_ABI_VERSION moves to 6 — an ABI-5 binary
+//       cannot be called with the new signature. Field semantics are
+//       unchanged (h stays a free-surface perturbation).
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
-    return 5;
+    return 6;
 }
 
 // ---------------------------------------------------------------------------

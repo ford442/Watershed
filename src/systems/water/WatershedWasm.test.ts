@@ -35,8 +35,10 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof getWasm).toBe('function');
   });
 
-  it('exports a minimum ABI version of 4', () => {
-    expect(MIN_WASM_ABI_VERSION).toBeGreaterThanOrEqual(4);
+  it('requires ABI 6+, since stepShallowWater gained the bed argument', () => {
+    // ABI 6 changed stepShallowWater's arity, so an older binary cannot be
+    // called at all — this floor must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBeGreaterThanOrEqual(6);
   });
 
   it('exports createSWEGrid function', () => {
@@ -272,10 +274,17 @@ function buildMockModule(): WatershedNativeModule {
       return { x: f*rwx/mag, y: f*rwy/mag, z: f*rwz/mag };
     },
 
-    stepShallowWater(hPtr, uPtr, wPtr, w, h, dt, g, dx, H) {
-      // Minimal no-op: just verify ptrs are valid numbers
+    stepShallowWater(hPtr, uPtr, wPtr, bPtr, w, h, dt, g, dx, H) {
+      // Minimal no-op: verify every argument is a usable number. bPtr may be 0
+      // (ABI 6 spells a flat bed that way) but never NaN/undefined. Checking
+      // the trailing H matters most: a caller still on the pre-ABI-6 argument
+      // list shifts everything left by one and leaves H undefined, which is
+      // the only position where that mistake is visible.
       if (!Number.isFinite(hPtr) || !Number.isFinite(uPtr) ||
-          !Number.isFinite(wPtr) || w <= 0 || h <= 0) {
+          !Number.isFinite(wPtr) || !Number.isFinite(bPtr) ||
+          !Number.isFinite(dt) || !Number.isFinite(g) ||
+          !Number.isFinite(dx) || !Number.isFinite(H) ||
+          w <= 0 || h <= 0) {
         throw new Error('stepShallowWater: invalid arguments');
       }
     },
@@ -321,6 +330,7 @@ describe('createSWEGrid', () => {
     expect(grid.h.length).toBe(count);
     expect(grid.u.length).toBe(count);
     expect(grid.w.length).toBe(count);
+    expect(grid.b.length).toBe(count);
     grid.dispose();
   });
 
@@ -329,6 +339,8 @@ describe('createSWEGrid', () => {
     expect(grid.h.every(v => v === 0)).toBe(true);
     expect(grid.u.every(v => v === 0)).toBe(true);
     expect(grid.w.every(v => v === 0)).toBe(true);
+    // A zero bed is the flat channel the solver treats as "no bathymetry yet".
+    expect(grid.b.every(v => v === 0)).toBe(true);
     grid.dispose();
   });
 
@@ -341,11 +353,18 @@ describe('createSWEGrid', () => {
     grid.dispose();
   });
 
-  it('three grids have distinct, non-overlapping pointers', () => {
+  it('four grids have distinct, non-overlapping pointers', () => {
     const grid = createSWEGrid(mod, 4, 4, 0.5);
-    expect(grid.hPtr).not.toBe(grid.uPtr);
-    expect(grid.uPtr).not.toBe(grid.wPtr);
-    expect(grid.hPtr).not.toBe(grid.wPtr);
+    const ptrs = [grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr];
+    expect(new Set(ptrs).size).toBe(ptrs.length);
+    grid.dispose();
+  });
+
+  it('writes to the b view are visible at bPtr in HEAPF32', () => {
+    const grid = createSWEGrid(mod, 4, 4, 0.5);
+    grid.b[2] = 0.75;
+    const heapVal = new Float32Array(mod.HEAPF32.buffer, grid.bPtr, 4)[2];
+    expect(heapVal).toBeCloseTo(0.75, 4);
     grid.dispose();
   });
 
@@ -357,9 +376,21 @@ describe('createSWEGrid', () => {
   it('passes valid args to stepShallowWater without throwing', () => {
     const grid = createSWEGrid(mod, 4, 4, 0.5);
     expect(() =>
-      mod.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr,
+      mod.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
         grid.width, grid.height, 0.016, 9.8, grid.dx, 1.0)
     ).not.toThrow();
+    grid.dispose();
+  });
+
+  it('rejects an omitted bed pointer (ABI 6 arity guard)', () => {
+    const grid = createSWEGrid(mod, 4, 4, 0.5);
+    // Calling with the pre-ABI-6 argument list shifts every argument left by
+    // one, leaving H undefined — the one position where the mistake shows up.
+    expect(() =>
+      (mod.stepShallowWater as unknown as (...args: number[]) => void)(
+        grid.hPtr, grid.uPtr, grid.wPtr,
+        grid.width, grid.height, 0.016, 9.8, grid.dx, 1.0)
+    ).toThrow(/invalid arguments/);
     grid.dispose();
   });
 

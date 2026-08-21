@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 4).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 6).
  * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION.
  *
  * Quick start
@@ -89,7 +89,9 @@ export interface WatershedNativeModule {
    *   2 — batched computeWaterForcesBatch + SWE grid helpers
    *   3 — C++ split into forces.cpp / swe.cpp / bindings.cpp
    *   4 — header split (common.h / forces.h / swe.h); Embind quarantined
-   *   5 — optional gpu-chores (reduce/hist/downsample/blur); MIN_WASM_ABI_VERSION stays 4
+   *   5 — optional gpu-chores (reduce/hist/downsample/blur); MIN_WASM_ABI_VERSION stayed 4
+   *   6 — nonlinear well-balanced SWE + bed pointer on stepShallowWater
+   *       (breaking arity change; MIN_WASM_ABI_VERSION is now 6)
    */
   getVersion(): number;
 
@@ -186,21 +188,30 @@ export interface WatershedNativeModule {
 
   // ---- Shallow Water Equations ----
   /**
-   * Advance the linearised SWE grid one time step.
+   * Advance the nonlinear SWE grid one time step (ABI 6+).
    * Grid pointers must be byte-offsets obtained from allocateGrid().
    *
-   * @param hPtr    Height field (WASM heap byte offset)
+   * Conservative finite volume (HLL + hydrostatic reconstruction) with
+   * wetting/drying, and well-balanced: a flat surface over an uneven bed stays
+   * at rest rather than generating spurious current.
+   *
+   * `hPtr` stays a free-surface PERTURBATION (0 at rest), not an absolute
+   * depth — FlowingWater displaces vertices by it directly, so changing that
+   * would change every water visual. Total depth is `H + h - b`.
+   *
+   * @param hPtr    Free-surface perturbation field (WASM heap byte offset)
    * @param uPtr    X-velocity field (WASM heap byte offset)
    * @param wPtr    Z-velocity field (WASM heap byte offset)
+   * @param bPtr    Bed elevation above the floor datum, or 0 for a flat bed
    * @param width   Grid columns
    * @param height  Grid rows
    * @param dt      Desired time step (s) — internally CFL-clamped
    * @param g       Gravity (m/s²)
    * @param dx      Cell size (m)
-   * @param H       Mean resting water depth for linearisation (m)
+   * @param H       Still-water depth over a zero bed (m)
    */
   stepShallowWater(
-    hPtr: number, uPtr: number, wPtr: number,
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
     width: number, height: number,
     dt: number, g: number, dx: number, H: number,
   ): void;
@@ -216,8 +227,9 @@ export interface WatershedNativeModule {
   freeGrid(ptr: number): void;
 
   /**
-   * Optional gpu-chores (ABI 5+). Absent on older binaries — the wasm chore
-   * lane declines and TypeScript kernels run instead. MIN_WASM_ABI_VERSION is 4.
+   * gpu-chores (ABI 5+). Kept optional in the type so the chore lane can
+   * decline defensively, though MIN_WASM_ABI_VERSION 6 means any accepted
+   * binary already exports them.
    */
   reduceF32Grid?(srcPtr: number, count: number, out3Ptr: number): void;
   histogramF32?(
@@ -250,7 +262,7 @@ type WatershedNativeFactory = (options?: {
 // Singleton loader
 // ---------------------------------------------------------------------------
 /** Minimum ABI accepted by this TypeScript surface. Use >= so a future minor bump does not break. */
-export const MIN_WASM_ABI_VERSION = 4;
+export const MIN_WASM_ABI_VERSION = 6;
 
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 
@@ -337,12 +349,20 @@ export interface SWEGrid {
   uPtr:   number;
   /** WASM heap byte-offset for the Z-velocity field. */
   wPtr:   number;
+  /** WASM heap byte-offset for the bed-elevation field. */
+  bPtr:   number;
   /** Live Float32 view into the WASM heap — water height. */
   h:      Float32Array;
   /** Live Float32 view into the WASM heap — X velocity. */
   u:      Float32Array;
   /** Live Float32 view into the WASM heap — Z velocity. */
   w:      Float32Array;
+  /**
+   * Live Float32 view into the WASM heap — bed elevation above the channel
+   * floor datum (m). 0 everywhere is a flat bed at full depth; values
+   * approaching the still-water depth are banks that dry out.
+   */
+  b:      Float32Array;
   /** Free all WASM heap allocations.  Call when the grid is no longer needed. */
   dispose(): void;
 }
@@ -402,6 +422,7 @@ export function createSWEGrid(
   const hPtr = mod.allocateGrid(count);
   const uPtr = mod.allocateGrid(count);
   const wPtr = mod.allocateGrid(count);
+  const bPtr = mod.allocateGrid(count);
 
   // HEAPF32 is a Float32Array view; each element is 4 bytes,
   // so the byte-offset ptr maps to element index ptr / 4... but because
@@ -412,15 +433,18 @@ export function createSWEGrid(
   const h = new Float32Array(buffer, hPtr, count);
   const u = new Float32Array(buffer, uPtr, count);
   const w = new Float32Array(buffer, wPtr, count);
+  // allocateGrid zero-fills, so an untouched bed is already flat.
+  const b = new Float32Array(buffer, bPtr, count);
 
   return {
     width, height, dx,
-    hPtr, uPtr, wPtr,
-    h, u, w,
+    hPtr, uPtr, wPtr, bPtr,
+    h, u, w, b,
     dispose() {
       mod.freeGrid(hPtr);
       mod.freeGrid(uPtr);
       mod.freeGrid(wPtr);
+      mod.freeGrid(bPtr);
     },
   };
 }

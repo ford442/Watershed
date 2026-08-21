@@ -12,7 +12,7 @@ emscripten/
 ├── forces.h      # WaterForceResult + buoyancy/drag/flow/batch decls
 ├── forces.cpp    # implementations (file-local helpers stay in an anonymous namespace)
 ├── swe.h         # stepShallowWater + allocateGrid / freeGrid
-├── swe.cpp       # linearised SWE stepper (SIMD damping + two grid sweeps)
+├── swe.cpp       # nonlinear well-balanced SWE stepper (HLL + hydrostatic reconstruction)
 ├── simdf32.h     # portable f32x4 (wasm_simd128 / SSE2 / NEON / scalar)
 ├── chores.h      # optional gpu-chores (reduce/hist/downsample/blur)
 ├── chores.cpp    # generic grid helpers — not SWE
@@ -48,12 +48,15 @@ cmake --build emscripten/build-host
 database (`emscripten/build-host` via `.clangd`). WASM `em++` compile commands
 stay in `emscripten/build/` and are not copied over the host DB.
 
-`-msimd128` is used by the SWE kernels in `swe.cpp` (`simdf32.h`). Host goldens
-cover CFL clamp, damping, and a 32×24 bump.
+`-msimd128` is used by the SWE damping kernel in `swe.cpp` (`simdf32.h`). The
+flux loops are scalar: an HLL solve branches per interface (dry/wet, subsonic /
+supersonic), so lane-wise divergence would cost more than it saves. Host goldens
+cover CFL clamp, uniform-flow preservation, lake-at-rest well-balancing,
+wetting/drying, and a 1D dam break.
 
 ## ABI version
 
-`getVersion()` is **5** in source (chores exports). `MIN_WASM_ABI_VERSION` stays **4**.
+`getVersion()` is **6** in source. `MIN_WASM_ABI_VERSION` is **6**.
 
 | Version | Change |
 |---------|--------|
@@ -62,7 +65,56 @@ cover CFL clamp, damping, and a 32×24 bump.
 | 3 | First `.cpp` split (`forces` / `swe` / `bindings`) |
 | 4 | Header split + Embind quarantine |
 | 5 | Optional gpu-chores TU (`chores.cpp`) — HUD reduce/hist/downsample/blur. Not SWE. |
+| 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` takes a bed pointer as its 4th argument. |
 
-`src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`
-(currently 4). The wasm chore lane declines if `reduceF32Grid` is missing so an
-older shipped binary still loads for water forces. See [`GPU_CHORES.md`](./GPU_CHORES.md).
+`src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`.
+Versions 1–5 were additive, so the floor could stay at 4 and an older shipped
+binary still loaded for water forces. **ABI 6 is not additive** — it changed
+`stepShallowWater`'s arity, so a pre-6 binary cannot be called at all and the
+floor moves with it. A stale binary now fails the assertion loudly and the game
+falls back to TypeScript forces with visual SWE off, rather than calling into a
+shifted argument list.
+
+> **`public/watershed_native.{js,wasm}` are committed build artifacts.** Any
+> change under `emscripten/` requires `pnpm build:wasm` and committing the
+> regenerated pair. CI rebuilds and runs `emscripten/smoke_test.mjs` +
+> `pnpm test:wasm:parity` against the fresh binary, and the ABI floor above is
+> what makes a forgotten rebuild fail instead of silently shipping old physics.
+
+## Shallow water solver
+
+`stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H)`
+
+Conservative finite-volume update on `(d, d·u, d·w)`, where `d` is the total
+water column depth. Interface fluxes use an HLL approximate Riemann solver on top
+of an **Audusse hydrostatic reconstruction**, which buys two properties the
+pre-6 linearised stepper could not express:
+
+- **Well-balanced** — a flat free surface over an arbitrary bed stays at rest.
+  The bed term is folded into the reconstructed interface states rather than
+  added as a separate source, so lake-at-rest holds to float round-off
+  (goldens assert < 1e-5 m/s over 50 steps) instead of drifting into current.
+- **Wetting / drying** — depth is clamped at zero, so a bank standing above the
+  free surface is simply a dry cell. This is what will let a slot canyon and a
+  delta read as different water in Phase 2, rather than the same rectangle of
+  waves with a different palette.
+
+Boundaries are transmissive (ghost = interior): the grid is a moving,
+player-centred window, so waves must leave it rather than reflect off an
+invisible wall a few metres from the raft.
+
+### Field conventions (part of the ABI)
+
+| Field | Meaning |
+|-------|---------|
+| `h` | Free-surface **perturbation** η (m), 0 at rest — *not* an absolute depth |
+| `u`, `w` | Velocity components (m/s) |
+| `b` | Bed elevation above the channel floor datum (m); `bPtr == 0` means a flat bed |
+
+Total depth is `H + h − b`. `h` stays a perturbation because `FlowingWater`
+displaces vertices by it directly — switching it to an absolute depth would
+change every water visual and invalidate the visual-smoke baselines.
+
+`createSWEGrid()` allocates the bed alongside `h`/`u`/`w` and zero-fills it, so
+an untouched grid is a flat channel. Populating it from the canyon collision
+mesh is Phase 2 of [#374](https://github.com/ford442/Watershed/issues/374).

@@ -312,6 +312,9 @@ export function WaterForceSystem({
           grid.hPtr,
           grid.uPtr,
           grid.wPtr,
+          // Phase 2 (#374) fills this from the canyon collision mesh; a
+          // zero-filled bed is a flat channel and behaves like the old solver.
+          grid.bPtr,
           grid.width,
           grid.height,
           stepDt,
