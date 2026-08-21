@@ -16,7 +16,6 @@ import {
   calculateWaterForceFallback,
   createSWEGrid,
   getWasm,
-  stepSWEGrid,
   type NativeWaterForceConfig,
   type SWEGrid,
   type WatershedNativeModule,
@@ -238,11 +237,7 @@ export function WaterForceSystem({
       return;
     }
 
-    // withBed is a no-op on ABI < 6; the bed stays flat (zeros) until the
-    // bathymetry sampler lands, but the solver already reads it.
-    const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize, {
-      withBed: true,
-    });
+    const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize);
     grid.h.fill(SWE_MEAN_DEPTH);
     gridRef.current = grid;
 
@@ -313,8 +308,20 @@ export function WaterForceSystem({
 
         applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
-        // dt is the accumulated frame delta; CFL substepping lives in C++.
-        stepSWEGrid(wasmRef.current, grid, stepDt, 9.80665, SWE_MEAN_DEPTH);
+        wasmRef.current.stepShallowWater(
+          grid.hPtr,
+          grid.uPtr,
+          grid.wPtr,
+          // Phase 2 (#374) fills this from the canyon collision mesh; a
+          // zero-filled bed is a flat channel and behaves like the old solver.
+          grid.bPtr,
+          grid.width,
+          grid.height,
+          stepDt,
+          9.80665,
+          grid.dx,
+          SWE_MEAN_DEPTH,
+        );
 
         uploadHeightTexture(grid, texture, originX, originZ, budget);
         runHeightfieldChores(grid.h, grid.width, grid.height);

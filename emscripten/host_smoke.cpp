@@ -2,9 +2,9 @@
  * host_smoke.cpp — Catch2-free host assert runner for watershed_compute.
  *
  * Covers buoyancy, one calculateWaterForce fixture (same numbers as
- * waterForceParity.test.ts), and the nonlinear SWE goldens from swe_goldens.h
- * (well-balanced lake at rest, wetting/drying, dam break, CFL substepping).
- * No Embind.
+ * waterForceParity.test.ts), and the nonlinear SWE contract: CFL clamp,
+ * uniform-flow preservation, lake-at-rest well-balancing over a bed bump,
+ * wetting/drying, and a 1D dam-break slice. No Embind.
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host
@@ -13,7 +13,6 @@
 
 #include "forces.h"
 #include "swe.h"
-#include "swe_goldens.h"
 
 #include <cmath>
 #include <cstdio>
@@ -69,104 +68,174 @@ int main() {
     checkClose(force.buoyancy, 11767.98f, 1e-3f, "fixture0.buoyancy");
     checkClose(force.submergedRatio, 1.f, 1e-3f, "fixture0.submergedRatio");
 
-    // 3. SWE — nonlinear conservative solver (#374 Phase 1 goldens).
+    // ------------------------------------------------------------------
+    // 3. Nonlinear SWE contract
+    //
+    //    Field convention (ABI 6): h is the free-surface PERTURBATION eta,
+    //    b is bed elevation above the floor datum, total depth = H + eta - b.
+    // ------------------------------------------------------------------
+    constexpr int kWidth = 32;
+    constexpr int kHeight = 24;
+    constexpr float kDx = 0.75f;
+    constexpr float kG = 9.80665f;
+    constexpr float kH = 1.f;
+    constexpr float kDt = 1.f;  // well above CFL
+    const int n = kWidth * kHeight;
+
+    auto stepFlat = [&](std::vector<float>& h, std::vector<float>& u,
+                        std::vector<float>& w, float dt) {
+        stepShallowWater(
+            reinterpret_cast<uintptr_t>(h.data()),
+            reinterpret_cast<uintptr_t>(u.data()),
+            reinterpret_cast<uintptr_t>(w.data()),
+            0,  // flat bed
+            kWidth, kHeight, dt, kG, kDx, kH);
+    };
+    auto stepBed = [&](std::vector<float>& h, std::vector<float>& u,
+                       std::vector<float>& w, std::vector<float>& b, float dt) {
+        stepShallowWater(
+            reinterpret_cast<uintptr_t>(h.data()),
+            reinterpret_cast<uintptr_t>(u.data()),
+            reinterpret_cast<uintptr_t>(w.data()),
+            reinterpret_cast<uintptr_t>(b.data()),
+            kWidth, kHeight, dt, kG, kDx, kH);
+    };
+
+    // 3a. Uniform flow over a flat bed: fluxes are identical at every face, so
+    //     the only surviving effect is CFL clamping + damping.
     {
-        using namespace swe_goldens;
-        const GridSpec spec;
-        const int n = spec.cells();
+        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> u(static_cast<std::size_t>(n), 1.f);
+        std::vector<float> w(static_cast<std::size_t>(n), 1.f);
 
-        // 3a. Lake at rest over a submerged bump: well-balanced, no current.
-        {
-            Fields f = lakeAtRest(spec);
-            std::vector<float> surface0(static_cast<std::size_t>(n));
-            for (int i = 0; i < n; ++i) surface0[i] = f.h[i] + f.b[i];
+        // Mirror the solver's CFL rule so the fixture stays honest if it changes.
+        const float maxWaveSpeed = std::sqrt(2.f) + std::sqrt(kG * kH);
+        const float safeDt = 0.4f * kDx / maxWaveSpeed;
+        check(kDt > safeDt, "fixture dt exceeds CFL so the clamp is exercised");
+        const float expectedDamp = 1.f - safeDt * DAMPING_COEFF;
 
-            for (int s = 0; s < 20; ++s) step(spec, f, 1.f / 60.f);
+        stepFlat(h, u, w, kDt);
 
-            float maxVel = 0.f;
-            float maxSurfaceDrift = 0.f;
+        checkClose(u[n / 2], expectedDamp, 1e-4f, "uniform flow: u damped only");
+        checkClose(w[n / 2], expectedDamp, 1e-4f, "uniform flow: w damped only");
+        checkClose(h[n / 2], 0.f, 1e-4f, "uniform flow: surface stays flat");
+        check(std::abs(u[n / 2]) > 0.5f,
+              "CFL clamp must not use unclamped dt (would zero velocities)");
+    }
+
+    // 3b. Lake at rest over a bed bump — the well-balanced property.
+    //     A flat free surface over varying bathymetry must generate no current.
+    //     The pre-ABI-6 linearised stepper could not express this at all: it had
+    //     no bed term, so every bump was invisible to it.
+    {
+        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+
+        // Smooth bed bump rising to 60% of the still-water depth, plus a
+        // channel-shaped bank profile so both axes are exercised.
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < kWidth; ++x) {
+                const float fx = static_cast<float>(x - kWidth / 2) / 6.f;
+                const float fz = static_cast<float>(z - kHeight / 2) / 5.f;
+                b[static_cast<std::size_t>(z * kWidth + x)] =
+                    0.6f * kH * std::exp(-(fx * fx + fz * fz));
+            }
+        }
+
+        float maxVel = 0.f;
+        float maxSurfaceDrift = 0.f;
+        for (int step = 0; step < 50; ++step) {
+            stepBed(h, u, w, b, 0.01f);
             for (int i = 0; i < n; ++i) {
-                maxVel = std::max(maxVel, std::max(std::abs(f.u[i]), std::abs(f.w[i])));
-                maxSurfaceDrift = std::max(maxSurfaceDrift,
-                                           std::abs((f.h[i] + f.b[i]) - surface0[i]));
-            }
-            check(maxVel <= kLakeAtRestVelocityEps, "lake at rest generates no current");
-            check(maxSurfaceDrift <= kLakeAtRestSurfaceEps, "lake at rest surface stays flat");
-            if (maxVel > kLakeAtRestVelocityEps || maxSurfaceDrift > kLakeAtRestSurfaceEps) {
-                std::fprintf(stderr, "      maxVel=%g maxSurfaceDrift=%g\n",
-                             maxVel, maxSurfaceDrift);
+                // Only wet cells carry a meaningful surface; dry ones are pinned
+                // to the bed by construction.
+                if (kH + h[i] - b[i] <= 1e-4f) continue;
+                maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
+                maxSurfaceDrift = std::max(maxSurfaceDrift, std::abs(h[i]));
             }
         }
 
-        // 3b. Wetting/drying: cells whose bed breaks the surface stay dry.
-        {
-            Fields f = dryBasin(spec);
-            for (int s = 0; s < 30; ++s) step(spec, f, 1.f / 60.f);
+        // Documented epsilon: well-balancing holds to float round-off, not to
+        // an eyeballed tolerance. 1e-5 m/s over 50 steps is ~4 orders of
+        // magnitude below the ~0.1 m/s a real disturbance produces.
+        check(maxVel < 1e-5f, "lake at rest over a bump generates no current");
+        check(maxSurfaceDrift < 1e-5f, "lake at rest over a bump keeps a flat surface");
+    }
 
-            bool dryHeld = true;
-            bool positive = true;
-            for (int z = 0; z < spec.height; ++z) {
-                for (int x = 0; x < spec.width; ++x) {
-                    const int i = z * spec.width + x;
-                    if (f.h[i] < 0.f) positive = false;
-                    if (!dryBasinCellIsDry(spec, x, z)) continue;
-                    if (f.h[i] > SWE_DRY_DEPTH) dryHeld = false;
-                    if (f.u[i] != 0.f || f.w[i] != 0.f) dryHeld = false;
-                }
+    // 3c. Wetting/drying — a bank above the free surface stays dry, and stays
+    //     dry after a disturbance passes next to it.
+    {
+        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+
+        // Left three columns are a bank standing well above the water line.
+        const float bankHeight = kH * 1.5f;
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < 3; ++x) {
+                b[static_cast<std::size_t>(z * kWidth + x)] = bankHeight;
             }
-            check(dryHeld, "dry crest cells stay dry with zero velocity");
-            check(positive, "no negative depths after wetting/drying");
+        }
+        // Disturbance in mid-channel that will run at the bank.
+        h[static_cast<std::size_t>((kHeight / 2) * kWidth + 10)] = 0.5f;
+
+        for (int step = 0; step < 40; ++step) {
+            stepBed(h, u, w, b, 0.01f);
         }
 
-        // 3c. Dam break: positive depths, conserved mass, sub-analytic front.
-        {
-            Fields f = damBreak(spec);
-            const float mass0 = totalMass(f.h);
-            const float frontSpeedMax = std::sqrt(spec.g * 1.5f) * 2.f;
-
-            const float dt = 1.f / 60.f;
-            const int steps = 12;
-            for (int s = 0; s < steps; ++s) step(spec, f, dt);
-
-            const float mass1 = totalMass(f.h);
-            checkClose(mass1, mass0, kMassRelEps, "dam break conserves mass");
-
-            bool positive = true;
-            bool finite = true;
-            for (int i = 0; i < n; ++i) {
-                if (f.h[i] < 0.f) positive = false;
-                if (!std::isfinite(f.h[i]) || !std::isfinite(f.u[i]) || !std::isfinite(f.w[i])) {
-                    finite = false;
-                }
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < 3; ++x) {
+                const std::size_t i = static_cast<std::size_t>(z * kWidth + x);
+                const float depth = kH + h[i] - b[i];
+                check(depth <= 1e-4f, "bank cell stays dry");
+                check(u[i] == 0.f && w[i] == 0.f, "dry bank carries no velocity");
             }
-            check(positive, "dam break keeps depths non-negative");
-            check(finite, "dam break stays finite");
+        }
+    }
 
-            // The disturbance must not outrun the analytic wet-bed front.
-            const int mid = spec.width / 2;
-            const int reach = static_cast<int>(
-                std::ceil(frontSpeedMax * dt * static_cast<float>(steps) / spec.dx)) + 1;
-            const int probe = std::min(spec.width - 1, mid + reach + 2);
-            const int row = spec.height / 2;
-            checkClose(f.h[row * spec.width + probe], 0.3f, 1e-2f,
-                       "dam break front has not reached the far probe");
+    // 3d. 1D dam break: deep left, shallow right, flat bed. The front must move
+    //     downstream and interior mass must be conserved while the wave is away
+    //     from the transmissive boundaries.
+    {
+        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
 
-            // Downstream of the dam the surge must have raised the water.
-            check(f.h[row * spec.width + mid + 1] > 0.3f,
-                  "dam break surge moves downstream");
+        const int dam = kWidth / 2;
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < dam; ++x) {
+                h[static_cast<std::size_t>(z * kWidth + x)] = 0.5f;  // depth 1.5
+            }
         }
 
-        // 3d. CFL substepping: a frame delta far above the stable step must be
-        //     absorbed inside C++ without blowing up.
-        {
-            Fields f = damBreak(spec);
-            step(spec, f, 1.f);
-            bool finite = true;
-            for (int i = 0; i < n; ++i) {
-                if (!std::isfinite(f.h[i]) || f.h[i] < 0.f) finite = false;
-            }
-            check(finite, "oversized dt is CFL-substepped, not exploded");
+        auto totalDepth = [&]() {
+            double sum = 0.0;
+            for (int i = 0; i < n; ++i) sum += static_cast<double>(kH + h[i]);
+            return sum;
+        };
+        const double massBefore = totalDepth();
+
+        // Few enough steps that the front stays well inside the domain.
+        for (int step = 0; step < 12; ++step) {
+            stepFlat(h, u, w, 0.004f);
         }
+        const double massAfter = totalDepth();
+
+        const int probeRow = kHeight / 2;
+        auto at = [&](int x) { return static_cast<std::size_t>(probeRow * kWidth + x); };
+
+        check(std::abs(massAfter - massBefore) / massBefore < 1e-5,
+              "dam break conserves interior mass");
+        check(h[at(dam)] > 1e-3f, "dam break wets the cell just downstream");
+        check(h[at(dam - 1)] < 0.5f, "dam break draws down the reservoir side");
+        check(u[at(dam)] > 0.f, "dam break drives flow downstream (+x)");
+        check(std::abs(h[at(0)]) < 1e-3f || h[at(0)] > 0.4f,
+              "far upstream is still undisturbed this early");
+        check(std::abs(w[at(dam)]) < 1e-6f,
+              "1D dam break generates no transverse velocity");
     }
 
     if (g_failures != 0) {

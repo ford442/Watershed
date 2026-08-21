@@ -36,13 +36,11 @@
 //       guards (no signature changes)
 //   5 — optional gpu-chores (reduce/hist/downsample/blur). Additive; TS
 //       MIN_WASM_ABI_VERSION stays 4 so older binaries still load for forces.
-//   6 — nonlinear shallow water (#374 Phase 1). stepShallowWater keeps its
-//       signature but now runs a conservative finite-volume step with
-//       wetting/drying; `h` is total depth (>= 0), not a perturbation, and the
-//       `H` argument is only the dry-state wave-speed floor. Adds
-//       stepShallowWaterBed for an explicit bed elevation field. TS
-//       MIN_WASM_ABI_VERSION stays 4: forces are unchanged, and the bed entry
-//       point is feature-detected so a v5 binary still runs the visual grid.
+//   6 — nonlinear well-balanced SWE with wetting/drying. stepShallowWater
+//       takes a bed pointer (4th arg, 0 = flat bed). BREAKING: the arity
+//       changed, so TS MIN_WASM_ABI_VERSION moves to 6 — an ABI-5 binary
+//       cannot be called with the new signature. Field semantics are
+//       unchanged (h stays a free-surface perturbation).
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
     return 6;
@@ -85,7 +83,6 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("computeDragForce", &computeDragForce);
     emscripten::function("computeFlowForce", &computeFlowForce);
     emscripten::function("stepShallowWater", &stepShallowWater);
-    emscripten::function("stepShallowWaterBed", &stepShallowWaterBed);
     emscripten::function("allocateGrid",     &allocateGrid);
     emscripten::function("freeGrid",         &freeGrid);
     emscripten::function("reduceF32Grid",    &reduceF32Grid);

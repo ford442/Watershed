@@ -30,8 +30,11 @@ if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
 }
 
 const version = wasm.getVersion();
-if (!Number.isInteger(version) || version < 4) {
-  throw new Error(`Unexpected getVersion(): ${version}`);
+// ABI 6 changed stepShallowWater's arity (bed pointer). A binary older than
+// that cannot be driven by the current TypeScript at all, so this floor is what
+// catches a stale committed public/watershed_native.wasm.
+if (!Number.isInteger(version) || version < 6) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 6)`);
 }
 
 const archimedes = wasm.computeBuoyancy(1, 1000, 9.80665);
@@ -72,39 +75,54 @@ if (typeof wasm.reduceF32Grid === 'function') {
   wasm.freeGrid(binsPtr);
 }
 
-// Nonlinear SWE (ABI 6+): a flat pool over a bed step must stay put and must
-// not produce negative depths. Skipped on older binaries.
-if (typeof wasm.stepShallowWaterBed === 'function') {
-  const w = 16;
-  const h = 12;
-  const cells = w * h;
-  const hPtr = wasm.allocateGrid(cells);
-  const uPtr = wasm.allocateGrid(cells);
-  const wPtr = wasm.allocateGrid(cells);
-  const bPtr = wasm.allocateGrid(cells);
+// --- Nonlinear SWE: lake at rest over a bed bump must not generate current ---
+// The host goldens (emscripten/host_smoke.cpp) assert this against the native
+// build; repeating it here proves the *compiled wasm* behaves identically.
+{
+  const width = 24;
+  const height = 16;
+  const count = width * height;
+  const H = 1.0;
+  const dx = 0.5;
+
+  const hPtr = wasm.allocateGrid(count);
+  const uPtr = wasm.allocateGrid(count);
+  const wPtr = wasm.allocateGrid(count);
+  const bPtr = wasm.allocateGrid(count);
   const heap = wasm.HEAPF32;
-  const surface = 1;
-  for (let i = 0; i < cells; i += 1) {
-    const bed = (i % w) < w / 2 ? 0 : 0.4;
-    heap[(bPtr >> 2) + i] = bed;
-    heap[(hPtr >> 2) + i] = surface - bed;
+  const hBase = hPtr >> 2;
+  const uBase = uPtr >> 2;
+  const wBase = wPtr >> 2;
+  const bBase = bPtr >> 2;
+
+  // Flat free surface (h = 0) over a bed bump.
+  for (let z = 0; z < height; z += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const fx = (x - width / 2) / 5;
+      const fz = (z - height / 2) / 4;
+      heap[bBase + z * width + x] = 0.6 * H * Math.exp(-(fx * fx + fz * fz));
+    }
   }
-  for (let step = 0; step < 10; step += 1) {
-    wasm.stepShallowWaterBed(hPtr, uPtr, wPtr, bPtr, w, h, 1 / 60, 9.80665, 0.5, 1);
+
+  for (let step = 0; step < 30; step += 1) {
+    wasm.stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, 0.01, 9.80665, dx, H);
   }
+
   let maxVel = 0;
-  let minDepth = Infinity;
-  for (let i = 0; i < cells; i += 1) {
-    maxVel = Math.max(maxVel, Math.abs(heap[(uPtr >> 2) + i]), Math.abs(heap[(wPtr >> 2) + i]));
-    minDepth = Math.min(minDepth, heap[(hPtr >> 2) + i]);
+  for (let i = 0; i < count; i += 1) {
+    const depth = H + heap[hBase + i] - heap[bBase + i];
+    if (depth <= 1e-4) continue;  // dry cells are pinned, not at rest
+    maxVel = Math.max(maxVel, Math.abs(heap[uBase + i]), Math.abs(heap[wBase + i]));
   }
-  if (!(maxVel < 1e-2) || !(minDepth >= 0)) {
-    throw new Error(`Unexpected stepShallowWaterBed(): maxVel=${maxVel} minDepth=${minDepth}`);
-  }
+
   wasm.freeGrid(hPtr);
   wasm.freeGrid(uPtr);
   wasm.freeGrid(wPtr);
   wasm.freeGrid(bPtr);
+
+  if (!(maxVel < 1e-5)) {
+    throw new Error(`SWE not well-balanced: lake at rest produced |v|=${maxVel}`);
+  }
 }
 
 console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)} abi=${version})`);

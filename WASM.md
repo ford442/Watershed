@@ -126,10 +126,11 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently 6 when rebuilt from source;
-`MIN_WASM_ABI_VERSION` stays **4**). Bump in `bindings.cpp` whenever the
+Returns the module ABI version integer (currently **6**;
+`MIN_WASM_ABI_VERSION` is **6**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
-`>=` so a future minor bump never breaks existing callers.
+`>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
+`stepShallowWater`'s arity, which is why the floor moved with it.
 
 | Version | Change |
 |---------|--------|
@@ -137,11 +138,19 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 2 | Batched `computeWaterForcesBatch` + SWE grid helpers |
 | 3 | Split into `forces.cpp` / `swe.cpp` / `bindings.cpp` (no signature changes) |
 | 4 | Split shared header into `common.h` / `forces.h` / `swe.h`; Embind quarantined in `bindings.cpp`; reordered Embind `value_object` registration ahead of the functions that use them; added `static_assert` non-polymorphic guards (no signature changes) |
-| 5 | Optional gpu-chores (`reduceF32Grid`, `histogramF32`, `lumaHistogramU8`, `downsampleF32`, `blurSeparableF32`). Additive. TS does not require 5; the wasm chore lane declines when exports are missing. |
-| 6 | Nonlinear shallow water (#374 Phase 1). `stepShallowWater` keeps its signature but now runs a conservative finite-volume step with wetting/drying — `h` is total depth (≥ 0), not a perturbation, and `H` is only the dry-state wave-speed floor. Adds `stepShallowWaterBed` for an explicit bed field. TS does not require 6; `stepSWEGrid()` feature-detects the bed entry point. |
+| 5 | Optional gpu-chores (`reduceF32Grid`, `histogramF32`, `lumaHistogramU8`, `downsampleF32`, `blurSeparableF32`). Additive. TS did not require 5; the wasm chore lane declined when exports were missing. |
+| 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` gained a bed pointer as its 4th argument. |
 
-TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 4)
-so a future increment does not break the loader. Chore kernels live in `emscripten/chores.cpp` and are **not** SWE.
+TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 6).
+Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
+binary cannot be called with the new argument list at all, so the floor moves with
+it and a stale binary is rejected at load. Chore kernels live in
+`emscripten/chores.cpp` and are **not** SWE.
+
+> **`public/watershed_native.{js,wasm}` are committed build artifacts.** Any change
+> under `emscripten/` needs `pnpm build:wasm` and the regenerated pair committed.
+> On ABI mismatch `getWasm()` rejects, `WaterForceSystem` logs and falls back to
+> TypeScript force math with visual SWE disabled — degraded but not broken.
 
 ### Adding a translation unit
 
@@ -197,35 +206,32 @@ const force = wasm.computeFlowForce(
 rigidBody.applyImpulse({ x: force.x, y: force.y, z: force.z }, true);
 ```
 
-### `stepShallowWater(hPtr, uPtr, wPtr, width, height, dt, g, dx, H): void`
+### `stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H): void`
 
-### `stepShallowWaterBed(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H): void`
+Advances the nonlinear Shallow Water Equations one time step on a Cartesian
+grid. All grid arrays must be WASM heap pointers returned by `allocateGrid()`;
+`bPtr` may be `0` for a flat bed.
 
-Advances the Shallow Water Equations by `dt` on a Cartesian grid. All grid
-arrays must be WASM heap pointers returned by `allocateGrid()`.
+Conservative finite volume (HLL flux + Audusse hydrostatic reconstruction), so
+the scheme is **well-balanced** — a flat free surface over an uneven bed stays at
+rest instead of generating spurious current — and supports **wetting/drying**,
+where a bank above the free surface is simply a dry cell.
 
-Since ABI 6 the solver is **conservative and nonlinear** — a finite-volume step
-with a Rusanov flux and Audusse hydrostatic reconstruction:
+Field conventions (part of the ABI):
 
-- `h` is **total depth in metres, never negative**, not a perturbation around `H`.
-- `H` is only the dry-state wave-speed floor used to size the substep; it no
-  longer linearises anything.
-- **Wetting/drying:** a cell whose depth falls below `1e-4 m` is clamped dry and
-  holds no momentum, so a bed that breaks the surface reads as bank, not water.
-- **Well-balanced:** still water (`h + b` constant) over an arbitrary bed stays
-  still — the host goldens hold spurious current below `2e-3 m/s`.
-- Boundaries are transmissive: waves leave the player-centred patch.
+| Field | Meaning |
+|-------|---------|
+| `h` | Free-surface **perturbation** η (m), 0 at rest — *not* an absolute depth |
+| `u`, `w` | Velocity components (m/s) |
+| `b` | Bed elevation above the channel floor datum (m); total depth is `H + h − b` |
 
-`bPtr` is the bed elevation field (`0` for a flat bed). `stepShallowWater` is the
-flat-bed wrapper and stays on the ABI for older callers.
+`h` stays a perturbation because `FlowingWater` displaces vertices by it
+directly. Boundaries are transmissive, so waves leave the moving player-centred
+window rather than reflecting.
 
-The solver substeps internally to satisfy CFL (Courant 0.45, at most 8 substeps
-per call), so it is safe to pass `delta` from `useFrame` directly. Never clamp
-`dt` in JS — that is C++'s job.
-
-Prefer the `stepSWEGrid(mod, grid, dt, g, referenceDepth)` helper in
-`WatershedWasm.ts`: it forwards to `stepShallowWaterBed` when the loaded binary
-exports it and falls back to the flat-bed entry point on ABI 4/5 binaries.
+The solver internally clamps `dt` to the CFL stability limit
+(`dt ≤ 0.4 · dx / max(|v| + √(g d))`), so it is safe to pass `delta` from
+`useFrame` directly.
 
 Use the `createSWEGrid()` helper to manage allocations:
 
@@ -244,9 +250,9 @@ for (let z = 0; z < grid.height; z++)
 // Per-frame in useFrame:
 useFrame((_, delta) => {
   wasm.stepShallowWater(
-    grid.hPtr, grid.uPtr, grid.wPtr,
+    grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
     grid.width, grid.height,
-    delta, 9.8, grid.dx, 1.0   // H=1 m mean depth
+    delta, 9.8, grid.dx, 1.0   // H=1 m still-water depth
   );
   // Read grid.h for updated water heights → drive mesh displacement
 });
@@ -343,16 +349,12 @@ at test time.
 - **No GC pressure:** All simulation memory is in WASM heap (`allocateGrid`).
 - **CFL safety:** `stepShallowWater` clamps `dt` internally — no instability
   at low frame rates.
-- **SIMD:** `forces.cpp` and `chores.cpp` use 4-wide kernels (`simdf32.h`);
-  Emscripten builds pass `-msimd128` so they compile to `wasm_simd128`, host uses
-  SSE2/NEON, and `N % 4` tails stay scalar. `swe.cpp` is **deliberately scalar**
-  since ABI 6: the finite-volume flux stencil branches per interface (dry states,
-  hydrostatic reconstruction) and does not vectorise the way the old linear
-  three-line stencil did. Do not treat the compile flag as a free lunch.
-- **Goldens:** SWE fixtures live in `emscripten/swe_goldens.h` and run from
-  `host_smoke.cpp` — lake at rest over a bed bump (well-balancing), dry crest
-  cells staying dry, a dam-break slice (positivity + mass + front bound), and an
-  oversized `dt` proving the CFL substepping.
+- **SIMD:** `swe.cpp` uses 4-wide kernels (`simdf32.h`) for the damping pass and
+  the two grid sweeps (pressure gradient + divergence). Emscripten builds pass
+  `-msimd128` so those kernels compile to `wasm_simd128`; host uses SSE2/NEON.
+  Boundary cells and `N % 4` tails stay scalar. Goldens live in `host_smoke.cpp`
+  (32×24, CFL clamp + damping). Do not treat the compile flag as a free lunch
+  without those inner loops.
 
 ---
 

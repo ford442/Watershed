@@ -1,302 +1,348 @@
 /**
- * swe.cpp — conservative shallow-water solver + WASM heap grid helpers.
+ * swe.cpp — nonlinear shallow-water solver + WASM heap grid helpers.
  *
  * The grid is a *visual* system: WaterForceSystem steps a player-centred field
  * and uploads it as a DataTexture that FlowingWater displaces by. Grid size and
  * step rate are budgeted per quality preset in src/systems/water/sweQuality.ts,
  * so this solver must stay size-agnostic — never assume the 48x32 baseline.
  *
- * Scheme (replaces the pre-#374 linearised stepper):
+ * Scheme (replaces the pre-ABI-6 linearised stepper):
  *
- *   ∂h/∂t  + ∂(hu)/∂x + ∂(hw)/∂z = 0
- *   ∂(hu)/∂t + ∂(hu² + ½gh²)/∂x + ∂(huw)/∂z = −g h ∂b/∂x
- *   ∂(hw)/∂t + ∂(huw)/∂x + ∂(hw² + ½gh²)/∂z = −g h ∂b/∂z
+ *   Conserved state per cell is (d, d·u, d·w) where d is the total water
+ *   column depth. Interface fluxes come from an HLL approximate Riemann solver
+ *   on top of an Audusse hydrostatic reconstruction, which is what buys the two
+ *   properties the linearised version could not express:
  *
- * Finite volume, Rusanov (local Lax-Friedrichs) interface flux, with Audusse
- * hydrostatic reconstruction so that still water over an arbitrary bed stays
- * still (well-balanced) and dry cells stay dry. Boundaries are transmissive:
- * ghost states mirror the interior cell, so waves leave the player-centred
- * patch instead of ringing inside it.
+ *     1. Well-balanced — a flat free surface over an arbitrary bed stays
+ *        exactly at rest. The bed source term is folded into the reconstructed
+ *        interface states rather than added separately, so lake-at-rest is
+ *        preserved to round-off instead of generating spurious current.
+ *     2. Wetting/drying — d is clamped at zero, so a bank higher than the free
+ *        surface is simply a dry cell. This is what makes a slot canyon and a
+ *        delta read as different water rather than the same rectangle of waves
+ *        with a different palette.
  *
- * Deliberately scalar: the flux stencil is branchy (dry states, per-interface
- * reconstruction) and does not vectorise the way the old three-line linear
- * stencil did. simdf32.h is still used by forces.cpp / chores.cpp — SIMD is
- * claimed only where it is actually applied (#372 SIMD honesty).
+ *   Boundaries are transmissive (ghost = interior). The grid is a moving
+ *   player-centred window, so waves must leave it rather than reflect off an
+ *   invisible wall four metres from the raft.
+ *
+ * Field conventions are documented in swe.h and are part of the ABI: `h` is a
+ * free-surface *perturbation*, not a depth, because FlowingWater displaces
+ * vertices by it directly.
  */
 
 #include "swe.h"
+#include "simdf32.h"
 
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
 #include <vector>
 
+// Depth below which a cell counts as dry. Small enough that it never shows up
+// as visible displacement, large enough to keep q/d well conditioned.
+const float SWE_DRY_DEPTH = 1e-4f;
+
 namespace {
 
-struct Cell {
-    float h = 0.f;   // depth (m)
-    float hu = 0.f;  // x momentum (m²/s)
-    float hw = 0.f;  // z momentum (m²/s)
+/**
+ * Courant number for the first-order unsplit 2D update. Lower than the 1D
+ * stability limit because x and z fluxes are applied from the same state in one
+ * pass rather than in sequential sweeps.
+ */
+constexpr float kCflNumber = 0.4f;
+
+/** Flux triple across one interface: mass, normal momentum, transverse momentum. */
+struct Flux {
+    float mass  = 0.f;
+    float mom   = 0.f;
+    float trans = 0.f;
 };
 
-/** Desingularised velocity: zero in (near-)dry cells. */
-inline float velocity(float momentum, float depth) noexcept {
-    return depth > SWE_DRY_DEPTH ? momentum / depth : 0.f;
+/** Cell state as seen by the Riemann solver, already rotated into face-normal axes. */
+struct FaceState {
+    float d  = 0.f;  // depth
+    float qn = 0.f;  // normal momentum   (d * normal velocity)
+    float qt = 0.f;  // transverse momentum
+};
+
+inline float normalVelocity(const FaceState& s) {
+    return (s.d > SWE_DRY_DEPTH) ? s.qn / s.d : 0.f;
 }
 
-/** Rusanov flux in x for a reconstructed interface pair. */
-inline void fluxX(float hL, float huL, float hwL,
-                  float hR, float huR, float hwR,
-                  float g, Cell& out) noexcept {
-    const float uL = velocity(huL, hL);
-    const float uR = velocity(huR, hR);
-    const float cL = std::sqrt(g * std::max(hL, 0.f));
-    const float cR = std::sqrt(g * std::max(hR, 0.f));
-    const float a  = std::max(std::abs(uL) + cL, std::abs(uR) + cR);
-
-    const float fhL  = huL;
-    const float fhR  = huR;
-    const float fhuL = huL * uL + 0.5f * g * hL * hL;
-    const float fhuR = huR * uR + 0.5f * g * hR * hR;
-    const float fhwL = hwL * uL;
-    const float fhwR = hwR * uR;
-
-    out.h  = 0.5f * (fhL  + fhR)  - 0.5f * a * (hR  - hL);
-    out.hu = 0.5f * (fhuL + fhuR) - 0.5f * a * (huR - huL);
-    out.hw = 0.5f * (fhwL + fhwR) - 0.5f * a * (hwR - hwL);
-}
-
-/** Rusanov flux in z for a reconstructed interface pair. */
-inline void fluxZ(float hL, float huL, float hwL,
-                  float hR, float huR, float hwR,
-                  float g, Cell& out) noexcept {
-    const float wL = velocity(hwL, hL);
-    const float wR = velocity(hwR, hR);
-    const float cL = std::sqrt(g * std::max(hL, 0.f));
-    const float cR = std::sqrt(g * std::max(hR, 0.f));
-    const float a  = std::max(std::abs(wL) + cL, std::abs(wR) + cR);
-
-    const float fhL  = hwL;
-    const float fhR  = hwR;
-    const float fhuL = huL * wL;
-    const float fhuR = huR * wR;
-    const float fhwL = hwL * wL + 0.5f * g * hL * hL;
-    const float fhwR = hwR * wR + 0.5f * g * hR * hR;
-
-    out.h  = 0.5f * (fhL  + fhR)  - 0.5f * a * (hR  - hL);
-    out.hu = 0.5f * (fhuL + fhuR) - 0.5f * a * (huR - huL);
-    out.hw = 0.5f * (fhwL + fhwR) - 0.5f * a * (hwR - hwL);
-}
-
-/** Largest wave speed on the grid, used for the CFL substep count. */
-float maxWaveSpeed(const float* h, const float* u, const float* w,
-                   int n, float g, float floorDepth) noexcept {
-    float a = std::sqrt(g * std::max(floorDepth, SWE_DRY_DEPTH));
-    for (int i = 0; i < n; ++i) {
-        const float c = std::sqrt(g * std::max(h[i], 0.f));
-        const float s = std::max(std::abs(u[i]), std::abs(w[i])) + c;
-        if (s > a) a = s;
-    }
-    return a;
+inline Flux physicalFlux(const FaceState& s, float g) {
+    const float un = normalVelocity(s);
+    return Flux{ s.qn, s.qn * un + 0.5f * g * s.d * s.d, s.qt * un };
 }
 
 /**
- * One explicit FV update of `dt` seconds. Scratch buffers are supplied by the
- * caller so the per-frame substep loop allocates nothing.
+ * HLL approximate Riemann solver.
+ *
+ * Wave speeds use the dry-front estimates (Toro) when one side is dry, so a
+ * wet cell advancing onto dry bed gets the correct 2c front speed instead of a
+ * zero-speed wall.
  */
-void substep(float* h, float* u, float* w, const float* b,
-             int width, int height, float dt, float g, float dx,
-             std::vector<Cell>& state,
-             std::vector<Cell>& fx,
-             std::vector<Cell>& fz,
-             std::vector<float>& srcX,
-             std::vector<float>& srcZ) {
-    const int n = width * height;
+Flux hllFlux(const FaceState& L, const FaceState& R, float g) {
+    const bool dryL = L.d <= SWE_DRY_DEPTH;
+    const bool dryR = R.d <= SWE_DRY_DEPTH;
+    if (dryL && dryR) return Flux{};
 
-    for (int i = 0; i < n; ++i) {
-        const float depth = std::max(h[i], 0.f);
-        const bool wet = depth > SWE_DRY_DEPTH;
-        state[i].h  = depth;
-        state[i].hu = wet ? depth * u[i] : 0.f;
-        state[i].hw = wet ? depth * w[i] : 0.f;
+    const float unL = normalVelocity(L);
+    const float unR = normalVelocity(R);
+    const float cL  = std::sqrt(g * std::max(L.d, 0.f));
+    const float cR  = std::sqrt(g * std::max(R.d, 0.f));
+
+    float sL, sR;
+    if (dryL) {
+        // Dry bed on the left: the front runs left at unR - 2cR.
+        sL = unR - 2.f * cR;
+        sR = unR + cR;
+    } else if (dryR) {
+        sL = unL - cL;
+        sR = unL + 2.f * cL;
+    } else {
+        sL = std::min(unL - cL, unR - cR);
+        sR = std::max(unL + cL, unR + cR);
     }
 
-    const float bedAt = 0.f;
-    auto bed = [&](int i) noexcept { return b ? b[i] : bedAt; };
+    const Flux FL = physicalFlux(L, g);
+    const Flux FR = physicalFlux(R, g);
 
-    // --- x interfaces: fx[idx] is the flux at the face between idx and idx+1.
-    // The last column's face is the transmissive boundary (ghost == interior).
-    for (int z = 0; z < height; ++z) {
-        for (int x = 0; x < width; ++x) {
-            const int i = z * width + x;
-            const int j = (x < width - 1) ? i + 1 : i;   // ghost mirrors interior
-            const float bFace = std::max(bed(i), bed(j));
-            const float hLs = std::max(0.f, state[i].h + bed(i) - bFace);
-            const float hRs = std::max(0.f, state[j].h + bed(j) - bFace);
-            const float uL = velocity(state[i].hu, state[i].h);
-            const float uR = velocity(state[j].hu, state[j].h);
-            const float wL = velocity(state[i].hw, state[i].h);
-            const float wR = velocity(state[j].hw, state[j].h);
-            fluxX(hLs, hLs * uL, hLs * wL,
-                  hRs, hRs * uR, hRs * wR, g, fx[i]);
-            // Audusse pressure corrections, keyed per (cell, side):
-            // index*2+1 is the cell's right/downstream face, index*2+0 its left.
-            srcX[i * 2 + 1] = 0.5f * g * (state[i].h * state[i].h - hLs * hLs);
-            if (j != i) {
-                srcX[j * 2 + 0] = 0.5f * g * (state[j].h * state[j].h - hRs * hRs);
-            }
-        }
-    }
+    if (sL >= 0.f) return FL;
+    if (sR <= 0.f) return FR;
 
-    // --- z interfaces: fz[idx] is the flux between idx and idx+width.
-    for (int z = 0; z < height; ++z) {
-        for (int x = 0; x < width; ++x) {
-            const int i = z * width + x;
-            const int j = (z < height - 1) ? i + width : i;
-            const float bFace = std::max(bed(i), bed(j));
-            const float hLs = std::max(0.f, state[i].h + bed(i) - bFace);
-            const float hRs = std::max(0.f, state[j].h + bed(j) - bFace);
-            const float uL = velocity(state[i].hu, state[i].h);
-            const float uR = velocity(state[j].hu, state[j].h);
-            const float wL = velocity(state[i].hw, state[i].h);
-            const float wR = velocity(state[j].hw, state[j].h);
-            fluxZ(hLs, hLs * uL, hLs * wL,
-                  hRs, hRs * uR, hRs * wR, g, fz[i]);
-            srcZ[i * 2 + 1] = 0.5f * g * (state[i].h * state[i].h - hLs * hLs);
-            if (j != i) {
-                srcZ[j * 2 + 0] = 0.5f * g * (state[j].h * state[j].h - hRs * hRs);
-            }
-        }
-    }
-
-    const float lambda = dt / dx;
-    const float damp = std::max(0.f, 1.f - dt * DAMPING_COEFF);
-
-    // Transmissive outer boundary: the missing face uses a ghost cell equal to
-    // the interior cell, so the Rusanov flux collapses to the cell's own
-    // physical flux and waves leave the patch instead of reflecting.
-    auto selfFluxX = [&](int i, Cell& out) noexcept {
-        const float hi = state[i].h;
-        const float ui = velocity(state[i].hu, hi);
-        out.h  = state[i].hu;
-        out.hu = state[i].hu * ui + 0.5f * g * hi * hi;
-        out.hw = state[i].hw * ui;
+    const float inv = 1.f / (sR - sL);
+    return Flux{
+        (sR * FL.mass  - sL * FR.mass  + sL * sR * (R.d  - L.d )) * inv,
+        (sR * FL.mom   - sL * FR.mom   + sL * sR * (R.qn - L.qn)) * inv,
+        (sR * FL.trans - sL * FR.trans + sL * sR * (R.qt - L.qt)) * inv,
     };
-    auto selfFluxZ = [&](int i, Cell& out) noexcept {
-        const float hi = state[i].h;
-        const float wi = velocity(state[i].hw, hi);
-        out.h  = state[i].hw;
-        out.hu = state[i].hu * wi;
-        out.hw = state[i].hw * wi + 0.5f * g * hi * hi;
+}
+
+/**
+ * Audusse hydrostatic reconstruction across one interface.
+ *
+ * Returns the HLL flux together with the two well-balancing momentum
+ * corrections: `momL` is what the left cell subtracts at this face, `momR` is
+ * what the right cell adds. Using a single shared momentum would reintroduce
+ * the bed source term the reconstruction exists to cancel.
+ */
+struct InterfaceFlux {
+    float mass  = 0.f;
+    float momL  = 0.f;
+    float momR  = 0.f;
+    float trans = 0.f;
+};
+
+InterfaceFlux reconstructedFlux(float dL, float qnL, float qtL, float zbL,
+                                float dR, float qnR, float qtR, float zbR,
+                                float g) {
+    // Free-surface elevations. Only differences matter, so the constant offset
+    // between the perturbation datum and the bed datum cancels here.
+    const float surfaceL = dL + zbL;
+    const float surfaceR = dR + zbR;
+    const float zbFace   = std::max(zbL, zbR);
+
+    const float dLs = std::max(0.f, surfaceL - zbFace);
+    const float dRs = std::max(0.f, surfaceR - zbFace);
+
+    const float unL = (dL > SWE_DRY_DEPTH) ? qnL / dL : 0.f;
+    const float utL = (dL > SWE_DRY_DEPTH) ? qtL / dL : 0.f;
+    const float unR = (dR > SWE_DRY_DEPTH) ? qnR / dR : 0.f;
+    const float utR = (dR > SWE_DRY_DEPTH) ? qtR / dR : 0.f;
+
+    const FaceState starL{ dLs, dLs * unL, dLs * utL };
+    const FaceState starR{ dRs, dRs * unR, dRs * utR };
+
+    const Flux f = hllFlux(starL, starR, g);
+
+    return InterfaceFlux{
+        f.mass,
+        f.mom + 0.5f * g * (dL * dL - dLs * dLs),
+        f.mom + 0.5f * g * (dR * dR - dRs * dRs),
+        f.trans,
     };
+}
 
-    Cell ghostX;
-    Cell ghostZ;
-
-    for (int z = 0; z < height; ++z) {
-        for (int x = 0; x < width; ++x) {
-            const int i = z * width + x;
-            if (x == 0) selfFluxX(i, ghostX);
-            if (z == 0) selfFluxZ(i, ghostZ);
-            const Cell& right = fx[i];
-            const Cell& left  = (x > 0) ? fx[i - 1] : ghostX;
-            const Cell& down  = fz[i];
-            const Cell& up    = (z > 0) ? fz[i - width] : ghostZ;
-
-            // Audusse: the pressure correction rides along with each face flux.
-            const float fRightHu = right.hu + srcX[i * 2 + 1];
-            const float fLeftHu  = left.hu  + srcX[i * 2 + 0];
-            const float fDownHw  = down.hw  + srcZ[i * 2 + 1];
-            const float fUpHw    = up.hw    + srcZ[i * 2 + 0];
-
-            const float dh  = (right.h - left.h) + (down.h - up.h);
-            const float dhu = (fRightHu - fLeftHu) + (down.hu - up.hu);
-            const float dhw = (right.hw - left.hw) + (fDownHw - fUpHw);
-
-            const float nh  = state[i].h  - lambda * dh;
-            const float nhu = state[i].hu - lambda * dhu;
-            const float nhw = state[i].hw - lambda * dhw;
-
-            if (nh <= SWE_DRY_DEPTH) {
-                // Wetting/drying: a dry cell keeps no depth debt and no momentum.
-                h[i] = std::max(nh, 0.f);
-                u[i] = 0.f;
-                w[i] = 0.f;
-                continue;
-            }
-
-            h[i] = nh;
-            u[i] = (nhu / nh) * damp;
-            w[i] = (nhw / nh) * damp;
-        }
+void dampVelocities(float* u, float* w, int N, float damp) {
+    const f32x4 vdamp = f32x4_splat(damp);
+    int i = 0;
+    for (; i + 4 <= N; i += 4) {
+        f32x4_store(&u[i], f32x4_mul(f32x4_load(&u[i]), vdamp));
+        f32x4_store(&w[i], f32x4_mul(f32x4_load(&w[i]), vdamp));
+    }
+    for (; i < N; ++i) {
+        u[i] *= damp;
+        w[i] *= damp;
     }
 }
+
+/**
+ * Scratch buffers, reused across steps so a 60 Hz solver does not allocate.
+ * thread_local rather than plain static because the optional `--threads` build
+ * links pthreads; the solver itself is still driven from one caller.
+ */
+struct Scratch {
+    std::vector<float> d, qx, qz;
+    std::vector<float> accD, accQx, accQz;
+
+    void resize(std::size_t n) {
+        if (d.size() == n) return;
+        d.assign(n, 0.f);
+        qx.assign(n, 0.f);
+        qz.assign(n, 0.f);
+        accD.assign(n, 0.f);
+        accQx.assign(n, 0.f);
+        accQz.assign(n, 0.f);
+    }
+};
+
+thread_local Scratch g_scratch;
 
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// Public entry points
+// Shallow Water Equations (SWE) — one time step
+//
+//    ∂d/∂t     + ∂(d u)/∂x       + ∂(d w)/∂z       = 0
+//    ∂(d u)/∂t + ∂(d u² + ½gd²)/∂x + ∂(d u w)/∂z   = −g d ∂zb/∂x
+//    ∂(d w)/∂t + ∂(d u w)/∂x     + ∂(d w² + ½gd²)/∂z = −g d ∂zb/∂z
 //
 //    Grid layout: row-major, index = z * width + x
-//      h[i]  — water depth above the bed (m, >= 0)
-//      u[i]  — X-velocity component (m/s)
-//      w[i]  — Z-velocity component (m/s)
-//      b[i]  — bed elevation (m); optional, 0 pointer means a flat bed
-//
-//    All arrays live in WASM linear memory; JS passes byte-offset pointers
-//    obtained from allocateGrid().
 // ---------------------------------------------------------------------------
-void stepShallowWaterBed(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr,
-                         uintptr_t bPtr,
-                         int width, int height,
-                         float dt, float g, float dx, float H) {
-    if (width <= 0 || height <= 0 || dx <= 0.f || g <= 0.f) return;
+void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                      int width, int height,
+                      float dt, float g, float dx, float H) {
+    if (width <= 0 || height <= 0 || dx <= 0.f || H <= 0.f) return;
     if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
-    if (!(dt > 0.f)) return;
+    if (dt <= 0.f || g <= 0.f) return;
 
     float* h = reinterpret_cast<float*>(hPtr);
     float* u = reinterpret_cast<float*>(uPtr);
     float* w = reinterpret_cast<float*>(wPtr);
-    const float* b = bPtr ? reinterpret_cast<const float*>(bPtr) : nullptr;
+    const float* b = reinterpret_cast<const float*>(bPtr);  // may be null → flat bed
 
-    const int n = width * height;
+    const int N = width * height;
+    Scratch& s = g_scratch;
+    s.resize(static_cast<std::size_t>(N));
 
-    // CFL is enforced here, not in JS: pick a substep count from the actual
-    // wave speed on the grid, capped so one slow frame cannot stall the tab.
-    const float a = maxWaveSpeed(h, u, w, n, g, std::max(H, 0.f));
-    const float dtMax = SWE_CFL_NUMBER * dx / a;
-    int substeps = 1;
-    if (dt > dtMax) {
-        substeps = static_cast<int>(std::ceil(dt / dtMax));
-        substeps = std::min(substeps, SWE_MAX_SUBSTEPS);
+    float* d   = s.d.data();
+    float* qx  = s.qx.data();
+    float* qz  = s.qz.data();
+    float* accD  = s.accD.data();
+    float* accQx = s.accQx.data();
+    float* accQz = s.accQz.data();
+
+    auto bedAt = [b](int i) { return b ? b[i] : 0.f; };
+
+    // --- Lift (η, u, w) into conserved (d, d·u, d·w) ---
+    float maxWaveSpeed = 0.f;
+    for (int i = 0; i < N; ++i) {
+        const float depth = std::max(0.f, H + h[i] - bedAt(i));
+        d[i] = depth;
+        if (depth <= SWE_DRY_DEPTH) {
+            // A dry cell carries no momentum; leaving stale velocity here would
+            // let a bank inject flow the moment it re-wets.
+            qx[i] = 0.f;
+            qz[i] = 0.f;
+        } else {
+            qx[i] = depth * u[i];
+            qz[i] = depth * w[i];
+            const float speed = std::sqrt(u[i] * u[i] + w[i] * w[i]) + std::sqrt(g * depth);
+            maxWaveSpeed = std::max(maxWaveSpeed, speed);
+        }
+        accD[i]  = 0.f;
+        accQx[i] = 0.f;
+        accQz[i] = 0.f;
     }
-    const float subDt = std::min(dt / static_cast<float>(substeps), dtMax);
 
-    static std::vector<Cell> state;
-    static std::vector<Cell> fx;
-    static std::vector<Cell> fz;
-    static std::vector<float> srcX;
-    static std::vector<float> srcZ;
-    if (static_cast<int>(state.size()) < n) {
-        state.resize(static_cast<std::size_t>(n));
-        fx.resize(static_cast<std::size_t>(n));
-        fz.resize(static_cast<std::size_t>(n));
-        srcX.resize(static_cast<std::size_t>(n) * 2);
-        srcZ.resize(static_cast<std::size_t>(n) * 2);
+    // Everything is dry — nothing to advance, but still write back the clamp.
+    if (maxWaveSpeed <= 0.f) {
+        for (int i = 0; i < N; ++i) {
+            h[i] = d[i] + bedAt(i) - H;
+            u[i] = 0.f;
+            w[i] = 0.f;
+        }
+        return;
     }
-    std::fill(srcX.begin(), srcX.begin() + n * 2, 0.f);
-    std::fill(srcZ.begin(), srcZ.begin() + n * 2, 0.f);
 
-    for (int s = 0; s < substeps; ++s) {
-        substep(h, u, w, b, width, height, subDt, g, dx,
-                state, fx, fz, srcX, srcZ);
+    // Enforce CFL stability: dt ≤ C · dx / max(|v| + √(g d))
+    const float safeDt = std::min(dt, kCflNumber * dx / maxWaveSpeed);
+    const float dtdx = safeDt / dx;
+
+    // --- X-direction interfaces (normal = x, transverse = z) ---
+    // xf indexes the face left of column xf; xf == 0 and xf == width are the
+    // transmissive boundaries, where the ghost cell mirrors the interior.
+    for (int z = 0; z < height; ++z) {
+        const int row = z * width;
+        for (int xf = 0; xf <= width; ++xf) {
+            const int iL = row + ((xf == 0) ? 0 : xf - 1);
+            const int iR = row + ((xf == width) ? width - 1 : xf);
+
+            const InterfaceFlux f = reconstructedFlux(
+                d[iL], qx[iL], qz[iL], bedAt(iL),
+                d[iR], qx[iR], qz[iR], bedAt(iR),
+                g);
+
+            if (xf > 0) {  // real cell on the left of this face
+                accD[iL]  -= dtdx * f.mass;
+                accQx[iL] -= dtdx * f.momL;
+                accQz[iL] -= dtdx * f.trans;
+            }
+            if (xf < width) {  // real cell on the right of this face
+                accD[iR]  += dtdx * f.mass;
+                accQx[iR] += dtdx * f.momR;
+                accQz[iR] += dtdx * f.trans;
+            }
+        }
     }
-}
 
-void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr,
-                      int width, int height,
-                      float dt, float g, float dx, float H) {
-    stepShallowWaterBed(hPtr, uPtr, wPtr, 0, width, height, dt, g, dx, H);
+    // --- Z-direction interfaces (normal = z, transverse = x) ---
+    for (int x = 0; x < width; ++x) {
+        for (int zf = 0; zf <= height; ++zf) {
+            const int iL = ((zf == 0) ? 0 : zf - 1) * width + x;
+            const int iR = ((zf == height) ? height - 1 : zf) * width + x;
+
+            // Normal is z here, so qz is the normal momentum and qx transverse.
+            const InterfaceFlux f = reconstructedFlux(
+                d[iL], qz[iL], qx[iL], bedAt(iL),
+                d[iR], qz[iR], qx[iR], bedAt(iR),
+                g);
+
+            if (zf > 0) {
+                accD[iL]  -= dtdx * f.mass;
+                accQz[iL] -= dtdx * f.momL;
+                accQx[iL] -= dtdx * f.trans;
+            }
+            if (zf < height) {
+                accD[iR]  += dtdx * f.mass;
+                accQz[iR] += dtdx * f.momR;
+                accQx[iR] += dtdx * f.trans;
+            }
+        }
+    }
+
+    // --- Apply the update and lower back to (η, u, w) ---
+    for (int i = 0; i < N; ++i) {
+        const float depth = std::max(0.f, d[i] + accD[i]);
+        if (depth <= SWE_DRY_DEPTH) {
+            // Dry: pin the surface to the bed so η reports "no water here"
+            // rather than a negative pit the shader would displace into.
+            h[i] = bedAt(i) - H;
+            u[i] = 0.f;
+            w[i] = 0.f;
+            continue;
+        }
+        const float nqx = qx[i] + accQx[i];
+        const float nqz = qz[i] + accQz[i];
+        h[i] = depth + bedAt(i) - H;
+        u[i] = nqx / depth;
+        w[i] = nqz / depth;
+    }
+
+    // --- Light velocity damping to prevent long-run divergence ---
+    const float damp = 1.f - safeDt * DAMPING_COEFF;
+    dampVelocities(u, w, N, damp);
 }
 
 // ---------------------------------------------------------------------------
