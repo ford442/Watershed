@@ -19,6 +19,7 @@ import {
   createWaterForceBatch,
   dragForceFallback,
   createSWEGrid,
+  stepSWEGrid,
   getWasm,
   MIN_WASM_ABI_VERSION,
   type Vec3,
@@ -397,6 +398,58 @@ describe('createSWEGrid', () => {
   it('uses default dx = 0.5 when omitted', () => {
     const grid = createSWEGrid(mod, 4, 4);
     expect(grid.dx).toBe(0.5);
+    grid.dispose();
+  });
+
+  // ABI 6 added an optional bed field. Older binaries do not export
+  // stepShallowWaterBed, so the bed must not be allocated and the grid must
+  // still step through the flat-bed entry point.
+  it('skips the bed allocation when the module predates ABI 6', () => {
+    const grid = createSWEGrid(mod, 4, 4, 0.5, { withBed: true });
+    expect(grid.bPtr).toBe(0);
+    expect(grid.b).toBeNull();
+    grid.dispose();
+  });
+
+  it('allocates a zeroed bed when stepShallowWaterBed exists', () => {
+    const bedMod = buildMockModule();
+    bedMod.stepShallowWaterBed = () => {};
+    const grid = createSWEGrid(bedMod, 4, 4, 0.5, { withBed: true });
+    expect(grid.bPtr).not.toBe(0);
+    expect(grid.b).toHaveLength(16);
+    expect(Array.from(grid.b!)).toEqual(new Array(16).fill(0));
+    grid.dispose();
+  });
+});
+
+describe('stepSWEGrid', () => {
+  it('uses the flat-bed entry point when the bed step is unavailable', () => {
+    const mod = buildMockModule();
+    const flat = vi.fn();
+    mod.stepShallowWater = flat;
+    const grid = createSWEGrid(mod, 4, 4, 0.5, { withBed: true });
+
+    stepSWEGrid(mod, grid, 0.016, 9.80665, 1);
+
+    expect(flat).toHaveBeenCalledTimes(1);
+    grid.dispose();
+  });
+
+  it('prefers the bed entry point and forwards the bed pointer', () => {
+    const mod = buildMockModule();
+    const flat = vi.fn();
+    const bedStep = vi.fn();
+    mod.stepShallowWater = flat;
+    mod.stepShallowWaterBed = bedStep;
+    const grid = createSWEGrid(mod, 4, 4, 0.5, { withBed: true });
+
+    stepSWEGrid(mod, grid, 0.016, 9.80665, 1);
+
+    expect(flat).not.toHaveBeenCalled();
+    expect(bedStep).toHaveBeenCalledWith(
+      grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
+      4, 4, 0.016, 9.80665, 0.5, 1,
+    );
     grid.dispose();
   });
 });
