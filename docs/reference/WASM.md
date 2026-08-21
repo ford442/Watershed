@@ -11,8 +11,9 @@ emscripten/
 ├── common.h      # Vec2/Vec3, clamp, density/gravity, WATERSHED_KEEPALIVE. No Embind.
 ├── forces.h      # WaterForceResult + buoyancy/drag/flow/batch decls
 ├── forces.cpp    # implementations (file-local helpers stay in an anonymous namespace)
-├── swe.h         # stepShallowWater + allocateGrid / freeGrid
-├── swe.cpp       # linearised SWE stepper (SIMD damping + two grid sweeps)
+├── swe.h         # stepShallowWater / stepShallowWaterBed + allocateGrid / freeGrid
+├── swe.cpp       # nonlinear conservative SWE stepper (wetting/drying, bed)
+├── swe_goldens.h # host SWE fixtures (lake at rest / dry basin / dam break)
 ├── simdf32.h     # portable f32x4 (wasm_simd128 / SSE2 / NEON / scalar)
 ├── chores.h      # optional gpu-chores (reduce/hist/downsample/blur)
 ├── chores.cpp    # generic grid helpers — not SWE
@@ -48,12 +49,14 @@ cmake --build emscripten/build-host
 database (`emscripten/build-host` via `.clangd`). WASM `em++` compile commands
 stay in `emscripten/build/` and are not copied over the host DB.
 
-`-msimd128` is used by the SWE kernels in `swe.cpp` (`simdf32.h`). Host goldens
-cover CFL clamp, damping, and a 32×24 bump.
+`-msimd128` is used by `forces.cpp` and `chores.cpp` (`simdf32.h`). `swe.cpp` is
+scalar by design since ABI 6 — its flux stencil branches per interface. Host
+goldens (`swe_goldens.h`) cover well-balancing, wetting/drying, dam break, and
+CFL substepping.
 
 ## ABI version
 
-`getVersion()` is **5** in source (chores exports). `MIN_WASM_ABI_VERSION` stays **4**.
+`getVersion()` is **6** in source (nonlinear SWE + bed). `MIN_WASM_ABI_VERSION` stays **4**.
 
 | Version | Change |
 |---------|--------|
@@ -62,7 +65,10 @@ cover CFL clamp, damping, and a 32×24 bump.
 | 3 | First `.cpp` split (`forces` / `swe` / `bindings`) |
 | 4 | Header split + Embind quarantine |
 | 5 | Optional gpu-chores TU (`chores.cpp`) — HUD reduce/hist/downsample/blur. Not SWE. |
+| 6 | Nonlinear SWE with wetting/drying + optional bed (`stepShallowWaterBed`). `stepShallowWater` keeps its signature; `h` is now total depth. |
 
 `src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`
 (currently 4). The wasm chore lane declines if `reduceF32Grid` is missing so an
 older shipped binary still loads for water forces. See [`GPU_CHORES.md`](./GPU_CHORES.md).
+`stepSWEGrid()` likewise feature-detects `stepShallowWaterBed`, so an ABI 4/5
+binary keeps stepping the visual grid over a flat bed.

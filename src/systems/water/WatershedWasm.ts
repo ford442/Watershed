@@ -90,6 +90,8 @@ export interface WatershedNativeModule {
    *   3 — C++ split into forces.cpp / swe.cpp / bindings.cpp
    *   4 — header split (common.h / forces.h / swe.h); Embind quarantined
    *   5 — optional gpu-chores (reduce/hist/downsample/blur); MIN_WASM_ABI_VERSION stays 4
+   *   6 — nonlinear SWE with wetting/drying + optional bed (stepShallowWaterBed);
+   *       MIN_WASM_ABI_VERSION stays 4, the bed entry point is feature-detected
    */
   getVersion(): number;
 
@@ -194,13 +196,30 @@ export interface WatershedNativeModule {
    * @param wPtr    Z-velocity field (WASM heap byte offset)
    * @param width   Grid columns
    * @param height  Grid rows
-   * @param dt      Desired time step (s) — internally CFL-clamped
+   * @param dt      Desired frame delta (s) — CFL substepping happens in C++
    * @param g       Gravity (m/s²)
    * @param dx      Cell size (m)
-   * @param H       Mean resting water depth for linearisation (m)
+   * @param H       Dry-state wave-speed floor (m). ABI 6+ no longer linearises
+   *                around it; `h` is total depth (>= 0), not a perturbation.
    */
   stepShallowWater(
     hPtr: number, uPtr: number, wPtr: number,
+    width: number, height: number,
+    dt: number, g: number, dx: number, H: number,
+  ): void;
+
+  /**
+   * Nonlinear shallow-water step over a bed elevation field (ABI 6+).
+   *
+   * Absent on ABI 4/5 binaries — callers must feature-detect and fall back to
+   * `stepShallowWater` (flat bed). The scheme is well-balanced, so still water
+   * over an arbitrary bed stays still, and cells where the bed breaks the
+   * surface stay dry.
+   *
+   * @param bPtr Bed elevation field (WASM heap byte offset), or 0 for flat.
+   */
+  stepShallowWaterBed?(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
     width: number, height: number,
     dt: number, g: number, dx: number, H: number,
   ): void;
@@ -343,6 +362,10 @@ export interface SWEGrid {
   u:      Float32Array;
   /** Live Float32 view into the WASM heap — Z velocity. */
   w:      Float32Array;
+  /** WASM heap byte-offset for the bed elevation field, or 0 when none was allocated. */
+  bPtr:   number;
+  /** Live Float32 view into the WASM heap — bed elevation, or null when flat. */
+  b:      Float32Array | null;
   /** Free all WASM heap allocations.  Call when the grid is no longer needed. */
   dispose(): void;
 }
@@ -396,12 +419,16 @@ export function createSWEGrid(
   width:  number,
   height: number,
   dx:     number = 0.5,
+  options: { withBed?: boolean } = {},
 ): SWEGrid {
   const count = width * height;
 
   const hPtr = mod.allocateGrid(count);
   const uPtr = mod.allocateGrid(count);
   const wPtr = mod.allocateGrid(count);
+  // A bed field is only useful with the ABI 6+ entry point that reads it.
+  const wantsBed = options.withBed === true && typeof mod.stepShallowWaterBed === 'function';
+  const bPtr = wantsBed ? mod.allocateGrid(count) : 0;
 
   // HEAPF32 is a Float32Array view; each element is 4 bytes,
   // so the byte-offset ptr maps to element index ptr / 4... but because
@@ -413,16 +440,46 @@ export function createSWEGrid(
   const u = new Float32Array(buffer, uPtr, count);
   const w = new Float32Array(buffer, wPtr, count);
 
+  const b = bPtr !== 0 ? new Float32Array(buffer, bPtr, count) : null;
+
   return {
     width, height, dx,
-    hPtr, uPtr, wPtr,
-    h, u, w,
+    hPtr, uPtr, wPtr, bPtr,
+    h, u, w, b,
     dispose() {
       mod.freeGrid(hPtr);
       mod.freeGrid(uPtr);
       mod.freeGrid(wPtr);
+      if (bPtr !== 0) mod.freeGrid(bPtr);
     },
   };
+}
+
+/**
+ * Step a grid through the best available solver entry point.
+ *
+ * ABI 6+ binaries get the bed-aware step (well-balanced, wetting/drying);
+ * older binaries fall back to the flat-bed signature. Callers pass the frame
+ * delta — CFL substepping is enforced inside C++, never here.
+ */
+export function stepSWEGrid(
+  mod: WatershedNativeModule,
+  grid: SWEGrid,
+  dt: number,
+  g: number,
+  referenceDepth: number,
+): void {
+  if (grid.bPtr !== 0 && typeof mod.stepShallowWaterBed === 'function') {
+    mod.stepShallowWaterBed(
+      grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
+      grid.width, grid.height, dt, g, grid.dx, referenceDepth,
+    );
+    return;
+  }
+  mod.stepShallowWater(
+    grid.hPtr, grid.uPtr, grid.wPtr,
+    grid.width, grid.height, dt, g, grid.dx, referenceDepth,
+  );
 }
 
 export function createWaterForceBatch(

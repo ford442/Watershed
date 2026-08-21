@@ -16,6 +16,7 @@ import {
   calculateWaterForceFallback,
   createSWEGrid,
   getWasm,
+  stepSWEGrid,
   type NativeWaterForceConfig,
   type SWEGrid,
   type WatershedNativeModule,
@@ -237,7 +238,11 @@ export function WaterForceSystem({
       return;
     }
 
-    const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize);
+    // withBed is a no-op on ABI < 6; the bed stays flat (zeros) until the
+    // bathymetry sampler lands, but the solver already reads it.
+    const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize, {
+      withBed: true,
+    });
     grid.h.fill(SWE_MEAN_DEPTH);
     gridRef.current = grid;
 
@@ -308,17 +313,8 @@ export function WaterForceSystem({
 
         applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
-        wasmRef.current.stepShallowWater(
-          grid.hPtr,
-          grid.uPtr,
-          grid.wPtr,
-          grid.width,
-          grid.height,
-          stepDt,
-          9.80665,
-          grid.dx,
-          SWE_MEAN_DEPTH,
-        );
+        // dt is the accumulated frame delta; CFL substepping lives in C++.
+        stepSWEGrid(wasmRef.current, grid, stepDt, 9.80665, SWE_MEAN_DEPTH);
 
         uploadHeightTexture(grid, texture, originX, originZ, budget);
         runHeightfieldChores(grid.h, grid.width, grid.height);

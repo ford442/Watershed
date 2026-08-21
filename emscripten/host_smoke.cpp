@@ -2,8 +2,9 @@
  * host_smoke.cpp — Catch2-free host assert runner for watershed_compute.
  *
  * Covers buoyancy, one calculateWaterForce fixture (same numbers as
- * waterForceParity.test.ts), and one SWE step (CFL clamp + damping + 32×24
- * bump golden). No Embind.
+ * waterForceParity.test.ts), and the nonlinear SWE goldens from swe_goldens.h
+ * (well-balanced lake at rest, wetting/drying, dam break, CFL substepping).
+ * No Embind.
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host
@@ -12,6 +13,7 @@
 
 #include "forces.h"
 #include "swe.h"
+#include "swe_goldens.h"
 
 #include <cmath>
 #include <cstdio>
@@ -67,58 +69,104 @@ int main() {
     checkClose(force.buoyancy, 11767.98f, 1e-3f, "fixture0.buoyancy");
     checkClose(force.submergedRatio, 1.f, 1e-3f, "fixture0.submergedRatio");
 
-    // 3. SWE — 32×24 medium budget, dt above CFL so clamp fires.
-    constexpr int kWidth = 32;
-    constexpr int kHeight = 24;
-    constexpr float kDx = 0.75f;
-    constexpr float kG = 9.80665f;
-    constexpr float kH = 1.f;
-    constexpr float kDt = 1.f;  // well above CFL
-    const int n = kWidth * kHeight;
-
-    const float waveSpeed = std::sqrt(kG * kH);
-    const float cflMax = kDx / (waveSpeed * 1.5f);
-    check(kDt > cflMax, "fixture dt exceeds CFL so clamp is exercised");
-    const float safeDt = cflMax;
-    const float expectedDamp = 1.f - safeDt * DAMPING_COEFF;
-
-    // 3a. Uniform u=w=1, flat h: no gradients → only damping + CFL clamp.
+    // 3. SWE — nonlinear conservative solver (#374 Phase 1 goldens).
     {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 1.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 1.f);
-        stepShallowWater(
-            reinterpret_cast<uintptr_t>(h.data()),
-            reinterpret_cast<uintptr_t>(u.data()),
-            reinterpret_cast<uintptr_t>(w.data()),
-            kWidth, kHeight, kDt, kG, kDx, kH);
-        checkClose(u[0], expectedDamp, 1e-4f, "CFL damping u[0]");
-        checkClose(w[n / 2], expectedDamp, 1e-4f, "CFL damping w[mid]");
-        check(std::abs(u[0]) > 0.5f, "CFL clamp must not use unclamped dt (would zero velocities)");
-    }
+        using namespace swe_goldens;
+        const GridSpec spec;
+        const int n = spec.cells();
 
-    // 3b. Single-cell bump golden (center 16,12 = 0.4).
-    {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-        h[12 * kWidth + 16] = 0.4f;
-        stepShallowWater(
-            reinterpret_cast<uintptr_t>(h.data()),
-            reinterpret_cast<uintptr_t>(u.data()),
-            reinterpret_cast<uintptr_t>(w.data()),
-            kWidth, kHeight, kDt, kG, kDx, kH);
+        // 3a. Lake at rest over a submerged bump: well-balanced, no current.
+        {
+            Fields f = lakeAtRest(spec);
+            std::vector<float> surface0(static_cast<std::size_t>(n));
+            for (int i = 0; i < n; ++i) surface0[i] = f.h[i] + f.b[i];
 
-        auto at = [&](int x, int z) { return z * kWidth + x; };
-        checkClose(h[at(16, 12)], -0.31111111f, 1e-4f, "bump center h");
-        checkClose(u[at(16, 12)],  0.82174857f, 1e-4f, "bump center u");
-        checkClose(w[at(16, 12)],  0.82174857f, 1e-4f, "bump center w");
-        checkClose(h[at(15, 12)],  0.17777778f, 1e-4f, "bump left h");
-        checkClose(u[at(15, 12)], -0.82174857f, 1e-4f, "bump left u");
-        checkClose(h[at(17, 12)],  0.17777778f, 1e-4f, "bump right h");
-        checkClose(h[at(16, 11)],  0.17777778f, 1e-4f, "bump up h");
-        checkClose(w[at(16, 11)], -0.82174857f, 1e-4f, "bump up w");
-        checkClose(h[at(16, 13)],  0.17777778f, 1e-4f, "bump down h");
+            for (int s = 0; s < 20; ++s) step(spec, f, 1.f / 60.f);
+
+            float maxVel = 0.f;
+            float maxSurfaceDrift = 0.f;
+            for (int i = 0; i < n; ++i) {
+                maxVel = std::max(maxVel, std::max(std::abs(f.u[i]), std::abs(f.w[i])));
+                maxSurfaceDrift = std::max(maxSurfaceDrift,
+                                           std::abs((f.h[i] + f.b[i]) - surface0[i]));
+            }
+            check(maxVel <= kLakeAtRestVelocityEps, "lake at rest generates no current");
+            check(maxSurfaceDrift <= kLakeAtRestSurfaceEps, "lake at rest surface stays flat");
+            if (maxVel > kLakeAtRestVelocityEps || maxSurfaceDrift > kLakeAtRestSurfaceEps) {
+                std::fprintf(stderr, "      maxVel=%g maxSurfaceDrift=%g\n",
+                             maxVel, maxSurfaceDrift);
+            }
+        }
+
+        // 3b. Wetting/drying: cells whose bed breaks the surface stay dry.
+        {
+            Fields f = dryBasin(spec);
+            for (int s = 0; s < 30; ++s) step(spec, f, 1.f / 60.f);
+
+            bool dryHeld = true;
+            bool positive = true;
+            for (int z = 0; z < spec.height; ++z) {
+                for (int x = 0; x < spec.width; ++x) {
+                    const int i = z * spec.width + x;
+                    if (f.h[i] < 0.f) positive = false;
+                    if (!dryBasinCellIsDry(spec, x, z)) continue;
+                    if (f.h[i] > SWE_DRY_DEPTH) dryHeld = false;
+                    if (f.u[i] != 0.f || f.w[i] != 0.f) dryHeld = false;
+                }
+            }
+            check(dryHeld, "dry crest cells stay dry with zero velocity");
+            check(positive, "no negative depths after wetting/drying");
+        }
+
+        // 3c. Dam break: positive depths, conserved mass, sub-analytic front.
+        {
+            Fields f = damBreak(spec);
+            const float mass0 = totalMass(f.h);
+            const float frontSpeedMax = std::sqrt(spec.g * 1.5f) * 2.f;
+
+            const float dt = 1.f / 60.f;
+            const int steps = 12;
+            for (int s = 0; s < steps; ++s) step(spec, f, dt);
+
+            const float mass1 = totalMass(f.h);
+            checkClose(mass1, mass0, kMassRelEps, "dam break conserves mass");
+
+            bool positive = true;
+            bool finite = true;
+            for (int i = 0; i < n; ++i) {
+                if (f.h[i] < 0.f) positive = false;
+                if (!std::isfinite(f.h[i]) || !std::isfinite(f.u[i]) || !std::isfinite(f.w[i])) {
+                    finite = false;
+                }
+            }
+            check(positive, "dam break keeps depths non-negative");
+            check(finite, "dam break stays finite");
+
+            // The disturbance must not outrun the analytic wet-bed front.
+            const int mid = spec.width / 2;
+            const int reach = static_cast<int>(
+                std::ceil(frontSpeedMax * dt * static_cast<float>(steps) / spec.dx)) + 1;
+            const int probe = std::min(spec.width - 1, mid + reach + 2);
+            const int row = spec.height / 2;
+            checkClose(f.h[row * spec.width + probe], 0.3f, 1e-2f,
+                       "dam break front has not reached the far probe");
+
+            // Downstream of the dam the surge must have raised the water.
+            check(f.h[row * spec.width + mid + 1] > 0.3f,
+                  "dam break surge moves downstream");
+        }
+
+        // 3d. CFL substepping: a frame delta far above the stable step must be
+        //     absorbed inside C++ without blowing up.
+        {
+            Fields f = damBreak(spec);
+            step(spec, f, 1.f);
+            bool finite = true;
+            for (int i = 0; i < n; ++i) {
+                if (!std::isfinite(f.h[i]) || f.h[i] < 0.f) finite = false;
+            }
+            check(finite, "oversized dt is CFL-substepped, not exploded");
+        }
     }
 
     if (g_failures != 0) {
