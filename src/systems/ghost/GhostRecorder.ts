@@ -9,6 +9,7 @@ import {
   GHOST_SAMPLE_HZ,
   GHOST_SAMPLE_INTERVAL,
   type GhostSample,
+  type RunSplitEntry,
 } from './ghostCodec';
 import { setRunGhostData, updatePBGhost } from '../persistence/PersistenceSystem';
 
@@ -44,6 +45,23 @@ export function getGhostSampleCount(): number {
   return writeIndex;
 }
 
+/**
+ * Elapsed run time, in ms, derived from the sample clock — the same clock
+ * driving playback (getGhostDurationSec). Accurate to one sample interval
+ * (100 ms at 10 Hz); recording freezes on wipeout/pause (see
+ * useExperienceLifecycle's tickGhostRecording gate), so this is stable once a
+ * run ends without needing a separate wall-clock timer.
+ */
+export function getGhostElapsedMs(): number {
+  return Math.round(writeIndex * (1000 / GHOST_SAMPLE_HZ));
+}
+
+/** Base64 payload of the buffer recorded so far, without touching persistence. */
+export function getCurrentGhostPayload(): string | null {
+  if (writeIndex <= 0) return null;
+  return encodeGhostToBase64(encodeGhostBuffer(buffer, writeIndex));
+}
+
 function writeSample(sample: GhostSample): void {
   if (writeIndex >= GHOST_MAX_SAMPLES) return;
 
@@ -77,16 +95,24 @@ export function tickGhostRecording(delta: number, sample: GhostSample): void {
  * @param runKey Persistence key for this map + seed.
  * @param runTimeMs Completion time in ms; when provided, only persists if this beats the existing PB.
  *                  Omit (or pass undefined) to always persist (legacy behaviour).
+ * @param splits Checkpoint splits for this run. Only used (and only replaces the
+ *               stored PB splits) when `runTimeMs` is provided and beats the PB.
+ * @returns Whether the ghost was written — always true for the legacy (no
+ *          runTimeMs) path, and only true when `runTimeMs` beat the PB otherwise.
  */
-export function persistGhostRecording(runKey: string, runTimeMs?: number): void {
-  if (writeIndex <= 0) return;
+export function persistGhostRecording(
+  runKey: string,
+  runTimeMs?: number,
+  splits?: RunSplitEntry[],
+): boolean {
+  if (writeIndex <= 0) return false;
 
   const encoded = encodeGhostBuffer(buffer, writeIndex);
   const payload = encodeGhostToBase64(encoded);
 
   if (runTimeMs !== undefined) {
-    updatePBGhost(runKey, runTimeMs, payload);
-  } else {
-    setRunGhostData(runKey, payload);
+    return updatePBGhost(runKey, runTimeMs, payload, splits);
   }
+  setRunGhostData(runKey, payload);
+  return true;
 }

@@ -3,6 +3,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../systems/GameState';
+import { getActiveMapId } from '../utils/runContext';
+import { getRivalGhost, setRivalGhost, clearRivalGhost } from '../systems/persistence/PersistenceSystem';
+import { importGhostFromFile } from '../systems/ghost/ghostExport';
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -25,9 +28,39 @@ interface PauseMenuProps {
 export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQuit, onOpenOptions }) => {
   const [confirmRestart, setConfirmRestart] = useState(false);
   const resumeRef = useRef<HTMLButtonElement>(null);
+  const rivalFileInputRef = useRef<HTMLInputElement>(null);
 
   const ghostEnabled = useGameStore((s) => s.ghostEnabled);
   const setGhostEnabled = useGameStore((s) => s.setGhostEnabled);
+
+  const mapId = getActiveMapId();
+  const [rivalLoaded, setRivalLoaded] = useState(() => Boolean(getRivalGhost(mapId)));
+  const [rivalStatus, setRivalStatus] = useState('');
+
+  const handleRivalFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const result = await importGhostFromFile(file, mapId);
+    if (!result.ok) {
+      setRivalStatus(
+        result.reason === 'map_mismatch' ? 'Wrong map' : 'Invalid .wsghost file',
+      );
+      window.setTimeout(() => setRivalStatus(''), 2500);
+      return;
+    }
+
+    setRivalGhost(mapId, result.file);
+    setRivalLoaded(true);
+    setRivalStatus('Rival loaded');
+    window.setTimeout(() => setRivalStatus(''), 2000);
+  };
+
+  const handleClearRival = () => {
+    clearRivalGhost(mapId);
+    setRivalLoaded(false);
+  };
 
   // Focus resume button when pause opens
   useEffect(() => {
@@ -96,6 +129,23 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               aria-label={ghostEnabled ? 'Hide best-run ghost' : 'Show best-run ghost'}
             >
               GHOST: {ghostEnabled ? 'ON' : 'OFF'}
+            </button>
+
+            <input
+              ref={rivalFileInputRef}
+              type="file"
+              accept=".wsghost,application/json"
+              onChange={handleRivalFileChange}
+              style={{ display: 'none' }}
+            />
+            <button
+              className={`pause-menu-ghost-btn ${rivalLoaded ? 'active' : ''}`}
+              onClick={() =>
+                rivalLoaded ? handleClearRival() : rivalFileInputRef.current?.click()
+              }
+              aria-label={rivalLoaded ? 'Clear rival ghost' : 'Load rival .wsghost'}
+            >
+              {rivalStatus || (rivalLoaded ? 'RIVAL: CLEAR' : 'LOAD RIVAL')}
             </button>
 
             <button

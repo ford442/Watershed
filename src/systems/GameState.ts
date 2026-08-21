@@ -66,6 +66,8 @@ export interface GameState {
   ghostEnabled: boolean;
   /** Instant tier label popup at shelf launch (not the committed score). */
   launchPopup: { label: string; id: number } | null;
+  /** Last checkpoint split's delta vs the PB ghost (seconds; negative = ahead). `id` retriggers the HUD flash even when the value repeats. */
+  lastSplitDelta: { deltaSeconds: number; id: number } | null;
   /** Committed air-time reward after a valid landing. */
   latestReward: {
     tier: string;
@@ -104,6 +106,7 @@ export interface GameActions {
   setSprintStamina: (v: number) => void;
   setVehicleType: (type: 'runner' | 'raft') => void;
   setGhostEnabled: (enabled: boolean) => void;
+  setLastSplitDelta: (delta: { deltaSeconds: number; id: number } | null) => void;
   resetGameState: () => void;
 }
 
@@ -143,6 +146,7 @@ const INITIAL_STATE: GameState = {
   ghostEnabled: true,
   launchPopup: null,
   latestReward: null,
+  lastSplitDelta: null,
 };
 
 // =============================================================================
@@ -252,6 +256,8 @@ export const useGameStore = create<GameStore>((set) => ({
   setVehicleType: (type) => set({ vehicleType: type }),
 
   setGhostEnabled: (enabled) => set({ ghostEnabled: enabled }),
+
+  setLastSplitDelta: (delta) => set({ lastSplitDelta: delta }),
 
   resetGameState: () =>
     set((state) => ({

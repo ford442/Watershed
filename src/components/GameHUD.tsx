@@ -14,6 +14,7 @@ import {
   getWasm,
   type NativeWaterForceResult,
 } from '../systems/water/WatershedWasm';
+import RunResultsPanel from './RunResultsPanel';
 
 interface GameHUDProps {
   isWipeout?: boolean;
@@ -324,6 +325,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             RESPAWN
           </button>
 
+          <RunResultsPanel outcome="wipeout" />
+
           <p className="mt-8 text-zinc-600 text-sm">
             Press SPACE to respawn
           </p>
@@ -405,6 +408,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </span>
             </div>
           )}
+
+          <RunResultsPanel outcome="complete" />
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-4 mt-10">
             <button

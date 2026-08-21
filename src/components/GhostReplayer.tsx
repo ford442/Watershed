@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../systems/GameState';
-import { getRunGhostData } from '../systems/persistence/PersistenceSystem';
-import { getActiveRunKey } from '../utils/runContext';
+import { getRunGhostData, getRivalGhost } from '../systems/persistence/PersistenceSystem';
+import { getActiveMapId, getActiveRunKey } from '../utils/runContext';
 import {
   getGhostDurationSec,
   interpolateGhost,
@@ -12,15 +12,18 @@ import {
 } from '../systems/ghost/ghostPlayback';
 import type { DecodedGhost } from '../systems/ghost/ghostCodec';
 
-interface GhostReplayerProps {
-  runKey?: string;
+interface GhostBodyProps {
+  payload: string | undefined;
+  color: string;
+  emissive: string;
 }
 
 /**
- * Translucent, non-colliding runner silhouette replaying the saved best-run ghost.
- * Kinematic only — no physics body.
+ * Translucent, non-colliding runner silhouette replaying a ghost payload.
+ * Kinematic only — no physics body. Shared by the PB and rival replayers
+ * (capped at those two bodies — see GhostReplayer below).
  */
-export default function GhostReplayer({ runKey }: GhostReplayerProps) {
+function GhostBody({ payload, color, emissive }: GhostBodyProps) {
   const ghostEnabled = useGameStore((s) => s.ghostEnabled);
   const isPaused = useGameStore((s) => s.isPaused);
   const isWipeout = useGameStore((s) => s.isWipeout);
@@ -28,16 +31,14 @@ export default function GhostReplayer({ runKey }: GhostReplayerProps) {
   const ghostRef = useRef<DecodedGhost | null>(null);
   const playbackTimeRef = useRef(0);
   const poseRef = useRef<GhostPose>({ px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1 });
-  const effectiveRunKey = runKey ?? getActiveRunKey();
   const [hasGhost, setHasGhost] = useState(false);
 
   useEffect(() => {
-    const payload = getRunGhostData(effectiveRunKey);
     const decoded = loadGhostFromBase64(payload);
     ghostRef.current = decoded;
     playbackTimeRef.current = 0;
     setHasGhost(!!decoded && decoded.sampleCount > 0);
-  }, [effectiveRunKey]);
+  }, [payload]);
 
   useEffect(() => {
     const onRunReset = () => {
@@ -76,16 +77,41 @@ export default function GhostReplayer({ runKey }: GhostReplayerProps) {
       <mesh castShadow={false} receiveShadow={false}>
         <capsuleGeometry args={[0.35, 0.9, 6, 10]} />
         <meshStandardMaterial
-          color="#7ec8ff"
+          color={color}
           transparent
           opacity={0.32}
           depthWrite={false}
-          emissive="#224466"
+          emissive={emissive}
           emissiveIntensity={0.35}
           roughness={0.85}
           metalness={0.05}
         />
       </mesh>
     </group>
+  );
+}
+
+interface GhostReplayerProps {
+  runKey?: string;
+}
+
+/**
+ * PB ghost (cyan) plus, when one is loaded, a rival ghost (amber) — capped at
+ * these two bodies to protect the instancing budget (#375 Phase C).
+ */
+export default function GhostReplayer({ runKey }: GhostReplayerProps) {
+  // Re-read on every pause/resume — a rival loaded via PauseMenu takes effect
+  // the moment the player resumes, without needing a remount.
+  const isPaused = useGameStore((s) => s.isPaused);
+  const effectiveRunKey = runKey ?? getActiveRunKey();
+  const pbPayload = getRunGhostData(effectiveRunKey);
+  const rivalPayload = getRivalGhost(getActiveMapId())?.ghostData;
+  void isPaused;
+
+  return (
+    <>
+      <GhostBody payload={pbPayload} color="#7ec8ff" emissive="#224466" />
+      {rivalPayload && <GhostBody payload={rivalPayload} color="#f5a623" emissive="#663d0c" />}
+    </>
   );
 }

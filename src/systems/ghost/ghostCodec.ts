@@ -4,11 +4,16 @@
  * Each sample is 7 floats: position (x,y,z) + quaternion (x,y,z,w).
  * First sample is absolute; subsequent samples store deltas from the previous.
  *
- * Codec version history:
+ * Codec version history (this is also the `.wsghost` file format version —
+ * see ghostExport.ts):
  *   1 — Initial release: 7-float delta-encoded samples, base64 payload.
+ *   2 — `.wsghost` gains an optional `splits[]` array (checkpoint times next
+ *       to the pose payload). The 7-float pose encoding is unchanged, so a v1
+ *       file is a valid v2 file with no splits — see importGhostFromJson's
+ *       `codecVersion <= GHOST_CODEC_VERSION` acceptance rule.
  */
 
-export const GHOST_CODEC_VERSION = 1 as const;
+export const GHOST_CODEC_VERSION = 2 as const;
 export const GHOST_FLOATS_PER_SAMPLE = 7;
 export const GHOST_BYTES_PER_SAMPLE = GHOST_FLOATS_PER_SAMPLE * 4;
 export const GHOST_SAMPLE_HZ = 10;
@@ -22,6 +27,16 @@ export interface GhostSample {
   qy: number;
   qz: number;
   qw: number;
+}
+
+/** One authored-checkpoint split recorded during a timed run. */
+export interface RunSplitEntry {
+  /** Segment index the checkpoint belongs to (matches `segment-enter` detail). */
+  segmentIndex: number;
+  /** Elapsed run time at the checkpoint, in ms — same clock as the ghost recorder. */
+  tMs: number;
+  /** Vehicle speed at the checkpoint (m/s), for context in the results table. */
+  speed: number;
 }
 
 export interface DecodedGhost {

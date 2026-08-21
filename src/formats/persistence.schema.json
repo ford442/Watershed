@@ -72,7 +72,57 @@
           "ghostData": {
             "type": "string",
             "minLength": 1
+          },
+          "splits": {
+            "$ref": "#/$defs/runSplits"
           }
+        }
+      }
+    },
+    "rivals": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["codecVersion", "mapId", "timeMs", "ghostData", "exportedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "codecVersion": {
+            "type": "number",
+            "minimum": 1
+          },
+          "mapId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timeMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ghostData": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exportedAt": {
+            "type": "number"
+          },
+          "splits": {
+            "$ref": "#/$defs/runSplits"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "runSplits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["segmentIndex", "tMs", "speed"],
+        "additionalProperties": false,
+        "properties": {
+          "segmentIndex": { "type": "number" },
+          "tMs": { "type": "number", "minimum": 0 },
+          "speed": { "type": "number" }
         }
       }
     }

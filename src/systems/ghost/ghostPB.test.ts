@@ -19,6 +19,7 @@ import {
   GHOST_CODEC_VERSION,
   GHOST_FLOATS_PER_SAMPLE,
   type GhostSample,
+  type RunSplitEntry,
 } from './ghostCodec';
 import { GHOST_MAX_SAMPLES } from './GhostRecorder';
 import {
@@ -75,6 +76,44 @@ describe('updatePBGhost — replace only if faster', () => {
     expect(updated).toBe(false);
     expect(getRunBest(key).ghostData).toBe(originalPayload);
   });
+
+  describe('splits', () => {
+    const splitsA: RunSplitEntry[] = [
+      { segmentIndex: 0, tMs: 0, speed: 3 },
+      { segmentIndex: 5, tMs: 30_000, speed: 12 },
+    ];
+    const splitsB: RunSplitEntry[] = [
+      { segmentIndex: 0, tMs: 0, speed: 4 },
+      { segmentIndex: 5, tMs: 25_000, speed: 14 },
+    ];
+
+    it('stores splits alongside the ghost on first finish', () => {
+      const key = buildRunKey('meander', 10);
+      updatePBGhost(key, 90_000, makeGhostPayload(), splitsA);
+      expect(getRunBest(key).splits).toEqual(splitsA);
+    });
+
+    it('replaces splits when a faster run beats the PB', () => {
+      const key = buildRunKey('meander', 11);
+      updatePBGhost(key, 90_000, makeGhostPayload(), splitsA);
+      updatePBGhost(key, 80_000, makeGhostPayload(2), splitsB);
+      expect(getRunBest(key).splits).toEqual(splitsB);
+    });
+
+    it('keeps existing splits when a slower run does not beat the PB', () => {
+      const key = buildRunKey('meander', 12);
+      updatePBGhost(key, 80_000, makeGhostPayload(), splitsA);
+      updatePBGhost(key, 95_000, makeGhostPayload(5), splitsB);
+      expect(getRunBest(key).splits).toEqual(splitsA);
+    });
+
+    it('omitting splits on a beating run leaves the previously stored splits untouched', () => {
+      const key = buildRunKey('meander', 13);
+      updatePBGhost(key, 90_000, makeGhostPayload(), splitsA);
+      updatePBGhost(key, 80_000, makeGhostPayload(2));
+      expect(getRunBest(key).splits).toEqual(splitsA);
+    });
+  });
 });
 
 describe('ghost codec size budget', () => {
@@ -117,7 +156,7 @@ describe('ghostExport / importGhostFromJson', () => {
     if (!result.ok) expect(result.reason).toBe('invalid_format');
   });
 
-  it('rejects wrong codec version', () => {
+  it('rejects a codec version newer than this build supports', () => {
     const json = JSON.stringify({
       codecVersion: GHOST_CODEC_VERSION + 1,
       mapId: 'meander',
@@ -128,6 +167,49 @@ describe('ghostExport / importGhostFromJson', () => {
     const result = importGhostFromJson(json, 'meander');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('version_mismatch');
+  });
+
+  it('accepts a v1 pose-only file (no splits) as a valid v2 file', () => {
+    const json = JSON.stringify({
+      codecVersion: 1,
+      mapId: 'meander',
+      timeMs: 60_000,
+      ghostData: GHOST,
+      exportedAt: Date.now(),
+    });
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.splits).toBeUndefined();
+  });
+
+  it('round-trips splits through export → import', () => {
+    const splits = [{ segmentIndex: 0, tMs: 0, speed: 3 }, { segmentIndex: 5, tMs: 12_000, speed: 9 }];
+    const json = exportGhostToJson('meander', 75_000, GHOST, splits);
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.splits).toEqual(splits);
+    expect(result.file.codecVersion).toBe(GHOST_CODEC_VERSION);
+  });
+
+  it('omits splits entirely from the file when none are given', () => {
+    const json = exportGhostToJson('meander', 75_000, GHOST);
+    expect(JSON.parse(json)).not.toHaveProperty('splits');
+  });
+
+  it('rejects a file whose splits array holds malformed entries', () => {
+    const json = JSON.stringify({
+      codecVersion: GHOST_CODEC_VERSION,
+      mapId: 'meander',
+      timeMs: 60_000,
+      ghostData: GHOST,
+      exportedAt: Date.now(),
+      splits: [{ segmentIndex: 0, tMs: -5, speed: 1 }],
+    });
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('invalid_format');
   });
 
   it('rejects ghost recorded on a different map', () => {
