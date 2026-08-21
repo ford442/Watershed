@@ -26,7 +26,8 @@ import {
   type LevelData,
 } from '../systems/map/MapSystem';
 import { getActiveMap, getMapDefinition, type MapDefinition, type MapRegistryId } from '../maps/registry';
-import { getProceduralBaseSeed } from '../utils/runContext';
+import { getProceduralBaseSeed, getActiveRunKey } from '../utils/runContext';
+import { commitTimedFinish } from '../systems/ghost/runFinish';
 import { ChunkManager } from '../systems/map/ChunkManager';
 import { createObstaclePool } from '../systems/pools/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
@@ -412,6 +413,9 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
               fromMapId: activeMapIdRef.current,
             });
           } else if (!seamlessJourneyRef.current) {
+            // Commit the timed PB before the Zustand flip below — see the
+            // matching comment in useExperienceWorld.performSeamlessMapHandoff.
+            commitTimedFinish(getActiveRunKey(activeMapIdRef.current));
             useGameStore.getState().setJourneyComplete();
           }
         }

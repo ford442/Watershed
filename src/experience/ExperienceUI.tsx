@@ -2,6 +2,7 @@ import { Html } from '@react-three/drei';
 import GameHUD from '../components/GameHUD';
 import ForecastHUD from '../components/ForecastHUD';
 import AudioDiagnosticsOverlay from '../components/AudioDiagnosticsOverlay';
+import GhostTimeDelta from '../components/GhostTimeDelta';
 import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoader';
 import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
 import { useGameStore } from '../systems/GameState';
@@ -60,6 +61,7 @@ export default function ExperienceUI({
   onDismissReachError,
 }: ExperienceUIProps) {
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  const lastSplitDelta = useGameStore((s) => s.lastSplitDelta);
 
   if (!enabled) return null;
 
@@ -88,6 +90,10 @@ export default function ExperienceUI({
           ghostBestScore={ghostBestScore}
         />
       </div>
+
+      {!cleanTest && lastSplitDelta && (
+        <GhostTimeDelta key={lastSplitDelta.id} deltaSeconds={lastSplitDelta.deltaSeconds} />
+      )}
 
       {isLoadingLevel && <LoadingDisplay message="Loading custom level..." />}
       {reachLoading && <LoadingDisplay message="Loading Reach..." />}

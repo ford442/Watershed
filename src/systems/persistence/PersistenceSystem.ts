@@ -10,6 +10,8 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import persistenceSchema from '../../formats/persistence.schema.json';
 import type { GameSettings } from '../GameState';
+import type { RunSplitEntry } from '../ghost/ghostCodec';
+import type { WsGhostFile } from '../ghost/ghostExport';
 
 // =============================================================================
 // TYPES
@@ -26,6 +28,8 @@ export interface RunBest {
   /** Fastest completion time in milliseconds (lower = better). Absent until first timed finish. */
   bestTimeMs?: number;
   ghostData?: string;
+  /** Checkpoint splits from the run that set bestTimeMs. Absent until a timed PB exists. */
+  splits?: RunSplitEntry[];
 }
 
 export interface PersistencePayload {
@@ -40,6 +44,8 @@ export interface PersistencePayload {
   /** Last selected pre-run launch hour (0–23). */
   launchHour?: number;
   runs: Record<string, RunBest>;
+  /** Last imported rival `.wsghost` per map id — offline-only, no accounts/server. */
+  rivals?: Record<string, WsGhostFile>;
 }
 
 // =============================================================================
@@ -235,17 +241,31 @@ export function updateRunBest(runKey: string, patch: Partial<RunBest>): RunBest 
 }
 
 /**
- * Persist a ghost payload only when the new run time is a personal best (lower is better).
+ * Persist a ghost payload (and its checkpoint splits) only when the new run
+ * time is a personal best (lower is better).
  * Returns true when the ghost was updated, false when the existing PB is retained.
+ *
+ * `splits` is optional so existing 3-arg call sites keep compiling; omitting it
+ * leaves any previously-stored splits untouched instead of clearing them.
  */
-export function updatePBGhost(runKey: string, timeMs: number, ghostData: string): boolean {
+export function updatePBGhost(
+  runKey: string,
+  timeMs: number,
+  ghostData: string,
+  splits?: RunSplitEntry[],
+): boolean {
   const current = getRunBest(runKey);
   if (current.bestTimeMs !== undefined && current.bestTimeMs <= timeMs) {
     return false;
   }
   touchCache((data) => {
     const run = data.runs[runKey] ?? { bestScore: 0, bestAirTime: 0 };
-    data.runs[runKey] = { ...run, bestTimeMs: timeMs, ghostData };
+    data.runs[runKey] = {
+      ...run,
+      bestTimeMs: timeMs,
+      ghostData,
+      splits: splits ?? run.splits,
+    };
   });
   flushPersistence();
   return true;
@@ -332,6 +352,34 @@ export function getGhostBestScoreForMap(mapId: string): number {
     }
   }
   return best;
+}
+
+// =============================================================================
+// RIVAL GHOST (Phase C — offline, one imported rival per map, no server)
+// =============================================================================
+
+/** Last imported rival ghost for a map, or undefined when none was loaded. */
+export function getRivalGhost(mapId: string): WsGhostFile | undefined {
+  return loadPersistence().rivals?.[mapId];
+}
+
+/** Remember an imported `.wsghost` as the rival to race for its map. */
+export function setRivalGhost(mapId: string, file: WsGhostFile): void {
+  touchCache((data) => {
+    data.rivals = { ...(data.rivals ?? {}), [mapId]: file };
+  });
+  flushPersistence();
+}
+
+/** Drop the rival ghost for a map (e.g. after it's beaten, or on request). */
+export function clearRivalGhost(mapId: string): void {
+  touchCache((data) => {
+    if (!data.rivals || !(mapId in data.rivals)) return;
+    const next = { ...data.rivals };
+    delete next[mapId];
+    data.rivals = next;
+  });
+  flushPersistence();
 }
 
 /** Test helper — reset module cache between unit tests. */

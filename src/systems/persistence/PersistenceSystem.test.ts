@@ -2,19 +2,23 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useGameStore } from '../GameState';
 import {
   buildRunKey,
+  clearRivalGhost,
   getCompletedMaps,
   getDefaultPersistence,
   getLastMapId,
   getLaunchHour,
+  getRivalGhost,
   getRunBest,
   loadPersistence,
   markMapCompleted,
   resetPersistenceForTests,
   setLastMapId,
   setLaunchHour,
+  setRivalGhost,
   STORAGE_KEY,
   updateRunBest,
 } from './PersistenceSystem';
+import type { WsGhostFile } from '../ghost/ghostExport';
 import { initPersistence, resetPersistenceBootstrapForTests } from './persistenceBootstrap';
 
 describe('PersistenceSystem', () => {
@@ -105,5 +109,39 @@ describe('PersistenceSystem', () => {
     expect(getLaunchHour()).toBe(17);
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     expect(stored.launchHour).toBe(17);
+  });
+
+  describe('rival ghost storage', () => {
+    const file: WsGhostFile = {
+      codecVersion: 2,
+      mapId: 'meander',
+      timeMs: 42_000,
+      ghostData: 'abc123',
+      exportedAt: 1700000000000,
+    };
+
+    it('is empty until a rival is loaded', () => {
+      expect(getRivalGhost('meander')).toBeUndefined();
+    });
+
+    it('stores and retrieves a rival ghost per map', () => {
+      setRivalGhost('meander', file);
+      expect(getRivalGhost('meander')).toEqual(file);
+      expect(getRivalGhost('hydro_dam')).toBeUndefined();
+    });
+
+    it('persists rivals to localStorage', () => {
+      setRivalGhost('meander', file);
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      expect(stored.rivals.meander).toEqual(file);
+    });
+
+    it('clears a rival without touching other maps', () => {
+      setRivalGhost('meander', file);
+      setRivalGhost('hydro_dam', { ...file, mapId: 'hydro_dam' });
+      clearRivalGhost('meander');
+      expect(getRivalGhost('meander')).toBeUndefined();
+      expect(getRivalGhost('hydro_dam')).toBeDefined();
+    });
   });
 });

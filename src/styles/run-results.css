@@ -1,0 +1,162 @@
+/* ============================================================
+   Run Results Panel — split table + PB/rival comparison,
+   shown inside the wipeout and journey-complete overlays.
+   ============================================================ */
+
+.run-results-panel {
+  margin: 24px auto 0;
+  max-width: 480px;
+  width: 100%;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px 20px;
+  font-family: monospace;
+}
+
+.run-results-panel__times {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.run-results-panel__time-cell {
+  text-align: center;
+  position: relative;
+}
+
+.run-results-panel__time-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 4px;
+}
+
+.run-results-panel__time-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f5f1e8;
+}
+
+.run-results-panel__time-cell--pb .run-results-panel__time-value {
+  color: #4fd1c7;
+}
+
+.run-results-panel__time-cell--rival .run-results-panel__time-value {
+  color: #f59e0b;
+}
+
+.run-results-panel__pb-badge {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0a0a0a;
+  background: #fbbf24;
+  border-radius: 6px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.run-results-panel__splits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.run-results-panel__split-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  align-items: center;
+}
+
+.run-results-panel__split-seg {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.run-results-panel__split-time {
+  color: #e5e7eb;
+  text-align: right;
+}
+
+.run-results-panel__split-time--wide {
+  text-align: left;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.run-results-panel__split-delta {
+  text-align: right;
+  font-weight: 700;
+  min-width: 4.5em;
+}
+
+.run-results-panel__split-row--gold {
+  background: rgba(251, 191, 36, 0.1);
+}
+.run-results-panel__split-row--gold .run-results-panel__split-delta {
+  color: #fbbf24;
+}
+
+.run-results-panel__split-row--green .run-results-panel__split-delta {
+  color: #4ade80;
+}
+
+.run-results-panel__split-row--red .run-results-panel__split-delta {
+  color: #f87171;
+}
+
+.run-results-panel__split-row--neutral .run-results-panel__split-delta {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.run-results-panel__split-row--dnf {
+  grid-template-columns: auto 1fr;
+  background: rgba(239, 68, 68, 0.1);
+}
+.run-results-panel__split-row--dnf .run-results-panel__split-seg {
+  color: #f87171;
+  font-weight: 700;
+}
+
+.run-results-panel__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.run-results-panel__action-btn {
+  flex: 1;
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.75);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: auto;
+}
+
+.run-results-panel__action-btn:hover {
+  border-color: #4fd1c7;
+  color: #4fd1c7;
+  background: rgba(79, 209, 199, 0.08);
+}

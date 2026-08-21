@@ -4,6 +4,7 @@ import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
 import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
+import { commitTimedFinish } from '../../systems/ghost/runFinish';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -247,6 +248,10 @@ export function useExperienceWorld({
   }, [debug, reachError, reachLoading]);
 
   // Persist campaign progress once when a map journey completes.
+  // commitTimedFinish() itself runs synchronously at the setJourneyComplete()
+  // call sites (see performSeamlessMapHandoff below and TrackManager's
+  // onSegmentEnter) — not here — so the PB commit lands before any component
+  // can render isJourneyComplete=true and read a stale getRunBest().
   useEffect(() => {
     if (!isJourneyComplete) return;
     markMapCompleted(activeDefaultMapId);
@@ -457,6 +462,10 @@ export function useExperienceWorld({
       if (decision.kind !== 'continue') {
         // Final map — fall through to classic journey-complete overlay.
         if (!useGameStore.getState().isJourneyComplete) {
+          // Commit the timed PB synchronously, before the Zustand flip below —
+          // any component reading isJourneyComplete=true must see the final
+          // getRunBest() already, not a stale pre-commit value.
+          commitTimedFinish(getActiveRunKey(fromMapId));
           useGameStore.getState().setJourneyComplete();
         }
         return false;
