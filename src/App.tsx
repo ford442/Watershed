@@ -405,6 +405,11 @@ function App() {
             onCreated={({ gl }) => {
               debug.runStage('visualization', () => undefined);
               setCanvasReady(true);
+              // Intentional Canvas remounts (quality key change, renderer swap)
+              // dispose the old context and fire `webglcontextlost` without a
+              // matching restore on the new element. Clear the toast whenever a
+              // fresh renderer comes up successfully.
+              setWebglRecovering(false);
               const canvas = gl.domElement;
               const onContextLost = (event: Event) => {
                 event.preventDefault();

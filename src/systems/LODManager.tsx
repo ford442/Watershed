@@ -13,6 +13,19 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { useGameStore } from './GameState';
+import {
+  ADAPTIVE_LIVE_BAND,
+  stepAdaptiveQuality,
+} from './lod/adaptiveQuality';
+
+export {
+  ADAPTIVE_LIVE_BAND,
+  stepAdaptiveQuality,
+} from './lod/adaptiveQuality';
+export type {
+  AdaptiveQualityStepInput,
+  AdaptiveQualityStepResult,
+} from './lod/adaptiveQuality';
 
 // Quality levels
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
@@ -224,43 +237,34 @@ export const LODProvider: React.FC<LODProviderProps> = ({
         }
       }
 
-      // Adaptive quality with sustained-history hysteresis
+      // Adaptive quality with sustained-history hysteresis — live band only.
       if (enableAdaptive) {
-        const qualities: QualityLevel[] = ['low', 'medium', 'high', 'ultra'];
-        const currentIndex = qualities.indexOf(quality);
-        const downgradeThreshold = targetFPS - 10;
-        const upgradeThreshold = targetFPS + 5;
+        const step = stepAdaptiveQuality({
+          quality,
+          currentFPS,
+          targetFPS,
+          consecutiveLowSeconds: consecutiveLowSeconds.current,
+          consecutiveHighSeconds: consecutiveHighSeconds.current,
+        });
+        consecutiveLowSeconds.current = step.consecutiveLowSeconds;
+        consecutiveHighSeconds.current = step.consecutiveHighSeconds;
 
-        if (currentFPS < downgradeThreshold && currentIndex > 0) {
-          consecutiveLowSeconds.current += 1;
-          consecutiveHighSeconds.current = 0;
-
-          if (consecutiveLowSeconds.current >= 3) {
-            const newQ = qualities[currentIndex - 1];
+        if (step.nextQuality && step.nextQuality !== quality) {
+          const descending =
+            ADAPTIVE_LIVE_BAND.indexOf(step.nextQuality) <
+            ADAPTIVE_LIVE_BAND.indexOf(quality);
+          if (descending) {
             console.warn(
-              `[LODManager] Sustained low FPS detected: ${currentFPS} (threshold ${downgradeThreshold}). ` +
-              `Downgrading quality: ${quality} → ${newQ}`
+              `[LODManager] Sustained low FPS detected: ${currentFPS} (threshold ${targetFPS - 10}). ` +
+                `Downgrading quality: ${quality} → ${step.nextQuality}`
             );
-            setQuality(newQ);
-            consecutiveLowSeconds.current = 0;
-          }
-        } else if (currentFPS > upgradeThreshold && currentIndex < qualities.length - 1) {
-          consecutiveHighSeconds.current += 1;
-          consecutiveLowSeconds.current = 0;
-
-          if (consecutiveHighSeconds.current >= 2) {
-            const newQ = qualities[currentIndex + 1];
+          } else {
             console.log(
-              `[LODManager] Sustained high FPS detected: ${currentFPS} (threshold ${upgradeThreshold}). ` +
-              `Upgrading quality: ${quality} → ${newQ}`
+              `[LODManager] Sustained high FPS detected: ${currentFPS} (threshold ${targetFPS + 5}). ` +
+                `Upgrading quality: ${quality} → ${step.nextQuality}`
             );
-            setQuality(newQ);
-            consecutiveHighSeconds.current = 0;
           }
-        } else {
-          // FPS is in the stable band — decay counters slowly so momentary spikes don't reset history
-          consecutiveLowSeconds.current = Math.max(0, consecutiveLowSeconds.current - 1);
-          consecutiveHighSeconds.current = Math.max(0, consecutiveHighSeconds.current - 1);
+          setQuality(step.nextQuality);
         }
       }
 
