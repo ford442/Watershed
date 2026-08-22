@@ -54,7 +54,7 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 
 **Consequence:** `medium` ↔ `high` ↔ `ultra` mid-run does **not** remount — no spawn pop, no WASM reload, no lost wipeout/ghost state. `high` → `low` (or back) **does** remount, because `low` turns antialias off and antialias cannot change on a live WebGL context. `low` also relaxes `failIfMajorPerformanceCaveat`, which is a context attribute too.
 
-**Adaptive LOD** (`LODManager.stepAdaptiveQuality`) therefore stays inside the live band (`medium` / `high` / `ultra`) and never auto-selects `low`. Auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. Choosing `low` remains a deliberate Settings action.
+**Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) therefore stays inside the live band (`medium` / `high` / `ultra`) and never auto-selects `low`. Auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. Choosing `low` remains a deliberate Settings action.
 
 `rendererContextCreationKey()` is the single place that decides this: it serializes exactly the creation-only attributes, and `buildCanvasIdentityKey()` composes the Canvas `key` from that plus renderer preference, material backend, and the context-loss epoch. The quality preset is deliberately absent from the key.
 

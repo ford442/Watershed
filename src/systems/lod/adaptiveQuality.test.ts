@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ADAPTIVE_LIVE_BAND,
   stepAdaptiveQuality,
-} from './LODManager';
+} from './adaptiveQuality';
 
 describe('ADAPTIVE_LIVE_BAND', () => {
   it('excludes low so auto-scaling never remounts the Canvas', () => {
