@@ -50,7 +50,7 @@ For detailed information on the game's level design, including segment configura
 
 Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`, typed `src/` surface, Rapier+WASM worker default-on, WebGL quality contract without remounting Rapier, gpu-chores on the session device, nonlinear SWE (ABI 6, wetting/drying, bed *pointer*), ghost league Phase C (splits / results / rival), TSL opt-in for water/river/canyon.
 
-Previous board (closed — do not pick): [#369](https://github.com/ford442/Watershed/issues/369)–[#375](https://github.com/ford442/Watershed/issues/375). #374 Phase 1 (nonlinear SWE) landed; Phase 2/3 (bathymetry, events) continue as #385 / #389. #370 WebGPU-required boot stays closed — leftover GLSL still blocks it (#387).
+Previous board (closed — do not pick): [#369](https://github.com/ford442/Watershed/issues/369)–[#375](https://github.com/ford442/Watershed/issues/375). #374 Phase 1 (nonlinear SWE) landed; Phase 2/3 (bathymetry, force coupling, events) continue as #385 / #386 / #389. #370 WebGPU-required boot stays closed — leftover GLSL still blocks it (#387).
 
 Open board (unchecked = genuinely open), **foundation before a sixth biome**:
 
