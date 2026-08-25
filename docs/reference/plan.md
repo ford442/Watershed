@@ -1,8 +1,12 @@
 # WATERSHED Development Plan
 
-## Current Status: Prototype Phase
+## Current Status: Playable campaign, hydro field still split (2026-08-23)
 
-The project has established a spline-based track system. The immediate focus is on implementing the core gameplay loop.
+Spline treadmill, five authored maps, survival/ghost/forecast, Rapier+WASM worker, and nonlinear SWE (ABI 6) are on `main`. **Do not start a sixth biome** until the water you see and the water that pushes you are the same field.
+
+Active board: [#385](https://github.com/ford442/Watershed/issues/385) bed sampling → [#386](https://github.com/ford442/Watershed/issues/386) force coupling → [#389](https://github.com/ford442/Watershed/issues/389) hydroEvents. Graphics: [#387](https://github.com/ford442/Watershed/issues/387) leftover GLSL. Hygiene: [#388](https://github.com/ford442/Watershed/issues/388). Later product: [#391](https://github.com/ford442/Watershed/issues/391).
+
+Historical notes below are still useful; unchecked items that contradict the board above are stale.
 
 ---
 

@@ -273,7 +273,7 @@ Prefer `createSWEGrid()` which wraps these with automatic live views.
 ## TypeScript usage
 
 ```typescript
-import { getWasm, createSWEGrid } from './systems/WatershedWasm';
+import { getWasm, createSWEGrid } from './systems/water/WatershedWasm';
 
 // In a React component or game-init function:
 const wasm = await getWasm();
@@ -349,12 +349,11 @@ at test time.
 - **No GC pressure:** All simulation memory is in WASM heap (`allocateGrid`).
 - **CFL safety:** `stepShallowWater` clamps `dt` internally — no instability
   at low frame rates.
-- **SIMD:** `swe.cpp` uses 4-wide kernels (`simdf32.h`) for the damping pass and
-  the two grid sweeps (pressure gradient + divergence). Emscripten builds pass
-  `-msimd128` so those kernels compile to `wasm_simd128`; host uses SSE2/NEON.
-  Boundary cells and `N % 4` tails stay scalar. Goldens live in `host_smoke.cpp`
-  (32×24, CFL clamp + damping). Do not treat the compile flag as a free lunch
-  without those inner loops.
+- **SIMD:** After ABI 6, `swe.cpp` uses 4-wide kernels (`simdf32.h`) for the
+  **damping pass only**. The nonlinear HLL / wetting-drying update is scalar.
+  Emscripten still passes `-msimd128` (chores + damping). Host uses SSE2/NEON.
+  Do not treat the compile flag as a vectorized Riemann solver — see
+  [#390](https://github.com/ford442/Watershed/issues/390).
 
 ---
 
@@ -362,8 +361,10 @@ at test time.
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 1 — Build system | ✅ Done | `build.sh`, `CMakeLists.txt`, Vite config, npm scripts |
-| 2 — Core physics | ✅ Done | Buoyancy, drag, flow force, SWE step |
-| 3 — Integration | 🔜 Next | Wire into `RaftVehicle.tsx` and `WaterSystem.ts`; Web Worker loading |
-| 4 — SIMD particle sim | 🔜 Future | 1 000-particle waterfall on WASM side |
-| 5 — pthreads expansion | 🔜 Future | Dedicate a worker thread to SWE simulation |
+| 1 — Build system | ✅ Done | `build.sh`, `CMakeLists.txt`, Vite config, npm scripts; `compile_commands` + host smoke (#372) |
+| 2 — Core physics | ✅ Done | Buoyancy, drag, flow force; nonlinear SWE ABI 6 (wetting/drying, bed pointer) |
+| 3 — Integration | ✅ Done | Default-on Rapier+WASM worker; `WaterForceSystem` + TS fallback |
+| 4 — Bed + force coupling | 🔜 Next | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` ([#386](https://github.com/ford442/Watershed/issues/386)) |
+| 5 — Source terms / events | 🔜 Next | `hydroEvents[]` ([#389](https://github.com/ford442/Watershed/issues/389)) |
+| 6 — SIMD + particles | 🔜 Future | HLL SIMD honesty + WASM particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
+| 7 — pthreads / compute SWE | 🔜 Later | Dedicated SWE thread or WGSL twin — only after TSL remainder ([#387](https://github.com/ford442/Watershed/issues/387), epic [#391](https://github.com/ford442/Watershed/issues/391)) |

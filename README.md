@@ -30,7 +30,7 @@ The project uses a hybrid architecture to achieve high performance and realism w
 
 *   **UI and Orchestration:** [React](https://react.dev/) with [React Three Fiber (R3F)](https://docs.pmnd.rs/react-three-fiber/getting-started/introduction) for rendering 3D scenes.
 *   **Physics:** [Rapier](https://rapier.rs/) running in a Web Worker, compiled to Wasm for near-native performance. This keeps the main thread free from heavy physics calculations.
-*   **Water Simulation:** Custom GLSL shaders injected via `onBeforeCompile` and `ShaderMaterial` (in `FlowingWater.tsx`, `RiverShader.ts`, and `CanyonMaterial.ts`) drive the live water surface, wetness, moss, and caustics. A separate experimental WebGPU compute path (`HeightmapFlow.ts`) may run on a secondary GPU device when available, but the renderer itself is WebGL2-only. WebGPU/TSL migration is deferred to issue #256 path A.
+*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6) displaces `FlowingWater`; gameplay forces use the same `calculateWaterForce` ABI (TypeScript fallback when WASM is missing). Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. `HeightmapFlow.ts` is dormant — SWE stays C++ until the TSL remainder lands ([#387](https://github.com/ford442/Watershed/issues/387)).
 *   **Asset Streaming:** A "treadmill" or chunk-based system loads and unloads parts of the world as the player moves, with object pooling to minimize garbage collection.
 
 ## Project Structure
@@ -48,17 +48,19 @@ For detailed information on the game's level design, including segment configura
 
 ## Roadmap
 
-Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`, water flow forces (`physics/WaterForces` + `WaterForceSystem`), typed `src/` surface, Rapier in-app physics with optional worker proxy paths as already wired.
+Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`, typed `src/` surface, Rapier+WASM worker default-on, WebGL quality contract without remounting Rapier, gpu-chores on the session device, nonlinear SWE (ABI 6, wetting/drying, bed *pointer*), ghost league Phase C (splits / results / rival), TSL opt-in for water/river/canyon.
 
-Open board (unchecked = genuinely open):
+Previous board (closed — do not pick): [#369](https://github.com/ford442/Watershed/issues/369)–[#375](https://github.com/ford442/Watershed/issues/375). #374 Phase 1 (nonlinear SWE) landed; Phase 2/3 (bathymetry, force coupling, events) continue as #385 / #386 / #389. #370 WebGPU-required boot stays closed — leftover GLSL still blocks it (#387).
 
-- [x] [#369](https://github.com/ford442/Watershed/issues/369) — gpu-chores: blur/hist/reduce helpers (SWE / heightmap flow stays domain)
-- [x] [#371](https://github.com/ford442/Watershed/issues/371) — org/TS: retire stale plans, namespace `src/systems/`, split 800-LOC hosts, delete dead duals
-- [ ] [#370](https://github.com/ford442/Watershed/issues/370) — WebGPU required: hard-fail boot probe (Chrome/Edge)
-- [ ] [#372](https://github.com/ford442/Watershed/issues/372) — C++ toolchain honesty (compile_commands, host tests, water-force ABI)
-- [x] [#373](https://github.com/ford442/Watershed/issues/373) — WebGL context contract: apply quality without remounting Rapier
-- [ ] [#374](https://github.com/ford442/Watershed/issues/374) — Hydrology as identity (nonlinear SWE, bathymetry, authored river events)
-- [ ] [#375](https://github.com/ford442/Watershed/issues/375) — Ghost league Phase C (rival race, checkpoint splits, results screen)
+Open board (unchecked = genuinely open), **foundation before a sixth biome**:
+
+- [ ] [#385](https://github.com/ford442/Watershed/issues/385) — **P0** Hydrology Phase 2: canyon collision mesh → SWE bed `b` (wetting/drying is unused while `b` is zeros)
+- [ ] [#386](https://github.com/ford442/Watershed/issues/386) — **P0** One water field: SWE `(η,u,w)` must drive Rapier forces (today `flowDir` is hardcoded `(0,-1)`)
+- [ ] [#387](https://github.com/ford442/Watershed/issues/387) — **P0** Finish TSL migration of leftover GLSL so `?renderer=webgpu` can stop being a no-op
+- [ ] [#388](https://github.com/ford442/Watershed/issues/388) — **P0** Hygiene: leftover `systems/*.tsx` hosts, host `-ffp-contract=off`, context `alpha` honesty
+- [ ] [#389](https://github.com/ford442/Watershed/issues/389) — **P1** Authored `hydroEvents[]` + C++ source terms; retire ad-hoc `VortexForceSystem` impulses
+- [ ] [#390](https://github.com/ford442/Watershed/issues/390) — **P1** SIMD honesty for nonlinear HLL + WASM particle SoA (waterfall still a JS pool)
+- [ ] [#391](https://github.com/ford442/Watershed/issues/391) — **P2** Epic: playable drainage basin — ghosts vs the river, user-authored maps, one compute backend
 
 See also [`docs/reference/plan.md`](docs/reference/plan.md) and [`AGENTS.md`](AGENTS.md) for live architecture.
 
