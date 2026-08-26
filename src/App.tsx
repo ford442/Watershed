@@ -6,6 +6,7 @@ import { useProgress } from '@react-three/drei';
 import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
 import DebugPanel from './components/DebugPanel';
+import SWEBedDebugOverlay, { isSWEDebugEnabled } from './components/SWEBedDebugOverlay';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { SettingsSync } from './ui/SettingsSync';
 import { rehydrateSettings } from './systems/settings/useSettingsStore';
@@ -98,6 +99,9 @@ function App() {
     const raw = params.get('physicsDebug');
     return raw === '1' || raw === 'true';
   });
+  // #374 Phase 2: false-color view of the sampled SWE bed. URL-only, no
+  // DebugPanel toggle — it is a simulation inspector, not a play setting.
+  const [sweDebug] = useState(() => !isCleanTestMode() && isSWEDebugEnabled());
   const [rendererPreference, setRendererPreference] = useState<RendererPreference>(() =>
     parseRendererPreference()
   );
@@ -505,6 +509,7 @@ function App() {
               <SettingsPanel onClose={() => setSettingsOpen(false)} />
             </div>
           )}
+          {sweDebug && <SWEBedDebugOverlay />}
           {debug.debugEnabled && !cleanTest && (
             <DebugPanel
               debug={debug}
