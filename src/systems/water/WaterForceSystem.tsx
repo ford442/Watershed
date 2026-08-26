@@ -28,6 +28,12 @@ import {
   clearSWEHeightField,
 } from './SWEHeightField';
 import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuality';
+import {
+  getBathymetryRevision,
+  getRegisteredBathymetryCount,
+  sampleBathymetryInto,
+} from './bathymetrySampler';
+import { publishSWEBedSnapshot, clearSWEBedSnapshot } from './sweBedDebug';
 import { useQualityPreset } from '../GameState';
 import {
   collectWaterForceBodies,
@@ -174,6 +180,57 @@ function uploadHeightTexture(
   });
 }
 
+interface BedState {
+  valid: boolean;
+  revision: number;
+  originX: number;
+  originZ: number;
+}
+
+/**
+ * Re-rasterize the canyon floor into `grid.b` when the sampling window has
+ * moved a whole cell or the treadmill has swapped segments. Every cell is
+ * rewritten, so a recycled slot cannot leak its predecessor's bed.
+ */
+function refreshBed(
+  grid: SWEGrid,
+  originX: number,
+  originZ: number,
+  budget: SWEBudget,
+  state: BedState,
+): void {
+  const revision = getBathymetryRevision();
+  const moved =
+    Math.abs(originX - state.originX) >= budget.cellSize ||
+    Math.abs(originZ - state.originZ) >= budget.cellSize;
+  if (state.valid && revision === state.revision && !moved) return;
+
+  const covered = sampleBathymetryInto(
+    grid.b,
+    originX,
+    originZ,
+    budget.cellSize,
+    grid.width,
+    grid.height,
+  );
+
+  state.valid = true;
+  state.revision = revision;
+  state.originX = originX;
+  state.originZ = originZ;
+
+  publishSWEBedSnapshot({
+    bed: grid.b,
+    width: grid.width,
+    height: grid.height,
+    cellSize: budget.cellSize,
+    originX,
+    originZ,
+    coveredCells: covered,
+    sourceCount: getRegisteredBathymetryCount(),
+  });
+}
+
 export function WaterForceSystem({
   vehicleRef,
   vehicleType = 'runner',
@@ -188,6 +245,9 @@ export function WaterForceSystem({
   const originRef = useRef({ x: 0, z: 0 });
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
   const stepAccumulatorRef = useRef(0);
+  // Bed refresh bookkeeping: the sampled bathymetry only needs re-rasterizing
+  // when the window slides a whole cell or the treadmill changes segments.
+  const bedStateRef = useRef({ valid: false, revision: -1, originX: 0, originZ: 0 });
   const [wasmReady, setWasmReady] = useState(false);
 
   // Visual SWE budget follows the live quality preset (LODManager may downgrade
@@ -221,6 +281,7 @@ export function WaterForceSystem({
       setWaterForceSystemActive(false);
       registerVehicleWaterBody(null);
       clearSWEHeightField();
+      clearSWEBedSnapshot();
       setSWEStatus(false, null);
     };
   }, []);
@@ -254,6 +315,7 @@ export function WaterForceSystem({
     texture.wrapT = THREE.ClampToEdgeWrapping;
     textureRef.current = texture;
     stepAccumulatorRef.current = 0;
+    bedStateRef.current = { valid: false, revision: -1, originX: 0, originZ: 0 };
     setSWEStatus(true, `${budget.width}x${budget.height}`);
 
     return () => {
@@ -261,6 +323,8 @@ export function WaterForceSystem({
       gridRef.current = null;
       texture.dispose();
       textureRef.current = null;
+      bedStateRef.current.valid = false;
+      clearSWEBedSnapshot();
       updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
       setSWEStatus(false, null);
     };
@@ -300,6 +364,8 @@ export function WaterForceSystem({
     if (budget.enabled && grid && texture && wasmRef.current) {
       // Step-rate budget: accumulate render deltas and take one SWE step per
       // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
+      refreshBed(grid, originX, originZ, budget, bedStateRef.current);
+
       const interval = sweStepInterval(budget);
       stepAccumulatorRef.current += dt;
       if (stepAccumulatorRef.current >= interval) {
@@ -312,8 +378,8 @@ export function WaterForceSystem({
           grid.hPtr,
           grid.uPtr,
           grid.wPtr,
-          // Phase 2 (#374) fills this from the canyon collision mesh; a
-          // zero-filled bed is a flat channel and behaves like the old solver.
+          // Bed sampled from the canyon floor by refreshBed() above (#374
+          // Phase 2). Uncovered cells read as dry land, not open water.
           grid.bPtr,
           grid.width,
           grid.height,

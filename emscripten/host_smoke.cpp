@@ -4,7 +4,9 @@
  * Covers buoyancy, one calculateWaterForce fixture (same numbers as
  * waterForceParity.test.ts), and the nonlinear SWE contract: CFL clamp,
  * uniform-flow preservation, lake-at-rest well-balancing over a bed bump,
- * wetting/drying, and a 1D dam-break slice. No Embind.
+ * wetting/drying, a 1D dam-break slice, and a sampled U-channel bed of the
+ * shape src/systems/water/bathymetrySampler.ts rasterizes (#374 Phase 2).
+ * No Embind.
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host
@@ -236,6 +238,81 @@ int main() {
               "far upstream is still undisturbed this early");
         check(std::abs(w[at(dam)]) < 1e-6f,
               "1D dam break generates no transverse velocity");
+    }
+
+    // 3e. Sampled canyon U-channel (#374 Phase 2). The TS bathymetry sampler
+    //      writes exactly this shape into `b`: a wet thalweg a couple of cells
+    //      wide flanked by banks standing well above the free surface. The bed
+    //      must hold the water in the channel and stay well-balanced there.
+    {
+        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+
+        // Channel runs along +z (downstream), centred on the middle column.
+        const int centre = kWidth / 2;
+        const int halfChannel = 4;
+        const float bankBed = kH + 2.f;  // BATHYMETRY_DRY_BED
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < kWidth; ++x) {
+                const int offset = std::abs(x - centre);
+                const std::size_t i = static_cast<std::size_t>(z * kWidth + x);
+                if (offset > halfChannel) {
+                    b[i] = bankBed;
+                } else {
+                    // Gently shoaling U-profile: flat thalweg, rising to the bank.
+                    const float r = static_cast<float>(offset) / static_cast<float>(halfChannel);
+                    b[i] = 0.9f * kH * r * r;
+                }
+            }
+        }
+
+        auto isChannel = [&](int x) { return std::abs(x - centre) <= halfChannel; };
+
+        float maxVel = 0.f;
+        float maxSurfaceDrift = 0.f;
+        for (int step = 0; step < 60; ++step) {
+            stepBed(h, u, w, b, 0.01f);
+            for (int z = 0; z < kHeight; ++z) {
+                for (int x = 0; x < kWidth; ++x) {
+                    const std::size_t i = static_cast<std::size_t>(z * kWidth + x);
+                    if (kH + h[i] - b[i] <= 1e-4f) continue;
+                    maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
+                    maxSurfaceDrift = std::max(maxSurfaceDrift, std::abs(h[i]));
+                }
+            }
+        }
+
+        // Same documented epsilon as 3b: a sampled canyon must not invent a
+        // current out of its own bathymetry.
+        check(maxVel < 1e-5f, "sampled U-channel at rest generates no current");
+        check(maxSurfaceDrift < 1e-5f, "sampled U-channel at rest keeps a flat surface");
+
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < kWidth; ++x) {
+                const std::size_t i = static_cast<std::size_t>(z * kWidth + x);
+                const float depth = kH + h[i] - b[i];
+                if (isChannel(x)) {
+                    check(depth > 1e-3f, "U-channel thalweg stays wet");
+                } else {
+                    check(depth <= 1e-4f, "U-channel bank stays dry");
+                }
+            }
+        }
+
+        // A splash in the thalweg must not climb out onto the banks.
+        h[static_cast<std::size_t>((kHeight / 2) * kWidth + centre)] = 0.4f;
+        for (int step = 0; step < 40; ++step) {
+            stepBed(h, u, w, b, 0.005f);
+        }
+        for (int z = 0; z < kHeight; ++z) {
+            for (int x = 0; x < kWidth; ++x) {
+                if (isChannel(x)) continue;
+                const std::size_t i = static_cast<std::size_t>(z * kWidth + x);
+                check(kH + h[i] - b[i] <= 1e-4f, "U-channel bank stays dry after a splash");
+            }
+        }
     }
 
     if (g_failures != 0) {

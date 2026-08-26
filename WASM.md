@@ -225,6 +225,13 @@ Field conventions (part of the ABI):
 | `u`, `w` | Velocity components (m/s) |
 | `b` | Bed elevation above the channel floor datum (m); total depth is `H + h − b` |
 
+`b` is filled from the canyon (#374 Phase 2): `src/systems/water/bathymetrySampler.ts`
+rasterizes the live track segments' U-profile onto the player-centred grid and
+`WaterForceSystem` uploads it through `grid.b` before each step, so slot canyons run a
+narrow wet thalweg between dry banks while a delta stays wet across the same grid. Passing
+`0` still means a flat channel, and the host golden in `host_smoke.cpp` covers the sampled
+U-channel shape. Writing `grid.b` uses the existing heap view — it is **not** an ABI change.
+
 `h` stays a perturbation because `FlowingWater` displaces vertices by it
 directly. Boundaries are transmissive, so waves leave the moving player-centred
 window rather than reflecting.

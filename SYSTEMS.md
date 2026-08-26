@@ -506,6 +506,30 @@ the pending queue is capped, so splashes can't accumulate work nobody drains.
 **Constraint:** do NOT quality-gate the force math. Buoyancy / drag / flow are
 gameplay-affecting and must run identically at every preset.
 
+### SWE bathymetry — `src/systems/water/bathymetrySampler.ts`
+
+The solver's bed field `b` is **sampled from the canyon**, not left at 0 (#374 Phase 2).
+Each live `TrackSegment` publishes a bathymetry source from the same
+`GeometryBuildContext` its collision mesh is built from (`useGeometries`), keyed by segment
+ID so a recycled treadmill slot replaces its own entry. `WaterForceSystem.refreshBed()`
+rasterizes the registered sources into `grid.b` before stepping — only when the
+player-centred window slides a whole cell or the registered set changes, not every frame.
+
+**Datum:** `computeCanyonFloorHeight`'s `yHeight` carries a large per-biome constant (a slot
+canyon floor sits ~3.9 above its path point, a summer canyon near 0), so each segment is
+re-datumed against its own thalweg: the channel-centre floor at mid-segment maps to `b = 0`
+(full still depth `H`), and lateral rise above it shallows the simulated depth by the same
+amount. Rock noise is excluded, matching `buildCollisionGeometry`. Cells no segment covers
+get `BATHYMETRY_DRY_BED` (`H + 2`) — dry land, not open water. Every cell is rewritten on
+each refresh, so a previous slot's bed cannot leak into the next window.
+
+The result: a slot canyon dries out a couple of metres off-centre, a delta/pond stays wet
+across the whole window, at identical grid sizes. `?sweDebug=1` mounts `SWEBedDebugOverlay`
+(`src/components/SWEBedDebugOverlay.tsx`), a false-color view of the sampled bed — blue deep,
+cyan shallow, tan dry.
+
+**Constraint:** `low` quality allocates no grid, so bathymetry upload is a no-op there.
+
 ---
 
 ## WASM Module
