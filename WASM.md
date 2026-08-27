@@ -115,7 +115,7 @@ Both CMake configures set `CMAKE_EXPORT_COMPILE_COMMANDS ON`:
 | Host (`emscripten/build-host`) | `emscripten/build-host/compile_commands.json` (copied to `emscripten/compile_commands.json`) | clangd via repo-root `.clangd` |
 | WASM (`emscripten/build`) | `emscripten/build/compile_commands.json` (`em++`) | not for editing on machines without emsdk |
 
-Do not commit generated compile databases. Host smoke pins buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping + bump golden).
+After clone, `pnpm test:native` configures + builds the host tree (`emscripten/build-host`), which generates clangd's `compile_commands.json` there. Do not commit generated compile databases, and do not symlink them to the repo root — `emscripten/build-host` is the single source of truth for clangd. Host smoke pins buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping + bump golden).
 
 ---
 

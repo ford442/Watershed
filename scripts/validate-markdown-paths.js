@@ -16,6 +16,7 @@ const DEFAULT_INPUTS = [
   'SYSTEMS.md',
   'docs/README.md',
   'docs/reference',
+  'src/LEVEL_DESIGN.md',
 ];
 
 const PATH_PATTERNS = [
@@ -41,6 +42,7 @@ const BANNED_PATH_SUBSTRINGS = [
   'WaterForces.jsx',
   'WaterFlowForce.jsx',
   'webgpu-react-app',
+  'systems/WatershedWasm',
 ];
 
 function collectMarkdownFiles(entry) {

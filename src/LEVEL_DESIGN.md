@@ -25,7 +25,7 @@ This document outlines the gameplay mechanics, segment configurations, and perfo
 
 ## 💻 Segment Technical Specifications
 
-The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use these precise values.
+The `getSegmentConfig` function in `TrackManager.tsx` should be updated to use these precise values.
 
 | Segment ID(s) | Phase Description | Type | Biome | Width | Meander | Vertical Bias | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -70,16 +70,16 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 | Segment configs (0-19+) | ✅ | `src/maps/meander_to_waterfall.ts` |
 | Waterfall: 400 particles | ✅ | `src/components/Environment/WaterfallParticles.tsx` |
 | Waterfall: camera shake 0.5 | ✅ | `src/maps/meander_to_waterfall.ts` |
-| Waterfall: gravity shift | ✅ | `src/Experience.jsx` |
+| Waterfall: gravity shift | ✅ | `src/experience/InnerExperience.tsx` |
 | Waterfall: sound fade | ✅ | `src/hooks/useSegmentAudio.ts` |
-| Splash pool: invisible catch collider | ✅ | `src/components/TrackSegment.jsx` |
+| Splash pool: invisible catch collider | ✅ | `src/components/TrackSegment/` |
 | Splash pool: flow speed 0.3 | ✅ | `src/maps/meander_to_waterfall.ts` |
-| Pond: fog 0.8 | ✅ | `src/components/TrackSegment.jsx` (`PondFog`) |
+| Pond: fog 0.8 | ✅ | `src/components/TrackSegment/` (`PondFog`) |
 | Pond: tree density 0.3 | ✅ | `src/maps/meander_to_waterfall.ts` |
-| Pond: draw distance 50 | ✅ | `src/components/TrackSegment.jsx` |
+| Pond: draw distance 50 | ✅ | `src/components/TrackSegment/` |
 | Rapids: high rock density | ✅ | `src/maps/meander_to_waterfall.ts` |
 | Biome transition 2000ms | ✅ | `src/systems/BiomeSystem.tsx` |
-| Debounced onBiomeChange | ✅ | `src/systems/ChunkManager.ts` |
+| Debounced onBiomeChange | ✅ | `src/systems/map/ChunkManager.ts` |
 | Particle LOD (400→100) | ✅ | `src/components/Environment/WaterfallParticles.tsx` |
 
 ## 🎨 Required Assets
@@ -112,7 +112,7 @@ The `getSegmentConfig` function in `TrackManager.jsx` should be updated to use t
 ## 🧊 Early Game Segments (Segments −3 to −1)
 
 > **Epic:** Source Expansion — Pre-meander alpine origin
-> **Chain trigger:** `GLACIER_START_INDEX` is now **−3**. `Experience.jsx` passes it to
+> **Chain trigger:** `GLACIER_START_INDEX` is now **−3**. `src/experience/InnerExperience.tsx` passes it to
 > `TrackManager` by default, so every run begins in the glacier and flows through the
 > alpine meadow before reaching the summer meander at segment 0.
 
@@ -158,7 +158,7 @@ act on disjoint interactions and must not be double-counted — see
 - **Terrain colours:** Summer greens with bright grass tints
 - **Water colour:** Clear turquoise `#4a90d9` with bright edge foam
 - **High wildflower density:** `particleCount: 150` drives a 2.5× wildflower spawn boost
-  in `TrackSegment.jsx` for normal segments.
+  in `TrackSegment/` for normal segments.
 - **Lush vegetation:** `treeDensity: 0.9` (near-maximum), low rock density for unobstructed banks
 - **Gentle current:** `flowSpeed: 0.8` gives a calm, scenic drift
 
@@ -167,14 +167,14 @@ act on disjoint interactions and must not be double-counted — see
 - **IceSpray:** `src/components/Environment/IceSpray.tsx` renders up to 20 billboarded crystal sprites
   per active glacier segment. Particles burst from `vehiclePos` when `playerVelocityForParticles > 0`.
   Intensity = `min(1, speed / 8)` — no spray at rest, full burst at 8 m/s+.
-- **Wildflower boost:** For normal segments with `particleCount > 0`, `TrackSegment.jsx` multiplies
+- **Wildflower boost:** For normal segments with `particleCount > 0`, `TrackSegment/` multiplies
   wildflower spawn probability by `min(particleCount / 60, 2.5)`. Alpine stream at 150 gives the
   maximum 2.5× boost, creating dense flower banks.
 
 ### How to Activate
 
 ```tsx
-// In Experience.jsx (already wired by default):
+// In src/experience/InnerExperience.tsx (already wired by default):
 import { GLACIER_START_INDEX } from '../maps/meander_to_waterfall';
 
 <TrackManager startIndex={GLACIER_START_INDEX} ... />
@@ -218,12 +218,12 @@ import { GLACIER_START_INDEX } from '../maps/meander_to_waterfall';
 |-----------|---------|-------|
 | Biome profile | `src/configs/TrackBiomes.ts` (`slotCanyon`) | Width 24, wallHeight 26, wallTightness 0.78 |
 | Segment progression | `src/maps/meander_to_waterfall.ts` (indices 20–22) | Also in `meander_to_waterfall.json` as `canyon-sunset` |
-| Wall geometry | `src/components/TrackSegment.jsx` | `isSlotCanyon` path: higher walls (22+), power 1.8 curve |
-| Wall material | `src/materials/CanyonMaterial.js` | Triplanar mapping, geological layering shader |
-| Biome mapping | `src/systems/ReachNormalizer.ts` | `canyon-sunset` → `slotCanyon` |
+| Wall geometry | `src/components/TrackSegment/` | `isSlotCanyon` path: higher walls (22+), power 1.8 curve |
+| Wall material | `src/materials/CanyonMaterial.ts` | Triplanar mapping, geological layering shader |
+| Biome mapping | `src/systems/reach/ReachNormalizer.ts` | `canyon-sunset` → `slotCanyon` |
 | God rays | `src/systems/volumetric/VolumetricGodRays.tsx` | Screen-space ray marching |
-| Sun shafts | `src/components/TrackSegment.jsx` (placement) | Narrow vertical beams from above |
-| Mist/spray | `src/components/TrackSegment.jsx` (placement) | Enhanced density, taller mist columns |
+| Sun shafts | `src/components/TrackSegment/` (placement) | Narrow vertical beams from above |
+| Mist/spray | `src/components/TrackSegment/` (placement) | Enhanced density, taller mist columns |
 | Floating debris | `src/components/Environment/FloatingDebris.tsx` | Physics-enabled driftwood/pinecones |
 | Rock decorations | `src/components/CanyonDecorations.tsx` | Instanced boulders with colliders |
 | Canyon biome component | `src/biomes/CanyonBiome.tsx` | Procedural canyon floor geometry |
@@ -252,7 +252,7 @@ Enhanced raft movement and controls for superior velocity feel and precise canyo
 | System | File(s) | Description |
 |--------|---------|-------------|
 | Vehicle tuning config | `src/constants/vehicleTuning.ts` | Centralized tunable parameters: baseSpeed 32, flowResponsiveness 14, drift, wall riding, boost |
-| Paddle thrust & steering | `src/systems/VehicleSystem.ts` (`RaftVehicle`) | Impulse-based lateral steering, torque on turns, speed cap 20 m/s |
+| Paddle thrust & steering | `src/systems/vehicle/VehicleSystem.ts` (`RaftVehicle`) | Impulse-based lateral steering, torque on turns, speed cap 20 m/s |
 | Wall riding / wall boost | `src/constants/vehicleTuning.ts` | wallRayDistance 3.5, wallBoostImpulse 9.0, friction-based wall interaction |
 | Drift mechanics | `src/constants/vehicleTuning.ts` | driftFlowScale 0.18, driftTorqueScale 2.0, driftLateralRetention 0.92 |
 | Camera dynamics | `src/constants/game.ts` | Velocity lag 0.15, lean factor 0.3, FOV speed scale 8 (75→90) |
