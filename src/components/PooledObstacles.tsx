@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider, type RapierRigidBody } from '@react-three/rapier';
-import { extendRockMaterial } from '../utils/RockShader';
+import { createRockSurfaceMaterial } from '../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
 import type { ObstacleSlot } from '../systems/pools/ObstaclePool';
 import type { PooledObstaclesProps } from './Environment/types';
 
@@ -52,15 +53,14 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
   const pooledRockMaterial = useMemo(() => {
     if (!rockMaterial) return rockMaterial;
     const clone = rockMaterial.clone();
-    extendRockMaterial(clone, {
+    return createRockSurfaceMaterial(resolveMaterialBackend().backend, clone, {
       mossStrength: 0.2,
       streakStrength: 0.35,
       bandStrength: 0.0,
       dustStrength: 0.35,
       rimStrength: 0.3,
       wetnessRange: 1.5,
-    });
-    return clone;
+    }) as typeof clone;
   }, [rockMaterial]);
 
   useEffect(() => {

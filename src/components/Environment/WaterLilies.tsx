@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
-import { toVegetationMaterial } from './types';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const PAD_COLOR = new THREE.Color('#3a8c40');
@@ -53,12 +53,11 @@ export default function WaterLilies({ transforms }: BiomeDecorationProps) {
       side: THREE.DoubleSide,
       vertexColors: true,
     });
-    extendVegetationMaterial(toVegetationMaterial(mat), { windStrength: 0.035, windSpeed: 1.0, mode: 'bob' });
-    return mat;
+    return createVegetationSurfaceMaterial(resolveMaterialBackend().backend, mat, { windStrength: 0.035, windSpeed: 1.0, mode: 'bob' });
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
+    updateVegetationSurfaceMaterial(material, state.clock.elapsedTime);
   });
 
   useEffect(() => {

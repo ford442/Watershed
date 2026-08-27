@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
-import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
-import { toVegetationMaterial } from './types';
 
 const STALK_GREEN = new THREE.Color('#3f6b34');
 const STALK_TIP = new THREE.Color('#7da84a');
@@ -143,12 +143,11 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
         side: THREE.DoubleSide,
         vertexColors: true,
     });
-    extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: PLANT_HEIGHT, windStrength: 0.09, windSpeed: 1.1 });
-    return mat;
+    return createVegetationSurfaceMaterial(resolveMaterialBackend().backend, mat, { plantHeight: PLANT_HEIGHT, windStrength: 0.09, windSpeed: 1.1 });
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(toVegetationMaterial(reedsMaterial), state.clock.elapsedTime);
+    updateVegetationSurfaceMaterial(reedsMaterial, state.clock.elapsedTime);
   });
 
   const instances = useMemo(() => {

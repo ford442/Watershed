@@ -111,6 +111,10 @@ Input stride is 8 floats per sample:
 [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
 ```
 
+`flowDirX/Z` and the tick `flowSpeed` come from [`sampleSWEFlow.ts`](../../src/systems/water/sampleSWEFlow.ts)
+(SWE `u,w`, dry speed 0, authored flowSpeed as a cap). The worker does not grow a
+second water-force channel. `low` quality keeps authored `(0, −1) * flowSpeed`.
+
 Output stride is 8 floats per sample:
 
 ```txt

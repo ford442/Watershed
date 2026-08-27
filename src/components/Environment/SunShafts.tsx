@@ -5,6 +5,9 @@ import { useBiome } from '../../systems/BiomeSystem';
 import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 
 import type { BiomeDecorationTransform, WeatherAwareDecorationProps, WeatherUpdateEvent } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();
@@ -141,7 +144,7 @@ export default function SunShafts({
 
   // Custom Shader Material for Volumetric Light
   const material = useMemo(() => {
-    const mat = new THREE.ShaderMaterial({
+    const mat = createBackendShaderMaterial(resolveMaterialBackend().backend, {
       transparent: true,
       depthWrite: false, // Don't occlude
       blending: THREE.AdditiveBlending, // Light adds up
@@ -316,7 +319,7 @@ export default function SunShafts({
   }), []);
 
   const moteGeometry = useMemo(() => (transforms ? buildDustMotes(transforms) : null), [transforms]);
-  const moteMaterial = useMemo(() => new THREE.ShaderMaterial({
+  const moteMaterial = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -341,25 +344,29 @@ export default function SunShafts({
 
     const overcastBlend = (weatherType === 'overcast' || weatherType === 'storm') ? 1 : weatherType === 'fog' ? 0.6 : 0;
 
-    if (material.uniforms) {
-      material.uniforms.time.value = state.clock.elapsedTime;
-      material.uniforms.flowSpeed.value = flowSpeed;
-      material.uniforms.shaftOpacity.value = isSlotCanyon ? 0.5 : 0.3;
-      material.uniforms.timeOfDay.value = timeOfDay;
-      material.uniforms.speedStreak.value = streakStrengthRef.current;
-      material.uniforms.sunDirection.value.copy(sunWorldPosition).normalize();
-      material.uniforms.overcastBlend.value = overcastBlend;
+    const shaftU = materialUniformBag(material);
+    if (shaftU) {
+      if (shaftU.time) shaftU.time.value = state.clock.elapsedTime;
+      if (shaftU.flowSpeed) shaftU.flowSpeed.value = flowSpeed;
+      if (shaftU.shaftOpacity) shaftU.shaftOpacity.value = isSlotCanyon ? 0.5 : 0.3;
+      if (shaftU.timeOfDay) shaftU.timeOfDay.value = timeOfDay;
+      if (shaftU.speedStreak) shaftU.speedStreak.value = streakStrengthRef.current;
+      if (shaftU.sunDirection?.value instanceof THREE.Vector3) {
+        shaftU.sunDirection.value.copy(sunWorldPosition).normalize();
+      }
+      if (shaftU.overcastBlend) shaftU.overcastBlend.value = overcastBlend;
     }
 
     if (dustMaterial) {
       dustMaterial.opacity = (isSlotCanyon ? 0.2 : 0.12) + streakStrengthRef.current * 0.18 * (1 - overcastBlend * 0.6);
     }
 
-    if (moteMaterial.uniforms) {
-      moteMaterial.uniforms.time.value = state.clock.elapsedTime;
-      moteMaterial.uniforms.flowSpeed.value = flowSpeed;
+    const moteU = materialUniformBag(moteMaterial);
+    if (moteU) {
+      if (moteU.time) moteU.time.value = state.clock.elapsedTime;
+      if (moteU.flowSpeed) moteU.flowSpeed.value = flowSpeed;
       const sunFacing = THREE.MathUtils.clamp(sunWorldPosition.y / 60, 0.25, 1.0);
-      moteMaterial.uniforms.sunFacing.value = sunFacing * (1 - overcastBlend * 0.5);
+      if (moteU.sunFacing) moteU.sunFacing.value = sunFacing * (1 - overcastBlend * 0.5);
     }
   }, 0);
 

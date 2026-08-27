@@ -17,11 +17,21 @@
 export type WaterNodeModule = typeof import('./water/WaterNodeMaterial');
 export type RiverNodeModule = typeof import('./RiverNodeMaterial');
 export type CanyonNodeModule = typeof import('./CanyonNodeMaterial');
+export type SkyNodeModule = typeof import('./sky/SkyNodeMaterial');
+export type WeatherNodeModule = typeof import('./weather/WeatherNodeMaterial');
+export type VfxNodeModule = typeof import('./vfx/VfxNodeMaterials');
+export type FoliageNodeModule = typeof import('./foliage/FoliageNodeMaterials');
+export type CritterNodeModule = typeof import('./critters/CritterNodeMaterials');
 
 export interface NodeMaterialModules {
   water: WaterNodeModule;
   river: RiverNodeModule;
   canyon: CanyonNodeModule;
+  sky: SkyNodeModule;
+  weather: WeatherNodeModule;
+  vfx: VfxNodeModule;
+  foliage: FoliageNodeModule;
+  critters: CritterNodeModule;
 }
 
 let cached: NodeMaterialModules | null = null;
@@ -36,8 +46,13 @@ export function loadNodeMaterials(): Promise<NodeMaterialModules> {
     import('./water/WaterNodeMaterial'),
     import('./RiverNodeMaterial'),
     import('./CanyonNodeMaterial'),
-  ]).then(([water, river, canyon]) => {
-    cached = { water, river, canyon };
+    import('./sky/SkyNodeMaterial'),
+    import('./weather/WeatherNodeMaterial'),
+    import('./vfx/VfxNodeMaterials'),
+    import('./foliage/FoliageNodeMaterials'),
+    import('./critters/CritterNodeMaterials'),
+  ]).then(([water, river, canyon, sky, weather, vfx, foliage, critters]) => {
+    cached = { water, river, canyon, sky, weather, vfx, foliage, critters };
     pending = null;
     return cached;
   });

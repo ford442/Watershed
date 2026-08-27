@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
-import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeScopedDecorationProps } from './types';
-import { toVegetationMaterial } from './types';
 
 const BASE_COLORS = {
   default: '#4e7336',
@@ -87,12 +87,11 @@ export default function Grass({ transforms, biome = 'canyonSummer' }: BiomeScope
       side: THREE.DoubleSide,
       vertexColors: true,
     });
-    extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: 1.0, windStrength: 0.07, windSpeed: 1.6 });
-    return mat;
+    return createVegetationSurfaceMaterial(resolveMaterialBackend().backend, mat, { plantHeight: 1.0, windStrength: 0.07, windSpeed: 1.6 });
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
+    updateVegetationSurfaceMaterial(material, state.clock.elapsedTime);
   });
 
   const instances = useMemo(() => {

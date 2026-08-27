@@ -7,6 +7,14 @@ import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { BiomePalettes } from '../configs/BiomePalettes';
 import { useGameStore } from '../systems/GameState';
 import type { BiomeId } from '../configs/biomes';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
+import {
+  createCloudMaterial,
+  createMoonMaterial,
+  createSkyDomeMaterial,
+  createStarMaterial,
+} from '../materials/sky/createSkyMaterials';
+import { materialUniformBag } from '../materials/dual/materialUniformBag';
 
 interface SkyProfile {
   sunPosition: [number, number, number];
@@ -88,111 +96,6 @@ const SKY_OVERRIDES: Partial<Record<BiomeId | 'pond' | 'slotCanyon', SkyProfile>
         mieDirectionalG: 0.78,
     },
 };
-
-// Two cloud layers at different "altitudes" (Y position) get slightly different
-// scroll speeds, scales and shading response so they read as separate strata
-// rather than a single flat ribbon.
-const CLOUD_VERTEX = `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const CLOUD_FRAGMENT = `
-  uniform float time;
-  uniform float opacity;
-  uniform float sunsetBlend;
-  uniform float overcastBlend;
-  uniform vec3 cloudColorA;
-  uniform vec3 cloudColorB;
-  uniform vec3 sunDir2D;
-  varying vec2 vUv;
-
-  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-  float noise(vec2 p){
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
-               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-  }
-  float fbm(vec2 p) {
-    float v = 0.0;
-    float a = 0.5;
-    for (int i = 0; i < 5; i++) {
-      v += a * noise(p);
-      p *= 2.0;
-      a *= 0.5;
-    }
-    return v;
-  }
-
-  void main() {
-    vec2 uv = vUv * 2.8;
-    uv.x += time * 0.003;
-    uv.y += time * 0.0018;
-
-    float n = fbm(uv);
-    float cloud = smoothstep(0.52, 0.8, n);
-
-    // Cheap directional self-shadowing: sample the density a short hop toward
-    // the sun. Where that sample is denser than here, this texel sits in the
-    // shadow of the cloud mass facing the sun and reads darker.
-    float nSun = fbm(uv + sunDir2D.xz * 0.18);
-    float cloudSun = smoothstep(0.52, 0.8, nSun);
-    float litFactor = clamp(0.5 + (cloud - cloudSun) * 1.6, 0.0, 1.0);
-
-    vec3 cloudColor = mix(cloudColorA, cloudColorB, sunsetBlend);
-    vec3 shadowColor = cloudColor * 0.55;
-    vec3 highlightColor = mix(cloudColor, vec3(1.0, 0.98, 0.92), 0.55);
-    vec3 litColor = mix(shadowColor, highlightColor, litFactor);
-
-    // Overcast weather flattens and darkens the cloud deck toward a uniform grey.
-    litColor = mix(litColor, vec3(0.55, 0.57, 0.6), overcastBlend * 0.85);
-    float cloudCoverage = mix(cloud, clamp(cloud + 0.35, 0.0, 1.0), overcastBlend);
-
-    float alpha = cloudCoverage * opacity;
-    gl_FragColor = vec4(litColor, alpha);
-  }
-`;
-
-// --- Star field -----------------------------------------------------------
-// Custom point-sprite star field: per-star magnitude, color tint and twinkle
-// phase, plus an optional "band" mode that biases stars toward a great-circle
-// to fake a Milky Way streak for the midnight-mist biome.
-const STAR_VERTEX = `
-  attribute float aSize;
-  attribute float aPhase;
-  attribute float aSpeed;
-  uniform float uTime;
-  varying vec3 vColor;
-  varying float vTwinkle;
-
-  void main() {
-    vColor = color;
-    float twinkle = 0.55 + 0.45 * sin(uTime * aSpeed + aPhase);
-    vTwinkle = twinkle;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    gl_PointSize = aSize * twinkle * (300.0 / -mvPosition.z);
-  }
-`;
-
-const STAR_FRAGMENT = `
-  uniform float uOpacity;
-  varying vec3 vColor;
-  varying float vTwinkle;
-
-  void main() {
-    vec2 uv = gl_PointCoord - 0.5;
-    float d = length(uv);
-    float core = smoothstep(0.5, 0.0, d);
-    if (core <= 0.001) discard;
-    gl_FragColor = vec4(vColor, core * vTwinkle * uOpacity);
-  }
-`;
 
 interface StarFieldOptions {
   radiusMin: number;
@@ -298,29 +201,6 @@ const getSkyProfile = (biomeId: string, isSlotCanyon: boolean): SkyProfile => {
     return SKY_OVERRIDES[biomeId as keyof typeof SKY_OVERRIDES] || SKY_OVERRIDES.canyonSummer!;
 };
 
-type CloudShaderMaterial = THREE.ShaderMaterial & {
-    uniforms: {
-        time: { value: number };
-        opacity: { value: number };
-        sunsetBlend: { value: number };
-        overcastBlend: { value: number };
-        sunDir2D: { value: THREE.Vector3 };
-        cloudColorA?: { value: THREE.Color };
-        cloudColorB?: { value: THREE.Color };
-    };
-};
-
-type StarShaderMaterial = THREE.ShaderMaterial & {
-    uniforms: {
-        uTime: { value: number };
-        uOpacity: { value: number };
-    };
-};
-
-type MoonMaterial = THREE.MeshStandardMaterial & {
-    userData: { shader?: THREE.WebGLProgramParametersWithUniforms };
-};
-
 export default function EnhancedSky() {
     const { scene } = useThree();
     const { currentBiome, timeOfDay, transitionProgress } = useBiome();
@@ -328,12 +208,14 @@ export default function EnhancedSky() {
     const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
     const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
     const [weatherType, setWeatherType] = useState('clear');
+    const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
 
     const fogObjRef = useRef<THREE.Fog | null>(null);
-    const cloudMatNearRef = useRef<CloudShaderMaterial | null>(null);
-    const cloudMatFarRef = useRef<CloudShaderMaterial | null>(null);
-    const starsMatRef = useRef<StarShaderMaterial | null>(null);
-    const milkyMatRef = useRef<StarShaderMaterial | null>(null);
+    const cloudMatNearRef = useRef<THREE.Material | null>(null);
+    const cloudMatFarRef = useRef<THREE.Material | null>(null);
+    const starsMatRef = useRef<THREE.Material | null>(null);
+    const milkyMatRef = useRef<THREE.Material | null>(null);
+    const skyDomeMatRef = useRef<THREE.Material | null>(null);
     const moonGroupRef = useRef<THREE.Group | null>(null);
     const moonLightRef = useRef<THREE.PointLight | null>(null);
     const sunGlowRef = useRef<THREE.Sprite | null>(null);
@@ -403,34 +285,60 @@ export default function EnhancedSky() {
     );
     const moonGeometry = useMemo(() => buildMoonGeometry(), []);
 
-    const moonMaterial = useMemo(() => {
-        const mat = new THREE.MeshStandardMaterial({
-            color: '#cfd6e2',
-            emissive: '#3a4252',
-            emissiveIntensity: 0.4,
-            roughness: 0.95,
-            metalness: 0.0,
-            transparent: true,
-            opacity: 0,
-        });
+    const moonMaterial = useMemo(
+        () => createMoonMaterial(materialBackend, MOON_PHASE),
+        [materialBackend],
+    );
 
-        mat.onBeforeCompile = (shader) => {
-            shader.uniforms.uPhase = { value: MOON_PHASE };
-            shader.fragmentShader = `uniform float uPhase;\n` + shader.fragmentShader.replace(
-                '#include <dithering_fragment>',
-                `
-// Phase terminator: darken the portion of the disc facing away from the
-// illuminated limb based on view-space normal X component.
-float terminator = smoothstep(-0.15, 0.15, normalize(vNormal).x - (uPhase - 0.5) * 2.0);
-gl_FragColor.rgb *= mix(0.18, 1.0, terminator);
-#include <dithering_fragment>
-`
-            );
-            mat.userData.shader = shader;
-        };
-        mat.needsUpdate = true;
+    const cloudMatNear = useMemo(() => {
+        const mat = createCloudMaterial(materialBackend, {
+            opacity: 0.42,
+            sunsetBlend: 0,
+            overcastBlend: 0,
+            cloudColorA: new THREE.Color('#fff2e2'),
+            cloudColorB: new THREE.Color('#ffcc88'),
+            sunDir2D: new THREE.Vector3(0.3, 0, 0.3),
+        });
+        cloudMatNearRef.current = mat;
         return mat;
-    }, []);
+    }, [materialBackend]);
+
+    const cloudMatFar = useMemo(() => {
+        const mat = createCloudMaterial(materialBackend, {
+            time: 23,
+            opacity: 0.34,
+            sunsetBlend: 0,
+            overcastBlend: 0,
+            cloudColorA: new THREE.Color('#f8eee0'),
+            cloudColorB: new THREE.Color('#f0b773'),
+            sunDir2D: new THREE.Vector3(0.3, 0, 0.3),
+        });
+        cloudMatFarRef.current = mat;
+        return mat;
+    }, [materialBackend]);
+
+    const starsMat = useMemo(() => {
+        const mat = createStarMaterial(materialBackend, { uOpacity: 0 });
+        starsMatRef.current = mat;
+        return mat;
+    }, [materialBackend]);
+
+    const milkyMat = useMemo(() => {
+        const mat = createStarMaterial(materialBackend, { uOpacity: 0 });
+        milkyMatRef.current = mat;
+        return mat;
+    }, [materialBackend]);
+
+    const skyDomeMat = useMemo(() => {
+        const mat = createSkyDomeMaterial(materialBackend, {
+            zenithColor: new THREE.Color('#4a7ab5'),
+            horizonColor: new THREE.Color('#c8d8e8'),
+            sunColor: new THREE.Color('#fff4d2'),
+            sunDir: new THREE.Vector3(0.3, 1, 0.3),
+        });
+        skyDomeMatRef.current = mat;
+        return mat;
+    }, [materialBackend]);
 
     useEffect(() => {
         const onWeatherUpdate = (event: Event) => {
@@ -487,33 +395,31 @@ gl_FragColor.rgb *= mix(0.18, 1.0, terminator);
 
         const sunDirNorm = sunWorldPosRef.current.clone().normalize();
 
-        if (cloudMatNearRef.current?.uniforms) {
-            cloudMatNearRef.current.uniforms.time.value = state.clock.elapsedTime;
-            cloudMatNearRef.current.uniforms.opacity.value = cloudOpacity;
-            cloudMatNearRef.current.uniforms.sunsetBlend.value = sunsetBlend;
-            cloudMatNearRef.current.uniforms.overcastBlend.value = overcastBlend;
-            cloudMatNearRef.current.uniforms.sunDir2D.value.copy(sunDirNorm);
-        }
-        if (cloudMatFarRef.current?.uniforms) {
-            cloudMatFarRef.current.uniforms.time.value = state.clock.elapsedTime + 23.0;
-            cloudMatFarRef.current.uniforms.opacity.value = cloudOpacity * 0.8;
-            cloudMatFarRef.current.uniforms.sunsetBlend.value = sunsetBlend;
-            cloudMatFarRef.current.uniforms.overcastBlend.value = overcastBlend;
-            cloudMatFarRef.current.uniforms.sunDir2D.value.copy(sunDirNorm);
-        }
+        const writeCloud = (mat: THREE.Material | null, time: number, opacity: number) => {
+            const u = materialUniformBag(mat);
+            if (!u) return;
+            if (u.time) u.time.value = time;
+            if (u.opacity) u.opacity.value = opacity;
+            if (u.sunsetBlend) u.sunsetBlend.value = sunsetBlend;
+            if (u.overcastBlend) u.overcastBlend.value = overcastBlend;
+            if (u.sunDir2D?.value instanceof THREE.Vector3) u.sunDir2D.value.copy(sunDirNorm);
+        };
+        writeCloud(cloudMatNearRef.current, state.clock.elapsedTime, cloudOpacity);
+        writeCloud(cloudMatFarRef.current, state.clock.elapsedTime + 23.0, cloudOpacity * 0.8);
 
         const starsBlockedByWeather = weatherType === 'overcast' || weatherType === 'fog' || weatherType === 'storm';
         const starAlpha = starsBlockedByWeather ? 0 : nightFactor;
 
-        if (starsMatRef.current?.uniforms) {
-            starsMatRef.current.uniforms.uTime.value = state.clock.elapsedTime;
-            starsMatRef.current.uniforms.uOpacity.value = starAlpha;
-        }
-        if (milkyMatRef.current?.uniforms) {
-            milkyMatRef.current.uniforms.uTime.value = state.clock.elapsedTime;
-            const milkyBoost = currentBiome.id === 'midnightMist' ? 1.0 : 0.35;
-            milkyMatRef.current.uniforms.uOpacity.value = starAlpha * milkyBoost;
-        }
+        const starNear = materialUniformBag(starsMatRef.current);
+        if (starNear?.uTime) starNear.uTime.value = state.clock.elapsedTime;
+        if (starNear?.uOpacity) starNear.uOpacity.value = starAlpha;
+        const starMilky = materialUniformBag(milkyMatRef.current);
+        if (starMilky?.uTime) starMilky.uTime.value = state.clock.elapsedTime;
+        const milkyBoost = currentBiome.id === 'midnightMist' ? 1.0 : 0.35;
+        if (starMilky?.uOpacity) starMilky.uOpacity.value = starAlpha * milkyBoost;
+
+        const dome = materialUniformBag(skyDomeMatRef.current);
+        if (dome?.sunDir?.value instanceof THREE.Vector3) dome.sunDir.value.copy(sunDirNorm);
 
         // Moon: fades in at night, sits opposite the sun.
         if (moonGroupRef.current) {
@@ -546,20 +452,24 @@ gl_FragColor.rgb *= mix(0.18, 1.0, terminator);
         }
     });
 
-    const dimFactor = isSlotCanyon ? 0.7 : 1.0;
-
     return (
         <group>
-            <Sky
-                distance={450000}
-                sunPosition={skySunPosition}
-                turbidity={skyProfile.turbidity}
-                rayleigh={skyProfile.rayleigh}
-                mieCoefficient={skyProfile.mieCoefficient}
-                mieDirectionalG={skyProfile.mieDirectionalG}
-            />
+            {materialBackend === 'tsl' ? (
+                <mesh frustumCulled={false} renderOrder={-10}>
+                    <sphereGeometry args={[400, 24, 16]} />
+                    <primitive object={skyDomeMat} attach="material" />
+                </mesh>
+            ) : (
+                <Sky
+                    distance={450000}
+                    sunPosition={skySunPosition}
+                    turbidity={skyProfile.turbidity}
+                    rayleigh={skyProfile.rayleigh}
+                    mieCoefficient={skyProfile.mieCoefficient}
+                    mieDirectionalG={skyProfile.mieDirectionalG}
+                />
+            )}
 
-            {/* Sun glow / lens-flare-ish billboard */}
             <sprite ref={sunGlowRef} position={skySunPosition} scale={[40, 40, 1]}>
                 <spriteMaterial
                     map={sunGlowTexture}
@@ -570,41 +480,9 @@ gl_FragColor.rgb *= mix(0.18, 1.0, terminator);
                 />
             </sprite>
 
-            {/* Twinkling star field */}
-            <points geometry={starGeometry} frustumCulled={false}>
-                <shaderMaterial
-                    ref={starsMatRef}
-                    transparent
-                    depthWrite={false}
-                    blending={THREE.AdditiveBlending}
-                    vertexColors
-                    uniforms={{
-                        uTime: { value: 0 },
-                        uOpacity: { value: 0 },
-                    }}
-                    vertexShader={STAR_VERTEX}
-                    fragmentShader={STAR_FRAGMENT}
-                />
-            </points>
+            <points geometry={starGeometry} frustumCulled={false} material={starsMat} />
+            <points geometry={milkyWayGeometry} frustumCulled={false} material={milkyMat} />
 
-            {/* Faint Milky Way band, prominent in the midnight-mist biome */}
-            <points geometry={milkyWayGeometry} frustumCulled={false}>
-                <shaderMaterial
-                    ref={milkyMatRef}
-                    transparent
-                    depthWrite={false}
-                    blending={THREE.AdditiveBlending}
-                    vertexColors
-                    uniforms={{
-                        uTime: { value: 0 },
-                        uOpacity: { value: 0 },
-                    }}
-                    vertexShader={STAR_VERTEX}
-                    fragmentShader={STAR_FRAGMENT}
-                />
-            </points>
-
-            {/* Moon: low-poly sphere with a baked phase terminator + soft moonlight */}
             <group ref={moonGroupRef}>
                 <mesh geometry={moonGeometry} material={moonMaterial} />
             </group>
@@ -616,53 +494,15 @@ gl_FragColor.rgb *= mix(0.18, 1.0, terminator);
                 decay={0}
             />
 
-            {/* Procedural cloud ribbon: two cheap layers, no external assets,
-                shaded toward the sun direction and flattened by overcast weather. */}
             <mesh position={[0, 40, 0]} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
                 <planeGeometry args={[700, 700, 1, 1]} />
-                <shaderMaterial
-                    ref={cloudMatNearRef}
-                    transparent
-                    depthWrite={false}
-                    side={THREE.DoubleSide}
-                    blending={THREE.NormalBlending}
-                    uniforms={{
-                        time: { value: 0 },
-                        opacity: { value: cloudOpacity },
-                        sunsetBlend: { value: sunsetBlend },
-                        overcastBlend: { value: overcastBlend },
-                        cloudColorA: { value: new THREE.Color('#fff2e2').multiplyScalar(dimFactor) },
-                        cloudColorB: { value: new THREE.Color('#ffcc88').multiplyScalar(dimFactor) },
-                        sunDir2D: { value: new THREE.Vector3(0.3, 0, 0.3) },
-                    }}
-                    vertexShader={CLOUD_VERTEX}
-                    fragmentShader={CLOUD_FRAGMENT}
-                />
+                <primitive object={cloudMatNear} attach="material" />
             </mesh>
-
             <mesh position={[0, 55, 0]} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
                 <planeGeometry args={[820, 820, 1, 1]} />
-                <shaderMaterial
-                    ref={cloudMatFarRef}
-                    transparent
-                    depthWrite={false}
-                    side={THREE.DoubleSide}
-                    blending={THREE.NormalBlending}
-                    uniforms={{
-                        time: { value: 23 },
-                        opacity: { value: cloudOpacity * 0.8 },
-                        sunsetBlend: { value: sunsetBlend },
-                        overcastBlend: { value: overcastBlend },
-                        cloudColorA: { value: new THREE.Color('#f8eee0').multiplyScalar(dimFactor) },
-                        cloudColorB: { value: new THREE.Color('#f0b773').multiplyScalar(dimFactor) },
-                        sunDir2D: { value: new THREE.Vector3(0.3, 0, 0.3) },
-                    }}
-                    vertexShader={CLOUD_VERTEX}
-                    fragmentShader={CLOUD_FRAGMENT}
-                />
+                <primitive object={cloudMatFar} attach="material" />
             </mesh>
 
-            {/* Linear haze for stronger depth layering; tightened in slot canyons. */}
             <fog ref={fogObjRef} attach="fog" args={[currentBiome.fogColor, currentBiome.fogNear, currentBiome.fogFar]} />
         </group>
     );

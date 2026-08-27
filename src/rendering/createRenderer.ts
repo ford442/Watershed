@@ -11,6 +11,7 @@ import type { MaterialBackend } from './materialBackend';
 import { updateRendererDiagnostics } from './rendererState';
 import { loadNodeMaterials } from '../materials/nodeMaterials';
 import { extractRendererGpuDevice, registerSessionGpuDevice } from './gpuChores/device';
+import { mustForceWebGLForNodeRenderer } from './nativeWebgpuGate';
 
 export interface GameRendererOptions {
   preference: RendererPreference;
@@ -45,8 +46,8 @@ export type GameRenderer = THREE.WebGLRenderer;
  *   `materialBackend: 'tsl'` (#256 path A, opt-in via `?material=tsl`) is the one
  *   exception: TSL materials need a node pipeline, so a WebGPURenderer is created
  *   with `forceWebGL: true` — WebGL2 on the wire, node materials above it. A real
- *   WebGPU backend still requires `?renderer=webgpu` on top, and is only sound once
- *   every live material is TSL.
+ *   WebGPU backend (`forceWebGL: false`) is gated on an empty residual GLSL
+ *   allowlist plus a ported (or skipped) post stack — see nativeWebgpuGate.ts.
  *
  *   See docs/reference/RENDERER_CONTRACT.md before changing the return type or fallback
  *   logic.
@@ -82,17 +83,15 @@ export async function createGameRenderer(
     return renderer;
   };
 
-  // TSL materials cannot run on THREE.WebGLRenderer — it has no node pipeline.
-  // They need WebGPURenderer, which we create with a WebGL2 backend unless the
-  // WebGPU preference is ALSO set. That is the point of path A: change the
-  // material pipeline first, the graphics API second.
+  // TSL materials cannot run on THREE.WebGLRenderer — they need WebGPURenderer.
+  // Native WebGPU stays closed until residual GLSL hosts and JSM post are gone.
   if (materialBackend === 'tsl') {
     const nodeRenderer = await createNodeRenderer({
       canvasProps,
       antialias,
       powerPreference,
       contextOptions,
-      forceWebGL: preference !== 'webgpu',
+      forceWebGL: mustForceWebGLForNodeRenderer() || preference !== 'webgpu',
     });
     if (nodeRenderer) return nodeRenderer;
 

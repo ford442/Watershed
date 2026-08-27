@@ -116,5 +116,8 @@ displaces vertices by it directly — switching it to an absolute depth would
 change every water visual and invalidate the visual-smoke baselines.
 
 `createSWEGrid()` allocates the bed alongside `h`/`u`/`w` and zero-fills it, so
-an untouched grid is a flat channel. Populating it from the canyon collision
-mesh is Phase 2 of [#374](https://github.com/ford442/Watershed/issues/374).
+an untouched grid is a flat channel. Live rasterization of the canyon floor is
+[`bathymetrySampler.ts`](../../src/systems/water/bathymetrySampler.ts). Gameplay
+forces sample `u,w` through [`sampleSWEFlow.ts`](../../src/systems/water/sampleSWEFlow.ts)
+into `calculateWaterForce` (authored `flowSpeed` caps `||(u,w)||`; dry cells
+do not pull). Canonical TypeScript usage: [../../WASM.md](../../WASM.md).

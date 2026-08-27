@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { WaterfallImpactZoneProps } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const MAX_DROPLETS = 180;
 
@@ -36,7 +39,7 @@ export default function WaterfallImpactZone({
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
   const plumeGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const plumeMaterial = useMemo(() => new THREE.ShaderMaterial({
+  const plumeMaterial = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -86,7 +89,7 @@ export default function WaterfallImpactZone({
   }), [intensity]);
 
   const foamGeometry = useMemo(() => new THREE.CircleGeometry(Math.max(2.5, width * 0.42), 40), [width]);
-  const foamMaterial = useMemo(() => new THREE.ShaderMaterial({
+  const foamMaterial = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -184,14 +187,10 @@ export default function WaterfallImpactZone({
     const foamMesh = foamRef.current;
     const dropletMesh = dropletRef.current;
 
-    const plumeMat = plumeMesh?.material;
-    if (plumeMat instanceof THREE.ShaderMaterial && plumeMat.uniforms) {
-      plumeMat.uniforms.time.value = time;
-    }
-    const foamMat = foamMesh?.material;
-    if (foamMat instanceof THREE.ShaderMaterial && foamMat.uniforms) {
-      foamMat.uniforms.time.value = time;
-    }
+    const plumeU = materialUniformBag(plumeMesh?.material as THREE.Material | undefined);
+    if (plumeU?.time) plumeU.time.value = time;
+    const foamU = materialUniformBag(foamMesh?.material as THREE.Material | undefined);
+    if (foamU?.time) foamU.time.value = time;
 
     if (!dropletMesh) return;
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { TrackSegmentGeometries, UseGeometriesParams } from '../types';
 import {
   buildCanyonGeometry,
@@ -9,6 +9,11 @@ import {
   computeWaterfallPos,
   type GeometryBuildContext,
 } from './geometryBuilders';
+import {
+  createSegmentBathymetrySource,
+  registerSegmentBathymetry,
+  unregisterSegmentBathymetry,
+} from '../../../systems/water/bathymetrySampler';
 
 export function useGeometries({
   active,
@@ -70,6 +75,18 @@ export function useGeometries({
     if (!buildCtx) return null;
     return buildWaterGeometry(buildCtx);
   }, [buildCtx, pathLength]);
+
+  // #374 Phase 2: publish this segment's canyon floor so the SWE grid can
+  // sample a real bed instead of stepping over zeros. Keyed by segment ID, so
+  // a recycled treadmill slot replaces its own entry.
+  useEffect(() => {
+    if (!buildCtx) {
+      unregisterSegmentBathymetry(segmentId);
+      return;
+    }
+    registerSegmentBathymetry(segmentId, createSegmentBathymetrySource(buildCtx));
+    return () => unregisterSegmentBathymetry(segmentId);
+  }, [buildCtx, segmentId, pathLength]);
 
   const waterfallPos = useMemo(() => {
     if (!active || !segmentPath) return null;

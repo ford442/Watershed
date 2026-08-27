@@ -225,6 +225,13 @@ Field conventions (part of the ABI):
 | `u`, `w` | Velocity components (m/s) |
 | `b` | Bed elevation above the channel floor datum (m); total depth is `H + h − b` |
 
+`b` is filled from the canyon (#374 Phase 2): `src/systems/water/bathymetrySampler.ts`
+rasterizes the live track segments' U-profile onto the player-centred grid and
+`WaterForceSystem` uploads it through `grid.b` before each step, so slot canyons run a
+narrow wet thalweg between dry banks while a delta stays wet across the same grid. Passing
+`0` still means a flat channel, and the host golden in `host_smoke.cpp` covers the sampled
+U-channel shape. Writing `grid.b` uses the existing heap view — it is **not** an ABI change.
+
 `h` stays a perturbation because `FlowingWater` displaces vertices by it
 directly. Boundaries are transmissive, so waves leave the moving player-centred
 window rather than reflecting.
@@ -254,7 +261,8 @@ useFrame((_, delta) => {
     grid.width, grid.height,
     delta, 9.8, grid.dx, 1.0   // H=1 m still-water depth
   );
-  // Read grid.h for updated water heights → drive mesh displacement
+  // Read grid.h for mesh displacement. Feed grid.u / grid.w through
+  // sampleSWEFlow into calculateWaterForce (dry cells: speed 0).
 });
 
 // On unmount:
@@ -274,6 +282,7 @@ Prefer `createSWEGrid()` which wraps these with automatic live views.
 
 ```typescript
 import { getWasm, createSWEGrid } from './systems/water/WatershedWasm';
+import { sampleSWEFlow } from './systems/water/sampleSWEFlow';
 
 // In a React component or game-init function:
 const wasm = await getWasm();
@@ -284,9 +293,26 @@ const upForce = wasm.computeBuoyancy(0.9, 1000, 9.8); // 8820 N
 // Drag calculation
 const drag = wasm.computeDragForce(3, 0, 0, 0.47, 1.5, 1000); // ~3157 N
 
-// SWE grid
+// SWE grid — always pass bPtr (ABI 6). Dry banks are H + η − b ≤ SWE_DRY_DEPTH.
 const grid = createSWEGrid(wasm, 32, 32, 0.5);
-// …use grid in per-frame loop…
+wasm.stepShallowWater(
+  grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
+  grid.width, grid.height, delta, 9.8, grid.dx, 1.0,
+);
+
+// Gameplay current: sample u,w (not a second impulse model). Authored
+// segment flowSpeed caps ||(u,w)|| · SWE_FLOW_SPEED_SCALE. Dry cells
+// return speed 0 (a zero flowDir would otherwise become (0, −1) in C++).
+const flow = sampleSWEFlow({
+  worldX: pos.x, worldZ: pos.z, flowSpeed: 1.2,
+  grid: { ...grid, cellSize: grid.dx, originX, originZ },
+  enabled: true,
+});
+const force = wasm.calculateWaterForce(
+  pos.x, pos.y, pos.z, vel.x, vel.y, vel.z,
+  flow.dirX, flow.dirZ, flow.speed, /* waterLevel, mass, … */
+);
+
 grid.dispose();
 ```
 
@@ -364,7 +390,7 @@ at test time.
 | 1 — Build system | ✅ Done | `build.sh`, `CMakeLists.txt`, Vite config, npm scripts; `compile_commands` + host smoke (#372) |
 | 2 — Core physics | ✅ Done | Buoyancy, drag, flow force; nonlinear SWE ABI 6 (wetting/drying, bed pointer) |
 | 3 — Integration | ✅ Done | Default-on Rapier+WASM worker; `WaterForceSystem` + TS fallback |
-| 4 — Bed + force coupling | 🔜 Next | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` ([#386](https://github.com/ford442/Watershed/issues/386)) |
+| 4 — Bed + force coupling | ✅ Done | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` via `sampleSWEFlow` ([#386](https://github.com/ford442/Watershed/issues/386)) |
 | 5 — Source terms / events | 🔜 Next | `hydroEvents[]` ([#389](https://github.com/ford442/Watershed/issues/389)) |
 | 6 — SIMD + particles | 🔜 Future | HLL SIMD honesty + WASM particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
 | 7 — pthreads / compute SWE | 🔜 Later | Dedicated SWE thread or WGSL twin — only after TSL remainder ([#387](https://github.com/ford442/Watershed/issues/387), epic [#391](https://github.com/ford442/Watershed/issues/391)) |

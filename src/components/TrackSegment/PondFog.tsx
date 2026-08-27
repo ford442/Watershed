@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const GROUND_MIST_VERTEX = `
   varying vec2 vUv;
@@ -104,7 +107,7 @@ export default function PondFog({ segmentCenter, waterLevel = 0.5 }: PondFogProp
 
   const groundMistMaterial = useMemo(
     () =>
-      new THREE.ShaderMaterial({
+      createBackendShaderMaterial(resolveMaterialBackend().backend, {
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
@@ -158,13 +161,12 @@ export default function PondFog({ segmentCenter, waterLevel = 0.5 }: PondFogProp
     if (groundMistRef.current) {
       groundMistRef.current.position.set(segmentCenter.x, waterLevel + 0.08, segmentCenter.z);
       const targetOpacity = isActiveRef.current ? 0.35 + stormBlend * 0.25 : 0;
-      groundMistMaterial.uniforms.opacity.value = THREE.MathUtils.lerp(
-        groundMistMaterial.uniforms.opacity.value as number,
-        targetOpacity,
-        0.04
-      );
-      groundMistMaterial.uniforms.time.value = state.clock.elapsedTime;
-      (groundMistMaterial.uniforms.tintColor.value as THREE.Color).copy(baseFogColor);
+      const u = materialUniformBag(groundMistMaterial);
+      if (u?.opacity) {
+        u.opacity.value = THREE.MathUtils.lerp(u.opacity.value as number, targetOpacity, 0.04);
+      }
+      if (u?.time) u.time.value = state.clock.elapsedTime;
+      if (u?.tintColor?.value instanceof THREE.Color) u.tintColor.value.copy(baseFogColor);
     }
   });
 

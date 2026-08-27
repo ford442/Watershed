@@ -2,6 +2,9 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { BiomeDecorationProps } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const MAX_LIGHTS = 5;
@@ -23,7 +26,7 @@ export default function Fireflies({ transforms }: BiomeDecorationProps) {
 
   // Custom Shader Material for blinking, swarming and movement
   const material = useMemo(() => {
-    const mat = new THREE.ShaderMaterial({
+    const mat = createBackendShaderMaterial(resolveMaterialBackend().backend, {
       transparent: true,
       depthWrite: false, // Don't write to depth buffer so they don't occlude each other weirdly if overlapping and for better glow feel
       blending: THREE.AdditiveBlending, // Glow effect
@@ -138,9 +141,8 @@ export default function Fireflies({ transforms }: BiomeDecorationProps) {
 
   useFrame((state) => {
     const time = state.clock.elapsedTime;
-    if (material.uniforms) {
-      material.uniforms.time.value = time;
-    }
+    const u = materialUniformBag(material);
+    if (u?.time) u.time.value = time;
 
     // Mirror the shader's swarm + blink math so the lights track their fireflies
     glowFireflies.forEach((f, i) => {

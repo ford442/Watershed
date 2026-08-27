@@ -4,10 +4,10 @@ import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { getBiomePalette } from '../../configs/BiomePalettes';
-import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
 import type { FlowerPlacement, WildflowersProps } from './types';
-import { toVegetationMaterial } from './types';
 
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'] as const;
 type FlowerVariant = typeof FLOWER_VARIANTS[number];
@@ -128,12 +128,11 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
         side: THREE.DoubleSide,
         vertexColors: true,
       });
-      extendVegetationMaterial(toVegetationMaterial(mat), {
+      result[variant.type] = createVegetationSurfaceMaterial(resolveMaterialBackend().backend, mat, {
         plantHeight: variant.plantHeight,
         windStrength: variant.windStrength,
         windSpeed: variant.windSpeed,
-      });
-      result[variant.type] = mat;
+      }) as THREE.MeshStandardMaterial;
     });
     return result;
   }, [variants]);
@@ -186,7 +185,7 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
     variants.forEach((variant) => {
       const mat = materials[variant.type];
       if (mat) {
-        updateVegetationMaterial(toVegetationMaterial(mat), state.clock.elapsedTime);
+        updateVegetationSurfaceMaterial(mat, state.clock.elapsedTime);
       }
     });
   });

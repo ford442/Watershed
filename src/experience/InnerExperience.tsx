@@ -22,6 +22,7 @@ import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
 import SettingsLookSync from '../ui/SettingsLookSync';
 import { useInnerExperience } from './hooks/useInnerExperience';
 import type { InnerExperienceProps } from './types';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
 
 /**
  * InnerExperience — game scene composition (providers are mounted in Experience.tsx).
@@ -152,7 +153,9 @@ export default function InnerExperience({
         </Physics>
       )}
 
-      {worldEnabled && debug.isStageEnabled('postProcessing') && (
+      {worldEnabled &&
+        debug.isStageEnabled('postProcessing') &&
+        resolveMaterialBackend().backend !== 'tsl' && (
         <PostProcessingPipeline
           quality={state.quality}
           vehicleRef={state.vehicleRef}

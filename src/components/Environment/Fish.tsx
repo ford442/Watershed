@@ -5,6 +5,8 @@ import { mergeBufferGeometries } from 'three-stdlib';
 import { WATER_LEVEL } from '../../constants/game';
 import type { BiomeDecorationProps } from './types';
 import { materialShaderUserData } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createFishBodyMaterial, createFishRingMaterial } from '../../materials/critters/createCritterMaterials';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -109,23 +111,7 @@ export default function Fish({ transforms }: BiomeDecorationProps) {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-
-    mat.onBeforeCompile = (shader) => {
-      shader.vertexShader = `
-attribute float ringAlpha;
-varying float vRingAlpha;
-` + shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>\nvRingAlpha = ringAlpha;`
-      );
-
-      shader.fragmentShader = `varying float vRingAlpha;\n` + shader.fragmentShader.replace(
-        '#include <dithering_fragment>',
-        `#include <dithering_fragment>\ngl_FragColor.a *= vRingAlpha;`
-      );
-    };
-    mat.needsUpdate = true;
-    return mat;
+    return createFishRingMaterial(resolveMaterialBackend().backend, mat);
   }, []);
 
   const material = useMemo(() => {
@@ -136,30 +122,7 @@ varying float vRingAlpha;
       vertexColors: true,
       side: THREE.DoubleSide,
     });
-
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = { value: 0 };
-      shader.vertexShader = `
-uniform float uTime;
-attribute float aTailWeight;
-attribute float instancePhase;
-attribute float instanceFreq;
-` + shader.vertexShader;
-
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `
-#include <begin_vertex>
-
-float swimWave = sin(uTime * instanceFreq + instancePhase * 6.2831 + transformed.z * -3.0);
-transformed.x += swimWave * 0.16 * aTailWeight;
-`
-      );
-
-      mat.userData.shader = shader;
-    };
-    mat.needsUpdate = true;
-    return mat;
+    return createFishBodyMaterial(resolveMaterialBackend().backend, mat);
   }, []);
 
   // Per-fish behaviour state: base transform, schooling wander params, jump timing

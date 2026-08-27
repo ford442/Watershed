@@ -3,6 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
 import type { BiomeDecorationTransform, CanyonDustProps } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
@@ -37,7 +40,7 @@ export default function CanyonDust({
     return center.multiplyScalar(1 / transforms.length);
   }, [transforms]);
 
-  const material = useMemo(() => new THREE.ShaderMaterial({
+  const material = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
     transparent: true,
     depthWrite: false,
     depthTest: true,
@@ -106,12 +109,15 @@ export default function CanyonDust({
     if (!mesh) return;
     mesh.visible = camera.position.distanceTo(segmentCenter) <= maxDistance;
 
-    if (material.uniforms) {
-      material.uniforms.time.value = state.clock.elapsedTime;
-      material.uniforms.flowSpeed.value = flowSpeed;
-      material.uniforms.playerVelocity.value = playerVelocityRef?.current ?? 0;
-      material.uniforms.densityMul.value = densityMul;
-      material.uniforms.colorBase.value.set(currentBiome.id === 'canyonAutumn' ? '#e8c79a' : '#f7e9cf');
+    const u = materialUniformBag(material);
+    if (u) {
+      u.time.value = state.clock.elapsedTime;
+      u.flowSpeed.value = flowSpeed;
+      u.playerVelocity.value = playerVelocityRef?.current ?? 0;
+      u.densityMul.value = densityMul;
+      if (u.colorBase?.value instanceof THREE.Color) {
+        u.colorBase.value.set(currentBiome.id === 'canyonAutumn' ? '#e8c79a' : '#f7e9cf');
+      }
     }
   });
 

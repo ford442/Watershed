@@ -6,14 +6,10 @@
  *
  *   glsl  — legacy ShaderMaterial / onBeforeCompile, classic THREE.WebGLRenderer.
  *   tsl   — NodeMaterial graphs. These CANNOT run on THREE.WebGLRenderer: it has
- *           no node pipeline. They run on WebGPURenderer, which is created with
- *           `forceWebGL: true` unless the WebGPU preference is also set — so the
- *           GPU API stays WebGL2 while the material pipeline changes.
- *
- * That distinction is the whole point of Path A: `?material=tsl` alone changes
- * materials and the renderer *class*, but not the graphics API. Only once every
- * live material is TSL does `?renderer=webgpu` get to select a real WebGPU
- * backend (Phase 3, deliberately still gated).
+ *           no node pipeline. They run on WebGPURenderer with `forceWebGL: true`
+ *           (WebGL2 on the wire). Native WebGPU (`forceWebGL: false`) stays gated
+ *           until residual GLSL hosts and the JSM post stack are gone
+ *           (`nativeWebgpuGate.ts` / `scripts/glsl-hosts-allowlist.json`).
  *
  * Default stays `glsl`. Production is unchanged unless the flag is set.
  */

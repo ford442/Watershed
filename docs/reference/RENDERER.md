@@ -80,7 +80,7 @@ Evaluated for long canyon Z ranges. The track treadmill keeps ~7 active segments
 | `?renderer=webgpu` | `WebGLRenderer` (fallback) | Experimental/no-op on the default material backend |
 | `?material=glsl` (default) | `WebGLRenderer` | Legacy GLSL materials — the production path |
 | `?material=tsl` | `WebGPURenderer` (WebGL2 backend) | #256 path A — NodeMaterial pipeline, same graphics API |
-| `?material=tsl&renderer=webgpu` | `WebGPURenderer` (WebGPU backend) | Phase 3 preview; only sound once every material is TSL |
+| `?material=tsl&renderer=webgpu` | `WebGPURenderer` (WebGL2 backend) | Native WebGPU stays gated (`forceWebGL: true`) until residual GLSL is gone and post is ported |
 | `?screenshot=1` or `?capture=1` | (any) | Enables `preserveDrawingBuffer` and allows software GL, for the visual-smoke harness only |
 | `?softwareGl=1` | (any) | Allows software GL (SwiftShader) without enabling capture mode |
 
@@ -117,6 +117,13 @@ Resolution order (`src/rendering/materialBackend.ts`): `?material=` → stored d
 | Water surface | `materials/water/createWaterMaterial.ts` | `materials/water/WaterNodeMaterial.ts` |
 | Canyon rock / river banks | `materials/river/createRiverSurfaceMaterial.ts` | `materials/RiverNodeMaterial.ts` |
 | Slot-canyon walls | `materials/canyon/createCanyonSurfaceMaterial.ts` | `materials/CanyonNodeMaterial.ts` |
+| Sky (clouds / stars / moon / TSL dome) | `materials/sky/createSkyMaterials.ts` | `materials/sky/SkyNodeMaterial.ts` |
+| Weather particles (Reach) | `materials/weather/createWeatherParticleMaterial.ts` | `materials/weather/WeatherNodeMaterial.ts` |
+| VFX ShaderMaterials | `materials/vfx/createBackendShaderMaterial.ts` | `materials/vfx/VfxNodeMaterials.ts` |
+| Tree / rock / vegetation inject | `materials/foliage/createFoliageSurfaceMaterial.ts` | `materials/foliage/FoliageNodeMaterials.ts` |
+| Fish / dragonflies | `materials/critters/createCritterMaterials.ts` | `materials/critters/CritterNodeMaterials.ts` |
+
+CI tracks leftover construction sites in [`scripts/glsl-hosts-allowlist.json`](../../scripts/glsl-hosts-allowlist.json) (`pnpm typecheck` runs `scripts/check-glsl-hosts.mjs`). **`dual`** entries are GLSL factories behind a backend switch; **`residual`** must only shrink. Native WebGPU (`forceWebGL: false`) is gated by [`src/rendering/nativeWebgpuGate.ts`](../../src/rendering/nativeWebgpuGate.ts) until residual is empty **and** the post stack is ported (`POST_STACK_PORTED`).
 
 Every host takes the backend as its first argument, never throws, and reports the backend it actually produced — a TSL failure (module not loaded, TSL surface drift) degrades to GLSL instead of taking the Canvas down.
 
@@ -134,8 +141,11 @@ Water surface, vs the GLSL original:
 
 Scene-wide:
 
-- **VFX / particle `ShaderMaterial`s and GLSL post-processing are not migrated** (migration priorities 4–5). Under the node renderer, three logs `NodeMaterial: Material "ShaderMaterial" is not compatible` once per such material and skips it. Non-fatal — the scene still renders — but those effects do not draw.
-- Worth flagging against the original plan: post-processing **cannot** "stay GLSL longer" once materials require the node renderer. `postprocessing` v6 is WebGL2/`WebGLRenderer`-only, so a TSL scene runs without the post stack until it is ported.
+- **JSM post-processing stays WebGL-only.** Live path is `three/examples/jsm/postprocessing` in `PostProcessingPipeline.tsx` (not `@react-three/postprocessing`, which crashes on R3F v9). On `?material=tsl` the composer is **not mounted**. Native WebGPU waits on a Three bump whose node post stack is documented — do not add a second composer.
+- Dormant GLSL modules (`CausticsMaterial.ts`, `EnhancedWaterMaterial.ts`) are unused and listed as `dormant` on the allowlist.
+- Weather particles are Reach-mounted (`ReachManager`), not the default treadmill.
+
+`?renderer=webgpu` on the **GLSL** backend remains a no-op fallback to `WebGLRenderer`. On **TSL** it still uses `forceWebGL: true` until `canEnableNativeWebgpu()` is true.
 
 ### Visual smoke matrix
 
@@ -149,14 +159,12 @@ pnpm test:visual-smoke:tsl        # ?material=tsl, baselines suffixed __material
 
 ## Why the default path still has no live WebGPU renderer
 
-The production pipeline uses legacy GLSL materials that crash inside `WebGPURenderer`'s `NodeMaterial` / TSL pipeline:
+The production **GLSL** pipeline still uses legacy materials that crash inside `WebGPURenderer`'s `NodeMaterial` / TSL pipeline if they are routed there without a host:
 
-- `RiverShader.ts` — `MeshStandardMaterial` with `onBeforeCompile` injection.
-- `CanyonMaterial.js` — custom `ShaderMaterial`.
-- `FlowingWater.tsx` — custom `ShaderMaterial`.
-- Post-processing — GLSL passes from `postprocessing` / `@react-three/postprocessing` v6.
+- GLSL factories (`RiverShader.ts` inject, `CanyonMaterial.ts`, `FlowingWater` via `createWaterMaterial`) stay on `THREE.WebGLRenderer`.
+- Post-processing — Three r168 JSM `EffectComposer` / `UnrealBloomPass` (WebGLRenderer-only).
 
-Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constraint is unchanged for `?material=glsl`: while legacy materials are in use, `createGameRenderer()` returns `THREE.WebGLRenderer` regardless of renderer preference. The node renderer is reachable *only* by opting into TSL materials, which is precisely the invariant the guard in `createRenderer.test.ts` locks.
+Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constraint is unchanged for `?material=glsl`: `createGameRenderer()` returns `THREE.WebGLRenderer` regardless of renderer preference. The node renderer is reachable *only* by opting into TSL materials, and even then the graphics API stays WebGL2 until the residual allowlist is empty and post is ported.
 
 ## Non-gameplay Canvases
 
@@ -182,7 +190,7 @@ App.tsx
        └─ createGameRenderer()  ← async gl factory
             ├─ material=glsl + webgl  → THREE.WebGLRenderer + applyRendererContextOptions()
             ├─ material=glsl + webgpu → THREE.WebGLRenderer (deliberate fallback)
-            └─ material=tsl           → WebGPURenderer (forceWebGL unless ?renderer=webgpu)
+            └─ material=tsl           → WebGPURenderer (forceWebGL: true until nativeWebgpuGate)
                                         + await loadNodeMaterials()
        └─ Experience (shared scene graph)
             ├─ RendererDiagnosticsMonitor → rendererState store
@@ -213,7 +221,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 
 - **WebGL2 (`?renderer=webgl`, default)** is the only production path.
 - **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op on the default material backend; it falls back to WebGL2.
-- **`?material=tsl`** boots and renders through the node renderer on a WebGL2 backend. It is not yet at visual parity — see the gap list above — and is not the production path.
+- **`?material=tsl`** boots the node renderer with `forceWebGL: true` (WebGL2 on the wire). `?material=tsl&renderer=webgpu` does **not** open native WebGPU until `canEnableNativeWebgpu()`.
 - HeightmapFlow is dormant domain compute. It adopts the renderer session device when native WebGPU is active; it does **not** allocate a second `GPUDevice`. Live water displacement is WASM SWE, not this WGSL.
 
 ## Keyboard Shortcuts (debug mode)
@@ -231,7 +239,9 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | `src/rendering/deriveRendererContextOptions.ts` | Pure quality → DPR/shadow/tone-mapping matrix |
 | `src/rendering/applyRendererContextOptions.ts` | Apply derived options at setup + `applyRendererQualityUpdate()` for live changes |
 | `src/rendering/RendererQualitySync.tsx` | In-Canvas live quality apply (no remount) |
-| `src/rendering/createRenderer.ts` | Async renderer factory (WebGL-only today) |
+| `src/rendering/createRenderer.ts` | Async renderer factory |
+| `src/rendering/nativeWebgpuGate.ts` | Native WebGPU (`forceWebGL: false`) remains closed |
+| `scripts/glsl-hosts-allowlist.json` | Residual / dual / dormant GLSL construction sites |
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode and software-GL gates |
 | `src/components/LevelEditor/LevelEditor.tsx` | Editor Canvas on the shared contract |
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
