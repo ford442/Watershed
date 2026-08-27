@@ -3,13 +3,10 @@ import { PointsNodeMaterial } from 'three/webgpu';
 import {
   Fn,
   attribute,
-  cameraPosition,
   float,
   length,
-  mix,
   mod,
   positionLocal,
-  sin,
   smoothstep,
   uniform,
   uv,

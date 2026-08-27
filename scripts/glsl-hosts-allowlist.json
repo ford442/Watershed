@@ -1,0 +1,18 @@
+{
+  "maxResidual": 1,
+  "hosts": [
+    { "path": "src/materials/water/createWaterMaterial.ts", "kind": "dual" },
+    { "path": "src/materials/CanyonMaterial.ts", "kind": "dual" },
+    { "path": "src/utils/RiverShader.ts", "kind": "dual" },
+    { "path": "src/utils/TreeShader.ts", "kind": "dual" },
+    { "path": "src/utils/RockShader.ts", "kind": "dual" },
+    { "path": "src/utils/VegetationShader.ts", "kind": "dual" },
+    { "path": "src/materials/sky/createSkyMaterials.ts", "kind": "dual" },
+    { "path": "src/materials/weather/createWeatherParticleMaterial.ts", "kind": "dual" },
+    { "path": "src/materials/vfx/createBackendShaderMaterial.ts", "kind": "dual" },
+    { "path": "src/materials/critters/createCritterMaterials.ts", "kind": "dual" },
+    { "path": "src/components/PostProcessingPipeline.tsx", "kind": "residual" },
+    { "path": "src/materials/CausticsMaterial.ts", "kind": "dormant" },
+    { "path": "src/materials/EnhancedWaterMaterial.ts", "kind": "dormant" }
+  ]
+}

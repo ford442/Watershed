@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
-import { extendRockMaterial } from '../../utils/RockShader';
+import { createRockSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PebblesProps } from './types';
 
 type PebbleShape = 'round' | 'flat' | 'angular';
@@ -44,15 +45,14 @@ export default function Pebbles({ transforms, material }: PebblesProps) {
 
   const pebbleMaterial = useMemo(() => {
     const base = (material ?? defaultMaterial).clone() as THREE.MeshStandardMaterial;
-    extendRockMaterial(base, {
+    return createRockSurfaceMaterial(resolveMaterialBackend().backend, base, {
       mossStrength: 0.45,
       streakStrength: 0.25,
       bandStrength: 0.0,
       dustStrength: 0.3,
       rimStrength: 0.1,
       wetnessRange: 1.2,
-    });
-    return base;
+    }) as THREE.MeshStandardMaterial;
   }, [material, defaultMaterial]);
 
   const grouped = useMemo(() => {

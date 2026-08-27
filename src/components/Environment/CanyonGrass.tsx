@@ -2,9 +2,9 @@ import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
-import { toVegetationMaterial } from './types';
 
 const hash = (n: number): number => {
   const x = Math.sin(n * 9.173) * 43758.5453;
@@ -42,12 +42,11 @@ export default function CanyonGrass({ transforms }: BiomeDecorationProps) {
       side: THREE.DoubleSide,
       vertexColors: true,
     });
-    extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: 0.65, windStrength: 0.05, windSpeed: 1.3 });
-    return mat;
+    return createVegetationSurfaceMaterial(resolveMaterialBackend().backend, mat, { plantHeight: 0.65, windStrength: 0.05, windSpeed: 1.3 });
   }, []);
 
   useFrame((state) => {
-    updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
+    updateVegetationSurfaceMaterial(material, state.clock.elapsedTime);
   });
 
   const instances = useMemo(() => safeTransforms.map((transform, index) => {

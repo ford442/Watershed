@@ -4,6 +4,11 @@ import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
 import type { BiomeDecorationProps } from './types';
 import { materialShaderUserData } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import {
+  createDragonflyBodyMaterial,
+  createDragonflyWingMaterial,
+} from '../../materials/critters/createCritterMaterials';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -121,37 +126,7 @@ export default function Dragonflies({ transforms }: BiomeDecorationProps) {
       metalness: 0.45,
       vertexColors: false,
     });
-
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = { value: 0 };
-      shader.vertexShader = `
-uniform float uTime;
-attribute vec3 aHinge;
-attribute float aFlap;
-attribute float instancePhase;
-` + shader.vertexShader;
-
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `
-#include <begin_vertex>
-
-if (aFlap != 0.0) {
-  float flapFreq = 24.0 + instancePhase * 10.0;
-  float phaseOffset = aFlap > 0.0 ? 0.0 : 3.14159;
-  float flapAngle = sin(uTime * flapFreq + instancePhase * 6.2831 + phaseOffset) * 0.65 + 0.15;
-  vec3 rel = transformed - aHinge;
-  float ca = cos(flapAngle);
-  float sa = sin(flapAngle);
-  vec3 rotated = vec3(rel.x * ca - rel.y * sa, rel.x * sa + rel.y * ca, rel.z);
-  transformed = aHinge + rotated;
-}
-`
-      );
-      mat.userData.shader = shader;
-    };
-    mat.needsUpdate = true;
-    return mat;
+    return createDragonflyBodyMaterial(resolveMaterialBackend().backend, mat);
   }, []);
 
   const wingMaterial = useMemo(() => {
@@ -167,38 +142,7 @@ if (aFlap != 0.0) {
       iridescenceIOR: 1.3,
       iridescenceThicknessRange: [100, 420],
     });
-
-    // Reuse the same flap shader injection so wings move with the body
-    mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = { value: 0 };
-      shader.vertexShader = `
-uniform float uTime;
-attribute vec3 aHinge;
-attribute float aFlap;
-attribute float instancePhase;
-` + shader.vertexShader;
-
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `
-#include <begin_vertex>
-
-if (aFlap != 0.0) {
-  float flapFreq = 24.0 + instancePhase * 10.0;
-  float phaseOffset = aFlap > 0.0 ? 0.0 : 3.14159;
-  float flapAngle = sin(uTime * flapFreq + instancePhase * 6.2831 + phaseOffset) * 0.65 + 0.15;
-  vec3 rel = transformed - aHinge;
-  float ca = cos(flapAngle);
-  float sa = sin(flapAngle);
-  vec3 rotated = vec3(rel.x * ca - rel.y * sa, rel.x * sa + rel.y * ca, rel.z);
-  transformed = aHinge + rotated;
-}
-`
-      );
-      mat.userData.shader = shader;
-    };
-    mat.needsUpdate = true;
-    return mat;
+    return createDragonflyWingMaterial(resolveMaterialBackend().backend, mat);
   }, []);
 
   const trailMaterial = useMemo(() => new THREE.MeshBasicMaterial({

@@ -3,6 +3,9 @@ import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import * as THREE from 'three';
 import type { BiomeDecorationProps } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const DEFAULT_ROTATION = new THREE.Euler();
 const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
@@ -11,7 +14,7 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: BiomeDecoratio
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   const material = useMemo(() => {
-    const mat = new THREE.ShaderMaterial({
+    const mat = createBackendShaderMaterial(resolveMaterialBackend().backend, {
       transparent: true,
       depthWrite: false,
       blending: THREE.NormalBlending,
@@ -62,9 +65,8 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: BiomeDecoratio
   }, [flowSpeed]);
 
   useFrame((state) => {
-     if (material.uniforms) {
-         material.uniforms.time.value = state.clock.elapsedTime;
-     }
+     const u = materialUniformBag(material);
+     if (u?.time) u.time.value = state.clock.elapsedTime;
   });
 
   if (!transforms || transforms.length === 0) return null;

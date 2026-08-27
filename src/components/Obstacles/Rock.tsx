@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { InstancedRigidBodies, RigidBody, useRapier, type RapierRigidBody } from '@react-three/rapier';
-import { extendRockMaterial } from '../../utils/RockShader';
+import { createRockSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import {
   buildPillarFragments,
   evaluatePillarImpact,
@@ -345,8 +346,7 @@ export default function Rock({
       const clone = material
         ? material.clone()
         : new THREE.MeshStandardMaterial({ color: '#888', roughness: 0.9 });
-      extendRockMaterial(clone, options);
-      library[variant] = clone;
+      library[variant] = createRockSurfaceMaterial(resolveMaterialBackend().backend, clone, options) as THREE.MeshStandardMaterial;
     });
     return library;
   }, [material]);

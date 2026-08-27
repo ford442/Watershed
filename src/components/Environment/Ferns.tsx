@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Instances, Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
-import { extendVegetationMaterial, updateVegetationMaterial } from '../../utils/VegetationShader';
+import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
 import type { BiomeScopedDecorationProps } from './types';
-import { toVegetationMaterial } from './types';
 
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -114,12 +114,11 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: BiomeScope
             metalness: 0,
             side: THREE.DoubleSide,
         });
-        extendVegetationMaterial(toVegetationMaterial(mat), { plantHeight: 1.2, windStrength: 0.05, windSpeed: 1.0 });
-        return mat;
+        return createVegetationSurfaceMaterial(resolveMaterialBackend().backend, mat, { plantHeight: 1.2, windStrength: 0.05, windSpeed: 1.0 });
     }, []);
 
     useFrame((state) => {
-        updateVegetationMaterial(toVegetationMaterial(material), state.clock.elapsedTime);
+        updateVegetationSurfaceMaterial(material, state.clock.elapsedTime);
     });
 
     const instances = useMemo(() => {

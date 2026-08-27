@@ -9,7 +9,6 @@ import {
 } from '../../materials/river/createRiverSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PlacementTransform } from '../TrackSegment/types';
-import { extendRiverMaterial, updateRiverMaterial } from '../../utils/RiverShader';
 import type { BiomeDecorationProps } from './types';
 
 const DEFAULT_ROTATION = new THREE.Euler();

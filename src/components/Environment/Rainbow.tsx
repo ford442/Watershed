@@ -2,6 +2,9 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { RainbowProps } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const VERTEX_SHADER = `
   varying vec2 vUv;
@@ -68,7 +71,7 @@ export default function Rainbow({
 
   const geometry = useMemo(() => new THREE.TorusGeometry(8, 0.55, 8, 64, Math.PI), []);
 
-  const material = useMemo(() => new THREE.ShaderMaterial({
+  const material = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     uniforms: {
@@ -84,10 +87,13 @@ export default function Rainbow({
 
   useFrame((state) => {
     const mat = meshRef.current?.material;
-    if (!(mat instanceof THREE.ShaderMaterial) || !mat.uniforms) return;
-    mat.uniforms.time.value = state.clock.elapsedTime;
-    mat.uniforms.opacity.value = opacity;
-    mat.uniforms.sunDirection.value.copy(sunDirection).normalize();
+    const u = materialUniformBag(mat);
+    if (!u) return;
+    if (u.time) u.time.value = state.clock.elapsedTime;
+    if (u.opacity) u.opacity.value = opacity;
+    if (u.sunDirection?.value && typeof (u.sunDirection.value as THREE.Vector3).copy === 'function') {
+      (u.sunDirection.value as THREE.Vector3).copy(sunDirection).normalize();
+    }
   });
 
   return <mesh ref={meshRef} geometry={geometry} material={material} />;

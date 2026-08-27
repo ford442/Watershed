@@ -16,6 +16,7 @@ import { useGameStore } from '../systems/GameState';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { qualityToEffects } from '../systems/settings/settingsDerive';
 import type { VehicleRigidBodyRef } from '../experience/types';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
 
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
 
@@ -218,6 +219,7 @@ export function PostProcessingPipeline({
   chromaticMaxOffset = 0.002,
 }: PostProcessingPipelineProps) {
   const { gl, scene, camera, size } = useThree();
+  const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
   const { config } = useLOD();
   const { timeOfDay, currentBiome } = useBiome();
   const { sunWorldPosition } = useSunPosition();
@@ -258,6 +260,9 @@ export function PostProcessingPipeline({
   // Build composer once gl/scene/camera are ready
   const composer = useMemo((): WatershedComposer | null => {
     if (!gl || !scene || !camera) return null;
+    // JSM EffectComposer is WebGLRenderer-only. Skip it on the node pipeline
+    // rather than mounting ShaderPasses that three will refuse to compile.
+    if (materialBackend === 'tsl') return null;
 
     const watershedComposer = new EffectComposer(gl) as WatershedComposer;
     watershedComposer.renderTarget1.depthBuffer = true;
@@ -314,7 +319,7 @@ export function PostProcessingPipeline({
     };
 
     return watershedComposer;
-  }, [gl, scene, camera, size.height, size.width]);
+  }, [gl, scene, camera, size.height, size.width, materialBackend]);
 
   // Handle resize
   useEffect(() => {

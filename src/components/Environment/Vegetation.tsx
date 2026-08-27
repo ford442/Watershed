@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { Instances, Instance } from '@react-three/drei';
 import { useTreeAssets } from './TreeAssets';
 import { useFrame } from '@react-three/fiber';
-import { extendTreeMaterial, updateTreeMaterial } from '../../utils/TreeShader';
+import { createTreeSurfaceMaterial, updateTreeSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { WATER_LEVEL } from '../../constants/game';
 import { isAutumnLike } from '../../configs/biomes';
 import type { TreePlacement, VegetationProps } from './types';
-import { toTreeMaterial } from './types';
 
 type PaletteSeason = 'summer' | 'autumn';
 type TreeSpecies = 'conifer' | 'broadleaf' | 'birch' | 'snag';
@@ -105,7 +105,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
         metalness: 0,
         vertexColors: true,
       });
-      extendTreeMaterial(toTreeMaterial(material), {
+      map[variant.type as TreeSpecies] = createTreeSurfaceMaterial(resolveMaterialBackend().backend, material, {
         windStrength: variant.swayAmount * 1.6,
         windSpeed: 1.35,
         sssColor,
@@ -113,8 +113,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
         waterLevel: WATER_LEVEL,
         rustleRadius: 6.0,
         rustleStrength: 2.5,
-      });
-      map[variant.type as TreeSpecies] = material;
+      }) as THREE.MeshStandardMaterial;
     });
     return map;
   }, [variants, biome]);
@@ -123,7 +122,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
     variants.forEach((variant) => {
       const mat = speciesMaterials[variant.type as TreeSpecies];
       if (mat) {
-        updateTreeMaterial(toTreeMaterial(mat), state.clock.elapsedTime, state.camera.position);
+        updateTreeSurfaceMaterial(mat, state.clock.elapsedTime, state.camera.position);
       }
     });
   });

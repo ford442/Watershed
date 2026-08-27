@@ -3,6 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
 import type { MistPlacement, MistProps, WeatherUpdateEvent } from './types';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
@@ -36,7 +39,7 @@ export default function Mist({
 
   // Custom Shader Material for Mist
   const material = useMemo(() => {
-    const mat = new THREE.ShaderMaterial({
+    const mat = createBackendShaderMaterial(resolveMaterialBackend().backend, {
       transparent: true,
       depthWrite: false,
       blending: THREE.NormalBlending, // Soft blending
@@ -156,27 +159,32 @@ export default function Mist({
   }, [flowSpeed, isSlotCanyon]);
 
   useFrame((state) => {
-    if (material.uniforms) {
-      material.uniforms.time.value = state.clock.elapsedTime;
-      material.uniforms.flowSpeed.value = flowSpeed;
-      material.uniforms.isSlotCanyon.value = isSlotCanyon ? 1.0 : 0.0;
-      material.uniforms.playerVelocity.value = playerVelocityRef?.current ?? 0;
-      material.uniforms.playerPos.value.copy(camera.position);
+    const u = materialUniformBag(material);
+    if (u) {
+      u.time.value = state.clock.elapsedTime;
+      u.flowSpeed.value = flowSpeed;
+      u.isSlotCanyon.value = isSlotCanyon ? 1.0 : 0.0;
+      u.playerVelocity.value = playerVelocityRef?.current ?? 0;
+      if (u.playerPos?.value instanceof THREE.Vector3) {
+        u.playerPos.value.copy(camera.position);
+      }
 
       // Tint toward warm sunlight at golden hour, cool moonlight at night.
       const dayPhase = Math.abs(timeOfDay - 0.5) * 2;
       const nightFactor = THREE.MathUtils.smoothstep(dayPhase, 0.6, 0.85);
       const sunsetBlend = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
-      if (nightFactor > sunsetBlend) {
-        material.uniforms.tintColor.value.set('#9fb6e8');
-        material.uniforms.tintStrength.value = nightFactor * 0.45;
-      } else {
-        material.uniforms.tintColor.value.set('#ffcf9e');
-        material.uniforms.tintStrength.value = sunsetBlend * 0.5;
+      if (u.tintColor?.value instanceof THREE.Color) {
+        if (nightFactor > sunsetBlend) {
+          u.tintColor.value.set('#9fb6e8');
+          u.tintStrength.value = nightFactor * 0.45;
+        } else {
+          u.tintColor.value.set('#ffcf9e');
+          u.tintStrength.value = sunsetBlend * 0.5;
+        }
       }
 
       const stormBlend = weatherType === 'storm' ? 1 : weatherType === 'overcast' ? 0.4 : 0;
-      material.uniforms.stormBlend.value = stormBlend;
+      u.stormBlend.value = stormBlend;
     }
   });
 
