@@ -56,7 +56,7 @@ Open board (unchecked = genuinely open), **foundation before a sixth biome**:
 
 - [ ] [#385](https://github.com/ford442/Watershed/issues/385) — **P0** Hydrology Phase 2: canyon collision mesh → SWE bed `b` (wetting/drying is unused while `b` is zeros)
 - [ ] [#386](https://github.com/ford442/Watershed/issues/386) — **P0** One water field: SWE `(η,u,w)` must drive Rapier forces (today `flowDir` is hardcoded `(0,-1)`)
-- [ ] [#387](https://github.com/ford442/Watershed/issues/387) — **P0** Finish TSL migration of leftover GLSL so `?renderer=webgpu` can stop being a no-op
+- [x] [#387](https://github.com/ford442/Watershed/issues/387) — **P0** Finish TSL migration of leftover GLSL so `?renderer=webgpu` can stop being a no-op
 - [ ] [#388](https://github.com/ford442/Watershed/issues/388) — **P0** Hygiene: leftover `systems/*.tsx` hosts, host `-ffp-contract=off`, context `alpha` honesty
 - [ ] [#389](https://github.com/ford442/Watershed/issues/389) — **P1** Authored `hydroEvents[]` + C++ source terms; retire ad-hoc `VortexForceSystem` impulses
 - [ ] [#390](https://github.com/ford442/Watershed/issues/390) — **P1** SIMD honesty for nonlinear HLL + WASM particle SoA (waterfall still a JS pool)

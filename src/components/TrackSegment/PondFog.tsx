@@ -3,57 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/BiomeSystem';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
-import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import { createPondFogMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-
-const GROUND_MIST_VERTEX = `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const GROUND_MIST_FRAGMENT = `
-  uniform float time;
-  uniform float opacity;
-  uniform vec3 tintColor;
-  varying vec2 vUv;
-
-  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-  float noise(vec2 p){
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
-               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 0.0)), f.x), f.y);
-  }
-  float fbm(vec2 p) {
-    float v = 0.0;
-    float a = 0.5;
-    for (int i = 0; i < 4; i++) {
-      v += a * noise(p);
-      p *= 2.0;
-      a *= 0.5;
-    }
-    return v;
-  }
-
-  void main() {
-    vec2 uv = vUv * 3.0;
-    uv.x += time * 0.015;
-    uv.y += sin(time * 0.07) * 0.3;
-
-    float swirl = fbm(uv);
-    float bank = smoothstep(0.35, 0.85, swirl);
-
-    // Radial fade so the bank dissolves toward the edges of the plane.
-    float edgeFade = smoothstep(0.5, 0.05, distance(vUv, vec2(0.5)));
-
-    float alpha = bank * edgeFade * opacity;
-    gl_FragColor = vec4(tintColor, alpha);
-  }
-`;
 
 export interface PondFogProps {
   segmentCenter: THREE.Vector3;
@@ -106,21 +57,8 @@ export default function PondFog({ segmentCenter, waterLevel = 0.5 }: PondFogProp
   }, [scene]);
 
   const groundMistMaterial = useMemo(
-    () =>
-      createBackendShaderMaterial(resolveMaterialBackend().backend, {
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.NormalBlending,
-        uniforms: {
-          time: { value: 0 },
-          opacity: { value: 0 },
-          tintColor: { value: new THREE.Color('#c8d8d0') },
-        },
-        vertexShader: GROUND_MIST_VERTEX,
-        fragmentShader: GROUND_MIST_FRAGMENT,
-      }),
-    []
+    () => createPondFogMaterial(resolveMaterialBackend().backend, { tintColor: new THREE.Color('#c8d8d0') }),
+    [],
   );
 
   useFrame((state) => {

@@ -3,7 +3,10 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { WaterfallImpactZoneProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
-import { createBackendShaderMaterial } from '../../materials/vfx/createBackendShaderMaterial';
+import {
+  createWaterfallFoamMaterial,
+  createWaterfallPlumeMaterial,
+} from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
 const MAX_DROPLETS = 180;
@@ -15,16 +18,6 @@ interface ImpactDroplet {
   life: number;
   scale: number;
 }
-
-const plumeNoise = `
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p); vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
-               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-  }
-`;
 
 export default function WaterfallImpactZone({
   width = 10,
@@ -39,104 +32,39 @@ export default function WaterfallImpactZone({
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
   const plumeGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
-  const plumeMaterial = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    uniforms: {
-      time: { value: 0 },
-      intensity: { value: intensity },
-      colorBase: { value: new THREE.Color('#d8eff8') },
-    },
-    vertexShader: `
-      uniform float time;
-      uniform float intensity;
-      varying vec2 vUv;
-      varying float vAlpha;
-      ${plumeNoise}
-
-      void main() {
-        vUv = uv;
-        vec3 instancePos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
-        vec3 viewRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-        vec3 viewUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-        float rand = hash(instancePos.xz * 1.7 + vec2(instancePos.y));
-        float sway = sin(time * 0.7 + rand * 8.0 + position.y * 2.2) * 0.25;
-        float lift = abs(sin(time * 0.5 + rand * 6.0)) * 0.35;
-        float widthScale = 2.2 + rand * 1.6;
-        float heightScale = 2.8 + rand * 3.5;
-        vec3 finalPos = instancePos;
-        finalPos += viewRight * (position.x + sway) * widthScale;
-        finalPos += viewUp * (position.y + lift) * heightScale;
-        gl_Position = projectionMatrix * viewMatrix * vec4(finalPos, 1.0);
-        vAlpha = (1.0 - uv.y) * (0.28 + rand * 0.2) * intensity;
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 colorBase;
-      varying vec2 vUv;
-      varying float vAlpha;
-      ${plumeNoise}
-
-      void main() {
-        vec2 centered = vUv - 0.5;
-        float radial = smoothstep(0.55, 0.0, length(centered * vec2(1.0, 1.5)));
-        float wisps = noise(vUv * 5.0 + vec2(0.0, vUv.y * 2.0));
-        float alpha = radial * smoothstep(0.2, 0.85, wisps) * vAlpha;
-        gl_FragColor = vec4(colorBase, alpha);
-      }
-    `,
-  }), [intensity]);
+  const plumeMaterial = useMemo(
+    () =>
+      createWaterfallPlumeMaterial(resolveMaterialBackend().backend, {
+        intensity,
+        colorBase: new THREE.Color('#d8eff8'),
+      }),
+    [intensity],
+  );
 
   const foamGeometry = useMemo(() => new THREE.CircleGeometry(Math.max(2.5, width * 0.42), 40), [width]);
-  const foamMaterial = useMemo(() => createBackendShaderMaterial(resolveMaterialBackend().backend, {
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    uniforms: {
-      time: { value: 0 },
-      flowSpeed: { value: flowSpeed },
-      churnBoost: { value: intensity },
-      colorBase: { value: new THREE.Color('#eefcff') },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float time;
-      uniform float flowSpeed;
-      uniform float churnBoost;
-      uniform vec3 colorBase;
-      varying vec2 vUv;
-      ${plumeNoise}
-
-      void main() {
-        vec2 centered = vUv - 0.5;
-        float dist = length(centered);
-        float ring = smoothstep(0.48, 0.12, dist);
-        float core = smoothstep(0.22, 0.0, dist);
-        float swirl = noise(centered * 7.0 + vec2(time * flowSpeed * 0.35, -time * flowSpeed * 0.25));
-        float churn = noise(centered * 12.0 + vec2(-time * flowSpeed * 0.6, time * flowSpeed * 0.45));
-        float foam = smoothstep(0.38, 0.95, swirl * 0.55 + churn * 0.45);
-        float alpha = (ring * 0.45 + core * 0.35) * foam * (0.7 + churnBoost * 0.2);
-        gl_FragColor = vec4(colorBase, alpha);
-      }
-    `,
-  }), [flowSpeed, intensity]);
+  const foamMaterial = useMemo(
+    () =>
+      createWaterfallFoamMaterial(resolveMaterialBackend().backend, {
+        flowSpeed,
+        churnBoost: intensity,
+        colorBase: new THREE.Color('#eefcff'),
+      }),
+    [flowSpeed, intensity],
+  );
 
   const dropletGeometry = useMemo(() => new THREE.BoxGeometry(0.18, 0.28, 0.18), []);
-  const dropletMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#e9fbff',
-    transparent: true,
-    opacity: 0.72,
-    roughness: 0.15,
-    emissive: '#c9efff',
-    emissiveIntensity: 0.35,
-  }), []);
+  const dropletMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#e9fbff',
+        transparent: true,
+        opacity: 0.72,
+        roughness: 0.15,
+        emissive: '#c9efff',
+        emissiveIntensity: 0.35,
+      }),
+    [],
+  );
 
   const plumeInstances = useMemo(() => {
     const count = 10;

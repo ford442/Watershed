@@ -158,3 +158,14 @@ export function createFishRingMaterial(
 export function resetCritterMaterialWarnings(): void {
   warned.current = false;
 }
+
+/** Drive swim / flap time on both GLSL shader hooks and TSL uniform bags. */
+export function updateCritterMaterialTime(material: THREE.Material | null | undefined, time: number): void {
+  if (!material) return;
+  const shader = material.userData.shader as { uniforms?: { uTime?: { value: number } } } | undefined;
+  if (shader?.uniforms?.uTime) shader.uniforms.uTime.value = time;
+  const bag = material.userData.uniforms as Record<string, { value: unknown }> | undefined;
+  if (bag?.uTime && typeof bag.uTime === 'object' && 'value' in bag.uTime) {
+    (bag.uTime as { value: number }).value = time;
+  }
+}

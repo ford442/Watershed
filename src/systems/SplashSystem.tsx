@@ -28,7 +28,7 @@ import {
   resolveSplashFrameEvents,
 } from './water/splashSpawnMath';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
-import { createBackendShaderMaterial } from '../materials/vfx/createBackendShaderMaterial';
+import { createSplashBowWaveMaterial } from '../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
 
 interface SplashSystemProps {
@@ -64,33 +64,7 @@ function RaftBowWave({
   }, []);
 
   const material = useMemo(
-    () =>
-      createBackendShaderMaterial(resolveMaterialBackend().backend, {
-        uniforms: { time: { value: 0 } },
-        vertexShader: `
-          uniform float time;
-          varying vec2 vUv;
-          varying float vNoise;
-          void main() {
-            vUv = uv;
-            vec3 pos = position;
-            float noise = sin(pos.x * 2.0 + time * 2.0) * cos(pos.z * 1.5 + time * 1.5);
-            pos.y += noise * 0.05;
-            vNoise = noise;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-          }
-        `,
-        fragmentShader: `
-          varying float vNoise;
-          void main() {
-            float alpha = 0.5 + vNoise * 0.2;
-            vec3 color = vec3(0.667, 0.867, 1.0);
-            gl_FragColor = vec4(color, alpha * 0.6);
-          }
-        `,
-        transparent: true,
-        side: THREE.DoubleSide,
-      }),
+    () => createSplashBowWaveMaterial(resolveMaterialBackend().backend),
     [],
   );
 

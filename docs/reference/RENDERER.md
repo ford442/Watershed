@@ -119,11 +119,11 @@ Resolution order (`src/rendering/materialBackend.ts`): `?material=` → stored d
 | Slot-canyon walls | `materials/canyon/createCanyonSurfaceMaterial.ts` | `materials/CanyonNodeMaterial.ts` |
 | Sky (clouds / stars / moon / TSL dome) | `materials/sky/createSkyMaterials.ts` | `materials/sky/SkyNodeMaterial.ts` |
 | Weather particles (Reach) | `materials/weather/createWeatherParticleMaterial.ts` | `materials/weather/WeatherNodeMaterial.ts` |
-| VFX ShaderMaterials | `materials/vfx/createBackendShaderMaterial.ts` | `materials/vfx/VfxNodeMaterials.ts` |
+| VFX ShaderMaterials | `materials/vfx/createVfxMaterials.ts` + `vfxDualFactory.ts` | `materials/vfx/VfxNodeMaterials.ts` |
 | Tree / rock / vegetation inject | `materials/foliage/createFoliageSurfaceMaterial.ts` | `materials/foliage/FoliageNodeMaterials.ts` |
 | Fish / dragonflies | `materials/critters/createCritterMaterials.ts` | `materials/critters/CritterNodeMaterials.ts` |
 
-CI tracks leftover construction sites in [`scripts/glsl-hosts-allowlist.json`](../../scripts/glsl-hosts-allowlist.json) (`pnpm typecheck` runs `scripts/check-glsl-hosts.mjs`). **`dual`** entries are GLSL factories behind a backend switch; **`residual`** must only shrink. Native WebGPU (`forceWebGL: false`) is gated by [`src/rendering/nativeWebgpuGate.ts`](../../src/rendering/nativeWebgpuGate.ts) until residual is empty **and** the post stack is ported (`POST_STACK_PORTED`).
+CI tracks leftover construction sites in [`scripts/glsl-hosts-allowlist.json`](../../scripts/glsl-hosts-allowlist.json) (`pnpm typecheck` runs `scripts/check-glsl-hosts.mjs`). **`dual`** entries are GLSL factories behind a backend switch — their GLSL branches stay forever for the WebGL product path. **`residual`** entries may **only shrink** (new live GLSL hosts fail CI unless listed). Scene-material migration is finished when every live host is `dual` or `dormant`; **`PostProcessingPipeline.tsx` is the intentional last `residual`** until a Three node-post bump (Phase D). Native WebGPU (`forceWebGL: false`) is gated by [`src/rendering/nativeWebgpuGate.ts`](../../src/rendering/nativeWebgpuGate.ts) until residual is empty **and** the post stack is ported (`POST_STACK_PORTED`).
 
 Every host takes the backend as its first argument, never throws, and reports the backend it actually produced — a TSL failure (module not loaded, TSL surface drift) degrades to GLSL instead of taking the Canvas down.
 
@@ -141,7 +141,7 @@ Water surface, vs the GLSL original:
 
 Scene-wide:
 
-- **JSM post-processing stays WebGL-only.** Live path is `three/examples/jsm/postprocessing` in `PostProcessingPipeline.tsx` (not `@react-three/postprocessing`, which crashes on R3F v9). On `?material=tsl` the composer is **not mounted**. Native WebGPU waits on a Three bump whose node post stack is documented — do not add a second composer.
+- **JSM post-processing stays WebGL-only (Phase D).** Live path is `three/examples/jsm/postprocessing` + `postprocessing@6` on `three@0.168` in `PostProcessingPipeline.tsx` (not `@react-three/postprocessing`, which crashes on R3F v9). `EffectComposer` / `ShaderPass` require `THREE.WebGLRenderer`. On `?material=tsl` the composer is **not mounted**. Native WebGPU waits on a documented Three bump whose node post stack replaces JSM — do not add a second composer or bump `three` in #387. `POST_STACK_PORTED` in `nativeWebgpuGate.ts` stays `false` until that lands.
 - Dormant GLSL modules (`CausticsMaterial.ts`, `EnhancedWaterMaterial.ts`) are unused and listed as `dormant` on the allowlist.
 - Weather particles are Reach-mounted (`ReachManager`), not the default treadmill.
 

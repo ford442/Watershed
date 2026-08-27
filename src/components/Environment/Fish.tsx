@@ -4,9 +4,8 @@ import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { WATER_LEVEL } from '../../constants/game';
 import type { BiomeDecorationProps } from './types';
-import { materialShaderUserData } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
-import { createFishBodyMaterial, createFishRingMaterial } from '../../materials/critters/createCritterMaterials';
+import { createFishBodyMaterial, createFishRingMaterial, updateCritterMaterialTime } from '../../materials/critters/createCritterMaterials';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -197,10 +196,7 @@ export default function Fish({ transforms }: BiomeDecorationProps) {
 
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
-    const shader = materialShaderUserData(material).shader;
-    if (shader?.uniforms.uTime) {
-      shader.uniforms.uTime.value = t;
-    }
+    updateCritterMaterialTime(material, t);
 
     if (!meshRef.current || !fish.length) return;
     const mesh = meshRef.current;

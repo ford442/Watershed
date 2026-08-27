@@ -26,7 +26,7 @@ A node-capable renderer is created **only** when the material backend is `tsl`, 
 1. **Materials decide the renderer, not the other way round.** `materialBackend: 'tsl'` is what selects `WebGPURenderer`; there is no path where a legacy material meets a node renderer by default.
 2. **`forceWebGL: true` until `canEnableNativeWebgpu()`.** Native WebGPU stays closed while residual GLSL hosts remain and JSM post is unported. `?renderer=webgpu` + TSL does **not** flip the graphics API today.
 
-The leftover-GLSL allowlist (`scripts/check-glsl-hosts.mjs`) is the tracking metric: **`residual` only shrinks.** The TSL path is finished for scene materials when residual is empty; native WebGPU still waits on a post story.
+The leftover-GLSL allowlist (`scripts/check-glsl-hosts.mjs`) is the tracking metric: **`residual` only shrinks** (new construction sites fail CI unless listed). **`dual`** GLSL branches remain for the default WebGL path. Scene-material TSL is finished when every live host is `dual` or `dormant` and **`PostProcessingPipeline.tsx` is the sole `residual`**; native WebGPU still waits on a post story after that.
 
 ## Material ↔ Renderer Compatibility Matrix
 

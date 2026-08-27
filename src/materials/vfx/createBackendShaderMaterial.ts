@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import type { MaterialBackend } from '../../rendering/materialBackend';
 import { getLoadedNodeMaterials } from '../nodeMaterials';
-
-const warned = { current: false };
+import { createDualVfxMaterial } from './vfxDualFactory';
 
 /**
  * Dual-path factory for leftover VFX ShaderMaterials. GLSL uses the provided
@@ -14,21 +13,14 @@ export function createBackendShaderMaterial(
   params: THREE.ShaderMaterialParameters,
 ): THREE.Material {
   const nodes = getLoadedNodeMaterials();
-  if (backend === 'tsl' && nodes?.vfx) {
-    try {
-      return nodes.vfx.createGenericVfxNodeMaterial(params) as unknown as THREE.Material;
-    } catch (error) {
-      if (!warned.current) {
-        warned.current = true;
-        console.warn('[createBackendShaderMaterial] TSL VFX failed; falling back to GLSL.', error);
-      }
-    }
-  }
-  const material = new THREE.ShaderMaterial(params);
-  material.userData.materialBackend = 'glsl';
-  return material;
+  return createDualVfxMaterial(
+    backend,
+    'createBackendShaderMaterial',
+    params,
+    () => nodes!.vfx.createGenericVfxNodeMaterial(params) as unknown as THREE.Material,
+  );
 }
 
 export function resetBackendShaderWarnings(): void {
-  warned.current = false;
+  // warnings live in vfxDualFactory
 }

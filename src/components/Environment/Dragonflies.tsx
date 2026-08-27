@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
 import type { BiomeDecorationProps } from './types';
-import { materialShaderUserData } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import {
   createDragonflyBodyMaterial,
   createDragonflyWingMaterial,
+  updateCritterMaterialTime,
 } from '../../materials/critters/createCritterMaterials';
 
 const DUMMY_OBJ = new THREE.Object3D();
@@ -212,10 +212,8 @@ export default function Dragonflies({ transforms }: BiomeDecorationProps) {
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
-    const bodyShader = materialShaderUserData(bodyMaterial).shader;
-    const wingShader = materialShaderUserData(wingMaterial).shader;
-    if (bodyShader?.uniforms.uTime) bodyShader.uniforms.uTime.value = t;
-    if (wingShader?.uniforms.uTime) wingShader.uniforms.uTime.value = t;
+    updateCritterMaterialTime(bodyMaterial, t);
+    updateCritterMaterialTime(wingMaterial, t);
 
     if (!meshRef.current || !swarms.length) return;
     const mesh = meshRef.current;
