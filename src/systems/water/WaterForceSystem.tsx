@@ -2,7 +2,8 @@
  * WaterForceSystem — production WASM water coupling.
  *
  * - Steps a player-centered SWE grid and uploads height data for FlowingWater.
- * - Applies native buoyancy + current drag to the vehicle and floating debris.
+ * - Applies native buoyancy + current drag to the vehicle and floating debris
+ *   using SWE-sampled flowDir / speed (sampleSWEFlow → calculateWaterForce).
  * - Falls back to pure TypeScript force math when WASM is unavailable.
  */
 
@@ -47,6 +48,8 @@ import {
   setSWEStatus,
 } from '../../physics/physicsWorkerRegistry';
 import { bindChoreWasm, runHeightfieldChores } from '../../rendering/gpuChores';
+import { sampleSWEFlow, FALLBACK_FLOW_DIR, type SWEFlowGrid } from './sampleSWEFlow';
+import { shouldSkipMainThreadVehicleForce } from '../../physics/waterForceAuthority';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 
 const PHYSICS_SCALE = 0.001;
@@ -130,6 +133,24 @@ function worldToGridIndex(
   const gz = Math.round((worldZ - originZ) / budget.cellSize);
   if (gx < 0 || gx >= budget.width || gz < 0 || gz >= budget.height) return null;
   return { gx, gz };
+}
+
+function toFlowGrid(
+  grid: SWEGrid,
+  originX: number,
+  originZ: number,
+): SWEFlowGrid {
+  return {
+    h: grid.h,
+    u: grid.u,
+    w: grid.w,
+    b: grid.b,
+    width: grid.width,
+    height: grid.height,
+    cellSize: grid.dx,
+    originX,
+    originZ,
+  };
 }
 
 function applyDisturbances(
@@ -346,14 +367,6 @@ export function WaterForceSystem({
     const dt = Math.min(delta, 0.05);
     const timeSeconds = state.clock.elapsedTime;
     const workerOwnsVehicleForces = isPhysicsWorkerActive();
-    setPhysicsWorkerTickParams({
-      flowSpeed,
-      waterLevel,
-      turbulenceStrength,
-      turbulenceFrequency,
-      flowDirX: 0,
-      flowDirZ: -1,
-    });
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
     const originX = anchor.x - (budget.width * budget.cellSize) * 0.5;
     const originZ = anchor.z - (budget.height * budget.cellSize) * 0.5;
@@ -398,119 +411,112 @@ export function WaterForceSystem({
       }
     }
 
-    const vehicleConfig = vehicleForceConfig(
-      vehicleType,
+    const sweEnabled = Boolean(budget.enabled && grid);
+    const flowGrid = grid ? toFlowGrid(grid, originX, originZ) : null;
+    const vehicleFlow = sampleSWEFlow({
+      worldX: anchor.x,
+      worldZ: anchor.z,
       flowSpeed,
+      grid: flowGrid,
+      enabled: sweEnabled,
+    });
+    setPhysicsWorkerTickParams({
+      flowSpeed: vehicleFlow.speed,
       waterLevel,
-      timeSeconds,
       turbulenceStrength,
       turbulenceFrequency,
-    );
+      flowDirX: vehicleFlow.dirX,
+      flowDirZ: vehicleFlow.dirZ,
+    });
 
-    if (wasmRef.current) {
-      for (let i = 0; i < bodies.length; i += 1) {
-        const body = bodies[i];
-        try {
-          const pos = body.translation();
-          const vel = body.linvel();
-          if (!pos || !vel) continue;
+    for (let i = 0; i < bodies.length; i += 1) {
+      const body = bodies[i];
+      try {
+        const pos = body.translation();
+        const vel = body.linvel();
+        if (!pos || !vel) continue;
 
-          const isVehicle = i === 0 && vehicleBody != null;
-          if (isVehicle && workerOwnsVehicleForces) {
-            continue;
-          }
-          const config = isVehicle
-            ? vehicleConfig
-            : floatingForceConfig(
-                flowSpeed,
-                waterLevel,
-                timeSeconds,
-                body,
-                turbulenceStrength * 0.8,
-                turbulenceFrequency,
-              );
-
-          const force = wasmRef.current.calculateWaterForce(
-            pos.x, pos.y, pos.z,
-            vel.x, vel.y, vel.z,
-            0, -1,
-            config.flowSpeed,
-            config.waterLevel,
-            config.raftMass,
-            config.raftVolume,
-            config.dragCoefficient,
-            config.frontalArea,
-            config.sideArea,
-            config.timeSeconds,
-            config.turbulenceStrength,
-            config.turbulenceFrequency,
-          );
-
-          body.applyImpulse(
-            {
-              x: force.forceX * dt * PHYSICS_SCALE,
-              y: force.forceY * dt * PHYSICS_SCALE,
-              z: force.forceZ * dt * PHYSICS_SCALE,
-            },
-            true,
-          );
-        } catch {
-          // skip unstable body this frame
+        const isVehicle = i === 0 && vehicleBody != null;
+        if (shouldSkipMainThreadVehicleForce(isVehicle, workerOwnsVehicleForces)) {
+          continue;
         }
-      }
-    } else {
-      for (let i = 0; i < bodies.length; i += 1) {
-        const body = bodies[i];
-        try {
-          const pos = body.translation();
-          const vel = body.linvel();
-          if (!pos || !vel) continue;
+        const flow = isVehicle
+          ? vehicleFlow
+          : sampleSWEFlow({
+              worldX: pos.x,
+              worldZ: pos.z,
+              flowSpeed,
+              grid: flowGrid,
+              enabled: sweEnabled,
+            });
+        const config = isVehicle
+          ? vehicleForceConfig(
+              vehicleType,
+              flow.speed,
+              waterLevel,
+              timeSeconds,
+              turbulenceStrength,
+              turbulenceFrequency,
+            )
+          : floatingForceConfig(
+              flow.speed,
+              waterLevel,
+              timeSeconds,
+              body,
+              turbulenceStrength * 0.8,
+              turbulenceFrequency,
+            );
 
-          const isVehicle = i === 0 && vehicleBody != null;
-          if (isVehicle && workerOwnsVehicleForces) {
-            continue;
-          }
-          const config = isVehicle
-            ? vehicleConfig
-            : floatingForceConfig(
-                flowSpeed,
-                waterLevel,
-                timeSeconds,
-                body,
-                turbulenceStrength * 0.8,
-                turbulenceFrequency,
-              );
+        const force = wasmRef.current
+          ? wasmRef.current.calculateWaterForce(
+              pos.x, pos.y, pos.z,
+              vel.x, vel.y, vel.z,
+              flow.dirX, flow.dirZ,
+              config.flowSpeed,
+              config.waterLevel,
+              config.raftMass,
+              config.raftVolume,
+              config.dragCoefficient,
+              config.frontalArea,
+              config.sideArea,
+              config.timeSeconds,
+              config.turbulenceStrength,
+              config.turbulenceFrequency,
+            )
+          : calculateWaterForceFallback(
+              {
+                position: pos,
+                velocity: vel,
+                flowDirection: { x: flow.dirX, z: flow.dirZ },
+              },
+              config,
+            );
 
-          const force = calculateWaterForceFallback(
-            {
-              position: pos,
-              velocity: vel,
-              flowDirection: { x: 0, z: -1 },
-            },
-            config,
-          );
-
-          body.applyImpulse(
-            {
-              x: force.forceX * dt * PHYSICS_SCALE,
-              y: force.forceY * dt * PHYSICS_SCALE,
-              z: force.forceZ * dt * PHYSICS_SCALE,
-            },
-            true,
-          );
-        } catch {
-          // skip unstable body this frame
-        }
+        body.applyImpulse(
+          {
+            x: force.forceX * dt * PHYSICS_SCALE,
+            y: force.forceY * dt * PHYSICS_SCALE,
+            z: force.forceZ * dt * PHYSICS_SCALE,
+          },
+          true,
+        );
+      } catch {
+        // skip unstable body this frame
       }
     }
 
-    if (typeof window !== 'undefined' && import.meta.env.DEV) {
+    if (typeof window !== 'undefined') {
       (window as any).__watershedWaterForceSystem = {
         status: statusRef.current,
         origin: originRef.current,
         sampleCount: bodies.length,
         sweBudget: budget,
         workerOwnsVehicleForces,
+        sampledDir: [vehicleFlow.dirX, vehicleFlow.dirZ],
+        sampledSpeed: vehicleFlow.speed,
+        fallbackDir: [FALLBACK_FLOW_DIR.x, FALLBACK_FLOW_DIR.z],
+        source: vehicleFlow.source,
+        wet: vehicleFlow.wet,
         workerDiagnostics: workerOwnsVehicleForces
           ? (window as any).__watershedPhysicsWorker?.waterForce
           : undefined,

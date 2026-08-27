@@ -52,6 +52,8 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
   const gravityArrowRef = useRef<THREE.ArrowHelper | null>(null);
   const rayLineRef = useRef<THREE.Line | null>(null);
   const impulseLineRef = useRef<THREE.Line | null>(null);
+  const sampledFlowArrowRef = useRef<THREE.ArrowHelper | null>(null);
+  const fallbackFlowArrowRef = useRef<THREE.ArrowHelper | null>(null);
   const contactMarkersRef = useRef<THREE.Mesh[]>([]);
 
   useEffect(() => {
@@ -90,7 +92,30 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
       0.2,
       0.1
     );
-    group.add(velocityArrowRef.current, angularArrowRef.current, normalArrowRef.current, gravityArrowRef.current);
+    sampledFlowArrowRef.current = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, -1),
+      new THREE.Vector3(),
+      0.001,
+      0x44e8ff,
+      0.2,
+      0.1
+    );
+    fallbackFlowArrowRef.current = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, -1),
+      new THREE.Vector3(),
+      0.001,
+      0x8899aa,
+      0.2,
+      0.1
+    );
+    group.add(
+      velocityArrowRef.current,
+      angularArrowRef.current,
+      normalArrowRef.current,
+      gravityArrowRef.current,
+      sampledFlowArrowRef.current,
+      fallbackFlowArrowRef.current,
+    );
 
     const rayGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
     rayLineRef.current = new THREE.Line(
@@ -174,6 +199,36 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
       gravityArrowRef.current.setLength(Math.min(2.2, gravityMag * 0.08 + 0.15), 0.18, 0.1);
     }
 
+    const waterForce = (window as any).__watershedWaterForceSystem as {
+      sampledDir?: [number, number];
+      sampledSpeed?: number;
+      fallbackDir?: [number, number];
+      source?: string;
+      wet?: boolean;
+    } | undefined;
+    const sampledDir = waterForce?.sampledDir ?? [0, -1];
+    const fallbackDir = waterForce?.fallbackDir ?? [0, -1];
+    const sampledSpeed = waterForce?.sampledSpeed ?? 0;
+    const sampledVec = new THREE.Vector3(sampledDir[0], 0, sampledDir[1]);
+    if (sampledVec.lengthSq() < 1e-8) sampledVec.set(0, 0, -1);
+    sampledVec.normalize();
+    const fallbackVec = new THREE.Vector3(fallbackDir[0], 0, fallbackDir[1]);
+    if (fallbackVec.lengthSq() < 1e-8) fallbackVec.set(0, 0, -1);
+    fallbackVec.normalize();
+
+    if (sampledFlowArrowRef.current) {
+      sampledFlowArrowRef.current.visible = true;
+      sampledFlowArrowRef.current.position.copy(vehiclePos).add(new THREE.Vector3(0, 0.35, 0));
+      sampledFlowArrowRef.current.setDirection(sampledVec);
+      sampledFlowArrowRef.current.setLength(Math.min(3.2, sampledSpeed * 0.45 + 0.6), 0.22, 0.12);
+    }
+    if (fallbackFlowArrowRef.current) {
+      fallbackFlowArrowRef.current.visible = true;
+      fallbackFlowArrowRef.current.position.copy(vehiclePos).add(new THREE.Vector3(0, 0.2, 0));
+      fallbackFlowArrowRef.current.setDirection(fallbackVec);
+      fallbackFlowArrowRef.current.setLength(1.4, 0.16, 0.08);
+    }
+
     if (rayLineRef.current) {
       const origin = new THREE.Vector3(snapshot.groundRay.origin.x, snapshot.groundRay.origin.y, snapshot.groundRay.origin.z);
       const target = snapshot.groundRay.hitPoint
@@ -214,6 +269,9 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
         `friction ${snapshot.friction.toFixed(2)} | g ${snapshot.effectiveG.toFixed(2)} (${snapshot.waterfallGravityMultiplier.toFixed(2)}x)`,
         `segment ${snapshot.currentSegmentIndex} | ray ${snapshot.groundRay.distance !== null ? snapshot.groundRay.distance.toFixed(2) : 'miss'}`,
         `impulses ${recentImpulses || '—'}`,
+        waterForce
+          ? `flow ${waterForce.source ?? '?'} dir (${sampledDir[0].toFixed(2)}, ${sampledDir[1].toFixed(2)}) spd ${sampledSpeed.toFixed(2)} vs (0,-1)`
+          : 'flow —',
       ].join('\n');
     }
   });

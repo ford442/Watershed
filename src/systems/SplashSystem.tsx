@@ -27,6 +27,9 @@ import {
   raftSubmergedRatio,
   resolveSplashFrameEvents,
 } from './water/splashSpawnMath';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
+import { createBackendShaderMaterial } from '../materials/vfx/createBackendShaderMaterial';
+import { materialUniformBag } from '../materials/dual/materialUniformBag';
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -62,7 +65,7 @@ function RaftBowWave({
 
   const material = useMemo(
     () =>
-      new THREE.ShaderMaterial({
+      createBackendShaderMaterial(resolveMaterialBackend().backend, {
         uniforms: { time: { value: 0 } },
         vertexShader: `
           uniform float time;

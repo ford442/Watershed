@@ -18,10 +18,11 @@
  *
  *   // Shallow-water grid (per-frame simulation):
  *   const grid = createSWEGrid(wasm, 32, 32, 0.5);
- *   grid.h.fill(1.0);  // flat starting surface
+ *   grid.h.fill(1.0);  // η; rest is 0. Always pass bPtr on step (ABI 6).
  *   // In useFrame / game loop:
- *   wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr,
+ *   wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
  *     grid.width, grid.height, delta, 9.8, grid.dx, 1.0);
+ *   // Currents: sampleSWEFlow reads u,w (speed 0 on dry H+η−b).
  *   // When component unmounts:
  *   grid.dispose();
  */
@@ -405,7 +406,7 @@ export interface NativeWaterForceBatch {
  *   }
  *
  *   // Per-frame in useFrame:
- *   wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr,
+ *   wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
  *     grid.width, grid.height, delta, 9.8, grid.dx, 1.0);
  *
  *   // On unmount:

@@ -520,8 +520,8 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
    *   1. Omitting `materialBackend` (production) is byte-identical to today —
    *      a classic WebGLRenderer, no node pipeline anywhere near it.
    *   2. `materialBackend: 'tsl'` opts into the node renderer, and does so with a
-   *      WebGL2 backend unless WebGPU is *also* explicitly preferred. Flipping the
-   *      graphics API is a separate, later decision (phase 3).
+   *      WebGL2 backend. Native WebGPU (`forceWebGL: false`) stays gated until the
+   *      residual GLSL allowlist is empty and post is ported or skipped.
    */
 
   it('defaults to the classic WebGLRenderer when no backend is given', async () => {
@@ -557,14 +557,14 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
     renderer.dispose();
   });
 
-  it('only negotiates a real WebGPU backend when tsl AND webgpu are requested', async () => {
+  it('keeps a WebGL2 backend even when tsl AND webgpu are requested while residual GLSL remains', async () => {
     const renderer = await createGameRenderer(
       { canvas: document.createElement('canvas') },
       { preference: 'webgpu', materialBackend: 'tsl' }
     );
 
     expect((renderer as any).isWebGPURenderer).toBe(true);
-    expect((renderer as any).backend?.isWebGPUBackend).toBe(true);
+    expect((renderer as any).backend?.isWebGPUBackend).toBe(false);
     renderer.dispose();
   });
 

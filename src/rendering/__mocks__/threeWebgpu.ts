@@ -43,6 +43,28 @@ export class MeshBasicNodeMaterial extends THREE.MeshBasicMaterial {
   get positionNode() {
     return undefined;
   }
+
+  set opacityNode(value: unknown) {
+    this._nodeProps.opacityNode = value;
+    recordNodeSlot(this, 'opacityNode', value);
+  }
+  get opacityNode() {
+    return undefined;
+  }
+}
+
+export class PointsNodeMaterial extends MeshBasicNodeMaterial {
+  constructor(parameters: THREE.PointsMaterialParameters = {}) {
+    super(parameters as THREE.MeshBasicMaterialParameters);
+    (this as { type: string }).type = 'PointsNodeMaterial';
+  }
+
+  set sizeNode(value: unknown) {
+    recordNodeSlot(this, 'sizeNode', value);
+  }
+  get sizeNode() {
+    return undefined;
+  }
 }
 
 export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
@@ -74,6 +96,14 @@ export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
     this._nodeProps.roughnessNode = value;
   }
   get roughnessNode() {
+    return undefined;
+  }
+
+  set positionNode(value: unknown) {
+    this._nodeProps.positionNode = value;
+    recordNodeSlot(this, 'positionNode', value);
+  }
+  get positionNode() {
     return undefined;
   }
 }
@@ -166,3 +196,6 @@ export const positionLocal = createNode('positionLocal');
 export const vec4 = createNode('vec4');
 export const materialColor = createNode('materialColor');
 export const materialRoughness = createNode('materialRoughness');
+export const mod = createNode('mod');
+export const instanceMatrix = createNode('instanceMatrix');
+export const pointUV = createNode('pointUV');

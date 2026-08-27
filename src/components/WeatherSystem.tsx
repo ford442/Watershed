@@ -14,6 +14,9 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../constants/game';
 import { WEATHER_CONFIG, WeatherType } from '../constants/weather';
+import { resolveMaterialBackend } from '../rendering/materialBackend';
+import { createWeatherParticleMaterial } from '../materials/weather/createWeatherParticleMaterial';
+import { materialUniformBag } from '../materials/dual/materialUniformBag';
 
 interface WeatherSystemProps {
   targetRef: React.RefObject<any>;
@@ -122,6 +125,7 @@ const SPLASH_FRAGMENT_SHADER = `
 
 export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps) {
   const { scene } = useThree();
+  const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
   const currentWeatherRef = useRef<WeatherType>('clear');
   const targetWeatherRef = useRef<WeatherType>(weather?.type || 'clear');
   const intensityRef = useRef(weather?.intensity ?? 0.5);
@@ -170,41 +174,27 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     return geo;
   }, []);
 
-  const rainMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        time: { value: 0 },
-        fallSpeed: { value: WEATHER_CONFIG.rain.fallSpeed },
-        windX: { value: WEATHER_CONFIG.rain.windX },
-        windZ: { value: WEATHER_CONFIG.rain.windZ },
-        cameraPos: { value: new THREE.Vector3() },
-        globalAlpha: { value: 0 },
-      },
-      vertexShader: RAIN_VERTEX_SHADER,
-      fragmentShader: RAIN_FRAGMENT_SHADER,
-    });
-  }, []);
+  const rainMaterial = useMemo(
+    () =>
+      createWeatherParticleMaterial(materialBackend, {
+        kind: 'rain',
+        fallSpeed: WEATHER_CONFIG.rain.fallSpeed,
+        windX: WEATHER_CONFIG.rain.windX,
+        windZ: WEATHER_CONFIG.rain.windZ,
+      }),
+    [materialBackend],
+  );
 
-  const snowMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.NormalBlending,
-      uniforms: {
-        time: { value: 0 },
-        fallSpeed: { value: WEATHER_CONFIG.snow.fallSpeed },
-        windX: { value: WEATHER_CONFIG.snow.windX },
-        windZ: { value: WEATHER_CONFIG.snow.windZ },
-        cameraPos: { value: new THREE.Vector3() },
-        globalAlpha: { value: 0 },
-      },
-      vertexShader: RAIN_VERTEX_SHADER,
-      fragmentShader: SNOW_FRAGMENT_SHADER,
-    });
-  }, []);
+  const snowMaterial = useMemo(
+    () =>
+      createWeatherParticleMaterial(materialBackend, {
+        kind: 'snow',
+        fallSpeed: WEATHER_CONFIG.snow.fallSpeed,
+        windX: WEATHER_CONFIG.snow.windX,
+        windZ: WEATHER_CONFIG.snow.windZ,
+      }),
+    [materialBackend],
+  );
 
   const snowGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
@@ -255,19 +245,10 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     return geo;
   }, []);
 
-  const splashMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        time: { value: 0 },
-        globalAlpha: { value: 0 },
-      },
-      vertexShader: SPLASH_VERTEX_SHADER,
-      fragmentShader: SPLASH_FRAGMENT_SHADER,
-    });
-  }, []);
+  const splashMaterial = useMemo(
+    () => createWeatherParticleMaterial(materialBackend, { kind: 'splash' }),
+    [materialBackend],
+  );
 
   // Capture base lighting from scene on first render
   useEffect(() => {
@@ -318,36 +299,55 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     // ======================================================================
     // 1. Rain particles
     // ======================================================================
+    const writeBag = (
+      mat: THREE.Material,
+      patch: Record<string, number | THREE.Vector3 | { x: number; y: number; z: number }>,
+    ) => {
+      const u = materialUniformBag(mat);
+      if (!u) return;
+      for (const [key, val] of Object.entries(patch)) {
+        if (!u[key]) continue;
+        if (u[key].value instanceof THREE.Vector3 && typeof val === 'object' && val && 'x' in val) {
+          u[key].value.set(val.x, val.y, val.z);
+        } else {
+          u[key].value = val;
+        }
+      }
+    };
+
     if (rainRef.current) {
       const showRain = (weatherType === 'rain' || weatherType === 'storm') && t > 0.05;
-      rainMaterial.uniforms.time.value = state.clock.elapsedTime;
-      rainMaterial.uniforms.cameraPos.value.set(playerPos.x, playerPos.y, playerPos.z);
-      rainMaterial.uniforms.globalAlpha.value = showRain ? t : 0;
-      rainMaterial.uniforms.windX.value = WEATHER_CONFIG.rain.windX * (weatherType === 'storm' ? 2.2 : 1);
-      rainMaterial.uniforms.windZ.value = WEATHER_CONFIG.rain.windZ * (weatherType === 'storm' ? 1.8 : 1);
+      writeBag(rainMaterial, {
+        time: state.clock.elapsedTime,
+        cameraPos: playerPos,
+        globalAlpha: showRain ? t : 0,
+        windX: WEATHER_CONFIG.rain.windX * (weatherType === 'storm' ? 2.2 : 1),
+        windZ: WEATHER_CONFIG.rain.windZ * (weatherType === 'storm' ? 1.8 : 1),
+      });
       rainRef.current.visible = showRain;
     }
 
     if (snowRef.current) {
       const showSnow = weatherType === 'snow' && t > 0.05;
-      snowMaterial.uniforms.time.value = state.clock.elapsedTime;
-      snowMaterial.uniforms.cameraPos.value.set(playerPos.x, playerPos.y, playerPos.z);
-      snowMaterial.uniforms.globalAlpha.value = showSnow ? t : 0;
-      snowMaterial.uniforms.fallSpeed.value = WEATHER_CONFIG.snow.fallSpeed;
-      snowMaterial.uniforms.windX.value = WEATHER_CONFIG.snow.windX;
-      snowMaterial.uniforms.windZ.value = WEATHER_CONFIG.snow.windZ;
+      writeBag(snowMaterial, {
+        time: state.clock.elapsedTime,
+        cameraPos: playerPos,
+        globalAlpha: showSnow ? t : 0,
+        fallSpeed: WEATHER_CONFIG.snow.fallSpeed,
+        windX: WEATHER_CONFIG.snow.windX,
+        windZ: WEATHER_CONFIG.snow.windZ,
+      });
       snowRef.current.visible = showSnow;
     }
 
-    // ======================================================================
-    // 2. Splash particles on water surface
-    // ======================================================================
     if (splashRef.current) {
       const showSplash = (weatherType === 'rain' || weatherType === 'storm') && t > 0.05;
-      splashMaterial.uniforms.time.value = state.clock.elapsedTime;
-      splashMaterial.uniforms.globalAlpha.value = showSplash
-        ? t * WEATHER_CONFIG.rain.splashBrightness * (weatherType === 'storm' ? 1.4 : 1)
-        : 0;
+      writeBag(splashMaterial, {
+        time: state.clock.elapsedTime,
+        globalAlpha: showSplash
+          ? t * WEATHER_CONFIG.rain.splashBrightness * (weatherType === 'storm' ? 1.4 : 1)
+          : 0,
+      });
       splashRef.current.visible = showSplash;
 
       if (showSplash) {

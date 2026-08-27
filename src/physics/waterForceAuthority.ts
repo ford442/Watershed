@@ -5,8 +5,9 @@
  * all call calculateWaterForce / calculateWaterForceFallback. This helper is
  * the gate that keeps them from stacking in one physics tick.
  *
- * Authored segment currents (WaterFlowForces) and vortex fields are separate
- * gameplay systems — not this ABI.
+ * Authored WaterFlowForces *currents* are gated off while WaterForceSystem is
+ * active (SWE u,w drives the ABI). Centering / seating / alignment and vortex
+ * fields (until hydroEvents) stay separate gameplay systems.
  */
 
 import {
@@ -32,6 +33,17 @@ export function resolveRaftWaterForceOwner(opts: {
 
 export function shouldApplyLocalAbiWaterForce(owner: RaftWaterForceOwner): boolean {
   return owner === 'local-abi';
+}
+
+/**
+ * WaterForceSystem must not apply the vehicle impulse when the Rapier worker
+ * already owns that body's water force this tick.
+ */
+export function shouldSkipMainThreadVehicleForce(
+  isVehicle: boolean,
+  workerActive: boolean,
+): boolean {
+  return isVehicle && workerActive;
 }
 
 export function localAbiWaterImpulse(

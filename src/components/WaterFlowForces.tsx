@@ -1,11 +1,10 @@
 /**
  * WaterFlowForces.tsx
  *
- * Comprehensive water flow force system for the Watershed river adventure.
- * - Applies persistent downstream force based on segment flowSpeed
- * - Supports flowMap texture sampling for vector-field currents
- * - Adds turbulence, lateral drift, and centering forces
- * - Dispatches visual/audio events for high-flow rapids
+ * Segment-driven raft handling: centering, seating, alignment, audio/visual
+ * flow events. Downstream current, flow-map current, pond drag, and ice slide
+ * bias are skipped while WaterForceSystem is active — SWE u,w feeds
+ * calculateWaterForce instead of a second impulse model.
  */
 
 import React, { useMemo, useRef, useEffect } from 'react';
@@ -16,6 +15,7 @@ import { WATER_FLOW_CONFIG } from '../constants/waterFlow';
 import { RAFT, WATER_LEVEL } from '../constants/game';
 import { AssetCache } from '../systems/reach/ReachStreamer';
 import { getAudioManager } from '../systems/audio/AudioSystem';
+import { isWaterForceSystemActive } from '../systems/water/WaterForceRegistry';
 
 const tmpPoint = new THREE.Vector3();
 const tmpForward = new THREE.Vector3();
@@ -192,13 +192,17 @@ export default function WaterFlowForces({
       1
     );
 
+    const abiOwnsCurrent = isWaterForceSystemActive();
+
     // ========================================================================
     // 2. Sample flowMap at low frequency for vector-field lateral forces
     // ========================================================================
     const flowMapUrl = flowMapUrlRef.current;
     let flowMapForce = lastFlowMapSampleRef.current.force;
 
-    if (flowMapUrl && state.clock.elapsedTime - lastFlowMapSampleRef.current.time > WATER_FLOW_CONFIG.flowMapSampleInterval) {
+    if (abiOwnsCurrent) {
+      flowMapForce = tmpFlowMapForce.set(0, 0, 0);
+    } else if (flowMapUrl && state.clock.elapsedTime - lastFlowMapSampleRef.current.time > WATER_FLOW_CONFIG.flowMapSampleInterval) {
       const bounds = boundsRef.current;
       if (bounds) {
         const u = THREE.MathUtils.inverseLerp(bounds.min.z, bounds.max.z, translation.z);
@@ -227,7 +231,9 @@ export default function WaterFlowForces({
       * WATER_FLOW_CONFIG.raftDragShedding
       * submergedRatio
       * flowCarry;
-    const alongFlow = closestSample.tangent.clone().multiplyScalar(impulseStrength * delta * 2.0);
+    const alongFlow = closestSample.tangent.clone().multiplyScalar(
+      abiOwnsCurrent ? 0 : impulseStrength * delta * 2.0,
+    );
 
     // ========================================================================
     // 4. Centering / side-slip force (pull toward river centerline)
@@ -236,7 +242,9 @@ export default function WaterFlowForces({
     const sideSlip = closestSample.lateral
       .clone()
       .multiplyScalar(centeringFactor * WATER_FLOW_CONFIG.centeringStrength * delta);
-    const pondDrag = rawFlowSpeed < WATER_FLOW_CONFIG.raftNeutralFlowSpeed && horizontalSpeedSq > 0.0001
+    const pondDrag = !abiOwnsCurrent
+      && rawFlowSpeed < WATER_FLOW_CONFIG.raftNeutralFlowSpeed
+      && horizontalSpeedSq > 0.0001
       ? (WATER_FLOW_CONFIG.raftNeutralFlowSpeed - rawFlowSpeed)
         * WATER_FLOW_CONFIG.raftSubmergedArea
         * WATER_FLOW_CONFIG.raftDragShedding
@@ -266,8 +274,8 @@ export default function WaterFlowForces({
     // slipperiness 0 = no effect; 1 = frictionless chute (reduced by 80% lateral drag).
     const slip = slipperinessRef.current;
     const lateralDampScale = 1.0 - slip * 0.8; // lateral forces attenuated on ice
-    const slideBiasX = slip > 0.05 ? closestSample.tangent.x * effectiveFlowSpeed * slip * 0.18 * delta : 0;
-    const slideBiasZ = slip > 0.05 ? closestSample.tangent.z * effectiveFlowSpeed * slip * 0.18 * delta : 0;
+    const slideBiasX = !abiOwnsCurrent && slip > 0.05 ? closestSample.tangent.x * effectiveFlowSpeed * slip * 0.18 * delta : 0;
+    const slideBiasZ = !abiOwnsCurrent && slip > 0.05 ? closestSample.tangent.z * effectiveFlowSpeed * slip * 0.18 * delta : 0;
 
     const impulseX = alongFlow.x + (flowMapForce.x * delta + sideSlip.x + turbulence.x) * lateralDampScale - tmpForward.x * pondDrag + slideBiasX;
     const impulseZ = alongFlow.z + (flowMapForce.z * delta + sideSlip.z + turbulence.z) * lateralDampScale - tmpForward.z * pondDrag + slideBiasZ;
