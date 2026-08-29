@@ -1,3 +1,11 @@
+/**
+ * HeightmapFlow — dormant experimental WGSL height/flow field.
+ *
+ * This is **not** a live SWE backend. The only stepper is C++ WASM
+ * (`resolveSweSimBackend()`). #391 Phase D may replace this file with
+ * `public/shaders/swe.wgsl` (same numerics as swe.cpp) or delete it.
+ * gpu-chores may share the session GPUDevice; they must not step water.
+ */
 import * as THREE from 'three';
 import { getSessionGpuDevice } from '../rendering/gpuChores/device';
 import { isGpuComputeDisabledByFlag } from '../rendering/gpuChores/support';

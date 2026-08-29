@@ -61,13 +61,21 @@ describe('parseUrlMapId', () => {
 });
 
 describe('getJourneyCompletionDecision', () => {
-  it('continues glacial into meander via registry continuation', () => {
+  it('continues glacial into lumber via nextMapId', () => {
     expect(getJourneyCompletionDecision('glacial')).toEqual({
+      kind: 'continue',
+      nextMapId: 'lumber',
+      nextLabel: 'Lumber Flume',
+    });
+    expect(getContinuationTarget('glacial')).toBe('lumber');
+  });
+
+  it('continues lumber into meander via nextMapId', () => {
+    expect(getJourneyCompletionDecision('lumber')).toEqual({
       kind: 'continue',
       nextMapId: 'meander',
       nextLabel: 'Meander to Waterfall',
     });
-    expect(getContinuationTarget('glacial')).toBe('meander');
   });
 
   it('continues meander into hydro via nextMapId', () => {
@@ -93,8 +101,8 @@ describe('getJourneyCompletionDecision', () => {
 });
 
 describe('buildCampaignStack', () => {
-  it('chains glacial → meander → hydro → delta', () => {
-    expect(buildCampaignStack('glacial')).toEqual(['glacial', 'meander', 'hydro', 'delta']);
+  it('chains glacial → lumber → meander → hydro → delta', () => {
+    expect(buildCampaignStack('glacial')).toEqual(['glacial', 'lumber', 'meander', 'hydro', 'delta']);
     expect(buildCampaignStack('hydro')).toEqual(['hydro', 'delta']);
     expect(getDefaultJourneyStack()[0]).toBe('glacial');
   });
@@ -103,7 +111,7 @@ describe('buildCampaignStack', () => {
 describe('campaign menu helpers', () => {
   it('lists all registered maps with duration and difficulty', () => {
     const maps = listMapsForMenu();
-    expect(maps.map((m) => m.id)).toEqual(['glacial', 'meander', 'hydro', 'delta']);
+    expect(maps.map((m) => m.id)).toEqual(['glacial', 'lumber', 'meander', 'hydro', 'delta']);
     expect(maps[0].estimatedDurationSec).toBe(240);
     expect(maps[0].difficulty).toBe('intermediate');
     expect(maps.find((m) => m.id === 'delta')?.estimatedDurationSec).toBe(360);
@@ -114,7 +122,9 @@ describe('campaign menu helpers', () => {
   it('soft-locks maps until prerequisites are completed', () => {
     expect(isMapUnlocked('glacial', [])).toBe(true);
     expect(isMapUnlocked('meander', [])).toBe(false);
-    expect(isMapUnlocked('meander', ['glacial'])).toBe(true);
+    expect(isMapUnlocked('meander', ['glacial'])).toBe(false);
+    expect(isMapUnlocked('meander', ['lumber'])).toBe(true);
+    expect(isMapUnlocked('lumber', ['glacial'])).toBe(true);
     expect(isMapUnlocked('hydro', ['glacial'])).toBe(false);
     expect(isMapUnlocked('hydro', ['meander'])).toBe(true);
     expect(isMapUnlocked('delta', ['meander'])).toBe(false);

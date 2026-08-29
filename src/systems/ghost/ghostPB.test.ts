@@ -212,6 +212,36 @@ describe('ghostExport / importGhostFromJson', () => {
     if (!result.ok) expect(result.reason).toBe('invalid_format');
   });
 
+  it('round-trips launchHour / hydroEventHash / qualityPreset (codec v3)', () => {
+    const json = exportGhostToJson('hydro', 75_000, GHOST, undefined, {
+      launchHour: 14,
+      hydroEventHash: 'abcd1234',
+      qualityPreset: 'high',
+    });
+    const result = importGhostFromJson(json, 'hydro');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.launchHour).toBe(14);
+    expect(result.file.hydroEventHash).toBe('abcd1234');
+    expect(result.file.qualityPreset).toBe('high');
+    expect(result.file.codecVersion).toBe(GHOST_CODEC_VERSION);
+  });
+
+  it('still imports a v2 file that has no fairness fields', () => {
+    const json = JSON.stringify({
+      codecVersion: 2,
+      mapId: 'meander',
+      timeMs: 60_000,
+      ghostData: GHOST,
+      exportedAt: Date.now(),
+    });
+    const result = importGhostFromJson(json, 'meander');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.launchHour).toBeUndefined();
+    expect(result.file.hydroEventHash).toBeUndefined();
+  });
+
   it('rejects ghost recorded on a different map', () => {
     const json = exportGhostToJson('glacier', 60_000, GHOST);
     const result = importGhostFromJson(json, 'meander');

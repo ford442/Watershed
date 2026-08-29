@@ -20,7 +20,9 @@ import {
   dragForceFallback,
   createSWEGrid,
   getWasm,
+  peekWasm,
   MIN_WASM_ABI_VERSION,
+  PARTICLE_SOA_PLANES,
   type Vec3,
   type WatershedNativeModule,
   type SWEGrid,
@@ -35,10 +37,18 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof getWasm).toBe('function');
   });
 
+  it('exports peekWasm function', () => {
+    expect(typeof peekWasm).toBe('function');
+  });
+
   it('requires ABI 6+, since stepShallowWater gained the bed argument', () => {
     // ABI 6 changed stepShallowWater's arity, so an older binary cannot be
     // called at all — this floor must not drift back down.
     expect(MIN_WASM_ABI_VERSION).toBeGreaterThanOrEqual(6);
+  });
+
+  it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
+    expect(PARTICLE_SOA_PLANES).toBe(9);
   });
 
   it('exports createSWEGrid function', () => {
@@ -304,6 +314,16 @@ function buildMockModule(): WatershedNativeModule {
     freeGrid(ptr): void {
       allocations.delete(ptr);
     },
+
+    allocateParticleSoA(capacity): number {
+      return this.allocateGrid(PARTICLE_SOA_PLANES * capacity);
+    },
+    freeParticleSoA(ptr): void {
+      this.freeGrid(ptr);
+    },
+    initWaterfallParticles() { return 1; },
+    stepWaterfallParticles() { return 1; },
+    stepSplashParticles() { /* heap views only — no C++ numerics in this mock */ },
   };
 
   return mod;
@@ -508,6 +528,34 @@ describe('native water force helpers', () => {
     expect(result.forceZ).toBeLessThan(0);
     expect(result.buoyancy).toBeGreaterThan(0);
     batch.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5b. ABI 7 particle SoA plane stride (mock heap, no C++ numerics)
+// ---------------------------------------------------------------------------
+
+describe('particle SoA heap layout', () => {
+  it('places scale on plane 8 at capacity-stride from px', () => {
+    const mod = buildMockModule();
+    const capacity = 16;
+    const ptr = mod.allocateParticleSoA!(capacity);
+    expect(ptr).toBeGreaterThan(0);
+    expect(typeof mod.initWaterfallParticles).toBe('function');
+    expect(typeof mod.stepWaterfallParticles).toBe('function');
+    expect(typeof mod.stepSplashParticles).toBe('function');
+
+    const px = new Float32Array(mod.HEAPF32.buffer, ptr, capacity);
+    const scale = new Float32Array(
+      mod.HEAPF32.buffer,
+      ptr + 8 * capacity * 4,
+      capacity,
+    );
+    px[0] = 1.25;
+    scale[0] = 0.5;
+    expect(mod.HEAPF32[(ptr >> 2) + 0]).toBe(1.25);
+    expect(mod.HEAPF32[(ptr >> 2) + 8 * capacity]).toBe(0.5);
+    mod.freeParticleSoA!(ptr);
   });
 });
 

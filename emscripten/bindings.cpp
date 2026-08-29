@@ -7,7 +7,7 @@
  * updating WASM.md.
  *
  * This is the only translation unit that includes <emscripten/bind.h> — every
- * other header (common.h, forces.h, swe.h, chores.h) stays Embind-free.
+ * other header (common.h, forces.h, swe.h, chores.h, particles.h) stays Embind-free.
  *
  * Build:
  *   cd emscripten && ./build.sh
@@ -21,6 +21,7 @@
 #include "forces.h"
 #include "swe.h"
 #include "chores.h"
+#include "particles.h"
 
 #include <emscripten/bind.h>
 #include <type_traits>
@@ -41,9 +42,13 @@
 //       changed, so TS MIN_WASM_ABI_VERSION moves to 6 — an ABI-5 binary
 //       cannot be called with the new signature. Field semantics are
 //       unchanged (h stays a free-surface perturbation).
+//   7 — particle SoA (waterfall + splash integrate). Additive;
+//       MIN_WASM_ABI_VERSION stays 6.
+//   8 — applySWEEvent source terms (inflow / vortex / braid / roughness).
+//       Additive; MIN_WASM_ABI_VERSION stays 6.
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
-    return 6;
+    return 8;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +88,7 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("computeDragForce", &computeDragForce);
     emscripten::function("computeFlowForce", &computeFlowForce);
     emscripten::function("stepShallowWater", &stepShallowWater);
+    emscripten::function("applySWEEvent",    &applySWEEvent);
     emscripten::function("allocateGrid",     &allocateGrid);
     emscripten::function("freeGrid",         &freeGrid);
     emscripten::function("reduceF32Grid",    &reduceF32Grid);
@@ -90,4 +96,9 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("lumaHistogramU8",  &lumaHistogramU8);
     emscripten::function("downsampleF32",    &downsampleF32);
     emscripten::function("blurSeparableF32", &blurSeparableF32);
+    emscripten::function("allocateParticleSoA", &allocateParticleSoA);
+    emscripten::function("freeParticleSoA", &freeParticleSoA);
+    emscripten::function("initWaterfallParticles", &initWaterfallParticles);
+    emscripten::function("stepWaterfallParticles", &stepWaterfallParticles);
+    emscripten::function("stepSplashParticles", &stepSplashParticles);
 }

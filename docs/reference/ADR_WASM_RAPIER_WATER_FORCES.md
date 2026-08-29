@@ -243,12 +243,13 @@ one growing translation unit:
 |------|------|
 | `emscripten/common.h` | Shared constants, `Vec2` / `Vec3`, `clampf`, `WATERSHED_KEEPALIVE` — Embind-free |
 | `emscripten/forces.h` / `forces.cpp` | `WaterForceResult`; buoyancy, drag, flow, `calculateWaterForce`, `computeWaterForcesBatch` |
-| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid`; nonlinear well-balanced HLL solver + SIMD damping |
+| `emscripten/swe.h` / `swe.cpp` | `stepShallowWater`, `allocateGrid` / `freeGrid`; nonlinear well-balanced HLL solver; SIMD damping, conserved-state lift, CFL max only |
 | `emscripten/simdf32.h` | Portable `f32x4` (wasm_simd128 / SSE2 / NEON) |
+| `emscripten/particles.h` / `particles.cpp` | Waterfall / splash SoA (ABI 7, additive) |
 | `emscripten/bindings.cpp` | `getVersion()` and the Embind surface — the ABI; the only file including `<emscripten/bind.h>` |
 | `emscripten/host_smoke.cpp` | Host assert runner (no Embind) |
 
-`getVersion()` is **6** (nonlinear SWE + bed pointer). `MIN_WASM_ABI_VERSION` is **6**: unlike the additive 1–5 bumps, ABI 6 changed `stepShallowWater`'s arity, so a pre-6 binary cannot be called at all.
+`getVersion()` is **7** (particle SoA). `MIN_WASM_ABI_VERSION` is **6**: unlike the additive 1–5 and 7 bumps, ABI 6 changed `stepShallowWater`'s arity, so a pre-6 binary cannot be called at all.
 
 Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Exactly one owner applies it per raft tick (`resolveRaftWaterForceOwner`: worker, main-thread ABI, or local ABI). `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
 

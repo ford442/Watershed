@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 6).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 7).
  * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION.
  *
  * Quick start
@@ -91,9 +91,11 @@ export interface WatershedNativeModule {
    *   3 — C++ split into forces.cpp / swe.cpp / bindings.cpp
    *   4 — header split (common.h / forces.h / swe.h); Embind quarantined
    *   5 — optional gpu-chores (reduce/hist/downsample/blur); MIN_WASM_ABI_VERSION stayed 4
-   *   6 — nonlinear well-balanced SWE + bed pointer on stepShallowWater
-   *       (breaking arity change; MIN_WASM_ABI_VERSION is now 6)
-   */
+ *   6 — nonlinear well-balanced SWE + bed pointer on stepShallowWater
+ *       (breaking arity change; MIN_WASM_ABI_VERSION is now 6)
+ *   7 — particle SoA (additive; MIN_WASM_ABI_VERSION stays 6)
+ *   8 — applySWEEvent source terms (additive; MIN_WASM_ABI_VERSION stays 6)
+ */
   getVersion(): number;
 
   calculateBuoyancyAndDrag(
@@ -217,6 +219,17 @@ export interface WatershedNativeModule {
     dt: number, g: number, dx: number, H: number,
   ): void;
 
+  /**
+   * Authored hydro source term (ABI 8+). Optional so an ABI 6/7 binary still
+   * loads; TypeScript applySWEEventFallback covers the gap.
+   */
+  applySWEEvent?(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
+    width: number, height: number,
+    dx: number, originX: number, originZ: number, H: number,
+    kind: number, cx: number, cz: number, radius: number, strength: number, dt: number,
+  ): void;
+
   // ---- Memory helpers ----
   /**
    * Allocate `count` zero-initialised floats in WASM heap.
@@ -250,6 +263,23 @@ export interface WatershedNativeModule {
     dstH: number,
   ): void;
   blurSeparableF32?(srcPtr: number, dstPtr: number, width: number, height: number): void;
+
+  /** ABI 7+ particle SoA. Optional so ABI-6 binaries still load for SWE. */
+  allocateParticleSoA?(capacity: number): number;
+  freeParticleSoA?(ptr: number): void;
+  initWaterfallParticles?(
+    base: number, capacity: number, active: number,
+    width: number, height: number, depthZ: number,
+    fanSpreadRad: number, seed: number,
+  ): number;
+  stepWaterfallParticles?(
+    base: number, capacity: number, active: number,
+    dt: number, width: number, height: number, depthZ: number, seed: number,
+  ): number;
+  stepSplashParticles?(
+    base: number, capacity: number, count: number,
+    dt: number, gravityY: number, damp: number,
+  ): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +295,11 @@ type WatershedNativeFactory = (options?: {
 /** Minimum ABI accepted by this TypeScript surface. Use >= so a future minor bump does not break. */
 export const MIN_WASM_ABI_VERSION = 6;
 
+/** SoA planes in allocateParticleSoA (px…scale). Mirrored by PARTICLE_SOA_PLANES in particles.h. */
+export const PARTICLE_SOA_PLANES = 9;
+
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
+let _loaded: WatershedNativeModule | null = null;
 
 function resolvePublicAsset(path: string): string {
   const rawBase = getAssetBaseUrl();
@@ -326,10 +360,16 @@ export async function getWasm(): Promise<WatershedNativeModule> {
         `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
       );
     }
+    _loaded = loaded;
     return loaded;
   })();
 
   return _modulePromise;
+}
+
+/** Already-resolved native module, or null if `getWasm()` has not finished. */
+export function peekWasm(): WatershedNativeModule | null {
+  return _loaded;
 }
 
 // ---------------------------------------------------------------------------

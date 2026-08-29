@@ -205,9 +205,14 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
   // Handle export — show modal with JSON string
   const handleExport = useCallback(() => {
     const json = hook.exportAsJSON();
+    try {
+      hook.storeUserLevel();
+    } catch {
+      // Draft may not yet satisfy level.schema.json; JSON download still works.
+    }
     setExportJson(json);
     onExport?.(json);
-  }, [hook.exportAsJSON, onExport]);
+  }, [hook, onExport]);
 
   // Handle play — navigate to game root
   const handlePlay = useCallback(() => {

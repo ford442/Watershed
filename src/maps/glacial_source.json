@@ -318,6 +318,16 @@
       "decorations": { "trees": 12, "rocks": 1 }
     }
   ],
+  "hydroEvents": [
+    {
+      "id": "glacial-slush-tube",
+      "kind": "roughness",
+      "segmentIndex": 3,
+      "hours": [12, 13, 14, 15],
+      "radius": 10,
+      "strength": 3.2
+    }
+  ],
   "spawns": {
     "start": {
       "position": [0, 4, -8],

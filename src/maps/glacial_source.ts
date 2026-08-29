@@ -2,7 +2,7 @@
  * glacial_source.ts
  *
  * Authored alpine prelude map. Segments 0–17 are in `glacial_source.json`;
- * continuation into `meander_to_waterfall.json` is handled by MapRegistry
+ * continuation into `lumber_flume.json` is handled by MapRegistry
  * continuation wiring (no TrackManager edits).
  */
 

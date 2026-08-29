@@ -236,13 +236,42 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
     auto bedAt = [b](int i) { return b ? b[i] : 0.f; };
 
     // --- Lift (η, u, w) into conserved (d, d·u, d·w) ---
+    // 4-wide: depth clamp, dry-momentum zero, acc clear, CFL max of the same
+    // per-cell wave speed. HLL / reconstruction below stay scalar.
     float maxWaveSpeed = 0.f;
-    for (int i = 0; i < N; ++i) {
+    int i = 0;
+    const f32x4 vH = f32x4_splat(H);
+    const f32x4 vZero = f32x4_splat(0.f);
+    const f32x4 vDry = f32x4_splat(SWE_DRY_DEPTH);
+    const f32x4 vG = f32x4_splat(g);
+    f32x4 vMaxSpeed = f32x4_splat(0.f);
+    for (; i + 4 <= N; i += 4) {
+        const f32x4 vh = f32x4_load(&h[i]);
+        const f32x4 vb = b ? f32x4_load(&b[i]) : vZero;
+        const f32x4 depth = f32x4_max(vZero, f32x4_sub(f32x4_add(vH, vh), vb));
+        f32x4_store(&d[i], depth);
+
+        const f32x4 vu = f32x4_load(&u[i]);
+        const f32x4 vw = f32x4_load(&w[i]);
+        const f32x4 wet = f32x4_gt(depth, vDry);
+        f32x4_store(&qx[i], f32x4_and(f32x4_mul(depth, vu), wet));
+        f32x4_store(&qz[i], f32x4_and(f32x4_mul(depth, vw), wet));
+        f32x4_store(&accD[i], vZero);
+        f32x4_store(&accQx[i], vZero);
+        f32x4_store(&accQz[i], vZero);
+
+        const f32x4 speed = f32x4_and(
+            f32x4_add(
+                f32x4_sqrt(f32x4_add(f32x4_mul(vu, vu), f32x4_mul(vw, vw))),
+                f32x4_sqrt(f32x4_mul(vG, depth))),
+            wet);
+        vMaxSpeed = f32x4_max(vMaxSpeed, speed);
+    }
+    maxWaveSpeed = f32x4_hmax(vMaxSpeed);
+    for (; i < N; ++i) {
         const float depth = std::max(0.f, H + h[i] - bedAt(i));
         d[i] = depth;
         if (depth <= SWE_DRY_DEPTH) {
-            // A dry cell carries no momentum; leaving stale velocity here would
-            // let a bank inject flow the moment it re-wets.
             qx[i] = 0.f;
             qz[i] = 0.f;
         } else {
@@ -343,6 +372,51 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
     // --- Light velocity damping to prevent long-run divergence ---
     const float damp = 1.f - safeDt * DAMPING_COEFF;
     dampVelocities(u, w, N, damp);
+}
+
+void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                   int width, int height, float dx, float originX, float originZ, float H,
+                   int kind, float cx, float cz, float radius, float strength, float dt) {
+    if (width <= 0 || height <= 0 || dx <= 0.f) return;
+    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
+    float* h = reinterpret_cast<float*>(hPtr);
+    float* u = reinterpret_cast<float*>(uPtr);
+    float* w = reinterpret_cast<float*>(wPtr);
+    float* b = bPtr ? reinterpret_cast<float*>(bPtr) : nullptr;
+    const float r = std::max(0.5f, radius);
+    const float r2 = r * r;
+    const float mag = std::max(0.f, strength);
+    const float step = std::max(0.f, dt);
+    const float still = H > 0.f ? H : 1.2f;
+
+    for (int j = 0; j < height; ++j) {
+        const float wz = originZ + static_cast<float>(j) * dx;
+        const float dz = wz - cz;
+        for (int i = 0; i < width; ++i) {
+            const float wx = originX + static_cast<float>(i) * dx;
+            const float ddx = wx - cx;
+            const float d2 = ddx * ddx + dz * dz;
+            if (d2 > r2) continue;
+            const float dist = std::sqrt(d2);
+            const float wgt = 1.f - dist / r;
+            const int idx = j * width + i;
+            if (kind == 0) {
+                h[idx] += mag * step * wgt;
+            } else if (kind == 1) {
+                h[idx] -= mag * step * wgt * 0.35f;
+                const float inv = dist > 1e-4f ? 1.f / dist : 0.f;
+                u[idx] += -dz * inv * mag * step * wgt;
+                w[idx] += ddx * inv * mag * step * wgt;
+            } else if (kind == 2 && b) {
+                const float next = b[idx] + mag * wgt;
+                b[idx] = next > still + 2.f ? still + 2.f : next;
+            } else if (kind == 3) {
+                const float damp = std::max(0.f, 1.f - mag * step * wgt);
+                u[idx] *= damp;
+                w[idx] *= damp;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

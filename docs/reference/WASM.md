@@ -16,11 +16,13 @@ emscripten/
 ├── simdf32.h     # portable f32x4 (wasm_simd128 / SSE2 / NEON / scalar)
 ├── chores.h      # optional gpu-chores (reduce/hist/downsample/blur)
 ├── chores.cpp    # generic grid helpers — not SWE
+├── particles.h   # SoA waterfall / splash
+├── particles.cpp
 ├── bindings.cpp  # the only EMSCRIPTEN_BINDINGS block + getVersion()
 └── host_smoke.cpp # host assert runner (no Embind)
 ```
 
-`main.cpp` is gone. Compute library: `forces.cpp`, `swe.cpp`, `chores.cpp`. WASM executable adds `bindings.cpp`. Host executable is `watershed_host_smoke`.
+`main.cpp` is gone. Compute library: `forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`. WASM executable adds `bindings.cpp`. Host executable is `watershed_host_smoke`.
 
 Hard rules:
 
@@ -28,7 +30,7 @@ Hard rules:
 - Compute TUs never include `<emscripten/emscripten.h>`. Use `WATERSHED_KEEPALIVE` from `common.h`.
 - Bound types (`Vec3`, `WaterForceResult`) are concrete and non-polymorphic;
   `bindings.cpp` `static_assert`s `!std::is_polymorphic_v<T>` for each.
-- `forces.cpp` / `swe.cpp` / `chores.cpp` compile with `-fno-rtti -fno-exceptions`. The
+- `forces.cpp` / `swe.cpp` / `chores.cpp` / `particles.cpp` compile with `-fno-rtti -fno-exceptions`. The
   bindings TU keeps RTTI so Embind `typeid` matches the embind library
   (a `-fno-rtti` + `EMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0` bindings TU left
   every `function()` unbound at runtime).
@@ -48,15 +50,17 @@ cmake --build emscripten/build-host
 database (`emscripten/build-host` via `.clangd`). WASM `em++` compile commands
 stay in `emscripten/build/` and are not copied over the host DB.
 
-`-msimd128` is used by the SWE damping kernel in `swe.cpp` (`simdf32.h`). The
-flux loops are scalar: an HLL solve branches per interface (dry/wet, subsonic /
-supersonic), so lane-wise divergence would cost more than it saves. Host goldens
+`-msimd128` is used by `swe.cpp` for **damping**, **conserved-state lift**,
+and **CFL max reduction** (`simdf32.h`). The HLL flux / hydrostatic
+reconstruction loops are scalar: an HLL solve branches per interface (dry/wet,
+subsonic / supersonic), so lane-wise divergence would cost more than it saves
+and would risk changing goldens. `particles.cpp` uses 4-wide Euler. Host goldens
 cover CFL clamp, uniform-flow preservation, lake-at-rest well-balancing,
-wetting/drying, and a 1D dam break.
+wetting/drying, a 1D dam break, and a 128-particle chute AABB.
 
 ## ABI version
 
-`getVersion()` is **6** in source. `MIN_WASM_ABI_VERSION` is **6**.
+`getVersion()` is **8** in source. `MIN_WASM_ABI_VERSION` is **6**.
 
 | Version | Change |
 |---------|--------|
@@ -66,6 +70,8 @@ wetting/drying, and a 1D dam break.
 | 4 | Header split + Embind quarantine |
 | 5 | Optional gpu-chores TU (`chores.cpp`) — HUD reduce/hist/downsample/blur. Not SWE. |
 | 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` takes a bed pointer as its 4th argument. |
+| 7 | Particle SoA (waterfall + splash integrate). Additive; floor stays 6. |
+| 8 | `applySWEEvent` hydro source terms. Additive; floor stays 6. |
 
 `src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`.
 Versions 1–5 were additive, so the floor could stay at 4 and an older shipped

@@ -530,6 +530,13 @@ cyan shallow, tan dry.
 
 **Constraint:** `low` quality allocates no grid, so bathymetry upload is a no-op there.
 
+### Authored hydroEvents — `src/systems/water/hydroEvents.ts`
+
+Maps declare `hydroEvents[]` (launch-hour keyed inflow / vortex / braid / roughness).
+After each SWE step, `WaterForceSystem` applies active events onto the same grid
+(`applySWEEvent` C++ ABI 8, or TS fallback). Ghosts hash the live set
+(`hydroFairness.ts`). One sim backend per boot: C++ WASM (`sweBackend.ts`). Phase D WGSL is not started. HeightmapFlow is dormant.
+
 ---
 
 ## WASM Module
@@ -538,9 +545,8 @@ cyan shallow, tan dry.
 
 **Layout:** `emscripten/common.h` (shared constants/types, `WATERSHED_KEEPALIVE`) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
-not SWE) + `bindings.cpp` (the only `<emscripten/bind.h>` include; Embind surface,
-`getVersion()` — 6 in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**6** — ABI 6 changed `stepShallowWater`'s arity, so older binaries are rejected rather than partially used).
-All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `bindings.cpp` (the only `<emscripten/bind.h>` include; Embind surface,
+`getVersion()` — **8** in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**6** — ABI 6 changed `stepShallowWater`'s arity, so older binaries are rejected rather than partially used; ABI 7 particle SoA and ABI 8 `applySWEEvent` are additive). After ABI 6, `swe.cpp` SIMD is **damping**, **conserved-state lift**, and **CFL max reduction** only — HLL / hydrostatic reconstruction stay scalar. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:

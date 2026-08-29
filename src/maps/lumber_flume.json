@@ -283,6 +283,16 @@
       "decorations": { "trees": 14, "rocks": 2, "ferns": 6 }
     }
   ],
+  "hydroEvents": [
+    {
+      "id": "lumber-gap-washout",
+      "kind": "braid",
+      "segmentIndex": 10,
+      "hours": [14, 15],
+      "radius": 9,
+      "strength": 2.4
+    }
+  ],
   "spawns": {
     "start": {
       "position": [0, 3, -8],

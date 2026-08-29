@@ -756,6 +756,61 @@
         }
       }
     },
+    "hydroEvents": {
+      "type": "array",
+      "description": "Authored SWE source terms (inflow, vortex, braid, roughness) keyed to launch hours",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "segmentIndex"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["inflowPulse", "vortex", "braid", "roughness"]
+          },
+          "segmentIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 49
+          },
+          "hours": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23
+            }
+          },
+          "centerT": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "lateralOffset": {
+            "type": "number",
+            "minimum": -40,
+            "maximum": 40
+          },
+          "radius": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 80
+          },
+          "strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 200
+          }
+        }
+      }
+    },
     "decorationPools": {
       "type": "object",
       "description": "Optional custom decoration overrides",

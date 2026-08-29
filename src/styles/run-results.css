@@ -160,3 +160,14 @@
   color: #4fd1c7;
   background: rgba(79, 209, 199, 0.08);
 }
+
+.run-results-panel__fairness {
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d4c4a8;
+  background: rgba(40, 32, 24, 0.6);
+  border: 1px solid #3a342c;
+  border-radius: 4px;
+}

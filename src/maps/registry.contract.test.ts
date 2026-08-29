@@ -189,4 +189,11 @@ describe('map registry contract — authored JSON shape drift (ajv)', () => {
       for (const axis of start) expect(Number.isFinite(axis)).toBe(true);
     },
   );
+
+  it('three shipped maps author at least one hydroEvent', () => {
+    for (const id of ['glacial', 'hydro', 'delta'] as const) {
+      const events = MAP_REGISTRY[id].levelData.hydroEvents ?? [];
+      expect(events.length, `${id} hydroEvents`).toBeGreaterThan(0);
+    }
+  });
 });

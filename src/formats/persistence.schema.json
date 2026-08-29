@@ -107,6 +107,19 @@
           },
           "splits": {
             "$ref": "#/$defs/runSplits"
+          },
+          "launchHour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "hydroEventHash": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "qualityPreset": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "ultra"]
           }
         }
       }

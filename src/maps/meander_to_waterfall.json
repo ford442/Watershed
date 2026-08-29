@@ -168,6 +168,16 @@
       }
     }
   ],
+  "hydroEvents": [
+    {
+      "id": "meander-fall-pulse",
+      "kind": "inflowPulse",
+      "segmentIndex": 14,
+      "hours": [14],
+      "radius": 8,
+      "strength": 5.5
+    }
+  ],
   "spawns": {
     "start": {
       "position": [0, -4, -10],

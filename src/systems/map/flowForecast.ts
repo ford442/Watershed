@@ -11,6 +11,8 @@ import {
   type FlowForecastState,
 } from '../../constants/game';
 
+export { FLOW_FORECAST_STATES, type FlowForecastState };
+
 // =============================================================================
 // Types
 // =============================================================================

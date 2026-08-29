@@ -8,6 +8,11 @@
 import type { MapRegistryId } from '../../maps/registry';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
 import { buildCampaignStack } from '../../maps/campaign';
+import { buildLaunchForecast } from '../map/flowForecast';
+import {
+  applyForecastToCacheSlots,
+  applyForecastToPortageRoutes,
+} from '../map/forecastCachePlacement';
 import {
   createPortageCacheRunState,
   placeCache,
@@ -81,12 +86,20 @@ export function initRunSession(options: {
 
   const survival = getMapSurvivalMetadata(startMapId);
   const launchHour = normalizeHour(options.launchHour ?? getLaunchHour());
+  const forecastState =
+    buildLaunchForecast({
+      temperature: 8,
+      snowpackIndex: 0.65,
+      damReleaseSchedule: [{ hour: 14, release: 0.35 }],
+      startHour: launchHour,
+      horizonHours: 1,
+    })[0]?.state ?? 'Normal';
   const maxPlacements = survival.maxCachePlacements ?? DEFAULT_MAX_CACHE_PLACEMENTS;
   const loadoutId = resolveLoadoutId(options.loadoutId);
 
   let portageCache = createPortageCacheRunState({
-    cacheSlots: survival.cacheSlots,
-    portageRoutes: survival.portageRoutes,
+    cacheSlots: applyForecastToCacheSlots(survival.cacheSlots, forecastState),
+    portageRoutes: applyForecastToPortageRoutes(survival.portageRoutes, forecastState),
   });
 
   const placedCacheIds: string[] = [];

@@ -32,6 +32,7 @@ import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuali
 import {
   getBathymetryRevision,
   getRegisteredBathymetryCount,
+  getRegisteredBathymetrySource,
   sampleBathymetryInto,
 } from './bathymetrySampler';
 import { publishSWEBedSnapshot, clearSWEBedSnapshot } from './sweBedDebug';
@@ -49,6 +50,9 @@ import {
 } from '../../physics/physicsWorkerRegistry';
 import { bindChoreWasm, runHeightfieldChores } from '../../rendering/gpuChores';
 import { sampleSWEFlow, FALLBACK_FLOW_DIR, type SWEFlowGrid } from './sampleSWEFlow';
+import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
+import { getActiveMap } from '../../maps/registry';
+import { getActiveLaunchHour } from '../journey/runSession';
 import { shouldSkipMainThreadVehicleForce } from '../../physics/waterForceAuthority';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 
@@ -400,6 +404,53 @@ export function WaterForceSystem({
           9.80665,
           grid.dx,
           SWE_MEAN_DEPTH,
+        );
+
+        const hydroEvents = parseHydroEvents(getActiveMap().levelData.hydroEvents);
+        const nativeApply = wasmRef.current.applySWEEvent
+          ? (kind: number, cx: number, cz: number, radius: number, strength: number, dtEvent: number) => {
+              wasmRef.current!.applySWEEvent!(
+                grid.hPtr,
+                grid.uPtr,
+                grid.wPtr,
+                grid.bPtr,
+                grid.width,
+                grid.height,
+                grid.dx,
+                originX,
+                originZ,
+                SWE_MEAN_DEPTH,
+                kind,
+                cx,
+                cz,
+                radius,
+                strength,
+                dtEvent,
+              );
+            }
+          : undefined;
+        applyHydroEventsToGrid(
+          {
+            h: grid.h,
+            u: grid.u,
+            w: grid.w,
+            b: grid.b,
+            width: grid.width,
+            height: grid.height,
+            cellSize: grid.dx,
+            originX,
+            originZ,
+            stillDepth: SWE_MEAN_DEPTH,
+          },
+          hydroEvents,
+          getActiveLaunchHour(),
+          (event) => {
+            const source = getRegisteredBathymetrySource(event.segmentIndex);
+            if (!source) return null;
+            return { x: source.centerX, z: source.centerZ };
+          },
+          stepDt,
+          nativeApply,
         );
 
         uploadHeightTexture(grid, texture, originX, originZ, budget);

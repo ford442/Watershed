@@ -55,6 +55,9 @@ export interface BathymetrySource {
   /** World-Z span this segment covers (min/max, direction-agnostic). */
   minZ: number;
   maxZ: number;
+  /** Path midpoint used to place hydroEvents in world XZ. */
+  centerX: number;
+  centerZ: number;
   /** Bed elevation above the floor datum at world XZ, or null if not covered. */
   sampleBed(worldX: number, worldZ: number): number | null;
 }
@@ -101,6 +104,9 @@ export function createSegmentBathymetrySource(
   const descending = last < first;
   const minZ = Math.min(first, last);
   const maxZ = Math.max(first, last);
+  const mid = Math.floor(CENTERLINE_SAMPLES / 2);
+  const centerX = xs[mid] ?? xs[0];
+  const centerZ = zs[mid] ?? first;
   const halfWidth = canyonWidth * 0.5;
 
   // Thalweg reference: the channel-centre floor at mid-segment. Sampled once,
@@ -157,7 +163,7 @@ export function createSegmentBathymetrySource(
     return bedFromFloorHeight(yHeight, floorReference);
   };
 
-  return { segmentId, minZ, maxZ, sampleBed };
+  return { segmentId, minZ, maxZ, centerX, centerZ, sampleBed };
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +204,10 @@ export function getBathymetryRevision(): number {
 
 export function getRegisteredBathymetryCount(): number {
   return sources.size;
+}
+
+export function getRegisteredBathymetrySource(segmentId: number): BathymetrySource | undefined {
+  return sources.get(segmentId);
 }
 
 /**

@@ -41,7 +41,7 @@ describe('map registry drift guard', () => {
 
   it('menu list excludes menuHidden maps but keeps campaign chain metadata', () => {
     const menuIds = listMapsForMenu().map((m) => m.id);
-    expect(menuIds).toEqual(['glacial', 'meander', 'hydro', 'delta']);
-    expect(menuIds).not.toContain('lumber' satisfies MapRegistryId);
+    expect(menuIds).toEqual(['glacial', 'lumber', 'meander', 'hydro', 'delta']);
+    expect(menuIds).toContain('lumber' satisfies MapRegistryId);
   });
 });

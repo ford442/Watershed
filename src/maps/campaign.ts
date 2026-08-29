@@ -82,7 +82,7 @@ export function syncMapUrl(mapId: MapRegistryId): void {
 
 /**
  * Campaign continue target after `journeyComplete`.
- * Prefers explicit `nextMapId`, then `continuation.mapId` (glacial → meander).
+ * Prefers explicit `nextMapId`, then `continuation.mapId` (glacial → lumber).
  */
 export function getContinuationTarget(mapId: MapRegistryId): MapRegistryId | null {
   const def = MAP_REGISTRY[mapId];
@@ -145,7 +145,7 @@ export function formatDuration(seconds: number): string {
 /**
  * Campaign descent stack for Journey mode.
  * Starts at `fromMapId` (default glacial) and follows nextMapId / continuation
- * until the final map. Lumber stays out of the default chain (menuHidden).
+ * until the final map. Default descent is glacial → lumber → meander → hydro → delta.
  */
 export function buildCampaignStack(fromMapId: MapRegistryId = 'glacial'): MapRegistryId[] {
   const stack: MapRegistryId[] = [];

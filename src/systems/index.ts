@@ -40,6 +40,7 @@ export {
   useGameWipeout,
   useGameSettings,
   useQualityPreset,
+  getQualityPresetNow,
   batchFrameUpdate,
   type QualityPreset,
   type GameSettings,

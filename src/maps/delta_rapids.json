@@ -517,6 +517,17 @@
       }
     }
   ],
+  "hydroEvents": [
+    {
+      "id": "delta-braid-tongue",
+      "kind": "braid",
+      "segmentIndex": 9,
+      "hours": [14, 15, 16],
+      "lateralOffset": 12,
+      "radius": 18,
+      "strength": 1.8
+    }
+  ],
   "spawns": {
     "start": {
       "position": [0, -1, -10],

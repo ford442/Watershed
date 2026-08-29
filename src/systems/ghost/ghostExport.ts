@@ -6,6 +6,8 @@
  */
 
 import { GHOST_CODEC_VERSION, type RunSplitEntry } from './ghostCodec';
+import type { GhostHydroFairness } from './hydroFairness';
+import type { QualityPreset } from '../GameState';
 
 export const WSGHOST_MIME = 'application/json';
 export const WSGHOST_EXTENSION = '.wsghost';
@@ -23,6 +25,12 @@ export interface WsGhostFile {
   exportedAt: number;
   /** Checkpoint splits (codecVersion >= 2). Absent on v1 files. */
   splits?: RunSplitEntry[];
+  /** Launch hour 0–23 (codecVersion >= 3). */
+  launchHour?: number;
+  /** Hash of hydroEvents live at that hour (codecVersion >= 3). */
+  hydroEventHash?: string;
+  /** Graphics quality the run used (codecVersion >= 3). */
+  qualityPreset?: QualityPreset;
 }
 
 export type GhostImportResult =
@@ -37,6 +45,7 @@ export function exportGhostToJson(
   timeMs: number,
   ghostData: string,
   splits?: RunSplitEntry[],
+  fairness?: GhostHydroFairness,
 ): string {
   const file: WsGhostFile = {
     codecVersion: GHOST_CODEC_VERSION,
@@ -45,6 +54,9 @@ export function exportGhostToJson(
     ghostData,
     exportedAt: Date.now(),
     ...(splits && splits.length > 0 ? { splits } : {}),
+    ...(fairness?.launchHour !== undefined ? { launchHour: fairness.launchHour } : {}),
+    ...(fairness?.hydroEventHash ? { hydroEventHash: fairness.hydroEventHash } : {}),
+    ...(fairness?.qualityPreset ? { qualityPreset: fairness.qualityPreset } : {}),
   };
   return JSON.stringify(file, null, 2);
 }
@@ -59,10 +71,11 @@ export function downloadGhostFile(
   ghostData: string,
   splits?: RunSplitEntry[],
   filename?: string,
+  fairness?: GhostHydroFairness,
 ): void {
   if (typeof document === 'undefined') return;
 
-  const json = exportGhostToJson(mapId, timeMs, ghostData, splits);
+  const json = exportGhostToJson(mapId, timeMs, ghostData, splits, fairness);
   const blob = new Blob([json], { type: WSGHOST_MIME });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -105,6 +118,19 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
   if (v.splits !== undefined && (!Array.isArray(v.splits) || !v.splits.every(isRunSplitEntry))) {
     return false;
   }
+  if (v.launchHour !== undefined && (typeof v.launchHour !== 'number' || v.launchHour < 0 || v.launchHour > 23)) {
+    return false;
+  }
+  if (v.hydroEventHash !== undefined && typeof v.hydroEventHash !== 'string') {
+    return false;
+  }
+  if (
+    v.qualityPreset !== undefined &&
+    (typeof v.qualityPreset !== 'string' ||
+      !['low', 'medium', 'high', 'ultra'].includes(v.qualityPreset))
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -113,7 +139,7 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
  * Pass `expectedMapId` to reject ghosts recorded on a different map.
  *
  * `codecVersion` accepts anything up to the current GHOST_CODEC_VERSION — a v1
- * file (no `splits`) is a valid, poses-only v2 file; only a *newer* file than
+ * file (no `splits`) is a valid, poses-only v3 file; only a *newer* file than
  * this build understands is rejected.
  */
 export function importGhostFromJson(

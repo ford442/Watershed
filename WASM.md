@@ -32,10 +32,12 @@ emscripten/
 ├── forces.h          # WaterForceResult + water-force declarations — Embind-free
 ├── forces.cpp        # Buoyancy / drag / flow / batched water forces
 ├── swe.h             # Shallow-water solver + heap grid declarations — Embind-free
-├── swe.cpp           # Shallow-water solver + SIMD damping / gradient / divergence
+├── swe.cpp           # Nonlinear HLL stepper; SIMD lift/CFL/damping only
 ├── simdf32.h         # Portable f32x4 (wasm_simd128 / SSE2 / NEON / scalar)
 ├── chores.h          # Optional gpu-chores (reduce/hist/downsample/blur) — Embind-free
 ├── chores.cpp        # Generic grid helpers; not SWE
+├── particles.h       # SoA waterfall / splash integrate — Embind-free
+├── particles.cpp     # Euler + chute recycle / age
 ├── bindings.cpp      # getVersion() + the ONLY <emscripten/bind.h> include (the ABI)
 ├── host_smoke.cpp    # Host assert runner (no Embind)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake)
@@ -99,7 +101,7 @@ CI sets `WATERSHED_REQUIRE_WASM=1` so missing Emscripten fails the WASM job inst
 
 ### Host (clangd / smoke, no Emscripten)
 
-Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`) compile with a plain host compiler. `bindings.cpp` is WASM-only. `WATERSHED_KEEPALIVE` in `common.h` is `__attribute__((used))` under Emscripten and a no-op on host — never `#include <emscripten/emscripten.h>` from compute TUs.
+Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`) compile with a plain host compiler. `bindings.cpp` is WASM-only. `WATERSHED_KEEPALIVE` in `common.h` is `__attribute__((used))` under Emscripten and a no-op on host — never `#include <emscripten/emscripten.h>` from compute TUs.
 
 ```bash
 cmake -S emscripten -B emscripten/build-host
@@ -126,7 +128,7 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **6**;
+Returns the module ABI version integer (currently **8**;
 `MIN_WASM_ABI_VERSION` is **6**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 `>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
@@ -140,6 +142,8 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 4 | Split shared header into `common.h` / `forces.h` / `swe.h`; Embind quarantined in `bindings.cpp`; reordered Embind `value_object` registration ahead of the functions that use them; added `static_assert` non-polymorphic guards (no signature changes) |
 | 5 | Optional gpu-chores (`reduceF32Grid`, `histogramF32`, `lumaHistogramU8`, `downsampleF32`, `blurSeparableF32`). Additive. TS did not require 5; the wasm chore lane declined when exports were missing. |
 | 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` gained a bed pointer as its 4th argument. |
+| 7 | Particle SoA (`allocateParticleSoA`, `initWaterfallParticles`, `stepWaterfallParticles`, `stepSplashParticles`). Additive; `MIN_WASM_ABI_VERSION` stays 6. |
+| 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6. |
 
 TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 6).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
@@ -154,8 +158,8 @@ it and a stale binary is rejected at load. Chore kernels live in
 
 ### Adding a translation unit
 
-Add the `.cpp` to `COMPUTE_SOURCES` in `CMakeLists.txt` **and** to the `em++`
-invocation in `build_colab.sh`, declare its exports in an Embind-free header
+Add the `.cpp` to `COMPUTE_SOURCES` in `CMakeLists.txt` (the source of truth;
+`build.sh` wraps CMake). Declare exports in an Embind-free header
 (`common.h`, or a new `<unit>.h` that includes it), and bind them in
 `bindings.cpp` — the only file allowed to include `<emscripten/bind.h>`.
 Register `value_object` types before any `function()` that uses them. Never
@@ -375,11 +379,14 @@ at test time.
 - **No GC pressure:** All simulation memory is in WASM heap (`allocateGrid`).
 - **CFL safety:** `stepShallowWater` clamps `dt` internally — no instability
   at low frame rates.
-- **SIMD:** After ABI 6, `swe.cpp` uses 4-wide kernels (`simdf32.h`) for the
-  **damping pass only**. The nonlinear HLL / wetting-drying update is scalar.
-  Emscripten still passes `-msimd128` (chores + damping). Host uses SSE2/NEON.
-  Do not treat the compile flag as a vectorized Riemann solver — see
-  [#390](https://github.com/ford442/Watershed/issues/390).
+- **SIMD:** After ABI 6, `swe.cpp` uses 4-wide kernels (`simdf32.h`) for:
+  1. **velocity damping** (`dampVelocities` on `u`/`w`)
+  2. **conserved-state lift** (depth clamp, dry-mask momentum, acc-buffer zero)
+  3. **CFL max reduction** (same per-cell `|v|+√(gd)`, then horizontal max)
+  The nonlinear **HLL / hydrostatic reconstruction / wetting-drying writeback**
+  is scalar. `particles.cpp` uses 4-wide Euler. Emscripten `-msimd128` also
+  lets chores autovectorize. Host uses SSE2/NEON. Do not treat the compile
+  flag as a vectorized Riemann solver.
 
 ---
 
@@ -391,6 +398,6 @@ at test time.
 | 2 — Core physics | ✅ Done | Buoyancy, drag, flow force; nonlinear SWE ABI 6 (wetting/drying, bed pointer) |
 | 3 — Integration | ✅ Done | Default-on Rapier+WASM worker; `WaterForceSystem` + TS fallback |
 | 4 — Bed + force coupling | ✅ Done | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` via `sampleSWEFlow` ([#386](https://github.com/ford442/Watershed/issues/386)) |
-| 5 — Source terms / events | 🔜 Next | `hydroEvents[]` ([#389](https://github.com/ford442/Watershed/issues/389)) |
-| 6 — SIMD + particles | 🔜 Future | HLL SIMD honesty + WASM particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
-| 7 — pthreads / compute SWE | 🔜 Later | Dedicated SWE thread or WGSL twin — only after TSL remainder ([#387](https://github.com/ford442/Watershed/issues/387), epic [#391](https://github.com/ford442/Watershed/issues/391)) |
+| 5 — Source terms / events | ✅ Done | `hydroEvents[]` + `applySWEEvent` (ABI 8, additive) ([#389](https://github.com/ford442/Watershed/issues/389)) |
+| 6 — SIMD + particles | ✅ Done | HLL stays scalar; SIMD lift/CFL/damping + particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
+| 7 — pthreads / compute SWE | 🔜 Later | **#391 Phase D** (not started): one WGSL twin of this kernel, one backend per boot. **Phase E:** optional Tauri/Capacitor or a dedicated pthread SWE worker — documented follow-up only. No Electron. No default-on COOP-COEP / pthreads. |

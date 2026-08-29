@@ -4,8 +4,8 @@ Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_W
 
 Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `swe.h`
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
-`chores.cpp` (optional gpu-chores; not SWE),
-and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 5 in source,
+`chores.cpp` (optional gpu-chores; not SWE), `particles.cpp` (waterfall / splash SoA),
+and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 7 in source,
 `MIN_WASM_ABI_VERSION` = 6).
 It builds to:
 

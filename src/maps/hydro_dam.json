@@ -293,6 +293,25 @@
       "decorations": { "trees": 6, "rocks": 2 }
     }
   ],
+  "hydroEvents": [
+    {
+      "id": "hydro-dam-pulse",
+      "kind": "inflowPulse",
+      "segmentIndex": 4,
+      "hours": [14],
+      "centerT": 0.5,
+      "radius": 14,
+      "strength": 6.5
+    },
+    {
+      "id": "hydro-vortex-chamber",
+      "kind": "vortex",
+      "segmentIndex": 5,
+      "centerT": 0.55,
+      "radius": 11,
+      "strength": 4.2
+    }
+  ],
   "spawns": {
     "start": {
       "position": [0, 4, -8],

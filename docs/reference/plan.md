@@ -1,10 +1,23 @@
 # WATERSHED Development Plan
 
-## Current Status: Playable campaign, hydro field still split (2026-08-23)
+## Current Status: Playable campaign on one SWE field (2026-08-27)
 
-Spline treadmill, five authored maps, survival/ghost/forecast, Rapier+WASM worker, and nonlinear SWE (ABI 6) are on `main`. **Do not start a sixth biome** until the water you see and the water that pushes you are the same field.
+Spline treadmill, five authored maps, survival/ghost/forecast, Rapier+WASM worker, and nonlinear SWE (ABI 6+) are on `main`. Canyon bathymetry fills `b`; `sampleSWEFlow` feeds Rapier. **Do not start a sixth map** until three shipped maps author `hydroEvents[]` that change both mesh and hull.
 
-Active board: [#385](https://github.com/ford442/Watershed/issues/385) bed sampling → [#386](https://github.com/ford442/Watershed/issues/386) force coupling → [#389](https://github.com/ford442/Watershed/issues/389) hydroEvents. Graphics: [#387](https://github.com/ford442/Watershed/issues/387) leftover GLSL. Hygiene: [#388](https://github.com/ford442/Watershed/issues/388). Later product: [#391](https://github.com/ford442/Watershed/issues/391).
+Active board: [#388](https://github.com/ford442/Watershed/issues/388) hygiene. Later product: [#391](https://github.com/ford442/Watershed/issues/391) (this page). Closed [#374](https://github.com/ford442/Watershed/issues/374) was the SWE foundation, not the later picture.
+
+### Later picture (#391)
+
+A player who scouts 06:00 vs a 14:00 dam pulse should see the channel change, feel the hull change, and race a ghost whose splits moved **because the water moved**. Pipeline:
+
+```
+Authored maps + hydroEvents[]     → source terms / bed / braids
+Forecast + dam-release keyframes  → inflow / stage for that hour
+SWE (η, u, w, b)                  → mesh + Rapier (one field)
+Ghost codec + launchHour          → you race a river, not a tape
+```
+
+Journey topology: `glacial → lumber → meander → hydro → delta`. Native WebGPU / WGSL SWE is Phase D of #391 — C++ WASM stays the only live sim until then. Optional Tauri/Capacitor or a pthread SWE worker is Phase E (documented follow-up); no Electron, no default-on COOP-COEP.
 
 Historical notes below are still useful; unchecked items that contradict the board above are stale.
 
@@ -112,9 +125,9 @@ Implementation notes:
 - [x] ChunkManager + ReachNormalizer share `applyForecastToSegmentParams` (width / flowSpeed / rockDensity / particleCount / washedOutGap)
 - [x] Forecast HUD: next-N segment risk strip + dam-release countdown
 - [x] Survive elevated-flow segments for score bonus (`awardFloodSurviveBonus`)
-- [ ] v2: portage waypoints + cache placement (deferred)
+- [x] v2 leftovers: spatial portage/cache waypoints are **authored** in `survivalMetadata.ts` (not generated from a 24h forecast mesh). Flooded/WashedOut hours offset those authored points toward high ground (`forecastCachePlacement.ts`). Do not invent a second hazard system.
 
-Prototype Todo: ~~Implement a minimal `FlowForecast` simulation…~~ → v1 complete; follow-up is portage / cache mechanics.
+Prototype Todo: ~~Implement a minimal `FlowForecast` simulation…~~ → v1 complete; cache *generation* from a forecast mesh stays deferred.
 
 ---
 

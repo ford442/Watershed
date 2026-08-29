@@ -11,9 +11,10 @@
  *       to the pose payload). The 7-float pose encoding is unchanged, so a v1
  *       file is a valid v2 file with no splits — see importGhostFromJson's
  *       `codecVersion <= GHOST_CODEC_VERSION` acceptance rule.
+ *   3 — optional launchHour / hydroEventHash / qualityPreset fairness fields.
  */
 
-export const GHOST_CODEC_VERSION = 2 as const;
+export const GHOST_CODEC_VERSION = 3 as const;
 export const GHOST_FLOATS_PER_SAMPLE = 7;
 export const GHOST_BYTES_PER_SAMPLE = GHOST_FLOATS_PER_SAMPLE * 4;
 export const GHOST_SAMPLE_HZ = 10;

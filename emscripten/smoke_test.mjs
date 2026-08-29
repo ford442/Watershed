@@ -37,6 +37,37 @@ if (!Number.isInteger(version) || version < 6) {
   throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 6)`);
 }
 
+if (version >= 7) {
+  if (typeof wasm.allocateParticleSoA !== 'function'
+      || typeof wasm.initWaterfallParticles !== 'function'
+      || typeof wasm.stepWaterfallParticles !== 'function'
+      || typeof wasm.stepSplashParticles !== 'function'
+      || typeof wasm.freeParticleSoA !== 'function') {
+    throw new Error('ABI 7+ must export particle SoA (allocate/init/step/free)');
+  }
+  const cap = 32;
+  const ptr = wasm.allocateParticleSoA(cap);
+  if (!ptr) {
+    throw new Error('allocateParticleSoA returned 0');
+  }
+  let seed = wasm.initWaterfallParticles(ptr, cap, cap, 15, 25, 5, 0, 0xC0FFEE);
+  seed = wasm.stepWaterfallParticles(ptr, cap, cap, 1 / 60, 15, 25, 5, seed);
+  if (!Number.isFinite(seed) || seed === 0) {
+    throw new Error(`Unexpected particle seed: ${seed}`);
+  }
+  const heap = wasm.HEAPF32;
+  const base = ptr >> 2;
+  for (let i = 0; i < cap; i += 1) {
+    const x = heap[base + i];
+    const y = heap[base + cap + i];
+    const z = heap[base + 2 * cap + i];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      throw new Error(`particle ${i} not finite after step`);
+    }
+  }
+  wasm.freeParticleSoA(ptr);
+}
+
 const archimedes = wasm.computeBuoyancy(1, 1000, 9.80665);
 if (!Number.isFinite(archimedes) || Math.abs(archimedes - 9806.65) > 0.1) {
   throw new Error(`Unexpected computeBuoyancy(): ${archimedes}`);

@@ -128,11 +128,23 @@ export interface LevelSpawns {
   }>;
 }
 
+export interface HydroEventConfig {
+  id: string;
+  kind: 'inflowPulse' | 'vortex' | 'braid' | 'roughness';
+  segmentIndex: number;
+  hours?: number[];
+  centerT?: number;
+  lateralOffset?: number;
+  radius?: number;
+  strength?: number;
+}
+
 export interface LevelData {
   metadata: LevelMetadata;
   world: LevelWorld;
   segments: LevelSegment[];
   spawns: LevelSpawns;
+  hydroEvents?: HydroEventConfig[];
   decorationPools?: Record<string, string[]>;
 }
 

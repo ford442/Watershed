@@ -15,10 +15,12 @@
 
 #include "forces.h"
 #include "swe.h"
+#include "particles.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
 #include <vector>
 
 namespace {
@@ -313,6 +315,58 @@ int main() {
                 check(kH + h[i] - b[i] <= 1e-4f, "U-channel bank stays dry after a splash");
             }
         }
+    }
+
+    // 4. Waterfall SoA — 128 particles, 60 steps, finite, chute AABB
+    {
+        constexpr int kCap = 128;
+        constexpr int kN = 128;
+        constexpr float kW = 15.f;
+        constexpr float kHgt = 25.f;
+        constexpr float kD = 5.f;
+        const uintptr_t base = allocateParticleSoA(kCap);
+        check(base != 0, "allocateParticleSoA");
+        uint32_t seed = initWaterfallParticles(base, kCap, kN, kW, kHgt, kD, 0.f, 0xC0FFEEu);
+        for (int step = 0; step < 60; ++step) {
+            seed = stepWaterfallParticles(base, kCap, kN, 1.f / 60.f, kW, kHgt, kD, seed);
+        }
+        const float* px = reinterpret_cast<const float*>(base);
+        const float* py = px + kCap;
+        const float* pz = px + 2 * kCap;
+        bool finite = true;
+        bool inChute = true;
+        for (int i = 0; i < kN; ++i) {
+            if (!std::isfinite(px[i]) || !std::isfinite(py[i]) || !std::isfinite(pz[i])) {
+                finite = false;
+            }
+            if (px[i] < -kW * 0.5f - 1e-3f || px[i] > kW * 0.5f + 1e-3f) inChute = false;
+            if (py[i] < -1e-3f || py[i] > kHgt + 1e-3f) inChute = false;
+            if (pz[i] < -kD * 0.5f - 1e-3f || pz[i] > kD * 0.5f + 1e-3f) inChute = false;
+        }
+        check(finite, "waterfall particles stay finite");
+        check(inChute, "waterfall particles stay in chute AABB");
+        freeParticleSoA(base);
+    }
+
+    // 5. Inflow pulse vs control hour — eta rises only on the pulsed grid.
+    {
+        const int w = 8, h = 8, N = w * h;
+        std::vector<float> hCtl(N, 0.f), uCtl(N, 0.f), wCtl(N, 0.f), bCtl(N, 0.f);
+        std::vector<float> hPulse = hCtl, uPulse = uCtl, wPulse = wCtl, bPulse = bCtl;
+        applySWEEvent(
+            reinterpret_cast<uintptr_t>(hPulse.data()),
+            reinterpret_cast<uintptr_t>(uPulse.data()),
+            reinterpret_cast<uintptr_t>(wPulse.data()),
+            reinterpret_cast<uintptr_t>(bPulse.data()),
+            w, h, 1.f, 0.f, 0.f, 1.2f,
+            0, 3.5f, 3.5f, 4.f, 8.f, 0.05f);
+        float maxCtl = 0.f, maxPulse = 0.f;
+        for (int i = 0; i < N; ++i) {
+            maxCtl = std::max(maxCtl, std::abs(hCtl[i]));
+            maxPulse = std::max(maxPulse, hPulse[i]);
+        }
+        check(maxCtl < 1e-6f, "control hour eta stays at rest");
+        check(maxPulse > 0.05f, "inflow pulse raises eta vs control");
     }
 
     if (g_failures != 0) {

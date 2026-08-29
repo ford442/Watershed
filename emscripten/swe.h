@@ -41,6 +41,16 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
                       int width, int height,
                       float dt, float g, float dx, float H);
 
+/**
+ * Authored hydro event source term (ABI 8, additive).
+ *
+ * kind: 0 inflowPulse (raises η), 1 vortex (lowers η + swirl), 2 braid (raises b),
+ *       3 roughness (damps u,w). Applied in world XZ on the player-centred grid.
+ */
+void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                   int width, int height, float dx, float originX, float originZ, float H,
+                   int kind, float cx, float cz, float radius, float strength, float dt);
+
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;
 

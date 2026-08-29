@@ -323,6 +323,10 @@ export function useQualityPreset(): QualityPreset {
   return useGameStore((s) => s.settings.quality);
 }
 
+export function getQualityPresetNow(): QualityPreset {
+  return useGameStore.getState().settings.quality;
+}
+
 /**
  * Subscribe to the current gravity multiplier.
  * Useful for camera-shake intensity scaling, VFX, and particle behaviour.

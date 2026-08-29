@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import type { EditorSegmentConfig } from '../../hooks/useLevelEditor';
 import type { EditorValidationError } from '../../utils/levelEditorValidator';
 
 // Segment type options
@@ -20,11 +20,17 @@ const SEGMENT_TYPES = [
 
 // Biome options
 const BIOME_TYPES = [
-  { value: 'creek-summer', label: 'Creek Summer', color: '#87CEEB' },
-  { value: 'creek-autumn', label: 'Creek Autumn', color: '#E8C070' },
-  { value: 'alpine-spring', label: 'Alpine Spring', color: '#B0D4F0' },
-  { value: 'canyon-sunset', label: 'Canyon Sunset', color: '#FF8C60' },
-  { value: 'midnight-mist', label: 'Midnight Mist', color: '#1a2030' },
+  { value: 'canyonSummer', label: 'Canyon Summer' },
+  { value: 'canyonAutumn', label: 'Canyon Autumn' },
+  { value: 'slotCanyon', label: 'Slot Canyon' },
+  { value: 'glacialMelt', label: 'Glacial Melt' },
+  { value: 'glacier', label: 'Glacier' },
+  { value: 'lumberFlume', label: 'Lumber Flume' },
+  { value: 'hydroDam', label: 'Hydro-Dam' },
+  { value: 'delta', label: 'Delta' },
+  { value: 'alpineSpring', label: 'Alpine Spring' },
+  { value: 'cavern', label: 'Cavern' },
+  { value: 'midnightMist', label: 'Midnight Mist' },
 ];
 
 // Decoration types with limits
@@ -414,6 +420,89 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
                 <option key={b.value} value={b.value}>{b.label}</option>
               ))}
             </select>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#aaa', marginBottom: '4px' }}>
+              Hydro event
+            </label>
+            <select
+              value={localSegment.hydroKind || ''}
+              onChange={(e) => updateField('hydroKind', (e.target.value || '') as EditorSegmentConfig['hydroKind'])}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                background: '#1a1a1a',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                color: '#fff',
+                fontSize: '13px',
+              }}
+            >
+              <option value="">None</option>
+              <option value="inflowPulse">Inflow pulse</option>
+              <option value="vortex">Vortex sink</option>
+              <option value="braid">Braid / dry tongue</option>
+              <option value="roughness">Slush roughness</option>
+            </select>
+            {localSegment.hydroKind ? (
+              <>
+                <input
+                  type="text"
+                  placeholder="Hours (e.g. 14 or 14,15)"
+                  value={localSegment.hydroHours || ''}
+                  onChange={(e) => updateField('hydroHours', e.target.value)}
+                  style={{
+                    width: '100%',
+                    marginTop: '6px',
+                    padding: '6px 10px',
+                    background: '#1a1a1a',
+                    border: '1px solid #333',
+                    borderRadius: '4px',
+                    color: '#fff',
+                    fontSize: '13px',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={80}
+                    step={0.5}
+                    placeholder="Radius"
+                    value={localSegment.hydroRadius ?? ''}
+                    onChange={(e) => updateField('hydroRadius', Number(e.target.value))}
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      background: '#1a1a1a',
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      color: '#fff',
+                      fontSize: '13px',
+                    }}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={0.1}
+                    placeholder="Strength"
+                    value={localSegment.hydroStrength ?? ''}
+                    onChange={(e) => updateField('hydroStrength', Number(e.target.value))}
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      background: '#1a1a1a',
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      color: '#fff',
+                      fontSize: '13px',
+                    }}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
 
           {/* Difficulty slider */}

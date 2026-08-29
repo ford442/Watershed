@@ -18,6 +18,16 @@ import { getLastFinishSummary } from '../systems/ghost/runFinish';
 import { downloadGhostFile } from '../systems/ghost/ghostExport';
 import { formatRaceTimeMs } from '../systems/ghost/raceTimeFormat';
 import type { RunSplitEntry } from '../systems/ghost/ghostCodec';
+import {
+  buildGhostHydroFairness,
+  describeHydroFairnessMismatch,
+  describeHydroSplitBlame,
+  fairnessFromGhostFile,
+} from '../systems/ghost/hydroFairness';
+import { getActiveLaunchHour } from '../systems/journey/runSession';
+import { getQualityPresetNow } from '../systems/GameState';
+import { getActiveMap } from '../maps/registry';
+import { parseHydroEvents } from '../systems/water/hydroEvents';
 
 interface RunResultsPanelProps {
   outcome: 'complete' | 'wipeout';
@@ -79,13 +89,30 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
     [thisRunSplits, referenceSplits],
   );
 
+  const thisFairness = useMemo(() => {
+    const map = getActiveMap();
+    return buildGhostHydroFairness({
+      launchHour: getActiveLaunchHour(),
+      events: parseHydroEvents(map.levelData.hydroEvents),
+      qualityPreset: getQualityPresetNow(),
+    });
+  }, [mapId]);
+
+  const rivalFairness = rival ? fairnessFromGhostFile(rival) : null;
+  const fairnessNote = describeHydroFairnessMismatch(thisFairness, rivalFairness, 'rival');
+  const hydroBlame = describeHydroSplitBlame(
+    rows,
+    parseHydroEvents(getActiveMap().levelData.hydroEvents),
+    thisFairness.launchHour ?? 0,
+  );
+
   if (thisRunSplits.length === 0) return null;
 
   const handleExport = () => {
     const payload = getCurrentGhostPayload();
     if (!payload) return;
     const timeMs = thisRunTimeMs ?? getGhostElapsedMs();
-    downloadGhostFile(mapId, timeMs, payload, thisRunSplits);
+    downloadGhostFile(mapId, timeMs, payload, thisRunSplits, undefined, thisFairness);
   };
 
   const handleCopySplits = () => {
@@ -129,6 +156,13 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
           </div>
         )}
       </div>
+
+      {(fairnessNote || hydroBlame) && (
+        <div className="run-results-panel__fairness">
+          {fairnessNote && <div>{fairnessNote}</div>}
+          {hydroBlame && <div>{hydroBlame}</div>}
+        </div>
+      )}
 
       <div className="run-results-panel__splits">
         {rows.map((row) => (

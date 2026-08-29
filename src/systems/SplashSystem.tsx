@@ -2,8 +2,9 @@
  * SplashSystem — sole player/raft water-contact VFX owner.
  *
  * Entry/exit splash arcs, rate-limited cruise splash, foam trail, raft mist crown,
- * and raft bow-wave. All particle draws go through ParticlePool; SWE disturbances
- * inject only on this path. Caps scale from useLOD().config.
+ * and raft bow-wave. Spawn stays in JS ParticlePool; when ABI 7+ is loaded,
+ * integrate is copy-in / stepSplashParticles / copy-out (#390). Resident SoA
+ * for splash/foam/mist is a ParticlePool rewrite, not this path. Caps from LOD.
  */
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
@@ -30,6 +31,7 @@ import {
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { createSplashBowWaveMaterial } from '../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
+import { getWasm, type WatershedNativeModule } from './water/WatershedWasm';
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -96,6 +98,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   const splashPoolRef = useRef<ParticlePool<VFXParticle> | null>(null);
   const foamPoolRef = useRef<ParticlePool<FoamParticle> | null>(null);
   const mistPoolRef = useRef<ParticlePool<MistParticle> | null>(null);
+  const splashWasmRef = useRef<{ mod: WatershedNativeModule; ptr: number; cap: number } | null>(null);
 
   const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
   const mistMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -117,6 +120,30 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       mistPoolRef.current?.dispose();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getWasm()
+      .then((mod) => {
+        if (cancelled) return;
+        if (typeof mod.allocateParticleSoA !== 'function'
+          || typeof mod.stepSplashParticles !== 'function') {
+          return;
+        }
+        const cap = Math.max(maxInstances, MAX_MIST_INSTANCES);
+        const ptr = mod.allocateParticleSoA(cap);
+        splashWasmRef.current = { mod, ptr, cap };
+      })
+      .catch(() => { /* JS ParticlePool integrate — #390 */ });
+    return () => {
+      cancelled = true;
+      const slot = splashWasmRef.current;
+      if (slot && typeof slot.mod.freeParticleSoA === 'function') {
+        slot.mod.freeParticleSoA(slot.ptr);
+      }
+      splashWasmRef.current = null;
+    };
+  }, [maxInstances]);
 
   const geometry = useMemo(() => new THREE.BoxGeometry(0.15, 0.15, 0.15), []);
   const material = useMemo(
@@ -368,13 +395,51 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
 
     wasInWaterRef.current = isInWater;
 
-    // Update splash particles (copy active list — release mutates the pool array)
+    // Update splash particles (copy active list — release mutates the pool array).
+    // Spawn remains TS; WASM only integrates dense slots then copies back (#390).
     const splashParticles = [...splashPoolRef.current.getActive()];
-    splashParticles.forEach((p) => {
-      if (!p.update(delta, -9.8)) {
-        splashPoolRef.current!.release(p);
+    const splashWasm = splashWasmRef.current;
+    const stepSplash = splashWasm?.mod.stepSplashParticles;
+    if (splashWasm && splashParticles.length > 0 && stepSplash) {
+      const { mod, ptr, cap } = splashWasm;
+      const n = Math.min(splashParticles.length, cap);
+      const px = new Float32Array(mod.HEAPF32.buffer, ptr, cap);
+      const py = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 4, cap);
+      const pz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 8, cap);
+      const vx = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 12, cap);
+      const vy = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 16, cap);
+      const vz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 20, cap);
+      const life = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 24, cap);
+      const maxLife = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 28, cap);
+      for (let i = 0; i < n; i++) {
+        const p = splashParticles[i];
+        px[i] = p.position.x;
+        py[i] = p.position.y;
+        pz[i] = p.position.z;
+        vx[i] = p.velocity.x;
+        vy[i] = p.velocity.y;
+        vz[i] = p.velocity.z;
+        life[i] = p.life;
+        maxLife[i] = p.maxLife;
       }
-    });
+      stepSplash(ptr, cap, n, delta, -9.8, 0.98);
+      for (let i = 0; i < n; i++) {
+        const p = splashParticles[i];
+        p.position.set(px[i], py[i], pz[i]);
+        p.velocity.set(vx[i], vy[i], vz[i]);
+        p.life = life[i];
+        p.rotation += p.rotationSpeed * delta;
+        if (life[i] < 0) {
+          splashPoolRef.current!.release(p);
+        }
+      }
+    } else {
+      splashParticles.forEach((p) => {
+        if (!p.update(delta, -9.8)) {
+          splashPoolRef.current!.release(p);
+        }
+      });
+    }
 
     // Update foam particles
     const foamParticles = [...foamPoolRef.current.getActive()];
@@ -420,11 +485,46 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     // Mist instances (raft)
     if (isRaft && mistMeshRef.current && mistPoolRef.current) {
       const mistToUpdate = [...mistPoolRef.current.getActive()];
-      mistToUpdate.forEach((p) => {
-        if (!p.update(delta)) {
-          mistPoolRef.current!.release(p);
+      if (splashWasm && mistToUpdate.length > 0 && stepSplash) {
+        const { mod, ptr, cap } = splashWasm;
+        const n = Math.min(mistToUpdate.length, cap);
+        const px = new Float32Array(mod.HEAPF32.buffer, ptr, cap);
+        const py = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 4, cap);
+        const pz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 8, cap);
+        const vx = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 12, cap);
+        const vy = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 16, cap);
+        const vz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 20, cap);
+        const life = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 24, cap);
+        const maxLife = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 28, cap);
+        for (let i = 0; i < n; i++) {
+          const p = mistToUpdate[i];
+          px[i] = p.position.x;
+          py[i] = p.position.y;
+          pz[i] = p.position.z;
+          vx[i] = p.velocity.x;
+          vy[i] = p.velocity.y;
+          vz[i] = p.velocity.z;
+          life[i] = p.life;
+          maxLife[i] = p.maxLife;
         }
-      });
+        stepSplash(ptr, cap, n, delta, 0, 1);
+        for (let i = 0; i < n; i++) {
+          const p = mistToUpdate[i];
+          p.position.set(px[i], py[i], pz[i]);
+          p.velocity.set(vx[i], vy[i], vz[i]);
+          p.life = life[i];
+          p.rotation += p.rotationSpeed * delta;
+          if (life[i] < 0) {
+            mistPoolRef.current.release(p);
+          }
+        }
+      } else {
+        mistToUpdate.forEach((p) => {
+          if (!p.update(delta)) {
+            mistPoolRef.current!.release(p);
+          }
+        });
+      }
 
       const activeMist = mistPoolRef.current.getActive();
       const mistRender = Math.min(activeMist.length, MAX_MIST_INSTANCES);

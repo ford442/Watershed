@@ -11,6 +11,9 @@
 
 import { useState, useCallback } from 'react';
 import * as THREE from 'three';
+import type { HydroEvent, HydroEventKind } from '../systems/water/hydroEvents';
+import { parseHydroEvents } from '../systems/water/hydroEvents';
+import { saveUserLevel } from '../systems/map/userLevelStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,6 +64,11 @@ export interface EditorSegmentConfig {
     fogDensity?: number;
     transitionDuration?: number;
   };
+  /** Optional SWE source term authored on this segment. */
+  hydroKind?: HydroEventKind | '';
+  hydroHours?: string;
+  hydroRadius?: number;
+  hydroStrength?: number;
 }
 
 export interface UseLevelEditorReturn {
@@ -74,6 +82,8 @@ export interface UseLevelEditorReturn {
   loadFromJSON: (data: any) => void;
   /** Serialises current state as LevelData-compatible JSON string */
   exportAsJSON: () => string;
+  /** Validate + persist the current export in localStorage (workshop, not Steam). */
+  storeUserLevel: () => void;
 
   // Additional derived state needed by editor UI
   /** Track waypoints extracted from the loaded JSON */
@@ -163,6 +173,54 @@ function buildSegmentFromRaw(
   };
 }
 
+function attachHydroEvents(
+  segments: EditorSegmentConfig[],
+  rawEvents: unknown,
+): EditorSegmentConfig[] {
+  const events = parseHydroEvents(rawEvents);
+  if (events.length === 0) return segments;
+  const bySegment = new Map<number, HydroEvent>();
+  for (const event of events) {
+    bySegment.set(event.segmentIndex, event);
+  }
+  return segments.map((seg) => {
+    const event = bySegment.get(seg.index);
+    if (!event) return seg;
+    return {
+      ...seg,
+      hydroKind: event.kind,
+      hydroHours: event.hours?.join(',') ?? '',
+      hydroRadius: event.radius,
+      hydroStrength: event.strength,
+    };
+  });
+}
+
+function parseHoursList(raw: string | undefined): number[] | undefined {
+  if (!raw || !raw.trim()) return undefined;
+  const hours = raw
+    .split(',')
+    .map((part) => Number.parseInt(part.trim(), 10))
+    .filter((hour) => Number.isInteger(hour) && hour >= 0 && hour <= 23);
+  return hours.length > 0 ? hours : undefined;
+}
+
+function collectHydroEvents(segments: EditorSegmentConfig[]): HydroEvent[] {
+  const events: HydroEvent[] = [];
+  for (const seg of segments) {
+    if (!seg.hydroKind) continue;
+    events.push({
+      id: `${seg.hydroKind}-${seg.index}`,
+      kind: seg.hydroKind,
+      segmentIndex: seg.index,
+      ...(parseHoursList(seg.hydroHours) ? { hours: parseHoursList(seg.hydroHours) } : {}),
+      ...(seg.hydroRadius !== undefined ? { radius: seg.hydroRadius } : {}),
+      ...(seg.hydroStrength !== undefined ? { strength: seg.hydroStrength } : {}),
+    });
+  }
+  return events;
+}
+
 // ---------------------------------------------------------------------------
 // Internal state shape
 // ---------------------------------------------------------------------------
@@ -211,8 +269,11 @@ export function useLevelEditor(): UseLevelEditorReturn {
       const totalSegments: number = data.world.track.totalSegments;
       const worldWidth: number = data.world.track.width ?? 35;
 
-      const segments: EditorSegmentConfig[] = (data.segments as any[]).map((seg) =>
-        buildSegmentFromRaw(seg, curve, totalSegments, worldBiome, worldWidth),
+      const segments: EditorSegmentConfig[] = attachHydroEvents(
+        (data.segments as any[]).map((seg) =>
+          buildSegmentFromRaw(seg, curve, totalSegments, worldBiome, worldWidth),
+        ),
+        data.hydroEvents,
       );
 
       setState({
@@ -371,10 +432,19 @@ export function useLevelEditor(): UseLevelEditorReturn {
       spawns: rawData?.spawns ?? {
         start: { position: [0, -4, -10], rotation: [0, 0, 0] },
       },
+      ...(collectHydroEvents(segments).length > 0
+        ? { hydroEvents: collectHydroEvents(segments) }
+        : {}),
     };
 
     return JSON.stringify(exported, null, 2);
   }, [state]);
+
+  const storeUserLevel = useCallback(() => {
+    const json = exportAsJSON();
+    const slug = (state.levelName || 'user-level').toLowerCase().replace(/\s+/g, '-').slice(0, 40);
+    saveUserLevel(slug, JSON.parse(json));
+  }, [exportAsJSON, state.levelName]);
 
   // ---- derived -------------------------------------------------------------
 
@@ -390,6 +460,7 @@ export function useLevelEditor(): UseLevelEditorReturn {
     removeSegment,
     loadFromJSON,
     exportAsJSON,
+    storeUserLevel,
     waypoints: state.waypoints,
     worldBiome: state.worldBiome,
     levelName: state.levelName,

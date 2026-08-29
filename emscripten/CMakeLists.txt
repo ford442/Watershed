@@ -11,6 +11,7 @@ set(COMPUTE_SOURCES
     forces.cpp
     swe.cpp
     chores.cpp
+    particles.cpp
 )
 
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
@@ -44,9 +45,13 @@ if(EMSCRIPTEN)
     endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # -msimd128: damping, conserved lift/CFL max, particle Euler, chores
+        # autovec. Not the HLL Riemann solver / hydrostatic reconstruction.
         set(EM_COMPILE_FLAGS
             -O0
             -g3
+            # SIMD: damping + lift/CFL in swe.cpp, Euler in particles.cpp,
+            # optional chores. Not the HLL Riemann solver.
             -msimd128
             -mbulk-memory
         )
@@ -63,6 +68,8 @@ if(EMSCRIPTEN)
             -O3
             -ffast-math
             -funroll-loops
+            # SIMD: damping + lift/CFL in swe.cpp, Euler in particles.cpp,
+            # optional chores. Not the HLL Riemann solver (#390).
             -msimd128
             -mbulk-memory
         )
@@ -103,8 +110,8 @@ else()
     # Native host build — clangd / host smoke. No Embind, no -s flags, no -ffast-math.
     add_executable(watershed_host_smoke host_smoke.cpp)
     target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
-    target_compile_options(watershed_compute PRIVATE -O2 -Wall -Wextra)
-    target_compile_options(watershed_host_smoke PRIVATE -O2 -Wall -Wextra)
+    target_compile_options(watershed_compute PRIVATE -O2 -Wall -Wextra -ffp-contract=off)
+    target_compile_options(watershed_host_smoke PRIVATE -O2 -Wall -Wextra -ffp-contract=off)
 
     # Copy compile_commands.json next to the sources so clangd finds it without
     # a .clangd CompilationDatabase. WASM configures must not overwrite this

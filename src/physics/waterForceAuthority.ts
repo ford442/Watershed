@@ -6,8 +6,9 @@
  * the gate that keeps them from stacking in one physics tick.
  *
  * Authored WaterFlowForces *currents* are gated off while WaterForceSystem is
- * active (SWE u,w drives the ABI). Centering / seating / alignment and vortex
- * fields (until hydroEvents) stay separate gameplay systems.
+ * active (SWE u,w drives the ABI). Centering / seating / alignment stay
+ * separate. Vortex *impulses* remain until a hydroEvent vortex owns that
+ * segment's SWE sink.
  */
 
 import {

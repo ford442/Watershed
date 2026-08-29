@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../../systems/LODManager';
 import type { WaterfallParticlesProps } from './types';
+import { getWasm, peekWasm, type WatershedNativeModule } from '../../systems/water/WatershedWasm';
 
 interface WaterfallParticle {
   x: number;
@@ -16,7 +17,21 @@ interface WaterfallParticle {
   active: boolean;
 }
 
-const MAX_POOL = 500;
+/** JS object-pool cap when WASM SoA is missing (ABI 6 / load fail). See #390. */
+const MAX_POOL_JS = 500;
+/** InstancedMesh / WASM SoA cap. Segment-14 400-count uses WASM SoA when live.
+ *  Ultra (`maxParticles >= 2000`) may simulate up to 1000 only on that path. */
+const MAX_POOL = 1000;
+const DEPTH_Z = 5;
+
+function particlePlane(
+  mod: WatershedNativeModule,
+  base: number,
+  plane: number,
+  capacity: number,
+): Float32Array {
+  return new Float32Array(mod.HEAPF32.buffer, base + plane * capacity * 4, capacity);
+}
 
 export default function WaterfallParticles({
   count: baseCount = 300,
@@ -33,6 +48,14 @@ export default function WaterfallParticles({
   const currentCountRef = useRef(baseCount);
   const targetCountRef = useRef(baseCount);
   const fadeAlphaRef = useRef(1.0);
+  const wasmRef = useRef<WatershedNativeModule | null>(null);
+  const soaPtrRef = useRef(0);
+  const seedRef = useRef(0xC0FFEE ^ (baseCount * 17));
+  const wasmReadyRef = useRef(false);
+
+  const wasmLive = Boolean(
+    peekWasm()?.allocateParticleSoA && peekWasm()?.stepWaterfallParticles,
+  );
 
   const calculatedCount = useMemo(() => {
     const densityBase = 100 + (particleDensity * 300);
@@ -50,22 +73,59 @@ export default function WaterfallParticles({
     }
 
     let finalCount = Math.floor(densityBase * velocityMultiplier * lodMultiplier);
-    const absoluteMax = maxParticles <= 200 ? 100 : 500;
+    const useWasmCap = wasmLive || wasmReadyRef.current;
+    const absoluteMax = maxParticles <= 200
+      ? 100
+      : (useWasmCap && maxParticles >= 2000 ? 1000 : MAX_POOL_JS);
     finalCount = Math.min(absoluteMax, finalCount);
 
     return finalCount;
-  }, [baseCount, particleDensity, playerVelocity, lodConfig]);
+  }, [baseCount, particleDensity, playerVelocity, lodConfig, wasmLive]);
 
   useEffect(() => {
     targetCountRef.current = calculatedCount;
   }, [calculatedCount]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void getWasm()
+      .then((mod) => {
+        if (cancelled) return;
+        if (typeof mod.allocateParticleSoA !== 'function'
+          || typeof mod.initWaterfallParticles !== 'function'
+          || typeof mod.stepWaterfallParticles !== 'function') {
+          return;
+        }
+        const ptr = mod.allocateParticleSoA(MAX_POOL);
+        seedRef.current = mod.initWaterfallParticles(
+          ptr, MAX_POOL, MAX_POOL, width, height, DEPTH_Z, fanSpreadRad, seedRef.current,
+        );
+        wasmRef.current = mod;
+        soaPtrRef.current = ptr;
+        wasmReadyRef.current = true;
+      })
+      .catch(() => {
+        // JS pool below — #390
+      });
+    return () => {
+      cancelled = true;
+      const mod = wasmRef.current;
+      const ptr = soaPtrRef.current;
+      if (mod && ptr && typeof mod.freeParticleSoA === 'function') {
+        mod.freeParticleSoA(ptr);
+      }
+      wasmRef.current = null;
+      soaPtrRef.current = 0;
+      wasmReadyRef.current = false;
+    };
+  }, [width, height, fanSpreadRad]);
+
   const particles = useMemo((): WaterfallParticle[] => {
     const temp: WaterfallParticle[] = [];
-    for (let i = 0; i < MAX_POOL; i++) {
+    for (let i = 0; i < MAX_POOL_JS; i++) {
       const x = (Math.random() - 0.5) * width;
       const y = Math.random() * height;
-      const z = (Math.random() - 0.5) * 5;
+      const z = (Math.random() - 0.5) * DEPTH_Z;
       const speed = 0.2 + Math.random() * 0.3;
       const scale = 0.5 + Math.random() * 0.5;
       const randomAngle = (Math.random() - 0.5) * fanSpreadRad;
@@ -120,30 +180,54 @@ export default function WaterfallParticles({
       meshMaterial.opacity = 0.6 * fadeAlphaRef.current;
     }
 
-    particles.forEach((p, i) => {
-      if (i < currentCount) {
-        p.y -= p.speed;
-        if (p.vx) p.x += p.vx;
-        if (p.vz) p.z += p.vz;
-
-        if (p.y < 0) {
-          p.y = height;
-          p.x = (Math.random() - 0.5) * width;
-          p.z = (Math.random() - 0.5) * 5;
-        }
-
-        dummy.position.set(p.x, p.y, p.z);
-        dummy.scale.setScalar(p.scale * fadeAlphaRef.current);
+    const mod = wasmRef.current;
+    const ptr = soaPtrRef.current;
+    if (mod && ptr && typeof mod.stepWaterfallParticles === 'function') {
+      seedRef.current = mod.stepWaterfallParticles(
+        ptr, MAX_POOL, currentCount, delta, width, height, DEPTH_Z, seedRef.current,
+      );
+      const px = particlePlane(mod, ptr, 0, MAX_POOL);
+      const py = particlePlane(mod, ptr, 1, MAX_POOL);
+      const pz = particlePlane(mod, ptr, 2, MAX_POOL);
+      const scale = particlePlane(mod, ptr, 8, MAX_POOL);
+      for (let i = 0; i < currentCount; i++) {
+        dummy.position.set(px[i], py[i], pz[i]);
+        dummy.scale.setScalar(scale[i] * fadeAlphaRef.current);
         dummy.rotation.x += 0.05;
-
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
-      } else {
+      }
+      for (let i = currentCount; i < MAX_POOL; i++) {
         dummy.scale.setScalar(0);
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
       }
-    });
+    } else {
+      // JS object pool — WASM SoA not loaded (#390)
+      particles.forEach((p, i) => {
+        if (i < currentCount) {
+          p.y -= p.speed;
+          if (p.vx) p.x += p.vx;
+          if (p.vz) p.z += p.vz;
+
+          if (p.y < 0) {
+            p.y = height;
+            p.x = (Math.random() - 0.5) * width;
+            p.z = (Math.random() - 0.5) * DEPTH_Z;
+          }
+
+          dummy.position.set(p.x, p.y, p.z);
+          dummy.scale.setScalar(p.scale * fadeAlphaRef.current);
+          dummy.rotation.x += 0.05;
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        } else {
+          dummy.scale.setScalar(0);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        }
+      });
+    }
 
     mesh.instanceMatrix.needsUpdate = true;
 

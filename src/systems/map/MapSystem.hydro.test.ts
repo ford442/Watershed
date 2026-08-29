@@ -61,6 +61,12 @@ describe('JSONMapManager — hydro_dam', () => {
     expect(cfg.vortex?.downwardForce).toBeGreaterThan(0);
   });
 
+  it('authors hydroEvents that differ at 06:00 vs the 14:00 dam pulse', () => {
+    const events = hydroLevel.hydroEvents ?? [];
+    expect(events.some((e) => e.id === 'hydro-dam-pulse' && e.hours?.includes(14))).toBe(true);
+    expect(events.some((e) => e.kind === 'vortex' && e.segmentIndex === HYDRO_DAM_VORTEX_SEGMENT_INDEX)).toBe(true);
+  });
+
   it('overflow pipe is an open-floor waterfall', () => {
     const cfg = manager.getChunkConfig(HYDRO_DAM_PIPE_SEGMENT_INDEX);
     expect(cfg.type).toBe('waterfall');
