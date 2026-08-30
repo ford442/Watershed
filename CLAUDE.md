@@ -186,14 +186,14 @@ See `concepts/01_kinetic_flume.png` — first-person POV, narrow mossy rock chan
 
 ---
 
-## Known Debug Artifacts (Need Cleanup Before Maps)
+## Known Debug Artifacts — Resolved
 
-The following are leftover debug elements that make the game look rough:
+The following previously-listed debug items have been cleaned up:
 
-1. **`App.tsx` — Green debug overlay** — Always-visible panel showing "Canvas Ready / Loading Active / Progress / Experience Error" (if still present). Must be removed for any polished build.
-2. **`RaftVehicle/` — Hotpink debug cube** — A `[0.3, 0.3, 0.3]` pink box at position `[0,1,0]` on the raft. Debug marker only.
-3. **`App.tsx` — `antialias: false`** — Antialiasing disabled hurts edge quality; prefer `antialias: true` when polishing.
-4. **`EnhancedSky.tsx` — Stars always rendered** — Stars can be visible even at noon; gate on time-of-day or biome.
+1. **`App.tsx` — Green debug overlay** — ✅ Removed. The always-visible "Canvas Ready / Loading Active" panel is gone from production builds.
+2. **`RaftVehicle/` — Hotpink debug cube** — ✅ Removed. The pink `[0.3, 0.3, 0.3]` box is no longer present.
+3. **`App.tsx` — `antialias`** — ✅ Now driven by `rendererContextOptions.antialias` (quality-preset aware).
+4. **`EnhancedSky.tsx` — Stars always rendered** — Stars are gated on time-of-day / biome; still visible at dusk by design.
 
 Legacy top-level `Player` duals were removed; player movement lives under `src/vehicles/`.
 
@@ -203,10 +203,8 @@ Legacy top-level `Player` duals were removed; player movement lives under `src/v
 
 Maps (authored segment sequences) require a stable visual baseline to test against. Here is the ordered path:
 
-### Step 1 — Strip debug artifacts
-- Remove the green debug panel from `App.tsx` (if still present)
-- Remove the hotpink box from `RaftVehicle/`
-- Enable `antialias: true` in Canvas
+### Step 1 — Debug baseline
+Debug artifacts listed above are resolved. If a regression is spotted, fix it before writing maps.
 
 ### Step 2 — Terrain visual quality (2–4 hours)
 The canyon walls currently use a U-shaped extrusion + Rock031 PBR textures. The texture tiling is uniform (4×8 repeat). To get closer to the concept art:

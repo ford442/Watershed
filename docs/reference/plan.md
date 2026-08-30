@@ -166,7 +166,7 @@ Prototype Todo: ~~Implement a minimal `FlowForecast` simulation…~~ → v1 comp
 
 ### Known Issues
 - Trimesh colliders are expensive for long tracks (mitigated by chunking + simplified collision mesh)
-- WebGPU/TSL materials remain experimental; live path is WebGL2 + GLSL injection
+- WebGPU/TSL materials remain experimental; live path is WebGL2 + GLSL injection. The TSL remainder (#387) targets a stepped Three.js upgrade (r168 → r178 → r185): r171 is the production WebGPU path (`three/webgpu` + `three/tsl` import contract, `WebGPURenderer` + `NodeMaterial`); r183 renames `PostProcessing` to `RenderPipeline` (same API). Pin version numbers (e.g. r171, r183) when documenting TSL milestones — do not write "a future Three bump".
 
 ### Architecture Decisions
 - **Spline-Based Tracks**: Chosen over heightmaps for explicit "beat" design
