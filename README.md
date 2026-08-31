@@ -30,11 +30,11 @@ The project uses a hybrid architecture to achieve high performance and realism w
 
 *   **UI and Orchestration:** [React](https://react.dev/) with [React Three Fiber (R3F)](https://docs.pmnd.rs/react-three-fiber/getting-started/introduction) for rendering 3D scenes.
 *   **Physics:** [Rapier](https://rapier.rs/) running in a Web Worker, compiled to Wasm for near-native performance. This keeps the main thread free from heavy physics calculations.
-*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6+) displaces `FlowingWater`; gameplay forces sample the same `(η,u,w)` field. Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. `HeightmapFlow.ts` is dormant — not a third live field. SWE stays C++ WASM until [#391](https://github.com/ford442/Watershed/issues/391) Phase D.
+*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6+) displaces `FlowingWater`; gameplay forces sample the same `(η,u,w)` field. Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. `HeightmapFlow.ts` is dormant — not a third live field. SWE stays C++ WASM until [#399](https://github.com/ford442/Watershed/issues/399) Phase D.
 
 ## Later picture
 
-Watershed’s unique claim is a **playable drainage basin**, not another canyon runner. Authored maps plus `hydroEvents[]`, the launch-hour forecast, and SWE `(η, u, w, b)` share one field that both the mesh and the hull read. Ghosts carry `launchHour` and an event hash so you race the river, not a tape. Biomes are boundary conditions on that field. Native WebGPU / a WGSL SWE twin is [#391](https://github.com/ford442/Watershed/issues/391) Phase D — not a prerequisite for campaign content. Closed [#374](https://github.com/ford442/Watershed/issues/374) was the hydrology foundation; the later product is #391. See [`docs/reference/plan.md`](docs/reference/plan.md).
+Watershed’s unique claim is a **playable drainage basin**, not another canyon runner. Authored maps plus `hydroEvents[]`, the launch-hour forecast, and SWE `(η, u, w, b)` share one field that both the mesh and the hull read. Ghosts carry `launchHour` and an event hash so you race the river, not a tape. Biomes are boundary conditions on that field. Native WebGPU / a WGSL SWE twin is [#399](https://github.com/ford442/Watershed/issues/399) — not a prerequisite for campaign content. Closed [#374](https://github.com/ford442/Watershed/issues/374) was the hydrology foundation; closed [#391](https://github.com/ford442/Watershed/issues/391) was the previous epic. See [`docs/reference/plan.md`](docs/reference/plan.md).
 *   **Asset Streaming:** A "treadmill" or chunk-based system loads and unloads parts of the world as the player moves, with object pooling to minimize garbage collection.
 
 ## Project Structure
@@ -54,17 +54,17 @@ For detailed information on the game's level design, including segment configura
 
 Shipped foundation (do not treat as TODO): map-driven treadmill / `ChunkManager`, typed `src/` surface, Rapier+WASM worker default-on, WebGL quality contract without remounting Rapier, gpu-chores on the session device, nonlinear SWE (ABI 6, wetting/drying, bed *pointer*), ghost league Phase C (splits / results / rival), TSL opt-in for water/river/canyon.
 
-Previous board (closed — do not pick): [#369](https://github.com/ford442/Watershed/issues/369)–[#375](https://github.com/ford442/Watershed/issues/375). #374 Phase 1 (nonlinear SWE) landed; Phase 2 bed sampling and Phase 3 force coupling continue as #385 / #386 (in-tree). #370 WebGPU-required boot stays closed until leftover GLSL is gone.
+Previous board (closed — do not pick): [#369](https://github.com/ford442/Watershed/issues/369)–[#375](https://github.com/ford442/Watershed/issues/375). #374 Phase 1 (nonlinear SWE) landed; Phase 2–3 continued as #385 / #386. #370 WebGPU-required boot stays closed until leftover GLSL is gone.
+
+Previous board (closed — do not pick): [#385](https://github.com/ford442/Watershed/issues/385)–[#391](https://github.com/ford442/Watershed/issues/391). #385 bathymetry, #386 one field, #387 TSL inventory, #388 hygiene (leftovers → #396 / #397), #389 `hydroEvents[]` source terms, #390 SIMD + particle SoA, #391 drainage-basin epic (successor [#399](https://github.com/ford442/Watershed/issues/399)).
 
 Open board (unchecked = genuinely open), **foundation before a sixth biome**:
 
-- [x] [#385](https://github.com/ford442/Watershed/issues/385) — **P0** Hydrology Phase 2: canyon collision mesh → SWE bed `b` (`bathymetrySampler.ts`)
-- [x] [#386](https://github.com/ford442/Watershed/issues/386) — **P0** One water field: SWE `(η,u,w)` drives Rapier via `sampleSWEFlow` (TS fallback `(0,-1)*flowSpeed` when SWE is off)
-- [x] [#387](https://github.com/ford442/Watershed/issues/387) — **P0** TSL remainder inventoried / hosts migrated; leftover sky/weather/VFX GLSL still blocks a native-WebGPU-required boot
-- [ ] [#388](https://github.com/ford442/Watershed/issues/388) — **P0** Hygiene: leftover `systems/*.tsx` hosts, host `-ffp-contract=off`, context `alpha` honesty
-- [x] [#389](https://github.com/ford442/Watershed/issues/389) — **P1** Authored `hydroEvents[]` + C++/TS source terms (`applySWEEvent`)
-- [x] [#390](https://github.com/ford442/Watershed/issues/390) — **P1** SIMD honesty for nonlinear HLL + WASM particle SoA
-- [ ] [#391](https://github.com/ford442/Watershed/issues/391) — **P2** Epic: playable drainage basin — campaign as one basin, ghosts vs the river, user-authored maps, one compute backend (Phase D not started)
+- [ ] [#396](https://github.com/ford442/Watershed/issues/396) — **P0** Ship WASM ABI 8 (`applySWEEvent`) and align the C++ numerical contract
+- [ ] [#397](https://github.com/ford442/Watershed/issues/397) — **P0** Renderer boot fallback, context honesty, leftover `systems/*.tsx` hosts
+- [ ] [#398](https://github.com/ford442/Watershed/issues/398) — **P1** `hydroEvents[]` that change both mesh and hull (gate for a sixth map)
+- [ ] [#400](https://github.com/ford442/Watershed/issues/400) — **P1** Biome set-pieces as mechanics (flume, ice tube, one-field vortex)
+- [ ] [#399](https://github.com/ford442/Watershed/issues/399) — **P2** Epic: native WebGPU post stack + WGSL SWE twin (Phase D not started)
 
 See also [`docs/reference/plan.md`](docs/reference/plan.md) and [`AGENTS.md`](AGENTS.md) for live architecture.
 

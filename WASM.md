@@ -400,4 +400,4 @@ at test time.
 | 4 — Bed + force coupling | ✅ Done | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` via `sampleSWEFlow` ([#386](https://github.com/ford442/Watershed/issues/386)) |
 | 5 — Source terms / events | ✅ Done | `hydroEvents[]` + `applySWEEvent` (ABI 8, additive) ([#389](https://github.com/ford442/Watershed/issues/389)) |
 | 6 — SIMD + particles | ✅ Done | HLL stays scalar; SIMD lift/CFL/damping + particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
-| 7 — pthreads / compute SWE | 🔜 Later | **#391 Phase D** (not started): one WGSL twin of this kernel, one backend per boot. **Phase E:** optional Tauri/Capacitor or a dedicated pthread SWE worker — documented follow-up only. No Electron. No default-on COOP-COEP / pthreads. |
+| 7 — pthreads / compute SWE | 🔜 Later | **[#399](https://github.com/ford442/Watershed/issues/399) Phase D** (not started): one WGSL twin of this kernel, one backend per boot. **Phase E:** optional Tauri/Capacitor or a dedicated pthread SWE worker — documented follow-up only. No Electron. No default-on COOP-COEP / pthreads. |

@@ -4,9 +4,9 @@
 
 Spline treadmill, five authored maps, survival/ghost/forecast, Rapier+WASM worker, and nonlinear SWE (ABI 6+) are on `main`. Canyon bathymetry fills `b`; `sampleSWEFlow` feeds Rapier. **Do not start a sixth map** until three shipped maps author `hydroEvents[]` that change both mesh and hull.
 
-Active board: [#388](https://github.com/ford442/Watershed/issues/388) hygiene. Later product: [#391](https://github.com/ford442/Watershed/issues/391) (this page). Closed [#374](https://github.com/ford442/Watershed/issues/374) was the SWE foundation, not the later picture.
+Active board: [#396](https://github.com/ford442/Watershed/issues/396) ABI 8, [#397](https://github.com/ford442/Watershed/issues/397) renderer/hygiene, [#398](https://github.com/ford442/Watershed/issues/398) hydroEvents quality, [#400](https://github.com/ford442/Watershed/issues/400) biome set-pieces. Later product: [#399](https://github.com/ford442/Watershed/issues/399) (native WebGPU + WGSL SWE). Closed [#374](https://github.com/ford442/Watershed/issues/374) was the SWE foundation; closed [#388](https://github.com/ford442/Watershed/issues/388) / [#391](https://github.com/ford442/Watershed/issues/391) were the previous board.
 
-### Later picture (#391)
+### Later picture (#399; succeeded #391)
 
 A player who scouts 06:00 vs a 14:00 dam pulse should see the channel change, feel the hull change, and race a ghost whose splits moved **because the water moved**. Pipeline:
 
@@ -17,7 +17,7 @@ SWE (η, u, w, b)                  → mesh + Rapier (one field)
 Ghost codec + launchHour          → you race a river, not a tape
 ```
 
-Journey topology: `glacial → lumber → meander → hydro → delta`. Native WebGPU / WGSL SWE is Phase D of #391 — C++ WASM stays the only live sim until then. Optional Tauri/Capacitor or a pthread SWE worker is Phase E (documented follow-up); no Electron, no default-on COOP-COEP.
+Journey topology: `glacial → lumber → meander → hydro → delta`. Native WebGPU / WGSL SWE is Phase D of [#399](https://github.com/ford442/Watershed/issues/399) — C++ WASM stays the only live sim until then. Optional Tauri/Capacitor or a pthread SWE worker is Phase E (documented follow-up); no Electron, no default-on COOP-COEP.
 
 Historical notes below are still useful; unchecked items that contradict the board above are stale.
 
