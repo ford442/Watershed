@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
+import { WASM_ARTIFACT_STAMP } from '../systems/water/wasmArtifactStamp';
 
 type WatershedNativeFactory = (options?: {
   locateFile?: (path: string, prefix: string) => string;
@@ -13,7 +14,9 @@ function resolveWorkerAsset(path: string): string {
     typeof self !== 'undefined' && typeof self.location?.href === 'string'
       ? self.location.href
       : '/';
-  return new URL(path, base).href;
+  const url = new URL(path, base).href;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${WASM_ARTIFACT_STAMP}`;
 }
 
 /**
@@ -32,7 +35,7 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
         locateFile: (path: string) => resolveWorkerAsset(path),
       });
     } catch (error) {
-      console.warn('[physics worker] watershed_native unavailable; using TS water-force fallback', error);
+      console.error('[physics worker] native init failed; using TS water-force fallback', error);
       return null;
     }
   })();

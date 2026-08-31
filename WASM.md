@@ -151,10 +151,18 @@ binary cannot be called with the new argument list at all, so the floor moves wi
 it and a stale binary is rejected at load. Chore kernels live in
 `emscripten/chores.cpp` and are **not** SWE.
 
-> **`public/watershed_native.{js,wasm}` are committed build artifacts.** Any change
-> under `emscripten/` needs `pnpm build:wasm` and the regenerated pair committed.
-> On ABI mismatch `getWasm()` rejects, `WaterForceSystem` logs and falls back to
-> TypeScript force math with visual SWE disabled — degraded but not broken.
+> **`public/watershed_native.{js,wasm}` are committed build artifacts.** Rebuild
+> both from the same pinned emcc (**3.1.56**, matching CI) via `pnpm build:wasm`
+> and commit the pair together plus `src/systems/water/wasmArtifactStamp.ts`.
+> Mixing glue JS and wasm from different emcc versions throws at
+> `__embind_register_value_object_field` (`reading 'fields'`).
+>
+> CI instantiates the **committed** pair with `node emscripten/smoke_test.mjs`
+> (including the no-emcc job) and, after rebuild, `git diff --exit-code`s the
+> pair. `getWasm()` rejects on factory/ABI failure; GameHUD banners that error
+> and does **not** display the TypeScript smoke number as a health signal.
+> `WaterForceSystem` still falls back to TypeScript force math so play continues
+> (visual SWE off) — degraded, not broken.
 
 ### Adding a translation unit
 

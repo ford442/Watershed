@@ -21,6 +21,8 @@ import {
   createSWEGrid,
   getWasm,
   peekWasm,
+  peekWasmInitError,
+  __resetWasmLoaderForTests,
   MIN_WASM_ABI_VERSION,
   PARTICLE_SOA_PLANES,
   type Vec3,
@@ -564,14 +566,22 @@ describe('particle SoA heap layout', () => {
 // ---------------------------------------------------------------------------
 
 describe('getWasm', () => {
-  // We cannot actually load the WASM in Jest/jsdom, but we can verify that
-  // getWasm() returns a Promise.
+  beforeEach(() => {
+    __resetWasmLoaderForTests();
+  });
+
   it('returns a Promise', () => {
-    // Reset module-level cache by re-importing via jest module isolation
-    // is not straightforward, so we just check the return type.
     const result = getWasm().catch(() => {
       // Expected to reject in jsdom (no /watershed_native.js)
     });
     expect(result).toBeInstanceOf(Promise);
+  });
+
+  it('records init failure so HUD can banner instead of showing a TS smoke value', async () => {
+    await expect(getWasm()).rejects.toBeInstanceOf(Error);
+    expect(peekWasm()).toBeNull();
+    const err = peekWasmInitError();
+    expect(err).toBeInstanceOf(Error);
+    expect(err?.message.length).toBeGreaterThan(0);
   });
 });

@@ -602,8 +602,15 @@ Output written to `public/` (served as static assets by Vite):
 - `public/watershed_native.worker.js` — pthread worker shim (`--threads` mode only)
 
 **Graceful skip:** `build.sh` exits 0 with a warning when `emcc` is not in `PATH` —
-the JS/WASM output is simply not regenerated. The TypeScript fallbacks ensure the game
-still runs; only the C++ acceleration is skipped.
+the JS/WASM output is simply not regenerated. Physics TypeScript fallbacks keep the
+canyon playable; GameHUD banners native-init throw instead of showing a TS smoke
+value as a health signal.
+
+**Pairing:** `public/watershed_native.{js,wasm}` are committed and must be rebuilt
+from pinned emcc **3.1.56** in one `pnpm build:wasm`. CI instantiates that committed
+pair (`createWatershedNative()` / `emscripten/smoke_test.mjs`) and
+`git diff --exit-code`s the artifacts after rebuild. A mixed js+wasm pair throws at
+`__embind_register_value_object_field`.
 
 **Flags:**
 | Flag | Effect |

@@ -28,6 +28,7 @@
  */
 
 import { getAssetBaseUrl } from '../../utils/assetBaseUrl';
+import { WASM_ARTIFACT_STAMP } from './wasmArtifactStamp';
 
 // ---------------------------------------------------------------------------
 // Native module interface (produced by Embind + MODULARIZE=1)
@@ -300,6 +301,12 @@ export const PARTICLE_SOA_PLANES = 9;
 
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 let _loaded: WatershedNativeModule | null = null;
+let _initError: Error | null = null;
+
+function withArtifactStamp(url: string): string {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${WASM_ARTIFACT_STAMP}`;
+}
 
 function resolvePublicAsset(path: string): string {
   const rawBase = getAssetBaseUrl();
@@ -318,7 +325,7 @@ function resolvePublicAsset(path: string): string {
     runtimeHref
       ? new URL(baseWithSlash, runtimeHref).href
       : baseWithSlash;
-  return new URL(path, absoluteBase).href;
+  return withArtifactStamp(new URL(path, absoluteBase).href);
 }
 
 /**
@@ -334,34 +341,41 @@ export async function getWasm(): Promise<WatershedNativeModule> {
   if (_modulePromise) return _modulePromise;
 
   _modulePromise = (async () => {
-    // Dynamic import keeps the glue JS out of the main bundle.
-    // webpackIgnore comment is harmless with Vite but prevents bundler errors
-    // if the project is ever processed by webpack.
-    // Use eval-like dynamic import to prevent bundlers from trying to resolve
-    // the WASM glue JS at build time (the file is produced by Emscripten).
-    const wasmJsUrl = resolvePublicAsset('watershed_native.js');
-    const mod = typeof process !== 'undefined' && process.env.WATERSHED_WASM_INTEGRATION === '1'
-      ? await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory }
-      : await (new Function('url', 'return import(url)') as (url: string) => Promise<unknown>)(wasmJsUrl) as {
-          default: WatershedNativeFactory;
-        };
+    try {
+      // Dynamic import keeps the glue JS out of the main bundle.
+      // webpackIgnore comment is harmless with Vite but prevents bundler errors
+      // if the project is ever processed by webpack.
+      // Use eval-like dynamic import to prevent bundlers from trying to resolve
+      // the WASM glue JS at build time (the file is produced by Emscripten).
+      const wasmJsUrl = resolvePublicAsset('watershed_native.js');
+      const mod = typeof process !== 'undefined' && process.env.WATERSHED_WASM_INTEGRATION === '1'
+        ? await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory }
+        : await (new Function('url', 'return import(url)') as (url: string) => Promise<unknown>)(wasmJsUrl) as {
+            default: WatershedNativeFactory;
+          };
 
-    const factory = mod.default;
-    const loaded = await factory({
-      locateFile: (path: string, _prefix: string) => {
-        // Direct the glue JS to load all auxiliary files (including .wasm)
-        // from the public root, regardless of the Vite base path.
-        return resolvePublicAsset(path);
-      },
-    });
-    const version = loaded.getVersion();
-    if (version < MIN_WASM_ABI_VERSION) {
-      throw new Error(
-        `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
-      );
+      const factory = mod.default;
+      const loaded = await factory({
+        locateFile: (path: string, _prefix: string) => {
+          // Direct the glue JS to load all auxiliary files (including .wasm)
+          // from the public root, regardless of the Vite base path.
+          return resolvePublicAsset(path);
+        },
+      });
+      const version = loaded.getVersion();
+      if (version < MIN_WASM_ABI_VERSION) {
+        throw new Error(
+          `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
+        );
+      }
+      _loaded = loaded;
+      _initError = null;
+      return loaded;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      _initError = err;
+      throw err;
     }
-    _loaded = loaded;
-    return loaded;
   })();
 
   return _modulePromise;
@@ -370,6 +384,18 @@ export async function getWasm(): Promise<WatershedNativeModule> {
 /** Already-resolved native module, or null if `getWasm()` has not finished. */
 export function peekWasm(): WatershedNativeModule | null {
   return _loaded;
+}
+
+/** Last `getWasm()` failure, or null if native init succeeded / has not run. */
+export function peekWasmInitError(): Error | null {
+  return _initError;
+}
+
+/** Test-only: drop the singleton so the next `getWasm()` hits the loader again. */
+export function __resetWasmLoaderForTests(): void {
+  _modulePromise = null;
+  _loaded = null;
+  _initError = null;
 }
 
 // ---------------------------------------------------------------------------

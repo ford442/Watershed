@@ -134,7 +134,7 @@ pnpm test:native   # host C++ smoke: cmake -S emscripten -B emscripten/build-hos
 pnpm test:wasm:parity   # native vs TS fixtures; needs pnpm build:wasm (CI Emscripten job)
 ```
 
-Host C++ (`watershed_host_smoke`) covers buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping). The **Build without Emscripten** CI job runs `pnpm test:native`. The **Build with Emscripten** job runs `pnpm test:wasm:parity` after the module is built.
+Host C++ (`watershed_host_smoke`) covers buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping). The **Build without Emscripten** CI job runs `pnpm test:native` and `node emscripten/smoke_test.mjs` against the **committed** `public/watershed_native.{js,wasm}` pair (`createWatershedNative()` must not throw). The **Build with Emscripten** job smokes that committed pair first, rebuilds with pinned emcc 3.1.56, `git diff --exit-code`s the artifacts, then runs `pnpm test:wasm:parity`.
 
 176 tests across 17 suites (components, systems, rendering, validators). See **2026-06 Live Test Gate** below for the full verification matrix.
 

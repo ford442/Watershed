@@ -42,7 +42,7 @@ const smoke = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
 console.info('[Watershed WASM]', smoke);
 ```
 
-`GameHUD` runs that hello-world call on load and prints the result to the browser console. It also shows a small `WASM READY` or `WASM FALLBACK` HUD line.
+`GameHUD` runs that hello-world call on load. Success shows `WASM READY` plus the native value. Native-init throw banners the error and shows `WASM FAILED` — it does not substitute the TypeScript smoke number.
 
 For a visible force scene, run the app with:
 

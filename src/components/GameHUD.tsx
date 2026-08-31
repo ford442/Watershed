@@ -10,7 +10,6 @@ import {
 } from '../systems/journey/runSession';
 import { getLoadoutDefinition } from '../systems/survival';
 import {
-  calculateBuoyancyAndDragFallback,
   getWasm,
   type NativeWaterForceResult,
 } from '../systems/water/WatershedWasm';
@@ -232,12 +231,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [comboFlash, setComboFlash] = useState('');
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [wasmSmoke, setWasmSmoke] = useState<{
-    status: 'loading' | 'ready' | 'fallback';
-    value: number;
+    status: 'loading' | 'ready' | 'failed';
+    value?: number;
     force?: NativeWaterForceResult;
+    error?: string;
+    dismissed?: boolean;
   }>(() => ({
     status: 'loading',
-    value: calculateBuoyancyAndDragFallback(150, 0.4, 0, -3),
   }));
 
   const speedMs = Math.max(0, Math.round(rawSpeed));
@@ -292,10 +292,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         );
         setWasmSmoke({ status: 'ready', value, force });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        const value = calculateBuoyancyAndDragFallback(150, 0.4, 0, -3);
-        setWasmSmoke({ status: 'fallback', value });
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[Watershed WASM] native init failed', error);
+        setWasmSmoke({ status: 'failed', error: message });
       });
 
     return () => {
@@ -456,6 +457,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   return (
     <>
+      {wasmSmoke.status === 'failed' && !wasmSmoke.dismissed && (
+        <div className="wasm-init-banner" role="alert" data-testid="wasm-init-banner">
+          <div className="wasm-init-banner__body">
+            <strong>Native WASM failed to init</strong>
+            <pre>{wasmSmoke.error}</pre>
+          </div>
+          <button
+            type="button"
+            className="wasm-init-banner__dismiss"
+            onClick={() => setWasmSmoke((prev) => ({ ...prev, dismissed: true }))}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="fixed top-4 left-4 md:top-6 md:left-6 text-xs font-mono text-white/50 tracking-[0.12em]">
         <div>{biomeLabel}</div>
         <div className="survival-loadout-badge">
@@ -505,9 +521,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <span className="ml-4 text-white/50">Top {Math.round(topSpeed)} m/s</span>
       </div>
 
-      <div className="fixed bottom-12 right-4 md:bottom-14 md:right-6 text-white/40 text-[10px] md:text-xs font-mono text-right">
-        WASM {wasmSmoke.status.toUpperCase()} {Math.round(wasmSmoke.value)}
-        {wasmSmoke.force && (
+      <div
+        className="fixed bottom-12 right-4 md:bottom-14 md:right-6 text-white/40 text-[10px] md:text-xs font-mono text-right"
+        data-testid="wasm-smoke-status"
+      >
+        WASM {wasmSmoke.status.toUpperCase()}
+        {wasmSmoke.status === 'ready' && wasmSmoke.value != null && (
+          <> {Math.round(wasmSmoke.value)}</>
+        )}
+        {wasmSmoke.status === 'ready' && wasmSmoke.force && (
           <span className="ml-2 text-sky-200/60">
             Fz {Math.round(wasmSmoke.force.forceZ)}
           </span>

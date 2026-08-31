@@ -1,3 +1,55 @@
+/* Native WASM init failure — production-visible, dismissible, not a boot blocker. */
+.wasm-init-banner {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: min(560px, calc(100vw - 1.5rem));
+  padding: 10px 12px;
+  background: rgba(127, 29, 29, 0.92);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.wasm-init-banner__body {
+  min-width: 0;
+}
+
+.wasm-init-banner__body strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #fee2e2;
+}
+
+.wasm-init-banner__body pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.9;
+}
+
+.wasm-init-banner__dismiss {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  background: #fecaca;
+  color: #7f1d1d;
+  border: none;
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* Journey Complete overlay fade-in */
 .journey-complete-overlay {
   opacity: 0;

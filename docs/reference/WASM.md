@@ -81,11 +81,15 @@ floor moves with it. A stale binary now fails the assertion loudly and the game
 falls back to TypeScript forces with visual SWE off, rather than calling into a
 shifted argument list.
 
-> **`public/watershed_native.{js,wasm}` are committed build artifacts.** Any
-> change under `emscripten/` requires `pnpm build:wasm` and committing the
-> regenerated pair. CI rebuilds and runs `emscripten/smoke_test.mjs` +
-> `pnpm test:wasm:parity` against the fresh binary, and the ABI floor above is
-> what makes a forgotten rebuild fail instead of silently shipping old physics.
+> **`public/watershed_native.{js,wasm}` are committed build artifacts.** Rebuild
+> both from the same pinned emcc (**3.1.56**) and commit the pair together
+> (`src/systems/water/wasmArtifactStamp.ts` is written by `build.sh` for
+> cache-busting). CI smokes the **committed** pair with `createWatershedNative()`
+> before any rebuild, then `git diff --exit-code`s the artifacts after
+> `pnpm build:wasm`. A js+wasm mismatch throws at
+> `__embind_register_value_object_field`; GameHUD banners native-init failure
+> instead of showing a TypeScript smoke value. Physics still degrades to TS
+> force math so the canyon loop stays playable.
 
 ## Shallow water solver
 

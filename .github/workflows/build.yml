@@ -72,6 +72,9 @@ jobs:
       - name: Host C++ smoke (no Emscripten)
         run: pnpm test:native
 
+      - name: Instantiate committed watershed_native pair
+        run: node emscripten/smoke_test.mjs
+
       - name: Build production bundle
         run: pnpm build
 
@@ -189,16 +192,23 @@ jobs:
       - name: Validate documentation paths
         run: node scripts/validate-markdown-paths.js
 
+      - name: Instantiate committed watershed_native pair
+        run: node emscripten/smoke_test.mjs
+
       - name: Compile watershed_native.wasm
         run: pnpm build:wasm
 
-      - name: Assert WASM artifact exists and is within budget
+      - name: Assert WASM artifacts match the pinned emcc rebuild
         run: |
           test -f public/watershed_native.wasm
           test -f public/watershed_native.js
           WASM_SIZE=$(wc -c < public/watershed_native.wasm)
           echo "watershed_native.wasm size: ${WASM_SIZE} bytes"
           test "${WASM_SIZE}" -lt 131072
+          git diff --exit-code -- \
+            public/watershed_native.js \
+            public/watershed_native.wasm \
+            src/systems/water/wasmArtifactStamp.ts
 
       - name: Run WASM integration tests against real binary
         run: |

@@ -14,14 +14,32 @@ if (!WebAssembly.validate(wasmBinary)) {
 
 const { default: createWatershedNative } = await import(jsPath);
 
-const wasm = await createWatershedNative({
-  instantiateWasm: (imports, receiveInstance) => {
-    WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => {
-      receiveInstance(instance);
-    });
-    return {};
-  },
-});
+if (typeof createWatershedNative !== 'function') {
+  throw new Error('watershed_native.js did not export createWatershedNative()');
+}
+
+let wasm;
+try {
+  wasm = await createWatershedNative({
+    instantiateWasm: (imports, receiveInstance) => {
+      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => {
+        receiveInstance(instance);
+      });
+      return {};
+    },
+  });
+} catch (error) {
+  const msg = error instanceof Error ? error.stack || error.message : String(error);
+  throw new Error(
+    `createWatershedNative() threw (js+wasm pair out of sync or Embind failed): ${msg}`,
+  );
+}
+
+if (typeof wasm?.calculateWaterForce !== 'function' || typeof wasm?.getVersion !== 'function') {
+  throw new Error(
+    'createWatershedNative() resolved without Embind exports (calculateWaterForce / getVersion)',
+  );
+}
 
 const buoyancy = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
 

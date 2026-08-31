@@ -295,7 +295,7 @@ export function WaterForceSystem({
       .catch((error) => {
         if (cancelled) return;
         statusRef.current = 'fallback';
-        console.warn('[WaterForceSystem] WASM unavailable; using TypeScript fallbacks', error);
+        console.error('[WaterForceSystem] native init failed; using TypeScript fallbacks', error);
         bindChoreWasm(null);
         updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
         setSWEStatus(false, null);
