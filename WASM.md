@@ -119,6 +119,17 @@ Both CMake configures set `CMAKE_EXPORT_COMPILE_COMMANDS ON`:
 
 After clone, `pnpm test:native` configures + builds the host tree (`emscripten/build-host`), which generates clangd's `compile_commands.json` there. Do not commit generated compile databases, and do not symlink them to the repo root — `emscripten/build-host` is the single source of truth for clangd. Host smoke pins buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping + bump golden).
 
+### Linear memory budget
+
+| Flag | Value | Rationale |
+|------|-------|-----------|
+| `INITIAL_MEMORY` | 64 MiB | Fast startup; most sessions never need more |
+| `MAXIMUM_MEMORY` | 256 MiB | Hard ceiling so a runaway init or growth loop cannot consume unbounded tab RAM |
+| `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate |
+
+Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2` and `SAFE_HEAP=1`.
+TypeScript init (`getWasm`) is bounded by an 8 s deadline regardless — see `WASM_INIT_TIMEOUT_MS` in `WatershedWasm.ts`.
+
 ---
 
 ## API reference

@@ -6,9 +6,13 @@ const { getWasmMock } = vi.hoisted(() => ({
   getWasmMock: vi.fn(),
 }));
 
-vi.mock('../systems/water/WatershedWasm', () => ({
-  getWasm: () => getWasmMock(),
-}));
+vi.mock('../systems/water/WatershedWasm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../systems/water/WatershedWasm')>();
+  return {
+    ...actual,
+    getWasm: () => getWasmMock(),
+  };
+});
 
 const nativeForce = {
   forceX: 0,
@@ -56,6 +60,7 @@ describe('GameHUD native WASM smoke', () => {
 
     const banner = screen.getByTestId('wasm-init-banner');
     expect(banner).toHaveTextContent('Native WASM failed to init');
+    expect(banner).not.toHaveTextContent('timed out');
     expect(banner).toHaveTextContent("Cannot read properties of undefined (reading 'fields')");
 
     const status = screen.getByTestId('wasm-smoke-status').textContent ?? '';
@@ -66,5 +71,22 @@ describe('GameHUD native WASM smoke', () => {
     fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
     expect(screen.queryByTestId('wasm-init-banner')).not.toBeInTheDocument();
     expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM FAILED');
+  });
+
+  it('banners native init timeout distinctly from a throw', async () => {
+    getWasmMock.mockRejectedValue(
+      new Error('watershed_native init timed out after 8000ms'),
+    );
+
+    render(<GameHUD />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM FAILED');
+    });
+
+    const banner = screen.getByTestId('wasm-init-banner');
+    expect(banner).toHaveTextContent('Native WASM init timed out');
+    expect(banner).not.toHaveTextContent('failed to init');
+    expect(banner).toHaveTextContent('watershed_native init timed out after 8000ms');
   });
 });

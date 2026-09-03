@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 7).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 8).
  * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION.
  *
  * Quick start
@@ -299,9 +299,122 @@ export const MIN_WASM_ABI_VERSION = 6;
 /** SoA planes in allocateParticleSoA (px…scale). Mirrored by PARTICLE_SOA_PLANES in particles.h. */
 export const PARTICLE_SOA_PLANES = 9;
 
+/** Default deadline for watershed_native factory initialisation (ms). */
+export const WASM_INIT_TIMEOUT_MS = 8000;
+
+const WASM_LOG_PREFIX = '[Watershed WASM]';
+
+/** Thrown when the Emscripten factory does not settle within the deadline. */
+export class WasmInitTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`watershed_native init timed out after ${timeoutMs}ms`);
+    this.name = 'WasmInitTimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
+ * Resolve the WASM init deadline (ms). Precedence: env override, then ?wasmInitTimeout=,
+ * then WASM_INIT_TIMEOUT_MS. Invalid values fall back to the default.
+ */
+export function resolveWasmInitTimeoutMs(search?: string): number {
+  const envRaw =
+    typeof process !== 'undefined' && typeof process.env.WATERSHED_WASM_INIT_TIMEOUT_MS === 'string'
+      ? process.env.WATERSHED_WASM_INIT_TIMEOUT_MS
+      : undefined;
+  if (envRaw != null && envRaw !== '') {
+    const parsed = Number(envRaw);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  }
+
+  const raw =
+    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const query = new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get('wasmInitTimeout');
+  if (query != null && query !== '') {
+    const parsed = Number(query);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  }
+
+  return WASM_INIT_TIMEOUT_MS;
+}
+
+export function isWasmInitTimeoutError(error: unknown): boolean {
+  return error instanceof WasmInitTimeoutError
+    || (error instanceof Error && error.message.includes('init timed out after'));
+}
+
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 let _loaded: WatershedNativeModule | null = null;
 let _initError: Error | null = null;
+
+function logWasmInitStarted(url: string): void {
+  console.info(`${WASM_LOG_PREFIX} init started url=${url} stamp=${WASM_ARTIFACT_STAMP}`);
+}
+
+async function logWasmByteLength(wasmUrl: string): Promise<void> {
+  try {
+    const response = await fetch(wasmUrl, { method: 'HEAD' });
+    const len = response.headers.get('content-length');
+    if (len != null && len !== '') {
+      console.info(`${WASM_LOG_PREFIX} wasm bytes=${len}`);
+      return;
+    }
+    const getResponse = await fetch(wasmUrl);
+    const buf = await getResponse.arrayBuffer();
+    console.info(`${WASM_LOG_PREFIX} wasm bytes=${buf.byteLength}`);
+  } catch {
+    console.info(`${WASM_LOG_PREFIX} wasm bytes=unknown`);
+  }
+}
+
+function logWasmTerminal(outcome: 'ready' | 'failed' | 'timed-out', detail: string): void {
+  const line = outcome === 'ready'
+    ? `${WASM_LOG_PREFIX} ready (${detail})`
+    : outcome === 'timed-out'
+      ? `${WASM_LOG_PREFIX} timed-out(${detail})`
+      : `${WASM_LOG_PREFIX} failed(${detail})`;
+  if (outcome === 'ready') {
+    console.info(line);
+  } else {
+    console.error(line);
+  }
+}
+
+function raceWithDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => Error,
+): Promise<T> {
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const guarded = promise.then(
+    (value) => {
+      if (settled) return value;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      return value;
+    },
+    (error: unknown) => {
+      if (settled) return Promise.reject(error);
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      return Promise.reject(error);
+    },
+  );
+
+  const deadline = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(onTimeout());
+    }, timeoutMs);
+  });
+
+  return Promise.race([guarded, deadline]);
+}
 
 function withArtifactStamp(url: string): string {
   const sep = url.includes('?') ? '&' : '?';
@@ -331,23 +444,27 @@ function resolvePublicAsset(path: string): string {
 /**
  * Load (or return the cached) Watershed WASM module.
  *
- * Safe to call many times — subsequent calls return the same promise.
- * The module is loaded from `/watershed_native.js` (Vite serves this from
- * the `public/` directory).
+ * Safe to call many times — subsequent calls return the same settled promise.
+ * On failure (throw or deadline) the promise **rejects**; call sites must
+ * `.catch()` and fall back to the TypeScript implementations.
  *
  * @returns Resolved WatershedNativeModule
  */
 export async function getWasm(): Promise<WatershedNativeModule> {
   if (_modulePromise) return _modulePromise;
 
+  const timeoutMs = resolveWasmInitTimeoutMs();
+  let terminalLogged = false;
+
   _modulePromise = (async () => {
+    const wasmJsUrl = resolvePublicAsset('watershed_native.js');
+    const wasmBinaryUrl = resolvePublicAsset('watershed_native.wasm');
+
     try {
+      logWasmInitStarted(wasmJsUrl);
+      void logWasmByteLength(wasmBinaryUrl);
+
       // Dynamic import keeps the glue JS out of the main bundle.
-      // webpackIgnore comment is harmless with Vite but prevents bundler errors
-      // if the project is ever processed by webpack.
-      // Use eval-like dynamic import to prevent bundlers from trying to resolve
-      // the WASM glue JS at build time (the file is produced by Emscripten).
-      const wasmJsUrl = resolvePublicAsset('watershed_native.js');
       const mod = typeof process !== 'undefined' && process.env.WATERSHED_WASM_INTEGRATION === '1'
         ? await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory }
         : await (new Function('url', 'return import(url)') as (url: string) => Promise<unknown>)(wasmJsUrl) as {
@@ -355,25 +472,41 @@ export async function getWasm(): Promise<WatershedNativeModule> {
           };
 
       const factory = mod.default;
-      const loaded = await factory({
-        locateFile: (path: string, _prefix: string) => {
-          // Direct the glue JS to load all auxiliary files (including .wasm)
-          // from the public root, regardless of the Vite base path.
-          return resolvePublicAsset(path);
-        },
-      });
+      const loaded = await raceWithDeadline(
+        factory({
+          locateFile: (path: string, _prefix: string) => resolvePublicAsset(path),
+        }),
+        timeoutMs,
+        () => new WasmInitTimeoutError(timeoutMs),
+      );
+
       const version = loaded.getVersion();
-      if (version < MIN_WASM_ABI_VERSION) {
+      const abiOk = version >= MIN_WASM_ABI_VERSION;
+      console.info(
+        `${WASM_LOG_PREFIX} abi=${version} (min=${MIN_WASM_ABI_VERSION}, ${abiOk ? 'ok' : 'rejected'})`,
+      );
+      if (!abiOk) {
         throw new Error(
           `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
         );
       }
+
       _loaded = loaded;
       _initError = null;
+      terminalLogged = true;
+      logWasmTerminal('ready', `abi=${version}`);
       return loaded;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       _initError = err;
+      if (!terminalLogged) {
+        terminalLogged = true;
+        if (isWasmInitTimeoutError(err)) {
+          logWasmTerminal('timed-out', `${timeoutMs}ms`);
+        } else {
+          logWasmTerminal('failed', err.message);
+        }
+      }
       throw err;
     }
   })();

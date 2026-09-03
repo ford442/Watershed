@@ -37,6 +37,8 @@ Hard rules:
 - `value_object` registrations run before any `function()` that uses those types.
 - Default CMake target has no `-pthread` / `SHARED_MEMORY`. Threads remain
   `WATERSHED_THREADS=ON` / `./build.sh --threads` only.
+- Linear memory: `INITIAL_MEMORY` 64 MiB, `MAXIMUM_MEMORY` 256 MiB,
+  `ALLOW_MEMORY_GROWTH=1`. See [../../WASM.md](../../WASM.md#linear-memory-budget).
 
 ## Host build + clangd
 

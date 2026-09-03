@@ -11,6 +11,7 @@ import {
 import { getLoadoutDefinition } from '../systems/survival';
 import {
   getWasm,
+  isWasmInitTimeoutError,
   type NativeWaterForceResult,
 } from '../systems/water/WatershedWasm';
 import RunResultsPanel from './RunResultsPanel';
@@ -235,6 +236,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     value?: number;
     force?: NativeWaterForceResult;
     error?: string;
+    timedOut?: boolean;
     dismissed?: boolean;
   }>(() => ({
     status: 'loading',
@@ -295,8 +297,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       .catch((error: unknown) => {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : String(error);
+        const timedOut = isWasmInitTimeoutError(error);
         console.error('[Watershed WASM] native init failed', error);
-        setWasmSmoke({ status: 'failed', error: message });
+        setWasmSmoke({ status: 'failed', error: message, timedOut });
       });
 
     return () => {
@@ -460,7 +463,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {wasmSmoke.status === 'failed' && !wasmSmoke.dismissed && (
         <div className="wasm-init-banner" role="alert" data-testid="wasm-init-banner">
           <div className="wasm-init-banner__body">
-            <strong>Native WASM failed to init</strong>
+            <strong>
+              {wasmSmoke.timedOut
+                ? 'Native WASM init timed out'
+                : 'Native WASM failed to init'}
+            </strong>
             <pre>{wasmSmoke.error}</pre>
           </div>
           <button

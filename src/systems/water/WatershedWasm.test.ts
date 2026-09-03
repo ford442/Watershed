@@ -25,6 +25,9 @@ import {
   __resetWasmLoaderForTests,
   MIN_WASM_ABI_VERSION,
   PARTICLE_SOA_PLANES,
+  resolveWasmInitTimeoutMs,
+  WASM_INIT_TIMEOUT_MS,
+  WasmInitTimeoutError,
   type Vec3,
   type WatershedNativeModule,
   type SWEGrid,
@@ -583,5 +586,94 @@ describe('getWasm', () => {
     const err = peekWasmInitError();
     expect(err).toBeInstanceOf(Error);
     expect(err?.message.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. resolveWasmInitTimeoutMs + deadline behaviour
+// ---------------------------------------------------------------------------
+
+describe('resolveWasmInitTimeoutMs', () => {
+  const envKey = 'WATERSHED_WASM_INIT_TIMEOUT_MS';
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedEnv = process.env[envKey];
+    delete process.env[envKey];
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env[envKey];
+    else process.env[envKey] = savedEnv;
+  });
+
+  it('defaults to WASM_INIT_TIMEOUT_MS', () => {
+    expect(resolveWasmInitTimeoutMs('')).toBe(WASM_INIT_TIMEOUT_MS);
+    expect(WASM_INIT_TIMEOUT_MS).toBe(8000);
+  });
+
+  it('reads ?wasmInitTimeout= from search', () => {
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=1500')).toBe(1500);
+  });
+
+  it('ignores invalid query values', () => {
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=0')).toBe(WASM_INIT_TIMEOUT_MS);
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=abc')).toBe(WASM_INIT_TIMEOUT_MS);
+  });
+
+  it('prefers env override over query', () => {
+    process.env[envKey] = '250';
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=9999')).toBe(250);
+  });
+});
+
+describe('getWasm init deadline', () => {
+  const envKey = 'WATERSHED_WASM_INIT_TIMEOUT_MS';
+  const RealFunction = globalThis.Function;
+
+  beforeEach(() => {
+    __resetWasmLoaderForTests();
+    vi.useFakeTimers();
+    process.env[envKey] = '50';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      headers: { get: () => '12345' },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env[envKey];
+    __resetWasmLoaderForTests();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    globalThis.Function = RealFunction;
+  });
+
+  it('rejects with a greppable timeout error when the factory never settles', async () => {
+    const never = new Promise<WatershedNativeModule>(() => { /* hang */ });
+    globalThis.Function = new Proxy(RealFunction, {
+      construct(target, args: string[]) {
+        if (args[0] === 'url' && args[1] === 'return import(url)') {
+          return () => Promise.resolve({ default: () => never });
+        }
+        return new target(...args);
+      },
+    }) as typeof Function;
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const pending = getWasm();
+    const settled = expect(pending).rejects.toBeInstanceOf(WasmInitTimeoutError);
+    await vi.advanceTimersByTimeAsync(60);
+    await settled;
+
+    const err = peekWasmInitError();
+    expect(err?.message).toContain('init timed out after 50ms');
+    expect(errorSpy).toHaveBeenCalledWith('[Watershed WASM] timed-out(50ms)');
+
+    infoSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

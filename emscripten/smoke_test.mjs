@@ -51,8 +51,12 @@ const version = wasm.getVersion();
 // ABI 6 changed stepShallowWater's arity (bed pointer). A binary older than
 // that cannot be driven by the current TypeScript at all, so this floor is what
 // catches a stale committed public/watershed_native.wasm.
-if (!Number.isInteger(version) || version < 6) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 6)`);
+if (!Number.isInteger(version) || version < 8) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 8)`);
+}
+
+if (typeof wasm.applySWEEvent !== 'function') {
+  throw new Error('ABI 8+ must export applySWEEvent');
 }
 
 if (version >= 7) {
@@ -171,6 +175,104 @@ if (typeof wasm.reduceF32Grid === 'function') {
 
   if (!(maxVel < 1e-5)) {
     throw new Error(`SWE not well-balanced: lake at rest produced |v|=${maxVel}`);
+  }
+}
+
+// --- ABI 8: applySWEEvent inflow pulse matches the TypeScript twin ---
+{
+  const HYDRO_KIND_INFLOW = 0;
+  const width = 8;
+  const height = 8;
+  const count = width * height;
+  const dx = 1;
+  const originX = 0;
+  const originZ = 0;
+  const stillDepth = 1.2;
+  const cx = 3.5;
+  const cz = 3.5;
+  const radius = 4;
+  const strength = 8;
+  const dt = 0.05;
+
+  function applySWEEventFallbackTs(h, u, w, b) {
+    const r = Math.max(0.5, radius);
+    const r2 = r * r;
+    const mag = Math.max(0, strength);
+    const step = Math.max(0, dt);
+    for (let j = 0; j < height; j += 1) {
+      const wz = originZ + j * dx;
+      const dz = wz - cz;
+      for (let i = 0; i < width; i += 1) {
+        const wx = originX + i * dx;
+        const dxw = wx - cx;
+        const d2 = dxw * dxw + dz * dz;
+        if (d2 > r2) continue;
+        const dist = Math.sqrt(d2);
+        const wgt = 1 - dist / r;
+        const idx = j * width + i;
+        h[idx] += mag * step * wgt;
+      }
+    }
+  }
+
+  const hCtlPtr = wasm.allocateGrid(count);
+  const uCtlPtr = wasm.allocateGrid(count);
+  const wCtlPtr = wasm.allocateGrid(count);
+  const bCtlPtr = wasm.allocateGrid(count);
+  const hNatPtr = wasm.allocateGrid(count);
+  const uNatPtr = wasm.allocateGrid(count);
+  const wNatPtr = wasm.allocateGrid(count);
+  const bNatPtr = wasm.allocateGrid(count);
+  const hTsPtr = wasm.allocateGrid(count);
+  const uTsPtr = wasm.allocateGrid(count);
+  const wTsPtr = wasm.allocateGrid(count);
+  const bTsPtr = wasm.allocateGrid(count);
+
+  const heap = wasm.HEAPF32;
+  const hNat = heap.subarray(hNatPtr >> 2, (hNatPtr >> 2) + count);
+  const hTs = heap.subarray(hTsPtr >> 2, (hTsPtr >> 2) + count);
+  const hCtl = heap.subarray(hCtlPtr >> 2, (hCtlPtr >> 2) + count);
+
+  wasm.applySWEEvent(
+    hNatPtr, uNatPtr, wNatPtr, bNatPtr,
+    width, height, dx, originX, originZ, stillDepth,
+    HYDRO_KIND_INFLOW, cx, cz, radius, strength, dt,
+  );
+
+  applySWEEventFallbackTs(hTs, heap.subarray(uTsPtr >> 2, (uTsPtr >> 2) + count),
+    heap.subarray(wTsPtr >> 2, (wTsPtr >> 2) + count),
+    heap.subarray(bTsPtr >> 2, (bTsPtr >> 2) + count));
+
+  let maxCtl = 0;
+  let maxNat = 0;
+  let maxDiff = 0;
+  for (let i = 0; i < count; i += 1) {
+    maxCtl = Math.max(maxCtl, Math.abs(hCtl[i]));
+    maxNat = Math.max(maxNat, hNat[i]);
+    maxDiff = Math.max(maxDiff, Math.abs(hNat[i] - hTs[i]));
+  }
+
+  wasm.freeGrid(hCtlPtr);
+  wasm.freeGrid(uCtlPtr);
+  wasm.freeGrid(wCtlPtr);
+  wasm.freeGrid(bCtlPtr);
+  wasm.freeGrid(hNatPtr);
+  wasm.freeGrid(uNatPtr);
+  wasm.freeGrid(wNatPtr);
+  wasm.freeGrid(bNatPtr);
+  wasm.freeGrid(hTsPtr);
+  wasm.freeGrid(uTsPtr);
+  wasm.freeGrid(wTsPtr);
+  wasm.freeGrid(bTsPtr);
+
+  if (!(maxCtl < 1e-6)) {
+    throw new Error(`applySWEEvent control eta not at rest: max=${maxCtl}`);
+  }
+  if (!(maxNat > 0.05)) {
+    throw new Error(`applySWEEvent inflow pulse too weak: max=${maxNat}`);
+  }
+  if (!(maxDiff < 1e-5)) {
+    throw new Error(`applySWEEvent diverges from TS twin: maxDiff=${maxDiff}`);
   }
 }
 
