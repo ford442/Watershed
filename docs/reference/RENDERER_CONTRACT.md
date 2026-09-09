@@ -57,10 +57,10 @@ A partial migration that instantiates native `WebGPURenderer` while residual GLS
 
 Two rules follow, and both are locked by tests:
 
-1. **Creation-time attributes are the only reason to remount the Canvas.** `rendererContextCreationKey()` serializes exactly that set; `buildCanvasIdentityKey()` composes the Canvas `key` from it plus renderer preference, material backend, and the context-loss epoch. The quality preset is not in the key. `medium` ↔ `high` ↔ `ultra` therefore keeps Physics, `TrackManager`, and the vehicle mounted; `low` still remounts because it turns antialias off.
+1. **Creation-time attributes are the only reason to remount the Canvas, and no quality preset can move one.** `rendererContextCreationKey()` serializes exactly that set; `buildCanvasIdentityKey()` composes the Canvas `key` from it plus renderer preference, material backend, and the context-loss epoch. The quality preset is not in the key, and since boot-time negotiation neither are `antialias`, `powerPreference`, or `failIfMajorPerformanceCaveat` — they come from the session's frozen `GraphicsEnvelope`. **Every** quality transition, `low` ↔ `ultra` included, keeps Physics, `TrackManager`, and the vehicle mounted.
 2. **Everything else is applied live, including the recompile.** `applyRendererQualityUpdate()` re-applies tone mapping, color space, and shadow configuration on the existing renderer, and marks scene materials `needsUpdate` when the shadow configuration changed — THREE's `needsProgramChange` does not track `shadowMap.type`, so without that the old programs keep drawing. `SceneLighting` disposes the sun's shadow render target so a new `mapSize` takes effect.
 
-`failIfMajorPerformanceCaveat` is on above `low`. Headless CI and the visual-smoke harness run on SwiftShader and opt out explicitly through `isSoftwareRendererAllowed()` (`?screenshot=1` / `?capture=1` / `?softwareGl=1`); production never does.
+`failIfMajorPerformanceCaveat` is decided by the boot probe, not by the preset: on when the strict probe attempt succeeded (a real GPU), off when only the relaxed attempt did. The probe requests the *same* attribute object `THREE.WebGLRenderer` will (`rendererContextAttributesFor()`), so a green probe means a green renderer. Headless CI and the visual-smoke harness run on SwiftShader and skip the probe entirely through `isSoftwareRendererAllowed()` (`?screenshot=1` / `?capture=1` / `?softwareGl=1`), pinning `CAPTURE_ENVELOPE`; production never does. See [`RENDERER.md`](./RENDERER.md#boot-time-graphics-negotiation).
 
 Every Canvas consumes this contract, including the Level Editor (`deriveEditorContextOptions()`). A new Canvas that hand-rolls its `gl` prop is a contract violation, not a shortcut.
 
@@ -77,8 +77,10 @@ The regression guard in `src/rendering/createRenderer.test.ts` locks this contra
 
 A third block locks the context-attribute and live-quality contract:
 
-- `createRenderer.test.ts` spies on `getContext` and asserts the derived attributes reach the context request, that `low` and the capture opt-out both request `failIfMajorPerformanceCaveat: false`, and that `preserveDrawingBuffer` from the caller is not clobbered.
-- `deriveRendererContextOptions.test.ts` asserts the pinned attributes per preset, that `toContextAttributes()` contains no live-applicable property, and that `buildCanvasIdentityKey()` is identical across `medium`/`high`/`ultra` but differs for `low`, for a renderer/material change, and for the epoch.
+- `createRenderer.test.ts` spies on `getContext` and asserts the derived attributes reach the context request, that the degraded and capture envelopes both request `failIfMajorPerformanceCaveat: false`, that the renderer's request matches `rendererContextAttributesFor()` attribute for attribute, and that `preserveDrawingBuffer` from the caller is not clobbered.
+- `probeGraphicsCapability.test.ts` covers the three tiers with a stubbed `getContext`, asserts every probe context is released, and asserts capture mode pins its envelope without probing.
+- `App.graphicsBoot.test.tsx` asserts the Canvas and the world mount exactly once across `low` ↔ `ultra`, that an unsupported tier mounts neither, and that the boot-crash guard clamps to `low`.
+- `deriveRendererContextOptions.test.ts` asserts the pinned attributes per preset, that `toContextAttributes()` contains no live-applicable property, that the creation attributes are identical for all four presets given an envelope, and that `buildCanvasIdentityKey()` is identical across every preset but differs for a renderer/material change and for the epoch.
 - `applyRendererContextOptions.test.ts` asserts materials are invalidated on a shadow-configuration change and left alone when only DPR moves.
 
 A second block locks the path A contract: `materialBackend: 'tsl'` yields a `WebGPURenderer` with `backend.isWebGPUBackend === false` even when `preference: 'webgpu'`, until `canEnableNativeWebgpu()` is true. `createGameRenderer({ preference: 'webgpu', materialBackend: 'glsl' })` still returns `WebGLRenderer`.

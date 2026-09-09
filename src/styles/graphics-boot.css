@@ -1,0 +1,125 @@
+/* Boot-time graphics negotiation surfaces: the safe-mode badge and the
+   no-WebGL2 screen. Both are plain DOM and must render without a Canvas. */
+
+/* Safe Graphics Mode — persistent, dismissible. Same visual language as
+   .wasm-init-banner (see hud-effects.css), amber instead of red because this is
+   a degraded session, not a failed subsystem. Bottom-left keeps it clear of the
+   WASM banner (top-centre) and the context-recovery toast (bottom-centre). */
+.safe-graphics-badge {
+  position: fixed;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 1.5rem));
+  padding: 10px 12px;
+  background: rgba(69, 45, 8, 0.94);
+  color: #fde3b0;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.safe-graphics-badge__body {
+  min-width: 0;
+}
+
+.safe-graphics-badge__body strong {
+  color: #fef3c7;
+}
+
+.safe-graphics-badge__why {
+  padding: 0;
+  background: none;
+  border: none;
+  color: #fcd34d;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.safe-graphics-badge__reason {
+  margin: 6px 0 0;
+  opacity: 0.92;
+}
+
+.safe-graphics-badge__status {
+  opacity: 0.75;
+  word-break: break-word;
+}
+
+.safe-graphics-badge__dismiss {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  background: #fde68a;
+  color: #422006;
+  border: none;
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* No WebGL2 at all: full-page, static, no game mounted behind it. */
+.graphics-unsupported {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0a0d10;
+  color: #d8e2ea;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow-y: auto;
+}
+
+.graphics-unsupported__panel {
+  max-width: 560px;
+}
+
+.graphics-unsupported__title {
+  margin: 0 0 12px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #f2f6f9;
+}
+
+.graphics-unsupported__lead {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.graphics-unsupported__actions {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.graphics-unsupported__actions li + li {
+  margin-top: 8px;
+}
+
+.graphics-unsupported__status,
+.graphics-unsupported__check {
+  margin: 0 0 8px;
+  font-size: 12px;
+  opacity: 0.75;
+  word-break: break-word;
+}
+
+.graphics-unsupported code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+}

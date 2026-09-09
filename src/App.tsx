@@ -9,23 +9,31 @@ import DebugPanel from './components/DebugPanel';
 import SWEBedDebugOverlay, { isSWEDebugEnabled } from './components/SWEBedDebugOverlay';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { SettingsSync } from './ui/SettingsSync';
-import { rehydrateSettings } from './systems/settings/useSettingsStore';
+import { rehydrateSettings, useSettingsStore } from './systems/settings/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
 import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import {
+  beginBootAttempt,
+  BootHealthSentinel,
   createGameRenderer,
   deriveRendererContextOptions,
   isSoftwareRendererAllowed,
   isVisualCaptureMode,
+  negotiateBootGraphics,
   parseRendererPreference,
   persistRendererPreference,
   buildCanvasIdentityKey,
+  recordBootFailure,
   RendererQualitySync,
   shadowModeToCanvasProp,
+  type BootFailureRecord,
+  type GraphicsCapability,
   type RendererPreference,
 } from './rendering';
+import GraphicsUnsupported from './components/GraphicsUnsupported';
+import SafeGraphicsBadge from './components/SafeGraphicsBadge';
 import {
   persistMaterialBackend,
   resolveMaterialBackend,
@@ -54,6 +62,43 @@ const isEditorMode =
 /** Game phase determines which overlays are visible */
 type GamePhase = 'menu' | 'playing' | 'paused';
 
+/**
+ * The result of boot-time graphics negotiation, plus the boot-crash verdict.
+ *
+ * Both are session facts, decided once, *before* anything mounts — see
+ * `probeGraphicsCapability.ts` and `bootCrashGuard.ts`.
+ */
+export interface GraphicsBoot {
+  capability: GraphicsCapability;
+  /** What the previous start left behind, or null when it drew a frame. */
+  previousFailure: BootFailureRecord | null;
+}
+
+let negotiatedBoot: GraphicsBoot | null = null;
+
+/**
+ * Negotiate once per page load.
+ *
+ * Memoised at module scope rather than in a `useState` initializer because
+ * `beginBootAttempt()` has a side effect that must happen exactly once: a second
+ * call would read back the record this one just armed and misreport a healthy
+ * boot as a crashed one.
+ */
+function resolveGraphicsBoot(): GraphicsBoot {
+  if (negotiatedBoot) return negotiatedBoot;
+  const previousFailure = beginBootAttempt();
+  negotiatedBoot = {
+    previousFailure,
+    capability: negotiateBootGraphics({
+      // The capture harness pins its envelope instead of probing — see
+      // CAPTURE_ENVELOPE.
+      captureMode: isSoftwareRendererAllowed(),
+      previousBootFailed: previousFailure !== null,
+    }),
+  };
+  return negotiatedBoot;
+}
+
 // Simple fallback scene if Experience fails
 const FallbackScene = () => {
   return (
@@ -79,7 +124,16 @@ const isTypingTarget = (target: EventTarget | null) => {
   );
 };
 
-function App() {
+export interface AppProps {
+  /** Test seam: pre-negotiated graphics boot. Production negotiates its own. */
+  graphicsBoot?: GraphicsBoot;
+}
+
+function App({ graphicsBoot }: AppProps = {}) {
+  // Before <Canvas>, before <Physics>, before anything mounts.
+  const [{ capability: graphicsCapability, previousFailure }] = useState<GraphicsBoot>(
+    () => graphicsBoot ?? resolveGraphicsBoot()
+  );
   const [phase, setPhase] = useState<GamePhase>('menu');
   /** Heavy Physics/track mount — deferred after Start so the menu can unmount first. */
   const [worldEnabled, setWorldEnabled] = useState(false);
@@ -118,19 +172,37 @@ function App() {
   const [webglRecovering, setWebglRecovering] = useState(false);
   const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
     devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
-    allowSoftwareFallback: isSoftwareRendererAllowed(),
+    // Frozen at boot. Antialias, power preference, and the caveat flag are
+    // creation-time attributes; taking them from the negotiated envelope instead
+    // of the preset is what makes every preset share one Canvas key.
+    envelope: graphicsCapability.envelope,
   });
-  // Only creation-time context attributes belong in the Canvas key. DPR, shadow
-  // mode, and shadow map size are re-applied live by RendererQualitySync +
-  // SceneLighting, so medium ↔ high ↔ ultra mid-run keeps Rapier, the track
-  // treadmill, WASM SWE grids, audio, and the vehicle body alive. Only a preset
-  // that flips antialias (i.e. to/from `low`) forces a new WebGL context.
+  // Only creation-time context attributes belong in the Canvas key, and none of
+  // them varies with quality any more. DPR, shadow mode, and shadow map size are
+  // re-applied live by RendererQualitySync + SceneLighting, so *any* preset
+  // change mid-run — low ↔ ultra included — keeps Rapier, the track treadmill,
+  // WASM SWE grids, audio, and the vehicle body alive.
   const canvasKey = buildCanvasIdentityKey({
     rendererPreference,
     materialBackend,
     contextOptions: rendererContextOptions,
     epoch: canvasEpoch,
   });
+  // The previous start never drew a frame, lost its context, or threw out of the
+  // renderer factory (see bootCrashGuard). Clamp to `low` once settings have
+  // hydrated — earlier and rehydration would put the persisted preset straight
+  // back. Written to the *settings* store because SettingsSync owns the
+  // settings → GameState direction and would otherwise re-push the old value;
+  // the badge says what happened and how to raise it again.
+  const settingsHydrated = useSettingsStore((state) => state._hasHydrated);
+  const crashClampApplied = useRef(false);
+  useEffect(() => {
+    if (!previousFailure || !settingsHydrated || crashClampApplied.current) return;
+    crashClampApplied.current = true;
+    useSettingsStore.getState().setQuality('low');
+    useGameStore.getState().setSettings({ quality: 'low' });
+  }, [previousFailure, settingsHydrated]);
+
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
     const params = new URLSearchParams(window.location.search);
@@ -367,6 +439,20 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [bootReady, handleStart, phase, selectedMapId]);
 
+  // No WebGL2 by any attempt: render static DOM and mount nothing. R3F, Rapier's
+  // WASM world, the treadmill, and audio all assume a renderer exists, and
+  // starting them anyway is what produced the infinite loader.
+  if (graphicsCapability.tier === 'unsupported') {
+    return (
+      <ErrorBoundary>
+        <GraphicsUnsupported
+          statusMessage={graphicsCapability.statusMessage}
+          attributesRejected={graphicsCapability.reason === 'attributes-rejected'}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       {/* Editor mode: full-page swap, own Canvas, own lifecycle */}
@@ -388,21 +474,31 @@ function App() {
           <Canvas
             key={canvasKey}
             dpr={[1, rendererContextOptions.dprMax]}
-            gl={async (props) =>
-              createGameRenderer(
-                {
-                  ...props,
-                  preserveDrawingBuffer: isVisualCaptureMode(),
-                },
-                {
-                  preference: rendererPreference,
-                  antialias: rendererContextOptions.antialias,
-                  powerPreference: rendererContextOptions.powerPreference,
-                  contextOptions: rendererContextOptions,
-                  materialBackend,
-                }
-              )
-            }
+            gl={async (props) => {
+              // No retry, no fallback ladder: the envelope in
+              // `rendererContextOptions` is the one the boot probe already proved
+              // this machine will grant, attribute for attribute. A throw here is
+              // a genuine failure — record *why* for the next boot, then let it
+              // reach the ErrorBoundary.
+              try {
+                return await createGameRenderer(
+                  {
+                    ...props,
+                    preserveDrawingBuffer: isVisualCaptureMode(),
+                  },
+                  {
+                    preference: rendererPreference,
+                    antialias: rendererContextOptions.antialias,
+                    powerPreference: rendererContextOptions.powerPreference,
+                    contextOptions: rendererContextOptions,
+                    materialBackend,
+                  }
+                );
+              } catch (error) {
+                recordBootFailure('renderer-throw');
+                throw error;
+              }
+            }}
             camera={{ position: [0, 10, -10], fov: 75 }}
             shadows={shadowModeToCanvasProp(rendererContextOptions.shadowMode)}
             frameloop="always"
@@ -418,6 +514,9 @@ function App() {
               const onContextLost = (event: Event) => {
                 event.preventDefault();
                 setWebglRecovering(true);
+                // If the tab is reloaded before the context comes back, the next
+                // boot should know this was a GPU loss, not a slow start.
+                recordBootFailure('context-lost');
                 console.warn('[App] WebGL context lost — waiting for restore');
               };
               const onContextRestored = () => {
@@ -430,6 +529,7 @@ function App() {
             }}
           >
             <RendererQualitySync />
+            <BootHealthSentinel />
             <React.Suspense
               fallback={
                 <mesh>
@@ -474,6 +574,17 @@ function App() {
             >
               Graphics paused — recovering…
             </div>
+          )}
+
+          {/* Safe Graphics Mode — persistent, dismissible, acknowledgement
+              persisted. Not a toast: see SafeGraphicsBadge. Hidden in clean-test
+              and capture runs so it cannot land in a visual-smoke baseline. */}
+          {!cleanTest && !isVisualCaptureMode() && graphicsCapability.tier === 'degraded' && (
+            <SafeGraphicsBadge
+              reason={graphicsCapability.reason}
+              statusMessage={graphicsCapability.statusMessage}
+              bootFailure={previousFailure?.reason ?? null}
+            />
           )}
 
           {/* Asset loading overlay */}

@@ -22,7 +22,7 @@ import { useThree } from '@react-three/fiber';
 import { useQualityPreset } from '../systems/GameState';
 import { applyRendererQualityUpdate } from './applyRendererContextOptions';
 import { deriveRendererContextOptions } from './deriveRendererContextOptions';
-import { isSoftwareRendererAllowed } from './rendererConfig';
+import { getSessionGraphicsEnvelope } from './probeGraphicsCapability';
 
 export default function RendererQualitySync() {
   const gl = useThree((state) => state.gl);
@@ -35,7 +35,9 @@ export default function RendererQualitySync() {
 
     const options = deriveRendererContextOptions(quality, {
       devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
-      allowSoftwareFallback: isSoftwareRendererAllowed(),
+      // The envelope is frozen at boot; only the live half of the contract
+      // below actually varies with `quality`.
+      envelope: getSessionGraphicsEnvelope(),
     });
 
     // `failIfMajorPerformanceCaveat`, `antialias`, `alpha`, `depth`, `stencil`
