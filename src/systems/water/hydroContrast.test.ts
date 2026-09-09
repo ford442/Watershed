@@ -5,10 +5,13 @@ import delta from '../../maps/delta_rapids.json';
 import lumber from '../../maps/lumber_flume.json';
 import { parseHydroEvents, hydroVortexSegments } from './hydroEvents';
 import {
+  CONTRAST_FLOW_SPEED,
   HYDRO_CONTRAST_MARGINS,
   hydroSegmentIndices,
   measureHydroHourContrast,
+  simulateHourGrid,
 } from './hydroContrast';
+import { sampleSWEFlow } from './sampleSWEFlow';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
 import { buildForecastSamples, FLOW_FORECAST_STATES } from '../map/flowForecast';
 import { DAM_RELEASE_SCHEDULE } from '../../experience/constants';
@@ -98,5 +101,41 @@ describe('lumber braid couples to washedOutGap', () => {
     for (const hour of braid!.hours ?? []) {
       expect(washedOutHours.has(hour)).toBe(true);
     }
+  });
+});
+
+describe('glacial slush roughness damps the hull', () => {
+  const SLUSH_SEGMENT = 3;
+  const SLUSH_HOUR = 13;
+  /** No glacial event is authored here — the un-damped reference. */
+  const CLEAR_HOUR = 20;
+
+  function hullSpeedAt(hour: number): number {
+    const grid = simulateHourGrid(parseHydroEvents(glacial.hydroEvents), hour, SLUSH_SEGMENT);
+    return sampleSWEFlow({
+      worldX: 0,
+      worldZ: 0,
+      flowSpeed: CONTRAST_FLOW_SPEED,
+      grid: {
+        h: grid.h,
+        u: grid.u,
+        w: grid.w,
+        b: grid.b,
+        width: grid.width,
+        height: grid.height,
+        cellSize: grid.cellSize,
+        originX: grid.originX,
+        originZ: grid.originZ,
+      },
+      enabled: true,
+    }).speed;
+  }
+
+  it('slows u,w where the slush is authored, not just where it is drawn', () => {
+    const slush = hullSpeedAt(SLUSH_HOUR);
+    const clear = hullSpeedAt(CLEAR_HOUR);
+
+    expect(clear).toBeGreaterThan(0);
+    expect(slush).toBeLessThan(clear);
   });
 });

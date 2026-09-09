@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createRockPayload, seededRandom } from '../utils';
 import { isAutumnLike } from '../../../configs/biomes';
 import type { PopulateSideArgs } from '../types';
+import { applyTubeProfile, resolveTubeProfile } from './geometryBuilders';
 
 export function populateSidePart2(args: PopulateSideArgs): void {
     const {
@@ -485,13 +486,19 @@ export function populateSidePart2(args: PopulateSideArgs): void {
 
                 // 16. GLACIAL — icicles on rim overhangs
                 if (isGlacier && seededRandom(seedState.value++) > 0.55) {
-                    const dist = side * (bankEdge + 1.8 + seededRandom(seedState.value++) * 3.5);
-                    const offset = binormal.clone().multiplyScalar(dist);
-                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
-                    const normalizedDist = Math.abs(dist) / (canyonWidth * 0.45);
+                    const rawDist = side * (bankEdge + 1.8 + seededRandom(seedState.value++) * 3.5);
+                    const normalizedDist = Math.abs(rawDist) / (canyonWidth * 0.45);
                     let rimY = Math.pow(Math.max(0, normalizedDist), 2.2) * (biomeProfile?.wallHeight ?? 20);
                     rimY += 2.0 + seededRandom(seedState.value++) * 4.0;
-                    position.y += rimY;
+                    // On a tube segment the rim folds in over the channel, so the
+                    // icicles have to fold with it or they hang above the roof.
+                    const tube = resolveTubeProfile({ isGlacier, biome, type, canyonWidth });
+                    const folded = tube
+                        ? applyTubeProfile(rawDist, rimY, channelShape.corridorHalfWidth, canyonWidth * 0.5, tube)
+                        : { x: rawDist, y: rimY };
+                    const offset = binormal.clone().multiplyScalar(folded.x);
+                    const position = new THREE.Vector3().copy(pathPoint).add(offset);
+                    position.y += folded.y;
                     const scaleY = 1.2 + seededRandom(seedState.value++) * 2.8;
                     icicles.push({
                         position,

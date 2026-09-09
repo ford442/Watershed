@@ -7,6 +7,7 @@ import {
   buildWaterGeometry,
   computePlungeImpactPlacement,
   computeWaterfallPos,
+  resolveTubeProfile,
   type GeometryBuildContext,
 } from './geometryBuilders';
 import {
@@ -14,6 +15,7 @@ import {
   registerSegmentBathymetry,
   unregisterSegmentBathymetry,
 } from '../../../systems/water/bathymetrySampler';
+import { isGlacialBiome } from '../../../configs/TrackBiomes';
 
 export function useGeometries({
   active,
@@ -28,7 +30,15 @@ export function useGeometries({
   waterWidth,
   biome,
 }: UseGeometriesParams): TrackSegmentGeometries {
-  const isGlacier = biomeProfile?.id === 'glacier' || biome === 'glacier';
+  // `glacialMelt` is the campaign's glacial map; the old literal check for
+  // 'glacier' alone never matched it, so the source biome got canyon rock
+  // colours and no tube.
+  const isGlacier = isGlacialBiome(biome, biomeProfile);
+  // Ice tube / overflow pipe cross-section (#399). Null everywhere else.
+  const tubeProfile = useMemo(
+    () => resolveTubeProfile({ isGlacier, biome, type, canyonWidth }),
+    [isGlacier, biome, type, canyonWidth],
+  );
 
   const buildCtx = useMemo((): GeometryBuildContext | null => {
     if (!active || !segmentPath) return null;
@@ -42,6 +52,7 @@ export function useGeometries({
       isSlotCanyon,
       isGlacier,
       biomeProfile,
+      tubeProfile,
     };
   }, [
     active,
@@ -54,6 +65,7 @@ export function useGeometries({
     isSlotCanyon,
     isGlacier,
     biomeProfile,
+    tubeProfile,
   ]);
 
   const canyonGeometry = useMemo(() => {

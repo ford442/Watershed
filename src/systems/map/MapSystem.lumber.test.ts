@@ -19,6 +19,8 @@ import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { validateLevel } from '../../utils/levelValidator';
 import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../vehicle/VehicleSystem';
+import { parseHydroEvents } from '../water/hydroEvents';
+import { resolveTrestleSpan } from '../lumber/trestleSpan';
 
 const lumberLevel = lumberData as unknown as LevelData;
 const meanderLevel = meanderData as unknown as LevelData;
@@ -40,6 +42,28 @@ describe('JSONMapManager — lumber_flume', () => {
     expect(cfg.biome).toBe('lumberFlume');
     expect(cfg.treeDensity).toBeGreaterThanOrEqual(14);
     expect(cfg.flowSpeed).toBeGreaterThan(0.8);
+  });
+
+  it('gap segment carries the trestle the deck is built from', () => {
+    const cfg = manager.getChunkConfig(LUMBER_FLUME_GAP_SEGMENT_INDEX);
+    expect(cfg.hasBridge).toBe(true);
+
+    // The authored bridge is what BreakableTrestle keys off; without it the
+    // gap is a bare hole at every hour and the launch has no run-up.
+    const events = parseHydroEvents(lumberData.hydroEvents);
+    const span = (hour: number) =>
+      resolveTrestleSpan({
+        hasBridge: Boolean(cfg.hasBridge),
+        segmentState: 'Normal',
+        events,
+        segmentIndex: LUMBER_FLUME_GAP_SEGMENT_INDEX,
+        hour,
+        waterWidth: cfg.waterWidth,
+        pathLength: 95,
+      });
+
+    expect(span(6).planks.length).toBeGreaterThan(0);
+    expect(span(14).planks.length).toBeLessThan(span(6).planks.length);
   });
 
   it('gap segment is an open-floor waterfall with launch shelf', () => {

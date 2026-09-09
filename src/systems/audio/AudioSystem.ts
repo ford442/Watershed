@@ -10,6 +10,8 @@
  */
 
 import * as THREE from 'three';
+import { currentWetnessMuffle } from './wetnessMuffle';
+import { fillSpeedWindChannel, speedWindLoopLength } from './speedWindBuffer';
 
 // Sound categories for organization and limiting
 export enum SoundCategory {
@@ -121,6 +123,8 @@ export class AudioManager {
   // music scales ambient stems, sfx scales one-shots + reactive sfx layers.
   private musicVolume: number = 1.0;
   private sfxVolume: number = 1.0;
+  /** Lazily synthesized speed-wind loop — see getSpeedWindBuffer(). */
+  private speedWindBuffer: AudioBuffer | null = null;
 
   // Category limits tracking
   private categoryCounts: Map<SoundCategory, number> = new Map();
@@ -288,7 +292,10 @@ export class AudioManager {
     // Apply parametric controls. Master is handled by the listener's global gain
     // (setMasterVolume), so one-shots only scale by the SFX channel here to avoid
     // squaring the master multiplier.
-    const finalVolume = Math.max(0, Math.min(1, volume * def.baseVolume * this.sfxVolume));
+    const finalVolume = Math.max(
+      0,
+      Math.min(1, volume * def.baseVolume * this.getEffectiveSfxGain()),
+    );
     const finalPitch = Math.max(0.5, Math.min(2.0, pitch * def.basePitch));
     const finalPlaybackRate = Math.max(0.5, Math.min(2.0, pitch)); // For pitch shifting
     
@@ -472,6 +479,46 @@ export class AudioManager {
   }
 
   /**
+   * SFX channel scaled by the live wetness muffle — what a one-shot or a
+   * reactive SFX bed should actually multiply by. `getSfxVolume` stays the raw
+   * settings value so the settings panel keeps reading back what the user set.
+   */
+  getEffectiveSfxGain(): number {
+    return this.sfxVolume * currentWetnessMuffle().gain;
+  }
+
+  /**
+   * Distinct, synthesized speed-wind loop (#399 audio leftovers).
+   *
+   * The velocity bed used to reuse the `ambient_wind` asset, so it masked the
+   * biome ambience it was layered over. Generated once per manager and cached.
+   */
+  getSpeedWindBuffer(): AudioBuffer | null {
+    if (this.speedWindBuffer) return this.speedWindBuffer;
+    if (!this.audioContext) return null;
+
+    const sampleRate = this.audioContext.sampleRate;
+    const length = speedWindLoopLength(sampleRate);
+    const buffer = this.audioContext.createBuffer(2, length, sampleRate);
+    // Decorrelated channels — a mono wind bed collapses to the centre and
+    // fights the positional water layers for the same image.
+    fillSpeedWindChannel(buffer.getChannelData(0), 0x5eed);
+    fillSpeedWindChannel(buffer.getChannelData(1), 0xb1a5);
+
+    this.speedWindBuffer = buffer;
+    return buffer;
+  }
+
+  /**
+   * Lowpass frequency for the wetness muffle, or null when dry enough that a
+   * filter node is not worth inserting.
+   */
+  getWetnessCutoffHz(): number | null {
+    const muffle = currentWetnessMuffle();
+    return muffle.wet > 0.02 ? muffle.cutoffHz : null;
+  }
+
+  /**
    * Mute/unmute all audio
    */
   setMuted(muted: boolean): void {
@@ -554,25 +601,44 @@ export class AudioManager {
   }
 
   /**
-   * Apply/clear acoustic filter chain on a playing source.
+   * Apply/clear the acoustic filter chain on a playing source.
+   *
+   * Two independent contributions, composed in one chain so a source is never
+   * handed two competing `setFilters` calls: canyon reverb (wall tightness) and
+   * the survival wetness muffle. Either can be absent.
    */
   applyCanyonFilters(source: THREE.Audio | THREE.PositionalAudio): void {
-    if (!this.audioContext || !this.canyonAcoustics.active) {
+    if (!this.audioContext) {
       source.setFilters([]);
       return;
     }
 
-    const wallTightness = this.canyonAcoustics.wallTightness;
-    const lowPass = this.audioContext.createBiquadFilter();
-    lowPass.type = 'lowpass';
-    lowPass.frequency.value = 6000 - wallTightness * 2000;
-    lowPass.Q.value = 0.5 + wallTightness * 2.0;
+    const filters: AudioNode[] = [];
 
-    const convolver = this.audioContext.createConvolver();
-    const decay = 0.3 + wallTightness * 0.5;
-    convolver.buffer = this.syntheticImpulseResponse(decay);
+    if (this.canyonAcoustics.active) {
+      const wallTightness = this.canyonAcoustics.wallTightness;
+      const lowPass = this.audioContext.createBiquadFilter();
+      lowPass.type = 'lowpass';
+      lowPass.frequency.value = 6000 - wallTightness * 2000;
+      lowPass.Q.value = 0.5 + wallTightness * 2.0;
+      filters.push(lowPass);
 
-    source.setFilters([lowPass, convolver]);
+      const convolver = this.audioContext.createConvolver();
+      const decay = 0.3 + wallTightness * 0.5;
+      convolver.buffer = this.syntheticImpulseResponse(decay);
+      filters.push(convolver);
+    }
+
+    const wetnessCutoff = this.getWetnessCutoffHz();
+    if (wetnessCutoff !== null) {
+      const muffle = this.audioContext.createBiquadFilter();
+      muffle.type = 'lowpass';
+      muffle.frequency.value = wetnessCutoff;
+      muffle.Q.value = 0.4;
+      filters.push(muffle);
+    }
+
+    source.setFilters(filters);
   }
   
   /**
@@ -635,6 +701,7 @@ export class AudioManager {
     this.ambientTrack = null;
     
     this.sounds.clear();
+    this.speedWindBuffer = null;
     this.listener.removeFromParent();
   }
 }

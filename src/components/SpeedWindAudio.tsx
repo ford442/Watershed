@@ -2,10 +2,11 @@
  * SpeedWindAudio.tsx
  *
  * Continuous speed-based wind bed for the feel-of-velocity.
- * - Loops ambient_wind (stub asset; swap later without changing this path)
+ * - Loops a synthesized wind buffer of its own (#399). It used to reuse
+ *   `ambient_wind`, so the velocity bed masked the biome ambience it sat on.
  * - Gain scales with vehicle horizontal speed (linvel), lerped to avoid zipper
  * - Optional BiquadFilter lowpass brightens with speed
- * - Final volume = windGain * maxVolume * SFX * master (settings multipliers)
+ * - Final volume = windGain * maxVolume * SFX * wetnessMuffle * master
  *
  * Mounted by ReactiveAudio (reach path) and InnerExperience (default TrackManager).
  */
@@ -45,15 +46,11 @@ export default function SpeedWindAudio({
       return;
     }
 
-    let cancelled = false;
-
-    const setup = async () => {
-      await am.loadSound(AUDIO_CONFIG.defaultSfxTracks.speedWind);
-      if (cancelled) return;
-
-      const buf = am.getBuffer(AUDIO_CONFIG.defaultSfxTracks.speedWind);
-      if (!buf) return;
-
+    // Synthesized rather than loaded: the wind bed needs to be a different
+    // signal from the ambience, not a second voice of it. No await, so the bed
+    // is live on the first frame instead of after a decode round-trip.
+    const buf = am.getSpeedWindBuffer();
+    if (buf) {
       const listener = am.getListener();
       const wind = new THREE.Audio(listener);
       wind.setBuffer(buf);
@@ -75,12 +72,9 @@ export default function SpeedWindAudio({
 
       windRef.current = wind;
       setReady(true);
-    };
-
-    setup();
+    }
 
     return () => {
-      cancelled = true;
       if (windRef.current) {
         windRef.current.stop();
         windRef.current.setFilters([]);
@@ -132,10 +126,11 @@ export default function SpeedWindAudio({
     gainRef.current += (mapped.gain - gainRef.current) * Math.min(1, lerp);
     if (!Number.isFinite(gainRef.current)) gainRef.current = 0;
 
-    // Settings SFX × master baseline — same layering as ReactiveAudio SFX beds.
+    // Settings SFX × wetness muffle × master baseline — same layering as the
+    // ReactiveAudio SFX beds.
     const am = getAudioManager();
     const sfxMult =
-      AUDIO_CONFIG.masterVolume * (am?.getSfxVolume() ?? 1);
+      AUDIO_CONFIG.masterVolume * (am?.getEffectiveSfxGain() ?? 1);
     const windVol = sanitizeAudioGain(
       gainRef.current * AUDIO_CONFIG.wind.maxVolume * sfxMult,
     );

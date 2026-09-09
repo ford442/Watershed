@@ -41,7 +41,11 @@ Rates (see `survivalState.ts`):
 
 - **Gain in water:** `WETNESS_GAIN_IN_WATER` per second while `pos.y < WATER_LEVEL + 0.55`.
 - **Dry:** base rate × sun factor (launch hour) × wind (horizontal speed).
-- **Gameplay:** wetness reduces sprint stamina regen; high wetness slightly muffles SFX (`sfxWetnessMultiplier`, applied in `ReactiveAudio.tsx` to the rapids/whoosh/splash channels).
+- **Gameplay:** wetness reduces sprint stamina regen; high wetness muffles SFX.
+  `tickRunSurvival` pushes `sfxWetnessMultiplier` onto
+  [`systems/audio/wetnessMuffle.ts`](../../src/systems/audio/wetnessMuffle.ts), which
+  AudioManager reads as a gain (`getEffectiveSfxGain`) and a lowpass on the one-shot
+  filter chain. Dry is always the fallback — a run with no survival tick is never ducked.
 
 ### Core temperature
 
@@ -181,7 +185,6 @@ HUD shows `LOADOUT <shortLabel>` (top-left) plus WET / EXPOSURE bars (bottom-lef
 - **Playtest pass on the authored waypoint positions** — they are first-pass values
   aligned with the checkpoint table, not yet validated in-engine.
 - FlowForecast mid-run cache restock synergy.
-- Speed-based wind audio (plan.md).
 - `safeZone` OOB replacement for fixed `y < -80` wipeout (phase D, not started).
 
 ## Related
