@@ -535,7 +535,27 @@ cyan shallow, tan dry.
 Maps declare `hydroEvents[]` (launch-hour keyed inflow / vortex / braid / roughness).
 After each SWE step, `WaterForceSystem` applies active events onto the same grid
 (`applySWEEvent` C++ ABI 8, or TS fallback). Ghosts hash the live set
-(`hydroFairness.ts`). One sim backend per boot: C++ WASM (`sweBackend.ts`). Phase D WGSL is not started. HeightmapFlow is dormant.
+(`hydroFairness.ts`).
+
+**Playability contract (#398).** An authored hour has to be *seen and felt*:
+
+| Kind | Mesh (η / b) | Hull (sampleSWEFlow → calculateWaterForce) |
+|------|--------------|--------------------------------------------|
+| `inflowPulse` | η rises | stage lifts `waterLevel` (buoyancy) + downstream momentum; stage also raises the speed cap by `SWE_STAGE_SPEED_BOOST` |
+| `vortex` | η sink | swirl in `u,w` — **and** `VortexForceSystem` stands down on that segment (`shouldApplyAuthoredVortexImpulse`), one field, one owner |
+| `braid` | bed shoal (idempotent max, not an accumulation) | lateral push around the shoal |
+| `roughness` | — | `u,w` damped, slower line |
+
+`hydroContrast.ts` measures both halves for a pair of hours and
+`hydroContrast.test.ts` asserts `glacial` / `hydro` / `delta` clear
+`HYDRO_CONTRAST_MARGINS` at 06:00 vs 14:00. The lumber braid is authored only on
+hours the forecast actually opens `washedOutGap`. `hydroHud.ts` turns the live set
+into the HUD's hour board (`ForecastHUD`). `?hour=14` overrides the launch hour for
+one page load (read-only, never written to persistence) so the same map can be
+smoke-tested at both scouting hours.
+
+**Constraint:** `h` is the free-surface *perturbation* η (swe.h ABI), zero at rest —
+never seed it with the still depth. One sim backend per boot: C++ WASM (`sweBackend.ts`). Phase D WGSL is not started. HeightmapFlow is dormant.
 
 ---
 

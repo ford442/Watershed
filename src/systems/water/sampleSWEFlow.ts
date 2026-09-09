@@ -20,6 +20,16 @@ export const SWE_DRY_DEPTH = 1e-4;
 /** Maps authored flowSpeed to a cap, not a second current. */
 export const SWE_FLOW_SPEED_SCALE = 1;
 
+/**
+ * How much authored stage (η above still water) lifts the speed cap (#397).
+ *
+ * A dam pulse has to be *rideable*, not just visible: +1m of stage raises the
+ * cap by 35%, so the hull that meets the pulse leaves the segment faster than
+ * the same hull at the control hour. Off (0) by default so callers that only
+ * want the authored cap — and the existing parity fixtures — are unchanged.
+ */
+export const SWE_STAGE_SPEED_BOOST = 0.35;
+
 export const FALLBACK_FLOW_DIR = { x: 0, z: -1 } as const;
 
 export type SWEFlowSource = 'swe' | 'fallback';
@@ -30,6 +40,14 @@ export interface SWEFlowSample {
   speed: number;
   wet: boolean;
   source: SWEFlowSource;
+  /**
+   * Local stage: water-surface deviation from still water, in metres.
+   * Callers add this to the authored `waterLevel` so buoyancy sees the
+   * authored pulse instead of a flat plane. 0 when SWE is off.
+   */
+  surfaceOffset: number;
+  /** Local total depth `H + η − b`, metres. 0 when SWE is off. */
+  depth: number;
 }
 
 export interface SWEFlowGrid {
@@ -54,6 +72,8 @@ export interface SampleSWEFlowOptions {
   meanDepth?: number;
   dryDepth?: number;
   speedScale?: number;
+  /** Fraction of positive stage added to the speed cap. See SWE_STAGE_SPEED_BOOST. */
+  stageSpeedBoost?: number;
 }
 
 function clampIndex(i: number, n: number): number {
@@ -94,6 +114,8 @@ function fallbackSample(flowSpeed: number): SWEFlowSample {
     speed: flowSpeed,
     wet: true,
     source: 'fallback',
+    surfaceOffset: 0,
+    depth: 0,
   };
 }
 
@@ -113,6 +135,7 @@ export function sampleSWEFlow(opts: SampleSWEFlowOptions): SWEFlowSample {
     meanDepth = SWE_MEAN_DEPTH,
     dryDepth = SWE_DRY_DEPTH,
     speedScale = SWE_FLOW_SPEED_SCALE,
+    stageSpeedBoost = 0,
   } = opts;
 
   if (!enabled || !grid || grid.width <= 0 || grid.height <= 0 || grid.cellSize <= 0) {
@@ -130,6 +153,8 @@ export function sampleSWEFlow(opts: SampleSWEFlowOptions): SWEFlowSample {
   const eta = bilinear(h, width, height, gx, gz);
   const bed = bilinear(b, width, height, gx, gz);
   const depth = meanDepth + eta - bed;
+  // `h` is the free-surface perturbation η (swe.h ABI), so stage *is* η.
+  const surfaceOffset = eta;
   const velU = bilinear(u, width, height, gx, gz);
   const velW = bilinear(w, width, height, gx, gz);
   const hypot = Math.hypot(velU, velW);
@@ -141,10 +166,13 @@ export function sampleSWEFlow(opts: SampleSWEFlowOptions): SWEFlowSample {
       speed: 0,
       wet: false,
       source: 'swe',
+      surfaceOffset,
+      depth: Math.max(0, depth),
     };
   }
 
-  const cap = Math.max(0, flowSpeed);
+  const stageBoost = 1 + Math.max(0, surfaceOffset) * Math.max(0, stageSpeedBoost);
+  const cap = Math.max(0, flowSpeed) * stageBoost;
   const speed = Math.min(cap, Math.max(0, hypot * speedScale));
   if (hypot < 1e-8) {
     return {
@@ -153,6 +181,8 @@ export function sampleSWEFlow(opts: SampleSWEFlowOptions): SWEFlowSample {
       speed,
       wet: true,
       source: 'swe',
+      surfaceOffset,
+      depth,
     };
   }
 
@@ -162,5 +192,7 @@ export function sampleSWEFlow(opts: SampleSWEFlowOptions): SWEFlowSample {
     speed,
     wet: true,
     source: 'swe',
+    surfaceOffset,
+    depth,
   };
 }

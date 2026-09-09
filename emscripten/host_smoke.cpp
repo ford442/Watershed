@@ -365,8 +365,46 @@ int main() {
             maxCtl = std::max(maxCtl, std::abs(hCtl[i]));
             maxPulse = std::max(maxPulse, hPulse[i]);
         }
+        float minW = 0.f;
+        for (int i = 0; i < N; ++i) minW = std::min(minW, wPulse[i]);
         check(maxCtl < 1e-6f, "control hour eta stays at rest");
         check(maxPulse > 0.05f, "inflow pulse raises eta vs control");
+        check(minW < -0.02f, "inflow pulse carries downstream momentum");
+    }
+
+    // 6. Braid — bed shoal is idempotent under repeated steps, and pushes
+    //    water laterally away from the axis (#397).
+    {
+        const int w = 8, h = 8, N = w * h;
+        std::vector<float> hB(N, 0.f), uB(N, 0.f), wB(N, 0.f), bB(N, 0.f);
+        auto braid = [&]() {
+            applySWEEvent(
+                reinterpret_cast<uintptr_t>(hB.data()),
+                reinterpret_cast<uintptr_t>(uB.data()),
+                reinterpret_cast<uintptr_t>(wB.data()),
+                reinterpret_cast<uintptr_t>(bB.data()),
+                w, h, 1.f, 0.f, 0.f, 1.2f,
+                2, 3.5f, 3.5f, 4.f, 1.5f, 0.05f);
+        };
+        braid();
+        std::vector<float> bOnce = bB;
+        for (int k = 0; k < 8; ++k) braid();
+        float bedDrift = 0.f, maxBed = 0.f, leftPush = 0.f, rightPush = 0.f;
+        for (int i = 0; i < N; ++i) {
+            bedDrift = std::max(bedDrift, std::abs(bB[i] - bOnce[i]));
+            maxBed = std::max(maxBed, bB[i]);
+        }
+        for (int j = 0; j < h; ++j) {
+            for (int i = 0; i < w; ++i) {
+                const float ddx = static_cast<float>(i) - 3.5f;
+                const float val = uB[j * w + i];
+                if (ddx > 0.f) rightPush = std::max(rightPush, val);
+                if (ddx < 0.f) leftPush = std::min(leftPush, val);
+            }
+        }
+        check(bedDrift < 1e-6f, "braid bed shoal is idempotent");
+        check(maxBed > 0.5f, "braid raises the bed");
+        check(rightPush > 0.f && leftPush < 0.f, "braid pushes water around the shoal");
     }
 
     if (g_failures != 0) {

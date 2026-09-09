@@ -91,3 +91,17 @@ export function applyLocalAbiWaterForceIfOwner(
   body.applyImpulse(localAbiWaterImpulse(force, delta), true);
   return force;
 }
+
+/**
+ * Authored `VortexConfig` impulses are the *fallback* swirl. When a live
+ * hydroEvent vortex writes that segment's SWE `u,w`, the hull already feels
+ * the swirl through sampleSWEFlow → calculateWaterForce, so adding the Rapier
+ * centripetal impulse on top double-applies one field.
+ */
+export function shouldApplyAuthoredVortexImpulse(
+  segmentIndex: number | undefined,
+  liveHydroVortexSegments: ReadonlySet<number>,
+): boolean {
+  if (segmentIndex === undefined || !Number.isFinite(segmentIndex)) return true;
+  return !liveHydroVortexSegments.has(segmentIndex);
+}

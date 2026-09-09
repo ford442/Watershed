@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Html } from '@react-three/drei';
 import GameHUD from '../components/GameHUD';
 import ForecastHUD from '../components/ForecastHUD';
@@ -6,6 +7,8 @@ import GhostTimeDelta from '../components/GhostTimeDelta';
 import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoader';
 import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
 import { useGameStore } from '../systems/GameState';
+import { getActiveMap } from '../maps/registry';
+import { parseHydroEvents } from '../systems/water/hydroEvents';
 
 interface ExperienceUIProps {
   enabled: boolean;
@@ -61,6 +64,15 @@ export default function ExperienceUI({
   onDismissReachError,
 }: ExperienceUIProps) {
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  // Authored hydro events for the active map — the HUD contrasts the run's
+  // launch hour against the other scouting hour (#397).
+  const hydroEvents = useMemo(() => {
+    try {
+      return parseHydroEvents(getActiveMap().levelData.hydroEvents);
+    } catch {
+      return [];
+    }
+  }, [mapLabel]);
   const lastSplitDelta = useGameStore((s) => s.lastSplitDelta);
 
   if (!enabled) return null;
@@ -73,6 +85,7 @@ export default function ExperienceUI({
           launchHour={launchHour}
           damReleaseSchedule={damReleaseSchedule}
           currentSegmentIndex={currentSegmentIndex}
+          hydroEvents={hydroEvents}
         />
       )}
 

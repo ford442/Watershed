@@ -522,10 +522,28 @@
       "id": "delta-braid-tongue",
       "kind": "braid",
       "segmentIndex": 9,
-      "hours": [14, 15, 16],
+      "hours": [13, 14, 15, 16],
       "lateralOffset": 12,
       "radius": 18,
       "strength": 1.8
+    },
+    {
+      "id": "delta-afternoon-outflow",
+      "kind": "inflowPulse",
+      "segmentIndex": 9,
+      "hours": [13, 14, 15],
+      "centerT": 0.5,
+      "radius": 16,
+      "strength": 3.6
+    },
+    {
+      "id": "delta-dawn-tide",
+      "kind": "roughness",
+      "segmentIndex": 9,
+      "hours": [5, 6, 7],
+      "centerT": 0.5,
+      "radius": 18,
+      "strength": 1.6
     }
   ],
   "spawns": {

@@ -15,6 +15,26 @@ export const HYDRO_KIND_VORTEX = 1;
 export const HYDRO_KIND_BRAID = 2;
 export const HYDRO_KIND_ROUGHNESS = 3;
 
+/**
+ * Kernel tuning shared with `applySWEEvent` in emscripten/swe.cpp (#397).
+ *
+ * These are the numbers that make an authored hour *playable* rather than
+ * merely present in the field:
+ *
+ *  - INFLOW_DOWNSTREAM — a dam pulse is mass *and* momentum. Without it the
+ *    stage rises but the hull never rides faster.
+ *  - VORTEX_SINK       — η sink fraction of the swirl magnitude.
+ *  - BRAID_LATERAL     — the shoal has to push water around itself, otherwise
+ *    the split channel is visible in the mesh and absent from the hull.
+ *
+ * `braid` writes bed as a *maximum*, not an accumulation: the shoal is an
+ * authored elevation the segment holds for as long as the event is live, so
+ * repeated steps are idempotent and never creep to the dry clamp.
+ */
+export const HYDRO_INFLOW_DOWNSTREAM = 0.5;
+export const HYDRO_VORTEX_SINK = 0.35;
+export const HYDRO_BRAID_LATERAL = 0.75;
+
 export interface HydroEvent {
   id: string;
   kind: HydroEventKind;
@@ -163,13 +183,20 @@ export function applySWEEventFallback(
       const idx = j * width + i;
       if (kind === HYDRO_KIND_INFLOW) {
         grid.h[idx] += mag * step * wgt;
+        // Downstream is −Z; the released volume arrives moving.
+        grid.w[idx] -= mag * step * wgt * HYDRO_INFLOW_DOWNSTREAM;
       } else if (kind === HYDRO_KIND_VORTEX) {
-        grid.h[idx] -= mag * step * wgt * 0.35;
+        grid.h[idx] -= mag * step * wgt * HYDRO_VORTEX_SINK;
         const inv = dist > 1e-4 ? 1 / dist : 0;
         grid.u[idx] += -dz * inv * mag * step * wgt;
         grid.w[idx] += dx * inv * mag * step * wgt;
       } else if (kind === HYDRO_KIND_BRAID) {
-        grid.b[idx] = Math.min(stillDepth + 2, grid.b[idx] + mag * wgt);
+        const shoal = Math.min(stillDepth + 2, mag * wgt);
+        if (shoal > grid.b[idx]) grid.b[idx] = shoal;
+        // Water goes around the shoal, not through it: lateral push away from
+        // the braid axis, strongest at the crest.
+        const side = dx >= 0 ? 1 : -1;
+        grid.u[idx] += side * mag * step * wgt * HYDRO_BRAID_LATERAL;
       } else if (kind === HYDRO_KIND_ROUGHNESS) {
         const damp = Math.max(0, 1 - mag * step * wgt);
         grid.u[idx] *= damp;
@@ -212,4 +239,22 @@ export function applyHydroEventsToGrid(
     applied += 1;
   }
   return applied;
+}
+
+/**
+ * Segment indices owning a live `vortex` event at `hour`.
+ *
+ * One field, one owner: `VortexForceSystem` must not add Rapier centripetal
+ * impulses on a segment whose swirl is already in the SWE `u,w` the hull
+ * samples, or the player is pulled twice (#397).
+ */
+export function hydroVortexSegments(
+  events: readonly HydroEvent[] | undefined,
+  hour: number,
+): Set<number> {
+  const out = new Set<number>();
+  for (const event of eventsActiveAtHour(events, hour)) {
+    if (event.kind === 'vortex') out.add(event.segmentIndex);
+  }
+  return out;
 }
