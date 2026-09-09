@@ -9,6 +9,7 @@ import {
   createDragonflyWingMaterial,
   updateCritterMaterialTime,
 } from '../../materials/critters/createCritterMaterials';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -260,13 +261,13 @@ export default function Dragonflies({ transforms }: BiomeDecorationProps) {
 
   return (
     <group>
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={meshRef}
         args={[geometry, [bodyMaterial, wingMaterial], transforms.length]}
         frustumCulled={false}
         castShadow
       />
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={trailRef}
         args={[trailGeometry, trailMaterial, Math.min(transforms.length, MAX_ANIMATED)]}
         frustumCulled={false}

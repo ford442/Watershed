@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const PAD_COLOR = new THREE.Color('#3a8c40');
@@ -81,7 +82,7 @@ export default function WaterLilies({ transforms }: BiomeDecorationProps) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
       ref={meshRef}
       args={[geometry, material, transforms.length]}
       frustumCulled={false}

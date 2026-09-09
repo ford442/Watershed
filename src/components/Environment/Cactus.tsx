@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const hash = (n: number): number => {
   const x = Math.sin(n * 12.9898) * 43758.5453;
@@ -87,7 +88,7 @@ export default function Cactus({ transforms }: BiomeDecorationProps) {
 
   return (
     <group>
-      <Instances geometry={barrelGeometry} material={barrelMaterial} castShadow receiveShadow>
+      <NonEmptyInstances geometry={barrelGeometry} material={barrelMaterial} castShadow receiveShadow>
         {instances.map((item) => (
           <Instance
             key={item.key}
@@ -96,9 +97,9 @@ export default function Cactus({ transforms }: BiomeDecorationProps) {
             scale={item.scale}
           />
         ))}
-      </Instances>
+      </NonEmptyInstances>
 
-      <Instances geometry={padGeometry} material={padMaterial} castShadow receiveShadow>
+      <NonEmptyInstances geometry={padGeometry} material={padMaterial} castShadow receiveShadow>
         {instances.map((item) => (
           <Instance
             key={`${item.key}-pad`}
@@ -115,9 +116,9 @@ export default function Cactus({ transforms }: BiomeDecorationProps) {
             ]}
           />
         ))}
-      </Instances>
+      </NonEmptyInstances>
 
-      <Instances geometry={spineGeometry} material={spineMaterial} receiveShadow>
+      <NonEmptyInstances geometry={spineGeometry} material={spineMaterial} receiveShadow>
         {instances.map((item) => (
           <Instance
             key={`${item.key}-spine`}
@@ -130,7 +131,7 @@ export default function Cactus({ transforms }: BiomeDecorationProps) {
             scale={[item.scale.x, item.scale.y, item.scale.z]}
           />
         ))}
-      </Instances>
+      </NonEmptyInstances>
     </group>
   );
 }

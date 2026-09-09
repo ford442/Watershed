@@ -5,6 +5,7 @@ import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createFireflyMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const MAX_LIGHTS = 5;
@@ -91,7 +92,7 @@ export default function Fireflies({ transforms }: BiomeDecorationProps) {
 
   return (
     <group>
-      <instancedMesh ref={meshRef} args={[geometry, material, transforms.length]} frustumCulled={false} />
+      <NonEmptyInstancedMesh ref={meshRef} args={[geometry, material, transforms.length]} frustumCulled={false} />
       {glowFireflies.map((f, i) => (
         <pointLight
           key={`firefly-glow-${i}`}

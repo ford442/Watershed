@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../../systems/lod/LODManager';
 import type { WaterfallParticlesProps } from './types';
 import { getWasm, peekWasm, type WatershedNativeModule } from '../../systems/water/WatershedWasm';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 interface WaterfallParticle {
   x: number;
@@ -241,7 +242,7 @@ export default function WaterfallParticles({
 
   return (
     <group position={[0, -height / 2, 0]}>
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={meshRef}
         args={[geometry, material, MAX_POOL]}
         frustumCulled={false}

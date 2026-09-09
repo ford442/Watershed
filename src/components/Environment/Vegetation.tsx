@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { useTreeAssets } from './TreeAssets';
 import { useFrame } from '@react-three/fiber';
 import { createTreeSurfaceMaterial, updateTreeSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
@@ -8,6 +8,7 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { WATER_LEVEL } from '../../constants/game';
 import { isAutumnLike } from '../../configs/biomes';
 import type { TreePlacement, VegetationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 type PaletteSeason = 'summer' | 'autumn';
 type TreeSpecies = 'conifer' | 'broadleaf' | 'birch' | 'snag';
@@ -140,7 +141,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
 
         return (
           <group key={variant.type}>
-            <Instances
+            <NonEmptyInstances
               range={instances.length}
               geometry={variant.geometry}
               material={material}
@@ -156,7 +157,7 @@ export default function Vegetation({ transforms, biome = 'canyonSummer', isRim =
                   color={t.color}
                 />
               ))}
-            </Instances>
+            </NonEmptyInstances>
           </group>
         );
       })}

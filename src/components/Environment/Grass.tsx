@@ -1,11 +1,12 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeScopedDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const BASE_COLORS = {
   default: '#4e7336',
@@ -112,7 +113,7 @@ export default function Grass({ transforms, biome = 'canyonSummer' }: BiomeScope
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <Instances ref={grassRef} range={instances.length} geometry={geometry} material={material} receiveShadow>
+    <NonEmptyInstances ref={grassRef} range={instances.length} geometry={geometry} material={material} receiveShadow>
       {instances.map((data) => (
         <Instance
           key={data.key}
@@ -122,6 +123,6 @@ export default function Grass({ transforms, biome = 'canyonSummer' }: BiomeScope
           color={data.color}
         />
       ))}
-    </Instances>
+    </NonEmptyInstances>
   );
 }

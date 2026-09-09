@@ -6,6 +6,7 @@ import type { CanyonDustProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createCanyonDustMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
@@ -99,6 +100,6 @@ export default function CanyonDust({
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh ref={meshRef} args={[geometry, material, poolSize]} frustumCulled={false} />
+    <NonEmptyInstancedMesh ref={meshRef} args={[geometry, material, poolSize]} frustumCulled={false} />
   );
 }

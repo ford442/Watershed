@@ -329,7 +329,22 @@ export function createSunShaftMoteNodeMaterial(init: {
 }
 
 export function createMistNodeMaterial(init: { colorBase: THREE.Color }): MeshBasicNodeMaterial {
-  return tintedRadialMaterial(init.colorBase, 0.35, THREE.NormalBlending);
+  const material = tintedRadialMaterial(init.colorBase, 0.35, THREE.NormalBlending);
+  // Mist's per-frame loop pokes the GLSL uniform set every frame and does not
+  // know which backend built the material, so the node material has to answer to
+  // the same keys. The ones this simpler node graph ignores are still present and
+  // still writable — a missing key is a `undefined.value` TypeError in useFrame,
+  // once per frame, which is what an unmatched key set actually costs.
+  Object.assign(material.userData.uniforms, {
+    flowSpeed: uniform(0),
+    playerVelocity: uniform(0),
+    isSlotCanyon: uniform(0),
+    playerPos: uniform(new THREE.Vector3(0, -1000, 0)),
+    tintColor: uniform(init.colorBase.clone()),
+    tintStrength: uniform(0),
+    stormBlend: uniform(0),
+  });
+  return material;
 }
 
 export function createFireflyNodeMaterial(init: { colorBase: THREE.Color }): MeshBasicNodeMaterial {

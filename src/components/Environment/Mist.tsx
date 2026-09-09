@@ -6,6 +6,7 @@ import type { MistPlacement, MistProps, WeatherUpdateEvent } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createMistMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
@@ -104,6 +105,6 @@ export default function Mist({
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh ref={meshRef} args={[geometry, material, transforms.length]} frustumCulled={false} />
+    <NonEmptyInstancedMesh ref={meshRef} args={[geometry, material, transforms.length]} frustumCulled={false} />
   );
 }

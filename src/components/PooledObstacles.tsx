@@ -5,6 +5,7 @@ import { createRockSurfaceMaterial } from '../materials/foliage/createFoliageSur
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import type { ObstacleSlot } from '../systems/pools/ObstaclePool';
 import type { PooledObstaclesProps } from './Environment/types';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 const HIDDEN_POSITION: [number, number, number] = [0, -1000, 0];
 const HIDDEN_VECTOR = new THREE.Vector3(...HIDDEN_POSITION);
@@ -127,13 +128,13 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
 
   return (
     <group name="pooled-static-obstacles">
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={rockMeshRef}
         args={[rockGeometry, pooledRockMaterial, slots.length]}
         castShadow
         receiveShadow
       />
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={logMeshRef}
         args={[logGeometry, logMaterial, slots.length]}
         castShadow

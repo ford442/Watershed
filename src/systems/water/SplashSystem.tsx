@@ -32,6 +32,7 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSplashBowWaveMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { getWasm, type WatershedNativeModule } from './WatershedWasm';
+import { NonEmptyInstancedMesh } from '../../components/NonEmptyInstancedMesh';
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -551,7 +552,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
 
   return (
     <group>
-      <instancedMesh
+      <NonEmptyInstancedMesh
         key={`splash-${maxInstances}`}
         ref={instancedMeshRef}
         args={[geometry, material, maxInstances]}
@@ -559,7 +560,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       />
       {isRaft && (
         <>
-          <instancedMesh
+          <NonEmptyInstancedMesh
             ref={mistMeshRef}
             args={[mistGeometry, mistMaterial, MAX_MIST_INSTANCES]}
             frustumCulled={false}

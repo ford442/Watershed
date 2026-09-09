@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { TreeSystemProps } from './Environment/types';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 /**
  * TreeSystem - Instanced tree rendering along riverbanks
@@ -111,13 +112,13 @@ export default function TreeSystem({
 
   return (
     <group name="tree-system">
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={trunkRef}
         args={[trunkGeometry, trunkMaterial, treeData.length]}
         castShadow
         receiveShadow
       />
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={foliageRef}
         args={[foliageGeometry, foliageMaterial, treeData.length]}
         castShadow

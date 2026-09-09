@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import type { BiomeScopedDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const PALETTES: Record<string, string[]> = {
   summer: ['#ff4444', '#ff6600', '#ffaa00', '#ffffff'],
@@ -122,7 +123,7 @@ export default function Mushrooms({ transforms, biome = 'canyonSummer' }: BiomeS
 
         return (
           <group key={capType}>
-            <Instances range={instances.length} geometry={stemGeometries[capType]} material={stemMaterial} castShadow receiveShadow>
+            <NonEmptyInstances range={instances.length} geometry={stemGeometries[capType]} material={stemMaterial} castShadow receiveShadow>
               {instances.map((d) => (
                 <Instance
                   key={`stem-${d.key}`}
@@ -131,9 +132,9 @@ export default function Mushrooms({ transforms, biome = 'canyonSummer' }: BiomeS
                   scale={d.scale}
                 />
               ))}
-            </Instances>
+            </NonEmptyInstances>
 
-            <Instances range={instances.length} geometry={gillGeometry} material={gillMaterial} receiveShadow>
+            <NonEmptyInstances range={instances.length} geometry={gillGeometry} material={gillMaterial} receiveShadow>
               {instances.map((d) => (
                 <Instance
                   key={`gill-${d.key}`}
@@ -142,9 +143,9 @@ export default function Mushrooms({ transforms, biome = 'canyonSummer' }: BiomeS
                   scale={d.scale}
                 />
               ))}
-            </Instances>
+            </NonEmptyInstances>
 
-            <Instances range={instances.length} geometry={capGeometries[capType]} material={capMaterial} castShadow receiveShadow>
+            <NonEmptyInstances range={instances.length} geometry={capGeometries[capType]} material={capMaterial} castShadow receiveShadow>
               {instances.map((d) => (
                 <Instance
                   key={`cap-${d.key}`}
@@ -154,7 +155,7 @@ export default function Mushrooms({ transforms, biome = 'canyonSummer' }: BiomeS
                   color={d.color}
                 />
               ))}
-            </Instances>
+            </NonEmptyInstances>
           </group>
         );
       })}

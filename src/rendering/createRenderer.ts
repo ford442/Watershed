@@ -10,6 +10,7 @@ import {
 import type { MaterialBackend } from './materialBackend';
 import { updateRendererDiagnostics } from './rendererState';
 import { loadNodeMaterials } from '../materials/nodeMaterials';
+import { bridgeCoreNodeClasses, type NodeClassExports } from './nodeLibraryBridge';
 import { extractRendererGpuDevice, registerSessionGpuDevice } from './gpuChores/device';
 import { mustForceWebGLForNodeRenderer } from './nativeWebgpuGate';
 
@@ -134,7 +135,7 @@ interface NodeRendererParameters extends THREE.WebGLRendererParameters {
   forceWebGL?: boolean;
 }
 
-interface NodeRendererModule {
+interface NodeRendererModule extends NodeClassExports {
   WebGPURenderer: new (parameters?: NodeRendererParameters) => THREE.WebGLRenderer & {
     init(): Promise<void>;
   };
@@ -163,10 +164,11 @@ async function createNodeRenderer(
     // Load the node renderer and every TSL material module together: the Canvas
     // `gl` callback awaits this, so materials built later in the scene can stay
     // synchronous and still find the module resolved.
-    const [{ WebGPURenderer }] = await Promise.all([
+    const [nodeModule] = await Promise.all([
       import('three/webgpu') as unknown as Promise<NodeRendererModule>,
       loadNodeMaterials(),
     ]);
+    const { WebGPURenderer } = nodeModule;
     const renderer = new WebGPURenderer({
       ...request.canvasProps,
       ...(request.contextOptions
@@ -175,6 +177,12 @@ async function createNodeRenderer(
       forceWebGL: request.forceWebGL,
     });
     await renderer.init();
+
+    // `three/webgpu` carries its own copy of the three core, so the node library
+    // recognises neither a light built from `three` nor — once minified — a plain
+    // material's type string. Without this the first lit material throws and the
+    // canvas stays empty. See nodeLibraryBridge.ts.
+    bridgeCoreNodeClasses(renderer, nodeModule);
 
     if (request.contextOptions) {
       applyRendererContextOptions(renderer, request.contextOptions);

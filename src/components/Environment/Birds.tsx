@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { BirdsProps } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
@@ -361,19 +362,19 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
 
   return (
    <group>
-     <instancedMesh
+     <NonEmptyInstancedMesh
        ref={bodyRef}
        args={[bodyGeometry, bodyMaterial, birds.length]}
        frustumCulled={false}
        castShadow
      />
-     <instancedMesh
+     <NonEmptyInstancedMesh
        ref={leftWingRef}
        args={[leftWingGeometry, wingMaterial, birds.length]}
        frustumCulled={false}
        castShadow
      />
-     <instancedMesh
+     <NonEmptyInstancedMesh
        ref={rightWingRef}
        args={[rightWingGeometry, wingMaterial, birds.length]}
        frustumCulled={false}

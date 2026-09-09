@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import * as THREE from 'three';
 import { useDriftwoodAssets } from './DebrisAssets';
 import {
@@ -10,6 +10,7 @@ import {
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PlacementTransform } from '../TrackSegment/types';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const DEFAULT_ROTATION = new THREE.Euler();
 const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
@@ -46,7 +47,7 @@ export default function Driftwood({ transforms }: BiomeDecorationProps) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <Instances range={instances.length} geometry={geometry} material={material} castShadow receiveShadow>
+    <NonEmptyInstances range={instances.length} geometry={geometry} material={material} castShadow receiveShadow>
       {instances.map((data) => (
         <Instance
           key={data.key}
@@ -55,6 +56,6 @@ export default function Driftwood({ transforms }: BiomeDecorationProps) {
           scale={data.scale}
         />
       ))}
-    </Instances>
+    </NonEmptyInstances>
   );
 }

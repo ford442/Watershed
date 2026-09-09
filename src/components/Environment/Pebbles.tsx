@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { createRockSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { PebblesProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 type PebbleShape = 'round' | 'flat' | 'angular';
 
@@ -85,7 +86,7 @@ export default function Pebbles({ transforms, material }: PebblesProps) {
         const instances = grouped[shape];
         if (!instances.length) return null;
         return (
-          <Instances
+          <NonEmptyInstances
             key={shape}
             range={instances.length}
             geometry={geometries[shape]}
@@ -101,7 +102,7 @@ export default function Pebbles({ transforms, material }: PebblesProps) {
                 scale={data.scale}
               />
             ))}
-          </Instances>
+          </NonEmptyInstances>
         );
       })}
     </group>

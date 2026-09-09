@@ -3,6 +3,7 @@
 
 import { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 export type IndustrialPropType = 'pipe' | 'railing' | 'catwalk' | 'gate';
 
@@ -83,7 +84,7 @@ export const IndustrialProps: React.FC<IndustrialPropsProps> = ({
   if (washedOut && (type === 'catwalk' || type === 'railing')) return null;
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
       ref={meshRef}
       args={[geometry, material, positions.length]}
       castShadow

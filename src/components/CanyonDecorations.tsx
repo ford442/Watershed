@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useFrame } from '@react-three/fiber';
 import type { BiomeDecorationTransform, CanyonDecorationsProps } from './Environment/types';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 type EulerTuple = [number, number, number];
 
@@ -411,7 +412,7 @@ export default function CanyonDecorations({
 
             {/* Small visual-only boulders keep density high at low physics cost */}
             {decorationData.smallBoulders.length > 0 && (
-                <instancedMesh
+                <NonEmptyInstancedMesh
                     ref={smallBouldersRef}
                     args={[boulderGeometry, smallBoulderMaterial, decorationData.smallBoulders.length]}
                     castShadow
@@ -421,7 +422,7 @@ export default function CanyonDecorations({
             
             {/* Wall and wall-clinging rocks */}
             {decorationData.wallRocks.length > 0 && (
-                <instancedMesh
+                <NonEmptyInstancedMesh
                     ref={wallRocksRef}
                     args={[wallRockGeometry, wallRockMaterial, decorationData.wallRocks.length]}
                     castShadow
@@ -431,7 +432,7 @@ export default function CanyonDecorations({
             
             {/* Vegetation patches - small bushes */}
             {decorationData.vegetation.length > 0 && (
-                <instancedMesh
+                <NonEmptyInstancedMesh
                     ref={vegetationRef}
                     args={[vegetationGeometry, vegetationMaterial, decorationData.vegetation.length]}
                     castShadow
@@ -440,7 +441,7 @@ export default function CanyonDecorations({
             )}
 
             {decorationData.hangingGrowth.length > 0 && (
-                <instancedMesh
+                <NonEmptyInstancedMesh
                     ref={hangingGrowthRef}
                     args={[hangingGrowthGeometry, hangingGrowthMaterial, decorationData.hangingGrowth.length]}
                     castShadow

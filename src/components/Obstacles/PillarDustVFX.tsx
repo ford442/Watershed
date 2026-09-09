@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle } from '../../systems/pools/ParticlePool';
 import { PILLAR_BREAK_EVENT, type PillarBreakEventDetail } from './pillarBreakEvents';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUST_POOL_SIZE = 120;
 const DUST_POOL_MAX = 400;
@@ -134,7 +135,7 @@ export default function PillarDustVFX() {
   );
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
       ref={meshRef}
       args={[geometry, material, MAX_INSTANCES]}
       frustumCulled={false}

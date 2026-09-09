@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import type { BiomeId } from '../../configs/biomes';
 import type { FallingLeavesProps } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const LEAF_PALETTES: Record<string, string[]> = {
   summer: ['#4a6b2f', '#6b8c42', '#3d5229', '#8f9e58'],
@@ -64,7 +65,7 @@ export default function FallingLeaves({
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
       ref={meshRef}
       args={[geometry, material, transforms.length]}
       castShadow

@@ -1,11 +1,12 @@
 import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import * as THREE from 'three';
 import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createRockFoamMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const DEFAULT_ROTATION = new THREE.Euler();
 const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
@@ -30,7 +31,7 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: BiomeDecoratio
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <Instances geometry={geometry} material={material}>
+    <NonEmptyInstances geometry={geometry} material={material}>
       {transforms.map((t, i) => (
         <Instance
           key={i}
@@ -39,6 +40,6 @@ export default function RockFoam({ transforms, flowSpeed = 1.0 }: BiomeDecoratio
           scale={t.scale ?? DEFAULT_SCALE}
         />
       ))}
-    </Instances>
+    </NonEmptyInstances>
   );
 }

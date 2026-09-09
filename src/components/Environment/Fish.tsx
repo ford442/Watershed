@@ -6,6 +6,7 @@ import { WATER_LEVEL } from '../../constants/game';
 import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createFishBodyMaterial, createFishRingMaterial, updateCritterMaterialTime } from '../../materials/critters/createCritterMaterials';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -281,13 +282,13 @@ export default function Fish({ transforms }: BiomeDecorationProps) {
 
   return (
     <group>
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={meshRef}
         args={[geometry, material, fish.length]}
         frustumCulled={false}
         castShadow
       />
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={ringRef}
         args={[ringGeometry, ringMaterial, Math.min(fish.length, MAX_ANIMATED)]}
         frustumCulled={false}

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import type { BiomeDecorationProps, BiomeDecorationTransform } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();
@@ -40,7 +41,7 @@ export default function Rapids({ transforms, flowSpeed = 1.0 }: BiomeDecorationP
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
       ref={meshRef}
       args={[geometry, material, transforms.length]}
       frustumCulled={false}

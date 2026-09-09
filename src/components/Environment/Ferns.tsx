@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
 import type { BiomeScopedDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -154,7 +155,7 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: BiomeScope
     if (!transforms || transforms.length === 0) return null;
 
     return (
-        <Instances range={instances.length} geometry={geometry} material={material} castShadow receiveShadow>
+        <NonEmptyInstances range={instances.length} geometry={geometry} material={material} castShadow receiveShadow>
             {instances.map((data) => (
                 <Instance
                     key={data.key}
@@ -164,6 +165,6 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: BiomeScope
                     color={data.color}
                 />
             ))}
-        </Instances>
+        </NonEmptyInstances>
     );
 }

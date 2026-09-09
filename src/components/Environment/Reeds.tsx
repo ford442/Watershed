@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const STALK_GREEN = new THREE.Color('#3f6b34');
 const STALK_TIP = new THREE.Color('#7da84a');
@@ -169,7 +170,7 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-      <Instances range={instances.length} geometry={geometry} material={reedsMaterial} castShadow receiveShadow>
+      <NonEmptyInstances range={instances.length} geometry={geometry} material={reedsMaterial} castShadow receiveShadow>
           {instances.map((data) => (
               <Instance
                   key={data.key}
@@ -179,6 +180,6 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
                   color={data.color}
               />
           ))}
-      </Instances>
+      </NonEmptyInstances>
   );
 }
