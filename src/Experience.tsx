@@ -1,7 +1,7 @@
 import { KeyboardControls, Stats } from '@react-three/drei';
 import { useEffect } from 'react';
-import { BiomeProvider, BiomeTransition } from './systems/BiomeSystem';
-import { LODProvider, PerformanceMonitor } from './systems/LODManager';
+import { BiomeProvider, BiomeTransition } from './systems/biome/BiomeSystem';
+import { LODProvider, PerformanceMonitor } from './systems/lod/LODManager';
 import { SunPositionProvider } from './systems/lighting/SunPositionSystem';
 import PerfCheckpointMonitor from './debug/PerfCheckpointMonitor';
 import RendererDiagnosticsMonitor from './rendering/RendererDiagnosticsMonitor';

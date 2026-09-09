@@ -320,7 +320,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
 | `src/experience/SceneLighting.tsx` | Per-light shadows from quality contract |
-| `src/systems/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
+| `src/systems/lod/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
 | `src/App.tsx` | Canvas wiring, context-loss recovery |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); not SWE |

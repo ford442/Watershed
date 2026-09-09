@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY_SETTINGS } from '../systems/LODManager';
+import { QUALITY_SETTINGS } from '../systems/lod/LODManager';
 import {
   DEFAULT_TONE_MAPPING_EXPOSURE,
   DESYNCHRONIZED_ENABLED,

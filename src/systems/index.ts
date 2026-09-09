@@ -15,7 +15,7 @@ export {
   BiomeDetector,
   useBiome,
   useBiomeMaterials,
-} from './BiomeSystem';
+} from './biome/BiomeSystem';
 
 export {
   LODProvider,
@@ -24,9 +24,9 @@ export {
   PerformanceMonitor,
   useLOD,
   QUALITY_SETTINGS,
-} from './LODManager';
+} from './lod/LODManager';
 
-export { SplashSystem } from './SplashSystem';
+export { SplashSystem } from './water/SplashSystem';
 
 export {
   useGameStore,

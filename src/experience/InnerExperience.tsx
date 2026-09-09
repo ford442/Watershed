@@ -7,7 +7,7 @@ import TrackManager from '../components/TrackManager';
 import SpeedWindAudio from '../components/SpeedWindAudio';
 import LevelLoader from '../systems/map/LevelLoader';
 import ReachManager from '../systems/reach/ReachManager';
-import { useLOD } from '../systems/LODManager';
+import { useLOD } from '../systems/lod/LODManager';
 import { PHYSICS } from '../constants/game';
 import { DAM_RELEASE_SCHEDULE, NOOP_DEBUG } from './constants';
 import ExperienceUI from './ExperienceUI';

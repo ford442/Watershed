@@ -16,8 +16,8 @@ import IceSheets from '../Environment/IceSheets';
 import VortexVisual from '../VortexVisual';
 import { effectiveVortexStrength } from '../../physics/vortexForces';
 
-import { useLOD } from '../../systems/LODManager';
-import { useBiome } from '../../systems/BiomeSystem';
+import { useLOD } from '../../systems/lod/LODManager';
+import { useBiome } from '../../systems/biome/BiomeSystem';
 import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 import { getTrackBiomeProfile, isGlacialBiome } from '../../configs/TrackBiomes';
 import { isAutumnLike, isSummerLike } from '../../configs/biomes';

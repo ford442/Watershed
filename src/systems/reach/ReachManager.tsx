@@ -28,7 +28,7 @@ import {
 } from '../journey/journeyHandoff';
 import { saveJourneyCheckpoint } from '../journey/runSession';
 import { useGameStore } from '../GameState';
-import { useBiome } from '../BiomeSystem';
+import { useBiome } from '../biome/BiomeSystem';
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */

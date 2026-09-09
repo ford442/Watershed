@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useLOD } from '../../systems/LODManager';
+import { useLOD } from '../../systems/lod/LODManager';
 import type { WaterfallParticlesProps } from './types';
 import { getWasm, peekWasm, type WatershedNativeModule } from '../../systems/water/WatershedWasm';
 
