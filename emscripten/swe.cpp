@@ -374,6 +374,12 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
     dampVelocities(u, w, N, damp);
 }
 
+// Kernel tuning — twin of HYDRO_* in src/systems/water/hydroEvents.ts (#397).
+// Keep the two in lockstep; hydroEvents.test.ts pins the TypeScript half.
+static constexpr float kHydroInflowDownstream = 0.5f;
+static constexpr float kHydroVortexSink = 0.35f;
+static constexpr float kHydroBraidLateral = 0.75f;
+
 void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
                    int width, int height, float dx, float originX, float originZ, float H,
                    int kind, float cx, float cz, float radius, float strength, float dt) {
@@ -402,14 +408,21 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
             const int idx = j * width + i;
             if (kind == 0) {
                 h[idx] += mag * step * wgt;
+                // Downstream is -Z; the released volume arrives moving.
+                w[idx] -= mag * step * wgt * kHydroInflowDownstream;
             } else if (kind == 1) {
-                h[idx] -= mag * step * wgt * 0.35f;
+                h[idx] -= mag * step * wgt * kHydroVortexSink;
                 const float inv = dist > 1e-4f ? 1.f / dist : 0.f;
                 u[idx] += -dz * inv * mag * step * wgt;
                 w[idx] += ddx * inv * mag * step * wgt;
             } else if (kind == 2 && b) {
-                const float next = b[idx] + mag * wgt;
-                b[idx] = next > still + 2.f ? still + 2.f : next;
+                // Authored shoal elevation, applied as a maximum so repeated
+                // steps are idempotent and never creep to the dry clamp.
+                const float shoal = std::min(mag * wgt, still + 2.f);
+                if (shoal > b[idx]) b[idx] = shoal;
+                // Water goes around the shoal, not through it.
+                const float side = ddx >= 0.f ? 1.f : -1.f;
+                u[idx] += side * mag * step * wgt * kHydroBraidLateral;
             } else if (kind == 3) {
                 const float damp = std::max(0.f, 1.f - mag * step * wgt);
                 u[idx] *= damp;

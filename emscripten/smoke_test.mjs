@@ -211,6 +211,8 @@ if (typeof wasm.reduceF32Grid === 'function') {
         const wgt = 1 - dist / r;
         const idx = j * width + i;
         h[idx] += mag * step * wgt;
+        // ABI 8 (#397): a pulse carries downstream momentum too.
+        w[idx] -= mag * step * wgt * 0.5;
       }
     }
   }
@@ -243,10 +245,17 @@ if (typeof wasm.reduceF32Grid === 'function') {
     heap.subarray(wTsPtr >> 2, (wTsPtr >> 2) + count),
     heap.subarray(bTsPtr >> 2, (bTsPtr >> 2) + count));
 
+  const wNat = heap.subarray(wNatPtr >> 2, (wNatPtr >> 2) + count);
+  const wTs = heap.subarray(wTsPtr >> 2, (wTsPtr >> 2) + count);
+
   let maxCtl = 0;
   let maxNat = 0;
   let maxDiff = 0;
+  let maxDownstream = 0;
+  let maxDiffW = 0;
   for (let i = 0; i < count; i += 1) {
+    maxDownstream = Math.min(maxDownstream, wNat[i]);
+    maxDiffW = Math.max(maxDiffW, Math.abs(wNat[i] - wTs[i]));
     maxCtl = Math.max(maxCtl, Math.abs(hCtl[i]));
     maxNat = Math.max(maxNat, hNat[i]);
     maxDiff = Math.max(maxDiff, Math.abs(hNat[i] - hTs[i]));
@@ -273,6 +282,12 @@ if (typeof wasm.reduceF32Grid === 'function') {
   }
   if (!(maxDiff < 1e-5)) {
     throw new Error(`applySWEEvent diverges from TS twin: maxDiff=${maxDiff}`);
+  }
+  if (!(maxDownstream < -0.02)) {
+    throw new Error(`applySWEEvent pulse carries no downstream momentum: w=${maxDownstream}`);
+  }
+  if (!(maxDiffW < 1e-5)) {
+    throw new Error(`applySWEEvent w diverges from TS twin: maxDiffW=${maxDiffW}`);
   }
 }
 

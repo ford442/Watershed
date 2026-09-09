@@ -9,6 +9,8 @@ import {
   type HydroEvent,
   type SWEEventGrid,
   HYDRO_KIND_INFLOW,
+  HYDRO_KIND_BRAID,
+  hydroVortexSegments,
 } from './hydroEvents';
 
 function makeGrid(fillH = 0, fillB = 0): SWEEventGrid {
@@ -102,5 +104,40 @@ describe('hydroEvents', () => {
     expect(pulse.h[3 + 3 * 8]).toBeGreaterThan(control.h[3 + 3 * 8]);
     expect(pulseFlow.speed).toBeGreaterThan(controlFlow.speed);
     expect(hydroKindToInt('vortex')).toBe(1);
+  });
+
+  it('an inflow pulse carries downstream momentum, not just mass', () => {
+    const grid = makeGrid();
+    applySWEEventFallback(grid, HYDRO_KIND_INFLOW, 3.5, 3.5, 4, 8, 0.05);
+    const idx = 3 + 3 * 8;
+    expect(grid.h[idx]).toBeGreaterThan(0);
+    // Downstream is -Z.
+    expect(grid.w[idx]).toBeLessThan(-0.02);
+  });
+
+  it('a braid shoal is idempotent and pushes water around itself', () => {
+    const grid = makeGrid();
+    const braid = () => applySWEEventFallback(grid, HYDRO_KIND_BRAID, 3.5, 3.5, 4, 1.5, 0.05);
+    braid();
+    const once = Float32Array.from(grid.b);
+    for (let i = 0; i < 8; i += 1) braid();
+    expect(Array.from(grid.b)).toEqual(Array.from(once));
+    expect(Math.max(...grid.b)).toBeGreaterThan(0.5);
+    // Left of the axis goes left, right goes right — the channel splits.
+    expect(grid.u[2 + 3 * 8]).toBeLessThan(0);
+    expect(grid.u[5 + 3 * 8]).toBeGreaterThan(0);
+  });
+
+  it('reports the segments a live vortex owns', () => {
+    const vortex: HydroEvent = {
+      id: 'chamber',
+      kind: 'vortex',
+      segmentIndex: 5,
+      hours: [14],
+      radius: 8,
+      strength: 3,
+    };
+    expect([...hydroVortexSegments([PULSE, vortex], 14)]).toEqual([5]);
+    expect(hydroVortexSegments([PULSE, vortex], 6).size).toBe(0);
   });
 });

@@ -2,7 +2,7 @@
 
 ## Current Status: Playable campaign on one SWE field (2026-08-27)
 
-Spline treadmill, five authored maps, survival/ghost/forecast, Rapier+WASM worker, and nonlinear SWE (ABI 6+) are on `main`. Canyon bathymetry fills `b`; `sampleSWEFlow` feeds Rapier. **Do not start a sixth map** until three shipped maps author `hydroEvents[]` that change both mesh and hull.
+Spline treadmill, five authored maps, survival/ghost/forecast, Rapier+WASM worker, and nonlinear SWE (ABI 6+) are on `main`. Canyon bathymetry fills `b`; `sampleSWEFlow` feeds Rapier. The sixth-map gate is **met** (#398): `glacial`, `hydro` and `delta` author 06:00 vs 14:00 `hydroEvents[]` sets that move both the mesh (η / bed) and the Rapier hull sample, pinned by `src/systems/water/hydroContrast.test.ts` against the documented `HYDRO_CONTRAST_MARGINS`. A sixth map is still out of scope for the current board.
 
 Active board: [#396](https://github.com/ford442/Watershed/issues/396) ABI 8, [#397](https://github.com/ford442/Watershed/issues/397) renderer/hygiene, [#398](https://github.com/ford442/Watershed/issues/398) hydroEvents quality, [#400](https://github.com/ford442/Watershed/issues/400) biome set-pieces. Later product: [#399](https://github.com/ford442/Watershed/issues/399) (native WebGPU + WGSL SWE). Closed [#374](https://github.com/ford442/Watershed/issues/374) was the SWE foundation; closed [#388](https://github.com/ford442/Watershed/issues/388) / [#391](https://github.com/ford442/Watershed/issues/391) were the previous board.
 

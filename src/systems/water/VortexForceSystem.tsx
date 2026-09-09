@@ -4,6 +4,10 @@
  *
  * Uses the pure helper in physics/vortexForces.ts so gate strength can be
  * unit-tested without Rapier. Mounted beside WaterFlowForces in TrackManager.
+ *
+ * Authority (#397): a segment whose swirl is authored as a live `hydroEvents`
+ * vortex is already in the SWE `u,w` the hull samples. This system skips those
+ * segments rather than stacking a second centripetal field on the same water.
  */
 
 import React, { useMemo, useRef } from 'react';
@@ -17,6 +21,10 @@ import {
 } from '../../physics/vortexForces';
 import type { VortexConfig } from '../map/MapSystem';
 import { getAudioManager } from '../audio/AudioSystem';
+import { hydroVortexSegments, parseHydroEvents } from './hydroEvents';
+import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
+import { getActiveMap } from '../../maps/registry';
+import { getActiveLaunchHour } from '../journey/runSession';
 
 interface VortexForceSystemProps {
   targetRef: React.RefObject<any>;
@@ -52,6 +60,18 @@ export default function VortexForceSystem({
 
   const scratchConfig = useMemo<VortexForceConfig>(() => resolveVortexConfig(), []);
 
+  // Live hydroEvent vortices for this run's launch hour. Recomputed per frame
+  // is wasteful and per-mount is stale after a map swap, so key it on the map
+  // + hour pair the run session already fixes at start.
+  const liveHydroVortices = useMemo(() => {
+    try {
+      const events = parseHydroEvents(getActiveMap().levelData.hydroEvents);
+      return hydroVortexSegments(events, getActiveLaunchHour());
+    } catch {
+      return new Set<number>();
+    }
+  }, []);
+
   useFrame((_, delta) => {
     if (!enabled || !targetRef?.current || !segments?.length) return;
     const body = targetRef.current;
@@ -64,6 +84,8 @@ export default function VortexForceSystem({
     for (const segment of segments) {
       const authored = segment?.config?.vortex as VortexConfig | undefined;
       if (!authored || !segment?.segmentPath) continue;
+      // One field, one owner — the SWE swirl already reaches the hull.
+      if (!shouldApplyAuthoredVortexImpulse(segment?.id, liveHydroVortices)) continue;
 
       const center = resolveVortexCenter(segment, authored);
       if (!center) continue;

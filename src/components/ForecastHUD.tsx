@@ -9,12 +9,16 @@ import {
   type DamReleaseEntry,
   type FlowForecastSample,
 } from '../systems/map/flowForecast';
+import { buildHydroHudBoard } from '../systems/water/hydroHud';
+import type { HydroEvent } from '../systems/water/hydroEvents';
 
 type ForecastHUDProps = {
   samples: FlowForecastSample[];
   launchHour?: number;
   damReleaseSchedule?: ReadonlyArray<DamReleaseEntry>;
   currentSegmentIndex?: number;
+  /** Authored SWE events for the active map (#397). */
+  hydroEvents?: readonly HydroEvent[];
 };
 
 const STATE_LABELS: Record<FlowForecastState, string> = {
@@ -36,6 +40,7 @@ export default function ForecastHUD({
   launchHour,
   damReleaseSchedule = [],
   currentSegmentIndex = 0,
+  hydroEvents,
 }: ForecastHUDProps) {
   const summary = useMemo(() => {
     if (!samples.length) {
@@ -64,6 +69,13 @@ export default function ForecastHUD({
   }, [damReleaseSchedule, launchHour, samples]);
 
   const peakCountdown = useMemo(() => nextPeakCountdown(samples), [samples]);
+
+  // Authored hour board: what this launch hour actually changed in the water,
+  // and what the other scouting hour would have changed instead.
+  const hydroBoard = useMemo(
+    () => buildHydroHudBoard(hydroEvents, launchHour ?? 0, currentSegmentIndex),
+    [hydroEvents, launchHour, currentSegmentIndex],
+  );
 
   const nextHazard = riskStrip.find((sample, index) => index > 0 && isElevatedRisk(sample.state));
 
@@ -150,6 +162,43 @@ export default function ForecastHUD({
           {nextHazard ? ` · hazard in ${riskStrip.indexOf(nextHazard)} seg` : ''}
           {peakCountdown ? ` · next peak T+${peakCountdown.hoursUntil}h` : ''}
         </div>
+
+        {(hydroBoard.rows.length > 0 || hydroBoard.contrastLine) && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: '8px 10px',
+              borderRadius: 8,
+              background: 'rgba(90, 190, 255, 0.12)',
+              border: '1px solid rgba(90, 190, 255, 0.32)',
+              fontSize: 12,
+            }}
+          >
+            <div style={{ letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 10, opacity: 0.8 }}>
+              Water at H{(hydroBoard.launchHour).toString().padStart(2, '0')}:00
+            </div>
+            {hydroBoard.rows.length === 0 ? (
+              <div style={{ marginTop: 3, opacity: 0.8 }}>Nothing released — baseline river</div>
+            ) : (
+              hydroBoard.rows.map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    marginTop: 3,
+                    fontWeight: row.here ? 700 : 500,
+                    opacity: row.here ? 1 : 0.85,
+                  }}
+                >
+                  {row.here ? '▶ ' : '· '}
+                  {row.label} <span style={{ opacity: 0.7 }}>seg {row.segmentIndex} — {row.effect}</span>
+                </div>
+              ))
+            )}
+            {hydroBoard.contrastLine && (
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.72 }}>{hydroBoard.contrastLine}</div>
+            )}
+          </div>
+        )}
 
         {damCountdown && (
           <div

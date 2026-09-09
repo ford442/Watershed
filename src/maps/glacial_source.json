@@ -320,12 +320,39 @@
   ],
   "hydroEvents": [
     {
+      "id": "glacial-dawn-icejam",
+      "kind": "braid",
+      "segmentIndex": 3,
+      "hours": [5, 6, 7],
+      "centerT": 0.5,
+      "radius": 9,
+      "strength": 1.5
+    },
+    {
       "id": "glacial-slush-tube",
       "kind": "roughness",
       "segmentIndex": 3,
       "hours": [12, 13, 14, 15],
       "radius": 10,
       "strength": 3.2
+    },
+    {
+      "id": "glacial-melt-surge",
+      "kind": "inflowPulse",
+      "segmentIndex": 8,
+      "hours": [13, 14, 15],
+      "centerT": 0.45,
+      "radius": 12,
+      "strength": 4.6
+    },
+    {
+      "id": "glacial-dawn-freeze",
+      "kind": "roughness",
+      "segmentIndex": 8,
+      "hours": [5, 6, 7],
+      "centerT": 0.45,
+      "radius": 12,
+      "strength": 2.2
     }
   ],
   "spawns": {

@@ -49,7 +49,13 @@ import {
   setSWEStatus,
 } from '../../physics/physicsWorkerRegistry';
 import { bindChoreWasm, runHeightfieldChores } from '../../rendering/gpuChores';
-import { sampleSWEFlow, FALLBACK_FLOW_DIR, type SWEFlowGrid } from './sampleSWEFlow';
+import {
+  sampleSWEFlow,
+  FALLBACK_FLOW_DIR,
+  SWE_STAGE_SPEED_BOOST,
+  type SWEFlowGrid,
+  type SWEFlowSample,
+} from './sampleSWEFlow';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { getActiveMap } from '../../maps/registry';
 import { getActiveLaunchHour } from '../journey/runSession';
@@ -124,6 +130,17 @@ function floatingForceConfig(
     turbulenceStrength,
     turbulenceFrequency,
   };
+}
+
+/**
+ * Authored stage applied to the authored water level. Clamped so a numerically
+ * hot cell cannot teleport the surface; ±2 m covers every authored event.
+ */
+export const MAX_STAGE_OFFSET = 2;
+
+export function stagedWaterLevel(waterLevel: number, flow: Pick<SWEFlowSample, 'surfaceOffset'>): number {
+  const offset = Number.isFinite(flow.surfaceOffset) ? flow.surfaceOffset : 0;
+  return waterLevel + Math.max(-MAX_STAGE_OFFSET, Math.min(MAX_STAGE_OFFSET, offset));
 }
 
 function worldToGridIndex(
@@ -324,7 +341,8 @@ export function WaterForceSystem({
     }
 
     const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize);
-    grid.h.fill(SWE_MEAN_DEPTH);
+    // η is a free-surface *perturbation* (swe.h ABI): at rest it is 0, not H.
+    grid.h.fill(0);
     gridRef.current = grid;
 
     const texture = new THREE.DataTexture(
@@ -470,10 +488,11 @@ export function WaterForceSystem({
       flowSpeed,
       grid: flowGrid,
       enabled: sweEnabled,
+      stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
     });
     setPhysicsWorkerTickParams({
       flowSpeed: vehicleFlow.speed,
-      waterLevel,
+      waterLevel: stagedWaterLevel(waterLevel, vehicleFlow),
       turbulenceStrength,
       turbulenceFrequency,
       flowDirX: vehicleFlow.dirX,
@@ -499,19 +518,23 @@ export function WaterForceSystem({
               flowSpeed,
               grid: flowGrid,
               enabled: sweEnabled,
+              stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
             });
+        // Buoyancy reads the *local* surface, so an authored inflowPulse
+        // floats the hull higher instead of only moving the mesh (#397).
+        const localWaterLevel = stagedWaterLevel(waterLevel, flow);
         const config = isVehicle
           ? vehicleForceConfig(
               vehicleType,
               flow.speed,
-              waterLevel,
+              localWaterLevel,
               timeSeconds,
               turbulenceStrength,
               turbulenceFrequency,
             )
           : floatingForceConfig(
               flow.speed,
-              waterLevel,
+              localWaterLevel,
               timeSeconds,
               body,
               turbulenceStrength * 0.8,
@@ -565,6 +588,8 @@ export function WaterForceSystem({
         workerOwnsVehicleForces,
         sampledDir: [vehicleFlow.dirX, vehicleFlow.dirZ],
         sampledSpeed: vehicleFlow.speed,
+        stage: vehicleFlow.surfaceOffset,
+        stagedWaterLevel: stagedWaterLevel(waterLevel, vehicleFlow),
         fallbackDir: [FALLBACK_FLOW_DIR.x, FALLBACK_FLOW_DIR.z],
         source: vehicleFlow.source,
         wet: vehicleFlow.wet,

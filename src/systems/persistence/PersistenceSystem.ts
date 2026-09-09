@@ -12,6 +12,7 @@ import persistenceSchema from '../../formats/persistence.schema.json';
 import type { GameSettings } from '../GameState';
 import type { RunSplitEntry } from '../ghost/ghostCodec';
 import type { WsGhostFile } from '../ghost/ghostExport';
+import { launchHourOverride } from '../../utils/launchHourOverride';
 
 // =============================================================================
 // TYPES
@@ -316,6 +317,9 @@ export function markMapCompleted(mapId: string): string[] {
 }
 
 export function getLaunchHour(): number {
+  // `?hour=` wins for this page load only — scouting / visual smoke (#398).
+  const override = launchHourOverride();
+  if (override !== null) return override;
   return loadPersistence().launchHour ?? 6;
 }
 
