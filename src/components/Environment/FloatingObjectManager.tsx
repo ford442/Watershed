@@ -12,6 +12,7 @@ import {
 } from '../../systems/water/WaterForceRegistry';
 import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 // =============================================================================
 // TYPES
@@ -249,7 +250,7 @@ export default function FloatingObjectManager({
       restitution={0.2}
       canSleep={false}
     >
-      <instancedMesh
+      <NonEmptyInstancedMesh
         args={[geometry, material, instances.length]}
         receiveShadow
         castShadow

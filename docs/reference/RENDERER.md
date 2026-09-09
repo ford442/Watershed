@@ -198,19 +198,27 @@ Every host takes the backend as its first argument, never throws, and reports th
 
 ### Known gaps on `?material=tsl`
 
-Water surface, vs the GLSL original:
+Water surface, vs the GLSL original — **closed in #399 phase A**:
 
-- planar reflection texture sample (`reflectionTexture` / `reflectionStrength`)
-- canyon god rays (`godRayStrength`)
-- flow-map driven flow bias (`USE_FLOWMAP`)
-- per-biome dynamic fragment shaders loaded by `useShaderLoader`
-- the displacement field is re-evaluated per fragment instead of passed through varyings (extra ALU)
+- ~~planar reflection texture sample~~ — ported. The sample UV comes from re-projecting the interpolated world position (`cameraProjectionMatrix * cameraViewMatrix`) rather than from `gl_FragCoord`, because framebuffer origin differs between the WebGL2 and native WebGPU backends and `viewportUV` would flip under phase C.
+- ~~canyon god rays~~ — ported. `if (godRayStrength > 0.001)` becomes a `step()` mask, same cutoff, no branch.
+- ~~flow-map driven flow bias~~ — ported as a **build-time variant** keyed on `init.flowMap`, mirroring the GLSL `USE_FLOWMAP` define. A boot with no flow map pays no sampler.
+- ~~per-fragment displacement re-evaluation~~ — the field, its 4-sample normal, wave, current, world position and view direction are now vertex-stage `varying()` nodes, the same set the GLSL vertex shader writes. This also removed two silent divergences: the fragment used to sample the field in WORLD XZ where GLSL uses LOCAL XZ, and `vWorldPos` used to be the displaced world position where GLSL publishes the undisplaced one.
+
+**Deferred, permanently:** per-biome dynamic fragment shaders loaded by `useShaderLoader`. That hook fetches GLSL *source text* from a backend and swaps it into the `ShaderMaterial`; a node graph has no "compile this string" equivalent. A biome that sets `shaderId` gets its custom fragment shader on `?material=glsl` only — this is a property of the mechanism, not an unfinished port.
 
 Scene-wide:
 
 - **JSM post-processing stays WebGL-only (Phase D).** Live path is `three/examples/jsm/postprocessing` + `postprocessing@6` on `three@0.168` in `PostProcessingPipeline.tsx` (not `@react-three/postprocessing`, which crashes on R3F v9). `EffectComposer` / `ShaderPass` require `THREE.WebGLRenderer`. On `?material=tsl` the composer is **not mounted**. Native WebGPU waits on a documented Three bump whose node post stack replaces JSM — do not add a second composer or bump `three` in #387. `POST_STACK_PORTED` in `nativeWebgpuGate.ts` stays `false` until that lands.
 - Dormant GLSL modules (`CausticsMaterial.ts`, `EnhancedWaterMaterial.ts`) are unused and listed as `dormant` on the allowlist.
 - Weather particles are Reach-mounted (`ReachManager`), not the default treadmill.
+- **`three/webgpu` ships its own copy of the three core**, so `(await import('three/webgpu')).DirectionalLight !== THREE.DirectionalLight`. `resolve.dedupe` cannot merge them — they are two entry files, not two installs. `NodeLibrary` indexes both its tables by something that does not survive that split, and [`src/rendering/nodeLibraryBridge.ts`](../../src/rendering/nodeLibraryBridge.ts) re-registers `three`'s side after `renderer.init()`:
+  - **Lights** — `lightNodes` is a WeakMap keyed on the light class, so every light R3F builds from `three` missed. `getLightNodeClass()` returns `null` while `LightsNode.setupLightsNode()` only guards `undefined`, so the miss reached `new null( light )` and threw on the first lit material. `?material=tsl` rendered an empty canvas because of it.
+  - **Materials** — `materialNodes` is keyed by `materialClass.name` while lookups use `material.type`. Those agree only until a minifier renames the class, so **production only**, a plain material logs `NodeMaterial: Material "…" is not compatible.` and is silently replaced by a blank `NodeMaterial`. The bridge registers the type strings, which are literals.
+  - Any future class-identity lookup across the two bundles needs the same treatment; `.isXxx` flag checks are unaffected.
+- **A zero-count `InstancedMesh` will not compile under a node material.** `InstanceNode.setup` builds the instance matrices as a UBO whenever `count <= 1000`, and the GLSL backend prints the array size as `bufferCount > 0 ? bufferCount : ''` — so `count === 0` emits `uniform NodeBuffer_N { mat4 bufferN[]; };`, an unsized array in an interface block, which GLSL ES 3.00 rejects. Every empty decoration layer killed its own program (~103 link failures on a boot). Verified in isolation: count 0 fails, counts 5 and 1200 are clean; the classic `WebGLRenderer` never cared. Two guards cover it — **mount instanced geometry through them, never `<instancedMesh>` or drei's `<Instances>` directly**:
+  - [`NonEmptyInstancedMesh`](../../src/components/NonEmptyInstancedMesh.tsx) for raw `<instancedMesh>` mounts, keyed on `args[2]`.
+  - [`NonEmptyInstances`](../../src/components/NonEmptyInstances.tsx) for drei `<Instances>`, which mounts as `args={[null, null, 0]}` and only assigns `.count` from its subscribed children in `useFrame` — so an empty layer never leaves zero.
 
 `?renderer=webgpu` on the **GLSL** backend remains a no-op fallback to `WebGLRenderer`. On **TSL** it still uses `forceWebGL: true` until `canEnableNativeWebgpu()` is true.
 

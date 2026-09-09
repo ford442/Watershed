@@ -17,6 +17,7 @@ import {
 import { emitPillarBreak } from './pillarBreakEvents';
 import { enqueuePillarFragments } from './PillarFragmentPool';
 import { tryAcquirePillarFragmentSlots } from '../../systems/pools/PillarFragmentRegistry';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const VARIANTS_BY_TYPE = {
   boulder: ['boulderRiverworn', 'boulderAngular'],
@@ -484,7 +485,7 @@ export default function Rock({
             type="fixed"
             colliders={variant === 'slab' ? 'cuboid' : 'hull'}
           >
-            <instancedMesh
+            <NonEmptyInstancedMesh
               ref={(node) => {
                 if (node) collidableRefs.current[variant] = node;
                 else delete collidableRefs.current[variant];
@@ -501,7 +502,7 @@ export default function Rock({
         if (!instances.length) return null;
 
         return (
-          <instancedMesh
+          <NonEmptyInstancedMesh
             key={`scatter-${variant}`}
             ref={(node) => {
               if (node) scatterRefs.current[variant] = node;

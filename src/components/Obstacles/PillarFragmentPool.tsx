@@ -17,6 +17,7 @@ import {
   PILLAR_FRAGMENT_LIFETIME_S,
   type PillarFragmentSpawn,
 } from './pillarCrumble';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 export interface ActivePillarFragment {
   id: number;
@@ -155,7 +156,7 @@ export default function PillarFragmentPool({ castShadow = false }: PillarFragmen
       instances={instances}
       colliders="hull"
     >
-      <instancedMesh
+      <NonEmptyInstancedMesh
         args={[geometry, material, instances.length]}
         castShadow={castShadow}
         receiveShadow

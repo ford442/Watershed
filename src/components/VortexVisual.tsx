@@ -4,6 +4,7 @@
 import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 interface VortexVisualProps {
   /** Center position of the vortex */
@@ -77,7 +78,7 @@ export const VortexVisual: React.FC<VortexVisualProps> = ({
   });
 
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, particleCount]}>
+    <NonEmptyInstancedMesh ref={meshRef} args={[undefined, undefined, particleCount]}>
       <sphereGeometry args={[0.15, 8, 8]} />
       <meshBasicMaterial 
         color={color} 
@@ -85,7 +86,7 @@ export const VortexVisual: React.FC<VortexVisualProps> = ({
         opacity={0.6}
         blending={THREE.AdditiveBlending}
       />
-    </instancedMesh>
+    </NonEmptyInstancedMesh>
   );
 };
 

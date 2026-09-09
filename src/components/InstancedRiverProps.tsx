@@ -3,6 +3,7 @@ import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { InstancedMesh, Object3D, Matrix4, Euler, Vector3 } from 'three';
 import { useFrame } from '@react-three/fiber';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 interface PlacementItem {
   type: string;
@@ -103,7 +104,7 @@ export default function InstancedRiverProps({
         if (!geometry || items.length === 0) return null;
 
         return (
-          <instancedMesh
+          <NonEmptyInstancedMesh
             key={type}
             ref={el => { if (el) meshRefs.current[type] = el; }}
             args={[geometry, material, items.length]}

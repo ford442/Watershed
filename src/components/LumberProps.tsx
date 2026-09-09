@@ -4,6 +4,7 @@
 import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 
 interface LumberPropsProps {
   /** Array of positions for debris */
@@ -89,7 +90,7 @@ export const LumberProps: React.FC<LumberPropsProps> = ({
   if (positions.length === 0) return null;
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
       ref={meshRef}
       args={[geometry, material, positions.length]}
     />

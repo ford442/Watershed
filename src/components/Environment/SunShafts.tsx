@@ -8,6 +8,7 @@ import type { BiomeDecorationTransform, WeatherAwareDecorationProps, WeatherUpda
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSunShaftMaterial, createSunShaftMoteMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();
@@ -201,13 +202,13 @@ export default function SunShafts({
 
   return (
     <group>
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={meshRef}
         args={[geometry, material, transforms.length]}
         frustumCulled={false}
         renderOrder={1}
       />
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={dustRef}
         args={[dustGeometry, dustMaterial, transforms.length]}
         frustumCulled={false}

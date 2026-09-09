@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { BiomeDecorationTransform, FoliageProps } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 type PaletteSeason = 'summer' | 'autumn';
 
@@ -299,7 +300,7 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
     <group>
       {/* Bushes - Rounded shrubs */}
       {foliageData.bushes.length > 0 && (
-        <instancedMesh
+        <NonEmptyInstancedMesh
           ref={bushesRef}
           args={[bushGeometry, bushMaterial, foliageData.bushes.length]}
           castShadow
@@ -309,7 +310,7 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
 
       {/* Grass blades */}
       {foliageData.grass.length > 0 && (
-        <instancedMesh
+        <NonEmptyInstancedMesh
           ref={grassRef}
           args={[grassGeometry, grassMaterial, foliageData.grass.length]}
           receiveShadow
@@ -318,7 +319,7 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
 
       {/* Ground plants */}
       {foliageData.plants.length > 0 && (
-        <instancedMesh
+        <NonEmptyInstancedMesh
           ref={plantsRef}
           args={[plantGeometry, plantMaterial, foliageData.plants.length]}
           receiveShadow

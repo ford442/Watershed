@@ -1,8 +1,9 @@
 // IceSheets — translucent shelf slabs at the waterline (glacial biomes).
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const SHEET_GEO = (() => {
   const geo = new THREE.BoxGeometry(1, 0.12, 0.6);
@@ -44,7 +45,7 @@ export default function IceSheets({ transforms }: BiomeDecorationProps) {
   if (instances.length === 0) return null;
 
   return (
-    <Instances geometry={SHEET_GEO} material={SHEET_MAT} limit={instances.length} castShadow={false}>
+    <NonEmptyInstances geometry={SHEET_GEO} material={SHEET_MAT} limit={instances.length} castShadow={false}>
       {instances.map((item) => (
         <Instance
           key={item.key}
@@ -53,6 +54,6 @@ export default function IceSheets({ transforms }: BiomeDecorationProps) {
           scale={item.scale}
         />
       ))}
-    </Instances>
+    </NonEmptyInstances>
   );
 }

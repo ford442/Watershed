@@ -1,8 +1,9 @@
 // Icicles — instanced hanging ice spikes along canyon rim (glacial biomes).
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const ICICLE_GEO = (() => {
   const geo = new THREE.ConeGeometry(0.08, 1.0, 5);
@@ -41,7 +42,7 @@ export default function Icicles({ transforms }: BiomeDecorationProps) {
   if (instances.length === 0) return null;
 
   return (
-    <Instances geometry={ICICLE_GEO} material={ICE_MAT} limit={instances.length} castShadow={false}>
+    <NonEmptyInstances geometry={ICICLE_GEO} material={ICE_MAT} limit={instances.length} castShadow={false}>
       {instances.map((item) => (
         <Instance
           key={item.key}
@@ -50,6 +51,6 @@ export default function Icicles({ transforms }: BiomeDecorationProps) {
           scale={item.scale}
         />
       ))}
-    </Instances>
+    </NonEmptyInstances>
   );
 }

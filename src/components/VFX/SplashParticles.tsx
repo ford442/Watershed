@@ -2,6 +2,7 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SplashParticlesProps } from '../Environment/types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 export default function SplashParticles({ target, count = 60 }: SplashParticlesProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -118,7 +119,7 @@ export default function SplashParticles({ target, count = 60 }: SplashParticlesP
   });
 
   return (
-    <instancedMesh
+    <NonEmptyInstancedMesh
         ref={meshRef}
         args={[geometry, material, count]}
         frustumCulled={false}

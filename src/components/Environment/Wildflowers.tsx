@@ -1,13 +1,14 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { mergeBufferGeometries } from 'three-stdlib';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
 import type { FlowerPlacement, WildflowersProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'] as const;
 type FlowerVariant = typeof FLOWER_VARIANTS[number];
@@ -200,7 +201,7 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
         if (instances.length === 0 || !material) return null;
 
         return (
-          <Instances key={variant.type} range={instances.length} geometry={variant.geometry} material={material} receiveShadow>
+          <NonEmptyInstances key={variant.type} range={instances.length} geometry={variant.geometry} material={material} receiveShadow>
             {instances.map((data) => (
               <Instance
                 key={data.key}
@@ -210,7 +211,7 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
                 color={data.color}
               />
             ))}
-          </Instances>
+          </NonEmptyInstances>
         );
       })}
     </group>

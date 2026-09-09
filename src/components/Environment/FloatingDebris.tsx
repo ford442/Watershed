@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { InstancedRigidBodies, type RapierRigidBody } from '@react-three/rapier';
 import { useDriftwoodAssets, usePineconeAssets } from './DebrisAssets';
 import type { FloatingDebrisProps } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 type DebrisKind = 'driftwood' | 'pinecone';
 
@@ -149,7 +150,7 @@ export default function FloatingDebris({
           colliders="hull"
           type="kinematicPosition"
         >
-          <instancedMesh
+          <NonEmptyInstancedMesh
             args={[driftwood.geometry, driftwood.material, driftwoodInstances.length]}
             receiveShadow
             castShadow
@@ -164,7 +165,7 @@ export default function FloatingDebris({
           colliders="hull"
           type="kinematicPosition"
         >
-          <instancedMesh
+          <NonEmptyInstancedMesh
             args={[pinecone.geometry, pinecone.material, pineconeInstances.length]}
             receiveShadow
             castShadow

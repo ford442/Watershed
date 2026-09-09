@@ -8,6 +8,7 @@ import {
   createWaterfallPlumeMaterial,
 } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const MAX_DROPLETS = 180;
 
@@ -142,7 +143,7 @@ export default function WaterfallImpactZone({
 
   return (
     <group>
-      <instancedMesh ref={plumeRef} args={[plumeGeometry, plumeMaterial, plumeInstances.length]} frustumCulled={false} />
+      <NonEmptyInstancedMesh ref={plumeRef} args={[plumeGeometry, plumeMaterial, plumeInstances.length]} frustumCulled={false} />
       <mesh
         ref={foamRef}
         geometry={foamGeometry}
@@ -151,7 +152,7 @@ export default function WaterfallImpactZone({
         position={[0, 0.08, 0]}
         frustumCulled={false}
       />
-      <instancedMesh
+      <NonEmptyInstancedMesh
         ref={dropletRef}
         args={[dropletGeometry, dropletMaterial, MAX_DROPLETS]}
         frustumCulled={false}

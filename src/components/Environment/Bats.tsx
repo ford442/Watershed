@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { BatsProps } from './types';
+import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 const DUMMY = new THREE.Object3D();
 const TEMP_POS = new THREE.Vector3();
@@ -261,9 +262,9 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }: 
 
   return (
     <group>
-      <instancedMesh ref={bodyRef} args={[bodyGeometry, bodyMaterial, bats.length]} frustumCulled={false} castShadow />
-      <instancedMesh ref={leftWingRef} args={[leftWingGeometry, wingMaterial, bats.length]} frustumCulled={false} castShadow />
-      <instancedMesh ref={rightWingRef} args={[rightWingGeometry, wingMaterial, bats.length]} frustumCulled={false} castShadow />
+      <NonEmptyInstancedMesh ref={bodyRef} args={[bodyGeometry, bodyMaterial, bats.length]} frustumCulled={false} castShadow />
+      <NonEmptyInstancedMesh ref={leftWingRef} args={[leftWingGeometry, wingMaterial, bats.length]} frustumCulled={false} castShadow />
+      <NonEmptyInstancedMesh ref={rightWingRef} args={[rightWingGeometry, wingMaterial, bats.length]} frustumCulled={false} castShadow />
     </group>
   );
 }

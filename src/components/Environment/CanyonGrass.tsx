@@ -1,10 +1,11 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { Instances, Instance } from '@react-three/drei';
+import { Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
+import { NonEmptyInstances } from '../NonEmptyInstances';
 
 const hash = (n: number): number => {
   const x = Math.sin(n * 9.173) * 43758.5453;
@@ -72,7 +73,7 @@ export default function CanyonGrass({ transforms }: BiomeDecorationProps) {
   if (!instances.length) return null;
 
   return (
-    <Instances ref={grassRef} geometry={geometry} material={material} range={instances.length} receiveShadow>
+    <NonEmptyInstances ref={grassRef} geometry={geometry} material={material} range={instances.length} receiveShadow>
       {instances.map((item) => (
         <Instance
           key={item.key}
@@ -82,6 +83,6 @@ export default function CanyonGrass({ transforms }: BiomeDecorationProps) {
           color={item.color}
         />
       ))}
-    </Instances>
+    </NonEmptyInstances>
   );
 }
