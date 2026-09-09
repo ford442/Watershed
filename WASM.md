@@ -13,6 +13,14 @@ The module lives in `emscripten/` and is compiled to
 
 TypeScript bindings are in `src/systems/water/WatershedWasm.ts`.
 
+> **The glue and the binary are a matched pair.** `watershed_native.js` and
+> `watershed_native.wasm` must come from one `emcc` run (pinned: 3.1.56); mixed halves
+> die inside embind (`wasmTable.get is not a function`) or hang with a quiet console.
+> `WASM_ARTIFACT_STAMP` is a sha256 over **both** files, and `getWasm()` asserts the
+> served byte lengths of both against the build identity, bannering
+> **"Native WASM provenance mismatch — stale deploy"** on a split. Deploying and proving
+> what is live: [`docs/reference/DEPLOY.md`](./docs/reference/DEPLOY.md).
+
 ### Why C++/WASM?
 
 | Concern | JS/GPU approach | C++/WASM approach |

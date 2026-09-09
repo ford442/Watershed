@@ -151,6 +151,24 @@ Use pnpm only — the pinned version lives in `package.json`'s `packageManager` 
 
 `pnpm build` runs `emscripten/build.sh` first; if Emscripten is missing it prints a skip message and exits 0, then Vite proceeds.
 
+### Deploy and build identity (#402)
+
+Every build bakes a **build identity** (git SHA, dirty flag, timestamp, `WASM_ARTIFACT_STAMP`,
+and the byte sizes of the two unhashed `public/` passengers). It is resolved once by
+`scripts/buildIdentity.mjs` and surfaced twice: `build/build-identity.json` and
+`window.__WATERSHED_BUILD__`.
+
+```bash
+python3 deploy.py --dry-run                                  # coherence check, no token needed
+python3 deploy.py                                            # full upload (default)
+node verification/verify_deploy.mjs --expect $(git rev-parse HEAD)   # is HEAD live? exit 0/1
+python3 build_and_patch.py                                   # build -> deploy -> verify
+```
+
+`deploy.py` refuses a `build/` that is stale, incoherent or built dirty, and never uploads
+`watershed_native.js` without `watershed_native.wasm` — that split is what shipped a hung
+site for 26 days. Full runbook: [`docs/reference/DEPLOY.md`](./docs/reference/DEPLOY.md).
+
 ---
 
 ## Key architecture notes
@@ -227,6 +245,8 @@ pnpm test
 pnpm typecheck          # tsc + untyped-surface allowlist guard
 pnpm build
 pnpm test:visual-smoke   # headless WebGL gate (preview serving build/)
+pnpm test:deploy         # deploy.py plan/preflight unit tests (python3 unittest)
+pnpm verify:deploy       # is the live URL serving this commit?
 node scripts/validate-markdown-paths.js
 # chore goldens: src/rendering/gpuChores/reduceParity.test.ts (not pixelmatch)
 ```

@@ -25,6 +25,7 @@
 | [`QUICK_TROUBLESHOOTING.md`](./QUICK_TROUBLESHOOTING.md) | Something broken right now |
 | [`STARTUP_DIAGNOSTICS.md`](./STARTUP_DIAGNOSTICS.md) | Blank scene / shader / load failures |
 | [`CODE_HEALTH_GUIDE.md`](./CODE_HEALTH_GUIDE.md) | Shader injection, geometry validation, red flags |
+| [`DEPLOY.md`](./DEPLOY.md) | Build → dry-run → deploy → verify runbook; build identity and the provenance guards (#402) |
 
 ### Rendering & WASM
 
