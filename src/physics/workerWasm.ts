@@ -3,8 +3,11 @@
 import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
 import {
   isWasmInitTimeoutError,
+  isWasmProvenanceMismatchError,
+  probeArtifactProvenance,
   resolveWasmInitTimeoutMs,
   WasmInitTimeoutError,
+  WasmProvenanceMismatchError,
 } from '../systems/water/WatershedWasm';
 import { WASM_ARTIFACT_STAMP } from '../systems/water/wasmArtifactStamp';
 
@@ -79,10 +82,14 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
 
   modulePromise = (async () => {
     const wasmJsUrl = resolveWorkerAsset('watershed_native.js');
+    const wasmBinaryUrl = resolveWorkerAsset('watershed_native.wasm');
     let terminalLogged = false;
 
     try {
       console.info(`${WASM_LOG_PREFIX} init started url=${wasmJsUrl} stamp=${WASM_ARTIFACT_STAMP}`);
+
+      // Same glue/binary pair assert as the main thread; runs alongside the factory.
+      const provenance = probeArtifactProvenance(wasmJsUrl, wasmBinaryUrl, timeoutMs);
 
       const mod = await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory };
       const factory = mod.default;
@@ -94,6 +101,13 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
         () => new WasmInitTimeoutError(timeoutMs),
       );
 
+      const mismatch = await provenance;
+      if (mismatch) {
+        terminalLogged = true;
+        console.error(`${WASM_LOG_PREFIX} provenance-mismatch(${mismatch})`);
+        throw new WasmProvenanceMismatchError(mismatch);
+      }
+
       const version = loaded.getVersion();
       terminalLogged = true;
       console.info(`${WASM_LOG_PREFIX} ready (abi=${version})`);
@@ -104,6 +118,8 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
         terminalLogged = true;
         if (isWasmInitTimeoutError(err)) {
           console.error(`${WASM_LOG_PREFIX} timed-out(${timeoutMs}ms)`);
+        } else if (isWasmProvenanceMismatchError(err)) {
+          console.error(`${WASM_LOG_PREFIX} provenance-mismatch(${err.message})`);
         } else {
           console.error(`${WASM_LOG_PREFIX} failed(${err.message})`);
         }

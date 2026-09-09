@@ -27,6 +27,7 @@
  *   grid.dispose();
  */
 
+import { BUILD_IDENTITY, formatBuildIdentity, hasPassengerSizes, type BuildIdentity } from '../../buildIdentity';
 import { getAssetBaseUrl } from '../../utils/assetBaseUrl';
 import { WASM_ARTIFACT_STAMP } from './wasmArtifactStamp';
 
@@ -345,6 +346,122 @@ export function isWasmInitTimeoutError(error: unknown): boolean {
     || (error instanceof Error && error.message.includes('init timed out after'));
 }
 
+// ---------------------------------------------------------------------------
+// Glue / binary provenance
+// ---------------------------------------------------------------------------
+/**
+ * Emscripten glue JS and its `.wasm` are a matched pair; mixing halves throws deep
+ * inside embind (or, worse, hangs). #402 shipped exactly that: an 08-14 glue beside
+ * an 08-31 binary, live for 26 days with no console error.
+ *
+ * The module cannot self-report WASM_ARTIFACT_STAMP — the stamp is a sha256 *over*
+ * the built glue+binary, so baking it in would change the very bytes it hashes. We
+ * therefore assert the served byte lengths of both passengers against the sizes
+ * recorded in the build identity (`build-identity.json`, same source of truth).
+ * A single page load is enough to catch a split-provenance deploy.
+ */
+export const PROVENANCE_MISMATCH_MARKER = 'glue/binary provenance mismatch';
+
+/** Thrown when a served passenger does not match the bytes this bundle was built against. */
+export class WasmProvenanceMismatchError extends Error {
+  constructor(detail: string) {
+    super(`watershed_native ${PROVENANCE_MISMATCH_MARKER}: ${detail}`);
+    this.name = 'WasmProvenanceMismatchError';
+  }
+}
+
+export function isWasmProvenanceMismatchError(error: unknown): boolean {
+  return error instanceof WasmProvenanceMismatchError
+    || (error instanceof Error && error.message.includes(PROVENANCE_MISMATCH_MARKER));
+}
+
+/** One served artifact measured against the identity. `actualBytes: null` = unmeasurable. */
+export interface ArtifactProbe {
+  label: 'glue' | 'wasm';
+  file: string;
+  expectedBytes: number;
+  actualBytes: number | null;
+}
+
+/**
+ * Pure verdict over a set of probes.
+ *
+ * @returns `null` when every probe agrees, or when the evidence is inconclusive
+ *          (no recorded sizes / unmeasurable response); a human-readable detail
+ *          string when at least one half of the pair disagrees.
+ */
+export function describeProvenanceMismatch(
+  probes: readonly ArtifactProbe[],
+  identity: BuildIdentity = BUILD_IDENTITY,
+): string | null {
+  if (!hasPassengerSizes(identity)) return null;
+
+  const bad = probes.filter(
+    (probe) =>
+      probe.expectedBytes > 0
+      && probe.actualBytes != null
+      && probe.actualBytes !== probe.expectedBytes,
+  );
+  if (bad.length === 0) return null;
+
+  const parts = bad.map(
+    (probe) => `${probe.file} served ${probe.actualBytes}B but this bundle was built against ${probe.expectedBytes}B`,
+  );
+  return `${parts.join('; ')} — ${formatBuildIdentity(identity)}`;
+}
+
+/** Probes for the current build identity, given measured sizes. Pure. */
+export function buildArtifactProbes(
+  measured: { glue: number | null; wasm: number | null },
+  identity: BuildIdentity = BUILD_IDENTITY,
+): ArtifactProbe[] {
+  return [
+    {
+      label: 'glue',
+      file: identity.glueFile,
+      expectedBytes: identity.glueBytes,
+      actualBytes: measured.glue,
+    },
+    {
+      label: 'wasm',
+      file: identity.wasmFile,
+      expectedBytes: identity.wasmBytes,
+      actualBytes: measured.wasm,
+    },
+  ];
+}
+
+type FetchLike = (input: string, init?: { method?: string }) => Promise<{
+  ok?: boolean;
+  headers: { get(name: string): string | null };
+  arrayBuffer(): Promise<ArrayBuffer>;
+}>;
+
+/**
+ * Byte length of a served asset: `content-length` from a HEAD, else a full GET.
+ * Returns null (inconclusive, never fatal) when the asset cannot be measured.
+ */
+export async function fetchArtifactByteLength(
+  url: string,
+  fetchImpl?: FetchLike,
+): Promise<number | null> {
+  const doFetch = fetchImpl
+    ?? (typeof fetch === 'function' ? (fetch as unknown as FetchLike) : undefined);
+  if (!doFetch) return null;
+  try {
+    const head = await doFetch(url, { method: 'HEAD' });
+    const len = head.headers.get('content-length');
+    if (len != null && len !== '') {
+      const parsed = Number(len);
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    }
+    const body = await doFetch(url);
+    return (await body.arrayBuffer()).byteLength;
+  } catch {
+    return null;
+  }
+}
+
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 let _loaded: WatershedNativeModule | null = null;
 let _initError: Error | null = null;
@@ -353,28 +470,17 @@ function logWasmInitStarted(url: string): void {
   console.info(`${WASM_LOG_PREFIX} init started url=${url} stamp=${WASM_ARTIFACT_STAMP}`);
 }
 
-async function logWasmByteLength(wasmUrl: string): Promise<void> {
-  try {
-    const response = await fetch(wasmUrl, { method: 'HEAD' });
-    const len = response.headers.get('content-length');
-    if (len != null && len !== '') {
-      console.info(`${WASM_LOG_PREFIX} wasm bytes=${len}`);
-      return;
-    }
-    const getResponse = await fetch(wasmUrl);
-    const buf = await getResponse.arrayBuffer();
-    console.info(`${WASM_LOG_PREFIX} wasm bytes=${buf.byteLength}`);
-  } catch {
-    console.info(`${WASM_LOG_PREFIX} wasm bytes=unknown`);
-  }
-}
-
-function logWasmTerminal(outcome: 'ready' | 'failed' | 'timed-out', detail: string): void {
+function logWasmTerminal(
+  outcome: 'ready' | 'failed' | 'timed-out' | 'provenance-mismatch',
+  detail: string,
+): void {
   const line = outcome === 'ready'
     ? `${WASM_LOG_PREFIX} ready (${detail})`
     : outcome === 'timed-out'
       ? `${WASM_LOG_PREFIX} timed-out(${detail})`
-      : `${WASM_LOG_PREFIX} failed(${detail})`;
+      : outcome === 'provenance-mismatch'
+        ? `${WASM_LOG_PREFIX} provenance-mismatch(${detail})`
+        : `${WASM_LOG_PREFIX} failed(${detail})`;
   if (outcome === 'ready') {
     console.info(line);
   } else {
@@ -414,6 +520,38 @@ function raceWithDeadline<T>(
   });
 
   return Promise.race([guarded, deadline]);
+}
+
+/**
+ * Measure both passengers, log what was served vs what this bundle expects, and
+ * return the mismatch detail (or null). Never rejects and never outlives
+ * `timeoutMs` — an unreachable or hanging asset host is inconclusive, not fatal.
+ */
+export async function probeArtifactProvenance(
+  glueUrl: string,
+  wasmUrl: string,
+  timeoutMs: number,
+  fetchImpl?: FetchLike,
+): Promise<string | null> {
+  const measure = (async (): Promise<string | null> => {
+    const [glue, wasm] = await Promise.all([
+      fetchArtifactByteLength(glueUrl, fetchImpl),
+      fetchArtifactByteLength(wasmUrl, fetchImpl),
+    ]);
+    console.info(
+      `${WASM_LOG_PREFIX} wasm bytes=${wasm ?? 'unknown'}/${BUILD_IDENTITY.wasmBytes || 'unknown'} `
+      + `glue bytes=${glue ?? 'unknown'}/${BUILD_IDENTITY.glueBytes || 'unknown'} `
+      + `build=${formatBuildIdentity(BUILD_IDENTITY)}`,
+    );
+    return describeProvenanceMismatch(buildArtifactProbes({ glue, wasm }));
+  })();
+
+  try {
+    return await raceWithDeadline(measure, timeoutMs, () => new WasmInitTimeoutError(timeoutMs));
+  } catch {
+    console.info(`${WASM_LOG_PREFIX} provenance inconclusive (assets unmeasurable)`);
+    return null;
+  }
 }
 
 function withArtifactStamp(url: string): string {
@@ -462,7 +600,8 @@ export async function getWasm(): Promise<WatershedNativeModule> {
 
     try {
       logWasmInitStarted(wasmJsUrl);
-      void logWasmByteLength(wasmBinaryUrl);
+      // Runs concurrently with the factory so the assert costs no extra boot latency.
+      const provenance = probeArtifactProvenance(wasmJsUrl, wasmBinaryUrl, timeoutMs);
 
       // Dynamic import keeps the glue JS out of the main bundle.
       const mod = typeof process !== 'undefined' && process.env.WATERSHED_WASM_INTEGRATION === '1'
@@ -489,6 +628,13 @@ export async function getWasm(): Promise<WatershedNativeModule> {
         throw new Error(
           `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
         );
+      }
+
+      const mismatch = await provenance;
+      if (mismatch) {
+        terminalLogged = true;
+        logWasmTerminal('provenance-mismatch', mismatch);
+        throw new WasmProvenanceMismatchError(mismatch);
       }
 
       _loaded = loaded;

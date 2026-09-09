@@ -12,6 +12,7 @@ import { getLoadoutDefinition } from '../systems/survival';
 import {
   getWasm,
   isWasmInitTimeoutError,
+  isWasmProvenanceMismatchError,
   type NativeWaterForceResult,
 } from '../systems/water/WatershedWasm';
 import RunResultsPanel from './RunResultsPanel';
@@ -237,6 +238,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     force?: NativeWaterForceResult;
     error?: string;
     timedOut?: boolean;
+    /** Served glue/binary bytes disagree with the identity this bundle was built against. */
+    mismatched?: boolean;
     dismissed?: boolean;
   }>(() => ({
     status: 'loading',
@@ -298,8 +301,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         if (cancelled) return;
         const message = error instanceof Error ? error.message : String(error);
         const timedOut = isWasmInitTimeoutError(error);
+        const mismatched = isWasmProvenanceMismatchError(error);
         console.error('[Watershed WASM] native init failed', error);
-        setWasmSmoke({ status: 'failed', error: message, timedOut });
+        setWasmSmoke({ status: 'failed', error: message, timedOut, mismatched });
       });
 
     return () => {
@@ -464,9 +468,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <div className="wasm-init-banner" role="alert" data-testid="wasm-init-banner">
           <div className="wasm-init-banner__body">
             <strong>
-              {wasmSmoke.timedOut
-                ? 'Native WASM init timed out'
-                : 'Native WASM failed to init'}
+              {wasmSmoke.mismatched
+                ? 'Native WASM provenance mismatch — stale deploy'
+                : wasmSmoke.timedOut
+                  ? 'Native WASM init timed out'
+                  : 'Native WASM failed to init'}
             </strong>
             <pre>{wasmSmoke.error}</pre>
           </div>
