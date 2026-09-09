@@ -290,7 +290,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     // ======================================================================
     const cfg = WEATHER_CONFIG.fog;
     let targetFogDensity: number = cfg.clearDensity;
-    let targetFogColor = new THREE.Color(cfg.clearColor);
+    const targetFogColor = new THREE.Color(cfg.clearColor);
 
     switch (weatherType) {
       case 'rain':

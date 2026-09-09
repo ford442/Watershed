@@ -19,7 +19,7 @@ import { useSettingsStore } from '../systems/settings/useSettingsStore';
 
 const HALF_PI = Math.PI / 2;
 
-/* eslint-disable react-hooks/exhaustive-deps */
+ 
 
 export default function SettingsLookSync() {
   const camera = useThree((s) => s.camera);

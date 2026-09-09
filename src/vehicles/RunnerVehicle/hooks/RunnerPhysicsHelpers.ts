@@ -121,7 +121,7 @@ export function calculateSlopeAngle({
     slopeState.current.bankAngle = (Math.atan2(gn.x, gn.y) * 180) / Math.PI;
     // Pitch angle: forward/back slope; keep existing sign convention (negative = downhill forward)
     const pitchAngleRad = Math.atan2(-gn.z, gn.y);
-    let angleDeg = (pitchAngleRad * 180) / Math.PI;
+    const angleDeg = (pitchAngleRad * 180) / Math.PI;
     return Math.max(-60, Math.min(60, angleDeg));
   }
 

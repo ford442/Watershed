@@ -16,7 +16,7 @@ import { setRunGhostData, updatePBGhost } from '../persistence/PersistenceSystem
 export { GHOST_SAMPLE_HZ, GHOST_SAMPLE_INTERVAL };
 export const GHOST_MAX_SAMPLES = 3000; // ~5 minutes at 10 Hz
 
-let buffer = new Float32Array(GHOST_MAX_SAMPLES * GHOST_FLOATS_PER_SAMPLE);
+const buffer = new Float32Array(GHOST_MAX_SAMPLES * GHOST_FLOATS_PER_SAMPLE);
 let writeIndex = 0;
 let sampleAccum = 0;
 let recording = false;

@@ -98,11 +98,11 @@ export function downsampleF32(
   const height = Math.max(1, destH | 0);
   const values = new Float32Array(width * height);
   for (let dy = 0; dy < height; dy += 1) {
-    let y0 = Math.floor((dy * srcH) / height);
+    const y0 = Math.floor((dy * srcH) / height);
     let y1 = Math.floor(((dy + 1) * srcH) / height);
     if (y1 <= y0) y1 = Math.min(srcH, y0 + 1);
     for (let dx = 0; dx < width; dx += 1) {
-      let x0 = Math.floor((dx * srcW) / width);
+      const x0 = Math.floor((dx * srcW) / width);
       let x1 = Math.floor(((dx + 1) * srcW) / width);
       if (x1 <= x0) x1 = Math.min(srcW, x0 + 1);
       let sum = 0;

@@ -76,9 +76,9 @@ export function tickScoreSystem(deltaTime: number, speed: number): void {
   const state = useGameStore.getState();
   if (state.isPaused || state.isWipeout) return;
 
-  let score = state.score + speed * dt * Math.max(1, state.multiplier);
+  const score = state.score + speed * dt * Math.max(1, state.multiplier);
   let multiplier = state.multiplier;
-  let topSpeed = Math.max(state.topSpeed, speed);
+  const topSpeed = Math.max(state.topSpeed, speed);
   let comboLabel = state.comboLabel;
   let highScore = state.highScore;
 

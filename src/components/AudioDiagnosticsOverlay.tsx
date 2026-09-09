@@ -60,10 +60,6 @@ function gatherAudioState(segmentIndex: number): AudioState {
 }
 
 const AudioDiagnosticsOverlay: React.FC = () => {
-  if (!import.meta.env.DEV) {
-    return null;
-  }
-
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   const [state, setState] = useState<AudioState>(() => gatherAudioState(currentSegmentIndex));
 
@@ -73,6 +69,14 @@ const AudioDiagnosticsOverlay: React.FC = () => {
     }, 500);
     return () => clearInterval(id);
   }, [currentSegmentIndex]);
+
+  // Dev-only overlay. The gate sits *after* the hooks, not before: an early
+  // return above them makes the hook order conditional (react-hooks/rules-of-hooks),
+  // and `import.meta.env.DEV` is a build-time constant anyway, so the hooks cost
+  // nothing in a production bundle where this component never renders.
+  if (!import.meta.env.DEV) {
+    return null;
+  }
 
   const panelStyle: React.CSSProperties = {
     position: 'fixed',
