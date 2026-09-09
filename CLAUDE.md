@@ -62,7 +62,7 @@ src/
 │   ├── PostProcessingPipeline.tsx
 │   ├── GameHUD.tsx / UI.tsx / PauseMenu.tsx / Loader.tsx
 │   ├── Environment/             # Instanced biome decorations (~34 types, all `.tsx`)
-│   ├── Obstacles/               # Rocks, pillar break VFX
+│   ├── Obstacles/               # Rocks, pillar break VFX, breakable trestle
 │   ├── VFX/                     # Splash particles
 │   └── LevelEditor/             # In-game level tools
 │
@@ -77,9 +77,11 @@ src/
 │   ├── GameState.ts             # ★ Zustand store — the only root *.ts besides index.ts
 │   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
 │   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality
+│   ├── lumber/trestleSpan.ts    # Breakable trestle deck (forecast + hydroEvents)
 │   ├── water/SplashSystem.tsx   # Splash particles + SWE disturbance
+│   ├── water/sweSwirl.ts        # Surface swirl owner — SWE sink vs authored drain
 │   ├── water/sweQuality.ts      # SWE grid/step/displacement budget per quality preset
-│   ├── audio/AudioSystem.ts / water/WatershedWasm.ts
+│   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/WatershedWasm.ts
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts

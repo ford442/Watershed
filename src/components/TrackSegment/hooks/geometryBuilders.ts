@@ -21,6 +21,101 @@ export interface GeometryBuildContext {
   isSlotCanyon: boolean;
   isGlacier: boolean;
   biomeProfile: TrackBiomeProfile;
+  /**
+   * Inward-curving wall profile (ice tube / overflow pipe). Null for open-sky
+   * segments, which is every biome that is not glacial melt or a hydro pipe.
+   */
+  tubeProfile?: TubeProfile | null;
+}
+
+/**
+ * Tube cross-section (`plan.md` §1: "produce inward-curving walls … to form a
+ * tube/tunnel").
+ *
+ * The canyon mesh is a heightfield in `x`, so a tunnel cannot come from `y`
+ * alone — the wall vertices have to move inward as they climb. `curl` folds
+ * them back over the channel, `ceilingHeight` is where the crown lands. The
+ * corridor itself is never touched, so the thalweg, the water mesh and the SWE
+ * bed sampler all keep reading the same floor they did before.
+ */
+export interface TubeProfile {
+  /**
+   * Inward fold, 0 (open canyon) – 1 (walls meet on the centreline). Above
+   * ~2/3 the fold is non-monotone in x, which is the overhang: the crown sits
+   * inboard of the springing.
+   */
+  curl: number;
+  /** Local Y of the tube crown, in the same datum as `yHeight`. */
+  ceilingHeight: number;
+}
+
+/** Glacial melt: a near-closed ice tube with a slot of sky at the crown. */
+export const ICE_TUBE_PROFILE: TubeProfile = { curl: 0.88, ceilingHeight: 9.5 };
+
+/** Hydro-Dam overflow pipe: a wider concrete corridor you can still see out of. */
+export const OVERFLOW_PIPE_PROFILE: TubeProfile = { curl: 0.72, ceilingHeight: 8 };
+
+/**
+ * Widest canyon that still reads as an enclosed tube.
+ *
+ * The glacial map is not a tube end to end — it runs ice cave → tube apex →
+ * melt widening → alpine fringe, and the authored `width` is what says which is
+ * which (21–26 through the tube, 32–35 once it opens out). Roofing the melt-out
+ * would throw away the one moment the source biome breathes.
+ */
+export const TUBE_MAX_CANYON_WIDTH = 29;
+
+/**
+ * Which segments get a tube. Kept next to the profiles so authoring one place
+ * cannot drift from the geometry that reads it.
+ */
+export function resolveTubeProfile(opts: {
+  isGlacier: boolean;
+  biome: BiomeId | string;
+  type?: string;
+  canyonWidth: number;
+}): TubeProfile | null {
+  if (!Number.isFinite(opts.canyonWidth) || opts.canyonWidth > TUBE_MAX_CANYON_WIDTH) {
+    return null;
+  }
+  if (opts.isGlacier) return ICE_TUBE_PROFILE;
+  // The overflow pipe is authored as a `waterfall` on the hydro map; the type
+  // alone is not enough, or every plunge in the game would grow a roof.
+  if (opts.biome === 'hydroDam' && opts.type === 'waterfall') return OVERFLOW_PIPE_PROFILE;
+  return null;
+}
+
+/**
+ * Fold one canyon vertex into the tube cross-section.
+ *
+ * Inside `corridorHalfWidth` nothing moves. Outside it the vertex climbs an
+ * arc toward `ceilingHeight` while `x` is pulled back toward the centreline by
+ * `curl * climb²`, so the wall leaves the springing vertical and finishes
+ * overhanging.
+ */
+export function applyTubeProfile(
+  xLocal: number,
+  yHeight: number,
+  corridorHalfWidth: number,
+  canyonHalfWidth: number,
+  profile: TubeProfile,
+): { x: number; y: number } {
+  const edge = Math.abs(xLocal);
+  const open = Math.max(0.5, Math.min(corridorHalfWidth, canyonHalfWidth * 0.9));
+  if (!Number.isFinite(edge) || edge <= open) return { x: xLocal, y: yHeight };
+
+  const span = Math.max(1e-3, canyonHalfWidth - open);
+  const climb = Math.min(1, (edge - open) / span);
+  const curl = THREE.MathUtils.clamp(profile.curl, 0, 1);
+  const folded = open + (edge - open) * (1 - curl * climb * climb);
+
+  // Quarter-sine arc: leaves the springing at the canyon's own wall height and
+  // lands exactly on the authored crown, so the roof is a number an author set
+  // rather than one that fell out of the biome's wall curve.
+  const arc = Math.sin(climb * Math.PI * 0.5);
+  const y = yHeight * (1 - arc) + profile.ceilingHeight * arc;
+
+  return { x: Math.sign(xLocal) * folded, y };
 }
 
 function sampleChannelShape(
@@ -190,8 +285,17 @@ export function canyonSubdivisionCounts(
  * Returns null when path length is invalid.
  */
 export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeometry | null {
-  const { segmentPath, segmentId, canyonWidth, waterWidth, biome, channelProfile, isSlotCanyon, isGlacier } =
-    ctx;
+  const {
+    segmentPath,
+    segmentId,
+    canyonWidth,
+    waterWidth,
+    biome,
+    channelProfile,
+    isSlotCanyon,
+    isGlacier,
+    tubeProfile,
+  } = ctx;
 
   const len = segmentPath.getLength();
   if (!len || len <= 0 || !Number.isFinite(len)) {
@@ -260,7 +364,7 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     vertex.fromBufferAttribute(positions, i);
     const xLocal = vertex.x;
     const zLocal = vertex.z;
-    const { yHeight, channelShape } = computeCanyonFloorHeight(
+    const { yHeight: floorHeight, channelShape } = computeCanyonFloorHeight(
       xLocal,
       zLocal,
       len,
@@ -270,6 +374,12 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
       isSlotCanyon,
       { includeRockNoise: true }
     );
+    // Fold before colouring, so the crown is tinted by the height it ends up
+    // at rather than the open-canyon wall height it would have had.
+    const tubed = tubeProfile
+      ? applyTubeProfile(xLocal, floorHeight, channelShape.corridorHalfWidth, canyonWidth * 0.5, tubeProfile)
+      : { x: xLocal, y: floorHeight };
+    const yHeight = tubed.y;
     const t = (zLocal + len / 2) / len;
     const safeT = Math.max(0, Math.min(1, t));
     const point = safePathPoint(segmentPath, safeT, segmentId);
@@ -294,7 +404,7 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
 
-    const finalX = point.x + xLocal;
+    const finalX = point.x + tubed.x;
     const finalY = point.y + yHeight;
     const finalZ = point.z;
 
@@ -318,7 +428,8 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
  * trimesh RigidBody so the visual mesh no longer owns Rapier colliders.
  */
 export function buildCollisionGeometry(ctx: GeometryBuildContext): THREE.BufferGeometry | null {
-  const { segmentPath, segmentId, canyonWidth, waterWidth, channelProfile, isSlotCanyon } = ctx;
+  const { segmentPath, segmentId, canyonWidth, waterWidth, channelProfile, isSlotCanyon, tubeProfile } =
+    ctx;
 
   const len = segmentPath.getLength();
   if (!len || len <= 0 || !Number.isFinite(len)) {
@@ -337,7 +448,7 @@ export function buildCollisionGeometry(ctx: GeometryBuildContext): THREE.BufferG
     vertex.fromBufferAttribute(positions, i);
     const xLocal = vertex.x;
     const zLocal = vertex.z;
-    const { yHeight } = computeCanyonFloorHeight(
+    const { yHeight: floorHeight, channelShape } = computeCanyonFloorHeight(
       xLocal,
       zLocal,
       len,
@@ -347,12 +458,16 @@ export function buildCollisionGeometry(ctx: GeometryBuildContext): THREE.BufferG
       isSlotCanyon,
       { includeRockNoise: false }
     );
+    // Same fold as the visual mesh — the hull must ride the tube it can see.
+    const tubed = tubeProfile
+      ? applyTubeProfile(xLocal, floorHeight, channelShape.corridorHalfWidth, canyonWidth * 0.5, tubeProfile)
+      : { x: xLocal, y: floorHeight };
     const t = (zLocal + len / 2) / len;
     const safeT = Math.max(0, Math.min(1, t));
     const point = safePathPoint(segmentPath, safeT, segmentId);
 
-    const finalX = point.x + xLocal;
-    const finalY = point.y + yHeight;
+    const finalX = point.x + tubed.x;
+    const finalY = point.y + tubed.y;
     const finalZ = point.z;
 
     if (Number.isFinite(finalX) && Number.isFinite(finalY) && Number.isFinite(finalZ)) {

@@ -14,6 +14,7 @@ import IceSpray from '../Environment/IceSpray';
 import Icicles from '../Environment/Icicles';
 import IceSheets from '../Environment/IceSheets';
 import VortexVisual from '../VortexVisual';
+import BreakableTrestle from '../Obstacles/BreakableTrestle';
 import { effectiveVortexStrength } from '../../physics/vortexForces';
 
 import { useLOD } from '../../systems/lod/LODManager';
@@ -31,6 +32,11 @@ import {
     updateCanyonSurfaceMaterial,
 } from '../../materials/canyon/createCanyonSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { parseHydroEvents } from '../../systems/water/hydroEvents';
+import { getActiveLaunchHour } from '../../systems/journey/runSession';
+import { getActiveMap } from '../../maps/registry';
+import { resolveTrestleSpan } from '../../systems/lumber/trestleSpan';
+import { resolveSurfaceSwirl } from '../../systems/water/sweSwirl';
 import PondFog from './PondFog';
 import { TrackSegmentCollisionMeshes } from './TrackSegmentCollisionMeshes';
 import { TrackSegmentDecorations } from './TrackSegmentDecorations';
@@ -96,7 +102,52 @@ export function TrackSegmentMeshes({
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef<WallMaterial | null>(null);
 
-    // Static lumber debris positions (v1 — visual only, not breakable)
+    /**
+     * The run's authored hydro events + launch hour. Fixed for the run, so it
+     * is resolved once per mount rather than per frame (same contract as
+     * VortexForceSystem's `liveHydroVortices`).
+     */
+    const runHydro = useMemo(() => {
+      try {
+        return {
+          events: parseHydroEvents(getActiveMap().levelData.hydroEvents),
+          hour: getActiveLaunchHour(),
+        };
+      } catch {
+        return { events: [], hour: 0 };
+      }
+    }, []);
+
+    /**
+     * Lumber trestle deck. `hasBridge` authors it; the forecast state and the
+     * segment's live braid / roughness events decide how much of it is left,
+     * so 14:00 opens a wider hole than 06:00 over the same authored gap.
+     */
+    const trestleSpan = useMemo(
+      () =>
+        resolveTrestleSpan({
+          hasBridge: isLumberFlume && Boolean(config?.hasBridge),
+          segmentState,
+          washedOutGap: Boolean(config?.washedOutGap),
+          events: runHydro.events,
+          segmentIndex: segmentId,
+          hour: runHydro.hour,
+          waterWidth,
+          pathLength,
+        }),
+      [
+        isLumberFlume,
+        config?.hasBridge,
+        config?.washedOutGap,
+        runHydro,
+        segmentId,
+        segmentState,
+        waterWidth,
+        pathLength,
+      ],
+    );
+
+    // Floating lumber debris — decoration. The load-bearing deck is BreakableTrestle.
     const lumberPropPositions = useMemo(
       () =>
         buildLumberPropPositions({
@@ -123,15 +174,38 @@ export function TrackSegmentMeshes({
       [isHydroDam, segmentPath, pathLength, waterLevel, config?.hasBridge, vortexConfig],
     );
 
-    const vortexCenter = useMemo(
-      () => buildVortexCenter(vortexConfig, segmentPath),
-      [vortexConfig, segmentPath],
+    /**
+     * Surface swirl owner. A live `hydroEvents` vortex is already sinking η and
+     * spinning u,w in the field the hull samples, so on those hours the shader
+     * reads that sink rather than painting a second, independently-authored
+     * vortex on the same water (#399, visual half of the #397 authority rule).
+     */
+    const surfaceSwirl = useMemo(
+      () =>
+        resolveSurfaceSwirl({
+          segmentIndex: segmentId,
+          hour: runHydro.hour,
+          events: runHydro.events,
+          authored: vortexConfig ?? null,
+          authoredIntensity: vortexConfig
+            ? effectiveVortexStrength(segmentState, flowSpeed)
+            : 0,
+        }),
+      [segmentId, runHydro, vortexConfig, segmentState, flowSpeed],
     );
 
-    const vortexVisualIntensity = useMemo(() => {
-      if (!vortexConfig) return 0;
-      return effectiveVortexStrength(segmentState, flowSpeed);
-    }, [vortexConfig, segmentState, flowSpeed]);
+    const vortexCenter = useMemo(
+      () =>
+        surfaceSwirl.centerT === null
+          ? null
+          : buildVortexCenter(
+              { centerT: surfaceSwirl.centerT, lateralOffset: surfaceSwirl.lateralOffset },
+              segmentPath,
+            ),
+      [surfaceSwirl, segmentPath],
+    );
+
+    const vortexVisualIntensity = surfaceSwirl.intensity;
 
     // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
     const playerVelocityRef = useRef(0);
@@ -447,14 +521,23 @@ export function TrackSegmentMeshes({
                 sunWorldPosition={sunWorldPosition}
                 isPond={type === 'pond'}
                 vortexCenter={vortexCenter ?? undefined}
-                vortexRadius={vortexConfig?.radius}
+                vortexRadius={surfaceSwirl.radius || undefined}
                 vortexIntensity={vortexVisualIntensity}
             />
 
-            {vortexCenter && vortexConfig && (
+            {trestleSpan.present && (
+                <BreakableTrestle
+                    segmentId={segmentId}
+                    span={trestleSpan}
+                    segmentPath={segmentPath}
+                    waterLevel={waterLevel}
+                />
+            )}
+
+            {vortexCenter && surfaceSwirl.intensity > 0 && (
                 <VortexVisual
                     center={vortexCenter}
-                    radius={vortexConfig.radius}
+                    radius={surfaceSwirl.radius}
                     intensity={vortexVisualIntensity}
                     particleCount={56}
                     color="#5a9ae9"

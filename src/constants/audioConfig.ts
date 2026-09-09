@@ -92,8 +92,6 @@ export const AUDIO_CONFIG = {
     splash: 'collide_water',
     whoosh: 'water_whoosh',
     coldWind: 'ambient_wind',
-    /** Continuous speed wind bed — stub reuses ambient_wind until a dedicated loop lands. */
-    speedWind: 'ambient_wind',
     iceCrack: 'collide_rock',
   },
 

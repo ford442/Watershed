@@ -34,6 +34,7 @@ import {
   type SurvivalState,
   type SurvivalTickInput,
 } from '../survival';
+import { resetWetnessMuffle, setSfxWetnessMultiplier } from '../audio/wetnessMuffle';
 
 export type JourneyMode = 'single' | 'journey';
 
@@ -79,6 +80,9 @@ export function initRunSession(options: {
   loadoutId?: LoadoutId | string;
   journeyMode?: JourneyMode;
 }): RunSessionSnapshot {
+  // A new run starts dry — never inherit the last run's muffle.
+  resetWetnessMuffle();
+
   const journeyMode = options.journeyMode ?? 'single';
   const mapStack =
     journeyMode === 'journey' ? buildCampaignStack(options.mapId) : [options.mapId];
@@ -176,6 +180,9 @@ export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
     peakWetness: Math.max(activeSession.peakWetness, survival.wetness),
   };
   const mods = getSurvivalModifiers(activeSession.survival, input.biomeId, loadout);
+  // Wetness SFX muffling (#301 leftover): the modifier has been derived here
+  // all along; this is the one line that lets the mixer hear it.
+  setSfxWetnessMultiplier(mods.sfxWetnessMultiplier);
   if (mods.exposureStress > activeSession.peakExposureStress) {
     activeSession = {
       ...activeSession,
@@ -360,6 +367,7 @@ export function notePeakAirTime(seconds: number): void {
 export function resetRunSessionForTests(): void {
   activeSession = null;
   awardedCacheSegments = new Set();
+  resetWetnessMuffle();
 }
 
 function normalizeHour(hour: number): number {
