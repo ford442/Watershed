@@ -95,8 +95,8 @@ export function generateRiverPath(
   const rng = new SeededRandom(seed);
   const points: THREE.Vector3[] = [startPoint.clone()];
 
-  let currentPos = startPoint.clone();
-  let direction = startDirection.clone().normalize();
+  const currentPos = startPoint.clone();
+  const direction = startDirection.clone().normalize();
 
   // Generate 4 control points for Catmull-Rom curve
   for (let i = 0; i < 3; i++) {
@@ -150,8 +150,8 @@ export function generateSegmentPath(
   const rng = new SeededRandom(seed);
   const points: THREE.Vector3[] = [startPoint.clone()];
 
-  let currentPos = startPoint.clone();
-  let direction = startDirection.clone().normalize();
+  const currentPos = startPoint.clone();
+  const direction = startDirection.clone().normalize();
 
   const meanderStrength = progression.meanderStrength ?? DEFAULT_SEGMENT_PROGRESSION.meanderStrength;
   const verticalBias = progression.verticalBias ?? DEFAULT_SEGMENT_PROGRESSION.verticalBias;

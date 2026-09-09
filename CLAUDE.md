@@ -9,7 +9,9 @@
 ```bash
 npm install
 npm start          # dev server on port 3000 (Vite)
-npm test           # unit tests (Jest/RTL)
+npm test           # unit tests (Vitest + Testing Library)
+npm run lint       # ESLint (flat config, TS + react-hooks + R3F rules)
+npm run typecheck  # tsc --noEmit + the layout/GLSL/typecheck-surface guards
 npm run build      # production build → build/
 ```
 
@@ -197,7 +199,7 @@ The following previously-listed debug items have been cleaned up:
 
 1. **`App.tsx` — Green debug overlay** — ✅ Removed. The always-visible "Canvas Ready / Loading Active" panel is gone from production builds.
 2. **`RaftVehicle/` — Hotpink debug cube** — ✅ Removed. The pink `[0.3, 0.3, 0.3]` box is no longer present.
-3. **`App.tsx` — `antialias`** — ✅ Now driven by `rendererContextOptions.antialias` (quality-preset aware).
+3. **`App.tsx` — `antialias`** — ✅ Now driven by `rendererContextOptions.antialias`, which comes from the boot-negotiated `GraphicsEnvelope` (`probeGraphicsCapability.ts`) — a session constant, deliberately *not* preset-aware, so a quality change can never remount the Canvas.
 4. **`EnhancedSky.tsx` — Stars always rendered** — Stars are gated on time-of-day / biome; still visible at dusk by design.
 
 Legacy top-level `Player` duals were removed; player movement lives under `src/vehicles/`.
@@ -223,12 +225,15 @@ The water shader is solid. Two tweaks to match the concept:
 - Increase foam density near canyon walls (bank foam mask already exists — tune `bankFoamMask` threshold at `FlowingWater.tsx:111`)
 - Add a very slight camera-height turbulence (wave amplitude scales with camera proximity to water surface)
 
-### Step 4 — Post-processing / atmosphere (2–3 hours)
-The biggest single visual upgrade. Add `@react-three/postprocessing`:
-- **Bloom** — brightest water highlights, sun shafts (`SunShafts.tsx` exists but needs bloom to read)
-- **Vignette** — reinforce canyon tunnel feel
-- **ChromaticAberration** (subtle, speed-triggered) — conveys velocity
-- **SSAO** (EffectComposer from `@react-three/postprocessing`) — ground truth ambient occlusion in crevices
+### Step 4 — Post-processing / atmosphere ✅ (mostly)
+Shipped in `PostProcessingPipeline.tsx`, but **not** via `@react-three/postprocessing`: the live stack is
+Three's own JSM `EffectComposer` plus `postprocessing@6`. (`@react-three/postprocessing@3.0.4` is still a
+dependency only because `vite.config.ts` names it in `manualChunks`; nothing imports it.)
+- **Bloom** — ✅ `UnrealBloomPass`
+- **Vignette** — ✅ `VignetteShader`
+- **ChromaticAberration** (subtle, speed-triggered) — ✅ custom `ChromaticAberrationShader`
+- **God rays** — ✅ `VolumetricGodRays`
+- **SSAO** — ❌ not implemented; still the open item in this step
 
 ### Step 5 — Map-driven TrackManager ✅
 `MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
@@ -255,7 +260,10 @@ With the above in place:
 ## Testing
 
 ```bash
-npm test                          # unit tests
+npm test                          # unit tests (Vitest)
+npm run lint                      # ESLint — 0 errors is the gate; warnings are a tracked backlog
+npm run typecheck                 # tsc + repo layout guards
+npm run test:visual-smoke         # headless WebGL pixel gate (needs `npm run preview`)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
 
@@ -299,7 +307,9 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/components/FlowingWater.tsx` | Water shader uniforms and GLSL |
 | `src/materials/water/createWaterMaterial.ts` | Water material host — picks GLSL vs TSL backend |
 | `src/rendering/materialBackend.ts` | `?material=glsl\|tsl` resolution (#256 path A) |
-| `src/rendering/deriveRendererContextOptions.ts` | Quality → WebGL context attributes; Canvas remount key |
+| `src/rendering/deriveRendererContextOptions.ts` | Quality → DPR/shadows (live half); Canvas remount key |
+| `src/rendering/probeGraphicsCapability.ts` | Boot graphics negotiation — tier + frozen context envelope |
+| `src/rendering/bootCrashGuard.ts` | "previous boot never got a steady frame" flag |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |

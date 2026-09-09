@@ -46,14 +46,15 @@ vi.mock('@react-three/drei', () => ({
 
 vi.mock('./Experience', () => {
   const React = require('react') as typeof import('react');
-  return {
-    default: () => {
-      React.useEffect(() => {
-        mounts.experience += 1;
-      }, []);
-      return React.createElement('div', { 'data-testid': 'experience' });
-    },
+  // Named (and capitalised) so it reads as a component to React and to the
+  // react-hooks lint rule, not as an anonymous factory that happens to hook.
+  const ExperienceMock = () => {
+    React.useEffect(() => {
+      mounts.experience += 1;
+    }, []);
+    return React.createElement('div', { 'data-testid': 'experience' });
   };
+  return { default: ExperienceMock };
 });
 
 import App from './App';

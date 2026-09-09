@@ -209,9 +209,9 @@ export default function Fish({ transforms }: BiomeDecorationProps) {
     for (let i = 0; i < animated; i++) {
       const f = fish[i];
       const angle = f.angleOffset + t * f.wanderSpeed;
-      let x = f.base.x + Math.cos(angle) * f.wanderRadius;
+      const x = f.base.x + Math.cos(angle) * f.wanderRadius;
       let y = f.base.y;
-      let z = f.base.z + Math.sin(angle * 0.9) * f.wanderRadius;
+      const z = f.base.z + Math.sin(angle * 0.9) * f.wanderRadius;
 
       const vx = -Math.sin(angle) * f.wanderRadius * f.wanderSpeed;
       const vz = Math.cos(angle * 0.9) * f.wanderRadius * f.wanderSpeed * 0.9;
