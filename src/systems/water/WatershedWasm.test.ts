@@ -32,6 +32,7 @@ import {
   buildArtifactProbes,
   describeProvenanceMismatch,
   fetchArtifactByteLength,
+  isIdentityEncoding,
   isWasmInitTimeoutError,
   isWasmProvenanceMismatchError,
   probeArtifactProvenance,
@@ -896,5 +897,30 @@ describe('getWasm provenance guard', () => {
 
     await expect(getWasm()).resolves.toMatchObject({ getVersion: expect.any(Function) });
     expect(peekWasmInitError()).toBeNull();
+  });
+});
+
+describe('fetchArtifactByteLength — compressed responses', () => {
+  it('ignores a gzipped content-length and measures the decoded body', async () => {
+    // The deploy target gzips .wasm: 33811 B file advertised as 16146 B.
+    const stub = vi.fn(async (_url: string, init?: { method?: string }) => {
+      if (init?.method === 'HEAD') {
+        return {
+          headers: {
+            get: (name: string) =>
+              name === 'content-encoding' ? 'gzip' : name === 'content-length' ? '16146' : null,
+          },
+          arrayBuffer: async () => new ArrayBuffer(0),
+        };
+      }
+      return { headers: { get: () => null }, arrayBuffer: async () => new ArrayBuffer(33811) };
+    });
+    await expect(fetchArtifactByteLength('/watershed_native.wasm', stub as never)).resolves.toBe(33811);
+  });
+
+  it('treats identity encoding as trustworthy', () => {
+    expect(isIdentityEncoding(null)).toBe(true);
+    expect(isIdentityEncoding('identity')).toBe(true);
+    expect(isIdentityEncoding('gzip')).toBe(false);
   });
 });

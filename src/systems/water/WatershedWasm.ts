@@ -462,8 +462,12 @@ export async function fetchArtifactByteLength(
   if (!doFetch) return null;
   try {
     const head = await doFetch(url, { method: 'HEAD' });
+    // content-length is only the true size when the body is NOT content-encoded.
+    // test.1ink.us gzips .wasm, so a naive read there returns 16146 for a 33817 B
+    // file — a false mismatch. When encoding is in play, decode and measure.
+    const encoding = head.headers.get('content-encoding');
     const len = head.headers.get('content-length');
-    if (len != null && len !== '') {
+    if (isIdentityEncoding(encoding) && len != null && len !== '') {
       const parsed = Number(len);
       if (Number.isFinite(parsed) && parsed >= 0) return parsed;
     }
@@ -472,6 +476,12 @@ export async function fetchArtifactByteLength(
   } catch {
     return null;
   }
+}
+
+/** True when a response body is stored as-is (no gzip/br/deflate on the wire). */
+export function isIdentityEncoding(contentEncoding: string | null | undefined): boolean {
+  if (contentEncoding == null || contentEncoding === '') return true;
+  return contentEncoding.trim().toLowerCase() === 'identity';
 }
 
 let _modulePromise: Promise<WatershedNativeModule> | null = null;

@@ -41,6 +41,7 @@
     "test:watch": "vitest",
     "test:visual-smoke": "node verification/visual_smoke.mjs",
     "test:deploy": "python3 scripts/test_deploy_plan.py",
+    "verify:deploy": "node verification/verify_deploy.mjs",
     "test:visual-smoke:update": "UPDATE_BASELINES=1 node verification/visual_smoke.mjs",
     "test:wasm": "WATERSHED_WASM_INTEGRATION=1 vitest run src/systems/water/WatershedWasm.integration.test.ts",
     "build:wasm": "cd emscripten && bash build.sh",
