@@ -5,22 +5,27 @@
  * It renders only under a node-capable renderer (WebGPURenderer, WebGL2 backend by
  * default) — classic THREE.WebGLRenderer has no node pipeline.
  *
- * PARITY: the displacement, foam, depth-tint, fresnel, caustics, specular, and
- * alpha math below are line-for-line ports of the GLSL in FlowingWater.tsx, using
- * the same WATER_SHADER constants, so the two backends can be compared directly.
+ * PARITY: the displacement, foam, depth-tint, fresnel, caustics, specular, planar
+ * reflection, god-ray, and alpha math below are line-for-line ports of the GLSL in
+ * FlowingWater.tsx, using the same WATER_SHADER constants, so the two backends can
+ * be compared directly.
  *
- * KNOWN GAPS vs the GLSL surface (tracked in docs/reference/RENDERER.md):
- *   - planar reflection texture sample (`reflectionTexture` / `reflectionStrength`)
- *   - canyon god rays (`godRayStrength`, `sunDir`)
- *   - flow-map driven flow bias (`USE_FLOWMAP` define)
- *   - dynamic per-biome fragment shader overrides (`useShaderLoader`)
- * Their uniforms still exist and are still updated; they simply have no effect on
- * this backend yet, so switching backends can never crash on a missing uniform.
+ * STAGE SPLIT (#399 phase A): the displacement field, its 4-sample normal, the wave
+ * and current scalars, the world position, and the view direction are computed once
+ * in the VERTEX stage and interpolated — the same varying set the GLSL vertex shader
+ * writes (`vNormal` / `vWave` / `vCurrent` / `vWorldPos` / `vViewDir`). The fragment
+ * stage no longer re-evaluates the displacement field five times per pixel.
  *
- * PERF NOTE: the displacement field is evaluated again in the fragment stage
- * instead of being passed through varyings. That keeps the port readable and
- * exactly matched to the GLSL, at the cost of extra fragment ALU. Move to
- * varyings once visual parity is signed off.
+ * The flow-map branch mirrors the GLSL `USE_FLOWMAP` define: it is a BUILD-time
+ * variant keyed on whether a flow map was supplied, not a runtime uniform, so a
+ * boot without a flow map pays no sampler cost — exactly like the define.
+ *
+ * KNOWN GAP vs the GLSL surface (tracked in docs/reference/RENDERER.md):
+ *   - dynamic per-biome fragment shader overrides (`useShaderLoader`). That hook
+ *     fetches GLSL SOURCE TEXT from a backend and swaps it into the ShaderMaterial;
+ *     there is no node-graph equivalent of "compile this string", so it is
+ *     permanently GLSL-only rather than an unfinished port. A biome that sets
+ *     `shaderId` gets its custom look on `?material=glsl` only.
  */
 
 import * as THREE from 'three';
@@ -29,6 +34,8 @@ import {
   Fn,
   abs,
   cameraPosition,
+  cameraProjectionMatrix,
+  cameraViewMatrix,
   clamp,
   cos,
   cross,
@@ -36,11 +43,11 @@ import {
   float,
   length,
   max,
-  min,
   mix,
+  modelWorldMatrix,
   normalize,
+  positionGeometry,
   positionLocal,
-  positionWorld,
   pow,
   reflect,
   sin,
@@ -49,6 +56,7 @@ import {
   texture,
   uniform,
   uv,
+  varying,
   vec2,
   vec3,
   vec4,
@@ -105,7 +113,7 @@ function buildUniformNodes(init: WaterUniformInit): WaterNodeUniforms {
 
 /**
  * Displacement field — port of `getDisplacement()` in FlowingWater.tsx.
- * `p` is world XZ, `fb` the flow bias.
+ * `p` is local XZ, `fb` the flow bias.
  */
 function buildDisplacement(u: WaterNodeUniforms) {
   const time = nd(u.time);
@@ -207,10 +215,75 @@ function buildSweSampler(u: WaterNodeUniforms) {
   });
 }
 
+/**
+ * Flow bias — the GLSL `USE_FLOWMAP` define as a build-time variant.
+ * Without a flow map both stages fall back to the same `vec2(sin(time*0.1), -1)`.
+ */
+function buildFlowBias(u: WaterNodeUniforms, useFlowMap: boolean) {
+  if (!useFlowMap) {
+    return vec2(sin(nd(u.time).mul(0.1)), float(-1));
+  }
+  return nd(u.flowMap).uv(uv().mul(0.5)).rg.mul(2).sub(1);
+}
+
+/**
+ * Vertex-stage surface solve. Everything here is evaluated once per vertex and
+ * interpolated — the fragment stage reads the varyings, never the field.
+ */
+function buildSurfaceVaryings(u: WaterNodeUniforms, flowBias: ReturnType<typeof vec2>) {
+  const displacement = buildDisplacement(u);
+  const sweSample = buildSweSampler(u);
+  const time = nd(u.time);
+  const flowSpeed = nd(u.flowSpeed);
+
+  // GLSL takes displacement in LOCAL XZ and the SWE field in WORLD XZ, both from
+  // the undisplaced vertex — `positionGeometry`, not the already-assigned
+  // `positionLocal`, so the sample sites cannot drift with the displacement.
+  const localXZ = positionGeometry.xz;
+  const worldPosVertex = modelWorldMatrix.mul(vec4(positionGeometry, float(1))).xyz;
+  const worldXZVertex = worldPosVertex.xz;
+
+  const sampleAt = (offset: ReturnType<typeof vec2>) =>
+    displacement(localXZ.add(offset), flowBias).add(sweSample(worldXZVertex.add(offset)));
+
+  // --- surface normal from the displacement gradient (GLSL 4-sample cross) ---
+  const h = float(0.08);
+  const dCenter = sampleAt(vec2(0, 0));
+  const dL = sampleAt(vec2(h.negate(), float(0)));
+  const dR = sampleAt(vec2(h, float(0)));
+  const dD = sampleAt(vec2(float(0), h.negate()));
+  const dU = sampleAt(vec2(float(0), h));
+  const tangentX = normalize(vec3(h.mul(2), dR.sub(dL), float(0)));
+  const tangentZ = normalize(vec3(float(0), dU.sub(dD), h.mul(2)));
+  const surfaceNormal = normalize(cross(tangentZ, tangentX));
+
+  // vCurrent — swell magnitude, mirrors the GLSL vertex stage (local XZ).
+  const scale = float(WATER_SHADER.DISPLACEMENT_STRENGTH).mul(
+    float(0.6).add(flowSpeed.mul(0.4)),
+  );
+  const c1 = normalize(vec2(flowBias.x.mul(0.3), float(-1)));
+  const s1 = sin(dot(localXZ, c1).mul(0.4).add(time.mul(flowSpeed).mul(0.8))).mul(0.6);
+  const c2 = normalize(vec2(flowBias.x.mul(0.5).add(0.2), float(-1)));
+  const s2 = sin(dot(localXZ, c2).mul(0.55).add(time.mul(flowSpeed).mul(1.1)).add(1.57)).mul(0.4);
+  const current = clamp(abs(s1).add(abs(s2)).mul(scale), float(0), float(1));
+
+  return {
+    /** Total Y displacement at this vertex — drives `positionNode`. */
+    displacedY: dCenter,
+    vNormal: varying(surfaceNormal, 'vWaterNormal'),
+    vWave: varying(clamp(dCenter.mul(2).add(0.5), float(0), float(1)), 'vWaterWave'),
+    vCurrent: varying(current, 'vWaterCurrent'),
+    /** Undisplaced world position, exactly like the GLSL `vWorldPos`. */
+    vWorldPos: varying(worldPosVertex, 'vWaterWorldPos'),
+    vViewDir: varying(normalize(cameraPosition.sub(worldPosVertex)), 'vWaterViewDir'),
+  };
+}
+
+type SurfaceVaryings = ReturnType<typeof buildSurfaceVaryings>;
+
 function buildColorNode(
   u: WaterNodeUniforms,
-  displacement: ReturnType<typeof buildDisplacement>,
-  sweSample: ReturnType<typeof buildSweSampler>,
+  surface: SurfaceVaryings,
   flowBias: ReturnType<typeof vec2>,
 ) {
   const time = nd(u.time);
@@ -224,34 +297,13 @@ function buildColorNode(
   const vortexRadius = nd(u.vortexRadius);
   const vortexIntensity = nd(u.vortexIntensity);
 
-  const worldPos = positionWorld;
+  const worldPos = surface.vWorldPos;
   const worldXZ = worldPos.xz;
 
-  // --- surface normal from the displacement gradient (GLSL 4-sample cross) ---
-  const h = float(0.08);
-  const sample = (offset: ReturnType<typeof vec2>) =>
-    displacement(worldXZ.add(offset), flowBias).add(sweSample(worldXZ.add(offset)));
-  const dCenter = sample(vec2(0, 0));
-  const dL = sample(vec2(h.negate(), float(0)));
-  const dR = sample(vec2(h, float(0)));
-  const dD = sample(vec2(float(0), h.negate()));
-  const dU = sample(vec2(float(0), h));
-  const tangentX = normalize(vec3(h.mul(2), dR.sub(dL), float(0)));
-  const tangentZ = normalize(vec3(float(0), dU.sub(dD), h.mul(2)));
-  const normalN = normalize(cross(tangentZ, tangentX));
-  const viewDirN = normalize(cameraPosition.sub(worldPos));
-
-  const wave = clamp(dCenter.mul(2).add(0.5), float(0), float(1));
-
-  // vCurrent — swell magnitude, mirrors the GLSL vertex stage.
-  const scale = float(WATER_SHADER.DISPLACEMENT_STRENGTH).mul(
-    float(0.6).add(flowSpeed.mul(0.4)),
-  );
-  const c1 = normalize(vec2(flowBias.x.mul(0.3), float(-1)));
-  const s1 = sin(dot(worldXZ, c1).mul(0.4).add(time.mul(flowSpeed).mul(0.8))).mul(0.6);
-  const c2 = normalize(vec2(flowBias.x.mul(0.5).add(0.2), float(-1)));
-  const s2 = sin(dot(worldXZ, c2).mul(0.55).add(time.mul(flowSpeed).mul(1.1)).add(1.57)).mul(0.4);
-  const current = clamp(abs(s1).add(abs(s2)).mul(scale), float(0), float(1));
+  const normalN = normalize(surface.vNormal);
+  const viewDirN = normalize(surface.vViewDir);
+  const wave = surface.vWave;
+  const current = surface.vCurrent;
 
   // --- vortex swirl ---
   const vortexDelta = worldXZ.sub(vortexCenter.xz);
@@ -382,6 +434,31 @@ function buildColorNode(
   const litWater = baseWater.add(edgeHighlight.mul(causticsVal).mul(0.18).mul(depthFactor));
 
   let col = mix(litWater, foamColor, foam);
+
+  // --- planar reflection from the WaterReflection RT ---
+  // GLSL derives the sample UV from `vReflectionUv` (the clip position of the
+  // displaced vertex). Re-projecting the interpolated world position lands on the
+  // same fragment and avoids depending on framebuffer-origin conventions, which
+  // differ between the WebGL2 and native WebGPU backends.
+  const reflectionTexture = nd(u.reflectionTexture);
+  const reflectionStrength = nd(u.reflectionStrength);
+  const clipPos = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(worldPos, float(1)));
+  const reflectionUv = clipPos.xy
+    .div(max(clipPos.w, float(0.0001)))
+    .mul(0.5)
+    .add(0.5)
+    .add(normalN.xz.mul(0.015));
+  const reflection = reflectionTexture.uv(
+    clamp(reflectionUv, vec2(0.001, 0.001), vec2(0.999, 0.999)),
+  ).rgb;
+  // GLSL guards with `if (reflectionStrength > 0.001)`; the mask keeps the same
+  // cutoff without a branch (strength already scales the mix).
+  const reflectionMix = fresnel
+    .mul(reflectionStrength)
+    .mul(float(1).sub(foam.mul(0.55)))
+    .mul(step(float(0.001), reflectionStrength));
+  col = mix(col, reflection, reflectionMix);
+
   col = mix(col, edgeHighlight, fresnel.mul(0.22));
   col = col.add(vec3(wakeDisplacement, wakeDisplacement, wakeDisplacement));
 
@@ -403,7 +480,7 @@ function buildColorNode(
       .mul(mix(float(1), float(1.6), isPond)),
   );
 
-  // --- weather wetness, glint, bioluminescence, night dim ---
+  // --- weather wetness, glint, bioluminescence, god rays, night dim ---
   col = col.mul(float(1).sub(wetness.mul(WATER_SHADER.WETNESS_DARKEN)));
 
   const glint = smoothstep(float(0.78), float(0.98), wave)
@@ -415,6 +492,29 @@ function buildColorNode(
     .mul(float(1).sub(depthFactor))
     .mul(float(0.6).add(sin(time.mul(3)).mul(0.4)));
   col = col.add(vec3(0.3, 0.8, 1.0).mul(bioGlow).mul(1.8));
+
+  // Canyon god rays: two shifted fbm layers multiplied into tight beams, faded
+  // toward the banks so the shafts read as entering from the canyon top-center.
+  const sunDir = nd(u.sunDir);
+  const godRayStrength = nd(u.godRayStrength);
+  const sunXZ = normalize(sunDir.xz.add(vec2(0.001, 0.001)));
+  const shaftUv1 = worldXZ.mul(0.055).add(sunXZ.mul(time).mul(0.018));
+  const shaftUv2 = worldXZ
+    .mul(0.038)
+    .sub(sunXZ.mul(time).mul(0.012))
+    .add(vec2(0.63, 1.17));
+  const shaftPattern = smoothstep(float(0.52), float(0.84), fbm2(shaftUv1)).mul(
+    smoothstep(float(0.48), float(0.8), fbm2(shaftUv2)),
+  );
+  const lateralFade = float(1).sub(smoothstep(float(0), float(10), abs(worldPos.x)));
+  col = col.add(
+    vec3(1.0, 0.93, 0.72)
+      .mul(shaftPattern)
+      .mul(godRayStrength)
+      .mul(lateralFade)
+      .mul(float(1).sub(foam.mul(0.65)))
+      .mul(step(float(0.001), godRayStrength)),
+  );
 
   col = col.mul(float(1).sub(timeOfDay.mul(0.4)));
 
@@ -438,11 +538,10 @@ function buildColorNode(
  */
 export function createWaterNodeMaterial(init: WaterUniformInit): WaterNodeMaterial {
   const uniforms = buildUniformNodes(init);
-  const displacement = buildDisplacement(uniforms);
-  const sweSample = buildSweSampler(uniforms);
-
-  // Flow bias without the flow-map branch (documented gap).
-  const flowBias = vec2(sin(nd(uniforms.time).mul(0.1)), float(-1));
+  // Mirrors the GLSL `USE_FLOWMAP` define, which FlowingWater sets from the same
+  // texture. A material is rebuilt when the flow map appears or disappears.
+  const flowBias = buildFlowBias(uniforms, init.flowMap != null);
+  const surface = buildSurfaceVaryings(uniforms, flowBias);
 
   const material = new MeshBasicNodeMaterial({
     transparent: true,
@@ -450,20 +549,17 @@ export function createWaterNodeMaterial(init: WaterUniformInit): WaterNodeMateri
     side: THREE.DoubleSide,
   }) as WaterNodeMaterial;
 
-  // positionNode is LOCAL space. The GLSL vertex stage displaces local XZ and
-  // samples the SWE field in world XZ; the water mesh is axis-aligned with only a
-  // Y offset, so the two agree on XZ.
+  // positionNode is LOCAL space; `surface.displacedY` already carries both the
+  // procedural field (local XZ) and the SWE sample (world XZ), exactly as the
+  // GLSL vertex stage adds `d + sweD` to `pos.y`.
   material.positionNode = positionLocal.add(
-    vec3(
-      float(0),
-      displacement(positionLocal.xz, flowBias).add(sweSample(positionWorld.xz)),
-      float(0),
-    ),
+    vec3(float(0), surface.displacedY, float(0)),
   ) as never;
 
-  material.colorNode = buildColorNode(uniforms, displacement, sweSample, flowBias) as never;
+  material.colorNode = buildColorNode(uniforms, surface, flowBias) as never;
   material.uniforms = uniforms;
   material.userData.materialBackend = 'tsl';
+  material.userData.waterFlowMapVariant = init.flowMap != null;
 
   return material;
 }

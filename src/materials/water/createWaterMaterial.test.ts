@@ -161,4 +161,28 @@ describe('createWaterNodeMaterial', () => {
     expect(slots.colorNode).toBeDefined();
     expect(material.userData.materialBackend).toBe('tsl');
   });
+
+  // The GLSL surface keys the flow-map branch off a `USE_FLOWMAP` define, which
+  // is decided when the material is built. TSL has no defines, so the node graph
+  // takes the same decision at build time — a boot with no flow map must not pay
+  // for a sampler it will never bind.
+  it('bakes the flow-map branch as a build-time variant, like USE_FLOWMAP', () => {
+    const withoutMap = createWaterNodeMaterial(INIT);
+    expect(withoutMap.userData.waterFlowMapVariant).toBe(false);
+
+    const flowMap = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+    const withMap = createWaterNodeMaterial({ ...INIT, flowMap });
+    expect(withMap.userData.waterFlowMapVariant).toBe(true);
+    expect((withMap.userData.__nodeSlots as Record<string, unknown>).colorNode).toBeDefined();
+  });
+
+  it('keeps the reflection and god-ray uniforms writable now that both are wired', () => {
+    const material = createWaterNodeMaterial(INIT);
+    material.uniforms.reflectionStrength.value = 0.8;
+    material.uniforms.godRayStrength.value = 0.4;
+    expect(material.uniforms.reflectionStrength.value).toBe(0.8);
+    expect(material.uniforms.godRayStrength.value).toBe(0.4);
+    expect(material.uniforms.reflectionTexture).toBeDefined();
+    expect(material.uniforms.sunDir).toBeDefined();
+  });
 });
