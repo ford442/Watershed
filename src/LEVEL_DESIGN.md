@@ -78,7 +78,7 @@ The `getSegmentConfig` function in `TrackManager.tsx` should be updated to use t
 | Pond: tree density 0.3 | ✅ | `src/maps/meander_to_waterfall.ts` |
 | Pond: draw distance 50 | ✅ | `src/components/TrackSegment/` |
 | Rapids: high rock density | ✅ | `src/maps/meander_to_waterfall.ts` |
-| Biome transition 2000ms | ✅ | `src/systems/BiomeSystem.tsx` |
+| Biome transition 2000ms | ✅ | `src/systems/biome/BiomeSystem.tsx` |
 | Debounced onBiomeChange | ✅ | `src/systems/map/ChunkManager.ts` |
 | Particle LOD (400→100) | ✅ | `src/components/Environment/WaterfallParticles.tsx` |
 

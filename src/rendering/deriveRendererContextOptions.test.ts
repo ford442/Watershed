@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { QUALITY_SETTINGS } from '../systems/LODManager';
+import { QUALITY_SETTINGS } from '../systems/lod/LODManager';
 import {
   DEFAULT_TONE_MAPPING_EXPOSURE,
   DESYNCHRONIZED_ENABLED,
   EDITOR_QUALITY_PRESET,
   LOGARITHMIC_DEPTH_BUFFER_ENABLED,
+  LOW_PRESET_POWER_PREFERENCE,
+  ULTRA_DPR_CEILING,
   deriveEditorContextOptions,
   deriveRendererContextOptions,
   buildCanvasIdentityKey,
@@ -25,7 +27,7 @@ describe('deriveRendererContextOptions', () => {
       antialias: false,
       shadowMode: 'off',
       shadowMapSize: null,
-      powerPreference: 'high-performance',
+      powerPreference: 'default',
       outputColorSpace: THREE.SRGBColorSpace,
       toneMapping: THREE.ACESFilmicToneMapping,
       toneMappingExposure: DEFAULT_TONE_MAPPING_EXPOSURE,
@@ -69,6 +71,39 @@ describe('deriveRendererContextOptions', () => {
     const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 1 });
     expect(opts.shadowMapSize).toBe(2048);
     expect(opts.dprMax).toBe(1);
+  });
+
+  it('caps ultra DPR at the documented ceiling on high-density displays', () => {
+    expect(ULTRA_DPR_CEILING).toBe(2.5);
+    // A 3x phone / 4x panel would otherwise render 9-16x the pixels of DPR 1.
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 3 }).dprMax).toBe(
+      ULTRA_DPR_CEILING,
+    );
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 4 }).dprMax).toBe(
+      ULTRA_DPR_CEILING,
+    );
+  });
+
+  it('leaves ultra DPR untouched below the ceiling', () => {
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 2 }).dprMax).toBe(2);
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 1 }).dprMax).toBe(1);
+  });
+
+  it('caps the DPR the Canvas actually resolves, not just the max', () => {
+    const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 3 });
+    expect(resolveCanvasDpr(opts.dprMax, 3)).toBe(ULTRA_DPR_CEILING);
+  });
+
+  it('still picks the 4096 shadow map on retina even though DPR is capped', () => {
+    expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 3 }).shadowMapSize).toBe(4096);
+  });
+
+  it('asks for the default power preference on low only', () => {
+    expect(LOW_PRESET_POWER_PREFERENCE).toBe('default');
+    expect(deriveRendererContextOptions('low').powerPreference).toBe('default');
+    for (const preset of ALL_PRESETS.filter((p) => p !== 'low')) {
+      expect(deriveRendererContextOptions(preset).powerPreference).toBe('high-performance');
+    }
   });
 
   it('keeps logarithmic depth disabled (evaluated, deferred)', () => {
@@ -175,6 +210,16 @@ describe('rendererContextCreationKey — what forces a Canvas remount', () => {
   it('is identical across medium / high / ultra so mid-run swaps apply live', () => {
     expect(keyFor('medium')).toBe(keyFor('high'));
     expect(keyFor('high')).toBe(keyFor('ultra'));
+  });
+
+  it('carries the power preference, so low\'s default adapter is part of identity', () => {
+    const low = rendererContextCreationKey(deriveRendererContextOptions('low'));
+    const high = rendererContextCreationKey(deriveRendererContextOptions('high'));
+    expect(low).toContain('power:default');
+    expect(high).toContain('power:high-performance');
+    // low already remounted on antialias + caveat; the power preference adds no
+    // new remount boundary, but it must not be silently dropped from the key.
+    expect(low).not.toBe(high);
   });
 
   it('differs for low, which turns antialias off and accepts software GL', () => {

@@ -20,7 +20,7 @@ import { AssetCache } from '../systems/reach/ReachStreamer';
 import { REACH_API_BASE } from '../constants/game';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
 import { useGameStore } from '../systems/GameState';
-import { useLOD } from '../systems/LODManager';
+import { useLOD } from '../systems/lod/LODManager';
 import { PILLAR_BREAK_EVENT } from '../components/Obstacles/pillarBreakEvents';
 import { isGlacialBiome } from '../configs/TrackBiomes';
 import SpeedWindAudio from './SpeedWindAudio';

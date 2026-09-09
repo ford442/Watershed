@@ -226,7 +226,7 @@ continuity from the previous segment.
 
 ---
 
-### `src/systems/BiomeSystem.tsx`
+### `src/systems/biome/BiomeSystem.tsx`
 
 **Purpose:** Manages biome state and interpolates fog, lighting, and material palettes
 across the scene via React context. Provides `BiomeProvider`, `BiomeTransition`,
@@ -279,7 +279,7 @@ plus stubs `lumberFlume` / `hydroDam`. Legacy kebab/track aliases
 
 ---
 
-### `src/systems/LODManager.tsx`
+### `src/systems/lod/LODManager.tsx`
 
 **Purpose:** Adaptive quality scaling — measures FPS over a 60-frame window and
 automatically steps `quality` up/down (`low` → `medium` → `high` → `ultra`) to hold
@@ -326,7 +326,7 @@ quality logic).
 
 ---
 
-### `src/systems/SplashSystem.tsx`
+### `src/systems/water/SplashSystem.tsx`
 
 **Purpose:** Sole player/raft water-contact VFX owner — entry/exit splash arcs, rate-limited
 cruise splash near the surface, foam trail while submerged at speed, raft mist crown, and

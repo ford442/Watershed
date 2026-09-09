@@ -74,9 +74,12 @@ src/
 │   ├── MapSystem.ts             # ★ JSON maps, chunk config, procedural fallback
 │   ├── ChunkManager.ts          # Segment pool / treadmill
 │   ├── ReachManager.tsx         # Reach streaming wrapper
-│   ├── BiomeSystem.tsx / LODManager.tsx / GameState.ts
-│   ├── SplashSystem.tsx / AudioSystem.ts / WatershedWasm.ts
-│   ├── sweQuality.ts            # SWE grid/step/displacement budget per quality preset
+│   ├── GameState.ts             # ★ Zustand store — the only root *.ts besides index.ts
+│   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
+│   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality
+│   ├── water/SplashSystem.tsx   # Splash particles + SWE disturbance
+│   ├── water/sweQuality.ts      # SWE grid/step/displacement budget per quality preset
+│   ├── audio/AudioSystem.ts / water/WatershedWasm.ts
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts

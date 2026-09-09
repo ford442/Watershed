@@ -3,7 +3,7 @@
  * (FlowingWater), and every LOD quality that enables reflections requires that consumer.
  */
 import { describe, expect, test } from 'vitest';
-import { QUALITY_SETTINGS } from '../LODManager';
+import { QUALITY_SETTINGS } from '../lod/LODManager';
 import { FLOWING_WATER_SAMPLES_REFLECTION } from '../../components/FlowingWater';
 
 describe('waterReflectionWiring', () => {

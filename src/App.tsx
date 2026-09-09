@@ -9,13 +9,13 @@ import DebugPanel from './components/DebugPanel';
 import SWEBedDebugOverlay, { isSWEDebugEnabled } from './components/SWEBedDebugOverlay';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { SettingsSync } from './ui/SettingsSync';
-import { rehydrateSettings } from './systems/settings/useSettingsStore';
+import { rehydrateSettings, useSettingsStore } from './systems/settings/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
 import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import {
-  createGameRenderer,
+  createGameRendererWithCaveatFallback,
   deriveRendererContextOptions,
   isSoftwareRendererAllowed,
   isVisualCaptureMode,
@@ -23,6 +23,7 @@ import {
   persistRendererPreference,
   buildCanvasIdentityKey,
   RendererQualitySync,
+  type CaveatFallbackInfo,
   shadowModeToCanvasProp,
   type RendererPreference,
 } from './rendering';
@@ -34,7 +35,7 @@ import {
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistence/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
-import { useGameStore, useQualityPreset } from './systems/GameState';
+import { useGameStore, useQualityPreset, type QualityPreset } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
@@ -116,6 +117,9 @@ function App() {
   const [canvasReady, setCanvasReady] = useState(false);
   const bootReady = canvasReady && !assetsLoading;
   const [webglRecovering, setWebglRecovering] = useState(false);
+  // #397: set when the GL context request was rejected for
+  // `failIfMajorPerformanceCaveat` and the boot fallback landed us on `low`.
+  const [caveatDowngrade, setCaveatDowngrade] = useState<QualityPreset | null>(null);
   const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
     devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
     allowSoftwareFallback: isSoftwareRendererAllowed(),
@@ -131,6 +135,21 @@ function App() {
     contextOptions: rendererContextOptions,
     epoch: canvasEpoch,
   });
+  // Downgrade once, at boot, when the browser refuses a context for this GPU.
+  // Written to the *settings* store, not GameState directly: SettingsSync owns
+  // that direction, and a rehydration landing after the failure would otherwise
+  // clobber the downgrade straight back to the persisted preset. Persisting is
+  // deliberate — the caveat is a property of the machine, not of this tab, so
+  // the next session should not repeat the failed boot. The toast says so, and
+  // Options can raise it again.
+  const handleCaveatFallback = useCallback((info: CaveatFallbackInfo) => {
+    setCaveatDowngrade(info.from);
+    useSettingsStore.getState().setQuality('low');
+    // Also applied directly so the Canvas props (dpr, shadows, key) agree on
+    // this tick rather than waiting on SettingsSync's effect.
+    useGameStore.getState().setSettings({ quality: info.to });
+  }, []);
+
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
     const params = new URLSearchParams(window.location.search);
@@ -389,17 +408,21 @@ function App() {
             key={canvasKey}
             dpr={[1, rendererContextOptions.dprMax]}
             gl={async (props) =>
-              createGameRenderer(
+              createGameRendererWithCaveatFallback(
                 {
                   ...props,
                   preserveDrawingBuffer: isVisualCaptureMode(),
                 },
                 {
-                  preference: rendererPreference,
-                  antialias: rendererContextOptions.antialias,
-                  powerPreference: rendererContextOptions.powerPreference,
+                  quality: qualityPreset,
                   contextOptions: rendererContextOptions,
-                  materialBackend,
+                  devicePixelRatio:
+                    typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+                  rendererOptions: {
+                    preference: rendererPreference,
+                    materialBackend,
+                  },
+                  onCaveatFallback: handleCaveatFallback,
                 }
               )
             }
@@ -458,7 +481,8 @@ function App() {
               role="status"
               style={{
                 position: 'fixed',
-                bottom: 24,
+                // Sits above the caveat toast when both are up.
+                bottom: caveatDowngrade ? 88 : 24,
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 25000,
@@ -473,6 +497,54 @@ function App() {
               }}
             >
               Graphics paused — recovering…
+            </div>
+          )}
+
+          {caveatDowngrade && (
+            <div
+              role="status"
+              style={{
+                position: 'fixed',
+                bottom: 24,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 25000,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                maxWidth: 'min(92vw, 560px)',
+                padding: '10px 12px 10px 16px',
+                borderRadius: 8,
+                border: '1px solid rgba(255,200,80,0.35)',
+                background: 'rgba(12,10,8,0.92)',
+                color: '#f5e6c8',
+                fontFamily: 'system-ui, sans-serif',
+                fontSize: 13,
+                lineHeight: 1.4,
+              }}
+            >
+              <span>
+                Graphics quality dropped to <strong>Low</strong> — this GPU refused a{' '}
+                {caveatDowngrade} context. Raise it again in Options.
+              </span>
+              <button
+                type="button"
+                aria-label="Dismiss graphics quality notice"
+                onClick={() => setCaveatDowngrade(null)}
+                style={{
+                  flex: '0 0 auto',
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(245,230,200,0.3)',
+                  background: 'transparent',
+                  color: '#f5e6c8',
+                  fontFamily: 'inherit',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                Dismiss
+              </button>
             </div>
           )}
 

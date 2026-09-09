@@ -11,9 +11,9 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../configs/BiomePalettes';
-import { type BiomeId, DEFAULT_BIOME_ID, normalizeBiomeId } from '../configs/biomes';
-import { useGameStore } from './GameState';
+import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../../configs/BiomePalettes';
+import { type BiomeId, DEFAULT_BIOME_ID, normalizeBiomeId } from '../../configs/biomes';
+import { useGameStore } from '../GameState';
 
 // Context for biome state
 type BiomeContextType = {

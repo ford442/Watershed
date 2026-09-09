@@ -41,7 +41,7 @@ updateCanyonMaterial(material, delta, elapsedTime);
 
 **Files:**
 - `src/systems/volumetric/VolumetricGodRays.tsx`
-- `src/systems/BiomeSystem.tsx`
+- `src/systems/biome/BiomeSystem.tsx`
 
 **Features:**
 - Ray-marching god rays through mist
@@ -106,7 +106,7 @@ updateCanyonMaterial(material, delta, elapsedTime);
 
 **Files:**
 - `src/systems/ParticlePool.ts`
-- `src/systems/SplashSystem.tsx`
+- `src/systems/water/SplashSystem.tsx`
 
 **Features:**
 - Generic object pooling (eliminates GC spikes)
@@ -124,7 +124,7 @@ const stats = pool.getStats();
 
 ### 6. LOD & Performance System ✅
 
-**File:** `src/systems/LODManager.tsx`
+**File:** `src/systems/lod/LODManager.tsx`
 
 **Features:**
 - 4 quality levels: Low / Medium / High / Ultra

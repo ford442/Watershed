@@ -14,10 +14,14 @@ Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/
 
 | Preset | DPR clamp `[1, max]` | Antialias | Shadows | Shadow map size | Notes |
 |--------|----------------------|-----------|---------|-----------------|-------|
-| `low` | `1.0` | off | off | — | Minimal GPU cost |
+| `low` | `1.0` | off | off | — | Minimal GPU cost; `powerPreference: 'default'` |
 | `medium` | `1.25` | on | basic | 1024 | |
 | `high` | `2` | on | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`, `antialias: true`) |
-| `ultra` | native `devicePixelRatio` | on | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Uncapped DPR on retina |
+| `ultra` | `min(devicePixelRatio, 2.5)` | on | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Native DPR up to the `ULTRA_DPR_CEILING` |
+
+**`ultra` DPR ceiling.** `ULTRA_DPR_CEILING = 2.5` (`deriveRendererContextOptions.ts`). `ultra` renders at the display's native `devicePixelRatio`, which was previously uncapped — on a 3× phone or a 4× external panel that is 9–16× the pixel work of DPR 1, enough to miss the 60 FPS / 16.67 ms budget on hardware that is otherwise comfortably an `ultra` machine. 2.5 keeps the full retina win (DPR 2 is unclamped, 2.5 covers 2.5×-scaled laptop panels) and stops the tail. Raising it is a performance decision, not a tuning nit: move the constant, this row, and the test that pins it together. The shadow-map step still keys off the *raw* `devicePixelRatio`, so a 3× display keeps its 4096 map.
+
+**`low` power preference.** Every preset asks the browser for `high-performance` except `low`, which asks for `'default'` (`LOW_PRESET_POWER_PREFERENCE`). `high-performance` wakes the discrete GPU on a dual-GPU laptop, and `low` is the preset a player picks *because* the machine is struggling — usually thermals or battery. `powerPreference` is a creation attribute and `power:` is already in `rendererContextCreationKey()`, so this is part of `low`'s identity key; it adds no new remount boundary, because `low` already remounts against every other preset on `antialias` alone.
 
 All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` at renderer setup via `applyRendererContextOptions()`, and re-apply them on every preset change via `applyRendererQualityUpdate()`.
 
@@ -27,7 +31,7 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`), but they are pinned r
 
 | Attribute | Value | Why |
 |-----------|-------|-----|
-| `alpha` | `false` | Opaque game view. THREE r168 always *requests* the GL context with `alpha: true`, so this drives `WebGLBackground` — the drawing buffer is cleared fully opaque instead of letting the page show through. |
+| `alpha` | `false` | Opaque game view. **This is a `WebGLBackground` setting, not a drawing-buffer setting** — see [Alpha honesty](#alpha-honesty) below. |
 | `premultipliedAlpha` | `true` | Not just compositing: `WebGLState.setBlending` picks premultiplied blend functions from this flag, so every transparent material in the game (splash, water, weather, VFX) is authored against `true`. Flipping it would change how all of them blend. |
 | `depth` | `true` | Required by every 3D pass and by SSAO. THREE default. |
 | `stencil` | `true` | **Not** THREE's default (off since r163). Enabled for the post stack's mask/outline passes. |
@@ -35,7 +39,26 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`), but they are pinned r
 | `logarithmicDepthBuffer` | `false` | See below. |
 | `desynchronized` | not set | THREE r168's `WebGLRenderer` never forwards it to `getContext`, so setting it would be decoration. It is also the wrong trade here: it can tear and reorders readback, which `?screenshot=1` depends on. |
 
+#### Alpha honesty
+
+**Decision: `alpha: false` is documented as `WebGLBackground`-only. We do not create the GL context ourselves.**
+
+THREE r168's `WebGLRenderer` builds its own `getContext` attribute object and always requests the context with `alpha: true`, regardless of the `alpha` we pass to the constructor. What our `alpha: false` actually reaches is `WebGLBackground`, which then clears the drawing buffer fully opaque instead of letting the page show through. So the pin is real and load-bearing — the game view is opaque because of it — but it is *not* a claim about the drawing buffer's alpha channel, and reading the table row as one would be wrong.
+
+The alternative is to call `canvas.getContext('webgl2', …)` ourselves and hand the result to `new THREE.WebGLRenderer({ context })`. That was considered and rejected: it moves context creation out of THREE (and out of R3F's `gl` factory contract), it has to duplicate THREE's own attribute and extension negotiation, and it would have to be kept in step with every Three bump — a real boot-path regression risk for a gain that is invisible on an opaque full-page canvas. Revisit only if something genuinely needs to composite the canvas against the page.
+
 **Software-GL opt-out.** Visual smoke and CI run headless Chromium on SwiftShader, which *is* a major performance caveat — with the check on, the context request fails and the harness captures a black canvas. `isSoftwareRendererAllowed()` turns the check off for `?screenshot=1` / `?capture=1` (every visual-smoke shot already carries one) and for an explicit `?softwareGl=1`. Production never sets it.
+
+### Boot fallback on a rejected context
+
+If `new THREE.WebGLRenderer(…)` throws while `failIfMajorPerformanceCaveat` is on, `createGameRendererWithCaveatFallback()` (`src/rendering/bootRendererFallback.ts`) retries **once**, at `low`, and reports the downgrade. Before this the contract said a caveat failure "can be retried at a lower preset" and nothing implemented it, so a weak GPU got an exception out of the async `gl` factory and the player got the error boundary instead of a game.
+
+- **Straight to `low`, not one preset at a time.** `low` is the only preset that relaxes the caveat check; a machine the browser flags as a major performance caveat fails identically at `high` and at `medium`, so stepping down would just be two more failures.
+- **No retry when the check was already off.** A failure at `low`, `?softwareGl=1`, or capture mode is a genuine "no WebGL here" and is rethrown so the error boundary still reports it.
+- **The retry does not itself remount.** It returns a working renderer for the *current* mount. `App.tsx`'s `onCaveatFallback` writes `low` to the settings store (persistence + Options agreement) and to `GameState` (so the Canvas props agree on this tick without waiting on `SettingsSync`'s effect); the Canvas identity key then changes on antialias and the Canvas remounts once, with DPR, shadows, and props in agreement.
+- **The downgrade persists**, via the settings store, and a dismissible toast says so: the caveat is a property of the machine, not of the tab, so the next session should not repeat the failed boot. Options can raise it again.
+
+It writes to the *settings* store rather than `GameState` directly because `SettingsSync` owns that direction — a rehydration landing after the failure would otherwise clobber the downgrade straight back to the persisted preset.
 
 ## Live quality apply
 
@@ -52,7 +75,7 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 | `antialias` | **No** | Context attribute — requires a new context |
 | `alpha` / `depth` / `stencil` / `premultipliedAlpha` / `failIfMajorPerformanceCaveat` / `powerPreference` | **No** | Context attributes |
 
-**Consequence:** `medium` ↔ `high` ↔ `ultra` mid-run does **not** remount — no spawn pop, no WASM reload, no lost wipeout/ghost state. `high` → `low` (or back) **does** remount, because `low` turns antialias off and antialias cannot change on a live WebGL context. `low` also relaxes `failIfMajorPerformanceCaveat`, which is a context attribute too.
+**Consequence:** `medium` ↔ `high` ↔ `ultra` mid-run does **not** remount — no spawn pop, no WASM reload, no lost wipeout/ghost state. `high` → `low` (or back) **does** remount, because `low` turns antialias off and antialias cannot change on a live WebGL context. `low` also relaxes `failIfMajorPerformanceCaveat` and asks for `powerPreference: 'default'`, both context attributes too — so `low`'s identity key differs on three counts, not one.
 
 **Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) therefore stays inside the live band (`medium` / `high` / `ultra`) and never auto-selects `low`. Auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. Choosing `low` remains a deliberate Settings action.
 
@@ -240,6 +263,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | `src/rendering/applyRendererContextOptions.ts` | Apply derived options at setup + `applyRendererQualityUpdate()` for live changes |
 | `src/rendering/RendererQualitySync.tsx` | In-Canvas live quality apply (no remount) |
 | `src/rendering/createRenderer.ts` | Async renderer factory |
+| `src/rendering/bootRendererFallback.ts` | One-shot retry at `low` when the caveat check rejects the context |
 | `src/rendering/nativeWebgpuGate.ts` | Native WebGPU (`forceWebGL: false`) remains closed |
 | `scripts/glsl-hosts-allowlist.json` | Residual / dual / dormant GLSL construction sites |
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode and software-GL gates |
@@ -247,7 +271,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
 | `src/experience/SceneLighting.tsx` | Per-light shadows from quality contract |
-| `src/systems/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
+| `src/systems/lod/LODManager.tsx` | LOD budgets; shadowMapSize aligned with contract |
 | `src/components/DebugPanel.tsx` | Debug UI controls |
 | `src/App.tsx` | Canvas wiring, context-loss recovery |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); not SWE |

@@ -12,20 +12,20 @@ import React, { createContext, useContext, useState, useRef, useEffect } from 'r
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
-import { useGameStore } from './GameState';
+import { useGameStore } from '../GameState';
 import {
   ADAPTIVE_LIVE_BAND,
   stepAdaptiveQuality,
-} from './lod/adaptiveQuality';
+} from './adaptiveQuality';
 
 export {
   ADAPTIVE_LIVE_BAND,
   stepAdaptiveQuality,
-} from './lod/adaptiveQuality';
+} from './adaptiveQuality';
 export type {
   AdaptiveQualityStepInput,
   AdaptiveQualityStepResult,
-} from './lod/adaptiveQuality';
+} from './adaptiveQuality';
 
 // Quality levels
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';

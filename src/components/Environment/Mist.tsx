@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useBiome } from '../../systems/BiomeSystem';
+import { useBiome } from '../../systems/biome/BiomeSystem';
 import type { MistPlacement, MistProps, WeatherUpdateEvent } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createMistMaterial } from '../../materials/vfx/createVfxMaterials';

@@ -62,7 +62,7 @@
 **Files to create/edit**:
 - `src/systems/AudioManager.ts` (or equivalent sound loading file)
 - `src/systems/PostProcessing.tsx`
-- `src/systems/LODManager.tsx`
+- `src/systems/lod/LODManager.tsx`
 - Possibly `src/Experience.jsx` or render pipeline
 
 **Specific Tasks**:

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useBiomeMaterials } from '../../systems/BiomeSystem';
-import { useLOD } from '../../systems/LODManager';
+import { useBiomeMaterials } from '../../systems/biome/BiomeSystem';
+import { useLOD } from '../../systems/lod/LODManager';
 import { useGameStore } from '../../systems/GameState';
 import type { TrackManagerRef } from '../../components/TrackManager';
 import type { DebugStageController } from '../../debug/debugStages';

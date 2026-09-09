@@ -5,8 +5,8 @@
  * This file re-exports only symbols the Experience provider shell historically
  * expected from a single entry; do not grow it into a junk drawer.
  *
- * Root-level modules that stay (deferred React hosts + store):
- *   GameState.ts, BiomeSystem.tsx, LODManager.tsx, SplashSystem.tsx
+ * Root-level modules that stay: GameState.ts and this file. Everything else
+ * lives in a domain folder — `scripts/check-systems-layout.mjs` enforces it.
  */
 
 export {
@@ -15,7 +15,7 @@ export {
   BiomeDetector,
   useBiome,
   useBiomeMaterials,
-} from './BiomeSystem';
+} from './biome/BiomeSystem';
 
 export {
   LODProvider,
@@ -24,9 +24,9 @@ export {
   PerformanceMonitor,
   useLOD,
   QUALITY_SETTINGS,
-} from './LODManager';
+} from './lod/LODManager';
 
-export { SplashSystem } from './SplashSystem';
+export { SplashSystem } from './water/SplashSystem';
 
 export {
   useGameStore,

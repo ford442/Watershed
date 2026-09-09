@@ -83,6 +83,38 @@ export const LOGARITHMIC_DEPTH_BUFFER_ENABLED = false;
 export const DESYNCHRONIZED_ENABLED = false;
 
 /**
+ * Hard ceiling on `ultra`'s DPR clamp (#397).
+ *
+ * `ultra` renders at the display's native `devicePixelRatio`, which used to be
+ * uncapped. On a 3x phone or a 4x external panel that is 9–16x the pixel work of
+ * DPR 1 — enough to miss the 60 FPS / 16.67 ms budget on hardware that is
+ * otherwise comfortably an `ultra` machine, and the player reads it as "ultra is
+ * broken" rather than "ultra is oversampling".
+ *
+ * 2.5 keeps the full retina win (DPR 2 is unclamped, 2.5 covers the common
+ * 2.5x-scaled laptop panels) and stops the tail. Raising it is a real
+ * performance decision, not a tuning nit — it must move here, in RENDERER.md,
+ * and in the test that pins it.
+ */
+export const ULTRA_DPR_CEILING = 2.5;
+
+/**
+ * `powerPreference` for the `low` preset.
+ *
+ * Every other preset asks for `high-performance`, which on a dual-GPU laptop
+ * wakes the discrete GPU. `low` is the preset a player picks *because* the
+ * machine is struggling — usually thermals or battery — so asking for the power-
+ * hungry adapter there works against the reason they chose it. `'default'` lets
+ * the browser keep the integrated GPU.
+ *
+ * This is a creation-time attribute and `power:` is already part of
+ * `rendererContextCreationKey()`, so it changes `low`'s identity key. That costs
+ * nothing new: `low` already remounts against every other preset because it
+ * flips `antialias` and relaxes `failIfMajorPerformanceCaveat`.
+ */
+export const LOW_PRESET_POWER_PREFERENCE: WebGLPowerPreference = 'default';
+
+/**
  * Context attributes that are identical for every quality preset.
  *
  * - `alpha: false` — an opaque game view. THREE always *requests* the GL context
@@ -138,6 +170,7 @@ export function deriveRendererContextOptions(
     case 'low':
       return {
         ...base,
+        powerPreference: LOW_PRESET_POWER_PREFERENCE,
         failIfMajorPerformanceCaveat,
         dprMax: 1.0,
         antialias: false,
@@ -166,7 +199,7 @@ export function deriveRendererContextOptions(
       return {
         ...base,
         failIfMajorPerformanceCaveat,
-        dprMax: devicePixelRatio,
+        dprMax: Math.min(devicePixelRatio, ULTRA_DPR_CEILING),
         antialias: true,
         shadowMode: 'soft',
         shadowMapSize: devicePixelRatio >= 2 ? 4096 : 2048,
@@ -223,7 +256,8 @@ export function toContextAttributes(
  *
  * Today that means `medium` / `high` / `ultra` share one key (they differ only
  * in DPR and shadow configuration, both live-applicable), while `low` gets its
- * own — it turns antialias off and accepts software GL.
+ * own — it turns antialias off, accepts software GL, and asks for the
+ * `'default'` power preference instead of `high-performance`.
  */
 export function rendererContextCreationKey(
   options: RendererContextOptions
