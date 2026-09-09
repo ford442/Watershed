@@ -6,12 +6,17 @@ export type AdaptiveQualityLevel = QualityPreset;
 /**
  * Presets adaptive FPS scaling may move between.
  *
- * `low` flips WebGL creation attributes (`antialias`, `failIfMajorPerformanceCaveat`),
- * which remounts the Canvas and tears down Rapier / the track treadmill / WASM
- * (see `rendererContextCreationKey` in deriveRendererContextOptions.ts). Auto-
- * stepping into or out of `low` therefore freezes boot ("Graphics paused —
- * recovering…") and can destroy an active run. Only a deliberate Settings change
- * may select `low`.
+ * `low` used to flip WebGL creation attributes (`antialias`,
+ * `failIfMajorPerformanceCaveat`, `powerPreference`), which remounted the Canvas
+ * and tore down Rapier / the track treadmill / WASM. Since boot-time graphics
+ * negotiation those attributes are session constants, so `low` no longer remounts
+ * anything — the technical bar is gone.
+ *
+ * The band stays as it is anyway: `low` turns shadows off entirely and drops DPR
+ * to 1.0, which is a visible change of look rather than a tuning step, and having
+ * the game silently choose it during a rough patch is a worse experience than
+ * letting the player choose it. Widening the band is now a design decision, not
+ * a renderer constraint.
  */
 export const ADAPTIVE_LIVE_BAND: readonly AdaptiveQualityLevel[] = [
   'medium',

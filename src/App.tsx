@@ -15,18 +15,23 @@ import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
 import {
-  createGameRendererWithCaveatFallback,
+  beginBootAttempt,
+  BootHealthSentinel,
+  createGameRenderer,
   deriveRendererContextOptions,
   isSoftwareRendererAllowed,
   isVisualCaptureMode,
+  negotiateBootGraphics,
   parseRendererPreference,
   persistRendererPreference,
   buildCanvasIdentityKey,
   RendererQualitySync,
-  type CaveatFallbackInfo,
   shadowModeToCanvasProp,
+  type GraphicsCapability,
   type RendererPreference,
 } from './rendering';
+import GraphicsUnsupported from './components/GraphicsUnsupported';
+import SafeGraphicsBadge from './components/SafeGraphicsBadge';
 import {
   persistMaterialBackend,
   resolveMaterialBackend,
@@ -35,7 +40,7 @@ import {
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistence/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
-import { useGameStore, useQualityPreset, type QualityPreset } from './systems/GameState';
+import { useGameStore, useQualityPreset } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
@@ -54,6 +59,43 @@ const isEditorMode =
 
 /** Game phase determines which overlays are visible */
 type GamePhase = 'menu' | 'playing' | 'paused';
+
+/**
+ * The result of boot-time graphics negotiation, plus the boot-crash verdict.
+ *
+ * Both are session facts, decided once, *before* anything mounts — see
+ * `probeGraphicsCapability.ts` and `bootCrashGuard.ts`.
+ */
+export interface GraphicsBoot {
+  capability: GraphicsCapability;
+  /** The previous start never reached a steady frame rate. */
+  previousBootFailed: boolean;
+}
+
+let negotiatedBoot: GraphicsBoot | null = null;
+
+/**
+ * Negotiate once per page load.
+ *
+ * Memoised at module scope rather than in a `useState` initializer because
+ * `beginBootAttempt()` has a side effect that must happen exactly once: a second
+ * call would read back the flag this one just wrote and misreport a healthy boot
+ * as a crashed one.
+ */
+function resolveGraphicsBoot(): GraphicsBoot {
+  if (negotiatedBoot) return negotiatedBoot;
+  const previousBootFailed = beginBootAttempt();
+  negotiatedBoot = {
+    previousBootFailed,
+    capability: negotiateBootGraphics({
+      // The capture harness pins its envelope instead of probing — see
+      // CAPTURE_ENVELOPE.
+      captureMode: isSoftwareRendererAllowed(),
+      previousBootFailed,
+    }),
+  };
+  return negotiatedBoot;
+}
 
 // Simple fallback scene if Experience fails
 const FallbackScene = () => {
@@ -80,7 +122,16 @@ const isTypingTarget = (target: EventTarget | null) => {
   );
 };
 
-function App() {
+export interface AppProps {
+  /** Test seam: pre-negotiated graphics boot. Production negotiates its own. */
+  graphicsBoot?: GraphicsBoot;
+}
+
+function App({ graphicsBoot }: AppProps = {}) {
+  // Before <Canvas>, before <Physics>, before anything mounts.
+  const [{ capability: graphicsCapability, previousBootFailed }] = useState<GraphicsBoot>(
+    () => graphicsBoot ?? resolveGraphicsBoot()
+  );
   const [phase, setPhase] = useState<GamePhase>('menu');
   /** Heavy Physics/track mount — deferred after Start so the menu can unmount first. */
   const [worldEnabled, setWorldEnabled] = useState(false);
@@ -117,38 +168,37 @@ function App() {
   const [canvasReady, setCanvasReady] = useState(false);
   const bootReady = canvasReady && !assetsLoading;
   const [webglRecovering, setWebglRecovering] = useState(false);
-  // #397: set when the GL context request was rejected for
-  // `failIfMajorPerformanceCaveat` and the boot fallback landed us on `low`.
-  const [caveatDowngrade, setCaveatDowngrade] = useState<QualityPreset | null>(null);
   const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
     devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
-    allowSoftwareFallback: isSoftwareRendererAllowed(),
+    // Frozen at boot. Antialias, power preference, and the caveat flag are
+    // creation-time attributes; taking them from the negotiated envelope instead
+    // of the preset is what makes every preset share one Canvas key.
+    envelope: graphicsCapability.envelope,
   });
-  // Only creation-time context attributes belong in the Canvas key. DPR, shadow
-  // mode, and shadow map size are re-applied live by RendererQualitySync +
-  // SceneLighting, so medium ↔ high ↔ ultra mid-run keeps Rapier, the track
-  // treadmill, WASM SWE grids, audio, and the vehicle body alive. Only a preset
-  // that flips antialias (i.e. to/from `low`) forces a new WebGL context.
+  // Only creation-time context attributes belong in the Canvas key, and none of
+  // them varies with quality any more. DPR, shadow mode, and shadow map size are
+  // re-applied live by RendererQualitySync + SceneLighting, so *any* preset
+  // change mid-run — low ↔ ultra included — keeps Rapier, the track treadmill,
+  // WASM SWE grids, audio, and the vehicle body alive.
   const canvasKey = buildCanvasIdentityKey({
     rendererPreference,
     materialBackend,
     contextOptions: rendererContextOptions,
     epoch: canvasEpoch,
   });
-  // Downgrade once, at boot, when the browser refuses a context for this GPU.
-  // Written to the *settings* store, not GameState directly: SettingsSync owns
-  // that direction, and a rehydration landing after the failure would otherwise
-  // clobber the downgrade straight back to the persisted preset. Persisting is
-  // deliberate — the caveat is a property of the machine, not of this tab, so
-  // the next session should not repeat the failed boot. The toast says so, and
-  // Options can raise it again.
-  const handleCaveatFallback = useCallback((info: CaveatFallbackInfo) => {
-    setCaveatDowngrade(info.from);
+  // The previous start never reached a steady frame rate (see bootCrashGuard).
+  // Clamp to `low` once settings have hydrated — earlier and rehydration would
+  // put the persisted preset straight back. Written to the *settings* store
+  // because SettingsSync owns the settings → GameState direction and would
+  // otherwise re-push the old value; the badge says how to raise it again.
+  const settingsHydrated = useSettingsStore((state) => state._hasHydrated);
+  const crashClampApplied = useRef(false);
+  useEffect(() => {
+    if (!previousBootFailed || !settingsHydrated || crashClampApplied.current) return;
+    crashClampApplied.current = true;
     useSettingsStore.getState().setQuality('low');
-    // Also applied directly so the Canvas props (dpr, shadows, key) agree on
-    // this tick rather than waiting on SettingsSync's effect.
-    useGameStore.getState().setSettings({ quality: info.to });
-  }, []);
+    useGameStore.getState().setSettings({ quality: 'low' });
+  }, [previousBootFailed, settingsHydrated]);
 
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
@@ -386,6 +436,17 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [bootReady, handleStart, phase, selectedMapId]);
 
+  // No WebGL2 by any attempt: render static DOM and mount nothing. R3F, Rapier's
+  // WASM world, the treadmill, and audio all assume a renderer exists, and
+  // starting them anyway is what produced the infinite loader.
+  if (graphicsCapability.tier === 'unsupported') {
+    return (
+      <ErrorBoundary>
+        <GraphicsUnsupported statusMessage={graphicsCapability.statusMessage} />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       {/* Editor mode: full-page swap, own Canvas, own lifecycle */}
@@ -408,21 +469,21 @@ function App() {
             key={canvasKey}
             dpr={[1, rendererContextOptions.dprMax]}
             gl={async (props) =>
-              createGameRendererWithCaveatFallback(
+              // No retry, no fallback ladder: the envelope in
+              // `rendererContextOptions` is the one the boot probe already
+              // proved this machine will grant. A throw here is a genuine
+              // failure and belongs to the ErrorBoundary.
+              createGameRenderer(
                 {
                   ...props,
                   preserveDrawingBuffer: isVisualCaptureMode(),
                 },
                 {
-                  quality: qualityPreset,
+                  preference: rendererPreference,
+                  materialBackend,
+                  antialias: rendererContextOptions.antialias,
+                  powerPreference: rendererContextOptions.powerPreference,
                   contextOptions: rendererContextOptions,
-                  devicePixelRatio:
-                    typeof window !== 'undefined' ? window.devicePixelRatio : 1,
-                  rendererOptions: {
-                    preference: rendererPreference,
-                    materialBackend,
-                  },
-                  onCaveatFallback: handleCaveatFallback,
                 }
               )
             }
@@ -453,6 +514,7 @@ function App() {
             }}
           >
             <RendererQualitySync />
+            <BootHealthSentinel />
             <React.Suspense
               fallback={
                 <mesh>
@@ -481,8 +543,7 @@ function App() {
               role="status"
               style={{
                 position: 'fixed',
-                // Sits above the caveat toast when both are up.
-                bottom: caveatDowngrade ? 88 : 24,
+                bottom: 24,
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 25000,
@@ -500,52 +561,14 @@ function App() {
             </div>
           )}
 
-          {caveatDowngrade && (
-            <div
-              role="status"
-              style={{
-                position: 'fixed',
-                bottom: 24,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 25000,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                maxWidth: 'min(92vw, 560px)',
-                padding: '10px 12px 10px 16px',
-                borderRadius: 8,
-                border: '1px solid rgba(255,200,80,0.35)',
-                background: 'rgba(12,10,8,0.92)',
-                color: '#f5e6c8',
-                fontFamily: 'system-ui, sans-serif',
-                fontSize: 13,
-                lineHeight: 1.4,
-              }}
-            >
-              <span>
-                Graphics quality dropped to <strong>Low</strong> — this GPU refused a{' '}
-                {caveatDowngrade} context. Raise it again in Options.
-              </span>
-              <button
-                type="button"
-                aria-label="Dismiss graphics quality notice"
-                onClick={() => setCaveatDowngrade(null)}
-                style={{
-                  flex: '0 0 auto',
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  border: '1px solid rgba(245,230,200,0.3)',
-                  background: 'transparent',
-                  color: '#f5e6c8',
-                  fontFamily: 'inherit',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                Dismiss
-              </button>
-            </div>
+          {/* Safe Graphics Mode — persistent, dismissible, acknowledgement
+              persisted. Not a toast: see SafeGraphicsBadge. Hidden in clean-test
+              and capture runs so it cannot land in a visual-smoke baseline. */}
+          {!cleanTest && !isVisualCaptureMode() && graphicsCapability.tier === 'degraded' && (
+            <SafeGraphicsBadge
+              reason={graphicsCapability.reason}
+              statusMessage={graphicsCapability.statusMessage}
+            />
           )}
 
           {/* Asset loading overlay */}

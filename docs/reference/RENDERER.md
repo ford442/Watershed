@@ -12,16 +12,18 @@ Most of that now applies **live**. The Canvas `key` carries only what genuinely 
 
 Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/deriveRendererContextOptions.ts` and applied at Canvas creation in `App.tsx` + `createGameRenderer()`.
 
-| Preset | DPR clamp `[1, max]` | Antialias | Shadows | Shadow map size | Notes |
-|--------|----------------------|-----------|---------|-----------------|-------|
-| `low` | `1.0` | off | off | — | Minimal GPU cost; `powerPreference: 'default'` |
-| `medium` | `1.25` | on | basic | 1024 | |
-| `high` | `2` | on | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`, `antialias: true`) |
-| `ultra` | `min(devicePixelRatio, 2.5)` | on | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Native DPR up to the `ULTRA_DPR_CEILING` |
+| Preset | DPR clamp `[1, max]` | Shadows | Shadow map size | Notes |
+|--------|----------------------|---------|-----------------|-------|
+| `low` | `1.0` | off | — | Minimal GPU cost |
+| `medium` | `1.25` | basic | 1024 | |
+| `high` | `2` | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`) |
+| `ultra` | `min(devicePixelRatio, 2.0)` | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Native DPR up to the `ULTRA_DPR_CEILING` |
 
-**`ultra` DPR ceiling.** `ULTRA_DPR_CEILING = 2.5` (`deriveRendererContextOptions.ts`). `ultra` renders at the display's native `devicePixelRatio`, which was previously uncapped — on a 3× phone or a 4× external panel that is 9–16× the pixel work of DPR 1, enough to miss the 60 FPS / 16.67 ms budget on hardware that is otherwise comfortably an `ultra` machine. 2.5 keeps the full retina win (DPR 2 is unclamped, 2.5 covers 2.5×-scaled laptop panels) and stops the tail. Raising it is a performance decision, not a tuning nit: move the constant, this row, and the test that pins it together. The shadow-map step still keys off the *raw* `devicePixelRatio`, so a 3× display keeps its 4096 map.
+Antialias, `powerPreference`, and `failIfMajorPerformanceCaveat` are deliberately **not** in this table any more. They are creation-time attributes: negotiated once at boot, frozen for the session, identical for every preset — see [Boot-time graphics negotiation](#boot-time-graphics-negotiation).
 
-**`low` power preference.** Every preset asks the browser for `high-performance` except `low`, which asks for `'default'` (`LOW_PRESET_POWER_PREFERENCE`). `high-performance` wakes the discrete GPU on a dual-GPU laptop, and `low` is the preset a player picks *because* the machine is struggling — usually thermals or battery. `powerPreference` is a creation attribute and `power:` is already in `rendererContextCreationKey()`, so this is part of `low`'s identity key; it adds no new remount boundary, because `low` already remounts against every other preset on `antialias` alone.
+**`ultra` DPR ceiling.** `ULTRA_DPR_CEILING = 2.0` (`deriveRendererContextOptions.ts`). `ultra` renders at the display's native `devicePixelRatio`, which was previously uncapped — on a 3× phone or a 4× external panel that is 9–16× the pixel work of DPR 1, enough to miss the 60 FPS / 16.67 ms budget on hardware that is otherwise comfortably an `ultra` machine. 2.0 is shipping practice (≤2.0 desktop, 1.5–2.0 mobile): DPR 2 is the full retina win, and 3–4× panels are a fill-rate trap rather than a quality tier. Raising it is a performance decision, not a tuning nit: move the constant, this row, and the test that pins it together. The shadow-map step still keys off the *raw* `devicePixelRatio`, so a 3× display keeps its 4096 map.
+
+**DPR cap ≠ render scale.** Two different knobs, and Watershed only has the first. The **cap** is a static ceiling: the most pixels a preset will ever ask for. A **render scale** is a valve: it moves with measured frame time and trades resolution for headroom while the game runs. Adaptive quality currently steps *presets*, not resolution, so there is no valve; adding one is separate work. Do not raise the cap as a substitute — a machine that is dropping frames needs resolution to come *down* under load, not the ceiling to move up.
 
 All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` at renderer setup via `applyRendererContextOptions()`, and re-apply them on every preset change via `applyRendererQualityUpdate()`.
 
@@ -35,7 +37,8 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`), but they are pinned r
 | `premultipliedAlpha` | `true` | Not just compositing: `WebGLState.setBlending` picks premultiplied blend functions from this flag, so every transparent material in the game (splash, water, weather, VFX) is authored against `true`. Flipping it would change how all of them blend. |
 | `depth` | `true` | Required by every 3D pass and by SSAO. THREE default. |
 | `stencil` | `true` | **Not** THREE's default (off since r163). Enabled for the post stack's mask/outline passes. |
-| `failIfMajorPerformanceCaveat` | `true` above `low` | Software GL (SwiftShader, llvmpipe) must not silently boot and read as a shipped GPU. `low` accepts it — `low` is the fallback a weak machine is meant to land on. |
+| `failIfMajorPerformanceCaveat` | boot-negotiated | Whatever the successful probe attempt asked for, replayed on the real context. `true` on a hardware machine (software GL must not silently boot and read as a shipped GPU), `false` on a degraded one and for the capture harness. Never preset-dependent. |
+| `antialias` / `powerPreference` | boot-negotiated | Frozen for the session by the probe — `true` / `high-performance` on hardware, `false` / `default` in safe mode. See below. |
 | `logarithmicDepthBuffer` | `false` | See below. |
 | `desynchronized` | not set | THREE r168's `WebGLRenderer` never forwards it to `getContext`, so setting it would be decoration. It is also the wrong trade here: it can tear and reorders readback, which `?screenshot=1` depends on. |
 
@@ -49,16 +52,49 @@ The alternative is to call `canvas.getContext('webgl2', …)` ourselves and hand
 
 **Software-GL opt-out.** Visual smoke and CI run headless Chromium on SwiftShader, which *is* a major performance caveat — with the check on, the context request fails and the harness captures a black canvas. `isSoftwareRendererAllowed()` turns the check off for `?screenshot=1` / `?capture=1` (every visual-smoke shot already carries one) and for an explicit `?softwareGl=1`. Production never sets it.
 
-### Boot fallback on a rejected context
+## Boot-time graphics negotiation
 
-If `new THREE.WebGLRenderer(…)` throws while `failIfMajorPerformanceCaveat` is on, `createGameRendererWithCaveatFallback()` (`src/rendering/bootRendererFallback.ts`) retries **once**, at `low`, and reports the downgrade. Before this the contract said a caveat failure "can be retried at a lower preset" and nothing implemented it, so a weak GPU got an exception out of the async `gl` factory and the player got the error boundary instead of a game.
+**The context envelope is negotiated once, before R3F and Rapier mount, and frozen for the session.** `negotiateBootGraphics()` (`src/rendering/probeGraphicsCapability.ts`) runs in `App` before `<Canvas>` is rendered and returns a tier, an envelope, and the browser's own `statusMessage` if it gave one.
 
-- **Straight to `low`, not one preset at a time.** `low` is the only preset that relaxes the caveat check; a machine the browser flags as a major performance caveat fails identically at `high` and at `medium`, so stepping down would just be two more failures.
-- **No retry when the check was already off.** A failure at `low`, `?softwareGl=1`, or capture mode is a genuine "no WebGL here" and is rethrown so the error boundary still reports it.
-- **The retry does not itself remount.** It returns a working renderer for the *current* mount. `App.tsx`'s `onCaveatFallback` writes `low` to the settings store (persistence + Options agreement) and to `GameState` (so the Canvas props agree on this tick without waiting on `SettingsSync`'s effect); the Canvas identity key then changes on antialias and the Canvas remounts once, with DPR, shadows, and props in agreement.
-- **The downgrade persists**, via the settings store, and a dismissible toast says so: the caveat is a property of the machine, not of the tab, so the next session should not repeat the failed boot. Options can raise it again.
+| Tier | How it is reached | Envelope | What the player sees |
+|------|-------------------|----------|----------------------|
+| `hardware` | `webgl2` + `failIfMajorPerformanceCaveat: true` + `high-performance` succeeded | antialias on, `high-performance`, caveat check on | Nothing — normal boot |
+| `degraded` | that failed; the relaxed request (`failIfMajorPerformanceCaveat: false`, `powerPreference: 'default'`) succeeded | antialias off, `default`, caveat check off | Persistent **Safe Graphics Mode** badge |
+| `unsupported` | neither request produced a context | — | Static DOM screen; **no Canvas, no Rapier, no game** |
 
-It writes to the *settings* store rather than `GameState` directly because `SettingsSync` owns that direction — a rehydration landing after the failure would otherwise clobber the downgrade straight back to the persisted preset.
+Each probe attempt runs on a throwaway `<canvas>` and releases its context immediately with `WEBGL_lose_context` — browsers cap live contexts per origin (8–16) and a leaked probe costs the game a slot for the whole session. The `webglcontextcreationerror` listener is attached before `getContext`, because `statusMessage` is the only real diagnostic the platform hands out.
+
+### Why not retry-and-remount
+
+The earlier design ("catch the constructor throw, retry once at `low`") was implemented and has been removed. Three reasons, all still true:
+
+1. **A retry cannot know why it failed.** THREE wraps context creation in a generic `Error('Error creating WebGL context.')`. Hardware acceleration disabled, a blocklisted driver, a dead GPU process, headless, and the per-origin context limit are indistinguishable from an actual performance caveat, and only one of those is fixed by retrying at `low`.
+2. **A retry *is* a remount**, and a remount unmounts `<Physics>` and re-initialises the Rapier WASM world — the exact failure mode live quality apply exists to remove.
+3. **Relaxing the caveat check is not a software-rendering fallback on modern Chrome.** Chrome no longer hands out SwiftShader automatically; it is behind `--enable-unsafe-swiftshader`. The second probe attempt is therefore understood as *"any context at all"*, not *"a software context"*.
+
+### The preset no longer touches the context
+
+`antialias`, `powerPreference`, and `failIfMajorPerformanceCaveat` come from the frozen envelope, so `rendererContextCreationKey()` is **identical for all four presets** and a quality change cannot remount the Canvas. That is pinned by a test. The remount machinery stays for the cases that genuinely need it: a different envelope (capture harness / `?softwareGl=1`), a renderer-class or material-backend change, and the context-loss epoch.
+
+The visible trade: `low` no longer turns MSAA off, because MSAA cannot be toggled on a live context. `low` still drops DPR to 1.0 and shadows to off, which is the larger share of its cost. The honest fix for MSAA cost on a weak machine is a render scale, not a context teardown.
+
+### Capture harness
+
+Visual smoke, `?screenshot=1`, `?capture=1`, and `?softwareGl=1` **skip the probe entirely** and pin `CAPTURE_ENVELOPE`: antialias on, `high-performance`, caveat check off — exactly what the pre-negotiation code produced for those runs. Headless Chromium on SwiftShader would otherwise probe as `degraded`, flip antialias, and move every baseline. `isSoftwareRendererAllowed()` is still the single gate.
+
+### `unsupported` renders a screen, not a game
+
+When both attempts fail, `App` returns `<GraphicsUnsupported>` and never mounts the Canvas. R3F, Rapier's WASM world, the treadmill, and the audio graph all assume a renderer exists; mounting them anyway produced an infinite loader with no explanation. The screen states what failed, quotes `statusMessage`, and lists the two things a player can act on (enable hardware acceleration, update the driver).
+
+### Safe Graphics Mode badge
+
+`degraded` shows a persistent, dismissible badge (`SafeGraphicsBadge`), not a toast — the machine that triggers this is the least able to afford an animated overlay during boot, and a 4-second toast fired during a slow boot is a notification nobody sees. It reuses the `wasm-init-banner` visual language rather than adding a second notification system; the WASM banner's own logic is untouched. The badge is hidden in clean-test and capture runs.
+
+**Acknowledgement persists, the tier does not.** Dismissal is stored in `localStorage` (`watershed:safe-graphics-ack`), so a player who has seen the explanation does not see it every load; the *tier* is re-probed every load, so a one-off driver hiccup does not downgrade anyone permanently.
+
+### Boot-crash guard
+
+`beginBootAttempt()` writes a `sessionStorage` flag (`watershed:boot-in-progress`) before the Canvas mounts; `BootHealthSentinel`, inside the Canvas, clears it once the render loop has produced 60 frames. A boot that *starts* with the flag already set means the previous start never reached a steady frame rate — it skips the optimistic probe attempt, clamps quality to `low` (after settings hydration, so rehydration cannot clobber it), and says so in the badge. Self-healing: one healthy boot clears the flag and the next start is optimistic again. `sessionStorage`, not `localStorage`, because this is about the tab in front of the player; and no `beforeunload` clear, because a reload during a wedged boot is exactly the case it exists to catch.
 
 ## Live quality apply
 
@@ -72,12 +108,12 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 | Tone mapping / exposure / color space | Yes | `applyRendererQualityUpdate()` |
 | SWE grid/step budget | Yes | `sweQuality.ts` via `useQualityPreset()` |
 | Post-processing intensity | Yes | already quality-gated |
-| `antialias` | **No** | Context attribute — requires a new context |
-| `alpha` / `depth` / `stencil` / `premultipliedAlpha` / `failIfMajorPerformanceCaveat` / `powerPreference` | **No** | Context attributes |
+| `antialias` / `powerPreference` / `failIfMajorPerformanceCaveat` | **No** | Context attributes — boot-negotiated once, so no preset can move them |
+| `alpha` / `depth` / `stencil` / `premultipliedAlpha` | **No** | Context attributes, pinned |
 
-**Consequence:** `medium` ↔ `high` ↔ `ultra` mid-run does **not** remount — no spawn pop, no WASM reload, no lost wipeout/ghost state. `high` → `low` (or back) **does** remount, because `low` turns antialias off and antialias cannot change on a live WebGL context. `low` also relaxes `failIfMajorPerformanceCaveat` and asks for `powerPreference: 'default'`, both context attributes too — so `low`'s identity key differs on three counts, not one.
+**Consequence:** **every** quality transition applies live — `low` ↔ `ultra` included. No spawn pop, no WASM reload, no lost wipeout/ghost state, no context teardown. The player's only performance lever no longer costs them their run, which is the whole point.
 
-**Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) therefore stays inside the live band (`medium` / `high` / `ultra`) and never auto-selects `low`. Auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. Choosing `low` remains a deliberate Settings action.
+**Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) still stays inside the `medium` / `high` / `ultra` band and never auto-selects `low`, but the reason has changed. It used to be a hard constraint: auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. That cannot happen any more. What remains is a design call — `low` turns shadows off and drops DPR to 1.0, a visible change of look rather than a tuning step, and the game should not choose it for the player during a rough patch. Widening the band is now a decision, not a repair.
 
 `rendererContextCreationKey()` is the single place that decides this: it serializes exactly the creation-only attributes, and `buildCanvasIdentityKey()` composes the Canvas `key` from that plus renderer preference, material backend, and the context-loss epoch. The quality preset is deliberately absent from the key.
 
@@ -199,7 +235,7 @@ Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constr
 
 ## Non-gameplay Canvases
 
-The Level Editor Canvas consumes the same contract (`deriveEditorContextOptions()` → `createGameRenderer()`), not a raw `gl={{ antialias: true }}`. It pins the `high` preset — an authoring tool wants the default look, not whatever the player last picked for performance — and allows software GL, because a slow editor beats an editor that will not boot. Any future offscreen or debug Canvas should do the same: one derive function, one apply function, so a change to the contract cannot silently skip a surface.
+The Level Editor Canvas consumes the same contract (`deriveEditorContextOptions()` → `createGameRenderer()`), not a raw `gl={{ antialias: true }}`. It pins the `high` preset — an authoring tool wants the default look, not whatever the player last picked for performance — and pins `CAPTURE_ENVELOPE`, which keeps the caveat check off, because a slow editor beats an editor that will not boot. It does not run boot negotiation; it is not the game. Any future offscreen or debug Canvas should do the same: one derive function, one apply function, so a change to the contract cannot silently skip a surface.
 
 ## Debug UI
 
@@ -271,7 +307,11 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | `src/rendering/applyRendererContextOptions.ts` | Apply derived options at setup + `applyRendererQualityUpdate()` for live changes |
 | `src/rendering/RendererQualitySync.tsx` | In-Canvas live quality apply (no remount) |
 | `src/rendering/createRenderer.ts` | Async renderer factory |
-| `src/rendering/bootRendererFallback.ts` | One-shot retry at `low` when the caveat check rejects the context |
+| `src/rendering/probeGraphicsCapability.ts` | Boot-time negotiation: tier, frozen envelope, session singleton |
+| `src/rendering/bootCrashGuard.ts` | `sessionStorage` flag for "the previous boot never got a steady frame" |
+| `src/rendering/BootHealthSentinel.tsx` | Clears that flag after 60 rendered frames |
+| `src/components/GraphicsUnsupported.tsx` | Static screen when there is no WebGL2 |
+| `src/components/SafeGraphicsBadge.tsx` | Persistent degraded-session badge |
 | `src/rendering/nativeWebgpuGate.ts` | Native WebGPU (`forceWebGL: false`) remains closed |
 | `scripts/glsl-hosts-allowlist.json` | Residual / dual / dormant GLSL construction sites |
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode and software-GL gates |

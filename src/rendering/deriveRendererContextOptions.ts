@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import type { QualityPreset } from '../systems/GameState';
+import {
+  CAPTURE_ENVELOPE,
+  HARDWARE_ENVELOPE,
+  type GraphicsEnvelope,
+} from './probeGraphicsCapability';
 
 /** Shadow mode mapped to R3F Canvas `shadows` prop and THREE.ShadowMapType. */
 export type ShadowMode = 'off' | 'basic' | 'soft';
@@ -8,12 +13,18 @@ export interface RendererContextSettings {
   /** Browser `window.devicePixelRatio`; inject in tests. Defaults to 1. */
   devicePixelRatio?: number;
   /**
-   * Opt out of `failIfMajorPerformanceCaveat`. Visual-smoke / `?screenshot=1` /
-   * CI run headless Chromium on SwiftShader, which *is* a major performance
-   * caveat — without this the context request fails and the harness sees a
-   * black canvas. Production never sets it. See `isSoftwareRendererAllowed()`.
+   * The session's frozen context envelope, from `negotiateBootGraphics()`.
+   *
+   * Antialias, power preference, and the caveat flag are creation-time
+   * attributes: changing one needs a new WebGL context, i.e. a Canvas remount,
+   * i.e. a Rapier teardown. They are therefore negotiated once at boot and
+   * passed in here, identically for every preset — which is what keeps
+   * `rendererContextCreationKey()` stable across a quality change.
+   *
+   * Defaults to `HARDWARE_ENVELOPE` so callers that only care about the
+   * live-applicable half (tests, LOD tables) do not have to thread a probe.
    */
-  allowSoftwareFallback?: boolean;
+  envelope?: GraphicsEnvelope;
 }
 
 export interface RendererContextOptions {
@@ -83,7 +94,7 @@ export const LOGARITHMIC_DEPTH_BUFFER_ENABLED = false;
 export const DESYNCHRONIZED_ENABLED = false;
 
 /**
- * Hard ceiling on `ultra`'s DPR clamp (#397).
+ * Hard ceiling on `ultra`'s DPR clamp.
  *
  * `ultra` renders at the display's native `devicePixelRatio`, which used to be
  * uncapped. On a 3x phone or a 4x external panel that is 9–16x the pixel work of
@@ -91,28 +102,15 @@ export const DESYNCHRONIZED_ENABLED = false;
  * otherwise comfortably an `ultra` machine, and the player reads it as "ultra is
  * broken" rather than "ultra is oversampling".
  *
- * 2.5 keeps the full retina win (DPR 2 is unclamped, 2.5 covers the common
- * 2.5x-scaled laptop panels) and stops the tail. Raising it is a real
- * performance decision, not a tuning nit — it must move here, in RENDERER.md,
- * and in the test that pins it.
- */
-export const ULTRA_DPR_CEILING = 2.5;
-
-/**
- * `powerPreference` for the `low` preset.
+ * 2.0 is shipping practice (<=2.0 desktop, 1.5–2.0 mobile): DPR 2 is the full
+ * retina win, and 3–4x panels are a fill-rate trap rather than a quality tier.
  *
- * Every other preset asks for `high-performance`, which on a dual-GPU laptop
- * wakes the discrete GPU. `low` is the preset a player picks *because* the
- * machine is struggling — usually thermals or battery — so asking for the power-
- * hungry adapter there works against the reason they chose it. `'default'` lets
- * the browser keep the integrated GPU.
- *
- * This is a creation-time attribute and `power:` is already part of
- * `rendererContextCreationKey()`, so it changes `low`'s identity key. That costs
- * nothing new: `low` already remounts against every other preset because it
- * flips `antialias` and relaxes `failIfMajorPerformanceCaveat`.
+ * This is the quality *ceiling*, not a valve. A frame-time-driven render scale
+ * is the valve, and it is a separate piece of work — see RENDERER.md. Raising
+ * this constant is a real performance decision: it must move here, in
+ * RENDERER.md, and in the test that pins it.
  */
-export const LOW_PRESET_POWER_PREFERENCE: WebGLPowerPreference = 'default';
+export const ULTRA_DPR_CEILING = 2.0;
 
 /**
  * Context attributes that are identical for every quality preset.
@@ -141,67 +139,63 @@ export const SHARED_CONTEXT_ATTRIBUTES = {
 /**
  * Pure quality → WebGL context options. No React or DOM side effects.
  *
- * `high` matches the pre-contract Canvas defaults: antialias on, soft shadows,
- * DPR clamped to [1, 2], high-performance power preference.
+ * The preset decides only what can be applied to a *live* renderer: the DPR
+ * clamp, the shadow mode, and the shadow map size. Every creation-time
+ * attribute comes from the session's frozen `envelope`, so all four presets
+ * produce the same `rendererContextCreationKey()` and the Canvas is never
+ * remounted by a quality change.
+ *
+ * `high` matches the pre-contract Canvas defaults: soft shadows, DPR clamped to
+ * [1, 2], 2048 shadow maps.
  */
 export function deriveRendererContextOptions(
   quality: QualityPreset,
   settings: RendererContextSettings = {}
 ): RendererContextOptions {
   const devicePixelRatio = settings.devicePixelRatio ?? 1;
-
-  // Software GL (SwiftShader) must not silently masquerade as a shipped GPU:
-  // at `low` we still accept it, because `low` is the fallback a weak machine
-  // is meant to land on. Above `low` the context request fails instead, and the
-  // caller can retry at a lower preset.
-  const allowSoftwareFallback = settings.allowSoftwareFallback ?? false;
+  const envelope = settings.envelope ?? HARDWARE_ENVELOPE;
 
   const base = {
     ...SHARED_CONTEXT_ATTRIBUTES,
-    powerPreference: 'high-performance' as WebGLPowerPreference,
+    // Frozen at boot by the graphics probe — never preset-dependent.
+    antialias: envelope.antialias,
+    powerPreference: envelope.powerPreference,
+    failIfMajorPerformanceCaveat: envelope.failIfMajorPerformanceCaveat,
     outputColorSpace: THREE.SRGBColorSpace,
     toneMapping: THREE.ACESFilmicToneMapping,
     toneMappingExposure: DEFAULT_TONE_MAPPING_EXPOSURE,
   };
 
-  const failIfMajorPerformanceCaveat = quality !== 'low' && !allowSoftwareFallback;
-
   switch (quality) {
     case 'low':
       return {
         ...base,
-        powerPreference: LOW_PRESET_POWER_PREFERENCE,
-        failIfMajorPerformanceCaveat,
         dprMax: 1.0,
-        antialias: false,
         shadowMode: 'off',
         shadowMapSize: null,
       };
     case 'medium':
       return {
         ...base,
-        failIfMajorPerformanceCaveat,
         dprMax: 1.25,
-        antialias: true,
         shadowMode: 'basic',
         shadowMapSize: 1024,
       };
     case 'high':
       return {
         ...base,
-        failIfMajorPerformanceCaveat,
         dprMax: 2,
-        antialias: true,
         shadowMode: 'soft',
         shadowMapSize: 2048,
       };
     case 'ultra':
       return {
         ...base,
-        failIfMajorPerformanceCaveat,
         dprMax: Math.min(devicePixelRatio, ULTRA_DPR_CEILING),
-        antialias: true,
         shadowMode: 'soft',
+        // Keyed off the *raw* device pixel ratio, not the capped DPR: a 3x
+        // display still wants the bigger shadow map even though we render below
+        // its native resolution.
         shadowMapSize: devicePixelRatio >= 2 ? 4096 : 2048,
       };
     default: {
@@ -254,10 +248,15 @@ export function toContextAttributes(
  * context. Two presets sharing a key can be swapped live; a differing key is
  * what forces the Canvas remount.
  *
- * Today that means `medium` / `high` / `ultra` share one key (they differ only
- * in DPR and shadow configuration, both live-applicable), while `low` gets its
- * own — it turns antialias off, accepts software GL, and asks for the
- * `'default'` power preference instead of `high-performance`.
+ * Since boot-time negotiation, **all four presets share one key**: the
+ * attributes serialized here come from the session's frozen `GraphicsEnvelope`,
+ * not from the preset. The preset only moves DPR, shadow mode, and shadow map
+ * size, all of which apply live. A quality change therefore cannot remount the
+ * Canvas, cannot destroy the WebGL context, and cannot re-initialise Rapier.
+ *
+ * What can still change the key: the envelope itself (only ever decided once,
+ * at boot — `?softwareGl=1` and the capture harness pin their own), the renderer
+ * class, the material backend, and the context-loss epoch.
  */
 export function rendererContextCreationKey(
   options: RendererContextOptions
@@ -285,9 +284,10 @@ export const EDITOR_QUALITY_PRESET: QualityPreset = 'high';
  * Renderer contract for the Level Editor and any other non-gameplay Canvas.
  *
  * Same derive function as the game so a change to the contract cannot miss the
- * editor, with one deliberate difference: software GL is allowed. The editor is
- * a tool — running it on a machine without a real GPU should be slow, not
- * impossible.
+ * editor, with one deliberate difference: it pins `CAPTURE_ENVELOPE`, which
+ * keeps the caveat check off. The editor is a tool — running it on a machine
+ * without a real GPU should be slow, not impossible — and it boots its own
+ * Canvas without going through the game's boot negotiation.
  */
 export function deriveEditorContextOptions(
   settings: RendererContextSettings = {}
@@ -296,7 +296,7 @@ export function deriveEditorContextOptions(
     devicePixelRatio:
       settings.devicePixelRatio ??
       (typeof window !== 'undefined' ? window.devicePixelRatio : 1),
-    allowSoftwareFallback: settings.allowSoftwareFallback ?? true,
+    envelope: settings.envelope ?? CAPTURE_ENVELOPE,
   });
 }
 
@@ -321,8 +321,9 @@ export interface CanvasIdentityInput {
  *
  * What remains is: the renderer class (`rendererPreference`), the material
  * pipeline (`materialBackend`), the creation-only context attributes, and the
- * context-loss epoch. Antialias is the one quality-driven attribute that cannot
- * change on a live context, which is why `low` ↔ anything still remounts.
+ * context-loss epoch. Antialias used to be the exception that made `low` ↔
+ * anything remount; it is now part of the boot-negotiated envelope, so no preset
+ * transition changes this key at all.
  */
 export function buildCanvasIdentityKey(input: CanvasIdentityInput): string {
   return [

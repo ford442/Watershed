@@ -1,10 +1,26 @@
 export { createGameRenderer } from './createRenderer';
 export {
-  createGameRendererWithCaveatFallback,
-  CAVEAT_FALLBACK_PRESET,
-  type CaveatFallbackInfo,
-  type CaveatFallbackInput,
-} from './bootRendererFallback';
+  negotiateBootGraphics,
+  probeGraphicsCapability,
+  getSessionGraphicsCapability,
+  getSessionGraphicsEnvelope,
+  resetSessionGraphicsCapability,
+  HARDWARE_ENVELOPE,
+  DEGRADED_ENVELOPE,
+  CAPTURE_ENVELOPE,
+  type GraphicsCapability,
+  type GraphicsCapabilityReason,
+  type GraphicsEnvelope,
+  type GraphicsTier,
+} from './probeGraphicsCapability';
+export {
+  beginBootAttempt,
+  markBootHealthy,
+  isBootAttemptOpen,
+  BOOT_GUARD_KEY,
+  HEALTHY_FRAME_COUNT,
+} from './bootCrashGuard';
+export { default as BootHealthSentinel } from './BootHealthSentinel';
 export {
   deriveRendererContextOptions,
   deriveEditorContextOptions,
@@ -18,7 +34,6 @@ export {
   DESYNCHRONIZED_ENABLED,
   SHARED_CONTEXT_ATTRIBUTES,
   ULTRA_DPR_CEILING,
-  LOW_PRESET_POWER_PREFERENCE,
   EDITOR_QUALITY_PRESET,
   type RendererCreationAttributes,
   type RendererContextOptions,

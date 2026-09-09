@@ -3,6 +3,7 @@ import * as THREE from 'three';
 
 import { createGameRenderer } from './createRenderer';
 import { getRendererShadowMapSize } from './applyRendererContextOptions';
+import { CAPTURE_ENVELOPE, DEGRADED_ENVELOPE } from './probeGraphicsCapability';
 import { deriveRendererContextOptions } from './deriveRendererContextOptions';
 import { createRiverMaterial } from '../utils/RiverShader';
 import { createCanyonMaterial } from '../materials/CanyonMaterial';
@@ -356,7 +357,7 @@ describe('createGameRenderer', () => {
     renderer.dispose();
   });
 
-  it('accepts software GL for the low preset and for the capture opt-out', async () => {
+  it('forwards the negotiated envelope, so a degraded machine gets a context', async () => {
     const seen: Array<Record<string, unknown>> = [];
     const canvas = document.createElement('canvas');
     const spy = vi
@@ -368,15 +369,15 @@ describe('createGameRenderer', () => {
         return createMockWebGLContext(canvas) as unknown as RenderingContext;
       });
 
-    const low = await createGameRenderer({ canvas }, {
+    // Both envelopes that relax the caveat check: the degraded player machine
+    // the probe landed on, and the capture harness that pins its own.
+    const degraded = await createGameRenderer({ canvas }, {
       preference: 'webgl',
-      contextOptions: deriveRendererContextOptions('low'),
+      contextOptions: deriveRendererContextOptions('low', { envelope: DEGRADED_ENVELOPE }),
     });
     const captured = await createGameRenderer({ canvas }, {
       preference: 'webgl',
-      contextOptions: deriveRendererContextOptions('ultra', {
-        allowSoftwareFallback: true,
-      }),
+      contextOptions: deriveRendererContextOptions('ultra', { envelope: CAPTURE_ENVELOPE }),
     });
 
     // Visual smoke / CI run headless Chromium on SwiftShader: if either of these
@@ -384,7 +385,7 @@ describe('createGameRenderer', () => {
     expect(seen.every((attrs) => attrs.failIfMajorPerformanceCaveat === false)).toBe(true);
 
     spy.mockRestore();
-    low.dispose();
+    degraded.dispose();
     captured.dispose();
   });
 

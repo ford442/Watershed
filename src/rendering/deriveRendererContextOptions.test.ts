@@ -5,7 +5,6 @@ import {
   DESYNCHRONIZED_ENABLED,
   EDITOR_QUALITY_PRESET,
   LOGARITHMIC_DEPTH_BUFFER_ENABLED,
-  LOW_PRESET_POWER_PREFERENCE,
   ULTRA_DPR_CEILING,
   deriveEditorContextOptions,
   deriveRendererContextOptions,
@@ -15,6 +14,11 @@ import {
   shadowModeToCanvasProp,
   toContextAttributes,
 } from './deriveRendererContextOptions';
+import {
+  CAPTURE_ENVELOPE,
+  DEGRADED_ENVELOPE,
+  HARDWARE_ENVELOPE,
+} from './probeGraphicsCapability';
 import type { QualityPreset } from '../systems/GameState';
 
 const ALL_PRESETS: QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
@@ -24,10 +28,8 @@ describe('deriveRendererContextOptions', () => {
     const opts = deriveRendererContextOptions('low');
     expect(opts).toMatchObject({
       dprMax: 1.0,
-      antialias: false,
       shadowMode: 'off',
       shadowMapSize: null,
-      powerPreference: 'default',
       outputColorSpace: THREE.SRGBColorSpace,
       toneMapping: THREE.ACESFilmicToneMapping,
       toneMappingExposure: DEFAULT_TONE_MAPPING_EXPOSURE,
@@ -38,20 +40,17 @@ describe('deriveRendererContextOptions', () => {
     const opts = deriveRendererContextOptions('medium');
     expect(opts).toMatchObject({
       dprMax: 1.25,
-      antialias: true,
       shadowMode: 'basic',
       shadowMapSize: 1024,
     });
   });
 
-  it('maps high preset to pre-contract defaults (antialias, soft shadows, DPR 2)', () => {
+  it('maps high preset to pre-contract defaults (soft shadows, DPR 2)', () => {
     const opts = deriveRendererContextOptions('high');
     expect(opts).toMatchObject({
       dprMax: 2,
-      antialias: true,
       shadowMode: 'soft',
       shadowMapSize: 2048,
-      powerPreference: 'high-performance',
       outputColorSpace: THREE.SRGBColorSpace,
       toneMapping: THREE.ACESFilmicToneMapping,
     });
@@ -61,7 +60,6 @@ describe('deriveRendererContextOptions', () => {
     const opts = deriveRendererContextOptions('ultra', { devicePixelRatio: 2 });
     expect(opts).toMatchObject({
       dprMax: 2,
-      antialias: true,
       shadowMode: 'soft',
       shadowMapSize: 4096,
     });
@@ -74,8 +72,9 @@ describe('deriveRendererContextOptions', () => {
   });
 
   it('caps ultra DPR at the documented ceiling on high-density displays', () => {
-    expect(ULTRA_DPR_CEILING).toBe(2.5);
-    // A 3x phone / 4x panel would otherwise render 9-16x the pixels of DPR 1.
+    // Shipping practice is <=2.0 on desktop; 3-4x panels are a fill-rate trap.
+    // Move this together with RENDERER.md and the constant, never alone.
+    expect(ULTRA_DPR_CEILING).toBe(2.0);
     expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 3 }).dprMax).toBe(
       ULTRA_DPR_CEILING,
     );
@@ -98,16 +97,44 @@ describe('deriveRendererContextOptions', () => {
     expect(deriveRendererContextOptions('ultra', { devicePixelRatio: 3 }).shadowMapSize).toBe(4096);
   });
 
-  it('asks for the default power preference on low only', () => {
-    expect(LOW_PRESET_POWER_PREFERENCE).toBe('default');
-    expect(deriveRendererContextOptions('low').powerPreference).toBe('default');
-    for (const preset of ALL_PRESETS.filter((p) => p !== 'low')) {
-      expect(deriveRendererContextOptions(preset).powerPreference).toBe('high-performance');
-    }
-  });
-
   it('keeps logarithmic depth disabled (evaluated, deferred)', () => {
     expect(LOGARITHMIC_DEPTH_BUFFER_ENABLED).toBe(false);
+  });
+});
+
+describe('the boot-negotiated envelope owns every creation attribute', () => {
+  it.each(ALL_PRESETS)('takes antialias / power / caveat from the envelope on %s', (preset) => {
+    expect(deriveRendererContextOptions(preset, { envelope: HARDWARE_ENVELOPE })).toMatchObject({
+      antialias: true,
+      powerPreference: 'high-performance',
+      failIfMajorPerformanceCaveat: true,
+    });
+    expect(deriveRendererContextOptions(preset, { envelope: DEGRADED_ENVELOPE })).toMatchObject({
+      antialias: false,
+      powerPreference: 'default',
+      failIfMajorPerformanceCaveat: false,
+    });
+  });
+
+  it('defaults to the hardware envelope when no probe result is threaded', () => {
+    expect(deriveRendererContextOptions('low')).toMatchObject(HARDWARE_ENVELOPE);
+  });
+
+  it('lets the capture harness keep antialias with the caveat check off', () => {
+    // Visual smoke runs SwiftShader: the caveat check must be off, but flipping
+    // antialias would move every baseline.
+    const opts = deriveRendererContextOptions('high', { envelope: CAPTURE_ENVELOPE });
+    expect(opts.antialias).toBe(true);
+    expect(opts.failIfMajorPerformanceCaveat).toBe(false);
+  });
+
+  it('never lets the preset move a creation attribute', () => {
+    for (const envelope of [HARDWARE_ENVELOPE, DEGRADED_ENVELOPE, CAPTURE_ENVELOPE]) {
+      const attributes = ALL_PRESETS.map((preset) =>
+        toContextAttributes(deriveRendererContextOptions(preset, { devicePixelRatio: 3, envelope })),
+      );
+      for (const attrs of attributes) expect(attrs).toEqual(attributes[0]);
+    }
   });
 });
 
@@ -162,24 +189,6 @@ describe('pinned context attributes', () => {
     expect(DESYNCHRONIZED_ENABLED).toBe(false);
   });
 
-  it('rejects software GL above the low preset', () => {
-    expect(deriveRendererContextOptions('medium').failIfMajorPerformanceCaveat).toBe(true);
-    expect(deriveRendererContextOptions('high').failIfMajorPerformanceCaveat).toBe(true);
-    expect(deriveRendererContextOptions('ultra').failIfMajorPerformanceCaveat).toBe(true);
-  });
-
-  it('accepts software GL on low — low is the weak-machine fallback', () => {
-    expect(deriveRendererContextOptions('low').failIfMajorPerformanceCaveat).toBe(false);
-  });
-
-  it.each(ALL_PRESETS)(
-    'lets the capture/CI harness opt out of the caveat check on %s',
-    (preset) => {
-      const opts = deriveRendererContextOptions(preset, { allowSoftwareFallback: true });
-      expect(opts.failIfMajorPerformanceCaveat).toBe(false);
-    }
-  );
-
   it('forwards every creation attribute to the renderer constructor', () => {
     const attributes = toContextAttributes(deriveRendererContextOptions('high'));
     expect(attributes).toEqual({
@@ -204,26 +213,31 @@ describe('pinned context attributes', () => {
 });
 
 describe('rendererContextCreationKey — what forces a Canvas remount', () => {
-  const keyFor = (preset: QualityPreset) =>
-    rendererContextCreationKey(deriveRendererContextOptions(preset, { devicePixelRatio: 2 }));
+  const keyFor = (preset: QualityPreset, envelope = HARDWARE_ENVELOPE) =>
+    rendererContextCreationKey(
+      deriveRendererContextOptions(preset, { devicePixelRatio: 2, envelope }),
+    );
 
-  it('is identical across medium / high / ultra so mid-run swaps apply live', () => {
-    expect(keyFor('medium')).toBe(keyFor('high'));
-    expect(keyFor('high')).toBe(keyFor('ultra'));
+  it('is IDENTICAL across all four presets for a given probe result', () => {
+    // The acceptance criterion for boot-time negotiation: no quality preset
+    // transition may change this key, because a changed key is a Canvas remount
+    // and a Canvas remount re-initialises Rapier.
+    for (const envelope of [HARDWARE_ENVELOPE, DEGRADED_ENVELOPE, CAPTURE_ENVELOPE]) {
+      const keys = ALL_PRESETS.map((preset) => keyFor(preset, envelope));
+      expect(new Set(keys).size).toBe(1);
+    }
   });
 
-  it('carries the power preference, so low\'s default adapter is part of identity', () => {
-    const low = rendererContextCreationKey(deriveRendererContextOptions('low'));
-    const high = rendererContextCreationKey(deriveRendererContextOptions('high'));
-    expect(low).toContain('power:default');
-    expect(high).toContain('power:high-performance');
-    // low already remounted on antialias + caveat; the power preference adds no
-    // new remount boundary, but it must not be silently dropped from the key.
-    expect(low).not.toBe(high);
+  it('does still separate the envelopes themselves', () => {
+    // The remount machinery stays for the one case that needs it: a session
+    // negotiated on a different envelope (?softwareGl=1, capture mode).
+    expect(keyFor('high', HARDWARE_ENVELOPE)).not.toBe(keyFor('high', DEGRADED_ENVELOPE));
+    expect(keyFor('high', HARDWARE_ENVELOPE)).not.toBe(keyFor('high', CAPTURE_ENVELOPE));
   });
 
-  it('differs for low, which turns antialias off and accepts software GL', () => {
-    expect(keyFor('low')).not.toBe(keyFor('high'));
+  it('carries the power preference, so the negotiated adapter is part of identity', () => {
+    expect(keyFor('high', HARDWARE_ENVELOPE)).toContain('power:high-performance');
+    expect(keyFor('high', DEGRADED_ENVELOPE)).toContain('power:default');
   });
 
   it('ignores DPR and shadow configuration, which are applied live', () => {
@@ -236,14 +250,6 @@ describe('rendererContextCreationKey — what forces a Canvas remount', () => {
     expect(at1x).toBe(at2x);
     expect(keyFor('medium')).toBe(keyFor('high')); // basic vs soft shadows
   });
-
-  it('changes when the caveat opt-out changes — it is a context attribute', () => {
-    const strict = rendererContextCreationKey(deriveRendererContextOptions('high'));
-    const permissive = rendererContextCreationKey(
-      deriveRendererContextOptions('high', { allowSoftwareFallback: true })
-    );
-    expect(strict).not.toBe(permissive);
-  });
 });
 
 describe('deriveEditorContextOptions', () => {
@@ -251,7 +257,7 @@ describe('deriveEditorContextOptions', () => {
     const editor = deriveEditorContextOptions({ devicePixelRatio: 1 });
     const game = deriveRendererContextOptions(EDITOR_QUALITY_PRESET, {
       devicePixelRatio: 1,
-      allowSoftwareFallback: true,
+      envelope: CAPTURE_ENVELOPE,
     });
     expect(editor).toEqual(game);
   });
@@ -277,16 +283,9 @@ describe('buildCanvasIdentityKey — the actual Canvas remount trigger', () => {
       epoch: overrides.epoch ?? 0,
     });
 
-  it('keeps the world alive across medium ↔ high ↔ ultra', () => {
-    // The acceptance criterion: a mid-run quality change in this range must not
-    // change the key, or Rapier + the treadmill + WASM SWE would be torn down.
-    expect(keyFor('medium')).toBe(keyFor('high'));
-    expect(keyFor('high')).toBe(keyFor('ultra'));
-    expect(keyFor('ultra')).toBe(keyFor('medium'));
-  });
-
-  it('still remounts for low, which cannot change antialias on a live context', () => {
-    expect(keyFor('low')).not.toBe(keyFor('high'));
+  it('keeps the world alive across every quality transition, low ↔ ultra included', () => {
+    const keys = ALL_PRESETS.map((preset) => keyFor(preset));
+    expect(new Set(keys).size).toBe(1);
   });
 
   it('remounts when the renderer class or material pipeline changes', () => {
