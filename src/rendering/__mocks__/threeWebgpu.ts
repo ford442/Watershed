@@ -199,3 +199,37 @@ export const materialRoughness = createNode('materialRoughness');
 export const mod = createNode('mod');
 export const instanceMatrix = createNode('instanceMatrix');
 export const pointUV = createNode('pointUV');
+// #399 phase A — water surface stage split, planar reflection, god rays.
+export const varying = createNode('varying');
+export const positionGeometry = createNode('positionGeometry');
+export const modelWorldMatrix = createNode('modelWorldMatrix');
+export const cameraProjectionMatrix = createNode('cameraProjectionMatrix');
+export const cameraViewMatrix = createNode('cameraViewMatrix');
+
+/**
+ * Light node classes. Real `three/webgpu` exports these; the node light bridge
+ * pairs them with `three`'s core light classes, so the stub only needs each name
+ * to be a distinct constructor.
+ */
+class StubLightNode {
+  constructor(public light: unknown) {}
+}
+export class AmbientLightNode extends StubLightNode {}
+export class DirectionalLightNode extends StubLightNode {}
+export class HemisphereLightNode extends StubLightNode {}
+export class PointLightNode extends StubLightNode {}
+export class RectAreaLightNode extends StubLightNode {}
+export class SpotLightNode extends StubLightNode {}
+export class LightProbeNode extends StubLightNode {}
+
+/** Remaining node material classes, so the bridge can pair them by type string. */
+export class MeshLambertNodeMaterial extends MeshStandardNodeMaterial {}
+export class MeshMatcapNodeMaterial extends MeshStandardNodeMaterial {}
+export class MeshNormalNodeMaterial extends MeshStandardNodeMaterial {}
+export class MeshPhongNodeMaterial extends MeshStandardNodeMaterial {}
+export class MeshPhysicalNodeMaterial extends MeshStandardNodeMaterial {}
+export class MeshToonNodeMaterial extends MeshStandardNodeMaterial {}
+export class LineBasicNodeMaterial extends MeshBasicNodeMaterial {}
+export class LineDashedNodeMaterial extends MeshBasicNodeMaterial {}
+export class ShadowNodeMaterial extends MeshBasicNodeMaterial {}
+export class SpriteNodeMaterial extends MeshBasicNodeMaterial {}
