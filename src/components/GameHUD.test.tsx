@@ -73,6 +73,28 @@ describe('GameHUD native WASM smoke', () => {
     expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM FAILED');
   });
 
+  it('banners a glue/binary provenance mismatch distinctly from timeout and throw', async () => {
+    getWasmMock.mockRejectedValue(
+      new Error(
+        'watershed_native glue/binary provenance mismatch: watershed_native.wasm served '
+        + '33817B but this bundle was built against 33811B — commit=c4c1ab3',
+      ),
+    );
+
+    render(<GameHUD />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM FAILED');
+    });
+
+    const banner = screen.getByTestId('wasm-init-banner');
+    expect(banner).toHaveTextContent('Native WASM provenance mismatch');
+    expect(banner).toHaveTextContent('stale deploy');
+    expect(banner).not.toHaveTextContent('timed out');
+    expect(banner).not.toHaveTextContent('failed to init');
+    expect(banner).toHaveTextContent('served 33817B');
+  });
+
   it('banners native init timeout distinctly from a throw', async () => {
     getWasmMock.mockRejectedValue(
       new Error('watershed_native init timed out after 8000ms'),

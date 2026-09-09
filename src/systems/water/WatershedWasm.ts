@@ -362,6 +362,18 @@ export function isWasmInitTimeoutError(error: unknown): boolean {
  */
 export const PROVENANCE_MISMATCH_MARKER = 'glue/binary provenance mismatch';
 
+/** Identity the assert compares against. Swappable only by tests. */
+let _identity: BuildIdentity = BUILD_IDENTITY;
+
+function activeBuildIdentity(): BuildIdentity {
+  return _identity;
+}
+
+/** Test-only: pin the identity the provenance assert compares against. */
+export function __setBuildIdentityForTests(identity: BuildIdentity | null): void {
+  _identity = identity ?? BUILD_IDENTITY;
+}
+
 /** Thrown when a served passenger does not match the bytes this bundle was built against. */
 export class WasmProvenanceMismatchError extends Error {
   constructor(detail: string) {
@@ -392,7 +404,7 @@ export interface ArtifactProbe {
  */
 export function describeProvenanceMismatch(
   probes: readonly ArtifactProbe[],
-  identity: BuildIdentity = BUILD_IDENTITY,
+  identity: BuildIdentity = activeBuildIdentity(),
 ): string | null {
   if (!hasPassengerSizes(identity)) return null;
 
@@ -413,7 +425,7 @@ export function describeProvenanceMismatch(
 /** Probes for the current build identity, given measured sizes. Pure. */
 export function buildArtifactProbes(
   measured: { glue: number | null; wasm: number | null },
-  identity: BuildIdentity = BUILD_IDENTITY,
+  identity: BuildIdentity = activeBuildIdentity(),
 ): ArtifactProbe[] {
   return [
     {
@@ -538,10 +550,11 @@ export async function probeArtifactProvenance(
       fetchArtifactByteLength(glueUrl, fetchImpl),
       fetchArtifactByteLength(wasmUrl, fetchImpl),
     ]);
+    const identity = activeBuildIdentity();
     console.info(
-      `${WASM_LOG_PREFIX} wasm bytes=${wasm ?? 'unknown'}/${BUILD_IDENTITY.wasmBytes || 'unknown'} `
-      + `glue bytes=${glue ?? 'unknown'}/${BUILD_IDENTITY.glueBytes || 'unknown'} `
-      + `build=${formatBuildIdentity(BUILD_IDENTITY)}`,
+      `${WASM_LOG_PREFIX} wasm bytes=${wasm ?? 'unknown'}/${identity.wasmBytes || 'unknown'} `
+      + `glue bytes=${glue ?? 'unknown'}/${identity.glueBytes || 'unknown'} `
+      + `build=${formatBuildIdentity(identity)}`,
     );
     return describeProvenanceMismatch(buildArtifactProbes({ glue, wasm }));
   })();
@@ -598,11 +611,14 @@ export async function getWasm(): Promise<WatershedNativeModule> {
     const wasmJsUrl = resolvePublicAsset('watershed_native.js');
     const wasmBinaryUrl = resolvePublicAsset('watershed_native.wasm');
 
-    try {
-      logWasmInitStarted(wasmJsUrl);
-      // Runs concurrently with the factory so the assert costs no extra boot latency.
-      const provenance = probeArtifactProvenance(wasmJsUrl, wasmBinaryUrl, timeoutMs);
+    logWasmInitStarted(wasmJsUrl);
+    // Runs concurrently with the factory so the assert costs no extra boot latency,
+    // and is consulted on BOTH paths: a mismatched pair usually blows up *inside* the
+    // factory (`wasmTable.get is not a function`), and that message names the symptom,
+    // not the cause. If a mismatch is pending when init throws, the mismatch wins.
+    const provenance = probeArtifactProvenance(wasmJsUrl, wasmBinaryUrl, timeoutMs);
 
+    try {
       // Dynamic import keeps the glue JS out of the main bundle.
       const mod = typeof process !== 'undefined' && process.env.WATERSHED_WASM_INTEGRATION === '1'
         ? await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory }
@@ -643,11 +659,22 @@ export async function getWasm(): Promise<WatershedNativeModule> {
       logWasmTerminal('ready', `abi=${version}`);
       return loaded;
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
+      let err = error instanceof Error ? error : new Error(String(error));
+
+      // Reclassify a generic init throw when the served pair is provably mismatched.
+      if (!isWasmProvenanceMismatchError(err)) {
+        const mismatch = await provenance;
+        if (mismatch) {
+          err = new WasmProvenanceMismatchError(`${mismatch} (native init threw: ${err.message})`);
+        }
+      }
+
       _initError = err;
       if (!terminalLogged) {
         terminalLogged = true;
-        if (isWasmInitTimeoutError(err)) {
+        if (isWasmProvenanceMismatchError(err)) {
+          logWasmTerminal('provenance-mismatch', err.message);
+        } else if (isWasmInitTimeoutError(err)) {
           logWasmTerminal('timed-out', `${timeoutMs}ms`);
         } else {
           logWasmTerminal('failed', err.message);

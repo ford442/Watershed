@@ -85,12 +85,11 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
     const wasmBinaryUrl = resolveWorkerAsset('watershed_native.wasm');
     let terminalLogged = false;
 
+    console.info(`${WASM_LOG_PREFIX} init started url=${wasmJsUrl} stamp=${WASM_ARTIFACT_STAMP}`);
+    // Same glue/binary pair assert as the main thread; consulted on both paths.
+    const provenance = probeArtifactProvenance(wasmJsUrl, wasmBinaryUrl, timeoutMs);
+
     try {
-      console.info(`${WASM_LOG_PREFIX} init started url=${wasmJsUrl} stamp=${WASM_ARTIFACT_STAMP}`);
-
-      // Same glue/binary pair assert as the main thread; runs alongside the factory.
-      const provenance = probeArtifactProvenance(wasmJsUrl, wasmBinaryUrl, timeoutMs);
-
       const mod = await import(/* @vite-ignore */ wasmJsUrl) as { default: WatershedNativeFactory };
       const factory = mod.default;
       const loaded = await raceWithDeadline(
@@ -113,18 +112,24 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
       console.info(`${WASM_LOG_PREFIX} ready (abi=${version})`);
       return loaded;
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
+      let err = error instanceof Error ? error : new Error(String(error));
+      if (!isWasmProvenanceMismatchError(err)) {
+        const mismatch = await provenance;
+        if (mismatch) {
+          err = new WasmProvenanceMismatchError(`${mismatch} (native init threw: ${err.message})`);
+        }
+      }
       if (!terminalLogged) {
         terminalLogged = true;
-        if (isWasmInitTimeoutError(err)) {
-          console.error(`${WASM_LOG_PREFIX} timed-out(${timeoutMs}ms)`);
-        } else if (isWasmProvenanceMismatchError(err)) {
+        if (isWasmProvenanceMismatchError(err)) {
           console.error(`${WASM_LOG_PREFIX} provenance-mismatch(${err.message})`);
+        } else if (isWasmInitTimeoutError(err)) {
+          console.error(`${WASM_LOG_PREFIX} timed-out(${timeoutMs}ms)`);
         } else {
           console.error(`${WASM_LOG_PREFIX} failed(${err.message})`);
         }
       }
-      console.error('[physics worker] native init failed; using TS water-force fallback', error);
+      console.error('[physics worker] native init failed; using TS water-force fallback', err);
       return null;
     }
   })();

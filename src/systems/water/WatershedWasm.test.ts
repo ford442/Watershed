@@ -28,10 +28,19 @@ import {
   resolveWasmInitTimeoutMs,
   WASM_INIT_TIMEOUT_MS,
   WasmInitTimeoutError,
+  WasmProvenanceMismatchError,
+  buildArtifactProbes,
+  describeProvenanceMismatch,
+  fetchArtifactByteLength,
+  isWasmInitTimeoutError,
+  isWasmProvenanceMismatchError,
+  probeArtifactProvenance,
+  __setBuildIdentityForTests,
   type Vec3,
   type WatershedNativeModule,
   type SWEGrid,
 } from './WatershedWasm';
+import type { BuildIdentity } from '../../buildIdentity';
 
 // ---------------------------------------------------------------------------
 // 1. Export surface
@@ -633,6 +642,20 @@ describe('getWasm init deadline', () => {
 
   beforeEach(() => {
     __resetWasmLoaderForTests();
+    // Sizes unknown → provenance assert disabled, so a hang stays a *timeout*
+    // rather than being reclassified as a mismatch.
+    __setBuildIdentityForTests({
+      schema: 1,
+      commit: 'unknown',
+      commitShort: 'unknown',
+      dirty: false,
+      builtAt: new Date(0).toISOString(),
+      wasmStamp: 'unknown',
+      glueFile: 'watershed_native.js',
+      wasmFile: 'watershed_native.wasm',
+      glueBytes: 0,
+      wasmBytes: 0,
+    });
     vi.useFakeTimers();
     process.env[envKey] = '50';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -644,6 +667,7 @@ describe('getWasm init deadline', () => {
   afterEach(() => {
     vi.useRealTimers();
     delete process.env[envKey];
+    __setBuildIdentityForTests(null);
     __resetWasmLoaderForTests();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -675,5 +699,202 @@ describe('getWasm init deadline', () => {
 
     infoSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Glue / binary provenance assert (#402)
+// ---------------------------------------------------------------------------
+
+const IDENTITY: BuildIdentity = {
+  schema: 1,
+  commit: 'c4c1ab3ca958c1230525a15c612ebb0346e5c4af',
+  commitShort: 'c4c1ab3',
+  dirty: false,
+  builtAt: '2026-09-09T12:00:00.000Z',
+  wasmStamp: '48807a27dda538ad',
+  glueFile: 'watershed_native.js',
+  wasmFile: 'watershed_native.wasm',
+  glueBytes: 33562,
+  wasmBytes: 33811,
+};
+
+/** The live #402 shape: 08-14 glue (26999 B) beside an 08-31 binary (33817 B). */
+const LIVE_402 = { glue: 26999, wasm: 33817 };
+
+function fetchStub(sizes: Record<string, number | null>) {
+  return vi.fn(async (url: string) => {
+    const key = url.includes('.wasm') ? 'wasm' : 'glue';
+    const size = sizes[key];
+    if (size == null) throw new Error('network');
+    return {
+      headers: { get: (name: string) => (name === 'content-length' ? String(size) : null) },
+      arrayBuffer: async () => new ArrayBuffer(size),
+    };
+  });
+}
+
+describe('describeProvenanceMismatch', () => {
+  it('passes a matched pair', () => {
+    const probes = buildArtifactProbes({ glue: 33562, wasm: 33811 }, IDENTITY);
+    expect(describeProvenanceMismatch(probes, IDENTITY)).toBeNull();
+  });
+
+  it('names the split-provenance pair that was actually live', () => {
+    const probes = buildArtifactProbes(LIVE_402, IDENTITY);
+    const detail = describeProvenanceMismatch(probes, IDENTITY);
+    expect(detail).toContain('watershed_native.js served 26999B but this bundle was built against 33562B');
+    expect(detail).toContain('watershed_native.wasm served 33817B but this bundle was built against 33811B');
+    expect(detail).toContain('commit=c4c1ab3');
+    expect(detail).toContain('stamp=48807a27dda538ad');
+  });
+
+  it('flags a stale binary even when the glue matches', () => {
+    const probes = buildArtifactProbes({ glue: 33562, wasm: 33817 }, IDENTITY);
+    const detail = describeProvenanceMismatch(probes, IDENTITY);
+    expect(detail).toContain('watershed_native.wasm');
+    expect(detail).not.toContain('watershed_native.js served');
+  });
+
+  it('is inconclusive (null) when a size could not be measured', () => {
+    const probes = buildArtifactProbes({ glue: null, wasm: null }, IDENTITY);
+    expect(describeProvenanceMismatch(probes, IDENTITY)).toBeNull();
+  });
+
+  it('is disabled when the identity records no passenger sizes (no-git / no-wasm build)', () => {
+    const unknown: BuildIdentity = { ...IDENTITY, glueBytes: 0, wasmBytes: 0 };
+    const probes = buildArtifactProbes(LIVE_402, unknown);
+    expect(describeProvenanceMismatch(probes, unknown)).toBeNull();
+  });
+});
+
+describe('fetchArtifactByteLength', () => {
+  it('prefers content-length from a HEAD', async () => {
+    const stub = fetchStub({ glue: 33562, wasm: 33811 });
+    await expect(fetchArtifactByteLength('/watershed_native.wasm', stub)).resolves.toBe(33811);
+    expect(stub).toHaveBeenCalledWith('/watershed_native.wasm', { method: 'HEAD' });
+  });
+
+  it('falls back to a GET body when content-length is absent', async () => {
+    const stub = vi.fn(async () => ({
+      headers: { get: () => null },
+      arrayBuffer: async () => new ArrayBuffer(4242),
+    }));
+    await expect(fetchArtifactByteLength('/x.wasm', stub as never)).resolves.toBe(4242);
+  });
+
+  it('returns null instead of throwing when the asset is unreachable', async () => {
+    const stub = vi.fn(async () => { throw new Error('offline'); });
+    await expect(fetchArtifactByteLength('/x.wasm', stub as never)).resolves.toBeNull();
+  });
+});
+
+describe('probeArtifactProvenance', () => {
+  const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+  afterEach(() => {
+    __setBuildIdentityForTests(null);
+    infoSpy.mockClear();
+  });
+
+  it('returns the mismatch detail for a split-provenance server', async () => {
+    __setBuildIdentityForTests(IDENTITY);
+    const detail = await probeArtifactProvenance(
+      '/watershed_native.js', '/watershed_native.wasm', 1000, fetchStub(LIVE_402) as never,
+    );
+    expect(detail).toContain('watershed_native.wasm served 33817B');
+  });
+
+  it('returns null for a coherent server', async () => {
+    __setBuildIdentityForTests(IDENTITY);
+    await expect(probeArtifactProvenance(
+      '/watershed_native.js', '/watershed_native.wasm', 1000,
+      fetchStub({ glue: 33562, wasm: 33811 }) as never,
+    )).resolves.toBeNull();
+  });
+
+  it('never rejects, and never outlives its deadline, when the host hangs', async () => {
+    __setBuildIdentityForTests(IDENTITY);
+    vi.useFakeTimers();
+    const hang = vi.fn(() => new Promise(() => { /* never settles */ }));
+    const pending = probeArtifactProvenance('/a.js', '/a.wasm', 50, hang as never);
+    await vi.advanceTimersByTimeAsync(60);
+    await expect(pending).resolves.toBeNull();
+    vi.useRealTimers();
+  });
+});
+
+describe('getWasm provenance guard', () => {
+  const RealFunction = globalThis.Function;
+
+  beforeEach(() => {
+    __resetWasmLoaderForTests();
+    __setBuildIdentityForTests(IDENTITY);
+  });
+
+  afterEach(() => {
+    __resetWasmLoaderForTests();
+    __setBuildIdentityForTests(null);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    globalThis.Function = RealFunction;
+  });
+
+  function stubFactory(module: Partial<WatershedNativeModule>) {
+    globalThis.Function = new Proxy(RealFunction, {
+      construct(target, args: string[]) {
+        if (args[0] === 'url' && args[1] === 'return import(url)') {
+          return () => Promise.resolve({ default: () => Promise.resolve(module) });
+        }
+        return new target(...args);
+      },
+    }) as typeof Function;
+  }
+
+  it('rejects an ABI-valid module whose served bytes are a mismatched pair', async () => {
+    vi.stubGlobal('fetch', fetchStub(LIVE_402));
+    stubFactory({ getVersion: () => 8 });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await expect(getWasm()).rejects.toBeInstanceOf(WasmProvenanceMismatchError);
+
+    const err = peekWasmInitError();
+    expect(isWasmProvenanceMismatchError(err)).toBe(true);
+    expect(isWasmInitTimeoutError(err)).toBe(false);
+    expect(peekWasm()).toBeNull();
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('provenance-mismatch');
+  });
+
+  it('reports the mismatch, not the symptom, when a bad pair throws inside the factory', async () => {
+    // Real observed symptom of a split-provenance pair: `wasmTable.get is not a function`.
+    vi.stubGlobal('fetch', fetchStub(LIVE_402));
+    globalThis.Function = new Proxy(RealFunction, {
+      construct(target, args: string[]) {
+        if (args[0] === 'url' && args[1] === 'return import(url)') {
+          return () => Promise.resolve({
+            default: () => Promise.reject(new TypeError('wasmTable.get is not a function')),
+          });
+        }
+        return new target(...args);
+      },
+    }) as typeof Function;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await expect(getWasm()).rejects.toBeInstanceOf(WasmProvenanceMismatchError);
+    const err = peekWasmInitError();
+    expect(err?.message).toContain('watershed_native.wasm served 33817B');
+    expect(err?.message).toContain('native init threw: wasmTable.get is not a function');
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('provenance-mismatch');
+  });
+
+  it('resolves normally when the served pair matches the build identity', async () => {
+    vi.stubGlobal('fetch', fetchStub({ glue: 33562, wasm: 33811 }));
+    stubFactory({ getVersion: () => 8 });
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await expect(getWasm()).resolves.toMatchObject({ getVersion: expect.any(Function) });
+    expect(peekWasmInitError()).toBeNull();
   });
 });
