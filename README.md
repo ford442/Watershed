@@ -30,7 +30,7 @@ The project uses a hybrid architecture to achieve high performance and realism w
 
 *   **UI and Orchestration:** [React](https://react.dev/) with [React Three Fiber (R3F)](https://docs.pmnd.rs/react-three-fiber/getting-started/introduction) for rendering 3D scenes.
 *   **Physics:** [Rapier](https://rapier.rs/) running in a Web Worker, compiled to Wasm for near-native performance. This keeps the main thread free from heavy physics calculations.
-*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6+) displaces `FlowingWater`; gameplay forces sample the same `(η,u,w)` field. Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. `HeightmapFlow.ts` is dormant — not a third live field. SWE stays C++ WASM until [#399](https://github.com/ford442/Watershed/issues/399) Phase D.
+*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6+) displaces `FlowingWater`; gameplay forces sample the same `(η,u,w)` field. Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. SWE stays C++ WASM until [#399](https://github.com/ford442/Watershed/issues/399) Phase D; no experimental WGSL heightfield backend is live.
 
 ## Later picture
 

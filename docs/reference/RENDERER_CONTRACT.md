@@ -49,7 +49,7 @@ The material-host pattern is how that rule is enforced in code rather than by co
 
 A partial migration that instantiates native `WebGPURenderer` while residual GLSL hosts or JSM post-processing are still live will reintroduce the crashes that PRs #252 and #253 fixed.
 
-> **Note on `HeightmapFlow.ts` and gpu-chores (#369):** Domain flow compute and chores **adopt** the renderer-owned session `GPUDevice` when Three's backend is native WebGPU. They never call `requestAdapter`/`requestDevice`. A WebGL2 session registers no compute device, so a GL context and a WebGPU device cannot both be live for HUD analysis. See [`GPU_CHORES.md`](./GPU_CHORES.md). HeightmapFlow is **not** part of the renderer backend and does not change the GLSL vs TSL contract above.
+> **Note on gpu-chores (#369) device sharing:** Chores **adopt** the renderer-owned session `GPUDevice` when Three's backend is native WebGPU. They never call `requestAdapter`/`requestDevice`. A WebGL2 session registers no compute device, so a GL context and a WebGPU device cannot both be live for HUD analysis. See [`GPU_CHORES.md`](./GPU_CHORES.md). gpu-chores are **not** part of the renderer backend and do not change the GLSL vs TSL contract above.
 
 ## Context attributes and live quality
 

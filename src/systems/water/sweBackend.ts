@@ -2,8 +2,7 @@
  * sweBackend — one live SWE sim per boot (#391 Phase D).
  *
  * Until leftover GLSL is gone, C++ WASM is the only stepper. gpu-chores may
- * share the session GPUDevice; they must not step water. HeightmapFlow is
- * dormant and must not become a third live field.
+ * share the session GPUDevice; they must not step water.
  *
  * Phase D (not started): port the same numerics to public/shaders/swe.wgsl
  * and pick wasm *or* wgsl at boot — never both.
