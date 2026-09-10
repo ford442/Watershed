@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
@@ -181,6 +182,7 @@ interface PostProcessingPipelineProps {
 }
 
 interface ComposerPassBundle {
+  ssaoPass: SSAOPass;
   godRaysPass: GodRaysPass;
   bloomPass: UnrealBloomPass;
   hueSatPass: ShaderPass;
@@ -273,6 +275,16 @@ export function PostProcessingPipeline({
 
     const resolution = new THREE.Vector2(size.width, size.height);
 
+    // Ambient occlusion — contact shadows in canyon crevices (wall/floor joins,
+    // rock clusters). Runs first so god rays/bloom/vignette are applied on top
+    // of the occluded image. Gated off on low/medium via effectPresence.ssao.
+    const ssaoPass = new SSAOPass(scene, camera, size.width, size.height, 24);
+    ssaoPass.kernelRadius = 6;
+    ssaoPass.minDistance = 0.0025;
+    ssaoPass.maxDistance = 0.25;
+    ssaoPass.output = SSAOPass.OUTPUT.Default;
+    watershedComposer.addPass(ssaoPass);
+
     // Volumetric god rays (slot canyons)
     const godRaysPass = new GodRaysPass();
     godRaysPass.enabled = false;
@@ -310,6 +322,7 @@ export function PostProcessingPipeline({
 
     // Store passes for imperative updates
     watershedComposer.userData = {
+      ssaoPass,
       godRaysPass,
       bloomPass,
       hueSatPass,
@@ -329,10 +342,13 @@ export function PostProcessingPipeline({
     composer.setPixelRatio(pixelRatio);
   }, [size.width, size.height, composer, gl]);
 
-  // Dispose on unmount
+  // Dispose on unmount. EffectComposer.dispose() only frees its own render
+  // targets, not each pass's — SSAOPass owns three full-res render targets
+  // of its own, so it needs an explicit dispose to avoid leaking them.
   useEffect(() => {
     return () => {
       if (composer) {
+        composer.userData?.ssaoPass?.dispose();
         composer.dispose();
       }
     };
@@ -425,6 +441,9 @@ export function PostProcessingPipeline({
     }
     if (passes.chromaticPass) {
       passes.chromaticPass.enabled = effectPresence.chromaticAberration;
+    }
+    if (passes.ssaoPass) {
+      passes.ssaoPass.enabled = effectPresence.ssao;
     }
 
     if (passes.godRaysPass) {

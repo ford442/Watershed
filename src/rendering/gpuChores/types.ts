@@ -2,7 +2,7 @@
  * `gpu-chores` — shared kit API shapes (Tier B / Watershed #369).
  *
  * Chromashift #132 / PR #139 is the hist-reference facade. These types stay
- * app-agnostic: nothing here imports SWE, HeightmapFlow, or TSL materials.
+ * app-agnostic: nothing here imports SWE or TSL materials.
  *
  * Backend order is WebGPU → WASM → JS. WebGL2 is deliberately not a lane.
  */

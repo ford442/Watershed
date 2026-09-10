@@ -15,6 +15,8 @@ import {
   cancelLaunch,
 } from '../../systems/score/ScoreSystem';
 import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
+import { POSITION_SANE } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
+import type { SafeZoneConfig } from '../../systems/map/MapSystem.types';
 import { tickGhostRecording } from '../../systems/ghost/GhostRecorder';
 import { isElevatedRisk } from '../../systems/map/flowForecast';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
@@ -50,6 +52,7 @@ export function useExperienceLifecycle({
   const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
   const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
   const setWaterfallGravityMultiplier = useGameStore((s) => s.setWaterfallGravityMultiplier);
+  const setCurrentSafeZone = useGameStore((s) => s.setCurrentSafeZone);
   const setDistanceTraveled = useGameStore((s) => s.setDistanceTraveled);
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
   const setSpawnPoints = useGameStore((s) => s.setSpawnPoints);
@@ -143,10 +146,12 @@ export function useExperienceLifecycle({
           gravityMultiplier?: number;
           segmentState?: string;
           surviveBonus?: number;
+          safeZone?: SafeZoneConfig | null;
         }>).detail;
         const index = detail?.segmentIndex ?? 0;
         const segmentState = detail?.segmentState ?? 'Normal';
         const surviveBonus = detail?.surviveBonus ?? 0;
+        setCurrentSafeZone(detail?.safeZone ?? null);
         const session = getRunSession();
         const survivalMeta = session ? getMapSurvivalMetadata(session.mapId) : {};
         const requiresPortage = requiresPortageForSegment(
@@ -273,6 +278,7 @@ export function useExperienceLifecycle({
   }, [
     awardedWaterfallSegmentsRef,
     debug,
+    setCurrentSafeZone,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
     setSpawnPoint,
@@ -358,9 +364,17 @@ export function useExperienceLifecycle({
           }
         }
 
-        if (posOk && pos.y < -80 && !isWipeout) {
-          cancelLaunch();
-          setIsWipeout(true);
+        if (posOk && !isWipeout) {
+          const safeZone = useGameStore.getState().currentSafeZone;
+          const yMin = safeZone?.yMin ?? POSITION_SANE.yMin;
+          const yMax = safeZone?.yMax ?? POSITION_SANE.yMax;
+          if (pos.y < yMin || pos.y > yMax) {
+            if (safeZone?.respawnAt !== undefined) {
+              setRespawnSegmentIndex(safeZone.respawnAt);
+            }
+            cancelLaunch();
+            setIsWipeout(true);
+          }
         }
       }
     } catch (error) {

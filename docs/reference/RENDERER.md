@@ -278,18 +278,17 @@ These are three separate GPU/compute stories. Do not treat them as one “WebGPU
 
 | Layer | What it is | Device |
 |-------|------------|--------|
-| **Domain hydrology** | WASM SWE visual heightfield; dormant `heightmap_flow.wgsl` | CPU WASM. Flow compute adopts the session `GPUDevice` if one exists; it never `requestDevice()`s. |
+| **Domain hydrology** | WASM SWE visual heightfield | CPU WASM. The only live heightfield stepper. |
 | **TSL path** | NodeMaterial shading (`?material=tsl`) | `WebGPURenderer` with WebGL2 on the wire, or real WebGPU if `?renderer=webgpu`. **Not a sim.** |
 | **Chores** | `grid-reduce` / `luma-histogram` / `downsample-2d` / blur for HUD thumbs | Adopt that session device; else WASM → JS. See [`GPU_CHORES.md`](./GPU_CHORES.md). |
 
-One sim backend per heightfield. Missing WebGPU does not change production water (GLSL + WASM SWE). `?no_gpu_compute` closes chores/flow compute only.
+One sim backend per heightfield. Missing WebGPU does not change production water (GLSL + WASM SWE). `?no_gpu_compute` closes chores compute only.
 
 ## Visual notes
 
 - **WebGL2 (`?renderer=webgl`, default)** is the only production path.
 - **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op on the default material backend; it falls back to WebGL2.
 - **`?material=tsl`** boots the node renderer with `forceWebGL: true` (WebGL2 on the wire). `?material=tsl&renderer=webgpu` does **not** open native WebGPU until `canEnableNativeWebgpu()`.
-- HeightmapFlow is dormant domain compute. It adopts the renderer session device when native WebGPU is active; it does **not** allocate a second `GPUDevice`. Live water displacement is WASM SWE, not this WGSL.
 
 ## Keyboard Shortcuts (debug mode)
 

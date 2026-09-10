@@ -20,6 +20,7 @@ import PillarFragmentPool from '../components/Obstacles/PillarFragmentPool';
 import GhostReplayer from '../components/GhostReplayer';
 import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
 import SettingsLookSync from '../ui/SettingsLookSync';
+import PhysicsPerfMonitor from '../debug/PhysicsPerfMonitor';
 import { useInnerExperience } from './hooks/useInnerExperience';
 import type { InnerExperienceProps } from './types';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
@@ -74,6 +75,7 @@ export default function InnerExperience({
 
       {worldEnabled && debug.isStageEnabled('physics') && (
         <Physics debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
+          <PhysicsPerfMonitor />
           {!state.noPointerLock && (
             <>
               <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />

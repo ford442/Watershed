@@ -1,5 +1,5 @@
 /**
- * Session GPUDevice owner for gpu-chores and HeightmapFlow.
+ * Session GPUDevice owner for gpu-chores.
  *
  * Never calls requestAdapter/requestDevice. The renderer registers a device
  * only when Three's backend is real WebGPU. A WebGL session leaves this null

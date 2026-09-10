@@ -43,6 +43,7 @@ export type {
   LevelWorld,
   MapConfig,
   MapManager,
+  SafeZoneConfig,
   SegmentProgressionConfig,
   SegmentRange,
   SpawnData,
@@ -457,6 +458,7 @@ export class JSONMapManager implements MapManager {
       openFloor: seg.openFloor,
       hasBridge: seg.hasBridge,
       vortex: seg.vortex,
+      safeZone: seg.safeZone,
     };
   }
 }

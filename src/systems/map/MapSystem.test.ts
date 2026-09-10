@@ -204,3 +204,29 @@ describe('JSONMapManager — meander_to_waterfall', () => {
     expect(cfg.width).toBe(DEFAULT_SEGMENT_PROGRESSION.width);
   });
 });
+
+// -----------------------------------------------------------------------------
+// safeZone — authored OOB envelope must reach SegmentProgressionConfig
+// -----------------------------------------------------------------------------
+
+describe('JSONMapManager — authored safeZone', () => {
+  const safeZoneLevel = {
+    ...level,
+    segments: [
+      ...level.segments.filter((s) => s.index !== 0),
+      { index: 0, difficulty: 0.5, safeZone: { yMin: -10, yMax: 40, respawnAt: 2 } },
+    ],
+  } as unknown as LevelData;
+
+  it('threads an authored safeZone through to getChunkConfig', () => {
+    const manager = new JSONMapManager(safeZoneLevel);
+    const cfg = manager.getChunkConfig(0);
+    expect(cfg.safeZone).toEqual({ yMin: -10, yMax: 40, respawnAt: 2 });
+  });
+
+  it('leaves safeZone undefined for segments that do not author one', () => {
+    const manager = new JSONMapManager(safeZoneLevel);
+    const cfg = manager.getChunkConfig(1);
+    expect(cfg.safeZone).toBeUndefined();
+  });
+});

@@ -55,6 +55,19 @@ export interface DecorationPlacement {
   rockType?: 'boulder' | 'slab' | 'column';
 }
 
+/**
+ * Vertical out-of-bounds envelope for a segment. When present, replaces the
+ * runtime's global `POSITION_SANE` yMin/yMax for the vertical (y) axis while
+ * the player is on this segment. `respawnAt` names the segment index whose
+ * authored spawn point the player is returned to on OOB (falls back to the
+ * default respawn-segment resolution when omitted).
+ */
+export interface SafeZoneConfig {
+  yMin: number;
+  yMax: number;
+  respawnAt?: number;
+}
+
 /** Authored vortex drain field for hydro / pond set-pieces. */
 export interface VortexConfig {
   /** Path parameter 0–1 along the segment curve (default 0.5). */
@@ -87,7 +100,7 @@ export interface LevelSegment {
     friction?: number;
     restitution?: number;
   };
-  safeZone?: { yMin: number; yMax: number; respawnAt?: number };
+  safeZone?: SafeZoneConfig;
   effects?: {
     particleCount?: number;
     cameraShake?: number;
@@ -282,6 +295,8 @@ export interface SegmentProgressionConfig {
   hasBridge?: boolean;
   /** Optional vortex drain field (Hydro-Dam chamber / throat). */
   vortex?: VortexConfig;
+  /** Authored OOB envelope, overriding the global `POSITION_SANE` y-bounds while active. */
+  safeZone?: SafeZoneConfig;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    *

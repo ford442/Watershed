@@ -1,7 +1,7 @@
 # gpu-chores (#369)
 
 Generic image/grid helpers for HUD stats, minimap thumbs, and debug viz.
-**Not** a rewrite of shallow-water, heightmap flow, or TSL water materials.
+**Not** a rewrite of shallow-water or TSL water materials.
 
 Watershed is **Tier B** of the cross-app rollout. Chromashift [#132](https://github.com/ford442/Chromashift/issues/132) / PR [#139](https://github.com/ford442/Chromashift/pull/139) is the hist-reference facade (`runJob`, backend order, adopt-device, `?no_gpu_compute`, breadcrumbs).
 
@@ -9,11 +9,11 @@ Watershed is **Tier B** of the cross-app rollout. Chromashift [#132](https://git
 
 | Layer | What it is | Device |
 |-------|------------|--------|
-| **Domain hydrology** | WASM SWE (`WaterForceSystem` → `DataTexture`) and dormant `heightmap_flow.wgsl` | CPU WASM. Flow WGSL runs only if a session `GPUDevice` already exists. |
+| **Domain hydrology** | WASM SWE (`WaterForceSystem` → `DataTexture`) | CPU WASM. The only live heightfield stepper. |
 | **TSL path** | NodeMaterial shading via `?material=tsl` | Three `WebGPURenderer` with WebGL2 on the wire, or real WebGPU if `?renderer=webgpu` too. **Shading, not a sim.** |
-| **Chores** | `grid-reduce`, `luma-histogram`, `downsample-2d`, `separable-blur` | Adopt the renderer/flow session device when it is native WebGPU; else WASM → JS. |
+| **Chores** | `grid-reduce`, `luma-histogram`, `downsample-2d`, `separable-blur` | Adopt the renderer session device when it is native WebGPU; else WASM → JS. |
 
-One sim backend per heightfield. Do not mount HeightmapFlow next to live SWE/TSL water. Do not port SWE into chores.
+One sim backend per heightfield. Do not port SWE into chores.
 
 ## Backend order
 
@@ -33,7 +33,7 @@ webgpu  →  wasm  →  ts
 
 | Item | Role |
 |------|------|
-| `?no_gpu_compute` | Closes the WebGPU **chore / HeightmapFlow-compute** lane only. WASM water and WASM/TS chores keep working. Playing does **not** require this flag. |
+| `?no_gpu_compute` | Closes the WebGPU **chore** lane only. WASM water and WASM/TS chores keep working. Playing does **not** require this flag. |
 | `window.gpuComputeAvailable` / `gpuComputeReason` | Support verdict for the WebGPU lane. |
 | `window.gpuComputeDiagnostics` | Adapter vendor/arch/device + compute limits (defensive; never throws in bootstrap). |
 | `window.gpuChoreBackend` / `gpuChoreReason` | Which lane served the last job, or why none did. |
@@ -53,8 +53,6 @@ Chrome or Edge missing WebGPU → chores WASM (or TS); water stays on its existi
 | `watershedHost.ts` | **Only** file that imports `WatershedWasm` |
 | `heightfield.ts` / `statsStore.ts` | SWE `grid.h` consumer + DebugPanel bus |
 
-`HeightmapFlow.ts` adopts `getSessionGpuDevice()` and no longer requests its own device.
-
 ## Live consumer
 
 After each SWE step, `WaterForceSystem` calls `runHeightfieldChores(grid.h, …)` on the CPU heap view (no GPU upload just to reduce ~768–2560 floats). DebugPanel (`?debug=1`) shows min/mean/max, chore backend, a downsampled height thumb, and a 256-bin histogram sparkline.
@@ -64,7 +62,6 @@ After each SWE step, `WaterForceSystem` calls `runHeightfieldChores(grid.h, …)
 - `src/rendering/gpuChores/runtime.test.ts` — fallback order, pinned prefer, no silent skip
 - `src/rendering/gpuChores/support.test.ts` — kill switch names itself
 - `src/rendering/gpuChores/reduceParity.test.ts` — committed 8×8 reduce/hist goldens; optional `WATERSHED_WASM_INTEGRATION=1` native parity
-- `src/shaders/HeightmapFlow.test.ts` — no `requestDevice`
 
 These are **numerical goldens**, not visual-smoke pixelmatch.
 

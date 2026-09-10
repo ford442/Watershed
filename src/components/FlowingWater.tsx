@@ -17,11 +17,8 @@ import {
   resolveWaterFragmentShader,
   updateFlowingWaterUniforms,
   warnWaterShaderCompileOnce,
-  type HeightmapFlowHandle,
   type WaterMaterial,
 } from './waterUniforms';
-
-export type { HeightmapFlowHandle } from './waterUniforms';
 
 /** Guard flag: FlowingWater samples planar reflectionTexture (XOR with unmounted pass). */
 export const FLOWING_WATER_SAMPLES_REFLECTION = true;
@@ -37,7 +34,6 @@ export interface FlowingWaterProps {
   biome?: string;
   isNight?: boolean;
   flowMap?: THREE.Texture | null;
-  heightmapFlow?: HeightmapFlowHandle | null;
   vehiclePos?: THREE.Vector3 | null;
   vehicleVelocity?: THREE.Vector3 | null;
   weatherRipple?: number;
@@ -62,7 +58,6 @@ export default function FlowingWater({
   biome = 'river',
   isNight = false,
   flowMap = null,
-  heightmapFlow = null,
   vehiclePos = null,
   vehicleVelocity = null,
   weatherRipple = 0,
@@ -80,23 +75,13 @@ export default function FlowingWater({
   // Which material implementation to build (#256 path A). Resolved once — the
   // Canvas is remounted when the debug toggle changes it.
   const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
-  const heightmapFlowRef = useRef<HeightmapFlowHandle | null>(heightmapFlow);
 
   const biomeData = BIOMES[biome as keyof typeof BIOMES] || BIOMES.river;
   const effectiveWaterColor = baseColor || biomeData.waterColor;
   const effectiveFoamColor = foamColor || biomeData.foamColor;
   const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
   const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0) * (1.0 + slushiness * 0.25);
-  const effectiveFlowMap = heightmapFlow?.flowMapTexture || flowMap;
-
-  useEffect(() => {
-    heightmapFlowRef.current = heightmapFlow;
-    if (heightmapFlow?.initWebGPU) {
-      heightmapFlow.initWebGPU().catch((error) => {
-        console.warn('[FlowingWater] Heightmap flow WebGPU init failed; using DataTexture fallback', error);
-      });
-    }
-  }, [heightmapFlow]);
+  const effectiveFlowMap = flowMap;
 
   // Shared noise helpers for GLSL
   const noiseHelpers = useMemo(() => `
@@ -537,7 +522,6 @@ export default function FlowingWater({
       mat.userData.waterFlowField = {
         waterLevel: WATER_LEVEL,
         flowSpeed: effectiveFlowSpeed,
-        heightmapFlow,
         sampleAt: (position: THREE.Vector3, time: number) => {
           const x = position.x * 0.35;
           const z = position.z * 0.28 - time * effectiveFlowSpeed * 0.15;
@@ -561,7 +545,6 @@ export default function FlowingWater({
     effectiveFlowSpeed,
     fragmentShader,
     effectiveFlowMap,
-    heightmapFlow,
     noiseHelpers,
     slushiness,
     builtinVertexShader,
@@ -579,11 +562,6 @@ export default function FlowingWater({
 
   // Update uniforms with strong guards
   useFrame((state, delta) => {
-    if (heightmapFlowRef.current?.update) {
-      heightmapFlowRef.current.update(delta, state.clock.elapsedTime, {
-        flowStrength: effectiveFlowSpeed,
-      });
-    }
     updateFlowingWaterUniforms(materialRef.current, {
       elapsedTime: state.clock.elapsedTime,
       delta,
@@ -591,7 +569,6 @@ export default function FlowingWater({
       biome,
       isNight,
       flowMap,
-      heightmapFlow: heightmapFlowRef.current,
       vehiclePos,
       vehicleVelocity,
       weatherRipple,

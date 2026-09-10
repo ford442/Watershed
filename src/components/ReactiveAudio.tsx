@@ -20,6 +20,7 @@ import { AssetCache } from '../systems/reach/ReachStreamer';
 import { REACH_API_BASE } from '../constants/game';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
 import { useGameStore } from '../systems/GameState';
+import { getActiveSurvivalModifiers } from '../systems/journey/runSession';
 import { useLOD } from '../systems/lod/LODManager';
 import { PILLAR_BREAK_EVENT } from '../components/Obstacles/pillarBreakEvents';
 import { isGlacialBiome } from '../configs/TrackBiomes';
@@ -376,6 +377,11 @@ export default function ReactiveAudio({
     const music = AUDIO_CONFIG.masterVolume * (amMix?.getMusicVolume() ?? 1);
     const sfx = AUDIO_CONFIG.masterVolume * (amMix?.getSfxVolume() ?? 1);
 
+    // Wetness muffles the water-contact SFX channels (rapids/whoosh/splash) —
+    // a soaked player rides lower in the roar. See SurvivalModifiers.sfxWetnessMultiplier.
+    const survivalMods = getActiveSurvivalModifiers(currentBiomeId);
+    const wetnessMuffle = survivalMods?.sfxWetnessMultiplier ?? 1;
+
     // Set ambient layer volumes with guards
     if (ambientLowRef.current) {
       const lowVol = v.low * AUDIO_CONFIG.ambient.lowVolume * music;
@@ -400,13 +406,13 @@ export default function ReactiveAudio({
         v.rapids *
         THREE.MathUtils.lerp(AUDIO_CONFIG.sfx.rapidsBaseVolume, AUDIO_CONFIG.sfx.rapidsMaxVolume, intensity);
       if (isFinite(rapidsVol)) {
-        sfxRapidsRef.current.setVolume(rapidsVol * sfx);
+        sfxRapidsRef.current.setVolume(rapidsVol * sfx * wetnessMuffle);
       }
     }
     if (sfxWhooshRef.current) {
       const whooshVol = v.whoosh * AUDIO_CONFIG.sfx.whooshMaxVolume * sfx;
       if (isFinite(whooshVol)) {
-        sfxWhooshRef.current.setVolume(whooshVol);
+        sfxWhooshRef.current.setVolume(whooshVol * wetnessMuffle);
       }
     }
     if (sfxColdWindRef.current) {
@@ -474,7 +480,7 @@ export default function ReactiveAudio({
         const dynamicVolume = THREE.MathUtils.clamp(playerSpeed * 0.04, 0.15, 1.0);
         am.playSound(
           AUDIO_CONFIG.defaultSfxTracks.splash,
-          AUDIO_CONFIG.sfx.splashVolume * dynamicVolume,
+          AUDIO_CONFIG.sfx.splashVolume * dynamicVolume * wetnessMuffle,
           dynamicPitch
         );
       }

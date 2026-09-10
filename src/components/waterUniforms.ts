@@ -7,16 +7,6 @@ import { updateRendererDiagnostics } from '../rendering/rendererState';
 import type { MaterialBackend } from '../rendering/materialBackend';
 
 /**
- * GPU flow-field handle produced by the heightmap flow system.
- */
-export interface HeightmapFlowHandle {
-  flowMapTexture?: THREE.Texture | null;
-  initWebGPU?: () => Promise<unknown>;
-  update?: (delta: number, time: number, options: { flowStrength: number }) => void;
-  [key: string]: unknown;
-}
-
-/**
  * Either backend's water material, seen through the shared uniform contract.
  * The TSL material is a NodeMaterial, so this is deliberately widened from
  * ShaderMaterial to Material — everything below only touches `uniforms`/`userData`.
@@ -27,7 +17,6 @@ export type WaterMaterial = THREE.Material & {
     waterFlowField?: {
       waterLevel: number;
       flowSpeed: number;
-      heightmapFlow?: HeightmapFlowHandle | null;
       sampleAt: (position: THREE.Vector3, time: number) => {
         direction: THREE.Vector3;
         speed: number;
@@ -109,7 +98,6 @@ export interface FlowingWaterUniformFrameInput {
   biome: string;
   isNight: boolean;
   flowMap: THREE.Texture | null;
-  heightmapFlow: HeightmapFlowHandle | null;
   vehiclePos: THREE.Vector3 | null;
   vehicleVelocity: THREE.Vector3 | null;
   weatherRipple: number;
@@ -136,7 +124,6 @@ export function updateFlowingWaterUniforms(
     biome,
     isNight,
     flowMap,
-    heightmapFlow,
     vehiclePos,
     vehicleVelocity,
     weatherRipple,
@@ -171,7 +158,7 @@ export function updateFlowingWaterUniforms(
     mat.uniforms.slushiness.value = slushiness;
   }
   if (mat.uniforms.flowMap) {
-    mat.uniforms.flowMap.value = heightmapFlow?.flowMapTexture || flowMap || null;
+    mat.uniforms.flowMap.value = flowMap || null;
   }
 
   if (mat.uniforms.bioLuminescence) {

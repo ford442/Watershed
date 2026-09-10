@@ -1,6 +1,5 @@
 /**
- * Inline WGSL for gpu-chores. Domain flow stays in
- * `public/shaders/heightmap_flow.wgsl` — these kernels are generic image/grid helpers.
+ * Inline WGSL for gpu-chores — generic image/grid helpers, not a water sim.
  *
  * Workgroups: (64) 1D reduce; (8, 8) 2D hist / downsample / blur.
  */
