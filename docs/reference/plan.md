@@ -33,16 +33,61 @@ Historical notes below are still useful; unchecked items that contradict the boa
 - [x] Object pooling for segments
 - [x] Map-driven configs via `MapSystem.ts` + `src/maps/` (procedural fallback remains)
 
-### Priority B: Physics Optimization ✅ / ongoing
+### Priority B: Physics Optimization ✅ done
 - [x] Create simplified collision geometry (low-poly walls)
 - [x] Separate visual mesh from physics mesh (`buildCanyonGeometry` vs `buildCollisionGeometry`)
-- [ ] Profile and optimize Rapier physics performance (ongoing)
-- [ ] Consider convex decomposition vs trimesh (optional)
+- [x] Profile and optimize Rapier physics performance (2026-09-10 — see baseline below)
+- [x] Consider convex decomposition vs trimesh (2026-09-10 — **decision: keep trimesh, no action needed**, see below)
 
 Collision mesh notes (`TrackSegment`):
 - Visual canyon (`buildCanyonGeometry`) is collider-free; Rapier uses invisible `buildCollisionGeometry` (~1/4 XZ density, shared U-profile, no rock noise / vertex colors).
 - Expected triangle reduction per segment ≈ 1/16 of the prior visual trimesh (e.g. ~48 m path: visual ~41×49 verts → collision ~11×13 verts).
 - Friction still comes from `biomeProfile.wallFriction` with Flooded/HighFlow overrides; restitution unchanged for slot canyon.
+
+#### Physics profiling baseline + trimesh-vs-decomposition decision (2026-09-10)
+
+Instrumentation added: `src/debug/PhysicsPerfMonitor.tsx` wraps `useBeforePhysicsStep`/`useAfterPhysicsStep`
+(from `@react-three/rapier`) directly around the live `<Physics>` world's own `world.step()` call — the
+same hook points `@react-three/rapier` uses internally, so this times Rapier's own step cost, not
+React/render work sharing the frame. It samples every 60 steps into `src/debug/physicsPerfMetrics.ts`
+(module-level store, mirrors the existing `perfMetrics.ts` pattern) and surfaces avg/p95/max step time,
+live rigid body/collider counts, and the summed active trimesh triangle count (via
+`src/debug/physicsColliderRegistry.ts`, fed by `TrackSegmentCollisionMeshes.tsx`) in a new "Physics step"
+section of `DebugPanel`. Press **O** in-game to console-dump the latest snapshot (mirrors the existing
+F/G/P debug hotkeys in `App.tsx`).
+
+Baseline capture: `npm run profile:physics` (`verification/physics_profile.mjs`, puppeteer + headless
+SwiftShader, same harness as `visual_smoke.mjs`) — committed baseline at
+`verification/output/physics-profile/report.json`:
+
+| Case | Avg step | P95 step | Max step | Rigid bodies | Colliders | Active trimesh triangles |
+|---|---|---|---|---|---|---|
+| Default map, early treadmill window | 0.52 ms | 3.41 ms | 7.48 ms | 84 | 77 | 3,620 |
+| Delta map (raft), early treadmill window | 0.27 ms | 0.70 ms | 1.49 ms | 87 | 81 | 3,580 |
+
+Caveat: `window.__watershedScreenshot.teleportToSegment()` (used by `visual_smoke.mjs` for screenshots)
+only repositions the vehicle and replays bookkeeping side effects — it does **not** force
+`TrackManager`/`ChunkManager` to advance the mounted 7-segment collider pool to that segment index (real
+pool advancement only happens via per-frame camera-distance travel in `ChunkManager.update`). So this
+baseline reflects the treadmill's steady-state 7-segment active window near map start rather than a
+specific late-game biome (waterfall/slot canyon) in isolation. That's an acceptable stand-in for a
+go/no-go call here: `TrackManager` always holds ~7 active segments and `CANYON_COLLISION_SUBDIVISION_DIVISOR`
+bounds collider triangle count per segment the same way regardless of biome (X density is fixed; Z density
+scales only with each segment's ~90–120 unit path length), so total active collider triangle count and
+step cost shouldn't vary by more than this same order of magnitude anywhere in the level script. All
+numbers were captured under headless software (SwiftShader) rendering, which is much slower than a real
+GPU — treat the *relative* cost (step time vs. the 16.67 ms/frame budget) as the signal, not the absolute
+numbers as a production performance guarantee.
+
+**Decision: keep the shared low-poly trimesh collider; convex decomposition is not worth it.** Even at
+worst-observed (P95 3.41 ms, max 7.48 ms under slow headless software rendering), Rapier's own
+`world.step()` consumes a small fraction of the 16.67 ms/60fps frame budget, and the active collider set
+is already ~3,600 triangles across the whole 7-segment window (already reduced ~16× from the visual mesh
+per the note above). Convex decomposition would add real authoring/build complexity (decomposition
+tuning per segment shape, more colliders per RigidBody, extra build-time cost) to shave a cost that isn't
+currently a bottleneck. Revisit only if profiling on real hardware during a future performance pass shows
+physics step time approaching a meaningful fraction of frame budget (e.g. sustained P95 > ~2–3 ms on
+target hardware, not headless SwiftShader).
 
 ### Priority C: Water Flow ✅ shipped (TypeScript + optional WASM)
 - [x] Apply water forces to player/raft rigid body (`physics/WaterForces.ts`, `WaterForceSystem`, `WaterFlowForces.tsx`)

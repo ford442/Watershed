@@ -72,7 +72,7 @@ describe('ReactiveAudio', () => {
     expect(sourceFile).toContain('ambientHighRef.current.setVolume(highVol)');
 
     expect(sourceFile).toContain('if (isFinite(rapidsVol))');
-    expect(sourceFile).toContain('sfxRapidsRef.current.setVolume(rapidsVol * sfx)');
+    expect(sourceFile).toContain('sfxRapidsRef.current.setVolume(rapidsVol * sfx * wetnessMuffle)');
 
     expect(sourceFile).toContain('const transitionVol = v.transition * sfx');
     expect(sourceFile).toContain('if (isFinite(transitionVol))');
@@ -98,6 +98,26 @@ describe('ReactiveAudio', () => {
     
     // Check that flow speed is guarded
     expect(sourceFile).toContain('isFinite(rawFlowSpeed) ? rawFlowSpeed : 1');
+  });
+
+  it('applies sfxWetnessMultiplier as a gain multiplier on rapids/whoosh/splash', () => {
+    const sourceFile = fs.readFileSync(
+      path.join(__dirname, 'ReactiveAudio.tsx'),
+      'utf-8'
+    );
+
+    expect(sourceFile).toContain(
+      "import { getActiveSurvivalModifiers } from '../systems/journey/runSession'"
+    );
+    expect(sourceFile).toContain('const survivalMods = getActiveSurvivalModifiers(currentBiomeId)');
+    expect(sourceFile).toContain('const wetnessMuffle = survivalMods?.sfxWetnessMultiplier ?? 1');
+
+    // Reaches the rapids loop, the whoosh loop, and the splash one-shot.
+    expect(sourceFile).toContain('sfxRapidsRef.current.setVolume(rapidsVol * sfx * wetnessMuffle)');
+    expect(sourceFile).toContain('sfxWhooshRef.current.setVolume(whooshVol * wetnessMuffle)');
+    expect(sourceFile).toContain(
+      'AUDIO_CONFIG.sfx.splashVolume * dynamicVolume * wetnessMuffle'
+    );
   });
 
   it('mounts SpeedWindAudio for the continuous speed wind bed', () => {

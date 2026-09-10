@@ -312,6 +312,12 @@ function App({ graphicsBoot }: AppProps = {}) {
           console.info('[PhysicsDebug] Snapshot', snapshot);
         }
       }
+      if (e.code === 'KeyO') {
+        const snapshot = (window as any).__watershedPhysicsPerf;
+        if (snapshot) {
+          console.info('[PhysicsPerf] Snapshot', snapshot);
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

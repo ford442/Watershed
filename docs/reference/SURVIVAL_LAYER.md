@@ -41,7 +41,7 @@ Rates (see `survivalState.ts`):
 
 - **Gain in water:** `WETNESS_GAIN_IN_WATER` per second while `pos.y < WATER_LEVEL + 0.55`.
 - **Dry:** base rate × sun factor (launch hour) × wind (horizontal speed).
-- **Gameplay:** wetness reduces sprint stamina regen; high wetness slightly muffles SFX (modifier exported, audio wiring deferred to settings #301 multiply).
+- **Gameplay:** wetness reduces sprint stamina regen; high wetness slightly muffles SFX (`sfxWetnessMultiplier`, applied in `ReactiveAudio.tsx` to the rapids/whoosh/splash channels).
 
 ### Core temperature
 
@@ -183,11 +183,8 @@ HUD shows `LOADOUT <shortLabel>` (top-left) plus WET / EXPOSURE bars (bottom-lef
 - FlowForecast mid-run cache restock synergy.
 - Speed-based wind audio (plan.md).
 - `safeZone` OOB replacement for fixed `y < -80` wipeout (phase D, not started).
-- Wetness SFX muffling — `sfxWetnessMultiplier` is computed but not yet wired to the
-  audio bus (waiting on issue #301).
 
 ## Related
 
 - [`plan.md`](./plan.md) — roadmap / respawn backlog item
 - [`PHYSICS_CONSTANTS.md`](./PHYSICS_CONSTANTS.md) — runner tuning
-- Issue #301 — audio channel settings (SFX multiply for wetness)

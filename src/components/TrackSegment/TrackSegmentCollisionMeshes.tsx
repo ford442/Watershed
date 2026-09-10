@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import type { BufferGeometry } from 'three';
 import {
@@ -6,6 +6,10 @@ import {
   resolveSegmentRestitution,
 } from '../../systems/survival/surfaceFriction';
 import type { TrackBiomeProfile } from '../../configs/TrackBiomes';
+import {
+  registerCollisionTriangles,
+  unregisterCollisionTriangles,
+} from '../../debug/physicsColliderRegistry';
 
 export type TrackSegmentCollisionMeshesProps = {
   segmentId: number;
@@ -29,6 +33,16 @@ export function TrackSegmentCollisionMeshes({
   type,
   segmentCenter,
 }: TrackSegmentCollisionMeshesProps) {
+  useEffect(() => {
+    if (openFloor) return undefined;
+    const index = collisionGeometry.index;
+    const triangleCount = index
+      ? index.count / 3
+      : collisionGeometry.attributes.position.count / 3;
+    registerCollisionTriangles(segmentId, triangleCount);
+    return () => unregisterCollisionTriangles(segmentId);
+  }, [segmentId, openFloor, collisionGeometry]);
+
   return (
     <>
       {!openFloor && (

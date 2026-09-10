@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import { BANK_CONFIG, JUMP_CONFIG } from '../constants';
 import {
   POSITION_SANE,
+  getEffectivePositionBounds,
   isFiniteVec3,
   isFiniteImpulse,
   isPositionSane,
+  holdBodyAtSpawn,
   computeJumpImpulse,
   computeStrafeEligibility,
   getHorizontalCameraForward,
@@ -24,6 +26,46 @@ describe('runnerAirControl helpers', () => {
     expect(isPositionSane({ x: 0, y: 10, z: 0 })).toBe(true);
     expect(isPositionSane({ x: 0, y: POSITION_SANE.yMin - 1, z: 0 })).toBe(false);
     expect(isPositionSane({ x: POSITION_SANE.xzMax + 1, y: 0, z: 0 })).toBe(false);
+  });
+
+  it('getEffectivePositionBounds falls back to POSITION_SANE when no safeZone is authored', () => {
+    expect(getEffectivePositionBounds(null)).toEqual(POSITION_SANE);
+    expect(getEffectivePositionBounds(undefined)).toEqual(POSITION_SANE);
+  });
+
+  it('getEffectivePositionBounds narrows y bounds from an authored safeZone, leaving xz/speed global', () => {
+    const bounds = getEffectivePositionBounds({ yMin: -5, yMax: 20, respawnAt: 3 });
+    expect(bounds).toEqual({
+      yMin: -5,
+      yMax: 20,
+      xzMax: POSITION_SANE.xzMax,
+      speedMax: POSITION_SANE.speedMax,
+    });
+  });
+
+  it('a narrower authored safeZone trips isPositionSane earlier than the global default', () => {
+    const pos = { x: 0, y: -20, z: 0 };
+    // Within the global default...
+    expect(isPositionSane(pos, POSITION_SANE)).toBe(true);
+    // ...but out of bounds under a map author's tighter safeZone.
+    const bounds = getEffectivePositionBounds({ yMin: -10, yMax: 20 });
+    expect(isPositionSane(pos, bounds)).toBe(false);
+  });
+
+  it('holdBodyAtSpawn snaps to an explicit target when given one, else the global spawn', () => {
+    const calls: { translation?: unknown } = {};
+    const body = {
+      setTranslation: (t: unknown) => {
+        calls.translation = t;
+      },
+      setLinvel: () => {},
+      setAngvel: () => {},
+    };
+    holdBodyAtSpawn(body, { x: 1, y: 2, z: 3 });
+    expect(calls.translation).toEqual({ x: 1, y: 2, z: 3 });
+
+    holdBodyAtSpawn(body);
+    expect(calls.translation).not.toEqual({ x: 1, y: 2, z: 3 });
   });
 
   it('matches slope/bank jump impulse math', () => {

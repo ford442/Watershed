@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { DebugStageController, DebugStageId, DebugStageStatus } from '../debug/debugStages';
 import { getPerfMetrics, subscribePerfMetrics } from '../debug/perfMetrics';
+import { getPhysicsPerfMetrics, subscribePhysicsPerfMetrics } from '../debug/physicsPerfMetrics';
 import { getRendererDiagnostics, subscribeRendererDiagnostics } from '../rendering/rendererState';
 import {
   getPhysicsWorkerStatus,
@@ -248,6 +249,11 @@ export function DebugPanel({
     subscribePhysicsWorkerStatus,
     getPhysicsWorkerStatus,
     getPhysicsWorkerStatus,
+  );
+  const physicsPerf = useSyncExternalStore(
+    subscribePhysicsPerfMetrics,
+    getPhysicsPerfMetrics,
+    getPhysicsPerfMetrics,
   );
 
   if (!debug.debugEnabled) return null;
@@ -511,6 +517,44 @@ export function DebugPanel({
           Wireframe geometry overlay (G)
         </span>
       </label>
+
+      <Divider />
+
+      {/* ── Physics step timing — Rapier world.step() ───────────────────── */}
+      <SectionTitle>Physics step — Rapier world.step()</SectionTitle>
+      <MetricRow
+        label="Avg step"
+        value={physicsPerf.sampleCount === 0 ? '—' : `${physicsPerf.avgStepMs.toFixed(2)} ms`}
+        t={tier(physicsPerf.avgStepMs, 4, 8)}
+      />
+      <MetricRow
+        label="P95 step"
+        value={physicsPerf.sampleCount === 0 ? '—' : `${physicsPerf.p95StepMs.toFixed(2)} ms`}
+        t={tier(physicsPerf.p95StepMs, 6, 12)}
+      />
+      <MetricRow
+        label="Max step"
+        value={physicsPerf.sampleCount === 0 ? '—' : `${physicsPerf.maxStepMs.toFixed(2)} ms`}
+        t={tier(physicsPerf.maxStepMs, 8, 16)}
+      />
+      <MetricRow
+        label="Rigid bodies"
+        value={String(physicsPerf.rigidBodyCount)}
+        t="ok"
+      />
+      <MetricRow
+        label="Colliders"
+        value={String(physicsPerf.colliderCount)}
+        t="ok"
+      />
+      <MetricRow
+        label="Active trimesh triangles"
+        value={physicsPerf.activeCollisionTriangles.toLocaleString()}
+        t="ok"
+      />
+      <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>
+        ↳ Press O to log current physics-step snapshot in the console
+      </div>
 
       <Divider />
 

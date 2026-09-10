@@ -6,7 +6,7 @@ import {
   isTerrainGroundHit,
 } from './runnerGroundRay';
 import {
-  POSITION_SANE,
+  getEffectivePositionBounds,
   isFiniteVec3,
   isFiniteImpulse,
   isCameraWarm,
@@ -91,8 +91,17 @@ export function updateRunnerPhysics({
       slopeState.current.targetMultiplier = 1.0;
     }
 
+    const safeZone = useGameStore.getState().currentSafeZone;
+    const positionBounds = getEffectivePositionBounds(safeZone);
+
     const bodyUserData = (body.userData ??= {} as Record<string, unknown>);
-    const holdAtSpawn = () => holdBodyAtSpawn(body);
+    const holdAtSpawn = () => {
+      const respawnPoint =
+        safeZone?.respawnAt !== undefined
+          ? useGameStore.getState().spawnPoints[safeZone.respawnAt]
+          : undefined;
+      holdBodyAtSpawn(body, respawnPoint);
+    };
 
     // F-8: defer gameplay impulses until body, camera, terrain, and velocity are sane.
     let physicsWarm = false;
@@ -127,8 +136,8 @@ export function updateRunnerPhysics({
     }
 
     const speedMag = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
-    const velSane = velOk && Number.isFinite(speedMag) && speedMag <= POSITION_SANE.speedMax;
-    const posSane = isPositionSane(pos);
+    const velSane = velOk && Number.isFinite(speedMag) && speedMag <= positionBounds.speedMax;
+    const posSane = isPositionSane(pos, positionBounds);
 
     if (!posSane || !velSane) {
       holdAtSpawn();

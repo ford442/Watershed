@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MOVEMENT, PLAYER_SPAWN, WATER_LEVEL } from '../../../constants/game';
 import { isAutumnLike, isBiomeId, type BiomeId } from '../../../configs/biomes';
 import { useGameStore } from '../../../systems/GameState';
+import type { SafeZoneConfig } from '../../../systems/map/MapSystem.types';
 import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
@@ -10,6 +11,17 @@ import { triggerCameraShake } from '../utils';
 type Vec3 = { x: number; y: number; z: number };
 
 export const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 };
+
+/**
+ * Merge an authored segment `safeZone` onto the global `POSITION_SANE` bounds.
+ * Only the vertical (y) axis is ever authored per-segment; xz/speed stay global.
+ */
+export const getEffectivePositionBounds = (safeZone?: SafeZoneConfig | null) => ({
+  yMin: safeZone?.yMin ?? POSITION_SANE.yMin,
+  yMax: safeZone?.yMax ?? POSITION_SANE.yMax,
+  xzMax: POSITION_SANE.xzMax,
+  speedMax: POSITION_SANE.speedMax,
+});
 
 export const isFiniteVec3 = (v: Vec3) =>
   Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -53,19 +65,25 @@ export const getHorizontalCameraForward = (
   return out.set(0, 0, -1);
 };
 
-export const isPositionSane = (pos: Vec3) =>
-  pos.y >= POSITION_SANE.yMin &&
-  pos.y <= POSITION_SANE.yMax &&
-  Math.abs(pos.x) <= POSITION_SANE.xzMax &&
-  Math.abs(pos.z) <= POSITION_SANE.xzMax;
+export const isPositionSane = (
+  pos: Vec3,
+  bounds: { yMin: number; yMax: number; xzMax: number } = POSITION_SANE,
+) =>
+  pos.y >= bounds.yMin &&
+  pos.y <= bounds.yMax &&
+  Math.abs(pos.x) <= bounds.xzMax &&
+  Math.abs(pos.z) <= bounds.xzMax;
 
-export const holdBodyAtSpawn = (body: {
-  setTranslation: Function;
-  setLinvel: Function;
-  setAngvel: Function;
-}) => {
+export const holdBodyAtSpawn = (
+  body: {
+    setTranslation: Function;
+    setLinvel: Function;
+    setAngvel: Function;
+  },
+  target?: Vec3,
+) => {
   const [sx, sy, sz] = PLAYER_SPAWN.position;
-  body.setTranslation({ x: sx, y: sy, z: sz }, true);
+  body.setTranslation(target ?? { x: sx, y: sy, z: sz }, true);
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
 };
