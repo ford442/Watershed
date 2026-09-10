@@ -228,7 +228,7 @@ dependency only because `vite.config.ts` names it in `manualChunks`; nothing imp
 - **Vignette** — ✅ `VignetteShader`
 - **ChromaticAberration** (subtle, speed-triggered) — ✅ custom `ChromaticAberrationShader`
 - **God rays** — ✅ `VolumetricGodRays`
-- **SSAO** — ❌ not implemented; still the open item in this step
+- **SSAO** — ✅ three's own `SSAOPass` (JSM), gated by `EffectPresence.ssao` (`settingsDerive.ts`) — off on Low/Medium, on at High
 
 ### Step 5 — Map-driven TrackManager ✅
 `MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
