@@ -15,10 +15,10 @@ import {
   VFXParticle,
   FoamParticle,
   MistParticle,
-} from './pools/ParticlePool';
-import { useBiomeMaterials } from './BiomeSystem';
-import { injectSWEDisturbance } from './water/SWEHeightField';
-import { useLOD } from './LODManager';
+} from '../pools/ParticlePool';
+import { useBiomeMaterials } from '../biome/BiomeSystem';
+import { injectSWEDisturbance } from './SWEHeightField';
+import { useLOD } from '../lod/LODManager';
 import {
   CRUISE_COOLDOWN,
   CRUISE_MIN_SPEED,
@@ -27,11 +27,11 @@ import {
   mistSpawnCount,
   raftSubmergedRatio,
   resolveSplashFrameEvents,
-} from './water/splashSpawnMath';
-import { resolveMaterialBackend } from '../rendering/materialBackend';
-import { createSplashBowWaveMaterial } from '../materials/vfx/createVfxMaterials';
-import { materialUniformBag } from '../materials/dual/materialUniformBag';
-import { getWasm, type WatershedNativeModule } from './water/WatershedWasm';
+} from './splashSpawnMath';
+import { resolveMaterialBackend } from '../../rendering/materialBackend';
+import { createSplashBowWaveMaterial } from '../../materials/vfx/createVfxMaterials';
+import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { getWasm, type WatershedNativeModule } from './WatershedWasm';
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;

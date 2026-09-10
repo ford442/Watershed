@@ -142,7 +142,7 @@ describe('ReactiveAudio', () => {
       expect(lerp3).toBeGreaterThan(0);
 
       // Volume accumulation with NaN
-      let v = { low: 0.5 };
+      const v = { low: 0.5 };
       v.low += (1 - v.low) * lerp1; // lerp1 is NaN
       expect(isFinite(v.low)).toBe(false);
       v.low = isFinite(v.low) ? v.low : 0;

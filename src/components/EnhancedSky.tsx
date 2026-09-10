@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
-import { useBiome } from '../systems/BiomeSystem';
+import { useBiome } from '../systems/biome/BiomeSystem';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { BiomePalettes } from '../configs/BiomePalettes';
 import { useGameStore } from '../systems/GameState';
@@ -123,7 +123,7 @@ const buildStarField = (count: number, { radiusMin, radiusMax, band = false, see
         const b = hash(i * 2.9 + 4.1);
         const c = hash(i * 3.3 + 8.2);
 
-        let theta = a * Math.PI * 2;
+        const theta = a * Math.PI * 2;
         let phi;
         if (band) {
             // Cluster near a tilted great-circle band to suggest the galactic plane.

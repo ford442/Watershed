@@ -78,7 +78,7 @@ The `getSegmentConfig` function in `TrackManager.tsx` should be updated to use t
 | Pond: tree density 0.3 | ✅ | `src/maps/meander_to_waterfall.ts` |
 | Pond: draw distance 50 | ✅ | `src/components/TrackSegment/` |
 | Rapids: high rock density | ✅ | `src/maps/meander_to_waterfall.ts` |
-| Biome transition 2000ms | ✅ | `src/systems/BiomeSystem.tsx` |
+| Biome transition 2000ms | ✅ | `src/systems/biome/BiomeSystem.tsx` |
 | Debounced onBiomeChange | ✅ | `src/systems/map/ChunkManager.ts` |
 | Particle LOD (400→100) | ✅ | `src/components/Environment/WaterfallParticles.tsx` |
 
@@ -226,7 +226,6 @@ import { GLACIER_START_INDEX } from '../maps/meander_to_waterfall';
 | Mist/spray | `src/components/TrackSegment/` (placement) | Enhanced density, taller mist columns |
 | Floating debris | `src/components/Environment/FloatingDebris.tsx` | Physics-enabled driftwood/pinecones |
 | Rock decorations | `src/components/CanyonDecorations.tsx` | Instanced boulders with colliders |
-| Canyon biome component | `src/biomes/CanyonBiome.tsx` | Procedural canyon floor geometry |
 
 ### Performance Budget
 - Wall height 26 with LOD: frustum culling via existing treadmill system.

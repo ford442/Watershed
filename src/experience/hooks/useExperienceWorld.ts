@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
-import { useBiome } from '../../systems/BiomeSystem';
+import { useBiome } from '../../systems/biome/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
 import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { commitTimedFinish } from '../../systems/ghost/runFinish';

@@ -53,7 +53,7 @@ export default function SplashParticles({ target, count = 60 }: SplashParticlesP
         const spawnRate = Math.min(5, Math.floor(speed * 0.8)); // More speed = more particles
         let spawned = 0;
 
-        for (let p of particles) {
+        for (const p of particles) {
             if (p.life <= 0 && spawned < spawnRate) {
                 // Spawn at player's feet (approx)
                 // Randomize slightly around the base

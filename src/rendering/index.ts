@@ -1,4 +1,32 @@
 export { createGameRenderer } from './createRenderer';
+export { SHARED_CONTEXT_ATTRIBUTES, GL_CONTEXT_NAME } from './contextAttributes';
+export {
+  negotiateBootGraphics,
+  probeGraphicsCapability,
+  rendererContextAttributesFor,
+  getSessionGraphicsCapability,
+  getSessionGraphicsEnvelope,
+  resetSessionGraphicsCapability,
+  HARDWARE_ENVELOPE,
+  DEGRADED_ENVELOPE,
+  CAPTURE_ENVELOPE,
+  type GraphicsCapability,
+  type GraphicsCapabilityReason,
+  type GraphicsEnvelope,
+  type GraphicsTier,
+} from './probeGraphicsCapability';
+export {
+  beginBootAttempt,
+  markBootHealthy,
+  recordBootFailure,
+  readBootFailure,
+  isBootAttemptOpen,
+  BOOT_GUARD_KEY,
+  FRAMES_TO_HEALTHY,
+  type BootFailureReason,
+  type BootFailureRecord,
+} from './bootCrashGuard';
+export { default as BootHealthSentinel } from './BootHealthSentinel';
 export {
   deriveRendererContextOptions,
   deriveEditorContextOptions,
@@ -10,7 +38,7 @@ export {
   DEFAULT_TONE_MAPPING_EXPOSURE,
   LOGARITHMIC_DEPTH_BUFFER_ENABLED,
   DESYNCHRONIZED_ENABLED,
-  SHARED_CONTEXT_ATTRIBUTES,
+  ULTRA_DPR_CEILING,
   EDITOR_QUALITY_PRESET,
   type RendererCreationAttributes,
   type RendererContextOptions,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import type * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useLOD } from '../systems/LODManager';
+import { useLOD } from '../systems/lod/LODManager';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { deriveRendererContextOptions } from '../rendering';
 import { BIOME_LIGHTING } from './constants';

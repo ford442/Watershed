@@ -2,6 +2,12 @@ import type { Mock } from 'vitest';
 import * as THREE from 'three';
 
 import { createGameRenderer } from './createRenderer';
+import {
+  CAPTURE_ENVELOPE,
+  DEGRADED_ENVELOPE,
+  HARDWARE_ENVELOPE,
+  rendererContextAttributesFor,
+} from './probeGraphicsCapability';
 import { getRendererShadowMapSize } from './applyRendererContextOptions';
 import { deriveRendererContextOptions } from './deriveRendererContextOptions';
 import { createRiverMaterial } from '../utils/RiverShader';
@@ -356,7 +362,7 @@ describe('createGameRenderer', () => {
     renderer.dispose();
   });
 
-  it('accepts software GL for the low preset and for the capture opt-out', async () => {
+  it('forwards the negotiated envelope, so a degraded machine gets a context', async () => {
     const seen: Array<Record<string, unknown>> = [];
     const canvas = document.createElement('canvas');
     const spy = vi
@@ -368,15 +374,15 @@ describe('createGameRenderer', () => {
         return createMockWebGLContext(canvas) as unknown as RenderingContext;
       });
 
-    const low = await createGameRenderer({ canvas }, {
+    // Both envelopes that relax the caveat check: the degraded player machine
+    // the probe landed on, and the capture harness that pins its own.
+    const degraded = await createGameRenderer({ canvas }, {
       preference: 'webgl',
-      contextOptions: deriveRendererContextOptions('low'),
+      contextOptions: deriveRendererContextOptions('low', { envelope: DEGRADED_ENVELOPE }),
     });
     const captured = await createGameRenderer({ canvas }, {
       preference: 'webgl',
-      contextOptions: deriveRendererContextOptions('ultra', {
-        allowSoftwareFallback: true,
-      }),
+      contextOptions: deriveRendererContextOptions('ultra', { envelope: CAPTURE_ENVELOPE }),
     });
 
     // Visual smoke / CI run headless Chromium on SwiftShader: if either of these
@@ -384,8 +390,45 @@ describe('createGameRenderer', () => {
     expect(seen.every((attrs) => attrs.failIfMajorPerformanceCaveat === false)).toBe(true);
 
     spy.mockRestore();
-    low.dispose();
+    degraded.dispose();
     captured.dispose();
+  });
+
+  it('requests exactly the attributes the boot probe tested', async () => {
+    // The probe's whole value is that a green probe means a green renderer. If
+    // these two attribute objects can drift apart, a probe can pass while the
+    // real context request fails — the bug, with extra latency.
+    const seen: Array<Record<string, unknown>> = [];
+    const canvas = document.createElement('canvas');
+    const spy = vi
+      .spyOn(canvas, 'getContext')
+      .mockImplementation((type: string, options?: unknown) => {
+        if (typeof options === 'object' && options !== null) {
+          seen.push(options as Record<string, unknown>);
+        }
+        return createMockWebGLContext(canvas) as unknown as RenderingContext;
+      });
+
+    const renderer = await createGameRenderer({ canvas }, {
+      preference: 'webgl',
+      contextOptions: deriveRendererContextOptions('high', { envelope: HARDWARE_ENVELOPE }),
+    });
+
+    const probed = rendererContextAttributesFor(HARDWARE_ENVELOPE);
+    const requested = seen[0];
+    for (const key of [
+      'depth',
+      'stencil',
+      'antialias',
+      'premultipliedAlpha',
+      'powerPreference',
+      'failIfMajorPerformanceCaveat',
+    ] as const) {
+      expect(requested[key]).toBe(probed[key]);
+    }
+
+    spy.mockRestore();
+    renderer.dispose();
   });
 
   it('does not let the contract clobber the caller preserveDrawingBuffer', async () => {

@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 /**
- * CI guard (#371): ban new root-level src/systems/*.ts except the allowlist.
+ * CI guard (#371, tightened here): `src/systems/` root holds the store and the
+ * thin barrel, nothing else. Everything is a domain folder.
  *
- * Allowed root *.ts: GameState.ts, index.ts
- * Deferred root *.tsx hosts (not banned by this *.ts rule): BiomeSystem,
- * LODManager, SplashSystem. PostProcessing.tsx must not return (deleted in #371).
+ * Allowed root `*.ts`: GameState.ts, index.ts
+ * Allowed root `*.tsx`: none. The three deferred React hosts moved —
+ * BiomeSystem → biome/, LODManager → lod/, SplashSystem → water/ — and
+ * PostProcessing.tsx must not return (deleted in #371). The carve-out that
+ * allowed those three is gone on purpose: it was the only thing keeping the
+ * rule from being "no root modules", and a permanent exception list is how a
+ * layout rule stops being a rule.
  */
 import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,21 +31,14 @@ if (banned.length > 0) {
 }
 
 const rootTsx = readdirSync(systemsDir).filter((name) => name.endsWith('.tsx'));
-/** Deferred Experience hosts only (do not add PostProcessing — deleted dead dual). */
-const ALLOWED_ROOT_TSX = new Set([
-  'BiomeSystem.tsx',
-  'LODManager.tsx',
-  'SplashSystem.tsx',
-]);
-const bannedTsx = rootTsx.filter((name) => !ALLOWED_ROOT_TSX.has(name));
-if (bannedTsx.length > 0) {
-  console.error('[systems-layout] Unexpected root-level src/systems/*.tsx (deferred hosts only).');
-  console.error('  Allowed:', [...ALLOWED_ROOT_TSX].join(', '));
+if (rootTsx.length > 0) {
+  console.error('[systems-layout] Root-level src/systems/*.tsx is not allowed — move it into a domain folder.');
+  console.error('  biome/ for biome context, lod/ for LOD, water/ for splash & hydro, …');
   console.error('  Banned:');
-  for (const name of bannedTsx) console.error(`    - ${name}`);
+  for (const name of rootTsx) console.error(`    - ${name}`);
   process.exit(1);
 }
 
 console.log(
-  `[systems-layout] ok — root ts: ${rootTs.join(', ') || '(none)'}; deferred tsx: ${rootTsx.join(', ') || '(none)'}`,
+  `[systems-layout] ok — root ts: ${rootTs.join(', ') || '(none)'}; root tsx: (none)`,
 );

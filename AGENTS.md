@@ -213,7 +213,7 @@ HUD/minimap helpers (`grid-reduce`, `luma-histogram`, `downsample-2d`, blur) liv
 | `src/vehicles/RunnerVehicle/` / `RaftVehicle/` | Player vehicles |
 | `src/rendering/createRenderer.ts` / `gpuChores/` | Renderer factory + HUD hist/reduce helpers |
 | `src/systems/map/MapSystem.ts` | Maps, chunks, spawn |
-| `src/systems/BiomeSystem.tsx` | Biome context (`useBiome`) |
+| `src/systems/biome/BiomeSystem.tsx` | Biome context (`useBiome`) |
 | `src/systems/audio/AudioSystem.ts` | Three.js audio |
 | `src/physics/WaterForces.ts` | Flow force math |
 | `vite.config.ts` | Vite build |

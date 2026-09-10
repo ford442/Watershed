@@ -8,8 +8,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
-import { useLOD } from '../systems/LODManager';
-import { useBiome } from '../systems/BiomeSystem';
+import { useLOD } from '../systems/lod/LODManager';
+import { useBiome } from '../systems/biome/BiomeSystem';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { GOD_RAYS_SHADER, getGodRaySunColor } from '../systems/volumetric/VolumetricGodRays';
 import { useGameStore } from '../systems/GameState';

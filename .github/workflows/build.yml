@@ -12,6 +12,9 @@ jobs:
   # runtime behavior, so a red `tsc` is otherwise invisible. Keep this job
   # separate from build/test so failures are legible as the "Typecheck" check.
   # Intended as a required status check on main (see docs/reference/TESTING.md).
+  # `pnpm lint` rides in this job rather than a new one so it lands inside the
+  # existing required check instead of adding an unrequired one; the job name
+  # stays `Typecheck` so branch protection does not have to be re-pointed.
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -36,6 +39,13 @@ jobs:
 
       - name: Typecheck (typed surface)
         run: pnpm typecheck
+
+      # `pnpm lint` exits non-zero on errors only; the ~300 warnings are a
+      # tracked backlog (see eslint.config.js), so this gates the error path
+      # without blocking on the cleanup. A local-only lint script is the
+      # missing-linter hole again, with extra YAML.
+      - name: Lint
+        run: pnpm lint
 
   build-without-emscripten:
     name: Build without Emscripten

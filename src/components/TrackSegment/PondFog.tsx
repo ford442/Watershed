@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useBiome } from '../../systems/BiomeSystem';
+import { useBiome } from '../../systems/biome/BiomeSystem';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createPondFogMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
