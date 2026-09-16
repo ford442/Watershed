@@ -15,6 +15,7 @@ import {
   WATER_FORCE_INPUT_STRIDE,
   WATER_FORCE_OUTPUT_STRIDE,
   calculateWaterForceFallback,
+  heapF32,
   type NativeWaterForceConfig,
   type WatershedNativeModule,
 } from '../systems/water/WatershedWasm';
@@ -65,9 +66,18 @@ export function createPhysicsWorkerWaterBatch(
   return {
     inputPtr,
     outputPtr,
-    input: new Float32Array(mod.HEAPF32.buffer, inputPtr, WATER_FORCE_INPUT_STRIDE),
-    output: new Float32Array(mod.HEAPF32.buffer, outputPtr, WATER_FORCE_OUTPUT_STRIDE),
+    input: heapF32(mod, inputPtr, WATER_FORCE_INPUT_STRIDE),
+    output: heapF32(mod, outputPtr, WATER_FORCE_OUTPUT_STRIDE),
   };
+}
+
+/** Rebind batch views after Emscripten memory growth (detached ArrayBuffer). */
+export function refreshPhysicsWorkerWaterBatch(
+  mod: WatershedNativeModule,
+  batch: PhysicsWorkerWaterBatch,
+): void {
+  batch.input = heapF32(mod, batch.inputPtr, WATER_FORCE_INPUT_STRIDE, batch.input);
+  batch.output = heapF32(mod, batch.outputPtr, WATER_FORCE_OUTPUT_STRIDE, batch.output);
 }
 
 export function disposePhysicsWorkerWaterBatch(
@@ -150,6 +160,9 @@ export function computePhysicsWorkerWaterForces(
     };
   }
 
+  if (wasm) {
+    refreshPhysicsWorkerWaterBatch(wasm, batch);
+  }
   packRaftWaterSample(state, config.flowDirX, config.flowDirZ, batch.input);
   const nativeConfig = toNativeWaterForceConfig(config);
   const startedAt = now();

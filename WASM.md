@@ -125,10 +125,10 @@ After clone, `pnpm test:native` configures + builds the host tree (`emscripten/b
 |------|-------|-----------|
 | `INITIAL_MEMORY` | 64 MiB | Fast startup; most sessions never need more |
 | `MAXIMUM_MEMORY` | 256 MiB | Hard ceiling so a runaway init or growth loop cannot consume unbounded tab RAM |
-| `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate |
+| `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate. Growth **replaces** the `ArrayBuffer`; prior `Float32Array` views detach (`byteLength === 0`). `heapF32()` rebinds the worker water-force batch, SWE grid, and `createWaterForceBatch`. |
 
 Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2` and `SAFE_HEAP=1`.
-TypeScript init (`getWasm`) is bounded by an 8 s deadline regardless — see `WASM_INIT_TIMEOUT_MS` in `WatershedWasm.ts`.
+TypeScript init (`getWasm`) is bounded by an 8 s deadline regardless — see `WASM_INIT_TIMEOUT_MS` in `WatershedWasm.ts`. After the factory resolves, `getWasm()` hashes the served glue+wasm pair (`sha256(glue \|\| wasm)[:16]`) against `WASM_ARTIFACT_STAMP` and rejects on mismatch so the GameHUD `wasm-init-banner` fires. The TypeScript water-force fallback remains the gameplay path.
 
 ---
 

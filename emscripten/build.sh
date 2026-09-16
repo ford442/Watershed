@@ -113,7 +113,10 @@ if [ -f "$PUBLIC_DIR/watershed_native.wasm" ]; then
     echo "  WASM size: ${WASM_SIZE} bytes"
 fi
 
-if [ "$USE_THREADS" -eq 0 ] && [ -f "$PUBLIC_DIR/watershed_native.wasm" ]; then
+if [ -f "$PUBLIC_DIR/watershed_native.wasm" ]; then
+    # Glue + wasm only (pthread shim is additive). Same inputs as
+    # hashGlueWasmPair() in WatershedWasm.ts — including --threads builds,
+    # which previously left the previous stamp file in place.
     STAMP=$(cat "$OUTPUT_JS" "$PUBLIC_DIR/watershed_native.wasm" | sha256sum | cut -c1-16)
     STAMP_FILE="$REPO_ROOT/src/systems/water/wasmArtifactStamp.ts"
     cat > "$STAMP_FILE" <<EOF

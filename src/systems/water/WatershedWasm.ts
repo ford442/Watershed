@@ -27,6 +27,7 @@
  *   grid.dispose();
  */
 
+import { BUILD_IDENTITY, GRAPHICS_BOOT_TOKEN } from '../../buildIdentity';
 import { getAssetBaseUrl } from '../../utils/assetBaseUrl';
 import { WASM_ARTIFACT_STAMP } from './wasmArtifactStamp';
 
@@ -73,6 +74,24 @@ export interface NativeWaterForceConfig {
 
 export const WATER_FORCE_INPUT_STRIDE = 8;
 export const WATER_FORCE_OUTPUT_STRIDE = 8;
+
+/**
+ * Typed view into WASM linear memory that survives ALLOW_MEMORY_GROWTH.
+ * Growth replaces the ArrayBuffer; prior views detach (byteLength === 0)
+ * and reads/writes go nowhere with no throw. Reuse `prev` when it still
+ * aliases the live heap; otherwise rebuild.
+ */
+export function heapF32(
+  mod: { HEAPF32: Float32Array },
+  ptr: number,
+  count: number,
+  prev?: Float32Array,
+): Float32Array {
+  if (prev && prev.byteLength !== 0 && prev.buffer === mod.HEAPF32.buffer) {
+    return prev;
+  }
+  return new Float32Array(mod.HEAPF32.buffer, ptr, count);
+}
 
 /**
  * Shape of the WASM module after Emscripten initialisation.
@@ -351,6 +370,7 @@ let _initError: Error | null = null;
 
 function logWasmInitStarted(url: string): void {
   console.info(`${WASM_LOG_PREFIX} init started url=${url} stamp=${WASM_ARTIFACT_STAMP}`);
+  console.info(`${WASM_LOG_PREFIX} build-id=${BUILD_IDENTITY} boot=${GRAPHICS_BOOT_TOKEN}`);
 }
 
 async function logWasmByteLength(wasmUrl: string): Promise<void> {
@@ -419,6 +439,44 @@ function raceWithDeadline<T>(
 function withArtifactStamp(url: string): string {
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${WASM_ARTIFACT_STAMP}`;
+}
+
+/** First 16 hex chars of sha256(glue || wasm) — same as emscripten/build.sh. */
+export async function hashGlueWasmPair(
+  glue: Uint8Array,
+  wasm: Uint8Array,
+): Promise<string> {
+  const joined = new Uint8Array(glue.byteLength + wasm.byteLength);
+  joined.set(glue, 0);
+  joined.set(wasm, glue.byteLength);
+  const digest = await crypto.subtle.digest('SHA-256', joined);
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  return hex.slice(0, 16);
+}
+
+async function fetchAssetBytes(url: string): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`watershed_native fetch failed ${response.status} for ${url}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function assertLoadedArtifactStamp(glueUrl: string, wasmUrl: string): Promise<string> {
+  const [glue, wasm] = await Promise.all([
+    fetchAssetBytes(glueUrl),
+    fetchAssetBytes(wasmUrl),
+  ]);
+  const loadedStamp = await hashGlueWasmPair(glue, wasm);
+  console.info(
+    `${WASM_LOG_PREFIX} stamp loaded=${loadedStamp} expected=${WASM_ARTIFACT_STAMP}`,
+  );
+  if (loadedStamp !== WASM_ARTIFACT_STAMP) {
+    throw new Error(
+      `watershed_native stamp mismatch: loaded=${loadedStamp} expected=${WASM_ARTIFACT_STAMP}`,
+    );
+  }
+  return loadedStamp;
 }
 
 function resolvePublicAsset(path: string): string {
@@ -490,6 +548,8 @@ export async function getWasm(): Promise<WatershedNativeModule> {
           `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
         );
       }
+
+      await assertLoadedArtifactStamp(wasmJsUrl, wasmBinaryUrl);
 
       _loaded = loaded;
       _initError = null;
@@ -624,22 +684,20 @@ export function createSWEGrid(
   const wPtr = mod.allocateGrid(count);
   const bPtr = mod.allocateGrid(count);
 
-  // HEAPF32 is a Float32Array view; each element is 4 bytes,
-  // so the byte-offset ptr maps to element index ptr / 4... but because
-  // HEAPF32 was already created as a Float32Array over the raw buffer,
-  // we can pass the byte offset directly and let the Float32Array
-  // constructor handle the alignment (Emscripten guarantees 4-byte alignment).
-  const buffer = mod.HEAPF32.buffer;
-  const h = new Float32Array(buffer, hPtr, count);
-  const u = new Float32Array(buffer, uPtr, count);
-  const w = new Float32Array(buffer, wPtr, count);
-  // allocateGrid zero-fills, so an untouched bed is already flat.
-  const b = new Float32Array(buffer, bPtr, count);
+  // Views are rebound through heapF32() if Emscripten grows the heap
+  // (ALLOW_MEMORY_GROWTH replaces the ArrayBuffer and detaches these).
+  let h = heapF32(mod, hPtr, count);
+  let u = heapF32(mod, uPtr, count);
+  let w = heapF32(mod, wPtr, count);
+  let b = heapF32(mod, bPtr, count);
 
   return {
     width, height, dx,
     hPtr, uPtr, wPtr, bPtr,
-    h, u, w, b,
+    get h() { h = heapF32(mod, hPtr, count, h); return h; },
+    get u() { u = heapF32(mod, uPtr, count, u); return u; },
+    get w() { w = heapF32(mod, wPtr, count, w); return w; },
+    get b() { b = heapF32(mod, bPtr, count, b); return b; },
     dispose() {
       mod.freeGrid(hPtr);
       mod.freeGrid(uPtr);
@@ -655,27 +713,27 @@ export function createWaterForceBatch(
 ): NativeWaterForceBatch {
   const inputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_INPUT_STRIDE);
   const outputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_OUTPUT_STRIDE);
-  const input = new Float32Array(
-    mod.HEAPF32.buffer,
-    inputPtr,
-    sampleCount * WATER_FORCE_INPUT_STRIDE,
-  );
-  const output = new Float32Array(
-    mod.HEAPF32.buffer,
-    outputPtr,
-    sampleCount * WATER_FORCE_OUTPUT_STRIDE,
-  );
+  const inCount = sampleCount * WATER_FORCE_INPUT_STRIDE;
+  const outCount = sampleCount * WATER_FORCE_OUTPUT_STRIDE;
+  let input = heapF32(mod, inputPtr, inCount);
+  let output = heapF32(mod, outputPtr, outCount);
+
+  function refresh(): void {
+    input = heapF32(mod, inputPtr, inCount, input);
+    output = heapF32(mod, outputPtr, outCount, output);
+  }
 
   return {
     sampleCount,
     inputPtr,
     outputPtr,
-    input,
-    output,
+    get input() { refresh(); return input; },
+    get output() { refresh(); return output; },
     setSample(index, sample) {
       if (index < 0 || index >= sampleCount) {
         throw new RangeError(`Water force sample ${index} out of range`);
       }
+      refresh();
       const offset = index * WATER_FORCE_INPUT_STRIDE;
       input[offset + 0] = sample.position.x;
       input[offset + 1] = sample.position.y;
@@ -687,6 +745,7 @@ export function createWaterForceBatch(
       input[offset + 7] = sample.flowDirection.z;
     },
     compute(config) {
+      refresh();
       mod.computeWaterForcesBatch(
         inputPtr,
         outputPtr,
@@ -708,6 +767,7 @@ export function createWaterForceBatch(
       if (index < 0 || index >= sampleCount) {
         throw new RangeError(`Water force result ${index} out of range`);
       }
+      refresh();
       const offset = index * WATER_FORCE_OUTPUT_STRIDE;
       return {
         forceX: output[offset + 0],

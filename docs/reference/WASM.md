@@ -38,7 +38,14 @@ Hard rules:
 - Default CMake target has no `-pthread` / `SHARED_MEMORY`. Threads remain
   `WATERSHED_THREADS=ON` / `./build.sh --threads` only.
 - Linear memory: `INITIAL_MEMORY` 64 MiB, `MAXIMUM_MEMORY` 256 MiB,
-  `ALLOW_MEMORY_GROWTH=1`. See [../../WASM.md](../../WASM.md#linear-memory-budget).
+  `ALLOW_MEMORY_GROWTH=1`. Growth **replaces** the `ArrayBuffer` and detaches
+  every prior `HEAPF32` view (`byteLength === 0`). `heapF32()` in
+  `WatershedWasm.ts` rebinds `createSWEGrid` / `createWaterForceBatch` /
+  `createPhysicsWorkerWaterBatch` views. Splash/waterfall SoA sites are a
+  leftover of closed-unimplemented #415. See [../../WASM.md](../../WASM.md#linear-memory-budget).
+- Boot asserts `sha256(glue || wasm)[:16]` against `WASM_ARTIFACT_STAMP` after
+  `getVersion()`. Mismatch rejects `getWasm()` so the existing GameHUD
+  `wasm-init-banner` fires; TypeScript water-force fallback stays the gameplay path.
 
 ## Host build + clangd
 
