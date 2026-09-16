@@ -29,6 +29,7 @@ import {
   resolveWasmInitTimeoutMs,
   WASM_INIT_TIMEOUT_MS,
   WasmInitTimeoutError,
+  isWasmProvenanceMismatchError,
   hashGlueWasmPair,
   type Vec3,
   type WatershedNativeModule,
@@ -772,7 +773,8 @@ describe('getWasm artifact stamp', () => {
     await expect(getWasm()).rejects.toThrow(/stamp mismatch/);
     expect(peekWasm()).toBeNull();
     expect(peekWasmInitError()?.message).toMatch(/stamp mismatch/);
-    expect(errorSpy.mock.calls.some((c) => String(c[0]).includes('failed('))).toBe(true);
+    expect(isWasmProvenanceMismatchError(peekWasmInitError())).toBe(true);
+    expect(errorSpy.mock.calls.some((c) => String(c[0]).includes('provenance-mismatch('))).toBe(true);
 
     errorSpy.mockRestore();
   });

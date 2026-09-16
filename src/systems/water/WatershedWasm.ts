@@ -364,6 +364,21 @@ export function isWasmInitTimeoutError(error: unknown): boolean {
     || (error instanceof Error && error.message.includes('init timed out after'));
 }
 
+/** Served glue/binary bytes disagree with the stamp this bundle was built against. */
+export const PROVENANCE_MISMATCH_MARKER = 'stamp mismatch';
+
+export class WasmProvenanceMismatchError extends Error {
+  constructor(detail: string) {
+    super(`watershed_native ${PROVENANCE_MISMATCH_MARKER}: ${detail}`);
+    this.name = 'WasmProvenanceMismatchError';
+  }
+}
+
+export function isWasmProvenanceMismatchError(error: unknown): boolean {
+  return error instanceof WasmProvenanceMismatchError
+    || (error instanceof Error && error.message.includes(PROVENANCE_MISMATCH_MARKER));
+}
+
 let _modulePromise: Promise<WatershedNativeModule> | null = null;
 let _loaded: WatershedNativeModule | null = null;
 let _initError: Error | null = null;
@@ -389,12 +404,17 @@ async function logWasmByteLength(wasmUrl: string): Promise<void> {
   }
 }
 
-function logWasmTerminal(outcome: 'ready' | 'failed' | 'timed-out', detail: string): void {
+function logWasmTerminal(
+  outcome: 'ready' | 'failed' | 'timed-out' | 'provenance-mismatch',
+  detail: string,
+): void {
   const line = outcome === 'ready'
     ? `${WASM_LOG_PREFIX} ready (${detail})`
     : outcome === 'timed-out'
       ? `${WASM_LOG_PREFIX} timed-out(${detail})`
-      : `${WASM_LOG_PREFIX} failed(${detail})`;
+      : outcome === 'provenance-mismatch'
+        ? `${WASM_LOG_PREFIX} provenance-mismatch(${detail})`
+        : `${WASM_LOG_PREFIX} failed(${detail})`;
   if (outcome === 'ready') {
     console.info(line);
   } else {
@@ -462,7 +482,7 @@ async function fetchAssetBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-async function assertLoadedArtifactStamp(glueUrl: string, wasmUrl: string): Promise<string> {
+export async function assertLoadedArtifactStamp(glueUrl: string, wasmUrl: string): Promise<string> {
   const [glue, wasm] = await Promise.all([
     fetchAssetBytes(glueUrl),
     fetchAssetBytes(wasmUrl),
@@ -472,8 +492,8 @@ async function assertLoadedArtifactStamp(glueUrl: string, wasmUrl: string): Prom
     `${WASM_LOG_PREFIX} stamp loaded=${loadedStamp} expected=${WASM_ARTIFACT_STAMP}`,
   );
   if (loadedStamp !== WASM_ARTIFACT_STAMP) {
-    throw new Error(
-      `watershed_native stamp mismatch: loaded=${loadedStamp} expected=${WASM_ARTIFACT_STAMP}`,
+    throw new WasmProvenanceMismatchError(
+      `loaded=${loadedStamp} expected=${WASM_ARTIFACT_STAMP}`,
     );
   }
   return loadedStamp;
@@ -563,6 +583,8 @@ export async function getWasm(): Promise<WatershedNativeModule> {
         terminalLogged = true;
         if (isWasmInitTimeoutError(err)) {
           logWasmTerminal('timed-out', `${timeoutMs}ms`);
+        } else if (isWasmProvenanceMismatchError(err)) {
+          logWasmTerminal('provenance-mismatch', err.message);
         } else {
           logWasmTerminal('failed', err.message);
         }

@@ -2,7 +2,9 @@
 
 import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
 import {
+  assertLoadedArtifactStamp,
   isWasmInitTimeoutError,
+  isWasmProvenanceMismatchError,
   resolveWasmInitTimeoutMs,
   WasmInitTimeoutError,
 } from '../systems/water/WatershedWasm';
@@ -79,6 +81,7 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
 
   modulePromise = (async () => {
     const wasmJsUrl = resolveWorkerAsset('watershed_native.js');
+    const wasmBinaryUrl = resolveWorkerAsset('watershed_native.wasm');
     let terminalLogged = false;
 
     try {
@@ -94,6 +97,8 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
         () => new WasmInitTimeoutError(timeoutMs),
       );
 
+      await assertLoadedArtifactStamp(wasmJsUrl, wasmBinaryUrl);
+
       const version = loaded.getVersion();
       terminalLogged = true;
       console.info(`${WASM_LOG_PREFIX} ready (abi=${version})`);
@@ -104,6 +109,8 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
         terminalLogged = true;
         if (isWasmInitTimeoutError(err)) {
           console.error(`${WASM_LOG_PREFIX} timed-out(${timeoutMs}ms)`);
+        } else if (isWasmProvenanceMismatchError(err)) {
+          console.error(`${WASM_LOG_PREFIX} provenance-mismatch(${err.message})`);
         } else {
           console.error(`${WASM_LOG_PREFIX} failed(${err.message})`);
         }
