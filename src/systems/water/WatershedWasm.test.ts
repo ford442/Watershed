@@ -19,6 +19,7 @@ import {
   createWaterForceBatch,
   dragForceFallback,
   createSWEGrid,
+  heapF32,
   getWasm,
   peekWasm,
   peekWasmInitError,
@@ -28,10 +29,12 @@ import {
   resolveWasmInitTimeoutMs,
   WASM_INIT_TIMEOUT_MS,
   WasmInitTimeoutError,
+  hashGlueWasmPair,
   type Vec3,
   type WatershedNativeModule,
   type SWEGrid,
 } from './WatershedWasm';
+import { WASM_ARTIFACT_STAMP } from './wasmArtifactStamp';
 
 // ---------------------------------------------------------------------------
 // 1. Export surface
@@ -424,6 +427,59 @@ describe('createSWEGrid', () => {
     expect(grid.dx).toBe(0.5);
     grid.dispose();
   });
+
+  it('rebinds SWE views after HEAPF32 is swapped for a fresh buffer', () => {
+    const grid = createSWEGrid(mod, 4, 4, 0.5);
+    grid.h[0] = 1.25;
+    const stale = grid.h;
+    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
+    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
+    mod.HEAPF32 = new Float32Array(grown);
+    mod.HEAP32 = new Int32Array(grown);
+    mod.HEAPU8 = new Uint8Array(grown);
+    expect(stale.buffer === mod.HEAPF32.buffer).toBe(false);
+    grid.h[3] = 9.5;
+    const live = new Float32Array(mod.HEAPF32.buffer, grid.hPtr, 16);
+    expect(live[3]).toBe(9.5);
+    grid.dispose();
+  });
+});
+
+describe('heapF32', () => {
+  it('rebuilds when the previous view is detached (byteLength === 0)', () => {
+    const buf = new ArrayBuffer(64);
+    const mod = { HEAPF32: new Float32Array(buf) };
+    const live = heapF32(mod, 0, 4);
+    live[0] = 3.5;
+    const detached = new Float32Array(new ArrayBuffer(0));
+    expect(detached.byteLength).toBe(0);
+    const refreshed = heapF32(mod, 0, 4, detached);
+    expect(refreshed.byteLength).toBe(16);
+    expect(refreshed[0]).toBe(3.5);
+    expect(heapF32(mod, 0, 4, refreshed)).toBe(refreshed);
+  });
+});
+
+describe('createWaterForceBatch memory growth', () => {
+  it('setSample still writes after HEAPF32 is replaced', () => {
+    const mod = buildMockModule();
+    const batch = createWaterForceBatch(mod, 1);
+    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
+    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
+    mod.HEAPF32 = new Float32Array(grown);
+    mod.HEAP32 = new Int32Array(grown);
+    mod.HEAPU8 = new Uint8Array(grown);
+    batch.setSample(0, {
+      position: { x: 1, y: 2, z: 3 },
+      velocity: { x: 0, y: 0, z: 0 },
+      flowDirection: { x: 0, z: -1 },
+    });
+    const view = new Float32Array(mod.HEAPF32.buffer, batch.inputPtr, 8);
+    expect(view[0]).toBe(1);
+    expect(view[1]).toBe(2);
+    expect(view[2]).toBe(3);
+    batch.dispose();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -675,5 +731,82 @@ describe('getWasm init deadline', () => {
 
     infoSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+});
+
+describe('getWasm artifact stamp', () => {
+  const RealFunction = globalThis.Function;
+
+  function stubFactory(mod: Pick<WatershedNativeModule, 'getVersion'>): void {
+    globalThis.Function = new Proxy(RealFunction, {
+      construct(target, args: string[]) {
+        if (args[0] === 'url' && args[1] === 'return import(url)') {
+          return () => Promise.resolve({ default: async () => mod });
+        }
+        return new target(...args);
+      },
+    }) as typeof Function;
+  }
+
+  beforeEach(() => {
+    __resetWasmLoaderForTests();
+  });
+
+  afterEach(() => {
+    __resetWasmLoaderForTests();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    globalThis.Function = RealFunction;
+  });
+
+  it('rejects when served glue+wasm hash does not match WASM_ARTIFACT_STAMP', async () => {
+    stubFactory({ getVersion: () => 8 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    }));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await expect(getWasm()).rejects.toThrow(/stamp mismatch/);
+    expect(peekWasm()).toBeNull();
+    expect(peekWasmInitError()?.message).toMatch(/stamp mismatch/);
+    expect(errorSpy.mock.calls.some((c) => String(c[0]).includes('failed('))).toBe(true);
+
+    errorSpy.mockRestore();
+  });
+
+  it('resolves when served glue+wasm hash matches WASM_ARTIFACT_STAMP', async () => {
+    const { readFileSync } = await import('node:fs');
+    const glue = new Uint8Array(readFileSync('public/watershed_native.js'));
+    const wasm = new Uint8Array(readFileSync('public/watershed_native.wasm'));
+    expect(await hashGlueWasmPair(glue, wasm)).toBe(WASM_ARTIFACT_STAMP);
+
+    stubFactory({ getVersion: () => 8 } as Pick<WatershedNativeModule, 'getVersion'>);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes('.wasm') ? wasm : glue;
+      return {
+        ok: true,
+        headers: { get: () => String(body.byteLength) },
+        arrayBuffer: async () => body.buffer,
+      };
+    }));
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const loaded = await getWasm();
+    expect(loaded.getVersion()).toBe(8);
+    expect(peekWasm()).toBe(loaded);
+    expect(peekWasmInitError()).toBeNull();
+  });
+
+  it('hashGlueWasmPair is stable and 16 hex chars', async () => {
+    const glue = new Uint8Array([9, 8, 7]);
+    const wasm = new Uint8Array([6, 5, 4]);
+    const expected = await hashGlueWasmPair(glue, wasm);
+    expect(expected).toMatch(/^[0-9a-f]{16}$/);
+    expect(await hashGlueWasmPair(glue, wasm)).toBe(expected);
   });
 });

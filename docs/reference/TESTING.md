@@ -10,6 +10,26 @@ npm start
 
 The application will open at `http://localhost:3000`
 
+### Deploy identity (`pnpm verify:deploy`)
+
+`node verification/verify_deploy.mjs` fetches the **directory URL**
+`https://test.1ink.us/watershed/` (not `index.html`) and three-way diffs
+`build/` vs `deploy.py --manifest` vs live on size + sha256. It must fail on
+today's UTF-16 DirectoryIndex document and pass against a coherent local
+`build/` served over a static file server.
+
+```bash
+pnpm build
+pnpm verify:deploy                          # live directory URL
+python3 -m http.server 4180 --directory build
+pnpm verify:deploy -- --url http://127.0.0.1:4180/
+```
+
+(`pnpm verify:deploy -- --url …` if the script wrapper swallows flags; otherwise
+`node verification/verify_deploy.mjs --url http://127.0.0.1:4180/`.)
+
+See [`DEPLOY_AUDIT.md`](./DEPLOY_AUDIT.md).
+
 ### 2. Verify Player Spawn Fix
 
 #### Expected Behavior

@@ -1,5 +1,9 @@
 # Deploy Pipeline Provenance Audit (2026-09-09)
 
+**Correction 2026-09-16:** §5(a)(4) below originally theorized a re-encode of `index.html`.
+That theory is withdrawn. `/watershed/` and `/watershed/index.html` are two different files;
+see the rewritten §5(a)(4).
+
 Read-only, full round-trip audit of `pnpm build` → `deploy.py` → `https://test.1ink.us/watershed/`.
 No credential was requested, printed, or committed; `DEPLOY_TOKEN` was unset for the whole audit
 and every finding that depends on it says so explicitly. `deploy.py`, `build_and_patch.py`, and
@@ -257,22 +261,29 @@ This reproduces the user-supplied headline exactly: **everything is 2026-08-14 e
    fully explains it without needing this), but the code has no defense against it either way, so
    it stays on the list as a live risk for any future deploy, ranked below the two above because
    there's no measured instance of it.
-4. **Fourth, cosmetic but still unexplained: `index.html` is served as UTF-16LE with a BOM, while
-   every local build (this session's included) emits plain UTF-8, and `build_and_patch.py` (36
-   lines, read this session, not modified) does zero encoding work.** Confirmed again this session:
-   local `build/index.html` is UTF-8, no BOM; the exact same relative path on the live server is
-   UTF-16LE, BOM `ff fe`, exactly ~2x the byte count. Something between `zipfile.ZipFile` (which
-   writes whatever bytes `Path.stat()`/`file.write()` gives it — Python defaults to reading the
-   file in binary mode via `zf.write(file, rel_s)` at `deploy.py:91`, so **this script is not the
-   re-encoder**) and the page a browser receives changes the encoding. That leaves either the
-   VPS-side unzip/SFTP-push step or a stale hand-upload from long before this script existed
-   (`deploy_old.py`, mentioned in `weekly_plan.md`, is a legacy SFTP script no longer in the active
-   path) as the candidate causes — both outside this repo's read access. Browsers sniff the BOM
-   and render correctly, so this doesn't break the page today, but it means **the one file that
-   determines every other file's identity is not being written to the server by the same
-   mechanism, or with the same fidelity, as the rest of the bundle** — worth closing out because it
-   undermines any future byte-for-byte verification step that assumes `index.html`'s bytes on disk
-   equal what `vite build` produced.
+4. **Withdrawn (2026-09-16). There is no re-encoder.** This item originally claimed that
+   something between `vite build` and Apache transcoded `index.html` to UTF-16LE. That is
+   false. Re-verified with `curl -I` on 2026-09-16:
+
+   | URL | last-modified | content-length | etag | content-type |
+   |---|---|---|---|---|
+   | `https://test.1ink.us/watershed/` | Fri, 14 Aug 2026 **12:21:30** | **1438** | `"59e-65900dc4a04cd"` | `text/html; charset=utf-16` |
+   | `https://test.1ink.us/watershed/index.html` | Fri, 14 Aug 2026 **12:21:58** | **718** | `"2ce-65900ddf3c889"` | `text/html` |
+
+   Two `last-modified` values prove two files on disk. One file cannot have two mtimes, and an
+   Apache output filter does not rewrite `Last-Modified`. The bodies are semantically identical
+   HTML (same `<title>WATERSHED</title>`, same five 08-14 asset hashes) — one stored UTF-8, one
+   stored UTF-16LE with a `ff fe` BOM. Apache `DirectoryIndex` resolves the **directory URL** to
+   the UTF-16 file. `deploy.py` writes only `index.html`. A perfect upload therefore changes
+   nothing a browser at `/watershed/` sees: it keeps loading the 1438-byte shadow, which names
+   `assets/index-8Gl23hpQ.js`, and because the upload never deletes remote files that August
+   bundle still returns 200.
+
+   This is **Mechanism 1** and it outranks the size-skip (Mechanism 2, findings 1–2). Guessed
+   DirectoryIndex names (`index.htm`, `default.htm`, `default.html`, `Index.html`) all 404; the
+   shadow's on-disk name is the 1438-byte root HTML file in `GET /api/deploy/watershed/sizes`
+   (`python3 deploy.py --list-remote`). `verification/verify_deploy.mjs` fetches the directory
+   URL, not `index.html`. Nothing re-encodes anything.
 5. **Fifth, lowest severity: the dry run itself doesn't mean what it looks like it means without a
    working token.** (§2.) Not a way to *serve* an incoherent build, but a way to be falsely
    reassured about one before deploying — a `--dry-run` in an environment where the sizes endpoint
