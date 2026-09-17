@@ -23,6 +23,7 @@
 |-----|----------------|
 | [`TESTING.md`](./TESTING.md) | CI, harnesses, known friction log |
 | [`DEPLOY_AUDIT.md`](./DEPLOY_AUDIT.md) | Live-vs-build provenance; DirectoryIndex shadow; `verify:deploy` |
+| [`BUILD_HYGIENE.md`](./BUILD_HYGIENE.md) | Build determinism; the unhashed-passenger manifest contract; `check-build-manifest.mjs` |
 | [`QUICK_TROUBLESHOOTING.md`](./QUICK_TROUBLESHOOTING.md) | Something broken right now |
 | [`STARTUP_DIAGNOSTICS.md`](./STARTUP_DIAGNOSTICS.md) | Blank scene / shader / load failures |
 | [`CODE_HEALTH_GUIDE.md`](./CODE_HEALTH_GUIDE.md) | Shader injection, geometry validation, red flags |
