@@ -64,6 +64,16 @@ if(EMSCRIPTEN)
         # -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0 leaves every function
         # unbound at runtime (CanonicalizedID addresses do not merge with
         # the prebuilt embind objects).
+        # FP contract (#404): the WASM Release build keeps -ffast-math while the
+        # host build below uses -ffp-contract=off. The two are deliberately not
+        # identical — the shipped binary wants the vectoriser, the host smoke
+        # wants reproducible goldens. This is safe only as long as the goldens
+        # agree across both: emscripten/host_smoke.cpp (host) and the SWE /
+        # applySWEEvent blocks in emscripten/smoke_test.mjs (wasm) assert the
+        # same well-balanced and source-term results, the latter against the TS
+        # twin within 1e-5. If those ever diverge, drop -ffast-math here (or at
+        # least add -ffp-contract=off on the HLL TU in swe.cpp) rather than
+        # loosening the tolerance.
         set(EM_COMPILE_FLAGS
             -O3
             -ffast-math
@@ -110,6 +120,9 @@ if(EMSCRIPTEN)
     )
 else()
     # Native host build — clangd / host smoke. No Embind, no -s flags, no -ffast-math.
+    # -ffp-contract=off keeps FMA contraction out of the golden path so
+    # host_smoke.cpp results stay bit-reproducible; see the FP contract note
+    # on the Emscripten branch above (#404).
     add_executable(watershed_host_smoke host_smoke.cpp)
     target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
     target_compile_options(watershed_compute PRIVATE -O2 -Wall -Wextra -ffp-contract=off)
