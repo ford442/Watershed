@@ -281,10 +281,11 @@ plus stubs `lumberFlume` / `hydroDam`. Legacy kebab/track aliases
 
 ### `src/systems/lod/LODManager.tsx`
 
-**Purpose:** Adaptive quality scaling — measures FPS over a 60-frame window and
-automatically steps `quality` up/down (`low` → `medium` → `high` → `ultra`) to hold
-the target FPS. Exposes per-quality budgets for particles, shadows, reflections, and
-volumetric samples via React context.
+**Purpose:** Adaptive quality scaling — measures FPS over a 60-frame window and holds
+the target FPS with two valves: the **render scale** (a 0.5–1.0 multiplier on the
+preset's DPR ceiling, which moves first) and then the **quality preset** itself
+(`medium` → `high` → `ultra`; never auto-`low`). Exposes per-quality budgets for
+particles, shadows, reflections, and volumetric samples via React context.
 
 **Runs in:** React context provider (`LODProvider`) + `useFrame` (FPS sampling and adaptive
 quality logic).
@@ -298,12 +299,18 @@ quality logic).
 
 **Consumes:**
 - `useGameStore` from `GameState` — reads/writes `settings.quality` to stay in sync
-  with the settings menu
+  with the settings menu, and owns `renderScale` (runtime, not a setting)
+- `stepRenderScale` / `frameTimeBudgetMs` from `rendering/renderScale.ts` — pure valve
+  math; see the Adaptive render scale section of `docs/reference/RENDERER.md`
+- `isVisualCaptureMode` from `rendering/rendererConfig.ts` — the capture harness pins
+  the valve open so visual-smoke baselines cannot move with frame time
 - `Html` from `@react-three/drei` (PerformanceMonitor overlay)
 - `useFrame`, `useThree` from `@react-three/fiber`
 
 **Produces:**
-- Context value: `{ quality, config: LODConfig, fps, setQuality, enableAdaptive, setEnableAdaptive }`
+- Context value: `{ quality, config: LODConfig, fps, setQuality, enableAdaptive, setEnableAdaptive, renderScale }`
+- `GameState.renderScale` — the valve position, read by `App` (Canvas `dpr` prop) and
+  `RendererQualitySync` (`setDpr` on the live renderer)
 - `LODConfig` fields per quality level: `particleDensity`, `shadowMapSize`,
   `enableReflections`, `enableCaustics`, `enableGodRays`, `enableMotionBlur`,
   `enableBloom`, `volumetricSamples`, `maxParticles`, `viewDistance`
@@ -316,11 +323,21 @@ quality logic).
   `useLOD().config` so the adaptive system can scale them.
 - Do NOT fight `LODManager` by calling `setQuality` from multiple places concurrently;
   it syncs with the Zustand store and the adaptive loop simultaneously.
+- Do NOT write `GameState.renderScale` from anywhere else. `LODManager` is the only
+  writer; everything else reads it (or `deriveRendererContextOptions`, which folds it
+  into `dprMax`). Two writers on one valve is an oscillator.
+- Do NOT put the render scale into `rendererContextCreationKey()` — it moves several
+  times a minute on a struggling machine, and that key is the Canvas remount trigger.
 
 **Known Pain:**
 - Adaptive hysteresis thresholds (`downgradeThreshold = targetFPS - 10`,
   `upgradeThreshold = targetFPS + 5`) and the 3-second / 2-second hold timers are
-  hardcoded in the provider body — there is no prop to tune them.
+  hardcoded in the provider body — there is no prop to tune them. The render scale's
+  own thresholds live in `renderScale.ts` as named constants, expressed as the
+  frame-time form of the same two lines.
+- The sampling tick is 60 *frames*, not one second, so on a machine running at 20 FPS
+  every hold timer is three times longer in wall-clock terms than its name suggests.
+  That predates the valve and applies to both stages equally.
 - `PerformanceMonitor` uses `import.meta.env.DEV` as default visibility, which means it
   always shows in Vite dev mode.
 

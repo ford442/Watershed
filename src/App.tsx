@@ -18,6 +18,7 @@ import {
   beginBootAttempt,
   BootHealthSentinel,
   createGameRenderer,
+  canvasDprRange,
   deriveRendererContextOptions,
   isSoftwareRendererAllowed,
   isVisualCaptureMode,
@@ -42,7 +43,7 @@ import {
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistence/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
-import { useGameStore, useQualityPreset } from './systems/GameState';
+import { useGameStore, useQualityPreset, useRenderScale } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
@@ -165,6 +166,7 @@ function App({ graphicsBoot }: AppProps = {}) {
     () => resolveMaterialBackend().backend
   );
   const qualityPreset = useQualityPreset();
+  const renderScale = useRenderScale();
   const { active: assetsLoading } = useProgress();
   const [canvasEpoch, setCanvasEpoch] = useState(0);
   const [canvasReady, setCanvasReady] = useState(false);
@@ -176,6 +178,11 @@ function App({ graphicsBoot }: AppProps = {}) {
     // creation-time attributes; taking them from the negotiated envelope instead
     // of the preset is what makes every preset share one Canvas key.
     envelope: graphicsCapability.envelope,
+    // #419 phase C: LODManager's frame-time valve, multiplying the preset's DPR
+    // ceiling. It moves the `dpr` prop below and nothing else — the Canvas key
+    // is derived from creation attributes only, so closing the valve mid-run
+    // cannot remount the Canvas any more than a preset change can.
+    renderScale,
   });
   // Only creation-time context attributes belong in the Canvas key, and none of
   // them varies with quality any more. DPR, shadow mode, and shadow map size are
@@ -479,7 +486,7 @@ function App({ graphicsBoot }: AppProps = {}) {
           <SettingsSync />
           <Canvas
             key={canvasKey}
-            dpr={[1, rendererContextOptions.dprMax]}
+            dpr={canvasDprRange(rendererContextOptions.dprMax)}
             gl={async (props) => {
               // No retry, no fallback ladder: the envelope in
               // `rendererContextOptions` is the one the boot probe already proved

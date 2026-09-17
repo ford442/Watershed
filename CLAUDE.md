@@ -78,7 +78,7 @@ src/
 │   ├── ReachManager.tsx         # Reach streaming wrapper
 │   ├── GameState.ts             # ★ Zustand store — the only root *.ts besides index.ts
 │   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
-│   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality
+│   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality (render scale, then preset)
 │   ├── lumber/trestleSpan.ts    # Breakable trestle deck (forecast + hydroEvents)
 │   ├── water/SplashSystem.tsx   # Splash particles + SWE disturbance
 │   ├── water/sweSwirl.ts        # Surface swirl owner — SWE sink vs authored drain
@@ -308,6 +308,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/materials/water/createWaterMaterial.ts` | Water material host — picks GLSL vs TSL backend |
 | `src/rendering/materialBackend.ts` | `?material=glsl\|tsl` resolution (#256 path A) |
 | `src/rendering/deriveRendererContextOptions.ts` | Quality → DPR/shadows (live half); Canvas remount key |
+| `src/rendering/renderScale.ts` | Adaptive render-scale valve (0.5–1.0 × `dprMax`), frame-time driven |
 | `src/rendering/probeGraphicsCapability.ts` | Boot graphics negotiation — tier + frozen context envelope |
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |

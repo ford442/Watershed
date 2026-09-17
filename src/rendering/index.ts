@@ -34,6 +34,7 @@ export {
   buildCanvasIdentityKey,
   toContextAttributes,
   resolveCanvasDpr,
+  canvasDprRange,
   shadowModeToCanvasProp,
   DEFAULT_TONE_MAPPING_EXPOSURE,
   LOGARITHMIC_DEPTH_BUFFER_ENABLED,
@@ -45,6 +46,22 @@ export {
   type RendererContextSettings,
   type ShadowMode,
 } from './deriveRendererContextOptions';
+export {
+  RENDER_SCALE_MIN,
+  RENDER_SCALE_MAX,
+  RENDER_SCALE_STEP,
+  SLOW_FRAME_RATIO,
+  FAST_FRAME_RATIO,
+  SCALE_DOWN_TICKS,
+  SCALE_UP_TICKS,
+  clampRenderScale,
+  frameTimeBudgetMs,
+  isRenderScaleAtCeiling,
+  isRenderScaleAtFloor,
+  stepRenderScale,
+  type RenderScaleStepInput,
+  type RenderScaleStepResult,
+} from './renderScale';
 export {
   applyRendererContextOptions,
   applyRendererQualityUpdate,

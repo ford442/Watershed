@@ -10,6 +10,10 @@
  * `rendererContextCreationKey`), and the rest of the contract is re-applied here
  * on the existing renderer.
  *
+ * Since #419 phase C it also carries the adaptive render scale — a 0.5–1.0
+ * multiplier on the preset's DPR ceiling, driven by frame time. That is a live
+ * knob by construction: it must never reach `rendererContextCreationKey()`.
+ *
  * R3F already re-runs its own `configure` for the `dpr` and `shadows` Canvas
  * props, so those land without help. What it does not do is invalidate compiled
  * programs when `shadowMap.type` changes — three bakes `SHADOWMAP_TYPE_*` into
@@ -19,9 +23,12 @@
  */
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
-import { useQualityPreset } from '../systems/GameState';
+import { useQualityPreset, useRenderScale } from '../systems/GameState';
 import { applyRendererQualityUpdate } from './applyRendererContextOptions';
-import { deriveRendererContextOptions } from './deriveRendererContextOptions';
+import {
+  canvasDprRange,
+  deriveRendererContextOptions,
+} from './deriveRendererContextOptions';
 import { getSessionGraphicsEnvelope } from './probeGraphicsCapability';
 
 export default function RendererQualitySync() {
@@ -29,6 +36,9 @@ export default function RendererQualitySync() {
   const scene = useThree((state) => state.scene);
   const setDpr = useThree((state) => state.setDpr);
   const quality = useQualityPreset();
+  // The valve moves with frame time, several times more often than the preset
+  // ever does — and it lands the same way, on the live renderer.
+  const renderScale = useRenderScale();
 
   useEffect(() => {
     if (!gl) return;
@@ -38,6 +48,7 @@ export default function RendererQualitySync() {
       // The envelope is frozen at boot; only the live half of the contract
       // below actually varies with `quality`.
       envelope: getSessionGraphicsEnvelope(),
+      renderScale,
     });
 
     // `failIfMajorPerformanceCaveat`, `antialias`, `alpha`, `depth`, `stencil`
@@ -47,9 +58,11 @@ export default function RendererQualitySync() {
 
     // R3F derives DPR from the Canvas `dpr` prop, which App already updates.
     // Setting it here too keeps any Canvas that forgets the prop (the editor,
-    // future offscreen surfaces) on the same contract.
-    setDpr?.([1, options.dprMax]);
-  }, [gl, quality, scene, setDpr]);
+    // future offscreen surfaces) on the same contract — and it is what applies
+    // the render-scale valve to the live context, since `setDpr` reaches
+    // `renderer.setPixelRatio` without touching the Canvas key.
+    setDpr?.(canvasDprRange(options.dprMax));
+  }, [gl, quality, renderScale, scene, setDpr]);
 
   return null;
 }

@@ -15,6 +15,12 @@ import {
   type MaterialBackend,
 } from '../rendering/materialBackend';
 import { getGpuChoreStats, subscribeGpuChoreStats } from '../rendering/gpuChores';
+import { useQualityPreset, useRenderScale } from '../systems/GameState';
+import {
+  RENDER_SCALE_MAX,
+  canvasDprRange,
+  deriveRendererContextOptions,
+} from '../rendering';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -241,6 +247,8 @@ export function DebugPanel({
 }: DebugPanelProps) {
   const [stagesOpen, setStagesOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const qualityPreset = useQualityPreset();
+  const renderScale = useRenderScale();
 
   // Subscribe to live perf metrics from PerfCheckpointMonitor (inside Canvas)
   const metrics = useSyncExternalStore(subscribePerfMetrics, getPerfMetrics);
@@ -458,6 +466,21 @@ export function DebugPanel({
       <div style={{ marginBottom: 6, color: '#d0d0d0' }}>
         Active: <span style={{ color: '#9fd6ff' }}>{rendererDiagnostics.rendererName}</span>
       </div>
+      {/* The valve is the only graphics knob that moves on its own while the
+          player is not looking at a menu — make it legible. */}
+      <MetricRow
+        label="Render scale"
+        value={`${renderScale.toFixed(2)}x · DPR ≤ ${
+          canvasDprRange(
+            deriveRendererContextOptions(qualityPreset, {
+              devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+              renderScale,
+            }).dprMax,
+          )[1]
+        } (${qualityPreset})`}
+        t={renderScale >= RENDER_SCALE_MAX ? 'ok' : 'warn'}
+        hint="adaptive valve closed — frame time is over budget, resolution traded for headroom"
+      />
       <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
         {(['webgpu', 'webgl'] as RendererPreference[]).map((mode) => (
           <button

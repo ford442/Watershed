@@ -17,6 +17,13 @@ import {
   ADAPTIVE_LIVE_BAND,
   stepAdaptiveQuality,
 } from './adaptiveQuality';
+import {
+  RENDER_SCALE_MAX,
+  clampRenderScale,
+  frameTimeBudgetMs,
+  stepRenderScale,
+} from '../../rendering/renderScale';
+import { isVisualCaptureMode } from '../../rendering/rendererConfig';
 
 export {
   ADAPTIVE_LIVE_BAND,
@@ -138,6 +145,8 @@ type LODContextType = {
   setQuality: (q: QualityLevel) => void;
   enableAdaptive: boolean;
   setEnableAdaptive: (v: boolean) => void;
+  /** Adaptive render-scale valve position, 0.5–1.0 (#419 phase C). */
+  renderScale: number;
 };
 
 const LODContext = createContext<LODContextType | null>(null);
@@ -165,6 +174,17 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   // Sync with Zustand store so menu settings affect LOD
   const storeQuality = useGameStore((s) => s.settings.quality);
   const storeSetSettings = useGameStore((s) => s.setSettings);
+  // The render-scale valve lives in the store because it has to cross the
+  // Canvas boundary: this provider is inside it (useFrame), the `dpr` prop that
+  // applies the valve is on the Canvas element itself, in App.
+  const storeRenderScale = useGameStore((s) => s.renderScale);
+  const storeSetRenderScale = useGameStore((s) => s.setRenderScale);
+
+  // The capture harness pins the valve wide open, for the same reason it pins
+  // `CAPTURE_ENVELOPE` instead of probing: headless Chromium on SwiftShader is
+  // slow by construction, and a valve that closed mid-run would re-render every
+  // visual-smoke shot at a different resolution and move every baseline.
+  const [valvePinnedOpen] = useState(() => isVisualCaptureMode());
 
   const [quality, setQualityState] = useState<QualityLevel>(storeQuality || initialQuality);
   const [fps, setFps] = useState(60);
@@ -192,6 +212,27 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   const warnedMemory = useRef(false);
   const consecutiveLowSeconds = useRef(0);
   const consecutiveHighSeconds = useRef(0);
+  const consecutiveSlowTicks = useRef(0);
+  const consecutiveFastTicks = useRef(0);
+  // Read inside useFrame, which closes over the render that created it — a ref
+  // keeps the valve's own writes visible on the very next tick instead of one
+  // React render later, and picks up a store write from anywhere else.
+  const renderScaleRef = useRef(storeRenderScale);
+  useEffect(() => {
+    renderScaleRef.current = storeRenderScale;
+  }, [storeRenderScale]);
+
+  // The valve is an adaptive instrument. Switching adaptive scaling off (debug
+  // panel, tests) must hand the player their full resolution back rather than
+  // freezing whatever the last measurement happened to be.
+  useEffect(() => {
+    if (enableAdaptive && !valvePinnedOpen) return;
+    consecutiveSlowTicks.current = 0;
+    consecutiveFastTicks.current = 0;
+    if (storeRenderScale !== RENDER_SCALE_MAX) {
+      storeSetRenderScale(RENDER_SCALE_MAX);
+    }
+  }, [enableAdaptive, valvePinnedOpen, storeRenderScale, storeSetRenderScale]);
 
   useFrame(() => {
     const now = performance.now();
@@ -239,12 +280,52 @@ export const LODProvider: React.FC<LODProviderProps> = ({
 
       // Adaptive quality with sustained-history hysteresis — live band only.
       if (enableAdaptive) {
+        // Stage one: the render-scale valve. Resolution is the cheap,
+        // reversible trade, so it moves first and on a shorter fuse than the
+        // preset — and unlike the preset it costs no lighting or shadow change.
+        const scaleStep = valvePinnedOpen
+          ? { nextRenderScale: null, consecutiveSlowTicks: 0, consecutiveFastTicks: 0 }
+          : stepRenderScale({
+              renderScale: renderScaleRef.current,
+              frameTimeMs: avgDelta,
+              targetFrameTimeMs: frameTimeBudgetMs(targetFPS),
+              consecutiveSlowTicks: consecutiveSlowTicks.current,
+              consecutiveFastTicks: consecutiveFastTicks.current,
+            });
+        consecutiveSlowTicks.current = scaleStep.consecutiveSlowTicks;
+        consecutiveFastTicks.current = scaleStep.consecutiveFastTicks;
+
+        let activeRenderScale = clampRenderScale(renderScaleRef.current);
+        if (
+          scaleStep.nextRenderScale !== null &&
+          scaleStep.nextRenderScale !== activeRenderScale
+        ) {
+          const previous = activeRenderScale;
+          activeRenderScale = scaleStep.nextRenderScale;
+          renderScaleRef.current = activeRenderScale;
+          storeSetRenderScale(activeRenderScale);
+          console.log(
+            `[LODManager] Render scale ${previous.toFixed(2)} → ` +
+              `${activeRenderScale.toFixed(2)} (frame time ${avgDelta.toFixed(1)}ms, ` +
+              `budget ${frameTimeBudgetMs(targetFPS).toFixed(1)}ms)`
+          );
+        }
+
+        // Stage two: the preset ladder, which only moves once the valve is
+        // floored (down) or back at its ceiling (up).
+        //
+        // With the valve pinned open the scale is passed as `undefined`, not as
+        // 1.0: a pinned valve has no room to close, and deferring to it would
+        // silently stop the preset ladder in capture runs. `undefined` selects
+        // the pre-valve ladder, which is what those runs' baselines were taken
+        // against.
         const step = stepAdaptiveQuality({
           quality,
           currentFPS,
           targetFPS,
           consecutiveLowSeconds: consecutiveLowSeconds.current,
           consecutiveHighSeconds: consecutiveHighSeconds.current,
+          renderScale: valvePinnedOpen ? undefined : activeRenderScale,
         });
         consecutiveLowSeconds.current = step.consecutiveLowSeconds;
         consecutiveHighSeconds.current = step.consecutiveHighSeconds;
@@ -280,6 +361,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
       setQuality,
       enableAdaptive,
       setEnableAdaptive,
+      renderScale: storeRenderScale,
     }}>
       {children}
     </LODContext.Provider>
