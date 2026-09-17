@@ -26,6 +26,7 @@
 | [`QUICK_TROUBLESHOOTING.md`](./QUICK_TROUBLESHOOTING.md) | Something broken right now |
 | [`STARTUP_DIAGNOSTICS.md`](./STARTUP_DIAGNOSTICS.md) | Blank scene / shader / load failures |
 | [`CODE_HEALTH_GUIDE.md`](./CODE_HEALTH_GUIDE.md) | Shader injection, geometry validation, red flags |
+| [`ALLOCATION_BASELINE.md`](./ALLOCATION_BASELINE.md) | Per-frame allocation profile, lint inventory, CI warning ratchet |
 
 ### Rendering & WASM
 

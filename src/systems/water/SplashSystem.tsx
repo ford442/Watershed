@@ -404,6 +404,16 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     if (splashWasm && splashParticles.length > 0 && stepSplash) {
       const { mod, ptr, cap } = splashWasm;
       const n = Math.min(splashParticles.length, cap);
+      /* eslint-disable @react-three/no-new-in-loop --
+         These eight `Float32Array` views are NOT per-frame garbage to hoist — they
+         are the fix for #415. The native module ships ALLOW_MEMORY_GROWTH=1, and a
+         growth REPLACES the underlying ArrayBuffer, silently detaching every view
+         created over the old one (byteLength -> 0; reads return nothing, writes go
+         nowhere). Re-deriving them from `mod.HEAPF32.buffer` inside the frame
+         callback is what keeps them bound to the live heap. Hoisting them out of
+         this callback reintroduces #415 in the splash path. The lint rule is a
+         syntactic `NewExpression` check and cannot tell a wasteful `new Vector3()`
+         from a mandatory heap rebind. */
       const px = new Float32Array(mod.HEAPF32.buffer, ptr, cap);
       const py = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 4, cap);
       const pz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 8, cap);
@@ -412,6 +422,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       const vz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 20, cap);
       const life = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 24, cap);
       const maxLife = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 28, cap);
+      /* eslint-enable @react-three/no-new-in-loop */
       for (let i = 0; i < n; i++) {
         const p = splashParticles[i];
         px[i] = p.position.x;
@@ -489,6 +500,16 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       if (splashWasm && mistToUpdate.length > 0 && stepSplash) {
         const { mod, ptr, cap } = splashWasm;
         const n = Math.min(mistToUpdate.length, cap);
+        /* eslint-disable @react-three/no-new-in-loop --
+           These eight `Float32Array` views are NOT per-frame garbage to hoist — they
+           are the fix for #415. The native module ships ALLOW_MEMORY_GROWTH=1, and a
+           growth REPLACES the underlying ArrayBuffer, silently detaching every view
+           created over the old one (byteLength -> 0; reads return nothing, writes go
+           nowhere). Re-deriving them from `mod.HEAPF32.buffer` inside the frame
+           callback is what keeps them bound to the live heap. Hoisting them out of
+           this callback reintroduces #415 in the splash path. The lint rule is a
+           syntactic `NewExpression` check and cannot tell a wasteful `new Vector3()`
+           from a mandatory heap rebind. */
         const px = new Float32Array(mod.HEAPF32.buffer, ptr, cap);
         const py = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 4, cap);
         const pz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 8, cap);
@@ -497,6 +518,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
         const vz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 20, cap);
         const life = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 24, cap);
         const maxLife = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 28, cap);
+        /* eslint-enable @react-three/no-new-in-loop */
         for (let i = 0; i < n; i++) {
           const p = mistToUpdate[i];
           px[i] = p.position.x;

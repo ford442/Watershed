@@ -40,12 +40,15 @@ jobs:
       - name: Typecheck (typed surface)
         run: pnpm typecheck
 
-      # `pnpm lint` exits non-zero on errors only; the ~300 warnings are a
-      # tracked backlog (see eslint.config.js), so this gates the error path
-      # without blocking on the cleanup. A local-only lint script is the
-      # missing-linter hole again, with extra YAML.
+      # `pnpm lint` exits non-zero on errors only; the warnings are a tracked
+      # backlog (see eslint.config.js). `--max-warnings` turns that backlog into
+      # a ratchet: errors still fail the build, and so does any NEW warning,
+      # while the existing ones stay non-blocking. The number below is the
+      # committed baseline — lower it whenever the count drops, never raise it.
+      # It covers every rule in the backlog, not just the two R3F ones, and
+      # needs no commit-hook infrastructure or per-directory config overrides.
       - name: Lint
-        run: pnpm lint
+        run: pnpm lint --max-warnings 280
 
   build-without-emscripten:
     name: Build without Emscripten
