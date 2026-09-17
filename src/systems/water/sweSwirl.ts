@@ -120,3 +120,64 @@ export function resolveSurfaceSwirl(input: SurfaceSwirlInput): SurfaceSwirl {
     intensity,
   };
 }
+
+/**
+ * Intensity at which the SWE eye-foam reads on its own.
+ *
+ * `FlowingWater` draws the drain from `vortexIntensity`: a swirl in the UVs and
+ * a foam eye over the sink. Once that term is this strong the surface already
+ * says "there is a hole in the water here", and the `VortexVisual` particle
+ * ring on top of it is a second, coarser drawing of the same event — the exact
+ * stacking this issue exists to remove, one layer up from the Rapier impulses.
+ */
+export const SWE_FOAM_READS = 0.34;
+
+/** Ring opacity when nothing else is describing the water (authored drain). */
+export const VORTEX_RING_OPACITY = 0.6;
+
+/** Particle count for a ring that is carrying the swirl on its own. */
+export const VORTEX_RING_PARTICLES = 56;
+
+export interface VortexDecoration {
+  /** Whether to mount `VortexVisual` at all. */
+  visible: boolean;
+  /** Ring opacity, 0–`VORTEX_RING_OPACITY`. */
+  opacity: number;
+  /** Instance count for the ring. */
+  particleCount: number;
+}
+
+const NO_DECORATION: VortexDecoration = { visible: false, opacity: 0, particleCount: 0 };
+
+/**
+ * Decide what the particle ring does over a resolved swirl.
+ *
+ * - `authored` — the shader term is a forecast curve with no field behind it,
+ *   so the ring is the readable part. Unchanged from before #399.
+ * - `swe` — the foam is reading the η sink the hull is actually falling into.
+ *   Below `SWE_FOAM_READS` the ring stays as a faint locator for a weak drain,
+ *   fading out as the foam takes over; at or above it the ring is gone.
+ * - `none` — nothing to draw.
+ */
+export function resolveVortexDecoration(swirl: SurfaceSwirl): VortexDecoration {
+  if (swirl.intensity <= 0 || swirl.centerT === null) return { ...NO_DECORATION };
+
+  if (swirl.source === 'authored') {
+    return {
+      visible: true,
+      opacity: VORTEX_RING_OPACITY,
+      particleCount: VORTEX_RING_PARTICLES,
+    };
+  }
+
+  if (swirl.source !== 'swe') return { ...NO_DECORATION };
+
+  const fade = 1 - Math.min(1, swirl.intensity / SWE_FOAM_READS);
+  if (fade <= 0) return { ...NO_DECORATION };
+
+  return {
+    visible: true,
+    opacity: VORTEX_RING_OPACITY * fade,
+    particleCount: VORTEX_RING_PARTICLES,
+  };
+}

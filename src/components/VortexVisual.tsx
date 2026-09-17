@@ -17,6 +17,8 @@ interface VortexVisualProps {
   particleCount?: number;
   /** Color of the swirl */
   color?: string;
+  /** Ring opacity. Dimmed toward 0 when SWE eye-foam is drawing the same drain. */
+  opacity?: number;
 }
 
 /**
@@ -31,6 +33,7 @@ export const VortexVisual: React.FC<VortexVisualProps> = ({
   intensity = 1.0,
   particleCount = 64,
   color = '#4a90d9',
+  opacity = 0.6,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -83,7 +86,7 @@ export const VortexVisual: React.FC<VortexVisualProps> = ({
       <meshBasicMaterial 
         color={color} 
         transparent 
-        opacity={0.6}
+        opacity={opacity}
         blending={THREE.AdditiveBlending}
       />
     </NonEmptyInstancedMesh>
