@@ -6,6 +6,7 @@ import {
   EDITOR_QUALITY_PRESET,
   LOGARITHMIC_DEPTH_BUFFER_ENABLED,
   ULTRA_DPR_CEILING,
+  canvasDprRange,
   deriveEditorContextOptions,
   deriveRendererContextOptions,
   buildCanvasIdentityKey,
@@ -14,6 +15,10 @@ import {
   shadowModeToCanvasProp,
   toContextAttributes,
 } from './deriveRendererContextOptions';
+import {
+  RENDER_SCALE_MAX,
+  RENDER_SCALE_MIN,
+} from './renderScale';
 import {
   CAPTURE_ENVELOPE,
   DEGRADED_ENVELOPE,
@@ -206,9 +211,73 @@ describe('pinned context attributes', () => {
   it('never puts a live-applicable property in the creation attributes', () => {
     const attributes = toContextAttributes(deriveRendererContextOptions('high'));
     expect(attributes).not.toHaveProperty('dprMax');
+    expect(attributes).not.toHaveProperty('renderScale');
     expect(attributes).not.toHaveProperty('shadowMode');
     expect(attributes).not.toHaveProperty('shadowMapSize');
     expect(attributes).not.toHaveProperty('toneMapping');
+  });
+});
+
+describe('adaptive render scale (#419 phase C)', () => {
+  it('leaves every preset at its documented ceiling when the valve is open', () => {
+    // The valve defaults to wide open, so a caller that never heard of it gets
+    // exactly the pre-#419 numbers.
+    expect(deriveRendererContextOptions('low').dprMax).toBe(1.0);
+    expect(deriveRendererContextOptions('medium').dprMax).toBe(1.25);
+    expect(deriveRendererContextOptions('high').dprMax).toBe(2);
+    expect(deriveRendererContextOptions('high', { renderScale: RENDER_SCALE_MAX }).dprMax).toBe(2);
+    expect(deriveRendererContextOptions('high').renderScale).toBe(RENDER_SCALE_MAX);
+  });
+
+  it('multiplies the preset ceiling, it does not replace it', () => {
+    expect(deriveRendererContextOptions('high', { renderScale: 0.5 }).dprMax).toBe(1);
+    expect(deriveRendererContextOptions('high', { renderScale: 0.7 }).dprMax).toBe(1.4);
+    // Off-step values are quantized to the valve's own step first, so the
+    // Canvas never chases a DPR the valve cannot actually hold.
+    expect(deriveRendererContextOptions('high', { renderScale: 0.75 }).dprMax).toBe(1.6);
+    expect(deriveRendererContextOptions('high', { renderScale: 0.75 }).renderScale).toBe(0.8);
+    expect(deriveRendererContextOptions('medium', { renderScale: 0.8 }).dprMax).toBe(1);
+    expect(
+      deriveRendererContextOptions('ultra', { devicePixelRatio: 3, renderScale: 0.5 }).dprMax,
+    ).toBe(ULTRA_DPR_CEILING * 0.5);
+  });
+
+  it('lets the valve take DPR below 1 — that is the point of it', () => {
+    const opts = deriveRendererContextOptions('low', { renderScale: RENDER_SCALE_MIN });
+    expect(opts.dprMax).toBe(0.5);
+    expect(resolveCanvasDpr(opts.dprMax, 2)).toBe(0.5);
+    expect(canvasDprRange(opts.dprMax)).toEqual([0.5, 0.5]);
+  });
+
+  it('keeps the Canvas dpr range the right way round under the valve', () => {
+    expect(canvasDprRange(2)).toEqual([1, 2]);
+    expect(canvasDprRange(1.25)).toEqual([1, 1.25]);
+    // [1, 0.6] would be an inverted range; the minimum has to follow the max down.
+    expect(canvasDprRange(0.6)).toEqual([0.6, 0.6]);
+  });
+
+  it('moves DPR and nothing else', () => {
+    const open = deriveRendererContextOptions('ultra', { devicePixelRatio: 2 });
+    const closed = deriveRendererContextOptions('ultra', {
+      devicePixelRatio: 2,
+      renderScale: RENDER_SCALE_MIN,
+    });
+    // Shadow maps are not reallocated for a rough patch, and no creation-time
+    // attribute may move — that would be a remount.
+    expect(closed.shadowMapSize).toBe(open.shadowMapSize);
+    expect(closed.shadowMode).toBe(open.shadowMode);
+    expect(toContextAttributes(closed)).toEqual(toContextAttributes(open));
+  });
+
+  it('sanitizes a nonsense scale rather than rendering a sub-pixel Canvas', () => {
+    expect(deriveRendererContextOptions('high', { renderScale: 0 }).dprMax).toBe(1);
+    expect(deriveRendererContextOptions('high', { renderScale: -1 }).dprMax).toBe(1);
+    expect(deriveRendererContextOptions('high', { renderScale: 9 }).dprMax).toBe(2);
+    expect(deriveRendererContextOptions('high', { renderScale: Number.NaN }).dprMax).toBe(2);
+  });
+
+  it('keeps the editor at full resolution — it is a tool, not a run', () => {
+    expect(deriveEditorContextOptions().renderScale).toBe(RENDER_SCALE_MAX);
   });
 });
 
@@ -249,6 +318,20 @@ describe('rendererContextCreationKey — what forces a Canvas remount', () => {
     );
     expect(at1x).toBe(at2x);
     expect(keyFor('medium')).toBe(keyFor('high')); // basic vs soft shadows
+  });
+
+  it('is UNCHANGED across the whole render-scale band', () => {
+    // The acceptance criterion for the valve: it moves several times a minute
+    // on a struggling machine. A key that moved with it would remount the
+    // Canvas — and tear down Rapier — every time frame time wobbled.
+    for (const preset of ALL_PRESETS) {
+      const keys = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5].map((renderScale) =>
+        rendererContextCreationKey(
+          deriveRendererContextOptions(preset, { devicePixelRatio: 2, renderScale }),
+        ),
+      );
+      expect(new Set(keys).size).toBe(1);
+    }
   });
 });
 

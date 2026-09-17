@@ -20,6 +20,7 @@ import { create } from 'zustand';
 import type { BiomeId } from '../configs/biomes';
 import { DEFAULT_BIOME_ID } from '../configs/biomes';
 import type { SafeZoneConfig } from './map/MapSystem.types';
+import { RENDER_SCALE_MAX, clampRenderScale } from '../rendering/renderScale';
 
 // =============================================================================
 // TYPES
@@ -61,6 +62,16 @@ export interface GameState {
   /** Spawn points indexed by segment id */
   spawnPoints: Record<number, SpawnPoint>;
   settings: GameSettings;
+  /**
+   * Adaptive render scale — a 0.5–1.0 multiplier on the quality preset's DPR
+   * ceiling (#419 phase C).
+   *
+   * Runtime state, not a setting: the player never picks it, `LODManager`
+   * derives it from measured frame time, and it is deliberately not persisted —
+   * a rough patch on one session should not follow the player onto a machine,
+   * a driver, or a map that no longer needs it.
+   */
+  renderScale: number;
   /** Sprint stamina for the runner (0.0–1.0). Single source of truth — never expose via vehicleRef. */
   sprintStamina: number;
   /** Active vehicle type — gates HUD elements and post-processing. */
@@ -106,6 +117,8 @@ export interface GameActions {
   /** Merge many spawn points in one store update (pool init / reset). */
   setSpawnPoints: (points: Record<number, SpawnPoint>) => void;
   setSettings: (settings: Partial<GameSettings>) => void;
+  /** Clamps and quantizes to the valve's step before writing. Adaptive path only. */
+  setRenderScale: (scale: number) => void;
   /** Clamps value to [0, 1] before writing. Call from useFrame via getState() — never via the hook. */
   setSprintStamina: (v: number) => void;
   setVehicleType: (type: 'runner' | 'raft') => void;
@@ -146,6 +159,7 @@ const INITIAL_STATE: GameState = {
   currentSafeZone: null,
   spawnPoints: {},
   settings: { ...DEFAULT_SETTINGS },
+  renderScale: RENDER_SCALE_MAX,
   sprintStamina: 1.0,
   vehicleType: 'runner',
   ghostEnabled: true,
@@ -258,6 +272,8 @@ export const useGameStore = create<GameStore>((set) => ({
       settings: { ...state.settings, ...partial },
     })),
 
+  setRenderScale: (scale) => set({ renderScale: clampRenderScale(scale) }),
+
   setSprintStamina: (v) => set({ sprintStamina: Math.min(1, Math.max(0, v)) }),
 
   setVehicleType: (type) => set({ vehicleType: type }),
@@ -271,6 +287,10 @@ export const useGameStore = create<GameStore>((set) => ({
       ...INITIAL_STATE,
       highScore: state.highScore,
       settings: { ...state.settings },
+      // The valve describes the machine, not the run. Resetting it on every
+      // respawn would make the player re-earn the same measurement, and a
+      // wipeout would briefly restore the resolution that was dropping frames.
+      renderScale: state.renderScale,
       vehicleType: state.vehicleType,
       ghostEnabled: state.ghostEnabled,
     })),
@@ -332,6 +352,15 @@ export function useQualityPreset(): QualityPreset {
 
 export function getQualityPresetNow(): QualityPreset {
   return useGameStore.getState().settings.quality;
+}
+
+/** Subscribe only to the adaptive render scale (#419 phase C). */
+export function useRenderScale(): number {
+  return useGameStore((s) => s.renderScale);
+}
+
+export function getRenderScaleNow(): number {
+  return useGameStore.getState().renderScale;
 }
 
 /**

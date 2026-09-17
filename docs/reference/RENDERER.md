@@ -12,18 +12,21 @@ Most of that now applies **live**. The Canvas `key` carries only what genuinely 
 
 Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/deriveRendererContextOptions.ts` and applied at Canvas creation in `App.tsx` + `createGameRenderer()`.
 
-| Preset | DPR clamp `[1, max]` | Shadows | Shadow map size | Notes |
-|--------|----------------------|---------|-----------------|-------|
+| Preset | DPR ceiling `[1, max]` | Shadows | Shadow map size | Notes |
+|--------|------------------------|---------|-----------------|-------|
 | `low` | `1.0` | off | — | Minimal GPU cost |
 | `medium` | `1.25` | basic | 1024 | |
 | `high` | `2` | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`) |
 | `ultra` | `min(devicePixelRatio, 2.0)` | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Native DPR up to the `ULTRA_DPR_CEILING` |
 
+The DPR column is the **ceiling**. The live `dprMax` is that ceiling times the
+adaptive **render scale** (0.5–1.0) — see [Adaptive render scale](#adaptive-render-scale).
+
 Antialias, `powerPreference`, and `failIfMajorPerformanceCaveat` are deliberately **not** in this table. They are creation-time attributes: negotiated once at boot, frozen for the session, identical for every preset — see [Boot-time graphics negotiation](#boot-time-graphics-negotiation).
 
 **`ultra` DPR ceiling.** `ULTRA_DPR_CEILING = 2.0` (`deriveRendererContextOptions.ts`). `ultra` used to render at the display's native `devicePixelRatio`, uncapped — on a 3× phone or a 4× external panel that is 9–16× the pixel work of DPR 1, enough to miss the 60 FPS / 16.67 ms budget on hardware that is otherwise comfortably an `ultra` machine. 2.0 is shipping practice (≤2.0 desktop, 1.5–2.0 mobile): DPR 2 is the full retina win, and 3–4× panels are a fill-rate trap rather than a quality tier. Raising it is a performance decision, not a tuning nit: move the constant, this row, and the test that pins it together. The shadow-map step still keys off the *raw* `devicePixelRatio`, so a 3× display keeps its 4096 map.
 
-**DPR cap ≠ render scale.** Two different knobs, and Watershed only has the first. The **cap** is a static ceiling: the most pixels a preset will ever ask for. A **render scale** is a valve: it moves with measured frame time and trades resolution for headroom while the game runs. Adaptive quality currently steps *presets*, not resolution, so there is no valve; adding one is separate work. Do not raise the cap as a substitute — a machine that is dropping frames needs resolution to come *down* under load, not the ceiling to move up.
+**DPR cap ≠ render scale.** Two different knobs, and Watershed has both since #419 phase C. The **cap** is a static ceiling: the most pixels a preset will ever ask for. The **render scale** is a valve: it moves with measured frame time and trades resolution for headroom while the game runs. Do not raise the cap as a substitute — a machine that is dropping frames needs resolution to come *down* under load, not the ceiling to move up. See [Adaptive render scale](#adaptive-render-scale).
 
 All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` at renderer setup via `applyRendererContextOptions()`, and re-apply them on every preset change via `applyRendererQualityUpdate()`.
 
@@ -111,6 +114,7 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 | Knob | Changes live? | Applied by |
 |------|---------------|------------|
 | DPR (`dprMax`) | Yes | R3F `dpr` Canvas prop + `RendererQualitySync` |
+| Render scale (0.5–1.0 × `dprMax`) | Yes | `LODManager` frame-time valve → same `dpr` path |
 | `shadowMap.enabled` / `.type` | Yes | R3F `shadows` Canvas prop + `applyRendererQualityUpdate()` |
 | Per-light `shadow.mapSize` | Yes | `SceneLighting` (disposes the old shadow render target so it reallocates) |
 | Tone mapping / exposure / color space | Yes | `applyRendererQualityUpdate()` |
@@ -123,6 +127,8 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 
 **Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) still stays inside the `medium` / `high` / `ultra` band and never auto-selects `low`, but the reason has changed. It used to be a hard constraint: auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. That cannot happen any more. What remains is a design call — `low` turns shadows off and drops DPR to 1.0, a visible change of look rather than a tuning step, and the game should not choose it for the player during a rough patch. Widening the band is now a decision, not a repair.
 
+The knob adaptive quality *does* get to move freely is the render scale, because it trades sharpness rather than lighting. The preset ladder now defers to it: it steps down only once the valve is floored, and up only once the valve is back at its ceiling.
+
 `rendererContextCreationKey()` is the single place that decides this: it serializes exactly the creation-only attributes, and `buildCanvasIdentityKey()` composes the Canvas `key` from that plus renderer preference, material backend, and the context-loss epoch. The quality preset is deliberately absent from the key.
 
 ### Why a scene walk on shadow changes
@@ -132,6 +138,49 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 Per-light shadow map size has the same class of problem: `light.shadow.mapSize` is inert once the render target exists, because THREE allocates it on the first shadow pass and never reallocates. `SceneLighting` disposes the old map so the next pass rebuilds it at the new size.
 
 Per-light shadow map sizes in `SceneLighting` follow the same contract: `deriveRendererContextOptions(quality)` drives `castShadow` and `shadow-mapSize`, with `LODManager.QUALITY_SETTINGS.shadowMapSize` kept as an aligned static fallback (ultra table stores the 4096 retina max; live path is DPR-aware). The configured size is also stored via `getRendererShadowMapSize()` for diagnostics and tests.
+
+## Adaptive render scale
+
+**A 0.5–1.0 multiplier on the preset's DPR ceiling, driven by measured frame time, applied live.** Pure valve math in [`src/rendering/renderScale.ts`](../../src/rendering/renderScale.ts); driven once per sampling tick by `LODManager`; stored on `GameState.renderScale`; applied through the R3F `dpr` prop (`App`) and `setDpr` (`RendererQualitySync`).
+
+This is the honest answer to MSAA cost on a weak machine. Boot negotiation (#405) froze `antialias` for the session because it is a context-creation attribute, so `low` can no longer turn MSAA off — and it should not, because doing so would mean a Canvas remount and a Rapier teardown mid-run. Rendering fewer pixels costs no context and no run.
+
+| | DPR ceiling (`dprMax`) | Render scale |
+|---|---|---|
+| What it is | static per-preset ceiling | live multiplier on that ceiling |
+| Who moves it | the quality preset | measured frame time |
+| Range | 1.0 – 2.0 | 0.5 – 1.0, in 0.1 steps |
+| In the Canvas key? | no | **no** — pinned by a test |
+
+### The ladder
+
+One condition, two stages. Both thresholds are the frame-time form of the lines the preset ladder already draws at `targetFPS - 10` (50 FPS = 20 ms) and `targetFPS + 5` (65 FPS ≈ 15.3 ms):
+
+| Stage | Trigger | Hysteresis | Effect |
+|-------|---------|-----------|--------|
+| Valve closes | frame time > `1.2 × budget` | 2 ticks | `renderScale -= 0.1`, down to 0.5 |
+| Preset steps down | same, **and** valve at 0.5 | 3 ticks | `high → medium` (never to `low`) |
+| Valve opens | frame time < `0.92 × budget` | 3 ticks | `renderScale += 0.1`, up to 1.0 |
+| Preset steps up | same, **and** valve at 1.0 | 2 ticks | `medium → high → ultra` |
+
+Resolution gives first because it is the cheap, reversible trade; the preset changes shadow filtering and map size, which is a change of *look* and should stay rare. Opening the valve is slower than closing it (3 ticks vs 2) — giving pixels back is what re-loads the GPU, so an eager open is how a valve starts oscillating. Between the two thresholds is a dead band where nothing moves.
+
+`stepAdaptiveQuality` treats an **omitted** `renderScale` as "this system has no valve" and keeps the pre-#419 preset-only ladder; passing `RENDER_SCALE_MAX` is the opposite statement — a valve that is currently wide open, i.e. the one with the most room to close — and does defer the preset. Two different claims, deliberately not collapsed into one default.
+
+### What the valve does not touch
+
+- **Shadow map size.** Keyed off the raw `devicePixelRatio`, never the valve: closing it for a rough patch must not reallocate every shadow map.
+- **`rendererContextCreationKey()`.** The valve moves several times a minute on a struggling machine. A key that moved with it would remount the Canvas — and re-initialise Rapier — every time frame time wobbled. Pinned by `deriveRendererContextOptions.test.ts`.
+- **`ULTRA_DPR_CEILING`.** Raising the ceiling is not a substitute for the valve, and the valve is not a licence to raise the ceiling.
+- **The persisted settings.** `renderScale` is runtime state on `GameState`, not a `GameSettings` field: the player never picks it, and a rough patch on one session must not follow them onto a machine, a driver, or a map that no longer needs it. It does survive `resetGameState()` — the valve describes the machine, not the run.
+
+### Where it is pinned open
+
+- **Capture harness** (`?screenshot=1` / `?capture=1`), for the same reason it pins `CAPTURE_ENVELOPE` rather than probing: headless Chromium on SwiftShader is slow by construction, and a valve that closed mid-run would re-render every visual-smoke shot at a different resolution and move every baseline. There the scale is passed to `stepAdaptiveQuality` as `undefined`, so the preset ladder keeps the pre-valve behaviour those baselines were taken against instead of deferring to a valve that can never close.
+- **Adaptive scaling off** (`enableAdaptive={false}`, debug panel, tests) — the valve is an adaptive instrument, so switching adaptive off hands full resolution back rather than freezing the last measurement.
+- **The Level Editor** (`deriveEditorContextOptions`), which never mounts `LODProvider` and pins `high`. An authoring tool wants the default look.
+
+The current position is visible in the `?debug=1` panel's Renderer section (`0.80x · DPR ≤ 1.6 (high)`), amber whenever the valve is closed.
 
 ## Logarithmic depth buffer
 
@@ -311,6 +360,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | File | Purpose |
 |------|---------|
 | `src/rendering/deriveRendererContextOptions.ts` | Pure quality → DPR/shadow/tone-mapping matrix |
+| `src/rendering/renderScale.ts` | Pure render-scale valve: thresholds, hysteresis, clamping |
 | `src/rendering/contextAttributes.ts` | Pinned attributes, shared by the probe and the renderer |
 | `src/rendering/probeGraphicsCapability.ts` | Boot-time negotiation: tier, frozen envelope, session singleton |
 | `src/rendering/bootCrashGuard.ts` | `sessionStorage` record of how the previous boot failed |

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { QualityPreset } from '../systems/GameState';
 import { SHARED_CONTEXT_ATTRIBUTES } from './contextAttributes';
+import { RENDER_SCALE_MAX, clampRenderScale } from './renderScale';
 import {
   CAPTURE_ENVELOPE,
   HARDWARE_ENVELOPE,
@@ -28,11 +29,35 @@ export interface RendererContextSettings {
    * live-applicable half (tests, LOD tables) do not have to thread a probe.
    */
   envelope?: GraphicsEnvelope;
+  /**
+   * Adaptive render scale — a 0.5–1.0 multiplier on the preset's `dprMax`
+   * (#419 phase C). Driven by measured frame time in `LODManager`, applied live
+   * through the R3F `dpr` prop and `RendererQualitySync`.
+   *
+   * The preset is the ceiling, this is the valve. Defaults to
+   * `RENDER_SCALE_MAX`, so every caller that does not opt in (the editor, the
+   * LOD tables, tests) gets exactly the pre-valve numbers.
+   */
+  renderScale?: number;
 }
 
 export interface RendererContextOptions {
-  /** Upper bound for Canvas DPR — clamp device pixel ratio to [1, dprMax]. */
+  /**
+   * Upper bound for Canvas DPR — clamp device pixel ratio to [1, dprMax].
+   *
+   * This is the preset ceiling already multiplied by `renderScale`, so it is
+   * the single number the Canvas and the renderer need. It can drop below 1
+   * when the valve is closed on a `low` / `medium` preset.
+   */
   dprMax: number;
+  /**
+   * The valve position this `dprMax` was derived with (1.0 = wide open).
+   *
+   * Carried on the options purely so diagnostics and the live-apply path can
+   * report it. It is **not** part of `rendererContextCreationKey()` — a scale
+   * change must never remount the Canvas.
+   */
+  renderScale: number;
   antialias: boolean;
   shadowMode: ShadowMode;
   /** Null when shadows are disabled. */
@@ -108,9 +133,11 @@ export const DESYNCHRONIZED_ENABLED = false;
  * 2.0 is shipping practice (<=2.0 desktop, 1.5–2.0 mobile): DPR 2 is the full
  * retina win, and 3–4x panels are a fill-rate trap rather than a quality tier.
  *
- * This is the quality *ceiling*, not a valve. A frame-time-driven render scale
- * is the valve, and it is a separate piece of work — see RENDERER.md. Raising
- * this constant is a real performance decision: it must move here, in
+ * This is the quality *ceiling*, not the valve. The valve is the frame-time
+ * driven render scale in `renderScale.ts`, which multiplies this ceiling down
+ * to 0.5x while the game runs. Raising this constant is still a real
+ * performance decision — a machine that drops frames needs resolution to come
+ * *down* under load, not the ceiling to move up — so it must move here, in
  * RENDERER.md, and in the test that pins it.
  */
 export const ULTRA_DPR_CEILING = 2.0;
@@ -124,6 +151,11 @@ export const ULTRA_DPR_CEILING = 2.0;
  * produce the same `rendererContextCreationKey()` and the Canvas is never
  * remounted by a quality change.
  *
+ * `settings.renderScale` multiplies the preset's DPR ceiling (#419 phase C).
+ * It is a live knob like the ceiling itself, so it changes `dprMax` and nothing
+ * else: shadow mode, shadow map size, tone mapping, and every creation-time
+ * attribute are untouched by the valve.
+ *
  * `high` matches the pre-contract Canvas defaults: soft shadows, DPR clamped to
  * [1, 2], 2048 shadow maps.
  */
@@ -133,6 +165,7 @@ export function deriveRendererContextOptions(
 ): RendererContextOptions {
   const devicePixelRatio = settings.devicePixelRatio ?? 1;
   const envelope = settings.envelope ?? HARDWARE_ENVELOPE;
+  const renderScale = clampRenderScale(settings.renderScale ?? RENDER_SCALE_MAX);
 
   const base = {
     ...SHARED_CONTEXT_ATTRIBUTES,
@@ -143,38 +176,45 @@ export function deriveRendererContextOptions(
     outputColorSpace: THREE.SRGBColorSpace,
     toneMapping: THREE.ACESFilmicToneMapping,
     toneMappingExposure: DEFAULT_TONE_MAPPING_EXPOSURE,
+    renderScale,
   };
+
+  // The preset's own ceiling, before the valve. `scaled()` is applied on the way
+  // out so the valve can never be forgotten on one branch of the switch.
+  const scaled = (presetDprMax: number): number =>
+    Math.round(presetDprMax * renderScale * 1000) / 1000;
 
   switch (quality) {
     case 'low':
       return {
         ...base,
-        dprMax: 1.0,
+        dprMax: scaled(1.0),
         shadowMode: 'off',
         shadowMapSize: null,
       };
     case 'medium':
       return {
         ...base,
-        dprMax: 1.25,
+        dprMax: scaled(1.25),
         shadowMode: 'basic',
         shadowMapSize: 1024,
       };
     case 'high':
       return {
         ...base,
-        dprMax: 2,
+        dprMax: scaled(2),
         shadowMode: 'soft',
         shadowMapSize: 2048,
       };
     case 'ultra':
       return {
         ...base,
-        dprMax: Math.min(devicePixelRatio, ULTRA_DPR_CEILING),
+        dprMax: scaled(Math.min(devicePixelRatio, ULTRA_DPR_CEILING)),
         shadowMode: 'soft',
-        // Keyed off the *raw* device pixel ratio, not the capped DPR: a 3x
-        // display still wants the bigger shadow map even though we render below
-        // its native resolution.
+        // Keyed off the *raw* device pixel ratio, not the capped DPR, and never
+        // off the valve: a 3x display still wants the bigger shadow map even
+        // though we render below its native resolution, and closing the valve
+        // for a rough patch must not reallocate every shadow map.
         shadowMapSize: devicePixelRatio >= 2 ? 4096 : 2048,
       };
     default: {
@@ -192,12 +232,30 @@ export function shadowModeToCanvasProp(
   return mode;
 }
 
-/** Resolved Canvas DPR: clamp device pixel ratio to [1, dprMax]. */
+/**
+ * Resolved Canvas DPR: clamp device pixel ratio to [1, dprMax].
+ *
+ * `dprMax` wins when the valve has pushed it below 1 — rendering at 0.6x is the
+ * whole point of the valve, and a floor of 1 would silently swallow it.
+ */
 export function resolveCanvasDpr(
   dprMax: number,
   devicePixelRatio: number
 ): number {
   return Math.min(Math.max(1, devicePixelRatio), dprMax);
+}
+
+/**
+ * The R3F Canvas `dpr` prop: `[min, max]`.
+ *
+ * The minimum used to be the literal 1. With the valve closed on a `low` or
+ * `medium` preset, `dprMax` can land below 1, and `[1, 0.6]` is an inverted
+ * range — R3F would still clamp to 0.6 today, but only because its clamp
+ * happens to apply `max` last. Deriving the minimum keeps the range honest
+ * instead of relying on that ordering.
+ */
+export function canvasDprRange(dprMax: number): [number, number] {
+  return [Math.min(1, dprMax), dprMax];
 }
 
 /**
@@ -232,6 +290,11 @@ export function toContextAttributes(
  * not from the preset. The preset only moves DPR, shadow mode, and shadow map
  * size, all of which apply live. A quality change therefore cannot remount the
  * Canvas, cannot destroy the WebGL context, and cannot re-initialise Rapier.
+ *
+ * The render scale is absent for the same reason the preset is: it moves
+ * `dprMax`, which `renderer.setPixelRatio` applies to a live context. A valve
+ * that remounted the Canvas every time frame time wobbled would be worse than
+ * no valve at all. Pinned by a test.
  *
  * What can still change the key: the envelope itself (only ever decided once,
  * at boot — `?softwareGl=1` and the capture harness pin their own), the renderer
