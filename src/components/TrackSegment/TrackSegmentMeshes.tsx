@@ -36,7 +36,7 @@ import { parseHydroEvents } from '../../systems/water/hydroEvents';
 import { getActiveLaunchHour } from '../../systems/journey/runSession';
 import { getActiveMap } from '../../maps/registry';
 import { resolveTrestleSpan } from '../../systems/lumber/trestleSpan';
-import { resolveSurfaceSwirl } from '../../systems/water/sweSwirl';
+import { resolveSurfaceSwirl, resolveVortexDecoration } from '../../systems/water/sweSwirl';
 import PondFog from './PondFog';
 import { TrackSegmentCollisionMeshes } from './TrackSegmentCollisionMeshes';
 import { TrackSegmentDecorations } from './TrackSegmentDecorations';
@@ -206,6 +206,17 @@ export function TrackSegmentMeshes({
     );
 
     const vortexVisualIntensity = surfaceSwirl.intensity;
+
+    /**
+     * The particle ring is the *second* drawing of the drain. Where the SWE
+     * sink owns the segment, `FlowingWater`'s eye-foam is reading the field the
+     * hull falls into, so the ring fades out rather than stacking on top of it;
+     * an authored drain has no field behind the shader term, so it keeps it.
+     */
+    const vortexDecoration = useMemo(
+      () => resolveVortexDecoration(surfaceSwirl),
+      [surfaceSwirl],
+    );
 
     // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
     const playerVelocityRef = useRef(0);
@@ -534,12 +545,13 @@ export function TrackSegmentMeshes({
                 />
             )}
 
-            {vortexCenter && surfaceSwirl.intensity > 0 && (
+            {vortexCenter && vortexDecoration.visible && (
                 <VortexVisual
                     center={vortexCenter}
                     radius={surfaceSwirl.radius}
                     intensity={vortexVisualIntensity}
-                    particleCount={56}
+                    particleCount={vortexDecoration.particleCount}
+                    opacity={vortexDecoration.opacity}
                     color="#5a9ae9"
                 />
             )}

@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import hydro from '../../maps/hydro_dam.json';
 import { parseHydroEvents, HYDRO_VORTEX_SINK } from './hydroEvents';
 import {
+  SWE_FOAM_READS,
   SWE_SWIRL_MAX,
+  VORTEX_RING_OPACITY,
   liveSweVortex,
   resolveSurfaceSwirl,
+  resolveVortexDecoration,
   sweSwirlIntensity,
 } from './sweSwirl';
 
@@ -101,5 +104,76 @@ describe('resolveSurfaceSwirl', () => {
       { id: 'strong', kind: 'vortex' as const, segmentIndex: 1, strength: 3, radius: 9 },
     ];
     expect(liveSweVortex(events, 0, 1)?.id).toBe('strong');
+  });
+});
+
+
+describe('resolveVortexDecoration', () => {
+  it('drops the particle ring where the SWE eye-foam is already drawing the drain', () => {
+    const swirl = resolveSurfaceSwirl({
+      segmentIndex: CHAMBER,
+      hour: DAM_HOUR,
+      events: EVENTS,
+      authored: AUTHORED,
+      authoredIntensity: 0.9,
+    });
+
+    expect(swirl.source).toBe('swe');
+    expect(swirl.intensity).toBeGreaterThanOrEqual(SWE_FOAM_READS);
+    expect(resolveVortexDecoration(swirl)).toEqual({
+      visible: false,
+      opacity: 0,
+      particleCount: 0,
+    });
+  });
+
+  it('keeps the ring at full opacity for an authored drain with no field behind it', () => {
+    const swirl = resolveSurfaceSwirl({
+      segmentIndex: THROAT,
+      hour: SCOUT_HOUR,
+      events: EVENTS,
+      authored: AUTHORED,
+      authoredIntensity: 0.7,
+    });
+
+    expect(swirl.source).toBe('authored');
+    const decoration = resolveVortexDecoration(swirl);
+    expect(decoration.visible).toBe(true);
+    expect(decoration.opacity).toBe(VORTEX_RING_OPACITY);
+    expect(decoration.particleCount).toBeGreaterThan(0);
+  });
+
+  it('fades the ring out as a weak SWE drain grows into readable foam', () => {
+    const faint = resolveVortexDecoration({
+      source: 'swe',
+      centerT: 0.5,
+      lateralOffset: 0,
+      radius: 8,
+      intensity: SWE_FOAM_READS * 0.25,
+    });
+    const stronger = resolveVortexDecoration({
+      source: 'swe',
+      centerT: 0.5,
+      lateralOffset: 0,
+      radius: 8,
+      intensity: SWE_FOAM_READS * 0.75,
+    });
+
+    expect(faint.visible).toBe(true);
+    expect(stronger.visible).toBe(true);
+    expect(stronger.opacity).toBeLessThan(faint.opacity);
+    expect(faint.opacity).toBeLessThan(VORTEX_RING_OPACITY);
+  });
+
+  it('draws nothing where no model describes the water', () => {
+    expect(
+      resolveVortexDecoration({
+        source: 'none',
+        centerT: null,
+        lateralOffset: 0,
+        radius: 0,
+        intensity: 0,
+      }).visible,
+    ).toBe(false);
   });
 });

@@ -26,6 +26,14 @@
  *   - Cold-boot "Maximum update depth" (F-8) may prevent topdown boots; those
  *     shots are skipped (soft) so start-menu pixel gate still runs. Do not treat
  *     a skipped topdown as a sky-only visual regression.
+ *   - The start button mounts disabled ("PREPARING…") and the menu overflows the
+ *     720px viewport, so topdown boots wait for it to arm and click the element
+ *     directly rather than hit-testing a point.
+ *   - `teleportToSegment` returns false until the vehicle rigid body exists; it
+ *     is retried until it reports true, otherwise every per-segment shot is a
+ *     picture of the spawn.
+ *   - Set-piece shots (06–09) are `baseline: false`: they feed the advisory
+ *     CONTRASTS gates instead of a committed pixel baseline.
  */
 
 import puppeteer from 'puppeteer';
@@ -62,6 +70,13 @@ function shotLabel(shot) {
 }
 const VIEWPORT = { width: 1280, height: 720 };
 const MIN_GOOD_BYTES = 50_000;
+/**
+ * Below this a 1280×720 in-run capture is the sky-only frame F-1 describes:
+ * measured here, a sky + HUD frame compresses to ~85 KB while the same shot
+ * with canyon geometry in it lands around 150 KB. Set-piece contrasts sourced
+ * from a frame that small are skipped, not reported as a regression.
+ */
+const SKY_ONLY_MAX_BYTES = 110_000;
 const SOFT_PAGE_ERROR = /Maximum update depth|Minified React error #185|error #185/i;
 
 const CHROME_ARGS = [
@@ -122,6 +137,87 @@ const SHOTS = [
     query: 'map=delta&vehicle=raft&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
     segment: 21,
     settleMs: 2_500,
+  },
+  // #400 set-pieces. Lumber segment 10 is the only authored trestle
+  // (`hasBridge` + `openFloor`); `?hour=` picks the launch hour for this page
+  // load only, so the dawn backwater (05–07) and the flood braid (13–15) are
+  // two shots of the same geometry with different amounts of deck on it.
+  {
+    label: '06_lumber_trestle_dawn',
+    mode: 'topdown',
+    required: false,
+    baseline: false,
+    query: 'map=lumber&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 10,
+    settleMs: 2_500,
+  },
+  {
+    label: '07_lumber_trestle_flood',
+    mode: 'topdown',
+    required: false,
+    baseline: false,
+    query: 'map=lumber&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 10,
+    settleMs: 2_500,
+  },
+  // Glacial tube apex (authored width 21, under TUBE_MAX_CANYON_WIDTH) vs the
+  // melt-out below the plunge (width 35, no roof): the ice tube only reads as a
+  // beat if those two do not draw the same open U-channel.
+  {
+    label: '08_glacial_ice_tube',
+    mode: 'topdown',
+    required: false,
+    baseline: false,
+    query: 'map=glacial&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 10,
+    settleMs: 2_500,
+  },
+  {
+    label: '09_glacial_open_channel',
+    mode: 'topdown',
+    required: false,
+    baseline: false,
+    query: 'map=glacial&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 16,
+    settleMs: 2_500,
+  },
+];
+
+/**
+ * Cross-shot gates: pairs that must *not* look alike.
+ *
+ * A per-shot baseline diff cannot catch a set-piece that never landed — both
+ * hours of a decorative trestle match their own baselines happily. These look
+ * at the mechanic instead: the two captures have to differ by at least
+ * `minRatio` of the frame.
+ *
+ * Advisory, never a CI gate. Under SwiftShader an in-run frame is mostly sky
+ * and HUD (F-1), so a shortfall here is as likely to be the software rasteriser
+ * as a missing set-piece; report.contrasts carries the ratio and the diff image
+ * for a machine that can actually render the geometry. What CI gates on is the
+ * unit coverage: `trestleSpan.test.ts` for the hour coupling and
+ * `geometryBuilders.test.ts` for the ice-tube wall profile.
+ *
+ * `minRatio` is calibrated against this rasteriser, not a GPU: capturing the
+ * same shot twice lands around 0.01% frame-to-frame, and both pairs below sit
+ * an order of magnitude above that. The gate therefore catches the case that
+ * matters — two set-piece captures that are the same picture — without turning
+ * SwiftShader's dim in-run frames into a standing failure.
+ */
+const CONTRASTS = [
+  {
+    label: 'lumber_trestle_hours',
+    a: '06_lumber_trestle_dawn',
+    b: '07_lumber_trestle_flood',
+    minRatio: 0.0005,
+    why: 'flood-hour braid must open a wider gap in the trestle deck than the dawn backwater',
+  },
+  {
+    label: 'glacial_tube_vs_open',
+    a: '08_glacial_ice_tube',
+    b: '09_glacial_open_channel',
+    minRatio: 0.0005,
+    why: 'the ice-tube wall profile must not draw the same open U-channel as the melt-out',
   },
 ];
 
@@ -287,7 +383,18 @@ async function attemptTopdown(shot) {
     });
     await page.waitForSelector('canvas', { timeout: 45_000 });
     await page.waitForSelector('.start-menu-start-btn', { timeout: 45_000 });
-    await page.click('.start-menu-start-btn');
+    // The button mounts as a disabled "PREPARING…" while Rapier/assets warm up,
+    // and the menu is taller than the 720px viewport, so puppeteer's own click
+    // hit-tests against an off-screen disabled node. Wait for it to arm, then
+    // dispatch the click on the element itself.
+    await page.waitForFunction(
+      () => {
+        const btn = document.querySelector('.start-menu-start-btn');
+        return !!btn && !btn.disabled;
+      },
+      { timeout: 60_000 },
+    );
+    await page.evaluate(() => document.querySelector('.start-menu-start-btn').click());
 
     await page.waitForFunction(
       () => !!window.__watershedScreenshot || !!window.__watershedPhysicsDebug,
@@ -310,7 +417,22 @@ async function attemptTopdown(shot) {
     }
 
     if (shot.segment != null) {
-      await page.evaluate((seg) => window.__watershedScreenshot.teleportToSegment(seg), shot.segment);
+      // `teleportToSegment` returns false until the vehicle rigid body exists,
+      // and the screenshot API is published before it does. A single call lands
+      // on a fresh spawn instead of the authored segment, which is why the
+      // per-segment shots below used to be interchangeable. Retry until it
+      // reports the move actually happened.
+      const moved = await page
+        .waitForFunction(
+          (seg) => window.__watershedScreenshot.teleportToSegment(seg) === true,
+          { timeout: 30_000, polling: 250 },
+          shot.segment,
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!moved) {
+        return { ok: false, reason: 'teleport-never-landed', pageErrors, softSkip: true };
+      }
     }
     await sleep(shot.settleMs ?? 2_500);
 
@@ -326,11 +448,102 @@ async function attemptTopdown(shot) {
     };
   } catch (err) {
     const msg = String(err.message || err);
-    const softSkip = SOFT_PAGE_ERROR.test(msg) || /Waiting failed|timed out/i.test(msg);
+    const softSkip =
+      SOFT_PAGE_ERROR.test(msg) ||
+      /Waiting failed|timed out|not clickable/i.test(msg);
     return { ok: false, reason: msg, pageErrors, softSkip };
   } finally {
     await browser.close().catch(() => {});
   }
+}
+
+/** Successful captures by shot label ({ path, bytes }), for the CONTRASTS pass. */
+const capturedPaths = new Map();
+
+/**
+ * Compare two captures of this run against each other and require a minimum
+ * difference. Returns true when the gate passes or is legitimately skipped.
+ */
+function runContrast(contrast, report) {
+  const a = capturedPaths.get(`${contrast.a}${LABEL_SUFFIX}`);
+  const b = capturedPaths.get(`${contrast.b}${LABEL_SUFFIX}`);
+
+  if (!a || !b) {
+    report.contrasts.push({
+      label: contrast.label,
+      status: 'skipped-f8',
+      why: contrast.why,
+      missing: [!a && contrast.a, !b && contrast.b].filter(Boolean),
+    });
+    console.log(`  ⚠ ${contrast.label} skipped — a source shot did not boot (SwiftShader/F-8)`);
+    return true;
+  }
+
+  const skyOnly = [
+    a.bytes < SKY_ONLY_MAX_BYTES && contrast.a,
+    b.bytes < SKY_ONLY_MAX_BYTES && contrast.b,
+  ].filter(Boolean);
+  if (skyOnly.length) {
+    report.contrasts.push({
+      label: contrast.label,
+      status: 'skipped-sky-only',
+      why: contrast.why,
+      skyOnly,
+      bytes: { [contrast.a]: a.bytes, [contrast.b]: b.bytes },
+      skyOnlyMaxBytes: SKY_ONLY_MAX_BYTES,
+    });
+    console.log(
+      `  ⚠ ${contrast.label} skipped — ${skyOnly.join(', ')} rendered sky-only (F-1), nothing to compare`,
+    );
+    return true;
+  }
+
+  const img1 = PNG.sync.read(fs.readFileSync(a.path));
+  const img2 = PNG.sync.read(fs.readFileSync(b.path));
+  if (img1.width !== img2.width || img1.height !== img2.height) {
+    report.contrasts.push({ label: contrast.label, status: 'size-mismatch', why: contrast.why });
+    console.error(`  ✗ ${contrast.label}: capture sizes differ`);
+    return false;
+  }
+
+  const diff = new PNG({ width: img1.width, height: img1.height });
+  const mismatched = pixelmatch(img1.data, img2.data, diff.data, img1.width, img1.height, {
+    threshold: PIXEL_THRESHOLD,
+    includeAA: false,
+  });
+  const total = img1.width * img1.height;
+  const ratio = mismatched / total;
+  const diffPath = path.join(OUT_DIR, `${contrast.label}${LABEL_SUFFIX}.contrast.png`);
+  fs.writeFileSync(diffPath, PNG.sync.write(diff));
+
+  const ok = ratio >= contrast.minRatio;
+  report.contrasts.push({
+    label: contrast.label,
+    status: ok ? 'pass' : 'too-similar',
+    advisory: true,
+    why: contrast.why,
+    ratio,
+    minRatio: contrast.minRatio,
+    diff: diffPath,
+  });
+
+  if (ok) {
+    console.log(`  ✓ ${contrast.label}  diff=${(ratio * 100).toFixed(3)}% ≥ ${(contrast.minRatio * 100).toFixed(3)}%`);
+  } else {
+    console.warn(
+      `  ⚠ ${contrast.label}  diff=${(ratio * 100).toFixed(3)}% below ${(contrast.minRatio * 100).toFixed(3)}% — ${contrast.why}`,
+    );
+    console.warn(
+      '    Advisory: SwiftShader in-run frames are largely sky/UI (F-1), so this is only a real',
+    );
+    console.warn(
+      '    regression on a machine that renders top-down geometry. The mechanics themselves are',
+    );
+    console.warn(
+      '    gated by unit tests: trestleSpan.test.ts (hours) and geometryBuilders.test.ts (tube).',
+    );
+  }
+  return ok;
 }
 
 async function captureShot(shot, report) {
@@ -380,10 +593,20 @@ async function captureShot(shot, report) {
     hardPageErrors: hard.length,
   });
   console.log(`  capture ${last.capture.bytes}B via ${last.capture.method}`);
+  capturedPaths.set(shotLabel(shot), { path: last.outPath, bytes: last.capture.bytes });
 
   if (hard.length && shot.required) {
     console.error(`  ✗ hard page errors on required shot:\n    ${[...new Set(hard)].join('\n    ')}`);
     return false;
+  }
+
+  // Set-piece shots exist for the cross-shot contrast, not for a pixel
+  // baseline: a SwiftShader in-run frame is sometimes the canyon and sometimes
+  // sky-only (F-1), so a committed baseline for one would be noise either way.
+  if (shot.baseline === false) {
+    report.comparisons.push({ label: shotLabel(shot), status: 'contrast-only' });
+    console.log(`  · ${shot.label} captured (contrast-only, no pixel baseline)`);
+    return true;
   }
 
   return compareToBaseline(shotLabel(shot), last.outPath, report);
@@ -401,6 +624,7 @@ async function run() {
     pixelThreshold: PIXEL_THRESHOLD,
     captures: [],
     comparisons: [],
+    contrasts: [],
     pageErrors: [],
     parityNotes: [
       'Required gate: 00_start_menu (prestart canyon + UI) via ?cleanTest=1&renderer=webgl&screenshot=1.',
@@ -409,6 +633,7 @@ async function run() {
       'Force ?renderer=webgl; WebGPU errors under SwiftShader (lightNodeClass).',
       'Refresh baselines: UPDATE_BASELINES=1 pnpm test:visual-smoke:update (prefer a machine that can boot topdown).',
       'Material matrix: VISUAL_EXTRA_QUERY=material=tsl pnpm test:visual-smoke captures the #256 path A backend into __material-tsl baselines.',
+      'Contrast gates (#400): lumber trestle hour 6 vs 14, glacial ice tube vs open melt-out. Advisory — report.contrasts records the ratio and any skip reason, but they never fail the run, because SwiftShader in-run frames are mostly sky/HUD (F-1). The mechanics are gated by trestleSpan.test.ts and geometryBuilders.test.ts.',
     ],
   };
 
@@ -423,6 +648,11 @@ async function run() {
     if (!ok) allOk = false;
   }
 
+  if (!UPDATE_BASELINES) {
+    console.log('\n[contrast] set-piece cross-shot gates (advisory)');
+    for (const contrast of CONTRASTS) runContrast(contrast, report);
+  }
+
   const uniqueErrors = [...new Set(report.pageErrors)];
   const { hard, soft } = classifyPageErrors(uniqueErrors);
   report.pageErrors = uniqueErrors.slice(0, 30);
@@ -431,6 +661,13 @@ async function run() {
   report.requiredPassed = report.captures
     .filter((c) => c.required)
     .every((c) => c.structuralOk);
+  report.contrastsPassed = report.contrasts.every(
+    (c) => c.status === 'pass' || c.status.startsWith('skipped-'),
+  );
+  // Advisory only, for the same reason the top-down shots are best-effort: a
+  // SwiftShader in-run frame is mostly sky and HUD, so two set-piece captures
+  // can be near-identical without the set-piece being missing. The mechanics
+  // are gated by unit tests; this is the eyes-on check for a real GPU.
   report.passed = report.requiredPassed;
 
   const reportPath = path.join(OUT_DIR, 'report.json');
@@ -441,6 +678,11 @@ async function run() {
   console.log(`Required passed: ${report.requiredPassed}`);
   console.log(`Hard page errors: ${hard.length}`);
   console.log(`Soft F-8 errors: ${soft.length}`);
+  console.log(
+    `Contrast gates: ${report.contrasts.filter((c) => c.status === 'pass').length} pass, ` +
+      `${report.contrasts.filter((c) => c.status.startsWith('skipped-')).length} skipped, ` +
+      `${report.contrasts.filter((c) => c.status !== 'pass' && !c.status.startsWith('skipped-')).length} failed`,
+  );
   console.log(`Report: ${reportPath}`);
 
   if (!report.passed) process.exit(1);
