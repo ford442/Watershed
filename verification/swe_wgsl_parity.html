@@ -1,0 +1,29 @@
+<!doctype html>
+<!--
+  WGSL SWE parity harness (#435). Driven by verification/swe_wgsl_parity.mjs;
+  served by a Vite dev server so the TypeScript modules load untranspiled.
+-->
+<html>
+  <head><meta charset="utf-8" /><title>SWE WGSL parity</title></head>
+  <body>
+    <pre id="out">running…</pre>
+    <script type="module">
+      import { getWasm } from '/src/systems/water/WatershedWasm.ts';
+      import { runSweParitySuite } from '/src/systems/water/sweParity.ts';
+
+      const out = document.getElementById('out');
+      try {
+        const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
+        if (!adapter) throw new Error('no WebGPU adapter (navigator.gpu missing or no adapter)');
+        const device = await adapter.requestDevice();
+        const wasm = await getWasm();
+        const results = await runSweParitySuite(wasm, device);
+        window.__sweParity = { results, adapter: adapter.info?.description || adapter.info?.vendor || '' };
+        out.textContent = JSON.stringify(results, null, 2);
+      } catch (error) {
+        window.__sweParity = { error: String((error && error.stack) || error) };
+        out.textContent = window.__sweParity.error;
+      }
+    </script>
+  </body>
+</html>

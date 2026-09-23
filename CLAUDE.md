@@ -16,7 +16,7 @@ npm run build      # production build → build/
 ```
 
 > Requires Chrome 90+ for WebGL 2.0. The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
-> NodeMaterial/TSL backend (still WebGL2 on the wire) — see [`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md).
+> NodeMaterial/TSL backend (WebGL2 on the wire; add `&renderer=webgpu` for native WebGPU) — see [`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md).
 
 ---
 
@@ -25,7 +25,7 @@ npm run build      # production build → build/
 | What | How |
 |------|-----|
 | Framework | React 19 + TypeScript |
-| 3D rendering | Three.js 0.178 + React Three Fiber 9.4 |
+| 3D rendering | Three.js 0.185 + React Three Fiber 9.4 |
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
 | Shaders | GLSL (injected via `onBeforeCompile`) by default; opt-in NodeMaterial/TSL backend via `?material=tsl` (#256 path A) |
@@ -225,15 +225,16 @@ The water shader is solid. Two tweaks to match the concept:
 - Add a very slight camera-height turbulence (wave amplitude scales with camera proximity to water surface)
 
 ### Step 4 — Post-processing / atmosphere ✅ (mostly)
-Shipped in `PostProcessingPipeline.tsx`, but **not** via `@react-three/postprocessing`: the live stack is
-Three r178's own JSM `EffectComposer` only. Neither `@react-three/postprocessing` nor the standalone
+Shipped in `PostProcessingPipeline.tsx`, but **not** via `@react-three/postprocessing`: on the GLSL path
+the stack is three's own JSM `EffectComposer`; on `?material=tsl` it is three's node `RenderPipeline`
+(`src/components/postProcessing/nodePostPipeline.ts`, same passes, same per-frame params). Neither `@react-three/postprocessing` nor the standalone
 `postprocessing` package is a dependency — both were dead weight (zero imports) and have been removed,
 along with the `vendor-post` `manualChunks` bucket in `vite.config.ts`.
 - **Bloom** — ✅ `UnrealBloomPass`
 - **Vignette** — ✅ `VignetteShader`
 - **ChromaticAberration** (subtle, speed-triggered) — ✅ custom `ChromaticAberrationShader`
 - **God rays** — ✅ `VolumetricGodRays`
-- **SSAO** — ✅ three's own `SSAOPass` (JSM), gated by `EffectPresence.ssao` (`settingsDerive.ts`) — off on Low/Medium, on at High
+- **SSAO** — ✅ three's own `SSAOPass` (JSM) / GTAO (node), gated by `EffectPresence.ssao` (`settingsDerive.ts`) — off on Low/Medium, on at High
 
 ### Step 5 — Map-driven TrackManager ✅
 `MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
@@ -264,6 +265,7 @@ npm test                          # unit tests (Vitest)
 npm run lint                      # ESLint — 0 errors is the gate; warnings are a tracked backlog
 npm run typecheck                 # tsc + repo layout guards
 npm run test:visual-smoke         # headless WebGL pixel gate (needs `npm run preview`)
+npm run test:wgsl                 # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
 
@@ -313,6 +315,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
+| `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM, or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

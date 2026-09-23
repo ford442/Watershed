@@ -10,6 +10,7 @@ import {
 import type { MaterialBackend } from './materialBackend';
 import { updateRendererDiagnostics } from './rendererState';
 import { loadNodeMaterials } from '../materials/nodeMaterials';
+import { loadNodePost } from '../components/postProcessing/nodePostLoader';
 import { bridgeCoreNodeClasses, type NodeClassExports } from './nodeLibraryBridge';
 import { extractRendererGpuDevice, registerSessionGpuDevice } from './gpuChores/device';
 import { mustForceWebGLForNodeRenderer } from './nativeWebgpuGate';
@@ -85,7 +86,7 @@ export async function createGameRenderer(
   };
 
   // TSL materials cannot run on THREE.WebGLRenderer — they need WebGPURenderer.
-  // Native WebGPU stays closed until residual GLSL hosts and JSM post are gone.
+  // Native WebGPU opens only behind canEnableNativeWebgpu() (nativeWebgpuGate.ts).
   if (materialBackend === 'tsl') {
     const nodeRenderer = await createNodeRenderer({
       canvasProps,
@@ -161,12 +162,13 @@ async function createNodeRenderer(
   request: NodeRendererRequest
 ): Promise<GameRenderer | null> {
   try {
-    // Load the node renderer and every TSL material module together: the Canvas
-    // `gl` callback awaits this, so materials built later in the scene can stay
-    // synchronous and still find the module resolved.
+    // Load the node renderer, every TSL material module and the node post
+    // pipeline together: the Canvas `gl` callback awaits this, so materials and
+    // post built later in the scene can stay synchronous and find them resolved.
     const [nodeModule] = await Promise.all([
       import('three/webgpu') as unknown as Promise<NodeRendererModule>,
       loadNodeMaterials(),
+      loadNodePost(),
     ]);
     const { WebGPURenderer } = nodeModule;
     const renderer = new WebGPURenderer({

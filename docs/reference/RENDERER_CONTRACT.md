@@ -6,11 +6,9 @@
 
 The `webgpu` renderer preference remains a *deliberate no-op fallback* to `WebGLRenderer` on the default (`glsl`) material backend. Residual GLSL construction sites are listed in `scripts/glsl-hosts-allowlist.json`.
 
-Live GLSL-only leftovers:
+Live GLSL-only leftovers: **none** (`maxResidual: 0` since epic #434 B2).
 
-- Post-processing — Three r178 JSM `EffectComposer` (`PostProcessingPipeline.tsx`). Not `@react-three/postprocessing` (R3F v9 incompatibility). Skipped when `?material=tsl`.
-
-Water / river / canyon / sky / weather / VFX / foliage / critters go through dual-path hosts. GLSL `onBeforeCompile` still exists behind those hosts for the WebGLRenderer product path.
+Post-processing (`PostProcessingPipeline.tsx`) picks one stack per renderer: three's JSM `EffectComposer` on `WebGLRenderer`, three's node `RenderPipeline` on `WebGPURenderer` (`src/components/postProcessing/nodePostPipeline.ts`). Not `@react-three/postprocessing` (R3F v9 incompatibility). Water / river / canyon / sky / weather / VFX / foliage / critters go through dual-path hosts. GLSL `onBeforeCompile` still exists behind those hosts for the WebGLRenderer product path.
 
 These materials are incompatible with `WebGPURenderer`/`NodeMaterial`/`TSL`. Routing them through a WebGPU backend produces crashes such as:
 
@@ -24,18 +22,19 @@ This fallback was established by emergency hot-fixes **PR #252** and **PR #253**
 A node-capable renderer is created **only** when the material backend is `tsl`, i.e. when no legacy GLSL material will be built for the migrated surfaces. Two properties keep this from re-running the #252/#253 failure:
 
 1. **Materials decide the renderer, not the other way round.** `materialBackend: 'tsl'` is what selects `WebGPURenderer`; there is no path where a legacy material meets a node renderer by default.
-2. **`forceWebGL: true` until `canEnableNativeWebgpu()`.** Native WebGPU stays closed while residual GLSL hosts remain and JSM post is unported. `?renderer=webgpu` + TSL does **not** flip the graphics API today.
+2. **`forceWebGL: false` only behind `canEnableNativeWebgpu()`.** Native WebGPU is open only while no residual GLSL host remains and post has a node path (`POST_STACK_PORTED`) — both true since epic #434 B2. `?material=tsl` alone stays on WebGL2; `?material=tsl&renderer=webgpu` negotiates native WebGPU.
 
-The leftover-GLSL allowlist (`scripts/check-glsl-hosts.mjs`) is the tracking metric: **`residual` only shrinks** (new construction sites fail CI unless listed). **`dual`** GLSL branches remain for the default WebGL path. Scene-material TSL is finished when every live host is `dual` or `dormant` and **`PostProcessingPipeline.tsx` is the sole `residual`**; native WebGPU still waits on a post story after that.
+The leftover-GLSL allowlist (`scripts/check-glsl-hosts.mjs`) is the tracking metric: **`residual` only shrinks** (new construction sites fail CI unless listed). **`dual`** GLSL branches remain for the default WebGL path. Every live host is now `dual` or `dormant`; a new `residual` entry closes the native WebGPU gate again.
 
 ## Material ↔ Renderer Compatibility Matrix
 
 | Material | Production renderer | Works with `WebGLRenderer` | Works with `WebGPURenderer` | Notes |
 |---|---|---|---|---|
 | GLSL river/canyon/water factories | Yes (`glsl`) | **Yes** | **No** | Selected only when `materialBackend` is `glsl`. |
-| Post-processing JSM composer | Yes (`glsl`) | **Yes** | **No** | Skipped on `?material=tsl`. |
-| `WaterNodeMaterial` / `RiverNodeMaterial` / `CanyonNodeMaterial` | Opt-in TSL | **No** | **Yes** (WebGL2 backend today) | Path A hosts. |
-| Sky / weather / VFX / foliage / critter NodeMaterials | Opt-in TSL | **No** | **Yes** (WebGL2 backend today) | Dual-path hosts; GLSL twins remain. |
+| Post-processing JSM composer | Yes (`glsl`) | **Yes** | **No** | Driver for `WebGLRenderer` only. |
+| Post-processing node `RenderPipeline` | Opt-in TSL | **No** | **Yes** | Same pass set, same per-frame params (`postFrameParams.ts`). |
+| `WaterNodeMaterial` / `RiverNodeMaterial` / `CanyonNodeMaterial` | Opt-in TSL | **No** | **Yes** (WebGL2, or native WebGPU with `?renderer=webgpu`) | Path A hosts. |
+| Sky / weather / VFX / foliage / critter NodeMaterials | Opt-in TSL | **No** | **Yes** (WebGL2, or native WebGPU with `?renderer=webgpu`) | Dual-path hosts; GLSL twins remain. |
 
 ## Single Rule for the Future WebGPU Migration (#256)
 
@@ -90,7 +89,7 @@ Host-level guards live in `src/materials/water/createWaterMaterial.test.ts` and 
 ## References
 
 - `src/rendering/createRenderer.ts` — implementation of the fallback.
-- `src/rendering/nativeWebgpuGate.ts` — native WebGPU stays closed until residual GLSL hosts are gone and post is ported.
+- `src/rendering/nativeWebgpuGate.ts` — native WebGPU gate: open while no residual GLSL host remains and post is ported.
 - `scripts/check-glsl-hosts.mjs` — residual GLSL construction budget.
 - Issue **#256** / **#355** — TSL material path A (shipped). Out of scope for the GLSL default contract.
 - Issue **#369** — gpu-chores (HUD helpers). Independent of this renderer contract.

@@ -30,7 +30,7 @@ The project uses a hybrid architecture to achieve high performance and realism w
 
 *   **UI and Orchestration:** [React](https://react.dev/) with [React Three Fiber (R3F)](https://docs.pmnd.rs/react-three-fiber/getting-started/introduction) for rendering 3D scenes.
 *   **Physics:** [Rapier](https://rapier.rs/) running in a Web Worker, compiled to Wasm for near-native performance. This keeps the main thread free from heavy physics calculations.
-*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6+) displaces `FlowingWater`; gameplay forces sample the same `(η,u,w)` field. Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. SWE stays C++ WASM until [#399](https://github.com/ford442/Watershed/issues/399) Phase D; no experimental WGSL heightfield backend is live.
+*   **Water simulation:** Nonlinear shallow-water (C++ WASM, ABI 6+) displaces `FlowingWater`; gameplay forces sample the same `(η,u,w)` field. Live materials are GLSL (`ShaderMaterial` / `onBeforeCompile`); `?material=tsl` opts into NodeMaterial hosts under WebGL2. gpu-chores adopt the renderer session `GPUDevice` and never request a second one. SWE runs on C++ WASM, or on its WGSL twin (`swe.wgsl`, [#435](https://github.com/ford442/Watershed/issues/435)) on a native-WebGPU boot — one backend per session, the same field either way.
 
 ## Later picture
 
@@ -64,7 +64,7 @@ Open board (unchecked = genuinely open), **foundation before a sixth biome**:
 - [ ] [#397](https://github.com/ford442/Watershed/issues/397) — **P0** Renderer boot fallback, context honesty, leftover `systems/*.tsx` hosts
 - [ ] [#398](https://github.com/ford442/Watershed/issues/398) — **P1** `hydroEvents[]` that change both mesh and hull (gate for a sixth map)
 - [ ] [#400](https://github.com/ford442/Watershed/issues/400) — **P1** Biome set-pieces as mechanics (flume, ice tube, one-field vortex)
-- [ ] [#399](https://github.com/ford442/Watershed/issues/399) — **P2** Epic: native WebGPU post stack + WGSL SWE twin (Phase D not started)
+- [x] [#399](https://github.com/ford442/Watershed/issues/399) — **P2** Epic: native WebGPU post stack (#434) + WGSL SWE twin (#435)
 
 See also [`docs/reference/plan.md`](docs/reference/plan.md) and [`AGENTS.md`](AGENTS.md) for live architecture.
 
