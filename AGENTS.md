@@ -47,8 +47,8 @@ CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | UI/Framework | React 19 + TypeScript 5.9 | Component architecture, state |
-| 3D Rendering | Three.js 0.178 + React Three Fiber 9.4 | Scene graph, rendering |
-| Post-processing | Three r178's own JSM `EffectComposer` passes via `PostProcessingPipeline.tsx` (`@react-three/postprocessing` / `postprocessing` are not dependencies — nothing imports them) | Bloom, vignette, SSAO, speed FX |
+| 3D Rendering | Three.js 0.185 + React Three Fiber 9.4 | Scene graph, rendering |
+| Post-processing | Three's own JSM `EffectComposer` (GLSL) or node `RenderPipeline` (`?material=tsl`) via `PostProcessingPipeline.tsx` (`@react-three/postprocessing` / `postprocessing` are not dependencies — nothing imports them) | Bloom, vignette, SSAO, speed FX |
 | Physics | Rapier 0.19 (WASM) via `@react-three/rapier` | Rigid bodies, collisions |
 | Build | Vite 7.3 | Dev server + production bundle → `build/` |
 | Tests | Vitest + Testing Library | Unit / component tests |
@@ -64,7 +64,7 @@ CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; 
   "@react-three/fiber": "^9.4.0",
   "@react-three/drei": "^10.7.7",
   "@react-three/rapier": "^2.2.0",
-  "three": "0.178.0",
+  "three": "0.185.0",
   "@dimforge/rapier3d-compat": "0.19.2",
   "zustand": "^5.0.13",
   "ajv": "^8.18.0"

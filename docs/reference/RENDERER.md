@@ -36,14 +36,14 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`, in `src/rendering/cont
 
 | Attribute | Value | Why |
 |-----------|-------|-----|
-| `alpha` | `false` | Opaque game view. THREE r178 (as r168) always *requests* the GL context with `alpha: true`, so this drives `WebGLBackground` — the drawing buffer is cleared fully opaque instead of letting the page show through. |
+| `alpha` | `false` | Opaque game view. THREE r185 (as r168 and r178) always *requests* the GL context with `alpha: true`, so this drives `WebGLBackground` — the drawing buffer is cleared fully opaque instead of letting the page show through. |
 | `premultipliedAlpha` | `true` | Not just compositing: `WebGLState.setBlending` picks premultiplied blend functions from this flag, so every transparent material in the game (splash, water, weather, VFX) is authored against `true`. Flipping it would change how all of them blend. |
 | `depth` | `true` | Required by every 3D pass and by SSAO. THREE default. |
 | `stencil` | `true` | **Not** THREE's default (off since r163). Enabled for the post stack's mask/outline passes. |
 | `failIfMajorPerformanceCaveat` | boot-negotiated | Whatever the successful probe attempt asked for, replayed on the real context. `true` on a hardware machine (software GL must not silently boot and read as a shipped GPU), `false` on a degraded one and for the capture harness. Never preset-dependent. |
 | `antialias` / `powerPreference` | boot-negotiated | Frozen for the session by the probe — `true` / `high-performance` on hardware, `false` / `default` in safe mode. |
 | `logarithmicDepthBuffer` | `false` | See below. |
-| `desynchronized` | not set | THREE r178's `WebGLRenderer` (as r168's) never forwards it to `getContext`, so setting it would be decoration. It is also the wrong trade here: it can tear and reorders readback, which `?screenshot=1` depends on. |
+| `desynchronized` | not set | THREE r185's `WebGLRenderer` (as r168's and r178's) never forwards it to `getContext`, so setting it would be decoration. It is also the wrong trade here: it can tear and reorders readback, which `?screenshot=1` depends on. |
 
 **Software-GL opt-out.** Visual smoke and CI run headless Chromium on SwiftShader, which *is* a major performance caveat — with the check on, the context request fails and the harness captures a black canvas. `isSoftwareRendererAllowed()` turns the check off for `?screenshot=1` / `?capture=1` (every visual-smoke shot already carries one) and for an explicit `?softwareGl=1`. Production never sets it.
 
@@ -57,9 +57,9 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`, in `src/rendering/cont
 | `degraded` | that failed; the relaxed request (`failIfMajorPerformanceCaveat: false`, `powerPreference: 'default'`) succeeded | antialias off, `default`, caveat check off | Persistent **Safe Graphics Mode** badge |
 | `unsupported` | neither produced a context | — | Static DOM screen; **no Canvas, no Rapier, no game** |
 
-**The probe asks exactly what the renderer will ask.** `rendererContextAttributesFor(envelope)` reproduces three r178's own attribute object (unchanged from r168) — `alpha: true` (three hardcodes it), `depth`, `stencil`, `antialias`, `premultipliedAlpha`, `preserveDrawingBuffer`, `powerPreference`, `failIfMajorPerformanceCaveat` — and asks for `webgl2` only. This is load-bearing: a probe that requests *less* than the renderer can pass and then let the real request throw out of the `gl` factory, which is the original bug with extra latency. A test in `createRenderer.test.ts` pins the two attribute sets together.
+**The probe asks exactly what the renderer will ask.** `rendererContextAttributesFor(envelope)` reproduces three r185's own attribute object (unchanged since r168) — `alpha: true` (three hardcodes it), `depth`, `stencil`, `antialias`, `premultipliedAlpha`, `preserveDrawingBuffer`, `powerPreference`, `failIfMajorPerformanceCaveat` — and asks for `webgl2` only. This is load-bearing: a probe that requests *less* than the renderer can pass and then let the real request throw out of the `gl` factory, which is the original bug with extra latency. A test in `createRenderer.test.ts` pins the two attribute sets together.
 
-On `?material=tsl` the node renderer's WebGL2 backend builds a smaller object of its own. r178 requests `antialias` (as `samples > 0`), `alpha: true`, `depth` and `stencil` — and neither `powerPreference` nor `failIfMajorPerformanceCaveat`; r168 requested no attributes at all. The probe's request is therefore still the stricter of the two, so a probe that passes cannot be followed by a TSL context request that throws.
+On `?material=tsl` the node renderer's WebGL2 backend builds a smaller object of its own. r185 requests `antialias` (as `currentSamples > 0`; r178: `samples > 0`), `alpha: true`, `depth` and `stencil` — and neither `powerPreference` nor `failIfMajorPerformanceCaveat`; r168 requested no attributes at all. The probe's request is therefore still the stricter of the two, so a probe that passes cannot be followed by a TSL context request that throws.
 
 Each attempt runs on a throwaway `<canvas>` and releases its context immediately with `WEBGL_lose_context` — browsers cap live contexts per origin (8–16) and a leaked probe costs the game a slot for the whole session. The `webglcontextcreationerror` listener is attached before `getContext`, because `statusMessage` is the only real diagnostic the platform hands out.
 
@@ -198,7 +198,7 @@ Evaluated for long canyon Z ranges. The track treadmill keeps ~7 active segments
 | `?renderer=webgpu` | `WebGLRenderer` (fallback) | Experimental/no-op on the default material backend |
 | `?material=glsl` (default) | `WebGLRenderer` | Legacy GLSL materials — the production path |
 | `?material=tsl` | `WebGPURenderer` (WebGL2 backend) | #256 path A — NodeMaterial pipeline, same graphics API |
-| `?material=tsl&renderer=webgpu` | `WebGPURenderer` (WebGL2 backend) | Native WebGPU stays gated (`forceWebGL: true`) until residual GLSL is gone and post is ported |
+| `?material=tsl&renderer=webgpu` | `WebGPURenderer` (native WebGPU backend) | Native WebGPU behind `canEnableNativeWebgpu()` — open since epic #434 B2 ported post and emptied the residual list; three itself falls back to WebGL2 when no adapter is available |
 | `?screenshot=1` or `?capture=1` | (any) | Enables `preserveDrawingBuffer` and allows software GL, for the visual-smoke harness only |
 | `?softwareGl=1` | (any) | Allows software GL (SwiftShader) without enabling capture mode |
 
@@ -241,11 +241,11 @@ Resolution order (`src/rendering/materialBackend.ts`): `?material=` → stored d
 | Tree / rock / vegetation inject | `materials/foliage/createFoliageSurfaceMaterial.ts` | `materials/foliage/FoliageNodeMaterials.ts` |
 | Fish / dragonflies | `materials/critters/createCritterMaterials.ts` | `materials/critters/CritterNodeMaterials.ts` |
 
-CI tracks leftover construction sites in [`scripts/glsl-hosts-allowlist.json`](../../scripts/glsl-hosts-allowlist.json) (`pnpm typecheck` runs `scripts/check-glsl-hosts.mjs`). **`dual`** entries are GLSL factories behind a backend switch — their GLSL branches stay forever for the WebGL product path. **`residual`** entries may **only shrink** (new live GLSL hosts fail CI unless listed). Scene-material migration is finished when every live host is `dual` or `dormant`; **`PostProcessingPipeline.tsx` is the intentional last `residual`** until a Three node-post bump (Phase D). Native WebGPU (`forceWebGL: false`) is gated by [`src/rendering/nativeWebgpuGate.ts`](../../src/rendering/nativeWebgpuGate.ts) until residual is empty **and** the post stack is ported (`POST_STACK_PORTED`).
+CI tracks leftover construction sites in [`scripts/glsl-hosts-allowlist.json`](../../scripts/glsl-hosts-allowlist.json) (`pnpm typecheck` runs `scripts/check-glsl-hosts.mjs`). **`dual`** entries are GLSL factories behind a backend switch — their GLSL branches stay forever for the WebGL product path. **`residual`** entries may **only shrink** (new live GLSL hosts fail CI unless listed). Scene-material migration is finished when every live host is `dual` or `dormant`; `PostProcessingPipeline.tsx` was the last `residual`; since epic #434 B2 it is `dual` (JSM `EffectComposer` on `WebGLRenderer`, node `RenderPipeline` on `WebGPURenderer`) and `maxResidual` is `0`. Native WebGPU (`forceWebGL: false`) is gated by [`src/rendering/nativeWebgpuGate.ts`](../../src/rendering/nativeWebgpuGate.ts): open while residual is empty **and** `POST_STACK_PORTED` holds. Listing a new residual host closes it again.
 
 Every host takes the backend as its first argument, never throws, and reports the backend it actually produced — a TSL failure (module not loaded, TSL surface drift) degrades to GLSL instead of taking the Canvas down.
 
-`createGameRenderer` `import()`s `three/webgpu` and awaits `materials/nodeMaterials.ts` while building the node renderer, but that import does **not** split the node library out of the entry chunk: `createVfxMaterials.ts` imports `VfxNodeMaterials.ts` statically, which imports `three/webgpu` statically, so Rollup keeps it in `index-*.js` on every backend (the build's "dynamically imported … but also statically imported" warning says exactly this). The default backend downloads it but never constructs a `WebGPURenderer`. Since r178 the cost is lower: `three.webgpu.js` imports the same `three.core.js` as `three`, so the shipped bundle carries one core instead of two — measured at the bump, `index` went from 1,814.6 kB to 1,564.8 kB and `vendor-three` from 1,068.8 kB to 1,088.7 kB (−230 kB total, minified).
+`createGameRenderer` `import()`s `three/webgpu` and awaits `materials/nodeMaterials.ts` while building the node renderer, but that import does **not** split the node library out of the entry chunk: `createVfxMaterials.ts` imports `VfxNodeMaterials.ts` statically, which imports `three/webgpu` statically, so Rollup keeps it in `index-*.js` on every backend (the build's "dynamically imported … but also statically imported" warning says exactly this). The default backend downloads it but never constructs a `WebGPURenderer`. Since r178 the cost is lower: `three.webgpu.js` imports the same `three.core.js` as `three`, so the shipped bundle carries one core instead of two — measured at the bump, `index` went from 1,814.6 kB to 1,564.8 kB and `vendor-three` from 1,068.8 kB to 1,088.7 kB (−230 kB total, minified). The r185 bump (epic #434 B2) moved them to 1,682.0 kB and 1,124.3 kB (+153 kB, minified); the node post graph itself is a separate 18.4 kB chunk loaded only by the node renderer.
 
 ### Known gaps on `?material=tsl`
 
@@ -260,7 +260,7 @@ Water surface, vs the GLSL original — **closed in #399 phase A**:
 
 Scene-wide:
 
-- **JSM post-processing stays WebGL-only (Phase D).** Live path is `three/examples/jsm/postprocessing` on `three@0.178` in `PostProcessingPipeline.tsx` (not `@react-three/postprocessing`, which crashes on R3F v9, and not the standalone `postprocessing` package — neither is a dependency). `EffectComposer` / `ShaderPass` require `THREE.WebGLRenderer`. On `?material=tsl` the composer is **not mounted**. Native WebGPU waits on the r185 bump whose node post stack (`RenderPipeline`, the r183 name for `PostProcessing`) replaces JSM — epic [#434](https://github.com/ford442/Watershed/issues/434) phase B2. Do not add a second composer beside JSM, and do not bump `three` in a materials-only PR. `POST_STACK_PORTED` in `nativeWebgpuGate.ts` stays `false` until that lands.
+- **Post-processing has one stack per renderer (epic [#434](https://github.com/ford442/Watershed/issues/434) B2).** `PostProcessingPipeline.tsx` picks by renderer class: on `THREE.WebGLRenderer` it drives three's JSM `EffectComposer` (not `@react-three/postprocessing`, which crashes on R3F v9, and not the standalone `postprocessing` package — neither is a dependency); on the node `WebGPURenderer` it drives three's node `RenderPipeline` (r183's name for `PostProcessing`), built in [`src/components/postProcessing/nodePostPipeline.ts`](../../src/components/postProcessing/nodePostPipeline.ts). Never both. The pass set is the same — SSAO (GTAO at half resolution on the node path, normals reconstructed from depth so no scene material needs MRT, then `denoise()` as the JSM pass blurs, and faded out over 40–80 m of view distance because depth-reconstructed normals band into stripes on the sky dome and far walls) → god rays → bloom → hue/saturation → chromatic aberration → vignette → waterfall rainbow — and both drivers read one per-frame parameter function, [`postFrameParams.ts`](../../src/components/postProcessing/postFrameParams.ts). On the node path, bloom / GTAO / the god-ray march / the chromatic-aberration render target are structural: a quality-preset toggle rebuilds the output node, so Low does not pay for them. The node module loads with the node renderer (`nodePostLoader.ts`), like the node materials.
 - Dormant GLSL modules (`CausticsMaterial.ts`, `EnhancedWaterMaterial.ts`) are unused and listed as `dormant` on the allowlist.
 - Weather particles are Reach-mounted (`ReachManager`), not the default treadmill.
 - **`three` and `three/webgpu` share one core since r171** — both entries import `build/three.core.js`, so at the r178 pin `(await import('three/webgpu')).DirectionalLight === THREE.DirectionalLight`, and r168's `WARNING: Multiple instances of Three.js being imported` is gone from the console. Through r170 `three/webgpu` carried its own copy of the core (`resolve.dedupe` could not merge two entry files), and `NodeLibrary` indexed both its tables by something that did not survive that split. [`src/rendering/nodeLibraryBridge.ts`](../../src/rendering/nodeLibraryBridge.ts) re-registers `three`'s side after `renderer.init()`. **At r178 it bridges nothing** — `nodeLibraryBridge.test.ts` pins that against the real `three.webgpu.js` bundle, not the test double — and it stays as the guard for the next bump:
@@ -271,7 +271,7 @@ Scene-wide:
   - [`NonEmptyInstancedMesh`](../../src/components/NonEmptyInstancedMesh.tsx) for raw `<instancedMesh>` mounts, keyed on `args[2]`.
   - [`NonEmptyInstances`](../../src/components/NonEmptyInstances.tsx) for drei `<Instances>`, which mounts as `args={[null, null, 0]}` and only assigns `.count` from its subscribed children in `useFrame` — so an empty layer never leaves zero.
 
-`?renderer=webgpu` on the **GLSL** backend remains a no-op fallback to `WebGLRenderer`. On **TSL** it still uses `forceWebGL: true` until `canEnableNativeWebgpu()` is true.
+`?renderer=webgpu` on the **GLSL** backend remains a no-op fallback to `WebGLRenderer`. On **TSL** it sets `forceWebGL: false` while `canEnableNativeWebgpu()` is true (it is, since #434 B2); `?material=tsl` alone stays on the WebGL2 backend. gpu-chores adopt the renderer's `GPUDevice` only when the backend is native — they never `requestDevice()`. r185's WebGPU backend does not `fetch()` its WGSL, so production CSP needs no `data:` in `connect-src` for it; `cspProbe.ts` still guards the GLSL `?renderer=webgpu` fallback. The node scene pass is single-sampled (`samples: 0`, like the JSM composer's targets): a multisampled depth texture cannot be sampled by GTAO on native WebGPU. Known browser caveat: Chromium builds that expose Blink's experimental WebGPU features (e.g. `--enable-unsafe-webgpu` on Chromium 141) carry an older `GPUTextureViewDescriptor.swizzle` IDL and reject r185's `swizzle: 'rgba'`; headless checks should add `--disable-blink-features=WebGPUExperimentalFeatures`.
 
 ### Visual smoke matrix
 
@@ -288,9 +288,9 @@ pnpm test:visual-smoke:tsl        # ?material=tsl, baselines suffixed __material
 The production **GLSL** pipeline still uses legacy materials that crash inside `WebGPURenderer`'s `NodeMaterial` / TSL pipeline if they are routed there without a host:
 
 - GLSL factories (`RiverShader.ts` inject, `CanyonMaterial.ts`, `FlowingWater` via `createWaterMaterial`) stay on `THREE.WebGLRenderer`.
-- Post-processing — Three r178 JSM `EffectComposer` / `UnrealBloomPass` (WebGLRenderer-only).
+- Post-processing — the JSM `EffectComposer` / `UnrealBloomPass` driver is WebGLRenderer-only (the node driver serves `?material=tsl`).
 
-Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constraint is unchanged for `?material=glsl`: `createGameRenderer()` returns `THREE.WebGLRenderer` regardless of renderer preference. The node renderer is reachable *only* by opting into TSL materials, and even then the graphics API stays WebGL2 until the residual allowlist is empty and post is ported.
+Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constraint is unchanged for `?material=glsl`: `createGameRenderer()` returns `THREE.WebGLRenderer` regardless of renderer preference. The node renderer is reachable *only* by opting into TSL materials; native WebGPU additionally needs `?renderer=webgpu` and an open `nativeWebgpuGate`.
 
 ## Non-gameplay Canvases
 
@@ -316,7 +316,7 @@ App.tsx
        └─ createGameRenderer()  ← async gl factory
             ├─ material=glsl + webgl  → THREE.WebGLRenderer + applyRendererContextOptions()
             ├─ material=glsl + webgpu → THREE.WebGLRenderer (deliberate fallback)
-            └─ material=tsl           → WebGPURenderer (forceWebGL: true until nativeWebgpuGate)
+            └─ material=tsl           → WebGPURenderer (WebGL2; native WebGPU with renderer=webgpu behind nativeWebgpuGate)
                                         + await loadNodeMaterials()
        └─ Experience (shared scene graph)
             ├─ RendererDiagnosticsMonitor → rendererState store
@@ -347,7 +347,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 
 - **WebGL2 (`?renderer=webgl`, default)** is the only production path.
 - **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op on the default material backend; it falls back to WebGL2.
-- **`?material=tsl`** boots the node renderer with `forceWebGL: true` (WebGL2 on the wire). `?material=tsl&renderer=webgpu` does **not** open native WebGPU until `canEnableNativeWebgpu()`.
+- **`?material=tsl`** boots the node renderer with `forceWebGL: true` (WebGL2 on the wire). `?material=tsl&renderer=webgpu` negotiates native WebGPU while `canEnableNativeWebgpu()` holds (open since epic #434 B2).
 
 ## Keyboard Shortcuts (debug mode)
 
@@ -372,7 +372,7 @@ One sim backend per heightfield. Missing WebGPU does not change production water
 | `src/rendering/applyRendererContextOptions.ts` | Apply derived options at setup + `applyRendererQualityUpdate()` for live changes |
 | `src/rendering/RendererQualitySync.tsx` | In-Canvas live quality apply (no remount) |
 | `src/rendering/createRenderer.ts` | Async renderer factory |
-| `src/rendering/nativeWebgpuGate.ts` | Native WebGPU (`forceWebGL: false`) remains closed |
+| `src/rendering/nativeWebgpuGate.ts` | Native WebGPU (`forceWebGL: false`) gate — open while no residual GLSL host remains and post is ported |
 | `scripts/glsl-hosts-allowlist.json` | Residual / dual / dormant GLSL construction sites |
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode and software-GL gates |
 | `src/components/LevelEditor/LevelEditor.tsx` | Editor Canvas on the shared contract |

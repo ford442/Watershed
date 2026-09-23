@@ -3,12 +3,14 @@
  * GLSL host is gone AND the JSM post stack has a node-capable path.
  *
  * Residual construction sites are listed in scripts/glsl-hosts-allowlist.json.
- * Until that list is empty *and* POST_STACK_PORTED is flipped, TSL stays on
- * WebGL2 (`forceWebGL: true`) even if `?renderer=webgpu` is set.
+ * The post stack's node twin landed in epic #434 B2
+ * (src/components/postProcessing/nodePostPipeline.ts), so both halves hold and
+ * `?material=tsl&renderer=webgpu` negotiates native WebGPU. Adding a residual
+ * host back closes the gate again.
  */
 import allowlist from '../../scripts/glsl-hosts-allowlist.json';
 
-export const POST_STACK_PORTED = false;
+export const POST_STACK_PORTED = true;
 
 export function residualGlslHostCount(): number {
   return (allowlist.hosts as Array<{ kind: string }>).filter((h) => h.kind === 'residual').length;
