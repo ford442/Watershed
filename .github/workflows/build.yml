@@ -155,6 +155,13 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
+      # #435: the WGSL SWE twin must track the committed C++ stepper within
+      # 1e-5. Runs in headless Chrome on SwiftShader's WebGPU adapter; brings
+      # up its own Vite dev server, independent of the preview above.
+      - name: WGSL SWE twin parity
+        run: pnpm test:wgsl
+        timeout-minutes: 10
+
       - name: Upload visual-smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
