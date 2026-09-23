@@ -233,3 +233,34 @@ export class LineBasicNodeMaterial extends MeshBasicNodeMaterial {}
 export class LineDashedNodeMaterial extends MeshBasicNodeMaterial {}
 export class ShadowNodeMaterial extends MeshBasicNodeMaterial {}
 export class SpriteNodeMaterial extends MeshBasicNodeMaterial {}
+
+// Node post (epic #434 B2): `nodePostPipeline.ts` builds its graph from these.
+export const If = createNode('If');
+export const Loop = createNode('Loop');
+export const Break = createNode('Break');
+export const int = createNode('int');
+export const pass = createNode('pass');
+export const screenUV = createNode('screenUV');
+export const convertToTexture = createNode('convertToTexture');
+export const perspectiveDepthToViewZ = createNode('perspectiveDepthToViewZ');
+
+/** Node `RenderPipeline` double: records the output graph, renders nothing. */
+export class RenderPipeline {
+  outputNode: unknown;
+  outputColorTransform = true;
+  needsUpdate = true;
+  renderCount = 0;
+
+  constructor(
+    public renderer: unknown,
+    outputNode?: unknown,
+  ) {
+    this.outputNode = outputNode;
+  }
+
+  render(): void {
+    this.renderCount += 1;
+  }
+
+  dispose(): void {}
+}

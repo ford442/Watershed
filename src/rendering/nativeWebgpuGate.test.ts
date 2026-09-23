@@ -8,13 +8,13 @@ const allowlist = JSON.parse(
 ) as { hosts: Array<{ path: string; kind: string }>; maxResidual: number };
 
 describe('native WebGPU gate', () => {
-  it('stays closed while residual GLSL hosts remain or post is unported', () => {
+  it('opens once post is ported and no residual GLSL host remains (epic #434 B2)', () => {
     const residual = allowlist.hosts.filter((h) => h.kind === 'residual');
     expect(residual.length).toBe(residualGlslHostCount());
-    expect(residualGlslHostCount()).toBeGreaterThan(0);
-    expect(residual.length).toBeLessThanOrEqual(allowlist.maxResidual);
-    expect(POST_STACK_PORTED).toBe(false);
-    expect(canEnableNativeWebgpu()).toBe(false);
-    expect(mustForceWebGLForNodeRenderer()).toBe(true);
+    expect(residualGlslHostCount()).toBe(0);
+    expect(allowlist.maxResidual).toBe(0);
+    expect(POST_STACK_PORTED).toBe(true);
+    expect(canEnableNativeWebgpu()).toBe(true);
+    expect(mustForceWebGLForNodeRenderer()).toBe(false);
   });
 });
