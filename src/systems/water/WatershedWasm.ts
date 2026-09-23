@@ -4,7 +4,7 @@
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
  * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 8).
- * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION.
+ * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION (8).
  *
  * Quick start
  * -----------
@@ -112,9 +112,10 @@ export interface WatershedNativeModule {
    *   4 — header split (common.h / forces.h / swe.h); Embind quarantined
    *   5 — optional gpu-chores (reduce/hist/downsample/blur); MIN_WASM_ABI_VERSION stayed 4
  *   6 — nonlinear well-balanced SWE + bed pointer on stepShallowWater
- *       (breaking arity change; MIN_WASM_ABI_VERSION is now 6)
- *   7 — particle SoA (additive; MIN_WASM_ABI_VERSION stays 6)
- *   8 — applySWEEvent source terms (additive; MIN_WASM_ABI_VERSION stays 6)
+ *       (breaking arity change; MIN_WASM_ABI_VERSION was raised to 6)
+ *   7 — particle SoA (additive)
+ *   8 — applySWEEvent source terms (additive; MIN_WASM_ABI_VERSION is now 8 —
+ *       particle SoA and applySWEEvent are guaranteed exports, not optional)
  */
   getVersion(): number;
 
@@ -240,10 +241,12 @@ export interface WatershedNativeModule {
   ): void;
 
   /**
-   * Authored hydro source term (ABI 8+). Optional so an ABI 6/7 binary still
-   * loads; TypeScript applySWEEventFallback covers the gap.
+   * Authored hydro source term (ABI 8+). Required now that
+   * MIN_WASM_ABI_VERSION is 8 — every accepted binary exports it.
+   * `applySWEEventFallback` remains as the pure-TS twin used by
+   * deterministic CI measurement (hydroContrast.ts), not as a runtime gap-filler.
    */
-  applySWEEvent?(
+  applySWEEvent(
     hPtr: number, uPtr: number, wPtr: number, bPtr: number,
     width: number, height: number,
     dx: number, originX: number, originZ: number, H: number,
@@ -262,7 +265,7 @@ export interface WatershedNativeModule {
 
   /**
    * gpu-chores (ABI 5+). Kept optional in the type so the chore lane can
-   * decline defensively, though MIN_WASM_ABI_VERSION 6 means any accepted
+   * decline defensively, though MIN_WASM_ABI_VERSION 8 means any accepted
    * binary already exports them.
    */
   reduceF32Grid?(srcPtr: number, count: number, out3Ptr: number): void;
@@ -284,19 +287,19 @@ export interface WatershedNativeModule {
   ): void;
   blurSeparableF32?(srcPtr: number, dstPtr: number, width: number, height: number): void;
 
-  /** ABI 7+ particle SoA. Optional so ABI-6 binaries still load for SWE. */
-  allocateParticleSoA?(capacity: number): number;
-  freeParticleSoA?(ptr: number): void;
-  initWaterfallParticles?(
+  /** ABI 7+ particle SoA. Required now that MIN_WASM_ABI_VERSION is 8. */
+  allocateParticleSoA(capacity: number): number;
+  freeParticleSoA(ptr: number): void;
+  initWaterfallParticles(
     base: number, capacity: number, active: number,
     width: number, height: number, depthZ: number,
     fanSpreadRad: number, seed: number,
   ): number;
-  stepWaterfallParticles?(
+  stepWaterfallParticles(
     base: number, capacity: number, active: number,
     dt: number, width: number, height: number, depthZ: number, seed: number,
   ): number;
-  stepSplashParticles?(
+  stepSplashParticles(
     base: number, capacity: number, count: number,
     dt: number, gravityY: number, damp: number,
   ): void;
@@ -313,7 +316,7 @@ type WatershedNativeFactory = (options?: {
 // Singleton loader
 // ---------------------------------------------------------------------------
 /** Minimum ABI accepted by this TypeScript surface. Use >= so a future minor bump does not break. */
-export const MIN_WASM_ABI_VERSION = 6;
+export const MIN_WASM_ABI_VERSION = 8;
 
 /** SoA planes in allocateParticleSoA (px…scale). Mirrored by PARTICLE_SOA_PLANES in particles.h. */
 export const PARTICLE_SOA_PLANES = 9;

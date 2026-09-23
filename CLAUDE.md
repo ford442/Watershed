@@ -96,7 +96,6 @@ src/
 │   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, WaterForces
-├── shaders/                     # HeightmapFlow.ts
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
@@ -227,8 +226,9 @@ The water shader is solid. Two tweaks to match the concept:
 
 ### Step 4 — Post-processing / atmosphere ✅ (mostly)
 Shipped in `PostProcessingPipeline.tsx`, but **not** via `@react-three/postprocessing`: the live stack is
-Three's own JSM `EffectComposer` plus `postprocessing@6`. (`@react-three/postprocessing@3.0.4` is still a
-dependency only because `vite.config.ts` names it in `manualChunks`; nothing imports it.)
+Three r168's own JSM `EffectComposer` only. Neither `@react-three/postprocessing` nor the standalone
+`postprocessing` package is a dependency — both were dead weight (zero imports) and have been removed,
+along with the `vendor-post` `manualChunks` bucket in `vite.config.ts`.
 - **Bloom** — ✅ `UnrealBloomPass`
 - **Vignette** — ✅ `VignetteShader`
 - **ChromaticAberration** (subtle, speed-triggered) — ✅ custom `ChromaticAberrationShader`

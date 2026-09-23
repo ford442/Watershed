@@ -100,16 +100,16 @@ target hardware, not headless SwiftShader).
 ## Phase 2: Gameplay Systems
 
 ### Player Mechanics
-- [ ] Implement momentum-based movement
-- [ ] Add slide/drift mechanics for turns
-- [ ] Create respawn system for out-of-bounds
-- [ ] Add velocity-based camera effects
+- [x] Implement momentum-based movement (`RunnerPhysicsStep.ts` downhill momentum reward)
+- [x] Add slide/drift mechanics for turns (`MOVEMENT.SLIDE_SPEED_BOOST` in `RunnerPhysicsStep.ts`)
+- [x] Create respawn system for out-of-bounds (`checkpointTable.ts` / survival respawn)
+- [x] Add velocity-based camera effects (FOV kick — speed-based expansion + waterfall punch, `RunnerPhysicsStep.ts`)
 
 ### Track Generation
-- [ ] Design procedural spline generation algorithm
-- [ ] Create biome-specific track variations
-- [ ] Implement difficulty progression system
-- [ ] Add obstacle placement system
+- [x] Design procedural spline generation algorithm (`THREE.CatmullRomCurve3` segment paths, `TrackManager.tsx`)
+- [x] Create biome-specific track variations (`configs/TrackBiomes.ts`, `BiomeId` per segment)
+- [x] Implement difficulty progression system (`MapSystem.ts` `difficulty` field, `ReachStreamer.ts`)
+- [x] Add obstacle placement system (`components/Obstacles/` — rocks, breakable trestle, pillar VFX)
 
 ## Biomes & Journey — Prototype Concepts
 
@@ -201,7 +201,7 @@ Prototype Todo: ~~Implement a minimal `FlowForecast` simulation…~~ → v1 comp
 
 ### Audio
 - [x] Rushing water ambiance (segment-aware via useSegmentAudio)
-- [ ] Speed-based wind sounds
+- [x] Speed-based wind sounds (`systems/audio/speedWind.ts` + `SpeedWindAudio`)
 - [x] Collision/impact effects
 
 ---

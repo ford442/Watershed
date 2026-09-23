@@ -4,7 +4,7 @@ Watershed's **production** renderer is `THREE.WebGLRenderer`. The `?renderer=web
 
 Since #256 path A there is a second, opt-in path: `?material=tsl` builds NodeMaterial/TSL materials, which require a node-capable renderer. See [Material backends](#material-backends-256-path-a).
 
-Graphics quality presets (`low` / `medium` / `high` / `ultra` from `GameState.settings.quality`, synced via `SettingsSync` → `LODManager`) drive the most expensive WebGL context knobs: device pixel ratio, antialiasing, shadow mode, shadow map size, tone mapping, and output color space.
+Graphics quality presets (`low` / `medium` / `high` / `ultra` from `GameState.settings.quality`, synced via `SettingsSync` → `LODManager`) drive the most expensive WebGL context knobs: device pixel ratio, shadow mode, shadow map size, tone mapping, and output color space. Antialiasing is **not** a preset knob — it comes from `rendererContextOptions.antialias`, set once by the boot-negotiated `GraphicsEnvelope` (`probeGraphicsCapability.ts`) and frozen for the session so a quality change never remounts the Canvas.
 
 Most of that now applies **live**. The Canvas `key` carries only what genuinely needs a fresh WebGL context — renderer preference, material backend, the creation-only context attributes, and the context-loss epoch — so `medium` ↔ `high` ↔ `ultra` mid-run keeps Rapier, the 7-segment treadmill, the WASM SWE grids, audio, and the vehicle body alive. See [Live quality apply](#live-quality-apply).
 

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../../systems/lod/LODManager';
 import type { WaterfallParticlesProps } from './types';
-import { getWasm, peekWasm, type WatershedNativeModule } from '../../systems/water/WatershedWasm';
+import { getWasm, heapF32, peekWasm, type WatershedNativeModule } from '../../systems/water/WatershedWasm';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 
 interface WaterfallParticle {
@@ -25,13 +25,33 @@ const MAX_POOL_JS = 500;
 const MAX_POOL = 1000;
 const DEPTH_Z = 5;
 
-function particlePlane(
+/** Cached px/py/pz/scale heap views over one waterfall particle-SoA allocation. */
+export interface WaterfallSoAViews {
+  px?: Float32Array;
+  py?: Float32Array;
+  pz?: Float32Array;
+  scale?: Float32Array;
+}
+
+/**
+ * Rebind (or reuse) the four `Float32Array` views this component reads via
+ * `heapF32()` (#415/#419 remainder): a grown `HEAPF32.buffer` forces a
+ * rebuild, but an unchanged heap reuses the cached views instead of
+ * allocating four typed arrays every frame. Callers must reset `views` to
+ * `{}` whenever `base` (the SoA pointer) changes, since heapF32 only
+ * detects a *grown* buffer, not a different pointer into the same one.
+ */
+export function bindWaterfallViews(
   mod: WatershedNativeModule,
   base: number,
-  plane: number,
   capacity: number,
-): Float32Array {
-  return new Float32Array(mod.HEAPF32.buffer, base + plane * capacity * 4, capacity);
+  views: WaterfallSoAViews,
+): Required<WaterfallSoAViews> {
+  views.px = heapF32(mod, base, capacity, views.px);
+  views.py = heapF32(mod, base + capacity * 4, capacity, views.py);
+  views.pz = heapF32(mod, base + capacity * 8, capacity, views.pz);
+  views.scale = heapF32(mod, base + 8 * capacity * 4, capacity, views.scale);
+  return views as Required<WaterfallSoAViews>;
 }
 
 export default function WaterfallParticles({
@@ -51,12 +71,11 @@ export default function WaterfallParticles({
   const fadeAlphaRef = useRef(1.0);
   const wasmRef = useRef<WatershedNativeModule | null>(null);
   const soaPtrRef = useRef(0);
+  const soaViewsRef = useRef<WaterfallSoAViews>({});
   const seedRef = useRef(0xC0FFEE ^ (baseCount * 17));
   const wasmReadyRef = useRef(false);
 
-  const wasmLive = Boolean(
-    peekWasm()?.allocateParticleSoA && peekWasm()?.stepWaterfallParticles,
-  );
+  const wasmLive = peekWasm() !== null;
 
   const calculatedCount = useMemo(() => {
     const densityBase = 100 + (particleDensity * 300);
@@ -92,17 +111,15 @@ export default function WaterfallParticles({
     void getWasm()
       .then((mod) => {
         if (cancelled) return;
-        if (typeof mod.allocateParticleSoA !== 'function'
-          || typeof mod.initWaterfallParticles !== 'function'
-          || typeof mod.stepWaterfallParticles !== 'function') {
-          return;
-        }
         const ptr = mod.allocateParticleSoA(MAX_POOL);
         seedRef.current = mod.initWaterfallParticles(
           ptr, MAX_POOL, MAX_POOL, width, height, DEPTH_Z, fanSpreadRad, seedRef.current,
         );
         wasmRef.current = mod;
         soaPtrRef.current = ptr;
+        // Fresh pointer — cached views from a prior allocation would alias
+        // the wrong memory if HEAPF32.buffer happens not to have grown.
+        soaViewsRef.current = {};
         wasmReadyRef.current = true;
       })
       .catch(() => {
@@ -112,11 +129,12 @@ export default function WaterfallParticles({
       cancelled = true;
       const mod = wasmRef.current;
       const ptr = soaPtrRef.current;
-      if (mod && ptr && typeof mod.freeParticleSoA === 'function') {
+      if (mod && ptr) {
         mod.freeParticleSoA(ptr);
       }
       wasmRef.current = null;
       soaPtrRef.current = 0;
+      soaViewsRef.current = {};
       wasmReadyRef.current = false;
     };
   }, [width, height, fanSpreadRad]);
@@ -183,14 +201,11 @@ export default function WaterfallParticles({
 
     const mod = wasmRef.current;
     const ptr = soaPtrRef.current;
-    if (mod && ptr && typeof mod.stepWaterfallParticles === 'function') {
+    if (mod && ptr) {
       seedRef.current = mod.stepWaterfallParticles(
         ptr, MAX_POOL, currentCount, delta, width, height, DEPTH_Z, seedRef.current,
       );
-      const px = particlePlane(mod, ptr, 0, MAX_POOL);
-      const py = particlePlane(mod, ptr, 1, MAX_POOL);
-      const pz = particlePlane(mod, ptr, 2, MAX_POOL);
-      const scale = particlePlane(mod, ptr, 8, MAX_POOL);
+      const { px, py, pz, scale } = bindWaterfallViews(mod, ptr, MAX_POOL, soaViewsRef.current);
       for (let i = 0; i < currentCount; i++) {
         dummy.position.set(px[i], py[i], pz[i]);
         dummy.scale.setScalar(scale[i] * fadeAlphaRef.current);

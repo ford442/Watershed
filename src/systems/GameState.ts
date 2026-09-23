@@ -13,7 +13,7 @@
  * - Player position is stored as a plain {x,y,z} object — NOT a THREE.Vector3 —
  *   so the store remains serializable and works with Zustand devtools.
  * - High-frequency updates (position every frame) are throttled in the caller
- *   (Experience.jsx) rather than inside the store.
+ *   (experience/InnerExperience.tsx) rather than inside the store.
  */
 
 import { create } from 'zustand';

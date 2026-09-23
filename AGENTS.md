@@ -33,10 +33,10 @@ App.tsx
             │    └─ SplashSystem
             ├─ VehicleMount → RunnerVehicle | RaftVehicle
             ├─ TrackManager | ReachManager | LevelLoader
-            └─ PostProcessingPipeline.jsx
+            └─ PostProcessingPipeline.tsx
 ```
 
-Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.jsx`**. Water forces live in **`physics/WaterForces.ts`** + **`WaterForceSystem`** / **`WaterFlowForces.tsx`**.
+Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.tsx`**. Water forces live in **`physics/WaterForces.ts`** + **`WaterForceSystem`** / **`WaterFlowForces.tsx`**.
 
 CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; bans renamed/deleted dual stems — see the script).
 
@@ -48,7 +48,7 @@ CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; 
 |-------|------------|---------|
 | UI/Framework | React 19 + TypeScript 5.9 | Component architecture, state |
 | 3D Rendering | Three.js 0.168 + React Three Fiber 9.4 | Scene graph, rendering |
-| Post-processing | `@react-three/postprocessing` + `postprocessing` via `PostProcessingPipeline.jsx` | Bloom, vignette, SSAO, speed FX |
+| Post-processing | Three r168's own JSM `EffectComposer` passes via `PostProcessingPipeline.tsx` (`@react-three/postprocessing` / `postprocessing` are not dependencies — nothing imports them) | Bloom, vignette, SSAO, speed FX |
 | Physics | Rapier 0.19 (WASM) via `@react-three/rapier` | Rigid bodies, collisions |
 | Build | Vite 7.3 | Dev server + production bundle → `build/` |
 | Tests | Vitest + Testing Library | Unit / component tests |
