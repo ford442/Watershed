@@ -157,8 +157,11 @@ export function updateFlowingWaterUniforms(
   if (mat.uniforms.slushiness) {
     mat.uniforms.slushiness.value = slushiness;
   }
+  // Texture uniforms never go null: on `?material=tsl` they are TextureNodes,
+  // which throw at compile without a texture (a GLSL sampler tolerated it).
+  // Black is what an unbound GLSL sampler read anyway.
   if (mat.uniforms.flowMap) {
-    mat.uniforms.flowMap.value = flowMap || null;
+    mat.uniforms.flowMap.value = flowMap || getBlackReflectionFallback();
   }
 
   if (mat.uniforms.bioLuminescence) {
@@ -203,7 +206,7 @@ export function updateFlowingWaterUniforms(
 
   const swe = getSWEHeightFieldSnapshot();
   if (mat.uniforms.sweHeightMap) {
-    mat.uniforms.sweHeightMap.value = swe.texture;
+    mat.uniforms.sweHeightMap.value = swe.texture ?? getBlackReflectionFallback();
   }
   if (mat.uniforms.sweOrigin) {
     mat.uniforms.sweOrigin.value.set(swe.originX, swe.originZ);
