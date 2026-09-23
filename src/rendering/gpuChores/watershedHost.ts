@@ -3,7 +3,7 @@
  *
  * The only module under gpuChores/ that may import WatershedWasm. Chore
  * kernels stay in emscripten/chores.cpp (optional ABI 5); missing exports
- * make the wasm lane decline. Since MIN_WASM_ABI_VERSION moved to 6 any
+ * make the wasm lane decline. Since MIN_WASM_ABI_VERSION is now 8 any
  * accepted binary already has them, so the decline path is now defensive.
  */
 

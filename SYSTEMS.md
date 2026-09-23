@@ -583,12 +583,13 @@ never seed it with the still depth. One sim backend per boot: C++ WASM (`sweBack
 **Layout:** `emscripten/common.h` (shared constants/types, `WATERSHED_KEEPALIVE`) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
 not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `bindings.cpp` (the only `<emscripten/bind.h>` include; Embind surface,
-`getVersion()` — **8** in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**6** — ABI 6 changed `stepShallowWater`'s arity, so older binaries are rejected rather than partially used; ABI 7 particle SoA and ABI 8 `applySWEEvent` are additive). After ABI 6, `swe.cpp` SIMD is **damping**, **conserved-state lift**, and **CFL max reduction** only — HLL / hydrostatic reconstruction stay scalar. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+`getVersion()` — **8** in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**8** — ABI 6 changed `stepShallowWater`'s arity, so older binaries are rejected rather than partially used; ABI 7 particle SoA and ABI 8 `applySWEEvent` are now guaranteed exports, not optional TS branches, since the floor moved to 8). After ABI 6, `swe.cpp` SIMD is **damping**, **conserved-state lift**, and **CFL max reduction** only — HLL / hydrostatic reconstruction stay scalar. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
-Archimedes buoyancy, drag force, river-current flow force, and a linearised
-Shallow Water Equations (SWE) grid simulator. A pure-TypeScript fallback is provided
+Archimedes buoyancy, drag force, river-current flow force, and a nonlinear
+well-balanced Shallow Water Equations (SWE) grid simulator (conservative finite
+volume, HLL + hydrostatic reconstruction, wetting/drying). A pure-TypeScript fallback is provided
 for every calculation so the game runs correctly when the WASM binary is absent.
 SWE is **domain hydrology**, not gpu-chores. HUD reduce/hist/downsample live in
 `src/rendering/gpuChores/` and optionally call `chores.cpp`. Independent of `?material=tsl`.
@@ -622,8 +623,10 @@ These are used in unit tests and in any code path that does not need the SWE gri
 - `buoyancyFallback`, `dragForceFallback`
 - Interfaces: `Vec3`, `WatershedNativeModule`, `SWEGrid`
 
-**Current integration:** `FloatingObjectManager.ts` (PR #160) calls `getWasm()` on
-first use, falls back to the TS implementations when the module is unavailable.
+**Current integration:** debris registers into `WaterForceSystem` (via
+`WaterForceRegistry`), not `FloatingObjectManager.tsx` calling `getWasm()` itself —
+`WaterForceSystem` owns the lazy `getWasm()` load and falls back to the TS
+implementations when the module is unavailable.
 
 ### Build
 

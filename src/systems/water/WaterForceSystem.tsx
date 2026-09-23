@@ -425,28 +425,26 @@ export function WaterForceSystem({
         );
 
         const hydroEvents = parseHydroEvents(getActiveMap().levelData.hydroEvents);
-        const nativeApply = wasmRef.current.applySWEEvent
-          ? (kind: number, cx: number, cz: number, radius: number, strength: number, dtEvent: number) => {
-              wasmRef.current!.applySWEEvent!(
-                grid.hPtr,
-                grid.uPtr,
-                grid.wPtr,
-                grid.bPtr,
-                grid.width,
-                grid.height,
-                grid.dx,
-                originX,
-                originZ,
-                SWE_MEAN_DEPTH,
-                kind,
-                cx,
-                cz,
-                radius,
-                strength,
-                dtEvent,
-              );
-            }
-          : undefined;
+        const nativeApply = (kind: number, cx: number, cz: number, radius: number, strength: number, dtEvent: number) => {
+          wasmRef.current!.applySWEEvent(
+            grid.hPtr,
+            grid.uPtr,
+            grid.wPtr,
+            grid.bPtr,
+            grid.width,
+            grid.height,
+            grid.dx,
+            originX,
+            originZ,
+            SWE_MEAN_DEPTH,
+            kind,
+            cx,
+            cz,
+            radius,
+            strength,
+            dtEvent,
+          );
+        };
         applyHydroEventsToGrid(
           {
             h: grid.h,

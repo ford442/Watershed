@@ -65,8 +65,12 @@ export {
 } from './MapSystem.generation';
 
 // =============================================================================
-// PLACEHOLDER IMPLEMENTATION
+// PROCEDURAL FALLBACK MAP MANAGER
 // =============================================================================
+// Not a placeholder: this is the real procedural generator that both the
+// standalone (map-less) treadmill and the authored-map fallback path
+// (`fallbackManager` below and in the authored-map manager) fall back to
+// once the authored segment sequence runs out.
 
 export class DefaultMapManager implements MapManager {
   chunks: BaseMapChunk[] = [];

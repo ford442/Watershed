@@ -50,10 +50,11 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 6+, since stepShallowWater gained the bed argument', () => {
-    // ABI 6 changed stepShallowWater's arity, so an older binary cannot be
-    // called at all — this floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBeGreaterThanOrEqual(6);
+  it('requires ABI 8+, since applySWEEvent/particle SoA are now guaranteed exports', () => {
+    // ABI 8 is the floor: applySWEEvent and the particle SoA exports are
+    // required (non-optional) in WatershedNativeModule, so an older binary
+    // cannot be accepted — this floor must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBe(8);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -333,6 +334,7 @@ function buildMockModule(): WatershedNativeModule {
     initWaterfallParticles() { return 1; },
     stepWaterfallParticles() { return 1; },
     stepSplashParticles() { /* heap views only — no C++ numerics in this mock */ },
+    applySWEEvent() { /* source-term kernel not exercised by this mock */ },
   };
 
   return mod;
@@ -758,6 +760,17 @@ describe('getWasm artifact stamp', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     globalThis.Function = RealFunction;
+  });
+
+  it('rejects a module reporting ABI 7 (below MIN_WASM_ABI_VERSION 8)', async () => {
+    stubFactory({ getVersion: () => 7 });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await expect(getWasm()).rejects.toThrow(/ABI 7 is older than required 8/);
+    expect(peekWasm()).toBeNull();
+
+    errorSpy.mockRestore();
   });
 
   it('rejects when served glue+wasm hash does not match WASM_ARTIFACT_STAMP', async () => {

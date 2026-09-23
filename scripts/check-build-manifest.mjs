@@ -58,7 +58,6 @@ const EXPECTED_PASSENGERS = [
   'levels/autumn-rapids.json',
   'levels/devils-gorge.json',
   'levels/gentle-creek.json',
-  'rapier.wasm',
   'sounds/ambient_canyon.mp3',
   'sounds/ambient_water.mp3',
   'sounds/ambient_wind.mp3',
@@ -87,11 +86,11 @@ const EXPECTED_PASSENGERS = [
 ];
 
 /** public/ files that must NOT be copied through to build/ as-is.
- *  public/index.html is a stale, script-less duplicate of the root index.html
- *  template. Vite copies publicDir first and then writes the generated
- *  index.html over it, so the generated one wins today — but if that ordering
- *  ever changes, the deploy silently serves a blank page. Guard the outcome. */
-const PASSENGER_EXCLUDED = new Set(['index.html']);
+ *  public/index.html — the stale, script-less duplicate of the root index.html
+ *  template that made this exclusion necessary — has been deleted (§6.2). If it
+ *  is ever resurrected, leaving this set empty means the passenger-inventory
+ *  check below fails loudly on it instead of silently excluding it again. */
+const PASSENGER_EXCLUDED = new Set();
 
 /** Unhashed files build/ is allowed to contain besides the passengers. */
 const EXPECTED_GENERATED_UNHASHED = ['index.html', 'BUILD_ID'];

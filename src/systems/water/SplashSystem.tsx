@@ -31,8 +31,46 @@ import {
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSplashBowWaveMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { getWasm, type WatershedNativeModule } from './WatershedWasm';
+import { getWasm, heapF32, type WatershedNativeModule } from './WatershedWasm';
 import { NonEmptyInstancedMesh } from '../../components/NonEmptyInstancedMesh';
+
+/** Cached heap views over one particle-SoA allocation (px…maxLife planes). */
+export interface SplashSoAViews {
+  px?: Float32Array;
+  py?: Float32Array;
+  pz?: Float32Array;
+  vx?: Float32Array;
+  vy?: Float32Array;
+  vz?: Float32Array;
+  life?: Float32Array;
+  maxLife?: Float32Array;
+}
+
+export interface SplashWasmSlot {
+  mod: WatershedNativeModule;
+  ptr: number;
+  cap: number;
+  views: SplashSoAViews;
+}
+
+/**
+ * Rebind (or reuse) the eight `Float32Array` views over a splash/mist SoA
+ * allocation via `heapF32()` (#415/#419 remainder): a grown `HEAPF32.buffer`
+ * forces a rebuild, but an unchanged heap reuses the same views instead of
+ * allocating eight typed arrays every frame.
+ */
+export function bindSplashViews(slot: SplashWasmSlot): Required<SplashSoAViews> {
+  const { mod, ptr, cap, views } = slot;
+  views.px = heapF32(mod, ptr, cap, views.px);
+  views.py = heapF32(mod, ptr + cap * 4, cap, views.py);
+  views.pz = heapF32(mod, ptr + cap * 8, cap, views.pz);
+  views.vx = heapF32(mod, ptr + cap * 12, cap, views.vx);
+  views.vy = heapF32(mod, ptr + cap * 16, cap, views.vy);
+  views.vz = heapF32(mod, ptr + cap * 20, cap, views.vz);
+  views.life = heapF32(mod, ptr + cap * 24, cap, views.life);
+  views.maxLife = heapF32(mod, ptr + cap * 28, cap, views.maxLife);
+  return views as Required<SplashSoAViews>;
+}
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -99,7 +137,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   const splashPoolRef = useRef<ParticlePool<VFXParticle> | null>(null);
   const foamPoolRef = useRef<ParticlePool<FoamParticle> | null>(null);
   const mistPoolRef = useRef<ParticlePool<MistParticle> | null>(null);
-  const splashWasmRef = useRef<{ mod: WatershedNativeModule; ptr: number; cap: number } | null>(null);
+  const splashWasmRef = useRef<SplashWasmSlot | null>(null);
 
   const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
   const mistMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -127,19 +165,15 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     void getWasm()
       .then((mod) => {
         if (cancelled) return;
-        if (typeof mod.allocateParticleSoA !== 'function'
-          || typeof mod.stepSplashParticles !== 'function') {
-          return;
-        }
         const cap = Math.max(maxInstances, MAX_MIST_INSTANCES);
         const ptr = mod.allocateParticleSoA(cap);
-        splashWasmRef.current = { mod, ptr, cap };
+        splashWasmRef.current = { mod, ptr, cap, views: {} };
       })
       .catch(() => { /* JS ParticlePool integrate — #390 */ });
     return () => {
       cancelled = true;
       const slot = splashWasmRef.current;
-      if (slot && typeof slot.mod.freeParticleSoA === 'function') {
+      if (slot) {
         slot.mod.freeParticleSoA(slot.ptr);
       }
       splashWasmRef.current = null;
@@ -402,27 +436,12 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     const splashWasm = splashWasmRef.current;
     const stepSplash = splashWasm?.mod.stepSplashParticles;
     if (splashWasm && splashParticles.length > 0 && stepSplash) {
-      const { mod, ptr, cap } = splashWasm;
+      const { ptr, cap } = splashWasm;
       const n = Math.min(splashParticles.length, cap);
-      /* eslint-disable @react-three/no-new-in-loop --
-         These eight `Float32Array` views are NOT per-frame garbage to hoist — they
-         are the fix for #415. The native module ships ALLOW_MEMORY_GROWTH=1, and a
-         growth REPLACES the underlying ArrayBuffer, silently detaching every view
-         created over the old one (byteLength -> 0; reads return nothing, writes go
-         nowhere). Re-deriving them from `mod.HEAPF32.buffer` inside the frame
-         callback is what keeps them bound to the live heap. Hoisting them out of
-         this callback reintroduces #415 in the splash path. The lint rule is a
-         syntactic `NewExpression` check and cannot tell a wasteful `new Vector3()`
-         from a mandatory heap rebind. */
-      const px = new Float32Array(mod.HEAPF32.buffer, ptr, cap);
-      const py = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 4, cap);
-      const pz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 8, cap);
-      const vx = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 12, cap);
-      const vy = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 16, cap);
-      const vz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 20, cap);
-      const life = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 24, cap);
-      const maxLife = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 28, cap);
-      /* eslint-enable @react-three/no-new-in-loop */
+      // heapF32() rebinds only when ALLOW_MEMORY_GROWTH replaced the
+      // ArrayBuffer (#415); an unchanged heap reuses the cached views
+      // instead of allocating eight typed arrays every frame (#419 remainder).
+      const { px, py, pz, vx, vy, vz, life, maxLife } = bindSplashViews(splashWasm);
       for (let i = 0; i < n; i++) {
         const p = splashParticles[i];
         px[i] = p.position.x;
@@ -498,27 +517,11 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     if (isRaft && mistMeshRef.current && mistPoolRef.current) {
       const mistToUpdate = [...mistPoolRef.current.getActive()];
       if (splashWasm && mistToUpdate.length > 0 && stepSplash) {
-        const { mod, ptr, cap } = splashWasm;
+        const { ptr, cap } = splashWasm;
         const n = Math.min(mistToUpdate.length, cap);
-        /* eslint-disable @react-three/no-new-in-loop --
-           These eight `Float32Array` views are NOT per-frame garbage to hoist — they
-           are the fix for #415. The native module ships ALLOW_MEMORY_GROWTH=1, and a
-           growth REPLACES the underlying ArrayBuffer, silently detaching every view
-           created over the old one (byteLength -> 0; reads return nothing, writes go
-           nowhere). Re-deriving them from `mod.HEAPF32.buffer` inside the frame
-           callback is what keeps them bound to the live heap. Hoisting them out of
-           this callback reintroduces #415 in the splash path. The lint rule is a
-           syntactic `NewExpression` check and cannot tell a wasteful `new Vector3()`
-           from a mandatory heap rebind. */
-        const px = new Float32Array(mod.HEAPF32.buffer, ptr, cap);
-        const py = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 4, cap);
-        const pz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 8, cap);
-        const vx = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 12, cap);
-        const vy = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 16, cap);
-        const vz = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 20, cap);
-        const life = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 24, cap);
-        const maxLife = new Float32Array(mod.HEAPF32.buffer, ptr + cap * 28, cap);
-        /* eslint-enable @react-three/no-new-in-loop */
+        // Same cached-view rebind as the splash pass above — shares the slot's
+        // views since it's the same underlying SoA allocation (ptr/cap/mod).
+        const { px, py, pz, vx, vy, vz, life, maxLife } = bindSplashViews(splashWasm);
         for (let i = 0; i < n; i++) {
           const p = mistToUpdate[i];
           px[i] = p.position.x;
