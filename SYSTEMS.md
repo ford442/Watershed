@@ -572,7 +572,15 @@ one page load (read-only, never written to persistence) so the same map can be
 smoke-tested at both scouting hours.
 
 **Constraint:** `h` is the free-surface *perturbation* η (swe.h ABI), zero at rest —
-never seed it with the still depth. One sim backend per boot: C++ WASM (`sweBackend.ts`). Phase D WGSL is not started. HeightmapFlow is dormant.
+never seed it with the still depth. One sim backend per session, fixed at first use by
+`resolveSweSimBackend()` (`sweBackend.ts`): the C++ WASM stepper, or on a native-WebGPU boot
+(`?material=tsl&renderer=webgpu`, gate open) its WGSL twin `swe.wgsl` via `WgslSweSim.ts` on the
+renderer's own `GPUDevice` — never both. `WaterForceSystem` drives either through `SweSim`
+(`sweSim.ts`). On WGSL the field and every writer (splash delta, bed, `applySWEEvent` kernel) live on
+the GPU; `h/u/w/b` readers see a mirror refreshed by async readback (one step behind) and
+`fieldVersion` gates the height-texture upload. `?swe=wasm` pins the C++ stepper. `pnpm test:wgsl`
+holds the two within 1e-5 on the host-smoke fixtures, the hull samples and the hydroContrast margins.
+HeightmapFlow was deleted (#413) and must not come back.
 
 ---
 
