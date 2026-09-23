@@ -26,6 +26,7 @@ import {
 } from './hydroEvents';
 import { sampleSWEFlow } from './sampleSWEFlow';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
+import type { SweEventCall } from './sweSim';
 
 /** Seeded downstream current (−Z), so `roughness` has something to damp. */
 export const CONTRAST_BASE_FLOW = 1.2;
@@ -75,7 +76,8 @@ export interface HydroHourContrast {
   hullDelta: number;
 }
 
-function makeGrid(): SWEEventGrid {
+/** Fresh contrast grid: 48×48 at 0.5 m, centred on the world origin, seeded current. */
+export function makeContrastGrid(): SWEEventGrid {
   const n = GRID * GRID;
   const grid: SWEEventGrid = {
     h: new Float32Array(n),
@@ -94,34 +96,54 @@ function makeGrid(): SWEEventGrid {
 }
 
 /**
- * Apply one hour's events for a single segment onto a fresh grid, centred on
- * the segment's path midpoint at world origin (the runtime places it via
- * `getRegisteredBathymetrySource`; the offset is irrelevant to a delta).
+ * Every `applySWEEvent` call one hour makes on one segment, in order: 30 steps
+ * of the active events, centred on the segment's path midpoint at world origin
+ * (the runtime places it via `getRegisteredBathymetrySource`; the offset is
+ * irrelevant to a delta).
  */
+export function hourEventCalls(
+  events: readonly HydroEvent[] | undefined,
+  hour: number,
+  segmentIndex: number,
+): SweEventCall[] {
+  const active = eventsActiveAtHour(events, hour).filter(
+    (event) => event.segmentIndex === segmentIndex,
+  );
+  const calls: SweEventCall[] = [];
+  for (let step = 0; step < STEPS; step += 1) {
+    for (const event of active) {
+      calls.push({
+        kind: hydroKindToInt(event.kind),
+        cx: event.lateralOffset ?? 0,
+        cz: 0,
+        radius: event.radius ?? 8,
+        strength: event.strength ?? 1,
+        dt: STEP_DT,
+      });
+    }
+  }
+  return calls;
+}
+
+/** Apply one hour's events for a single segment onto a fresh grid (TS kernel). */
 export function simulateHourGrid(
   events: readonly HydroEvent[] | undefined,
   hour: number,
   segmentIndex: number,
 ): SWEEventGrid {
-  const grid = makeGrid();
-  const active = eventsActiveAtHour(events, hour).filter(
-    (event) => event.segmentIndex === segmentIndex,
-  );
-  for (let step = 0; step < STEPS; step += 1) {
-    for (const event of active) {
-      applySWEEventFallback(
-        grid,
-        hydroKindToInt(event.kind),
-        event.lateralOffset ?? 0,
-        0,
-        event.radius ?? 8,
-        event.strength ?? 1,
-        STEP_DT,
-      );
-    }
+  const grid = makeContrastGrid();
+  for (const call of hourEventCalls(events, hour, segmentIndex)) {
+    applySWEEventFallback(grid, call.kind, call.cx, call.cz, call.radius, call.strength, call.dt);
   }
   return grid;
 }
+
+/**
+ * Applies a list of event calls to a contrast grid in place. The default is the
+ * TypeScript kernel; parity tests pass the WASM export or the WGSL dispatch so
+ * the margins are checked on every solver backend (#435).
+ */
+export type HydroEventApplier = (grid: SWEEventGrid, calls: readonly SweEventCall[]) => void | Promise<void>;
 
 function hullSample(grid: SWEEventGrid, worldX: number, worldZ: number) {
   return sampleSWEFlow({
@@ -160,7 +182,32 @@ export function measureHydroHourContrast(
 ): HydroHourContrast {
   const a = simulateHourGrid(events, hourA, segmentIndex);
   const b = simulateHourGrid(events, hourB, segmentIndex);
+  return contrastBetween(events, segmentIndex, hourA, hourB, a, b);
+}
 
+/** `measureHydroHourContrast` with the events applied by `apply` instead of the TS kernel. */
+export async function measureHydroHourContrastWith(
+  apply: HydroEventApplier,
+  events: readonly HydroEvent[] | undefined,
+  segmentIndex: number,
+  hourA: number,
+  hourB: number,
+): Promise<HydroHourContrast> {
+  const a = makeContrastGrid();
+  const b = makeContrastGrid();
+  await apply(a, hourEventCalls(events, hourA, segmentIndex));
+  await apply(b, hourEventCalls(events, hourB, segmentIndex));
+  return contrastBetween(events, segmentIndex, hourA, hourB, a, b);
+}
+
+function contrastBetween(
+  events: readonly HydroEvent[] | undefined,
+  segmentIndex: number,
+  hourA: number,
+  hourB: number,
+  a: SWEEventGrid,
+  b: SWEEventGrid,
+): HydroHourContrast {
   let maxEtaDelta = 0;
   let maxBedDelta = 0;
   for (let i = 0; i < a.h.length; i += 1) {

@@ -3,13 +3,16 @@ import glacial from '../../maps/glacial_source.json';
 import hydro from '../../maps/hydro_dam.json';
 import delta from '../../maps/delta_rapids.json';
 import lumber from '../../maps/lumber_flume.json';
-import { parseHydroEvents, hydroVortexSegments } from './hydroEvents';
+import { applySWEEventFallback, parseHydroEvents, hydroVortexSegments } from './hydroEvents';
 import {
   CONTRAST_FLOW_SPEED,
   HYDRO_CONTRAST_MARGINS,
+  hourEventCalls,
   hydroSegmentIndices,
   measureHydroHourContrast,
+  measureHydroHourContrastWith,
   simulateHourGrid,
+  type HydroEventApplier,
 } from './hydroContrast';
 import { sampleSWEFlow } from './sampleSWEFlow';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
@@ -137,5 +140,28 @@ describe('glacial slush roughness damps the hull', () => {
 
     expect(clear).toBeGreaterThan(0);
     expect(slush).toBeLessThan(clear);
+  });
+});
+
+describe('hydroContrast event appliers (#435)', () => {
+  it('replays 30 steps of the hour’s active events, in authored order', () => {
+    const events = parseHydroEvents(hydro.hydroEvents);
+    const segment = hydroSegmentIndices(events)[0];
+    const calls = hourEventCalls(events, DAM_HOUR, segment);
+    expect(calls.length % 30).toBe(0);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.dt === 1 / 60)).toBe(true);
+  });
+
+  it('measures the same contrast through an injected TS applier as the built-in path', async () => {
+    const events = parseHydroEvents(delta.hydroEvents);
+    const tsApply: HydroEventApplier = (grid, calls) => {
+      for (const c of calls) applySWEEventFallback(grid, c.kind, c.cx, c.cz, c.radius, c.strength, c.dt);
+    };
+    for (const segment of hydroSegmentIndices(events)) {
+      const direct = measureHydroHourContrast(events, segment, SCOUT_HOUR, DAM_HOUR);
+      const injected = await measureHydroHourContrastWith(tsApply, events, segment, SCOUT_HOUR, DAM_HOUR);
+      expect(injected).toEqual(direct);
+    }
   });
 });

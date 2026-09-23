@@ -15,12 +15,14 @@ import { FLOATING_OBJECT } from '../../constants/game';
 import { WATER_PHYSICS } from '../../vehicles/RaftVehicle/constants';
 import {
   calculateWaterForceFallback,
-  createSWEGrid,
   getWasm,
   type NativeWaterForceConfig,
-  type SWEGrid,
   type WatershedNativeModule,
 } from './WatershedWasm';
+import { createWasmSweSim, type SweEventCall, type SweSim } from './sweSim';
+import { createWgslSweSim } from './WgslSweSim';
+import { demoteSweSimBackendToWasm, resolveSweSimBackendDecision } from './sweBackend';
+import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import {
   SWE_MEAN_DEPTH,
   consumeSWEDisturbances,
@@ -157,7 +159,7 @@ function worldToGridIndex(
 }
 
 function toFlowGrid(
-  grid: SWEGrid,
+  grid: SweSim,
   originX: number,
   originZ: number,
 ): SWEFlowGrid {
@@ -175,7 +177,7 @@ function toFlowGrid(
 }
 
 function applyDisturbances(
-  grid: SWEGrid,
+  grid: SweSim,
   originX: number,
   originZ: number,
   disturbances: ReturnType<typeof consumeSWEDisturbances>,
@@ -195,14 +197,14 @@ function applyDisturbances(
         if (dist > d.radius) continue;
         const falloff = Math.exp(-(dist * dist) / Math.max(d.radius * d.radius, 0.01));
         const idx = gz * grid.width + gx;
-        grid.h[idx] += d.amplitude * falloff;
+        grid.addSurface(idx, d.amplitude * falloff);
       }
     }
   }
 }
 
 function uploadHeightTexture(
-  grid: SWEGrid,
+  grid: SweSim,
   texture: THREE.DataTexture,
   originX: number,
   originZ: number,
@@ -235,7 +237,7 @@ interface BedState {
  * rewritten, so a recycled slot cannot leak its predecessor's bed.
  */
 function refreshBed(
-  grid: SWEGrid,
+  grid: SweSim,
   originX: number,
   originZ: number,
   budget: SWEBudget,
@@ -255,6 +257,7 @@ function refreshBed(
     grid.width,
     grid.height,
   );
+  grid.commitBed();
 
   state.valid = true;
   state.revision = revision;
@@ -282,7 +285,8 @@ export function WaterForceSystem({
   turbulenceFrequency = 2.4,
 }: WaterForceSystemProps) {
   const wasmRef = useRef<WatershedNativeModule | null>(null);
-  const gridRef = useRef<SWEGrid | null>(null);
+  const gridRef = useRef<SweSim | null>(null);
+  const uploadedVersionRef = useRef(-1);
   const textureRef = useRef<THREE.DataTexture | null>(null);
   const originRef = useRef({ x: 0, z: 0 });
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
@@ -329,22 +333,23 @@ export function WaterForceSystem({
   }, []);
 
   // Grid + upload texture are sized by the budget, so a quality change
-  // reallocates both. `low` allocates nothing at all.
+  // reallocates both. `low` allocates nothing at all. The solver backend was
+  // fixed for the session at first use (sweBackend.ts): C++ WASM, or its WGSL
+  // twin on a native-WebGPU boot — never both.
   useEffect(() => {
     setSWEActiveBudget(budget);
 
     const wasm = wasmRef.current;
-    if (!budget.enabled || !wasm) {
+    const decision = resolveSweSimBackendDecision();
+    const device = decision.backend === 'wgsl' ? getSessionGpuDevice() : null;
+    if (!budget.enabled || (!device && !wasm)) {
       updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
       setSWEStatus(false, null);
       return;
     }
 
-    const grid = createSWEGrid(wasm, budget.width, budget.height, budget.cellSize);
-    // η is a free-surface *perturbation* (swe.h ABI): at rest it is 0, not H.
-    grid.h.fill(0);
-    gridRef.current = grid;
-
+    let cancelled = false;
+    let sim: SweSim | null = null;
     const texture = new THREE.DataTexture(
       new Float32Array(budget.width * budget.height),
       budget.width,
@@ -356,13 +361,45 @@ export function WaterForceSystem({
     texture.magFilter = THREE.LinearFilter;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
-    textureRef.current = texture;
-    stepAccumulatorRef.current = 0;
-    bedStateRef.current = { valid: false, revision: -1, originX: 0, originZ: 0 };
-    setSWEStatus(true, `${budget.width}x${budget.height}`);
+
+    const install = (next: SweSim) => {
+      sim = next;
+      gridRef.current = next;
+      textureRef.current = texture;
+      stepAccumulatorRef.current = 0;
+      uploadedVersionRef.current = -1;
+      bedStateRef.current = { valid: false, revision: -1, originX: 0, originZ: 0 };
+      setSWEStatus(true, `${budget.width}x${budget.height} ${next.backend}`);
+      console.info(
+        `[SWE] backend=${next.backend} (${resolveSweSimBackendDecision().reason}) grid=${budget.width}x${budget.height}`,
+      );
+    };
+
+    if (device) {
+      createWgslSweSim(device, budget.width, budget.height, budget.cellSize)
+        .then((next) => {
+          if (cancelled) {
+            next.dispose();
+            return;
+          }
+          install(next);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          // Nothing has stepped yet, so falling back keeps "one backend per
+          // session" — the WGSL field never existed.
+          console.error('[WaterForceSystem] WGSL SWE init failed; using the WASM stepper', error);
+          demoteSweSimBackendToWasm();
+          const fallbackWasm = wasmRef.current;
+          if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
+        });
+    } else if (wasm) {
+      install(createWasmSweSim(wasm, budget.width, budget.height, budget.cellSize));
+    }
 
     return () => {
-      grid.dispose();
+      cancelled = true;
+      sim?.dispose();
       gridRef.current = null;
       texture.dispose();
       textureRef.current = null;
@@ -396,7 +433,7 @@ export function WaterForceSystem({
 
     const grid = gridRef.current;
     const texture = textureRef.current;
-    if (budget.enabled && grid && texture && wasmRef.current) {
+    if (budget.enabled && grid && texture) {
       // Step-rate budget: accumulate render deltas and take one SWE step per
       // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
       refreshBed(grid, originX, originZ, budget, bedStateRef.current);
@@ -409,42 +446,9 @@ export function WaterForceSystem({
 
         applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
-        wasmRef.current.stepShallowWater(
-          grid.hPtr,
-          grid.uPtr,
-          grid.wPtr,
-          // Bed sampled from the canyon floor by refreshBed() above (#374
-          // Phase 2). Uncovered cells read as dry land, not open water.
-          grid.bPtr,
-          grid.width,
-          grid.height,
-          stepDt,
-          9.80665,
-          grid.dx,
-          SWE_MEAN_DEPTH,
-        );
-
+        // Authored hydro events run after the step, through the same backend.
         const hydroEvents = parseHydroEvents(getActiveMap().levelData.hydroEvents);
-        const nativeApply = (kind: number, cx: number, cz: number, radius: number, strength: number, dtEvent: number) => {
-          wasmRef.current!.applySWEEvent(
-            grid.hPtr,
-            grid.uPtr,
-            grid.wPtr,
-            grid.bPtr,
-            grid.width,
-            grid.height,
-            grid.dx,
-            originX,
-            originZ,
-            SWE_MEAN_DEPTH,
-            kind,
-            cx,
-            cz,
-            radius,
-            strength,
-            dtEvent,
-          );
-        };
+        const eventCalls: SweEventCall[] = [];
         applyHydroEventsToGrid(
           {
             h: grid.h,
@@ -466,9 +470,25 @@ export function WaterForceSystem({
             return { x: source.centerX, z: source.centerZ };
           },
           stepDt,
-          nativeApply,
+          (kind, cx, cz, radius, strength, dtEvent) => {
+            eventCalls.push({ kind, cx, cz, radius, strength, dt: dtEvent });
+          },
         );
 
+        // Bed sampled from the canyon floor by refreshBed() above (#374
+        // Phase 2). Uncovered cells read as dry land, not open water.
+        grid.step({
+          dt: stepDt,
+          g: 9.80665,
+          H: SWE_MEAN_DEPTH,
+          originX,
+          originZ,
+          events: eventCalls,
+        });
+      }
+      // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
+      if (grid.fieldVersion !== uploadedVersionRef.current) {
+        uploadedVersionRef.current = grid.fieldVersion;
         uploadHeightTexture(grid, texture, originX, originZ, budget);
         runHeightfieldChores(grid.h, grid.width, grid.height);
       } else {

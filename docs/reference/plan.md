@@ -17,7 +17,7 @@ SWE (η, u, w, b)                  → mesh + Rapier (one field)
 Ghost codec + launchHour          → you race a river, not a tape
 ```
 
-Journey topology: `glacial → lumber → meander → hydro → delta`. Native WebGPU / WGSL SWE is Phase D of [#399](https://github.com/ford442/Watershed/issues/399) — C++ WASM stays the only live sim until then. Optional Tauri/Capacitor or a pthread SWE worker is Phase E (documented follow-up); no Electron, no default-on COOP-COEP.
+Journey topology: `glacial → lumber → meander → hydro → delta`. Native WebGPU opened in #434; the WGSL SWE twin ([#435](https://github.com/ford442/Watershed/issues/435)) steps the field on native-WebGPU boots and C++ WASM everywhere else — one backend per session. Optional Tauri/Capacitor or a pthread SWE worker is Phase E (documented follow-up); no Electron, no default-on COOP-COEP.
 
 Historical notes below are still useful; unchecked items that contradict the board above are stale.
 

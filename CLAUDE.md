@@ -265,6 +265,7 @@ npm test                          # unit tests (Vitest)
 npm run lint                      # ESLint — 0 errors is the gate; warnings are a tracked backlog
 npm run typecheck                 # tsc + repo layout guards
 npm run test:visual-smoke         # headless WebGL pixel gate (needs `npm run preview`)
+npm run test:wgsl                 # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
 
@@ -314,6 +315,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
+| `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM, or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
