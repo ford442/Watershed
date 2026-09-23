@@ -86,14 +86,14 @@ function buildRiverColorNode(
   const viewDir = normalize(cameraPosition.sub(worldPos));
   const heightAboveWater = worldPos.y.sub(uWaterLevel);
 
-  const dispHeight = dispTex.uv(uv()).r;
+  const dispHeight = dispTex.sample(uv()).r;
   const parallaxOffset = viewDir.xy.mul(dispHeight).mul(uDisplacementScale);
 
   let diffuse = materialColor.rgb;
 
   if (enableTriplanar) {
     const uv2Attr = attribute('uv2', 'vec2');
-    const triplanarSample = uColorMap.uv(uv2Attr.add(parallaxOffset));
+    const triplanarSample = uColorMap.sample(uv2Attr.add(parallaxOffset));
     const triplanarBlend = smoothstep(float(3), float(12), heightAboveWater);
     const cliffBlend = pow(
       float(1).sub(abs(dot(worldNormal, vec3(0, 1, 0)))),

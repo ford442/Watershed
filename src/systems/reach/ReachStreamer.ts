@@ -373,7 +373,7 @@ async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.T
   AssetCache.flowMapData.set(fullUrl, { data: cpuData, width, height });
 
   const dataTexture = new THREE.DataTexture(
-    data as unknown as BufferSource,
+    data,
     width,
     height,
     THREE.RGBAFormat,

@@ -9,7 +9,7 @@
  * fails — the old bug, with extra latency.
  *
  * - `alpha: false` — an opaque game view. THREE always *requests* the GL context
- *   with `alpha: true` (r168), so this does not change the context itself; what
+ *   with `alpha: true` (r178), so this does not change the context itself; what
  *   it changes is `WebGLBackground`, which then clears the drawing buffer fully
  *   opaque instead of letting the page show through. Matches THREE's default;
  *   pinned so it cannot drift silently.
@@ -30,7 +30,7 @@ export const SHARED_CONTEXT_ATTRIBUTES = {
 } as const;
 
 /**
- * The context name THREE r168 asks for. WebGL1 is not a fallback anywhere in
+ * The context name THREE r178 asks for. WebGL1 is not a fallback anywhere in
  * this codebase — the shaders are GLSL ES 3.00.
  */
 export const GL_CONTEXT_NAME = 'webgl2';

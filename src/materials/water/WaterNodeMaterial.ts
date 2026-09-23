@@ -204,8 +204,8 @@ function buildSweSampler(u: WaterNodeUniforms) {
       .mul(step(float(0), local.y))
       .mul(step(local.y, float(1)));
 
-    // `.uv()` rebinds the sampler coordinate — same call style as RiverNodeMaterial.
-    const h = sweHeightMap.uv(clamp(local, vec2(0, 0), vec2(1, 1))).r;
+    // `.sample()` rebinds the sampler coordinate (r172 renamed it from `.uv()`).
+    const h = sweHeightMap.sample(clamp(local, vec2(0, 0), vec2(1, 1))).r;
 
     return h
       .sub(sweMeanDepth)
@@ -223,7 +223,7 @@ function buildFlowBias(u: WaterNodeUniforms, useFlowMap: boolean) {
   if (!useFlowMap) {
     return vec2(sin(nd(u.time).mul(0.1)), float(-1));
   }
-  return nd(u.flowMap).uv(uv().mul(0.5)).rg.mul(2).sub(1);
+  return nd(u.flowMap).sample(uv().mul(0.5)).rg.mul(2).sub(1);
 }
 
 /**
@@ -448,7 +448,7 @@ function buildColorNode(
     .mul(0.5)
     .add(0.5)
     .add(normalN.xz.mul(0.015));
-  const reflection = reflectionTexture.uv(
+  const reflection = reflectionTexture.sample(
     clamp(reflectionUv, vec2(0.001, 0.001), vec2(0.999, 0.999)),
   ).rgb;
   // GLSL guards with `if (reflectionStrength > 0.001)`; the mask keeps the same

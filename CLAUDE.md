@@ -25,7 +25,7 @@ npm run build      # production build → build/
 | What | How |
 |------|-----|
 | Framework | React 19 + TypeScript |
-| 3D rendering | Three.js 0.168 + React Three Fiber 9.4 |
+| 3D rendering | Three.js 0.178 + React Three Fiber 9.4 |
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
 | Shaders | GLSL (injected via `onBeforeCompile`) by default; opt-in NodeMaterial/TSL backend via `?material=tsl` (#256 path A) |
@@ -226,7 +226,7 @@ The water shader is solid. Two tweaks to match the concept:
 
 ### Step 4 — Post-processing / atmosphere ✅ (mostly)
 Shipped in `PostProcessingPipeline.tsx`, but **not** via `@react-three/postprocessing`: the live stack is
-Three r168's own JSM `EffectComposer` only. Neither `@react-three/postprocessing` nor the standalone
+Three r178's own JSM `EffectComposer` only. Neither `@react-three/postprocessing` nor the standalone
 `postprocessing` package is a dependency — both were dead weight (zero imports) and have been removed,
 along with the `vendor-post` `manualChunks` bucket in `vite.config.ts`.
 - **Bloom** — ✅ `UnrealBloomPass`

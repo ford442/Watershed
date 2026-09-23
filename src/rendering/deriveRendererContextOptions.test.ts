@@ -190,7 +190,7 @@ describe('pinned context attributes', () => {
     });
   });
 
-  it('keeps desynchronized off — THREE r168 does not forward it anyway', () => {
+  it('keeps desynchronized off — THREE r178 does not forward it anyway', () => {
     expect(DESYNCHRONIZED_ENABLED).toBe(false);
   });
 

@@ -347,7 +347,7 @@ describe('createGameRenderer', () => {
     });
 
     expect(requested.length).toBeGreaterThan(0);
-    // THREE r168 builds its own attribute object; these are the entries it
+    // THREE r178 builds its own attribute object; these are the entries it
     // forwards from the constructor parameters we pass.
     expect(requested[0]).toMatchObject({
       antialias: true,
@@ -622,12 +622,15 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
   });
 
   it('applies tone mapping and shadow settings to the node renderer too', async () => {
-    const contextOptions = deriveRendererContextOptions({ quality: 'high' });
+    const contextOptions = deriveRendererContextOptions('high');
     const renderer = await createGameRenderer(
       { canvas: document.createElement('canvas') },
       { preference: 'webgl', materialBackend: 'tsl', contextOptions }
     );
 
+    // Not the WebGLRenderer fallback, which would apply the same options.
+    expect((renderer as any).isWebGPURenderer).toBe(true);
+    expect(contextOptions.outputColorSpace).toBeDefined();
     expect(renderer.outputColorSpace).toBe(contextOptions.outputColorSpace);
     expect(renderer.toneMapping).toBe(contextOptions.toneMapping);
     expect(getRendererShadowMapSize(renderer)).toBe(contextOptions.shadowMapSize);
