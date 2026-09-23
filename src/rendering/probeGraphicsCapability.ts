@@ -189,7 +189,7 @@ function attemptContext(
 /**
  * The exact attribute object `THREE.WebGLRenderer` will hand to `getContext`.
  *
- * Read off three r168's `WebGLRenderer` constructor: it builds its own object
+ * Read off three r178's `WebGLRenderer` constructor: it builds its own object
  * and always requests `alpha: true` (see `contextAttributes.ts`), passes
  * `depth`, `stencil`, `antialias`, `premultipliedAlpha`, `preserveDrawingBuffer`,
  * `powerPreference` and `failIfMajorPerformanceCaveat` through, and asks for

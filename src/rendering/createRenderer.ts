@@ -178,10 +178,9 @@ async function createNodeRenderer(
     });
     await renderer.init();
 
-    // `three/webgpu` carries its own copy of the three core, so the node library
-    // recognises neither a light built from `three` nor — once minified — a plain
-    // material's type string. Without this the first lit material throws and the
-    // canvas stays empty. See nodeLibraryBridge.ts.
+    // Guard for the node library's class-identity lookups. At r178 `three` and
+    // `three/webgpu` share one core and this bridges nothing; it re-registers
+    // what a later bump might split apart again. See nodeLibraryBridge.ts.
     bridgeCoreNodeClasses(renderer, nodeModule);
 
     if (request.contextOptions) {

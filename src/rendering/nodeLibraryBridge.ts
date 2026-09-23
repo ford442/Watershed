@@ -1,40 +1,46 @@
 /**
  * nodeLibraryBridge — teaches the node renderer about `three`'s own classes.
  *
- * `three/webgpu` is a SEPARATE bundle that ships its own copy of the three core,
- * so `(await import('three/webgpu')).DirectionalLight !== THREE.DirectionalLight`
- * even though both are r168. `resolve.dedupe` cannot merge them: they are two
- * entry files, not two installs. `NodeLibrary` indexes both of its tables by
- * something that does not survive that split, so both need bridging.
+ * The node renderer resolves a light's node class from `NodeLibrary.lightNodes`
+ * (a WeakMap keyed on the LIGHT CLASS ITSELF) and a plain material's node class
+ * from `NodeLibrary.materialNodes` (a Map keyed on a type string). Both lookups
+ * have broken on this project before:
  *
- * LIGHTS — `NodeLibrary.lightNodes` is a WeakMap keyed on the LIGHT CLASS ITSELF.
- * Every light in the scene is built from `three` (R3F's catalogue), so the lookup
- * missed; `getLightNodeClass()` returns `null` while `LightsNode.setupLightsNode()`
- * only guards against `undefined`, so the miss reached `new null( light )` and
- * threw `TypeError: lightNodeClass is not a constructor` on the first lit
- * material. `?material=tsl` rendered an empty canvas because of it.
+ * LIGHTS — through r170, `three/webgpu` was a SEPARATE bundle carrying its own
+ * copy of the three core, so `(await import('three/webgpu')).DirectionalLight
+ * !== THREE.DirectionalLight`. Every light in the scene is built from `three`
+ * (R3F's catalogue), the lookup missed, and r168 threw `TypeError:
+ * lightNodeClass is not a constructor` on the first lit material. `?material=tsl`
+ * rendered an empty canvas because of it.
  *
- * MATERIALS — `NodeLibrary.materialNodes` is keyed by `materialClass.name`, the
- * class name, while lookups use `material.type`, a string literal. Those agree
- * only until a minifier renames the class: in a production build the table is
- * keyed `"Yw"` and the lookup asks for `"MeshBasicMaterial"`. Every plain
- * material handed to the node renderer then logs `NodeMaterial: Material "…" is
- * not compatible.` and is replaced by a blank `new NodeMaterial()`. Dev builds
- * are unaffected, which is exactly what makes it worth pinning down here.
+ * MATERIALS — r168 keyed `materialNodes` by `materialClass.name`, a class name,
+ * while lookups use `material.type`, a string literal. Those agree only until a
+ * minifier renames the class, so production builds logged `NodeMaterial:
+ * Material "…" is not compatible.` and swapped in a blank `NodeMaterial`.
+ *
+ * AT r178 BOTH ARE FIXED UPSTREAM. `three.module.js` and `three.webgpu.js`
+ * import one shared `three.core.js`, so the light classes are identical, and
+ * `StandardNodeLibrary` registers materials by their type strings. The bridge
+ * therefore bridges nothing on a healthy r178 renderer — `nodeLibraryBridge
+ * .test.ts` pins that against the real bundle. It stays as the guard: if a
+ * later bump reintroduces either split, it re-registers the missing entries
+ * instead of the canvas going blank. Extend the pair tables below for any new
+ * class-identity lookup.
  */
 
 import * as THREE from 'three';
 
-/** The slice of `NodeLibrary` we depend on. */
+/** The slice of r178's `NodeLibrary` we depend on. */
 interface NodeLibraryLike {
   addLight(lightNodeClass: unknown, lightClass: unknown): void;
-  addMaterial(materialNodeClass: unknown, materialClass: unknown): void;
+  addMaterial(materialNodeClass: unknown, materialType: string): void;
   lightNodes?: WeakMap<object, unknown>;
   materialNodes?: Map<string, unknown>;
 }
 
+/** r178 hangs the library off the renderer itself (r168: `renderer.nodes`). */
 interface NodeRendererLike {
-  nodes?: { library?: NodeLibraryLike };
+  library?: NodeLibraryLike;
 }
 
 /** Node classes exported by `three/webgpu`, paired below to their core class. */
@@ -105,22 +111,23 @@ export interface BridgeResult {
  * Register `three`'s light classes and the core `material.type` strings with the
  * renderer's node library.
  *
- * @returns how many of each were bridged. All zeros means the renderer exposed
- *   no node library, which is only expected from a test double.
+ * @returns how many of each were bridged. All zeros is the healthy r178 answer
+ *   (every entry was already registered); anything else means a split the
+ *   header describes has come back.
  */
 export function bridgeCoreNodeClasses(
   renderer: unknown,
   nodeExports: NodeClassExports,
 ): BridgeResult {
-  const library = (renderer as NodeRendererLike | null)?.nodes?.library;
+  const library = (renderer as NodeRendererLike | null)?.library;
   const result: BridgeResult = { lights: 0, materials: 0 };
   if (!library) return result;
 
   if (typeof library.addLight === 'function') {
     for (const [lightNodeClass, lightClass] of lightPairs(nodeExports)) {
       if (typeof lightNodeClass !== 'function' || typeof lightClass !== 'function') continue;
-      // Already bridged (a second Canvas on the same library) — adding again
-      // would only earn a "Redefinition of node" warning.
+      // Already known (r178's own registration, or a second Canvas on the same
+      // library) — adding again would only earn a "Redefinition of node" warning.
       if (library.lightNodes?.has(lightClass)) continue;
       try {
         library.addLight(lightNodeClass, lightClass);
@@ -136,10 +143,9 @@ export function bridgeCoreNodeClasses(
       if (typeof materialNodeClass !== 'function') continue;
       if (library.materialNodes?.has(materialType)) continue;
       try {
-        // `addMaterial` keys on `materialClass.name`, so a `{ name }` stand-in is
-        // how we register the type string it should have used. Going through the
-        // public method keeps its redefinition and not-a-class guards.
-        library.addMaterial(materialNodeClass, { name: materialType });
+        // Going through the public method keeps its redefinition and
+        // not-a-class guards.
+        library.addMaterial(materialNodeClass, materialType);
         result.materials += 1;
       } catch (error) {
         console.warn('[Renderer] Could not bridge material type to the node library', error);

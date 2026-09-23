@@ -403,6 +403,12 @@ The only group genuinely gated on #419. Both are `unzipSync` infinite-loop-on-ma
 and correctly deferred to the epic. Note `three@0.168.0` itself carries **no advisory** — the pin
 blocks this one transitive `fflate`, and nothing else in the audit.
 
+> **Follow-up at the r178 bump ([#434](https://github.com/ford442/Watershed/issues/434) phase B1):**
+> the bump does **not** clear this group. `@types/three@0.178.0` still depends on `fflate ~0.8.2`,
+> and `three-stdlib@2.36.1` reaches the tree through drei and `@react-three/rapier`, not through the
+> `three` pin, so it still resolves `fflate@0.6.10`. Neither ships — re-checked on the r178 build,
+> no `build/assets/*.js` contains `fflate` or `unzipSync`.
+
 ### Independently fixable, build/test tooling only (never shipped)
 
 | Severity | Package | Path | Patched |

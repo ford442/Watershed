@@ -113,7 +113,7 @@ export const LOGARITHMIC_DEPTH_BUFFER_ENABLED = false;
 /**
  * `desynchronized` is intentionally not part of the contract.
  *
- * THREE r168's `WebGLRenderer` builds its own `getContext` attribute object and
+ * THREE r178's `WebGLRenderer` builds its own `getContext` attribute object and
  * never forwards `desynchronized`, so setting it here would be decoration, not
  * configuration. It is also the wrong trade for this game: low-latency
  * presentation can tear and reorders readback, which `?screenshot=1` depends on.

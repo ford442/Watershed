@@ -8,7 +8,7 @@ The `webgpu` renderer preference remains a *deliberate no-op fallback* to `WebGL
 
 Live GLSL-only leftovers:
 
-- Post-processing — Three r168 JSM `EffectComposer` (`PostProcessingPipeline.tsx`). Not `@react-three/postprocessing` (R3F v9 incompatibility). Skipped when `?material=tsl`.
+- Post-processing — Three r178 JSM `EffectComposer` (`PostProcessingPipeline.tsx`). Not `@react-three/postprocessing` (R3F v9 incompatibility). Skipped when `?material=tsl`.
 
 Water / river / canyon / sky / weather / VFX / foliage / critters go through dual-path hosts. GLSL `onBeforeCompile` still exists behind those hosts for the WebGLRenderer product path.
 
