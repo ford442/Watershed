@@ -31,6 +31,10 @@ export interface RunBest {
   ghostData?: string;
   /** Checkpoint splits from the run that set bestTimeMs. Absent until a timed PB exists. */
   splits?: RunSplitEntry[];
+  /** Launch hour of the run that set bestTimeMs — PB ghost hides at other hours (#438). */
+  launchHour?: number;
+  /** hydroEvents hash of the run that set bestTimeMs. */
+  hydroEventHash?: string;
 }
 
 export interface PersistencePayload {
@@ -254,6 +258,7 @@ export function updatePBGhost(
   timeMs: number,
   ghostData: string,
   splits?: RunSplitEntry[],
+  fairness?: { launchHour?: number; hydroEventHash?: string },
 ): boolean {
   const current = getRunBest(runKey);
   if (current.bestTimeMs !== undefined && current.bestTimeMs <= timeMs) {
@@ -261,12 +266,18 @@ export function updatePBGhost(
   }
   touchCache((data) => {
     const run = data.runs[runKey] ?? { bestScore: 0, bestAirTime: 0 };
-    data.runs[runKey] = {
+    const next: RunBest = {
       ...run,
       bestTimeMs: timeMs,
       ghostData,
       splits: splits ?? run.splits,
     };
+    // A new PB replaces the old one's river: never keep a stale hour/hash.
+    delete next.launchHour;
+    delete next.hydroEventHash;
+    if (fairness?.launchHour !== undefined) next.launchHour = fairness.launchHour;
+    if (fairness?.hydroEventHash) next.hydroEventHash = fairness.hydroEventHash;
+    data.runs[runKey] = next;
   });
   flushPersistence();
   return true;

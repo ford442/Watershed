@@ -104,6 +104,7 @@ export function persistGhostRecording(
   runKey: string,
   runTimeMs?: number,
   splits?: RunSplitEntry[],
+  fairness?: { launchHour?: number; hydroEventHash?: string },
 ): boolean {
   if (writeIndex <= 0) return false;
 
@@ -111,7 +112,7 @@ export function persistGhostRecording(
   const payload = encodeGhostToBase64(encoded);
 
   if (runTimeMs !== undefined) {
-    return updatePBGhost(runKey, runTimeMs, payload, splits);
+    return updatePBGhost(runKey, runTimeMs, payload, splits, fairness);
   }
   setRunGhostData(runKey, payload);
   return true;

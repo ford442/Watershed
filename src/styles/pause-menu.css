@@ -112,6 +112,18 @@
   background: rgba(126, 200, 255, 0.08);
 }
 
+.pause-menu-fairness {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9ca3af;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.pause-menu-fairness--refused {
+  color: #f5a623;
+}
+
 .pause-menu-settings-btn:hover,
 .pause-menu-ghost-btn:hover,
 .pause-menu-back-btn:hover {

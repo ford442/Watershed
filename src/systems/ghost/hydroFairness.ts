@@ -1,7 +1,11 @@
 /**
  * hydroFairness — launchHour + hydroEventHash + quality on .wsghost (#391 Phase B).
  *
- * Offline only. A mismatch is allowed and labeled; it is not rejected.
+ * Offline only. A rival or PB ghost from a different launch hour or hydro
+ * event set is *refused* (not raced, and the UI says why — #438 E1); a quality
+ * mismatch is labeled only, since it changes pixels and the SWE grid budget
+ * but not which authored events are live. Pre-v3 files carry no fairness
+ * fields and race as "unverified".
  */
 
 import type { QualityPreset } from '../GameState';
@@ -25,6 +29,54 @@ export function buildGhostHydroFairness(input: {
     hydroEventHash: hashHydroEvents(input.events, input.launchHour),
     qualityPreset: input.qualityPreset,
   };
+}
+
+/** `H14:00` — the one hour format every fairness string uses. */
+export function formatLaunchHour(hour: number): string {
+  return `H${String(hour).padStart(2, '0')}:00`;
+}
+
+/** Short form of a hydro hash for HUD / results (full hash stays in the file). */
+export function shortHydroHash(hash: string | undefined): string {
+  return hash ? hash.slice(0, 6) : '——';
+}
+
+export type GhostFairnessVerdict =
+  | { kind: 'match' }
+  /** Ghost predates codec v3 (no hour/hash) — raced, but labeled. */
+  | { kind: 'unverified'; message: string }
+  | { kind: 'refused'; reason: 'hour_mismatch' | 'hydro_mismatch'; message: string };
+
+/**
+ * Decide whether `ghost` may be raced under `current` conditions. Hour or
+ * hydro-hash mismatch refuses; missing fields on the ghost (v1/v2 file, or a
+ * PB saved before fairness was recorded) race as unverified.
+ */
+export function judgeGhostFairness(
+  current: GhostHydroFairness,
+  ghost: GhostHydroFairness | null | undefined,
+  label: 'PB' | 'rival',
+): GhostFairnessVerdict {
+  const ghostHour = ghost?.launchHour;
+  const ghostHash = ghost?.hydroEventHash;
+  if (ghostHour !== undefined && current.launchHour !== undefined && ghostHour !== current.launchHour) {
+    return {
+      kind: 'refused',
+      reason: 'hour_mismatch',
+      message: `${label} was ${formatLaunchHour(ghostHour)} — you launched ${formatLaunchHour(current.launchHour)}`,
+    };
+  }
+  if (ghostHash && current.hydroEventHash && ghostHash !== current.hydroEventHash) {
+    return {
+      kind: 'refused',
+      reason: 'hydro_mismatch',
+      message: `${label} ran hydro ${shortHydroHash(ghostHash)} — this river is ${shortHydroHash(current.hydroEventHash)}`,
+    };
+  }
+  if (ghostHour === undefined || !ghostHash) {
+    return { kind: 'unverified', message: `${label} has no launch hour — unverified river` };
+  }
+  return { kind: 'match' };
 }
 
 export function hydroFairnessDiffers(a?: GhostHydroFairness | null, b?: GhostHydroFairness | null): boolean {
@@ -53,9 +105,7 @@ export function describeHydroFairnessMismatch(
     other?.launchHour !== undefined &&
     self.launchHour !== other.launchHour
   ) {
-    bits.push(
-      `launch H${String(self.launchHour).padStart(2, '0')}:00 vs ${otherLabel} H${String(other.launchHour).padStart(2, '0')}:00`,
-    );
+    bits.push(`launch ${formatLaunchHour(self.launchHour)} vs ${otherLabel} ${formatLaunchHour(other.launchHour)}`);
   }
   if (self?.hydroEventHash && other?.hydroEventHash && self.hydroEventHash !== other.hydroEventHash) {
     bits.push(`hydro ${self.hydroEventHash} vs ${otherLabel} ${other.hydroEventHash}`);

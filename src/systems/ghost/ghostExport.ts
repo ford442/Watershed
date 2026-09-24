@@ -2,11 +2,13 @@
  * ghostExport.ts — Offline export/import of personal-best ghost runs.
  *
  * File format: JSON with `.wsghost` extension.
- * Validates mapId and codec version on import to reject wrong-map ghosts.
+ * Validates mapId and codec version on import to reject wrong-map ghosts, and —
+ * when the caller passes the live run's fairness — refuses a ghost recorded at
+ * a different launch hour or hydro event set (#438 E1).
  */
 
 import { GHOST_CODEC_VERSION, type RunSplitEntry } from './ghostCodec';
-import type { GhostHydroFairness } from './hydroFairness';
+import { fairnessFromGhostFile, judgeGhostFairness, type GhostHydroFairness } from './hydroFairness';
 import type { QualityPreset } from '../GameState';
 
 export const WSGHOST_MIME = 'application/json';
@@ -35,7 +37,8 @@ export interface WsGhostFile {
 
 export type GhostImportResult =
   | { ok: true; file: WsGhostFile }
-  | { ok: false; reason: 'invalid_json' | 'invalid_format' | 'version_mismatch' | 'map_mismatch' };
+  | { ok: false; reason: 'invalid_json' | 'invalid_format' | 'version_mismatch' | 'map_mismatch' }
+  | { ok: false; reason: 'hour_mismatch' | 'hydro_mismatch'; message: string };
 
 /**
  * Serialise a ghost payload to a downloadable WsGhostFile JSON string.
@@ -87,6 +90,33 @@ export function downloadGhostFile(
   URL.revokeObjectURL(url);
 }
 
+/**
+ * `lumber_H14.wsghost` — the hour is in the name so a shared file says which
+ * river it raced before anyone opens it.
+ */
+export function ghostShareFilename(mapId: string, launchHour?: number): string {
+  const hour = launchHour !== undefined ? `_H${String(launchHour).padStart(2, '0')}` : '';
+  return `${mapId}${hour}${WSGHOST_EXTENSION}`;
+}
+
+/**
+ * Same-origin link that races this ghost: `?map=…&hour=…&ghost=./<file>`.
+ * The player hosts the downloaded file next to the game build; `?ghost=` stays
+ * same-origin-only and silent on 404 (rivalGhostUrl.ts). No backend.
+ */
+export function buildGhostShareUrl(
+  location: Pick<Location, 'origin' | 'pathname'>,
+  mapId: string,
+  launchHour: number | undefined,
+  filename: string = ghostShareFilename(mapId, launchHour),
+): string {
+  // Hand-built (not URLSearchParams) so `./` stays readable in a pasted link.
+  const params = [`map=${encodeURIComponent(mapId)}`];
+  if (launchHour !== undefined) params.push(`hour=${launchHour}`);
+  params.push(`ghost=./${encodeURIComponent(filename)}`);
+  return `${location.origin}${location.pathname}?${params.join('&')}`;
+}
+
 function isRunSplitEntry(value: unknown): value is RunSplitEntry {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -136,7 +166,9 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
 
 /**
  * Parse and validate an imported WsGhostFile JSON string.
- * Pass `expectedMapId` to reject ghosts recorded on a different map.
+ * Pass `expectedMapId` to reject ghosts recorded on a different map, and
+ * `expectedFairness` (the live run's hour/hash) to refuse a ghost from a
+ * different river. Pre-v3 files have no hour/hash and are not refused here.
  *
  * `codecVersion` accepts anything up to the current GHOST_CODEC_VERSION — a v1
  * file (no `splits`) is a valid, poses-only v3 file; only a *newer* file than
@@ -145,6 +177,7 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
 export function importGhostFromJson(
   json: string,
   expectedMapId?: string,
+  expectedFairness?: GhostHydroFairness,
 ): GhostImportResult {
   let parsed: unknown;
   try {
@@ -165,6 +198,13 @@ export function importGhostFromJson(
     return { ok: false, reason: 'map_mismatch' };
   }
 
+  if (expectedFairness) {
+    const verdict = judgeGhostFairness(expectedFairness, fairnessFromGhostFile(parsed), 'rival');
+    if (verdict.kind === 'refused') {
+      return { ok: false, reason: verdict.reason, message: verdict.message };
+    }
+  }
+
   return { ok: true, file: parsed };
 }
 
@@ -175,7 +215,8 @@ export function importGhostFromJson(
 export async function importGhostFromFile(
   file: File,
   expectedMapId?: string,
+  expectedFairness?: GhostHydroFairness,
 ): Promise<GhostImportResult> {
   const text = await file.text();
-  return importGhostFromJson(text, expectedMapId);
+  return importGhostFromJson(text, expectedMapId, expectedFairness);
 }

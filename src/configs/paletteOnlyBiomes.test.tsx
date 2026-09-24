@@ -9,6 +9,9 @@ import { normalizeBiomeId } from './biomes';
 import { BIOME_HUD_LABELS } from '../constants/biomes';
 import { MAP_REGISTRY, mapRegistryIds } from '../maps/registry';
 import { BiomeSelector } from '../components/LevelEditor/BiomeSelector';
+import levelSchema from '../formats/level.schema.json';
+import reachSchema from '../formats/reach.schema.json';
+import { LEGACY_BIOME_ALIASES } from './biomes';
 
 function shippedBiomes(): Set<string> {
   const biomes = new Set<string>();
@@ -46,5 +49,22 @@ describe('palette-only biomes', () => {
     expect(screen.queryByText('Alpine Spring')).toBeNull();
     expect(screen.queryByText('Midnight Mist')).toBeNull();
     expect(screen.getAllByText('Canyon Summer').length).toBeGreaterThan(0);
+  });
+
+  it('are not legal in level / reach schema biome enums (#438 E3)', () => {
+    const stubTokens = new Set<string>(PALETTE_ONLY_BIOMES);
+    for (const [alias, id] of Object.entries(LEGACY_BIOME_ALIASES)) {
+      if (PALETTE_ONLY_BIOMES.has(id)) stubTokens.add(alias);
+    }
+    for (const schema of [levelSchema, reachSchema] as const) {
+      const enums = [
+        schema.properties.world.properties.biome.properties.baseType.enum,
+        schema.properties.segments.items.properties.biomeOverride.enum,
+      ];
+      for (const values of enums) {
+        expect(values).toContain('canyonSummer');
+        for (const token of stubTokens) expect(values, token).not.toContain(token);
+      }
+    }
   });
 });
