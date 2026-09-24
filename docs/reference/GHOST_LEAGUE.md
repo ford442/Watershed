@@ -89,8 +89,8 @@ ghost (amber, `#f5a623`) when one is loaded — capped at these two bodies.
 ## Fairness metadata (codec v3 / #391 Phase B)
 
 `.wsghost` v3 adds optional `launchHour`, `hydroEventHash`, and `qualityPreset`.
-v1/v2 files still import. When this run and the rival/PB differ, the results
-panel names the hour/hash and can blame a lost split on the hydro event that
+v1/v2 files still import. A different hour or hash is refused — see
+*Fairness gate* below; the results panel names the hour/hash and can blame a lost split on the hydro event that
 owns that segment ("you lost 1.4s at the dam pulse, not at the shelf").
 
 | Version | Adds |
@@ -98,6 +98,48 @@ owns that segment ("you lost 1.4s at the dam pulse, not at the shelf").
 | 1 | Pose payload only (7-float delta-encoded samples, base64). |
 | 2 | Optional `splits: RunSplitEntry[]`. |
 | 3 | Optional `launchHour`, `hydroEventHash`, `qualityPreset`. |
+
+## Fairness gate (#449 E1)
+
+A ghost races only on the river it was recorded on. `judgeGhostFairness`
+(`hydroFairness.ts`) compares the live run (`currentRunFairness()` in
+`raceFairness.ts` — the **selected** map's `hydroEvents`, launch hour,
+quality) against a ghost:
+
+| Ghost vs this run | Verdict | Effect |
+|---|---|---|
+| Different `launchHour` | `refused` (`hour_mismatch`) | Not raced |
+| Same hour, different `hydroEventHash` | `refused` (`hydro_mismatch`) | Not raced |
+| Missing hour/hash (v1/v2 file, or a PB saved before #449) | `unverified` | Raced, labeled |
+| Different `qualityPreset` only | `match` | Raced; results panel labels it |
+
+Where it bites:
+
+- **PauseMenu LOAD RIVAL** passes the live fairness to `importGhostFromFile`;
+  a refused file is not stored and the menu prints the reason
+  ("Rival refused: rival was H06:00 — you launched H14:00"). The menu also
+  shows `RACING H14:00 LUMBER · hydro 1a2b3c · high` and the stored rival's
+  hour/hash.
+- **`?ghost=`** still imports by map id only and stays silent on 404 — the hour
+  can still change after boot (StartMenu), so the gate runs at use time.
+- **`GhostReplayer`** withholds a refused PB or rival body.
+- **`GhostFairnessBanner`** (HUD, ~6 s at run start and on resume) says
+  "RACING H14:00 LUMBER" and, when a ghost was withheld,
+  "PB was H06:00 — you launched H14:00 — ghost hidden".
+- **`RunResultsPanel`** shows this run's hour/hash/quality, marks a refused
+  rival `RIVAL (REFUSED)`, and names why.
+
+The PB now records its river: `RunBest.launchHour` / `RunBest.hydroEventHash`
+(persistence schema, optional) are written by `commitTimedFinish` on a new PB
+and cleared when a later PB omits them.
+
+## Sharing
+
+**EXPORT .WSGHOST** downloads `<map>_H<hour>.wsghost`. **COPY LINK** copies
+`<origin><path>?map=<map>&hour=<hour>&ghost=./<map>_H<hour>.wsghost` — host the
+exported file next to the build and the link races that ghost at that hour.
+No backend, no compression (the delta-encoded payload is already small; measure
+before adding a library).
 
 ## Results screen
 

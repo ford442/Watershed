@@ -6,6 +6,8 @@ import { useGameStore } from '../systems/GameState';
 import { getActiveMapId } from '../utils/runContext';
 import { getRivalGhost, setRivalGhost, clearRivalGhost } from '../systems/persistence/PersistenceSystem';
 import { importGhostFromFile } from '../systems/ghost/ghostExport';
+import { currentRunFairness, judgeStoredRival } from '../systems/ghost/raceFairness';
+import { formatLaunchHour, shortHydroHash } from '../systems/ghost/hydroFairness';
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -36,23 +38,34 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
   const mapId = getActiveMapId();
   const [rivalLoaded, setRivalLoaded] = useState(() => Boolean(getRivalGhost(mapId)));
   const [rivalStatus, setRivalStatus] = useState('');
+  // Why the last import was refused — stays up until the next import/clear so
+  // the player can read it (a different hour/hydro hash is never raced).
+  const [rivalRefusal, setRivalRefusal] = useState<string | null>(null);
+
+  const fairness = currentRunFairness(mapId);
+  const storedRival = rivalLoaded ? judgeStoredRival(mapId) : null;
 
   const handleRivalFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
 
-    const result = await importGhostFromFile(file, mapId);
+    const result = await importGhostFromFile(file, mapId, fairness);
     if (!result.ok) {
-      setRivalStatus(
-        result.reason === 'map_mismatch' ? 'Wrong map' : 'Invalid .wsghost file',
-      );
+      if ('message' in result) {
+        setRivalRefusal(`Rival refused: ${result.message}`);
+        setRivalStatus('Refused');
+      } else {
+        setRivalRefusal(null);
+        setRivalStatus(result.reason === 'map_mismatch' ? 'Wrong map' : 'Invalid .wsghost file');
+      }
       window.setTimeout(() => setRivalStatus(''), 2500);
       return;
     }
 
     setRivalGhost(mapId, result.file);
     setRivalLoaded(true);
+    setRivalRefusal(null);
     setRivalStatus('Rival loaded');
     window.setTimeout(() => setRivalStatus(''), 2000);
   };
@@ -60,6 +73,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
   const handleClearRival = () => {
     clearRivalGhost(mapId);
     setRivalLoaded(false);
+    setRivalRefusal(null);
   };
 
   // Focus resume button when pause opens
@@ -147,6 +161,31 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
             >
               {rivalStatus || (rivalLoaded ? 'RIVAL: CLEAR' : 'LOAD RIVAL')}
             </button>
+
+            <div className="pause-menu-fairness" aria-live="polite">
+              <div>
+                RACING {formatLaunchHour(fairness.launchHour ?? 0)} {mapId.toUpperCase()} · hydro{' '}
+                {shortHydroHash(fairness.hydroEventHash)} · {fairness.qualityPreset}
+              </div>
+              {storedRival && (
+                <div
+                  className={
+                    storedRival.verdict.kind === 'refused' ? 'pause-menu-fairness--refused' : undefined
+                  }
+                >
+                  {storedRival.verdict.kind === 'refused'
+                    ? `Rival hidden: ${storedRival.verdict.message}`
+                    : `Rival ${
+                        storedRival.file.launchHour !== undefined
+                          ? formatLaunchHour(storedRival.file.launchHour)
+                          : 'H??'
+                      } · hydro ${shortHydroHash(storedRival.file.hydroEventHash)}${
+                        storedRival.file.qualityPreset ? ` · ${storedRival.file.qualityPreset}` : ''
+                      }${storedRival.verdict.kind === 'unverified' ? ' (unverified)' : ''}`}
+                </div>
+              )}
+              {rivalRefusal && <div className="pause-menu-fairness--refused">{rivalRefusal}</div>}
+            </div>
 
             <button
               className="pause-menu-quit-btn"

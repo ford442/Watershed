@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../systems/GameState';
-import { getRunGhostData, getRivalGhost } from '../systems/persistence/PersistenceSystem';
+import { getRunGhostData } from '../systems/persistence/PersistenceSystem';
 import { getActiveMapId, getActiveRunKey } from '../utils/runContext';
+import { judgeStoredPB, judgeStoredRival } from '../systems/ghost/raceFairness';
 import {
   getGhostDurationSec,
   interpolateGhost,
@@ -98,14 +99,20 @@ interface GhostReplayerProps {
 /**
  * PB ghost (cyan) plus, when one is loaded, a rival ghost (amber) — capped at
  * these two bodies to protect the instancing budget (#375 Phase C).
+ *
+ * Either body is withheld when it was recorded at a different launch hour or
+ * hydro event set (#449 E1) — GhostFairnessBanner says why.
  */
 export default function GhostReplayer({ runKey }: GhostReplayerProps) {
   // Re-read on every pause/resume — a rival loaded via PauseMenu takes effect
   // the moment the player resumes, without needing a remount.
   const isPaused = useGameStore((s) => s.isPaused);
-  const effectiveRunKey = runKey ?? getActiveRunKey();
-  const pbPayload = getRunGhostData(effectiveRunKey);
-  const rivalPayload = getRivalGhost(getActiveMapId())?.ghostData;
+  const mapId = getActiveMapId();
+  const effectiveRunKey = runKey ?? getActiveRunKey(mapId);
+  const pbRefused = judgeStoredPB(mapId)?.kind === 'refused';
+  const pbPayload = pbRefused ? undefined : getRunGhostData(effectiveRunKey);
+  const rival = judgeStoredRival(mapId);
+  const rivalPayload = rival && rival.verdict.kind !== 'refused' ? rival.file.ghostData : undefined;
   void isPaused;
 
   return (

@@ -21,6 +21,7 @@ import { getGhostElapsedMs, persistGhostRecording } from './GhostRecorder';
 import { getRecordedSplits } from './SplitRecorder';
 import { getRunBest } from '../persistence/PersistenceSystem';
 import type { RunSplitEntry } from './ghostCodec';
+import { currentRunFairness } from './raceFairness';
 
 export interface RunFinishSummary {
   runKey: string;
@@ -48,7 +49,8 @@ export function commitTimedFinish(runKey: string): RunFinishSummary | null {
 
   const splits = getRecordedSplits();
   const before = getRunBest(runKey);
-  const isNewPB = persistGhostRecording(runKey, timeMs, splits);
+  const { launchHour, hydroEventHash } = currentRunFairness();
+  const isNewPB = persistGhostRecording(runKey, timeMs, splits, { launchHour, hydroEventHash });
 
   lastFinishSummary = {
     runKey,

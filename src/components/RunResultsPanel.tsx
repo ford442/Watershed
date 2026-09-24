@@ -11,23 +11,25 @@
 
 import { useMemo, useState } from 'react';
 import { getActiveMapId, getActiveRunKey } from '../utils/runContext';
-import { getRunBest, getRivalGhost } from '../systems/persistence/PersistenceSystem';
+import { getRunBest } from '../systems/persistence/PersistenceSystem';
 import { getRecordedSplits } from '../systems/ghost/SplitRecorder';
 import { getGhostElapsedMs, getCurrentGhostPayload } from '../systems/ghost/GhostRecorder';
 import { getLastFinishSummary } from '../systems/ghost/runFinish';
-import { downloadGhostFile } from '../systems/ghost/ghostExport';
+import {
+  buildGhostShareUrl,
+  downloadGhostFile,
+  ghostShareFilename,
+} from '../systems/ghost/ghostExport';
 import { formatRaceTimeMs } from '../systems/ghost/raceTimeFormat';
 import type { RunSplitEntry } from '../systems/ghost/ghostCodec';
 import {
-  buildGhostHydroFairness,
   describeHydroFairnessMismatch,
   describeHydroSplitBlame,
   fairnessFromGhostFile,
+  formatLaunchHour,
+  shortHydroHash,
 } from '../systems/ghost/hydroFairness';
-import { getActiveLaunchHour } from '../systems/journey/runSession';
-import { getQualityPresetNow } from '../systems/GameState';
-import { getActiveMap } from '../maps/registry';
-import { parseHydroEvents } from '../systems/water/hydroEvents';
+import { currentRunFairness, hydroEventsForMap, judgeStoredRival } from '../systems/ghost/raceFairness';
 
 interface RunResultsPanelProps {
   outcome: 'complete' | 'wipeout';
@@ -70,13 +72,16 @@ function splitsAsText(mapId: string, timeMs: number, rows: SplitRow[]): string {
 
 export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [linkStatus, setLinkStatus] = useState<'idle' | 'copied'>('idle');
 
   const mapId = useMemo(() => getActiveMapId(), []);
   const runKey = useMemo(() => getActiveRunKey(mapId), [mapId]);
 
   const summary = outcome === 'complete' ? getLastFinishSummary() : null;
   const pb = getRunBest(runKey);
-  const rival = getRivalGhost(mapId);
+  const judgedRival = judgeStoredRival(mapId);
+  const rival = judgedRival?.file;
+  const rivalRefusal = judgedRival?.verdict.kind === 'refused' ? judgedRival.verdict.message : null;
 
   const thisRunSplits = summary?.splits ?? getRecordedSplits();
   const thisRunTimeMs = summary?.timeMs ?? (outcome === 'complete' ? getGhostElapsedMs() : null);
@@ -89,20 +94,16 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
     [thisRunSplits, referenceSplits],
   );
 
-  const thisFairness = useMemo(() => {
-    const map = getActiveMap();
-    return buildGhostHydroFairness({
-      launchHour: getActiveLaunchHour(),
-      events: parseHydroEvents(map.levelData.hydroEvents),
-      qualityPreset: getQualityPresetNow(),
-    });
-  }, [mapId]);
+  const thisFairness = useMemo(() => currentRunFairness(mapId), [mapId]);
 
   const rivalFairness = rival ? fairnessFromGhostFile(rival) : null;
-  const fairnessNote = describeHydroFairnessMismatch(thisFairness, rivalFairness, 'rival');
+  // A refused rival gets the refusal line instead of the softer mismatch note.
+  const fairnessNote = rivalRefusal
+    ? `rival refused — ${rivalRefusal}`
+    : describeHydroFairnessMismatch(thisFairness, rivalFairness, 'rival');
   const hydroBlame = describeHydroSplitBlame(
     rows,
-    parseHydroEvents(getActiveMap().levelData.hydroEvents),
+    hydroEventsForMap(mapId),
     thisFairness.launchHour ?? 0,
   );
 
@@ -112,7 +113,26 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
     const payload = getCurrentGhostPayload();
     if (!payload) return;
     const timeMs = thisRunTimeMs ?? getGhostElapsedMs();
-    downloadGhostFile(mapId, timeMs, payload, thisRunSplits, undefined, thisFairness);
+    downloadGhostFile(
+      mapId,
+      timeMs,
+      payload,
+      thisRunSplits,
+      ghostShareFilename(mapId, thisFairness.launchHour),
+      thisFairness,
+    );
+  };
+
+  const handleCopyLink = () => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard || typeof window === 'undefined') return;
+    const url = buildGhostShareUrl(window.location, mapId, thisFairness.launchHour);
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setLinkStatus('copied');
+        window.setTimeout(() => setLinkStatus('idle'), 1500);
+      },
+      () => {},
+    );
   };
 
   const handleCopySplits = () => {
@@ -151,10 +171,15 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
 
         {rival && (
           <div className="run-results-panel__time-cell run-results-panel__time-cell--rival">
-            <div className="run-results-panel__time-label">RIVAL</div>
+            <div className="run-results-panel__time-label">{rivalRefusal ? 'RIVAL (REFUSED)' : 'RIVAL'}</div>
             <div className="run-results-panel__time-value">{formatRaceTimeMs(rival.timeMs)}</div>
           </div>
         )}
+      </div>
+
+      <div className="run-results-panel__river" data-testid="run-results-river">
+        {formatLaunchHour(thisFairness.launchHour ?? 0)} {mapId.toUpperCase()} · hydro{' '}
+        {shortHydroHash(thisFairness.hydroEventHash)} · {thisFairness.qualityPreset}
       </div>
 
       {(fairnessNote || hydroBlame) && (
@@ -193,6 +218,14 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
         </button>
         <button type="button" className="run-results-panel__action-btn" onClick={handleCopySplits}>
           {copyStatus === 'copied' ? 'COPIED!' : 'COPY SPLITS'}
+        </button>
+        <button
+          type="button"
+          className="run-results-panel__action-btn"
+          onClick={handleCopyLink}
+          title="Link races this ghost at the same hour — host the exported file next to the game"
+        >
+          {linkStatus === 'copied' ? 'LINK COPIED!' : 'COPY LINK'}
         </button>
       </div>
     </div>
