@@ -1,26 +1,27 @@
 /**
  * SpeedWindAudio.tsx
  *
- * Continuous speed-based wind bed for the feel-of-velocity.
- * - Loops a synthesized wind buffer of its own (#399). It used to reuse
- *   `ambient_wind`, so the velocity bed masked the biome ambience it sat on.
- * - Gain scales with vehicle horizontal speed (linvel), lerped to avoid zipper
- * - Optional BiquadFilter lowpass brightens with speed
- * - Final volume = windGain * maxVolume * SFX * wetnessMuffle * master
+ * Continuous speed-based wind bed for the feel-of-velocity, plus the
+ * close-water gurgle.
+ * - Prefers the AudioWorklet voice (systems/audio/speedWindDsp.ts): synthesis,
+ *   gain curve, wetness muffle and wall-tightness colour all run on the audio
+ *   thread; this component only forwards raw parameters when they move.
+ * - Falls back to the synthesized 4 s buffer loop + BiquadFilter (#399) when
+ *   `audioWorklet.addModule` is unavailable or fails.
+ * - Never the `ambient_wind` asset — the velocity bed must not mask the biome
+ *   ambience it sits on.
+ * - Final level = windGain * maxVolume * SFX * wetnessMuffle * master, on
+ *   either path (see speedWindVoice.ts).
  *
  * Mounted by ReactiveAudio (reach path) and InnerExperience (default TrackManager).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
 import { getAudioManager } from '../systems/audio/AudioSystem';
-import { AUDIO_CONFIG } from '../constants/audioConfig';
-import {
-  mapSpeedToWind,
-  sanitizeAudioGain,
-  sanitizeCutoffHz,
-} from '../systems/audio/speedWind';
+import { mapCloseGurgle } from '../systems/audio/speedWind';
+import { createSpeedWindVoice, type SpeedWindInput, type SpeedWindVoice } from '../systems/audio/speedWindVoice';
+import { getSfxWetnessMultiplier } from '../systems/audio/wetnessMuffle';
 
 interface SpeedWindAudioProps {
   /** Vehicle rigid body ref — same speed source as ReactiveAudio whoosh ducking. */
@@ -32,10 +33,10 @@ export default function SpeedWindAudio({
   targetRef,
   enabled = true,
 }: SpeedWindAudioProps) {
-  const windRef = useRef<THREE.Audio | null>(null);
-  const lowpassRef = useRef<BiquadFilterNode | null>(null);
-  const gainRef = useRef(0);
-  const [ready, setReady] = useState(false);
+  const voiceRef = useRef<SpeedWindVoice | null>(null);
+  const flowRef = useRef({ flowSpeed: 1, turbulence: 0 });
+  // Reused every frame — no per-frame allocation in useFrame.
+  const inputRef = useRef<SpeedWindInput>({ speed: 0, sfxVolume: 1, wetness: 1, wallTightness: 0, gurgle: 0 });
 
   useEffect(() => {
     if (!enabled) return;
@@ -46,63 +47,53 @@ export default function SpeedWindAudio({
       return;
     }
 
-    // Synthesized rather than loaded: the wind bed needs to be a different
-    // signal from the ambience, not a second voice of it. No await, so the bed
-    // is live on the first frame instead of after a decode round-trip.
-    const buf = am.getSpeedWindBuffer();
-    if (buf) {
-      const listener = am.getListener();
-      const wind = new THREE.Audio(listener);
-      wind.setBuffer(buf);
-      wind.setLoop(true);
-      wind.setVolume(0);
-      wind.play();
-
-      // Dedicated lowpass — brighter as speed rises. Owned here so canyon
-      // acoustics on other ReactiveAudio layers never overwrite it.
-      const ctx = listener.context;
-      if (ctx) {
-        const lowpass = ctx.createBiquadFilter();
-        lowpass.type = 'lowpass';
-        lowpass.frequency.value = AUDIO_CONFIG.wind.cutoffAtRest;
-        lowpass.Q.value = 0.7;
-        wind.setFilters([lowpass]);
-        lowpassRef.current = lowpass;
+    // Synthesized rather than loaded, on either path: no decode round-trip and
+    // nothing gated behind the unlock gesture's fetches.
+    let cancelled = false;
+    createSpeedWindVoice({
+      listener: am.getListener(),
+      getFallbackBuffer: () => am.getSpeedWindBuffer(),
+    }).then((voice) => {
+      if (!voice) return;
+      if (cancelled) {
+        voice.dispose();
+        return;
       }
-
-      windRef.current = wind;
-      setReady(true);
-    }
+      voiceRef.current = voice;
+    });
 
     return () => {
-      if (windRef.current) {
-        windRef.current.stop();
-        windRef.current.setFilters([]);
-        windRef.current.disconnect();
-        windRef.current = null;
-      }
-      lowpassRef.current = null;
-      setReady(false);
+      cancelled = true;
+      voiceRef.current?.dispose();
+      voiceRef.current = null;
     };
   }, [enabled]);
 
   // Fade with end-of-run / wipeout audio reset (vehicle is also zeroed → stays silent).
   useEffect(() => {
     const onRunReset = () => {
-      gainRef.current = 0;
-      if (windRef.current) {
-        windRef.current.setVolume(0);
-      }
-      if (lowpassRef.current) {
-        lowpassRef.current.frequency.value = AUDIO_CONFIG.wind.cutoffAtRest;
-      }
+      voiceRef.current?.reset();
+      flowRef.current = { flowSpeed: 1, turbulence: 0 };
+    };
+    const onFlow = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      flowRef.current = {
+        flowSpeed: Number.isFinite(detail.flowSpeed) ? detail.flowSpeed : 1,
+        turbulence: Number.isFinite(detail.turbulence) ? detail.turbulence : 0,
+      };
     };
     window.addEventListener('watershed-run-reset', onRunReset);
-    return () => window.removeEventListener('watershed-run-reset', onRunReset);
+    window.addEventListener('water-flow-update', onFlow);
+    return () => {
+      window.removeEventListener('watershed-run-reset', onRunReset);
+      window.removeEventListener('water-flow-update', onFlow);
+    };
   }, []);
 
   useFrame((_, delta) => {
-    if (!enabled || !ready || !windRef.current || !targetRef?.current) return;
+    const voice = voiceRef.current;
+    if (!enabled || !voice || !targetRef?.current) return;
     if (!Number.isFinite(delta) || delta <= 0) return;
 
     const body = targetRef.current;
@@ -113,46 +104,18 @@ export default function SpeedWindAudio({
     const velZ = Number.isFinite(vel?.z) ? vel.z : 0;
     const playerSpeed = Math.sqrt(velX * velX + velZ * velZ);
 
-    const mapped = mapSpeedToWind(playerSpeed, {
-      startSpeed: AUDIO_CONFIG.wind.startSpeed,
-      fullSpeed: AUDIO_CONFIG.wind.fullSpeed,
-      cutoffAtRest: AUDIO_CONFIG.wind.cutoffAtRest,
-      cutoffAtFull: AUDIO_CONFIG.wind.cutoffAtFull,
-    });
-
-    const lerp = AUDIO_CONFIG.wind.crossfadeSpeed * delta;
-    if (!Number.isFinite(lerp) || lerp < 0) return;
-
-    gainRef.current += (mapped.gain - gainRef.current) * Math.min(1, lerp);
-    if (!Number.isFinite(gainRef.current)) gainRef.current = 0;
-
-    // Settings SFX × wetness muffle × master baseline — same layering as the
-    // ReactiveAudio SFX beds.
     const am = getAudioManager();
-    const sfxMult =
-      AUDIO_CONFIG.masterVolume * (am?.getEffectiveSfxGain() ?? 1);
-    const windVol = sanitizeAudioGain(
-      gainRef.current * AUDIO_CONFIG.wind.maxVolume * sfxMult,
-    );
+    const input = inputRef.current;
+    input.speed = playerSpeed;
+    // Raw SFX channel: the voice applies the wetness duck itself (in-worklet
+    // or via wetnessMuffleParams), so getEffectiveSfxGain would double it.
+    input.sfxVolume = am?.getSfxVolume() ?? 1;
+    input.wetness = getSfxWetnessMultiplier();
+    input.wallTightness = am?.getCanyonWallTightness() ?? 0;
+    input.gurgle = mapCloseGurgle(playerSpeed, flowRef.current.flowSpeed, flowRef.current.turbulence);
 
-    if (Number.isFinite(windVol)) {
-      windRef.current.setVolume(windVol);
-    }
-
-    if (lowpassRef.current) {
-      const cutoff = sanitizeCutoffHz(
-        mapped.cutoffHz,
-        AUDIO_CONFIG.wind.cutoffAtRest,
-      );
-      // Smooth cutoff slightly so filter moves don't click.
-      const current = lowpassRef.current.frequency.value;
-      const next = current + (cutoff - current) * Math.min(1, lerp);
-      if (Number.isFinite(next)) {
-        lowpassRef.current.frequency.value = next;
-      }
-    }
-
-    am?.setReactiveVolumes({ wind: gainRef.current });
+    const windGain = voice.update(input, delta);
+    am?.setReactiveVolumes({ wind: windGain });
   });
 
   return null;

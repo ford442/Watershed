@@ -71,6 +71,7 @@
     }
   },
   "devDependencies": {
+    "@breezystack/lamejs": "1.2.7",
     "@eslint/js": "^10.0.1",
     "@react-three/eslint-plugin": "^0.1.2",
     "@types/node": "^20.19.32",

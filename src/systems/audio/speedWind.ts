@@ -76,3 +76,19 @@ export function sanitizeCutoffHz(value: number, fallback: number): number {
   if (!Number.isFinite(value) || value <= 0) return fallback;
   return Math.min(20000, Math.max(20, value));
 }
+
+/**
+ * Close-water gurgle amount 0–1 for the worklet's bubble grain.
+ *
+ * The bubbling right at the waterline is loudest when you are slow enough to
+ * hear it and the water is churning; at speed the wind rush masks it anyway,
+ * so it is pulled back rather than left to muddy the bed.
+ */
+export function mapCloseGurgle(speed: number, flowSpeed: number, turbulence: number): number {
+  const s = Number.isFinite(speed) ? Math.max(0, speed) : 0;
+  const f = Number.isFinite(flowSpeed) ? flowSpeed : 1;
+  const tb = Number.isFinite(turbulence) ? Math.min(1, Math.max(0, turbulence)) : 0;
+  const churn = 0.25 + 0.55 * tb + 0.2 * Math.min(1, Math.max(0, f - 1));
+  const masking = 1 - 0.6 * Math.min(1, s / 20);
+  return Math.min(1, Math.max(0, churn * masking));
+}

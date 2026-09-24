@@ -124,6 +124,9 @@ export default function ReactiveAudio({
       return;
     }
     const listener = am.getListener();
+    // loadSound waits for the unlock gesture, so this await can span minutes;
+    // a cleanup in the meantime must stop setup from creating orphan voices.
+    let cancelled = false;
 
     const setup = async () => {
       // Preload fallback sounds if needed
@@ -138,6 +141,7 @@ export default function ReactiveAudio({
         AUDIO_CONFIG.defaultSfxTracks.iceCrack,
       ];
       await Promise.all(fallbackNames.map((n) => am.loadSound(n)));
+      if (cancelled) return;
 
       const lowBuf = resolveAudioBuffer(reachId, 'ambient_low', AUDIO_CONFIG.defaultAmbientTracks.low);
       const midBuf = resolveAudioBuffer(reachId, 'ambient_mid', AUDIO_CONFIG.defaultAmbientTracks.mid);
@@ -225,6 +229,11 @@ export default function ReactiveAudio({
     setup();
 
     return () => {
+      cancelled = true;
+      const mgr = getAudioManager();
+      [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef, posTransitionRef].forEach((ref) => {
+        if (ref.current) mgr?.unrouteAcoustics(ref.current);
+      });
       [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef, sfxColdWindRef, sfxIceCrackRef].forEach((ref) => {
         if (ref.current) {
           ref.current.stop();
@@ -238,29 +247,23 @@ export default function ReactiveAudio({
         scene.remove(posTransitionRef.current);
         posTransitionRef.current = null;
       }
-      const mgr = getAudioManager();
-      mgr?.disableCanyonAcoustics();
       setAudioReady(false);
     };
   }, [reachId, manifest, reachSegments, scene]);
 
-  // Canyon acoustics toggle + filter routing
+  // Canyon acoustics routing. Whether the walls are enclosing (and how much)
+  // is decided per biome by useCanyonAcoustics; the manager re-routes these
+  // layers whenever that changes. Only the rapids stem gets early reflections.
   useEffect(() => {
     if (!audioReady) return;
     const am = getAudioManager();
     if (!am) return;
 
-    const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
-    if (isSlotCanyon) {
-      am.enableCanyonAcoustics(0.78);
-    } else {
-      am.disableCanyonAcoustics();
-    }
-
-    [ambientLowRef, ambientMidRef, ambientHighRef, sfxRapidsRef, sfxWhooshRef, posTransitionRef].forEach((ref) => {
-      if (ref.current) am.applyCanyonFilters(ref.current);
+    [ambientLowRef, ambientMidRef, ambientHighRef, sfxWhooshRef, posTransitionRef].forEach((ref) => {
+      if (ref.current) am.routeAcoustics(ref.current, 'bed');
     });
-  }, [audioReady, currentSegmentIndex]);
+    if (sfxRapidsRef.current) am.routeAcoustics(sfxRapidsRef.current, 'rapids');
+  }, [audioReady]);
 
   // ========================================================================
   // Listen to global flow events

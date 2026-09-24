@@ -12,26 +12,18 @@
 import * as THREE from 'three';
 import { currentWetnessMuffle } from './wetnessMuffle';
 import { fillSpeedWindChannel, speedWindLoopLength } from './speedWindBuffer';
+import {
+  PRELOAD_SOUNDS,
+  SOUND_DEFS,
+  SoundCategory,
+  resolveSoundFile,
+  type SoundFileDef,
+} from './soundDefs';
+import { seamLoopBuffer } from './loopBuffer';
+import { canyonAcousticParams, DEFAULT_WALL_WETNESS } from './canyonAcoustics';
+import { createAudioUnlockGate, type AudioUnlockGate } from './audioUnlock';
 
-// Sound categories for organization and limiting
-export enum SoundCategory {
-  FOOTSTEP = 'footstep',
-  JUMP = 'jump',
-  LAND = 'land',
-  COLLISION = 'collision',
-  PADDLE = 'paddle',
-  AMBIENT = 'ambient',
-  UI = 'ui',
-}
-
-// Sound definition
-interface SoundDef {
-  url: string;
-  category: SoundCategory;
-  baseVolume: number;
-  basePitch: number;
-  maxConcurrent: number;
-}
+export { SoundCategory } from './soundDefs';
 
 // Active sound tracking
 interface ActiveSound {
@@ -51,61 +43,28 @@ interface ReactiveVolumes {
   wind?: number;
 }
 
-// Default sound library
+/**
+ * Which acoustic treatment a routed layer gets. Only the rapids stem carries
+ * early reflections — putting them on every bed smears the whole mix, and the
+ * roar is what the walls are actually throwing back.
+ */
+export type AcousticStem = 'rapids' | 'bed';
+
+type RoutableAudio = THREE.Audio<AudioNode> | THREE.PositionalAudio;
+
 const BASE_SOUND_URL = import.meta.env.BASE_URL || '/';
 
-const SOUND_LIBRARY: Record<string, SoundDef> = {
-  // Footsteps
-  'step_rock': { url: `${BASE_SOUND_URL}sounds/footstep_rock.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 2 },
-  'step_moss': { url: `${BASE_SOUND_URL}sounds/footstep_moss.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.4, basePitch: 0.9, maxConcurrent: 2 },
-  'step_wood': { url: `${BASE_SOUND_URL}sounds/footstep_wood.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.5, basePitch: 1.1, maxConcurrent: 2 },
-  'step_wet': { url: `${BASE_SOUND_URL}sounds/footstep_wet.mp3`, category: SoundCategory.FOOTSTEP, baseVolume: 0.6, basePitch: 0.8, maxConcurrent: 2 },
+function soundUrl(def: SoundFileDef): string {
+  return `${BASE_SOUND_URL}sounds/${def.file}`;
+}
 
-  // Jumps
-  'jump': { url: `${BASE_SOUND_URL}sounds/jump.mp3`, category: SoundCategory.JUMP, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
-  'double_jump': { url: `${BASE_SOUND_URL}sounds/jump_double.mp3`, category: SoundCategory.JUMP, baseVolume: 0.6, basePitch: 1.2, maxConcurrent: 1 },
-
-  // Landings
-  'land_soft': { url: `${BASE_SOUND_URL}sounds/land_soft.mp3`, category: SoundCategory.LAND, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 1 },
-  'land_hard': { url: `${BASE_SOUND_URL}sounds/land_hard.mp3`, category: SoundCategory.LAND, baseVolume: 0.8, basePitch: 0.9, maxConcurrent: 1 },
-  'land_impact': { url: `${BASE_SOUND_URL}sounds/land_impact.mp3`, category: SoundCategory.LAND, baseVolume: 1.0, basePitch: 0.8, maxConcurrent: 1 },
-
-  // Collisions
-  'collide_rock': { url: `${BASE_SOUND_URL}sounds/collide_rock.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 2 },
-  'collide_wood': { url: `${BASE_SOUND_URL}sounds/collide_wood.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.6, basePitch: 0.9, maxConcurrent: 2 },
-  'collide_moss': { url: `${BASE_SOUND_URL}sounds/collide_moss.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.4, basePitch: 1.1, maxConcurrent: 2 },
-  'collide_water': { url: `${BASE_SOUND_URL}sounds/splash.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 3 },
-  'collide_concrete': { url: `${BASE_SOUND_URL}sounds/collide_concrete.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 0.95, maxConcurrent: 2 },
-
-  // Raft
-  'paddle_left': { url: `${BASE_SOUND_URL}sounds/paddle_left.mp3`, category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
-  'paddle_right': { url: `${BASE_SOUND_URL}sounds/paddle_right.mp3`, category: SoundCategory.PADDLE, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
-  'raft_creak': { url: `${BASE_SOUND_URL}sounds/raft_creak.mp3`, category: SoundCategory.COLLISION, baseVolume: 0.7, basePitch: 1.0, maxConcurrent: 1 },
-  'water_crash': { url: `${BASE_SOUND_URL}sounds/water_crash.mp3`, category: SoundCategory.COLLISION, baseVolume: 1.0, basePitch: 0.9, maxConcurrent: 1 },
-
-  // Vehicle tuning — boost
-  'boost': { url: `${BASE_SOUND_URL}sounds/boost.mp3`, category: SoundCategory.UI, baseVolume: 0.9, basePitch: 1.0, maxConcurrent: 1 },
-
-  // Goal 2: Dodge / dash (mapped to an existing sound to avoid 404; load gracefully)
-  'dodge': { url: `${BASE_SOUND_URL}sounds/boost.mp3`, category: SoundCategory.UI, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 2 },
-
-  // Water flow — rapids ambience
-  'rapids_roar': { url: `${BASE_SOUND_URL}sounds/rapids_roar.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.8, basePitch: 1.0, maxConcurrent: 1 },
-
-  // Layered water stems (fallback-friendly names; can be swapped for bespoke assets later)
-  'water_close_gurgle': { url: `${BASE_SOUND_URL}sounds/ambient_water.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.6, basePitch: 1.0, maxConcurrent: 1 },
-  'water_mid_rapids': { url: `${BASE_SOUND_URL}sounds/rapids_roar.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.5, basePitch: 1.0, maxConcurrent: 1 },
-  'water_distant_roar': { url: `${BASE_SOUND_URL}sounds/ambient_canyon.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.4, basePitch: 1.0, maxConcurrent: 1 },
-  'water_whoosh': { url: `${BASE_SOUND_URL}sounds/ambient_wind.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.0, basePitch: 1.0, maxConcurrent: 1 },
-
-  // Ambient
-  'ambient_water': { url: `${BASE_SOUND_URL}sounds/ambient_water.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.3, basePitch: 1.0, maxConcurrent: 1 },
-  'ambient_wind': { url: `${BASE_SOUND_URL}sounds/ambient_wind.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.2, basePitch: 1.0, maxConcurrent: 1 },
-  'ambient_canyon': { url: `${BASE_SOUND_URL}sounds/ambient_canyon.mp3`, category: SoundCategory.AMBIENT, baseVolume: 0.25, basePitch: 1.0, maxConcurrent: 1 },
-};
-
-// Fallback sound URLs (will be synthesized if files don't exist)
-const FALLBACK_URLS: Record<string, string> = {};
+/** Idle-time scheduling so post-unlock preload never lands on the first game frames. */
+function whenIdle(fn: () => void): void {
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+    .requestIdleCallback;
+  if (typeof ric === 'function') ric(fn, { timeout: 1500 });
+  else setTimeout(fn, 250);
+}
 
 export class AudioManager {
   private listener: THREE.AudioListener;
@@ -114,8 +73,17 @@ export class AudioManager {
   private readonly audioLoadingManager = new THREE.LoadingManager();
   private audioContext: AudioContext | null = null;
   private sounds: Map<string, AudioBuffer> = new Map();
+  /**
+   * One fetch + decode per payload file, shared by every name that resolves
+   * to it (aliases in soundDefs.ts). Keyed by file basename.
+   */
+  private fileLoads: Map<string, Promise<AudioBuffer | null>> = new Map();
+  /** Opens on the first gesture; nothing is fetched before it (see audioUnlock.ts). */
+  private readonly unlockGate: AudioUnlockGate;
+  private preloadStarted = false;
   private activeSounds: Map<string, ActiveSound[]> = new Map();
   private ambientTrack: THREE.Audio<AudioNode> | THREE.PositionalAudio | null = null;
+  private ambientRequest = 0;
   private isMuted: boolean = false;
   private masterVolume: number = 1.0;
   // Per-channel multipliers driven by the settings panel. Applied on TOP of the
@@ -147,7 +115,14 @@ export class AudioManager {
   private canyonAcoustics = {
     active: false,
     wallTightness: 0,
+    wallWetness: DEFAULT_WALL_WETNESS,
   };
+  /** Layers that follow canyon acoustics, re-routed whenever the walls change. */
+  private routedSources: Map<RoutableAudio, AcousticStem> = new Map();
+  /** Send-bus nodes hung off each routed layer's chain, released on re-route. */
+  private sendNodes: WeakMap<RoutableAudio, AudioNode[]> = new WeakMap();
+  /** Synthetic impulse responses, cached per 50 ms of decay. */
+  private impulseCache: Map<number, AudioBuffer> = new Map();
   
   constructor(camera: THREE.Camera) {
     // Create audio listener and attach to camera
@@ -165,8 +140,32 @@ export class AudioManager {
       this.categoryCounts.set(cat, 0);
     });
     
-    // Pre-load critical sounds
-    this.preloadCriticalSounds();
+    // No preload here: this runs during Rapier + WASM boot. Fetch and decode
+    // wait for the Start click / Enter / pointer lock instead.
+    this.unlockGate = createAudioUnlockGate();
+    this.unlockGate.onUnlock(() => this.handleUnlock());
+  }
+
+  /** Whether the first gesture has happened (and loading is allowed). */
+  isUnlocked(): boolean {
+    return this.unlockGate.unlocked;
+  }
+
+  /** Open the gate without a gesture (tests / tooling). */
+  unlock(): void {
+    this.unlockGate.unlock();
+  }
+
+  private handleUnlock(): void {
+    // A context created before any gesture starts suspended; this gesture is
+    // the one the browser will let resume it.
+    const ctx = this.audioContext;
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {
+        // Non-fatal — the next gesture-driven play will try again.
+      });
+    }
+    whenIdle(() => this.preloadSounds());
   }
   
   /**
@@ -184,50 +183,73 @@ export class AudioManager {
   }
   
   /**
-   * Pre-load essential sounds (fire-and-forget so one failure doesn't stall init)
+   * Post-unlock warm-up of the sounds a run needs first. Sequential on purpose:
+   * the game is already running, so trickle rather than burst. Idempotent.
    */
-  private preloadCriticalSounds(): void {
-    const critical = ['jump', 'land_soft', 'step_rock', 'collide_rock'];
-    for (const name of critical) {
-      this.loadSound(name).catch(() => {
-        // Warning already logged inside loadSound
-      });
+  private async preloadSounds(): Promise<void> {
+    if (this.preloadStarted) return;
+    this.preloadStarted = true;
+    for (const name of PRELOAD_SOUNDS) {
+      await this.loadSound(name);
     }
   }
-  
+
   /**
-   * Load a sound file into memory
+   * Load a sound into memory. Before the unlock gesture this waits for it
+   * rather than fetching — callers that `await` simply resume after Start.
+   * Missing or undecodable files resolve null and are remembered (non-fatal).
    */
   async loadSound(name: string): Promise<AudioBuffer | null> {
-    if (this.sounds.has(name)) {
-      return this.sounds.get(name)!;
-    }
-    
+    const cached = this.sounds.get(name);
+    if (cached) return cached;
+
     if (this.failedSounds.has(name)) {
       return null;
     }
 
-    const def = SOUND_LIBRARY[name];
+    const def = resolveSoundFile(name);
     if (!def) {
-      if (!this.failedSounds.has(name)) {
-        console.warn(`[AudioManager] Sound not found: ${name}`);
-        this.failedSounds.add(name);
-      }
+      console.warn(`[AudioManager] Sound not found: ${name}`);
+      this.failedSounds.add(name);
       return null;
     }
-    
-    try {
-      const buffer = await this.loader.loadAsync(def.url);
+
+    if (!this.unlockGate.unlocked) {
+      await new Promise<void>((resolve) => this.unlockGate.onUnlock(resolve));
+    }
+
+    const buffer = await this.loadFile(def);
+    if (buffer) {
       this.sounds.set(name, buffer);
       this.failedSounds.delete(name);
-      return buffer;
-    } catch (e) {
-      if (!this.failedSounds.has(name)) {
-        console.warn(`[AudioManager] Failed to load sound: ${name}`);
-        this.failedSounds.add(name);
-      }
-      return null;
+    } else {
+      this.failedSounds.add(name);
     }
+    return buffer;
+  }
+
+  private loadFile(def: SoundFileDef): Promise<AudioBuffer | null> {
+    const pending = this.fileLoads.get(def.file);
+    if (pending) return pending;
+
+    const load = this.loader
+      .loadAsync(soundUrl(def))
+      .then((buffer) => (def.loop ? this.seamLoop(buffer) : buffer))
+      .catch(() => {
+        console.warn(`[AudioManager] Failed to load sound file: ${def.file}`);
+        return null;
+      });
+    this.fileLoads.set(def.file, load);
+    return load;
+  }
+
+  /** Re-seam a decoded bed so MP3 priming/padding doesn't gap the loop. */
+  private seamLoop(buffer: AudioBuffer): AudioBuffer {
+    const ctx = this.audioContext;
+    if (!ctx) return buffer;
+    return seamLoopBuffer(buffer, (channels, length, sampleRate) =>
+      ctx.createBuffer(channels, length, sampleRate),
+    );
   }
   
   /**
@@ -246,8 +268,11 @@ export class AudioManager {
     position?: THREE.Vector3
   ): string | null {
     if (this.isMuted) return null;
-    
-    const def = SOUND_LIBRARY[name];
+    // Before the first gesture the context is suspended and nothing is loaded;
+    // queueing would replay stale one-shots at unlock, so just drop them.
+    if (!this.unlockGate.unlocked) return null;
+
+    const def = SOUND_DEFS[name];
     if (!def) {
       if (!this.failedSounds.has(name)) {
         console.warn(`[AudioManager] Unknown sound: ${name}`);
@@ -266,9 +291,10 @@ export class AudioManager {
     // Get or load buffer
     const buffer = this.sounds.get(name);
     if (!buffer) {
-      // Try to load on-demand
-      this.loadSound(name).then(() => {
-        this.playSound(name, volume, pitch, position);
+      // Try to load on-demand. Only retry on success — a missing file would
+      // otherwise bounce between loadSound and playSound forever.
+      this.loadSound(name).then((loaded) => {
+        if (loaded) this.playSound(name, volume, pitch, position);
       });
       return null;
     }
@@ -357,7 +383,7 @@ export class AudioManager {
     let oldestName = '';
     
     for (const [name, sounds] of this.activeSounds) {
-      const def = SOUND_LIBRARY[name];
+      const def = SOUND_DEFS[name];
       if (def?.category === category && sounds.length > 0) {
         const candidate = sounds[0]; // Oldest
         if (!oldest || candidate.startTime < oldest.startTime) {
@@ -386,7 +412,7 @@ export class AudioManager {
       active.splice(idx, 1);
       
       // Update category count
-      const def = SOUND_LIBRARY[name];
+      const def = SOUND_DEFS[name];
       if (def) {
         const count = this.categoryCounts.get(def.category) || 0;
         this.categoryCounts.set(def.category, Math.max(0, count - 1));
@@ -401,9 +427,14 @@ export class AudioManager {
    * Set ambient background track
    */
   setAmbient(trackName: string, fadeDuration: number = 1000): void {
+    // Only the latest request may install a track: loads can resolve out of
+    // order (and all at once when the unlock gesture releases them).
+    const request = ++this.ambientRequest;
+
     // Fade out current ambient
     if (this.ambientTrack) {
       const oldTrack = this.ambientTrack;
+      this.ambientTrack = null;
       const startVol = oldTrack.getVolume();
       const fadeStart = Date.now();
       
@@ -415,6 +446,7 @@ export class AudioManager {
         if (t < 1) {
           requestAnimationFrame(fadeOut);
         } else {
+          this.unrouteAcoustics(oldTrack);
           oldTrack.stop();
         }
       };
@@ -423,7 +455,7 @@ export class AudioManager {
     
     // Load and fade in new track
     this.loadSound(trackName).then(buffer => {
-      if (!buffer) return;
+      if (!buffer || request !== this.ambientRequest) return;
       
       const track = new THREE.Audio(this.listener) as THREE.Audio<AudioNode>;
       this.ambientTrack = track;
@@ -431,7 +463,7 @@ export class AudioManager {
       track.setLoop(true);
       track.setVolume(0);
       
-      const def = SOUND_LIBRARY[trackName];
+      const def = SOUND_DEFS[trackName];
       const targetVol = (def?.baseVolume || 0.3) * this.musicVolume;
       const fadeStart = Date.now();
       
@@ -446,6 +478,7 @@ export class AudioManager {
       };
       
       track.play();
+      this.routeAcoustics(track, resolveSoundFile(trackName)?.file === 'rapids_roar.mp3' ? 'rapids' : 'bed');
       fadeIn();
     });
   }
@@ -530,7 +563,7 @@ export class AudioManager {
    * Get load status for diagnostics overlay
    */
   getLoadStatus(): { loaded: number; total: number; failed: string[]; soundNames: string[] } {
-    const soundNames = Object.keys(SOUND_LIBRARY);
+    const soundNames = Object.keys(SOUND_DEFS);
     return {
       loaded: this.sounds.size,
       total: soundNames.length,
@@ -564,12 +597,17 @@ export class AudioManager {
   }
 
   /**
-   * Build a lightweight synthetic IR for canyon-like reverberation.
+   * Build a lightweight synthetic IR for canyon-like reverberation. Cached per
+   * 50 ms of decay so re-routing a layer does not regenerate noise.
    */
   private syntheticImpulseResponse(decaySeconds: number): AudioBuffer | null {
     if (!this.audioContext) return null;
+    const key = Math.round(decaySeconds * 20);
+    const cached = this.impulseCache.get(key);
+    if (cached) return cached;
+
     const sampleRate = this.audioContext.sampleRate;
-    const length = Math.max(1, Math.floor(sampleRate * decaySeconds));
+    const length = Math.max(1, Math.floor(sampleRate * (key / 20)));
     const buffer = this.audioContext.createBuffer(2, length, sampleRate);
 
     for (let channel = 0; channel < 2; channel += 1) {
@@ -581,57 +619,158 @@ export class AudioManager {
       }
     }
 
+    this.impulseCache.set(key, buffer);
     return buffer;
   }
 
   /**
-   * Enable canyon acoustics for reactive layers.
+   * Enable canyon acoustics for routed layers.
+   *
+   * @param wallTightness 0 (open) – 1 (slot), from the biome's TrackBiomeProfile.
+   * @param wallWetness   0 (absorbent) – 1 (wet ice / concrete); see canyonAcoustics.ts.
    */
-  enableCanyonAcoustics(wallTightness: number): void {
-    this.canyonAcoustics.active = true;
-    this.canyonAcoustics.wallTightness = Math.max(0, Math.min(1, wallTightness));
+  enableCanyonAcoustics(wallTightness: number, wallWetness: number = DEFAULT_WALL_WETNESS): void {
+    const tightness = Number.isFinite(wallTightness) ? Math.max(0, Math.min(1, wallTightness)) : 0;
+    const wetness = Number.isFinite(wallWetness) ? Math.max(0, Math.min(1, wallWetness)) : DEFAULT_WALL_WETNESS;
+    const state = this.canyonAcoustics;
+    if (
+      state.active &&
+      Math.abs(state.wallTightness - tightness) < 1e-3 &&
+      Math.abs(state.wallWetness - wetness) < 1e-3
+    ) {
+      return;
+    }
+    state.active = true;
+    state.wallTightness = tightness;
+    state.wallWetness = wetness;
+    this.refreshAcousticRouting();
   }
 
   /**
    * Disable canyon acoustics.
    */
   disableCanyonAcoustics(): void {
+    const wasActive = this.canyonAcoustics.active;
     this.canyonAcoustics.active = false;
     this.canyonAcoustics.wallTightness = 0;
+    if (wasActive) this.refreshAcousticRouting();
+  }
+
+  /** Live wall tightness (0 when acoustics are off) — the speed-wind worklet reads it. */
+  getCanyonWallTightness(): number {
+    return this.canyonAcoustics.active ? this.canyonAcoustics.wallTightness : 0;
+  }
+
+  /**
+   * Put a playing layer under canyon acoustics. It is re-routed automatically
+   * whenever the walls change, until `unrouteAcoustics`.
+   */
+  routeAcoustics(source: RoutableAudio, stem: AcousticStem = 'bed'): void {
+    this.routedSources.set(source, stem);
+    this.applyCanyonFilters(source, stem);
+  }
+
+  /** Stop following canyon acoustics and strip the chain back to dry. */
+  unrouteAcoustics(source: RoutableAudio): void {
+    if (!this.routedSources.delete(source)) return;
+    this.releaseSendNodes(source);
+    try {
+      source.setFilters([]);
+    } catch {
+      // Source already torn down — nothing left to strip.
+    }
+  }
+
+  private refreshAcousticRouting(): void {
+    for (const [source, stem] of this.routedSources) {
+      try {
+        this.applyCanyonFilters(source, stem);
+      } catch (error) {
+        console.warn('[AudioManager] Dropping acoustic route for a dead source:', error);
+        this.routedSources.delete(source);
+      }
+    }
+  }
+
+  private releaseSendNodes(source: RoutableAudio): void {
+    const nodes = this.sendNodes.get(source);
+    if (!nodes) return;
+    for (const node of nodes) node.disconnect();
+    this.sendNodes.delete(source);
   }
 
   /**
    * Apply/clear the acoustic filter chain on a playing source.
    *
    * Two independent contributions, composed in one chain so a source is never
-   * handed two competing `setFilters` calls: canyon reverb (wall tightness) and
-   * the survival wetness muffle. Either can be absent.
+   * handed two competing `setFilters` calls: canyon acoustics (wall tightness
+   * and surface) and the survival wetness muffle. Either can be absent.
+   *
+   * Canyon acoustics are sends around a unity dry path (canyonAcoustics.ts):
+   *
+   *   in ─ lowpass ─────────────────────────────── out ─ [wetness muffle]
+   *    ├─ convolver ─ reverbSend ────────────────┘
+   *    └─ ER lowpass ─ delay/tap ×N ─ erSend ────┘   (rapids stem only)
+   *
+   * `setFilters` wires the `in → lowpass → out` spine; the sends hang off it
+   * and are tracked so a re-route can release them.
    */
-  applyCanyonFilters(source: THREE.Audio | THREE.PositionalAudio): void {
-    if (!this.audioContext) {
+  applyCanyonFilters(source: RoutableAudio, stem: AcousticStem = 'bed'): void {
+    this.releaseSendNodes(source);
+    const ctx = this.audioContext;
+    if (!ctx) {
       source.setFilters([]);
       return;
     }
 
     const filters: AudioNode[] = [];
+    const sends: AudioNode[] = [];
 
     if (this.canyonAcoustics.active) {
-      const wallTightness = this.canyonAcoustics.wallTightness;
-      const lowPass = this.audioContext.createBiquadFilter();
-      lowPass.type = 'lowpass';
-      lowPass.frequency.value = 6000 - wallTightness * 2000;
-      lowPass.Q.value = 0.5 + wallTightness * 2.0;
-      filters.push(lowPass);
+      const p = canyonAcousticParams(this.canyonAcoustics.wallTightness, this.canyonAcoustics.wallWetness);
 
-      const convolver = this.audioContext.createConvolver();
-      const decay = 0.3 + wallTightness * 0.5;
-      convolver.buffer = this.syntheticImpulseResponse(decay);
-      filters.push(convolver);
+      const input = ctx.createGain();
+      const lowPass = ctx.createBiquadFilter();
+      lowPass.type = 'lowpass';
+      lowPass.frequency.value = p.lowpassHz;
+      lowPass.Q.value = p.lowpassQ;
+      const output = ctx.createGain();
+      filters.push(input, lowPass, output);
+
+      const convolver = ctx.createConvolver();
+      convolver.buffer = this.syntheticImpulseResponse(p.reverbDecaySeconds);
+      const reverbReturn = ctx.createGain();
+      reverbReturn.gain.value = p.reverbSend;
+      input.connect(convolver);
+      convolver.connect(reverbReturn);
+      reverbReturn.connect(output);
+      sends.push(convolver, reverbReturn);
+
+      if (stem === 'rapids' && p.taps.length > 0) {
+        const erFilter = ctx.createBiquadFilter();
+        erFilter.type = 'lowpass';
+        erFilter.frequency.value = p.earlyReflectionLowpassHz;
+        const erReturn = ctx.createGain();
+        erReturn.gain.value = p.earlyReflectionSend;
+        input.connect(erFilter);
+        for (const tap of p.taps) {
+          const delay = ctx.createDelay(0.5);
+          delay.delayTime.value = tap.delaySeconds;
+          const tapGain = ctx.createGain();
+          tapGain.gain.value = tap.gain;
+          erFilter.connect(delay);
+          delay.connect(tapGain);
+          tapGain.connect(erReturn);
+          sends.push(delay, tapGain);
+        }
+        erReturn.connect(output);
+        sends.push(erFilter, erReturn);
+      }
     }
 
     const wetnessCutoff = this.getWetnessCutoffHz();
     if (wetnessCutoff !== null) {
-      const muffle = this.audioContext.createBiquadFilter();
+      const muffle = ctx.createBiquadFilter();
       muffle.type = 'lowpass';
       muffle.frequency.value = wetnessCutoff;
       muffle.Q.value = 0.4;
@@ -639,6 +778,7 @@ export class AudioManager {
     }
 
     source.setFilters(filters);
+    if (sends.length > 0) this.sendNodes.set(source, sends);
   }
   
   /**
@@ -658,11 +798,19 @@ export class AudioManager {
   /**
    * Snapshot of reactive layers + canyon acoustic state for diagnostics.
    */
-  getAudioState(): { layers: ReactiveVolumes; reverbActive: boolean; wallTightness: number } {
+  getAudioState(): {
+    layers: ReactiveVolumes;
+    reverbActive: boolean;
+    wallTightness: number;
+    wallWetness: number;
+    routedLayers: number;
+  } {
     return {
       layers: this.getReactiveVolumes(),
       reverbActive: this.canyonAcoustics.active,
       wallTightness: this.canyonAcoustics.wallTightness,
+      wallWetness: this.canyonAcoustics.wallWetness,
+      routedLayers: this.routedSources.size,
     };
   }
   
@@ -699,8 +847,12 @@ export class AudioManager {
     
     this.ambientTrack?.stop();
     this.ambientTrack = null;
-    
+
+    this.unlockGate.dispose();
+    this.routedSources.clear();
+    this.impulseCache.clear();
     this.sounds.clear();
+    this.fileLoads.clear();
     this.speedWindBuffer = null;
     this.listener.removeFromParent();
   }

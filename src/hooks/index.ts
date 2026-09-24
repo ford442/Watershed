@@ -28,3 +28,4 @@ export type { PlayerControls, PlayerControlVectors } from './usePlayerControls';
 // Goal 3: Segment-aware ambient audio
 export { useSegmentAudio } from './useSegmentAudio';
 export type { SegmentAudioPhase } from './useSegmentAudio';
+export { useCanyonAcoustics } from './useCanyonAcoustics';

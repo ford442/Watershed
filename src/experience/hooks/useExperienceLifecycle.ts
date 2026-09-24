@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCameraShake } from '../../hooks/useCameraShake';
 import { useSegmentAudio } from '../../hooks/useSegmentAudio';
+import { useCanyonAcoustics } from '../../hooks/useCanyonAcoustics';
 import { initAudio, getAudioManager } from '../../systems/audio/AudioSystem';
 import {
   tickScoreSystem,
@@ -104,6 +105,10 @@ export function useExperienceLifecycle({
       initAudio(camera);
     });
   }, [camera, debug]);
+
+  // Biome wall profile → canyon acoustics. Declared after initAudio so the
+  // first pass already has a manager to talk to.
+  useCanyonAcoustics();
 
   useFrame(() => {
     const pos = vehicleRef.current?.translation();
