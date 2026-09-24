@@ -206,6 +206,43 @@ describe('Level Validator', () => {
     });
   });
 
+  describe('Safe Zone Validation', () => {
+    const withSafeZone = (safeZone: Record<string, number>, index = 2) => {
+      const level = createValidLevel();
+      return {
+        ...level,
+        segments: level.segments.map((seg) => (seg.index === index ? { ...seg, safeZone } : seg)),
+      };
+    };
+    const respawnErrors = (level: unknown) =>
+      validateLevel(level).errors.filter((e) => e.field === 'segments[2].safeZone.respawnAt');
+
+    it('accepts a respawnAt on an upstream segment or the segment itself', () => {
+      expect(validateLevel(withSafeZone({ yMin: -12, yMax: 150, respawnAt: 1 })).valid).toBe(true);
+      expect(validateLevel(withSafeZone({ yMin: -12, yMax: 150, respawnAt: 2 })).valid).toBe(true);
+      expect(validateLevel(withSafeZone({ yMin: -12, yMax: 150 })).valid).toBe(true);
+    });
+
+    it('rejects a non-integer respawnAt', () => {
+      const errors = respawnErrors(withSafeZone({ yMin: -12, yMax: 150, respawnAt: 1.5 }));
+      expect(errors).toHaveLength(1);
+      expect(errors[0].error).toMatch(/integer/);
+    });
+
+    it('rejects a respawnAt that names no segment in the map', () => {
+      const errors = respawnErrors(withSafeZone({ yMin: -12, yMax: 150, respawnAt: -4 }));
+      expect(errors).toHaveLength(1);
+      expect(errors[0].error).toMatch(/does not name a segment/);
+    });
+
+    it('rejects a respawnAt downstream of its segment', () => {
+      const level = withSafeZone({ yMin: -12, yMax: 150, respawnAt: 2 }, 1);
+      const errors = validateLevel(level).errors.filter((e) => e.field === 'segments[1].safeZone.respawnAt');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].error).toMatch(/downstream/);
+    });
+  });
+
   describe('Format Helpers', () => {
     it('should format valid result', () => {
       const result: ValidationResult = { valid: true, errors: [], warnings: [] };
