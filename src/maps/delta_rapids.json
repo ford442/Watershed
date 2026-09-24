@@ -485,7 +485,7 @@
       "treeDensity": 0.25,
       "rockDensity": "low",
       "effects": { "particleCount": 40 },
-      "safeZone": { "yMin": -12, "yMax": 8, "respawnAt": 20 },
+      "safeZone": { "yMin": -12, "yMax": 20, "respawnAt": 20 },
       "decorations": { "trees": 6, "grass": 28, "pebbles": 16, "reeds": 6, "driftwood": 4 }
     },
     {
@@ -504,7 +504,7 @@
       "treeDensity": 0.3,
       "rockDensity": "low",
       "effects": { "particleCount": 20, "fogDensity": 0.012 },
-      "safeZone": { "yMin": -10, "yMax": 10, "respawnAt": 21 },
+      "safeZone": { "yMin": -10, "yMax": 20, "respawnAt": 21 },
       "decorations": {
         "trees": 8,
         "grass": 32,
