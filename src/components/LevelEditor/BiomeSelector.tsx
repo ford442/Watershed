@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { isPaletteOnlyBiome } from '../../configs/TrackBiomes';
 
 // Biome definitions with visual properties
 interface BiomeDefinition {
@@ -19,7 +20,7 @@ interface BiomeDefinition {
   preview: string;
 }
 
-const BIOMES: BiomeDefinition[] = [
+const ALL_BIOMES: BiomeDefinition[] = [
   {
     id: 'canyonSummer',
     name: 'Canyon Summer',
@@ -98,6 +99,12 @@ const BIOMES: BiomeDefinition[] = [
     preview: '🌅',
   },
 ];
+
+/**
+ * Palette-only stubs (alpineSpring / midnightMist) are clones of another
+ * biome's walls — offering them as distinct places would be a content lie.
+ */
+const BIOMES = ALL_BIOMES.filter((biome) => !isPaletteOnlyBiome(biome.id));
 
 interface BiomeSelectorProps {
   selectedBiome: string;

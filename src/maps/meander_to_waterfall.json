@@ -110,6 +110,7 @@
     {
       "index": 14,
       "difficulty": 0.7,
+      "safeZone": { "yMin": -20, "yMax": 150, "respawnAt": 13 },
       "type": "waterfall",
       "meanderStrength": 0.0,
       "verticalBias": -3.0,
@@ -134,6 +135,7 @@
     {
       "index": 15,
       "difficulty": 0.4,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 15 },
       "type": "splash",
       "biomeOverride": "canyonAutumn",
       "width": 70,
@@ -173,9 +175,52 @@
       "id": "meander-fall-pulse",
       "kind": "inflowPulse",
       "segmentIndex": 14,
-      "hours": [14],
+      "hours": [13, 14, 15],
       "radius": 8,
       "strength": 5.5
+    },
+    {
+      "id": "meander-dawn-fall-trickle",
+      "kind": "roughness",
+      "segmentIndex": 14,
+      "hours": [5, 6, 7],
+      "radius": 8,
+      "strength": 2.0
+    },
+    {
+      "id": "meander-pond-gravelbar",
+      "kind": "braid",
+      "segmentIndex": 16,
+      "hours": [13, 14, 15, 16],
+      "lateralOffset": 8,
+      "radius": 12,
+      "strength": 1.6
+    },
+    {
+      "id": "meander-pond-dawn-glass",
+      "kind": "roughness",
+      "segmentIndex": 16,
+      "hours": [5, 6, 7],
+      "radius": 14,
+      "strength": 1.4
+    },
+    {
+      "id": "meander-slot-afternoon-surge",
+      "kind": "inflowPulse",
+      "segmentIndex": 20,
+      "hours": [13, 14, 15],
+      "centerT": 0.5,
+      "radius": 7,
+      "strength": 3.2
+    },
+    {
+      "id": "meander-slot-dawn-backwater",
+      "kind": "roughness",
+      "segmentIndex": 20,
+      "hours": [5, 6, 7],
+      "centerT": 0.5,
+      "radius": 7,
+      "strength": 1.8
     }
   ],
   "spawns": {

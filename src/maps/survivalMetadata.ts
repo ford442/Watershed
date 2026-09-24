@@ -9,13 +9,21 @@ import type { CheckpointDefinition } from '../systems/survival';
 /**
  * Per-map survival authoring.
  *
- * Cache slots and portage routes may be **spatial** (they carry a `position`, so
- * SurvivalMarkers draws them and proximity drives the state machine) or
- * **segment-scoped** (no position — entering the segment is the interaction).
+ * Cache slots and portage routes are **spatial** when they carry an `anchor`
+ * (SurvivalMarkers draws them and proximity drives the state machine) or
+ * **segment-scoped** (no anchor — entering the segment is the interaction).
  * Both forms coexist; see docs/reference/SURVIVAL_LAYER.md.
  *
- * Positions are first-pass authoring aligned with the checkpoint table below and
- * want a playtest pass on a GPU machine before they're treated as final.
+ * Anchors are segment-relative (`t` along the path, `lateral` metres right of
+ * downstream, negative = left bank) and resolve against the live segment, so
+ * they follow `?seed=`. The previous absolute `[x, y, z]` positions missed the
+ * track entirely a few segments in: the treadmill descends and meanders far
+ * from any fixed coordinate.
+ *
+ * Laterals put a waypoint on the bank — past `waterWidth / 2`, inside
+ * `width / 2` — so reaching it means leaving the fast line. Checkpoints mirror
+ * each map JSON's `spawns.checkpoints` segments; respawn lands on that
+ * segment's spawn point (path start), so they carry no position here.
  */
 export interface MapSurvivalMetadata {
   maxCachePlacements?: number;
@@ -26,20 +34,73 @@ export interface MapSurvivalMetadata {
 }
 
 const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
+  glacial: {
+    // Cold is the verb here: trail-light kit loses core temp through the tube,
+    // and the apex shelf cache is the one mid-run way to get warmth back.
+    checkpoints: [
+      { segment: 3, label: 'Tube entry' },
+      { segment: 10, label: 'Tube apex' },
+      { segment: 13, label: 'Crevasse pool' },
+    ],
+    maxCachePlacements: 1,
+    cacheSlots: [
+      {
+        id: 'glacial-apex-shelf-10',
+        segmentIndex: 10,
+        label: 'Melt-out shelf at the tube apex',
+        retrievalBonus: 260,
+        // Right-bank shelf off a 5 m channel. Stash it on the way down; a
+        // crevasse fall respawns at the apex (safeZone.respawnAt 10), so the
+        // retrieval pass is the warm-up before the second attempt.
+        anchor: { t: 0.7, lateral: 7, rise: 1.5 },
+        radius: 5,
+      },
+    ],
+    portageRoutes: [
+      {
+        segmentIndex: 12,
+        label: 'Snow-bridge portage around the crevasse',
+        // Opposite bank from the launch-shelf rock (localX −11): when the melt
+        // forecast floods the jump, the snow bridge is the line.
+        anchor: { t: 0.02, lateral: 9, rise: 1 },
+        radius: 6,
+      },
+    ],
+  },
+  lumber: {
+    checkpoints: [
+      { segment: 5, label: 'Flume straight' },
+      { segment: 10, label: 'Gap lip' },
+      { segment: 11, label: 'Landing pool' },
+    ],
+    maxCachePlacements: 1,
+    cacheSlots: [
+      {
+        id: 'lumber-bend-shelf-7',
+        segmentIndex: 7,
+        label: 'Timber shelf on the flume bend',
+        retrievalBonus: 240,
+        // Between the flume-straight checkpoint and the gap: a wipeout on the
+        // high flume (8–9) respawns at 5 and runs back past it.
+        anchor: { t: 0.5, lateral: 8, rise: 1 },
+        radius: 5,
+      },
+    ],
+    portageRoutes: [
+      {
+        segmentIndex: 10,
+        label: 'Bank portage past the washed-out trestle',
+        // The dry line along the bank at the gap lip. When the forecast washes
+        // the trestle out, swimming the gap instead is PORTAGE FAILED.
+        anchor: { t: 0.02, lateral: 10, rise: 1 },
+        radius: 6,
+      },
+    ],
+  },
   meander: {
     checkpoints: [
-      {
-        segment: 13,
-        label: 'Approach shelf',
-        position: [0, -20, -300],
-        radius: 30,
-      },
-      {
-        segment: 15,
-        label: 'Splash pool',
-        position: [0, -35, -700],
-        radius: 40,
-      },
+      { segment: 13, label: 'Approach shelf' },
+      { segment: 15, label: 'Splash pool' },
     ],
     maxCachePlacements: 1,
     cacheSlots: [
@@ -49,8 +110,8 @@ const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
         label: 'Rim shelf above the trestle',
         retrievalBonus: 250,
         // Bank-side shelf, off the main current line — reaching it costs speed.
-        position: [18, -14, -235],
-        radius: 9,
+        anchor: { t: 0.6, lateral: 11, rise: 2 },
+        radius: 6,
       },
     ],
     portageRoutes: [
@@ -59,25 +120,15 @@ const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
         label: 'High-line portage past the trestle',
         // The dry line around the trestle. Wide radius: this is a route to steer
         // through at speed, not a spot to stop on.
-        position: [22, -12, -258],
-        radius: 12,
+        anchor: { t: 0.5, lateral: 12, rise: 2 },
+        radius: 8,
       },
     ],
   },
   hydro: {
     checkpoints: [
-      {
-        segment: 4,
-        label: 'Stilling basin',
-        position: [0, -4, -190],
-        radius: 35,
-      },
-      {
-        segment: 8,
-        label: 'Outfall splash',
-        position: [0, -16, -480],
-        radius: 30,
-      },
+      { segment: 4, label: 'Stilling basin' },
+      { segment: 8, label: 'Outfall splash' },
     ],
     maxCachePlacements: 1,
     cacheSlots: [
@@ -86,8 +137,8 @@ const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
         segmentIndex: 9,
         label: 'Catwalk cache above the outfall',
         retrievalBonus: 275,
-        position: [14, -18, -520],
-        radius: 9,
+        anchor: { t: 0.4, lateral: 12, rise: 2 },
+        radius: 7,
       },
     ],
     portageRoutes: [
@@ -96,37 +147,17 @@ const SURVIVAL_BY_MAP: Partial<Record<MapRegistryId, MapSurvivalMetadata>> = {
         label: 'Portage ledge above the catwalk gate',
         // Dam-release set-piece: when the forecast opens the gates, this ledge is
         // the only line that isn't a wall of water.
-        position: [16, -14, -690],
-        radius: 12,
+        anchor: { t: 0.3, lateral: 13, rise: 2 },
+        radius: 8,
       },
     ],
   },
   delta: {
     checkpoints: [
-      {
-        segment: 2,
-        label: 'Raft launch',
-        position: [0, -3, -90],
-        radius: 40,
-      },
-      {
-        segment: 6,
-        label: 'Open water',
-        position: [0, -5, -280],
-        radius: 45,
-      },
-      {
-        segment: 14,
-        label: 'Channels rejoin',
-        position: [0, -6, -620],
-        radius: 40,
-      },
-      {
-        segment: 21,
-        label: 'Beach landing',
-        position: [0, -6, -920],
-        radius: 50,
-      },
+      { segment: 2, label: 'Raft launch' },
+      { segment: 6, label: 'Open water' },
+      { segment: 14, label: 'Channels rejoin' },
+      { segment: 21, label: 'Beach landing' },
     ],
     maxCachePlacements: 1,
     cacheSlots: [

@@ -1,9 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { BANK_CONFIG, JUMP_CONFIG } from '../constants';
+import { useGameStore } from '../../../systems/GameState';
+import {
+  buildSegmentFrame,
+  clearSegmentFrames,
+  publishSegmentFrames,
+} from '../../../systems/map/segmentFrames';
 import {
   POSITION_SANE,
   getEffectivePositionBounds,
+  resolveActiveEnvelope,
+  triggerOutOfBoundsWipeout,
   isFiniteVec3,
   isFiniteImpulse,
   isPositionSane,
@@ -33,8 +41,8 @@ describe('runnerAirControl helpers', () => {
     expect(getEffectivePositionBounds(undefined)).toEqual(POSITION_SANE);
   });
 
-  it('getEffectivePositionBounds narrows y bounds from an authored safeZone, leaving xz/speed global', () => {
-    const bounds = getEffectivePositionBounds({ yMin: -5, yMax: 20, respawnAt: 3 });
+  it('getEffectivePositionBounds narrows y bounds from a resolved envelope, leaving xz/speed global', () => {
+    const bounds = getEffectivePositionBounds({ yMin: -5, yMax: 20 });
     expect(bounds).toEqual({
       yMin: -5,
       yMax: 20,
@@ -174,5 +182,57 @@ describe('runnerAirControl helpers', () => {
     expect(js.state).toBe('airborne');
     expect(impulses.some((entry) => entry.tag === 'jump')).toBe(true);
     expect(js.commitTimer).toBe(JUMP_CONFIG.COMMIT_DURATION);
+  });
+});
+
+describe('segment-relative out-of-bounds (safeZone)', () => {
+  const waterfall = {
+    getPoint: (t: number) => ({ x: 0, y: -800 - 100 * t, z: -1300 - 10 * t }),
+  };
+  const approach = {
+    getPoint: (t: number) => ({ x: 0, y: -750 - 50 * t, z: -1250 - 50 * t }),
+  };
+
+  afterEach(() => {
+    clearSegmentFrames();
+    useGameStore.setState({ isWipeout: false, respawnSegmentIndex: 0 });
+  });
+
+  it('a runner 800 m down a live segment is in bounds (the old absolute -80 clip fired here)', () => {
+    publishSegmentFrames([buildSegmentFrame(13, approach)]);
+    const envelope = resolveActiveEnvelope({ z: -1275 });
+    expect(envelope.authored).toBe(false);
+    expect(isPositionSane({ x: 0, y: -775, z: -1275 }, getEffectivePositionBounds(envelope))).toBe(true);
+    expect(isPositionSane({ x: 0, y: -775, z: -1275 }, POSITION_SANE)).toBe(false);
+  });
+
+  it('a fall under an authored safeZone wipes out and respawns at respawnAt, not the world origin', () => {
+    publishSegmentFrames([
+      buildSegmentFrame(13, approach),
+      buildSegmentFrame(14, waterfall, { yMin: -20, yMax: 150, respawnAt: 13 }),
+    ]);
+    useGameStore.setState({ isWipeout: false, respawnSegmentIndex: 14 });
+
+    const fallen = { x: 0, y: -925, z: -1308 };
+    const envelope = resolveActiveEnvelope(fallen);
+    expect(envelope).toMatchObject({ segmentIndex: 14, authored: true, respawnAt: 13 });
+    expect(isPositionSane(fallen, getEffectivePositionBounds(envelope))).toBe(false);
+
+    triggerOutOfBoundsWipeout(envelope);
+    expect(useGameStore.getState().isWipeout).toBe(true);
+    expect(useGameStore.getState().respawnSegmentIndex).toBe(13);
+  });
+
+  it('is idempotent while a wipeout is already in flight', () => {
+    useGameStore.setState({ isWipeout: true, respawnSegmentIndex: 7 });
+    triggerOutOfBoundsWipeout({ respawnAt: 2 });
+    expect(useGameStore.getState().respawnSegmentIndex).toBe(7);
+  });
+
+  it('without respawnAt leaves the checkpoint table\'s respawn segment in charge', () => {
+    useGameStore.setState({ isWipeout: false, respawnSegmentIndex: 10 });
+    triggerOutOfBoundsWipeout({});
+    expect(useGameStore.getState().isWipeout).toBe(true);
+    expect(useGameStore.getState().respawnSegmentIndex).toBe(10);
   });
 });

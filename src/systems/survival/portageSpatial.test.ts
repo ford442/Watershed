@@ -15,15 +15,23 @@ import {
   portageRouteStatus,
   reducePortageCacheState,
   placeCache,
+  isSpatialWaypoint,
+  resolveWaypointPositions,
   totalCacheRetrievalBonus,
   type CacheSlotDefinition,
   type PortageRouteDefinition,
 } from './portageCache';
-import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
+import { getMapSurvivalMetadata, mapHasSurvivalFeatures } from '../../maps/survivalMetadata';
+import glacialLevel from '../../maps/glacial_source.json';
+import lumberLevel from '../../maps/lumber_flume.json';
+import meanderLevel from '../../maps/meander_to_waterfall.json';
+import hydroLevel from '../../maps/hydro_dam.json';
+import deltaLevel from '../../maps/delta_rapids.json';
 import {
   createSurvivalState,
   getLoadoutDefinition,
   getSurvivalModifiers,
+  tickSurvivalState,
 } from '../survival';
 
 const SPATIAL_CACHE: CacheSlotDefinition = {
@@ -186,28 +194,125 @@ describe('spatial portage requirement', () => {
 describe('authored map metadata', () => {
   it('gives meander a spatial cache and portage route to play', () => {
     const meander = getMapSurvivalMetadata('meander');
-    expect(meander.cacheSlots?.[0].position).toBeDefined();
-    expect(meander.portageRoutes?.[0].position).toBeDefined();
+    expect(meander.cacheSlots?.[0].anchor).toBeDefined();
+    expect(meander.portageRoutes?.[0].anchor).toBeDefined();
   });
 
   it('gives the hydro dam-release set-piece a portage line and a cache', () => {
     const hydro = getMapSurvivalMetadata('hydro');
-    expect(hydro.portageRoutes?.[0].position).toBeDefined();
-    expect(hydro.cacheSlots?.[0].position).toBeDefined();
+    expect(hydro.portageRoutes?.[0].anchor).toBeDefined();
+    expect(hydro.cacheSlots?.[0].anchor).toBeDefined();
+  });
+
+  it.each(['glacial', 'lumber'] as const)(
+    'authors %s with checkpoints, a spatial cache and a spatial portage',
+    (mapId) => {
+      expect(mapHasSurvivalFeatures(mapId)).toBe(true);
+      const meta = getMapSurvivalMetadata(mapId);
+      expect(meta.checkpoints?.length).toBeGreaterThan(0);
+      expect(meta.cacheSlots?.every(isSpatialWaypoint)).toBe(true);
+      expect(meta.portageRoutes?.every(isSpatialWaypoint)).toBe(true);
+    },
+  );
+
+  it('prices the lumber washed-out trestle gap with a spatial portage', () => {
+    const route = getMapSurvivalMetadata('lumber').portageRoutes?.find((r) => r.segmentIndex === 10);
+    expect(route?.anchor).toBeDefined();
+    let state = createPortageCacheRunState(getMapSurvivalMetadata('lumber'));
+    state = reducePortageCacheState(state, { type: 'ENTER_SEGMENT', segmentIndex: 10, requiresPortage: true });
+    // Swimming the gap and surviving it is still PORTAGE FAILED.
+    state = reducePortageCacheState(state, { type: 'EXIT_SEGMENT', segmentIndex: 10, survived: true });
+    expect(portageRouteStatus(state, 10)).toBe('failed');
   });
 
   it('keeps a segment-scoped map authored so the legacy path stays exercised', () => {
     const delta = getMapSurvivalMetadata('delta');
     expect(delta.portageRoutes?.[0].position).toBeUndefined();
+    expect(delta.portageRoutes?.[0].anchor).toBeUndefined();
+    expect(isSpatialWaypoint(delta.portageRoutes![0])).toBe(false);
   });
 
   it('authors every cache within its own segment ordering', () => {
-    for (const mapId of ['meander', 'hydro', 'delta'] as const) {
+    for (const mapId of ['glacial', 'lumber', 'meander', 'hydro', 'delta'] as const) {
       for (const slot of getMapSurvivalMetadata(mapId).cacheSlots ?? []) {
         expect(slot.segmentIndex, `${mapId}/${slot.id}`).toBeGreaterThanOrEqual(0);
         expect(slot.retrievalBonus, `${mapId}/${slot.id}`).toBeGreaterThan(0);
       }
     }
+  });
+
+  it.each([
+    ['glacial', glacialLevel],
+    ['lumber', lumberLevel],
+    ['meander', meanderLevel],
+    ['hydro', hydroLevel],
+    ['delta', deltaLevel],
+  ] as const)('%s checkpoints twin the JSON spawns.checkpoints segments', (mapId, level) => {
+    const jsonSegments = (level.spawns.checkpoints ?? []).map((cp) => cp.segment);
+    const metaSegments = (getMapSurvivalMetadata(mapId).checkpoints ?? []).map((cp) => cp.segment);
+    expect(metaSegments).toEqual(jsonSegments);
+  });
+
+  it.each([
+    ['glacial', glacialLevel],
+    ['lumber', lumberLevel],
+    ['meander', meanderLevel],
+    ['hydro', hydroLevel],
+    ['delta', deltaLevel],
+  ] as const)('%s safeZone.respawnAt lands on an upstream checkpoint or the segment itself', (mapId, level) => {
+    const checkpoints = new Set((getMapSurvivalMetadata(mapId).checkpoints ?? []).map((cp) => cp.segment));
+    for (const segment of level.segments as Array<{ index: number; safeZone?: { respawnAt?: number } }>) {
+      const respawnAt = segment.safeZone?.respawnAt;
+      if (respawnAt === undefined) continue;
+      // Delta's beach restarts the segment in place; set-pieces go to a checkpoint.
+      const ok = checkpoints.has(respawnAt) || respawnAt === segment.index;
+      expect(ok, `${mapId} seg ${segment.index} → ${respawnAt}`).toBe(true);
+      expect(respawnAt).toBeLessThanOrEqual(segment.index);
+    }
+  });
+});
+
+describe('anchored waypoint resolution', () => {
+  const anchored: CacheSlotDefinition = {
+    id: 'shelf',
+    segmentIndex: 10,
+    label: 'Shelf',
+    retrievalBonus: 100,
+    anchor: { t: 0.5, lateral: 7 },
+  };
+
+  it('treats an anchor as spatial state-machine-wise', () => {
+    const state = createPortageCacheRunState({ cacheSlots: [anchored] });
+    expect(state.cacheSlots[0].spatial).toBe(true);
+  });
+
+  it('resolves anchors on live segments and drops ones whose segment is off the treadmill', () => {
+    const resolved = resolveWaypointPositions([anchored, { ...anchored, id: 'far', segmentIndex: 30 }], (index) =>
+      index === 10 ? [1, 2, 3] : null,
+    );
+    expect(resolved.map((w) => [w.id, w.position])).toEqual([['shelf', [1, 2, 3]]]);
+  });
+
+  it('passes an absolute position through unchanged', () => {
+    const resolved = resolveWaypointPositions([SPATIAL_CACHE], () => null);
+    expect(resolved[0].position).toEqual(SPATIAL_CACHE.position);
+  });
+});
+
+describe('glacial loadout decides the core-temp tick', () => {
+  it('trail-light kit runs colder than expedition through the glacialMelt tube', () => {
+    const tick = (loadoutId: 'trail-light' | 'expedition') => {
+      let state = createSurvivalState();
+      for (let i = 0; i < 40; i += 1) {
+        state = tickSurvivalState(
+          state,
+          { dt: 0.5, biomeId: 'glacialMelt', inWater: i % 3 === 0, windSpeed: 6, launchHour: 6 },
+          getLoadoutDefinition(loadoutId),
+        );
+      }
+      return state.coreTemp;
+    };
+    expect(tick('trail-light')).toBeLessThan(tick('expedition'));
   });
 });
 

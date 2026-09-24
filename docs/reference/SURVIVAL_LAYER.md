@@ -2,8 +2,11 @@
 
 Living design note for the survival gameplay foundation.
 
-**v2 (this pass)** adds spatial portage/cache waypoints, `slipperiness` → Rapier contact
-friction, and raft paddle coupling. The MVP pieces below are unchanged.
+**v2** added spatial portage/cache waypoints, `slipperiness` → Rapier contact
+friction, and raft paddle coupling. **v3 (campaign pass)** authors survival on
+every map, anchors waypoints to the live segment, ships segment-relative
+`safeZone` envelopes on the set-pieces, and moves `segment-enter` to the moment
+the player actually arrives.
 
 ## Goals
 
@@ -22,6 +25,7 @@ State lives in **pure TS modules** (`src/systems/survival/`) and **runSession** 
 | `survival/survivalState.ts` | Wetness + core temp tick + gameplay modifiers |
 | `survival/checkpointTable.ts` | `resolveRespawnSegment()` pure resolver |
 | `maps/survivalMetadata.ts` | Per-map checkpoints, caches, portage routes |
+| `map/segmentFrames.ts` | Live segment geometry: `safeZone` envelopes + waypoint anchors |
 | `portageCache.ts` | Cache/portage state machine + waypoint geometry |
 | `surfaceFriction.ts` | `slipperiness` → Rapier contact friction |
 | `components/Survival/SurvivalMarkers.tsx` | World markers + proximity interaction |
@@ -56,19 +60,36 @@ ambient(biome) + insulation(loadout) - wetnessColdDrag ──lerp──► coreT
 - **Cold biomes** (`glacier`, `glacialMelt`): low ambient → core temp drops unless expedition kit.
 - **Exposure stress** (0–1): derived from core temp, biome cold bias, and wetness.
 
-## Spatial portage & caches (v2)
+## Spatial portage & caches
 
-A cache slot or portage route is **spatial** when its authored definition carries a
-`position` (and optional `radius`, default 6 m). Both forms coexist:
+A cache slot or portage route is **spatial** when it carries an `anchor`
+(`{ t, lateral, rise? }` — path parameter, metres right of downstream, negative =
+left bank) or a legacy absolute `position`. Anchors resolve against the live
+segment (`segmentFrames.resolveSegmentAnchor`), so they follow `?seed=` and sit on
+the bank of the track the player is actually on. The first-pass absolute
+positions did not: the treadmill descends and meanders hundreds of metres from
+any fixed coordinate, so they were nowhere near the river.
 
 | Form | Interaction | Where |
 |------|-------------|-------|
-| Spatial | Steer within the waypoint radius (XZ distance; height ignored) | `meander`, `hydro` |
+| Spatial (anchored) | Steer within the waypoint radius (XZ distance; height ignored) | `glacial`, `lumber`, `meander`, `hydro` |
 | Segment-scoped | Entering the segment is the whole interaction | `delta` |
 
-`SurvivalMarkers` draws a ground ring plus a beacon per live waypoint and polls the
-player at 10 Hz. Interaction is proximity-only — no interact key. The player is moving
-at speed; "steer through the marker" is the verb the rest of the game already uses.
+`SurvivalMarkers` draws a ground ring plus a beacon per waypoint whose segment is
+on the treadmill and polls the player at 10 Hz. Interaction is proximity-only —
+no interact key — and fires on **entering** the radius: previously a cache was
+stashed and retrieved on consecutive ticks of the same pass.
+
+Authored waypoints (laterals clear `waterWidth / 2`, stay inside `width / 2`;
+`segmentFrames.maps.test.ts` checks both against the map config):
+
+| Map | Cache | Portage |
+|-----|-------|---------|
+| glacial | seg 10 melt-out shelf at the tube apex | seg 12 snow bridge around the crevasse |
+| lumber | seg 7 timber shelf on the flume bend | seg 10 bank line past the washed-out trestle |
+| meander | seg 10 rim shelf above the trestle | seg 11 high line past the trestle |
+| hydro | seg 9 catwalk above the outfall | seg 13 ledge above the catwalk gate |
+| delta | seg 8 sandbar (segment-scoped) | seg 11 side washout (segment-scoped) |
 
 ### Cache loop
 
@@ -148,14 +169,20 @@ Curves are deliberately gentler than the runner's sprint penalties: the raft can
 choose to stop paddling mid-rapid, so a harsh curve reads as unfair rather than tense.
 The HUD WET / EXPOSURE bars are already vehicle-agnostic and show in raft mode.
 
-## Checkpoint graph (meander)
+## Checkpoints
 
-Authored in `survivalMetadata.ts` (mirrors `meander_to_waterfall.json` spawns):
+Authored in `survivalMetadata.ts`; the segments twin each map JSON's
+`spawns.checkpoints` (tested). Respawn lands on the checkpoint segment's spawn
+point — the start of its centreline — so the metadata carries no position (the
+JSON positions are informational).
 
-| Segment | Label | Respawn window |
-|---------|-------|----------------|
-| 13 | Approach shelf | Segments 13–14 |
-| 15 | Splash pool | Segment 15+ |
+| Map | Checkpoint segments |
+|-----|---------------------|
+| glacial | 3 tube entry · 10 tube apex · 13 crevasse pool |
+| lumber | 5 flume straight · 10 gap lip · 11 landing pool |
+| meander | 13 approach shelf · 15 splash pool |
+| hydro | 4 stilling basin · 8 outfall splash |
+| delta | 2 · 6 · 14 · 21 |
 
 On `segment-enter`, `useExperienceLifecycle` calls:
 
@@ -164,6 +191,55 @@ resolveRespawnSegment(checkpoints, enteredSegment)
 ```
 
 Returns the **latest** checkpoint segment ≤ entered segment; falls back to entered segment when none apply.
+
+`segment-enter` fires when the camera crosses into the segment's z span
+(`ChunkManager.update`). It used to fire on *generation*, ~150 m (3–4 segments)
+ahead of the player, so checkpoints, portage exits (a spatial portage failed
+before the player could reach it), gravity and flow all switched early.
+Journey completion stays on generation (`onSegmentGenerated`) so the seamless
+map handoff attaches before the treadmill builds past the final segment.
+
+## Out of bounds (`safeZone`)
+
+Every map descends: the centreline is below y = −80 within a few segments
+(meander's waterfall is ~900 m down at the default seed). The old absolute
+`y < -80` clip — in the lifecycle wipeout, the runner sanity hold and the
+TrackManager generation gate — therefore fired mid-run on every map and parked
+the runner at the world-origin spawn.
+
+Bounds are now **segment-relative** (`segmentFrames.resolveSegmentEnvelope`),
+resolved against the segment the player is actually over (by z):
+
+- Authored `safeZone: { yMin, yMax, respawnAt }` — `yMin` metres below the
+  segment's lowest centreline point, `yMax` above its highest (or its upstream
+  neighbour's, so a runner launched off a lip isn't clipped mid-air).
+- No `safeZone` — the global `POSITION_SANE` margins (−80 / +250), anchored the
+  same way. They are absolute only before the first segment is published.
+
+An OOB goes through `triggerOutOfBoundsWipeout` (runner physics step or
+lifecycle, whichever sees it first): `respawnAt` overrides the checkpoint
+table's respawn segment, and the runner is parked on that spawn point rather
+than the world origin.
+
+Authored set-pieces (`respawnAt` is always a checkpoint at or upstream):
+
+| Map | Segments | `yMin` | `respawnAt` |
+|-----|----------|--------|-------------|
+| glacial | 3–9 ice tube | −12 | 3 |
+| glacial | 10–11 tube apex / crevasse approach | −12 | 10 |
+| glacial | 12 crevasse jump | −20 | 10 (past the apex cache) |
+| glacial | 13 crevasse pool | −10 | 13 |
+| lumber | 10 open-floor trestle gap | −15 | 10 |
+| lumber | 11 landing pool | −10 | 11 |
+| meander | 14 waterfall | −20 | 13 |
+| meander | 15 splash pool | −12 | 15 |
+| hydro | 4 stilling basin, 5 vortex chamber | −8 | 4 |
+| hydro | 6 drain throat | −12 | 4 |
+| delta | 20 beach approach, 21 beach landing | −12 / −10 | 20 / 21 |
+
+`yMax` is +150 on the set-pieces (delta keeps its +8 / +10). The level
+validators reject a positive `yMin`, a negative `yMax`, or a downstream
+`respawnAt`.
 
 ## Pre-run loadout
 
@@ -177,15 +253,24 @@ HUD shows `LOADOUT <shortLabel>` (top-left) plus WET / EXPOSURE bars (bottom-lef
 - `checkpointTable.test.ts` — meander checkpoint graph.
 - `portageCache.test.ts` — segment-scoped state machine.
 - `portageSpatial.test.ts` — waypoint geometry, spatial cache loop, portage
-  requirement, authored map metadata, raft paddle coupling.
+  requirement, anchored waypoint resolution, authored map metadata (glacial /
+  lumber coverage, checkpoint ↔ JSON twins, `respawnAt` on a checkpoint), glacial
+  loadout core temp, raft paddle coupling.
+- `segmentFrames.test.ts` — envelope / anchor math and the frame registry.
+- `segmentFrames.maps.test.ts` — every shipped map walked through `ChunkManager`
+  at two seeds: no false OOB on the centreline, each set-piece `safeZone` respawns
+  on a generated checkpoint, anchors sit on the bank, entry follows the camera.
+- `runnerAirControl.test.ts` — OOB wipeout → `respawnAt`, not the world origin.
 - `surfaceFriction.test.ts` — slipperiness → friction mapping.
 
-## Future (post-MVP)
+## Future
 
-- **Playtest pass on the authored waypoint positions** — they are first-pass values
-  aligned with the checkpoint table, not yet validated in-engine.
+- **GPU playtest of the anchors and `yMin` margins.** Positions are now on the
+  track by construction (and tested against the generated geometry), but the
+  exact `t` / `lateral` / `yMin` values have not been felt in-engine.
 - FlowForecast mid-run cache restock synergy.
-- `safeZone` OOB replacement for fixed `y < -80` wipeout (phase D, not started).
+- Raft-specific envelope (the raft uses the same lifecycle check, with the
+  runner's `POSITION_SANE` margins).
 
 ## Related
 

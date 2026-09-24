@@ -29,6 +29,12 @@ import { getActiveMap, getMapDefinition, type MapDefinition, type MapRegistryId 
 import { getProceduralBaseSeed, getActiveRunKey } from '../utils/runContext';
 import { commitTimedFinish } from '../systems/ghost/runFinish';
 import { ChunkManager } from '../systems/map/ChunkManager';
+import {
+  buildSegmentFrame,
+  clearSegmentFrames,
+  publishSegmentFrames,
+} from '../systems/map/segmentFrames';
+import { POSITION_SANE, resolveActiveEnvelope } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { createObstaclePool } from '../systems/pools/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
 import { samplesToForecastByIndex } from '../systems/map/flowForecast';
@@ -181,6 +187,8 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   }));
 
   const forecastByIndexRef = useRef<Map<number, string>>(new Map());
+  /** Segment indices whose `journeyComplete` has already been acted on. */
+  const journeyHandledRef = useRef<Set<number>>(new Set());
   // Keep callbacks in refs so ChunkManager init does not tear down / rebuild the
   // pool when parent re-renders (e.g. Zustand setSpawnPoint during initializePool).
   // That remount loop caused "Maximum update depth exceeded" and a hard load freeze.
@@ -220,6 +228,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       return;
     }
 
+    journeyHandledRef.current.clear();
     cm.reset(reachSegments);
     cm.initializePool();
     setPoolVersion((v) => v + 1);
@@ -363,6 +372,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       resolvedMap.continuation ?? null,
     );
     if (chunkManagerRef.current?.isInitialized()) {
+      journeyHandledRef.current.clear();
       chunkManagerRef.current.reset(reachSegmentsRef.current);
       chunkManagerRef.current.initializePool();
       setPoolVersion((v) => v + 1);
@@ -373,8 +383,26 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   useEffect(() => {
     if (!rockMaterial || chunkManagerRef.current?.isInitialized()) return;
 
+    // Live segment geometry for segment-relative OOB envelopes and survival
+    // waypoint anchors (segmentFrames.ts). Republished on every pool change.
+    const publishFrames = () => {
+      const segments = chunkManagerRef.current?.getActiveSegments?.() ?? [];
+      publishSegmentFrames(
+        segments.map((segment) =>
+          buildSegmentFrame(
+            segment.id,
+            segment.segmentPath,
+            mapManagerRef.current?.getChunkConfig?.(segment.id)?.safeZone,
+          ),
+        ),
+      );
+    };
+
     const callbacks = {
-      onPoolChange: () => setPoolVersion((v) => v + 1),
+      onPoolChange: () => {
+        publishFrames();
+        setPoolVersion((v) => v + 1);
+      },
       onBiomeChange: (biome: BiomeId, segmentIndex: number) => {
         onBiomeChangeRef.current?.(biome, segmentIndex);
       },
@@ -400,29 +428,43 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
               surviveBonus: entered?.surviveBonus ?? 0,
               washedOutGap: Boolean(entered?.washedOutGap),
               forceVehicle: segCfg?.forceVehicle ?? null,
-              safeZone: segCfg?.safeZone ?? null,
             },
           })
         );
 
-        const segmentConfig = mapManagerRef.current?.getChunkConfig?.(index);
-        if (segmentConfig?.journeyComplete && !useGameStore.getState().isJourneyComplete) {
-          if (seamlessJourneyRef.current && !handoffInFlightRef.current) {
-            handoffInFlightRef.current = true;
-            onSeamlessHandoffRef.current?.({
-              segmentIndex: index,
-              fromMapId: activeMapIdRef.current,
-            });
-          } else if (!seamlessJourneyRef.current) {
-            // Commit the timed PB before the Zustand flip below — see the
-            // matching comment in useExperienceWorld.performSeamlessMapHandoff.
-            commitTimedFinish(getActiveRunKey(activeMapIdRef.current));
-            useGameStore.getState().setJourneyComplete();
-          }
-        }
+        // Teleport harnesses replay entry without generation; the generated
+        // path below normally handled this segment already (idempotent).
+        checkJourneyComplete(index);
+      },
+      onSegmentGenerated: (index: number) => {
+        // Journey completion stays on *generation*: the seamless handoff must
+        // attach the next map before the treadmill builds past the final
+        // segment, or fallback segments get spliced in ahead of it.
+        checkJourneyComplete(index);
       },
     };
 
+    function checkJourneyComplete(index: number) {
+      if (journeyHandledRef.current.has(index)) return;
+      const segmentConfig = mapManagerRef.current?.getChunkConfig?.(index);
+      if (segmentConfig?.journeyComplete) journeyHandledRef.current.add(index);
+      if (segmentConfig?.journeyComplete && !useGameStore.getState().isJourneyComplete) {
+        if (seamlessJourneyRef.current && !handoffInFlightRef.current) {
+          handoffInFlightRef.current = true;
+          onSeamlessHandoffRef.current?.({
+            segmentIndex: index,
+            fromMapId: activeMapIdRef.current,
+          });
+        } else if (!seamlessJourneyRef.current) {
+          // Commit the timed PB before the Zustand flip below — see the
+          // matching comment in useExperienceWorld.performSeamlessMapHandoff.
+          commitTimedFinish(getActiveRunKey(activeMapIdRef.current));
+          useGameStore.getState().setJourneyComplete();
+        }
+      }
+    }
+
+    journeyHandledRef.current.clear();
     chunkManagerRef.current = new ChunkManager({
       mapManager: mapManagerRef.current,
       reachSegments: reachSegmentsRef.current,
@@ -455,6 +497,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     return () => {
       chunkManagerRef.current?.dispose?.();
       chunkManagerRef.current = null;
+      clearSegmentFrames();
       pendingSynthesizesRef.current = [];
     };
   }, [rockMaterial, reachSegments, effectiveStartIndex]);
@@ -479,14 +522,18 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     if (!chunkManagerRef.current?.isInitialized()) return;
 
     const { x, y, z } = camera.position;
+    // Vertical sanity is relative to the segment under the camera: the track
+    // descends far below any fixed y, and an absolute `y >= -80` gate froze the
+    // treadmill a few segments into every map.
+    const cameraFinite = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
+    const envelope = cameraFinite ? resolveActiveEnvelope(camera.position) : null;
     const cameraSane =
-      Number.isFinite(x) &&
-      Number.isFinite(y) &&
-      Number.isFinite(z) &&
-      y >= -80 &&
-      y <= 250 &&
-      Math.abs(x) <= 6000 &&
-      Math.abs(z) <= 6000;
+      cameraFinite &&
+      envelope !== null &&
+      y >= envelope.yMin &&
+      y <= envelope.yMax &&
+      Math.abs(x) <= POSITION_SANE.xzMax &&
+      Math.abs(z) <= POSITION_SANE.xzMax;
     if (!cameraSane) return;
 
     const result = chunkManagerRef.current.update(camera.position.z);

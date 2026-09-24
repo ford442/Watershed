@@ -21,7 +21,7 @@
  * exist while a run session has authored waypoints.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
@@ -29,7 +29,10 @@ import {
   DEFAULT_WAYPOINT_RADIUS,
   findCacheSlotAt,
   findPortageRouteAt,
+  isSpatialWaypoint,
   portageRouteStatus,
+  resolveWaypointPositions,
+  type WaypointAnchor,
   type CacheSlotDefinition,
   type CacheSlotStatus,
   type PortageRouteDefinition,
@@ -42,6 +45,12 @@ import {
 } from '../../systems/journey/runSession';
 import { awardCacheRetrievalBonus } from '../../systems/score/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
+import {
+  getSegmentFrame,
+  getSegmentFramesVersion,
+  resolveSegmentAnchor,
+  subscribeSegmentFrames,
+} from '../../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from '../../experience/types';
 
 /** How often to test the player against waypoints (seconds). 10 Hz is plenty. */
@@ -63,6 +72,15 @@ interface MarkerVisual {
   label: string;
 }
 
+/** Anchor → world position on the live segment, or null while it is off the treadmill. */
+function resolveAnchorOnTrack(
+  segmentIndex: number,
+  anchor: WaypointAnchor,
+): [number, number, number] | null {
+  const frame = getSegmentFrame(segmentIndex);
+  return frame ? resolveSegmentAnchor(frame, anchor) : null;
+}
+
 /** Emit a HUD toast without coupling this component to the HUD implementation. */
 function announce(label: string, detail: Record<string, unknown> = {}): void {
   if (typeof window === 'undefined') return;
@@ -81,15 +99,41 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     [mapId],
   );
 
-  /** Authored waypoints only — segment-scoped entries have no marker to draw. */
+  // Anchored waypoints follow the live segment geometry, so re-resolve
+  // whenever the treadmill republishes its frames.
+  const framesVersion = useSyncExternalStore(
+    subscribeSegmentFrames,
+    getSegmentFramesVersion,
+    getSegmentFramesVersion,
+  );
+
+  /** Spatial waypoints whose segment is on the treadmill, in world space. */
   const spatialCaches = useMemo<CacheSlotDefinition[]>(
-    () => (metadata.cacheSlots ?? []).filter((slot) => Boolean(slot.position)),
-    [metadata],
+    () =>
+      resolveWaypointPositions(
+        (metadata.cacheSlots ?? []).filter(isSpatialWaypoint),
+        resolveAnchorOnTrack,
+      ),
+    // framesVersion: anchors resolve against the frames it versions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [metadata, framesVersion],
   );
   const spatialRoutes = useMemo<PortageRouteDefinition[]>(
-    () => (metadata.portageRoutes ?? []).filter((route) => Boolean(route.position)),
-    [metadata],
+    () =>
+      resolveWaypointPositions(
+        (metadata.portageRoutes ?? []).filter(isSpatialWaypoint),
+        resolveAnchorOnTrack,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [metadata, framesVersion],
   );
+
+  /**
+   * Waypoints the player is currently inside. Interactions fire on *entry*:
+   * without the latch a cache was stashed and retrieved on consecutive 10 Hz
+   * ticks of the same pass, instead of "stash now, retrieve on a later pass".
+   */
+  const insideRef = useRef<Set<string>>(new Set());
 
   // Re-render markers when slot statuses change; the state machine itself lives
   // outside React, so this mirrors just enough of it to draw.
@@ -120,7 +164,17 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
 
     // --- caches ---
     const nearCache = findCacheSlotAt(spatialCaches, position);
-    if (nearCache) {
+    const nearRoute = findPortageRouteAt(spatialRoutes, position);
+    const inside = insideRef.current;
+    const cacheKey = nearCache ? `cache-${nearCache.id}` : null;
+    const routeKey = nearRoute ? `portage-${nearRoute.segmentIndex}` : null;
+    const enteredCache = cacheKey !== null && !inside.has(cacheKey);
+    const enteredRoute = routeKey !== null && !inside.has(routeKey);
+    inside.clear();
+    if (cacheKey) inside.add(cacheKey);
+    if (routeKey) inside.add(routeKey);
+
+    if (nearCache && enteredCache) {
       const slot = runState.cacheSlots.find((entry) => entry.id === nearCache.id);
 
       if (slot?.status === 'unplaced') {
@@ -137,8 +191,7 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     }
 
     // --- portage routes ---
-    const nearRoute = findPortageRouteAt(spatialRoutes, position);
-    if (nearRoute) {
+    if (nearRoute && enteredRoute) {
       const status = portageRouteStatus(runState, nearRoute.segmentIndex);
       if (status === 'required' || status === 'in_progress') {
         dispatchPortageCacheEvent({

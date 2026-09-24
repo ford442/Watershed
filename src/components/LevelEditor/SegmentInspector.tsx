@@ -28,9 +28,8 @@ const BIOME_TYPES = [
   { value: 'lumberFlume', label: 'Lumber Flume' },
   { value: 'hydroDam', label: 'Hydro-Dam' },
   { value: 'delta', label: 'Delta' },
-  { value: 'alpineSpring', label: 'Alpine Spring' },
-  { value: 'cavern', label: 'Cavern' },
-  { value: 'midnightMist', label: 'Midnight Mist' },
+  // alpineSpring / cavern / midnightMist are palette-only clones
+  // (PALETTE_ONLY_BIOMES) — not offered until they get their own walls.
 ];
 
 // Decoration types with limits
@@ -648,15 +647,16 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
           />
         </Section>
 
+        {/* Segment-relative: metres below the lowest / above the highest centreline point. */}
         <Section title="Safe Zone">
           <NumberInput
-            label="Min Y"
+            label="Min Y (below path)"
             value={localSegment.safeZone?.yMin ?? -20}
             step={1}
             onChange={(v) => updateSafeZone('yMin', v)}
           />
           <NumberInput
-            label="Max Y"
+            label="Max Y (above path)"
             value={localSegment.safeZone?.yMax ?? 20}
             step={1}
             onChange={(v) => updateSafeZone('yMax', v)}

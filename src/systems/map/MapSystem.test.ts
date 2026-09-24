@@ -8,6 +8,8 @@
 
 import { JSONMapManager, DEFAULT_SEGMENT_PROGRESSION, type LevelData } from './MapSystem';
 import mapData from '../../maps/meander_to_waterfall.json';
+import { getMapDefinition } from '../../maps/registry';
+import { validateLevel } from '../../utils/levelValidator';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -228,5 +230,36 @@ describe('JSONMapManager — authored safeZone', () => {
     const manager = new JSONMapManager(safeZoneLevel);
     const cfg = manager.getChunkConfig(1);
     expect(cfg.safeZone).toBeUndefined();
+  });
+});
+
+describe('shipped maps — set-piece safeZones reach the treadmill', () => {
+  it.each([
+    ['meander', 14, 13],
+    ['meander', 15, 15],
+    ['glacial', 5, 3],
+    ['glacial', 12, 10],
+    ['lumber', 10, 10],
+    ['hydro', 5, 4],
+  ] as const)('%s seg %i respawns at %i', (mapId, index, respawnAt) => {
+    const manager = new JSONMapManager(getMapDefinition(mapId).levelData);
+    const zone = manager.getChunkConfig(index).safeZone;
+    expect(zone?.respawnAt).toBe(respawnAt);
+    // Segment-relative: below the lowest / above the highest centreline point.
+    expect(zone!.yMin).toBeLessThan(0);
+    expect(zone!.yMax).toBeGreaterThan(0);
+  });
+
+  it('rejects an absolute-looking or downstream safeZone', () => {
+    const bad = {
+      ...level,
+      segments: [
+        ...level.segments.filter((s) => s.index !== 3),
+        { index: 3, difficulty: 0.5, safeZone: { yMin: 5, yMax: 40, respawnAt: 9 } },
+      ],
+    } as unknown as LevelData;
+    const fields = validateLevel(bad).errors.map((e) => e.field);
+    expect(fields).toContain('segments[3].safeZone');
+    expect(fields).toContain('segments[3].safeZone.respawnAt');
   });
 });

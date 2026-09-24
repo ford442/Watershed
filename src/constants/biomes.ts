@@ -128,3 +128,19 @@ export const getNextBiome = (current: BiomeKey): BiomeKey => {
 };
 
 export default BIOMES;
+
+/**
+ * One label per biome a shipped map actually uses. Palette-only stubs
+ * (PALETTE_ONLY_BIOMES) are deliberately absent; lumber/hydro were missing and
+ * read as CANYON SUMMER on their own maps.
+ */
+export const BIOME_HUD_LABELS: Record<string, string> = {
+  canyonSummer: 'CANYON SUMMER',
+  canyonAutumn: 'CANYON AUTUMN',
+  delta: 'RIVER DELTA',
+  slotCanyon: 'SLOT CANYON',
+  glacier: 'GLACIER',
+  glacialMelt: 'GLACIAL MELT',
+  lumberFlume: 'LUMBER FLUME',
+  hydroDam: 'HYDRO DAM',
+};

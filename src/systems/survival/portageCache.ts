@@ -8,12 +8,57 @@ export type CacheSlotStatus = 'unplaced' | 'placed' | 'retrieved' | 'lost';
 
 export type PortageRouteStatus = 'idle' | 'required' | 'in_progress' | 'completed' | 'failed';
 
-/** World-space waypoint an authored survival feature can occupy. */
+/**
+ * Where on its segment an authored waypoint sits: path parameter `t`, metres
+ * `lateral` to the right of downstream (negative = left bank), optional `rise`.
+ * Mirrors `SegmentAnchor` in systems/map/segmentFrames.ts, which resolves it
+ * against the live segment path.
+ */
+export interface WaypointAnchor {
+  t: number;
+  lateral: number;
+  rise?: number;
+}
+
+/** A waypoint an authored survival feature can occupy. */
 export interface SurvivalWaypoint {
-  /** World position [x, y, z]. Omit for a segment-scoped (non-spatial) feature. */
+  /**
+   * Segment-relative placement (preferred). The treadmill's world coordinates
+   * depend on seed and on every upstream segment, so an absolute `position`
+   * only lines up with the track by accident.
+   */
+  anchor?: WaypointAnchor;
+  /**
+   * Absolute world position [x, y, z] (legacy; tests and fixed-geometry reaches).
+   * Omit both this and `anchor` for a segment-scoped (non-spatial) feature.
+   */
   position?: [number, number, number];
   /** Interaction radius in metres. Defaults to DEFAULT_WAYPOINT_RADIUS. */
   radius?: number;
+}
+
+/** True when the feature is reached by steering to it, not by entering its segment. */
+export function isSpatialWaypoint(waypoint: SurvivalWaypoint): boolean {
+  return Boolean(waypoint.anchor || waypoint.position);
+}
+
+/**
+ * Resolve anchored waypoints to world positions. `resolveAnchor` returns null
+ * while the waypoint's segment is not on the treadmill; those are dropped
+ * (nothing to draw, nothing to reach). Absolute positions pass through.
+ */
+export function resolveWaypointPositions<T extends SurvivalWaypoint & { segmentIndex: number }>(
+  waypoints: ReadonlyArray<T>,
+  resolveAnchor: (segmentIndex: number, anchor: WaypointAnchor) => [number, number, number] | null,
+): Array<T & { position: [number, number, number] }> {
+  const resolved: Array<T & { position: [number, number, number] }> = [];
+  for (const waypoint of waypoints) {
+    const position = waypoint.anchor
+      ? resolveAnchor(waypoint.segmentIndex, waypoint.anchor)
+      : waypoint.position ?? null;
+    if (position) resolved.push({ ...waypoint, position });
+  }
+  return resolved;
 }
 
 export interface CacheSlotDefinition extends SurvivalWaypoint {
@@ -84,12 +129,12 @@ export function createPortageCacheRunState(options: {
       segmentIndex: slot.segmentIndex,
       status: 'unplaced',
       retrievalBonus: slot.retrievalBonus,
-      spatial: Boolean(slot.position),
+      spatial: isSpatialWaypoint(slot),
     })),
     portageRoutes: (options.portageRoutes ?? []).map((route) => ({
       segmentIndex: route.segmentIndex,
       status: 'idle',
-      spatial: Boolean(route.position),
+      spatial: isSpatialWaypoint(route),
     })),
   };
 }

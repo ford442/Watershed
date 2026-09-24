@@ -263,10 +263,12 @@ interface PhysicsConfig {
   restitution?: number;           // 0.0 - 1.0 (bounciness)
 }
 
+// Segment-relative — never absolute world y (the track descends tens of
+// metres per segment, and ?seed= moves it). See src/systems/map/segmentFrames.ts.
 interface SafeZoneConfig {
-  yMin: number;            // Minimum safe Y position
-  yMax: number;            // Maximum safe Y position
-  respawnAt?: number;      // Segment index to respawn at
+  yMin: number;            // Metres relative to the segment's lowest centreline point (≤ 0)
+  yMax: number;            // Metres relative to the segment's highest centreline point (≥ 0)
+  respawnAt?: number;      // Segment index (≤ this one) whose spawn point an OOB returns to
 }
 
 interface EffectsConfig {

@@ -16,6 +16,7 @@ import {
   type NativeWaterForceResult,
 } from '../systems/water/WatershedWasm';
 import RunResultsPanel from './RunResultsPanel';
+import { BIOME_HUD_LABELS } from '../constants/biomes';
 
 interface GameHUDProps {
   isWipeout?: boolean;
@@ -31,18 +32,6 @@ interface GameHUDProps {
   isFinalMap?: boolean;
   ghostBestScore?: number;
 }
-
-const BIOME_LABELS: Record<string, string> = {
-  canyonSummer: 'CANYON SUMMER',
-  canyonAutumn: 'CANYON AUTUMN',
-  alpineSpring: 'ALPINE SPRING',
-  cavern: 'MYSTIC CAVERN',
-  delta: 'RIVER DELTA',
-  midnightMist: 'MIDNIGHT MIST',
-  slotCanyon: 'SLOT CANYON',
-  glacier: 'GLACIER',
-  glacialMelt: 'GLACIAL MELT',
-};
 
 export const GameHUD: React.FC<GameHUDProps> = ({
   isWipeout = false,
@@ -247,7 +236,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   const speedMs = Math.max(0, Math.round(rawSpeed));
   const distanceKm = useMemo(() => (distanceMeters / 1000).toFixed(2), [distanceMeters]);
-  const biomeLabel = BIOME_LABELS[currentBiome] ?? 'CANYON SUMMER';
+  const biomeLabel = BIOME_HUD_LABELS[currentBiome] ?? 'CANYON SUMMER';
 
   useEffect(() => {
     if (!comboLabel) return;
