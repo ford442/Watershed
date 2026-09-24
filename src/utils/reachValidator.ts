@@ -208,7 +208,7 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
 
   // Validate safe zones
   if (segments) {
-    const segmentIndices = new Set(segments.map((seg) => seg.index));
+    const segmentIndices = new Set(segments.map((seg: { index: number }) => seg.index));
     for (const seg of segments) {
       if (seg.safeZone) {
         if (seg.safeZone.yMin >= seg.safeZone.yMax) {
