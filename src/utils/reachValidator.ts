@@ -208,6 +208,7 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
 
   // Validate safe zones
   if (segments) {
+    const segmentIndices = new Set(segments.map((seg: { index: number }) => seg.index));
     for (const seg of segments) {
       if (seg.safeZone) {
         if (seg.safeZone.yMin >= seg.safeZone.yMax) {
@@ -226,12 +227,30 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
             suggestion: 'Use metres below / above the segment centreline, not world y',
           });
         }
-        if (seg.safeZone.respawnAt !== undefined && seg.safeZone.respawnAt > seg.index) {
-          errors.push({
-            field: `segments[${seg.index}].safeZone.respawnAt`,
-            error: 'respawnAt must not be downstream of the segment it guards',
-            suggestion: `Use a segment index ≤ ${seg.index}`,
-          });
+        const { respawnAt } = seg.safeZone;
+        if (respawnAt !== undefined) {
+          // The respawn target is spawnPoints[respawnAt] — a segment that is
+          // missing, fractional or not yet generated silently falls back to
+          // the world-origin spawn.
+          if (!Number.isInteger(respawnAt)) {
+            errors.push({
+              field: `segments[${seg.index}].safeZone.respawnAt`,
+              error: `respawnAt must be an integer segment index (got ${respawnAt})`,
+              suggestion: `Use a segment index ≤ ${seg.index}`,
+            });
+          } else if (!segmentIndices.has(respawnAt)) {
+            errors.push({
+              field: `segments[${seg.index}].safeZone.respawnAt`,
+              error: `respawnAt ${respawnAt} does not name a segment in this map`,
+              suggestion: `Use an authored segment index ≤ ${seg.index}`,
+            });
+          } else if (respawnAt > seg.index) {
+            errors.push({
+              field: `segments[${seg.index}].safeZone.respawnAt`,
+              error: 'respawnAt must not be downstream of the segment it guards',
+              suggestion: `Use a segment index ≤ ${seg.index}`,
+            });
+          }
         }
       }
     }

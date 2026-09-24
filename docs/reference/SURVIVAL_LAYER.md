@@ -221,7 +221,7 @@ lifecycle, whichever sees it first): `respawnAt` overrides the checkpoint
 table's respawn segment, and the runner is parked on that spawn point rather
 than the world origin.
 
-Authored set-pieces (`respawnAt` is always a checkpoint at or upstream):
+Authored set-pieces (`respawnAt` is a checkpoint at or upstream, or the segment itself):
 
 | Map | Segments | `yMin` | `respawnAt` |
 |-----|----------|--------|-------------|
@@ -235,11 +235,24 @@ Authored set-pieces (`respawnAt` is always a checkpoint at or upstream):
 | meander | 15 splash pool | −12 | 15 |
 | hydro | 4 stilling basin, 5 vortex chamber | −8 | 4 |
 | hydro | 6 drain throat | −12 | 4 |
+| hydro | 7 overflow pipe (waterfall + open floor) | −20 | 7 |
+| hydro | 8 outfall splash | −12 | 8 |
 | delta | 20 beach approach, 21 beach landing | −12 / −10 | 20 / 21 |
 
-`yMax` is +150 on the set-pieces (delta keeps its +8 / +10). The level
-validators reject a positive `yMin`, a negative `yMax`, or a downstream
-`respawnAt`.
+`yMax` is +150 on the set-pieces and +20 on delta's beach (the raft never
+nears it; +8 sat under the headroom rule below). The level and reach
+validators reject a positive `yMin`, a negative `yMax`, and a `respawnAt`
+that is not an integer, names no segment in the map, or is downstream of the
+segment it guards — any of those used to fall back to the world-origin spawn.
+
+`src/maps/safeZones.test.ts` is the stale-bounds guard: it walks every
+registry map through `ChunkManager` with the runtime forecast at 06:00 and
+14:00 and checks each authored zone against the generated centreline — the
+hour does not move the path, `yMin` is at least 8 m under the lowest point
+(15 m on waterfall / open-floor segments), `yMax` at least 20 m over the
+highest, and the `respawnAt` spawn point sits inside its own segment's
+bounds. Editing `verticalBias` / `type` on a set-piece without revisiting
+its zone fails there.
 
 ## Pre-run loadout
 
@@ -260,6 +273,8 @@ HUD shows `LOADOUT <shortLabel>` (top-left) plus WET / EXPOSURE bars (bottom-lef
 - `segmentFrames.maps.test.ts` — every shipped map walked through `ChunkManager`
   at two seeds: no false OOB on the centreline, each set-piece `safeZone` respawns
   on a generated checkpoint, anchors sit on the bank, entry follows the camera.
+- `safeZones.test.ts` — every authored zone vs the generated path at 06:00 and
+  14:00: floor margin, headroom, respawn point in bounds.
 - `runnerAirControl.test.ts` — OOB wipeout → `respawnAt`, not the world origin.
 - `surfaceFriction.test.ts` — slipperiness → friction mapping.
 

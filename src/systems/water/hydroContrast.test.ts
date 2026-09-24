@@ -4,7 +4,7 @@ import hydro from '../../maps/hydro_dam.json';
 import delta from '../../maps/delta_rapids.json';
 import lumber from '../../maps/lumber_flume.json';
 import meander from '../../maps/meander_to_waterfall.json';
-import { applySWEEventFallback, parseHydroEvents, hydroVortexSegments } from './hydroEvents';
+import { applySWEEventFallback, eventsActiveAtHour, parseHydroEvents, hydroVortexSegments } from './hydroEvents';
 import {
   CONTRAST_FLOW_SPEED,
   HYDRO_CONTRAST_MARGINS,
@@ -53,6 +53,22 @@ describe('hydroContrast — 06:00 vs 14:00 on the shipped maps', () => {
         c.maxBedDelta > HYDRO_CONTRAST_MARGINS.minBedDelta,
     );
     expect(meshMoved).toBe(true);
+  });
+
+  // Two different non-empty casts, not "something at 14:00 vs nothing at dawn":
+  // the scout hour has to show its own water, not just the absence of a pulse.
+  it.each(GATED_MAPS)('$id authors an event at both the scout hour and the dam hour', ({ events }) => {
+    expect(eventsActiveAtHour(events, SCOUT_HOUR).length).toBeGreaterThan(0);
+    expect(eventsActiveAtHour(events, DAM_HOUR).length).toBeGreaterThan(0);
+  });
+
+  it('meander: the pond dawn roughness alone changes the hull on seg 16', () => {
+    const events = parseHydroEvents(meander.hydroEvents);
+    const dawn = events.filter((e) => e.segmentIndex === 16 && eventsActiveAtHour([e], SCOUT_HOUR).length);
+    expect(dawn.map((e) => e.kind)).toEqual(['roughness']);
+    const contrast = measureHydroHourContrast(dawn, 16, SCOUT_HOUR, DAM_HOUR);
+    expect(contrast.idsA).not.toEqual(contrast.idsB);
+    expect(contrast.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
   });
 
   it('the hydro dam pulse raises stage and rides faster at 14:00', () => {
