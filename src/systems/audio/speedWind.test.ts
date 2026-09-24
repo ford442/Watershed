@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SPEED_WIND,
+  mapCloseGurgle,
   mapSpeedToWind,
   sanitizeAudioGain,
   sanitizeCutoffHz,
@@ -67,5 +68,19 @@ describe('sanitizeAudioGain / sanitizeCutoffHz', () => {
     expect(sanitizeCutoffHz(5, 400)).toBe(20);
     expect(sanitizeCutoffHz(50000, 400)).toBe(20000);
     expect(sanitizeCutoffHz(1200, 400)).toBe(1200);
+  });
+});
+
+describe('mapCloseGurgle', () => {
+  it('is audible at rest and grows with turbulence', () => {
+    expect(mapCloseGurgle(0, 1, 0)).toBeGreaterThan(0.2);
+    expect(mapCloseGurgle(0, 1, 1)).toBeGreaterThan(mapCloseGurgle(0, 1, 0));
+  });
+
+  it('is masked back at speed and sanitizes garbage', () => {
+    expect(mapCloseGurgle(25, 1, 0.5)).toBeLessThan(mapCloseGurgle(2, 1, 0.5));
+    const g = mapCloseGurgle(Number.NaN, Number.NaN, Number.POSITIVE_INFINITY);
+    expect(g).toBeGreaterThanOrEqual(0);
+    expect(g).toBeLessThanOrEqual(1);
   });
 });

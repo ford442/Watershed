@@ -460,6 +460,42 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 
 ---
 
+### `src/systems/audio/AudioSystem.ts` (AudioManager)
+
+The audio bus owner: one `THREE.AudioListener` on the camera, one-shots, ambient beds,
+canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
+
+**Consumes:**
+- `SOUND_DEFS` (`src/systems/audio/soundDefs.ts`) — name → `public/sounds/` file; `aliasOf`
+  entries share a payload *and* its decoded buffer (one fetch per file).
+- `canyonAcousticParams` (`src/systems/audio/canyonAcoustics.ts`) — wall tightness + surface
+  wetness → lowpass, reverb send, early-reflection taps.
+- `currentWetnessMuffle` (`src/systems/audio/wetnessMuffle.ts`) — survival wetness → SFX duck.
+
+**Produces:**
+- `loadSound` / `playSound` / `setAmbient` (beds marked `loop` are re-seamed after decode —
+  `src/systems/audio/loopBuffer.ts`).
+- `routeAcoustics(source, 'rapids' | 'bed')` — layers re-routed whenever the walls change;
+  only the rapids stem carries early reflections.
+- `getSpeedWindBuffer()` — the synthesized fallback loop for `SpeedWindAudio`.
+
+**Driven by:**
+- `useCanyonAcoustics` (`src/hooks/useCanyonAcoustics.ts`, mounted in `useExperienceLifecycle`)
+  — biome `wallTightness` ≥ 0.35 enables acoustics (glacial / slot enclosed, delta open).
+- `SpeedWindAudio` — speed-wind + close-gurgle on the AudioWorklet
+  (`src/systems/audio/speedWindDsp.ts`), buffer loop when `addModule` fails.
+
+**Boundaries (Do NOT):**
+- Do NOT fetch or decode before the unlock gesture — `loadSound` waits on
+  `src/systems/audio/audioUnlock.ts` (Start click / Enter / pointer lock) so boot never
+  contends with Rapier + WASM; `playSound` before unlock is a no-op.
+- Do NOT point the speed-wind bed at `ambient_wind` (or any asset) — it is synthesized.
+- Do NOT give two `SOUND_DEFS` file entries identical bytes — `soundDefs.test.ts` hashes
+  `public/sounds/`; use `aliasOf`.
+- Do NOT add Howler, a second listener, or audio middleware.
+
+---
+
 ## Physics Worker (ADR v1)
 
 ### `src/physics/rapier.worker.ts` + `RapierWorkerProxy`

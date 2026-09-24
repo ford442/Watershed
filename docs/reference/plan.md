@@ -203,6 +203,10 @@ Prototype Todo: ~~Implement a minimal `FlowForecast` simulation…~~ → v1 comp
 - [x] Rushing water ambiance (segment-aware via useSegmentAudio)
 - [x] Speed-based wind sounds (`systems/audio/speedWind.ts` + `SpeedWindAudio`)
 - [x] Collision/impact effects
+- [x] Distinct foley payloads — 23 unique synthesized files replace the 6 sine stubs (`public/sounds/README.md`)
+- [x] Speed-wind + close gurgle on an AudioWorklet (`systems/audio/speedWindDsp.ts`), buffer loop fallback
+- [x] Canyon acoustics from biome wall tightness — early-reflection send on the rapids stem (`systems/audio/canyonAcoustics.ts`)
+- [x] SFX preload deferred to the first gesture (`systems/audio/audioUnlock.ts`) — no decode during boot
 
 ---
 

@@ -57,6 +57,11 @@ export const AUDIO_CONFIG = {
     cutoffAtRest: 380,
     /** Lowpass cutoff (Hz) at fullSpeed — brighter rush. */
     cutoffAtFull: 5200,
+    /**
+     * Close-water bubble grain at gurgle = 1, relative to full-speed wind.
+     * Worklet path only — the buffer fallback has no gurgle voice.
+     */
+    gurgleLevel: 0.35,
   },
 
   positional: {

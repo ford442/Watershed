@@ -58,6 +58,7 @@ const EXPECTED_PASSENGERS = [
   'levels/autumn-rapids.json',
   'levels/devils-gorge.json',
   'levels/gentle-creek.json',
+  'sounds/README.md',
   'sounds/ambient_canyon.mp3',
   'sounds/ambient_water.mp3',
   'sounds/ambient_wind.mp3',
