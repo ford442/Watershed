@@ -1,5 +1,5 @@
 /**
- * PauseMenu rival import — #449 E1: a `.wsghost` from another launch hour is
+ * PauseMenu rival import — #438 E1: a `.wsghost` from another launch hour is
  * refused with the reason on screen, never stored and raced silently.
  */
 

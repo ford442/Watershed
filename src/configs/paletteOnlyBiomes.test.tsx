@@ -51,7 +51,7 @@ describe('palette-only biomes', () => {
     expect(screen.getAllByText('Canyon Summer').length).toBeGreaterThan(0);
   });
 
-  it('are not legal in level / reach schema biome enums (#449 E3)', () => {
+  it('are not legal in level / reach schema biome enums (#438 E3)', () => {
     const stubTokens = new Set<string>(PALETTE_ONLY_BIOMES);
     for (const [alias, id] of Object.entries(LEGACY_BIOME_ALIASES)) {
       if (PALETTE_ONLY_BIOMES.has(id)) stubTokens.add(alias);

@@ -1,5 +1,5 @@
 /**
- * raceFairness.ts — "which river is this run on?" for ghost gating (#449 E1).
+ * raceFairness.ts — "which river is this run on?" for ghost gating (#438 E1).
  *
  * `hydroFairness.ts` holds the pure comparisons; this module binds them to the
  * live run (selected map's authored `hydroEvents`, launch hour, quality) so

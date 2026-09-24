@@ -1,5 +1,5 @@
 /**
- * GhostFairnessBanner.tsx — "you are racing 14:00 lumber" (#449 E1).
+ * GhostFairnessBanner.tsx — "you are racing 14:00 lumber" (#438 E1).
  *
  * Shown for a few seconds at run start and on every resume, only when there
  * is a ghost to talk about. A PB or rival ghost from a different launch hour

@@ -2,7 +2,7 @@
  * hydroFairness — launchHour + hydroEventHash + quality on .wsghost (#391 Phase B).
  *
  * Offline only. A rival or PB ghost from a different launch hour or hydro
- * event set is *refused* (not raced, and the UI says why — #449 E1); a quality
+ * event set is *refused* (not raced, and the UI says why — #438 E1); a quality
  * mismatch is labeled only, since it changes pixels and the SWE grid budget
  * but not which authored events are live. Pre-v3 files carry no fairness
  * fields and race as "unverified".

@@ -99,7 +99,7 @@ owns that segment ("you lost 1.4s at the dam pulse, not at the shelf").
 | 2 | Optional `splits: RunSplitEntry[]`. |
 | 3 | Optional `launchHour`, `hydroEventHash`, `qualityPreset`. |
 
-## Fairness gate (#449 E1)
+## Fairness gate (#438 E1)
 
 A ghost races only on the river it was recorded on. `judgeGhostFairness`
 (`hydroFairness.ts`) compares the live run (`currentRunFairness()` in
@@ -110,7 +110,7 @@ quality) against a ghost:
 |---|---|---|
 | Different `launchHour` | `refused` (`hour_mismatch`) | Not raced |
 | Same hour, different `hydroEventHash` | `refused` (`hydro_mismatch`) | Not raced |
-| Missing hour/hash (v1/v2 file, or a PB saved before #449) | `unverified` | Raced, labeled |
+| Missing hour/hash (v1/v2 file, or a PB saved before #438) | `unverified` | Raced, labeled |
 | Different `qualityPreset` only | `match` | Raced; results panel labels it |
 
 Where it bites:

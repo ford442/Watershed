@@ -4,7 +4,7 @@
  * File format: JSON with `.wsghost` extension.
  * Validates mapId and codec version on import to reject wrong-map ghosts, and —
  * when the caller passes the live run's fairness — refuses a ghost recorded at
- * a different launch hour or hydro event set (#449 E1).
+ * a different launch hour or hydro event set (#438 E1).
  */
 
 import { GHOST_CODEC_VERSION, type RunSplitEntry } from './ghostCodec';

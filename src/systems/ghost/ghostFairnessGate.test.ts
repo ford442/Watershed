@@ -1,5 +1,5 @@
 /**
- * ghostFairnessGate.test.ts — #449 E1: a ghost from a different launch hour or
+ * ghostFairnessGate.test.ts — #438 E1: a ghost from a different launch hour or
  * hydro event set is refused (and says why); same hour/hash round-trips.
  */
 

@@ -101,7 +101,7 @@ interface GhostReplayerProps {
  * these two bodies to protect the instancing budget (#375 Phase C).
  *
  * Either body is withheld when it was recorded at a different launch hour or
- * hydro event set (#449 E1) — GhostFairnessBanner says why.
+ * hydro event set (#438 E1) — GhostFairnessBanner says why.
  */
 export default function GhostReplayer({ runKey }: GhostReplayerProps) {
   // Re-read on every pause/resume — a rival loaded via PauseMenu takes effect
