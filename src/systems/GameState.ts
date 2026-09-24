@@ -19,7 +19,6 @@
 import { create } from 'zustand';
 import type { BiomeId } from '../configs/biomes';
 import { DEFAULT_BIOME_ID } from '../configs/biomes';
-import type { SafeZoneConfig } from './map/MapSystem.types';
 import { RENDER_SCALE_MAX, clampRenderScale } from '../rendering/renderScale';
 
 // =============================================================================
@@ -57,8 +56,6 @@ export interface GameState {
   isDodging: boolean;
   respawnSegmentIndex: number;
   waterfallGravityMultiplier: number;
-  /** Active segment's authored OOB envelope; null falls back to the global `POSITION_SANE` bounds. */
-  currentSafeZone: SafeZoneConfig | null;
   /** Spawn points indexed by segment id */
   spawnPoints: Record<number, SpawnPoint>;
   settings: GameSettings;
@@ -112,7 +109,6 @@ export interface GameActions {
   setIsDodging: (dodging: boolean) => void;
   setRespawnSegmentIndex: (index: number) => void;
   setWaterfallGravityMultiplier: (multiplier: number) => void;
-  setCurrentSafeZone: (safeZone: SafeZoneConfig | null) => void;
   setSpawnPoint: (segmentIndex: number, point: SpawnPoint) => void;
   /** Merge many spawn points in one store update (pool init / reset). */
   setSpawnPoints: (points: Record<number, SpawnPoint>) => void;
@@ -156,7 +152,6 @@ const INITIAL_STATE: GameState = {
   isDodging: false,
   respawnSegmentIndex: 0,
   waterfallGravityMultiplier: 1,
-  currentSafeZone: null,
   spawnPoints: {},
   settings: { ...DEFAULT_SETTINGS },
   renderScale: RENDER_SCALE_MAX,
@@ -227,8 +222,6 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setWaterfallGravityMultiplier: (multiplier) =>
     set({ waterfallGravityMultiplier: multiplier }),
-
-  setCurrentSafeZone: (safeZone) => set({ currentSafeZone: safeZone }),
 
   setSpawnPoint: (segmentIndex, point) =>
     set((state) => {

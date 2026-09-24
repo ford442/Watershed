@@ -50,7 +50,17 @@ export interface RenderedSlot {
 export interface ChunkManagerCallbacks {
   onPoolChange?: () => void;
   onBiomeChange?: (biome: BiomeId, segmentIndex: number) => void;
+  /**
+   * The player (camera) has reached this segment — fired once per index, in
+   * order, when the camera's z crosses into the segment's span.
+   */
   onSegmentEnter?: (segmentIndex: number) => void;
+  /**
+   * A segment was appended to the treadmill, ~GENERATION_THRESHOLD ahead of
+   * the camera. Only for work that must happen before the player arrives
+   * (seamless map handoff); gameplay reacts to `onSegmentEnter`.
+   */
+  onSegmentGenerated?: (segmentIndex: number) => void;
 }
 
 export interface ChunkManagerOptions {
@@ -298,11 +308,21 @@ export class ChunkManager {
         })
       );
 
-      // Detect segment entry
-      if (nextIndex > this.lastEnteredSegment) {
-        this.lastEnteredSegment = nextIndex;
-        segmentEntered = nextIndex;
-        this.callbacks.onSegmentEnter?.(nextIndex);
+      this.callbacks.onSegmentGenerated?.(nextIndex);
+    }
+
+    // ---- Segment entry: the segment the camera is actually on ----
+    // Entry used to fire on *generation*, ~150 m (3–4 segments) ahead of the
+    // player, so checkpoints, portage exits, gravity and flow all switched
+    // early. Now it follows the camera; skipped indices (a waterfall's span is
+    // only a few metres of z) are replayed in order.
+    const occupied = this.findSegmentAtZ(cameraZ);
+    if (occupied && occupied.id > this.lastEnteredSegment) {
+      const first = Math.max(this.lastEnteredSegment + 1, this.getActiveSegments()[0]?.id ?? occupied.id);
+      for (let id = first; id <= occupied.id; id += 1) {
+        this.lastEnteredSegment = id;
+        segmentEntered = id;
+        this.callbacks.onSegmentEnter?.(id);
       }
     }
 
@@ -363,6 +383,16 @@ export class ChunkManager {
   // ---------------------------------------------------------------------------
   // Queries
   // ---------------------------------------------------------------------------
+
+  /** Active segment whose centreline z span contains `z` (downstream is −z). */
+  findSegmentAtZ(z: number): SegmentData | null {
+    for (const segment of this.getActiveSegments()) {
+      const z0 = segment.segmentPath.getPoint(0).z;
+      const z1 = segment.segmentPath.getPoint(1).z;
+      if (z <= Math.max(z0, z1) && z >= Math.min(z0, z1)) return segment;
+    }
+    return null;
+  }
 
   getActiveSegments(): SegmentData[] {
     return this.activeOrder

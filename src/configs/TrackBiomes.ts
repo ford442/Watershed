@@ -163,7 +163,8 @@ export const TRACK_BIOMES: Record<BiomeId, TrackBiomeProfile> = {
       rim: { conifer: 0.05, broadleaf: 0.5, birch: 0.1, snag: 0.35 },
     },
   },
-  // Palette-only / stub profiles (geometry clones until dedicated content lands)
+  // Palette-only / stub profiles (geometry clones until dedicated content lands).
+  // Listed in PALETTE_ONLY_BIOMES so the editor and HUD don't advertise them.
   alpineSpring: { ...canyonSummerProfile, id: 'alpineSpring' },
   midnightMist: { ...canyonAutumnProfile, id: 'midnightMist' },
   cavern: { ...slotCanyonProfile, id: 'cavern' },
@@ -209,6 +210,22 @@ export const TRACK_BIOMES: Record<BiomeId, TrackBiomeProfile> = {
     },
   },
 };
+
+/**
+ * Biomes whose track profile is a clone of another biome's (same walls, tube,
+ * tightness and friction — only the palette differs). No shipped map uses
+ * them, so the Level Editor and HUD must not offer them as distinct places:
+ * give one a dedicated profile (and a map) before taking it off this list.
+ */
+export const PALETTE_ONLY_BIOMES: ReadonlySet<BiomeId> = new Set<BiomeId>([
+  'alpineSpring',
+  'midnightMist',
+  'cavern',
+]);
+
+export function isPaletteOnlyBiome(biome: string): boolean {
+  return PALETTE_ONLY_BIOMES.has(biome as BiomeId);
+}
 
 export function isGlacialBiome(biome: string, profile?: TrackBiomeProfile): boolean {
   const id = profile?.id ?? (isBiomeId(biome) ? biome : normalizeBiomeId(biome));

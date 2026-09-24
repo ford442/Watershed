@@ -26,6 +26,9 @@ interface RunSplitEntry {
 `SplitRecorder.ts` listens for the `segment-enter` window event and records
 one split per segment — first entry wins; re-entering a segment (e.g. after a
 checkpoint respawn) never overwrites it. Splits reset on `watershed-run-reset`.
+`segment-enter` fires when the camera reaches the segment (it used to fire on
+generation, ~150 m ahead), so splits recorded before that change are offset by
+a few segments against newer runs.
 
 ## `.wsghost` file version
 

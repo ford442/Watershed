@@ -7,6 +7,8 @@ import {
 } from './runnerGroundRay';
 import {
   getEffectivePositionBounds,
+  resolveActiveEnvelope,
+  triggerOutOfBoundsWipeout,
   isFiniteVec3,
   isFiniteImpulse,
   isCameraWarm,
@@ -91,15 +93,22 @@ export function updateRunnerPhysics({
       slopeState.current.targetMultiplier = 1.0;
     }
 
-    const safeZone = useGameStore.getState().currentSafeZone;
-    const positionBounds = getEffectivePositionBounds(safeZone);
+    // Vertical bounds are relative to the segment under the player — the track
+    // descends hundreds of metres, so an absolute clip is wrong (segmentFrames.ts).
+    const envelope = posOk ? resolveActiveEnvelope(pos) : null;
+    const positionBounds = getEffectivePositionBounds(envelope);
 
     const bodyUserData = (body.userData ??= {} as Record<string, unknown>);
     const holdAtSpawn = () => {
+      // After an OOB the body is parked on its checkpoint until the terrain ray
+      // lands again; without the latch the terrain-warm hold below would yank
+      // it to the world-origin spawn in the meantime.
+      const latched = bodyUserData.__holdTarget as Vec3 | undefined;
       const respawnPoint =
-        safeZone?.respawnAt !== undefined
-          ? useGameStore.getState().spawnPoints[safeZone.respawnAt]
-          : undefined;
+        latched ??
+        (envelope?.respawnAt !== undefined
+          ? useGameStore.getState().spawnPoints[envelope.respawnAt]
+          : undefined);
       holdBodyAtSpawn(body, respawnPoint);
     };
 
@@ -140,6 +149,19 @@ export function updateRunnerPhysics({
     const posSane = isPositionSane(pos, positionBounds);
 
     if (!posSane || !velSane) {
+      // A finite, in-xz body outside the vertical envelope of a live run is a
+      // fall (off the waterfall, into the vortex eye, through the open floor):
+      // wipe out and park on the checkpoint, not the world-origin spawn.
+      const verticalOob =
+        velSane &&
+        bodyUserData.__terrainReady === true &&
+        isPositionSane(pos, { ...positionBounds, yMin: -Infinity, yMax: Infinity });
+      if (verticalOob && envelope) {
+        triggerOutOfBoundsWipeout(envelope);
+        const game = useGameStore.getState();
+        const target = game.spawnPoints[envelope.respawnAt ?? game.respawnSegmentIndex];
+        if (target) bodyUserData.__holdTarget = { x: target.x, y: target.y, z: target.z };
+      }
       holdAtSpawn();
       bodyUserData.__terrainReady = false;
       try {
@@ -169,6 +191,7 @@ export function updateRunnerPhysics({
 
     if (isTerrainGroundHit(groundRayDistance)) {
       bodyUserData.__terrainReady = true;
+      bodyUserData.__holdTarget = undefined;
     }
     const terrainWarm = !!bodyUserData.__terrainReady;
     if (!terrainWarm) {

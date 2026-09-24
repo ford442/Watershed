@@ -217,6 +217,22 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
             suggestion: `Adjust values so yMin < yMax`,
           });
         }
+        // Segment-relative envelope (segmentFrames.ts): yMin is measured down
+        // from the lowest centreline point, yMax up from the highest.
+        if (seg.safeZone.yMin > 0 || seg.safeZone.yMax < 0) {
+          errors.push({
+            field: `segments[${seg.index}].safeZone`,
+            error: 'safeZone is segment-relative: yMin must be ≤ 0 and yMax ≥ 0',
+            suggestion: 'Use metres below / above the segment centreline, not world y',
+          });
+        }
+        if (seg.safeZone.respawnAt !== undefined && seg.safeZone.respawnAt > seg.index) {
+          errors.push({
+            field: `segments[${seg.index}].safeZone.respawnAt`,
+            error: 'respawnAt must not be downstream of the segment it guards',
+            suggestion: `Use a segment index ≤ ${seg.index}`,
+          });
+        }
       }
     }
   }

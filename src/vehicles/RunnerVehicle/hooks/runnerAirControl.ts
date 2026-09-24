@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { MOVEMENT, PLAYER_SPAWN, WATER_LEVEL } from '../../../constants/game';
 import { isAutumnLike, isBiomeId, type BiomeId } from '../../../configs/biomes';
 import { useGameStore } from '../../../systems/GameState';
-import type { SafeZoneConfig } from '../../../systems/map/MapSystem.types';
+import { cancelLaunch } from '../../../systems/score/LaunchScoringSession';
+import {
+  getSegmentFrames,
+  resolveSegmentEnvelope,
+  type SegmentEnvelope,
+  type VerticalBounds,
+} from '../../../systems/map/segmentFrames';
 import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
@@ -10,18 +16,49 @@ import { triggerCameraShake } from '../utils';
 
 type Vec3 = { x: number; y: number; z: number };
 
+/**
+ * Global sanity bounds. `yMin`/`yMax` are **margins** below / above the active
+ * segment's centreline (the track descends hundreds of metres, so an absolute
+ * `y < -80` clip fired a few segments into every map); they are absolute only
+ * before the treadmill has published any segment. `xzMax`/`speedMax` are
+ * absolute.
+ */
 export const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 };
 
 /**
- * Merge an authored segment `safeZone` onto the global `POSITION_SANE` bounds.
- * Only the vertical (y) axis is ever authored per-segment; xz/speed stay global.
+ * World-space vertical envelope for the player at `pos`: the authored
+ * `safeZone` of the segment they are on, else the `POSITION_SANE` margins —
+ * both relative to that segment's centreline (`segmentFrames.ts`).
  */
-export const getEffectivePositionBounds = (safeZone?: SafeZoneConfig | null) => ({
-  yMin: safeZone?.yMin ?? POSITION_SANE.yMin,
-  yMax: safeZone?.yMax ?? POSITION_SANE.yMax,
+export const resolveActiveEnvelope = (pos: { z: number }): SegmentEnvelope =>
+  resolveSegmentEnvelope(getSegmentFrames(), pos, POSITION_SANE);
+
+/**
+ * Merge a resolved (world-space) vertical envelope onto the global bounds.
+ * Only the vertical (y) axis is ever per-segment; xz/speed stay global.
+ */
+export const getEffectivePositionBounds = (envelope?: VerticalBounds | null) => ({
+  yMin: envelope?.yMin ?? POSITION_SANE.yMin,
+  yMax: envelope?.yMax ?? POSITION_SANE.yMax,
   xzMax: POSITION_SANE.xzMax,
   speedMax: POSITION_SANE.speedMax,
 });
+
+/**
+ * The one OOB wipeout path, shared by the runner physics step and the
+ * vehicle-agnostic lifecycle check (whichever sees the fall first). Idempotent
+ * while a wipeout is already in flight. An authored `respawnAt` overrides the
+ * checkpoint table's respawn segment.
+ */
+export function triggerOutOfBoundsWipeout(envelope: Pick<SegmentEnvelope, 'respawnAt'>): void {
+  const game = useGameStore.getState();
+  if (game.isWipeout) return;
+  if (envelope.respawnAt !== undefined) {
+    game.setRespawnSegmentIndex(envelope.respawnAt);
+  }
+  cancelLaunch();
+  game.setIsWipeout(true);
+}
 
 export const isFiniteVec3 = (v: Vec3) =>
   Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);

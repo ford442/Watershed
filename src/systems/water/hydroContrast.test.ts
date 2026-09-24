@@ -3,6 +3,7 @@ import glacial from '../../maps/glacial_source.json';
 import hydro from '../../maps/hydro_dam.json';
 import delta from '../../maps/delta_rapids.json';
 import lumber from '../../maps/lumber_flume.json';
+import meander from '../../maps/meander_to_waterfall.json';
 import { applySWEEventFallback, parseHydroEvents, hydroVortexSegments } from './hydroEvents';
 import {
   CONTRAST_FLOW_SPEED,
@@ -22,9 +23,10 @@ import { DAM_RELEASE_SCHEDULE } from '../../experience/constants';
 const SCOUT_HOUR = 6;
 const DAM_HOUR = 14;
 
-/** The three shipped maps the #397 gate covers. */
+/** Shipped maps the #397 gate covers — meander is the default ACTIVE_MAP_ID. */
 const GATED_MAPS = [
   { id: 'glacial', events: parseHydroEvents(glacial.hydroEvents) },
+  { id: 'meander', events: parseHydroEvents(meander.hydroEvents) },
   { id: 'hydro', events: parseHydroEvents(hydro.hydroEvents) },
   { id: 'delta', events: parseHydroEvents(delta.hydroEvents) },
 ];
@@ -58,6 +60,17 @@ describe('hydroContrast — 06:00 vs 14:00 on the shipped maps', () => {
     const contrast = measureHydroHourContrast(events, 4, SCOUT_HOUR, DAM_HOUR);
     expect(contrast.hullStageDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
     expect(contrast.hullSpeedDelta).toBeGreaterThan(0);
+  });
+
+  it('meander: the waterfall pulse raises stage and the pond braid moves the bed at 14:00', () => {
+    const events = parseHydroEvents(meander.hydroEvents);
+    const fall = measureHydroHourContrast(events, 14, SCOUT_HOUR, DAM_HOUR);
+    expect(fall.hullStageDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(fall.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+
+    const pond = measureHydroHourContrast(events, 16, SCOUT_HOUR, DAM_HOUR);
+    expect(pond.maxBedDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minBedDelta);
+    expect(pond.hullDirDelta).toBeGreaterThan(0);
   });
 
   it('a braid moves the bed and pushes the hull laterally', () => {

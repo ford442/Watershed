@@ -156,6 +156,9 @@ X (left/right)
 ```
 
 Player spawns at `[0, 10, -10]`. The initial river centerline is around Y = -6 to -22 over the first two segments.
+The centreline keeps descending (hundreds of metres by a map's set-pieces), so never author or check an
+absolute world Y: OOB bounds, `safeZone` and survival waypoints are segment-relative via
+`src/systems/map/segmentFrames.ts`.
 
 ### Vehicle Swap
 

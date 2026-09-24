@@ -101,6 +101,7 @@
       "index": 3,
       "name": "Tube Entry",
       "difficulty": 0.6,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 25,
       "waterWidth": 6,
@@ -114,6 +115,7 @@
     {
       "index": 4,
       "difficulty": 0.65,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 24,
       "waterWidth": 6,
@@ -127,6 +129,7 @@
     {
       "index": 5,
       "difficulty": 0.7,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 24,
       "waterWidth": 6,
@@ -140,6 +143,7 @@
     {
       "index": 6,
       "difficulty": 0.72,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 23,
       "waterWidth": 6,
@@ -153,6 +157,7 @@
     {
       "index": 7,
       "difficulty": 0.75,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 23,
       "waterWidth": 6,
@@ -166,6 +171,7 @@
     {
       "index": 8,
       "difficulty": 0.78,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 22,
       "waterWidth": 5,
@@ -179,6 +185,7 @@
     {
       "index": 9,
       "difficulty": 0.8,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 3 },
       "biomeOverride": "glacialMelt",
       "width": 22,
       "waterWidth": 5,
@@ -193,6 +200,7 @@
       "index": 10,
       "name": "Tube Apex",
       "difficulty": 0.82,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 10 },
       "biomeOverride": "glacialMelt",
       "width": 21,
       "waterWidth": 5,
@@ -207,6 +215,7 @@
       "index": 11,
       "name": "Crevasse Approach",
       "difficulty": 0.75,
+      "safeZone": { "yMin": -12, "yMax": 150, "respawnAt": 10 },
       "biomeOverride": "glacialMelt",
       "width": 24,
       "waterWidth": 6,
@@ -221,6 +230,7 @@
       "index": 12,
       "name": "Crevasse Jump",
       "difficulty": 0.85,
+      "safeZone": { "yMin": -20, "yMax": 150, "respawnAt": 10 },
       "type": "waterfall",
       "biomeOverride": "glacialMelt",
       "width": 26,
@@ -249,6 +259,7 @@
       "index": 13,
       "name": "Crevasse Pool",
       "difficulty": 0.55,
+      "safeZone": { "yMin": -10, "yMax": 150, "respawnAt": 13 },
       "decorations": {},
       "type": "splash",
       "biomeOverride": "glacialMelt",
@@ -362,8 +373,9 @@
       "velocity": [0, 0, 0]
     },
     "checkpoints": [
+      { "segment": 3, "position": [0, -8, -120], "radius": 25 },
       { "segment": 10, "position": [0, -18, -280], "radius": 25 },
-      { "segment": 12, "position": [0, -24, -380], "radius": 30 }
+      { "segment": 13, "position": [0, -26, -400], "radius": 30 }
     ]
   }
 }

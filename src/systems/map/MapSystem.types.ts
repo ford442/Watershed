@@ -56,11 +56,19 @@ export interface DecorationPlacement {
 }
 
 /**
- * Vertical out-of-bounds envelope for a segment. When present, replaces the
- * runtime's global `POSITION_SANE` yMin/yMax for the vertical (y) axis while
- * the player is on this segment. `respawnAt` names the segment index whose
- * authored spawn point the player is returned to on OOB (falls back to the
- * default respawn-segment resolution when omitted).
+ * Vertical out-of-bounds envelope for a segment, **relative to the segment's
+ * own centreline** — never absolute world y. The treadmill descends tens of
+ * metres per segment and `?seed=` moves every segment, so an absolute value is
+ * wrong a few segments in (see `segmentFrames.ts`).
+ *
+ * - `yMin` — metres relative to the segment's *lowest* centreline point
+ *   (negative = below it). Falling under this is a wipeout.
+ * - `yMax` — metres relative to the segment's *highest* centreline point.
+ * - `respawnAt` — segment index whose spawn point (path start) the player
+ *   returns to on an OOB here; omit to use the checkpoint table.
+ *
+ * Segments without one fall back to the runner's global `POSITION_SANE`
+ * margins, anchored to the centreline the same way.
  */
 export interface SafeZoneConfig {
   yMin: number;
@@ -295,7 +303,7 @@ export interface SegmentProgressionConfig {
   hasBridge?: boolean;
   /** Optional vortex drain field (Hydro-Dam chamber / throat). */
   vortex?: VortexConfig;
-  /** Authored OOB envelope, overriding the global `POSITION_SANE` y-bounds while active. */
+  /** Authored segment-relative OOB envelope; overrides the global `POSITION_SANE` margins. */
   safeZone?: SafeZoneConfig;
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
