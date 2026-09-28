@@ -22,9 +22,12 @@
  *        delta read as different water rather than the same rectangle of waves
  *        with a different palette.
  *
- *   Boundaries are transmissive (ghost = interior). The grid is a moving
- *   player-centred window, so waves must leave it rather than reflect off an
- *   invisible wall four metres from the raft.
+ *   Boundaries are transmissive (ghost = interior), so a wave reaching the edge
+ *   leaves rather than reflecting off an invisible wall four metres from the
+ *   raft. That only sheds waves from a FIXED grid: the grid is a player-centred
+ *   window that moves, and this solver knows nothing about its origin. The
+ *   window is kept world-stable by scrollShallowWater (below), which the caller
+ *   runs on every whole-cell origin move before the bed refresh and the step.
  *
  * Field conventions are documented in swe.h and are part of the ABI: `h` is a
  * free-surface *perturbation*, not a depth, because FlowingWater displaces
@@ -429,6 +432,57 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
                 w[idx] *= damp;
             }
         }
+    }
+}
+
+namespace {
+
+/** Reused across calls so a per-frame scroll never allocates after the first. */
+thread_local std::vector<float> g_scrollTmp;
+
+/**
+ * dst[x, z] = src[x - shiftX, z - shiftZ], in place via `tmp`.
+ * Out-of-range sources become `fill`, or the nearest edge cell when `clampEdge`.
+ */
+void scrollPlane(float* plane, float* tmp, int width, int height,
+                 int shiftX, int shiftZ, float fill, bool clampEdge) {
+    for (int z = 0; z < height; ++z) {
+        const int sz = z - shiftZ;
+        for (int x = 0; x < width; ++x) {
+            const int sx = x - shiftX;
+            float v = fill;
+            if (sx >= 0 && sx < width && sz >= 0 && sz < height) {
+                v = plane[sz * width + sx];
+            } else if (clampEdge) {
+                v = plane[std::clamp(sz, 0, height - 1) * width + std::clamp(sx, 0, width - 1)];
+            }
+            tmp[z * width + x] = v;
+        }
+    }
+    std::copy(tmp, tmp + static_cast<std::size_t>(width) * static_cast<std::size_t>(height), plane);
+}
+
+}  // namespace
+
+void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                        int width, int height, int shiftX, int shiftZ,
+                        float inflowEta, float inflowU, float inflowW) {
+    if (width <= 0 || height <= 0) return;
+    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
+    // Beyond one full extent every source is out of range anyway; saturating
+    // here keeps `x - shift` clear of int overflow for a teleport-sized delta.
+    shiftX = std::clamp(shiftX, -width, width);
+    shiftZ = std::clamp(shiftZ, -height, height);
+    if (shiftX == 0 && shiftZ == 0) return;
+
+    g_scrollTmp.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    float* tmp = g_scrollTmp.data();
+
+    scrollPlane(reinterpret_cast<float*>(hPtr), tmp, width, height, shiftX, shiftZ, inflowEta, false);
+    scrollPlane(reinterpret_cast<float*>(uPtr), tmp, width, height, shiftX, shiftZ, inflowU,   false);
+    scrollPlane(reinterpret_cast<float*>(wPtr), tmp, width, height, shiftX, shiftZ, inflowW,   false);
+    if (bPtr != 0) {
+        scrollPlane(reinterpret_cast<float*>(bPtr), tmp, width, height, shiftX, shiftZ, 0.f, true);
     }
 }
 

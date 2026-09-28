@@ -139,8 +139,8 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **8**;
-`MIN_WASM_ABI_VERSION` is **6**). Bump in `bindings.cpp` whenever the
+Returns the module ABI version integer (currently **9**;
+`MIN_WASM_ABI_VERSION` is **8**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 `>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
 `stepShallowWater`'s arity, which is why the floor moved with it.
@@ -154,9 +154,10 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 5 | Optional gpu-chores (`reduceF32Grid`, `histogramF32`, `lumaHistogramU8`, `downsampleF32`, `blurSeparableF32`). Additive. TS did not require 5; the wasm chore lane declined when exports were missing. |
 | 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` gained a bed pointer as its 4th argument. |
 | 7 | Particle SoA (`allocateParticleSoA`, `initWaterfallParticles`, `stepWaterfallParticles`, `stepSplashParticles`). Additive; `MIN_WASM_ABI_VERSION` stays 6. |
-| 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6. |
+| 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6 at the time (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
+| 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays 8 and the export is typed optional. |
 
-TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 6).
+TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 8).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
 binary cannot be called with the new argument list at all, so the floor moves with
 it and a stale binary is rejected at load. Chore kernels live in
@@ -256,8 +257,10 @@ narrow wet thalweg between dry banks while a delta stays wet across the same gri
 U-channel shape. Writing `grid.b` uses the existing heap view — it is **not** an ABI change.
 
 `h` stays a perturbation because `FlowingWater` displaces vertices by it
-directly. Boundaries are transmissive, so waves leave the moving player-centred
-window rather than reflecting.
+directly. Boundaries are transmissive, so a wave reaching the edge leaves rather than
+reflecting — but that only sheds waves from a *fixed* grid. The grid is a player-centred
+window that moves, and `stepShallowWater` does not shift `h` / `u` / `w`; keeping the field
+world-stable is `scrollShallowWater` (ABI 9, below).
 
 The solver internally clamps `dt` to the CFL stability limit
 (`dt ≤ 0.4 · dx / max(|v| + √(g d))`), so it is safe to pass `delta` from
@@ -291,6 +294,47 @@ useFrame((_, delta) => {
 // On unmount:
 grid.dispose();
 ```
+
+### `scrollShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, shiftX, shiftZ, inflowEta, inflowU, inflowW): void`  (ABI 9)
+
+The live grid is a player-centred **window over the world** (`sweQuality.ts`: 48×32 cells at
+0.5 m on High), and its origin follows the vehicle every frame. `stepShallowWater` is
+origin-blind and does not move `h` / `u` / `w`, and the bed rasterizer only rewrites `b` — so
+without a scroll, η and velocity stay in their old index slots while the canyon moves
+underneath them and a splash rides the camera. Transmissive boundaries do **not** fix this:
+they let waves leave a *fixed* grid, not a moving one. `scrollShallowWater` is what makes the
+window world-stable.
+
+- **Sign.** `shift` is how far the *content* moves through the index frame:
+  `dst[x, z] = src[x − shiftX, z − shiftZ]`, i.e. `(oldOrigin − newOrigin) / dx`. A window
+  travelling downstream (−Z, gameplay-forward) has a **positive** `shiftZ`: the field slides
+  toward higher rows, water leaves off the high-row (upstream) edge, and the low-row
+  (downstream) edge is filled. A surviving cell keeps its world position,
+  `originZ + row · dx`.
+- **Leaving / entering.** Cells that leave are dropped — nothing wraps. Cells that enter take
+  the inflow state `(h, u, w) = (inflowEta, inflowU, inflowW)`; pass zeros for rest. Those are
+  the ABI's own fields (a perturbation and velocities), not a depth and a flux: total depth needs
+  the bed, and an entering cell's bed is only known once the rasterizer has run. The bed plane
+  extends its nearest surviving edge, a placeholder for the one frame before the rasterizer
+  overwrites it. `bPtr == 0` leaves the bed alone.
+- **Whole cells only.** `WaterForceSystem` keeps the window origin on the world's cell lattice
+  (`advanceSweWindow`, `sweScroll.ts`) and moves it only once it has drifted a full cell —
+  the same gate the bed refresh always used — so sub-cell motion neither scrolls nor
+  re-rasterizes. |shift| ≥ the grid extent saturates: a respawn restarts the field at rest.
+- **Order, every frame:** `scroll` (previous step's `h/u/w/b` into the new index frame) →
+  `refreshBed()` (rewrites `b` with the world-correct floor) → disturbances → `step`.
+- **Additive.** Pure data movement — bit-exact, no arithmetic. `getVersion()` is 9, but
+  `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays **8**; the export is typed
+  optional in `WatershedWasm.ts`, and `createWasmSweSim` falls back to the TypeScript twin
+  (`scrollField`) on an ABI-8 binary.
+- **Backends.** The WGSL twin is the `scroll` entry point of `swe.wgsl` (gather into scratch,
+  copy back over the field). `WgslSweSim.scroll` shifts its CPU mirror in the same call and drops
+  a readback that was taken before the scroll, so readers never pair a stale-frame field with the
+  new window origin. One backend per session is unchanged.
+- **Pinned by:** `host_smoke.cpp` §7 (kernel semantics, lake-at-rest across scroll + bed rewrite
+  on a sloped bed and a U-channel, a scrolled window tracking a fixed one), `smoke_test.mjs`
+  (real binary vs a JS reference), `sweScroll.integration.test.ts` (TS against the export;
+  `pnpm test:wasm`), and `pnpm test:wgsl` (WGSL vs WASM at 1e-5; the pure scroll is bit-exact).
 
 ### `allocateGrid(count): number` / `freeGrid(ptr): void`
 

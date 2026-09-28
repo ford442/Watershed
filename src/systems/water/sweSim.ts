@@ -16,6 +16,7 @@
 import type { SWEGrid, WatershedNativeModule } from './WatershedWasm';
 import { createSWEGrid } from './WatershedWasm';
 import type { SweSimBackend } from './sweBackend';
+import { SWE_REST_INFLOW, scrollField, type SweInflow } from './sweScroll';
 
 /** One `applySWEEvent` call, in world XZ (ABI 8 kinds: 0 inflow … 3 roughness). */
 export interface SweEventCall {
@@ -32,7 +33,11 @@ export interface SweStepInput {
   g: number;
   /** Still-water depth over a zero bed (m). */
   H: number;
-  /** Grid origin in world XZ — the window is player-centred and moves. */
+  /**
+   * World XZ of grid cell (0, 0) — the window is player-centred and moves. Only
+   * used to place `events`; the solver itself is origin-blind, which is why the
+   * caller must `scroll()` the field whenever this moves a whole cell.
+   */
   originX: number;
   originZ: number;
   /** Authored hydro events applied after the step, in this order. */
@@ -56,6 +61,18 @@ export interface SweSim {
   commitBed(): void;
   /** Add to η at a cell before the next step (splash disturbances). */
   addSurface(index: number, amount: number): void;
+  /**
+   * Scroll the field through the index frame by whole cells so it stays fixed in
+   * world space while the window moves (swe.h `scrollShallowWater`, ABI 9).
+   * `shift` is how far the content moves: (oldOrigin − newOrigin) / dx, so a
+   * window travelling downstream (−Z) has a positive `shiftZ`. Cells that leave
+   * are dropped, cells that enter take `inflow` (rest by default) and the bed
+   * plane extends its nearest edge. Call it BEFORE re-rasterizing `b` and before
+   * `step()`. Bumps `fieldVersion` — the mirror changed, so the height texture
+   * must be re-uploaded against the new origin. Non-finite or zero shifts do
+   * nothing.
+   */
+  scroll(shiftX: number, shiftZ: number, inflow?: SweInflow): void;
   /** One CFL-clamped solver step, then `input.events`. */
   step(input: SweStepInput): void;
   dispose(): void;
@@ -88,6 +105,24 @@ export function createWasmSweSim(
     },
     addSurface(index, amount) {
       grid.h[index] += amount;
+    },
+    scroll(shiftX, shiftZ, inflow = SWE_REST_INFLOW) {
+      if (!Number.isFinite(shiftX) || !Number.isFinite(shiftZ)) return;
+      const sx = Math.max(-width, Math.min(width, Math.trunc(shiftX)));
+      const sz = Math.max(-height, Math.min(height, Math.trunc(shiftZ)));
+      if (sx === 0 && sz === 0) return;
+      if (typeof wasm.scrollShallowWater === 'function') {
+        wasm.scrollShallowWater(
+          grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
+          width, height, sx, sz, inflow.eta, inflow.u, inflow.w,
+        );
+      } else {
+        // An ABI-8 binary has no scroll export. The stamp check keeps a shipped
+        // pair in step with the source, so this is a stale-dev-build guard, not
+        // a supported path — but the TS twin moves the field identically.
+        scrollField(grid, width, height, sx, sz, inflow);
+      }
+      fieldVersion += 1;
     },
     step({ dt, g, H, originX, originZ, events }) {
       wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);

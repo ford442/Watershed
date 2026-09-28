@@ -16,6 +16,7 @@ import { createSWEGrid, type WatershedNativeModule } from './WatershedWasm';
 import { createWasmSweSim, type SweEventCall, type SweSim, type SweStepInput } from './sweSim';
 import { createWgslSweSim, WGSL_SWE_MAX_EVENTS_PER_DISPATCH, type WgslSweSim } from './WgslSweSim';
 import { sampleSWEFlow } from './sampleSWEFlow';
+import type { SweInflow } from './sweScroll';
 import {
   HYDRO_CONTRAST_MARGINS,
   hydroSegmentIndices,
@@ -96,6 +97,52 @@ export async function runSweParitySuite(
       pair.gpu.step(input);
     }
     await pair.gpu.flush();
+  };
+
+  /** Largest |wasm − wgsl| over h, u, w, b — what `record` holds to 1e-5. */
+  const worstDiff = (pair: Pair) =>
+    Math.max(
+      maxDiff(pair.native.h, pair.gpu.h),
+      maxDiff(pair.native.u, pair.gpu.u),
+      maxDiff(pair.native.w, pair.gpu.w),
+      maxDiff(pair.native.b, pair.gpu.b),
+    );
+
+  /** The window moved: scroll both backends the way WaterForceSystem does. */
+  const scrollBoth = (pair: Pair, shiftX: number, shiftZ: number, inflow?: SweInflow) => {
+    pair.native.scroll(shiftX, shiftZ, inflow);
+    pair.gpu.scroll(shiftX, shiftZ, inflow);
+  };
+
+  /** The rasterizer's job: rewrite `b` from a world-space function at the new origin. */
+  const rewriteBed = (
+    pair: Pair,
+    width: number,
+    height: number,
+    dx: number,
+    originX: number,
+    originZ: number,
+    bedAt: (wx: number, wz: number) => number,
+  ) => {
+    for (const sim of [pair.native, pair.gpu]) {
+      for (let z = 0; z < height; z += 1) {
+        for (let x = 0; x < width; x += 1) sim.b[z * width + x] = bedAt(originX + x * dx, originZ + z * dx);
+      }
+      sim.commitBed();
+    }
+  };
+
+  /** World XZ of the largest η, given the window's origin. */
+  const peakWorld = (sim: SweSim, dx: number, originX: number, originZ: number) => {
+    let best = -Infinity;
+    let idx = 0;
+    for (let i = 0; i < sim.h.length; i += 1) {
+      if (sim.h[i] > best) {
+        best = sim.h[i];
+        idx = i;
+      }
+    }
+    return { x: originX + (idx % sim.width) * dx, z: originZ + Math.floor(idx / sim.width) * dx, eta: best };
   };
 
   const record = (name: string, pair: Pair, extra?: { ok: boolean; detail: string }) => {
@@ -232,6 +279,140 @@ export async function runSweParitySuite(
     record('hull samples fed to Rapier', pair, {
       ok: hullWorst < SWE_PARITY_TOLERANCE,
       detail: `hull ${hullWorst.toExponential(2)}`,
+    });
+    pair.dispose();
+  });
+
+  // ── window scroll (ABI 9): the moving SWE window stays world-stable ──────────
+  // Shift convention (swe.h): dst[x, z] = src[x − shiftX, z − shiftZ]; a window
+  // travelling downstream (−Z) has a positive shiftZ.
+  await scenario('scroll: sign, fill, bed edge extension', async () => {
+    const width = 24;
+    const height = 16;
+    const pair = await makePair(width, height, 0.5, (x, z) => ({
+      h: Math.sin(x * 0.7 + z),
+      u: Math.cos(z * 0.5 + x * 0.2),
+      w: 0.01 * (x + z * width),
+      b: 0.3 + 0.001 * x * z,
+    }));
+    scrollBoth(pair, 3, -2, { eta: 0.05, u: 0.1, w: -0.2 });
+    // The CPU mirror readers see before any readback lands must already agree.
+    const mirror = worstDiff(pair);
+    await pair.gpu.flush();
+    record('scroll: sign, fill, bed edge extension', pair, {
+      ok: mirror < SWE_PARITY_TOLERANCE,
+      detail: `mirror before readback ${mirror.toExponential(2)}`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('scroll: saturating and degenerate shifts', async () => {
+    const width = 16;
+    const height = 12;
+    const pair = await makePair(width, height, 0.5, (x, z) => ({ h: 0.2 + x * 0.01, u: z * 0.1, b: 0.1 * x }));
+    scrollBoth(pair, 0, 0);
+    scrollBoth(pair, Number.NaN, 2);
+    await pair.gpu.flush();
+    const untouched = worstDiff(pair);
+    scrollBoth(pair, width, 0, { eta: 0.1, u: 0, w: 0 });
+    scrollBoth(pair, 1e9, -1e9);
+    await pair.gpu.flush();
+    const allRest = pair.gpu.h.every((v) => v === 0) && pair.native.h.every((v) => v === 0);
+    record('scroll: saturating and degenerate shifts', pair, {
+      ok: allRest && untouched < SWE_PARITY_TOLERANCE,
+      detail: `no-op ${untouched.toExponential(2)}, saturated field at rest ${allRest}`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('scroll + bed rewrite + steps, readback in flight across each scroll', async () => {
+    const width = 48;
+    const height = 32;
+    const dx = 0.5;
+    const bedAt = (wx: number, wz: number) => 0.4 + 0.3 * Math.sin(0.3 * wx + 0.2 * wz);
+    const bump = { x: 24 * dx, z: 12 * dx };
+    const pair = await makePair(width, height, dx, (x, z) => ({
+      h: 0.3 * Math.exp(-((x * dx - bump.x) ** 2 + (z * dx - bump.z) ** 2) / 1.5),
+      b: bedAt(x * dx, z * dx),
+    }));
+    let cellX = 0;
+    let cellZ = 0;
+    // The vehicle mostly runs downstream (+shiftZ), drifting across the channel.
+    for (const [shiftX, shiftZ] of [[-2, 0], [0, 3], [-1, 2], [2, -1], [0, 4], [-3, 0]]) {
+      cellX -= shiftX;
+      cellZ -= shiftZ;
+      scrollBoth(pair, shiftX, shiftZ);
+      rewriteBed(pair, width, height, dx, cellX * dx, cellZ * dx, bedAt);
+      // No flush: the GPU readback started by these steps is still in flight when
+      // the next scroll lands, and must be dropped rather than mirrored.
+      for (let k = 0; k < 3; k += 1) {
+        pair.native.step({ ...base, dt: 0.01, originX: cellX * dx, originZ: cellZ * dx });
+        pair.gpu.step({ ...base, dt: 0.01, originX: cellX * dx, originZ: cellZ * dx });
+      }
+    }
+    await pair.gpu.flush();
+    const a = peakWorld(pair.native, dx, cellX * dx, cellZ * dx);
+    const g = peakWorld(pair.gpu, dx, cellX * dx, cellZ * dx);
+    // The splash spreads but does not travel: its peak stays at its world cell
+    // while the window has moved 5 columns and 8 rows, identically on both.
+    const held = Math.abs(a.x - bump.x) <= 2 * dx && Math.abs(a.z - bump.z) <= 2 * dx && a.eta > 0.02;
+    const same = a.x === g.x && a.z === g.z;
+    record('scroll + bed rewrite + steps, readback in flight across each scroll', pair, {
+      ok: held && same,
+      detail: `window moved (${cellX}, ${cellZ}) cells; peak wasm (${a.x}, ${a.z}) wgsl (${g.x}, ${g.z}) vs world (${bump.x}, ${bump.z})`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('scroll: a readback taken before the scroll is never mirrored into the new frame', async () => {
+    const width = 32;
+    const height = 24;
+    // A dry field is invariant under a step (every cell pins η to b − H), yet
+    // its η pattern is position-dependent — so the wasm field and the WGSL
+    // mirror stay comparable mid-flight, and a stale-frame mirror shows up.
+    const bedAt = (x: number, z: number) => 2 + 0.1 * x + 0.05 * z;
+    const pair = await makePair(width, height, 0.75, (x, z) => ({ b: bedAt(x, z), h: bedAt(x, z) - 1 }));
+    pair.native.step({ ...base, dt: 0.01 });
+    pair.gpu.step({ ...base, dt: 0.01 }); // its readback starts now, in the pre-scroll frame
+    scrollBoth(pair, 3, -2);
+    // Let that readback land. Nothing else is submitted, so nothing refreshes
+    // the mirror behind it: whatever it holds now is what a reader would see.
+    await device.queue.onSubmittedWorkDone();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    record('scroll: a readback taken before the scroll is never mirrored into the new frame', pair);
+    await pair.gpu.flush();
+    record('scroll: ...and the next readback brings the same field', pair);
+    pair.dispose();
+  });
+
+  await scenario('scroll: queued splash lands in the old frame, then moves with the world', async () => {
+    const width = 32;
+    const height = 24;
+    const pair = await makePair(width, height, 0.75, () => ({}));
+    // Queued, not stepped: WASM adds to η at once, WGSL folds the delta in
+    // before the scroll — both address the frame the caller computed it in.
+    pair.native.addSurface(12 * width + 16, 0.4);
+    pair.gpu.addSurface(12 * width + 16, 0.4);
+    scrollBoth(pair, -2, 3);
+    for (let k = 0; k < 10; k += 1) {
+      pair.native.step({ ...base, dt: 0.01 });
+      pair.gpu.step({ ...base, dt: 0.01 });
+    }
+    await pair.gpu.flush();
+    record('scroll: queued splash lands in the old frame, then moves with the world', pair);
+    pair.dispose();
+  });
+
+  await scenario('scroll: a splash leaving the upstream edge is dropped, not wrapped', async () => {
+    const width = 32;
+    const height = 24;
+    const pair = await makePair(width, height, 0.75, (x, z) => ({ h: x === 10 && z === height - 3 ? 0.5 : 0 }));
+    scrollBoth(pair, 0, 3);
+    await pair.gpu.flush();
+    const gone = pair.gpu.h.every((v) => v === 0) && pair.native.h.every((v) => v === 0);
+    record('scroll: a splash leaving the upstream edge is dropped, not wrapped', pair, {
+      ok: gone,
+      detail: `field at rest on both: ${gone}`,
     });
     pair.dispose();
   });

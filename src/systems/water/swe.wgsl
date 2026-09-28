@@ -1,4 +1,4 @@
-// swe.wgsl — WGSL twin of emscripten/swe.cpp (stepShallowWater + applySWEEvent, ABI 8).
+// swe.wgsl — WGSL twin of emscripten/swe.cpp (stepShallowWater + applySWEEvent + scrollShallowWater, ABI 9).
 //
 // Same numerics, not a new water sim: Audusse hydrostatic reconstruction + HLL
 // flux, transmissive boundaries, wetting/drying, CFL clamp, velocity damping.
@@ -15,8 +15,9 @@
 // Buffers are packed so the kernels need three storage bindings — well inside
 // even compatibility-mode limits:
 //   field    [h | u | w | b]           4N f32, the simulation state (read back)
-//   scratch  [d | d·u | d·w]           3N f32; before `add_surface` its first N
-//                                       floats carry the splash delta
+//   scratch  [d | d·u | d·w | —]       4N f32; before `add_surface` its first N
+//                                       floats carry the splash delta; `scroll`
+//                                       gathers all four field planes into it
 //   maxBits  CFL max wave speed as u32 bits
 //
 // Entry points, one dispatch each, in step order:
@@ -24,6 +25,8 @@
 //   lift         (η,u,w) → (d, d·u, d·w) scratch + global max wave speed
 //   update       gather fluxes, apply, lower back to (η,u,w), damp
 //   events       authored hydro source terms (applySWEEvent), in authored order
+//   scroll       whole-cell shift of h/u/w/b (scrollShallowWater) — runs between
+//                steps, before the bed refresh; the host copies scratch → field
 
 const DRY_DEPTH: f32 = 1e-4;       // SWE_DRY_DEPTH (swe.cpp)
 const CFL_NUMBER: f32 = 0.4;       // kCflNumber
@@ -43,8 +46,14 @@ struct Params {
   H: f32,
   originX: f32,
   originZ: f32,
+  // `scroll` only (zero for every other entry point): how far the content moves
+  // through the index frame, and the (η, u, w) an entering cell takes.
+  shiftX: i32,
+  shiftZ: i32,
+  inflowEta: f32,
+  inflowU: f32,
+  inflowW: f32,
   _pad0: f32,
-  _pad1: f32,
 };
 
 // kind: 0 inflow, 1 vortex, 2 braid, 3 roughness (hydroEvents.ts HYDRO_KIND_*).
@@ -336,4 +345,41 @@ fn apply_events(@builtin(global_invocation_id) gid: vec3u) {
       setW(idx, wAt(idx) * damp);
     }
   }
+}
+
+// ── scroll (scrollShallowWater) ──────────────────────────────────────────────
+// dst[x, z] = src[x - shiftX, z - shiftZ]: how far the content moves through the
+// index frame, (oldOrigin - newOrigin) / dx, so a window travelling downstream
+// (-Z) has a positive shiftZ. Cells that leave are dropped, cells that enter take
+// the inflow state, and the bed plane extends its nearest edge (a placeholder
+// until the rasterizer rewrites it). Pure data movement, so it is bit-exact
+// against swe.cpp. Every cell gathers its source into `scratch` — an in-place
+// shift would race — and the host copies scratch back over `field`.
+@compute @workgroup_size(64)
+fn scroll(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= params.count) { return; }
+  let n = params.count;
+  let width = i32(params.width);
+  let height = i32(params.height);
+  // Saturate as the C++ does: past one extent every source is out of range.
+  let shiftX = clamp(params.shiftX, -width, width);
+  let shiftZ = clamp(params.shiftZ, -height, height);
+  let sx = i32(i) % width - shiftX;
+  let sz = i32(i) / width - shiftZ;
+
+  var eta = params.inflowEta;
+  var uu = params.inflowU;
+  var ww = params.inflowW;
+  if (sx >= 0 && sx < width && sz >= 0 && sz < height) {
+    let s = u32(sz * width + sx);
+    eta = hAt(s);
+    uu = uAt(s);
+    ww = wAt(s);
+  }
+  let bs = u32(clamp(sz, 0, height - 1) * width + clamp(sx, 0, width - 1));
+  scratch[i] = eta;
+  scratch[n + i] = uu;
+  scratch[2u * n + i] = ww;
+  scratch[3u * n + i] = bAt(bs);
 }

@@ -567,6 +567,9 @@ Each live `TrackSegment` publishes a bathymetry source from the same
 ID so a recycled treadmill slot replaces its own entry. `WaterForceSystem.refreshBed()`
 rasterizes the registered sources into `grid.b` before stepping — only when the
 player-centred window slides a whole cell or the registered set changes, not every frame.
+The same whole-cell move first scrolls `h`/`u`/`w`/`b` through the index frame
+(`scrollShallowWater`, `sweScroll.ts`), so the field stays fixed in world space and this
+rasterize only rewrites the bed of a window that is already in the new frame.
 
 **Datum:** `computeCanyonFloorHeight`'s `yHeight` carries a large per-biome constant (a slot
 canyon floor sits ~3.9 above its path point, a summer canyon near 0), so each segment is

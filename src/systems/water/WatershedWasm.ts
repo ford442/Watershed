@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 8).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 9).
  * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION (8).
  *
  * Quick start
@@ -116,6 +116,8 @@ export interface WatershedNativeModule {
  *   7 — particle SoA (additive)
  *   8 — applySWEEvent source terms (additive; MIN_WASM_ABI_VERSION is now 8 —
  *       particle SoA and applySWEEvent are guaranteed exports, not optional)
+ *   9 — scrollShallowWater (additive; MIN_WASM_ABI_VERSION stays 8 because
+ *       stepShallowWater is unchanged — the export is typed optional below)
  */
   getVersion(): number;
 
@@ -251,6 +253,27 @@ export interface WatershedNativeModule {
     width: number, height: number,
     dx: number, originX: number, originZ: number, H: number,
     kind: number, cx: number, cz: number, radius: number, strength: number, dt: number,
+  ): void;
+
+  /**
+   * Scroll h / u / w / b by whole cells so the moving SWE window stays
+   * world-stable (ABI 9+). Optional in the type: MIN_WASM_ABI_VERSION is 8, and
+   * an ABI-8 binary does not export it — `createWasmSweSim` falls back to the
+   * TypeScript twin in `sweScroll.ts` then. Bit-exact data movement, no solver.
+   *
+   * `shiftX` / `shiftZ` are how far the CONTENT moves through the index frame,
+   * `dst[x, z] = src[x - shiftX, z - shiftZ]` = (oldOrigin − newOrigin) / dx, so
+   * a window travelling downstream (−Z) has a positive `shiftZ`. Cells that
+   * leave are dropped (no wrap); cells that enter take (`inflowEta`, `inflowU`,
+   * `inflowW`) — zeros for rest state — and the bed extends its nearest edge
+   * until the rasterizer overwrites it. `bPtr` may be 0. |shift| beyond the grid
+   * extent saturates. See `emscripten/swe.h`.
+   */
+  scrollShallowWater?(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
+    width: number, height: number,
+    shiftX: number, shiftZ: number,
+    inflowEta: number, inflowU: number, inflowW: number,
   ): void;
 
   // ---- Memory helpers ----

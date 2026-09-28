@@ -46,9 +46,13 @@
 //       MIN_WASM_ABI_VERSION stays 6.
 //   8 — applySWEEvent source terms (inflow / vortex / braid / roughness).
 //       Additive; MIN_WASM_ABI_VERSION stays 6.
+//   9 — scrollShallowWater: whole-cell scroll of h/u/w/b so the moving SWE
+//       window stays world-stable. Additive — stepShallowWater is unchanged, so
+//       the TS floor (MIN_WASM_ABI_VERSION) stays 8; an ABI-8 binary just lacks
+//       the export, which WatershedWasm.ts types as optional.
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
-    return 8;
+    return 9;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +93,7 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("computeFlowForce", &computeFlowForce);
     emscripten::function("stepShallowWater", &stepShallowWater);
     emscripten::function("applySWEEvent",    &applySWEEvent);
+    emscripten::function("scrollShallowWater", &scrollShallowWater);
     emscripten::function("allocateGrid",     &allocateGrid);
     emscripten::function("freeGrid",         &freeGrid);
     emscripten::function("reduceF32Grid",    &reduceF32Grid);

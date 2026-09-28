@@ -65,11 +65,11 @@ reconstruction loops are scalar: an HLL solve branches per interface (dry/wet,
 subsonic / supersonic), so lane-wise divergence would cost more than it saves
 and would risk changing goldens. `particles.cpp` uses 4-wide Euler. Host goldens
 cover CFL clamp, uniform-flow preservation, lake-at-rest well-balancing,
-wetting/drying, a 1D dam break, and a 128-particle chute AABB.
+wetting/drying, a 1D dam break, the window scroll, and a 128-particle chute AABB.
 
 ## ABI version
 
-`getVersion()` is **8** in source. `MIN_WASM_ABI_VERSION` is **6**.
+`getVersion()` is **9** in source. `MIN_WASM_ABI_VERSION` is **8**.
 
 | Version | Change |
 |---------|--------|
@@ -80,7 +80,8 @@ wetting/drying, a 1D dam break, and a 128-particle chute AABB.
 | 5 | Optional gpu-chores TU (`chores.cpp`) — HUD reduce/hist/downsample/blur. Not SWE. |
 | 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` takes a bed pointer as its 4th argument. |
 | 7 | Particle SoA (waterfall + splash integrate). Additive; floor stays 6. |
-| 8 | `applySWEEvent` hydro source terms. Additive; floor stays 6. |
+| 8 | `applySWEEvent` hydro source terms. Additive; floor stays 6 (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
+| 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so the floor stays 8. |
 
 `src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`.
 Versions 1–5 were additive, so the floor could stay at 4 and an older shipped
@@ -118,9 +119,11 @@ pre-6 linearised stepper could not express:
   delta read as different water in Phase 2, rather than the same rectangle of
   waves with a different palette.
 
-Boundaries are transmissive (ghost = interior): the grid is a moving,
-player-centred window, so waves must leave it rather than reflect off an
-invisible wall a few metres from the raft.
+Boundaries are transmissive (ghost = interior), so a wave reaching the edge leaves
+rather than reflecting off an invisible wall a few metres from the raft. That only sheds
+waves from a **fixed** grid: the grid is a player-centred window that *moves*, and the
+solver knows nothing about its origin. Keeping the field world-stable is
+`scrollShallowWater`'s job — see [Window scroll](#window-scroll--scrollshallowwater-abi-9).
 
 ### Field conventions (part of the ABI)
 
@@ -133,6 +136,49 @@ invisible wall a few metres from the raft.
 Total depth is `H + h − b`. `h` stays a perturbation because `FlowingWater`
 displaces vertices by it directly — switching it to an absolute depth would
 change every water visual and invalidate the visual-smoke baselines.
+
+### Window scroll — `scrollShallowWater` (ABI 9)
+
+`scrollShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, shiftX, shiftZ, inflowEta, inflowU, inflowW)`
+
+The live grid is a player-centred **window over the world** (`sweQuality.ts`: 48×32 cells at
+0.5 m on High), and its origin follows the vehicle every frame. `stepShallowWater` is
+origin-blind and does not move `h` / `u` / `w`, and the bed rasterizer only rewrites `b` — so
+without a scroll, η and velocity stay in their old index slots while the canyon moves
+underneath them and a splash rides the camera. Transmissive boundaries do **not** fix this:
+they let waves leave a *fixed* grid, not a moving one. `scrollShallowWater` is what makes the
+window world-stable.
+
+- **Sign.** `shift` is how far the *content* moves through the index frame:
+  `dst[x, z] = src[x − shiftX, z − shiftZ]`, i.e. `(oldOrigin − newOrigin) / dx`. A window
+  travelling downstream (−Z, gameplay-forward) has a **positive** `shiftZ`: the field slides
+  toward higher rows, water leaves off the high-row (upstream) edge, and the low-row
+  (downstream) edge is filled. A surviving cell keeps its world position,
+  `originZ + row · dx`.
+- **Leaving / entering.** Cells that leave are dropped — nothing wraps. Cells that enter take
+  the inflow state `(h, u, w) = (inflowEta, inflowU, inflowW)`; pass zeros for rest. Those are
+  the ABI's own fields (a perturbation and velocities), not a depth and a flux: total depth needs
+  the bed, and an entering cell's bed is only known once the rasterizer has run. The bed plane
+  extends its nearest surviving edge, a placeholder for the one frame before the rasterizer
+  overwrites it. `bPtr == 0` leaves the bed alone.
+- **Whole cells only.** `WaterForceSystem` keeps the window origin on the world's cell lattice
+  (`advanceSweWindow`, `sweScroll.ts`) and moves it only once it has drifted a full cell —
+  the same gate the bed refresh always used — so sub-cell motion neither scrolls nor
+  re-rasterizes. |shift| ≥ the grid extent saturates: a respawn restarts the field at rest.
+- **Order, every frame:** `scroll` (previous step's `h/u/w/b` into the new index frame) →
+  `refreshBed()` (rewrites `b` with the world-correct floor) → disturbances → `step`.
+- **Additive.** Pure data movement — bit-exact, no arithmetic. `getVersion()` is 9, but
+  `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays **8**; the export is typed
+  optional in `WatershedWasm.ts`, and `createWasmSweSim` falls back to the TypeScript twin
+  (`scrollField`) on an ABI-8 binary.
+- **Backends.** The WGSL twin is the `scroll` entry point of `swe.wgsl` (gather into scratch,
+  copy back over the field). `WgslSweSim.scroll` shifts its CPU mirror in the same call and drops
+  a readback that was taken before the scroll, so readers never pair a stale-frame field with the
+  new window origin. One backend per session is unchanged.
+- **Pinned by:** `host_smoke.cpp` §7 (kernel semantics, lake-at-rest across scroll + bed rewrite
+  on a sloped bed and a U-channel, a scrolled window tracking a fixed one), `smoke_test.mjs`
+  (real binary vs a JS reference), `sweScroll.integration.test.ts` (TS against the export;
+  `pnpm test:wasm`), and `pnpm test:wgsl` (WGSL vs WASM at 1e-5; the pure scroll is bit-exact).
 
 `createSWEGrid()` allocates the bed alongside `h`/`u`/`w` and zero-fills it, so
 an untouched grid is a flat channel. Live rasterization of the canyon floor is

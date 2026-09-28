@@ -51,6 +51,46 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
                    int width, int height, float dx, float originX, float originZ, float H,
                    int kind, float cx, float cz, float radius, float strength, float dt);
 
+/**
+ * Scroll the whole field through the grid's index frame by whole cells
+ * (ABI 9, additive).
+ *
+ * The grid is a moving window over the world: every frame the window origin
+ * follows the vehicle, and `b` is re-rasterized into the new window. h / u / w
+ * carry state, so they have to move with the world or a splash rides the
+ * camera. Call this with the whole-cell origin delta *before* the bed refresh
+ * and the step.
+ *
+ * Sign convention — `shift` is how far the CONTENT moves through the index
+ * frame, so it equals (oldOrigin - newOrigin) / dx per axis:
+ *
+ *     dst[x, z] = src[x - shiftX, z - shiftZ]
+ *
+ * A window that travels downstream (-Z, gameplay-forward) has a POSITIVE
+ * shiftZ: the field slides toward higher rows, water leaves off the high-row
+ * (upstream) edge, and the new low-row (downstream) edge is filled. World
+ * position of a cell, originZ + row * dx, is unchanged for every surviving cell.
+ *
+ * Cells that leave the window are dropped — nothing wraps. Cells that enter
+ * take the inflow state: (h, u, w) = (inflowEta, inflowU, inflowW). Pass zeros
+ * for rest state. These are the ABI's own fields (a perturbation and
+ * velocities), not a depth and a flux: total depth needs the bed, and the bed
+ * for an entering cell is only known once the rasterizer has run. The bed plane
+ * entering cells take is the nearest surviving edge value (constant
+ * extension), which is only a placeholder for the one frame before the
+ * rasterizer overwrites it.
+ *
+ * Pure data movement, no arithmetic: the result is bit-exact and identical to
+ * the WGSL twin (`scroll` in swe.wgsl). |shift| >= the grid extent on an axis
+ * saturates — the whole field is replaced. Sub-cell motion is the caller's to
+ * absorb (WaterForceSystem quantizes the window origin to the cell lattice).
+ *
+ * @param bPtr  Bed plane, or 0 to leave the bed alone (flat bed)
+ */
+void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                        int width, int height, int shiftX, int shiftZ,
+                        float inflowEta, float inflowU, float inflowW);
+
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;
 

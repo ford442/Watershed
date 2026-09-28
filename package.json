@@ -39,7 +39,7 @@
     "test:watch": "vitest",
     "test:visual-smoke": "node verification/visual_smoke.mjs",
     "test:visual-smoke:update": "UPDATE_BASELINES=1 node verification/visual_smoke.mjs",
-    "test:wasm": "WATERSHED_WASM_INTEGRATION=1 vitest run src/systems/water/WatershedWasm.integration.test.ts",
+    "test:wasm": "WATERSHED_WASM_INTEGRATION=1 vitest run src/systems/water/WatershedWasm.integration.test.ts src/systems/water/sweScroll.integration.test.ts",
     "build:wasm": "cd emscripten && bash build.sh",
     "build:wasm_colab": "cd emscripten && bash build_colab.sh",
     "build:wasm:threads": "cd emscripten && bash build.sh --threads",

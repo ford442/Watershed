@@ -2,6 +2,9 @@
  * WaterForceSystem — production WASM water coupling.
  *
  * - Steps a player-centered SWE grid and uploads height data for FlowingWater.
+ *   The grid is a window that follows the vehicle; every whole-cell move of its
+ *   origin scrolls h/u/w/b with the world first (sweScroll.ts / swe.h), so a
+ *   splash stays where it landed instead of riding the camera.
  * - Applies native buoyancy + current drag to the vehicle and floating debris
  *   using SWE-sampled flowDir / speed (sampleSWEFlow → calculateWaterForce).
  * - Falls back to pure TypeScript force math when WASM is unavailable.
@@ -31,6 +34,7 @@ import {
   clearSWEHeightField,
 } from './SWEHeightField';
 import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuality';
+import { advanceSweWindow, type SweWindow } from './sweScroll';
 import {
   getBathymetryRevision,
   getRegisteredBathymetryCount,
@@ -234,7 +238,9 @@ interface BedState {
 /**
  * Re-rasterize the canyon floor into `grid.b` when the sampling window has
  * moved a whole cell or the treadmill has swapped segments. Every cell is
- * rewritten, so a recycled slot cannot leak its predecessor's bed.
+ * rewritten, so a recycled slot cannot leak its predecessor's bed. The frame
+ * scrolls the field first, so this overwrites a bed that is already in the new
+ * index frame, with the world-correct floor.
  */
 function refreshBed(
   grid: SweSim,
@@ -244,9 +250,11 @@ function refreshBed(
   state: BedState,
 ): void {
   const revision = getBathymetryRevision();
+  // The window only ever moves by whole cells (advanceSweWindow), so half a cell
+  // is a threshold no rounding can miss — a scroll always re-rasterizes.
   const moved =
-    Math.abs(originX - state.originX) >= budget.cellSize ||
-    Math.abs(originZ - state.originZ) >= budget.cellSize;
+    Math.abs(originX - state.originX) >= budget.cellSize * 0.5 ||
+    Math.abs(originZ - state.originZ) >= budget.cellSize * 0.5;
   if (state.valid && revision === state.revision && !moved) return;
 
   const covered = sampleBathymetryInto(
@@ -289,6 +297,10 @@ export function WaterForceSystem({
   const uploadedVersionRef = useRef(-1);
   const textureRef = useRef<THREE.DataTexture | null>(null);
   const originRef = useRef({ x: 0, z: 0 });
+  // Where the live grid's window sits on the world's cell lattice. Null until
+  // the first frame after the grid is (re)built; the field is scrolled by the
+  // whole-cell change of this between frames.
+  const windowRef = useRef<SweWindow | null>(null);
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
   const stepAccumulatorRef = useRef(0);
   // Bed refresh bookkeeping: the sampled bathymetry only needs re-rasterizing
@@ -369,6 +381,7 @@ export function WaterForceSystem({
       stepAccumulatorRef.current = 0;
       uploadedVersionRef.current = -1;
       bedStateRef.current = { valid: false, revision: -1, originX: 0, originZ: 0 };
+      windowRef.current = null;
       setSWEStatus(true, `${budget.width}x${budget.height} ${next.backend}`);
       console.info(
         `[SWE] backend=${next.backend} (${resolveSweSimBackendDecision().reason}) grid=${budget.width}x${budget.height}`,
@@ -427,13 +440,28 @@ export function WaterForceSystem({
     const timeSeconds = state.clock.elapsedTime;
     const workerOwnsVehicleForces = isPhysicsWorkerActive();
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
-    const originX = anchor.x - (budget.width * budget.cellSize) * 0.5;
-    const originZ = anchor.z - (budget.height * budget.cellSize) * 0.5;
+    // The window centres on the vehicle but sits on the world's cell lattice,
+    // moving only by whole cells: a cell keeps its world position while it
+    // survives. Every consumer below reads this origin, never the raw anchor.
+    const advance = advanceSweWindow(windowRef.current, anchor.x, anchor.z, budget);
+    const sweWindow = advance?.window ?? windowRef.current;
+    const originX = sweWindow?.originX ?? anchor.x - (budget.width * budget.cellSize) * 0.5;
+    const originZ = sweWindow?.originZ ?? anchor.z - (budget.height * budget.cellSize) * 0.5;
     originRef.current = { x: originX, z: originZ };
 
     const grid = gridRef.current;
     const texture = textureRef.current;
     if (budget.enabled && grid && texture) {
+      // Carry the previous step's field into the new window's index frame BEFORE
+      // the bed is rewritten and the solver runs. The solver is origin-blind and
+      // the rasterizer only rewrites `b`, so without this h/u/w would stay in
+      // their old slots while the canyon moved underneath them. A jump larger
+      // than the grid (respawn) saturates: the field restarts at rest.
+      if (advance) {
+        if (advance.shiftX !== 0 || advance.shiftZ !== 0) grid.scroll(advance.shiftX, advance.shiftZ);
+        windowRef.current = advance.window;
+      }
+
       // Step-rate budget: accumulate render deltas and take one SWE step per
       // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
       refreshBed(grid, originX, originZ, budget, bedStateRef.current);

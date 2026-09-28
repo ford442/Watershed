@@ -83,6 +83,7 @@ src/
 │   ├── water/SplashSystem.tsx   # Splash particles + SWE disturbance
 │   ├── water/sweSwirl.ts        # Surface swirl owner — SWE sink vs authored drain
 │   ├── water/sweQuality.ts      # SWE grid/step/displacement budget per quality preset
+│   ├── water/sweScroll.ts       # SWE window cell lattice + scroll twin (keeps the moving field world-stable)
 │   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/WatershedWasm.ts
 │   └── …
 │
