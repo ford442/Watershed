@@ -69,6 +69,7 @@ import {
   type SWEFlowGrid,
   type SWEFlowSample,
 } from './sampleSWEFlow';
+import { packSweSurfaceField, SWE_FLOW_CHANNELS } from './sweSurfaceField';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { ACTIVE_MAP_ID, getActiveMap } from '../../maps/registry';
 import { getActiveLaunchHour, getRunSession } from '../journey/runSession';
@@ -218,14 +219,20 @@ function applyDisturbances(
 function uploadHeightTexture(
   grid: SweSim,
   texture: THREE.DataTexture,
+  flowTexture: THREE.DataTexture,
   originX: number,
   originZ: number,
   budget: SWEBudget,
 ): void {
   (texture.image.data as unknown as Float32Array).set(grid.h);
   texture.needsUpdate = true;
+  // Same fieldVersion, same origin: the surface reads (u, w, depth, div) from the CPU
+  // mirror (WASM heap view or the WGSL readback mirror — never the compute buffer).
+  packSweSurfaceField(grid, flowTexture.image.data as unknown as Float32Array, SWE_MEAN_DEPTH);
+  flowTexture.needsUpdate = true;
   updateSWEHeightFieldSnapshot({
     texture,
+    flowTexture,
     originX,
     originZ,
     cellSize: budget.cellSize,
@@ -339,6 +346,7 @@ export function WaterForceSystem({
   const gridRef = useRef<SweSim | null>(null);
   const uploadedVersionRef = useRef(-1);
   const textureRef = useRef<THREE.DataTexture | null>(null);
+  const flowTextureRef = useRef<THREE.DataTexture | null>(null);
   const originRef = useRef({ x: 0, z: 0 });
   // Where the live grid's window sits on the world's cell lattice. Null until
   // the first frame after the grid is (re)built; the field is scrolled by the
@@ -401,7 +409,7 @@ export function WaterForceSystem({
     const decision = resolveSweSimBackendDecision();
     const device = decision.backend === 'wgsl' ? getSessionGpuDevice() : null;
     if (!budget.enabled || (!device && !wasm)) {
-      updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
       return;
     }
@@ -419,11 +427,23 @@ export function WaterForceSystem({
     texture.magFilter = THREE.LinearFilter;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
+    const flowTexture = new THREE.DataTexture(
+      new Float32Array(budget.width * budget.height * SWE_FLOW_CHANNELS),
+      budget.width,
+      budget.height,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    flowTexture.minFilter = THREE.LinearFilter;
+    flowTexture.magFilter = THREE.LinearFilter;
+    flowTexture.wrapS = THREE.ClampToEdgeWrapping;
+    flowTexture.wrapT = THREE.ClampToEdgeWrapping;
 
     const install = (next: SweSim) => {
       sim = next;
       gridRef.current = next;
       textureRef.current = texture;
+      flowTextureRef.current = flowTexture;
       stepAccumulatorRef.current = 0;
       uploadedVersionRef.current = -1;
       bedStateRef.current = { valid: false, revision: -1, originX: 0, originZ: 0 };
@@ -461,10 +481,12 @@ export function WaterForceSystem({
       sim?.dispose();
       gridRef.current = null;
       texture.dispose();
+      flowTexture.dispose();
       textureRef.current = null;
+      flowTextureRef.current = null;
       bedStateRef.current.valid = false;
       clearSWEBedSnapshot();
-      updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
     };
   }, [budget, wasmReady]);
@@ -497,7 +519,8 @@ export function WaterForceSystem({
 
     const grid = gridRef.current;
     const texture = textureRef.current;
-    if (budget.enabled && grid && texture) {
+    const flowTexture = flowTextureRef.current;
+    if (budget.enabled && grid && texture && flowTexture) {
       // Carry the previous step's field into the new window's index frame BEFORE
       // the bed is rewritten and the solver runs. The solver is origin-blind and
       // the rasterizer only rewrites `b`, so without this h/u/w would stay in
@@ -577,7 +600,7 @@ export function WaterForceSystem({
       // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
       if (grid.fieldVersion !== uploadedVersionRef.current) {
         uploadedVersionRef.current = grid.fieldVersion;
-        uploadHeightTexture(grid, texture, originX, originZ, budget);
+        uploadHeightTexture(grid, texture, flowTexture, originX, originZ, budget);
         runHeightfieldChores(grid.h, grid.width, grid.height);
       } else {
         // Grid didn't step, but the player moved — keep the sampling window

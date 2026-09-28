@@ -38,6 +38,7 @@ export const WATER_UNIFORM_NAMES = [
   'sunWorldPos',
   'isPond',
   'sweHeightMap',
+  'sweFlowMap',
   'sweOrigin',
   'sweCellSize',
   'sweGridSize',
@@ -57,6 +58,7 @@ export type WaterUniformName = (typeof WATER_UNIFORM_NAMES)[number];
 export const WATER_TEXTURE_UNIFORM_NAMES: readonly WaterUniformName[] = [
   'flowMap',
   'sweHeightMap',
+  'sweFlowMap',
   'reflectionTexture',
 ];
 
@@ -116,6 +118,7 @@ export function createWaterUniformValues(init: WaterUniformInit): Record<WaterUn
       : new THREE.Vector3(100, 200, -100),
     isPond: init.isPond ? 1 : 0,
     sweHeightMap: null,
+    sweFlowMap: null,
     sweOrigin: new THREE.Vector2(),
     sweCellSize: 0.5,
     sweGridSize: new THREE.Vector2(48, 32),

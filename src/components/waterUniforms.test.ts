@@ -12,6 +12,8 @@ function makeWaterMaterial(): WaterMaterial {
     time: { value: 0 },
     flowMap: { value: null },
     sweHeightMap: { value: null },
+    sweFlowMap: { value: null },
+    sweEnabled: { value: 0 },
     reflectionTexture: { value: null },
   };
   return material;
@@ -44,6 +46,7 @@ describe('updateFlowingWaterUniforms texture slots', () => {
     // No flow map and no SWE field yet: both fall back to the shared black pixel.
     expect(material.uniforms.flowMap.value).toBe(getBlackReflectionFallback());
     expect(material.uniforms.sweHeightMap.value).toBe(getBlackReflectionFallback());
+    expect(material.uniforms.sweFlowMap.value).toBe(getBlackReflectionFallback());
     expect(material.uniforms.reflectionTexture.value).toBe(getBlackReflectionFallback());
   });
 

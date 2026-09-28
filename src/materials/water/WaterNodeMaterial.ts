@@ -43,6 +43,7 @@ import {
   float,
   length,
   max,
+  min,
   mix,
   modelWorldMatrix,
   normalize,
@@ -62,6 +63,7 @@ import {
   vec4,
 } from 'three/tsl';
 import { WATER_SHADER } from '../../constants/game';
+import { SWE_DRY_DEPTH } from '../../systems/water/sampleSWEFlow';
 import { waterFbm2 as fbm2, waterFbm3 as fbm3 } from '../tsl/waterNoise';
 import {
   WATER_TEXTURE_UNIFORM_NAMES,
@@ -216,6 +218,29 @@ function buildSweSampler(u: WaterNodeUniforms) {
 }
 
 /**
+ * Port of `sweWindowMask()` — 1 well inside the SWE window, feathering to 0 over
+ * SWE_WINDOW_FEATHER_CELLS at its border; 0 when SWE is off (low) or outside the grid.
+ */
+function buildSweWindowMask(u: WaterNodeUniforms) {
+  const sweOrigin = nd(u.sweOrigin);
+  const sweCellSize = nd(u.sweCellSize);
+  const sweGridSize = nd(u.sweGridSize);
+  const sweEnabled = nd(u.sweEnabled);
+
+  return Fn(([worldXZ]: [ReturnType<typeof vec2>]) => {
+    const gridSpan = sweGridSize.mul(sweCellSize);
+    const edgeDist = min(worldXZ.sub(sweOrigin), sweOrigin.add(gridSpan).sub(worldXZ)).div(
+      sweCellSize,
+    );
+    return smoothstep(
+      float(0),
+      float(WATER_SHADER.SWE_WINDOW_FEATHER_CELLS),
+      min(edgeDist.x, edgeDist.y),
+    ).mul(step(float(0.5), sweEnabled));
+  });
+}
+
+/**
  * Flow bias — the GLSL `USE_FLOWMAP` define as a build-time variant.
  * Without a flow map both stages fall back to the same `vec2(sin(time*0.1), -1)`.
  */
@@ -233,6 +258,7 @@ function buildFlowBias(u: WaterNodeUniforms, useFlowMap: boolean) {
 function buildSurfaceVaryings(u: WaterNodeUniforms, flowBias: ReturnType<typeof vec2>) {
   const displacement = buildDisplacement(u);
   const sweSample = buildSweSampler(u);
+  const sweWindowMask = buildSweWindowMask(u);
   const time = nd(u.time);
   const flowSpeed = nd(u.flowSpeed);
 
@@ -243,8 +269,17 @@ function buildSurfaceVaryings(u: WaterNodeUniforms, flowBias: ReturnType<typeof 
   const worldPosVertex = modelWorldMatrix.mul(vec4(positionGeometry, float(1))).xyz;
   const worldXZVertex = worldPosVertex.xz;
 
+  // Inside the SWE window the solver owns the large wave; analytic chop stays as fine detail
+  // on top, scaled down (center and all four normal taps, so slopes stay consistent).
+  const analyticScale = mix(
+    float(1),
+    float(WATER_SHADER.SWE_ANALYTIC_SCALE),
+    sweWindowMask(worldXZVertex),
+  );
   const sampleAt = (offset: ReturnType<typeof vec2>) =>
-    displacement(localXZ.add(offset), flowBias).add(sweSample(worldXZVertex.add(offset)));
+    displacement(localXZ.add(offset), flowBias)
+      .mul(analyticScale)
+      .add(sweSample(worldXZVertex.add(offset)));
 
   // --- surface normal from the displacement gradient (GLSL 4-sample cross) ---
   const h = float(0.08);
@@ -300,6 +335,33 @@ function buildColorNode(
   const worldPos = surface.vWorldPos;
   const worldXZ = worldPos.xz;
 
+  // --- simulated surface field (GLSL: sweFlowMap block in main()) ---
+  // RGBA = (u, w, depth, div). Cell (i, j) is centred at origin + (i, j) * cellSize, hence
+  // the half-texel shift. Sampled unconditionally and gated by sweMask.
+  const sweWindowMask = buildSweWindowMask(u);
+  const sweMask = sweWindowMask(worldXZ);
+  const sweUv = worldXZ.sub(nd(u.sweOrigin)).div(nd(u.sweCellSize)).add(0.5).div(nd(u.sweGridSize));
+  const sweFlow = nd(u.sweFlowMap).sample(clamp(sweUv, vec2(0, 0), vec2(1, 1)));
+  const sweSpeed = length(sweFlow.xy);
+  const sweWet = step(float(SWE_DRY_DEPTH), sweFlow.z);
+
+  // Streak axis: simulated velocity once it clears a small threshold in wet water, else the
+  // authored downstream (0, -1). blend = 0 reduces streakP to worldXZ exactly. Only the axis
+  // follows the flow; the scroll sense is unchanged from the analytic shader.
+  const streakBlend = smoothstep(
+    float(WATER_SHADER.SWE_STREAK_MIN_SPEED),
+    float(WATER_SHADER.SWE_STREAK_FULL_SPEED),
+    sweSpeed,
+  )
+    .mul(smoothstep(float(0), float(WATER_SHADER.SWE_WET_BAND), sweFlow.z))
+    .mul(sweMask);
+  const streakDirRaw = mix(vec2(0, -1), sweFlow.xy.div(max(sweSpeed, float(0.0001))), streakBlend);
+  const streakDir = streakDirRaw.div(max(length(streakDirRaw), float(0.0001)));
+  const streakP = vec2(
+    dot(worldXZ, vec2(streakDir.y.negate(), streakDir.x)),
+    dot(worldXZ, streakDir).negate(),
+  );
+
   const normalN = normalize(surface.vNormal);
   const viewDirN = normalize(surface.vViewDir);
   const wave = surface.vWave;
@@ -316,7 +378,7 @@ function buildColorNode(
 
   // --- scrolling foam streaks ---
   const rapidsBoost = max(float(1), flowSpeed.div(WATER_SHADER.RAPIDS_FOAM_SPEED_MULT));
-  const streakUv = worldXZ
+  const streakUv = streakP
     .mul(vec2(0.15, 0.6))
     .mul(WATER_SHADER.FLOW_INFLUENCE)
     .add(
@@ -327,7 +389,7 @@ function buildColorNode(
     )
     .add(vortexUvOffset);
   const streakNoise = fbm3(streakUv);
-  const streakUv2 = worldXZ
+  const streakUv2 = streakP
     .mul(vec2(0.12, 0.5))
     .mul(WATER_SHADER.FLOW_INFLUENCE)
     .add(
@@ -350,10 +412,18 @@ function buildColorNode(
   // --- edge foam ---
   const edgeDist = abs(uv().x.sub(0.5));
   const normalSteep = float(1).sub(abs(dot(normalN, vec3(0, 1, 0))));
-  const edgeFoamBase = smoothstep(float(WATER_SHADER.EDGE_FOAM_WIDTH), float(0), edgeDist)
+  const meshEdgeFoam = smoothstep(float(WATER_SHADER.EDGE_FOAM_WIDTH), float(0), edgeDist)
     .mul(float(0.6).add(streakNoise.mul(0.4)))
     .mul(float(1).add(normalSteep.mul(3.5)))
     .mul(float(1).add(rapidsBoost.sub(1).mul(0.5)));
+  // Inside the SWE window the bank line is the solver's wet/dry contour; the mesh-edge mask
+  // stays as the far-field fallback (sweMask = 0 outside / on low).
+  const sweBank = float(1).sub(smoothstep(float(0), float(WATER_SHADER.SWE_WET_BAND), sweFlow.z));
+  const sweBankFoam = sweBank
+    .mul(float(0.6).add(streakNoise.mul(0.4)))
+    .mul(WATER_SHADER.FOAM_INTENSITY)
+    .mul(float(1).add(rapidsBoost.sub(1).mul(0.5)));
+  const edgeFoamBase = mix(meshEdgeFoam, sweBankFoam, sweMask);
 
   // --- standing eddy foam + bubble lines ---
   const eddyMask = fbm3(worldXZ.mul(0.09).add(vec2(7.3, -2.1)));
@@ -373,6 +443,18 @@ function buildColorNode(
   const edgeFoam = edgeFoamBase.mul(mix(float(1), float(0.6), isPond));
   const eddyFoam = eddyFoamBase.mul(pondCalm);
   const bubbleLines = bubbleLinesBase.mul(pondCalm);
+  // Hydraulic-jump foam: positive horizontal divergence of the simulated velocity.
+  const jumpFoam = smoothstep(
+    float(WATER_SHADER.SWE_JUMP_DIV_LO),
+    float(WATER_SHADER.SWE_JUMP_DIV_HI),
+    sweFlow.w,
+  )
+    .mul(sweWet)
+    .mul(sweMask)
+    .mul(WATER_SHADER.SWE_JUMP_FOAM_INTENSITY)
+    .mul(float(0.6).add(streakNoise.mul(0.4)))
+    .mul(WATER_SHADER.FOAM_INTENSITY)
+    .mul(pondCalm);
 
   // --- vehicle wake ---
   const vehiclePos = nd(u.vehiclePos);
@@ -396,7 +478,7 @@ function buildColorNode(
   const wakeDisplacement = wakeMask.mul(wave).mul(0.15);
 
   const foam = clamp(
-    clamp(foamStreak.add(edgeFoam).add(wakeFoam).add(eddyFoam).add(bubbleLines), float(0), float(1)).mul(
+    clamp(foamStreak.add(edgeFoam).add(wakeFoam).add(eddyFoam).add(bubbleLines).add(jumpFoam), float(0), float(1)).mul(
       float(1).add(slushiness.mul(0.85)),
     ),
     float(0),

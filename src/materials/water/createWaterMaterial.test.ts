@@ -143,6 +143,7 @@ describe('water uniform spec', () => {
     const uniforms = createGlslWaterUniforms(INIT);
     expect(uniforms.sweEnabled.value).toBe(0);
     expect(uniforms.sweHeightMap.value).toBeNull();
+    expect(uniforms.sweFlowMap.value).toBeNull();
   });
 });
 

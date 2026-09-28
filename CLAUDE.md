@@ -227,7 +227,7 @@ The canyon walls currently use a U-shaped extrusion + Rock031 PBR textures. The 
 
 ### Step 3 — Water visual quality (1–2 hours)
 The water shader is solid. Two tweaks to match the concept:
-- Increase foam density near canyon walls (bank foam mask already exists — tune `bankFoamMask` threshold at `FlowingWater.tsx:111`)
+- Increase foam density near canyon walls (the mesh-edge foam is `edgeFoam` / `EDGE_FOAM_WIDTH` in `FlowingWater.tsx`; inside the SWE window it cross-fades to the solver's wet/dry contour — see `sweFlowMap` in `docs/reference/RENDERER.md`)
 - Add a very slight camera-height turbulence (wave amplitude scales with camera proximity to water surface)
 
 ### Step 4 — Post-processing / atmosphere ✅ (mostly)

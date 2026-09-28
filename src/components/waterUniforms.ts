@@ -208,6 +208,10 @@ export function updateFlowingWaterUniforms(
   if (mat.uniforms.sweHeightMap) {
     mat.uniforms.sweHeightMap.value = swe.texture ?? getBlackReflectionFallback();
   }
+  if (mat.uniforms.sweFlowMap) {
+    // (u, w, depth, div) — same grid and fieldVersion as sweHeightMap (sweSurfaceField.ts).
+    mat.uniforms.sweFlowMap.value = swe.flowTexture ?? getBlackReflectionFallback();
+  }
   if (mat.uniforms.sweOrigin) {
     mat.uniforms.sweOrigin.value.set(swe.originX, swe.originZ);
   }
@@ -218,7 +222,7 @@ export function updateFlowingWaterUniforms(
     mat.uniforms.sweGridSize.value.set(swe.width, swe.height);
   }
   if (mat.uniforms.sweEnabled) {
-    mat.uniforms.sweEnabled.value = swe.enabled && swe.texture ? 1.0 : 0.0;
+    mat.uniforms.sweEnabled.value = swe.enabled && swe.texture && swe.flowTexture ? 1.0 : 0.0;
   }
   if (mat.uniforms.sweDisplacementScale) {
     // Quality-budgeted amplitude (sweQuality.ts) — 0 on the low preset.

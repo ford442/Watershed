@@ -185,6 +185,22 @@ export const WATER_SHADER = {
     EDDY_FOAM_INTENSITY: 0.5,
     // Multiplier applied to displacement/foam/specular scale in glassy pond/delta water
     POND_CALM_MULTIPLIER: 0.35,
+    // --- Simulated surface field (sweFlowMap: u, w, depth, div) -------------------------------
+    // Shared by the GLSL and TSL hosts and by systems/water/sweSurfaceField.ts, so the CPU
+    // helper and both shaders read one set of numbers.
+    // Streaks follow the solver velocity once |(u,w)| clears MIN, fully by FULL (m/s).
+    SWE_STREAK_MIN_SPEED: 0.08,
+    SWE_STREAK_FULL_SPEED: 0.35,
+    // Depth (m) over which the wet/dry contour ramps into bank foam.
+    SWE_WET_BAND: 0.12,
+    // Horizontal divergence (1/s) that starts / saturates hydraulic-jump foam.
+    SWE_JUMP_DIV_LO: 0.15,
+    SWE_JUMP_DIV_HI: 0.6,
+    SWE_JUMP_FOAM_INTENSITY: 0.8,
+    // Analytic chop is scaled by this inside the SWE window: SWE slope owns the large wave.
+    SWE_ANALYTIC_SCALE: 0.4,
+    // SWE-driven blends fade to zero over this many cells at the grid border.
+    SWE_WINDOW_FEATHER_CELLS: 2.0,
 } as const;
 
 export const FLOW_FORECAST_STATES = {

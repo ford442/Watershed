@@ -30,6 +30,11 @@ export interface SWEDisturbance {
 
 export interface SWEHeightFieldSnapshot {
   texture: THREE.DataTexture | null;
+  /**
+   * RGBA float (u, w, depth, div) on the same grid, same `fieldVersion` as `texture`
+   * (see sweSurfaceField.ts). The water surface reads streak direction and foam from it.
+   */
+  flowTexture: THREE.DataTexture | null;
   originX: number;
   originZ: number;
   cellSize: number;
@@ -47,6 +52,7 @@ let activeBudget: SWEBudget = sweBudgetForQuality('high');
 
 const emptySnapshot = (): SWEHeightFieldSnapshot => ({
   texture: null,
+  flowTexture: null,
   originX: 0,
   originZ: 0,
   cellSize: activeBudget.cellSize || SWE_CELL_SIZE,
@@ -103,6 +109,9 @@ export function updateSWEHeightFieldSnapshot(next: Partial<SWEHeightFieldSnapsho
 export function clearSWEHeightField(): void {
   if (snapshot.texture) {
     snapshot.texture.dispose();
+  }
+  if (snapshot.flowTexture) {
+    snapshot.flowTexture.dispose();
   }
   snapshot = emptySnapshot();
   pendingDisturbances.length = 0;

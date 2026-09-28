@@ -230,6 +230,41 @@ describe('WaterForceSystem window scroll', () => {
     expect(scrolls).toBeGreaterThanOrEqual(10);
   });
 
+  it('uploads the (u, w, depth, div) surface field with the height texture, reusing one texture', async () => {
+    const { view, ptrs } = await mount();
+    frame(STEP);
+    const first = getSWEHeightFieldSnapshot();
+    const flow = first.flowTexture as THREE.DataTexture;
+    expect(flow).toBeTruthy();
+    expect(flow.format).toBe(THREE.RGBAFormat);
+    expect(flow.type).toBe(THREE.FloatType);
+    expect(flow.image.width).toBe(BUDGET.width);
+    expect(flow.image.height).toBe(BUDGET.height);
+
+    // Plant a velocity bump at cell (10, 7): u = 1.5 m/s, w = -0.75 m/s.
+    const cell = 7 * BUDGET.width + 10;
+    view(ptrs[1])[cell] = 1.5;
+    view(ptrs[2])[cell] = -0.75;
+    frame(STEP);
+
+    const snap = getSWEHeightFieldSnapshot();
+    const data = (snap.flowTexture as THREE.DataTexture).image.data as unknown as Float32Array;
+    expect(data[cell * 4]).toBeCloseTo(1.5);
+    expect(data[cell * 4 + 1]).toBeCloseTo(-0.75);
+    // The mocked bed is 0.25 m under a still surface: depth = mean 1.0 - 0.25.
+    expect(data[cell * 4 + 2]).toBeCloseTo(0.75);
+
+    // Same grid, same fieldVersion: one upload each, one texture instance for the session.
+    expect(snap.flowTexture).toBe(flow);
+    for (let f = 0; f < 5; f += 1) {
+      frame(f % 2 === 0 ? STEP : NO_STEP);
+      const s = getSWEHeightFieldSnapshot();
+      expect(s.flowTexture).toBe(flow);
+      expect((s.flowTexture as THREE.DataTexture).image.data).toBe(data);
+      expect((s.flowTexture as THREE.DataTexture).version).toBe((s.texture as THREE.DataTexture).version);
+    }
+  });
+
   it('restarts the field at rest on a respawn-sized jump instead of smearing it', async () => {
     const { pos, view, ptrs } = await mount();
     frame(STEP);

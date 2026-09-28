@@ -9,6 +9,7 @@ import { useShaderLoader } from '../hooks/useShaderLoader';
 import { BIOMES } from '../constants/biomes';
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
+import { SWE_DRY_DEPTH } from '../systems/water/sampleSWEFlow';
 import {
   createWaterBasicFallback,
   getBlackReflectionFallback,
@@ -191,6 +192,16 @@ export default function FlowingWater({
             return (h - sweMeanDepth) * sweDisplacementScale;
           }
 
+          // 1 well inside the SWE window, feathering to 0 over SWE_WINDOW_FEATHER_CELLS at its
+          // border; 0 when SWE is off (low preset) or outside the grid. Every SWE-driven blend
+          // multiplies by this, so far-field / low water is the analytic shader untouched.
+          float sweWindowMask(vec2 worldXZ) {
+            if (sweEnabled < 0.5) return 0.0;
+            vec2 gridSpan = sweGridSize * sweCellSize;
+            vec2 edgeDist = min(worldXZ - sweOrigin, sweOrigin + gridSpan - worldXZ) / sweCellSize;
+            return smoothstep(0.0, SWE_WINDOW_FEATHER_CELLS, min(edgeDist.x, edgeDist.y));
+          }
+
           void main() {
             vUv = uv;
             vec3 pos = position;
@@ -206,7 +217,10 @@ export default function FlowingWater({
               flowBias = texture2D(flowMap, uv * 0.5).rg * 2.0 - 1.0;
             #endif
 
-            float d = getDisplacement(pos.xz, flowBias);
+            // Inside the SWE window the solver owns the large wave; analytic fbm/sine chop
+            // stays as the fine detail on top, scaled down so the two don't fight.
+            float analyticScale = mix(1.0, SWE_ANALYTIC_SCALE, sweWindowMask(worldPos.xz));
+            float d = getDisplacement(pos.xz, flowBias) * analyticScale;
             pos.y += sampleSWEDisplacement(worldPos.xz);
             pos.y += d;
 
@@ -214,10 +228,10 @@ export default function FlowingWater({
             // WGSL migration: identical math, just dpdx/dpdy built-ins can replace this
             const float h = 0.08;
             float sweD = sampleSWEDisplacement(worldPos.xz);
-            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(h, 0.0));
-            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(h, 0.0));
-            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz - vec2(0.0, h));
-            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias) + sampleSWEDisplacement(worldPos.xz + vec2(0.0, h));
+            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz - vec2(h, 0.0));
+            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz + vec2(h, 0.0));
+            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz - vec2(0.0, h));
+            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz + vec2(0.0, h));
             float dCenter = d + sweD;
             // Central-difference tangents give a smoother, analytically correct normal
             vec3 tangentX = normalize(vec3(2.0 * h, dR - dL, 0.0));
@@ -274,6 +288,13 @@ export default function FlowingWater({
     uniform vec3 vortexCenter;
     uniform float vortexRadius;
     uniform float vortexIntensity;
+    // Simulated surface field: RGBA = (u, w, depth, div), same grid as sweHeightMap.
+    // sweEnabled is 0 on the low preset, which leaves the analytic shader untouched.
+    uniform sampler2D sweFlowMap;
+    uniform vec2 sweOrigin;
+    uniform float sweCellSize;
+    uniform vec2 sweGridSize;
+    uniform float sweEnabled;
 
     varying vec2 vUv;
     varying vec3 vWorldPos;
@@ -285,6 +306,13 @@ export default function FlowingWater({
     varying vec4 vReflectionUv;
 
     ${noiseHelpers}
+
+    float sweWindowMask(vec2 worldXZ) {
+      if (sweEnabled < 0.5) return 0.0;
+      vec2 gridSpan = sweGridSize * sweCellSize;
+      vec2 edgeDist = min(worldXZ - sweOrigin, sweOrigin + gridSpan - worldXZ) / sweCellSize;
+      return smoothstep(0.0, SWE_WINDOW_FEATHER_CELLS, min(edgeDist.x, edgeDist.y));
+    }
 
     void main() {
       // WGSL migration: flowBias sample → textureSample(flowMapTex, sampler, vUv*0.5).rg
@@ -300,16 +328,36 @@ export default function FlowingWater({
       vec2 vortexTangent = normalize(vec2(-vortexDelta.y, vortexDelta.x) + 0.0001);
       vec2 vortexUvOffset = vortexTangent * time * flowSpeed * 0.12 * vortexMask;
 
+      // Simulated surface field at this fragment. Cell (i, j) is centred at origin + (i, j) *
+      // cellSize (sampleSWEFlow.ts), hence the half-texel shift; sampled unconditionally
+      // (no texture fetch under divergent control flow) and gated by sweMask.
+      float sweMask = sweWindowMask(vWorldPos.xz);
+      vec2 sweUv = ((vWorldPos.xz - sweOrigin) / sweCellSize + 0.5) / sweGridSize;
+      vec4 sweFlow = texture2D(sweFlowMap, clamp(sweUv, 0.0, 1.0));
+      float sweSpeed = length(sweFlow.xy);
+      float sweWet = step(SWE_DRY_DEPTH, sweFlow.z);
+
+      // Streak axis: simulated velocity once it clears a small threshold in wet water, else the
+      // authored downstream vector (0, -1). blend = 0 reduces streakP to vWorldPos.xz exactly.
+      // Only the axis follows the flow: the scroll sense below is unchanged from the analytic
+      // shader (a sign that varied in space would shear the pattern without bound).
+      float streakBlend = smoothstep(SWE_STREAK_MIN_SPEED, SWE_STREAK_FULL_SPEED, sweSpeed)
+                        * smoothstep(0.0, SWE_WET_BAND, sweFlow.z) * sweMask;
+      vec2 streakDir = mix(vec2(0.0, -1.0), sweFlow.xy / max(sweSpeed, 0.0001), streakBlend);
+      streakDir /= max(length(streakDir), 0.0001);
+      vec2 streakP = vec2(dot(vWorldPos.xz, vec2(-streakDir.y, streakDir.x)),
+                          -dot(vWorldPos.xz, streakDir));
+
       // Rapids: foam streaks scroll faster proportional to flowSpeed.
       // At flowSpeed ≥ RAPIDS_FOAM_SPEED_MULT the scroll rate doubles for churning whitewater.
       float rapidsBoost = max(1.0, flowSpeed / RAPIDS_FOAM_SPEED_MULT);
-      vec2 streakUv = vWorldPos.xz * vec2(0.15, 0.6) * FLOW_INFLUENCE
+      vec2 streakUv = streakP * vec2(0.15, 0.6) * FLOW_INFLUENCE
                     + vec2(time * flowSpeed * 0.05 * flowBias.x * rapidsBoost,
                            -time * flowSpeed * 0.15 * rapidsBoost)
                     + vortexUvOffset;
       float streakNoise = fbm3(streakUv);
       // Second streak layer offset in time — adds turbulent overlap at high speed
-      vec2 streakUv2 = vWorldPos.xz * vec2(0.12, 0.5) * FLOW_INFLUENCE
+      vec2 streakUv2 = streakP * vec2(0.12, 0.5) * FLOW_INFLUENCE
                      + vec2(-time * flowSpeed * 0.04 * rapidsBoost, -time * flowSpeed * 0.19 * rapidsBoost)
                      + vortexUvOffset * 0.7;
       float streakNoise2 = fbm2(streakUv2);
@@ -324,6 +372,12 @@ export default function FlowingWater({
       edgeFoam *= (1.0 + normalSteep * 3.5);
       // In rapids, edge foam band widens
       edgeFoam *= (1.0 + (rapidsBoost - 1.0) * 0.5);
+      // Inside the SWE window the bank line is the solver's wet/dry contour; the mesh-edge
+      // mask above stays as the far-field fallback (sweMask = 0 outside / on low).
+      float sweBank = 1.0 - smoothstep(0.0, SWE_WET_BAND, sweFlow.z);
+      float sweBankFoam = sweBank * (0.6 + streakNoise * 0.4) * FOAM_INTENSITY
+                        * (1.0 + (rapidsBoost - 1.0) * 0.5);
+      edgeFoam = mix(edgeFoam, sweBankFoam, sweMask);
 
       // Standing foam in eddies/slack water: a slow, large-scale spatial mask
       // (independent of the scrolling streaks) that "sticks" wherever the
@@ -343,6 +397,9 @@ export default function FlowingWater({
       edgeFoam *= mix(1.0, 0.6, isPond);
       eddyFoam *= pondCalm;
       bubbleLines *= pondCalm;
+      // Hydraulic-jump foam: positive horizontal divergence of the simulated velocity.
+      float jumpFoam = smoothstep(SWE_JUMP_DIV_LO, SWE_JUMP_DIV_HI, sweFlow.w) * sweWet * sweMask
+                     * SWE_JUMP_FOAM_INTENSITY * (0.6 + streakNoise * 0.4) * FOAM_INTENSITY * pondCalm;
 
       // Shader-only vehicle wake
       vec3 toVehicle = vehiclePos - vWorldPos;
@@ -358,7 +415,7 @@ export default function FlowingWater({
       // reads as the surface piling up against the hull/feet.
       float wakeDisplacement = wakeMask * vWave * 0.15;
 
-      float foam = clamp(foamStreak + edgeFoam + wakeFoam + eddyFoam + bubbleLines, 0.0, 1.0);
+      float foam = clamp(foamStreak + edgeFoam + wakeFoam + eddyFoam + bubbleLines + jumpFoam, 0.0, 1.0);
       // Slush: brighter, denser foam and slightly milky water
       foam = clamp(foam * (1.0 + slushiness * 0.85), 0.0, 1.0);
 
@@ -486,6 +543,15 @@ export default function FlowingWater({
         SPECULAR_SHININESS: WATER_SHADER.SPECULAR_SHININESS.toFixed(3),
         EDDY_FOAM_INTENSITY: WATER_SHADER.EDDY_FOAM_INTENSITY.toFixed(3),
         POND_CALM_MULTIPLIER: WATER_SHADER.POND_CALM_MULTIPLIER.toFixed(3),
+        SWE_DRY_DEPTH: SWE_DRY_DEPTH.toFixed(4),
+        SWE_STREAK_MIN_SPEED: WATER_SHADER.SWE_STREAK_MIN_SPEED.toFixed(3),
+        SWE_STREAK_FULL_SPEED: WATER_SHADER.SWE_STREAK_FULL_SPEED.toFixed(3),
+        SWE_WET_BAND: WATER_SHADER.SWE_WET_BAND.toFixed(3),
+        SWE_JUMP_DIV_LO: WATER_SHADER.SWE_JUMP_DIV_LO.toFixed(3),
+        SWE_JUMP_DIV_HI: WATER_SHADER.SWE_JUMP_DIV_HI.toFixed(3),
+        SWE_JUMP_FOAM_INTENSITY: WATER_SHADER.SWE_JUMP_FOAM_INTENSITY.toFixed(3),
+        SWE_ANALYTIC_SCALE: WATER_SHADER.SWE_ANALYTIC_SCALE.toFixed(3),
+        SWE_WINDOW_FEATHER_CELLS: WATER_SHADER.SWE_WINDOW_FEATHER_CELLS.toFixed(3),
         ...(effectiveFlowMap ? { USE_FLOWMAP: '1' } : {}),
       };
 
