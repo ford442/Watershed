@@ -111,6 +111,15 @@ void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_
                         int width, int height, int shiftX, int shiftZ,
                         float inflowEta, float inflowU, float inflowW);
 
+/**
+ * Size the solver's reused scratch (step, upstream-edge ghosts, scroll temp)
+ * for a width x height grid up front, so the first stepShallowWater[Inflow] /
+ * scrollShallowWater does not allocate mid-call. Call once after allocating the
+ * grid planes. Optional: without it the buffers grow lazily on first use, as
+ * before. Safe to call again for a different size.
+ */
+void reserveShallowWaterScratch(int width, int height);
+
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;
 

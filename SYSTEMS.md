@@ -696,7 +696,8 @@ npm run build:wasm        # runs emscripten/build.sh
 Output written to `public/` (served as static assets by Vite):
 - `public/watershed_native.js` — Emscripten glue + Embind dispatch
 - `public/watershed_native.wasm` — WASM binary
-- `public/watershed_native.worker.js` — pthread worker shim (`--threads` mode only)
+- `--threads` builds go to `emscripten/build-threads/out/` (with the `watershed_native.worker.mjs`
+  pthread shim) and never overwrite the shipped `public/` pair or the artifact stamp (#454)
 
 **Graceful skip:** `build.sh` exits 0 with a warning when `emcc` is not in `PATH` —
 the JS/WASM output is simply not regenerated. Physics TypeScript fallbacks keep the

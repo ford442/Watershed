@@ -5,7 +5,7 @@ Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_W
 Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `swe.h`
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
 `chores.cpp` (optional gpu-chores; not SWE), `particles.cpp` (waterfall / splash SoA),
-and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 8 in source,
+and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 11 in source,
 `MIN_WASM_ABI_VERSION` = 8).
 It builds to:
 
@@ -24,7 +24,8 @@ The normal production build also runs the single-threaded WASM build first:
 npm run build
 ```
 
-Threaded WASM remains opt-in because it needs COOP/COEP headers:
+Threaded WASM remains opt-in because it needs COOP/COEP headers (it builds into
+`emscripten/build-threads/out/` and never ships):
 
 ```bash
 npm run build:wasm:threads

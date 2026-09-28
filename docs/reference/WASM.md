@@ -39,7 +39,12 @@ Hard rules:
 - `value_object` registrations run before any `function()` that uses those types.
 - Default CMake target has no `-pthread` / `SHARED_MEMORY`. Threads remain
   `WATERSHED_THREADS=ON` / `./build.sh --threads` only.
-- Linear memory: `INITIAL_MEMORY` 64 MiB, `MAXIMUM_MEMORY` 256 MiB,
+- Glue is built for `ENVIRONMENT='web,worker'` on both variants (the Rapier
+  worker loads it). Release adds `-fno-finite-math-only` (keeps `isfinite`
+  guards alive under `-ffast-math`), `-flto`, `--closure 1`, `FILESYSTEM=0`,
+  `MALLOC=emmalloc` (#454). `--threads` output goes to
+  `emscripten/build-threads/out/`, never `public/`.
+- Linear memory: `INITIAL_MEMORY` 16 MiB, `MAXIMUM_MEMORY` 256 MiB,
   `ALLOW_MEMORY_GROWTH=1`. Growth **replaces** the `ArrayBuffer` and detaches
   every prior `HEAPF32` view (`byteLength === 0`). `heapF32()` in
   `WatershedWasm.ts` rebinds `createSWEGrid` / `createWaterForceBatch` /
@@ -71,7 +76,7 @@ wetting/drying, a 1D dam break, the window scroll, and a 128-particle chute AABB
 
 ## ABI version
 
-`getVersion()` is **9** in source. `MIN_WASM_ABI_VERSION` is **8**.
+`getVersion()` is **11** in source. `MIN_WASM_ABI_VERSION` is **8**.
 
 | Version | Change |
 |---------|--------|
@@ -85,6 +90,7 @@ wetting/drying, a 1D dam break, the window scroll, and a 128-particle chute AABB
 | 8 | `applySWEEvent` hydro source terms. Additive; floor stays 6 (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
 | 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so the floor stays 8. |
 | 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
+| 11 | `reserveShallowWaterScratch` — pre-size the solver scratch so no step allocates mid-call; `createSWEGrid` calls it when present. Additive; floor stays 8 (#454). |
 
 `src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`.
 Versions 1–5 were additive, so the floor could stay at 4 and an older shipped

@@ -38,11 +38,15 @@ if(EMSCRIPTEN)
 
     # Default production path MUST NOT require SharedArrayBuffer.
     # Threads are a separate opt-in CMake option (build.sh --threads), never default-on.
+    # ENVIRONMENT is 'web,worker' on BOTH variants (#454): the Rapier worker loads
+    # this same glue (src/physics/workerWasm.ts), and so will the sim worker
+    # (#455). A 'web'-only glue hard-codes ENVIRONMENT_IS_WORKER=false and only
+    # happened to work because EXPORT_ES6 resolves the .wasm via import.meta.url.
     option(WATERSHED_THREADS "Enable Emscripten pthreads" OFF)
     if(WATERSHED_THREADS)
         set(EM_THREAD_FLAGS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='web,worker'")
     else()
-        set(EM_THREAD_FLAGS "-s ENVIRONMENT='web'")
+        set(EM_THREAD_FLAGS "-s ENVIRONMENT='web,worker'")
     endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -75,9 +79,18 @@ if(EMSCRIPTEN)
         # twin within 1e-5. If those ever diverge, drop -ffast-math here (or at
         # least add -ffp-contract=off on the HLL TU in swe.cpp) rather than
         # loosening the tolerance.
+        # -fno-finite-math-only (#454): -ffast-math implies finite-math-only,
+        # which lets clang fold every std::isfinite() to true — including the
+        # NaN guards in chores.cpp that keep NaN out of the HUD histogram /
+        # reduce chores. Keep the rest of fast-math (reassociation for the
+        # vectoriser) but let isfinite / isnan mean what they say.
+        # -flto: five small TUs; lets calculateWaterForce etc. inline across
+        # forces.cpp / bindings.cpp. Also passed at link (below).
         set(EM_COMPILE_FLAGS
             -O3
             -ffast-math
+            -fno-finite-math-only
+            -flto
             -funroll-loops
             # SIMD: damping + lift/CFL in swe.cpp, Euler in particles.cpp,
             # optional chores. Not the HLL Riemann solver (#390).
@@ -97,13 +110,28 @@ if(EMSCRIPTEN)
         target_compile_options(watershed_native PRIVATE -pthread)
     endif()
 
-    math(EXPR INITIAL_MEMORY_BYTES "64 * 1024 * 1024")
+    # 16 MB (#454): the module heap-allocates a few hundred KB at most (largest
+    # SWE budget is 64x40 cells x 4 planes, particle SoA, chore scratch), and
+    # reserveShallowWaterScratch() sizes the solver scratch up front, so the heap
+    # does not grow mid-step. Growth stays enabled as a safety valve; callers
+    # still rebind views through heapF32() (#415).
+    math(EXPR INITIAL_MEMORY_BYTES "16 * 1024 * 1024")
     math(EXPR MAXIMUM_MEMORY_BYTES "256 * 1024 * 1024")
 
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # -flto at link matches the compile flag above; --closure 1 minifies
+        # the glue (Embind / HEAP* / createWatershedNative are exported names
+        # and survive it).
+        target_link_options(watershed_native PRIVATE "SHELL:-flto" "SHELL:--closure 1")
+    endif()
+
+    # No FILESYSTEM: nothing touches files. emmalloc: a handful of long-lived
+    # grid / SoA blocks, so the small allocator beats dlmalloc on size.
     target_link_options(watershed_native PRIVATE
         "SHELL:${EM_OPT_FLAGS}"
-        "SHELL:-s WASM=1"
         "SHELL:-s WASM_BIGINT=1"
+        "SHELL:-s FILESYSTEM=0"
+        "SHELL:-s MALLOC=emmalloc"
         "SHELL:-s ALLOW_MEMORY_GROWTH=1"
         "SHELL:-s INITIAL_MEMORY=${INITIAL_MEMORY_BYTES}"
         "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY_BYTES}"

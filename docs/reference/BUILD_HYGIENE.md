@@ -11,6 +11,14 @@ this file and [`scripts/check-build-manifest.mjs`](../../scripts/check-build-man
 
 Commands run: `pnpm install --frozen-lockfile`, `pnpm build` ×2, `pnpm audit`.
 
+> **Drift since this snapshot (updated 2026-09-28, #454).** The figures below are the 2026-09-17
+> measurements. Since then: the WASM pair is rebuilt for `ENVIRONMENT='web,worker'` with LTO,
+> closure, `FILESYSTEM=0`, emmalloc and a 16 MB heap — current stamp **`e2d26214c2863608`**, pair
+> **54,279 B** (glue 15,482 + wasm 38,797); the stamp still proves pairing exactly as §3 describes.
+> The Three.js r168 pin (#419) is gone — `three` is 0.185 — so §7's "blocked by the r168 pin" group
+> is historical. The `vendor-post` chunk and the `postprocessing` packages were removed (see
+> `CLAUDE.md` Step 4), so §4's `vendor-post` finding is resolved.
+
 ---
 
 ## 0. Summary
@@ -19,10 +27,10 @@ Commands run: `pnpm install --frozen-lockfile`, `pnpm build` ×2, `pnpm audit`.
 |---|---|
 | Is `pnpm build` deterministic? | **Yes, modulo one deliberate entropy source.** Every byte is reproducible except what derives from `BUILD_IDENTITY`, which embeds a wall-clock timestamp and a random nonce. |
 | Do the `public/` passengers arrive byte-identical? | **Yes — 37/37**, verified by sha256. |
-| Is the `watershed_native.js` / `.wasm` pair coherent? | **Yes.** `sha256(js ‖ wasm)[0:16]` = `4d5ade0f0dc990a0`, matching the stamp `emscripten/build.sh` recorded. Same emcc invocation. |
+| Is the `watershed_native.js` / `.wasm` pair coherent? | **Yes.** `sha256(js ‖ wasm)[0:16]` = `4d5ade0f0dc990a0`, matching the stamp `emscripten/build.sh` recorded. Same emcc invocation. (Current stamp: `e2d26214c2863608`.) |
 | Are the dead `shaders/*.wgsl` gone locally? | **Yes.** Neither `public/shaders/` nor `build/shaders/` exists; the source-side `shaders/` directory is gone too. |
 | Do the chunk budgets still hold? | `vendor-rapier` 2.237 MB and entry 1.815 MB — **yes, essentially unchanged**. But they should not hold: see [§4](#4-chunk-sizes-against-budget). |
-| `pnpm audit` | 47 advisories. **One group ships to browsers** (`fast-uri` via `ajv`). Exactly one group is blocked by the r168 pin. |
+| `pnpm audit` | 47 advisories. **One group ships to browsers** (`fast-uri` via `ajv`). Exactly one group is blocked by the r168 pin (pin since lifted; `three` 0.185). |
 
 Four findings not previously recorded are in [§6](#6-new-findings). The most consequential:
 **Rapier's WASM ships three times, and one of the three copies is dead and divergent.**
@@ -180,7 +188,7 @@ the real exposure by one live file while counting one dead one), which is why th
 | `sounds/*.mp3` | 23 | 395,140 | see [§6.3](#63-the-23-mp3s-are-6-placeholder-stubs) (since replaced: 23 distinct, 681,264 B) |
 | `rapier.wasm` | 1 | 1,569,588 | **dead — deleted, see [§6.1](#61-rapiers-wasm-ships-three-times)** |
 | `levels/*` | 4 | 10,824 | 3 JSON + `README.md` |
-| `watershed_native.{js,wasm}` | 2 | 60,869 | emcc pair |
+| `watershed_native.{js,wasm}` | 2 | 60,869 | emcc pair (since rebuilt: 54,279 B, #454) |
 | `collision.wav` | 1 | 324 | |
 
 ### The contract, as asserted by the guard
@@ -203,8 +211,8 @@ specific message.
 Assertion 5 is the strongest guarantee available, and it is nearly free: `emscripten/build.sh:120`
 already computes `sha256(js ‖ wasm)[0:16]` and writes it to
 `src/systems/water/wasmArtifactStamp.ts`. That stamp *is* a pairing proof — recomputing it from
-the shipped files proves the two came from one emcc run. Current value `4d5ade0f0dc990a0`, verified
-identical across `public/`, `build/`, `BUILD_ID`, and the declared stamp.
+the shipped files proves the two came from one emcc run. Value at the time `4d5ade0f0dc990a0`, verified
+identical across `public/`, `build/`, `BUILD_ID`, and the declared stamp (current: `e2d26214c2863608`).
 
 The passenger inventory is **pinned in the script, not derived from `public/`**. Deriving it would
 make assertion 7 vacuous: any file someone dropped into `public/` would be self-justifying. Adding
@@ -236,7 +244,8 @@ Both prior figures still hold. Neither *should*.
 through the JS parser before `WebAssembly.compile` ever sees it. It is then shipped **twice** (see
 [§6.1](#61-rapiers-wasm-ships-three-times)).
 
-**`vendor-post` at 700 bytes is a manualChunks split that is not doing its job.** It contains
+**`vendor-post` at 700 bytes is a manualChunks split that is not doing its job.** *(Resolved: the
+`postprocessing` packages and the `vendor-post` bucket have since been removed.)* It contains
 only three Three.js base classes (`Pass`, `FullScreenQuad`, and a fullscreen triangle geometry).
 The actual `postprocessing@6` package landed in the **entry chunk**, not here. `CLAUDE.md` already
 notes that nothing imports `@react-three/postprocessing`; what it does not note is that naming
@@ -400,7 +409,7 @@ limited (these paths are reached when resolving `$ref`/`$id` URIs in schemas the
 itself, not attacker-supplied ones), so this is a hygiene fix rather than an incident — and it
 disappears entirely if `ajv` stops shipping to the browser at all.
 
-### Blocked by the r168 pin (1 group)
+### Blocked by the r168 pin (1 group) — historical; the pin has since been lifted
 
 | Severity | Package | Path | Patched | Notes |
 |---|---|---|---|---|

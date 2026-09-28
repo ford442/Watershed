@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 9).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 11).
  * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION (8).
  *
  * Quick start
@@ -131,6 +131,8 @@ export interface WatershedNativeModule {
  *       stepShallowWater is unchanged — the export is typed optional below)
  *  10 — channel routing (routeReach* / routedEdgeState) + stepShallowWaterInflow
  *       (additive; MIN_WASM_ABI_VERSION stays 8 — typed optional below)
+ *  11 — reserveShallowWaterScratch (additive; MIN_WASM_ABI_VERSION stays 8).
+ *       Same release builds the glue for 'web,worker', emmalloc, 16 MB heap.
  */
   getVersion(): number;
 
@@ -300,6 +302,13 @@ export interface WatershedNativeModule {
     dt: number, g: number, dx: number, H: number,
     edgeEta: number,
   ): void;
+
+  /**
+   * Pre-size the solver's reused scratch for a width x height grid so the first
+   * step / scroll does not allocate mid-call (ABI 11+, #454). `createSWEGrid`
+   * calls it when present; an older binary grows the scratch lazily instead.
+   */
+  reserveShallowWaterScratch?(width: number, height: number): void;
 
   // ---- Channel routing (ABI 10+, emscripten/routing.h) ----
   // Arrays are allocateGrid pointers: lengths / slopes / widths [nSeg],
@@ -777,6 +786,7 @@ export function createSWEGrid(
   const uPtr = mod.allocateGrid(count);
   const wPtr = mod.allocateGrid(count);
   const bPtr = mod.allocateGrid(count);
+  mod.reserveShallowWaterScratch?.(width, height);
 
   // Views are rebound through heapF32() if Emscripten grows the heap
   // (ALLOW_MEMORY_GROWTH replaces the ArrayBuffer and detaches these).

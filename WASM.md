@@ -92,7 +92,7 @@ cd emscripten
 # single-threaded (recommended for first-time setup)
 ./build.sh
 
-# multi-threaded
+# multi-threaded — output goes to emscripten/build-threads/out/, never public/
 ./build.sh --threads
 
 # debug
@@ -100,6 +100,19 @@ cd emscripten
 ```
 
 CI sets `WATERSHED_REQUIRE_WASM=1` so missing Emscripten fails the WASM job instead of silently skipping.
+
+### Compile contract (#454)
+
+| Flag | Why |
+|------|-----|
+| `ENVIRONMENT='web,worker'` (both variants) | The Rapier worker loads the same glue (`src/physics/workerWasm.ts`), and so will the sim worker (#455). `smoke_test.mjs` fails if the glue hard-codes the worker flag. |
+| `-ffast-math -fno-finite-math-only` | Keep reassociation for the vectoriser, but stop clang folding `std::isfinite` to `true` — the `chores.cpp` NaN guards depend on it (`gpuChores/watershedHost.integration.test.ts`). |
+| `-flto` (compile + link) | Cross-TU inlining across the five compute TUs and `bindings.cpp`. |
+| `--closure 1` | Minifies the glue (~33 KB → ~15 KB). Embind names, `HEAP*`, `createWatershedNative` are exports and survive. |
+| `-s FILESYSTEM=0`, `-s MALLOC=emmalloc` | No file I/O; a handful of long-lived blocks, so the small allocator wins on size. |
+
+`--threads` builds into `emscripten/build-threads/out/` and never writes `public/` or the
+artifact stamp: the single-thread pair is the only thing that ships.
 
 ### Host (clangd / smoke, no Emscripten)
 
@@ -125,7 +138,7 @@ After clone, `pnpm test:native` configures + builds the host tree (`emscripten/b
 
 | Flag | Value | Rationale |
 |------|-------|-----------|
-| `INITIAL_MEMORY` | 64 MiB | Fast startup; most sessions never need more |
+| `INITIAL_MEMORY` | 16 MiB | The module allocates a few hundred KB at most (largest SWE budget 64×40 × 4 planes, particle SoA, chore scratch). `reserveShallowWaterScratch` (ABI 11, called by `createSWEGrid`) sizes the solver scratch up front, so no step allocates mid-call and the heap does not grow in steady state — `smoke_test.mjs` asserts the heap byte length is unchanged across step / inflow step / scroll at 64×40. |
 | `MAXIMUM_MEMORY` | 256 MiB | Hard ceiling so a runaway init or growth loop cannot consume unbounded tab RAM |
 | `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate. Growth **replaces** the `ArrayBuffer`; prior `Float32Array` views detach (`byteLength === 0`). `heapF32()` rebinds the worker water-force batch, SWE grid, and `createWaterForceBatch`. |
 
@@ -141,7 +154,7 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **9**;
+Returns the module ABI version integer (currently **11**;
 `MIN_WASM_ABI_VERSION` is **8**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 `>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
@@ -159,6 +172,7 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6 at the time (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
 | 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays 8 and the export is typed optional. |
 | 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
+| 11 | `reserveShallowWaterScratch(width, height)` — pre-size the solver scratch (step, upstream-edge ghosts, scroll temp) so a step never allocates mid-call. Additive; `MIN_WASM_ABI_VERSION` stays 8. Same release: glue built for `web,worker`, emmalloc, `FILESYSTEM=0`, 16 MiB heap (#454). |
 
 TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 8).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
@@ -477,9 +491,10 @@ Cross-Origin-Opener-Policy:   same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-The `vite.config.ts` already sets these headers for the **dev server**.  For
-production you must configure your web server (nginx, Apache, Cloudflare
-Worker, etc.) to add the same headers.
+The `vite.config.ts` already sets these headers for the **dev server**. Production
+does **not** send them, and the threaded pair is never shipped: `./build.sh --threads`
+writes to `emscripten/build-threads/out/` (CI builds it and asserts `public/` is
+untouched). Nothing in the C++ creates a thread today.
 
 > **Note:** The single-threaded build (`npm run build:wasm`) works without
 > these headers and is recommended for initial integration.

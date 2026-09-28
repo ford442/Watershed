@@ -56,9 +56,13 @@
 //       step with the upstream edge driven by the routed stage. Additive —
 //       stepShallowWater / applySWEEvent keep their signatures, so
 //       MIN_WASM_ABI_VERSION stays 8.
+//  11 — reserveShallowWaterScratch: pre-size the solver scratch so a step
+//       never allocates mid-call (#454). Additive; MIN_WASM_ABI_VERSION stays 8.
+//       Same release: ENVIRONMENT='web,worker', emmalloc, FILESYSTEM=0 (no
+//       signature changes).
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
-    return 10;
+    return 11;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +115,7 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("routeReachSteady", &routeReachSteady);
     emscripten::function("routeReachTravelTime", &routeReachTravelTime);
     emscripten::function("routedEdgeState",  &routedEdgeState);
+    emscripten::function("reserveShallowWaterScratch", &reserveShallowWaterScratch);
     emscripten::function("allocateGrid",     &allocateGrid);
     emscripten::function("freeGrid",         &freeGrid);
     emscripten::function("reduceF32Grid",    &reduceF32Grid);

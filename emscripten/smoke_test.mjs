@@ -12,6 +12,16 @@ if (!WebAssembly.validate(wasmBinary)) {
   throw new Error('watershed_native.wasm failed WebAssembly.validate');
 }
 
+// #454: the Rapier worker (and the #455 sim worker) load this same glue, so it
+// must be built for ENVIRONMENT='web,worker'. A 'web'-only glue hard-codes the
+// worker flag to false; a web,worker glue detects it at runtime (closure keeps
+// the `typeof importScripts` probe but renames the variable, so match that).
+const glueSource = readFileSync(resolve(publicDir, 'watershed_native.js'), 'utf8');
+if (/ENVIRONMENT_IS_WORKER\s*=\s*false/.test(glueSource)
+    || !/typeof importScripts/.test(glueSource)) {
+  throw new Error("watershed_native.js is not built for ENVIRONMENT='web,worker' (worker detection missing)");
+}
+
 const { default: createWatershedNative } = await import(jsPath);
 
 if (typeof createWatershedNative !== 'function') {
@@ -552,6 +562,35 @@ if (version >= 10) {
   if (!(view(edge.w, N)[top] < 0)) throw new Error(`edge inflow not downstream: w=${view(edge.w, N)[top]}`);
   if (!(Math.abs(view(edge.h, N)[W / 2]) < 1e-4)) throw new Error('edge stage reached the far edge too soon');
   for (const g of [edge, trans]) for (const p of [g.h, g.u, g.w, g.b]) wasm.freeGrid(p);
+}
+
+// --- ABI 11: pre-sized solver scratch; the heap never grows mid-step (#454) ---
+if (version >= 11) {
+  if (typeof wasm.reserveShallowWaterScratch !== 'function') {
+    throw new Error('ABI 11 must export reserveShallowWaterScratch');
+  }
+  const INITIAL_MEMORY = 16 * 1024 * 1024;
+  const heapBytes = () => wasm.HEAPF32.buffer.byteLength;
+  if (heapBytes() !== INITIAL_MEMORY) {
+    throw new Error(`INITIAL_MEMORY drifted: heap is ${heapBytes()} B, expected ${INITIAL_MEMORY}`);
+  }
+  // Largest SWE budget (sweQuality.ts `high`: 64 x 40). Step, inflow step and
+  // scroll after the reserve must leave the heap byte length untouched.
+  const W = 64;
+  const Hh = 40;
+  const N = W * Hh;
+  const planes = [0, 1, 2, 3].map(() => wasm.allocateGrid(N));
+  wasm.reserveShallowWaterScratch(W, Hh);
+  const before = heapBytes();
+  for (let t = 0; t < 4; t += 1) {
+    wasm.stepShallowWater(planes[0], planes[1], planes[2], planes[3], W, Hh, 1 / 60, 9.80665, 0.75, 1);
+    wasm.stepShallowWaterInflow(planes[0], planes[1], planes[2], planes[3], W, Hh, 1 / 60, 9.80665, 0.75, 1, 0.1);
+    wasm.scrollShallowWater(planes[0], planes[1], planes[2], planes[3], W, Hh, 0, 1, 0, 0, 0);
+  }
+  if (heapBytes() !== before) {
+    throw new Error(`heap grew during step/scroll after reserve: ${before} -> ${heapBytes()} B`);
+  }
+  for (const p of planes) wasm.freeGrid(p);
 }
 
 console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)} abi=${version})`);

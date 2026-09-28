@@ -606,6 +606,14 @@ void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_
     }
 }
 
+void reserveShallowWaterScratch(int width, int height) {
+    if (width <= 0 || height <= 0) return;
+    const std::size_t n = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    g_scratch.resize(n);
+    g_edgeGhosts.reserve(static_cast<std::size_t>(width));
+    g_scrollTmp.reserve(n);
+}
+
 // ---------------------------------------------------------------------------
 // Grid memory helpers
 //    Allocate / free Float32 arrays in WASM heap, addressable from JS via
