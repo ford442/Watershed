@@ -42,6 +42,26 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
                       float dt, float g, float dx, float H);
 
 /**
+ * stepShallowWater with the upstream edge driven by routed discharge (ABI 10,
+ * additive — stepShallowWater itself is unchanged).
+ *
+ * Downstream is −Z, so the upstream edge is the face above the last row
+ * (row height − 1): the side the player is leaving, and the side scroll
+ * drops cells off when the window travels downstream. That face's ghost is
+ * built from characteristics (see upstreamGhost in swe.cpp): the stage
+ * `edgeEta` (a free-surface perturbation, same datum as `h`) enters as a
+ * simple wave, and waves reaching the edge from inside still leave. Lateral and
+ * downstream edges stay transmissive.
+ *
+ * `edgeEta == 0` over a still interior is exactly the rest state, so
+ * lake-at-rest holds bit-for-bit. routing.h's routedEdgeState turns a routed
+ * discharge into `edgeEta`. Non-finite `edgeEta` is treated as 0.
+ */
+void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                            int width, int height,
+                            float dt, float g, float dx, float H, float edgeEta);
+
+/**
  * Authored hydro event source term (ABI 8, additive).
  *
  * kind: 0 inflowPulse (raises η), 1 vortex (lowers η + swirl), 2 braid (raises b),

@@ -10,6 +10,17 @@ export const DAM_RELEASE_SCHEDULE = [
   { hour: 14, release: 0.35 },
 ] as const satisfies ReadonlyArray<{ hour: number; release: number }>;
 
+/**
+ * Weather inputs of the default launch forecast. The launch-hour picker, the
+ * treadmill's per-segment forecast and the river routing (riverRouter.ts) all
+ * read the same day, so scouting an hour shows the water the run will get.
+ */
+export const DEFAULT_FORECAST_INPUTS = {
+  temperature: 8,
+  snowpackIndex: 0.65,
+  damReleaseSchedule: DAM_RELEASE_SCHEDULE,
+} as const;
+
 export const DEFAULT_MAPS = MAP_REGISTRY;
 
 /** Base lighting configuration keyed by canonical BiomePalette id. */

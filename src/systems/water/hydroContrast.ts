@@ -15,6 +15,12 @@
  * No WASM and no stepper: source terms only, over a seeded downstream current.
  * That keeps the measurement deterministic in CI while still exercising the
  * kernel the native path shares (`applySWEEvent`, twin of applySWEEventFallback).
+ *
+ * Routed edge (ABI 10): the hour also reaches the solver as the discharge at
+ * the window's upstream edge (riverRouter.ts → routing.cpp). That half needs a
+ * stepper — the edge is a boundary condition, not a source term — so
+ * `measureEdgeStageContrastWith` takes one (the WASM step in hydroContrast.test,
+ * the WGSL step in sweParity) and holds it to the same margins.
  */
 
 import {
@@ -27,6 +33,10 @@ import {
 import { sampleSWEFlow } from './sampleSWEFlow';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
 import type { SweEventCall } from './sweSim';
+import { createRiverRouter } from './riverRouter';
+import { getRoutingReach, routingChainIndex } from '../map/routingReach';
+import type { MapRegistryId } from '../../maps/registry';
+import type { WatershedNativeModule } from './WatershedWasm';
 
 /** Seeded downstream current (−Z), so `roughness` has something to damp. */
 export const CONTRAST_BASE_FLOW = 1.2;
@@ -247,5 +257,93 @@ function contrastBetween(
     hullDirDelta,
     hullStageDelta,
     hullDelta: hullSpeedDelta + hullDirDelta + hullStageDelta,
+  };
+}
+
+// =============================================================================
+// Routed upstream edge (ABI 10)
+// =============================================================================
+
+/** Steps the edge-driven contrast runs: 4 s, long enough for the stage to cross the 24 m grid. */
+export const EDGE_CONTRAST_STEPS = 240;
+
+/**
+ * Advance a contrast grid `steps` solver steps of `dt` with the upstream edge
+ * held at `edgeEta` (stepShallowWaterInflow or its WGSL twin), in place.
+ */
+export type HydroEdgeStepper = (
+  grid: SWEEventGrid,
+  edgeEta: number,
+  steps: number,
+  dt: number,
+) => void | Promise<void>;
+
+export interface HydroEdgeContrast {
+  /** Routed edge stage (m) at each hour. */
+  edgeEtaA: number;
+  edgeEtaB: number;
+  edgeStageDelta: number;
+  /** Mesh: max |Δη| across the grid after the edge has driven it. */
+  maxEtaDelta: number;
+  /** Hull: sampleSWEFlow deltas at the grid centre. */
+  hullSpeedDelta: number;
+  hullStageDelta: number;
+  hullDelta: number;
+}
+
+/**
+ * The routed edge stage a window in `mapId` segment `segmentIndex` sees at
+ * launch `hour` — the same router, reach and rating the runtime uses.
+ */
+export function routedEdgeEtaAt(
+  wasm: WatershedNativeModule,
+  mapId: MapRegistryId,
+  segmentIndex: number,
+  hour: number,
+): number {
+  const reach = getRoutingReach();
+  const router = createRiverRouter(wasm, reach, hour);
+  if (!router) throw new Error('routedEdgeEtaAt: binary has no routing exports (ABI < 10)');
+  try {
+    const k = routingChainIndex(reach, mapId, segmentIndex);
+    if (k === null) throw new Error(`routedEdgeEtaAt: ${mapId} is not on the routing chain`);
+    return router.edgeState(k, SWE_MEAN_DEPTH, 9.80665).eta;
+  } finally {
+    router.dispose();
+  }
+}
+
+/**
+ * Two routed edge stages, each driven into a fresh contrast grid by `step`:
+ * the hour contrast as the solver sees it through its boundary, not through an
+ * authored disk. Same mesh / hull split as `measureHydroHourContrast`.
+ */
+export async function measureEdgeStageContrastWith(
+  step: HydroEdgeStepper,
+  edgeEtaA: number,
+  edgeEtaB: number,
+  steps = EDGE_CONTRAST_STEPS,
+): Promise<HydroEdgeContrast> {
+  const a = makeContrastGrid();
+  const b = makeContrastGrid();
+  await step(a, edgeEtaA, steps, STEP_DT);
+  await step(b, edgeEtaB, steps, STEP_DT);
+
+  let maxEtaDelta = 0;
+  for (let i = 0; i < a.h.length; i += 1) {
+    maxEtaDelta = Math.max(maxEtaDelta, Math.abs(a.h[i] - b.h[i]));
+  }
+  const sa = hullSample(a, 0, 0);
+  const sb = hullSample(b, 0, 0);
+  const hullSpeedDelta = Math.abs(sa.speed - sb.speed);
+  const hullStageDelta = Math.abs(sa.surfaceOffset - sb.surfaceOffset);
+  return {
+    edgeEtaA,
+    edgeEtaB,
+    edgeStageDelta: Math.abs(edgeEtaA - edgeEtaB),
+    maxEtaDelta,
+    hullSpeedDelta,
+    hullStageDelta,
+    hullDelta: hullSpeedDelta + hullStageDelta,
   };
 }

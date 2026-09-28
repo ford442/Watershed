@@ -97,6 +97,17 @@ export function heapF32(
  * Shape of the WASM module after Emscripten initialisation.
  * All numeric heap views share the same underlying ArrayBuffer.
  */
+/** routedEdgeState result (ABI 10) — Embind value_object in bindings.cpp. */
+export interface RoutedEdge {
+  /** Free-surface perturbation at the upstream edge (m), the `h` datum. */
+  eta: number;
+  /** Downstream (−Z) inflow speed of that stage over a zero bed (m/s). */
+  speed: number;
+}
+
+/** Reservoirs per routed segment — ROUTING_SUBREACHES in emscripten/routing.h. */
+export const ROUTING_SUBREACHES = 4;
+
 export interface WatershedNativeModule {
   // Emscripten typed heap views
   HEAPF32: Float32Array;
@@ -118,6 +129,8 @@ export interface WatershedNativeModule {
  *       particle SoA and applySWEEvent are guaranteed exports, not optional)
  *   9 — scrollShallowWater (additive; MIN_WASM_ABI_VERSION stays 8 because
  *       stepShallowWater is unchanged — the export is typed optional below)
+ *  10 — channel routing (routeReach* / routedEdgeState) + stepShallowWaterInflow
+ *       (additive; MIN_WASM_ABI_VERSION stays 8 — typed optional below)
  */
   getVersion(): number;
 
@@ -275,6 +288,39 @@ export interface WatershedNativeModule {
     shiftX: number, shiftZ: number,
     inflowEta: number, inflowU: number, inflowW: number,
   ): void;
+
+  /**
+   * stepShallowWater with the upstream (high-row, +Z) edge driven by the routed
+   * stage `edgeEta` (ABI 10+). Lateral and downstream edges stay transmissive;
+   * `edgeEta` 0 over a still interior is the rest state. See emscripten/swe.h.
+   */
+  stepShallowWaterInflow?(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
+    width: number, height: number,
+    dt: number, g: number, dx: number, H: number,
+    edgeEta: number,
+  ): void;
+
+  // ---- Channel routing (ABI 10+, emscripten/routing.h) ----
+  // Arrays are allocateGrid pointers: lengths / slopes / widths [nSeg],
+  // storage [nSeg * ROUTING_SUBREACHES], outflow / lag [nSeg].
+  /** Steady state carrying `Q` (m³/s) through every segment. */
+  routeReachSteady?(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    Q: number, storagePtr: number, outflowPtr: number,
+  ): void;
+  /** Advance the chain by `dt` s with `inflowQ` entering the head; volume-conserving. */
+  routeReach?(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    inflowQ: number, dt: number, storagePtr: number, outflowPtr: number,
+  ): void;
+  /** Cumulative kinematic travel time (s) from the head to each segment's outflow. */
+  routeReachTravelTime?(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    Q: number, lagPtr: number,
+  ): void;
+  /** Routed discharge → edge stage η (m) and inflow speed (m/s, downstream). Qref ↦ exactly (0, 0). */
+  routedEdgeState?(Q: number, Qref: number, H: number, g: number): RoutedEdge;
 
   // ---- Memory helpers ----
   /**

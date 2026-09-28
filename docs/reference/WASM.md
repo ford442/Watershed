@@ -18,11 +18,13 @@ emscripten/
 ├── chores.cpp    # generic grid helpers — not SWE
 ├── particles.h   # SoA waterfall / splash
 ├── particles.cpp
+├── routing.h     # channel routing along the campaign chain (ABI 10)
+├── routing.cpp   # kinematic-storage routing + edge-stage rating
 ├── bindings.cpp  # the only EMSCRIPTEN_BINDINGS block + getVersion()
 └── host_smoke.cpp # host assert runner (no Embind)
 ```
 
-`main.cpp` is gone. Compute library: `forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`. WASM executable adds `bindings.cpp`. Host executable is `watershed_host_smoke`.
+`main.cpp` is gone. Compute library: `forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`. WASM executable adds `bindings.cpp`. Host executable is `watershed_host_smoke`.
 
 Hard rules:
 
@@ -82,6 +84,7 @@ wetting/drying, a 1D dam break, the window scroll, and a 128-particle chute AABB
 | 7 | Particle SoA (waterfall + splash integrate). Additive; floor stays 6. |
 | 8 | `applySWEEvent` hydro source terms. Additive; floor stays 6 (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
 | 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so the floor stays 8. |
+| 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
 
 `src/systems/water/WatershedWasm.ts` asserts `getVersion() >= MIN_WASM_ABI_VERSION`.
 Versions 1–5 were additive, so the floor could stay at 4 and an older shipped
@@ -179,6 +182,19 @@ window world-stable.
   on a sloped bed and a U-channel, a scrolled window tracking a fixed one), `smoke_test.mjs`
   (real binary vs a JS reference), `sweScroll.integration.test.ts` (TS against the export;
   `pnpm test:wasm`), and `pnpm test:wgsl` (WGSL vs WASM at 1e-5; the pure scroll is bit-exact).
+
+### Routed upstream edge — `routing.cpp` + `stepShallowWaterInflow` (ABI 10)
+
+The launch hour's `flowRate` enters the chain head (`glacial → … → delta`) as a discharge
+(`× ROUTING_NOMINAL_DISCHARGE`, 40 m³/s, which is also the reference: a flowRate-1 hour is rest
+at the edge). `routeReach` carries it downstream one segment at a time — four kinematic-storage
+reservoirs per segment, real water volume, exact per-step integration, volume conserved to
+round-off — and `routedEdgeState` rates the routed discharge at the player's segment into a
+stage `eta`. `stepShallowWaterInflow` holds the window's upstream (+Z, last-row) edge at that
+stage through a characteristic ghost (incoming invariant from outside, outgoing from inside);
+the other three edges stay transmissive, and `eta = 0` over still water is exactly the interior,
+so lake-at-rest holds at the reference discharge. `swe.wgsl` carries the same ghost. Additive:
+the floor stays 8. Full contract, runtime wiring and tests: [../../WASM.md](../../WASM.md).
 
 `createSWEGrid()` allocates the bed alongside `h`/`u`/`w` and zero-fills it, so
 an untouched grid is a flat channel. Live rasterization of the canyon floor is

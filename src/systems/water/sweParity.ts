@@ -20,7 +20,11 @@ import type { SweInflow } from './sweScroll';
 import {
   HYDRO_CONTRAST_MARGINS,
   hydroSegmentIndices,
+  measureEdgeStageContrastWith,
   measureHydroHourContrastWith,
+  routedEdgeEtaAt,
+  type HydroEdgeContrast,
+  type HydroEdgeStepper,
   type HydroEventApplier,
 } from './hydroContrast';
 import { parseHydroEvents } from './hydroEvents';
@@ -415,6 +419,110 @@ export async function runSweParitySuite(
       detail: `field at rest on both: ${gone}`,
     });
     pair.dispose();
+  });
+
+  // Routed upstream edge (ABI 10): stepShallowWaterInflow vs swe.wgsl with
+  // edgeActive. The edge stage is one routed number; both backends must turn
+  // it into the same field.
+  await scenario('routed edge: reference stage over a bumpy, partly dry bed', async () => {
+    const pair = await makePair(24, 16, 0.5, (x, z) => {
+      const b = x < 2 ? 1.6 : 1.3 * Math.exp(-((x - 12) ** 2) / 20 - ((z - 15) ** 2) / 12);
+      return { b, h: b > 1 ? b - 1 : 0 };
+    });
+    await stepBoth(pair, 60, { ...base, dt: 1 / 60, edgeEta: 0 });
+    const zero = new Float32Array(pair.gpu.u.length);
+    const maxVel = Math.max(maxDiff(pair.gpu.u, zero), maxDiff(pair.gpu.w, zero));
+    record('routed edge: reference stage over a bumpy, partly dry bed', pair, {
+      ok: maxVel < 1e-5,
+      detail: `wgsl max |v| ${maxVel.toExponential(2)}`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('routed edge: a raised stage enters upstream and runs downstream', async () => {
+    const pair = await makePair(32, 24, 0.75);
+    await stepBoth(pair, 45, { ...base, dt: 1 / 60, edgeEta: 0.38 });
+    const top = 23 * 32 + 16;
+    const entered = pair.gpu.h[top] > 0.19 && pair.gpu.w[top] < 0 && Math.abs(pair.gpu.h[16]) < 1e-4;
+    record('routed edge: a raised stage enters upstream and runs downstream', pair, {
+      ok: entered,
+      detail: `top η ${pair.gpu.h[top].toFixed(4)} w ${pair.gpu.w[top].toFixed(4)}`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('routed edge: sampled U-channel with dry banks, splash leaving upstream', async () => {
+    const pair = await makePair(32, 24, 0.75, (x, z) => {
+      const off = Math.abs(x - 16);
+      const b = off > 9 ? 1.4 : 0.9 * (off / 9) ** 2;
+      return { b, h: (b > 1 ? b - 1 : 0) + (off < 4 && Math.abs(z - 20) < 3 ? 0.2 : 0) };
+    });
+    await stepBoth(pair, 90, { ...base, dt: 1 / 60, edgeEta: 0.25 });
+    record('routed edge: sampled U-channel with dry banks, splash leaving upstream', pair);
+    pair.dispose();
+  });
+
+  // #397 gate through the boundary: hydro 06:00 vs 14:00 with no hydroEvents,
+  // only the routed edge, on both backends, and the two must agree.
+  const edgeSteppers: Record<'wasm' | 'wgsl', HydroEdgeStepper> = {
+    wasm(grid, edgeEta, steps, dt) {
+      const sim = createWasmSweSim(wasm, grid.width, grid.height, grid.cellSize);
+      sim.h.set(grid.h);
+      sim.u.set(grid.u);
+      sim.w.set(grid.w);
+      sim.b.set(grid.b);
+      for (let k = 0; k < steps; k += 1) {
+        sim.step({ dt, g: G, H: grid.stillDepth, originX: grid.originX, originZ: grid.originZ, events: [], edgeEta });
+      }
+      grid.h.set(sim.h);
+      grid.u.set(sim.u);
+      grid.w.set(sim.w);
+      sim.dispose();
+    },
+    async wgsl(grid, edgeEta, steps, dt) {
+      const sim = await createWgslSweSim(device, grid.width, grid.height, grid.cellSize);
+      sim.h.set(grid.h);
+      sim.u.set(grid.u);
+      sim.w.set(grid.w);
+      sim.b.set(grid.b);
+      sim.uploadField();
+      for (let k = 0; k < steps; k += 1) {
+        sim.step({ dt, g: G, H: grid.stillDepth, originX: grid.originX, originZ: grid.originZ, events: [], edgeEta });
+      }
+      await sim.flush();
+      grid.h.set(sim.h);
+      grid.u.set(sim.u);
+      grid.w.set(sim.w);
+      sim.dispose();
+    },
+  };
+  await scenario('routed edge: hydro 06:00 vs 14:00 through the boundary, both backends', async () => {
+    const scout = routedEdgeEtaAt(wasm, 'hydro', 4, 6);
+    const dam = routedEdgeEtaAt(wasm, 'hydro', 4, 14);
+    const byBackend: Partial<Record<'wasm' | 'wgsl', HydroEdgeContrast>> = {};
+    const failures: string[] = [];
+    for (const backend of ['wasm', 'wgsl'] as const) {
+      const c = await measureEdgeStageContrastWith(edgeSteppers[backend], scout, dam);
+      byBackend[backend] = c;
+      if (!(c.maxEtaDelta > HYDRO_CONTRAST_MARGINS.minEtaDelta)) failures.push(`${backend} mesh ${c.maxEtaDelta.toFixed(3)}`);
+      if (!(c.hullDelta > HYDRO_CONTRAST_MARGINS.minHullDelta)) failures.push(`${backend} hull ${c.hullDelta.toFixed(3)}`);
+    }
+    const a = byBackend.wasm!;
+    const b = byBackend.wgsl!;
+    const disagree = Math.max(
+      Math.abs(a.maxEtaDelta - b.maxEtaDelta),
+      Math.abs(a.hullStageDelta - b.hullStageDelta),
+      Math.abs(a.hullSpeedDelta - b.hullSpeedDelta),
+    );
+    if (!(disagree < SWE_PARITY_TOLERANCE)) failures.push(`backends disagree by ${disagree.toExponential(2)}`);
+    results.push({
+      name: 'routed edge: hydro 06:00 vs 14:00 through the boundary, both backends',
+      ok: failures.length === 0,
+      maxDiff: disagree,
+      detail: failures.length
+        ? failures.join(', ')
+        : `edge η ${scout.toFixed(3)} → ${dam.toFixed(3)}, mesh Δη ${a.maxEtaDelta.toFixed(3)}, hull ${a.hullDelta.toFixed(3)}`,
+    });
   });
 
   // #397 gate on both backends: the three gated maps at 06:00 vs 14:00, plus

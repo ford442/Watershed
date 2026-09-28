@@ -6,7 +6,10 @@
  * uniform-flow preservation, lake-at-rest well-balancing over a bed bump,
  * wetting/drying, a 1D dam-break slice, and a sampled U-channel bed of the
  * shape src/systems/water/bathymetrySampler.ts rasterizes (#374 Phase 2).
- * No Embind.
+ * Also channel routing (routing.cpp): a step release reaches a downstream
+ * segment only after the routed lag, volume is conserved, and the routed
+ * upstream edge (stepShallowWaterInflow) keeps lake-at-rest at the reference
+ * discharge. No Embind.
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host
@@ -16,6 +19,7 @@
 #include "forces.h"
 #include "swe.h"
 #include "particles.h"
+#include "routing.h"
 
 #include <cmath>
 #include <cstdio>
@@ -695,6 +699,156 @@ int main() {
             check(worst < 1e-6f, "scrolled window tracks the fixed window in world space");
             check(std::abs(peakX - cx) <= 1 && std::abs(peakZ - cz) <= 1,
                   "the splash stays on its world cell while the window moves");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Channel routing (routing.cpp, ABI 10) and the routed upstream edge
+    //    (stepShallowWaterInflow). A 20-segment chain of ~100 m reaches.
+    // ------------------------------------------------------------------
+    {
+        constexpr int kSeg = 20;
+        constexpr float kQ0 = 40.f;          // base discharge (m³/s)
+        constexpr float kRelease = 14.f;     // dam release on top (0.35 × base)
+        constexpr float kRouteDt = 1.f;
+        std::vector<float> L(kSeg), S(kSeg), B(kSeg);
+        for (int k = 0; k < kSeg; ++k) {
+            L[k] = 95.f + 2.f * static_cast<float>(k % 5);
+            S[k] = 0.03f + 0.005f * static_cast<float>(k % 3);
+            B[k] = 10.f + static_cast<float>(k % 4);
+        }
+        std::vector<float> storage(kSeg * ROUTING_SUBREACHES), outflow(kSeg), lag(kSeg);
+        auto P = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        auto totalStorage = [&]() {
+            double s = 0.0;
+            for (float v : storage) s += v;
+            return s;
+        };
+
+        // 8a. Steady state carries its discharge through unchanged.
+        routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+        for (int t = 0; t < 200; ++t) routeReach(P(L), P(S), P(B), kSeg, kQ0, kRouteDt, P(storage), P(outflow));
+        checkClose(outflow[kSeg - 1], kQ0, 1e-4f, "routing: steady discharge stays steady");
+
+        // 8b. Step release at the head: the far segment only answers after the
+        //     routed lag, and then it does answer.
+        routeReachTravelTime(P(L), P(S), P(B), kSeg, kQ0, P(lag));
+        const float lagFar = lag[kSeg - 1];
+        check(lagFar > 60.f && lagFar < 1200.f, "routing: 2 km travel time is minutes, not hours or zero");
+        for (int k = 1; k < kSeg; ++k) check(lag[k] > lag[k - 1], "routing: lag grows downstream");
+        routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+        float riseAtHalfLag = -1.f, riseAtLag = -1.f, riseLate = -1.f;
+        const int steps = static_cast<int>(3.f * lagFar / kRouteDt);
+        for (int t = 1; t <= steps; ++t) {
+            routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow));
+            const float time = static_cast<float>(t) * kRouteDt;
+            const float rise = (outflow[kSeg - 1] - kQ0) / kRelease;
+            if (riseAtHalfLag < 0.f && time >= 0.5f * lagFar) riseAtHalfLag = rise;
+            if (riseAtLag < 0.f && time >= 1.25f * lagFar) riseAtLag = rise;
+            riseLate = rise;
+        }
+        check(riseAtHalfLag >= -1e-5f && riseAtHalfLag < 0.02f, "routing: nothing arrives before the lag");
+        check(riseAtLag > 0.5f, "routing: the release has arrived by 1.25 × lag");
+        checkClose(riseLate, 1.f, 1e-3f, "routing: the full release arrives");
+
+        // 8c. Volume: a finite pulse in, everything out, nothing gained.
+        routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+        const double s0 = totalStorage();
+        double in = 0.0, out = 0.0;
+        for (int t = 0; t < 4000; ++t) {
+            const float q = (t < 300) ? kQ0 + kRelease : kQ0;
+            routeReach(P(L), P(S), P(B), kSeg, q, kRouteDt, P(storage), P(outflow));
+            in += static_cast<double>(q) * kRouteDt;
+            out += static_cast<double>(outflow[kSeg - 1]) * kRouteDt;
+        }
+        const double balance = in - out - (totalStorage() - s0);
+        check(std::abs(balance) < 1e-4 * in, "routing: volume in = out + stored (1e-4 of throughput)");
+        check(out <= in + 1e-4 * in, "routing: never gains volume");
+
+        // 8d. Rating: the reference discharge is exactly still water.
+        const RoutedEdge rest = routedEdgeState(kQ0, kQ0, kH, kG);
+        check(rest.eta == 0.f && rest.speed == 0.f, "routedEdgeState: Qref is exactly rest");
+        const RoutedEdge high = routedEdgeState(kQ0 + kRelease, kQ0, kH, kG);
+        checkClose(high.eta, kH * (std::pow((kQ0 + kRelease) / kQ0, 0.6f) - 1.f), 1e-5f, "routedEdgeState: Manning rating");
+        check(high.speed > 0.f, "routedEdgeState: a raised stage moves downstream");
+
+        auto P2 = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        auto stepEdge = [&](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w,
+                            std::vector<float>* b, float dt, float edgeEta) {
+            stepShallowWaterInflow(P2(h), P2(u), P2(w), b ? P2(*b) : 0,
+                                   kWidth, kHeight, dt, kG, kDx, kH, edgeEta);
+        };
+
+        // 8e. Lake at rest with the edge on: the reference discharge over a
+        //     bumpy, partly dry bed invents no slope — η steps bit-for-bit like
+        //     the transmissive solver, still inside the 3b tolerance.
+        {
+            std::vector<float> h(n, 0.f), u(n, 0.f), w(n, 0.f), b(n, 0.f);
+            for (int z = 0; z < kHeight; ++z) {
+                for (int x = 0; x < kWidth; ++x) {
+                    const float r = std::hypot(static_cast<float>(x) - 16.f, static_cast<float>(z) - 22.f);
+                    b[z * kWidth + x] = std::max(0.f, 1.4f - 0.15f * r);  // bump through the top edge
+                    if (x < 3) b[z * kWidth + x] = 1.6f;                  // dry bank column
+                }
+            }
+            for (int i = 0; i < n; ++i) if (b[i] > kH) h[i] = b[i] - kH;  // dry: surface pinned to bed
+            std::vector<float> hT = h, uT = u, wT = w;
+            for (int t = 0; t < 400; ++t) {
+                stepEdge(h, u, w, &b, 1.f / 60.f, rest.eta);
+                stepBed(hT, uT, wT, b, 1.f / 60.f);
+            }
+            // η is the slope the player sees: identical to the transmissive
+            // step. Velocities may differ by round-off once the solver's own
+            // float residue (~1e-7 m/s) reaches the edge characteristics.
+            bool sameEta = true;
+            float maxVel = 0.f, dVel = 0.f;
+            for (int i = 0; i < n; ++i) {
+                sameEta = sameEta && h[i] == hT[i];
+                maxVel = std::max({maxVel, std::abs(u[i]), std::abs(w[i])});
+                dVel = std::max({dVel, std::abs(u[i] - uT[i]), std::abs(w[i] - wT[i])});
+            }
+            check(sameEta, "edge inflow at Qref: eta bit-identical to the transmissive step");
+            check(dVel < 1e-6f, "edge inflow at Qref: velocity matches transmissive to round-off");
+            check(maxVel < 2e-3f, "edge inflow at Qref: lake at rest (3b tolerance)");
+        }
+
+        // 8f. A raised edge stage enters from the upstream (high-row) edge and
+        //     flows downstream (−Z); the downstream edge does not reflect it.
+        {
+            std::vector<float> h(n, 0.f), u(n, 0.f), w(n, 0.f);
+            const float eta = high.eta;
+            for (int t = 0; t < 30; ++t) stepEdge(h, u, w, nullptr, 1.f / 60.f, eta);
+            const int mid = kWidth / 2;
+            check(h[(kHeight - 1) * kWidth + mid] > 0.5f * eta, "edge stage: top row rises toward the routed stage");
+            check(w[(kHeight - 1) * kWidth + mid] < 0.f, "edge stage: the inflow moves downstream (−Z)");
+            check(std::abs(h[0 * kWidth + mid]) < 1e-4f, "edge stage: the far edge has not heard of it yet");
+            check(std::abs(u[(kHeight - 1) * kWidth + mid]) < 1e-5f, "edge stage: no lateral current from a uniform edge");
+            for (int t = 0; t < 1200; ++t) stepEdge(h, u, w, nullptr, 1.f / 60.f, eta);
+            float lo = 1e9f, hi = -1e9f;
+            for (int i = 0; i < n; ++i) { lo = std::min(lo, h[i]); hi = std::max(hi, h[i]); }
+            check(lo > 0.5f * eta && hi < 1.5f * eta, "edge stage: the window fills to the routed stage, no runaway");
+        }
+
+        // 8g. The whole chain: a release at the head reaches a downstream
+        //     segment's edge stage only after that segment's lag.
+        {
+            const int k = kSeg - 1;
+            routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+            float early = -1.f, late = -1.f;
+            for (int t = 1; t <= steps; ++t) {
+                routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow));
+                const float time = static_cast<float>(t) * kRouteDt;
+                const float eta = routedEdgeState(outflow[k], kQ0, kH, kG).eta;
+                if (early < 0.f && time >= 0.5f * lag[k]) early = eta;
+                if (late < 0.f && time >= 1.5f * lag[k]) late = eta;
+            }
+            check(early < 0.01f, "routed edge: stage flat before the lag");
+            check(late > 0.5f * high.eta, "routed edge: stage raised after the lag");
+            // Goldens, mirrored in smoke_test.mjs against the -ffast-math WASM
+            // build (same chain, same numbers, same 1e-4 relative tolerance).
+            checkClose(lagFar, 264.890015f, 1e-4f, "routing golden: far-segment lag (s)");
+            checkClose(riseAtLag, 0.999229f, 1e-4f, "routing golden: release fraction at 1.25 x lag");
+            checkClose(high.eta, 0.197293f, 1e-4f, "routing golden: edge stage for +35% discharge");
         }
     }
 

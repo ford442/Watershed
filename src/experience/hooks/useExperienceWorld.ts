@@ -16,7 +16,7 @@ import {
   syncMapUrl,
 } from '../../maps/campaign';
 import type { DebugStageController } from '../../debug/debugStages';
-import { DAM_RELEASE_SCHEDULE, DEFAULT_MAPS } from '../constants';
+import { DEFAULT_FORECAST_INPUTS, DEFAULT_MAPS } from '../constants';
 import type { VehicleRigidBodyRef } from '../types';
 import {
   getGhostBestScoreForMap,
@@ -41,9 +41,7 @@ import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
 
 const DEFAULT_FORECAST_OPTIONS = {
-  temperature: 8,
-  snowpackIndex: 0.65,
-  damReleaseSchedule: DAM_RELEASE_SCHEDULE,
+  ...DEFAULT_FORECAST_INPUTS,
   horizonHours: 24,
 } as const;
 

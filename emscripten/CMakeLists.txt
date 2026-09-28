@@ -12,6 +12,7 @@ set(COMPUTE_SOURCES
     swe.cpp
     chores.cpp
     particles.cpp
+    routing.cpp
 )
 
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})

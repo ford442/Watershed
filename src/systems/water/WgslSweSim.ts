@@ -2,8 +2,9 @@
  * WgslSweSim — the WGSL twin of the C++ SWE stepper (#435), on the renderer's
  * own GPUDevice.
  *
- * Numerics live in `swe.wgsl` (a line-for-line port of emscripten/swe.cpp,
- * applySWEEvent and scrollShallowWater). This file owns buffers, dispatch order,
+ * Numerics live in `swe.wgsl` (a line-for-line port of emscripten/swe.cpp:
+ * the step with or without the routed upstream edge, applySWEEvent and
+ * scrollShallowWater). This file owns buffers, dispatch order,
  * and the CPU mirror:
  *
  *   step():  [upload splash delta → add_surface] → clear max → lift → update
@@ -32,7 +33,7 @@ const WORKGROUP = 64;
 /** Matches MAX_EVENTS / EventBlock in swe.wgsl. */
 export const WGSL_SWE_MAX_EVENTS_PER_DISPATCH = 32;
 const EVENT_STRIDE_FLOATS = 8;
-const PARAMS_BYTES = 64;
+const PARAMS_BYTES = 80;
 
 type EntryPoint = 'add_surface' | 'lift' | 'update' | 'apply_events' | 'scroll';
 const ENTRY_POINTS: readonly EntryPoint[] = ['add_surface', 'lift', 'update', 'apply_events', 'scroll'];
@@ -175,7 +176,7 @@ export async function createWgslSweSim(
 
   const writeParams = (
     target: GPUBuffer,
-    step: { dt: number; g: number; H: number; originX: number; originZ: number },
+    step: { dt: number; g: number; H: number; originX: number; originZ: number; edgeEta?: number },
     eventCount: number,
     scrollBy?: { shiftX: number; shiftZ: number; inflow: SweInflow },
   ) => {
@@ -195,6 +196,10 @@ export async function createWgslSweSim(
     paramsF32[13] = scrollBy?.inflow.u ?? 0;
     paramsF32[14] = scrollBy?.inflow.w ?? 0;
     paramsF32[15] = 0;
+    paramsU32[16] = step.edgeEta === undefined ? 0 : 1;
+    paramsF32[17] = step.edgeEta ?? 0;
+    paramsF32[18] = 0;
+    paramsF32[19] = 0;
     device.queue.writeBuffer(target, 0, paramsScratch);
   };
 

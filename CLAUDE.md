@@ -84,6 +84,8 @@ src/
 │   ├── water/sweSwirl.ts        # Surface swirl owner — SWE sink vs authored drain
 │   ├── water/sweQuality.ts      # SWE grid/step/displacement budget per quality preset
 │   ├── water/sweScroll.ts       # SWE window cell lattice + scroll twin (keeps the moving field world-stable)
+│   ├── water/riverRouter.ts     # Launch-hour discharge routed down the campaign chain → SWE upstream-edge stage
+│   ├── map/routingReach.ts      # Campaign chain as (length, slope, width) per segment for the routing
 │   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/WatershedWasm.ts
 │   └── …
 │
@@ -319,6 +321,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
+| `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
 | `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM, or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |

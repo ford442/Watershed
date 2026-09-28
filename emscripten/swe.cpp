@@ -24,7 +24,9 @@
  *
  *   Boundaries are transmissive (ghost = interior), so a wave reaching the edge
  *   leaves rather than reflecting off an invisible wall four metres from the
- *   raft. That only sheds waves from a FIXED grid: the grid is a player-centred
+ *   raft. stepShallowWaterInflow (ABI 10) swaps the upstream (high-row) ghost
+ *   for a characteristic inflow carrying the routed stage from routing.cpp;
+ *   the other three edges stay transmissive. That only sheds waves from a FIXED grid: the grid is a player-centred
  *   window that moves, and this solver knows nothing about its origin. The
  *   window is kept world-stable by scrollShallowWater (below), which the caller
  *   runs on every whole-cell origin move before the bed refresh and the step.
@@ -202,6 +204,79 @@ struct Scratch {
 
 thread_local Scratch g_scratch;
 
+/** Conserved state of a ghost cell, in z-face axes (normal = z). */
+struct GhostCell {
+    float d  = 0.f;
+    float qz = 0.f;
+    float qx = 0.f;
+};
+
+/**
+ * Upstream-edge ghost for the face above the last row (zf == height).
+ *
+ * Downstream is −Z, so the high-row edge is where the river enters the window.
+ * The routed discharge arrives as a stage `edgeEta`; the ghost is built from
+ * characteristics so the edge admits that stage without walling off waves
+ * leaving the window. With inflow speed v measured INTO the window (−Z):
+ *
+ *   outside  still water at stage edgeEta, moving in as a simple wave:
+ *            v_ext = 2 (c_ext − c_0)   (c_0 = still-water celerity)
+ *   R+ = v_ext + 2 c_ext               enters from outside
+ *   R− = v_in  − 2 c_in                leaves from the interior cell
+ *   ghost:   v = (R+ + R−) / 2,  c = (R+ − R−) / 4
+ *
+ * Supercritical inflow takes both invariants from outside; supercritical
+ * outflow through the edge takes both from inside (transmissive).
+ *
+ * Everything is expressed against the interior cell's own depth and η, never
+ * a recomputed H − b, so edgeEta == 0 over a still interior returns that
+ * interior state exactly — the step is then bit-identical to the transmissive
+ * stepShallowWater, and lake-at-rest is exactly as well-balanced as it was.
+ */
+GhostCell upstreamGhost(float dI, float hI, float qzI, float qxI, float edgeEta, float g) {
+    const bool wetI = dI > SWE_DRY_DEPTH;
+    // H − b for this column is dI − hI (depth = H + η − b).
+    const float dStill = std::max(0.f, dI - hI);
+    const float dExt = std::max(0.f, dStill + edgeEta);
+    if (!wetI && dExt <= SWE_DRY_DEPTH) return GhostCell{ dI, qzI, qxI };  // dry column: transmissive
+
+    const float cExt = std::sqrt(g * dExt);
+    const float vExt = 2.f * (cExt - std::sqrt(g * dStill));
+    const float cI = std::sqrt(g * std::max(dI, 0.f));
+    const float vI = wetI ? -qzI / dI : 0.f;
+    const float utI = wetI ? qxI / dI : 0.f;
+
+    if (vI + cI < 0.f) return GhostCell{ dI, qzI, qxI };  // supercritical outflow
+
+    float dG;
+    float vG;
+    if (vExt >= cExt) {
+        dG = dExt;
+        vG = vExt;
+    } else {
+        // Hold R− from the interior and replace only the incoming invariant:
+        // with jump ΔR = R+_ext − R+_in the ghost is the interior plus
+        //   v = v_in + ΔR/2,   c = c_in + ΔR/4.
+        // ΔR == 0 (reference stage over still water) reproduces the interior
+        // exactly, whatever the compiler reassociates (-ffast-math WASM build).
+        const float dR4 = 0.25f * ((vExt + 2.f * cExt) - (vI + 2.f * cI));
+        const float cG = cI + dR4;
+        if (cG <= 0.f) return GhostCell{};
+        vG = vI + 2.f * dR4;
+        dG = dI + dR4 * (2.f * cI + dR4) / g;  // c_G² / g, relative to d_in
+    }
+    if (dG <= SWE_DRY_DEPTH) return GhostCell{};
+    return GhostCell{ dG, -dG * vG, dG * utI };
+}
+
+/** Wave speed a ghost contributes to the CFL max: |v| + √(g d). */
+inline float ghostWaveSpeed(const GhostCell& c, float g) {
+    if (c.d <= SWE_DRY_DEPTH) return 0.f;
+    const float v = c.qz / c.d;
+    const float t = c.qx / c.d;
+    return std::sqrt(v * v + t * t) + std::sqrt(g * c.d);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -213,9 +288,20 @@ thread_local Scratch g_scratch;
 //
 //    Grid layout: row-major, index = z * width + x
 // ---------------------------------------------------------------------------
-void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                      int width, int height,
-                      float dt, float g, float dx, float H) {
+namespace {
+
+/** Upstream-edge ghosts, one per column; reused like Scratch. */
+thread_local std::vector<GhostCell> g_edgeGhosts;
+
+/**
+ * Shared step. `edgeInflow` false keeps every boundary transmissive (the
+ * stepShallowWater contract); true replaces the upstream (high-row) ghost with
+ * upstreamGhost(edgeEta) — lateral and downstream edges stay transmissive.
+ */
+void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                          int width, int height,
+                          float dt, float g, float dx, float H,
+                          bool edgeInflow, float edgeEta) {
     if (width <= 0 || height <= 0 || dx <= 0.f || H <= 0.f) return;
     if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
     if (dt <= 0.f || g <= 0.f) return;
@@ -288,6 +374,20 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
         accQz[i] = 0.f;
     }
 
+    // Upstream-edge ghosts, from the lifted top row, before the CFL clamp so an
+    // incoming stage can never outrun the step.
+    GhostCell* ghosts = nullptr;
+    if (edgeInflow) {
+        g_edgeGhosts.resize(static_cast<std::size_t>(width));
+        ghosts = g_edgeGhosts.data();
+        const int top = (height - 1) * width;
+        for (int x = 0; x < width; ++x) {
+            const int iI = top + x;
+            ghosts[x] = upstreamGhost(d[iI], h[iI], qz[iI], qx[iI], edgeEta, g);
+            maxWaveSpeed = std::max(maxWaveSpeed, ghostWaveSpeed(ghosts[x], g));
+        }
+    }
+
     // Everything is dry — nothing to advance, but still write back the clamp.
     if (maxWaveSpeed <= 0.f) {
         for (int i = 0; i < N; ++i) {
@@ -336,9 +436,14 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
             const int iR = ((zf == height) ? height - 1 : zf) * width + x;
 
             // Normal is z here, so qz is the normal momentum and qx transverse.
+            // The upstream face (zf == height) takes the inflow ghost when set.
+            const bool ghostR = ghosts != nullptr && zf == height;
             const InterfaceFlux f = reconstructedFlux(
                 d[iL], qz[iL], qx[iL], bedAt(iL),
-                d[iR], qz[iR], qx[iR], bedAt(iR),
+                ghostR ? ghosts[x].d  : d[iR],
+                ghostR ? ghosts[x].qz : qz[iR],
+                ghostR ? ghosts[x].qx : qx[iR],
+                bedAt(iR),
                 g);
 
             if (zf > 0) {
@@ -375,6 +480,21 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
     // --- Light velocity damping to prevent long-run divergence ---
     const float damp = 1.f - safeDt * DAMPING_COEFF;
     dampVelocities(u, w, N, damp);
+}
+
+}  // namespace
+
+void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                      int width, int height,
+                      float dt, float g, float dx, float H) {
+    stepShallowWaterImpl(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, false, 0.f);
+}
+
+void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                            int width, int height,
+                            float dt, float g, float dx, float H, float edgeEta) {
+    const float eta = std::isfinite(edgeEta) ? edgeEta : 0.f;
+    stepShallowWaterImpl(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, true, eta);
 }
 
 // Kernel tuning — twin of HYDRO_* in src/systems/water/hydroEvents.ts (#397).

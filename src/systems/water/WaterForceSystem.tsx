@@ -5,6 +5,11 @@
  *   The grid is a window that follows the vehicle; every whole-cell move of its
  *   origin scrolls h/u/w/b with the world first (sweScroll.ts / swe.h), so a
  *   splash stays where it landed instead of riding the camera.
+ * - Drives the window's upstream (+Z) edge with the launch-hour discharge,
+ *   routed down the campaign chain (riverRouter.ts → emscripten/routing.cpp).
+ *   Cells entering the window, and a freshly placed window, take the same
+ *   routed state, so a 14:00 river is higher everywhere in the window, not just
+ *   along one edge.
  * - Applies native buoyancy + current drag to the vehicle and floating debris
  *   using SWE-sampled flowDir / speed (sampleSWEFlow → calculateWaterForce).
  * - Falls back to pure TypeScript force math when WASM is unavailable.
@@ -34,7 +39,9 @@ import {
   clearSWEHeightField,
 } from './SWEHeightField';
 import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuality';
-import { advanceSweWindow, type SweWindow } from './sweScroll';
+import { SWE_REST_INFLOW, advanceSweWindow, type SweInflow, type SweWindow } from './sweScroll';
+import { createRiverRouter, type RiverRouter } from './riverRouter';
+import { getRoutingReach, routingChainIndex } from '../map/routingReach';
 import {
   getBathymetryRevision,
   getRegisteredBathymetryCount,
@@ -42,7 +49,7 @@ import {
   sampleBathymetryInto,
 } from './bathymetrySampler';
 import { publishSWEBedSnapshot, clearSWEBedSnapshot } from './sweBedDebug';
-import { useQualityPreset } from '../GameState';
+import { useGameStore, useQualityPreset } from '../GameState';
 import {
   collectWaterForceBodies,
   registerVehicleWaterBody,
@@ -63,12 +70,13 @@ import {
   type SWEFlowSample,
 } from './sampleSWEFlow';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
-import { getActiveMap } from '../../maps/registry';
-import { getActiveLaunchHour } from '../journey/runSession';
+import { ACTIVE_MAP_ID, getActiveMap } from '../../maps/registry';
+import { getActiveLaunchHour, getRunSession } from '../journey/runSession';
 import { shouldSkipMainThreadVehicleForce } from '../../physics/waterForceAuthority';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 
 const PHYSICS_SCALE = 0.001;
+const GRAVITY = 9.80665;
 
 interface WaterForceSystemProps {
   vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
@@ -284,6 +292,41 @@ function refreshBed(
   });
 }
 
+interface RouterState {
+  router: RiverRouter | null;
+  /** The run the router was spun up for; a new run (or hour) re-routes from launch. */
+  session: unknown;
+  launchHour: number;
+}
+
+/**
+ * The router for the current run, rebuilt when the run or its launch hour
+ * changes. Null without the ABI-10 exports — the window then steps with every
+ * edge transmissive, exactly as before routing.
+ */
+function currentRouter(wasm: WatershedNativeModule | null, state: RouterState): RiverRouter | null {
+  if (!wasm) return null;
+  const session = getRunSession();
+  const launchHour = getActiveLaunchHour();
+  if (state.router && state.session === session && state.launchHour === launchHour) return state.router;
+  state.router?.dispose();
+  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour);
+  state.session = session;
+  state.launchHour = launchHour;
+  return state.router;
+}
+
+/** Routed state for the player's segment, as the (η, u, w) an entering cell takes. */
+function routedInflow(router: RiverRouter | null): { edgeEta: number; inflow: SweInflow } | null {
+  if (!router) return null;
+  const mapId = getRunSession()?.mapId ?? ACTIVE_MAP_ID;
+  const k = routingChainIndex(router.reach, mapId, useGameStore.getState().currentSegmentIndex);
+  if (k === null) return null;
+  const edge = router.edgeState(k, SWE_MEAN_DEPTH, GRAVITY);
+  // Downstream is −Z: the routed wave arrives moving toward −Z.
+  return { edgeEta: edge.eta, inflow: { eta: edge.eta, u: 0, w: -edge.speed } };
+}
+
 export function WaterForceSystem({
   vehicleRef,
   vehicleType = 'runner',
@@ -306,6 +349,7 @@ export function WaterForceSystem({
   // Bed refresh bookkeeping: the sampled bathymetry only needs re-rasterizing
   // when the window slides a whole cell or the treadmill changes segments.
   const bedStateRef = useRef({ valid: false, revision: -1, originX: 0, originZ: 0 });
+  const routerRef = useRef<RouterState>({ router: null, session: null, launchHour: Number.NaN });
   const [wasmReady, setWasmReady] = useState(false);
 
   // Visual SWE budget follows the live quality preset (LODManager may downgrade
@@ -336,6 +380,8 @@ export function WaterForceSystem({
 
     return () => {
       cancelled = true;
+      routerRef.current.router?.dispose();
+      routerRef.current = { router: null, session: null, launchHour: Number.NaN };
       setWaterForceSystemActive(false);
       registerVehicleWaterBody(null);
       clearSWEHeightField();
@@ -456,9 +502,19 @@ export function WaterForceSystem({
       // the bed is rewritten and the solver runs. The solver is origin-blind and
       // the rasterizer only rewrites `b`, so without this h/u/w would stay in
       // their old slots while the canyon moved underneath them. A jump larger
-      // than the grid (respawn) saturates: the field restarts at rest.
+      // than the grid (respawn) saturates: the field restarts at the routed
+      // state. Entering cells take the routed river, not still water.
+      const router = currentRouter(wasmRef.current, routerRef.current);
+      const routed = routedInflow(router);
+      const fill = routed?.inflow ?? SWE_REST_INFLOW;
       if (advance) {
-        if (advance.shiftX !== 0 || advance.shiftZ !== 0) grid.scroll(advance.shiftX, advance.shiftZ);
+        if (windowRef.current === null && routed) {
+          // A fresh window starts as the river it sits in, so the routed stage
+          // does not have to bore in from the edge on every rebuild.
+          grid.scroll(grid.width, 0, fill);
+        } else if (advance.shiftX !== 0 || advance.shiftZ !== 0) {
+          grid.scroll(advance.shiftX, advance.shiftZ, fill);
+        }
         windowRef.current = advance.window;
       }
 
@@ -471,6 +527,7 @@ export function WaterForceSystem({
       if (stepAccumulatorRef.current >= interval) {
         const stepDt = Math.min(stepAccumulatorRef.current, 0.05);
         stepAccumulatorRef.current = 0;
+        router?.advance(stepDt);
 
         applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
@@ -507,11 +564,14 @@ export function WaterForceSystem({
         // Phase 2). Uncovered cells read as dry land, not open water.
         grid.step({
           dt: stepDt,
-          g: 9.80665,
+          g: GRAVITY,
           H: SWE_MEAN_DEPTH,
           originX,
           originZ,
           events: eventCalls,
+          // Upstream edge = the routed discharge at the player's segment; the
+          // hull reads it back through sampleSWEFlow like any other η.
+          edgeEta: routed?.edgeEta,
         });
       }
       // WASM bumps fieldVersion inside step(); WGSL when its readback lands.

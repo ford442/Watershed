@@ -452,4 +452,106 @@ if (version >= 9) {
   }
 }
 
+// --- ABI 10: channel routing + the routed upstream edge ---------------------
+// Same 20-segment chain and goldens as host_smoke.cpp §8. The host build uses
+// -ffp-contract=off, this binary -ffast-math: the 1e-4 relative tolerance is
+// the #404 rule. If they ever diverge, pin -ffp-contract=off on routing.cpp.
+if (version >= 10) {
+  for (const name of ['routeReach', 'routeReachSteady', 'routeReachTravelTime', 'routedEdgeState', 'stepShallowWaterInflow']) {
+    if (typeof wasm[name] !== 'function') throw new Error(`ABI 10 must export ${name}`);
+  }
+  const closeTo = (actual, expected, label) => {
+    const tol = Math.max(Math.abs(expected) * 1e-4, 1e-4);
+    if (!(Math.abs(actual - expected) <= tol)) {
+      throw new Error(`${label}: expected ${expected}, got ${actual}`);
+    }
+  };
+  const view = (ptr, count) => wasm.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + count);
+  const SEG = 20;
+  const SUB = 4; // ROUTING_SUBREACHES
+  const Q0 = 40;
+  const RELEASE = 14;
+  const DT = 1;
+  const Lp = wasm.allocateGrid(SEG);
+  const Sp = wasm.allocateGrid(SEG);
+  const Bp = wasm.allocateGrid(SEG);
+  const storageP = wasm.allocateGrid(SEG * SUB);
+  const outP = wasm.allocateGrid(SEG);
+  const lagP = wasm.allocateGrid(SEG);
+  for (let k = 0; k < SEG; k += 1) {
+    view(Lp, SEG)[k] = 95 + 2 * (k % 5);
+    view(Sp, SEG)[k] = Math.fround(0.03 + Math.fround(0.005 * (k % 3)));
+    view(Bp, SEG)[k] = 10 + (k % 4);
+  }
+  wasm.routeReachTravelTime(Lp, Sp, Bp, SEG, Q0, lagP);
+  const lagFar = view(lagP, SEG)[SEG - 1];
+  closeTo(lagFar, 264.890015, 'routing golden: far-segment lag (s)');
+
+  wasm.routeReachSteady(Lp, Sp, Bp, SEG, Q0, storageP, outP);
+  const steps = Math.trunc((3 * lagFar) / DT);
+  let riseAtHalf = -1;
+  let riseAtLag = -1;
+  for (let t = 1; t <= steps; t += 1) {
+    wasm.routeReach(Lp, Sp, Bp, SEG, Q0 + RELEASE, DT, storageP, outP);
+    const rise = (view(outP, SEG)[SEG - 1] - Q0) / RELEASE;
+    if (riseAtHalf < 0 && t * DT >= 0.5 * lagFar) riseAtHalf = rise;
+    if (riseAtLag < 0 && t * DT >= 1.25 * lagFar) riseAtLag = rise;
+  }
+  if (!(riseAtHalf < 0.02)) throw new Error(`routing: release arrived before the lag (${riseAtHalf})`);
+  closeTo(riseAtLag, 0.999229, 'routing golden: release fraction at 1.25 x lag');
+
+  const rest = wasm.routedEdgeState(Q0, Q0, 1, 9.80665);
+  if (rest.eta !== 0 || rest.speed !== 0) throw new Error(`routedEdgeState(Qref) not at rest: ${JSON.stringify(rest)}`);
+  const high = wasm.routedEdgeState(Q0 + RELEASE, Q0, 1, 9.80665);
+  closeTo(high.eta, 0.197293, 'routing golden: edge stage for +35% discharge');
+  for (const p of [Lp, Sp, Bp, storageP, outP, lagP]) wasm.freeGrid(p);
+
+  // Edge at the reference discharge over a bumpy, partly dry bed: η steps like
+  // the transmissive solver (no invented slope) and the lake stays at rest.
+  const W = 32;
+  const Hh = 24;
+  const N = W * Hh;
+  const alloc = () => ({ h: wasm.allocateGrid(N), u: wasm.allocateGrid(N), w: wasm.allocateGrid(N), b: wasm.allocateGrid(N) });
+  const edge = alloc();
+  const trans = alloc();
+  for (const g of [edge, trans]) {
+    for (let z = 0; z < Hh; z += 1) {
+      for (let x = 0; x < W; x += 1) {
+        let bed = Math.max(0, Math.fround(1.4 - Math.fround(0.15 * Math.fround(Math.hypot(x - 16, z - 22)))));
+        if (x < 3) bed = 1.6;
+        view(g.b, N)[z * W + x] = bed;
+        view(g.h, N)[z * W + x] = bed > 1 ? Math.fround(view(g.b, N)[z * W + x] - 1) : 0;
+      }
+    }
+  }
+  for (let t = 0; t < 400; t += 1) {
+    wasm.stepShallowWaterInflow(edge.h, edge.u, edge.w, edge.b, W, Hh, 1 / 60, 9.80665, 0.75, 1, rest.eta);
+    wasm.stepShallowWater(trans.h, trans.u, trans.w, trans.b, W, Hh, 1 / 60, 9.80665, 0.75, 1);
+  }
+  let etaDiff = 0;
+  let maxVel = 0;
+  for (let i = 0; i < N; i += 1) {
+    etaDiff = Math.max(etaDiff, Math.abs(view(edge.h, N)[i] - view(trans.h, N)[i]));
+    maxVel = Math.max(maxVel, Math.abs(view(edge.u, N)[i]), Math.abs(view(edge.w, N)[i]));
+  }
+  if (!(etaDiff < 1e-6)) throw new Error(`edge at Qref invents a slope: max |Δη| = ${etaDiff}`);
+  if (!(maxVel < 2e-3)) throw new Error(`edge at Qref breaks lake-at-rest: max |v| = ${maxVel}`);
+
+  // A raised edge stage enters from the high-row edge and moves downstream (−Z).
+  for (const g of [edge]) {
+    view(g.h, N).fill(0);
+    view(g.u, N).fill(0);
+    view(g.w, N).fill(0);
+    view(g.b, N).fill(0);
+  }
+  for (let t = 0; t < 30; t += 1) {
+    wasm.stepShallowWaterInflow(edge.h, edge.u, edge.w, edge.b, W, Hh, 1 / 60, 9.80665, 0.75, 1, high.eta);
+  }
+  const top = (Hh - 1) * W + W / 2;
+  if (!(view(edge.h, N)[top] > 0.5 * high.eta)) throw new Error(`edge stage did not enter: η=${view(edge.h, N)[top]}`);
+  if (!(view(edge.w, N)[top] < 0)) throw new Error(`edge inflow not downstream: w=${view(edge.w, N)[top]}`);
+  if (!(Math.abs(view(edge.h, N)[W / 2]) < 1e-4)) throw new Error('edge stage reached the far edge too soon');
+  for (const g of [edge, trans]) for (const p of [g.h, g.u, g.w, g.b]) wasm.freeGrid(p);
+}
+
 console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)} abi=${version})`);

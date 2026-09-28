@@ -571,6 +571,16 @@ The same whole-cell move first scrolls `h`/`u`/`w`/`b` through the index frame
 (`scrollShallowWater`, `sweScroll.ts`), so the field stays fixed in world space and this
 rasterize only rewrites the bed of a window that is already in the new frame.
 
+**Upstream edge (ABI 10):** the window's +Z (last-row) edge is not transmissive when routing is
+available. `riverRouter.ts` routes the launch hour's `flowRate` (`flowForecast.computeFlowRate`,
+× 40 m³/s) from the glacial head down the campaign chain (`routingReach.ts` geometry,
+`emscripten/routing.cpp` numerics), and `WaterForceSystem` hands the routed stage at the
+player's segment (`useGameStore.currentSegmentIndex`, run-session map) to the step as
+`edgeEta`; the scroll fill and a freshly placed window take the same routed state. So the hour
+changes η — and therefore the hull through `sampleSWEFlow` — at the boundary, not only through
+authored `hydroEvents` disks. `applyForecastToSegmentParams` still reshapes the authored
+channel; the edge adds the wave. The routing never runs in TypeScript.
+
 **Datum:** `computeCanyonFloorHeight`'s `yHeight` carries a large per-biome constant (a slot
 canyon floor sits ~3.9 above its path point, a summer canyon near 0), so each segment is
 re-datumed against its own thalweg: the channel-centre floor at mid-segment maps to `b = 0`

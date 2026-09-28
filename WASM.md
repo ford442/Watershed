@@ -38,6 +38,8 @@ emscripten/
 ├── chores.cpp        # Generic grid helpers; not SWE
 ├── particles.h       # SoA waterfall / splash integrate — Embind-free
 ├── particles.cpp     # Euler + chute recycle / age
+├── routing.h         # Channel routing along the campaign chain — Embind-free
+├── routing.cpp       # Kinematic-storage routing + edge-stage rating (ABI 10)
 ├── bindings.cpp      # getVersion() + the ONLY <emscripten/bind.h> include (the ABI)
 ├── host_smoke.cpp    # Host assert runner (no Embind)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake)
@@ -156,6 +158,7 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 7 | Particle SoA (`allocateParticleSoA`, `initWaterfallParticles`, `stepWaterfallParticles`, `stepSplashParticles`). Additive; `MIN_WASM_ABI_VERSION` stays 6. |
 | 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6 at the time (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
 | 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays 8 and the export is typed optional. |
+| 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
 
 TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 8).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
@@ -335,6 +338,66 @@ window world-stable.
   on a sloped bed and a U-channel, a scrolled window tracking a fixed one), `smoke_test.mjs`
   (real binary vs a JS reference), `sweScroll.integration.test.ts` (TS against the export;
   `pnpm test:wasm`), and `pnpm test:wgsl` (WGSL vs WASM at 1e-5; the pure scroll is bit-exact).
+
+### Channel routing + the routed upstream edge  (ABI 10)
+
+`flowForecast.ts` turns hour / snowpack / dam release into a `flowRate`. Until ABI 10 that
+number only reshaped the authored segment (`applyForecastToSegmentParams`) and reached the
+solver as authored `hydroEvents` disks. Now it is a **discharge at the head of the campaign
+chain** (`glacial → lumber → meander → hydro → delta`), routed downstream with a travel time,
+and the routed discharge at the player's segment drives the SWE window's **upstream edge**.
+
+**`routing.cpp`** (Embind-free, same `-fno-rtti -fno-exceptions` as the other compute TUs) —
+one number per segment, not a second 2D grid. Each segment is `ROUTING_SUBREACHES` (4)
+reservoirs holding their real water volume `S = l·B·y`, `y` from Manning on a wide rectangle
+(`n = 0.035`, slope clamped to [0.002, 0.25]). Each step linearises `Q(S)` about the current
+state with `Kc = dS/dQ = l / c(Q)`, `c = 5/3 V` the kinematic celerity, and integrates that
+reservoir exactly — so a disturbance travels at the kinematic celerity, any `dt` is stable,
+and `outflow volume = I·dt − ΔS` conserves volume to round-off (it may diffuse a pulse; it never
+gains volume). Arrays are caller-owned `allocateGrid` floats:
+
+| Export | |
+|---|---|
+| `routeReachSteady(lengths, slopes, widths, nSeg, Q, storage, outflow)` | Steady state carrying `Q` (m³/s) everywhere. |
+| `routeReach(lengths, slopes, widths, nSeg, inflowQ, dt, storage, outflow)` | Advance `dt` s with `inflowQ` at the head; `outflow[k]` is segment k's mean outflow over the step. `storage` is `nSeg × 4`. |
+| `routeReachTravelTime(lengths, slopes, widths, nSeg, Q, lag)` | Cumulative kinematic travel time (s) from the head to each segment's outflow. |
+| `routedEdgeState(Q, Qref, H, g) → { eta, speed }` | Manning rating: `eta = H((Q/Qref)^0.6 − 1)` (clamped to [−0.9H, 2H]), `speed = 2(√(g(H+eta)) − √(gH))`. `Q == Qref` is exactly `(0, 0)`. |
+
+**`stepShallowWaterInflow(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, edgeEta)`** —
+`stepShallowWater` with the upstream edge driven by the routed stage. Downstream is −Z, so the
+upstream edge is the face above the **last row** (+Z): the side the player is leaving, the side
+`scrollShallowWater` drops cells off when the window travels downstream. Its ghost is a
+characteristic inflow: the outgoing invariant `R− = v − 2c` comes from the interior cell, the
+incoming one from still water at stage `edgeEta` entering as a simple wave, so the stage flows
+in while waves leaving the window still leave. Supercritical inflow takes both invariants from
+outside; supercritical outflow is transmissive; a dry column is transmissive. Lateral and
+downstream edges stay transmissive, so the window does not reflect. The ghost is written as
+the interior plus the jump in the incoming invariant, so `edgeEta = 0` over still water is
+**exactly** the interior state, even under the WASM build's `-ffast-math` — lake-at-rest holds at
+the reference discharge. The ghost's wave speed joins the CFL max.
+
+- **Runtime.** `riverRouter.ts` owns the heap arrays and the clock: head discharge =
+  `computeFlowRate(hour) × ROUTING_NOMINAL_DISCHARGE` (40 m³/s — also the reference `Qref`, so a
+  flowRate-1 hour is rest at the edge), spun up over `ROUTING_SPINUP_HOURS` (2 h) before launch,
+  then advanced in real seconds with each SWE step. `routingReach.ts` builds the chain's
+  `(length, slope, width)` from the treadmill's own generator. `WaterForceSystem` passes
+  `edgeEta` into the step and uses the same routed state `(eta, 0, −speed)` as the scroll fill
+  and to seed a freshly placed window. A binary without the exports (ABI < 10) steps
+  transmissive, as before.
+- **Additive.** `stepShallowWater` / `applySWEEvent` / `scrollShallowWater` keep their
+  signatures, so `MIN_WASM_ABI_VERSION` stays **8** and the new exports are typed optional.
+- **FP contract (#404).** The routing goldens hold across the host (`-ffp-contract=off`) and the
+  `-ffast-math` WASM build at 1e-4 relative, so `routing.cpp` needs no pinned FP flags. If they
+  ever diverge, pin `-ffp-contract=off` on `routing.cpp` only.
+- **WGSL.** `swe.wgsl` carries the same ghost (`upstreamGhost`), switched by the `edgeActive` /
+  `edgeEta` params; the routing itself stays in C++ (the WGSL session still loads the WASM module
+  for forces and routing).
+- **Pinned by:** `host_smoke.cpp` §8 (steady state, a step release reaching the far segment only
+  after the lag, volume balance, rating, lake-at-rest at `Qref`, a raised stage entering, the
+  routed edge lagging), `smoke_test.mjs` (same goldens against the WASM build),
+  `hydroContrast.test.ts` (`pnpm test:wasm`: hydro 06:00 vs 14:00 through the edge alone, every
+  chain map, the release lag to the hydro basin, spin-up covering the chain), and
+  `pnpm test:wgsl` (edge scenarios + the hydro edge contrast, WGSL vs WASM at 1e-5).
 
 ### `allocateGrid(count): number` / `freeGrid(ptr): void`
 

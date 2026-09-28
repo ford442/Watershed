@@ -42,6 +42,13 @@ export interface SweStepInput {
   originZ: number;
   /** Authored hydro events applied after the step, in this order. */
   events: readonly SweEventCall[];
+  /**
+   * Routed stage at the upstream (+Z, high-row) edge, as a free-surface
+   * perturbation (m) — `routedEdgeState(Q, Qref).eta`. Undefined keeps every
+   * edge transmissive (the pre-routing step); 0 is the reference discharge and
+   * leaves still water still. See swe.h `stepShallowWaterInflow`.
+   */
+  edgeEta?: number;
 }
 
 export interface SweSim {
@@ -124,8 +131,13 @@ export function createWasmSweSim(
       }
       fieldVersion += 1;
     },
-    step({ dt, g, H, originX, originZ, events }) {
-      wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);
+    step({ dt, g, H, originX, originZ, events, edgeEta }) {
+      if (edgeEta !== undefined && typeof wasm.stepShallowWaterInflow === 'function') {
+        wasm.stepShallowWaterInflow(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H, edgeEta);
+      } else {
+        // Pre-ABI-10 binaries have no routed edge; they step transmissive.
+        wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);
+      }
       for (const e of events) {
         wasm.applySWEEvent(
           grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,

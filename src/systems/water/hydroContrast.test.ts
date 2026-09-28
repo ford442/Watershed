@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
 import glacial from '../../maps/glacial_source.json';
 import hydro from '../../maps/hydro_dam.json';
 import delta from '../../maps/delta_rapids.json';
@@ -12,9 +15,23 @@ import {
   hydroSegmentIndices,
   measureHydroHourContrast,
   measureHydroHourContrastWith,
+  makeContrastGrid,
+  measureEdgeStageContrastWith,
+  routedEdgeEtaAt,
   simulateHourGrid,
+  type HydroEdgeStepper,
   type HydroEventApplier,
 } from './hydroContrast';
+import { createWasmSweSim } from './sweSim';
+import type { WatershedNativeModule } from './WatershedWasm';
+import { SWE_MEAN_DEPTH } from './SWEHeightField';
+import {
+  ROUTING_NOMINAL_DISCHARGE,
+  ROUTING_SPINUP_HOURS,
+  createRiverRouter,
+  headDischargeAtHour,
+} from './riverRouter';
+import { getRoutingReach, routingChainIndex } from '../map/routingReach';
 import { sampleSWEFlow } from './sampleSWEFlow';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
 import { buildForecastSamples, FLOW_FORECAST_STATES } from '../map/flowForecast';
@@ -191,6 +208,129 @@ describe('hydroContrast event appliers (#435)', () => {
       const direct = measureHydroHourContrast(events, segment, SCOUT_HOUR, DAM_HOUR);
       const injected = await measureHydroHourContrastWith(tsApply, events, segment, SCOUT_HOUR, DAM_HOUR);
       expect(injected).toEqual(direct);
+    }
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Routed upstream edge (ABI 10). The hour reaches the solver through the
+// window's boundary, not only through an authored disk. Needs the compiled
+// binary, so it runs under `pnpm test:wasm` (WATERSHED_WASM_INTEGRATION=1).
+// -----------------------------------------------------------------------------
+const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
+const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const jsPath = resolve(publicDir, 'watershed_native.js');
+const describeNative =
+  process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath) ? describe : describe.skip;
+
+/** The hydro segment the #397 dam pulse is authored on — the stilling basin reach. */
+const HYDRO_BASIN_SEGMENT = 4;
+
+describeNative('hydroContrast — the routed upstream edge (ABI 10)', () => {
+  let wasm: WatershedNativeModule;
+
+  beforeAll(async () => {
+    const wasmBinary = readFileSync(wasmPath);
+    const { default: create } = await import(/* @vite-ignore */ pathToFileURL(jsPath).href);
+    wasm = await create({
+      instantiateWasm: (imports: WebAssembly.Imports, receive: (i: WebAssembly.Instance) => void) => {
+        WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => receive(instance));
+        return {};
+      },
+    });
+  });
+
+  /** stepShallowWaterInflow on a contrast grid — no hydroEvents, only the edge. */
+  const wasmEdgeStep: HydroEdgeStepper = (grid, edgeEta, steps, dt) => {
+    const sim = createWasmSweSim(wasm, grid.width, grid.height, grid.cellSize);
+    sim.h.set(grid.h);
+    sim.u.set(grid.u);
+    sim.w.set(grid.w);
+    sim.b.set(grid.b);
+    for (let s = 0; s < steps; s += 1) {
+      sim.step({ dt, g: 9.80665, H: grid.stillDepth, originX: grid.originX, originZ: grid.originZ, events: [], edgeEta });
+    }
+    grid.h.set(sim.h);
+    grid.u.set(sim.u);
+    grid.w.set(sim.w);
+    grid.b.set(sim.b);
+    sim.dispose();
+  };
+
+  it('hydro 06:00 vs 14:00 moves the edge stage, the mesh and the hull through the boundary', async () => {
+    const scout = routedEdgeEtaAt(wasm, 'hydro', HYDRO_BASIN_SEGMENT, SCOUT_HOUR);
+    const dam = routedEdgeEtaAt(wasm, 'hydro', HYDRO_BASIN_SEGMENT, DAM_HOUR);
+    expect(dam).toBeGreaterThan(scout);
+
+    const contrast = await measureEdgeStageContrastWith(wasmEdgeStep, scout, dam);
+    // Same margins as the authored-disk gate: the routed wave has to clear
+    // them on its own. If it ever doesn't, raise the dam release in
+    // DAM_RELEASE_SCHEDULE — do not loosen these.
+    expect(contrast.edgeStageDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(contrast.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(contrast.hullStageDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(contrast.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
+  });
+
+  it('the dam hour is higher at the edge on every map of the chain, not only where a disk is authored', () => {
+    for (const mapId of ['glacial', 'lumber', 'meander', 'hydro', 'delta'] as const) {
+      const scout = routedEdgeEtaAt(wasm, mapId, 2, SCOUT_HOUR);
+      const dam = routedEdgeEtaAt(wasm, mapId, 2, DAM_HOUR);
+      expect(dam - scout, mapId).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    }
+  });
+
+  it('a release reaches the hydro basin only after the routed lag', () => {
+    const reach = getRoutingReach();
+    // Launch at 12:30: the 14:00 release window opens at 13:00, 1800 s in.
+    const launch = 12.5;
+    const opens = 1800;
+    const router = createRiverRouter(wasm, reach, launch)!;
+    const k = routingChainIndex(reach, 'hydro', HYDRO_BASIN_SEGMENT)!;
+    const lag = router.lag(k - 1); // dischargeInto(k) is segment k−1's outflow
+    const base = headDischargeAtHour(launch);
+    const release = headDischargeAtHour(14) - headDischargeAtHour(12);
+    expect(release).toBeGreaterThan(0);
+
+    const dt = 5;
+    let headHalf = Number.NaN;
+    let basinHalf = Number.NaN;
+    let basinEarly = 0;
+    for (let t = dt; t <= opens + 2 * lag; t += dt) {
+      router.advance(dt);
+      const head = (router.dischargeInto(0) - base) / release;
+      const basin = (router.dischargeInto(k) - base) / release;
+      if (Number.isNaN(headHalf) && head >= 0.5) headHalf = t;
+      if (Number.isNaN(basinHalf) && basin >= 0.5) basinHalf = t;
+      if (t < opens + 0.5 * lag) basinEarly = Math.max(basinEarly, Math.abs(basin));
+    }
+    router.dispose();
+
+    expect(Math.abs(headHalf - opens)).toBeLessThanOrEqual(dt);
+    expect(basinEarly).toBeLessThan(0.02);
+    const delay = basinHalf - headHalf;
+    expect(delay).toBeGreaterThan(0.75 * lag);
+    expect(delay).toBeLessThan(1.25 * lag);
+  });
+
+  it('spin-up flushes the whole chain before launch', () => {
+    const reach = getRoutingReach();
+    const router = createRiverRouter(wasm, reach, DAM_HOUR)!;
+    const chainLag = router.lag(reach.segments.length - 1);
+    router.dispose();
+    expect(chainLag).toBeGreaterThan(60);
+    expect(chainLag).toBeLessThan((ROUTING_SPINUP_HOURS * 3600) / 3);
+  });
+
+  it('at the reference discharge the edge leaves still water still', async () => {
+    // A flowRate-1 hour routes to exactly the reference discharge: edge η = 0.
+    const q = ROUTING_NOMINAL_DISCHARGE;
+    expect(wasm.routedEdgeState!(q, q, SWE_MEAN_DEPTH, 9.80665)).toEqual({ eta: 0, speed: 0 });
+    const grid = makeContrastGrid();
+    grid.w.fill(0); // still water, no seeded current
+    await wasmEdgeStep(grid, 0, 240, 1 / 60);
+    for (const plane of [grid.h, grid.u, grid.w]) {
+      expect(Math.max(...Array.from(plane, Math.abs))).toBe(0);
     }
   });
 });
