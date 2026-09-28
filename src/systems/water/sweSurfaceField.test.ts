@@ -11,7 +11,10 @@ import {
 
 const MEAN = 1;
 
-function makeGrid(width = 8, height = 6, dx = 0.5, b = 0): SweSurfaceGrid {
+/** SweSurfaceGrid with writable planes, so tests can author the field in place. */
+type TestGrid = SweSurfaceGrid & { h: Float32Array; u: Float32Array; w: Float32Array; b: Float32Array };
+
+function makeGrid(width = 8, height = 6, dx = 0.5, b = 0): TestGrid {
   const n = width * height;
   return {
     width,
