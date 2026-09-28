@@ -2,6 +2,9 @@
  * WaterForceSystem — production WASM water coupling.
  *
  * - Steps a player-centered SWE grid and uploads height data for FlowingWater.
+ *   The solver runs in the sim worker by default (src/sim/, #455); this file
+ *   still clocks it — same dt, events and routed edge on every backend — and
+ *   reads the field back through the SweSim mirror.
  *   The grid is a window that follows the vehicle; every whole-cell move of its
  *   origin scrolls h/u/w/b with the world first (sweScroll.ts / swe.h), so a
  *   splash stays where it landed instead of riding the camera.
@@ -29,7 +32,13 @@ import {
 } from './WatershedWasm';
 import { createWasmSweSim, type SweEventCall, type SweSim } from './sweSim';
 import { createWgslSweSim } from './WgslSweSim';
-import { demoteSweSimBackendToWasm, resolveSweSimBackendDecision } from './sweBackend';
+import {
+  demoteSweSimBackendToWasm,
+  demoteSweSimBackendToWasmMain,
+  resolveSweSimBackendDecision,
+} from './sweBackend';
+import { getSimWorkerProxy } from '../../sim/createSimWorkerProxy';
+import { createWorkerSweSim } from '../../sim/workerSweSim';
 import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import {
   SWE_MEAN_DEPTH,
@@ -368,6 +377,14 @@ export function WaterForceSystem({
   useEffect(() => {
     setWaterForceSystemActive(true);
 
+    // Start the sim worker's module load alongside the main one, so the grid
+    // effect below finds it READY instead of starting the handshake late.
+    if (resolveSweSimBackendDecision().backend === 'wasm-worker') {
+      getSimWorkerProxy().catch(() => {
+        /* the grid effect reports it and falls back */
+      });
+    }
+
     let cancelled = false;
     getWasm()
       .then((wasm) => {
@@ -400,8 +417,9 @@ export function WaterForceSystem({
 
   // Grid + upload texture are sized by the budget, so a quality change
   // reallocates both. `low` allocates nothing at all. The solver backend was
-  // fixed for the session at first use (sweBackend.ts): C++ WASM, or its WGSL
-  // twin on a native-WebGPU boot — never both.
+  // fixed for the session at first use (sweBackend.ts): C++ WASM in the sim
+  // worker (or on the main thread), or its WGSL twin on a native-WebGPU boot —
+  // never two in one session.
   useEffect(() => {
     setSWEActiveBudget(budget);
 
@@ -416,6 +434,7 @@ export function WaterForceSystem({
 
     let cancelled = false;
     let sim: SweSim | null = null;
+    let unsubscribeFatal: (() => void) | null = null;
     const texture = new THREE.DataTexture(
       new Float32Array(budget.width * budget.height),
       budget.width,
@@ -438,6 +457,13 @@ export function WaterForceSystem({
     flowTexture.magFilter = THREE.LinearFilter;
     flowTexture.wrapS = THREE.ClampToEdgeWrapping;
     flowTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+    // SWE off, as when native init fails: the analytic surface and fallback flow.
+    const disableSwe = () => {
+      gridRef.current = null;
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
+      setSWEStatus(false, null);
+    };
 
     const install = (next: SweSim) => {
       sim = next;
@@ -472,12 +498,38 @@ export function WaterForceSystem({
           const fallbackWasm = wasmRef.current;
           if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
         });
+    } else if (decision.backend === 'wasm-worker') {
+      getSimWorkerProxy()
+        .then((proxy) => {
+          if (cancelled) return;
+          if (proxy.failed) {
+            // The worker died after an earlier grid had stepped in it; a fresh
+            // main-thread field would be a second backend this session.
+            disableSwe();
+            return;
+          }
+          const next = createWorkerSweSim(proxy, budget.width, budget.height, budget.cellSize);
+          unsubscribeFatal = proxy.onFatal(() => {
+            if (gridRef.current === next) disableSwe();
+          });
+          install(next);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          // Nothing has stepped in the worker, so the main-thread stepper is
+          // still this session's only backend.
+          console.warn('[WaterForceSystem] sim worker unavailable; stepping SWE on the main thread', error);
+          demoteSweSimBackendToWasmMain();
+          const fallbackWasm = wasmRef.current;
+          if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
+        });
     } else if (wasm) {
       install(createWasmSweSim(wasm, budget.width, budget.height, budget.cellSize));
     }
 
     return () => {
       cancelled = true;
+      unsubscribeFatal?.();
       sim?.dispose();
       gridRef.current = null;
       texture.dispose();

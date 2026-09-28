@@ -2,7 +2,8 @@
  * sweSim — one live shallow-water field per session, on one backend (#435).
  *
  * `WaterForceSystem` drives the field through this interface so the frame
- * loop is the same whether the solver is the C++ WASM stepper or its WGSL twin
+ * loop is the same whether the solver is the C++ WASM stepper (on the main
+ * thread, or in the sim worker — `src/sim/workerSweSim.ts`) or its WGSL twin
  * (`WgslSweSim.ts`). Which one runs is decided once, at boot, by
  * `resolveSweSimBackend()` — never both in one session.
  *
@@ -85,7 +86,11 @@ export interface SweSim {
   dispose(): void;
 }
 
-/** The C++ stepper on the WASM heap — the WebGL2 (and default) path. */
+/**
+ * The C++ stepper on the WASM heap. Runs on the main thread as the `wasm-main`
+ * backend, and inside the sim worker (src/sim/simWorkerCore.ts) behind the
+ * `wasm-worker` backend — same code, same field.
+ */
 export function createWasmSweSim(
   wasm: WatershedNativeModule,
   width: number,
@@ -98,7 +103,7 @@ export function createWasmSweSim(
   let fieldVersion = 0;
 
   return {
-    backend: 'wasm',
+    backend: 'wasm-main',
     width,
     height,
     dx,

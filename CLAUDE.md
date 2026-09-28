@@ -99,6 +99,7 @@ src/
 │   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, WaterForces
+├── sim/                         # Sim worker: SWE off the main thread (#455) — proxy, protocol, SimFrame
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
@@ -322,7 +323,7 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
 | `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
-| `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM, or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
+| `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

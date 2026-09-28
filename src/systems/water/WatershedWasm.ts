@@ -503,7 +503,12 @@ function logWasmTerminal(
   }
 }
 
-function raceWithDeadline<T>(
+/**
+ * `promise`, or a rejection with `onTimeout()` after `timeoutMs` — whichever
+ * settles first. Shared by the main-thread loader and the sim worker handshake
+ * (#455) so neither can hang the boot.
+ */
+export function raceWithDeadline<T>(
   promise: Promise<T>,
   timeoutMs: number,
   onTimeout: () => Error,
@@ -580,7 +585,13 @@ export async function assertLoadedArtifactStamp(glueUrl: string, wasmUrl: string
   return loadedStamp;
 }
 
-function resolvePublicAsset(path: string): string {
+/**
+ * Absolute, stamped URL of a `public/` asset, resolved against the page and the
+ * Vite base. Workers cannot do this themselves — their `self.location` is the
+ * worker script (under `src/…` in dev, `assets/` in a build), not the page — so
+ * the sim worker is handed these URLs in its INIT message (#455).
+ */
+export function resolvePublicAsset(path: string): string {
   const rawBase = getAssetBaseUrl();
   const baseWithSlash = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
   const envBase =
