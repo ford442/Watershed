@@ -1,7 +1,9 @@
-// swe.wgsl — WGSL twin of emscripten/swe.cpp (stepShallowWater + applySWEEvent, ABI 8).
+// swe.wgsl — WGSL twin of emscripten/swe.cpp (stepShallowWater[Inflow] + applySWEEvent + scrollShallowWater, ABI 10).
 //
 // Same numerics, not a new water sim: Audusse hydrostatic reconstruction + HLL
 // flux, transmissive boundaries, wetting/drying, CFL clamp, velocity damping.
+// With `edgeActive` set the upstream (high-row) edge takes the routed stage
+// `edgeEta` through the same characteristic ghost as stepShallowWaterInflow.
 // Field conventions are the ABI in swe.h — `h` is the free-surface perturbation
 // η (0 at rest), `b` the bed above the channel-floor datum, depth = H + η − b.
 // All fields are f32 SoA, row-major, index = z * width + x.
@@ -15,15 +17,19 @@
 // Buffers are packed so the kernels need three storage bindings — well inside
 // even compatibility-mode limits:
 //   field    [h | u | w | b]           4N f32, the simulation state (read back)
-//   scratch  [d | d·u | d·w]           3N f32; before `add_surface` its first N
-//                                       floats carry the splash delta
+//   scratch  [d | d·u | d·w | —]       4N f32; before `add_surface` its first N
+//                                       floats carry the splash delta; `scroll`
+//                                       gathers all four field planes into it
 //   maxBits  CFL max wave speed as u32 bits
 //
 // Entry points, one dispatch each, in step order:
 //   add_surface  h += scratch[0..N)      (queued splash disturbances)
 //   lift         (η,u,w) → (d, d·u, d·w) scratch + global max wave speed
+//                (plus the inflow ghost's speed on the upstream row when edgeActive)
 //   update       gather fluxes, apply, lower back to (η,u,w), damp
 //   events       authored hydro source terms (applySWEEvent), in authored order
+//   scroll       whole-cell shift of h/u/w/b (scrollShallowWater) — runs between
+//                steps, before the bed refresh; the host copies scratch → field
 
 const DRY_DEPTH: f32 = 1e-4;       // SWE_DRY_DEPTH (swe.cpp)
 const CFL_NUMBER: f32 = 0.4;       // kCflNumber
@@ -43,8 +49,20 @@ struct Params {
   H: f32,
   originX: f32,
   originZ: f32,
+  // `scroll` only (zero for every other entry point): how far the content moves
+  // through the index frame, and the (η, u, w) an entering cell takes.
+  shiftX: i32,
+  shiftZ: i32,
+  inflowEta: f32,
+  inflowU: f32,
+  inflowW: f32,
   _pad0: f32,
+  // lift / update only: 1 = upstream edge driven by `edgeEta` (stepShallowWaterInflow),
+  // 0 = every edge transmissive (stepShallowWater).
+  edgeActive: u32,
+  edgeEta: f32,
   _pad1: f32,
+  _pad2: f32,
 };
 
 // kind: 0 inflow, 1 vortex, 2 braid, 3 roughness (hydroEvents.ts HYDRO_KIND_*).
@@ -95,6 +113,55 @@ fn add_surface(@builtin(global_invocation_id) gid: vec3u) {
   setH(i, hAt(i) + scratch[i]);
 }
 
+// ── upstream-edge ghost (upstreamGhost in swe.cpp) ──────────────────────────
+// Characteristic inflow for the face above the last row. Inflow speed is
+// measured INTO the window (−Z). Built from the interior cell's own depth and
+// η, so edgeEta == 0 over a still interior returns that interior exactly.
+struct GhostCell { d: f32, qz: f32, qx: f32, };
+
+fn upstreamGhost(dI: f32, hI: f32, qzI: f32, qxI: f32, edgeEta: f32, g: f32) -> GhostCell {
+  let wetI = dI > DRY_DEPTH;
+  let dStill = max(0.0, dI - hI);
+  let dExt = max(0.0, dStill + edgeEta);
+  if (!wetI && dExt <= DRY_DEPTH) { return GhostCell(dI, qzI, qxI); }
+
+  let cExt = sqrt(g * dExt);
+  let vExt = 2.0 * (cExt - sqrt(g * dStill));
+  let cI = sqrt(g * max(dI, 0.0));
+  var vI = 0.0;
+  var utI = 0.0;
+  if (wetI) { vI = -qzI / dI; utI = qxI / dI; }
+
+  if (vI + cI < 0.0) { return GhostCell(dI, qzI, qxI); }
+
+  var dG: f32;
+  var vG: f32;
+  if (vExt >= cExt) {
+    dG = dExt;
+    vG = vExt;
+  } else {
+    // Interior plus the jump in the incoming invariant (see swe.cpp).
+    let dR4 = 0.25 * ((vExt + 2.0 * cExt) - (vI + 2.0 * cI));
+    let cG = cI + dR4;
+    if (cG <= 0.0) { return GhostCell(0.0, 0.0, 0.0); }
+    vG = vI + 2.0 * dR4;
+    dG = dI + dR4 * (2.0 * cI + dR4) / g;
+  }
+  if (dG <= DRY_DEPTH) { return GhostCell(0.0, 0.0, 0.0); }
+  return GhostCell(dG, -dG * vG, dG * utI);
+}
+
+fn ghostWaveSpeed(c: GhostCell, g: f32) -> f32 {
+  if (c.d <= DRY_DEPTH) { return 0.0; }
+  let v = c.qz / c.d;
+  let t = c.qx / c.d;
+  return sqrt(v * v + t * t) + sqrt(g * c.d);
+}
+
+fn isEdgeRow(i: u32) -> bool {
+  return params.edgeActive != 0u && i / params.width == params.height - 1u;
+}
+
 // ── lift + CFL max ───────────────────────────────────────────────────────────
 var<workgroup> wgMax: array<f32, 64>;
 
@@ -115,6 +182,12 @@ fn lift(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     } else {
       scratch[n + i] = 0.0;
       scratch[2u * n + i] = 0.0;
+    }
+    // The inflow ghost enters the CFL max too, so an incoming stage never
+    // outruns the step (swe.cpp computes it from the same lifted top row).
+    if (isEdgeRow(i)) {
+      let ghost = upstreamGhost(depth, hAt(i), scratch[2u * n + i], scratch[n + i], params.edgeEta, params.g);
+      speed = max(speed, ghostWaveSpeed(ghost, params.g));
     }
   }
   wgMax[lid] = speed;
@@ -254,7 +327,14 @@ fn update(@builtin(global_invocation_id) gid: vec3u) {
   let fxL = xFace(row + xLeft, i);        // this cell is the right side
   let fxR = xFace(i, row + xRight);       // this cell is the left side
   let fzL = zFace(zDown * width + x, i);
-  let fzR = zFace(i, zUp * width + x);
+  var fzR: InterfaceFlux;
+  if (isEdgeRow(i)) {
+    // Upstream face: the routed inflow ghost, over this cell's own bed.
+    let ghost = upstreamGhost(dAt(i), hAt(i), qzAt(i), qxAt(i), params.edgeEta, params.g);
+    fzR = reconstructedFlux(dAt(i), qzAt(i), qxAt(i), bAt(i), ghost.d, ghost.qz, ghost.qx, bAt(i), params.g);
+  } else {
+    fzR = zFace(i, zUp * width + x);
+  }
 
   var accD = 0.0;
   var accQx = 0.0;
@@ -336,4 +416,41 @@ fn apply_events(@builtin(global_invocation_id) gid: vec3u) {
       setW(idx, wAt(idx) * damp);
     }
   }
+}
+
+// ── scroll (scrollShallowWater) ──────────────────────────────────────────────
+// dst[x, z] = src[x - shiftX, z - shiftZ]: how far the content moves through the
+// index frame, (oldOrigin - newOrigin) / dx, so a window travelling downstream
+// (-Z) has a positive shiftZ. Cells that leave are dropped, cells that enter take
+// the inflow state, and the bed plane extends its nearest edge (a placeholder
+// until the rasterizer rewrites it). Pure data movement, so it is bit-exact
+// against swe.cpp. Every cell gathers its source into `scratch` — an in-place
+// shift would race — and the host copies scratch back over `field`.
+@compute @workgroup_size(64)
+fn scroll(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= params.count) { return; }
+  let n = params.count;
+  let width = i32(params.width);
+  let height = i32(params.height);
+  // Saturate as the C++ does: past one extent every source is out of range.
+  let shiftX = clamp(params.shiftX, -width, width);
+  let shiftZ = clamp(params.shiftZ, -height, height);
+  let sx = i32(i) % width - shiftX;
+  let sz = i32(i) / width - shiftZ;
+
+  var eta = params.inflowEta;
+  var uu = params.inflowU;
+  var ww = params.inflowW;
+  if (sx >= 0 && sx < width && sz >= 0 && sz < height) {
+    let s = u32(sz * width + sx);
+    eta = hAt(s);
+    uu = uAt(s);
+    ww = wAt(s);
+  }
+  let bs = u32(clamp(sz, 0, height - 1) * width + clamp(sx, 0, width - 1));
+  scratch[i] = eta;
+  scratch[n + i] = uu;
+  scratch[2u * n + i] = ww;
+  scratch[3u * n + i] = bAt(bs);
 }

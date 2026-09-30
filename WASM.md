@@ -38,6 +38,8 @@ emscripten/
 ├── chores.cpp        # Generic grid helpers; not SWE
 ├── particles.h       # SoA waterfall / splash integrate — Embind-free
 ├── particles.cpp     # Euler + chute recycle / age
+├── routing.h         # Channel routing along the campaign chain — Embind-free
+├── routing.cpp       # Kinematic-storage routing + edge-stage rating (ABI 10)
 ├── bindings.cpp      # getVersion() + the ONLY <emscripten/bind.h> include (the ABI)
 ├── host_smoke.cpp    # Host assert runner (no Embind)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake)
@@ -90,7 +92,7 @@ cd emscripten
 # single-threaded (recommended for first-time setup)
 ./build.sh
 
-# multi-threaded
+# multi-threaded — output goes to emscripten/build-threads/out/, never public/
 ./build.sh --threads
 
 # debug
@@ -98,6 +100,19 @@ cd emscripten
 ```
 
 CI sets `WATERSHED_REQUIRE_WASM=1` so missing Emscripten fails the WASM job instead of silently skipping.
+
+### Compile contract (#454)
+
+| Flag | Why |
+|------|-----|
+| `ENVIRONMENT='web,worker'` (both variants) | The Rapier worker loads the same glue (`src/physics/workerWasm.ts`), and so will the sim worker (#455). `smoke_test.mjs` fails if the glue hard-codes the worker flag. |
+| `-ffast-math -fno-finite-math-only` | Keep reassociation for the vectoriser, but stop clang folding `std::isfinite` to `true` — the `chores.cpp` NaN guards depend on it (`gpuChores/watershedHost.integration.test.ts`). |
+| `-flto` (compile + link) | Cross-TU inlining across the five compute TUs and `bindings.cpp`. |
+| `--closure 1` | Minifies the glue (~33 KB → ~15 KB). Embind names, `HEAP*`, `createWatershedNative` are exports and survive. |
+| `-s FILESYSTEM=0`, `-s MALLOC=emmalloc` | No file I/O; a handful of long-lived blocks, so the small allocator wins on size. |
+
+`--threads` builds into `emscripten/build-threads/out/` and never writes `public/` or the
+artifact stamp: the single-thread pair is the only thing that ships.
 
 ### Host (clangd / smoke, no Emscripten)
 
@@ -123,7 +138,7 @@ After clone, `pnpm test:native` configures + builds the host tree (`emscripten/b
 
 | Flag | Value | Rationale |
 |------|-------|-----------|
-| `INITIAL_MEMORY` | 64 MiB | Fast startup; most sessions never need more |
+| `INITIAL_MEMORY` | 16 MiB | The module allocates a few hundred KB at most (largest SWE budget 64×40 × 4 planes, particle SoA, chore scratch). `reserveShallowWaterScratch` (ABI 11, called by `createSWEGrid`) sizes the solver scratch up front, so no step allocates mid-call and the heap does not grow in steady state — `smoke_test.mjs` asserts the heap byte length is unchanged across step / inflow step / scroll at 64×40. |
 | `MAXIMUM_MEMORY` | 256 MiB | Hard ceiling so a runaway init or growth loop cannot consume unbounded tab RAM |
 | `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate. Growth **replaces** the `ArrayBuffer`; prior `Float32Array` views detach (`byteLength === 0`). `heapF32()` rebinds the worker water-force batch, SWE grid, and `createWaterForceBatch`. |
 
@@ -139,8 +154,8 @@ and callable after `await getWasm()`.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **8**;
-`MIN_WASM_ABI_VERSION` is **6**). Bump in `bindings.cpp` whenever the
+Returns the module ABI version integer (currently **11**;
+`MIN_WASM_ABI_VERSION` is **8**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 `>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
 `stepShallowWater`'s arity, which is why the floor moved with it.
@@ -154,9 +169,12 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 5 | Optional gpu-chores (`reduceF32Grid`, `histogramF32`, `lumaHistogramU8`, `downsampleF32`, `blurSeparableF32`). Additive. TS did not require 5; the wasm chore lane declined when exports were missing. |
 | 6 | **Breaking.** Nonlinear well-balanced SWE with wetting/drying; `stepShallowWater` gained a bed pointer as its 4th argument. |
 | 7 | Particle SoA (`allocateParticleSoA`, `initWaterfallParticles`, `stepWaterfallParticles`, `stepSplashParticles`). Additive; `MIN_WASM_ABI_VERSION` stays 6. |
-| 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6. |
+| 8 | `applySWEEvent` hydro source terms. Additive; `MIN_WASM_ABI_VERSION` stays 6 at the time (raised to 8 later, once particle SoA + `applySWEEvent` became guaranteed exports). |
+| 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays 8 and the export is typed optional. |
+| 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
+| 11 | `reserveShallowWaterScratch(width, height)` — pre-size the solver scratch (step, upstream-edge ghosts, scroll temp) so a step never allocates mid-call. Additive; `MIN_WASM_ABI_VERSION` stays 8. Same release: glue built for `web,worker`, emmalloc, `FILESYSTEM=0`, 16 MiB heap (#454). |
 
-TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 6).
+TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 8).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
 binary cannot be called with the new argument list at all, so the floor moves with
 it and a stale binary is rejected at load. Chore kernels live in
@@ -256,8 +274,10 @@ narrow wet thalweg between dry banks while a delta stays wet across the same gri
 U-channel shape. Writing `grid.b` uses the existing heap view — it is **not** an ABI change.
 
 `h` stays a perturbation because `FlowingWater` displaces vertices by it
-directly. Boundaries are transmissive, so waves leave the moving player-centred
-window rather than reflecting.
+directly. Boundaries are transmissive, so a wave reaching the edge leaves rather than
+reflecting — but that only sheds waves from a *fixed* grid. The grid is a player-centred
+window that moves, and `stepShallowWater` does not shift `h` / `u` / `w`; keeping the field
+world-stable is `scrollShallowWater` (ABI 9, below).
 
 The solver internally clamps `dt` to the CFL stability limit
 (`dt ≤ 0.4 · dx / max(|v| + √(g d))`), so it is safe to pass `delta` from
@@ -291,6 +311,107 @@ useFrame((_, delta) => {
 // On unmount:
 grid.dispose();
 ```
+
+### `scrollShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, shiftX, shiftZ, inflowEta, inflowU, inflowW): void`  (ABI 9)
+
+The live grid is a player-centred **window over the world** (`sweQuality.ts`: 48×32 cells at
+0.5 m on High), and its origin follows the vehicle every frame. `stepShallowWater` is
+origin-blind and does not move `h` / `u` / `w`, and the bed rasterizer only rewrites `b` — so
+without a scroll, η and velocity stay in their old index slots while the canyon moves
+underneath them and a splash rides the camera. Transmissive boundaries do **not** fix this:
+they let waves leave a *fixed* grid, not a moving one. `scrollShallowWater` is what makes the
+window world-stable.
+
+- **Sign.** `shift` is how far the *content* moves through the index frame:
+  `dst[x, z] = src[x − shiftX, z − shiftZ]`, i.e. `(oldOrigin − newOrigin) / dx`. A window
+  travelling downstream (−Z, gameplay-forward) has a **positive** `shiftZ`: the field slides
+  toward higher rows, water leaves off the high-row (upstream) edge, and the low-row
+  (downstream) edge is filled. A surviving cell keeps its world position,
+  `originZ + row · dx`.
+- **Leaving / entering.** Cells that leave are dropped — nothing wraps. Cells that enter take
+  the inflow state `(h, u, w) = (inflowEta, inflowU, inflowW)`; pass zeros for rest. Those are
+  the ABI's own fields (a perturbation and velocities), not a depth and a flux: total depth needs
+  the bed, and an entering cell's bed is only known once the rasterizer has run. The bed plane
+  extends its nearest surviving edge, a placeholder for the one frame before the rasterizer
+  overwrites it. `bPtr == 0` leaves the bed alone.
+- **Whole cells only.** `WaterForceSystem` keeps the window origin on the world's cell lattice
+  (`advanceSweWindow`, `sweScroll.ts`) and moves it only once it has drifted a full cell —
+  the same gate the bed refresh always used — so sub-cell motion neither scrolls nor
+  re-rasterizes. |shift| ≥ the grid extent saturates: a respawn restarts the field at rest.
+- **Order, every frame:** `scroll` (previous step's `h/u/w/b` into the new index frame) →
+  `refreshBed()` (rewrites `b` with the world-correct floor) → disturbances → `step`.
+- **Additive.** Pure data movement — bit-exact, no arithmetic. `getVersion()` is 9, but
+  `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays **8**; the export is typed
+  optional in `WatershedWasm.ts`, and `createWasmSweSim` falls back to the TypeScript twin
+  (`scrollField`) on an ABI-8 binary.
+- **Backends.** The WGSL twin is the `scroll` entry point of `swe.wgsl` (gather into scratch,
+  copy back over the field). `WgslSweSim.scroll` shifts its CPU mirror in the same call and drops
+  a readback that was taken before the scroll, so readers never pair a stale-frame field with the
+  new window origin. One backend per session is unchanged.
+- **Pinned by:** `host_smoke.cpp` §7 (kernel semantics, lake-at-rest across scroll + bed rewrite
+  on a sloped bed and a U-channel, a scrolled window tracking a fixed one), `smoke_test.mjs`
+  (real binary vs a JS reference), `sweScroll.integration.test.ts` (TS against the export;
+  `pnpm test:wasm`), and `pnpm test:wgsl` (WGSL vs WASM at 1e-5; the pure scroll is bit-exact).
+
+### Channel routing + the routed upstream edge  (ABI 10)
+
+`flowForecast.ts` turns hour / snowpack / dam release into a `flowRate`. Until ABI 10 that
+number only reshaped the authored segment (`applyForecastToSegmentParams`) and reached the
+solver as authored `hydroEvents` disks. Now it is a **discharge at the head of the campaign
+chain** (`glacial → lumber → meander → hydro → delta`), routed downstream with a travel time,
+and the routed discharge at the player's segment drives the SWE window's **upstream edge**.
+
+**`routing.cpp`** (Embind-free, same `-fno-rtti -fno-exceptions` as the other compute TUs) —
+one number per segment, not a second 2D grid. Each segment is `ROUTING_SUBREACHES` (4)
+reservoirs holding their real water volume `S = l·B·y`, `y` from Manning on a wide rectangle
+(`n = 0.035`, slope clamped to [0.002, 0.25]). Each step linearises `Q(S)` about the current
+state with `Kc = dS/dQ = l / c(Q)`, `c = 5/3 V` the kinematic celerity, and integrates that
+reservoir exactly — so a disturbance travels at the kinematic celerity, any `dt` is stable,
+and `outflow volume = I·dt − ΔS` conserves volume to round-off (it may diffuse a pulse; it never
+gains volume). Arrays are caller-owned `allocateGrid` floats:
+
+| Export | |
+|---|---|
+| `routeReachSteady(lengths, slopes, widths, nSeg, Q, storage, outflow)` | Steady state carrying `Q` (m³/s) everywhere. |
+| `routeReach(lengths, slopes, widths, nSeg, inflowQ, dt, storage, outflow)` | Advance `dt` s with `inflowQ` at the head; `outflow[k]` is segment k's mean outflow over the step. `storage` is `nSeg × 4`. |
+| `routeReachTravelTime(lengths, slopes, widths, nSeg, Q, lag)` | Cumulative kinematic travel time (s) from the head to each segment's outflow. |
+| `routedEdgeState(Q, Qref, H, g) → { eta, speed }` | Manning rating: `eta = H((Q/Qref)^0.6 − 1)` (clamped to [−0.9H, 2H]), `speed = 2(√(g(H+eta)) − √(gH))`. `Q == Qref` is exactly `(0, 0)`. |
+
+**`stepShallowWaterInflow(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, edgeEta)`** —
+`stepShallowWater` with the upstream edge driven by the routed stage. Downstream is −Z, so the
+upstream edge is the face above the **last row** (+Z): the side the player is leaving, the side
+`scrollShallowWater` drops cells off when the window travels downstream. Its ghost is a
+characteristic inflow: the outgoing invariant `R− = v − 2c` comes from the interior cell, the
+incoming one from still water at stage `edgeEta` entering as a simple wave, so the stage flows
+in while waves leaving the window still leave. Supercritical inflow takes both invariants from
+outside; supercritical outflow is transmissive; a dry column is transmissive. Lateral and
+downstream edges stay transmissive, so the window does not reflect. The ghost is written as
+the interior plus the jump in the incoming invariant, so `edgeEta = 0` over still water is
+**exactly** the interior state, even under the WASM build's `-ffast-math` — lake-at-rest holds at
+the reference discharge. The ghost's wave speed joins the CFL max.
+
+- **Runtime.** `riverRouter.ts` owns the heap arrays and the clock: head discharge =
+  `computeFlowRate(hour) × ROUTING_NOMINAL_DISCHARGE` (40 m³/s — also the reference `Qref`, so a
+  flowRate-1 hour is rest at the edge), spun up over `ROUTING_SPINUP_HOURS` (2 h) before launch,
+  then advanced in real seconds with each SWE step. `routingReach.ts` builds the chain's
+  `(length, slope, width)` from the treadmill's own generator. `WaterForceSystem` passes
+  `edgeEta` into the step and uses the same routed state `(eta, 0, −speed)` as the scroll fill
+  and to seed a freshly placed window. A binary without the exports (ABI < 10) steps
+  transmissive, as before.
+- **Additive.** `stepShallowWater` / `applySWEEvent` / `scrollShallowWater` keep their
+  signatures, so `MIN_WASM_ABI_VERSION` stays **8** and the new exports are typed optional.
+- **FP contract (#404).** The routing goldens hold across the host (`-ffp-contract=off`) and the
+  `-ffast-math` WASM build at 1e-4 relative, so `routing.cpp` needs no pinned FP flags. If they
+  ever diverge, pin `-ffp-contract=off` on `routing.cpp` only.
+- **WGSL.** `swe.wgsl` carries the same ghost (`upstreamGhost`), switched by the `edgeActive` /
+  `edgeEta` params; the routing itself stays in C++ (the WGSL session still loads the WASM module
+  for forces and routing).
+- **Pinned by:** `host_smoke.cpp` §8 (steady state, a step release reaching the far segment only
+  after the lag, volume balance, rating, lake-at-rest at `Qref`, a raised stage entering, the
+  routed edge lagging), `smoke_test.mjs` (same goldens against the WASM build),
+  `hydroContrast.test.ts` (`pnpm test:wasm`: hydro 06:00 vs 14:00 through the edge alone, every
+  chain map, the release lag to the hydro basin, spin-up covering the chain), and
+  `pnpm test:wgsl` (edge scenarios + the hydro edge contrast, WGSL vs WASM at 1e-5).
 
 ### `allocateGrid(count): number` / `freeGrid(ptr): void`
 
@@ -370,9 +491,10 @@ Cross-Origin-Opener-Policy:   same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-The `vite.config.ts` already sets these headers for the **dev server**.  For
-production you must configure your web server (nginx, Apache, Cloudflare
-Worker, etc.) to add the same headers.
+The `vite.config.ts` already sets these headers for the **dev server**. Production
+does **not** send them, and the threaded pair is never shipped: `./build.sh --threads`
+writes to `emscripten/build-threads/out/` (CI builds it and asserts `public/` is
+untouched). Nothing in the C++ creates a thread today.
 
 > **Note:** The single-threaded build (`npm run build:wasm`) works without
 > these headers and is recommended for initial integration.
@@ -419,4 +541,4 @@ at test time.
 | 4 — Bed + force coupling | ✅ Done | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` via `sampleSWEFlow` ([#386](https://github.com/ford442/Watershed/issues/386)) |
 | 5 — Source terms / events | ✅ Done | `hydroEvents[]` + `applySWEEvent` (ABI 8, additive) ([#389](https://github.com/ford442/Watershed/issues/389)) |
 | 6 — SIMD + particles | ✅ Done | HLL stays scalar; SIMD lift/CFL/damping + particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
-| 7 — pthreads / compute SWE | 🟡 WGSL done | **[#435](https://github.com/ford442/Watershed/issues/435)**: `src/systems/water/swe.wgsl` twins `stepShallowWater` + `applySWEEvent` on native-WebGPU boots, one backend per session (`sweBackend.ts`); `pnpm test:wgsl` pins parity at 1e-5. **Phase E:** optional Tauri/Capacitor or a dedicated pthread SWE worker — documented follow-up only. No Electron. No default-on COOP-COEP / pthreads. |
+| 7 — pthreads / compute SWE | 🟡 WGSL done, sim worker Phase A | **[#435](https://github.com/ford442/Watershed/issues/435)**: `src/systems/water/swe.wgsl` twins `stepShallowWater` + `applySWEEvent` on native-WebGPU boots, one backend per session (`sweBackend.ts`); `pnpm test:wgsl` pins parity at 1e-5. **[#455](https://github.com/ford442/Watershed/issues/455)**: the SWE step moved off the main thread into one plain `Worker` (`src/sim/`, `wasm-worker` backend, default on WebGL2; `?simWorker=0` kill switch) — no pthreads, no SharedArrayBuffer, no COOP/COEP; field bit-identical to the main-thread stepper. Phases B–D (forces, particles/chores, SAB fast path) follow. No Electron. No default-on COOP-COEP / pthreads. |

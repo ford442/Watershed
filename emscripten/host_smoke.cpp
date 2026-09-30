@@ -6,7 +6,10 @@
  * uniform-flow preservation, lake-at-rest well-balancing over a bed bump,
  * wetting/drying, a 1D dam-break slice, and a sampled U-channel bed of the
  * shape src/systems/water/bathymetrySampler.ts rasterizes (#374 Phase 2).
- * No Embind.
+ * Also channel routing (routing.cpp): a step release reaches a downstream
+ * segment only after the routed lag, volume is conserved, and the routed
+ * upstream edge (stepShallowWaterInflow) keeps lake-at-rest at the reference
+ * discharge. No Embind.
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host
@@ -16,11 +19,14 @@
 #include "forces.h"
 #include "swe.h"
 #include "particles.h"
+#include "routing.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
+#include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -405,6 +411,445 @@ int main() {
         check(bedDrift < 1e-6f, "braid bed shoal is idempotent");
         check(maxBed > 0.5f, "braid raises the bed");
         check(rightPush > 0.f && leftPush < 0.f, "braid pushes water around the shoal");
+    }
+
+    // ------------------------------------------------------------------
+    // 7. Window scroll (ABI 9). The SWE grid is a player-centred window that
+    //    moves; scrollShallowWater moves h/u/w/b with the world so a splash
+    //    stays put while the origin travels. Sign: shift = (oldOrigin -
+    //    newOrigin) / dx, i.e. how far the content moves through the index
+    //    frame, so a window travelling downstream (-Z) has a POSITIVE shiftZ.
+    // ------------------------------------------------------------------
+    {
+        auto scroll = [](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w,
+                         std::vector<float>* b, int width, int height, int sx, int sz,
+                         float eta = 0.f, float uIn = 0.f, float wIn = 0.f) {
+            scrollShallowWater(
+                reinterpret_cast<uintptr_t>(h.data()),
+                reinterpret_cast<uintptr_t>(u.data()),
+                reinterpret_cast<uintptr_t>(w.data()),
+                b ? reinterpret_cast<uintptr_t>(b->data()) : 0,
+                width, height, sx, sz, eta, uIn, wIn);
+        };
+
+        // 7a. Kernel semantics on a small grid with a distinct value per cell.
+        {
+            constexpr int W = 16;
+            constexpr int Hh = 12;
+            const std::size_t sn = static_cast<std::size_t>(W * Hh);
+            auto at = [](int x, int z) { return static_cast<std::size_t>(z * W + x); };
+
+            std::vector<float> h(sn), u(sn), w(sn), b(sn);
+            for (std::size_t i = 0; i < sn; ++i) {
+                h[i] = 1.f + 0.01f * static_cast<float>(i);
+                u[i] = -2.f - 0.01f * static_cast<float>(i);
+                w[i] = 3.f + 0.01f * static_cast<float>(i);
+                b[i] = 0.5f + 0.001f * static_cast<float>(i);
+            }
+            const std::vector<float> h0 = h, u0 = u, w0 = w, b0 = b;
+
+            scroll(h, u, w, &b, W, Hh, 3, -2, 0.05f, 0.1f, -0.2f);
+            bool moved = true, filled = true, bedExt = true;
+            for (int z = 0; z < Hh; ++z) {
+                for (int x = 0; x < W; ++x) {
+                    const int sx = x - 3;
+                    const int sz = z + 2;
+                    const std::size_t i = at(x, z);
+                    if (sx >= 0 && sx < W && sz >= 0 && sz < Hh) {
+                        const std::size_t s = at(sx, sz);
+                        moved = moved && h[i] == h0[s] && u[i] == u0[s] && w[i] == w0[s];
+                    } else {
+                        filled = filled && h[i] == 0.05f && u[i] == 0.1f && w[i] == -0.2f;
+                    }
+                    bedExt = bedExt && b[i] == b0[at(std::min(std::max(sx, 0), W - 1),
+                                                     std::min(std::max(sz, 0), Hh - 1))];
+                }
+            }
+            check(moved, "scroll: surviving cells take dst[x,z] = src[x-shiftX, z-shiftZ] exactly");
+            check(filled, "scroll: entering cells take the inflow state");
+            check(bedExt, "scroll: entering bed cells extend the nearest edge");
+
+            // Sign. Positive shift moves content to higher indices; +Z is
+            // upstream, so a window travelling downstream scrolls +shiftZ.
+            std::fill(h.begin(), h.end(), 0.f);
+            std::fill(u.begin(), u.end(), 0.f);
+            std::fill(w.begin(), w.end(), 0.f);
+            h[at(5, 6)] = 0.3f;
+            scroll(h, u, w, nullptr, W, Hh, 0, 2);
+            check(h[at(5, 8)] == 0.3f && h[at(5, 6)] == 0.f, "scroll: +shiftZ moves content to higher rows");
+            scroll(h, u, w, nullptr, W, Hh, 3, 0);
+            check(h[at(8, 8)] == 0.3f && h[at(5, 8)] == 0.f, "scroll: +shiftX moves content to higher columns");
+            scroll(h, u, w, nullptr, W, Hh, -3, -2);
+            check(h[at(5, 6)] == 0.3f, "scroll: opposite shift returns the content to its cell");
+
+            // Leaving the window drops the water. Nothing wraps to the far edge.
+            auto energy = [&]() {
+                double sum = 0.0;
+                for (float v : h) sum += std::abs(static_cast<double>(v));
+                return sum;
+            };
+            std::fill(h.begin(), h.end(), 0.f);
+            h[at(14, 6)] = 0.3f;
+            scroll(h, u, w, nullptr, W, Hh, 3, 0);
+            check(energy() == 0.0, "scroll: a bump leaving the high-column edge is gone, not wrapped");
+            h[at(5, 10)] = 0.3f;
+            scroll(h, u, w, nullptr, W, Hh, 0, 3);
+            check(energy() == 0.0, "scroll: a bump leaving the upstream (high-row) edge is gone, not wrapped");
+            h[at(1, 6)] = 0.3f;
+            scroll(h, u, w, nullptr, W, Hh, -3, 0);
+            check(energy() == 0.0, "scroll: a bump leaving the low-column edge is gone, not wrapped");
+
+            // Saturation: a teleport-sized delta replaces the whole field and
+            // never overflows the index arithmetic.
+            for (int shift : {W, W + 5, std::numeric_limits<int>::max(), std::numeric_limits<int>::min()}) {
+                std::fill(h.begin(), h.end(), 0.7f);
+                b = b0;
+                scroll(h, u, w, &b, W, Hh, shift, 0, 0.f);
+                bool allRest = true;
+                for (float v : h) allRest = allRest && v == 0.f;
+                check(allRest, "scroll: |shift| >= extent replaces every cell");
+                for (std::size_t i = 0; i < sn; ++i) {
+                    if (!(std::abs(b[i] - b0[shift > 0 ? at(0, static_cast<int>(i) / W) : at(W - 1, static_cast<int>(i) / W)]) == 0.f)) {
+                        check(false, "scroll: saturated bed extends the edge it left through");
+                        break;
+                    }
+                }
+            }
+
+            // Zero shift is a bitwise no-op; a null bed leaves the bed alone.
+            h = h0; u = u0; w = w0; b = b0;
+            scroll(h, u, w, &b, W, Hh, 0, 0, 9.f, 9.f, 9.f);
+            check(h == h0 && u == u0 && w == w0 && b == b0, "scroll: zero shift changes nothing");
+            scroll(h, u, w, nullptr, W, Hh, 2, 1);
+            check(b == b0 && h != h0, "scroll: bPtr == 0 scrolls the field and leaves the bed alone");
+        }
+
+        // 7b. Lake at rest across a scroll + bed rewrite. h/u/w scroll, then the
+        //     rasterizer rewrites b from the world function at the new origin,
+        //     then the solver steps. The bed is world-fixed, so a flat free
+        //     surface must generate no current however the window moves.
+        {
+            auto sloped = [](float wx, float wz) {
+                return 0.4f + 0.3f * std::sin(0.3f * wx + 0.2f * wz);
+            };
+            std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+            float ox = 0.f, oz = 0.f;
+            auto rewrite = [&]() {
+                for (int z = 0; z < kHeight; ++z)
+                    for (int x = 0; x < kWidth; ++x)
+                        b[static_cast<std::size_t>(z * kWidth + x)] =
+                            sloped(ox + static_cast<float>(x) * kDx, oz + static_cast<float>(z) * kDx);
+            };
+            rewrite();
+
+            float maxVel = 0.f, maxDrift = 0.f;
+            auto stepAndMeasure = [&](int steps) {
+                for (int s = 0; s < steps; ++s) {
+                    stepBed(h, u, w, b, 0.01f);
+                    for (int i = 0; i < n; ++i) {
+                        if (kH + h[i] - b[i] <= 1e-4f) continue;
+                        maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
+                        maxDrift = std::max(maxDrift, std::abs(h[i]));
+                    }
+                }
+            };
+            stepAndMeasure(5);
+            // Includes the 3-cell scroll the contract calls out, on each axis and diagonally.
+            const int moves[][2] = { {3, 0}, {0, -3}, {-2, 2}, {3, 3} };
+            for (const auto& m : moves) {
+                ox -= static_cast<float>(m[0]) * kDx;
+                oz -= static_cast<float>(m[1]) * kDx;
+                scroll(h, u, w, &b, kWidth, kHeight, m[0], m[1]);
+                rewrite();
+                stepAndMeasure(20);
+            }
+            check(maxVel < 1e-5f, "lake at rest across scroll + bed rewrite generates no current");
+            check(maxDrift < 1e-5f, "lake at rest across scroll + bed rewrite keeps a flat surface");
+        }
+
+        // 7b'. A raised flat lake stays at rest only if the entering edge carries
+        //      the same surface — that is what the explicit inflow argument is for.
+        {
+            constexpr float kEta = 0.05f;
+            std::vector<float> h(static_cast<std::size_t>(n), kEta);
+            std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+            scroll(h, u, w, &b, kWidth, kHeight, 3, -2, kEta);
+            float maxVel = 0.f, maxDrift = 0.f;
+            for (int s = 0; s < 30; ++s) {
+                stepBed(h, u, w, b, 0.01f);
+                for (int i = 0; i < n; ++i) {
+                    maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
+                    maxDrift = std::max(maxDrift, std::abs(h[i] - kEta));
+                }
+            }
+            check(maxVel < 1e-5f && maxDrift < 1e-5f,
+                  "scroll: inflowEta lets an entering edge continue a raised lake at rest");
+        }
+
+        // 7b''. Sampled U-channel: banks stay dry, thalweg stays wet, still at rest,
+        //       as the window slides along and across the channel.
+        {
+            const float bankBed = kH + 2.f;
+            const int halfChannel = 4;
+            // Channel centre in world columns, fixed: 16 cells from the initial origin.
+            const float centreX = 16.f * kDx;
+            auto channel = [&](float wx) {
+                const float offsetCells = std::abs(wx - centreX) / kDx;
+                if (offsetCells > static_cast<float>(halfChannel) + 0.01f) return bankBed;
+                const float r = offsetCells / static_cast<float>(halfChannel);
+                return 0.9f * kH * r * r;
+            };
+            std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> u(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+            float ox = 0.f;
+            auto rewrite = [&]() {
+                for (int z = 0; z < kHeight; ++z)
+                    for (int x = 0; x < kWidth; ++x)
+                        b[static_cast<std::size_t>(z * kWidth + x)] = channel(ox + static_cast<float>(x) * kDx);
+            };
+            rewrite();
+            // Settle: dry cells pin eta to the bed, as they do in the live field.
+            for (int s = 0; s < 3; ++s) stepBed(h, u, w, b, 0.01f);
+
+            float maxVel = 0.f, maxDrift = 0.f;
+            bool bankDry = true, thalwegWet = true;
+            const int moves[][2] = { {0, 3}, {2, 0}, {-3, -1}, {0, 5} };
+            for (const auto& m : moves) {
+                ox -= static_cast<float>(m[0]) * kDx;
+                scroll(h, u, w, &b, kWidth, kHeight, m[0], m[1]);
+                rewrite();
+                for (int s = 0; s < 20; ++s) {
+                    stepBed(h, u, w, b, 0.01f);
+                    for (int z = 0; z < kHeight; ++z) {
+                        for (int x = 0; x < kWidth; ++x) {
+                            const std::size_t i = static_cast<std::size_t>(z * kWidth + x);
+                            const float depth = kH + h[i] - b[i];
+                            const bool inChannel = b[i] < bankBed;
+                            if (inChannel) {
+                                thalwegWet = thalwegWet && depth > 1e-3f;
+                                maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
+                                maxDrift = std::max(maxDrift, std::abs(h[i]));
+                            } else {
+                                bankDry = bankDry && depth <= 1e-4f;
+                            }
+                        }
+                    }
+                }
+            }
+            check(maxVel < 1e-5f && maxDrift < 1e-5f, "U-channel at rest across scrolls generates no current");
+            check(bankDry, "U-channel banks stay dry across scrolls");
+            check(thalwegWet, "U-channel thalweg stays wet across scrolls");
+        }
+
+        // 7c. A moving window tracks a fixed one. Same splash, same flat bed, same
+        //     steps; one grid never moves, the other's window travels several
+        //     cells. In world space the bump must stay where it is and evolve the
+        //     same, so away from the edges the two agree to round-off.
+        {
+            std::vector<float> hR(static_cast<std::size_t>(n), 0.f), uR = hR, wR = hR;
+            std::vector<float> hS = hR, uS = hR, wS = hR;
+            const int cx = 16, cz = 12;  // splash cell in the FIXED grid's frame
+            for (int dz = -3; dz <= 3; ++dz) {
+                for (int dxc = -3; dxc <= 3; ++dxc) {
+                    const float g2 = std::exp(-static_cast<float>(dxc * dxc + dz * dz) / 3.f);
+                    hR[static_cast<std::size_t>((cz + dz) * kWidth + cx + dxc)] = 0.3f * g2;
+                }
+            }
+            hS = hR;
+
+            // Window travels +X one cell every 3 steps and -Z one cell every 6:
+            // shiftX = -1 / shiftZ = +1 per the (old - new) / dx convention.
+            int cellX = 0, cellZ = 0;
+            for (int step = 0; step < 18; ++step) {
+                if (step % 3 == 0 && step > 0) {
+                    cellX += 1;
+                    scroll(hS, uS, wS, nullptr, kWidth, kHeight, -1, 0);
+                }
+                if (step % 6 == 0 && step > 0) {
+                    cellZ -= 1;
+                    scroll(hS, uS, wS, nullptr, kWidth, kHeight, 0, 1);
+                }
+                stepFlat(hR, uR, wR, 0.01f);
+                stepFlat(hS, uS, wS, 0.01f);
+            }
+            check(cellX == 5 && cellZ == -2, "fixture: window moved several cells on both axes");
+
+            // World cell (i, j) of the scrolled grid is (i + cellX, j + cellZ) of the fixed one.
+            float worst = 0.f, peak = 0.f;
+            int peakX = -1, peakZ = -1;
+            for (int j = 4; j < kHeight - 4; ++j) {
+                for (int i = 4; i < kWidth - 4; ++i) {
+                    const int fi = i + cellX;
+                    const int fj = j + cellZ;
+                    if (fi < 4 || fi >= kWidth - 4 || fj < 4 || fj >= kHeight - 4) continue;
+                    const std::size_t s = static_cast<std::size_t>(j * kWidth + i);
+                    const std::size_t r = static_cast<std::size_t>(fj * kWidth + fi);
+                    worst = std::max({worst, std::abs(hS[s] - hR[r]), std::abs(uS[s] - uR[r]), std::abs(wS[s] - wR[r])});
+                    if (hS[s] > peak) { peak = hS[s]; peakX = i + cellX; peakZ = j + cellZ; }
+                }
+            }
+            check(peak > 0.02f, "fixture: the splash is still there after the scrolls");
+            check(worst < 1e-6f, "scrolled window tracks the fixed window in world space");
+            check(std::abs(peakX - cx) <= 1 && std::abs(peakZ - cz) <= 1,
+                  "the splash stays on its world cell while the window moves");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Channel routing (routing.cpp, ABI 10) and the routed upstream edge
+    //    (stepShallowWaterInflow). A 20-segment chain of ~100 m reaches.
+    // ------------------------------------------------------------------
+    {
+        constexpr int kSeg = 20;
+        constexpr float kQ0 = 40.f;          // base discharge (m³/s)
+        constexpr float kRelease = 14.f;     // dam release on top (0.35 × base)
+        constexpr float kRouteDt = 1.f;
+        std::vector<float> L(kSeg), S(kSeg), B(kSeg);
+        for (int k = 0; k < kSeg; ++k) {
+            L[k] = 95.f + 2.f * static_cast<float>(k % 5);
+            S[k] = 0.03f + 0.005f * static_cast<float>(k % 3);
+            B[k] = 10.f + static_cast<float>(k % 4);
+        }
+        std::vector<float> storage(kSeg * ROUTING_SUBREACHES), outflow(kSeg), lag(kSeg);
+        auto P = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        auto totalStorage = [&]() {
+            double s = 0.0;
+            for (float v : storage) s += v;
+            return s;
+        };
+
+        // 8a. Steady state carries its discharge through unchanged.
+        routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+        for (int t = 0; t < 200; ++t) routeReach(P(L), P(S), P(B), kSeg, kQ0, kRouteDt, P(storage), P(outflow));
+        checkClose(outflow[kSeg - 1], kQ0, 1e-4f, "routing: steady discharge stays steady");
+
+        // 8b. Step release at the head: the far segment only answers after the
+        //     routed lag, and then it does answer.
+        routeReachTravelTime(P(L), P(S), P(B), kSeg, kQ0, P(lag));
+        const float lagFar = lag[kSeg - 1];
+        check(lagFar > 60.f && lagFar < 1200.f, "routing: 2 km travel time is minutes, not hours or zero");
+        for (int k = 1; k < kSeg; ++k) check(lag[k] > lag[k - 1], "routing: lag grows downstream");
+        routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+        float riseAtHalfLag = -1.f, riseAtLag = -1.f, riseLate = -1.f;
+        const int steps = static_cast<int>(3.f * lagFar / kRouteDt);
+        for (int t = 1; t <= steps; ++t) {
+            routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow));
+            const float time = static_cast<float>(t) * kRouteDt;
+            const float rise = (outflow[kSeg - 1] - kQ0) / kRelease;
+            if (riseAtHalfLag < 0.f && time >= 0.5f * lagFar) riseAtHalfLag = rise;
+            if (riseAtLag < 0.f && time >= 1.25f * lagFar) riseAtLag = rise;
+            riseLate = rise;
+        }
+        check(riseAtHalfLag >= -1e-5f && riseAtHalfLag < 0.02f, "routing: nothing arrives before the lag");
+        check(riseAtLag > 0.5f, "routing: the release has arrived by 1.25 × lag");
+        checkClose(riseLate, 1.f, 1e-3f, "routing: the full release arrives");
+
+        // 8c. Volume: a finite pulse in, everything out, nothing gained.
+        routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+        const double s0 = totalStorage();
+        double in = 0.0, out = 0.0;
+        for (int t = 0; t < 4000; ++t) {
+            const float q = (t < 300) ? kQ0 + kRelease : kQ0;
+            routeReach(P(L), P(S), P(B), kSeg, q, kRouteDt, P(storage), P(outflow));
+            in += static_cast<double>(q) * kRouteDt;
+            out += static_cast<double>(outflow[kSeg - 1]) * kRouteDt;
+        }
+        const double balance = in - out - (totalStorage() - s0);
+        check(std::abs(balance) < 1e-4 * in, "routing: volume in = out + stored (1e-4 of throughput)");
+        check(out <= in + 1e-4 * in, "routing: never gains volume");
+
+        // 8d. Rating: the reference discharge is exactly still water.
+        const RoutedEdge rest = routedEdgeState(kQ0, kQ0, kH, kG);
+        check(rest.eta == 0.f && rest.speed == 0.f, "routedEdgeState: Qref is exactly rest");
+        const RoutedEdge high = routedEdgeState(kQ0 + kRelease, kQ0, kH, kG);
+        checkClose(high.eta, kH * (std::pow((kQ0 + kRelease) / kQ0, 0.6f) - 1.f), 1e-5f, "routedEdgeState: Manning rating");
+        check(high.speed > 0.f, "routedEdgeState: a raised stage moves downstream");
+
+        auto P2 = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        auto stepEdge = [&](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w,
+                            std::vector<float>* b, float dt, float edgeEta) {
+            stepShallowWaterInflow(P2(h), P2(u), P2(w), b ? P2(*b) : 0,
+                                   kWidth, kHeight, dt, kG, kDx, kH, edgeEta);
+        };
+
+        // 8e. Lake at rest with the edge on: the reference discharge over a
+        //     bumpy, partly dry bed invents no slope — η steps bit-for-bit like
+        //     the transmissive solver, still inside the 3b tolerance.
+        {
+            std::vector<float> h(n, 0.f), u(n, 0.f), w(n, 0.f), b(n, 0.f);
+            for (int z = 0; z < kHeight; ++z) {
+                for (int x = 0; x < kWidth; ++x) {
+                    const float r = std::hypot(static_cast<float>(x) - 16.f, static_cast<float>(z) - 22.f);
+                    b[z * kWidth + x] = std::max(0.f, 1.4f - 0.15f * r);  // bump through the top edge
+                    if (x < 3) b[z * kWidth + x] = 1.6f;                  // dry bank column
+                }
+            }
+            for (int i = 0; i < n; ++i) if (b[i] > kH) h[i] = b[i] - kH;  // dry: surface pinned to bed
+            std::vector<float> hT = h, uT = u, wT = w;
+            for (int t = 0; t < 400; ++t) {
+                stepEdge(h, u, w, &b, 1.f / 60.f, rest.eta);
+                stepBed(hT, uT, wT, b, 1.f / 60.f);
+            }
+            // η is the slope the player sees: identical to the transmissive
+            // step. Velocities may differ by round-off once the solver's own
+            // float residue (~1e-7 m/s) reaches the edge characteristics.
+            bool sameEta = true;
+            float maxVel = 0.f, dVel = 0.f;
+            for (int i = 0; i < n; ++i) {
+                sameEta = sameEta && h[i] == hT[i];
+                maxVel = std::max({maxVel, std::abs(u[i]), std::abs(w[i])});
+                dVel = std::max({dVel, std::abs(u[i] - uT[i]), std::abs(w[i] - wT[i])});
+            }
+            check(sameEta, "edge inflow at Qref: eta bit-identical to the transmissive step");
+            check(dVel < 1e-6f, "edge inflow at Qref: velocity matches transmissive to round-off");
+            check(maxVel < 2e-3f, "edge inflow at Qref: lake at rest (3b tolerance)");
+        }
+
+        // 8f. A raised edge stage enters from the upstream (high-row) edge and
+        //     flows downstream (−Z); the downstream edge does not reflect it.
+        {
+            std::vector<float> h(n, 0.f), u(n, 0.f), w(n, 0.f);
+            const float eta = high.eta;
+            for (int t = 0; t < 30; ++t) stepEdge(h, u, w, nullptr, 1.f / 60.f, eta);
+            const int mid = kWidth / 2;
+            check(h[(kHeight - 1) * kWidth + mid] > 0.5f * eta, "edge stage: top row rises toward the routed stage");
+            check(w[(kHeight - 1) * kWidth + mid] < 0.f, "edge stage: the inflow moves downstream (−Z)");
+            check(std::abs(h[0 * kWidth + mid]) < 1e-4f, "edge stage: the far edge has not heard of it yet");
+            check(std::abs(u[(kHeight - 1) * kWidth + mid]) < 1e-5f, "edge stage: no lateral current from a uniform edge");
+            for (int t = 0; t < 1200; ++t) stepEdge(h, u, w, nullptr, 1.f / 60.f, eta);
+            float lo = 1e9f, hi = -1e9f;
+            for (int i = 0; i < n; ++i) { lo = std::min(lo, h[i]); hi = std::max(hi, h[i]); }
+            check(lo > 0.5f * eta && hi < 1.5f * eta, "edge stage: the window fills to the routed stage, no runaway");
+        }
+
+        // 8g. The whole chain: a release at the head reaches a downstream
+        //     segment's edge stage only after that segment's lag.
+        {
+            const int k = kSeg - 1;
+            routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+            float early = -1.f, late = -1.f;
+            for (int t = 1; t <= steps; ++t) {
+                routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow));
+                const float time = static_cast<float>(t) * kRouteDt;
+                const float eta = routedEdgeState(outflow[k], kQ0, kH, kG).eta;
+                if (early < 0.f && time >= 0.5f * lag[k]) early = eta;
+                if (late < 0.f && time >= 1.5f * lag[k]) late = eta;
+            }
+            check(early < 0.01f, "routed edge: stage flat before the lag");
+            check(late > 0.5f * high.eta, "routed edge: stage raised after the lag");
+            // Goldens, mirrored in smoke_test.mjs against the -ffast-math WASM
+            // build (same chain, same numbers, same 1e-4 relative tolerance).
+            checkClose(lagFar, 264.890015f, 1e-4f, "routing golden: far-segment lag (s)");
+            checkClose(riseAtLag, 0.999229f, 1e-4f, "routing golden: release fraction at 1.25 x lag");
+            checkClose(high.eta, 0.197293f, 1e-4f, "routing golden: edge stage for +35% discharge");
+        }
     }
 
     if (g_failures != 0) {

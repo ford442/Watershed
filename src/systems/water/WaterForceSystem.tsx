@@ -2,6 +2,17 @@
  * WaterForceSystem — production WASM water coupling.
  *
  * - Steps a player-centered SWE grid and uploads height data for FlowingWater.
+ *   The solver runs in the sim worker by default (src/sim/, #455); this file
+ *   still clocks it — same dt, events and routed edge on every backend — and
+ *   reads the field back through the SweSim mirror.
+ *   The grid is a window that follows the vehicle; every whole-cell move of its
+ *   origin scrolls h/u/w/b with the world first (sweScroll.ts / swe.h), so a
+ *   splash stays where it landed instead of riding the camera.
+ * - Drives the window's upstream (+Z) edge with the launch-hour discharge,
+ *   routed down the campaign chain (riverRouter.ts → emscripten/routing.cpp).
+ *   Cells entering the window, and a freshly placed window, take the same
+ *   routed state, so a 14:00 river is higher everywhere in the window, not just
+ *   along one edge.
  * - Applies native buoyancy + current drag to the vehicle and floating debris
  *   using SWE-sampled flowDir / speed (sampleSWEFlow → calculateWaterForce).
  * - Falls back to pure TypeScript force math when WASM is unavailable.
@@ -21,7 +32,13 @@ import {
 } from './WatershedWasm';
 import { createWasmSweSim, type SweEventCall, type SweSim } from './sweSim';
 import { createWgslSweSim } from './WgslSweSim';
-import { demoteSweSimBackendToWasm, resolveSweSimBackendDecision } from './sweBackend';
+import {
+  demoteSweSimBackendToWasm,
+  demoteSweSimBackendToWasmMain,
+  resolveSweSimBackendDecision,
+} from './sweBackend';
+import { getSimWorkerProxy } from '../../sim/createSimWorkerProxy';
+import { createWorkerSweSim } from '../../sim/workerSweSim';
 import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import {
   SWE_MEAN_DEPTH,
@@ -31,6 +48,9 @@ import {
   clearSWEHeightField,
 } from './SWEHeightField';
 import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuality';
+import { SWE_REST_INFLOW, advanceSweWindow, type SweInflow, type SweWindow } from './sweScroll';
+import { createRiverRouter, type RiverRouter } from './riverRouter';
+import { getRoutingReach, routingChainIndex } from '../map/routingReach';
 import {
   getBathymetryRevision,
   getRegisteredBathymetryCount,
@@ -38,7 +58,7 @@ import {
   sampleBathymetryInto,
 } from './bathymetrySampler';
 import { publishSWEBedSnapshot, clearSWEBedSnapshot } from './sweBedDebug';
-import { useQualityPreset } from '../GameState';
+import { useGameStore, useQualityPreset } from '../GameState';
 import {
   collectWaterForceBodies,
   registerVehicleWaterBody,
@@ -58,13 +78,15 @@ import {
   type SWEFlowGrid,
   type SWEFlowSample,
 } from './sampleSWEFlow';
+import { packSweSurfaceField, SWE_FLOW_CHANNELS } from './sweSurfaceField';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
-import { getActiveMap } from '../../maps/registry';
-import { getActiveLaunchHour } from '../journey/runSession';
+import { ACTIVE_MAP_ID, getActiveMap } from '../../maps/registry';
+import { getActiveLaunchHour, getRunSession } from '../journey/runSession';
 import { shouldSkipMainThreadVehicleForce } from '../../physics/waterForceAuthority';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 
 const PHYSICS_SCALE = 0.001;
+const GRAVITY = 9.80665;
 
 interface WaterForceSystemProps {
   vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
@@ -206,14 +228,20 @@ function applyDisturbances(
 function uploadHeightTexture(
   grid: SweSim,
   texture: THREE.DataTexture,
+  flowTexture: THREE.DataTexture,
   originX: number,
   originZ: number,
   budget: SWEBudget,
 ): void {
   (texture.image.data as unknown as Float32Array).set(grid.h);
   texture.needsUpdate = true;
+  // Same fieldVersion, same origin: the surface reads (u, w, depth, div) from the CPU
+  // mirror (WASM heap view or the WGSL readback mirror — never the compute buffer).
+  packSweSurfaceField(grid, flowTexture.image.data as unknown as Float32Array, SWE_MEAN_DEPTH);
+  flowTexture.needsUpdate = true;
   updateSWEHeightFieldSnapshot({
     texture,
+    flowTexture,
     originX,
     originZ,
     cellSize: budget.cellSize,
@@ -234,7 +262,9 @@ interface BedState {
 /**
  * Re-rasterize the canyon floor into `grid.b` when the sampling window has
  * moved a whole cell or the treadmill has swapped segments. Every cell is
- * rewritten, so a recycled slot cannot leak its predecessor's bed.
+ * rewritten, so a recycled slot cannot leak its predecessor's bed. The frame
+ * scrolls the field first, so this overwrites a bed that is already in the new
+ * index frame, with the world-correct floor.
  */
 function refreshBed(
   grid: SweSim,
@@ -244,9 +274,11 @@ function refreshBed(
   state: BedState,
 ): void {
   const revision = getBathymetryRevision();
+  // The window only ever moves by whole cells (advanceSweWindow), so half a cell
+  // is a threshold no rounding can miss — a scroll always re-rasterizes.
   const moved =
-    Math.abs(originX - state.originX) >= budget.cellSize ||
-    Math.abs(originZ - state.originZ) >= budget.cellSize;
+    Math.abs(originX - state.originX) >= budget.cellSize * 0.5 ||
+    Math.abs(originZ - state.originZ) >= budget.cellSize * 0.5;
   if (state.valid && revision === state.revision && !moved) return;
 
   const covered = sampleBathymetryInto(
@@ -276,6 +308,41 @@ function refreshBed(
   });
 }
 
+interface RouterState {
+  router: RiverRouter | null;
+  /** The run the router was spun up for; a new run (or hour) re-routes from launch. */
+  session: unknown;
+  launchHour: number;
+}
+
+/**
+ * The router for the current run, rebuilt when the run or its launch hour
+ * changes. Null without the ABI-10 exports — the window then steps with every
+ * edge transmissive, exactly as before routing.
+ */
+function currentRouter(wasm: WatershedNativeModule | null, state: RouterState): RiverRouter | null {
+  if (!wasm) return null;
+  const session = getRunSession();
+  const launchHour = getActiveLaunchHour();
+  if (state.router && state.session === session && state.launchHour === launchHour) return state.router;
+  state.router?.dispose();
+  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour);
+  state.session = session;
+  state.launchHour = launchHour;
+  return state.router;
+}
+
+/** Routed state for the player's segment, as the (η, u, w) an entering cell takes. */
+function routedInflow(router: RiverRouter | null): { edgeEta: number; inflow: SweInflow } | null {
+  if (!router) return null;
+  const mapId = getRunSession()?.mapId ?? ACTIVE_MAP_ID;
+  const k = routingChainIndex(router.reach, mapId, useGameStore.getState().currentSegmentIndex);
+  if (k === null) return null;
+  const edge = router.edgeState(k, SWE_MEAN_DEPTH, GRAVITY);
+  // Downstream is −Z: the routed wave arrives moving toward −Z.
+  return { edgeEta: edge.eta, inflow: { eta: edge.eta, u: 0, w: -edge.speed } };
+}
+
 export function WaterForceSystem({
   vehicleRef,
   vehicleType = 'runner',
@@ -288,12 +355,18 @@ export function WaterForceSystem({
   const gridRef = useRef<SweSim | null>(null);
   const uploadedVersionRef = useRef(-1);
   const textureRef = useRef<THREE.DataTexture | null>(null);
+  const flowTextureRef = useRef<THREE.DataTexture | null>(null);
   const originRef = useRef({ x: 0, z: 0 });
+  // Where the live grid's window sits on the world's cell lattice. Null until
+  // the first frame after the grid is (re)built; the field is scrolled by the
+  // whole-cell change of this between frames.
+  const windowRef = useRef<SweWindow | null>(null);
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
   const stepAccumulatorRef = useRef(0);
   // Bed refresh bookkeeping: the sampled bathymetry only needs re-rasterizing
   // when the window slides a whole cell or the treadmill changes segments.
   const bedStateRef = useRef({ valid: false, revision: -1, originX: 0, originZ: 0 });
+  const routerRef = useRef<RouterState>({ router: null, session: null, launchHour: Number.NaN });
   const [wasmReady, setWasmReady] = useState(false);
 
   // Visual SWE budget follows the live quality preset (LODManager may downgrade
@@ -303,6 +376,14 @@ export function WaterForceSystem({
 
   useEffect(() => {
     setWaterForceSystemActive(true);
+
+    // Start the sim worker's module load alongside the main one, so the grid
+    // effect below finds it READY instead of starting the handshake late.
+    if (resolveSweSimBackendDecision().backend === 'wasm-worker') {
+      getSimWorkerProxy().catch(() => {
+        /* the grid effect reports it and falls back */
+      });
+    }
 
     let cancelled = false;
     getWasm()
@@ -324,6 +405,8 @@ export function WaterForceSystem({
 
     return () => {
       cancelled = true;
+      routerRef.current.router?.dispose();
+      routerRef.current = { router: null, session: null, launchHour: Number.NaN };
       setWaterForceSystemActive(false);
       registerVehicleWaterBody(null);
       clearSWEHeightField();
@@ -334,8 +417,9 @@ export function WaterForceSystem({
 
   // Grid + upload texture are sized by the budget, so a quality change
   // reallocates both. `low` allocates nothing at all. The solver backend was
-  // fixed for the session at first use (sweBackend.ts): C++ WASM, or its WGSL
-  // twin on a native-WebGPU boot — never both.
+  // fixed for the session at first use (sweBackend.ts): C++ WASM in the sim
+  // worker (or on the main thread), or its WGSL twin on a native-WebGPU boot —
+  // never two in one session.
   useEffect(() => {
     setSWEActiveBudget(budget);
 
@@ -343,13 +427,14 @@ export function WaterForceSystem({
     const decision = resolveSweSimBackendDecision();
     const device = decision.backend === 'wgsl' ? getSessionGpuDevice() : null;
     if (!budget.enabled || (!device && !wasm)) {
-      updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
       return;
     }
 
     let cancelled = false;
     let sim: SweSim | null = null;
+    let unsubscribeFatal: (() => void) | null = null;
     const texture = new THREE.DataTexture(
       new Float32Array(budget.width * budget.height),
       budget.width,
@@ -361,14 +446,34 @@ export function WaterForceSystem({
     texture.magFilter = THREE.LinearFilter;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
+    const flowTexture = new THREE.DataTexture(
+      new Float32Array(budget.width * budget.height * SWE_FLOW_CHANNELS),
+      budget.width,
+      budget.height,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    flowTexture.minFilter = THREE.LinearFilter;
+    flowTexture.magFilter = THREE.LinearFilter;
+    flowTexture.wrapS = THREE.ClampToEdgeWrapping;
+    flowTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+    // SWE off, as when native init fails: the analytic surface and fallback flow.
+    const disableSwe = () => {
+      gridRef.current = null;
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
+      setSWEStatus(false, null);
+    };
 
     const install = (next: SweSim) => {
       sim = next;
       gridRef.current = next;
       textureRef.current = texture;
+      flowTextureRef.current = flowTexture;
       stepAccumulatorRef.current = 0;
       uploadedVersionRef.current = -1;
       bedStateRef.current = { valid: false, revision: -1, originX: 0, originZ: 0 };
+      windowRef.current = null;
       setSWEStatus(true, `${budget.width}x${budget.height} ${next.backend}`);
       console.info(
         `[SWE] backend=${next.backend} (${resolveSweSimBackendDecision().reason}) grid=${budget.width}x${budget.height}`,
@@ -393,19 +498,47 @@ export function WaterForceSystem({
           const fallbackWasm = wasmRef.current;
           if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
         });
+    } else if (decision.backend === 'wasm-worker') {
+      getSimWorkerProxy()
+        .then((proxy) => {
+          if (cancelled) return;
+          if (proxy.failed) {
+            // The worker died after an earlier grid had stepped in it; a fresh
+            // main-thread field would be a second backend this session.
+            disableSwe();
+            return;
+          }
+          const next = createWorkerSweSim(proxy, budget.width, budget.height, budget.cellSize);
+          unsubscribeFatal = proxy.onFatal(() => {
+            if (gridRef.current === next) disableSwe();
+          });
+          install(next);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          // Nothing has stepped in the worker, so the main-thread stepper is
+          // still this session's only backend.
+          console.warn('[WaterForceSystem] sim worker unavailable; stepping SWE on the main thread', error);
+          demoteSweSimBackendToWasmMain();
+          const fallbackWasm = wasmRef.current;
+          if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
+        });
     } else if (wasm) {
       install(createWasmSweSim(wasm, budget.width, budget.height, budget.cellSize));
     }
 
     return () => {
       cancelled = true;
+      unsubscribeFatal?.();
       sim?.dispose();
       gridRef.current = null;
       texture.dispose();
+      flowTexture.dispose();
       textureRef.current = null;
+      flowTextureRef.current = null;
       bedStateRef.current.valid = false;
       clearSWEBedSnapshot();
-      updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+      updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
     };
   }, [budget, wasmReady]);
@@ -427,13 +560,39 @@ export function WaterForceSystem({
     const timeSeconds = state.clock.elapsedTime;
     const workerOwnsVehicleForces = isPhysicsWorkerActive();
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
-    const originX = anchor.x - (budget.width * budget.cellSize) * 0.5;
-    const originZ = anchor.z - (budget.height * budget.cellSize) * 0.5;
+    // The window centres on the vehicle but sits on the world's cell lattice,
+    // moving only by whole cells: a cell keeps its world position while it
+    // survives. Every consumer below reads this origin, never the raw anchor.
+    const advance = advanceSweWindow(windowRef.current, anchor.x, anchor.z, budget);
+    const sweWindow = advance?.window ?? windowRef.current;
+    const originX = sweWindow?.originX ?? anchor.x - (budget.width * budget.cellSize) * 0.5;
+    const originZ = sweWindow?.originZ ?? anchor.z - (budget.height * budget.cellSize) * 0.5;
     originRef.current = { x: originX, z: originZ };
 
     const grid = gridRef.current;
     const texture = textureRef.current;
-    if (budget.enabled && grid && texture) {
+    const flowTexture = flowTextureRef.current;
+    if (budget.enabled && grid && texture && flowTexture) {
+      // Carry the previous step's field into the new window's index frame BEFORE
+      // the bed is rewritten and the solver runs. The solver is origin-blind and
+      // the rasterizer only rewrites `b`, so without this h/u/w would stay in
+      // their old slots while the canyon moved underneath them. A jump larger
+      // than the grid (respawn) saturates: the field restarts at the routed
+      // state. Entering cells take the routed river, not still water.
+      const router = currentRouter(wasmRef.current, routerRef.current);
+      const routed = routedInflow(router);
+      const fill = routed?.inflow ?? SWE_REST_INFLOW;
+      if (advance) {
+        if (windowRef.current === null && routed) {
+          // A fresh window starts as the river it sits in, so the routed stage
+          // does not have to bore in from the edge on every rebuild.
+          grid.scroll(grid.width, 0, fill);
+        } else if (advance.shiftX !== 0 || advance.shiftZ !== 0) {
+          grid.scroll(advance.shiftX, advance.shiftZ, fill);
+        }
+        windowRef.current = advance.window;
+      }
+
       // Step-rate budget: accumulate render deltas and take one SWE step per
       // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
       refreshBed(grid, originX, originZ, budget, bedStateRef.current);
@@ -443,6 +602,7 @@ export function WaterForceSystem({
       if (stepAccumulatorRef.current >= interval) {
         const stepDt = Math.min(stepAccumulatorRef.current, 0.05);
         stepAccumulatorRef.current = 0;
+        router?.advance(stepDt);
 
         applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
@@ -479,17 +639,20 @@ export function WaterForceSystem({
         // Phase 2). Uncovered cells read as dry land, not open water.
         grid.step({
           dt: stepDt,
-          g: 9.80665,
+          g: GRAVITY,
           H: SWE_MEAN_DEPTH,
           originX,
           originZ,
           events: eventCalls,
+          // Upstream edge = the routed discharge at the player's segment; the
+          // hull reads it back through sampleSWEFlow like any other η.
+          edgeEta: routed?.edgeEta,
         });
       }
       // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
       if (grid.fieldVersion !== uploadedVersionRef.current) {
         uploadedVersionRef.current = grid.fieldVersion;
-        uploadHeightTexture(grid, texture, originX, originZ, budget);
+        uploadHeightTexture(grid, texture, flowTexture, originX, originZ, budget);
         runHeightfieldChores(grid.h, grid.width, grid.height);
       } else {
         // Grid didn't step, but the player moved — keep the sampling window

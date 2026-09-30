@@ -239,5 +239,10 @@ jobs:
       - name: Compile threaded WASM variant
         run: pnpm build:wasm:threads
 
-      - name: Assert threaded WASM artifact exists
-        run: test -f public/watershed_native.wasm
+      - name: Assert threaded WASM artifact is built aside, shipped pair untouched
+        run: |
+          test -f emscripten/build-threads/out/watershed_native.wasm
+          git diff --exit-code -- \
+            public/watershed_native.js \
+            public/watershed_native.wasm \
+            src/systems/water/wasmArtifactStamp.ts

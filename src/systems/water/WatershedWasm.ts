@@ -3,7 +3,7 @@
  *
  * Provides a typed, lazy-loaded interface to `public/watershed_native.js`,
  * which is compiled from `emscripten/{forces,swe,bindings}.cpp` via
- * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 8).
+ * `npm run build:wasm`. `getVersion()` returns the ABI version (currently 11).
  * `getWasm()` asserts the loaded module is >= MIN_WASM_ABI_VERSION (8).
  *
  * Quick start
@@ -97,6 +97,17 @@ export function heapF32(
  * Shape of the WASM module after Emscripten initialisation.
  * All numeric heap views share the same underlying ArrayBuffer.
  */
+/** routedEdgeState result (ABI 10) — Embind value_object in bindings.cpp. */
+export interface RoutedEdge {
+  /** Free-surface perturbation at the upstream edge (m), the `h` datum. */
+  eta: number;
+  /** Downstream (−Z) inflow speed of that stage over a zero bed (m/s). */
+  speed: number;
+}
+
+/** Reservoirs per routed segment — ROUTING_SUBREACHES in emscripten/routing.h. */
+export const ROUTING_SUBREACHES = 4;
+
 export interface WatershedNativeModule {
   // Emscripten typed heap views
   HEAPF32: Float32Array;
@@ -116,6 +127,12 @@ export interface WatershedNativeModule {
  *   7 — particle SoA (additive)
  *   8 — applySWEEvent source terms (additive; MIN_WASM_ABI_VERSION is now 8 —
  *       particle SoA and applySWEEvent are guaranteed exports, not optional)
+ *   9 — scrollShallowWater (additive; MIN_WASM_ABI_VERSION stays 8 because
+ *       stepShallowWater is unchanged — the export is typed optional below)
+ *  10 — channel routing (routeReach* / routedEdgeState) + stepShallowWaterInflow
+ *       (additive; MIN_WASM_ABI_VERSION stays 8 — typed optional below)
+ *  11 — reserveShallowWaterScratch (additive; MIN_WASM_ABI_VERSION stays 8).
+ *       Same release builds the glue for 'web,worker', emmalloc, 16 MB heap.
  */
   getVersion(): number;
 
@@ -252,6 +269,67 @@ export interface WatershedNativeModule {
     dx: number, originX: number, originZ: number, H: number,
     kind: number, cx: number, cz: number, radius: number, strength: number, dt: number,
   ): void;
+
+  /**
+   * Scroll h / u / w / b by whole cells so the moving SWE window stays
+   * world-stable (ABI 9+). Optional in the type: MIN_WASM_ABI_VERSION is 8, and
+   * an ABI-8 binary does not export it — `createWasmSweSim` falls back to the
+   * TypeScript twin in `sweScroll.ts` then. Bit-exact data movement, no solver.
+   *
+   * `shiftX` / `shiftZ` are how far the CONTENT moves through the index frame,
+   * `dst[x, z] = src[x - shiftX, z - shiftZ]` = (oldOrigin − newOrigin) / dx, so
+   * a window travelling downstream (−Z) has a positive `shiftZ`. Cells that
+   * leave are dropped (no wrap); cells that enter take (`inflowEta`, `inflowU`,
+   * `inflowW`) — zeros for rest state — and the bed extends its nearest edge
+   * until the rasterizer overwrites it. `bPtr` may be 0. |shift| beyond the grid
+   * extent saturates. See `emscripten/swe.h`.
+   */
+  scrollShallowWater?(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
+    width: number, height: number,
+    shiftX: number, shiftZ: number,
+    inflowEta: number, inflowU: number, inflowW: number,
+  ): void;
+
+  /**
+   * stepShallowWater with the upstream (high-row, +Z) edge driven by the routed
+   * stage `edgeEta` (ABI 10+). Lateral and downstream edges stay transmissive;
+   * `edgeEta` 0 over a still interior is the rest state. See emscripten/swe.h.
+   */
+  stepShallowWaterInflow?(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
+    width: number, height: number,
+    dt: number, g: number, dx: number, H: number,
+    edgeEta: number,
+  ): void;
+
+  /**
+   * Pre-size the solver's reused scratch for a width x height grid so the first
+   * step / scroll does not allocate mid-call (ABI 11+, #454). `createSWEGrid`
+   * calls it when present; an older binary grows the scratch lazily instead.
+   */
+  reserveShallowWaterScratch?(width: number, height: number): void;
+
+  // ---- Channel routing (ABI 10+, emscripten/routing.h) ----
+  // Arrays are allocateGrid pointers: lengths / slopes / widths [nSeg],
+  // storage [nSeg * ROUTING_SUBREACHES], outflow / lag [nSeg].
+  /** Steady state carrying `Q` (m³/s) through every segment. */
+  routeReachSteady?(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    Q: number, storagePtr: number, outflowPtr: number,
+  ): void;
+  /** Advance the chain by `dt` s with `inflowQ` entering the head; volume-conserving. */
+  routeReach?(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    inflowQ: number, dt: number, storagePtr: number, outflowPtr: number,
+  ): void;
+  /** Cumulative kinematic travel time (s) from the head to each segment's outflow. */
+  routeReachTravelTime?(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    Q: number, lagPtr: number,
+  ): void;
+  /** Routed discharge → edge stage η (m) and inflow speed (m/s, downstream). Qref ↦ exactly (0, 0). */
+  routedEdgeState?(Q: number, Qref: number, H: number, g: number): RoutedEdge;
 
   // ---- Memory helpers ----
   /**
@@ -425,7 +503,12 @@ function logWasmTerminal(
   }
 }
 
-function raceWithDeadline<T>(
+/**
+ * `promise`, or a rejection with `onTimeout()` after `timeoutMs` — whichever
+ * settles first. Shared by the main-thread loader and the sim worker handshake
+ * (#455) so neither can hang the boot.
+ */
+export function raceWithDeadline<T>(
   promise: Promise<T>,
   timeoutMs: number,
   onTimeout: () => Error,
@@ -502,7 +585,13 @@ export async function assertLoadedArtifactStamp(glueUrl: string, wasmUrl: string
   return loadedStamp;
 }
 
-function resolvePublicAsset(path: string): string {
+/**
+ * Absolute, stamped URL of a `public/` asset, resolved against the page and the
+ * Vite base. Workers cannot do this themselves — their `self.location` is the
+ * worker script (under `src/…` in dev, `assets/` in a build), not the page — so
+ * the sim worker is handed these URLs in its INIT message (#455).
+ */
+export function resolvePublicAsset(path: string): string {
   const rawBase = getAssetBaseUrl();
   const baseWithSlash = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
   const envBase =
@@ -708,6 +797,7 @@ export function createSWEGrid(
   const uPtr = mod.allocateGrid(count);
   const wPtr = mod.allocateGrid(count);
   const bPtr = mod.allocateGrid(count);
+  mod.reserveShallowWaterScratch?.(width, height);
 
   // Views are rebound through heapF32() if Emscripten grows the heap
   // (ALLOW_MEMORY_GROWTH replaces the ArrayBuffer and detaches these).

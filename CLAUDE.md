@@ -83,6 +83,9 @@ src/
 │   ├── water/SplashSystem.tsx   # Splash particles + SWE disturbance
 │   ├── water/sweSwirl.ts        # Surface swirl owner — SWE sink vs authored drain
 │   ├── water/sweQuality.ts      # SWE grid/step/displacement budget per quality preset
+│   ├── water/sweScroll.ts       # SWE window cell lattice + scroll twin (keeps the moving field world-stable)
+│   ├── water/riverRouter.ts     # Launch-hour discharge routed down the campaign chain → SWE upstream-edge stage
+│   ├── map/routingReach.ts      # Campaign chain as (length, slope, width) per segment for the routing
 │   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/WatershedWasm.ts
 │   └── …
 │
@@ -96,6 +99,7 @@ src/
 │   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, WaterForces
+├── sim/                         # Sim worker: SWE off the main thread (#455) — proxy, protocol, SimFrame
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
@@ -224,7 +228,7 @@ The canyon walls currently use a U-shaped extrusion + Rock031 PBR textures. The 
 
 ### Step 3 — Water visual quality (1–2 hours)
 The water shader is solid. Two tweaks to match the concept:
-- Increase foam density near canyon walls (bank foam mask already exists — tune `bankFoamMask` threshold at `FlowingWater.tsx:111`)
+- Increase foam density near canyon walls (the mesh-edge foam is `edgeFoam` / `EDGE_FOAM_WIDTH` in `FlowingWater.tsx`; inside the SWE window it cross-fades to the solver's wet/dry contour — see `sweFlowMap` in `docs/reference/RENDERER.md`)
 - Add a very slight camera-height turbulence (wave amplitude scales with camera proximity to water surface)
 
 ### Step 4 — Post-processing / atmosphere ✅ (mostly)
@@ -318,7 +322,8 @@ python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com 
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
-| `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM, or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
+| `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
+| `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

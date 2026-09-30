@@ -343,6 +343,10 @@ These are three separate GPU/compute stories. Do not treat them as one “WebGPU
 
 One sim backend per heightfield. Missing WebGPU does not change production water (GLSL + WASM SWE). `?no_gpu_compute` closes chores compute only.
 
+### Simulated surface field (`sweFlowMap`)
+
+Besides the η height texture, `WaterForceSystem` uploads a second RGBA float `DataTexture` on the same `fieldVersion`: `(u, w, depth, div)` — solver velocity (m/s), depth `H + η − b`, and horizontal divergence (1/s), packed from the CPU mirror by `packSweSurfaceField` (`systems/water/sweSurfaceField.ts`; on the WGSL backend that is the readback mirror, never the compute buffer). Both hosts (`FlowingWater.tsx`, `WaterNodeMaterial.ts`) read it in the **fragment** stage: streak axis follows `(u, w)` above a speed threshold (else the authored `(0, −1)`), foam rises at the wet/dry contour and where divergence is positive, and analytic chop is scaled by `SWE_ANALYTIC_SCALE` inside the window. Every SWE-driven term is multiplied by `sweWindowMask` (0 when `sweEnabled < 0.5` — the `low` preset — or outside the grid, feathered at the border), so far-field and `low` water is the analytic shader unchanged. Thresholds live in `WATER_SHADER` (`constants/game.ts`); the streak scroll *sense* is unchanged, only its axis follows the flow.
+
 ## Visual notes
 
 - **WebGL2 (`?renderer=webgl`, default)** is the only production path.

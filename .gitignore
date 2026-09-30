@@ -8,6 +8,7 @@ package-lock.json
 build/
 emscripten/build/
 emscripten/build-host/
+emscripten/build-threads/
 emscripten/compile_commands.json
 
 # Ephemeral screenshot / diagnostic outputs (repo root)

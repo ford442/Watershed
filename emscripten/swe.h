@@ -42,6 +42,26 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
                       float dt, float g, float dx, float H);
 
 /**
+ * stepShallowWater with the upstream edge driven by routed discharge (ABI 10,
+ * additive — stepShallowWater itself is unchanged).
+ *
+ * Downstream is −Z, so the upstream edge is the face above the last row
+ * (row height − 1): the side the player is leaving, and the side scroll
+ * drops cells off when the window travels downstream. That face's ghost is
+ * built from characteristics (see upstreamGhost in swe.cpp): the stage
+ * `edgeEta` (a free-surface perturbation, same datum as `h`) enters as a
+ * simple wave, and waves reaching the edge from inside still leave. Lateral and
+ * downstream edges stay transmissive.
+ *
+ * `edgeEta == 0` over a still interior is exactly the rest state, so
+ * lake-at-rest holds bit-for-bit. routing.h's routedEdgeState turns a routed
+ * discharge into `edgeEta`. Non-finite `edgeEta` is treated as 0.
+ */
+void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                            int width, int height,
+                            float dt, float g, float dx, float H, float edgeEta);
+
+/**
  * Authored hydro event source term (ABI 8, additive).
  *
  * kind: 0 inflowPulse (raises η), 1 vortex (lowers η + swirl), 2 braid (raises b),
@@ -50,6 +70,55 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
 void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
                    int width, int height, float dx, float originX, float originZ, float H,
                    int kind, float cx, float cz, float radius, float strength, float dt);
+
+/**
+ * Scroll the whole field through the grid's index frame by whole cells
+ * (ABI 9, additive).
+ *
+ * The grid is a moving window over the world: every frame the window origin
+ * follows the vehicle, and `b` is re-rasterized into the new window. h / u / w
+ * carry state, so they have to move with the world or a splash rides the
+ * camera. Call this with the whole-cell origin delta *before* the bed refresh
+ * and the step.
+ *
+ * Sign convention — `shift` is how far the CONTENT moves through the index
+ * frame, so it equals (oldOrigin - newOrigin) / dx per axis:
+ *
+ *     dst[x, z] = src[x - shiftX, z - shiftZ]
+ *
+ * A window that travels downstream (-Z, gameplay-forward) has a POSITIVE
+ * shiftZ: the field slides toward higher rows, water leaves off the high-row
+ * (upstream) edge, and the new low-row (downstream) edge is filled. World
+ * position of a cell, originZ + row * dx, is unchanged for every surviving cell.
+ *
+ * Cells that leave the window are dropped — nothing wraps. Cells that enter
+ * take the inflow state: (h, u, w) = (inflowEta, inflowU, inflowW). Pass zeros
+ * for rest state. These are the ABI's own fields (a perturbation and
+ * velocities), not a depth and a flux: total depth needs the bed, and the bed
+ * for an entering cell is only known once the rasterizer has run. The bed plane
+ * entering cells take is the nearest surviving edge value (constant
+ * extension), which is only a placeholder for the one frame before the
+ * rasterizer overwrites it.
+ *
+ * Pure data movement, no arithmetic: the result is bit-exact and identical to
+ * the WGSL twin (`scroll` in swe.wgsl). |shift| >= the grid extent on an axis
+ * saturates — the whole field is replaced. Sub-cell motion is the caller's to
+ * absorb (WaterForceSystem quantizes the window origin to the cell lattice).
+ *
+ * @param bPtr  Bed plane, or 0 to leave the bed alone (flat bed)
+ */
+void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                        int width, int height, int shiftX, int shiftZ,
+                        float inflowEta, float inflowU, float inflowW);
+
+/**
+ * Size the solver's reused scratch (step, upstream-edge ghosts, scroll temp)
+ * for a width x height grid up front, so the first stepShallowWater[Inflow] /
+ * scrollShallowWater does not allocate mid-call. Call once after allocating the
+ * grid planes. Optional: without it the buffers grow lazily on first use, as
+ * before. Safe to call again for a different size.
+ */
+void reserveShallowWaterScratch(int width, int height);
 
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;

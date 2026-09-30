@@ -9,7 +9,11 @@
 # Output (written to ../public/ so Vite serves them as static assets):
 #   watershed_native.js          — Emscripten glue + Embind dispatch
 #   watershed_native.wasm        — WASM binary
-#   watershed_native.worker.js   — Pthread worker shim (--threads only)
+#
+# --threads writes to emscripten/build-threads/out/ instead (plus the
+# watershed_native.worker.mjs pthread shim) and never touches public/ or the
+# artifact stamp: the committed single-thread pair is the only shipped build,
+# and production sends no COOP/COEP (#454).
 #
 # Requires: Emscripten SDK (em++ in PATH or auto-located via emsdk_env.sh)
 #
@@ -32,6 +36,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PUBLIC_DIR="$REPO_ROOT/public"
 BUILD_DIR="$SCRIPT_DIR/build"
+OUTPUT_DIR="$PUBLIC_DIR"
+if [ "$USE_THREADS" -eq 1 ]; then
+    BUILD_DIR="$SCRIPT_DIR/build-threads"
+    OUTPUT_DIR="$BUILD_DIR/out"
+fi
 
 if [ "$USE_THREADS" -eq 1 ]; then
     echo "Building watershed_native.js (multi-threaded via CMake)..."
@@ -95,11 +104,11 @@ pushd "$BUILD_DIR" >/dev/null
 emcmake cmake .. \
   -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
   -DWATERSHED_THREADS="$THREADS_FLAG" \
-  -DWATERSHED_OUTPUT_DIR="$PUBLIC_DIR"
+  -DWATERSHED_OUTPUT_DIR="$OUTPUT_DIR"
 cmake --build . --config "$CMAKE_BUILD_TYPE"
 popd >/dev/null
 
-OUTPUT_JS="$PUBLIC_DIR/watershed_native.js"
+OUTPUT_JS="$OUTPUT_DIR/watershed_native.js"
 if [ ! -f "$OUTPUT_JS" ]; then
     echo "Build failed — no output produced."
     exit 1
@@ -108,15 +117,15 @@ fi
 echo ""
 echo "Build successful!"
 echo "  → $OUTPUT_JS"
-if [ -f "$PUBLIC_DIR/watershed_native.wasm" ]; then
-    WASM_SIZE=$(wc -c < "$PUBLIC_DIR/watershed_native.wasm")
+if [ -f "$OUTPUT_DIR/watershed_native.wasm" ]; then
+    WASM_SIZE=$(wc -c < "$OUTPUT_DIR/watershed_native.wasm")
     echo "  WASM size: ${WASM_SIZE} bytes"
 fi
 
-if [ -f "$PUBLIC_DIR/watershed_native.wasm" ]; then
-    # Glue + wasm only (pthread shim is additive). Same inputs as
-    # hashGlueWasmPair() in WatershedWasm.ts — including --threads builds,
-    # which previously left the previous stamp file in place.
+if [ "$USE_THREADS" -eq 0 ] && [ -f "$PUBLIC_DIR/watershed_native.wasm" ]; then
+    # Glue + wasm only. Same inputs as hashGlueWasmPair() in WatershedWasm.ts.
+    # Only the shipped single-thread pair in public/ is stamped; --threads
+    # output lives in build-threads/out and must not move the stamp.
     STAMP=$(cat "$OUTPUT_JS" "$PUBLIC_DIR/watershed_native.wasm" | sha256sum | cut -c1-16)
     STAMP_FILE="$REPO_ROOT/src/systems/water/wasmArtifactStamp.ts"
     cat > "$STAMP_FILE" <<EOF
@@ -127,7 +136,7 @@ EOF
 fi
 
 if [ "$USE_THREADS" -eq 1 ]; then
-    WORKER_JS="$PUBLIC_DIR/watershed_native.worker.js"
+    WORKER_JS="$OUTPUT_DIR/watershed_native.worker.mjs"
     if [ -f "$WORKER_JS" ]; then
         echo "  → $WORKER_JS (pthread worker shim)"
     fi

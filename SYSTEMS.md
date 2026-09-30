@@ -539,6 +539,54 @@ it resolved that way, active force path (`wasm` / `fallback`), last force-batch 
 and the live SWE grid. `window.__watershedPhysicsWorker` (dev) still exposes raw `waterForce`
 diagnostics and tick order.
 
+## Sim Worker (#455)
+
+### `src/sim/simWorker.ts` + `SimWorkerProxy` + `createWorkerSweSim`
+
+**Purpose:** Step the SWE field off the render thread, in one dedicated worker that owns its
+own `watershed_native` instance. Phase A (shipped): SWE only. Later phases move water forces
+(B), particle SoA + HUD chores (C) and an Atomics/SharedArrayBuffer fast path (D) into the same
+worker, so the main thread stops calling Embind per frame. Rapier stays in its own worker:
+two workers, one for rigid bodies, one for the field.
+
+**Backend (`sweBackend.ts`, once per session):** `wgsl` on a native-WebGPU boot (stays on the
+main thread — it needs the renderer's `GPUDevice`, and the worker must never request a second
+one); otherwise `wasm-worker` (default) or `wasm-main` (`?simWorker=0`, no `Worker`, or a
+failed handshake → `demoteSweSimBackendToWasmMain`).
+
+**Clock:** the main thread still decides when to step and with what — `WaterForceSystem`
+sends the same dt, splashes, hydro events and routed `edgeEta` it would hand the main-thread
+stepper, in the same order. The worker runs `createWasmSweSim` on that stream, so the field is
+**bit-identical** to `wasm-main` (`src/sim/simWorker.integration.test.ts`, 90 frames, real
+binary). A decoupled fixed-dt worker loop is deliberately *not* Phase A: it would change the
+dt sequence and therefore the field.
+
+**Protocol (`simWorkerProtocol.ts`):** `INIT` (page-resolved glue/wasm URLs — a worker's own
+location is its script, not the page) → `READY {abi}`; `CONFIGURE`, `COMMIT_BED`, `SCROLL`,
+`STEP` (queued `addSurface` ops ride along, applied one by one), `DISPOSE_GRID`;
+`FRAME {gridId, frameIndex, epoch, computeMicros, buffer}` ↔ `RETURN_FRAME`.
+
+**Frames (`SimFrame.ts`):** η | u | w | b in one transferred `ArrayBuffer`. The main thread
+copies it into a stable mirror (`workerSweSim.ts` — readers such as gpu-chores hold `h`
+across awaits, so the mirror is never a transferable) and returns the buffer; the worker
+pools two. The worker copies out of the WASM heap on publish, so no heap view crosses
+threads. `b` is in the frame because authored events carve the bed.
+
+**Latency / ordering:** a step's field lands one message later (`fieldVersion` bumps then).
+`scroll()` and `commitBed()` apply to the mirror at once and bump the epoch; a frame from an
+older epoch is discarded, so the mirror never pairs a field with a window or bed it was not
+computed on (same rule as the WGSL readback).
+
+**Failure:** `Worker` construction throws, the module fails to load in the worker, a worker
+script error, or no `READY` within the WASM init deadline + 2 s (`?wasmInitTimeout=`) → the
+handshake rejects (memoized — never retried into a second worker) and `WaterForceSystem`
+falls back to `wasm-main` with a console warning. A worker that dies *after* its field has
+stepped turns SWE off (`fail-open`), never starts a second field. No JS stepper in the worker.
+
+**Not yet (Phases B–D):** the main thread still loads its own module for water forces, the
+river router and chores, so a session currently has three instances (main, Rapier worker,
+sim worker) until B/C land.
+
 ### SWE quality budgets — `src/systems/water/sweQuality.ts`
 
 The SWE height field is a visual system and is budgeted by the live quality preset
@@ -567,6 +615,19 @@ Each live `TrackSegment` publishes a bathymetry source from the same
 ID so a recycled treadmill slot replaces its own entry. `WaterForceSystem.refreshBed()`
 rasterizes the registered sources into `grid.b` before stepping — only when the
 player-centred window slides a whole cell or the registered set changes, not every frame.
+The same whole-cell move first scrolls `h`/`u`/`w`/`b` through the index frame
+(`scrollShallowWater`, `sweScroll.ts`), so the field stays fixed in world space and this
+rasterize only rewrites the bed of a window that is already in the new frame.
+
+**Upstream edge (ABI 10):** the window's +Z (last-row) edge is not transmissive when routing is
+available. `riverRouter.ts` routes the launch hour's `flowRate` (`flowForecast.computeFlowRate`,
+× 40 m³/s) from the glacial head down the campaign chain (`routingReach.ts` geometry,
+`emscripten/routing.cpp` numerics), and `WaterForceSystem` hands the routed stage at the
+player's segment (`useGameStore.currentSegmentIndex`, run-session map) to the step as
+`edgeEta`; the scroll fill and a freshly placed window take the same routed state. So the hour
+changes η — and therefore the hull through `sampleSWEFlow` — at the boundary, not only through
+authored `hydroEvents` disks. `applyForecastToSegmentParams` still reshapes the authored
+channel; the edge adds the wave. The routing never runs in TypeScript.
 
 **Datum:** `computeCanyonFloorHeight`'s `yHeight` carries a large per-biome constant (a slot
 canyon floor sits ~3.9 above its path point, a summer canyon near 0), so each segment is
@@ -683,7 +744,8 @@ npm run build:wasm        # runs emscripten/build.sh
 Output written to `public/` (served as static assets by Vite):
 - `public/watershed_native.js` — Emscripten glue + Embind dispatch
 - `public/watershed_native.wasm` — WASM binary
-- `public/watershed_native.worker.js` — pthread worker shim (`--threads` mode only)
+- `--threads` builds go to `emscripten/build-threads/out/` (with the `watershed_native.worker.mjs`
+  pthread shim) and never overwrite the shipped `public/` pair or the artifact stamp (#454)
 
 **Graceful skip:** `build.sh` exits 0 with a warning when `emcc` is not in `PATH` —
 the JS/WASM output is simply not regenerated. Physics TypeScript fallbacks keep the

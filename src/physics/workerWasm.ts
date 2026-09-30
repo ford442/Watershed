@@ -70,18 +70,26 @@ function raceWithDeadline<T>(
 }
 
 /**
- * Load watershed_native inside a dedicated worker.
- * Returns null when the glue module is missing or init fails/times out so
- * Rapier can fall back to TS math.
+ * Load watershed_native inside a dedicated worker (the Rapier worker, and the
+ * sim worker — #455). Returns null when the glue module is missing or init
+ * fails/times out so the caller can fall back. One instance per worker.
+ *
+ * @param failureNote  Logged with the error; names the caller's fallback.
+ * @param assetUrl     Absolute URL of a public/ asset. The default resolves
+ *                     against the worker script's own URL; the sim worker
+ *                     passes the page-resolved URLs from its INIT instead.
  */
-export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
+export async function getWorkerWasm(
+  failureNote = '[physics worker] native init failed; using TS water-force fallback',
+  assetUrl: (path: string) => string = resolveWorkerAsset,
+): Promise<WatershedNativeModule | null> {
   if (modulePromise) return modulePromise;
 
   const timeoutMs = resolveWasmInitTimeoutMs(workerSearchString());
 
   modulePromise = (async () => {
-    const wasmJsUrl = resolveWorkerAsset('watershed_native.js');
-    const wasmBinaryUrl = resolveWorkerAsset('watershed_native.wasm');
+    const wasmJsUrl = assetUrl('watershed_native.js');
+    const wasmBinaryUrl = assetUrl('watershed_native.wasm');
     let terminalLogged = false;
 
     try {
@@ -91,7 +99,7 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
       const factory = mod.default;
       const loaded = await raceWithDeadline(
         factory({
-          locateFile: (path: string) => resolveWorkerAsset(path),
+          locateFile: (path: string) => assetUrl(path),
         }),
         timeoutMs,
         () => new WasmInitTimeoutError(timeoutMs),
@@ -115,7 +123,7 @@ export async function getWorkerWasm(): Promise<WatershedNativeModule | null> {
           console.error(`${WASM_LOG_PREFIX} failed(${err.message})`);
         }
       }
-      console.error('[physics worker] native init failed; using TS water-force fallback', error);
+      console.error(failureNote, error);
       return null;
     }
   })();

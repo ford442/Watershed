@@ -7,7 +7,7 @@
  * updating WASM.md.
  *
  * This is the only translation unit that includes <emscripten/bind.h> — every
- * other header (common.h, forces.h, swe.h, chores.h, particles.h) stays Embind-free.
+ * other header (common.h, forces.h, swe.h, chores.h, particles.h, routing.h) stays Embind-free.
  *
  * Build:
  *   cd emscripten && ./build.sh
@@ -22,6 +22,7 @@
 #include "swe.h"
 #include "chores.h"
 #include "particles.h"
+#include "routing.h"
 
 #include <emscripten/bind.h>
 #include <type_traits>
@@ -46,9 +47,22 @@
 //       MIN_WASM_ABI_VERSION stays 6.
 //   8 — applySWEEvent source terms (inflow / vortex / braid / roughness).
 //       Additive; MIN_WASM_ABI_VERSION stays 6.
+//   9 — scrollShallowWater: whole-cell scroll of h/u/w/b so the moving SWE
+//       window stays world-stable. Additive — stepShallowWater is unchanged, so
+//       the TS floor (MIN_WASM_ABI_VERSION) stays 8; an ABI-8 binary just lacks
+//       the export, which WatershedWasm.ts types as optional.
+//  10 — channel routing (routing.cpp: routeReach / routeReachSteady /
+//       routeReachTravelTime / routedEdgeState) and stepShallowWaterInflow, the
+//       step with the upstream edge driven by the routed stage. Additive —
+//       stepShallowWater / applySWEEvent keep their signatures, so
+//       MIN_WASM_ABI_VERSION stays 8.
+//  11 — reserveShallowWaterScratch: pre-size the solver scratch so a step
+//       never allocates mid-call (#454). Additive; MIN_WASM_ABI_VERSION stays 8.
+//       Same release: ENVIRONMENT='web,worker', emmalloc, FILESYSTEM=0 (no
+//       signature changes).
 // ---------------------------------------------------------------------------
 int getVersion() noexcept {
-    return 8;
+    return 11;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +75,8 @@ static_assert(!std::is_polymorphic_v<Vec3>,
               "Vec3 must be non-polymorphic to cross the Embind boundary");
 static_assert(!std::is_polymorphic_v<WaterForceResult>,
               "WaterForceResult must be non-polymorphic to cross the Embind boundary");
+static_assert(!std::is_polymorphic_v<RoutedEdge>,
+              "RoutedEdge must be non-polymorphic to cross the Embind boundary");
 
 EMSCRIPTEN_BINDINGS(watershed_native) {
     // Value types must be registered before any function()/class_ that
@@ -80,6 +96,10 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
         .field("turbulence", &WaterForceResult::turbulence)
         .field("submergedRatio", &WaterForceResult::submergedRatio);
 
+    emscripten::value_object<RoutedEdge>("RoutedEdge")
+        .field("eta", &RoutedEdge::eta)
+        .field("speed", &RoutedEdge::speed);
+
     emscripten::function("getVersion",       &getVersion);
     emscripten::function("calculateBuoyancyAndDrag", &calculateBuoyancyAndDrag);
     emscripten::function("calculateWaterForce", &calculateWaterForce);
@@ -89,6 +109,13 @@ EMSCRIPTEN_BINDINGS(watershed_native) {
     emscripten::function("computeFlowForce", &computeFlowForce);
     emscripten::function("stepShallowWater", &stepShallowWater);
     emscripten::function("applySWEEvent",    &applySWEEvent);
+    emscripten::function("scrollShallowWater", &scrollShallowWater);
+    emscripten::function("stepShallowWaterInflow", &stepShallowWaterInflow);
+    emscripten::function("routeReach",       &routeReach);
+    emscripten::function("routeReachSteady", &routeReachSteady);
+    emscripten::function("routeReachTravelTime", &routeReachTravelTime);
+    emscripten::function("routedEdgeState",  &routedEdgeState);
+    emscripten::function("reserveShallowWaterScratch", &reserveShallowWaterScratch);
     emscripten::function("allocateGrid",     &allocateGrid);
     emscripten::function("freeGrid",         &freeGrid);
     emscripten::function("reduceF32Grid",    &reduceF32Grid);

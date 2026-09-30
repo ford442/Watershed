@@ -2,8 +2,10 @@
  * WgslSweSim — the WGSL twin of the C++ SWE stepper (#435), on the renderer's
  * own GPUDevice.
  *
- * Numerics live in `swe.wgsl` (a line-for-line port of emscripten/swe.cpp and
- * applySWEEvent). This file owns buffers, dispatch order, and the CPU mirror:
+ * Numerics live in `swe.wgsl` (a line-for-line port of emscripten/swe.cpp:
+ * the step with or without the routed upstream edge, applySWEEvent and
+ * scrollShallowWater). This file owns buffers, dispatch order,
+ * and the CPU mirror:
  *
  *   step():  [upload splash delta → add_surface] → clear max → lift → update
  *            → apply_events (32 per dispatch) → copy field → staging
@@ -11,21 +13,30 @@
  *   `fieldVersion`. At most one readback is in flight; a step that lands while
  *   one is pending still runs on the GPU, it just is not mirrored separately.
  *
+ *   scroll(): [splash delta → add_surface] → scroll (gather into scratch) →
+ *             copy scratch → field, and the same shift applied to the CPU mirror
+ *             so every reader stays in the new index frame at once. A readback
+ *             that was already in flight was taken in the OLD frame, so it is
+ *             discarded on landing rather than dragged across the scroll — the
+ *             next step's readback replaces it. Readers therefore never pair a
+ *             stale-frame field with the new window origin.
+ *
  * The device is never requested here — callers pass the session device the
  * renderer registered (`getSessionGpuDevice()`), so there is exactly one
  * GPUDevice per session.
  */
 import sweWgslSource from './swe.wgsl?raw';
 import type { SweEventCall, SweSim, SweStepInput } from './sweSim';
+import { SWE_REST_INFLOW, scrollField, type SweInflow } from './sweScroll';
 
 const WORKGROUP = 64;
 /** Matches MAX_EVENTS / EventBlock in swe.wgsl. */
 export const WGSL_SWE_MAX_EVENTS_PER_DISPATCH = 32;
 const EVENT_STRIDE_FLOATS = 8;
-const PARAMS_BYTES = 48;
+const PARAMS_BYTES = 80;
 
-type EntryPoint = 'add_surface' | 'lift' | 'update' | 'apply_events';
-const ENTRY_POINTS: readonly EntryPoint[] = ['add_surface', 'lift', 'update', 'apply_events'];
+type EntryPoint = 'add_surface' | 'lift' | 'update' | 'apply_events' | 'scroll';
+const ENTRY_POINTS: readonly EntryPoint[] = ['add_surface', 'lift', 'update', 'apply_events', 'scroll'];
 
 // WebGPU usage flags as literals: the GPUBufferUsage globals are absent under
 // jsdom / Node, and these values are fixed by the spec.
@@ -97,10 +108,12 @@ export async function createWgslSweSim(
     size: fieldBytes,
     usage: USAGE.STORAGE | USAGE.COPY_SRC | USAGE.COPY_DST,
   });
+  // 4 planes: (d, d·u, d·w) for a step, and a gathered copy of h/u/w/b for a
+  // scroll, which is copied back over `field` (COPY_SRC).
   const scratch = device.createBuffer({
     label: 'swe:scratch',
-    size: 3 * count * 4,
-    usage: USAGE.STORAGE | USAGE.COPY_DST,
+    size: 4 * count * 4,
+    usage: USAGE.STORAGE | USAGE.COPY_SRC | USAGE.COPY_DST,
   });
   const maxBits = device.createBuffer({
     label: 'swe:maxBits',
@@ -155,6 +168,7 @@ export async function createWgslSweSim(
 
   const paramsScratch = new ArrayBuffer(PARAMS_BYTES);
   const paramsU32 = new Uint32Array(paramsScratch);
+  const paramsI32 = new Int32Array(paramsScratch);
   const paramsF32 = new Float32Array(paramsScratch);
   const eventsScratch = new ArrayBuffer(eventsBytes);
   const eventsI32 = new Int32Array(eventsScratch);
@@ -162,8 +176,9 @@ export async function createWgslSweSim(
 
   const writeParams = (
     target: GPUBuffer,
-    step: { dt: number; g: number; H: number; originX: number; originZ: number },
+    step: { dt: number; g: number; H: number; originX: number; originZ: number; edgeEta?: number },
     eventCount: number,
+    scrollBy?: { shiftX: number; shiftZ: number; inflow: SweInflow },
   ) => {
     paramsU32[0] = width;
     paramsU32[1] = height;
@@ -175,8 +190,16 @@ export async function createWgslSweSim(
     paramsF32[7] = step.H;
     paramsF32[8] = step.originX;
     paramsF32[9] = step.originZ;
-    paramsF32[10] = 0;
-    paramsF32[11] = 0;
+    paramsI32[10] = scrollBy?.shiftX ?? 0;
+    paramsI32[11] = scrollBy?.shiftZ ?? 0;
+    paramsF32[12] = scrollBy?.inflow.eta ?? 0;
+    paramsF32[13] = scrollBy?.inflow.u ?? 0;
+    paramsF32[14] = scrollBy?.inflow.w ?? 0;
+    paramsF32[15] = 0;
+    paramsU32[16] = step.edgeEta === undefined ? 0 : 1;
+    paramsF32[17] = step.edgeEta ?? 0;
+    paramsF32[18] = 0;
+    paramsF32[19] = 0;
     device.queue.writeBuffer(target, 0, paramsScratch);
   };
 
@@ -200,19 +223,27 @@ export async function createWgslSweSim(
   let readbackPending: Promise<void> | null = null;
   /** Steps submitted but not yet covered by a completed readback. */
   let unmirrored = false;
+  /** Bumped by every scroll; a readback taken in an older frame is not mirrored. */
+  let scrollEpoch = 0;
 
   const startReadback = () => {
     const encoder = device.createCommandEncoder({ label: 'swe:readback' });
     encoder.copyBufferToBuffer(field, 0, staging, 0, fieldBytes);
     device.queue.submit([encoder.finish()]);
     unmirrored = false;
+    const epoch = scrollEpoch;
     readbackPending = staging
       .mapAsync(MAP_MODE_READ)
       .then(() => {
         if (disposed) return;
-        mirror.set(new Float32Array(staging.getMappedRange()));
+        // A scroll landed after this copy: the data is in the old index frame.
+        // The mirror was already scrolled on the CPU; keep it, and let the next
+        // readback (which `unmirrored` guarantees) bring the GPU truth.
+        if (epoch === scrollEpoch) {
+          mirror.set(new Float32Array(staging.getMappedRange()));
+          fieldVersion += 1;
+        }
         staging.unmap();
-        fieldVersion += 1;
       })
       .catch((error: unknown) => {
         if (!disposed) console.warn('[WgslSweSim] readback failed', error);
@@ -246,6 +277,19 @@ export async function createWgslSweSim(
     }
   };
 
+  /** Fold queued splash deltas into η — they are addressed in the current frame. */
+  const encodeAddSurface = (encoder: GPUCommandEncoder) => {
+    if (!deltaDirty) return;
+    device.queue.writeBuffer(scratch, 0, delta);
+    delta.fill(0);
+    deltaDirty = false;
+    const pass = encoder.beginComputePass({ label: 'swe:add_surface' });
+    pass.setPipeline(pipelines.add_surface);
+    pass.setBindGroup(0, uniformSet(0).bindGroup);
+    pass.dispatchWorkgroups(groups);
+    pass.end();
+  };
+
   const submit = (encoder: GPUCommandEncoder) => {
     device.queue.submit([encoder.finish()]);
     unmirrored = true;
@@ -275,22 +319,44 @@ export async function createWgslSweSim(
       delta[index] += amount;
       deltaDirty = true;
     },
+    scroll(shiftX, shiftZ, inflow = SWE_REST_INFLOW) {
+      if (disposed) return;
+      if (!Number.isFinite(shiftX) || !Number.isFinite(shiftZ)) return;
+      const sx = Math.max(-width, Math.min(width, Math.trunc(shiftX)));
+      const sz = Math.max(-height, Math.min(height, Math.trunc(shiftZ)));
+      if (sx === 0 && sz === 0) return;
+
+      writeParams(
+        uniformSet(0).params,
+        { dt: 0, g: 0, H: 0, originX: 0, originZ: 0 },
+        0,
+        { shiftX: sx, shiftZ: sz, inflow },
+      );
+      const encoder = device.createCommandEncoder({ label: 'swe:scroll' });
+      encodeAddSurface(encoder);
+      const pass = encoder.beginComputePass({ label: 'swe:scroll' });
+      pass.setPipeline(pipelines.scroll);
+      pass.setBindGroup(0, uniformSet(0).bindGroup);
+      pass.dispatchWorkgroups(groups);
+      pass.end();
+      encoder.copyBufferToBuffer(scratch, 0, field, 0, fieldBytes);
+      device.queue.submit([encoder.finish()]);
+
+      // Same shift on the CPU mirror, so readers move to the new frame in step
+      // with the window origin. No readback is started here: the next step's
+      // readback follows the bed commit and picks up the GPU truth.
+      scrollField({ h, u, w, b }, width, height, sx, sz, inflow);
+      scrollEpoch += 1;
+      unmirrored = true;
+      fieldVersion += 1;
+    },
     step(input: SweStepInput) {
       if (disposed) return;
       const chunks = prepareUniforms(input);
       const main = uniformSet(0);
 
       const encoder = device.createCommandEncoder({ label: 'swe:step' });
-      if (deltaDirty) {
-        device.queue.writeBuffer(scratch, 0, delta);
-        delta.fill(0);
-        deltaDirty = false;
-        const pass = encoder.beginComputePass({ label: 'swe:add_surface' });
-        pass.setPipeline(pipelines.add_surface);
-        pass.setBindGroup(0, main.bindGroup);
-        pass.dispatchWorkgroups(groups);
-        pass.end();
-      }
+      encodeAddSurface(encoder);
       encoder.clearBuffer(maxBits);
       // Separate passes: each dispatch must see the previous one's writes.
       for (const entry of ['lift', 'update'] as const) {
