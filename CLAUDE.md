@@ -99,7 +99,7 @@ src/
 │   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, WaterForces
-├── sim/                         # Sim worker: SWE off the main thread (#455) — proxy, protocol, SimFrame
+├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```

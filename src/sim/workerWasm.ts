@@ -18,16 +18,6 @@ const WASM_LOG_PREFIX = '[Watershed WASM]';
 
 let modulePromise: Promise<WatershedNativeModule | null> | null = null;
 
-function resolveWorkerAsset(path: string): string {
-  const base =
-    typeof self !== 'undefined' && typeof self.location?.href === 'string'
-      ? self.location.href
-      : '/';
-  const url = new URL(path, base).href;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}v=${WASM_ARTIFACT_STAMP}`;
-}
-
 function workerSearchString(): string | undefined {
   if (typeof self !== 'undefined' && typeof self.location?.search === 'string') {
     return self.location.search;
@@ -70,18 +60,22 @@ function raceWithDeadline<T>(
 }
 
 /**
- * Load watershed_native inside a dedicated worker (the Rapier worker, and the
- * sim worker — #455). Returns null when the glue module is missing or init
- * fails/times out so the caller can fall back. One instance per worker.
+ * Load watershed_native inside the sim worker (#455) — the only worker that
+ * instantiates it; the Rapier worker gets its water forces from here (Phase B).
+ * Returns null when the glue module is missing or init fails/times out so the
+ * caller can fall back. One instance per worker.
  *
  * @param failureNote  Logged with the error; names the caller's fallback.
- * @param assetUrl     Absolute URL of a public/ asset. The default resolves
- *                     against the worker script's own URL; the sim worker
- *                     passes the page-resolved URLs from its INIT instead.
+ * @param assetUrl     Absolute, stamped URL of a public/ asset, resolved by the
+ *                     PAGE and handed over in INIT. There is deliberately no
+ *                     default: a worker's own location is its script
+ *                     (src/... in dev, assets/ in a build), so resolving
+ *                     public/ against it 404s — which is how the Rapier
+ *                     worker's old native path silently never loaded.
  */
 export async function getWorkerWasm(
-  failureNote = '[physics worker] native init failed; using TS water-force fallback',
-  assetUrl: (path: string) => string = resolveWorkerAsset,
+  failureNote: string,
+  assetUrl: (path: string) => string,
 ): Promise<WatershedNativeModule | null> {
   if (modulePromise) return modulePromise;
 

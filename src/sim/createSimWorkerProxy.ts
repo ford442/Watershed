@@ -13,18 +13,26 @@ import {
   resolveWasmInitTimeoutMs,
 } from '../systems/water/WatershedWasm';
 import type { SimFrame, SimFrameHeader } from './SimFrame';
-import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from './simWorkerProtocol';
+import type {
+  SimForceResult,
+  SimWorkerCommand,
+  SimWorkerLike,
+  SimWorkerResponse,
+} from './simWorkerProtocol';
 
 /** Slack over the in-worker WASM deadline for the worker script itself to load. */
 const HANDSHAKE_SLACK_MS = 2000;
 
 type FrameListener = (frame: SimFrame) => void;
+type ForceListener = (result: SimForceResult) => void;
 
 export class SimWorkerProxy {
   private readonly worker: SimWorkerLike;
   private readonly frameListeners = new Map<number, FrameListener>();
   private readonly fatalListeners = new Set<(error: string) => void>();
+  private forceListener: ForceListener | null = null;
   private nextGrid = 1;
+  private nextForceSeq = 1;
   private latest: SimFrameHeader | null = null;
   private readyResolve: ((abi: number) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
@@ -46,6 +54,11 @@ export class SimWorkerProxy {
         const listener = this.frameListeners.get(response.frame.gridId);
         if (listener) listener(response.frame);
         else this.returnFrame(buffer);
+        return;
+      }
+      case 'FORCES': {
+        const { type: _type, ...result } = response;
+        this.forceListener?.(result);
         return;
       }
       case 'ERROR':
@@ -121,6 +134,32 @@ export class SimWorkerProxy {
     };
   }
 
+  /**
+   * Water forces for `count` bodies (simForces.ts wire format), on grid
+   * `gridId` at this origin. `samples` is transferred — do not touch it after —
+   * and comes back as the result's `results`. Returns the request's seq, or
+   * null once the worker has died.
+   */
+  requestForces(gridId: number, originX: number, originZ: number, samples: Float64Array, count: number): number | null {
+    if (this.failure) return null;
+    const seq = this.nextForceSeq++;
+    this.post({ type: 'FORCES', seq, gridId, originX, originZ, count, samples }, [samples.buffer]);
+    return seq;
+  }
+
+  /** The one consumer of force results (WaterForceSystem). */
+  onForces(listener: ForceListener): () => void {
+    this.forceListener = listener;
+    return () => {
+      if (this.forceListener === listener) this.forceListener = null;
+    };
+  }
+
+  /** Hand the worker its end of the Rapier worker's hull link (hullLinkProtocol.ts). */
+  connectPhysics(port: MessagePort): void {
+    this.post({ type: 'CONNECT_PHYSICS', port }, [port]);
+  }
+
   onFatal(listener: (error: string) => void): () => void {
     this.fatalListeners.add(listener);
     return () => {
@@ -133,6 +172,7 @@ export class SimWorkerProxy {
     this.worker.removeEventListener('error', this.onError);
     this.frameListeners.clear();
     this.fatalListeners.clear();
+    this.forceListener = null;
     this.worker.terminate?.();
   }
 
@@ -154,6 +194,7 @@ const defaultFactory: SimWorkerFactory = () =>
   new Worker(new URL('./simWorker.ts', import.meta.url), { type: 'module' }) as unknown as SimWorkerLike;
 
 let proxyPromise: Promise<SimWorkerProxy> | null = null;
+let readyProxy: SimWorkerProxy | null = null;
 
 /**
  * The session's sim worker, READY. Rejects — and keeps rejecting, so a quality
@@ -171,13 +212,20 @@ export function getSimWorkerProxy(factory: SimWorkerFactory = defaultFactory): P
         proxy.dispose();
         throw error;
       }
+      readyProxy = proxy;
       return proxy;
     })();
   }
   return proxyPromise;
 }
 
+/** The session's sim worker if its handshake already succeeded and it is alive; never starts one. */
+export function peekSimWorkerProxy(): SimWorkerProxy | null {
+  return readyProxy && !readyProxy.failed ? readyProxy : null;
+}
+
 /** Test seam. */
 export function resetSimWorkerProxyForTests(): void {
   proxyPromise = null;
+  readyProxy = null;
 }

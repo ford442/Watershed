@@ -29,6 +29,12 @@ export interface WaterForceTickConfig {
   flowDirX: number;
   flowDirZ: number;
   impulseScale?: number;
+  /**
+   * flowSpeed / waterLevel are AUTHORED: the force comes from the sim worker
+   * over the hull link (CONNECT_SIM), which samples and stages them on its live
+   * SWE field (#455 Phase B). Without a link the tick uses the TS fallback.
+   */
+  simFlow?: boolean;
 }
 
 export interface WaterForceDiagnostics {
@@ -43,6 +49,16 @@ export interface WaterForceDiagnostics {
   submergedRatio: number;
   /** Wall time of the force batch inside the worker, in microseconds. */
   computeMicros?: number;
+  /** Set when the sim worker computed it: the flow it sampled at the hull. */
+  sampledFlow?: {
+    dirX: number;
+    dirZ: number;
+    speed: number;
+    wet: boolean;
+    source: 'swe' | 'fallback';
+    surfaceOffset: number;
+    depth: number;
+  };
 }
 
 export interface RapierWorkerInitPayload {
@@ -70,14 +86,15 @@ export type RapierWorkerCommand =
   | { id: number; type: 'GET_STATE' }
   | { id: number; type: 'ADD_STATIC_COLLIDER'; collider: StaticBoxColliderSpec; handle?: number }
   | { id: number; type: 'REMOVE_STATIC_COLLIDER'; handle: number }
-  | { id: number; type: 'CLEAR_STATIC_COLLIDERS' };
+  | { id: number; type: 'CLEAR_STATIC_COLLIDERS' }
+  /** One end of the hull link to the sim worker (src/sim/hullLinkProtocol.ts). Transferred. */
+  | { id: number; type: 'CONNECT_SIM'; port: MessagePort };
 
 export type RapierWorkerResponse =
   | {
       id: number;
       type: 'READY';
       state: WorkerRaftState;
-      wasmAvailable?: boolean;
       latencyMs?: number;
     }
   | {
@@ -91,7 +108,7 @@ export type RapierWorkerResponse =
   | { id: number; type: 'ERROR'; error: string; latencyMs?: number };
 
 export interface RapierWorkerLike {
-  postMessage(message: RapierWorkerCommand): void;
+  postMessage(message: RapierWorkerCommand, transfer?: Transferable[]): void;
   terminate?(): void;
   addEventListener(type: 'message', listener: (event: MessageEvent<RapierWorkerResponse>) => void): void;
   removeEventListener(type: 'message', listener: (event: MessageEvent<RapierWorkerResponse>) => void): void;
