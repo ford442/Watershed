@@ -10,9 +10,10 @@
  *   4. Settings preference `'on'` / `'off'`.
  *   5. Default: on.
  *
- * A WASM *load* failure is handled one layer down: the worker falls back to the
- * TypeScript force math (`getWorkerWasm` returns null), and RaftVehicle keeps the
- * main-thread Rapier body authoritative if the worker itself never becomes ready.
+ * The worker loads no WASM (#455 Phase B): its native water force comes from the
+ * sim worker over the hull link, and without one it uses the TypeScript force
+ * math. RaftVehicle keeps the main-thread Rapier body authoritative if the worker
+ * itself never becomes ready.
  */
 
 /** Player-facing preference stored in the settings panel. */

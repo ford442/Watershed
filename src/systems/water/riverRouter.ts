@@ -19,7 +19,8 @@
  */
 import { computeFlowRate } from '../map/flowForecast';
 import type { RoutingReach } from '../map/routingReach';
-import { DEFAULT_FORECAST_INPUTS } from '../../experience/constants';
+import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
+import type { SweInflow } from './sweScroll';
 import {
   ROUTING_SUBREACHES,
   type RoutedEdge,
@@ -177,4 +178,22 @@ export function createRiverRouter(
       for (const ptr of Object.values(ptrs)) wasm.freeGrid(ptr);
     },
   };
+}
+
+/**
+ * Routed state at chain segment `k` as the SWE window uses it: the upstream
+ * edge stage, and the (η, u, w) an entering cell takes. Null without a router
+ * or off the chain. Shared by the main-thread frame (wasm-main / wgsl) and the
+ * sim worker (wasm-worker), so both derive the edge with the same code.
+ */
+export function routedEdgeInflow(
+  router: RiverRouter | null,
+  k: number | null,
+  H: number,
+  g: number,
+): { edgeEta: number; inflow: SweInflow } | null {
+  if (!router || k === null) return null;
+  const edge = router.edgeState(k, H, g);
+  // Downstream is −Z: the routed wave arrives moving toward −Z.
+  return { edgeEta: edge.eta, inflow: { eta: edge.eta, u: 0, w: -edge.speed } };
 }

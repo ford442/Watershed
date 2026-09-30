@@ -5,7 +5,7 @@
  * queued and replayed in order; a load failure answers with a fatal ERROR so
  * the main thread falls back to the main-thread stepper instead of waiting.
  */
-import { getWorkerWasm } from '../physics/workerWasm';
+import { getWorkerWasm } from './workerWasm';
 import { createSimWorkerCore, type SimWorkerCore } from './simWorkerCore';
 import type { SimWorkerCommand, SimWorkerResponse } from './simWorkerProtocol';
 

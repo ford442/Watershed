@@ -1,10 +1,11 @@
 import {
   computePhysicsWorkerWaterForces,
-  packRaftWaterSample,
+  diagnosticsFromHullResult,
+  hullSampleFromState,
   PHYSICS_WORKER_IMPULSE_SCALE,
-  readWaterForceDiagnostics,
 } from './physicsWorkerWaterForces';
 import { calculateWaterForceFallback } from '../systems/water/WatershedWasm';
+import { FORCE_RESULT_STRIDE, FORCE_SAMPLE_STRIDE } from '../sim/simForces';
 import type { WorkerRaftState } from './rapierWorkerProtocol';
 
 const SAMPLE_STATE: WorkerRaftState = {
@@ -15,32 +16,40 @@ const SAMPLE_STATE: WorkerRaftState = {
 };
 
 describe('physicsWorkerWaterForces', () => {
-  it('packs the ADR 8-float input stride', () => {
-    const input = new Float32Array(8);
-    packRaftWaterSample(SAMPLE_STATE, 0, -1, input);
-    expect(input[0]).toBe(0);
-    expect(input[1]).toBeCloseTo(0.45, 5);
-    expect(input[2]).toBe(-10);
-    expect(input[3]).toBeCloseTo(0.2, 5);
-    expect(input[4]).toBe(0);
-    expect(input[5]).toBeCloseTo(-1.4, 5);
-    expect(input[6]).toBe(0);
-    expect(input[7]).toBe(-1);
+  it('packs the hull sample for the sim worker: state, authored flow cap and config', () => {
+    const sample = hullSampleFromState(SAMPLE_STATE, {
+      enabled: true,
+      flowSpeed: 4.5,
+      waterLevel: 0.5,
+      raftMass: 150,
+      raftVolume: 1.2,
+      dragCoefficient: 0.47,
+      frontalArea: 1.05,
+      sideArea: 0.7,
+      timeSeconds: 12.5,
+      turbulenceStrength: 0.08,
+      turbulenceFrequency: 2.4,
+      flowDirX: 0,
+      flowDirZ: -1,
+      simFlow: true,
+    });
+    expect(sample).toHaveLength(FORCE_SAMPLE_STRIDE);
+    // Float64: the position reaches sampleSWEFlow with the bits Rapier gave.
+    expect(Array.from(sample)).toEqual([0, 0.45, -10, 0.2, 0, -1.4, 4.5, 1, 0.5, 150, 1.2, 0.47, 1.05, 0.7, 12.5, 0.08, 2.4]);
   });
 
-  it('falls back to TypeScript water-force math when WASM is unavailable', () => {
-    const input = new Float32Array(8);
-    const output = new Float32Array(8);
-    const batch = {
-      inputPtr: 0,
-      outputPtr: 0,
-      input,
-      output,
-    };
+  it('reads a sim-worker result as wasm diagnostics with the sampled flow', () => {
+    const result = new Float64Array(FORCE_RESULT_STRIDE);
+    result.set([1, 2, 3, 4, 5, 6, 7, 0.5, 0.6, -0.8, 2.25, 0.1, 1.3, 3]);
+    const diagnostics = diagnosticsFromHullResult(result, 42);
+    expect(diagnostics).toMatchObject({ source: 'wasm', computeMicros: 42, forceX: 1, forceZ: 3, submergedRatio: 0.5 });
+    expect(diagnostics.sampledFlow).toEqual({
+      dirX: 0.6, dirZ: -0.8, speed: 2.25, surfaceOffset: 0.1, depth: 1.3, wet: true, source: 'swe',
+    });
+  });
 
+  it('uses the TypeScript water-force math when the sim worker has no force for the tick', () => {
     const diagnostics = computePhysicsWorkerWaterForces(
-      null,
-      batch,
       SAMPLE_STATE,
       {
         enabled: true,
@@ -83,21 +92,12 @@ describe('physicsWorkerWaterForces', () => {
     expect(diagnostics.forceX).toBeCloseTo(expected.forceX, 3);
     expect(diagnostics.forceZ).toBeCloseTo(expected.forceZ, 3);
     expect(diagnostics.submergedRatio).toBeCloseTo(expected.submergedRatio, 5);
-    // Same force payload; `computeMicros` is wall-clock, so compare without it.
-    const { computeMicros, ...payload } = diagnostics;
-    expect(readWaterForceDiagnostics(output, 'fallback')).toEqual(payload);
-    expect(computeMicros).toBeGreaterThanOrEqual(0);
+    expect(diagnostics.buoyancy).toBe(expected.buoyancy);
+    expect(diagnostics.computeMicros).toBeGreaterThanOrEqual(0);
   });
 
   it('returns disabled diagnostics when worker water forces are turned off', () => {
     const diagnostics = computePhysicsWorkerWaterForces(
-      null,
-      {
-        inputPtr: 0,
-        outputPtr: 0,
-        input: new Float32Array(8),
-        output: new Float32Array(8),
-      },
       SAMPLE_STATE,
       {
         enabled: false,

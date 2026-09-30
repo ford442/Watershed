@@ -16,6 +16,7 @@ import {
 import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
 import type { Vec3Tuple, WorkerRaftState } from '../physics/rapierWorkerProtocol';
 import { resolvePhysicsWorker } from '../utils/physicsWorkerFlag';
+import { linkPhysicsToSim } from '../sim/linkPhysicsToSim';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
@@ -100,13 +101,13 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         setPhysicsWorkerDiagnostics(diagnostics);
         if (typeof window !== 'undefined' && import.meta.env.DEV) {
           (window as any).__watershedPhysicsWorker = {
-            wasmAvailable: proxy.isWasmAvailable,
+            simLinked: proxy.isSimLinked,
             waterForce: diagnostics,
             tickOrder: [
-              'read-rapier-state',
-              'compute-water-forces-batch',
+              'take-sim-hull-force (or TS fallback)',
               'apply-impulses',
               'rapier-step',
+              'post-hull-to-sim',
               'post-snapshot',
             ],
           };
@@ -118,6 +119,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   };
 
   useEffect(() => {
+    let unlinkSim = () => {};
     if (bodyRef.current) {
       raftVehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
       raftVehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
@@ -142,6 +144,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
           workerReadyRef.current = true;
           setPhysicsWorkerActive(true);
           syncBodyFromWorkerState(bodyRef.current, workerState);
+          // The raft's water force comes from the sim worker's field (#455 Phase B).
+          unlinkSim = linkPhysicsToSim(proxy);
           return proxy.applyImpulse([0, 2, 0]);
         }).catch((error) => {
           console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
@@ -178,6 +182,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     window.addEventListener('segment-spawn', handleSegmentSpawn);
 
     return () => {
+      unlinkSim();
       window.removeEventListener('biome-change', handleBiomeChange);
       window.removeEventListener('segment-spawn', handleSegmentSpawn);
       setPhysicsWorkerActive(false);

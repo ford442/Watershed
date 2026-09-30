@@ -15,6 +15,9 @@
 
 import type { QualityPreset } from '../GameState';
 
+/** Still-water depth over a zero bed (m) — the solver's `H`. */
+export const SWE_MEAN_DEPTH = 1.0;
+
 export interface SWEBudget {
   /** Whether the SWE grid steps and displaces water at all. */
   enabled: boolean;

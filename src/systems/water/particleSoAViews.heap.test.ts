@@ -3,7 +3,7 @@ import { bindWaterfallViews, type WaterfallSoAViews } from '../../components/Env
 import { PARTICLE_SOA_PLANES, type WatershedNativeModule } from './WatershedWasm';
 
 /**
- * Mirrors physics/__tests__/physicsWorkerWaterForces.heap.test.ts: proves the
+ * Mirrors sim/simForces.test.ts (heap growth): proves the
  * splash/mist and waterfall particle-SoA views (#415/#419 remainder) rebind
  * after ALLOW_MEMORY_GROWTH replaces HEAPF32.buffer, and are otherwise reused
  * rather than reallocated every frame.

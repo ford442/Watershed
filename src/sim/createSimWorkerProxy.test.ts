@@ -86,7 +86,7 @@ describe('SimWorkerProxy frames', () => {
     const buffer = new ArrayBuffer(64);
     stub.reply({
       type: 'FRAME',
-      frame: { gridId: 99, frameIndex: 1, epoch: 0, width: 2, height: 2, computeMicros: 5, backend: 'wasm-worker', buffer },
+      frame: { gridId: 99, frameIndex: 1, epoch: 0, width: 2, height: 2, computeMicros: 5, backend: 'wasm-worker', inflow: null, buffer },
     });
     await Promise.resolve();
     expect(proxy.latestFrame()).toMatchObject({ gridId: 99, frameIndex: 1, computeMicros: 5 });
@@ -108,5 +108,41 @@ describe('SimWorkerProxy frames', () => {
     const before = stub.posted.length;
     proxy.post({ type: 'DISPOSE_GRID', gridId: 1 });
     expect(stub.posted.length).toBe(before);
+  });
+});
+
+describe('SimWorkerProxy forces and the hull link (Phase B)', () => {
+  it('transfers the sample buffer, numbers requests, and hands results to the one listener', async () => {
+    const stub = stubWorker();
+    const proxy = new SimWorkerProxy(stub.worker);
+    const onForces = vi.fn();
+    proxy.onForces(onForces);
+    const samples = new Float64Array(17);
+    const seq = proxy.requestForces(3, -1, 2, samples, 1);
+    const posted = stub.posted.at(-1)!;
+    expect(posted.command).toMatchObject({ type: 'FORCES', seq, gridId: 3, originX: -1, originZ: 2, count: 1 });
+    expect(posted.transfer).toEqual([samples.buffer]);
+    expect(proxy.requestForces(3, 0, 0, new Float64Array(17), 1)).toBe(seq! + 1);
+
+    stub.reply({ type: 'FORCES', seq: seq!, count: 1, results: samples, calls: 1, computeMicros: 9 });
+    await Promise.resolve();
+    expect(onForces).toHaveBeenCalledWith({ seq, count: 1, results: samples, calls: 1, computeMicros: 9 });
+  });
+
+  it('sends nothing once the worker is dead', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stub = stubWorker();
+    const proxy = new SimWorkerProxy(stub.worker);
+    stub.reply({ type: 'ERROR', error: 'gone', fatal: true });
+    await Promise.resolve();
+    expect(proxy.requestForces(1, 0, 0, new Float64Array(17), 1)).toBeNull();
+  });
+
+  it('transfers its end of the hull link', () => {
+    const stub = stubWorker();
+    const proxy = new SimWorkerProxy(stub.worker);
+    const port = {} as MessagePort;
+    proxy.connectPhysics(port);
+    expect(stub.posted.at(-1)).toEqual({ command: { type: 'CONNECT_PHYSICS', port }, transfer: [port] });
   });
 });

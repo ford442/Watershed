@@ -1,6 +1,11 @@
 # ADR: Rapier and C++ WASM Water-Force Coupling
 
-Status: accepted for v1; worker path default-on since the productization pass
+Status: accepted for v1; worker path default-on since the productization pass.
+**Superseded in part by #455 Phase B:** the C++ force is no longer computed in the Rapier
+worker. The sim worker (which steps the SWE field the force samples) computes it and answers
+the Rapier worker over a `MessageChannel`; forces from sim tick N apply on Rapier tick N+1.
+The rigid-body side of this ADR stands. Current contract: `SYSTEMS.md` → Physics Worker /
+Sim Worker.
 
 ## Context
 
@@ -189,8 +194,10 @@ Two independent fallbacks sit under that decision, so no single failure strands 
 
 1. **Worker init fails** → `RaftVehicle` disposes the proxy and keeps the main-thread
    Rapier body authoritative.
-2. **`watershed_native.wasm` fails to load inside the worker** → `getWorkerWasm()` returns
-   null and the worker runs the TypeScript force math (`calculateWaterForceFallback`).
+2. **No force from the sim worker** (no hull link — `wasm-main` / `wgsl` backend, failed
+   handshake — or a result older than `HULL_FORCE_MAX_AGE` ticks) → the worker runs the
+   TypeScript force math (`calculateWaterForceFallback`). Since #455 Phase B the Rapier
+   worker loads no WASM at all.
    Parity between the two is pinned by `src/physics/__tests__/waterForceParity.test.ts`.
 
 No `SharedArrayBuffer` / COOP+COEP requirement is introduced for the default path — the
