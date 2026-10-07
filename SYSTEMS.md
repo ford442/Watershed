@@ -507,6 +507,21 @@ Settings → Physics > default on. The decision is made once per vehicle mount b
 `resolvePhysicsWorker` (`src/utils/physicsWorkerFlag.ts`); switching mid-session would strand
 the Rapier body between two authorities.
 
+**The worker's static world is the level (#465 C2).** There is no authored floor: the old
+`INIT` box at an absolute `y = LEVEL − 0.65` did not descend with the centreline, so the raft
+floated through walls and rocks. Static colliders register in `src/physics/workerColliderRegistry.ts`
+as they mount — track-segment trimesh (`seg:<id>`, `TrackSegmentCollisionMeshes`), rock and pillar
+hulls (`Rock.tsx`), canyon boulders (`CanyonDecorations.tsx`), active pooled obstacles, intact
+trestle planks — and unregister on unmount/shatter/break. Entries are lazy factories, so nothing is
+copied while no worker exists. `raftWorkerSession.ts` waits for the first `seg:` collider, `INIT`s
+the worker at the raft's current pose, replays the registry (`attachColliderRegistry`, ACKed), then
+hands the proxy to `RaftVehicle`; until then the main-thread path owns the raft. Shapes: `box`,
+`trimesh` (world-space), `hull` (`staticColliderBody.ts`); buffers are transferred. The worker
+runs commands in arrival order, so an add posted during `INIT` waits for it.
+Not mirrored: floating debris (dynamic) and the splash/pond safety box (absolute `y = −8`).
+Collision **events** (pillar cracks, trestle breaks, collision particles) still fire on the
+main-thread mirror body, which the worker's state overwrites each step.
+
 **Who owns the raft's water force (#455 Phase B):** the **sim worker**. The Rapier worker does
 not load `watershed_native` (no `workerWasm.ts` in its module graph —
 `rapierWorkerGraph.test.ts`); its old native path resolved `public/` against its own script URL

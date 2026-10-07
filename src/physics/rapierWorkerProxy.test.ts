@@ -15,7 +15,10 @@ class LoopbackRapierWorker implements RapierWorkerLike {
     angularVelocity: [0, 0, 0],
   };
 
-  postMessage(message: RapierWorkerCommand): void {
+  transfers: (Transferable[] | undefined)[] = [];
+
+  postMessage(message: RapierWorkerCommand, transfer?: Transferable[]): void {
+    this.transfers.push(transfer);
     queueMicrotask(() => {
       let response: RapierWorkerResponse;
 
@@ -139,6 +142,19 @@ describe('RapierWorkerProxy', () => {
     });
     expect(handle).toBe(42);
 
+    proxy.dispose();
+  });
+
+  it('transfers trimesh/hull buffers instead of copying them (#465 C2)', async () => {
+    const worker = new LoopbackRapierWorker();
+    const proxy = new RapierWorkerProxy(worker);
+    const vertices = new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    const indices = new Uint32Array([0, 1, 2]);
+    await proxy.addStaticCollider({ kind: 'trimesh', vertices, indices, friction: 0.8 });
+    expect(worker.transfers.at(-1)).toEqual([vertices.buffer, indices.buffer]);
+
+    await proxy.addStaticCollider({ position: [0, 0, 0], halfExtents: [1, 1, 1] });
+    expect(worker.transfers.at(-1)).toBeUndefined();
     proxy.dispose();
   });
 });

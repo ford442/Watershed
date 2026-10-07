@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import type { BufferGeometry } from 'three';
 import {
@@ -10,6 +10,8 @@ import {
   registerCollisionTriangles,
   unregisterCollisionTriangles,
 } from '../../debug/physicsColliderRegistry';
+import { useWorkerStaticCollider } from '../../physics/workerColliderRegistry';
+import { trimeshSpecFromGeometry } from '../../physics/colliderSpecsFromThree';
 
 export type TrackSegmentCollisionMeshesProps = {
   segmentId: number;
@@ -43,6 +45,28 @@ export function TrackSegmentCollisionMeshes({
     return () => unregisterCollisionTriangles(segmentId);
   }, [segmentId, openFloor, collisionGeometry]);
 
+  const friction = resolveSegmentFriction({
+    baseFriction: biomeProfile.wallFriction,
+    slipperiness,
+    segmentState,
+  });
+  const restitution = resolveSegmentRestitution(
+    biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1,
+    slipperiness,
+  );
+
+  // The same canyon, mirrored into the raft's Rapier worker (#465 C2).
+  const buildWorkerTrimesh = useCallback(
+    () => trimeshSpecFromGeometry(collisionGeometry, { friction, restitution }),
+    [collisionGeometry, friction, restitution],
+  );
+  useWorkerStaticCollider(`seg:${segmentId}`, openFloor ? null : buildWorkerTrimesh);
+
+  // The splash/pond safety box below sits at an absolute y = -8; it is not
+  // mirrored — the worker world carries no absolute-Y floors (the trimesh
+  // already has the pool bed).
+  const hasPoolFloor = type === 'splash' || type === 'pond';
+
   return (
     <>
       {!openFloor && (
@@ -50,21 +74,14 @@ export function TrackSegmentCollisionMeshes({
           key={`rb-collision-${segmentId}`}
           type="fixed"
           colliders="trimesh"
-          friction={resolveSegmentFriction({
-            baseFriction: biomeProfile.wallFriction,
-            slipperiness,
-            segmentState,
-          })}
-          restitution={resolveSegmentRestitution(
-            biomeProfile.id === 'slotCanyon' ? 0.02 : 0.1,
-            slipperiness,
-          )}
+          friction={friction}
+          restitution={restitution}
         >
           <mesh geometry={collisionGeometry} visible={false} />
         </RigidBody>
       )}
 
-      {(type === 'splash' || type === 'pond') && (
+      {hasPoolFloor && (
         <RigidBody type="fixed" colliders={false}>
           <CuboidCollider
             args={[60, 0.5, 60]}

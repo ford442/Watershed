@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useId, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider, type RapierRigidBody } from '@react-three/rapier';
 import { createRockSurfaceMaterial } from '../materials/foliage/createFoliageSurfaceMaterial';
@@ -6,6 +6,8 @@ import { resolveMaterialBackend } from '../rendering/materialBackend';
 import type { ObstacleSlot } from '../systems/pools/ObstaclePool';
 import type { PooledObstaclesProps } from './Environment/types';
 import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { registerWorkerCollider, unregisterWorkerCollider } from '../physics/workerColliderRegistry';
+import { boxSpec } from '../physics/colliderSpecsFromThree';
 
 const HIDDEN_POSITION: [number, number, number] = [0, -1000, 0];
 const HIDDEN_VECTOR = new THREE.Vector3(...HIDDEN_POSITION);
@@ -40,6 +42,8 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
   const rockMeshRef = useRef<THREE.InstancedMesh>(null);
   const logMeshRef = useRef<THREE.InstancedMesh>(null);
   const bodyRefs = useRef<(RapierRigidBody | null)[]>([]);
+  const workerKeyPrefix = `obstacle:${useId()}`;
+  const workerKeysRef = useRef(new Set<string>());
 
   const rockGeometry = useMemo(() => createRockGeometry(), []);
   const logGeometry = useMemo(() => createLogGeometry(), []);
@@ -80,6 +84,18 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
 
     slots.forEach((slot: ObstacleSlot, poolIndex: number) => {
       const active = slot.active && slot.position;
+      // Active slots are mirrored into the raft's Rapier worker (#465 C2).
+      const workerKey = `${workerKeyPrefix}:${poolIndex}`;
+      if (active) {
+        const he = slot.colliderHalfExtents;
+        const position = slot.position.clone();
+        const rotation = slot.rotation?.clone();
+        const material = { friction: slot.type === 'log' ? 0.65 : 0.9, restitution: 0.05 };
+        registerWorkerCollider(workerKey, () => boxSpec([he.x, he.y, he.z], position, rotation, material));
+        workerKeysRef.current.add(workerKey);
+      } else if (workerKeysRef.current.delete(workerKey)) {
+        unregisterWorkerCollider(workerKey);
+      }
       const body = bodyRefs.current[poolIndex];
       if (body) {
         body.setTranslation(active ? slot.position : HIDDEN_VECTOR, true);
@@ -122,7 +138,15 @@ export default function PooledObstacles({ slots, rockMaterial }: PooledObstacles
       logMesh.count = slots.length;
       logMesh.instanceMatrix.needsUpdate = true;
     }
-  }, [slots]);
+  }, [slots, workerKeyPrefix]);
+
+  useEffect(() => {
+    const keys = workerKeysRef.current;
+    return () => {
+      keys.forEach(unregisterWorkerCollider);
+      keys.clear();
+    };
+  }, []);
 
   if (!slots?.length) return null;
 

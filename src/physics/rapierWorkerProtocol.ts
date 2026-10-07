@@ -8,10 +8,49 @@ export interface WorkerRaftState {
   angularVelocity: Vec3Tuple;
 }
 
-export interface StaticBoxColliderSpec {
+/** Surface response; Rapier's defaults (friction 0.5, restitution 0) when unset. */
+export interface StaticColliderMaterial {
+  friction?: number;
+  restitution?: number;
+}
+
+export interface StaticBoxColliderSpec extends StaticColliderMaterial {
+  /** Omitted = box (the original, only shape). */
+  kind?: 'box';
   halfExtents: Vec3Tuple;
   position: Vec3Tuple;
   rotation?: QuatTuple;
+}
+
+/** World-space triangle soup — a track segment's canyon collision mesh. */
+export interface StaticTrimeshColliderSpec extends StaticColliderMaterial {
+  kind: 'trimesh';
+  vertices: Float32Array;
+  indices: Uint32Array;
+}
+
+/** Convex hull of body-local points (scale already applied) — rocks, boulders. */
+export interface StaticHullColliderSpec extends StaticColliderMaterial {
+  kind: 'hull';
+  points: Float32Array;
+  position: Vec3Tuple;
+  rotation?: QuatTuple;
+}
+
+/**
+ * The raft worker's static world is the real level, streamed per segment
+ * (#465 C2, src/physics/workerColliderRegistry.ts). There is no authored floor.
+ */
+export type StaticColliderSpec =
+  | StaticBoxColliderSpec
+  | StaticTrimeshColliderSpec
+  | StaticHullColliderSpec;
+
+/** The typed-array buffers a spec can transfer instead of copy. */
+export function staticColliderTransferables(spec: StaticColliderSpec): Transferable[] {
+  if (spec.kind === 'trimesh') return [spec.vertices.buffer, spec.indices.buffer];
+  if (spec.kind === 'hull') return [spec.points.buffer];
+  return [];
 }
 
 export interface WaterForceTickConfig {
@@ -70,7 +109,7 @@ export interface RapierWorkerInitPayload {
     linearDamping?: number;
     angularDamping?: number;
   };
-  staticColliders?: StaticBoxColliderSpec[];
+  staticColliders?: StaticColliderSpec[];
 }
 
 export type RapierWorkerCommand =
@@ -84,7 +123,7 @@ export type RapierWorkerCommand =
     }
   | { id: number; type: 'APPLY_IMPULSE'; impulse: Vec3Tuple; wake?: boolean }
   | { id: number; type: 'GET_STATE' }
-  | { id: number; type: 'ADD_STATIC_COLLIDER'; collider: StaticBoxColliderSpec; handle?: number }
+  | { id: number; type: 'ADD_STATIC_COLLIDER'; collider: StaticColliderSpec; handle?: number }
   | { id: number; type: 'REMOVE_STATIC_COLLIDER'; handle: number }
   | { id: number; type: 'CLEAR_STATIC_COLLIDERS' }
   /** One end of the hull link to the sim worker (src/sim/hullLinkProtocol.ts). Transferred. */
@@ -123,10 +162,6 @@ export const DEFAULT_RAFT_WORKER_INIT: Required<RapierWorkerInitPayload> = {
     linearDamping: 2,
     angularDamping: 2.5,
   },
-  staticColliders: [
-    {
-      position: [0, -4.4, -10],
-      halfExtents: [24, 0.2, 160],
-    },
-  ],
+  // None: an absolute-Y floor does not descend with the centreline (#465 C2).
+  staticColliders: [],
 };
