@@ -59,6 +59,12 @@ export interface SimFrameHeader {
   /** Wall time of the step (+ events) inside the worker, in microseconds. */
   computeMicros: number;
   backend: 'wasm-worker';
+  /**
+   * The routed entering-cell state the worker last derived (null: unrouted).
+   * The mirror fills cells a scroll brings in with it until the next frame
+   * replaces the whole mirror — cosmetic, never fed back to the solver.
+   */
+  inflow: { eta: number; u: number; w: number } | null;
 }
 
 export interface SimFrame extends SimFrameHeader {

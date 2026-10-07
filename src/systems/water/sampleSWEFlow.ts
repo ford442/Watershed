@@ -12,7 +12,7 @@
  * flowSpeed). Maps cap intensity; a lake-at-rest does not push.
  */
 
-import { SWE_MEAN_DEPTH } from './SWEHeightField';
+import { SWE_MEAN_DEPTH } from './sweQuality';
 
 /** Match emscripten/swe.cpp SWE_DRY_DEPTH. */
 export const SWE_DRY_DEPTH = 1e-4;
@@ -195,4 +195,15 @@ export function sampleSWEFlow(opts: SampleSWEFlowOptions): SWEFlowSample {
     surfaceOffset,
     depth,
   };
+}
+
+/**
+ * Authored stage applied to the authored water level. Clamped so a numerically
+ * hot cell cannot teleport the surface; ±2 m covers every authored event.
+ */
+export const MAX_STAGE_OFFSET = 2;
+
+export function stagedWaterLevel(waterLevel: number, flow: Pick<SWEFlowSample, 'surfaceOffset'>): number {
+  const offset = Number.isFinite(flow.surfaceOffset) ? flow.surfaceOffset : 0;
+  return waterLevel + Math.max(-MAX_STAGE_OFFSET, Math.min(MAX_STAGE_OFFSET, offset));
 }

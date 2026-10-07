@@ -1,4 +1,11 @@
 /// <reference lib="webworker" />
+/**
+ * The Rapier worker: rigid bodies only. It does not load watershed_native
+ * (#455 Phase B) — the raft's native water force is computed by the sim worker
+ * on the SWE field it steps and arrives over the hull link (CONNECT_SIM;
+ * src/sim/hullLinkProtocol.ts). Without a link it uses the TS fallback on the
+ * tick params. Tick order: physicsWorkerWaterForces.ts.
+ */
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
@@ -17,20 +24,14 @@ import {
   applyImpulseList,
   applyWaterForceImpulse,
   computePhysicsWorkerWaterForces,
-  createPhysicsWorkerWaterBatch,
-  disposePhysicsWorkerWaterBatch,
   PHYSICS_WORKER_IMPULSE_SCALE,
-  type PhysicsWorkerWaterBatch,
 } from './physicsWorkerWaterForces';
-import { getWorkerWasm } from './workerWasm';
-import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
+import { createHullLinkClient, type HullLinkClient, type RapierHullPort } from './hullLinkClient';
 
 let world: RAPIER.World | null = null;
 let raftBody: RAPIER.RigidBody | null = null;
 let rapierReady: Promise<void> | null = null;
-let wasmModule: WatershedNativeModule | null = null;
-let wasmAvailable = false;
-let waterBatch: PhysicsWorkerWaterBatch | null = null;
+let hullLink: HullLinkClient | null = null;
 let nextColliderHandle = 1;
 const staticColliderBodies = new Map<number, RAPIER.RigidBody>();
 
@@ -50,16 +51,6 @@ const ensureRapier = async () => {
     rapierReady = RAPIER.init();
   }
   await rapierReady;
-};
-
-const ensureWasm = async () => {
-  if (wasmModule) return wasmModule;
-  wasmModule = await getWorkerWasm();
-  wasmAvailable = wasmModule != null;
-  if (wasmModule && !waterBatch) {
-    waterBatch = createPhysicsWorkerWaterBatch(wasmModule);
-  }
-  return wasmModule;
 };
 
 const serializeState = (): WorkerRaftState => {
@@ -131,7 +122,6 @@ const clearStaticColliders = () => {
 
 const initWorld = async (payload: RapierWorkerInitPayload = {}) => {
   await ensureRapier();
-  await ensureWasm();
 
   const raft = {
     ...DEFAULT_RAFT_WORKER_INIT.raft!,
@@ -169,15 +159,12 @@ const applyWaterForcesBeforeStep = (
   delta: number,
   waterForce?: WaterForceTickConfig,
 ): WaterForceDiagnostics | undefined => {
-  if (!raftBody || !waterForce || !waterBatch) return undefined;
+  if (!raftBody || !waterForce) return undefined;
 
-  const state = serializeState();
-  const diagnostics = computePhysicsWorkerWaterForces(
-    wasmModule,
-    waterBatch,
-    state,
-    waterForce,
-  );
+  // The sim worker's force for the state this tick starts from (posted after
+  // the previous step); the TS fallback when there is none or it is stale.
+  const fromSim = waterForce.enabled && waterForce.simFlow ? hullLink?.latestForce() ?? null : null;
+  const diagnostics = fromSim ?? computePhysicsWorkerWaterForces(serializeState(), waterForce);
 
   applyWaterForceImpulse(
     raftBody,
@@ -207,6 +194,10 @@ const stepWorld = (
   world.timestep = clampedDelta;
   world.step();
 
+  if (hullLink && waterForce?.enabled && waterForce.simFlow) {
+    hullLink.postHull(serializeState(), waterForce);
+  }
+
   return waterDiagnostics;
 };
 
@@ -226,12 +217,10 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
           id: command.id,
           type: 'READY',
           state: serializeState(),
-          wasmAvailable,
           latencyMs: performance.now() - receivedAt,
         });
         return;
       case 'STEP': {
-        await ensureWasm();
         const diagnostics = stepWorld(command.delta, command.impulses ?? [], command.waterForce);
         respond({
           id: command.id,
@@ -261,6 +250,11 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
         removeStaticCollider(command.handle);
         respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
         return;
+      case 'CONNECT_SIM':
+        hullLink?.close();
+        hullLink = createHullLinkClient(command.port as unknown as RapierHullPort);
+        respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
+        return;
       case 'CLEAR_STATIC_COLLIDERS':
         clearStaticColliders();
         respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
@@ -282,10 +276,8 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
 
 // Best-effort cleanup if the worker is terminated mid-session.
 self.addEventListener('close', () => {
-  if (wasmModule && waterBatch) {
-    disposePhysicsWorkerWaterBatch(wasmModule, waterBatch);
-  }
-  waterBatch = null;
+  hullLink?.close();
+  hullLink = null;
 });
 
 export {};

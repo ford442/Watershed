@@ -22,7 +22,7 @@ class LoopbackRapierWorker implements RapierWorkerLike {
       if (message.type === 'INIT') {
         const position = message.payload?.raft?.position ?? this.state.position;
         this.state = { ...this.state, position: [...position] };
-        response = { id: message.id, type: 'READY', state: this.state, wasmAvailable: false };
+        response = { id: message.id, type: 'READY', state: this.state };
       } else if (message.type === 'APPLY_IMPULSE') {
         this.state.velocity = [
           this.state.velocity[0] + message.impulse[0] / 150,

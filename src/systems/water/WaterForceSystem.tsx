@@ -3,8 +3,8 @@
  *
  * - Steps a player-centered SWE grid and uploads height data for FlowingWater.
  *   The solver runs in the sim worker by default (src/sim/, #455); this file
- *   still clocks it — same dt, events and routed edge on every backend — and
- *   reads the field back through the SweSim mirror.
+ *   still clocks it — same dt and events on every backend — and reads the field
+ *   back through the SweSim mirror.
  *   The grid is a window that follows the vehicle; every whole-cell move of its
  *   origin scrolls h/u/w/b with the world first (sweScroll.ts / swe.h), so a
  *   splash stays where it landed instead of riding the camera.
@@ -12,10 +12,16 @@
  *   routed down the campaign chain (riverRouter.ts → emscripten/routing.cpp).
  *   Cells entering the window, and a freshly placed window, take the same
  *   routed state, so a 14:00 river is higher everywhere in the window, not just
- *   along one edge.
+ *   along one edge. On `wasm-worker` the router lives in the sim worker (#455
+ *   Phase B): this file sends the run / hour once and the chain index per step.
  * - Applies native buoyancy + current drag to the vehicle and floating debris
  *   using SWE-sampled flowDir / speed (sampleSWEFlow → calculateWaterForce).
- * - Falls back to pure TypeScript force math when WASM is unavailable.
+ *   On `wasm-worker` both run in the sim worker on the stepped field
+ *   (simForces.ts); results land a frame later and are applied then. The
+ *   Rapier worker's raft gets its force from the sim worker directly
+ *   (hullLinkProtocol.ts), so this file only posts the authored tick params.
+ * - Falls back to pure TypeScript force math when WASM is unavailable, and when
+ *   the sim worker dies mid-session (with SWE off).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -30,15 +36,22 @@ import {
   type NativeWaterForceConfig,
   type WatershedNativeModule,
 } from './WatershedWasm';
-import { createWasmSweSim, type SweEventCall, type SweSim } from './sweSim';
+import { createWasmSweSim, type SweEventCall, type SweSim, type SweStepInput } from './sweSim';
 import { createWgslSweSim } from './WgslSweSim';
 import {
   demoteSweSimBackendToWasm,
   demoteSweSimBackendToWasmMain,
   resolveSweSimBackendDecision,
 } from './sweBackend';
-import { getSimWorkerProxy } from '../../sim/createSimWorkerProxy';
-import { createWorkerSweSim } from '../../sim/workerSweSim';
+import { getSimWorkerProxy, type SimWorkerProxy } from '../../sim/createSimWorkerProxy';
+import { createWorkerSweSim, isWorkerSweSim, type WorkerSweSim } from '../../sim/workerSweSim';
+import {
+  FORCE_SAMPLE_STRIDE,
+  readForceFlow,
+  readForceResult,
+  writeForceSample,
+} from '../../sim/simForces';
+import { createSimForceRequests, type SimForceRequests } from '../../sim/simForceRequests';
 import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import {
   SWE_MEAN_DEPTH,
@@ -49,8 +62,9 @@ import {
 } from './SWEHeightField';
 import { sweBudgetForQuality, sweStepInterval, type SWEBudget } from './sweQuality';
 import { SWE_REST_INFLOW, advanceSweWindow, type SweInflow, type SweWindow } from './sweScroll';
-import { createRiverRouter, type RiverRouter } from './riverRouter';
-import { getRoutingReach, routingChainIndex } from '../map/routingReach';
+import { createRiverRouter, routedEdgeInflow, type RiverRouter } from './riverRouter';
+import { getRoutingReach, routingChainIndex, type RoutingReach } from '../map/routingReach';
+import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import {
   getBathymetryRevision,
   getRegisteredBathymetryCount,
@@ -66,6 +80,7 @@ import {
   type WaterForceBody,
 } from './WaterForceRegistry';
 import {
+  getPhysicsWorkerDiagnostics,
   isPhysicsWorkerActive,
   setPhysicsWorkerTickParams,
   setSWEStatus,
@@ -75,6 +90,8 @@ import {
   sampleSWEFlow,
   FALLBACK_FLOW_DIR,
   SWE_STAGE_SPEED_BOOST,
+  MAX_STAGE_OFFSET,
+  stagedWaterLevel,
   type SWEFlowGrid,
   type SWEFlowSample,
 } from './sampleSWEFlow';
@@ -156,16 +173,8 @@ function floatingForceConfig(
   };
 }
 
-/**
- * Authored stage applied to the authored water level. Clamped so a numerically
- * hot cell cannot teleport the surface; ±2 m covers every authored event.
- */
-export const MAX_STAGE_OFFSET = 2;
-
-export function stagedWaterLevel(waterLevel: number, flow: Pick<SWEFlowSample, 'surfaceOffset'>): number {
-  const offset = Number.isFinite(flow.surfaceOffset) ? flow.surfaceOffset : 0;
-  return waterLevel + Math.max(-MAX_STAGE_OFFSET, Math.min(MAX_STAGE_OFFSET, offset));
-}
+// Pure (sampleSWEFlow.ts) so the sim worker stages buoyancy with the same code.
+export { MAX_STAGE_OFFSET, stagedWaterLevel };
 
 function worldToGridIndex(
   worldX: number,
@@ -332,15 +341,170 @@ function currentRouter(wasm: WatershedNativeModule | null, state: RouterState): 
   return state.router;
 }
 
+/** The player's position on the routed chain, or null off it. */
+function playerChainIndex(reach: RoutingReach): number | null {
+  const mapId = getRunSession()?.mapId ?? ACTIVE_MAP_ID;
+  return routingChainIndex(reach, mapId, useGameStore.getState().currentSegmentIndex);
+}
+
 /** Routed state for the player's segment, as the (η, u, w) an entering cell takes. */
 function routedInflow(router: RiverRouter | null): { edgeEta: number; inflow: SweInflow } | null {
   if (!router) return null;
-  const mapId = getRunSession()?.mapId ?? ACTIVE_MAP_ID;
-  const k = routingChainIndex(router.reach, mapId, useGameStore.getState().currentSegmentIndex);
-  if (k === null) return null;
-  const edge = router.edgeState(k, SWE_MEAN_DEPTH, GRAVITY);
-  // Downstream is −Z: the routed wave arrives moving toward −Z.
-  return { edgeEta: edge.eta, inflow: { eta: edge.eta, u: 0, w: -edge.speed } };
+  return routedEdgeInflow(router, playerChainIndex(router.reach), SWE_MEAN_DEPTH, GRAVITY);
+}
+
+interface WorkerRouterState {
+  /** Proxy the router was sent to; a different one (never, today) re-sends. */
+  proxy: SimWorkerProxy | null;
+  session: unknown;
+  launchHour: number;
+  reach: RoutingReach | null;
+}
+
+/**
+ * `currentRouter` for the `wasm-worker` backend: the router lives in the sim
+ * worker. (Re)send it when the run or its launch hour changes — the same
+ * trigger, at the same point in the frame, as the main-thread rebuild — and
+ * return the chain index the frame's SCROLL / STEP carry. No Embind here.
+ */
+function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number | null {
+  const session = getRunSession();
+  const launchHour = getActiveLaunchHour();
+  if (state.proxy !== grid.proxy || state.session !== session || state.launchHour !== launchHour || !state.reach) {
+    const reach = getRoutingReach();
+    grid.proxy.post({
+      type: 'ROUTER',
+      reach,
+      launchHour,
+      forecast: DEFAULT_FORECAST_INPUTS,
+      H: SWE_MEAN_DEPTH,
+      g: GRAVITY,
+    });
+    state.proxy = grid.proxy;
+    state.session = session;
+    state.launchHour = launchHour;
+    state.reach = reach;
+  }
+  return playerChainIndex(state.reach);
+}
+
+/** What a force sample is applied to when its result lands: the vehicle (by its rigid body) or a debris body. */
+type ForceTarget = { vehicle: object } | { body: WaterForceBody };
+
+/**
+ * Apply force results that landed from the sim worker since the last frame,
+ * with the dt of the frame that sampled them, to bodies still registered. The
+ * vehicle takes its result only while this thread (not the Rapier worker) owns
+ * its force — the one-owner rule of waterForceAuthority.ts, checked at apply.
+ */
+function applyWorkerForces(
+  requests: SimForceRequests<ForceTarget>,
+  bodies: readonly WaterForceBody[],
+  vehicleBody: object | null,
+  workerOwnsVehicleForces: boolean,
+  vehicleFlowRef: { current: SWEFlowSample | null },
+): void {
+  const landed = requests.drain();
+  if (landed.length === 0) return;
+  const registered = new Set(bodies);
+  for (const batch of landed) {
+    for (let i = 0; i < batch.count; i += 1) {
+      const target = batch.targets[i];
+      let body: WaterForceBody | null = null;
+      if ('vehicle' in target) {
+        if (workerOwnsVehicleForces || target.vehicle !== vehicleBody) continue;
+        body = bodies[0] ?? null;
+        vehicleFlowRef.current = readForceFlow(batch.results, i);
+      } else if (registered.has(target.body)) {
+        body = target.body;
+      }
+      if (!body) continue;
+      const force = readForceResult(batch.results, i);
+      try {
+        body.applyImpulse(
+          {
+            x: force.forceX * batch.dt * PHYSICS_SCALE,
+            y: force.forceY * batch.dt * PHYSICS_SCALE,
+            z: force.forceZ * batch.dt * PHYSICS_SCALE,
+          },
+          true,
+        );
+      } catch {
+        // skip unstable body this frame
+      }
+    }
+    requests.release(batch.results);
+  }
+}
+
+interface WorkerForceFrame {
+  bodies: readonly WaterForceBody[];
+  vehicleBody: object | null;
+  vehicleType: VehicleType;
+  workerOwnsVehicleForces: boolean;
+  gridId: number;
+  originX: number;
+  originZ: number;
+  dt: number;
+  timeSeconds: number;
+  flowSpeed: number;
+  waterLevel: number;
+  turbulenceStrength: number;
+  turbulenceFrequency: number;
+}
+
+/**
+ * Pack this frame's bodies for the sim worker (simForces.ts wire format): the
+ * same configs the main-thread loop builds, with the AUTHORED flow speed and
+ * water level — the worker samples and stages them on the stepped field.
+ */
+function postWorkerForces(requests: SimForceRequests<ForceTarget>, frame: WorkerForceFrame): void {
+  const { bodies, vehicleBody } = frame;
+  const samples = requests.acquire(bodies.length);
+  const targets: ForceTarget[] = [];
+  for (let i = 0; i < bodies.length && (targets.length + 1) * FORCE_SAMPLE_STRIDE <= samples.length; i += 1) {
+    const body = bodies[i];
+    try {
+      const pos = body.translation();
+      const vel = body.linvel();
+      if (!pos || !vel) continue;
+      const isVehicle = i === 0 && vehicleBody != null;
+      if (shouldSkipMainThreadVehicleForce(isVehicle, frame.workerOwnsVehicleForces)) continue;
+      const config = isVehicle
+        ? vehicleForceConfig(
+            frame.vehicleType,
+            frame.flowSpeed,
+            frame.waterLevel,
+            frame.timeSeconds,
+            frame.turbulenceStrength,
+            frame.turbulenceFrequency,
+          )
+        : floatingForceConfig(
+            frame.flowSpeed,
+            frame.waterLevel,
+            frame.timeSeconds,
+            body,
+            frame.turbulenceStrength * 0.8,
+            frame.turbulenceFrequency,
+          );
+      writeForceSample(
+        samples,
+        targets.length,
+        { position: pos, velocity: vel },
+        config,
+        frame.flowSpeed,
+        isVehicle ? 1 : FLOATING_OBJECT.FLOW_INFLUENCE,
+      );
+      targets.push(isVehicle ? { vehicle: vehicleBody } : { body });
+    } catch {
+      // skip unstable body this frame
+    }
+  }
+  if (targets.length === 0) {
+    requests.release(samples);
+    return;
+  }
+  requests.send(frame.gridId, frame.originX, frame.originZ, samples, targets, frame.dt);
 }
 
 export function WaterForceSystem({
@@ -367,6 +531,17 @@ export function WaterForceSystem({
   // when the window slides a whole cell or the treadmill changes segments.
   const bedStateRef = useRef({ valid: false, revision: -1, originX: 0, originZ: 0 });
   const routerRef = useRef<RouterState>({ router: null, session: null, launchHour: Number.NaN });
+  const workerRouterRef = useRef<WorkerRouterState>({
+    proxy: null,
+    session: null,
+    launchHour: Number.NaN,
+    reach: null,
+  });
+  // Set once the sim worker is READY: from then on forces run there, not here.
+  const simProxyRef = useRef<SimWorkerProxy | null>(null);
+  const forceRequestsRef = useRef<SimForceRequests<ForceTarget> | null>(null);
+  // The vehicle's flow as the sim worker last sampled it (debug only).
+  const workerVehicleFlowRef = useRef<SWEFlowSample | null>(null);
   const [wasmReady, setWasmReady] = useState(false);
 
   // Visual SWE budget follows the live quality preset (LODManager may downgrade
@@ -376,16 +551,23 @@ export function WaterForceSystem({
 
   useEffect(() => {
     setWaterForceSystemActive(true);
+    let cancelled = false;
 
     // Start the sim worker's module load alongside the main one, so the grid
-    // effect below finds it READY instead of starting the handshake late.
+    // effect below finds it READY instead of starting the handshake late. Once
+    // READY it also owns the water forces (Phase B).
     if (resolveSweSimBackendDecision().backend === 'wasm-worker') {
-      getSimWorkerProxy().catch(() => {
-        /* the grid effect reports it and falls back */
-      });
+      getSimWorkerProxy()
+        .then((proxy) => {
+          if (cancelled || proxy.failed) return;
+          simProxyRef.current = proxy;
+          forceRequestsRef.current = createSimForceRequests<ForceTarget>(proxy);
+        })
+        .catch(() => {
+          /* the grid effect reports it and falls back */
+        });
     }
 
-    let cancelled = false;
     getWasm()
       .then((wasm) => {
         if (cancelled) return;
@@ -407,6 +589,12 @@ export function WaterForceSystem({
       cancelled = true;
       routerRef.current.router?.dispose();
       routerRef.current = { router: null, session: null, launchHour: Number.NaN };
+      workerRouterRef.current.proxy?.post({ type: 'DISPOSE_ROUTER' });
+      workerRouterRef.current = { proxy: null, session: null, launchHour: Number.NaN, reach: null };
+      forceRequestsRef.current?.dispose();
+      forceRequestsRef.current = null;
+      simProxyRef.current = null;
+      workerVehicleFlowRef.current = null;
       setWaterForceSystemActive(false);
       registerVehicleWaterBody(null);
       clearSWEHeightField();
@@ -579,11 +767,23 @@ export function WaterForceSystem({
       // their old slots while the canyon moved underneath them. A jump larger
       // than the grid (respawn) saturates: the field restarts at the routed
       // state. Entering cells take the routed river, not still water.
-      const router = currentRouter(wasmRef.current, routerRef.current);
-      const routed = routedInflow(router);
+      //
+      // On wasm-worker the router is the worker's: the chain index rides on the
+      // SCROLL / STEP and the worker derives the same edge the branch below does.
+      const remote = isWorkerSweSim(grid) ? grid : null;
+      const chainIndex = remote ? syncWorkerRouter(remote, workerRouterRef.current) : null;
+      const router = remote ? null : currentRouter(wasmRef.current, routerRef.current);
+      const routed = remote ? null : routedInflow(router);
       const fill = routed?.inflow ?? SWE_REST_INFLOW;
       if (advance) {
-        if (windowRef.current === null && routed) {
+        if (remote) {
+          const route = { chainIndex };
+          if (windowRef.current === null) {
+            remote.scrollRouted(grid.width, 0, route, true, originX, originZ);
+          } else if (advance.shiftX !== 0 || advance.shiftZ !== 0) {
+            remote.scrollRouted(advance.shiftX, advance.shiftZ, route, false, originX, originZ);
+          }
+        } else if (windowRef.current === null && routed) {
           // A fresh window starts as the river it sits in, so the routed stage
           // does not have to bore in from the edge on every rebuild.
           grid.scroll(grid.width, 0, fill);
@@ -592,6 +792,7 @@ export function WaterForceSystem({
         }
         windowRef.current = advance.window;
       }
+      remote?.setOrigin(originX, originZ);
 
       // Step-rate budget: accumulate render deltas and take one SWE step per
       // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
@@ -637,7 +838,7 @@ export function WaterForceSystem({
 
         // Bed sampled from the canyon floor by refreshBed() above (#374
         // Phase 2). Uncovered cells read as dry land, not open water.
-        grid.step({
+        const stepInput: SweStepInput = {
           dt: stepDt,
           g: GRAVITY,
           H: SWE_MEAN_DEPTH,
@@ -647,7 +848,9 @@ export function WaterForceSystem({
           // Upstream edge = the routed discharge at the player's segment; the
           // hull reads it back through sampleSWEFlow like any other η.
           edgeEta: routed?.edgeEta,
-        });
+        };
+        if (remote) remote.stepRouted(stepInput, { chainIndex });
+        else grid.step(stepInput);
       }
       // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
       if (grid.fieldVersion !== uploadedVersionRef.current) {
@@ -662,25 +865,68 @@ export function WaterForceSystem({
     }
 
     const sweEnabled = Boolean(budget.enabled && grid);
-    const flowGrid = grid ? toFlowGrid(grid, originX, originZ) : null;
-    const vehicleFlow = sampleSWEFlow({
-      worldX: anchor.x,
-      worldZ: anchor.z,
-      flowSpeed,
-      grid: flowGrid,
-      enabled: sweEnabled,
-      stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
-    });
-    setPhysicsWorkerTickParams({
-      flowSpeed: vehicleFlow.speed,
-      waterLevel: stagedWaterLevel(waterLevel, vehicleFlow),
-      turbulenceStrength,
-      turbulenceFrequency,
-      flowDirX: vehicleFlow.dirX,
-      flowDirZ: vehicleFlow.dirZ,
-    });
 
-    for (let i = 0; i < bodies.length; i += 1) {
+    // Forces in the sim worker (Phase B): the field the hull reads is the one
+    // being stepped. A dead worker drops back to TS math here (SWE is off then).
+    const simProxy = simProxyRef.current;
+    const requests = simProxy && !simProxy.failed ? forceRequestsRef.current : null;
+    if (requests) {
+      applyWorkerForces(requests, bodies, vehicleBody, workerOwnsVehicleForces, workerVehicleFlowRef);
+      // The Rapier worker samples the sim worker itself (hull link): authored values only.
+      setPhysicsWorkerTickParams({
+        flowSpeed,
+        waterLevel,
+        turbulenceStrength,
+        turbulenceFrequency,
+        flowDirX: FALLBACK_FLOW_DIR.x,
+        flowDirZ: FALLBACK_FLOW_DIR.z,
+        simFlow: true,
+      });
+      postWorkerForces(requests, {
+        bodies,
+        vehicleBody,
+        vehicleType,
+        workerOwnsVehicleForces,
+        gridId: isWorkerSweSim(grid) ? grid.gridId : -1,
+        originX,
+        originZ,
+        dt,
+        timeSeconds,
+        flowSpeed,
+        waterLevel,
+        turbulenceStrength,
+        turbulenceFrequency,
+      });
+    }
+
+    const flowGrid = !requests && grid ? toFlowGrid(grid, originX, originZ) : null;
+    const vehicleFlow = requests
+      ? (workerOwnsVehicleForces ? getPhysicsWorkerDiagnostics()?.sampledFlow : workerVehicleFlowRef.current) ??
+        sampleSWEFlow({ worldX: anchor.x, worldZ: anchor.z, flowSpeed, grid: null, enabled: false })
+      : sampleSWEFlow({
+          worldX: anchor.x,
+          worldZ: anchor.z,
+          flowSpeed,
+          grid: flowGrid,
+          enabled: sweEnabled,
+          stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
+        });
+    if (!requests) {
+      setPhysicsWorkerTickParams({
+        flowSpeed: vehicleFlow.speed,
+        waterLevel: stagedWaterLevel(waterLevel, vehicleFlow),
+        turbulenceStrength,
+        turbulenceFrequency,
+        flowDirX: vehicleFlow.dirX,
+        flowDirZ: vehicleFlow.dirZ,
+        simFlow: false,
+      });
+    }
+
+    // A worker that died mid-session leaves forces to the TS math: the module
+    // on this thread is kept only for chores (Phase C removes it).
+    const nativeForces = simProxy?.failed ? null : wasmRef.current;
+    for (let i = 0; !requests && i < bodies.length; i += 1) {
       const body = bodies[i];
       try {
         const pos = body.translation();
@@ -722,8 +968,8 @@ export function WaterForceSystem({
               turbulenceFrequency,
             );
 
-        const force = wasmRef.current
-          ? wasmRef.current.calculateWaterForce(
+        const force = nativeForces
+          ? nativeForces.calculateWaterForce(
               pos.x, pos.y, pos.z,
               vel.x, vel.y, vel.z,
               flow.dirX, flow.dirZ,
@@ -767,6 +1013,8 @@ export function WaterForceSystem({
         sampleCount: bodies.length,
         sweBudget: budget,
         workerOwnsVehicleForces,
+        forcesIn: requests ? 'sim-worker' : nativeForces ? 'main-wasm' : 'main-ts',
+        forcesInFlight: requests?.inFlight ?? 0,
         sampledDir: [vehicleFlow.dirX, vehicleFlow.dirZ],
         sampledSpeed: vehicleFlow.speed,
         stage: vehicleFlow.surfaceOffset,

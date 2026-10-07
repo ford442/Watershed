@@ -12,11 +12,13 @@
 import * as THREE from 'three';
 import { sweBudgetForQuality, type SWEBudget } from './sweQuality';
 
+// Defined in the pure sweQuality.ts so the sim worker can read it without THREE.
+export { SWE_MEAN_DEPTH } from './sweQuality';
+
 /** Baseline (high-preset) grid — kept as the historical default for consumers. */
 export const SWE_GRID_WIDTH = 48;
 export const SWE_GRID_HEIGHT = 32;
 export const SWE_CELL_SIZE = 0.5;
-export const SWE_MEAN_DEPTH = 1.0;
 
 /** Cap on queued disturbances, so a stalled consumer can't grow the queue forever. */
 const MAX_PENDING_DISTURBANCES = 64;

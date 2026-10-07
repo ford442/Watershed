@@ -23,6 +23,7 @@ export function buildRaftWorkerWaterForceConfig(
     turbulenceFrequency: params.turbulenceFrequency,
     flowDirX: params.flowDirX,
     flowDirZ: params.flowDirZ,
+    simFlow: params.simFlow ?? false,
   };
 }
 

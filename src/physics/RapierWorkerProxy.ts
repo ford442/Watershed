@@ -25,7 +25,7 @@ export class RapierWorkerProxy {
   private pending = new Map<number, PendingRequest>();
   private state: WorkerRaftState | null = null;
   private waterForce: WaterForceDiagnostics | null = null;
-  private wasmAvailable = false;
+  private simLinked = false;
   private totalLatencyMs = 0;
   private latencySamples = 0;
   private onMessage = (event: MessageEvent<RapierWorkerResponse>) => {
@@ -44,10 +44,6 @@ export class RapierWorkerProxy {
     if ('waterForce' in response && response.waterForce) {
       this.waterForce = response.waterForce;
     }
-    if (response.type === 'READY' && 'wasmAvailable' in response) {
-      this.wasmAvailable = Boolean(response.wasmAvailable);
-    }
-
     if (response.type === 'ERROR') {
       pending.reject(new Error(response.error));
       return;
@@ -69,8 +65,9 @@ export class RapierWorkerProxy {
     return this.waterForce;
   }
 
-  get isWasmAvailable(): boolean {
-    return this.wasmAvailable;
+  /** The worker holds a hull link to the sim worker (its water forces come from there). */
+  get isSimLinked(): boolean {
+    return this.simLinked;
   }
 
   get averageLatencyMs(): number {
@@ -80,9 +77,6 @@ export class RapierWorkerProxy {
   init(payload: RapierWorkerInitPayload = DEFAULT_RAFT_WORKER_INIT): Promise<WorkerRaftState> {
     return this.request({ type: 'INIT', payload }).then((response) => {
       if (!('state' in response)) throw new Error('INIT did not return raft state');
-      if (response.type === 'READY') {
-        this.wasmAvailable = Boolean(response.wasmAvailable);
-      }
       return response.state;
     });
   }
@@ -132,6 +126,13 @@ export class RapierWorkerProxy {
     return this.request({ type: 'REMOVE_STATIC_COLLIDER', handle }).then(() => undefined);
   }
 
+  /** Hand the worker its end of the hull link to the sim worker (#455 Phase B). */
+  connectSim(port: MessagePort): Promise<void> {
+    return this.request({ type: 'CONNECT_SIM', port }, [port]).then(() => {
+      this.simLinked = true;
+    });
+  }
+
   clearStaticColliders(): Promise<void> {
     return this.request({ type: 'CLEAR_STATIC_COLLIDERS' }).then(() => undefined);
   }
@@ -143,13 +144,17 @@ export class RapierWorkerProxy {
     this.worker.terminate?.();
   }
 
-  private request(command: Record<string, unknown> & { type: RapierWorkerCommand['type'] }): Promise<RapierWorkerResponse> {
+  private request(
+    command: Record<string, unknown> & { type: RapierWorkerCommand['type'] },
+    transfer?: Transferable[],
+  ): Promise<RapierWorkerResponse> {
     const id = this.nextId++;
     const message = { ...command, id } as RapierWorkerCommand;
 
     return new Promise((resolve, reject) => {
       this.pending.set(id, { startedAt: now(), resolve, reject });
-      this.worker.postMessage(message);
+      if (transfer) this.worker.postMessage(message, transfer);
+      else this.worker.postMessage(message);
     });
   }
 }

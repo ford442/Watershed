@@ -18,6 +18,23 @@ export interface PhysicsWorkerTickParams {
   turbulenceFrequency: number;
   flowDirX: number;
   flowDirZ: number;
+  /**
+   * The sim worker computes the raft's force over the hull link (#455 Phase B):
+   * `flowSpeed` / `waterLevel` are then the AUTHORED values, sampled and staged
+   * by the worker on its live field, and `flowDir*` is unused.
+   */
+  simFlow?: boolean;
+}
+
+/** The flow a force was computed with (sampleSWEFlow's SWEFlowSample). */
+export interface WaterForceFlowSample {
+  dirX: number;
+  dirZ: number;
+  speed: number;
+  wet: boolean;
+  source: 'swe' | 'fallback';
+  surfaceOffset: number;
+  depth: number;
 }
 
 export interface WaterForceDiagnostics {
@@ -32,6 +49,8 @@ export interface WaterForceDiagnostics {
   submergedRatio: number;
   /** Wall time of the force batch inside the worker, in microseconds. */
   computeMicros?: number;
+  /** Set when the sim worker computed it: the flow it sampled at the hull. */
+  sampledFlow?: WaterForceFlowSample;
 }
 
 /** Snapshot rendered by DebugPanel. */
@@ -59,6 +78,7 @@ const DEFAULT_TICK_PARAMS: PhysicsWorkerTickParams = {
   turbulenceFrequency: 2.4,
   flowDirX: 0,
   flowDirZ: -1,
+  simFlow: false,
 };
 
 const DEFAULT_STATUS: PhysicsWorkerStatus = {

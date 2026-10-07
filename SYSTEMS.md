@@ -500,92 +500,141 @@ canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
 
 ### `src/physics/rapier.worker.ts` + `RapierWorkerProxy`
 
-**Purpose:** Co-locate Rapier rigid-body stepping with C++ `watershed_native` batch water
-forces in a single worker tick. **Default on** wherever the browser exposes `Worker` +
-`WebAssembly`. Kill switches, in precedence order: `?physicsWorker=0` (legacy alias
-`?raftWorker=0`) > capability detection > `?physicsWorker=1` > Settings → Physics >
-default on. The decision is made once per vehicle mount by `resolvePhysicsWorker`
-(`src/utils/physicsWorkerFlag.ts`); switching mid-session would strand the Rapier body
-between two authorities.
+**Purpose:** Step the raft's Rapier rigid body off the render thread. **Default on** wherever
+the browser exposes `Worker` + `WebAssembly`. Kill switches, in precedence order:
+`?physicsWorker=0` (legacy alias `?raftWorker=0`) > capability detection > `?physicsWorker=1` >
+Settings → Physics > default on. The decision is made once per vehicle mount by
+`resolvePhysicsWorker` (`src/utils/physicsWorkerFlag.ts`); switching mid-session would strand
+the Rapier body between two authorities.
 
-**Tick order (worker path, per `docs/reference/ADR_WASM_RAPIER_WATER_FORCES.md`):**
+**Who owns the raft's water force (#455 Phase B):** the **sim worker**. The Rapier worker does
+not load `watershed_native` (no `workerWasm.ts` in its module graph —
+`rapierWorkerGraph.test.ts`); its old native path resolved `public/` against its own script URL
+and never loaded anyway. On the `wasm-worker` SWE backend `RaftVehicle` hands both workers one
+end of a `MessageChannel` (`linkPhysicsToSim` → `CONNECT_SIM` / `CONNECT_PHYSICS`), so hull
+state and force travel worker-to-worker (`src/sim/hullLinkProtocol.ts`,
+`src/physics/hullLinkClient.ts`).
+
+**Tick order (Rapier tick N, linked):**
 
 ```txt
-1. Read raft Rapier state (position, velocity)
-2. Pack 8-float input stride → computeWaterForcesBatch (or TS fallback)
-3. Apply water-force impulses (force × dt × 0.001)
-4. Apply external impulses (paddle, etc.)
-5. world.step()
+1. Take the latest HULL_FORCE (from the state posted after tick N−1, computed on the sim
+   worker's live field) — none yet, or older than HULL_FORCE_MAX_AGE (3) ticks → TS fallback
+2. Apply water-force impulses (force × dt × 0.001)
+3. Apply external impulses (paddle, etc.)
+4. world.step()
+5. Post HULL (post-step state + authored config) to the sim worker
 6. postMessage body snapshot + force diagnostics to render thread
 ```
 
-**Data boundary:** 8-float input `[posXYZ, velXYZ, flowDirXZ]` and 8-float output
-`[forceXYZ, buoyancy, drag, flow, turbulence, submergedRatio]` per sample.
+So forces computed on sim tick N are applied on Rapier tick N+1 — the state they were computed
+for is the one tick N+1 starts from. Before Phase B the force came from a flow sample of the
+main-thread *mirror* (already a message old), re-sampled and relayed through `STEP`.
 
-**Render thread responsibilities:** visuals, input, camera, HUD, SWE height texture upload
-(`WaterForceSystem` still owns SWE for `FlowingWater`; only raft force application moves
-into the worker when the flag is on).
+**Data boundary:** hull sample = one `simForces.ts` sample (Float64, 17 values: position,
+velocity, authored flow cap, flow scale, authored water level, mass/volume/drag/areas, time,
+turbulence); result = the 8-float native output `[forceXYZ, buoyancy, drag, flow, turbulence,
+submergedRatio]` + the flow sample used `[dirX, dirZ, speed, surfaceOffset, depth, flags]`.
+`STEP`'s `waterForce.simFlow` tells the worker the tick params are authored (sim-sampled).
 
-**Fallback:** Missing `watershed_native.wasm` → worker uses `calculateWaterForceFallback`
-inside the same tick (no extra frame of lag); parity with the C++ path is pinned by
-`src/physics/__tests__/waterForceParity.test.ts`. Worker init failure or an explicit off →
-existing main-thread `WaterForceSystem` + Rapier path.
+**Fallback:** no link (`wasm-main` / `wgsl` backends, `?simWorker=0`, failed handshake) →
+`calculateWaterForceFallback` inside the same tick on the tick params `WaterForceSystem`
+samples on the main thread (what actually ran before Phase B). Parity of the TS twin with the
+C++ path is pinned by `src/physics/__tests__/waterForceParity.test.ts`. Worker init failure or
+an explicit off → the main-thread `WaterForceSystem` + Rapier path.
 
 **Phase 2 protocol (collider registration):** `ADD_STATIC_COLLIDER`, `REMOVE_STATIC_COLLIDER`,
 `CLEAR_STATIC_COLLIDERS` — segment treadmill meshes can be streamed without a second worker.
 
 **Debug:** DebugPanel (`?debug=1`) has a *Physics worker* section: worker state + the reason
-it resolved that way, active force path (`wasm` / `fallback`), last force-batch cost in µs,
-and the live SWE grid. `window.__watershedPhysicsWorker` (dev) still exposes raw `waterForce`
-diagnostics and tick order.
+it resolved that way, active force path (`wasm` = from the sim worker / `fallback`), last
+force-batch cost in µs, and the live SWE grid. `window.__watershedPhysicsWorker` (dev) exposes
+raw `waterForce` diagnostics (with `sampledFlow` when the sim worker computed it), `simLinked`
+and the tick order.
 
 ## Sim Worker (#455)
 
 ### `src/sim/simWorker.ts` + `SimWorkerProxy` + `createWorkerSweSim`
 
-**Purpose:** Step the SWE field off the render thread, in one dedicated worker that owns its
-own `watershed_native` instance. Phase A (shipped): SWE only. Later phases move water forces
-(B), particle SoA + HUD chores (C) and an Atomics/SharedArrayBuffer fast path (D) into the same
-worker, so the main thread stops calling Embind per frame. Rapier stays in its own worker:
-two workers, one for rigid bodies, one for the field.
+**Purpose:** Run the SWE field — and everything that only feeds or reads it — off the render
+thread, in one dedicated worker that owns its own `watershed_native` instance. Phase A: the
+SWE step. **Phase B (shipped):** the river router and the water forces. Later: particle SoA +
+HUD chores (C) and an opt-in Atomics/SharedArrayBuffer fast path (D). Rapier stays in its own
+worker: two workers, one for rigid bodies, one for the field.
 
 **Backend (`sweBackend.ts`, once per session):** `wgsl` on a native-WebGPU boot (stays on the
 main thread — it needs the renderer's `GPUDevice`, and the worker must never request a second
 one); otherwise `wasm-worker` (default) or `wasm-main` (`?simWorker=0`, no `Worker`, or a
-failed handshake → `demoteSweSimBackendToWasmMain`).
+failed handshake → `demoteSweSimBackendToWasmMain`). `wasm-main` and `wgsl` keep the whole
+pre-worker path on the main thread (router, forces) unchanged.
 
 **Clock:** the main thread still decides when to step and with what — `WaterForceSystem`
-sends the same dt, splashes, hydro events and routed `edgeEta` it would hand the main-thread
-stepper, in the same order. The worker runs `createWasmSweSim` on that stream, so the field is
-**bit-identical** to `wasm-main` (`src/sim/simWorker.integration.test.ts`, 90 frames, real
-binary). A decoupled fixed-dt worker loop is deliberately *not* Phase A: it would change the
-dt sequence and therefore the field.
+sends the same dt, splashes and hydro events it would hand the main-thread stepper, in the
+same order. The worker runs `createWasmSweSim` on that stream, so the field is
+**bit-identical** to `wasm-main` (`src/sim/simWorker.integration.test.ts`, real binary). A
+decoupled fixed-dt worker loop is deliberately out: it would change the dt sequence and
+therefore the field.
+
+**Router (Phase B):** the main thread sends `ROUTER {reach, launchHour, forecast, H, g}` when
+the run or its launch hour changes (same trigger as the main-thread rebuild) and the player's
+chain index (`routingChainIndex`, pure JS) on every `SCROLL` / `STEP`. The worker keeps the
+`RiverRouter` on its module, rates the edge *before* advancing it (the main-thread order),
+advances it by the step's dt and steps with that `edgeEta`; entering cells take the same routed
+state (`routedEdgeInflow`, shared code). A freshly placed window is filled only when a routed
+state exists; the epoch advances either way. The router survives quality changes (grid
+rebuilds) and is freed by `DISPOSE_ROUTER` on unmount.
+
+**Forces (Phase B, `simForces.ts`):** after the frame's `STEP`, `WaterForceSystem` posts
+`FORCES {seq, gridId, origin, samples}` for the vehicle (unless the Rapier worker owns it) and
+every debris body — authored flow cap and water level, flow-independent config. The worker
+samples the flow on its live grid (`sampleSWEFlow`, same function), stages the level
+(`stagedWaterLevel`) and runs `computeWaterForcesBatch`, one Embind call per run of samples
+whose configs are equal at float32 — the ABI takes one config per call, and each body has its
+own sampled speed and stage; one call for all bodies needs a per-sample-config export (ABI
+bump). Results come back in the request's buffer and are applied at the top of the next frame,
+with the sampling frame's dt, to bodies still registered (`simForceRequests.ts`). Bit-identical
+to the main-thread `calculateWaterForce` loop on the `wasm-main` field (integration test). The
+Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, see Physics
+Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
+never pairs the new index frame with the old origin.
+
+**Main thread on `wasm-worker`, steady state:** no `calculateWaterForce`, `routeReach*`,
+`routedEdgeState`, `stepShallowWater*`, `applySWEEvent` or `scrollShallowWater` calls
+(`WaterForceSystem.simWorker.test.tsx` spies on every one). Its module still serves gpu-chores
+and particles until Phase C. **Instances per session on WebGL2: two** (main + sim worker).
 
 **Protocol (`simWorkerProtocol.ts`):** `INIT` (page-resolved glue/wasm URLs — a worker's own
-location is its script, not the page) → `READY {abi}`; `CONFIGURE`, `COMMIT_BED`, `SCROLL`,
-`STEP` (queued `addSurface` ops ride along, applied one by one), `DISPOSE_GRID`;
-`FRAME {gridId, frameIndex, epoch, computeMicros, buffer}` ↔ `RETURN_FRAME`.
+location is its script, not the page) → `READY {abi}`; `CONFIGURE`, `COMMIT_BED`, `ORIGIN`,
+`SCROLL {fill: inflow | routed}`, `STEP {route?}` (queued `addSurface` ops ride along, applied
+one by one), `DISPOSE_GRID`; `ROUTER`, `DISPOSE_ROUTER`; `FORCES` ↔ `FORCES` result;
+`CONNECT_PHYSICS {port}`; `FRAME {gridId, frameIndex, epoch, computeMicros, inflow, buffer}` ↔
+`RETURN_FRAME`.
 
 **Frames (`SimFrame.ts`):** η | u | w | b in one transferred `ArrayBuffer`. The main thread
 copies it into a stable mirror (`workerSweSim.ts` — readers such as gpu-chores hold `h`
 across awaits, so the mirror is never a transferable) and returns the buffer; the worker
 pools two. The worker copies out of the WASM heap on publish, so no heap view crosses
-threads. `b` is in the frame because authored events carve the bed.
+threads. `b` is in the frame because authored events carve the bed. `inflow` is the routed
+state the worker last derived; the mirror fills scrolled-in cells with it until the next frame
+replaces the whole mirror (cosmetic only).
 
 **Latency / ordering:** a step's field lands one message later (`fieldVersion` bumps then).
 `scroll()` and `commitBed()` apply to the mirror at once and bump the epoch; a frame from an
 older epoch is discarded, so the mirror never pairs a field with a window or bed it was not
-computed on (same rule as the WGSL readback).
+computed on (same rule as the WGSL readback). Force results are world-space and always computed
+on a consistent (grid, origin) pair inside the worker, so they are applied, not dropped, across
+a scroll. Debris forces trail the field by one frame; the raft's by one Rapier tick.
 
 **Failure:** `Worker` construction throws, the module fails to load in the worker, a worker
 script error, or no `READY` within the WASM init deadline + 2 s (`?wasmInitTimeout=`) → the
 handshake rejects (memoized — never retried into a second worker) and `WaterForceSystem`
-falls back to `wasm-main` with a console warning. A worker that dies *after* its field has
-stepped turns SWE off (`fail-open`), never starts a second field. No JS stepper in the worker.
+falls back to `wasm-main` with a console warning — forces and router included. A worker that
+dies *after* its field has stepped turns SWE off (`fail-open`) and forces fall back to the TS
+math on the main thread; the Rapier worker drops the stale hull force after
+`HULL_FORCE_MAX_AGE` ticks. No JS stepper or force loop in the worker.
 
-**Not yet (Phases B–D):** the main thread still loads its own module for water forces, the
-river router and chores, so a session currently has three instances (main, Rapier worker,
-sim worker) until B/C land.
+**Worker bundle:** `simWorkerGraph.test.ts` keeps the map registry, React and THREE out
+(the reach arrives as data; `SWE_MEAN_DEPTH` and the default forecast live in leaf modules).
 
 ### SWE quality budgets — `src/systems/water/sweQuality.ts`
 
