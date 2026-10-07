@@ -5,7 +5,7 @@
  * queued and replayed in order; a load failure answers with a fatal ERROR so
  * the main thread falls back to the main-thread stepper instead of waiting.
  */
-import { getWorkerWasm } from './workerWasm';
+import { getWorkerWasm, peekWorkerWasmInitError } from './workerWasm';
 import { createSimWorkerCore, type SimWorkerCore } from './simWorkerCore';
 import type { SimWorkerCommand, SimWorkerResponse } from './simWorkerProtocol';
 
@@ -35,7 +35,12 @@ const boot = async (assets: { glue: string; wasm: string } | undefined) => {
     : null;
   if (!wasm) {
     queued.length = 0;
-    post({ type: 'ERROR', error: 'watershed_native failed to load in the sim worker', fatal: true });
+    const cause = peekWorkerWasmInitError();
+    post({
+      type: 'ERROR',
+      error: `watershed_native failed to load in the sim worker${cause ? `: ${cause}` : ''}`,
+      fatal: true,
+    });
     return;
   }
   core = createSimWorkerCore(wasm, post);

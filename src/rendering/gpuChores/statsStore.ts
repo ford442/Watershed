@@ -5,7 +5,8 @@
 import type { ChoreBackend } from './types';
 
 export interface GpuChoreStats {
-  backend: ChoreBackend | null;
+  /** `wasm-worker`: the summary came from the sim worker's module (CHORES). */
+  backend: ChoreBackend | 'wasm-worker' | null;
   reason: string | null;
   min: number | null;
   max: number | null;

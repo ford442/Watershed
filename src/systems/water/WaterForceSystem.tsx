@@ -24,7 +24,7 @@
  *   the sim worker dies mid-session (with SWE off).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../../constants/game';
@@ -85,7 +85,7 @@ import {
   setPhysicsWorkerTickParams,
   setSWEStatus,
 } from '../../physics/physicsWorkerRegistry';
-import { bindChoreWasm, runHeightfieldChores } from '../../rendering/gpuChores';
+import { bindChoreWasm, bindHeightfieldChoreWorker, runHeightfieldChores } from '../../rendering/gpuChores';
 import {
   sampleSWEFlow,
   FALLBACK_FLOW_DIR,
@@ -543,6 +543,30 @@ export function WaterForceSystem({
   // The vehicle's flow as the sim worker last sampled it (debug only).
   const workerVehicleFlowRef = useRef<SWEFlowSample | null>(null);
   const [wasmReady, setWasmReady] = useState(false);
+  const mountedRef = useRef(false);
+
+  // The main-thread module — loaded only when this session's stepper is on
+  // this thread (`wasm-main`: `?simWorker=0`, no Worker, a failed worker
+  // handshake, or a failed WGSL init). A sim-worker boot never instantiates
+  // it here, and a native-WebGPU boot does not either: one module per session.
+  const loadMainWasm = useCallback(() => {
+    getWasm()
+      .then((wasm) => {
+        if (!mountedRef.current) return;
+        wasmRef.current = wasm;
+        statusRef.current = 'ready';
+        bindChoreWasm(wasm);
+        setWasmReady(true);
+      })
+      .catch((error) => {
+        if (!mountedRef.current) return;
+        statusRef.current = 'fallback';
+        console.error('[WaterForceSystem] native init failed; using TypeScript fallbacks', error);
+        bindChoreWasm(null);
+        updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
+        setSWEStatus(false, null);
+      });
+  }, []);
 
   // Visual SWE budget follows the live quality preset (LODManager may downgrade
   // it adaptively). Force math below is NOT gated — it is gameplay-affecting.
@@ -551,42 +575,40 @@ export function WaterForceSystem({
 
   useEffect(() => {
     setWaterForceSystemActive(true);
+    mountedRef.current = true;
     let cancelled = false;
 
-    // Start the sim worker's module load alongside the main one, so the grid
-    // effect below finds it READY instead of starting the handshake late. Once
-    // READY it also owns the water forces (Phase B).
-    if (resolveSweSimBackendDecision().backend === 'wasm-worker') {
+    const decision = resolveSweSimBackendDecision();
+    if (decision.backend === 'wasm-worker') {
+      // Start the handshake now, so the grid effect below finds the worker
+      // READY. Once READY it owns the water forces (Phase B) and the chores.
       getSimWorkerProxy()
         .then((proxy) => {
           if (cancelled || proxy.failed) return;
           simProxyRef.current = proxy;
           forceRequestsRef.current = createSimForceRequests<ForceTarget>(proxy);
+          statusRef.current = 'ready';
         })
         .catch(() => {
-          /* the grid effect reports it and falls back */
+          if (cancelled) return;
+          // Nothing has stepped in the worker: its module never existed, so
+          // the main-thread one is still this session's only module.
+          demoteSweSimBackendToWasmMain();
+          loadMainWasm();
         });
+    } else if (decision.backend === 'wasm-main') {
+      loadMainWasm();
+    } else {
+      // Native WebGPU: the WGSL twin steps, forces take the TS math, and the
+      // C++ router is absent — the window's edge takes the rest inflow.
+      statusRef.current = 'fallback';
+      console.info('[WaterForceSystem] native WebGPU: no WASM module this session (TS forces, unrouted edge)');
     }
-
-    getWasm()
-      .then((wasm) => {
-        if (cancelled) return;
-        wasmRef.current = wasm;
-        statusRef.current = 'ready';
-        bindChoreWasm(wasm);
-        setWasmReady(true);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        statusRef.current = 'fallback';
-        console.error('[WaterForceSystem] native init failed; using TypeScript fallbacks', error);
-        bindChoreWasm(null);
-        updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
-        setSWEStatus(false, null);
-      });
 
     return () => {
       cancelled = true;
+      mountedRef.current = false;
+      bindHeightfieldChoreWorker(null);
       routerRef.current.router?.dispose();
       routerRef.current = { router: null, session: null, launchHour: Number.NaN };
       workerRouterRef.current.proxy?.post({ type: 'DISPOSE_ROUTER' });
@@ -601,7 +623,7 @@ export function WaterForceSystem({
       clearSWEBedSnapshot();
       setSWEStatus(false, null);
     };
-  }, []);
+  }, [loadMainWasm]);
 
   // Grid + upload texture are sized by the budget, so a quality change
   // reallocates both. `low` allocates nothing at all. The solver backend was
@@ -614,7 +636,8 @@ export function WaterForceSystem({
     const wasm = wasmRef.current;
     const decision = resolveSweSimBackendDecision();
     const device = decision.backend === 'wgsl' ? getSessionGpuDevice() : null;
-    if (!budget.enabled || (!device && !wasm)) {
+    const canStep = device !== null || wasm !== null || decision.backend === 'wasm-worker';
+    if (!budget.enabled || !canStep) {
       updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
       return;
@@ -683,8 +706,10 @@ export function WaterForceSystem({
           // session" — the WGSL field never existed.
           console.error('[WaterForceSystem] WGSL SWE init failed; using the WASM stepper', error);
           demoteSweSimBackendToWasm();
+          // The module loads only now; `wasmReady` re-runs this effect on wasm-main.
           const fallbackWasm = wasmRef.current;
           if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
+          else loadMainWasm();
         });
     } else if (decision.backend === 'wasm-worker') {
       getSimWorkerProxy()
@@ -698,8 +723,12 @@ export function WaterForceSystem({
           }
           const next = createWorkerSweSim(proxy, budget.width, budget.height, budget.cellSize);
           unsubscribeFatal = proxy.onFatal(() => {
+            bindHeightfieldChoreWorker(null);
             if (gridRef.current === next) disableSwe();
           });
+          // The debug-stat chores run on the worker's module, over its field.
+          bindHeightfieldChoreWorker((thumbWidth, thumbHeight) =>
+            proxy.requestChores(next.gridId, thumbWidth, thumbHeight));
           install(next);
         })
         .catch((error) => {
@@ -708,6 +737,7 @@ export function WaterForceSystem({
           // still this session's only backend.
           console.warn('[WaterForceSystem] sim worker unavailable; stepping SWE on the main thread', error);
           demoteSweSimBackendToWasmMain();
+          // The mount effect loads the main module; `wasmReady` re-runs this effect.
           const fallbackWasm = wasmRef.current;
           if (fallbackWasm) install(createWasmSweSim(fallbackWasm, budget.width, budget.height, budget.cellSize));
         });
@@ -718,6 +748,7 @@ export function WaterForceSystem({
     return () => {
       cancelled = true;
       unsubscribeFatal?.();
+      bindHeightfieldChoreWorker(null);
       sim?.dispose();
       gridRef.current = null;
       texture.dispose();
@@ -729,7 +760,7 @@ export function WaterForceSystem({
       updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
     };
-  }, [budget, wasmReady]);
+  }, [budget, wasmReady, loadMainWasm]);
 
   useFrame((state, delta) => {
     const vehicleBody = vehicleRef.current;
@@ -923,8 +954,8 @@ export function WaterForceSystem({
       });
     }
 
-    // A worker that died mid-session leaves forces to the TS math: the module
-    // on this thread is kept only for chores (Phase C removes it).
+    // A worker that died mid-session leaves forces to the TS math; a sim-worker
+    // or native-WebGPU session has no module on this thread at all.
     const nativeForces = simProxy?.failed ? null : wasmRef.current;
     for (let i = 0; !requests && i < bodies.length; i += 1) {
       const body = bodies[i];

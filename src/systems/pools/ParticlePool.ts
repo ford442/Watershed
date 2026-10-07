@@ -14,6 +14,12 @@ export interface PoolableParticle {
   maxLife: number;
   scale: number;
   active: boolean;
+  /**
+   * Bumped by the pool on every acquire, so work posted for one life of a
+   * pooled object (nativeParticles.ts, a step in flight in the sim worker)
+   * is never applied to the next.
+   */
+  generation?: number;
   reset(): void;
 }
 
@@ -44,6 +50,7 @@ export class ParticlePool<T extends PoolableParticle> {
     if (this.pool.length > 0) {
       const particle = this.pool.pop()!;
       particle.active = true;
+      particle.generation = (particle.generation ?? 0) + 1;
       this.active.push(particle);
       return particle;
     }
@@ -52,6 +59,7 @@ export class ParticlePool<T extends PoolableParticle> {
     if (this.active.length < this.maxSize) {
       const particle = this.factory();
       particle.active = true;
+      particle.generation = (particle.generation ?? 0) + 1;
       this.active.push(particle);
       return particle;
     }
@@ -60,6 +68,7 @@ export class ParticlePool<T extends PoolableParticle> {
     const oldest = this.active.shift()!;
     oldest.reset();
     oldest.active = true;
+    oldest.generation = (oldest.generation ?? 0) + 1;
     this.active.push(oldest);
     return oldest;
   }
@@ -154,6 +163,7 @@ export class VFXParticle implements PoolableParticle {
   maxLife = 1;
   scale = 1;
   active = false;
+  generation = 0;
   color = new THREE.Color(1, 1, 1);
   rotation = 0;
   rotationSpeed = 0;

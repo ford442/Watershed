@@ -7,9 +7,47 @@
 import { getChoresRuntime } from './createRuntime';
 import { setGpuChoreStats } from './statsStore';
 import type { Downsample2dOutput, GridReduceOutput, LumaHistogramOutput } from './types';
+import { heightfieldThumbSize, type HeightfieldSummary } from './heightfieldSummary';
 
-const THUMB_WIDTH = 32;
 let inFlight = false;
+
+/**
+ * The sim worker's chores (CHORES) over its own live field — resolves null
+ * when that grid is gone or the worker died. Bound by WaterForceSystem on a
+ * sim-worker boot, so the main thread never needs a module for the stats.
+ */
+export type RemoteHeightfieldChores = (
+  thumbWidth: number,
+  thumbHeight: number,
+) => Promise<HeightfieldSummary | null>;
+
+let remote: RemoteHeightfieldChores | null = null;
+
+export function bindHeightfieldChoreWorker(next: RemoteHeightfieldChores | null): void {
+  remote = next;
+}
+
+function runRemote(chores: RemoteHeightfieldChores, destWidth: number, destHeight: number): void {
+  void chores(destWidth, destHeight)
+    .then((summary) => {
+      if (!summary) return;
+      setGpuChoreStats({
+        backend: 'wasm-worker',
+        reason: null,
+        min: summary.min,
+        max: summary.max,
+        mean: summary.mean,
+        histogram: summary.histogram,
+        thumb: summary.thumb,
+      });
+    })
+    .catch(() => {
+      /* the next fieldVersion retries; a dead worker unbinds itself */
+    })
+    .finally(() => {
+      inFlight = false;
+    });
+}
 
 export function runHeightfieldChores(
   values: Float32Array,
@@ -18,9 +56,12 @@ export function runHeightfieldChores(
 ): void {
   if (inFlight || width <= 0 || height <= 0 || values.length === 0) return;
   inFlight = true;
+  const { width: destWidth, height: destHeight } = heightfieldThumbSize(width, height);
+  if (remote) {
+    runRemote(remote, destWidth, destHeight);
+    return;
+  }
   const runtime = getChoresRuntime();
-  const destWidth = THUMB_WIDTH;
-  const destHeight = Math.max(1, Math.round((THUMB_WIDTH * height) / width));
 
   void (async () => {
     try {

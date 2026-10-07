@@ -33,6 +33,7 @@ vi.mock('../GameState', async (importOriginal) => ({
 
 vi.mock('../../rendering/gpuChores', () => ({
   bindChoreWasm: vi.fn(),
+  bindHeightfieldChoreWorker: vi.fn(),
   runHeightfieldChores: vi.fn(),
 }));
 
