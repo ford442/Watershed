@@ -14,7 +14,8 @@ const LEAF_PALETTES: Record<string, string[]> = {
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
-function resolvePalette(biome: BiomeId | string | undefined): string[] {
+/** Leaf colours for a biome — shared with WindLeaves. */
+export function resolveLeafPalette(biome: BiomeId | string | undefined): string[] {
   if (biome && LEAF_PALETTES[biome]) return LEAF_PALETTES[biome];
   if (biome && String(biome).includes('autumn')) return LEAF_PALETTES.autumn;
   return LEAF_PALETTES.summer;
@@ -40,7 +41,7 @@ export default function FallingLeaves({
     const mesh = meshRef.current;
     if (!mesh || !transforms || transforms.length === 0) return;
 
-    const palette = resolvePalette(biome);
+    const palette = resolveLeafPalette(biome);
     const color = new THREE.Color();
 
     transforms.forEach((t, i) => {

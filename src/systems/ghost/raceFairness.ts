@@ -12,7 +12,7 @@
 
 import { getMapDefinition, type MapRegistryId } from '../../maps/registry';
 import { getActiveMapId, getActiveRunKey } from '../../utils/runContext';
-import { getActiveLaunchHour } from '../journey/runSession';
+import { getActiveLaunchHour, getActiveWeather } from '../journey/runSession';
 import { getQualityPresetNow } from '../GameState';
 import { parseHydroEvents, type HydroEvent } from '../water/hydroEvents';
 import { getRivalGhost, getRunBest } from '../persistence/PersistenceSystem';
@@ -39,6 +39,7 @@ export function currentRunFairness(mapId: MapRegistryId = getActiveMapId()): Gho
     launchHour: getActiveLaunchHour(),
     events: hydroEventsForMap(mapId),
     qualityPreset: getQualityPresetNow(),
+    weather: getActiveWeather(),
   });
 }
 

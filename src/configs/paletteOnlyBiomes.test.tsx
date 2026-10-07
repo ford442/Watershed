@@ -1,6 +1,7 @@
 /**
- * Palette-only stub biomes (alpineSpring / midnightMist / cavern) clone another
- * biome's walls. They must not be advertised until a map gives them their own.
+ * Palette-only stub biomes (alpineSpring / midnightMist) clone another biome's
+ * walls. They must not be advertised until a map gives them their own — as
+ * `cavern` did (#464): its own profile, its own vault, on the glacial source.
  */
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -49,6 +50,20 @@ describe('palette-only biomes', () => {
     expect(screen.queryByText('Alpine Spring')).toBeNull();
     expect(screen.queryByText('Midnight Mist')).toBeNull();
     expect(screen.getAllByText('Canyon Summer').length).toBeGreaterThan(0);
+  });
+
+  it('cavern earned its name: a distinct profile, on a shipped map, with a HUD label (#464)', () => {
+    expect(PALETTE_ONLY_BIOMES.has('cavern')).toBe(false);
+    const withoutId = (profile: object) => JSON.stringify({ ...profile, id: undefined });
+    const twins = Object.values(TRACK_BIOMES).filter(
+      (other) => other.id !== 'cavern' && withoutId(other) === withoutId(TRACK_BIOMES.cavern),
+    );
+    expect(twins.map((twin) => twin.id)).toEqual([]);
+    expect(shippedBiomes().has('cavern')).toBe(true);
+    expect(BIOME_HUD_LABELS.cavern).toBe('ICE CAVERN');
+    for (const schema of [levelSchema, reachSchema] as const) {
+      expect(schema.properties.segments.items.properties.biomeOverride.enum).toContain('cavern');
+    }
   });
 
   it('are not legal in level / reach schema biome enums (#438 E3)', () => {

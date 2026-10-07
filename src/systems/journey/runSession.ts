@@ -22,7 +22,8 @@ import {
   type PortageCacheRunState,
   DEFAULT_MAX_CACHE_PLACEMENTS,
 } from '../survival/portageCache';
-import { getLaunchHour, setLastMapId, markMapCompleted } from '../persistence/PersistenceSystem';
+import { getLaunchHour, getLaunchWeather, setLastMapId, markMapCompleted } from '../persistence/PersistenceSystem';
+import type { RunWeather } from '../map/weatherInflow';
 import {
   createSurvivalState,
   getLoadoutDefinition,
@@ -49,6 +50,8 @@ export interface JourneyCheckpoint {
 export interface RunSessionSnapshot {
   mapId: MapRegistryId;
   launchHour: number;
+  /** The run's weather, fixed at launch like the hour (#464). */
+  weather: RunWeather;
   placedCacheIds: string[];
   loadoutId: LoadoutId;
   portageCache: PortageCacheRunState;
@@ -76,6 +79,7 @@ let awardedCacheSegments = new Set<number>();
 export function initRunSession(options: {
   mapId: MapRegistryId;
   launchHour?: number;
+  weather?: RunWeather;
   placedCacheIds?: string[];
   loadoutId?: LoadoutId | string;
   journeyMode?: JourneyMode;
@@ -119,6 +123,7 @@ export function initRunSession(options: {
   activeSession = {
     mapId: startMapId,
     launchHour,
+    weather: options.weather ?? getLaunchWeather(),
     placedCacheIds,
     loadoutId,
     portageCache,
@@ -147,6 +152,10 @@ export function isJourneyMode(): boolean {
 
 export function getActiveLaunchHour(): number {
   return activeSession?.launchHour ?? getLaunchHour();
+}
+
+export function getActiveWeather(): RunWeather {
+  return activeSession?.weather ?? getLaunchWeather();
 }
 
 export function getActiveLoadoutId(): LoadoutId {

@@ -17,6 +17,20 @@ import { WEATHER_CONFIG, WeatherType } from '../constants/weather';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { createWeatherParticleMaterial } from '../materials/weather/createWeatherParticleMaterial';
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
+import { createLightningState, lightningSeed, stepLightning } from '../systems/weather/lightning';
+import { getAudioManager } from '../systems/audio/AudioSystem';
+import { getActiveLaunchHour } from '../systems/journey/runSession';
+import { getActiveMapId } from '../utils/runContext';
+
+/** Key-light intensity added at a full-nearness lightning flash. */
+const LIGHTNING_KEY_BOOST = 7;
+/** Tone-mapping exposure added at a full-nearness flash. */
+const LIGHTNING_EXPOSURE_KICK = 0.55;
+/** Storm transition above which strikes are scheduled. */
+const LIGHTNING_MIN_TRANSITION = 0.5;
+
+// Frame scratch — the fog / background lerp reuses these instead of allocating.
+const TARGET_FOG_COLOR = new THREE.Color();
 
 interface WeatherSystemProps {
   targetRef: React.RefObject<any>;
@@ -24,7 +38,31 @@ interface WeatherSystemProps {
 }
 
 export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps) {
-  const { scene } = useThree();
+  const { scene, gl } = useThree();
+  // Seeded from the run so the same map + hour strikes at the same moments.
+  const lightningRef = useRef(createLightningState(lightningSeed(getActiveMapId(), getActiveLaunchHour())));
+  /** Intensity currently added to the key light by a flash (removed before the weather lerp). */
+  const keyFlashRef = useRef(0);
+  /** Exposure kick bookkeeping: the base the renderer had, and what this system last wrote. */
+  const exposureRef = useRef<{ base: number; written: number | null }>({ base: 1, written: null });
+  const backgroundRef = useRef(new THREE.Color());
+
+  // Unmounting mid-flash must not leave the scene strobed or overexposed.
+  useEffect(
+    () => () => {
+      const exposure = exposureRef.current;
+      if (exposure.written !== null && gl.toneMappingExposure === exposure.written) {
+        gl.toneMappingExposure = exposure.base;
+      }
+      const keyFlash = keyFlashRef.current;
+      if (keyFlash !== 0) {
+        scene.traverse((obj) => {
+          if (obj instanceof THREE.DirectionalLight && obj.userData.keyLight === true) obj.intensity -= keyFlash;
+        });
+      }
+    },
+    [gl, scene],
+  );
   const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
   const currentWeatherRef = useRef<WeatherType>('clear');
   const targetWeatherRef = useRef<WeatherType>(weather?.type || 'clear');
@@ -290,7 +328,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     // ======================================================================
     const cfg = WEATHER_CONFIG.fog;
     let targetFogDensity: number = cfg.clearDensity;
-    const targetFogColor = new THREE.Color(cfg.clearColor);
+    const targetFogColor = TARGET_FOG_COLOR.set(cfg.clearColor);
 
     switch (weatherType) {
       case 'rain':
@@ -317,19 +355,16 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     const hasFog = scene.fog instanceof THREE.FogExp2;
     if (hasFog) {
       const fog = scene.fog as THREE.FogExp2;
-      const currentDensity = fog.density;
-      const currentColor = fog.color.clone();
-      const newDensity = currentDensity + (targetFogDensity - currentDensity) * speed;
-      const newColor = currentColor.lerp(targetFogColor, speed);
-      scene.fog = new THREE.FogExp2(newColor, newDensity);
-      scene.background = newColor;
+      fog.density += (targetFogDensity - fog.density) * speed;
+      fog.color.lerp(targetFogColor, speed);
+      scene.background = backgroundRef.current.copy(fog.color);
     } else if (scene.fog instanceof THREE.Fog) {
       // If linear fog, approximate by increasing far distance
       const fog = scene.fog as THREE.Fog;
       const targetFar = weatherType === 'clear' ? 150 : weatherType === 'fog' ? 60 : 45;
       fog.far += (targetFar - fog.far) * speed;
       fog.color.lerp(targetFogColor, speed);
-      scene.background = fog.color.clone();
+      scene.background = backgroundRef.current.copy(fog.color);
     }
 
     // ======================================================================
@@ -358,15 +393,49 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
         ? WEATHER_CONFIG.lighting.stormAmbientIntensity
         : WEATHER_CONFIG.lighting.clearAmbientIntensity;
 
+    // Lightning (#464): a strike strobes the key light and kicks exposure, and
+    // a thunder clap follows after the strike's sound-travel delay.
+    const lightning = lightningRef.current;
+    stepLightning(
+      lightning,
+      state.clock.elapsedTime,
+      weatherType === 'storm' && t > LIGHTNING_MIN_TRANSITION,
+      intensityRef.current,
+    );
+    if (lightning.struck) {
+      getAudioManager()?.playThunder(0.55 + 0.45 * lightning.nearness, lightning.thunderDelay, 0.8 + 0.3 * lightning.nearness);
+    }
+    const prevKeyFlash = keyFlashRef.current;
+    const keyFlash = lightning.flash * LIGHTNING_KEY_BOOST;
+    keyFlashRef.current = keyFlash;
+
     scene.traverse((obj) => {
       if (obj instanceof THREE.AmbientLight) {
         obj.intensity += (baseLightingRef.current.ambientIntensity * ambientMult - obj.intensity) * speed;
       } else if (obj instanceof THREE.HemisphereLight) {
         obj.intensity += (baseLightingRef.current.hemiIntensity * ambientMult - obj.intensity) * speed;
       } else if (obj instanceof THREE.DirectionalLight) {
+        const isKey = obj.userData.keyLight === true;
+        // Lerp the weather level without last frame's flash, then add this frame's.
+        if (isKey) obj.intensity -= prevKeyFlash;
         obj.intensity += (baseLightingRef.current.dirIntensity * lightMult - obj.intensity) * speed;
+        if (isKey) obj.intensity += keyFlash;
       }
     });
+
+    // Exposure kick, written straight to the renderer (a uniform — no material
+    // recompile, unlike a quality update). If anything else wrote exposure since
+    // our last write (a quality change mid-flash), that value becomes the base.
+    const exposure = exposureRef.current;
+    if (gl.toneMappingExposure !== exposure.written) exposure.base = gl.toneMappingExposure;
+    const kick = lightning.flash * LIGHTNING_EXPOSURE_KICK;
+    if (kick > 0) {
+      gl.toneMappingExposure = exposure.base + kick;
+      exposure.written = gl.toneMappingExposure;
+    } else if (exposure.written !== null) {
+      gl.toneMappingExposure = exposure.base;
+      exposure.written = null;
+    }
 
     // ======================================================================
     // 5. Dispatch weather event for shaders / gameplay

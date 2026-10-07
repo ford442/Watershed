@@ -47,6 +47,8 @@ import {
 } from './trackSegmentPropLayouts';
 import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 import type { TrackSegmentMeshesProps } from './types';
+import { getActiveWeather } from '../../systems/journey/runSession';
+import { weatherSlushiness } from '../../systems/map/weatherInflow';
 
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;
@@ -95,7 +97,11 @@ export function TrackSegmentMeshes({
     const openFloor = Boolean(config?.openFloor) || Boolean(config?.washedOutGap);
     const vortexConfig = config?.vortex;
     const catwalkWashedOut = Boolean(config?.washedOutGap) && Boolean(config?.hasBridge);
-    const slushiness = isGlacier ? (biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55) : 0;
+    const biomeSlush = isGlacier
+      ? biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55
+      : biomeProfile.id === 'cavern' ? 0.45 : 0; // cave meltwater carries some slush
+    // A snow launch (#464) slushes any water, not only the glacial biomes'.
+    const slushiness = Math.max(biomeSlush, weatherSlushiness(getActiveWeather()));
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
     const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome) || biome === 'canyon') && timeOfDay > 0.65;
     const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';

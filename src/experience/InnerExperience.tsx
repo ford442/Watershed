@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { PointerLockControls } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import EnhancedSky from '../components/EnhancedSky';
@@ -15,6 +16,7 @@ import HeadlessSkySphere from './HeadlessSkySphere';
 import SceneLighting, { isTightCanyonSegment, waterfallFxIntensityForSegment } from './SceneLighting';
 import VehicleMount from './VehicleMount';
 import PillarDustVFX from '../components/Obstacles/PillarDustVFX';
+import WindLeaves from '../components/Environment/WindLeaves';
 import SurvivalMarkers from '../components/Survival/SurvivalMarkers';
 import PillarFragmentPool from '../components/Obstacles/PillarFragmentPool';
 import GhostReplayer from '../components/GhostReplayer';
@@ -22,6 +24,8 @@ import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
 import SettingsLookSync from '../ui/SettingsLookSync';
 import PhysicsPerfMonitor from '../debug/PhysicsPerfMonitor';
 import { useInnerExperience } from './hooks/useInnerExperience';
+import WeatherSystem from '../components/WeatherSystem';
+import { getActiveWeather } from '../systems/journey/runSession';
 import type { InnerExperienceProps } from './types';
 
 /**
@@ -49,6 +53,12 @@ export default function InnerExperience({
   });
   const { config: lodConfig, quality: lodQuality } = useLOD();
 
+  // Fixed at launch with the hour (#464); primitives keep the prop stable across renders.
+  const activeWeather = getActiveWeather();
+  const runWeather = useMemo(
+    () => ({ type: activeWeather.type, intensity: activeWeather.intensity }),
+    [activeWeather.type, activeWeather.intensity],
+  );
   const isTightCanyon = isTightCanyonSegment(state.currentSegmentIndex);
   const waterfallFxIntensity = waterfallFxIntensityForSegment(state.currentSegmentIndex);
 
@@ -104,6 +114,7 @@ export default function InnerExperience({
 
           <PillarFragmentPool castShadow={lodQuality !== 'high'} />
           <PillarDustVFX />
+          <WindLeaves />
           <GhostReplayer />
 
           <FlowForecast
@@ -149,6 +160,11 @@ export default function InnerExperience({
                 />
                 {/* Speed wind for default (non-Reach) maps — Reach path gets it via ReactiveAudio. */}
                 <SpeedWindAudio targetRef={state.vehicleRef} />
+                {/* Launch weather on the campaign maps (#464). Clear mounts nothing,
+                    so a clear run's lighting and fog are untouched. */}
+                {runWeather.type !== 'clear' && (
+                  <WeatherSystem targetRef={state.vehicleRef} weather={runWeather} />
+                )}
               </>
             ))}
         </Physics>

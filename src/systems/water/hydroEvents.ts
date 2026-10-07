@@ -99,8 +99,16 @@ export function eventsActiveAtHour(events: readonly HydroEvent[] | undefined, ho
 /**
  * Stable hash of the events that are live at `hour`. Ghosts store this so a
  * 06:00 run is not silently compared to a 14:00 dam pulse.
+ *
+ * `weatherKey` (weatherInflow.weatherFairnessKey) folds a river-changing
+ * weather in (#464). It is '' for clear, so a clear run hashes exactly as it
+ * did before weather existed and stored ghosts stay valid.
  */
-export function hashHydroEvents(events: readonly HydroEvent[] | undefined, hour: number): string {
+export function hashHydroEvents(
+  events: readonly HydroEvent[] | undefined,
+  hour: number,
+  weatherKey = '',
+): string {
   const active = eventsActiveAtHour(events, hour)
     .map((event) => ({
       id: event.id,
@@ -113,7 +121,8 @@ export function hashHydroEvents(events: readonly HydroEvent[] | undefined, hour:
       lateralOffset: event.lateralOffset ?? 0,
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
-  return fnv1aHex(JSON.stringify(active));
+  const body = JSON.stringify(active);
+  return fnv1aHex(weatherKey ? `${body}|weather:${weatherKey}` : body);
 }
 
 function fnv1aHex(input: string): string {

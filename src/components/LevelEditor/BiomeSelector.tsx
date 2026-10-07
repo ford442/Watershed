@@ -88,6 +88,17 @@ const ALL_BIOMES: BiomeDefinition[] = [
     preview: '🧊',
   },
   {
+    id: 'cavern',
+    name: 'Ice Cavern',
+    description: 'Closed basalt vault where the glacial melt leaves the ice',
+    skyColor: '#1a1a2e',
+    fogColor: '#0f0f1e',
+    waterColor: '#0a1628',
+    lightingTemp: 'cool',
+    features: ['Closed ceiling', 'Wet basalt', 'Echo'],
+    preview: '🕳️',
+  },
+  {
     id: 'delta',
     name: 'Delta',
     description: 'Wide calm water, reeds, sunset rafting',

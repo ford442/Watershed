@@ -12,6 +12,7 @@ import type { QualityPreset } from '../GameState';
 import type { HydroEvent } from '../water/hydroEvents';
 import { hashHydroEvents, eventsActiveAtHour } from '../water/hydroEvents';
 import type { RunSplitEntry } from './ghostCodec';
+import { weatherFairnessKey, type RunWeather } from '../map/weatherInflow';
 
 export interface GhostHydroFairness {
   launchHour?: number;
@@ -23,10 +24,12 @@ export function buildGhostHydroFairness(input: {
   launchHour: number;
   events?: readonly HydroEvent[];
   qualityPreset: QualityPreset;
+  /** Run weather; a storm or snow river hashes apart from a clear one (#464). */
+  weather?: RunWeather | null;
 }): GhostHydroFairness {
   return {
     launchHour: input.launchHour,
-    hydroEventHash: hashHydroEvents(input.events, input.launchHour),
+    hydroEventHash: hashHydroEvents(input.events, input.launchHour, weatherFairnessKey(input.weather)),
     qualityPreset: input.qualityPreset,
   };
 }

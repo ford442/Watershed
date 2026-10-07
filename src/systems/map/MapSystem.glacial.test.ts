@@ -28,6 +28,12 @@ describe('JSONMapManager — glacial_source', () => {
     expect(cfg.slipperiness).toBeGreaterThan(0.7);
   });
 
+  it('segments 1–2 (ice cave throat → cave exit) are the cavern, and the tube is glacial again from 3 (#464)', () => {
+    expect(manager.getChunkConfig(1).biome).toBe('cavern');
+    expect(manager.getChunkConfig(2).biome).toBe('cavern');
+    expect(manager.getChunkConfig(3).biome).toBe('glacialMelt');
+  });
+
   it('segment 10 (tube apex) is the narrowest/fastest tube section', () => {
     const cfg = manager.getChunkConfig(10);
     expect(cfg.biome).toBe('glacialMelt');

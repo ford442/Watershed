@@ -8,7 +8,7 @@
  *   cross-fade biome, emit reach-exit / reach-enter (no Canvas remount).
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import TrackManager from '../../components/TrackManager';
 import ReactiveAudio from '../../components/ReactiveAudio';
@@ -26,7 +26,7 @@ import {
   prefetchNextReach,
   resolveNextReachId,
 } from '../journey/journeyHandoff';
-import { saveJourneyCheckpoint } from '../journey/runSession';
+import { getActiveWeather, saveJourneyCheckpoint } from '../journey/runSession';
 import { useGameStore } from '../GameState';
 import { useBiome } from '../biome/BiomeSystem';
 
@@ -295,6 +295,17 @@ export default function ReachManager({
     }
   });
 
+  // The run's launch weather (#464) wins over a manifest's when it is not clear,
+  // so the sky shows the storm the router is already carrying.
+  const runWeather = getActiveWeather();
+  const weather = useMemo(
+    () =>
+      runWeather.type !== 'clear'
+        ? { type: runWeather.type, intensity: runWeather.intensity }
+        : manifest?.weather ?? { type: 'clear' as const, intensity: 0.5 },
+    [manifest?.weather, runWeather.type, runWeather.intensity],
+  );
+
   if (loading) {
     return null;
   }
@@ -304,7 +315,6 @@ export default function ReachManager({
   // will use createSegmentData() instead of adaptReachSegment().
   // Do NOT render ReactiveAudio/WeatherSystem on error to avoid hook errors.
   const segmentsForTrack = error ? undefined : reachSegments ?? undefined;
-  const fallbackWeather = { type: 'clear' as const, intensity: 0.5 };
 
   return (
     <>
@@ -325,7 +335,7 @@ export default function ReachManager({
           />
           <WeatherSystem
             targetRef={playerRef}
-            weather={(manifest?.weather ?? fallbackWeather) as { type: import('../../constants/weather').WeatherType; intensity: number }}
+            weather={weather as { type: import('../../constants/weather').WeatherType; intensity: number }}
           />
         </>
       )}

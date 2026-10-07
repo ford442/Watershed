@@ -98,7 +98,8 @@ import {
 import { packSweSurfaceField, SWE_FLOW_CHANNELS } from './sweSurfaceField';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { ACTIVE_MAP_ID, getActiveMap } from '../../maps/registry';
-import { getActiveLaunchHour, getRunSession } from '../journey/runSession';
+import { getActiveLaunchHour, getActiveWeather, getRunSession } from '../journey/runSession';
+import { weatherHullScale } from '../map/weatherInflow';
 import { shouldSkipMainThreadVehicleForce } from '../../physics/waterForceAuthority';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 
@@ -121,6 +122,7 @@ function vehicleForceConfig(
   timeSeconds: number,
   turbulenceStrength: number,
   turbulenceFrequency: number,
+  dragScale = 1,
 ): NativeWaterForceConfig {
   if (vehicleType === 'raft') {
     return {
@@ -128,7 +130,7 @@ function vehicleForceConfig(
       waterLevel,
       raftMass: WATER_PHYSICS.RAFT_MASS,
       raftVolume: WATER_PHYSICS.RAFT_VOLUME,
-      dragCoefficient: WATER_PHYSICS.DRAG_COEFFICIENT,
+      dragCoefficient: WATER_PHYSICS.DRAG_COEFFICIENT * dragScale,
       frontalArea: WATER_PHYSICS.RAFT_WIDTH * WATER_PHYSICS.RAFT_HEIGHT,
       sideArea: WATER_PHYSICS.RAFT_LENGTH * WATER_PHYSICS.RAFT_HEIGHT,
       timeSeconds,
@@ -142,7 +144,7 @@ function vehicleForceConfig(
     waterLevel,
     raftMass: 82,
     raftVolume: 0.08,
-    dragCoefficient: 1.0,
+    dragCoefficient: dragScale,
     frontalArea: 0.45,
     sideArea: 0.35,
     timeSeconds,
@@ -158,13 +160,14 @@ function floatingForceConfig(
   body: WaterForceBody,
   turbulenceStrength: number,
   turbulenceFrequency: number,
+  dragScale = 1,
 ): NativeWaterForceConfig {
   return {
     flowSpeed: flowSpeed * FLOATING_OBJECT.FLOW_INFLUENCE,
     waterLevel,
     raftMass: (body.mass ?? FLOATING_OBJECT.DEBRIS_DENSITY * FLOATING_OBJECT.DEBRIS_VOLUME) * PHYSICS_SCALE,
     raftVolume: body.volume ?? FLOATING_OBJECT.DEBRIS_VOLUME,
-    dragCoefficient: body.dragCoefficient ?? FLOATING_OBJECT.DRAG_COEFFICIENT,
+    dragCoefficient: (body.dragCoefficient ?? FLOATING_OBJECT.DRAG_COEFFICIENT) * dragScale,
     frontalArea: body.frontalArea ?? FLOATING_OBJECT.DRAG_AREA,
     sideArea: body.sideArea ?? FLOATING_OBJECT.DRAG_AREA * 0.6,
     timeSeconds,
@@ -335,7 +338,9 @@ function currentRouter(wasm: WatershedNativeModule | null, state: RouterState): 
   const launchHour = getActiveLaunchHour();
   if (state.router && state.session === session && state.launchHour === launchHour) return state.router;
   state.router?.dispose();
-  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour);
+  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour, {
+    forecast: { ...DEFAULT_FORECAST_INPUTS, weather: getActiveWeather() },
+  });
   state.session = session;
   state.launchHour = launchHour;
   return state.router;
@@ -376,7 +381,7 @@ function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number 
       type: 'ROUTER',
       reach,
       launchHour,
-      forecast: DEFAULT_FORECAST_INPUTS,
+      forecast: { ...DEFAULT_FORECAST_INPUTS, weather: getActiveWeather() },
       H: SWE_MEAN_DEPTH,
       g: GRAVITY,
     });
@@ -451,6 +456,7 @@ interface WorkerForceFrame {
   waterLevel: number;
   turbulenceStrength: number;
   turbulenceFrequency: number;
+  dragScale: number;
 }
 
 /**
@@ -478,6 +484,7 @@ function postWorkerForces(requests: SimForceRequests<ForceTarget>, frame: Worker
             frame.timeSeconds,
             frame.turbulenceStrength,
             frame.turbulenceFrequency,
+            frame.dragScale,
           )
         : floatingForceConfig(
             frame.flowSpeed,
@@ -486,6 +493,7 @@ function postWorkerForces(requests: SimForceRequests<ForceTarget>, frame: Worker
             body,
             frame.turbulenceStrength * 0.8,
             frame.turbulenceFrequency,
+            frame.dragScale,
           );
       writeForceSample(
         samples,
@@ -778,6 +786,11 @@ export function WaterForceSystem({
     const dt = Math.min(delta, 0.05);
     const timeSeconds = state.clock.elapsedTime;
     const workerOwnsVehicleForces = isPhysicsWorkerActive();
+    // Snow thickens the water the hull is in (#464): a lower flow cap on every
+    // force path (main, sim worker, Rapier worker), more drag where the config
+    // is built here. Identity for any other weather.
+    const hull = weatherHullScale(getActiveWeather());
+    const hullFlowSpeed = flowSpeed * hull.flowCapScale;
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
     // The window centres on the vehicle but sits on the world's cell lattice,
     // moving only by whole cells: a cell keeps its world position while it
@@ -905,7 +918,7 @@ export function WaterForceSystem({
       applyWorkerForces(requests, bodies, vehicleBody, workerOwnsVehicleForces, workerVehicleFlowRef);
       // The Rapier worker samples the sim worker itself (hull link): authored values only.
       setPhysicsWorkerTickParams({
-        flowSpeed,
+        flowSpeed: hullFlowSpeed,
         waterLevel,
         turbulenceStrength,
         turbulenceFrequency,
@@ -923,21 +936,22 @@ export function WaterForceSystem({
         originZ,
         dt,
         timeSeconds,
-        flowSpeed,
+        flowSpeed: hullFlowSpeed,
         waterLevel,
         turbulenceStrength,
         turbulenceFrequency,
+        dragScale: hull.dragScale,
       });
     }
 
     const flowGrid = !requests && grid ? toFlowGrid(grid, originX, originZ) : null;
     const vehicleFlow = requests
       ? (workerOwnsVehicleForces ? getPhysicsWorkerDiagnostics()?.sampledFlow : workerVehicleFlowRef.current) ??
-        sampleSWEFlow({ worldX: anchor.x, worldZ: anchor.z, flowSpeed, grid: null, enabled: false })
+        sampleSWEFlow({ worldX: anchor.x, worldZ: anchor.z, flowSpeed: hullFlowSpeed, grid: null, enabled: false })
       : sampleSWEFlow({
           worldX: anchor.x,
           worldZ: anchor.z,
-          flowSpeed,
+          flowSpeed: hullFlowSpeed,
           grid: flowGrid,
           enabled: sweEnabled,
           stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
@@ -973,7 +987,7 @@ export function WaterForceSystem({
           : sampleSWEFlow({
               worldX: pos.x,
               worldZ: pos.z,
-              flowSpeed,
+              flowSpeed: hullFlowSpeed,
               grid: flowGrid,
               enabled: sweEnabled,
               stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
@@ -989,6 +1003,7 @@ export function WaterForceSystem({
               timeSeconds,
               turbulenceStrength,
               turbulenceFrequency,
+              hull.dragScale,
             )
           : floatingForceConfig(
               flow.speed,
@@ -997,6 +1012,7 @@ export function WaterForceSystem({
               body,
               turbulenceStrength * 0.8,
               turbulenceFrequency,
+              hull.dragScale,
             );
 
         const force = nativeForces

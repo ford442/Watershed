@@ -167,7 +167,28 @@ export const TRACK_BIOMES: Record<BiomeId, TrackBiomeProfile> = {
   // Listed in PALETTE_ONLY_BIOMES so the editor and HUD don't advertise them.
   alpineSpring: { ...canyonSummerProfile, id: 'alpineSpring' },
   midnightMist: { ...canyonAutumnProfile, id: 'midnightMist' },
-  cavern: { ...slotCanyonProfile, id: 'cavern' },
+  // The ice cave the glacial source runs out of (#464): a closed basalt vault
+  // (CAVERN_PROFILE in geometryBuilders) — low, tight, wet and bare. waterWidth
+  // matches glacialMelt so the channel does not jump at the cave mouth.
+  cavern: {
+    id: 'cavern',
+    waterWidth: 6,
+    canyonWidth: 22,
+    wallHeight: 12,
+    wallTightness: 0.9,
+    wallFriction: 0.32,
+    wallShadowStrength: 1,
+    vegetationDensity: 0,
+    rockDensity: 'high',
+    rockBaseColor: '#3a444c',
+    rockShadowColor: '#101519',
+    rockRimColor: '#6a747c',
+    decorationBias: { trees: 0, grasses: 0, reeds: 0, rocks: 1.8 },
+    treeSpeciesWeights: {
+      floor: { conifer: 0, broadleaf: 0, birch: 0, snag: 1 },
+      rim: { conifer: 0, broadleaf: 0, birch: 0, snag: 1 },
+    },
+  },
   lumberFlume: {
     id: 'lumberFlume',
     waterWidth: 8,
@@ -220,7 +241,6 @@ export const TRACK_BIOMES: Record<BiomeId, TrackBiomeProfile> = {
 export const PALETTE_ONLY_BIOMES: ReadonlySet<BiomeId> = new Set<BiomeId>([
   'alpineSpring',
   'midnightMist',
-  'cavern',
 ]);
 
 export function isPaletteOnlyBiome(biome: string): boolean {

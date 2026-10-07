@@ -31,6 +31,7 @@ import { buildForecastSamples } from '../../systems/map/flowForecast';
 import {
   initRunSession,
   getActiveLaunchHour,
+  getActiveWeather,
   getRunSession,
   isJourneyMode,
   advanceRunSessionMap,
@@ -277,16 +278,14 @@ export function useExperienceWorld({
       const duration = isTransitionSegment ? 2.0 : undefined;
       setBiomeContext(biomeId, duration);
 
+      // A launch weather (#464) outranks the glacial biome's ambient snow.
+      const runWeather = getActiveWeather();
       const isGlacial = biomeId === 'glacialMelt' || biomeId === 'glacier';
-      window.dispatchEvent(
-        new CustomEvent('weather-update', {
-          detail: {
-            type: isGlacial ? 'snow' : 'clear',
-            intensity: isGlacial ? 0.65 : 0,
-            rippleStrength: 0,
-          },
-        }),
-      );
+      const detail =
+        runWeather.type !== 'clear'
+          ? { type: runWeather.type, intensity: runWeather.intensity, rippleStrength: 0 }
+          : { type: isGlacial ? 'snow' : 'clear', intensity: isGlacial ? 0.65 : 0, rippleStrength: 0 };
+      window.dispatchEvent(new CustomEvent('weather-update', { detail }));
     },
     [setBiomeContext],
   );
