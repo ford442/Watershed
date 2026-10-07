@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import * as THREE from 'three';
 
-import { createGameRenderer } from './createRenderer';
+import { createGameRenderer, nativeWebGPURendererParameters } from './createRenderer';
 import {
   CAPTURE_ENVELOPE,
   DEGRADED_ENVELOPE,
@@ -9,7 +9,10 @@ import {
   rendererContextAttributesFor,
 } from './probeGraphicsCapability';
 import { getRendererShadowMapSize } from './applyRendererContextOptions';
-import { deriveRendererContextOptions } from './deriveRendererContextOptions';
+import {
+  deriveRendererContextOptions,
+  toContextAttributes,
+} from './deriveRendererContextOptions';
 import { createRiverMaterial } from '../utils/RiverShader';
 import { createCanyonMaterial } from '../materials/CanyonMaterial';
 import { createRiverNodeMaterial } from '../materials/RiverNodeMaterial';
@@ -162,6 +165,9 @@ function createMockWebGLContext(canvas: HTMLCanvasElement): WebGLRenderingContex
     drawingBufferHeight: canvas.height,
     getExtension: vi.fn(() => null),
     getSupportedExtensions: vi.fn(() => []),
+    // THREE reads this back when handed an external `context`. It always
+    // requests `alpha: true`, so that is what a real context reports.
+    getContextAttributes: vi.fn(() => ({ alpha: true, depth: true, premultipliedAlpha: true })),
     getParameter: vi.fn((p: number) => {
       if (p === WEBGL_CONSTANTS.VERSION) return 'WebGL 1.0 (Mock)';
       if (p === WEBGL_CONSTANTS.VENDOR) return 'Mock Vendor';
@@ -690,5 +696,221 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
     expect(scene.children).toHaveLength(1);
 
     renderer.dispose();
+  });
+});
+
+describe('node renderer honors the boot graphics contract', () => {
+  /**
+   * The probe tests `rendererContextAttributesFor(envelope)` — the object
+   * THREE.WebGLRenderer requests. The node WebGL2 backend builds its own (no
+   * power preference, no caveat flag, antialias from its sample count), so the
+   * TSL path must create the probed context itself and hand it over.
+   */
+  function recordContextRequests(canvas: HTMLCanvasElement, grant = true) {
+    const calls: Array<{ type: string; options: unknown }> = [];
+    const spy = vi
+      .spyOn(canvas, 'getContext')
+      .mockImplementation(((type: string, options?: unknown) => {
+        calls.push({ type, options });
+        return grant ? (createMockWebGLContext(canvas) as unknown as RenderingContext) : null;
+      }) as typeof canvas.getContext);
+    return { calls, spy };
+  }
+
+  async function lastNodeParameters() {
+    const { WebGPURenderer } = (await import('three/webgpu')) as unknown as {
+      WebGPURenderer: { lastParameters: Record<string, unknown> | null };
+    };
+    return WebGPURenderer.lastParameters;
+  }
+
+  it.each([
+    ['hardware', HARDWARE_ENVELOPE],
+    ['safe', DEGRADED_ENVELOPE],
+  ] as const)(
+    'creates the TSL WebGL2 context once, with the probed %s attributes',
+    async (_label, envelope) => {
+      const canvas = document.createElement('canvas');
+      const { calls, spy } = recordContextRequests(canvas);
+
+      const renderer = await createGameRenderer({ canvas }, {
+        preference: 'webgl',
+        materialBackend: 'tsl',
+        contextOptions: deriveRendererContextOptions('high', { envelope }),
+      });
+
+      expect((renderer as any).isWebGPURenderer).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].type).toBe('webgl2');
+      expect(calls[0].options).toEqual(rendererContextAttributesFor(envelope));
+
+      // ...and the renderer was given that context, not left to ask again.
+      const params = await lastNodeParameters();
+      expect(params?.context).toBe(spy.mock.results[0].value);
+      expect(params?.forceWebGL).toBe(true);
+
+      spy.mockRestore();
+      renderer.dispose();
+    }
+  );
+
+  it('asks for the same object the classic WebGLRenderer path asks for', async () => {
+    const contextOptions = deriveRendererContextOptions('medium', { envelope: HARDWARE_ENVELOPE });
+
+    const glslCanvas = document.createElement('canvas');
+    const glsl = recordContextRequests(glslCanvas);
+    const classic = await createGameRenderer(
+      { canvas: glslCanvas },
+      { preference: 'webgl', contextOptions }
+    );
+
+    const tslCanvas = document.createElement('canvas');
+    const tsl = recordContextRequests(tslCanvas);
+    const node = await createGameRenderer(
+      { canvas: tslCanvas },
+      { preference: 'webgl', contextOptions, materialBackend: 'tsl' }
+    );
+
+    expect(tsl.calls[0].options).toEqual(glsl.calls[0].options);
+
+    glsl.spy.mockRestore();
+    tsl.spy.mockRestore();
+    classic.dispose();
+    node.dispose();
+  });
+
+  it('carries capture mode preserveDrawingBuffer into the TSL context', async () => {
+    const canvas = document.createElement('canvas');
+    const { calls, spy } = recordContextRequests(canvas);
+
+    const renderer = await createGameRenderer(
+      { canvas, preserveDrawingBuffer: true },
+      {
+        preference: 'webgl',
+        materialBackend: 'tsl',
+        contextOptions: deriveRendererContextOptions('ultra', { envelope: CAPTURE_ENVELOPE }),
+      }
+    );
+
+    expect(calls[0].options).toEqual({
+      ...rendererContextAttributesFor(CAPTURE_ENVELOPE),
+      preserveDrawingBuffer: true,
+    });
+
+    spy.mockRestore();
+    renderer.dispose();
+  });
+
+  it('falls back to the classic renderer when the probed context is refused', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const canvas = document.createElement('canvas');
+    const { calls, spy } = recordContextRequests(canvas, false);
+
+    // The classic renderer's own request (same attributes) is the one that
+    // throws — the error bootCrashGuard records — and no node renderer is built.
+    await expect(
+      createGameRenderer({ canvas }, {
+        preference: 'webgl',
+        materialBackend: 'tsl',
+        contextOptions: deriveRendererContextOptions('high'),
+      })
+    ).rejects.toThrow();
+    // [0] ours, [1] the classic renderer's identical request, [2] THREE's own
+    // bare request that only classifies the error message.
+    expect(calls[1].options).toEqual(calls[0].options);
+    expect(calls.slice(2).every((call) => call.options === undefined)).toBe(true);
+
+    spy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('reuses the probed context when the node renderer fails after creating it', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { WebGPURenderer } = (await import('three/webgpu')) as unknown as {
+      WebGPURenderer: { prototype: { init(): Promise<void> } };
+    };
+    const initSpy = vi
+      .spyOn(WebGPURenderer.prototype, 'init')
+      .mockRejectedValueOnce(new Error('init failed'));
+    const canvas = document.createElement('canvas');
+    const { calls, spy } = recordContextRequests(canvas);
+
+    const renderer = await createGameRenderer({ canvas }, {
+      preference: 'webgl',
+      materialBackend: 'tsl',
+      contextOptions: deriveRendererContextOptions('high'),
+    });
+
+    expect((renderer as any).isWebGPURenderer).toBeFalsy();
+    // One context on this canvas, ever: the classic fallback was handed it.
+    expect(calls).toHaveLength(1);
+    expect(renderer.getContext()).toBe(spy.mock.results[0].value);
+    // ...and still clears opaque, although THREE read alpha: true off it.
+    expect(renderer.getClearAlpha()).toBe(1);
+
+    initSpy.mockRestore();
+    spy.mockRestore();
+    warnSpy.mockRestore();
+    renderer.dispose();
+  });
+
+  it('configures native WebGPU explicitly: premultiplied alpha, adapter power preference', async () => {
+    const canvas = document.createElement('canvas');
+    const renderer = await createGameRenderer({ canvas }, {
+      preference: 'webgpu',
+      materialBackend: 'tsl',
+      contextOptions: deriveRendererContextOptions('high', { envelope: HARDWARE_ENVELOPE }),
+    });
+
+    expect((renderer as any).backend?.isWebGPUBackend).toBe(true);
+    expect(await lastNodeParameters()).toEqual({
+      canvas,
+      alpha: true,
+      antialias: true,
+      stencil: false,
+      powerPreference: 'high-performance',
+      forceWebGL: false,
+    });
+    // Premultiplied canvas, opaque clear — what WebGLBackground does on WebGL.
+    expect(renderer.getClearAlpha()).toBe(1);
+    renderer.dispose();
+  });
+});
+
+describe('nativeWebGPURendererParameters', () => {
+  it('never configures an opaque canvas (alpha: false → alphaMode "opaque")', () => {
+    for (const envelope of [HARDWARE_ENVELOPE, DEGRADED_ENVELOPE, CAPTURE_ENVELOPE]) {
+      const params = nativeWebGPURendererParameters(
+        {},
+        toContextAttributes(deriveRendererContextOptions('high', { envelope }))
+      );
+      expect(params.alpha).toBe(true);
+    }
+  });
+
+  it('passes no WebGL-only context attributes', () => {
+    const params = nativeWebGPURendererParameters(
+      {},
+      toContextAttributes(deriveRendererContextOptions('high'))
+    );
+    for (const key of [
+      'failIfMajorPerformanceCaveat',
+      'premultipliedAlpha',
+      'preserveDrawingBuffer',
+      'depth',
+      'context',
+      'device',
+    ]) {
+      expect(params).not.toHaveProperty(key);
+    }
+  });
+
+  it('maps the WebGL "default" power preference to unspecified', () => {
+    const params = nativeWebGPURendererParameters(
+      {},
+      toContextAttributes(deriveRendererContextOptions('low', { envelope: DEGRADED_ENVELOPE }))
+    );
+    expect(params).not.toHaveProperty('powerPreference');
+    expect(params.antialias).toBe(false);
   });
 });

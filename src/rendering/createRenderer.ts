@@ -14,6 +14,7 @@ import { loadNodePost } from '../components/postProcessing/nodePostLoader';
 import { bridgeCoreNodeClasses, type NodeClassExports } from './nodeLibraryBridge';
 import { extractRendererGpuDevice, registerSessionGpuDevice } from './gpuChores/device';
 import { mustForceWebGLForNodeRenderer } from './nativeWebgpuGate';
+import { GL_CONTEXT_NAME, webGLContextAttributesFor } from './contextAttributes';
 
 export interface GameRendererOptions {
   preference: RendererPreference;
@@ -51,6 +52,11 @@ export type GameRenderer = THREE.WebGLRenderer;
  *   WebGPU backend (`forceWebGL: false`) is gated on an empty residual GLSL
  *   allowlist plus a ported (or skipped) post stack — see nativeWebgpuGate.ts.
  *
+ *   Either node path honors the boot graphics contract: on WebGL2 the context is
+ *   created here from the attribute object the probe tested and passed in as
+ *   `context`; native WebGPU gets explicit parameters
+ *   (`nativeWebGPURendererParameters`) rather than WebGL attributes.
+ *
  *   See docs/reference/RENDERER_CONTRACT.md before changing the return type or fallback
  *   logic.
  */
@@ -73,11 +79,21 @@ export async function createGameRenderer(
     ? toContextAttributes(contextOptions)
     : { antialias, powerPreference };
 
-  const createWebGLRenderer = () => {
-    const renderer = new THREE.WebGLRenderer({
-      ...canvasProps,
-      ...contextAttributes,
-    });
+  const webglParameters: THREE.WebGLRendererParameters = {
+    ...canvasProps,
+    ...contextAttributes,
+  };
+
+  // `context`: a WebGL2 context already created on this canvas with exactly
+  // these parameters (the TSL path below). Reused rather than asking again.
+  const createWebGLRenderer = (context?: WebGL2RenderingContext) => {
+    const renderer = new THREE.WebGLRenderer(
+      context ? { ...webglParameters, context } : webglParameters
+    );
+    // Handed a context, THREE takes `alpha` from it (always true) instead of
+    // our `alpha: false`, and WebGLBackground would clear transparent. Pin the
+    // opaque clear our parameters asked for.
+    if (context) renderer.setClearAlpha(1);
     if (contextOptions) {
       applyRendererContextOptions(renderer, contextOptions);
     }
@@ -88,20 +104,46 @@ export async function createGameRenderer(
   // TSL materials cannot run on THREE.WebGLRenderer — they need WebGPURenderer.
   // Native WebGPU opens only behind canEnableNativeWebgpu() (nativeWebgpuGate.ts).
   if (materialBackend === 'tsl') {
-    const nodeRenderer = await createNodeRenderer({
-      canvasProps,
-      antialias,
-      powerPreference,
-      contextOptions,
-      forceWebGL: mustForceWebGLForNodeRenderer() || preference !== 'webgpu',
-    });
-    if (nodeRenderer) return nodeRenderer;
+    const forceWebGL = mustForceWebGLForNodeRenderer() || preference !== 'webgpu';
+    const fallBackToGlsl = (context?: WebGL2RenderingContext) => {
+      console.warn(
+        '[Renderer] Node-capable renderer unavailable — falling back to WebGLRenderer with GLSL materials.'
+      );
+      updateRendererDiagnostics({ materialBackend: 'glsl' });
+      return createWebGLRenderer(context);
+    };
 
-    console.warn(
-      '[Renderer] Node-capable renderer unavailable — falling back to WebGLRenderer with GLSL materials.'
-    );
-    updateRendererDiagnostics({ materialBackend: 'glsl' });
-    return createWebGLRenderer();
+    if (!forceWebGL) {
+      const nativeRenderer = await createNodeRenderer({
+        parameters: nativeWebGPURendererParameters(canvasProps, contextAttributes),
+        contextOptions,
+        clearOpaque: true,
+      });
+      return nativeRenderer ?? fallBackToGlsl();
+    }
+
+    // The node WebGL2 backend would build its own attribute object (antialias
+    // from its internal sample count; no power preference, caveat flag, or
+    // preserveDrawingBuffer). Create the context the boot probe proved instead —
+    // the same object THREE.WebGLRenderer would request — and hand it over.
+    // R3F hands us its DOM canvas; three's OffscreenCanvas typing is a stub.
+    const canvas = (canvasProps.canvas as HTMLCanvasElement | undefined) ?? createCanvasElement();
+    webglParameters.canvas = canvas;
+    const context = canvas.getContext(
+      GL_CONTEXT_NAME,
+      webGLContextAttributesFor(webglParameters)
+    ) as WebGL2RenderingContext | null;
+    // No context: nothing was created on this canvas, so the classic renderer's
+    // own request (same attributes) is the first real one — and its throw is the
+    // one bootCrashGuard records.
+    if (!context) return fallBackToGlsl();
+
+    const nodeRenderer = await createNodeRenderer({
+      parameters: { ...webglParameters, context, forceWebGL: true },
+      contextOptions,
+      clearOpaque: false,
+    });
+    return nodeRenderer ?? fallBackToGlsl(context);
   }
 
   // Live renderer: custom GLSL shaders require the classic WebGLRenderer.
@@ -132,23 +174,83 @@ export async function createGameRenderer(
 }
 
 /** Constructor surface of `three/webgpu`'s WebGPURenderer that we depend on. */
-interface NodeRendererParameters extends THREE.WebGLRendererParameters {
+export interface NodeRendererParameters extends Omit<THREE.WebGLRendererParameters, 'context'> {
+  /** WebGL2 backend only: use this context instead of calling `getContext`. */
+  context?: WebGL2RenderingContext;
+  /** True keeps the WebGL2 backend; false lets the renderer negotiate WebGPU. */
   forceWebGL?: boolean;
 }
 
+/** What the native WebGPU path passes — and nothing else. */
+export interface NativeWebGPURendererParameters {
+  canvas?: THREE.WebGLRendererParameters['canvas'];
+  /** WebGPUBackend maps this straight to the canvas `alphaMode`. */
+  alpha: true;
+  /** Renderer MSAA (`samples`) on its own frame-buffer target — not a canvas flag. */
+  antialias: boolean;
+  /** No pass in the node post pipeline uses stencil. */
+  stencil: false;
+  /** Forwarded by three to `requestAdapter` only. Absent means the UA default. */
+  powerPreference?: GPUPowerPreference;
+  forceWebGL: false;
+}
+
+/**
+ * Explicit native WebGPU configuration, instead of spreading WebGL context
+ * attributes into WebGPURenderer and hoping they mean something there.
+ *
+ * - `alpha: true` → `alphaMode: 'premultiplied'`, the convention every
+ *   transparent material is authored against (`SHARED_CONTEXT_ATTRIBUTES.
+ *   premultipliedAlpha`). `alpha: false` would configure `'opaque'`. The opaque
+ *   look comes from the clear alpha instead (`setClearAlpha(1)` after init).
+ * - `powerPreference` from the envelope; WebGPU has no `'default'`, so that maps
+ *   to "unspecified".
+ * - No `failIfMajorPerformanceCaveat`: not a WebGPU concept. A missing adapter
+ *   already falls back inside three.
+ * - No `device`: WebGPURenderer is the session's only `requestDevice()` caller;
+ *   gpu-chores adopt `backend.device` (gpuChores/device.ts).
+ */
+export function nativeWebGPURendererParameters(
+  canvasProps: Pick<THREE.WebGLRendererParameters, 'canvas'>,
+  creation: { antialias?: boolean; powerPreference?: WebGLPowerPreference }
+): NativeWebGPURendererParameters {
+  const powerPreference =
+    creation.powerPreference && creation.powerPreference !== 'default'
+      ? creation.powerPreference
+      : undefined;
+  return {
+    ...(canvasProps.canvas ? { canvas: canvasProps.canvas } : {}),
+    alpha: true,
+    antialias: creation.antialias ?? false,
+    stencil: false,
+    ...(powerPreference ? { powerPreference } : {}),
+    forceWebGL: false,
+  };
+}
+
+function createCanvasElement(): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.style.display = 'block';
+  return canvas;
+}
+
 interface NodeRendererModule extends NodeClassExports {
-  WebGPURenderer: new (parameters?: NodeRendererParameters) => THREE.WebGLRenderer & {
+  WebGPURenderer: new (
+    parameters?: NodeRendererParameters | NativeWebGPURendererParameters
+  ) => THREE.WebGLRenderer & {
     init(): Promise<void>;
   };
 }
 
 interface NodeRendererRequest {
-  canvasProps: THREE.WebGLRendererParameters;
-  antialias: boolean;
-  powerPreference: WebGLPowerPreference;
+  parameters: NodeRendererParameters | NativeWebGPURendererParameters;
   contextOptions?: RendererContextOptions;
-  /** True keeps the WebGL2 backend; false lets the renderer negotiate WebGPU. */
-  forceWebGL: boolean;
+  /**
+   * Native path: `alpha: true` makes the renderer's default clear alpha 0, which
+   * on a premultiplied canvas lets the page show through. Clear opaque instead,
+   * as WebGLBackground does on the WebGL paths.
+   */
+  clearOpaque: boolean;
 }
 
 /**
@@ -171,14 +273,9 @@ async function createNodeRenderer(
       loadNodePost(),
     ]);
     const { WebGPURenderer } = nodeModule;
-    const renderer = new WebGPURenderer({
-      ...request.canvasProps,
-      ...(request.contextOptions
-        ? toContextAttributes(request.contextOptions)
-        : { antialias: request.antialias, powerPreference: request.powerPreference }),
-      forceWebGL: request.forceWebGL,
-    });
+    const renderer = new WebGPURenderer(request.parameters);
     await renderer.init();
+    if (request.clearOpaque) renderer.setClearAlpha(1);
 
     // Guard for the node library's class-identity lookups. At r178 `three` and
     // `three/webgpu` share one core and this bridges nothing; it re-registers
