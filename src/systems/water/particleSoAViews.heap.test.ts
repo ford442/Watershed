@@ -1,5 +1,9 @@
-import { bindSplashViews, type SplashWasmSlot } from './SplashSystem';
-import { bindWaterfallViews, type WaterfallSoAViews } from '../../components/Environment/WaterfallParticles';
+import {
+  bindSplashViews,
+  bindWaterfallViews,
+  type SplashWasmSlot,
+  type WaterfallSoAViews,
+} from '../pools/nativeParticles';
 import { PARTICLE_SOA_PLANES, type WatershedNativeModule } from './WatershedWasm';
 
 /**

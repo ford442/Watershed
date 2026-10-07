@@ -28,7 +28,25 @@ import {
   type SimForceBatch,
 } from './simForces';
 import type { HullLinkPort, HullLinkToPhysics, HullLinkToSim } from './hullLinkProtocol';
-import type { SimRoute, SimWorkerCommand, SimWorkerResponse, SurfaceOps } from './simWorkerProtocol';
+import {
+  SPLASH_WIRE_PLANES,
+  WATERFALL_WIRE_PLANES,
+  type SimRoute,
+  type SimWorkerCommand,
+  type SimWorkerResponse,
+  type SurfaceOps,
+} from './simWorkerProtocol';
+import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
+import { summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
+
+/** Particle SoA plane order (emscripten/particles.h). */
+const PARTICLE_PLANE_SCALE = 8;
+
+interface ParticleSlot {
+  ptr: number;
+  cap: number;
+  seed: number;
+}
 
 /** Spare frame buffers kept for reuse; two cover the in-flight + next frame. */
 const FRAME_POOL_LIMIT = 2;
@@ -65,8 +83,10 @@ export function createSimWorkerCore(
   let forceBatch: SimForceBatch | null = null;
   let forceScratch = new Float64Array(0);
   let physicsPort: PhysicsPort | null = null;
+  const particles = new Map<number, ParticleSlot>();
+  const choreHost = createNativeChoreHost(() => wasm);
 
-  const live = (id: number): SweSim | null => (sim && id === gridId ? sim : null);
+  const live =(id: number): SweSim | null => (sim && id === gridId ? sim : null);
 
   const applySurface = (grid: SweSim, surface: SurfaceOps) => {
     for (let i = 0; i + 1 < surface.length; i += 2) grid.addSurface(surface[i], surface[i + 1]);
@@ -164,6 +184,58 @@ export function createSimWorkerCore(
     lastInflow = null;
   };
 
+  const freeParticles = (poolId: number) => {
+    const slot = particles.get(poolId);
+    if (!slot) return;
+    wasm.freeParticleSoA(slot.ptr);
+    particles.delete(poolId);
+  };
+
+  /** View of SoA plane `index` (first `count` floats); re-derived per call — growth detaches HEAPF32. */
+  const particlePlane = (slot: ParticleSlot, index: number, count: number) => {
+    const start = (slot.ptr >> 2) + index * slot.cap;
+    return wasm.HEAPF32.subarray(start, start + count);
+  };
+
+  /** Waterfall: step in place, ship px | py | pz | scale back in `out`. */
+  const stepWaterfall = (command: Extract<SimWorkerCommand, { type: 'PARTICLES_STEP_WATERFALL' }>) => {
+    const slot = particles.get(command.poolId);
+    let n = 0;
+    if (slot) {
+      slot.seed = wasm.stepWaterfallParticles(
+        slot.ptr, slot.cap, command.active, command.dt,
+        command.width, command.height, command.depthZ, slot.seed,
+      );
+      n = Math.max(0, Math.min(command.active, slot.cap, Math.floor(command.out.byteLength / (4 * WATERFALL_WIRE_PLANES))));
+      const out = new Float32Array(command.out, 0, n * WATERFALL_WIRE_PLANES);
+      out.set(particlePlane(slot, 0, n), 0);
+      out.set(particlePlane(slot, 1, n), n);
+      out.set(particlePlane(slot, 2, n), 2 * n);
+      out.set(particlePlane(slot, PARTICLE_PLANE_SCALE, n), 3 * n);
+    }
+    post(
+      { type: 'PARTICLES', poolId: command.poolId, seq: command.seq, count: n, buffer: command.out },
+      [command.out],
+    );
+  };
+
+  /** Splash: the main thread's state in, `stepSplashParticles`, the same buffer back. */
+  const stepSplash = (command: Extract<SimWorkerCommand, { type: 'PARTICLES_STEP_SPLASH' }>) => {
+    const slot = particles.get(command.poolId);
+    let n = 0;
+    if (slot) {
+      n = Math.max(0, Math.min(command.count, slot.cap, Math.floor(command.planes.byteLength / (4 * SPLASH_WIRE_PLANES))));
+      const wire = new Float32Array(command.planes, 0, n * SPLASH_WIRE_PLANES);
+      for (let p = 0; p < SPLASH_WIRE_PLANES; p += 1) particlePlane(slot, p, n).set(wire.subarray(p * n, (p + 1) * n));
+      wasm.stepSplashParticles(slot.ptr, slot.cap, n, command.dt, command.gravityY, command.damp);
+      for (let p = 0; p < SPLASH_WIRE_PLANES; p += 1) wire.set(particlePlane(slot, p, n), p * n);
+    }
+    post(
+      { type: 'PARTICLES', poolId: command.poolId, seq: command.seq, count: n, buffer: command.planes },
+      [command.planes],
+    );
+  };
+
   return {
     handle(command) {
       switch (command.type) {
@@ -257,9 +329,55 @@ export function createSimWorkerCore(
           physicsPort.addEventListener('message', onHull);
           physicsPort.start?.();
           return;
+        case 'PARTICLES_ALLOC': {
+          freeParticles(command.poolId);
+          const ptr = wasm.allocateParticleSoA(command.capacity);
+          if (!ptr) {
+            post({ type: 'ERROR', error: `particle SoA allocation failed (capacity ${command.capacity})`, fatal: false });
+            return;
+          }
+          particles.set(command.poolId, { ptr, cap: command.capacity, seed: 0 });
+          return;
+        }
+        case 'PARTICLES_INIT_WATERFALL': {
+          const slot = particles.get(command.poolId);
+          if (!slot) return;
+          slot.seed = wasm.initWaterfallParticles(
+            slot.ptr, slot.cap, command.active, command.width, command.height,
+            command.depthZ, command.fanSpreadRad, command.seed,
+          );
+          return;
+        }
+        case 'PARTICLES_STEP_WATERFALL':
+          stepWaterfall(command);
+          return;
+        case 'PARTICLES_STEP_SPLASH':
+          stepSplash(command);
+          return;
+        case 'PARTICLES_FREE':
+          freeParticles(command.poolId);
+          return;
+        case 'CHORES': {
+          const grid = live(command.gridId);
+          if (!grid) {
+            post({ type: 'CHORES', seq: command.seq, summary: null });
+            return;
+          }
+          // grid.h is a view on this module's heap: the host reads it in place.
+          const summary = summarizeHeightfield(
+            choreHost, () => grid.h, grid.width, grid.height,
+            command.thumbWidth, command.thumbHeight, true,
+          );
+          post(
+            { type: 'CHORES', seq: command.seq, summary },
+            [summary.histogram.buffer, summary.thumb.values.buffer],
+          );
+          return;
+        }
       }
     },
     dispose() {
+      for (const poolId of [...particles.keys()]) freeParticles(poolId);
       disposeGrid();
       disposeRouter();
       disconnectPhysics();

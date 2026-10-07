@@ -35,6 +35,7 @@ vi.mock('../GameState', async (importOriginal) => ({
 
 vi.mock('../../rendering/gpuChores', () => ({
   bindChoreWasm: vi.fn(),
+  bindHeightfieldChoreWorker: vi.fn(),
   runHeightfieldChores: vi.fn(),
 }));
 
@@ -55,6 +56,17 @@ vi.mock('./sweBackend', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./sweBackend')>()),
   resolveSweSimBackendDecision: vi.fn(() => ({ backend: 'wasm-worker', reason: 'no-webgpu-device' })),
   demoteSweSimBackendToWasmMain: vi.fn(),
+  demoteSweSimBackendToWasm: vi.fn(),
+}));
+
+vi.mock('../../rendering/gpuChores/device', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../rendering/gpuChores/device')>()),
+  getSessionGpuDevice: vi.fn(() => null),
+}));
+
+vi.mock('./WgslSweSim', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./WgslSweSim')>()),
+  createWgslSweSim: vi.fn(),
 }));
 
 vi.mock('../../sim/createSimWorkerProxy', async (importOriginal) => ({
@@ -63,7 +75,14 @@ vi.mock('../../sim/createSimWorkerProxy', async (importOriginal) => ({
 }));
 
 import { getWasm } from './WatershedWasm';
-import { demoteSweSimBackendToWasmMain } from './sweBackend';
+import {
+  demoteSweSimBackendToWasm,
+  demoteSweSimBackendToWasmMain,
+  resolveSweSimBackendDecision,
+} from './sweBackend';
+import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
+import { createWgslSweSim } from './WgslSweSim';
+import { bindChoreWasm, bindHeightfieldChoreWorker } from '../../rendering/gpuChores';
 import { getSWEHeightFieldSnapshot } from './SWEHeightField';
 import {
   getPhysicsWorkerStatus,
@@ -237,7 +256,13 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(main.applySWEEvent).not.toHaveBeenCalled();
     expect(inWorker.stepShallowWater.mock.calls.length + inWorker.stepShallowWaterInflow.mock.calls.length).toBeGreaterThan(0);
     expect(uploadedHeight()[0]).toBe(7);
+    // One module per session: the worker's. Nothing instantiates one here.
+    expect(getWasm).not.toHaveBeenCalled();
+    expect(bindChoreWasm).not.toHaveBeenCalled();
+    // The debug-stat chores go to the worker's module, over its own field.
+    expect(bindHeightfieldChoreWorker).toHaveBeenCalledWith(expect.any(Function));
     unmount();
+    expect(bindHeightfieldChoreWorker).toHaveBeenLastCalledWith(null);
   });
 
   it('makes no SWE / router / force Embind call on the main thread in steady state', async () => {
@@ -348,6 +373,9 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(main.calculateWaterForce).toHaveBeenCalled();
     expect(main.routeReachSteady).toHaveBeenCalled();
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
+    // The main module loads only once the worker is known to be unavailable.
+    expect(getWasm).toHaveBeenCalledTimes(1);
+    expect(bindChoreWasm).toHaveBeenCalledWith(main);
     unmount();
   });
 
@@ -371,6 +399,63 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(main.calculateWaterForce).not.toHaveBeenCalled();
     expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('main-ts');
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
+    // The worker's death does not start a second module here either.
+    expect(getWasm).not.toHaveBeenCalled();
+    expect(bindHeightfieldChoreWorker).toHaveBeenLastCalledWith(null);
     unmount();
+  });
+});
+
+describe('WaterForceSystem on the wgsl backend', () => {
+  it('never loads the WASM module: TS forces, and no grid without a session device', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.mocked(resolveSweSimBackendDecision).mockReturnValue({ backend: 'wgsl', reason: 'native-webgpu' });
+    const main = stubModule(1);
+    registerFloatingWaterBody(1, debris());
+    try {
+      const unmount = await mount(main);
+      for (let i = 0; i < 3; i += 1) frame();
+
+      expect(getWasm).not.toHaveBeenCalled();
+      expect(getSimWorkerProxy).not.toHaveBeenCalled();
+      expect(main.calculateWaterForce).not.toHaveBeenCalled();
+      expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('main-ts');
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('no WASM module this session'));
+      unmount();
+    } finally {
+      vi.mocked(resolveSweSimBackendDecision).mockReturnValue({ backend: 'wasm-worker', reason: 'no-webgpu-device' });
+    }
+  });
+
+  it('loads the WASM module only when WGSL init fails, then steps on it', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(resolveSweSimBackendDecision).mockReturnValue({ backend: 'wgsl', reason: 'native-webgpu' });
+    vi.mocked(getSessionGpuDevice).mockReturnValue({} as GPUDevice);
+    vi.mocked(createWgslSweSim).mockRejectedValue(new Error('pipeline compile failed'));
+    vi.mocked(demoteSweSimBackendToWasm).mockImplementation(() => {
+      const demoted = { backend: 'wasm-main', reason: 'wgsl-init-failed' } as const;
+      vi.mocked(resolveSweSimBackendDecision).mockReturnValue(demoted);
+      return demoted;
+    });
+    const main = stubModule(5);
+    try {
+      const unmount = await mount(main);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      frame();
+
+      expect(demoteSweSimBackendToWasm).toHaveBeenCalledTimes(1);
+      expect(getWasm).toHaveBeenCalledTimes(1);
+      expect(getPhysicsWorkerStatus().sweGrid).toMatch(/wasm-main$/);
+      expect(main.stepShallowWater.mock.calls.length + main.stepShallowWaterInflow.mock.calls.length).toBeGreaterThan(0);
+      unmount();
+    } finally {
+      vi.mocked(resolveSweSimBackendDecision).mockReturnValue({ backend: 'wasm-worker', reason: 'no-webgpu-device' });
+      vi.mocked(getSessionGpuDevice).mockReturnValue(null);
+      vi.mocked(demoteSweSimBackendToWasm).mockReset();
+    }
   });
 });

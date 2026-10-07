@@ -63,6 +63,7 @@ export type { ChoresRuntimeOptions } from './createRuntime';
 
 export {
   bindChoreWasm,
+  createNativeChoreHost,
   createWatershedCpuHost,
   hasChoreExports,
   resetChoreWasmBinding,
@@ -84,4 +85,15 @@ export {
   subscribeGpuChoreStats,
 } from './statsStore';
 
-export { runHeightfieldChores, resetHeightfieldChoresInFlight } from './heightfield';
+export {
+  bindHeightfieldChoreWorker,
+  runHeightfieldChores,
+  resetHeightfieldChoresInFlight,
+} from './heightfield';
+export type { RemoteHeightfieldChores } from './heightfield';
+export type { HeightfieldSummary } from './heightfieldSummary';
+export {
+  HEIGHTFIELD_THUMB_WIDTH,
+  heightfieldThumbSize,
+  summarizeHeightfield,
+} from './heightfieldSummary';

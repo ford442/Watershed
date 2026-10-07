@@ -2,9 +2,11 @@
  * SplashSystem — sole player/raft water-contact VFX owner.
  *
  * Entry/exit splash arcs, rate-limited cruise splash, foam trail, raft mist crown,
- * and raft bow-wave. Spawn stays in JS ParticlePool; when ABI 7+ is loaded,
- * integrate is copy-in / stepSplashParticles / copy-out (#390). Resident SoA
- * for splash/foam/mist is a ParticlePool rewrite, not this path. Caps from LOD.
+ * and raft bow-wave. Spawn stays in JS ParticlePool; splash and mist integrate
+ * on the session's one native module (`stepSplashParticles`, #390) — in the
+ * sim worker on a WebGL boot, on this thread under `?simWorker=0`, and not at
+ * all on a native-WebGPU boot (nativeParticles.ts). Foam is always JS. Caps
+ * from LOD.
  */
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
@@ -31,46 +33,9 @@ import {
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSplashBowWaveMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { getWasm, heapF32, type WatershedNativeModule } from './WatershedWasm';
+import { resolveNativeOwner } from '../../sim/nativeOwner';
+import { createSplashIntegrator, type SplashIntegrator } from '../pools/nativeParticles';
 import { NonEmptyInstancedMesh } from '../../components/NonEmptyInstancedMesh';
-
-/** Cached heap views over one particle-SoA allocation (px…maxLife planes). */
-export interface SplashSoAViews {
-  px?: Float32Array;
-  py?: Float32Array;
-  pz?: Float32Array;
-  vx?: Float32Array;
-  vy?: Float32Array;
-  vz?: Float32Array;
-  life?: Float32Array;
-  maxLife?: Float32Array;
-}
-
-export interface SplashWasmSlot {
-  mod: WatershedNativeModule;
-  ptr: number;
-  cap: number;
-  views: SplashSoAViews;
-}
-
-/**
- * Rebind (or reuse) the eight `Float32Array` views over a splash/mist SoA
- * allocation via `heapF32()` (#415/#419 remainder): a grown `HEAPF32.buffer`
- * forces a rebuild, but an unchanged heap reuses the same views instead of
- * allocating eight typed arrays every frame.
- */
-export function bindSplashViews(slot: SplashWasmSlot): Required<SplashSoAViews> {
-  const { mod, ptr, cap, views } = slot;
-  views.px = heapF32(mod, ptr, cap, views.px);
-  views.py = heapF32(mod, ptr + cap * 4, cap, views.py);
-  views.pz = heapF32(mod, ptr + cap * 8, cap, views.pz);
-  views.vx = heapF32(mod, ptr + cap * 12, cap, views.vx);
-  views.vy = heapF32(mod, ptr + cap * 16, cap, views.vy);
-  views.vz = heapF32(mod, ptr + cap * 20, cap, views.vz);
-  views.life = heapF32(mod, ptr + cap * 24, cap, views.life);
-  views.maxLife = heapF32(mod, ptr + cap * 28, cap, views.maxLife);
-  return views as Required<SplashSoAViews>;
-}
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -137,7 +102,8 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   const splashPoolRef = useRef<ParticlePool<VFXParticle> | null>(null);
   const foamPoolRef = useRef<ParticlePool<FoamParticle> | null>(null);
   const mistPoolRef = useRef<ParticlePool<MistParticle> | null>(null);
-  const splashWasmRef = useRef<SplashWasmSlot | null>(null);
+  const splashNativeRef = useRef<SplashIntegrator | null>(null);
+  const mistNativeRef = useRef<SplashIntegrator | null>(null);
 
   const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
   const mistMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -162,21 +128,18 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    void getWasm()
-      .then((mod) => {
-        if (cancelled) return;
-        const cap = Math.max(maxInstances, MAX_MIST_INSTANCES);
-        const ptr = mod.allocateParticleSoA(cap);
-        splashWasmRef.current = { mod, ptr, cap, views: {} };
-      })
-      .catch(() => { /* JS ParticlePool integrate — #390 */ });
+    void resolveNativeOwner().then((owner) => {
+      if (cancelled) return;
+      // Null on a session without a module: the JS ParticlePool integrate (#390).
+      splashNativeRef.current = createSplashIntegrator(owner, maxInstances);
+      mistNativeRef.current = createSplashIntegrator(owner, MAX_MIST_INSTANCES);
+    });
     return () => {
       cancelled = true;
-      const slot = splashWasmRef.current;
-      if (slot) {
-        slot.mod.freeParticleSoA(slot.ptr);
-      }
-      splashWasmRef.current = null;
+      splashNativeRef.current?.dispose();
+      mistNativeRef.current?.dispose();
+      splashNativeRef.current = null;
+      mistNativeRef.current = null;
     };
   }, [maxInstances]);
 
@@ -431,44 +394,16 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     wasInWaterRef.current = isInWater;
 
     // Update splash particles (copy active list — release mutates the pool array).
-    // Spawn remains TS; WASM only integrates dense slots then copies back (#390).
-    const splashParticles = [...splashPoolRef.current.getActive()];
-    const splashWasm = splashWasmRef.current;
-    const stepSplash = splashWasm?.mod.stepSplashParticles;
-    if (splashWasm && splashParticles.length > 0 && stepSplash) {
-      const { ptr, cap } = splashWasm;
-      const n = Math.min(splashParticles.length, cap);
-      // heapF32() rebinds only when ALLOW_MEMORY_GROWTH replaced the
-      // ArrayBuffer (#415); an unchanged heap reuses the cached views
-      // instead of allocating eight typed arrays every frame (#419 remainder).
-      const { px, py, pz, vx, vy, vz, life, maxLife } = bindSplashViews(splashWasm);
-      for (let i = 0; i < n; i++) {
-        const p = splashParticles[i];
-        px[i] = p.position.x;
-        py[i] = p.position.y;
-        pz[i] = p.position.z;
-        vx[i] = p.velocity.x;
-        vy[i] = p.velocity.y;
-        vz[i] = p.velocity.z;
-        life[i] = p.life;
-        maxLife[i] = p.maxLife;
-      }
-      stepSplash(ptr, cap, n, delta, -9.8, 0.98);
-      for (let i = 0; i < n; i++) {
-        const p = splashParticles[i];
-        p.position.set(px[i], py[i], pz[i]);
-        p.velocity.set(vx[i], vy[i], vz[i]);
-        p.life = life[i];
-        p.rotation += p.rotationSpeed * delta;
-        if (life[i] < 0) {
-          splashPoolRef.current!.release(p);
-        }
-      }
+    // Spawn remains TS; native only integrates (#390), overflow past its cap in JS.
+    const splashPool = splashPoolRef.current;
+    const releaseSplash = (p: VFXParticle) => splashPool.release(p);
+    const splashParticles = [...splashPool.getActive()];
+    const splashNative = splashNativeRef.current;
+    if (splashNative && splashParticles.length > 0) {
+      splashNative.integrate(splashParticles, delta, -9.8, 0.98, (p) => p.update(delta, -9.8), releaseSplash);
     } else {
       splashParticles.forEach((p) => {
-        if (!p.update(delta, -9.8)) {
-          splashPoolRef.current!.release(p);
-        }
+        if (!p.update(delta, -9.8)) releaseSplash(p);
       });
     }
 
@@ -515,40 +450,15 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
 
     // Mist instances (raft)
     if (isRaft && mistMeshRef.current && mistPoolRef.current) {
-      const mistToUpdate = [...mistPoolRef.current.getActive()];
-      if (splashWasm && mistToUpdate.length > 0 && stepSplash) {
-        const { ptr, cap } = splashWasm;
-        const n = Math.min(mistToUpdate.length, cap);
-        // Same cached-view rebind as the splash pass above — shares the slot's
-        // views since it's the same underlying SoA allocation (ptr/cap/mod).
-        const { px, py, pz, vx, vy, vz, life, maxLife } = bindSplashViews(splashWasm);
-        for (let i = 0; i < n; i++) {
-          const p = mistToUpdate[i];
-          px[i] = p.position.x;
-          py[i] = p.position.y;
-          pz[i] = p.position.z;
-          vx[i] = p.velocity.x;
-          vy[i] = p.velocity.y;
-          vz[i] = p.velocity.z;
-          life[i] = p.life;
-          maxLife[i] = p.maxLife;
-        }
-        stepSplash(ptr, cap, n, delta, 0, 1);
-        for (let i = 0; i < n; i++) {
-          const p = mistToUpdate[i];
-          p.position.set(px[i], py[i], pz[i]);
-          p.velocity.set(vx[i], vy[i], vz[i]);
-          p.life = life[i];
-          p.rotation += p.rotationSpeed * delta;
-          if (life[i] < 0) {
-            mistPoolRef.current.release(p);
-          }
-        }
+      const mistPool = mistPoolRef.current;
+      const releaseMist = (p: VFXParticle) => mistPool.release(p as MistParticle);
+      const mistToUpdate = [...mistPool.getActive()];
+      const mistNative = mistNativeRef.current;
+      if (mistNative && mistToUpdate.length > 0) {
+        mistNative.integrate(mistToUpdate, delta, 0, 1, (p) => p.update(delta), releaseMist);
       } else {
         mistToUpdate.forEach((p) => {
-          if (!p.update(delta)) {
-            mistPoolRef.current!.release(p);
-          }
+          if (!p.update(delta)) releaseMist(p);
         });
       }
 

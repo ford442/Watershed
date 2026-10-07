@@ -9,12 +9,7 @@ import {
   getRunSession,
 } from '../systems/journey/runSession';
 import { getLoadoutDefinition } from '../systems/survival';
-import {
-  getWasm,
-  isWasmInitTimeoutError,
-  isWasmProvenanceMismatchError,
-  type NativeWaterForceResult,
-} from '../systems/water/WatershedWasm';
+import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
 import RunResultsPanel from './RunResultsPanel';
 import { BIOME_HUD_LABELS } from '../constants/biomes';
 
@@ -221,16 +216,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   const [comboFlash, setComboFlash] = useState('');
   const [overlayVisible, setOverlayVisible] = useState(false);
-  const [wasmSmoke, setWasmSmoke] = useState<{
-    status: 'loading' | 'ready' | 'failed';
-    value?: number;
-    force?: NativeWaterForceResult;
-    error?: string;
-    timedOut?: boolean;
-    /** Served glue/binary bytes disagree with the identity this bundle was built against. */
-    mismatched?: boolean;
-    dismissed?: boolean;
-  }>(() => ({
+  // The session's one native module: the sim worker's READY handshake on a
+  // WebGL boot, the main-thread load under ?simWorker=0, none on native WebGPU.
+  // The HUD never instantiates a module just to learn that init works.
+  const [native, setNative] = useState<NativeStatus & { dismissed?: boolean }>(() => ({
     status: 'loading',
   }));
 
@@ -265,36 +254,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    getWasm()
-      .then((wasm) => {
-        if (cancelled) return;
-        const value = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
-        const force = wasm.calculateWaterForce(
-          0, 0.45, -10,
-          0, 0, 0,
-          0, -1,
-          4.5,
-          0.5,
-          150,
-          1.2,
-          0.47,
-          1.05,
-          0.7,
-          performance.now() / 1000,
-          0.08,
-          2.4,
-        );
-        setWasmSmoke({ status: 'ready', value, force });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        const message = error instanceof Error ? error.message : String(error);
-        const timedOut = isWasmInitTimeoutError(error);
-        const mismatched = isWasmProvenanceMismatchError(error);
-        console.error('[Watershed WASM] native init failed', error);
-        setWasmSmoke({ status: 'failed', error: message, timedOut, mismatched });
-      });
-
+    void probeNativeStatus().then((next) => {
+      if (cancelled) return;
+      if (next.status === 'failed') console.error('[Watershed WASM] native init failed', next.error);
+      setNative(next);
+    });
     return () => {
       cancelled = true;
     };
@@ -453,22 +417,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   return (
     <>
-      {wasmSmoke.status === 'failed' && !wasmSmoke.dismissed && (
+      {native.status === 'failed' && !native.dismissed && (
         <div className="wasm-init-banner" role="alert" data-testid="wasm-init-banner">
           <div className="wasm-init-banner__body">
             <strong>
-              {wasmSmoke.mismatched
+              {native.mismatched
                 ? 'Native WASM provenance mismatch — stale deploy'
-                : wasmSmoke.timedOut
+                : native.timedOut
                   ? 'Native WASM init timed out'
                   : 'Native WASM failed to init'}
             </strong>
-            <pre>{wasmSmoke.error}</pre>
+            <pre>{native.error}</pre>
           </div>
           <button
             type="button"
             className="wasm-init-banner__dismiss"
-            onClick={() => setWasmSmoke((prev) => ({ ...prev, dismissed: true }))}
+            onClick={() => setNative((prev) => ({ ...prev, dismissed: true }))}
           >
             Dismiss
           </button>
@@ -527,15 +491,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         className="fixed bottom-12 right-4 md:bottom-14 md:right-6 text-white/40 text-[10px] md:text-xs font-mono text-right"
         data-testid="wasm-smoke-status"
       >
-        WASM {wasmSmoke.status.toUpperCase()}
-        {wasmSmoke.status === 'ready' && wasmSmoke.value != null && (
-          <> {Math.round(wasmSmoke.value)}</>
-        )}
-        {wasmSmoke.status === 'ready' && wasmSmoke.force && (
+        {native.status === 'none' ? 'WASM OFF' : `WASM ${native.status.toUpperCase()}`}
+        {native.status === 'ready' && (
           <span className="ml-2 text-sky-200/60">
-            Fz {Math.round(wasmSmoke.force.forceZ)}
+            {native.where === 'worker' ? 'SIM WORKER' : 'MAIN'} ABI {native.abi}
           </span>
         )}
+        {native.status === 'none' && <span className="ml-2 text-sky-200/60">WGSL</span>}
       </div>
 
       {vehicleType === 'runner' && (

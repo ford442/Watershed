@@ -11,12 +11,17 @@
  * the player's chain segment and the worker derives the routed edge and the
  * entering-cell inflow) and the water forces (FORCES from the main thread;
  * HULL over a MessagePort from the Rapier worker — hullLinkProtocol.ts).
+ *
+ * Phase C (one module per session): splash / waterfall particle integrate
+ * (PARTICLES_*) and the heightfield chores (CHORES) run here too, so a WebGL
+ * session never instantiates `watershed_native` on the main thread.
  */
 import type { SweEventCall, SweStepInput } from '../systems/water/sweSim';
 import type { SweInflow } from '../systems/water/sweScroll';
 import type { RoutingReach } from '../systems/map/routingReach';
 import type { RoutingForecast } from '../systems/water/riverRouter';
 import type { SimFrame } from './SimFrame';
+import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
 
 /**
  * Queued `addSurface` calls as flat (index, amount) pairs, applied in order
@@ -104,7 +109,63 @@ export type SimWorkerCommand =
       samples: Float64Array;
     }
   /** One end of the Rapier worker's hull link (hullLinkProtocol.ts). */
-  | { type: 'CONNECT_PHYSICS'; port: MessagePort };
+  | { type: 'CONNECT_PHYSICS'; port: MessagePort }
+  /** A particle SoA (`allocateParticleSoA`) owned by one main-thread system. */
+  | { type: 'PARTICLES_ALLOC'; poolId: number; capacity: number }
+  | {
+      type: 'PARTICLES_INIT_WATERFALL';
+      poolId: number;
+      active: number;
+      width: number;
+      height: number;
+      depthZ: number;
+      fanSpreadRad: number;
+      seed: number;
+    }
+  /**
+   * Waterfall state lives in the worker. `out` is transferred and comes back
+   * holding px | py | pz | scale, `count` floats each.
+   */
+  | {
+      type: 'PARTICLES_STEP_WATERFALL';
+      poolId: number;
+      seq: number;
+      active: number;
+      dt: number;
+      width: number;
+      height: number;
+      depthZ: number;
+      out: ArrayBuffer;
+    }
+  /**
+   * Splash state lives on the main thread (spawn stays TS): `planes` carries
+   * px | py | pz | vx | vy | vz | life | maxLife, `count` floats each, and comes
+   * back stepped in place.
+   */
+  | {
+      type: 'PARTICLES_STEP_SPLASH';
+      poolId: number;
+      seq: number;
+      count: number;
+      dt: number;
+      gravityY: number;
+      damp: number;
+      planes: ArrayBuffer;
+    }
+  | { type: 'PARTICLES_FREE'; poolId: number }
+  /** Heightfield chore summary (gpuChores/heightfieldSummary.ts) of grid `gridId`'s live h. */
+  | { type: 'CHORES'; seq: number; gridId: number; thumbWidth: number; thumbHeight: number };
+
+/** Planes per particle on the wire (SPLASH_WIRE_PLANES for splash, WATERFALL_WIRE_PLANES for waterfall). */
+export const SPLASH_WIRE_PLANES = 8;
+export const WATERFALL_WIRE_PLANES = 4;
+
+export interface SimParticleResult {
+  poolId: number;
+  seq: number;
+  count: number;
+  buffer: ArrayBuffer;
+}
 
 export interface SimForceResult {
   seq: number;
@@ -120,6 +181,9 @@ export type SimWorkerResponse =
   | { type: 'READY'; abi: number }
   | { type: 'FRAME'; frame: SimFrame }
   | ({ type: 'FORCES' } & SimForceResult)
+  | ({ type: 'PARTICLES' } & SimParticleResult)
+  /** `summary` is null when `gridId` is not the live grid. */
+  | { type: 'CHORES'; seq: number; summary: HeightfieldSummary | null }
   | { type: 'ERROR'; error: string; fatal: boolean };
 
 export interface SimWorkerLike {

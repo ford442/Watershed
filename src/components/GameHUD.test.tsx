@@ -2,8 +2,9 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { GameHUD } from './GameHUD';
 
-const { getWasmMock } = vi.hoisted(() => ({
+const { getWasmMock, probeMock } = vi.hoisted(() => ({
   getWasmMock: vi.fn(),
+  probeMock: vi.fn(),
 }));
 
 vi.mock('../systems/water/WatershedWasm', async (importOriginal) => {
@@ -14,43 +15,61 @@ vi.mock('../systems/water/WatershedWasm', async (importOriginal) => {
   };
 });
 
-const nativeForce = {
-  forceX: 0,
-  forceY: 1,
-  forceZ: -12,
-  buoyancy: 1,
-  drag: 1,
-  flow: 1,
-  turbulence: 0,
-  submergedRatio: 1,
-};
+vi.mock('../sim/nativeOwner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../sim/nativeOwner')>();
+  return { ...actual, probeNativeStatus: () => probeMock() };
+});
 
 describe('GameHUD native WASM smoke', () => {
   beforeEach(() => {
     getWasmMock.mockReset();
+    probeMock.mockReset();
   });
 
-  it('shows WASM READY and the native smoke value on successful init', async () => {
-    getWasmMock.mockResolvedValue({
-      calculateBuoyancyAndDrag: () => 4242.4,
-      calculateWaterForce: () => nativeForce,
-    });
+  afterEach(() => {
+    // The HUD reads the session's native status; it never loads a module itself.
+    expect(getWasmMock).not.toHaveBeenCalled();
+  });
+
+  it('shows WASM READY from the sim worker handshake', async () => {
+    probeMock.mockResolvedValue({ status: 'ready', where: 'worker', abi: 11 });
 
     render(<GameHUD />);
 
     expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM LOADING');
 
     await waitFor(() => {
-      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM READY 4242');
+      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM READY');
     });
-    expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('Fz -12');
+    expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('SIM WORKER ABI 11');
+    expect(screen.queryByTestId('wasm-init-banner')).not.toBeInTheDocument();
+  });
+
+  it('names the main-thread module under ?simWorker=0', async () => {
+    probeMock.mockResolvedValue({ status: 'ready', where: 'main', abi: 11 });
+    render(<GameHUD />);
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('MAIN ABI 11');
+    });
+  });
+
+  it('shows WASM OFF without a banner on a native-WebGPU session', async () => {
+    probeMock.mockResolvedValue({ status: 'none' });
+    render(<GameHUD />);
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM OFF');
+    });
+    expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WGSL');
     expect(screen.queryByTestId('wasm-init-banner')).not.toBeInTheDocument();
   });
 
   it('banners native init failure and does not display the TS fallback smoke number', async () => {
-    getWasmMock.mockRejectedValue(
-      new Error("Cannot read properties of undefined (reading 'fields')"),
-    );
+    probeMock.mockResolvedValue({
+      status: 'failed',
+      error: "Cannot read properties of undefined (reading 'fields')",
+      timedOut: false,
+      mismatched: false,
+    });
 
     render(<GameHUD />);
 
@@ -74,9 +93,12 @@ describe('GameHUD native WASM smoke', () => {
   });
 
   it('banners native init timeout distinctly from a throw', async () => {
-    getWasmMock.mockRejectedValue(
-      new Error('watershed_native init timed out after 8000ms'),
-    );
+    probeMock.mockResolvedValue({
+      status: 'failed',
+      error: 'watershed_native init timed out after 8000ms',
+      timedOut: true,
+      mismatched: false,
+    });
 
     render(<GameHUD />);
 

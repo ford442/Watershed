@@ -13,8 +13,10 @@ import {
   resolveWasmInitTimeoutMs,
 } from '../systems/water/WatershedWasm';
 import type { SimFrame, SimFrameHeader } from './SimFrame';
+import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
 import type {
   SimForceResult,
+  SimParticleResult,
   SimWorkerCommand,
   SimWorkerLike,
   SimWorkerResponse,
@@ -25,14 +27,19 @@ const HANDSHAKE_SLACK_MS = 2000;
 
 type FrameListener = (frame: SimFrame) => void;
 type ForceListener = (result: SimForceResult) => void;
+type ParticleListener = (result: SimParticleResult) => void;
 
 export class SimWorkerProxy {
   private readonly worker: SimWorkerLike;
   private readonly frameListeners = new Map<number, FrameListener>();
   private readonly fatalListeners = new Set<(error: string) => void>();
   private forceListener: ForceListener | null = null;
+  private readonly particleListeners = new Map<number, ParticleListener>();
+  private readonly choreRequests = new Map<number, (summary: HeightfieldSummary | null) => void>();
   private nextGrid = 1;
+  private nextPool = 1;
   private nextForceSeq = 1;
+  private nextChoreSeq = 1;
   private latest: SimFrameHeader | null = null;
   private readyResolve: ((abi: number) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
@@ -59,6 +66,18 @@ export class SimWorkerProxy {
       case 'FORCES': {
         const { type: _type, ...result } = response;
         this.forceListener?.(result);
+        return;
+      }
+      case 'PARTICLES': {
+        // Unowned (a disposed system's last step): the buffer is simply dropped.
+        const { type: _type, ...result } = response;
+        this.particleListeners.get(result.poolId)?.(result);
+        return;
+      }
+      case 'CHORES': {
+        const resolve = this.choreRequests.get(response.seq);
+        this.choreRequests.delete(response.seq);
+        resolve?.(response.summary);
         return;
       }
       case 'ERROR':
@@ -155,6 +174,32 @@ export class SimWorkerProxy {
     };
   }
 
+  allocatePoolId(): number {
+    return this.nextPool++;
+  }
+
+  /** The one consumer of pool `poolId`'s PARTICLES results (simParticles.ts). */
+  onParticles(poolId: number, listener: ParticleListener): () => void {
+    this.particleListeners.set(poolId, listener);
+    return () => {
+      if (this.particleListeners.get(poolId) === listener) this.particleListeners.delete(poolId);
+    };
+  }
+
+  /**
+   * The heightfield chore summary of grid `gridId`'s live field, computed on
+   * the worker's module. Resolves null when that grid is not live or the
+   * worker has died (now or before the answer lands).
+   */
+  requestChores(gridId: number, thumbWidth: number, thumbHeight: number): Promise<HeightfieldSummary | null> {
+    if (this.failure) return Promise.resolve(null);
+    const seq = this.nextChoreSeq++;
+    return new Promise((resolve) => {
+      this.choreRequests.set(seq, resolve);
+      this.post({ type: 'CHORES', seq, gridId, thumbWidth, thumbHeight });
+    });
+  }
+
   /** Hand the worker its end of the Rapier worker's hull link (hullLinkProtocol.ts). */
   connectPhysics(port: MessagePort): void {
     this.post({ type: 'CONNECT_PHYSICS', port }, [port]);
@@ -173,7 +218,14 @@ export class SimWorkerProxy {
     this.frameListeners.clear();
     this.fatalListeners.clear();
     this.forceListener = null;
+    this.particleListeners.clear();
+    this.settleChores();
     this.worker.terminate?.();
+  }
+
+  private settleChores(): void {
+    for (const resolve of this.choreRequests.values()) resolve(null);
+    this.choreRequests.clear();
   }
 
   private fail(error: string): void {
@@ -183,6 +235,7 @@ export class SimWorkerProxy {
     this.readyResolve = null;
     this.readyReject = null;
     console.error('[sim worker] fatal:', error);
+    this.settleChores();
     for (const listener of this.fatalListeners) listener(error);
     this.worker.terminate?.();
   }

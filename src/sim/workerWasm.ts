@@ -73,6 +73,13 @@ function raceWithDeadline<T>(
  *                     public/ against it 404s — which is how the Rapier
  *                     worker's old native path silently never loaded.
  */
+let lastInitError: string | null = null;
+
+/** Why the last `getWorkerWasm` returned null (the message the HUD classifies), or null. */
+export function peekWorkerWasmInitError(): string | null {
+  return lastInitError;
+}
+
 export async function getWorkerWasm(
   failureNote: string,
   assetUrl: (path: string) => string,
@@ -117,6 +124,7 @@ export async function getWorkerWasm(
           console.error(`${WASM_LOG_PREFIX} failed(${err.message})`);
         }
       }
+      lastInitError = err.message;
       console.error(failureNote, error);
       return null;
     }

@@ -17,6 +17,10 @@
  * computeWaterForcesBatch and via calculateWaterForce (the wasm-main loop) —
  * bit for bit.
  *
+ * One module per session: splash / waterfall integrate and the heightfield
+ * chores run on the worker's module too, and must match the main-thread
+ * module's (`?simWorker=0`) bit for bit.
+ *
  * Gated like the other integration tests (`pnpm test:wasm`).
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -52,6 +56,10 @@ import { SimWorkerProxy } from './createSimWorkerProxy';
 import { createSimWorkerCore } from './simWorkerCore';
 import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from './simWorkerProtocol';
 import { createWorkerSweSim } from './workerSweSim';
+import { createSplashIntegrator, createWaterfallIntegrator } from '../systems/pools/nativeParticles';
+import { ParticlePool, VFXParticle } from '../systems/pools/ParticlePool';
+import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
+import { heightfieldThumbSize, summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
 
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
@@ -518,4 +526,134 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
       pump();
     });
   });
+  describe('one module per session: particles and chores in the worker', () => {
+    const chute = { width: 15, height: 25, depthZ: 5, fanSpreadRad: 0.4, seed: 0xc0ffee };
+
+    function spawnSplash(pool: ParticlePool<VFXParticle>, seed: number, count: number) {
+      const rand = mulberry32(seed);
+      for (const p of pool.acquireMultiple(count)) {
+        p.position.set(rand() * 4 - 2, 0.5 + rand(), rand() * 4 - 2);
+        p.velocity.set(rand() * 6 - 3, 3 + rand() * 2, rand() * 6 - 3);
+        p.life = 0;
+        p.maxLife = 0.3 + rand() * 0.6;
+        p.rotationSpeed = rand() * 10 - 5;
+      }
+    }
+
+    function snapshot(pool: ParticlePool<VFXParticle>) {
+      return pool.getActive().map((p) => [
+        p.position.x, p.position.y, p.position.z, p.velocity.x, p.velocity.y, p.velocity.z, p.life, p.rotation,
+      ]);
+    }
+
+    it('steps splash particles bit for bit like the main-thread module, a frame later', () => {
+      const { worker, pump } = fakeWorker(wasmWorker);
+      const proxy = new SimWorkerProxy(worker);
+      const main = createSplashIntegrator({ kind: 'main', wasm: wasmMain }, 64)!;
+      const viaWorker = createSplashIntegrator({ kind: 'worker', proxy }, 64)!;
+      const mainPool = new ParticlePool(() => new VFXParticle(), 0, 64);
+      const workerPool = new ParticlePool(() => new VFXParticle(), 0, 64);
+      spawnSplash(mainPool, 7, 37);
+      spawnSplash(workerPool, 7, 37);
+      const jsUpdate = () => {
+        throw new Error('every particle fits the native capacity');
+      };
+
+      for (let frame = 0; frame < 90 && mainPool.getActive().length > 0; frame += 1) {
+        const dt = 1 / 60 + (frame % 3) * 0.002;
+        main.integrate([...mainPool.getActive()], dt, -9.8, 0.98, jsUpdate, (p) => mainPool.release(p));
+        // The worker's step lands before the next frame applies it.
+        viaWorker.integrate([...workerPool.getActive()], dt, -9.8, 0.98, jsUpdate, (p) => workerPool.release(p));
+        pump();
+        viaWorker.integrate([], dt, -9.8, 0.98, jsUpdate, (p) => workerPool.release(p));
+        expect(snapshot(workerPool), `frame ${frame}`).toEqual(snapshot(mainPool));
+      }
+      expect(mainPool.getActive()).toHaveLength(0); // every particle lived and died natively
+
+      main.dispose();
+      viaWorker.dispose();
+      pump();
+    });
+
+    it('steps the waterfall bit for bit like the main-thread module, recycling inside the chute', () => {
+      const { worker, pump } = fakeWorker(wasmWorker);
+      const proxy = new SimWorkerProxy(worker);
+      const main = createWaterfallIntegrator({ kind: 'main', wasm: wasmMain }, 1000, chute)!;
+      const viaWorker = createWaterfallIntegrator({ kind: 'worker', proxy }, 1000, chute)!;
+      const record = (out: number[][]) => (i: number, x: number, y: number, z: number, scale: number) => {
+        out[i] = [x, y, z, scale];
+      };
+
+      let previous: number[][] = [];
+      for (let frame = 0; frame < 120; frame += 1) {
+        const want: number[][] = [];
+        const got: number[][] = [];
+        const active = 400;
+        expect(main.step(active, 1 / 60, record(want))).toBe(active);
+        const landed = viaWorker.step(active, 1 / 60, record(got));
+        // The worker's step from the previous frame lands now.
+        if (frame === 0) expect(landed).toBe(-1);
+        else expect(got, `frame ${frame}`).toEqual(previous);
+        pump();
+        previous = want;
+        // Recycled at the top once below the pool; the fan only spreads x / z.
+        for (const [x, y, z, scale] of want) {
+          expect(y).toBeGreaterThanOrEqual(0);
+          expect(y).toBeLessThanOrEqual(chute.height);
+          expect(Number.isFinite(x) && Number.isFinite(z)).toBe(true);
+          expect(scale).toBeGreaterThanOrEqual(0.5);
+        }
+      }
+
+      main.dispose();
+      viaWorker.dispose();
+      pump();
+    });
+
+    it('summarizes the worker\'s field exactly as the main-thread chore host does', async () => {
+      const width = 48;
+      const height = 32;
+      const dx = 0.5;
+      const { worker, pump } = fakeWorker(wasmWorker);
+      const proxy = new SimWorkerProxy(worker);
+      const main = createWasmSweSim(wasmMain, width, height, dx);
+      const viaWorker = createWorkerSweSim(proxy, width, height, dx) as SweSim & { gridId: number };
+      pump();
+      for (let i = 0; i < width * height; i += 1) {
+        const bed = 0.2 * Math.sin(i * 0.37);
+        main.b[i] = bed;
+        viaWorker.b[i] = bed;
+      }
+      main.commitBed();
+      viaWorker.commitBed();
+      const input = { dt: 1 / 60, g: 9.80665, H: 1, originX: 0, originZ: 0, events: [] };
+      for (let frame = 0; frame < 12; frame += 1) {
+        main.addSurface(frame * 37, 0.3);
+        viaWorker.addSurface(frame * 37, 0.3);
+        main.step(input);
+        viaWorker.step(input);
+        pump();
+      }
+
+      const { width: tw, height: th } = heightfieldThumbSize(width, height);
+      const want = summarizeHeightfield(
+        createNativeChoreHost(() => wasmMain), () => main.h, width, height, tw, th, true,
+      );
+      const pending = proxy.requestChores(viaWorker.gridId, tw, th);
+      pump();
+      const got = await pending;
+      expect(got).not.toBeNull();
+      expect(got!.min).toBe(want.min);
+      expect(got!.max).toBe(want.max);
+      expect(got!.mean).toBe(want.mean);
+      expect([...got!.histogram]).toEqual([...want.histogram]);
+      expect(firstMismatch(got!.thumb.values, want.thumb.values)).toBe(-1);
+      expect(want.histogram.reduce((a, b) => a + b, 0)).toBe(width * height);
+
+      viaWorker.dispose();
+      main.dispose();
+      pump();
+    });
+  });
 });
+

@@ -7,10 +7,7 @@
  * accepted binary already has them, so the decline path is now defensive.
  */
 
-import {
-  getWasm,
-  type WatershedNativeModule,
-} from '../../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../../systems/water/WatershedWasm';
 import {
   blurSeparableF32,
   downsampleF32,
@@ -55,21 +52,27 @@ function withHeap<T>(
   }
 }
 
+/**
+ * The main-thread host. It never loads the module itself: WaterForceSystem
+ * binds one (`bindChoreWasm`) only when the session's module lives on this
+ * thread (`wasm-main`). On a sim-worker boot the chores run in the worker
+ * (heightfield.ts → CHORES) and this host stays on the TS math.
+ */
 export function createWatershedCpuHost(): CpuChoreHost {
-  // Best-effort: if WaterForceSystem already loaded WASM, reuse it.
-  void getWasm()
-    .then((mod) => {
-      if (hasChoreExports(mod)) bindChoreWasm(mod);
-    })
-    .catch(() => {
-      /* water fallback is independent */
-    });
+  return createNativeChoreHost(() => boundWasm);
+}
 
+/**
+ * A chore host over whichever module `resolve` returns — the bound main-thread
+ * module, or the sim worker's own (simWorkerCore.ts). Falls back to the TS
+ * math per call when the module or the export is missing.
+ */
+export function createNativeChoreHost(resolve: () => WatershedNativeModule | null): CpuChoreHost {
   return {
-    isWasmReady: () => hasChoreExports(boundWasm),
+    isWasmReady: () => hasChoreExports(resolve()),
 
     reduceF32(values, useWasm) {
-      const wasm = boundWasm;
+      const wasm = resolve();
       if (!useWasm || !wasm?.reduceF32Grid) return reduceF32(values);
       return withHeap(wasm, values, (ptr) => {
         const outPtr = wasm.allocateGrid(3);
@@ -90,7 +93,7 @@ export function createWatershedCpuHost(): CpuChoreHost {
     },
 
     histogramF32(values, rangeMin, rangeMax, useWasm) {
-      const wasm = boundWasm;
+      const wasm = resolve();
       if (!useWasm || !wasm?.histogramF32) {
         return histogramF32(values, values.length, rangeMin, rangeMax);
       }
@@ -114,7 +117,7 @@ export function createWatershedCpuHost(): CpuChoreHost {
     },
 
     lumaHistogramU8(rgba, pixelCount, useWasm) {
-      const wasm = boundWasm;
+      const wasm = resolve();
       if (!useWasm || !wasm?.lumaHistogramU8) {
         return lumaHistogramU8(rgba, pixelCount);
       }
@@ -141,7 +144,7 @@ export function createWatershedCpuHost(): CpuChoreHost {
     },
 
     downsampleF32(values, width, height, destWidth, destHeight, useWasm) {
-      const wasm = boundWasm;
+      const wasm = resolve();
       if (!useWasm || !wasm?.downsampleF32) {
         return downsampleF32(values, width, height, destWidth, destHeight);
       }
@@ -165,7 +168,7 @@ export function createWatershedCpuHost(): CpuChoreHost {
     },
 
     blurSeparableF32(values, width, height, useWasm) {
-      const wasm = boundWasm;
+      const wasm = resolve();
       if (!useWasm || !wasm?.blurSeparableF32) {
         return blurSeparableF32(values, width, height);
       }
