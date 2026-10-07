@@ -52,13 +52,13 @@ mat.onBeforeCompile = (shader) => {
 ```bash
 # 1. Clean install
 rm -rf node_modules
-npm install
+pnpm install
 
 # 2. Start dev server
-npm start
+pnpm start
 
 # 3. Check build
-npm run build
+pnpm build
 
 # 4. Visual test (requires Playwright)
 python3 verify_visuals_playwright.py

@@ -6,6 +6,7 @@ package-lock.json
 
 # Build output
 build/
+build-sourcemaps/
 emscripten/build/
 emscripten/build-host/
 emscripten/build-threads/

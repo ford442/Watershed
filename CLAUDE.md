@@ -7,15 +7,15 @@
 ## Quick Start
 
 ```bash
-npm install
-npm start          # dev server on port 3000 (Vite)
-npm test           # unit tests (Vitest + Testing Library)
-npm run lint       # ESLint (flat config, TS + react-hooks + R3F rules)
-npm run typecheck  # tsc --noEmit + the layout/GLSL/typecheck-surface guards
-npm run build      # production build → build/
+pnpm install       # pnpm only — a preinstall guard refuses npm/yarn (pnpm-lock.yaml is the one lockfile)
+pnpm start         # dev server on port 3000 (Vite)
+pnpm test          # unit tests (Vitest + Testing Library)
+pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
+pnpm typecheck     # tsc --noEmit + the layout/GLSL/typecheck-surface/orphan guards
+pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/)
 ```
 
-> Requires Chrome 90+ for WebGL 2.0. The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
+> Requires WebGL 2.0. The build targets `es2022` (`build.target` in `vite.config.ts`; syntax floor Chrome 94). The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
 > NodeMaterial/TSL backend (WebGL2 on the wire; add `&renderer=webgpu` for native WebGPU) — see [`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md).
 
 ---
@@ -29,7 +29,7 @@ npm run build      # production build → build/
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
 | Shaders | GLSL (injected via `onBeforeCompile`) by default; opt-in NodeMaterial/TSL backend via `?material=tsl` (#256 path A) |
-| Package manager | pnpm (npm also works) |
+| Package manager | pnpm only (`packageManager`, `preinstall` guard) |
 
 ---
 
@@ -268,11 +268,11 @@ With the above in place:
 ## Testing
 
 ```bash
-npm test                          # unit tests (Vitest)
-npm run lint                      # ESLint — 0 errors is the gate; warnings are a tracked backlog
-npm run typecheck                 # tsc + repo layout guards
-npm run test:visual-smoke         # headless WebGL pixel gate (needs `npm run preview`)
-npm run test:wgsl                 # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
+pnpm test                         # unit tests (Vitest)
+pnpm lint                         # ESLint — 0 errors is the gate; warnings are a tracked backlog
+pnpm typecheck                    # tsc + repo layout guards
+pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`)
+pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
 

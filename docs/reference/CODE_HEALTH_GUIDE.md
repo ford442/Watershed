@@ -61,7 +61,7 @@ Before committing changes, verify:
 - [ ] No console.error messages in browser
 - [ ] No WebGL warnings about invalid operations
 - [ ] Canvas renders (not blank)
-- [ ] `npm run build` succeeds
+- [ ] `pnpm build` succeeds
 - [ ] Dev server starts without warnings
 - [ ] All shaders compile successfully
 
@@ -240,8 +240,8 @@ if (!shader.fragmentShader.includes('Your custom code')) {
 1. **Clean Start**
    ```bash
    rm -rf node_modules build
-   npm install
-   npm start
+   pnpm install
+   pnpm start
    ```
 
 2. **Visual Inspection**
@@ -253,7 +253,7 @@ if (!shader.fragmentShader.includes('Your custom code')) {
 
 3. **Build Test**
    ```bash
-   npm run build
+   pnpm build
    python3 build_and_patch.py
    ```
 

@@ -145,7 +145,7 @@ pnpm typecheck    # tsc -p tsconfig.typecheck.json --noEmit
 pnpm build        # optional emscripten WASM + vite → build/
 ```
 
-Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; do not commit `package-lock.json` (it is gitignored).
+Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; do not commit `package-lock.json` (it is gitignored). The `preinstall` guard (`scripts/only-pnpm.mjs`) fails `npm install`/`yarn` outright: a stray local `package-lock.json` once pinned three r168 against r185 and broke typecheck, tests and build.
 
 `pnpm build` runs `emscripten/build.sh` first; if Emscripten is missing it prints a skip message and exits 0, then Vite proceeds.
 

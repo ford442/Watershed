@@ -4,8 +4,8 @@
 
 ### 1. Install and Run
 ```bash
-npm install
-npm start
+pnpm install
+pnpm start
 ```
 
 The application will open at `http://localhost:3000`
@@ -138,7 +138,7 @@ setInterval(() => {
 ```bash
 pnpm typecheck
 # equivalent:
-npm run typecheck
+pnpm typecheck
 # → tsc -p tsconfig.typecheck.json --noEmit
 ```
 
@@ -233,7 +233,7 @@ This will show wireframe overlays of all physics colliders.
 ## Browser Compatibility
 
 ### Supported Browsers
-- ✅ Chrome 90+ (recommended)
+- ✅ Chrome 94+ (build target `es2022`; WebGL 2.0 required)
 - ✅ Firefox 88+
 - ✅ Safari 15+
 - ✅ Edge 90+
@@ -459,7 +459,7 @@ Commit the updated PNGs only when the visual change is intentional. See `verific
 
 ### Manual tester script (real Chrome, decent GPU)
 
-1. `pnpm dev` (or `npm start`).
+1. `pnpm dev` (or `pnpm start`).
 2. Open `http://localhost:3000` — also spot-check `?renderer=webgl`.
 3. Click **Start Run** (or `?no-pointer-lock=1` for top-down debug camera only).
 4. Engage controls: WASD / right-click forward, mouse look, Space jump, **R** restart prompt, **Esc** pause.
