@@ -57,12 +57,10 @@
 
 | Doc | Topic |
 |-----|-------|
-| [`integration_guides/BIOME_INTEGRATION_GUIDE.md`](./integration_guides/BIOME_INTEGRATION_GUIDE.md) | Biome provider wiring |
 | [`integration_guides/GAMEHUD_INTEGRATION.md`](./integration_guides/GAMEHUD_INTEGRATION.md) | HUD overlay |
 | [`integration_guides/RAFT_INTEGRATION_GUIDE.md`](./integration_guides/RAFT_INTEGRATION_GUIDE.md) | Raft vehicle |
 | [`integration_guides/RAFT_AUDIO_INTEGRATION.md`](./integration_guides/RAFT_AUDIO_INTEGRATION.md) | Raft audio |
 | [`integration_guides/RAFT_VORTEX_INTEGRATION.md`](./integration_guides/RAFT_VORTEX_INTEGRATION.md) | Vortex mechanic |
-| [`integration_guides/SHADER_BROWSER_INTEGRATION.md`](./integration_guides/SHADER_BROWSER_INTEGRATION.md) | Shader browser panel |
 
 ---
 

@@ -365,8 +365,6 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
   (spawn-count scale)
 - `injectSWEDisturbance` from `SWEHeightField`
 - `useFrame` from `@react-three/fiber`
-- **Does NOT import `SplashParticles.tsx`** — that is a separate unused legacy component.
-- **Does NOT import `useRiverAudio`.**
 
 **Props:**
 - `playerRef` — Rapier rigid body ref (`vehicleRef` from `InnerExperience`)
@@ -449,8 +447,6 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 
 **Boundaries (Do NOT):**
 - Do NOT mount without the LOD gate — duplicate scene renders are expensive.
-- Do NOT assume `EnhancedWaterMaterial.js` is live — it remains an unused legacy sample
-  reference; the production consumer is `FlowingWater.tsx`.
 - Do NOT leave the store populated after unmount — always `clear()` in the dispose path.
 
 **Known Pain:**

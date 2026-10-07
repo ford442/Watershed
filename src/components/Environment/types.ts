@@ -116,13 +116,6 @@ export interface IceSprayProps {
   active?: boolean;
 }
 
-export interface FloatingDebrisProps {
-  path: THREE.CatmullRomCurve3 | null;
-  waterLevel?: number;
-  count?: number;
-  seed?: number;
-}
-
 export interface CanyonBackgroundProps {
   segmentId: number;
   segmentCenter: THREE.Vector3;
@@ -141,26 +134,9 @@ export interface CanyonDecorationsProps {
   onRockFoamUpdate?: (foam: PlacementTransform[]) => void;
 }
 
-export interface TreeSystemProps {
-  riverPath: THREE.CatmullRomCurve3 | null;
-  trackWidth?: number;
-  wallHeight?: number;
-}
-
 export interface PooledObstaclesProps {
   slots: ObstacleSlot[];
   rockMaterial?: THREE.MeshStandardMaterial;
-}
-
-/** Rapier rigid-body handle used by splash particle emission. */
-export interface SplashParticleTarget {
-  translation: () => { x: number; y: number; z: number };
-  linvel: () => { x: number; y: number; z: number };
-}
-
-export interface SplashParticlesProps {
-  target: RefObject<SplashParticleTarget | null>;
-  count?: number;
 }
 
 /** Shader hook storage on materials using onBeforeCompile. */

@@ -62,7 +62,7 @@ src/
 │   ├── ReactiveAudio.tsx        # Biome/speed-reactive audio
 │   ├── WeatherSystem.tsx        # Rain/snow/fog particles
 │   ├── PostProcessingPipeline.tsx
-│   ├── GameHUD.tsx / UI.tsx / PauseMenu.tsx / Loader.tsx
+│   ├── GameHUD.tsx / PauseMenu.tsx / Loader.tsx
 │   ├── Environment/             # Instanced biome decorations (~34 types, all `.tsx`)
 │   ├── Obstacles/               # Rocks, pillar break VFX, breakable trestle
 │   ├── VFX/                     # Splash particles
@@ -73,10 +73,10 @@ src/
 │   └── RaftVehicle/             # Third-person raft mode
 │
 ├── systems/                     # Core game systems (see SYSTEMS.md)
-│   ├── MapSystem.ts             # ★ JSON maps, chunk config, procedural fallback
-│   ├── ChunkManager.ts          # Segment pool / treadmill
-│   ├── ReachManager.tsx         # Reach streaming wrapper
-│   ├── GameState.ts             # ★ Zustand store — the only root *.ts besides index.ts
+│   ├── map/MapSystem.ts         # ★ JSON maps, chunk config, procedural fallback
+│   ├── map/ChunkManager.ts      # Segment pool / treadmill
+│   ├── reach/ReachManager.tsx   # Reach streaming wrapper
+│   ├── GameState.ts             # ★ Zustand store — the only root *.ts (no barrel)
 │   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
 │   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality (render scale, then preset)
 │   ├── lumber/trestleSpan.ts    # Breakable trestle deck (forecast + hydroEvents)
@@ -90,15 +90,15 @@ src/
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts
-├── configs/                     # BiomePalettes.ts, TrackBiomes.ts
-├── constants/                   # game.ts, biomes.ts, weather.ts, …
-├── hooks/                       # useWaterFlowField, useShaderLoader, …
-├── materials/                   # CanyonMaterial, CausticsMaterial, EnhancedWaterMaterial
+├── configs/                     # biomes.ts (BiomeId, WATER_PROFILES, HUD labels), BiomePalettes.ts, TrackBiomes.ts
+├── constants/                   # game.ts, weather.ts, waterFlow.ts, …
+├── hooks/                       # useShaderLoader, usePlayerControls, … (no barrel)
+├── materials/                   # CanyonMaterial + backend hosts below
 │   ├── water/                   # ★ Water material host (GLSL | TSL) + node material
 │   ├── river/ canyon/           # Surface hosts routing GLSL vs TSL (#256 path A)
 │   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
-├── physics/                     # Rapier worker proxy, WaterForces
+├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
@@ -244,7 +244,7 @@ along with the `vendor-post` `manualChunks` bucket in `vite.config.ts`.
 - **SSAO** — ✅ three's own `SSAOPass` (JSM) / GTAO (node), gated by `EffectPresence.ssao` (`settingsDerive.ts`) — off on Low/Medium, on at High
 
 ### Step 5 — Map-driven TrackManager ✅
-`MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
+`systems/map/MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
 
 ### Step 6 — Author maps
 With the above in place:

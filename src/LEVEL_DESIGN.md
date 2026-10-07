@@ -224,7 +224,7 @@ import { GLACIER_START_INDEX } from '../maps/meander_to_waterfall';
 | God rays | `src/systems/volumetric/VolumetricGodRays.tsx` | Screen-space ray marching |
 | Sun shafts | `src/components/TrackSegment/` (placement) | Narrow vertical beams from above |
 | Mist/spray | `src/components/TrackSegment/` (placement) | Enhanced density, taller mist columns |
-| Floating debris | `src/components/Environment/FloatingDebris.tsx` | Physics-enabled driftwood/pinecones |
+| Floating debris | `src/components/Environment/FloatingObjectManager.tsx` | Physics-enabled driftwood/pinecones |
 | Rock decorations | `src/components/CanyonDecorations.tsx` | Instanced boulders with colliders |
 
 ### Performance Budget

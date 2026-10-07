@@ -36,7 +36,7 @@ App.tsx
             └─ PostProcessingPipeline.tsx
 ```
 
-Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.tsx`**. Water forces live in **`physics/WaterForces.ts`** + **`WaterForceSystem`** / **`WaterFlowForces.tsx`**.
+Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.tsx`**. Water forces live in **`WaterForceSystem`** (`src/systems/water/`) / **`WaterFlowForces.tsx`**, and in the sim worker on the `wasm-worker` backend (`physicsWorkerWaterForces.ts`).
 
 CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; bans renamed/deleted dual stems — see the script).
 
@@ -110,21 +110,21 @@ src/
 │   ├── WaterFlowForces.tsx      # Segment flow samples → raft impulses
 │   ├── Environment/             # 25+ biome decorations
 │   ├── Obstacles/ / VFX/ / LevelEditor/
-│   └── GameHUD.tsx / UI.tsx / Loader.tsx / …
+│   └── GameHUD.tsx / Loader.tsx / …
 │
 ├── vehicles/
 │   ├── RunnerVehicle/           # ★ Default first-person runner
 │   └── RaftVehicle/             # ★ Raft buoyancy / paddle
 │
 ├── systems/                     # See SYSTEMS.md
-│   ├── MapSystem.ts             # ★ JSON maps, chunk config
-│   ├── ChunkManager.ts
-│   ├── ReachManager.tsx / ReachStreamer.ts / ReachNormalizer.ts
-│   ├── BiomeSystem.tsx / LODManager.tsx / GameState.ts
-│   ├── SplashSystem.tsx / WaterForceSystem.tsx / AudioSystem.ts
+│   ├── map/MapSystem.ts         # ★ JSON maps, chunk config
+│   ├── map/ChunkManager.ts
+│   ├── reach/ReachManager.tsx / ReachStreamer.ts / ReachNormalizer.ts
+│   ├── biome/BiomeSystem.tsx / lod/LODManager.tsx / GameState.ts
+│   ├── water/SplashSystem.tsx / water/WaterForceSystem.tsx / audio/AudioSystem.ts
 │   └── …
 │
-├── physics/                     # WaterForces.ts, Rapier worker proxy
+├── physics/                     # Rapier worker proxy, collider registry, water-force tick
 ├── maps/                        # Authored JSON + registry.ts
 ├── configs/ / constants/ / hooks/ / materials/ / rendering/
 ├── utils/                       # RiverShader, validators
@@ -213,7 +213,7 @@ HUD/minimap helpers (`grid-reduce`, `luma-histogram`, `downsample-2d`, blur) liv
 | `src/systems/map/MapSystem.ts` | Maps, chunks, spawn |
 | `src/systems/biome/BiomeSystem.tsx` | Biome context (`useBiome`) |
 | `src/systems/audio/AudioSystem.ts` | Three.js audio |
-| `src/physics/WaterForces.ts` | Flow force math |
+| `src/physics/physicsWorkerWaterForces.ts` | Worker water-force tick (TS fallback) |
 | `vite.config.ts` | Vite build |
 
 ---
@@ -235,7 +235,7 @@ node scripts/validate-markdown-paths.js
 
 | Status | Module group | Notes |
 |--------|--------------|-------|
-| **Typed** | `Environment/*`, `CanyonDecorations`, `PooledObstacles`, `TreeSystem`, `VFX/SplashParticles` | Decoration hosts (`.tsx`); shared props in `Environment/types.ts` |
+| **Typed** | `Environment/*`, `CanyonDecorations`, `PooledObstacles`, `VFX/*` | Decoration hosts (`.tsx`); shared props in `Environment/types.ts` |
 | **Typed** | `FlowingWater`, `EnhancedSky`, `PostProcessingPipeline`, `WaterReflection` | Frame-hot render hosts (`.tsx`) |
 | **Typed** | `ObstaclePool`, `RockShader`, `TreeShader`, `VegetationShader` | Pure logic / shader injection (`.ts`) |
 | **Typed** | `maps/registry.ts` | `assertLevelData()` at load — shipped maps validate under `level.schema.json` |

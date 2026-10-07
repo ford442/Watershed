@@ -1,0 +1,5 @@
+{
+  "files": {
+    "src/maps/registry.contract.ts": "Compile-time half of the map registry drift guard: lives outside *.test.ts so `pnpm typecheck` (which excludes tests) enforces its type assertions; registry.contract.test.ts consumes the runtime half."
+  }
+}

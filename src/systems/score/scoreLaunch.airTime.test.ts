@@ -7,9 +7,9 @@ import {
   AIR_TIME_THRESHOLDS,
   MIN_GAP_HORIZONTAL,
   LAUNCH_BASE_POINTS_PER_SEC,
-} from './launchScoring';
+} from './scoreLaunch';
 
-describe('calculateAirTimeScore (launchScoring shim)', () => {
+describe('calculateAirTimeScore (scoreLaunch)', () => {
   it('returns no reward below minimum air-time', () => {
     expect(calculateAirTimeScore(0.59, true, true, false)).toEqual({
       tier: 'None',
