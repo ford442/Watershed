@@ -31,7 +31,6 @@ export { SplashSystem } from './water/SplashSystem';
 export {
   useGameStore,
   usePlayerPosition,
-  usePlayerSpeed,
   useScore,
   useMultiplier,
   useComboLabel,

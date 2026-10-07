@@ -53,6 +53,13 @@ export const useShaderLoader = (
       return;
     }
 
+    // No shader API on this deploy (the static build has none): a relative
+    // /api fetch would 404 once per segment mount. Use the builtin directly.
+    if (!API_BASE_URL) {
+      setResult({ code: fallbackCode, loading: false, error: 'no shader API configured (VITE_API_URL)' });
+      return;
+    }
+
     // Check cache first
     const cached = shaderCache.get(shaderId);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {

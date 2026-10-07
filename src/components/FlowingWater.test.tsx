@@ -105,6 +105,20 @@ describe('FlowingWater', () => {
     expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).not.toBe('void broken() {');
   });
 
+  test('lumberFlume gets its authored flow and flume-turbulent-v1 shader (#465 C1)', () => {
+    render(<FlowingWater geometry={new THREE.BufferGeometry()} biome="lumberFlume" flowSpeed={1} />);
+
+    expect(useShaderLoader).toHaveBeenCalledWith('flume-turbulent-v1', expect.any(String));
+    const uniforms = shaderMaterialMock.mock.calls[0][0].uniforms;
+    expect(uniforms.flowSpeed.value).toBeCloseTo(1.8);
+  });
+
+  test('canonical biome ids no longer collapse to the river profile', () => {
+    render(<FlowingWater geometry={new THREE.BufferGeometry()} biome="slotCanyon" flowSpeed={1} />);
+    expect(shaderMaterialMock.mock.calls[0][0].uniforms.flowSpeed.value).toBeCloseTo(1.4);
+    expect(useShaderLoader).toHaveBeenLastCalledWith(null, expect.any(String));
+  });
+
   test('registers reflectionTexture and reflectionStrength uniforms for planar reflections', () => {
     render(<FlowingWater geometry={new THREE.BufferGeometry()} />);
 

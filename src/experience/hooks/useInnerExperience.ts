@@ -44,8 +44,10 @@ export function useInnerExperience({
   const [noPointerLock] = useState(
     () => typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock'),
   );
+  // ?wasmWaterTest=1 is a dev harness; production ignores it (#465 C5).
   const [wasmWaterTest] = useState(
     () =>
+      import.meta.env.DEV &&
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('wasmWaterTest') === '1',
   );

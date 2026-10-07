@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PALETTE_ONLY_BIOMES, TRACK_BIOMES } from './TrackBiomes';
 import { normalizeBiomeId } from './biomes';
-import { BIOME_HUD_LABELS } from '../constants/biomes';
+import { BIOME_HUD_LABELS } from './biomes';
 import { MAP_REGISTRY, mapRegistryIds } from '../maps/registry';
 import { BiomeSelector } from '../components/LevelEditor/BiomeSelector';
 import levelSchema from '../formats/level.schema.json';

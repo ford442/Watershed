@@ -97,8 +97,8 @@ export function TrackSegmentMeshes({
     const catwalkWashedOut = Boolean(config?.washedOutGap) && Boolean(config?.hasBridge);
     const slushiness = isGlacier ? (biomeProfile.id === 'glacialMelt' ? 0.85 : 0.55) : 0;
     const birdType = biomeProfile.id === 'slotCanyon' ? 'hawk' : 'songbird';
-    const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome) || biome === 'canyon') && timeOfDay > 0.65;
-    const showCanyonBackground = biomeProfile.id === 'slotCanyon' || biome === 'canyon';
+    const batsActive = (biomeProfile.id === 'slotCanyon' || isAutumnLike(biome)) && timeOfDay > 0.65;
+    const showCanyonBackground = biomeProfile.id === 'slotCanyon';
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef<WallMaterial | null>(null);
 
@@ -516,15 +516,8 @@ export function TrackSegmentMeshes({
                 biome={biome}
                 isNight={isNight}
                 slushiness={slushiness}
-                baseColor={
-                  isHydroDam
-                    ? '#2a4a5a'
-                    : isGlacier
-                      ? '#a8d8ea'
-                      : (type === 'pond' ? '#1a4b6a' : undefined)
-                }
-                foamColor={isGlacier ? '#e8f6ff' : isHydroDam ? '#c0d0d8' : undefined}
-                edgeHighlightColor={isGlacier ? '#c8eeff' : isHydroDam ? '#7a9aaa' : undefined}
+                // Per-biome colours come from WATER_PROFILES; ponds deepen whatever the biome is.
+                baseColor={type === 'pond' && !isGlacier && !isHydroDam ? '#1a4b6a' : undefined}
                 flowMap={flowMap}
                 vehiclePos={vehiclePos}
                 vehicleVelocity={vehicleVelocity}

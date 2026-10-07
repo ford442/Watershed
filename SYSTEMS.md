@@ -73,7 +73,7 @@ without prop-drilling.
 
 **Exports:**
 - `useGameStore` — Zustand store hook (primary access)
-- Selector hooks: `usePlayerPosition`, `usePlayerSpeed`, `usePlayerBiome`,
+- Selector hooks: `usePlayerPosition`, `usePlayerBiome`,
   `useGamePaused`, `useGameWipeout`, `useGameSettings`, `useQualityPreset`,
   `useGravityMultiplier`
 - `batchFrameUpdate(pos, speed, segmentIndex)` — throttled frame writer (updates Zustand every 3rd frame)
