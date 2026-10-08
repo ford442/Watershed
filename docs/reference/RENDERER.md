@@ -169,6 +169,20 @@ One condition, two stages. Both thresholds are the frame-time form of the lines 
 | Valve opens | frame time < `0.92 × budget` | 3 ticks | `renderScale += 0.1`, up to 1.0 |
 | Preset steps up | same, **and** valve at 1.0 | 2 ticks | `medium → high → ultra` |
 
+### What "frame time" means (#466 Phase B)
+
+Not rAF time. On a vsync-capped 60 Hz display rAF sits at ≈16.7 ms however light the frame is, and that never gets under the 15.3 ms open line. Before #466 a closed valve stayed closed, and the preset ladder could never step up either. Each tick now reads one window from `summarizeFrameWindow` ([`frameWork.ts`](../../src/rendering/frameWork.ts)):
+
+| Source | When | Valve reads |
+|--------|------|-------------|
+| `gpu` | a GPU timer exists ([`gpuTimer.ts`](../../src/rendering/gpuTimer.ts): `EXT_disjoint_timer_query_webgl2` on `WebGLRenderer`; three's `trackTimestamp` on the node renderer) | mean of `max(gpuMs, cpuWorkMs)` |
+| `cpu` | no GPU timer (Safari, many Android GPUs) | mean CPU work: from R3F's `addEffect` to its `addAfterEffect`, so post is included and vsync idle is not |
+| `raf` | no GPU timer **and** rAF misses the slow line, or `FrameWorkTimer` not mounted | mean rAF interval, the pre-#466 behaviour. CPU work can't see a GPU-bound frame, but a missed vsync can |
+
+`FrameWorkTimer` is always mounted (`Experience.tsx`). The `?debug=1` panel shows both "CPU work / frame" and the GPU row, which is labelled with its source; without a timer it reads "CPU fallback — no GPU timer". FPS on the HUD and panel stays rAF-based, because that is what the player sees.
+
+**The valve shrinks the scene render, not just the blit.** The JSM composer follows `viewport.dpr`, which is what `setDpr` writes: `renderTarget1/2` (and with them the scene pass, SSAO and bloom) are CSS size × DPR. A resize no longer rebuilds the driver; three resizes each target's depth texture on the next bind. Pinned by `PostProcessingPipeline.composer.test.ts`.
+
 Resolution gives first because it is the cheap, reversible trade; the preset changes shadow filtering and map size, which is a change of *look* and should stay rare. Opening the valve is slower than closing it (3 ticks vs 2) — giving pixels back is what re-loads the GPU, so an eager open is how a valve starts oscillating. Between the two thresholds is a dead band where nothing moves.
 
 `stepAdaptiveQuality` treats an **omitted** `renderScale` as "this system has no valve" and keeps the pre-#419 preset-only ladder; passing `RENDER_SCALE_MAX` is the opposite statement — a valve that is currently wide open, i.e. the one with the most room to close — and does defer the preset. Two different claims, deliberately not collapsed into one default.

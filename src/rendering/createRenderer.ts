@@ -134,6 +134,7 @@ export async function createGameRenderer(
 /** Constructor surface of `three/webgpu`'s WebGPURenderer that we depend on. */
 interface NodeRendererParameters extends THREE.WebGLRendererParameters {
   forceWebGL?: boolean;
+  trackTimestamp?: boolean;
 }
 
 interface NodeRendererModule extends NodeClassExports {
@@ -177,6 +178,12 @@ async function createNodeRenderer(
         ? toContextAttributes(request.contextOptions)
         : { antialias: request.antialias, powerPreference: request.powerPreference }),
       forceWebGL: request.forceWebGL,
+      // GPU frame time for the render-scale valve (gpuTimer.ts, #466 Phase B).
+      // WebGL2 backend: EXT_disjoint_timer_query_webgl2 when exposed. Native
+      // WebGPU: `timestamp-query`, which three already requests whenever the
+      // adapter has it (it asks for every supported feature). Either way three
+      // turns tracking off by itself when the capability is missing.
+      trackTimestamp: true,
     });
     await renderer.init();
 

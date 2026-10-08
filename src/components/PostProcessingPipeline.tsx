@@ -461,27 +461,32 @@ export function PostProcessingPipeline({
     chromatic: effectPresence.chromaticAberration,
   });
 
-  // The composer's depth textures are sized at construction, so the JSM driver
-  // is rebuilt on resize (as before); the node driver sizes itself.
-  const nodePath = isNodeRenderer(gl);
-  const composerWidth = nodePath ? 0 : size.width;
-  const composerHeight = nodePath ? 0 : size.height;
+  // Construction size only — the JSM driver follows later CSS-size and DPR
+  // changes through setSize (three resizes each target's depth texture to match
+  // on the next bind), so a resize never rebuilds it. The node driver sizes
+  // itself from the renderer.
+  const constructionSize = useRef({ width: size.width, height: size.height });
 
   const driver = useMemo((): PostDriver | null => {
     if (!gl || !scene || !camera) return null;
     if (isNodeRenderer(gl)) {
       return createNodeDriver(gl, scene, camera, initialStructure.current);
     }
-    return createComposerDriver(gl, scene, camera, composerWidth, composerHeight, tuning);
+    const { width, height } = constructionSize.current;
+    return createComposerDriver(gl, scene, camera, width, height, tuning);
     // tuning seeds construction only; per-frame values flow through apply().
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, scene, camera, composerWidth, composerHeight]);
+  }, [gl, scene, camera]);
 
-  // Handle resize
+  // Follow CSS size *and* DPR. `viewport.dpr` is what R3F's setDpr writes —
+  // RendererQualitySync drives it from the render-scale valve (#419) — so a
+  // closing valve now shrinks the composer's targets (scene render, SSAO,
+  // bloom), not just the final blit (#466 Phase B).
+  const dpr = useThree((s) => s.viewport.dpr);
   useEffect(() => {
     if (!driver) return;
-    driver.setSize(size.width, size.height, gl.getPixelRatio());
-  }, [size.width, size.height, driver, gl]);
+    driver.setSize(size.width, size.height, dpr);
+  }, [size.width, size.height, dpr, driver]);
 
   useEffect(() => () => driver?.dispose(), [driver]);
 

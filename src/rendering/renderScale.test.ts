@@ -13,6 +13,7 @@ import {
   stepRenderScale,
   type RenderScaleStepResult,
 } from './renderScale';
+import { summarizeFrameWindow } from './frameWork';
 
 const BUDGET = frameTimeBudgetMs(60);
 /** Comfortably past the slow line (20 ms ≈ 50 FPS). */
@@ -192,5 +193,35 @@ describe('valve position predicates', () => {
   it('treats out-of-band values as the nearest end, not as neither', () => {
     expect(isRenderScaleAtFloor(0.1)).toBe(true);
     expect(isRenderScaleAtCeiling(4)).toBe(true);
+  });
+});
+
+describe('60 Hz vsync — the valve reopens on GPU time (#466 Phase B)', () => {
+  const VSYNC = 1000 / 60;
+  const MISSED = BUDGET * SLOW_FRAME_RATIO;
+  const fill = (v: number) => Array.from({ length: 60 }, () => v);
+
+  /** One LODManager window: what the valve is fed for a given rAF / GPU pair. */
+  const windowMs = (rafMs: number, gpuMs: number) =>
+    summarizeFrameWindow(fill(rafMs), fill(gpuMs), { gpuTimed: true, missedFrameMs: MISSED }).meanWorkMs;
+
+  function drive(scale: number, frameTimeMs: number, ticks: number) {
+    return run(scale, frameTimeMs, ticks).scale;
+  }
+
+  it('closes under load, then climbs back to 1.0 once GPU time is under budget', () => {
+    // Heavy storm: GPU 22 ms, so rAF drops to every other vsync.
+    let scale = drive(RENDER_SCALE_MAX, windowMs(2 * VSYNC, 22), SCALE_DOWN_TICKS * 3);
+    expect(scale).toBeLessThanOrEqual(0.8);
+
+    // Load falls: GPU 9 ms, rAF pinned at the 16.7 ms vsync interval.
+    const steps = Math.round((RENDER_SCALE_MAX - scale) / RENDER_SCALE_STEP);
+    scale = drive(scale, windowMs(VSYNC, 9), SCALE_UP_TICKS * steps);
+    expect(scale).toBe(RENDER_SCALE_MAX);
+  });
+
+  it('documents the old bug: fed rAF time, the valve never reopens at 60 Hz', () => {
+    expect(VSYNC).toBeGreaterThan(BUDGET * FAST_FRAME_RATIO);
+    expect(drive(0.7, VSYNC, 100)).toBe(0.7);
   });
 });

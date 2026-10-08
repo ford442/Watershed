@@ -24,4 +24,17 @@ describe('createComposerDriver', () => {
     expect(enabled[enabled.length - 1].isOutputPass).toBe(true);
     expect(passes.filter((pass) => pass.isOutputPass)).toHaveLength(1);
   });
+
+  it('sizes its targets to CSS size × DPR, so the render-scale valve shrinks the scene render — #466 Phase B', () => {
+    const driver = build();
+    driver.setSize(1280, 720, 1);
+    expect(driver.composer.renderTarget1.width).toBe(1280);
+
+    // A valve at 0.5 reaches the composer as DPR 0.5 (RendererQualitySync → setDpr).
+    driver.setSize(1280, 720, 0.5);
+    for (const target of [driver.composer.renderTarget1, driver.composer.renderTarget2]) {
+      expect(target.width).toBe(640);
+      expect(target.height).toBe(360);
+    }
+  });
 });

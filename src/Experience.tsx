@@ -4,6 +4,7 @@ import { BiomeProvider, BiomeTransition } from './systems/biome/BiomeSystem';
 import { LODProvider, PerformanceMonitor } from './systems/lod/LODManager';
 import { SunPositionProvider } from './systems/lighting/SunPositionSystem';
 import PerfCheckpointMonitor from './debug/PerfCheckpointMonitor';
+import FrameWorkTimer from './rendering/FrameWorkTimer';
 import RendererDiagnosticsMonitor from './rendering/RendererDiagnosticsMonitor';
 import BootAssetPreloader from './components/BootAssetPreloader';
 import InnerExperience from './experience/InnerExperience';
@@ -56,6 +57,8 @@ export default function Experience({
     <>
       {isDebug && <Stats />}
       <BootAssetPreloader />
+      {/* Always on: the render-scale valve runs on frame work, not rAF time (#466). */}
+      <FrameWorkTimer />
       <KeyboardControls map={keyboardMap}>
         <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>
           <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>

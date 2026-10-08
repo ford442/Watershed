@@ -19,11 +19,13 @@ import {
 } from './adaptiveQuality';
 import {
   RENDER_SCALE_MAX,
+  SLOW_FRAME_RATIO,
   clampRenderScale,
   frameTimeBudgetMs,
   stepRenderScale,
 } from '../../rendering/renderScale';
 import { isVisualCaptureMode } from '../../rendering/rendererConfig';
+import { frameWorkMs, getFrameWork, summarizeFrameWindow } from '../../rendering/frameWork';
 
 export {
   ADAPTIVE_LIVE_BAND,
@@ -206,6 +208,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
 
   // Adaptive quality based on FPS
   const frameTimes = useRef<number[]>([]);
+  const workTimes = useRef<number[]>([]);
   const lastFrameTime = useRef(performance.now());
   const lowFpsFrames = useRef(0);
   const warnedFps = useRef(false);
@@ -239,16 +242,27 @@ export const LODProvider: React.FC<LODProviderProps> = ({
     const delta = now - lastFrameTime.current;
     lastFrameTime.current = now;
 
-    // Track frame times for accurate FPS
+    // Track frame times for accurate FPS, and the previous frame's work time
+    // (GPU ms when timed, never below CPU work) for the adaptive valve: rAF
+    // time on a vsync-capped display reads ≈16.7 ms however light the frame
+    // is, and a valve fed by it could never reopen at 60 Hz (#466 Phase B).
     frameTimes.current.push(delta);
+    workTimes.current.push(frameWorkMs(getFrameWork()));
     if (frameTimes.current.length > 60) {
       frameTimes.current.shift();
+      workTimes.current.shift();
     }
 
     // Check every ~1 second (60 frames)
     if (frameTimes.current.length >= 60) {
-      const avgDelta = frameTimes.current.reduce((a, b) => a + b) / frameTimes.current.length;
-      const currentFPS = Math.round(1000 / avgDelta);
+      const frameWindow = summarizeFrameWindow(frameTimes.current, workTimes.current, {
+        gpuTimed: getFrameWork().gpuMs !== null,
+        missedFrameMs: frameTimeBudgetMs(targetFPS) * SLOW_FRAME_RATIO,
+      });
+      const currentFPS = frameWindow.fps;
+      const workMs = frameWindow.meanWorkMs;
+      // The ladder's FPS lines, applied to work time rather than vsync time.
+      const workFPS = workMs > 0 ? Math.round(1000 / workMs) : currentFPS;
       setFps(currentFPS);
 
       // Goal 5: Performance regression warning — sustained <30 FPS
@@ -287,7 +301,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
           ? { nextRenderScale: null, consecutiveSlowTicks: 0, consecutiveFastTicks: 0 }
           : stepRenderScale({
               renderScale: renderScaleRef.current,
-              frameTimeMs: avgDelta,
+              frameTimeMs: workMs,
               targetFrameTimeMs: frameTimeBudgetMs(targetFPS),
               consecutiveSlowTicks: consecutiveSlowTicks.current,
               consecutiveFastTicks: consecutiveFastTicks.current,
@@ -306,7 +320,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
           storeSetRenderScale(activeRenderScale);
           console.log(
             `[LODManager] Render scale ${previous.toFixed(2)} → ` +
-              `${activeRenderScale.toFixed(2)} (frame time ${avgDelta.toFixed(1)}ms, ` +
+              `${activeRenderScale.toFixed(2)} (${frameWindow.workSource} time ${workMs.toFixed(1)}ms, ` +
               `budget ${frameTimeBudgetMs(targetFPS).toFixed(1)}ms)`
           );
         }
@@ -321,7 +335,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
         // against.
         const step = stepAdaptiveQuality({
           quality,
-          currentFPS,
+          currentFPS: workFPS,
           targetFPS,
           consecutiveLowSeconds: consecutiveLowSeconds.current,
           consecutiveHighSeconds: consecutiveHighSeconds.current,
@@ -336,12 +350,12 @@ export const LODProvider: React.FC<LODProviderProps> = ({
             ADAPTIVE_LIVE_BAND.indexOf(quality);
           if (descending) {
             console.warn(
-              `[LODManager] Sustained low FPS detected: ${currentFPS} (threshold ${targetFPS - 10}). ` +
+              `[LODManager] Sustained low FPS detected: ${workFPS} (threshold ${targetFPS - 10}). ` +
                 `Downgrading quality: ${quality} → ${step.nextQuality}`
             );
           } else {
             console.log(
-              `[LODManager] Sustained high FPS detected: ${currentFPS} (threshold ${targetFPS + 5}). ` +
+              `[LODManager] Sustained high FPS detected: ${workFPS} (threshold ${targetFPS + 5}). ` +
                 `Upgrading quality: ${quality} → ${step.nextQuality}`
             );
           }
@@ -350,6 +364,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
       }
 
       frameTimes.current = [];
+      workTimes.current = [];
     }
   });
 
