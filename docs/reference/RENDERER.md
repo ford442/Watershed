@@ -30,6 +30,10 @@ Antialias, `powerPreference`, and `failIfMajorPerformanceCaveat` are deliberatel
 
 All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` at renderer setup via `applyRendererContextOptions()`, and re-apply them on every preset change via `applyRendererQualityUpdate()`.
 
+**One output transform, at the end of either post chain (#466 Phase A).** three applies `toneMapping` / `outputColorSpace` only when a material renders to the screen and includes the tonemapping/colorspace chunks — never into a render target. So on a post-processed frame these settings reach the image only through the chain's last pass: the GLSL `EffectComposer` ends with three's `OutputPass`, and the node `RenderPipeline` keeps `outputColorTransform` (its default). Every pass upstream — SSAO, god rays, bloom, hue/saturation, chromatic, vignette, rainbow — works on linear HDR. Before #466 the GLSL chain had no `OutputPass`, so it presented raw linear values: about 2.5× darker than the TSL path in mean luma, and `toneMappingExposure` did nothing there. `pnpm test:post-parity` (`verification/post_parity.mjs` → `src/debug/postParity.ts`) renders one deterministic frame through both drivers on SwiftShader and fails at a 2% mean-luma gap. Two corrections came with it:
+- The vignette's `darkness` is decoded to linear (`linearVignetteDarkness`), so the grey it mixes toward stays the one tuned by eye.
+- The node path scales bloom strength by `UNREAL_BLOOM_STRENGTH_SCALE` (3). `UnrealBloomPass` multiplies by 3.0 internally and `BloomNode` doesn't, so before this the TSL path bloomed at a third of the tuned strength.
+
 ### Pinned context attributes
 
 These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`, in `src/rendering/contextAttributes.ts` so the probe and the renderer can share them without an import cycle), but they are pinned rather than left to THREE's defaults so a version bump cannot move them silently:
@@ -279,6 +283,7 @@ Scene-wide:
 pnpm build && pnpm preview --port 4173
 pnpm test:visual-smoke            # default GLSL baselines
 pnpm test:visual-smoke:tsl        # ?material=tsl, baselines suffixed __material-tsl
+pnpm test:post-parity             # one fixed frame, GLSL vs node driver, Δ mean luma < 2% (own Vite server)
 ```
 
 `VISUAL_EXTRA_QUERY` appends a query to every shot and namespaces the captures, so a TSL run can never overwrite GLSL baselines.

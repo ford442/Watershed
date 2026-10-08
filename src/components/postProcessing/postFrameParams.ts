@@ -117,6 +117,22 @@ export interface PostFrameParams {
   rainbow: { intensity: number; time: number; aspectRatio: number };
 }
 
+/**
+ * Vignette darkness, re-expressed for a linear chain. Eskil's vignette mixes
+ * toward `1 - darkness` — a grey the tuning picked by eye while the GLSL
+ * composer still presented raw linear values. Both chains now grade in linear
+ * and encode once at the end (#466 Phase A), so decode that grey to linear to
+ * keep the corners where they were tuned. Sign-preserving: a boosted darkness
+ * > 1 asks for a below-black target, which the mix then clamps visually.
+ */
+export function linearVignetteDarkness(darkness: number): number {
+  const grey = 1 - darkness;
+  const g = Math.abs(grey);
+  // sRGB EOTF (three's ColorManagement SRGBToLinear, which `three` doesn't export).
+  const linear = g < 0.04045 ? g * 0.0773993808 : Math.pow(g * 0.9478672986 + 0.0521327014, 2.4);
+  return 1 - Math.sign(grey) * linear;
+}
+
 const _sunClip = new THREE.Vector3();
 const _cameraForward = new THREE.Vector3();
 const _sunDir = new THREE.Vector3();
@@ -211,7 +227,7 @@ export function computePostFrameParams(
     vignette: {
       enabled: effectPresence.vignette,
       offset: tuning.vignetteOffset,
-      darkness: tuning.vignetteDarkness + smoothed.vignetteBoost,
+      darkness: linearVignetteDarkness(tuning.vignetteDarkness + smoothed.vignetteBoost),
     },
     godRays: {
       allowed,

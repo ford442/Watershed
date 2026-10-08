@@ -88,6 +88,13 @@ const AO_RESOLUTION_SCALE = 0.5;
 /** View distance (m) over which AO fades to none. */
 const AO_FADE_START = 40;
 const AO_FADE_END = 80;
+/**
+ * UnrealBloomPass's composite multiplies by 3.0 "for backwards compatibility
+ * with previous alpha-based intensity"; BloomNode's doesn't. `PostFrameParams`
+ * strengths were tuned on the JSM pass, so scale here to get the same glow
+ * (the post parity gate measured a 14% luma gap without it — #466 Phase A).
+ */
+export const UNREAL_BLOOM_STRENGTH_SCALE = 3;
 /** Upper bound of the god-ray march; `samples` breaks out earlier (uniformly). */
 const GOD_RAY_MAX_SAMPLES = 64;
 
@@ -333,7 +340,7 @@ export function createNodePostPipeline(
     pipeline,
     setStructure,
     update(params) {
-      u.bloomStrength.value = params.bloom.strength;
+      u.bloomStrength.value = params.bloom.strength * UNREAL_BLOOM_STRENGTH_SCALE;
       u.bloomRadius.value = params.bloom.radius;
       u.bloomThreshold.value = params.bloom.threshold;
       u.saturation.value = params.hueSaturation.saturation;

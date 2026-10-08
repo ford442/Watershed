@@ -6,6 +6,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
@@ -197,12 +198,13 @@ interface ComposerPassBundle {
   chromaticPass: ShaderPass;
   vignettePass: ShaderPass;
   rainbowPass: ShaderPass;
+  outputPass: OutputPass;
 }
 
 type WatershedComposer = EffectComposer & { userData: ComposerPassBundle };
 
 /** A post driver: the JSM composer on WebGLRenderer, or the node pipeline. */
-interface PostDriver {
+export interface PostDriver {
   apply(params: PostFrameParams): void;
   render(): void;
   setSize(width: number, height: number, pixelRatio: number): void;
@@ -213,15 +215,23 @@ function isNodeRenderer(gl: unknown): gl is WebGPURenderer {
   return (gl as { isWebGPURenderer?: boolean } | null)?.isWebGPURenderer === true;
 }
 
-/** GLSL path: JSM EffectComposer. WebGLRenderer only. */
-function createComposerDriver(
+/**
+ * GLSL path: JSM EffectComposer. WebGLRenderer only.
+ *
+ * Every pass works on linear HDR in the composer's half-float targets; the
+ * closing OutputPass is the chain's one tone-map (`gl.toneMapping`, exposure)
+ * and one sRGB encode (`gl.outputColorSpace`) — the same transform the node
+ * RenderPipeline applies via `outputColorTransform` (#466 Phase A). three skips
+ * both when rendering into a target, so without it the screen got raw linear.
+ */
+export function createComposerDriver(
   gl: THREE.WebGLRenderer,
   scene: THREE.Scene,
   camera: THREE.Camera,
   width: number,
   height: number,
   tuning: PostTuning,
-): PostDriver {
+): PostDriver & { readonly composer: EffectComposer } {
   const composer = new EffectComposer(gl) as WatershedComposer;
   composer.renderTarget1.depthBuffer = true;
   composer.renderTarget2.depthBuffer = true;
@@ -270,9 +280,13 @@ function createComposerDriver(
   rainbowPass.uniforms.aspectRatio.value = width / Math.max(1, height);
   composer.addPass(rainbowPass);
 
-  composer.userData = { ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass };
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
+
+  composer.userData = { ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass };
 
   return {
+    composer,
     apply(p) {
       bloomPass.enabled = p.bloom.enabled;
       bloomPass.strength = p.bloom.strength;
@@ -318,6 +332,7 @@ function createComposerDriver(
       // EffectComposer.dispose() only frees its own render targets, not each
       // pass's — SSAOPass owns three full-res render targets of its own.
       ssaoPass.dispose();
+      outputPass.dispose();
       composer.dispose();
     },
   };
