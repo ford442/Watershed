@@ -243,6 +243,7 @@ export const pass = createNode('pass');
 export const screenUV = createNode('screenUV');
 export const convertToTexture = createNode('convertToTexture');
 export const perspectiveDepthToViewZ = createNode('perspectiveDepthToViewZ');
+export const renderOutput = createNode('renderOutput');
 
 /** Node `RenderPipeline` double: records the output graph, renders nothing. */
 export class RenderPipeline {

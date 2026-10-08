@@ -28,6 +28,7 @@ export const PARITY_HEIGHT = 180;
 
 export interface ParityScenario {
   name: string;
+  aa?: 'none' | 'smaa';
   bloom: boolean;
   chromatic: boolean;
   vignette: boolean;
@@ -38,6 +39,9 @@ export const PARITY_SCENARIOS: ParityScenario[] = [
   { name: 'grade', bloom: false, chromatic: false, vignette: true, saturation: 0 },
   { name: 'grade+desaturate', bloom: false, chromatic: true, vignette: true, saturation: -0.3 },
   { name: 'bloom', bloom: true, chromatic: false, vignette: true, saturation: 0 },
+  // SMAA moves the node path's output transform inside the graph (#466 Phase C):
+  // the grade must not change with it.
+  { name: 'grade+smaa', aa: 'smaa', bloom: true, chromatic: false, vignette: true, saturation: 0 },
 ];
 
 export interface ParityResult {
@@ -48,6 +52,9 @@ export interface ParityResult {
   nodeLuma: number;
   /** |glsl − node| / max(node, ε). */
   relativeDelta: number;
+  /** Mean |Δluma| between horizontal neighbours, per driver — edge AA lowers it. */
+  glslEdge: number;
+  nodeEdge: number;
 }
 
 function buildScene(): { scene: THREE.Scene; camera: THREE.PerspectiveCamera } {
@@ -116,6 +123,7 @@ function paramsFor(s: ParityScenario): PostFrameParams {
       time: 0,
     },
     rainbow: { intensity: 0, time: 0, aspectRatio: PARITY_WIDTH / PARITY_HEIGHT },
+    aa: s.aa ?? 'none',
   };
 }
 
@@ -131,20 +139,40 @@ readback.width = PARITY_WIDTH;
 readback.height = PARITY_HEIGHT;
 const readbackCtx = readback.getContext('2d', { willReadFrequently: true })!;
 
+interface FrameStats {
+  /** Mean Rec.709 luma, 0..1. */
+  luma: number;
+  /** Mean |Δluma| between horizontal neighbours, 0..1 — aliasing raises it. */
+  edge: number;
+}
+
 /**
- * Mean Rec.709 luma (0..1) of what the canvas presents, read in the same task
- * as the render so the drawing buffer is still intact.
+ * Stats of what the canvas presents, read in the same task as the render so
+ * the drawing buffer is still intact.
  */
-function meanLuma(canvas: HTMLCanvasElement): number {
+function frameStats(canvas: HTMLCanvasElement): FrameStats {
   readbackCtx.clearRect(0, 0, PARITY_WIDTH, PARITY_HEIGHT);
   readbackCtx.drawImage(canvas, 0, 0, PARITY_WIDTH, PARITY_HEIGHT);
   const { data } = readbackCtx.getImageData(0, 0, PARITY_WIDTH, PARITY_HEIGHT);
   let sum = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+  let edge = 0;
+  let prev = 0;
+  for (let i = 0, px = 0; i < data.length; i += 4, px += 1) {
+    const y = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+    sum += y;
+    if (px % PARITY_WIDTH !== 0) edge += Math.abs(y - prev);
+    prev = y;
   }
-  return sum / (data.length / 4) / 255;
+  const n = data.length / 4;
+  return { luma: sum / n / 255, edge: edge / n / 255 };
 }
+
+/**
+ * SMAA (both implementations) decodes its area/search lookup textures from
+ * data-URI images asynchronously; until they land it blends with zero weights.
+ * Render once, let decodes finish, then measure.
+ */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 250));
 
 function makeCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -176,12 +204,14 @@ export async function runPostParity(): Promise<ParityResult[]> {
     driver.setSize(PARITY_WIDTH, PARITY_HEIGHT, 1);
     driver.apply(params);
     driver.render();
-    const glslLuma = meanLuma(glsl.domElement);
+    await settle();
+    driver.render();
+    const glslStats = frameStats(glsl.domElement);
 
     const outputPass = driver.composer.passes.find((p) => (p as { isOutputPass?: boolean }).isOutputPass);
     if (outputPass) outputPass.enabled = false;
     driver.render();
-    const glslLinearLuma = meanLuma(glsl.domElement);
+    const glslLinearLuma = frameStats(glsl.domElement).luma;
     driver.dispose();
 
     const pipeline = createNodePostPipeline(node, scene, camera, {
@@ -189,18 +219,23 @@ export async function runPostParity(): Promise<ParityResult[]> {
       ssao: false,
       godRays: false,
       chromatic: scenario.chromatic,
+      aa: scenario.aa ?? 'none',
     });
     pipeline.update(params);
     pipeline.render();
-    const nodeLuma = meanLuma(node.domElement);
+    await settle();
+    pipeline.render();
+    const nodeStats = frameStats(node.domElement);
     pipeline.dispose();
 
     results.push({
       scenario: scenario.name,
-      glslLuma,
+      glslLuma: glslStats.luma,
       glslLinearLuma,
-      nodeLuma,
-      relativeDelta: Math.abs(glslLuma - nodeLuma) / Math.max(nodeLuma, 1e-6),
+      nodeLuma: nodeStats.luma,
+      relativeDelta: Math.abs(glslStats.luma - nodeStats.luma) / Math.max(nodeStats.luma, 1e-6),
+      glslEdge: glslStats.edge,
+      nodeEdge: nodeStats.edge,
     });
   }
 

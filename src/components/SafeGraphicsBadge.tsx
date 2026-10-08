@@ -58,6 +58,7 @@ const REASON_COPY: Record<GraphicsCapabilityReason, string> = {
 const BOOT_FAILURE_COPY: Record<BootFailureReason, string> = {
   'no-frame': 'The previous start never drew a frame.',
   'context-lost': 'The previous start lost its WebGL context.',
+  'device-lost': 'The previous start lost its WebGPU device.',
   'renderer-throw': 'The previous start could not create a renderer.',
 };
 

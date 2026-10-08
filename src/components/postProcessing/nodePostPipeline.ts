@@ -6,6 +6,7 @@
  *
  *   scene → GTAO (+ denoise) → god rays (additive) → bloom (additive) → hue/saturation
  *         → chromatic aberration → vignette → waterfall rainbow
+ *         → output transform → SMAA (when the AA tier asks for it)
  *
  * Only ever constructed for a node renderer (`?material=tsl`); the GLSL path
  * keeps JSM `EffectComposer`. Never both in one session — the host picks one.
@@ -40,6 +41,7 @@ import {
   normalize,
   pass,
   perspectiveDepthToViewZ,
+  renderOutput,
   screenUV,
   sin,
   smoothstep,
@@ -52,6 +54,7 @@ import {
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
 import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
+import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import type { PostFrameParams } from './postFrameParams';
 
 type NodeHandle = ReturnType<typeof float>;
@@ -63,10 +66,12 @@ export interface NodePostStructure {
   ssao: boolean;
   godRays: boolean;
   chromatic: boolean;
+  /** In-chain AA. `msaa4` is not offered here — see `PostAaTier`. */
+  aa: 'none' | 'smaa';
 }
 
 export function nodePostStructureKey(s: NodePostStructure): string {
-  return `${+s.bloom}${+s.ssao}${+s.godRays}${+s.chromatic}`;
+  return `${+s.bloom}${+s.ssao}${+s.godRays}${+s.chromatic}${s.aa === 'smaa' ? 'S' : '-'}`;
 }
 
 export interface NodePostPipeline {
@@ -321,6 +326,19 @@ export function createNodePostPipeline(
     }
 
     color = rainbow(vignette(color));
+
+    if (s.aa === 'smaa') {
+      // SMAA wants display-referred input, so the output transform moves
+      // inside the graph (renderOutput reads the renderer's tone mapping and
+      // colour space) and the pipeline's own one is switched off — still
+      // exactly one tone-map and one sRGB encode per frame.
+      const aaPass = smaa(renderOutput(color));
+      owned.push(aaPass as unknown as Disposable);
+      color = nd(aaPass);
+      pipeline.outputColorTransform = false;
+    } else {
+      pipeline.outputColorTransform = true;
+    }
 
     pipeline.outputNode = color;
     pipeline.needsUpdate = true;

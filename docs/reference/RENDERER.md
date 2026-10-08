@@ -228,9 +228,26 @@ http://localhost:3000/?debug=1&renderer=webgl&wireframe=1&physicsDebug=1
 http://localhost:3000/?screenshot=1
 ```
 
-## WebGL context loss recovery
+## GPU loss recovery (WebGL context, WebGPU device)
 
-`App.tsx` registers `webglcontextlost` (with `preventDefault`) and `webglcontextrestored` on the Canvas element. On loss, a minimal “Graphics paused — recovering…” toast appears; on restore, the Canvas remounts via an epoch counter in its React `key`.
+`App.tsx` routes every renderer through [`gpuLossRecovery.ts`](../../src/rendering/gpuLossRecovery.ts) (`attachGpuLossHandlers`), and detaches the previous canvas's handlers when the next renderer comes up:
+
+- **WebGL2** (GLSL, and the node renderer's WebGL2 backend): `webglcontextlost` (with `preventDefault`) and `webglcontextrestored` on the canvas. On loss a minimal "Graphics paused — recovering…" toast appears and `bootCrashGuard` records `context-lost`. On restore the Canvas remounts via an epoch counter in its React `key`.
+- **Native WebGPU** (#466 Phase C): three's `renderer.onDeviceLost`. A lost `GPUDevice` never comes back, so `device-lost` is recorded and the epoch bumps at once; the new renderer requests a new device. three's default handler still runs and logs. three already ignores `reason: 'destroyed'`, which is its own disposal, so an intentional remount can't loop.
+
+Run state is Zustand outside the Canvas, so it survives either remount. **Simulate:** `?debugGpuLoss=1` exposes `window.__watershedLoseGpu()`. On WebGL it calls `WEBGL_lose_context` (restoring after 1 s). On WebGPU it calls `device.destroy()` and then reports the loss through the same hook, because three filters out a `destroyed` loss.
+
+## In-chain anti-aliasing (#466 Phase C)
+
+The canvas's `antialias` is a boot-frozen envelope attribute (#463), and with post on it multisamples only the final fullscreen quad. The scene renders into single-sample composer targets, so edge AA lives in the post chain, keyed off the post quality (`aaTierFor`) and switched live with no remount:
+
+| Post quality | GLSL (`EffectComposer`) | Node (`RenderPipeline`) |
+|---|---|---|
+| low | none | none |
+| medium / high | `SMAAPass` after `OutputPass` | `smaa(renderOutput(color))`, with `outputColorTransform` off, so there is still one transform |
+| ultra | 4× MSAA ping-pong targets (`samples = 4`), SMAA off | SMAA. The scene pass stays single-sampled because GTAO and god rays sample its depth, and multisampled depth can't be sampled on native WebGPU |
+
+SMAA runs on display-referred colour, after the output transform. The parity gate has a `grade+smaa` scenario: luma stays within 0.2% across drivers, and edge energy drops on both. The composer depth is now 24-bit (`UnsignedIntType`); 16-bit banded SSAO and god rays at canyon distances. **Per-tier GPU cost has not been measured yet.** It needs a real GPU: read the debug panel's GPU row (#466 Phase B) per tier. That number decides whether #463's envelope should keep requesting context MSAA.
 
 ## Material backends (#256 path A)
 

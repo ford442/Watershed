@@ -5,6 +5,7 @@ import {
   computePostFrameParams,
   createPostSmoothedState,
   godRaysAllowed,
+  aaTierFor,
   linearVignetteDarkness,
   type PostFrameInput,
 } from './postFrameParams';
@@ -49,6 +50,15 @@ function settle(input: PostFrameInput, frames = 600) {
   for (let i = 1; i < frames; i++) params = computePostFrameParams(input, DEFAULT_POST_TUNING, smoothed);
   return params;
 }
+
+describe('aaTierFor', () => {
+  it('maps post quality to an in-chain AA tier', () => {
+    expect(aaTierFor('low')).toBe('none');
+    expect(aaTierFor('medium')).toBe('smaa');
+    expect(aaTierFor('high')).toBe('smaa');
+    expect(aaTierFor('ultra')).toBe('msaa4');
+  });
+});
 
 describe('linearVignetteDarkness', () => {
   it('decodes the tuned display grey to linear (0.5 grey → ~0.214)', () => {

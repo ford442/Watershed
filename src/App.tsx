@@ -40,6 +40,7 @@ import {
   resolveMaterialBackend,
   type MaterialBackend,
 } from './rendering/materialBackend';
+import { attachGpuLossHandlers, isGpuLossDebugEnabled, simulateGpuLoss } from './rendering/gpuLossRecovery';
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistence/persistenceBootstrap';
 import { getActiveRunKey, getActiveMapId } from './utils/runContext';
@@ -172,6 +173,10 @@ function App({ graphicsBoot }: AppProps = {}) {
   const [canvasReady, setCanvasReady] = useState(false);
   const bootReady = canvasReady && !assetsLoading;
   const [webglRecovering, setWebglRecovering] = useState(false);
+  // The live canvas's GPU-loss listeners/hooks (gpuLossRecovery.ts); detached
+  // when the next renderer comes up and when App unmounts.
+  const detachGpuLoss = useRef<(() => void) | null>(null);
+  useEffect(() => () => detachGpuLoss.current?.(), []);
   const rendererContextOptions = deriveRendererContextOptions(qualityPreset, {
     devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
     // Frozen at boot. Antialias, power preference, and the caveat flag are
@@ -523,22 +528,31 @@ function App({ graphicsBoot }: AppProps = {}) {
               // matching restore on the new element. Clear the toast whenever a
               // fresh renderer comes up successfully.
               setWebglRecovering(false);
-              const canvas = gl.domElement;
-              const onContextLost = (event: Event) => {
-                event.preventDefault();
-                setWebglRecovering(true);
-                // If the tab is reloaded before the context comes back, the next
-                // boot should know this was a GPU loss, not a slow start.
-                recordBootFailure('context-lost');
-                console.warn('[App] WebGL context lost — waiting for restore');
-              };
-              const onContextRestored = () => {
-                console.info('[App] WebGL context restored — remounting Canvas');
-                setWebglRecovering(false);
-                setCanvasEpoch((epoch) => epoch + 1);
-              };
-              canvas.addEventListener('webglcontextlost', onContextLost);
-              canvas.addEventListener('webglcontextrestored', onContextRestored);
+              // Previous canvas's handlers go first: a remount must not hear the
+              // old context's teardown as a fresh loss.
+              detachGpuLoss.current?.();
+              detachGpuLoss.current = attachGpuLossHandlers(gl, {
+                onLost(kind, detail) {
+                  setWebglRecovering(true);
+                  // If the tab is reloaded before the GPU comes back, the next
+                  // boot should know this was a GPU loss, not a slow start.
+                  recordBootFailure(kind);
+                  console.warn(
+                    kind === 'device-lost'
+                      ? `[App] WebGPU device lost${detail ? ` (${detail})` : ''} — remounting Canvas`
+                      : '[App] WebGL context lost — waiting for restore',
+                  );
+                },
+                onRestored(kind) {
+                  if (kind === 'context-lost') console.info('[App] WebGL context restored — remounting Canvas');
+                  setWebglRecovering(false);
+                  setCanvasEpoch((epoch) => epoch + 1);
+                },
+              });
+              if (isGpuLossDebugEnabled()) {
+                (window as Window & { __watershedLoseGpu?: () => string | null }).__watershedLoseGpu = () =>
+                  simulateGpuLoss(gl);
+              }
             }}
           >
             <RendererQualitySync />

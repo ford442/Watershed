@@ -13,6 +13,26 @@ import { getGodRaySunColor } from '../../systems/volumetric/VolumetricGodRays';
 
 export type PostQualityLevel = 'low' | 'medium' | 'high' | 'ultra';
 
+/**
+ * Anti-aliasing inside the post chain (#466 Phase C). The canvas's own
+ * `antialias` is a boot-frozen envelope attribute (#463) and only multisamples
+ * the final fullscreen quad — the scene renders into single-sample targets —
+ * so edge AA has to live here, where it can switch live with no remount.
+ *   none   Low.
+ *   smaa   Medium / High: SMAA after the output transform (display-referred).
+ *   msaa4  Ultra: 4x multisampled composer targets on the GLSL path. The node
+ *          path runs SMAA instead: its scene pass must stay single-sampled,
+ *          because GTAO and the god-ray march sample its depth and a
+ *          multisampled depth texture can't be sampled on native WebGPU.
+ */
+export type PostAaTier = 'none' | 'smaa' | 'msaa4';
+
+export function aaTierFor(quality: PostQualityLevel): PostAaTier {
+  if (quality === 'low') return 'none';
+  if (quality === 'ultra') return 'msaa4';
+  return 'smaa';
+}
+
 /** Tunables that arrive as `PostProcessingPipeline` props. */
 export interface PostTuning {
   bloomIntensity: number;
@@ -115,6 +135,7 @@ export interface PostFrameParams {
     time: number;
   };
   rainbow: { intensity: number; time: number; aspectRatio: number };
+  aa: PostAaTier;
 }
 
 /**
@@ -249,5 +270,6 @@ export function computePostFrameParams(
       time: input.elapsed,
       aspectRatio: input.aspectRatio,
     },
+    aa: aaTierFor(quality),
   };
 }

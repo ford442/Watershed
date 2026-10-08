@@ -21,6 +21,9 @@
  *   Canvas and never drew.
  * - `context-lost` — `webglcontextlost` fired (App records it). A GPU reset or
  *   a driver kill.
+ * - `device-lost` — the native-WebGPU twin: three's `onDeviceLost` fired
+ *   (gpuLossRecovery.ts). App remounts at once; this records it in case the
+ *   remount never draws.
  * - `renderer-throw` — `createGameRenderer` threw out of the R3F `gl` factory.
  *
  * Self-healing is tied to the record, not to a timer: the next boot that draws a
@@ -35,7 +38,7 @@
 export const BOOT_GUARD_KEY = 'watershed:boot-failure';
 
 /** How a boot failed. Ordered by how specific the evidence is. */
-export type BootFailureReason = 'no-frame' | 'context-lost' | 'renderer-throw';
+export type BootFailureReason = 'no-frame' | 'context-lost' | 'device-lost' | 'renderer-throw';
 
 export interface BootFailureRecord {
   reason: BootFailureReason;
@@ -77,7 +80,7 @@ function defaultStorage(): BootGuardStorage | null {
 }
 
 const isFailureReason = (value: unknown): value is BootFailureReason =>
-  value === 'no-frame' || value === 'context-lost' || value === 'renderer-throw';
+  value === 'no-frame' || value === 'context-lost' || value === 'device-lost' || value === 'renderer-throw';
 
 /** Read the armed/left-behind record, or null. Tolerates a corrupt value. */
 export function readBootFailure(

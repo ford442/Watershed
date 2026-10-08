@@ -7,6 +7,7 @@ import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
@@ -20,6 +21,7 @@ import { qualityToEffects } from '../systems/settings/settingsDerive';
 import type { VehicleRigidBodyRef } from '../experience/types';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
+  aaTierFor,
   computePostFrameParams,
   createPostSmoothedState,
   godRaysAllowed,
@@ -199,6 +201,7 @@ interface ComposerPassBundle {
   vignettePass: ShaderPass;
   rainbowPass: ShaderPass;
   outputPass: OutputPass;
+  smaaPass: SMAAPass;
 }
 
 type WatershedComposer = EffectComposer & { userData: ComposerPassBundle };
@@ -235,8 +238,10 @@ export function createComposerDriver(
   const composer = new EffectComposer(gl) as WatershedComposer;
   composer.renderTarget1.depthBuffer = true;
   composer.renderTarget2.depthBuffer = true;
-  composer.renderTarget1.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedShortType);
-  composer.renderTarget2.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedShortType);
+  // 24-bit depth (UnsignedIntType → DEPTH_COMPONENT24): SSAO and god rays
+  // sample it at canyon distances, where 16 bits band (#466 Phase C).
+  composer.renderTarget1.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
+  composer.renderTarget2.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
   composer.addPass(new RenderPass(scene, camera));
 
   const resolution = new THREE.Vector2(width, height);
@@ -283,7 +288,24 @@ export function createComposerDriver(
   const outputPass = new OutputPass();
   composer.addPass(outputPass);
 
-  composer.userData = { ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass };
+  // Edge AA, after the output transform: SMAA's edge detection is tuned for
+  // display-referred (sRGB) input. Off until apply() picks the tier.
+  const smaaPass = new SMAAPass();
+  smaaPass.enabled = false;
+  composer.addPass(smaaPass);
+
+  composer.userData = {
+    ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass, smaaPass,
+  };
+
+  /** Multisample both ping-pong targets; three reallocates them on next use. */
+  const setTargetSamples = (samples: number) => {
+    for (const target of [composer.renderTarget1, composer.renderTarget2]) {
+      if (target.samples === samples) continue;
+      target.samples = samples;
+      target.dispose();
+    }
+  };
 
   return {
     composer,
@@ -320,6 +342,9 @@ export function createComposerDriver(
       rainbowPass.uniforms.intensity.value = p.rainbow.intensity;
       rainbowPass.uniforms.time.value = p.rainbow.time;
       rainbowPass.uniforms.aspectRatio.value = p.rainbow.aspectRatio;
+
+      smaaPass.enabled = p.aa === 'smaa';
+      setTargetSamples(p.aa === 'msaa4' ? 4 : 0);
     },
     render() {
       composer.render();
@@ -333,6 +358,7 @@ export function createComposerDriver(
       // pass's — SSAOPass owns three full-res render targets of its own.
       ssaoPass.dispose();
       outputPass.dispose();
+      smaaPass.dispose();
       composer.dispose();
     },
   };
@@ -344,6 +370,7 @@ function nodeStructureFor(p: PostFrameParams): NodePostStructure {
     ssao: p.ssao.enabled,
     godRays: p.godRays.allowed,
     chromatic: p.chromatic.enabled,
+    aa: p.aa === 'none' ? 'none' : 'smaa',
   };
 }
 
@@ -459,6 +486,7 @@ export function PostProcessingPipeline({
     ssao: effectPresence.ssao,
     godRays: godRaysAllowed({ effectPresence, quality, enableGodRays: config.enableGodRays }),
     chromatic: effectPresence.chromaticAberration,
+    aa: aaTierFor(quality) === 'none' ? 'none' : 'smaa',
   });
 
   // Construction size only — the JSM driver follows later CSS-size and DPR
