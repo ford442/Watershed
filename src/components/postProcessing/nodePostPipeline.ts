@@ -21,7 +21,7 @@
  * `loadNodePost()` (see nodePostLoader.ts), which the node renderer awaits.
  */
 import * as THREE from 'three';
-import { RenderPipeline, type WebGPURenderer } from 'three/webgpu';
+import { RenderPipeline, type Node, type WebGPURenderer } from 'three/webgpu';
 import {
   Break,
   Fn,
@@ -56,9 +56,8 @@ import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
 import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import type { PostFrameParams } from './postFrameParams';
+import type { FloatNode, Vec2Node, Vec4Node } from '../../materials/tsl/nodeTypes';
 
-type NodeHandle = ReturnType<typeof float>;
-const nd = (u: unknown): NodeHandle => u as NodeHandle;
 
 /** Which expensive passes are in the graph. Changing it rebuilds the output node. */
 export interface NodePostStructure {
@@ -151,8 +150,8 @@ export function createNodePostPipeline(
   // Control flow stays uniform (loop bound + break come from uniforms; the
   // off-screen early-out is a mask, not a break) so WGSL accepts the texture
   // samples inside the loop.
-  const hash = Fn(([p]: [NodeHandle]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
-  const valueNoise = Fn(([p]: [NodeHandle]) => {
+  const hash = Fn(([p]: [Vec2Node]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453)));
+  const valueNoise = Fn(([p]: [Vec2Node]) => {
     const i = floor(p);
     const f = fract(p).toVar();
     f.assign(f.mul(f).mul(float(3.0).sub(f.mul(2.0))));
@@ -165,21 +164,21 @@ export function createNodePostPipeline(
 
   const godRays = Fn(() => {
     const result = vec3(0).toVar();
-    If(nd(u.godRaysIntensity).greaterThan(0), () => {
+    If(u.godRaysIntensity.greaterThan(0), () => {
       const uv = screenUV;
-      const delta = nd(u.sunScreenPosition).sub(uv);
+      const delta = u.sunScreenPosition.sub(uv);
       const dist = length(delta);
       const direction = normalize(delta.add(vec2(1e-6, 0)));
       const currentDepth = sceneDepth.sample(uv).r;
-      const samplesF = max(float(nd(u.samples)), 1.0);
-      const sampleDist = nd(u.rayLength).div(samplesF);
+      const samplesF = max(float(u.samples), 1.0);
+      const sampleDist = u.rayLength.div(samplesF);
       const samplePos = vec2(uv).toVar();
       const sampleWeight = float(1).toVar();
       const inside = float(1).toVar();
       const illumination = float(0).toVar();
 
-      Loop({ start: int(0), end: int(GOD_RAY_MAX_SAMPLES), type: 'int', condition: '<' }, ({ i }: { i: NodeHandle }) => {
-        If(i.greaterThanEqual(nd(u.samples)), () => {
+      Loop({ start: int(0), end: int(GOD_RAY_MAX_SAMPLES), type: 'int', condition: '<' }, ({ i }) => {
+        If(i.greaterThanEqual(u.samples), () => {
           Break();
         });
         samplePos.addAssign(direction.mul(sampleDist));
@@ -189,30 +188,30 @@ export function createNodePostPipeline(
         const sampleUv = clamp(samplePos, 0.0, 1.0);
         const luminance = dot(sceneColor.sample(sampleUv).rgb, vec3(0.299, 0.587, 0.114));
         const sampleDepth = sceneDepth.sample(sampleUv).r;
-        const t = nd(u.time);
+        const t = u.time;
         const mistNoise = valueNoise(sampleUv.mul(8.0).add(vec2(t.mul(0.02), t.mul(-0.01)))).mul(0.5).add(0.5);
         const depthDelta = abs(sampleDepth.sub(currentDepth));
-        const edgeAttenuation = float(1).sub(smoothstep(0.008, 0.085, depthDelta).mul(nd(u.wallOcclusion)));
-        const mistDensity = nd(u.density).mul(mistNoise).mul(edgeAttenuation);
+        const edgeAttenuation = float(1).sub(smoothstep(0.008, 0.085, depthDelta).mul(u.wallOcclusion));
+        const mistDensity = u.density.mul(mistNoise).mul(edgeAttenuation);
         illumination.addAssign(luminance.mul(sampleWeight).mul(mistDensity).mul(inside));
-        sampleWeight.mulAssign(nd(u.decay));
+        sampleWeight.mulAssign(u.decay);
       });
 
-      const lit = clamp(illumination.mul(nd(u.exposure).div(samplesF)), 0.0, 1.0);
+      const lit = clamp(illumination.mul(u.exposure.div(samplesF)), 0.0, 1.0);
       const sunFade = smoothstep(1.0, 0.15, dist);
       // The JSM pass blends `vec4(rayColor, a)` additively (src + dst), so the
       // composite contribution is rayColor itself.
-      result.assign(nd(u.sunColor).mul(lit).mul(nd(u.godRaysIntensity)).mul(sunFade).mul(step(0.0005, dist)));
+      result.assign(u.sunColor.mul(lit).mul(u.godRaysIntensity).mul(sunFade).mul(step(0.0005, dist)));
     });
     return result;
   });
 
   // ── Per-pixel grading (always in the graph; inert at neutral uniforms) ────
   // HueSaturationShader with hue = 0 (the only value the stack uses).
-  const hueSaturation = Fn(([color]: [NodeHandle]) => {
+  const hueSaturation = Fn(([color]: [Vec4Node]) => {
     const rgb = color.rgb.toVar();
     const average = rgb.r.add(rgb.g).add(rgb.b).div(3.0);
-    const sat = nd(u.saturation);
+    const sat = u.saturation;
     If(sat.greaterThan(0.0), () => {
       rgb.addAssign(average.sub(rgb).mul(float(1.0).sub(float(1.0).div(float(1.001).sub(sat)))));
     }).Else(() => {
@@ -224,10 +223,10 @@ export function createNodePostPipeline(
   // CHROMATIC_ABERRATION_SHADER: radial RGB split, strongest at the centre.
   const chromatic = Fn(([tex]: [ReturnType<typeof convertToTexture>]) => {
     const uv = screenUV;
-    const delta = uv.sub(nd(u.chromaticCenter));
+    const delta = uv.sub(u.chromaticCenter);
     const dist = length(delta);
     const direction = normalize(delta.add(vec2(1e-6, 0)));
-    const factor = float(1.0).sub(dist.div(nd(u.chromaticRadius))).mul(nd(u.chromaticAmount)).max(0.0);
+    const factor = float(1.0).sub(dist.div(u.chromaticRadius)).mul(u.chromaticAmount).max(0.0);
     const r = tex.sample(uv.add(direction.mul(factor))).r;
     const g = tex.sample(uv).g;
     const b = tex.sample(uv.sub(direction.mul(factor))).b;
@@ -235,26 +234,26 @@ export function createNodePostPipeline(
   });
 
   // VignetteShader.
-  const vignette = Fn(([color]: [NodeHandle]) => {
-    const v = screenUV.sub(0.5).mul(nd(u.vignetteOffset));
-    const graded = mix(color.rgb, vec3(float(1.0).sub(nd(u.vignetteDarkness))), dot(v, v));
-    return vec4(mix(color.rgb, graded, nd(u.vignetteEnabled)), color.a);
+  const vignette = Fn(([color]: [Vec4Node]) => {
+    const v = screenUV.sub(0.5).mul(u.vignetteOffset);
+    const graded = mix(color.rgb, vec3(float(1.0).sub(u.vignetteDarkness)), dot(v, v));
+    return vec4(mix(color.rgb, graded, u.vignetteEnabled), color.a);
   });
 
   // RAINBOW_SHADER: waterfall-mist prismatic arc.
-  const hue2rgb = Fn(([hIn]: [NodeHandle]) => {
+  const hue2rgb = Fn(([hIn]: [FloatNode]) => {
     const h = fract(hIn);
     const r = abs(h.mul(6.0).sub(3.0)).sub(1.0);
     const g = float(2.0).sub(abs(h.mul(6.0).sub(2.0)));
     const b = float(2.0).sub(abs(h.mul(6.0).sub(4.0)));
     return clamp(vec3(r, g, b), 0.0, 1.0);
   });
-  const rainbow = Fn(([color]: [NodeHandle]) => {
+  const rainbow = Fn(([color]: [Vec4Node]) => {
     const out = vec4(color).toVar();
-    If(nd(u.rainbowIntensity).greaterThanEqual(0.005), () => {
+    If(u.rainbowIntensity.greaterThanEqual(0.005), () => {
       // RAINBOW_SHADER works in bottom-left vUv; screenUV is top-left.
       const uv = vec2(screenUV.x, float(1.0).sub(screenUV.y));
-      const delta = uv.sub(vec2(0.5, 0.52)).mul(vec2(nd(u.aspectRatio), 1.0));
+      const delta = uv.sub(vec2(0.5, 0.52)).mul(vec2(u.aspectRatio, 1.0));
       const dist = length(delta);
       const inner = float(0.2);
       const outer = float(0.37);
@@ -262,8 +261,8 @@ export function createNodePostPipeline(
       const arcMask = smoothstep(0.06, -0.04, delta.y.div(max(dist, 0.001)));
       const t = clamp(dist.sub(inner).div(max(outer.sub(inner), 0.001)), 0.0, 1.0);
       const spectral = hue2rgb(float(1.0).sub(t).mul(0.75));
-      const shimmer = float(0.8).add(sin(nd(u.time).mul(2.5).add(dist.mul(24.0))).mul(0.2));
-      const amount = band.mul(arcMask).mul(shimmer).mul(nd(u.rainbowIntensity)).mul(0.28);
+      const shimmer = float(0.8).add(sin(u.time.mul(2.5).add(dist.mul(24.0))).mul(0.2));
+      const amount = band.mul(arcMask).mul(shimmer).mul(u.rainbowIntensity).mul(0.28);
       out.assign(vec4(color.rgb.add(spectral.mul(amount)), color.a));
     });
     return out;
@@ -277,25 +276,27 @@ export function createNodePostPipeline(
     for (const node of owned) node.dispose();
     owned = [];
 
-    let color: NodeHandle = nd(sceneColor);
+    let color: Vec4Node = sceneColor;
 
     if (s.ssao) {
       // Normals are reconstructed from depth (no MRT), so every scene material
       // — including the project's custom node materials — works unchanged.
-      const aoPass = ao(sceneDepth, null, camera);
+      // GTAONode / DenoiseNode accept a null normal node (reconstruct from depth);
+      // their declared signatures don't, hence the casts.
+      const aoPass = ao(sceneDepth, null as unknown as Node, camera);
       aoPass.resolutionScale = AO_RESOLUTION_SCALE;
       owned.push(aoPass as unknown as Disposable);
       // Raw GTAO carries its per-pixel noise pattern; the JSM SSAOPass blurs
       // its output too.
-      const aoDenoised = denoise(aoPass.getTextureNode(), sceneDepth, null, camera);
+      const aoDenoised = denoise(aoPass.getTextureNode(), sceneDepth, null as unknown as Node, camera);
       owned.push(aoDenoised as unknown as Disposable);
       // Depth-reconstructed normals fall apart at range — the sky dome and
       // far walls band into stripes, and GTAO leaves far-plane pixels
       // unwritten — so AO fades out with view distance. It is for contact
       // shadows in crevices, which are all near the player.
-      const viewDistance = perspectiveDepthToViewZ(sceneDepth.r, nd(u.cameraNear), nd(u.cameraFar)).negate();
+      const viewDistance = perspectiveDepthToViewZ(sceneDepth.r, u.cameraNear, u.cameraFar).negate();
       const fade = smoothstep(AO_FADE_START, AO_FADE_END, viewDistance);
-      const occlusion = mix(nd(aoDenoised).r, float(1), fade);
+      const occlusion = mix((aoDenoised as unknown as Vec4Node).r, float(1), fade);
       color = vec4(color.rgb.mul(occlusion), color.a);
     }
 
@@ -306,15 +307,9 @@ export function createNodePostPipeline(
     if (s.bloom) {
       // BloomNode adopts node arguments as-is, so the long-lived uniforms keep
       // their per-frame writes across structure rebuilds.
-      type BloomArg = Parameters<typeof bloom>[1];
-      const bloomPass = bloom(
-        color,
-        u.bloomStrength as unknown as BloomArg,
-        u.bloomRadius as unknown as BloomArg,
-        u.bloomThreshold as unknown as BloomArg,
-      );
+      const bloomPass = bloom(color, u.bloomStrength, u.bloomRadius, u.bloomThreshold);
       owned.push(bloomPass as unknown as Disposable);
-      color = vec4(color.rgb.add(nd(bloomPass).rgb), color.a);
+      color = vec4(color.rgb.add(bloomPass.rgb), color.a);
     }
 
     color = hueSaturation(color);
@@ -334,7 +329,7 @@ export function createNodePostPipeline(
       // exactly one tone-map and one sRGB encode per frame.
       const aaPass = smaa(renderOutput(color));
       owned.push(aaPass as unknown as Disposable);
-      color = nd(aaPass);
+      color = aaPass as unknown as Vec4Node;
       pipeline.outputColorTransform = false;
     } else {
       pipeline.outputColorTransform = true;

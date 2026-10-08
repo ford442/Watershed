@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
-import { attribute, float, mix, positionLocal, sin, uniform, vec3 } from 'three/tsl';
-
-type NodeHandle = ReturnType<typeof float>;
-const nd = (u: { value: unknown }): NodeHandle => u as unknown as NodeHandle;
+import { attribute, mix, positionLocal, sin, uniform, vec3 } from 'three/tsl';
 
 export function createDragonflyBodyNodeMaterial(source: THREE.MeshStandardMaterial): MeshStandardNodeMaterial {
   const uTime = uniform(0);
@@ -12,10 +9,10 @@ export function createDragonflyBodyNodeMaterial(source: THREE.MeshStandardMateri
     roughness: source.roughness,
     metalness: source.metalness,
   });
-  const aFlap = attribute('aFlap', 'float');
-  const aHinge = attribute('aHinge', 'vec3');
-  const instancePhase = attribute('instancePhase', 'float');
-  const flapAngle = sin(nd(uTime).mul(24).add(instancePhase.mul(6.2831))).mul(0.65).add(0.15);
+  const aFlap = attribute<'float'>('aFlap', 'float');
+  const aHinge = attribute<'vec3'>('aHinge', 'vec3');
+  const instancePhase = attribute<'float'>('instancePhase', 'float');
+  const flapAngle = sin(uTime.mul(24).add(instancePhase.mul(6.2831))).mul(0.65).add(0.15);
   material.positionNode = mix(positionLocal, aHinge.add(positionLocal.sub(aHinge)), aFlap.abs().min(1));
   material.userData.uniforms = { uTime, flapAngle };
   material.userData.materialBackend = 'tsl';
@@ -32,10 +29,10 @@ export function createFishNodeMaterial(source: THREE.MeshStandardMaterial): Mesh
     vertexColors: source.vertexColors,
     side: source.side,
   });
-  const aTailWeight = attribute('aTailWeight', 'float');
-  const instancePhase = attribute('instancePhase', 'float');
-  const instanceFreq = attribute('instanceFreq', 'float');
-  const swim = sin(nd(uTime).mul(instanceFreq).add(instancePhase.mul(6.2831)).add(positionLocal.z.mul(-3)));
+  const aTailWeight = attribute<'float'>('aTailWeight', 'float');
+  const instancePhase = attribute<'float'>('instancePhase', 'float');
+  const instanceFreq = attribute<'float'>('instanceFreq', 'float');
+  const swim = sin(uTime.mul(instanceFreq).add(instancePhase.mul(6.2831)).add(positionLocal.z.mul(-3)));
   material.positionNode = positionLocal.add(vec3(swim.mul(0.16).mul(aTailWeight), 0, 0));
   material.userData.uniforms = { uTime };
   material.userData.materialBackend = 'tsl';
@@ -50,7 +47,7 @@ export function createFishRingNodeMaterial(source: THREE.MeshBasicMaterial): Mes
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const ringAlpha = attribute('ringAlpha', 'float');
+  const ringAlpha = attribute<'float'>('ringAlpha', 'float');
   material.opacityNode = ringAlpha;
   material.userData.materialBackend = 'tsl';
   return material;

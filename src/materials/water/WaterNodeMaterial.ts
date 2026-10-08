@@ -30,6 +30,7 @@
 
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
+import type { Node, TextureNode, UniformNode } from 'three/webgpu';
 import {
   Fn,
   abs,
@@ -65,6 +66,7 @@ import {
 import { WATER_SHADER } from '../../constants/game';
 import { SWE_DRY_DEPTH } from '../../systems/water/sampleSWEFlow';
 import { waterFbm2 as fbm2, waterFbm3 as fbm3 } from '../tsl/waterNoise';
+import type { FloatUniform, Vec2Node } from '../tsl/nodeTypes';
 import {
   WATER_TEXTURE_UNIFORM_NAMES,
   WATER_UNIFORM_NAMES,
@@ -81,24 +83,44 @@ const BLACK_PIXEL = (() => {
 })();
 
 /**
- * Node handle for a uniform. TSL's fluent API is untyped at this boundary, so a
- * single narrow cast here keeps every call site below readable and cast-free.
+ * Node handle for a uniform — an identity pass-through. Each uniform node is
+ * typed by what it carries (see `WaterUniformNodes`), so `nd` preserves that.
  */
-type NodeHandle = ReturnType<typeof float>;
-const nd = (u: { value: unknown }): NodeHandle => u as unknown as NodeHandle;
+const nd = <T extends Node>(u: T): T => u;
 
 /** Uniform-node record, `.value`-addressable exactly like THREE.IUniform. */
 export type WaterNodeUniforms = Record<WaterUniformName, { value: unknown }>;
 
+type WaterTextureUniformName = 'flowMap' | 'sweHeightMap' | 'sweFlowMap' | 'reflectionTexture';
+type WaterColorUniformName = 'waterColor' | 'deepColor' | 'foamColor' | 'edgeHighlight';
+type WaterVec3UniformName = 'vehiclePos' | 'vehicleVelocity' | 'sunDir' | 'sunWorldPos' | 'vortexCenter';
+type WaterVec2UniformName = 'sweOrigin' | 'sweGridSize';
+
+/**
+ * The same record as `WaterNodeUniforms`, typed per key by the node each uniform
+ * actually is (mirrors the value kinds in `createWaterUniformValues`).
+ */
+type WaterUniformNodes = {
+  [K in WaterUniformName]: K extends WaterTextureUniformName
+    ? TextureNode
+    : K extends WaterColorUniformName
+      ? UniformNode<'color', THREE.Color>
+      : K extends WaterVec3UniformName
+        ? UniformNode<'vec3', THREE.Vector3>
+        : K extends WaterVec2UniformName
+          ? UniformNode<'vec2', THREE.Vector2>
+          : FloatUniform;
+};
+
 export interface WaterNodeMaterial extends MeshBasicNodeMaterial {
   uniforms: WaterNodeUniforms;
   /** Node graph slot — assigned once at build time. */
-  positionNode: unknown;
+  positionNode: Node | null;
 }
 
-function buildUniformNodes(init: WaterUniformInit): WaterNodeUniforms {
+function buildUniformNodes(init: WaterUniformInit): WaterUniformNodes {
   const values = createWaterUniformValues(init);
-  const uniforms = {} as WaterNodeUniforms;
+  const uniforms = {} as Record<WaterUniformName, Node>;
 
   for (const name of WATER_UNIFORM_NAMES) {
     if (WATER_TEXTURE_UNIFORM_NAMES.includes(name)) {
@@ -110,14 +132,14 @@ function buildUniformNodes(init: WaterUniformInit): WaterNodeUniforms {
     uniforms[name] = uniform(values[name] as never);
   }
 
-  return uniforms;
+  return uniforms as WaterUniformNodes;
 }
 
 /**
  * Displacement field — port of `getDisplacement()` in FlowingWater.tsx.
  * `p` is local XZ, `fb` the flow bias.
  */
-function buildDisplacement(u: WaterNodeUniforms) {
+function buildDisplacement(u: WaterUniformNodes) {
   const time = nd(u.time);
   const flowSpeed = nd(u.flowSpeed);
   const isPond = nd(u.isPond);
@@ -126,7 +148,7 @@ function buildDisplacement(u: WaterNodeUniforms) {
   const vehiclePos = nd(u.vehiclePos);
   const vehicleVelocity = nd(u.vehicleVelocity);
 
-  return Fn(([p, fb]: [ReturnType<typeof vec2>, ReturnType<typeof vec2>]) => {
+  return Fn(([p, fb]: [Vec2Node, Vec2Node]) => {
     const effFlow = flowSpeed;
     const scale = float(WATER_SHADER.DISPLACEMENT_STRENGTH)
       .mul(float(0.6).add(effFlow.mul(0.4)))
@@ -186,7 +208,7 @@ function buildDisplacement(u: WaterNodeUniforms) {
 }
 
 /** Port of `sampleSWEDisplacement()` — branchless, bounds handled by masks. */
-function buildSweSampler(u: WaterNodeUniforms) {
+function buildSweSampler(u: WaterUniformNodes) {
   const sweOrigin = nd(u.sweOrigin);
   const sweCellSize = nd(u.sweCellSize);
   const sweGridSize = nd(u.sweGridSize);
@@ -195,7 +217,7 @@ function buildSweSampler(u: WaterNodeUniforms) {
   const sweEnabled = nd(u.sweEnabled);
   const sweHeightMap = nd(u.sweHeightMap);
 
-  return Fn(([worldXZ]: [ReturnType<typeof vec2>]) => {
+  return Fn(([worldXZ]: [Vec2Node]) => {
     const gridSpan = sweGridSize.mul(sweCellSize);
     const local = worldXZ.sub(sweOrigin).div(gridSpan);
 
@@ -221,13 +243,13 @@ function buildSweSampler(u: WaterNodeUniforms) {
  * Port of `sweWindowMask()` — 1 well inside the SWE window, feathering to 0 over
  * SWE_WINDOW_FEATHER_CELLS at its border; 0 when SWE is off (low) or outside the grid.
  */
-function buildSweWindowMask(u: WaterNodeUniforms) {
+function buildSweWindowMask(u: WaterUniformNodes) {
   const sweOrigin = nd(u.sweOrigin);
   const sweCellSize = nd(u.sweCellSize);
   const sweGridSize = nd(u.sweGridSize);
   const sweEnabled = nd(u.sweEnabled);
 
-  return Fn(([worldXZ]: [ReturnType<typeof vec2>]) => {
+  return Fn(([worldXZ]: [Vec2Node]) => {
     const gridSpan = sweGridSize.mul(sweCellSize);
     const edgeDist = min(worldXZ.sub(sweOrigin), sweOrigin.add(gridSpan).sub(worldXZ)).div(
       sweCellSize,
@@ -244,7 +266,7 @@ function buildSweWindowMask(u: WaterNodeUniforms) {
  * Flow bias — the GLSL `USE_FLOWMAP` define as a build-time variant.
  * Without a flow map both stages fall back to the same `vec2(sin(time*0.1), -1)`.
  */
-function buildFlowBias(u: WaterNodeUniforms, useFlowMap: boolean) {
+function buildFlowBias(u: WaterUniformNodes, useFlowMap: boolean) {
   if (!useFlowMap) {
     return vec2(sin(nd(u.time).mul(0.1)), float(-1));
   }
@@ -255,7 +277,7 @@ function buildFlowBias(u: WaterNodeUniforms, useFlowMap: boolean) {
  * Vertex-stage surface solve. Everything here is evaluated once per vertex and
  * interpolated — the fragment stage reads the varyings, never the field.
  */
-function buildSurfaceVaryings(u: WaterNodeUniforms, flowBias: ReturnType<typeof vec2>) {
+function buildSurfaceVaryings(u: WaterUniformNodes, flowBias: Vec2Node) {
   const displacement = buildDisplacement(u);
   const sweSample = buildSweSampler(u);
   const sweWindowMask = buildSweWindowMask(u);
@@ -276,7 +298,7 @@ function buildSurfaceVaryings(u: WaterNodeUniforms, flowBias: ReturnType<typeof 
     float(WATER_SHADER.SWE_ANALYTIC_SCALE),
     sweWindowMask(worldXZVertex),
   );
-  const sampleAt = (offset: ReturnType<typeof vec2>) =>
+  const sampleAt = (offset: Vec2Node) =>
     displacement(localXZ.add(offset), flowBias)
       .mul(analyticScale)
       .add(sweSample(worldXZVertex.add(offset)));
@@ -317,9 +339,9 @@ function buildSurfaceVaryings(u: WaterNodeUniforms, flowBias: ReturnType<typeof 
 type SurfaceVaryings = ReturnType<typeof buildSurfaceVaryings>;
 
 function buildColorNode(
-  u: WaterNodeUniforms,
+  u: WaterUniformNodes,
   surface: SurfaceVaryings,
-  flowBias: ReturnType<typeof vec2>,
+  flowBias: Vec2Node,
 ) {
   const time = nd(u.time);
   const flowSpeed = nd(u.flowSpeed);

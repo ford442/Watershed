@@ -249,6 +249,11 @@ The canvas's `antialias` is a boot-frozen envelope attribute (#463), and with po
 
 SMAA runs on display-referred colour, after the output transform. The parity gate has a `grade+smaa` scenario: luma stays within 0.2% across drivers, and edge energy drops on both. The composer depth is now 24-bit (`UnsignedIntType`); 16-bit banded SSAO and god rays at canyon distances. **Per-tier GPU cost has not been measured yet.** It needs a real GPU: read the debug panel's GPU row (#466 Phase B) per tier. That number decides whether #463's envelope should keep requesting context MSAA.
 
+## Real `three/webgpu` types, KTX2 rock textures (#466 Phase D)
+
+- **Typecheck.** `pnpm typecheck` resolves `three/webgpu` and `three/tsl` to three's real declarations (`@types/three`). The 266-line double in `src/rendering/__mocks__/threeWebgpu.ts` is now a vitest alias only (`vitest.config.ts`), and `tsconfig.typecheck.json` excludes `__mocks__`. Turning the real types on surfaced 231 errors, all of them typing: undimensioned uniforms, `attribute()` without a type argument, and Fn params typed `ReturnType<typeof vec2>`. They were fixed with the shared aliases in `src/materials/tsl/nodeTypes.ts` (`Vec2Node`, `FloatUniform`, …). No shader changed, and the post parity numbers are identical. A new TSL API you call has to exist in three, not just in the mock.
+- **KTX2.** Rock031 ships as KTX2 too (`public/textures/`, encoded by `scripts/build-textures.mjs` with KTX-Software `ktx` ≥ 4.3; dev-only, outputs committed), with three's Basis transcoder copied to `public/basis/`. `TrackManager` and `BootAssetPreloader` load KTX2 when `shouldUseKtx2(gl)` (`src/rendering/ktx2Textures.ts`) finds a compressed target format, and the JPGs otherwise. Desktop VRAM for the set goes from 28 MB to 7 MB; see `ALLOCATION_BASELINE.md`. Rows are stored bottom-first, so KTX2 (`flipY` false) and JPG (`flipY` true) sample identical texels at identical UVs. A headless check against the JPGs gave mean abs error 1–6/255 unflipped, against 10–24 flipped. Don't encode normals with `--normal-mode`: it repacks to RGB=X, A=Y.
+
 ## Material backends (#256 path A)
 
 The migration to WebGPU is split so the two risks land separately: **materials first, graphics API second.**

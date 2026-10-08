@@ -53,6 +53,11 @@ const EXPECTED_PASSENGERS = [
   'Rock031_1K-JPG_Displacement.jpg',
   'Rock031_1K-JPG_NormalGL.jpg',
   'Rock031_1K-JPG_Roughness.jpg',
+  // KTX2 twin of the Rock031 set + three's Basis transcoder (#466 Phase D;
+  // scripts/build-textures.mjs). Loaded instead of the JPGs on GPUs with a
+  // compressed target format (src/rendering/ktx2Textures.ts).
+  'basis/basis_transcoder.js',
+  'basis/basis_transcoder.wasm',
   'collision.wav',
   'levels/README.md',
   'levels/autumn-rapids.json',
@@ -82,6 +87,11 @@ const EXPECTED_PASSENGERS = [
   'sounds/rapids_roar.mp3',
   'sounds/splash.mp3',
   'sounds/water_crash.mp3',
+  'textures/Rock031_AmbientOcclusion.ktx2',
+  'textures/Rock031_Color.ktx2',
+  'textures/Rock031_Displacement.ktx2',
+  'textures/Rock031_NormalGL.ktx2',
+  'textures/Rock031_Roughness.ktx2',
   'watershed_native.js',
   'watershed_native.wasm',
 ];

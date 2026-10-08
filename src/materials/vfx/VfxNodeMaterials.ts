@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial, PointsNodeMaterial } from 'three/webgpu';
+import type { Node } from 'three/webgpu';
 import {
   Fn,
   abs,
@@ -25,8 +26,9 @@ import {
 } from 'three/tsl';
 import { fbm2 } from '../tsl/noise';
 
-type NodeHandle = ReturnType<typeof float>;
-const nd = (u: { value: unknown }): NodeHandle => u as unknown as NodeHandle;
+// Identity pass-through (kept so the graph is built exactly as before); the
+// real three types carry each node's dimension, so `nd` just preserves it.
+const nd = <T extends Node>(u: T): T => u;
 
 function tintedRadialMaterial(
   color: THREE.Color,
@@ -152,7 +154,7 @@ export function createWaterfallSheetNodeMaterial(init: {
   const waterColor = uniform(init.waterColor.clone());
   const deepColor = uniform(init.deepColor.clone());
   const foamColor = uniform(init.foamColor.clone());
-  const curtainDepth = attribute('curtainDepth', 'float');
+  const curtainDepth = attribute<'float'>('curtainDepth', 'float');
   const material = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
@@ -303,10 +305,10 @@ export function createSunShaftMoteNodeMaterial(init: {
   const colorBase = uniform(init.colorBase.clone());
   const opacity = uniform(init.opacity);
   const sunFacing = uniform(1);
-  const aRadius = attribute('aRadius', 'float');
-  const aPhase = attribute('aPhase', 'float');
-  const aSpeed = attribute('aSpeed', 'float');
-  const aHeight = attribute('aHeight', 'float');
+  const aRadius = attribute<'float'>('aRadius', 'float');
+  const aPhase = attribute<'float'>('aPhase', 'float');
+  const aSpeed = attribute<'float'>('aSpeed', 'float');
+  const aHeight = attribute<'float'>('aHeight', 'float');
   const material = new PointsNodeMaterial({
     transparent: true,
     depthWrite: false,

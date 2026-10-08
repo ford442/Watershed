@@ -15,8 +15,8 @@ import {
   vec4,
 } from 'three/tsl';
 
-type NodeHandle = ReturnType<typeof float>;
-const nd = (u: { value: unknown }): NodeHandle => u as unknown as NodeHandle;
+// Identity at runtime; generic so each uniform keeps its real node type.
+const nd = <T extends { value: unknown }>(u: T): T => u;
 
 export type WeatherKind = 'rain' | 'snow' | 'splash';
 
@@ -37,8 +37,8 @@ export function createWeatherParticleNodeMaterial(init: WeatherParticleInit): Po
   const windZ = uniform(init.windZ ?? 0);
   const cameraPos = uniform(init.cameraPos?.clone() ?? new THREE.Vector3());
   const globalAlpha = uniform(init.globalAlpha ?? 0);
-  const offset = attribute('offset', 'float');
-  const speedVar = attribute('speedVar', 'float');
+  const offset = attribute<'float'>('offset', 'float');
+  const speedVar = attribute<'float'>('speedVar', 'float');
 
   const material = new PointsNodeMaterial({
     transparent: true,

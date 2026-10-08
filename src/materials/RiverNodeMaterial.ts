@@ -36,6 +36,7 @@ import {
 import { WALL_WATERLINE_Y, SHADERS, ROCK_SHADER } from '../constants/game';
 import { MOSS_HEIGHT_FADE, MOSS_NORMAL_MASK } from './tsl/riverConstants';
 import { fbm2, riverNoise, hash2 } from './tsl/noise';
+import type { FloatNode, FloatUniform } from './tsl/nodeTypes';
 
 const WHITE_TEXTURE = (() => {
   const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
@@ -52,10 +53,10 @@ export interface RiverMaterialOptions {
 }
 
 export interface RiverUniformRefs {
-  uTime: ReturnType<typeof uniform>;
-  uWaterLevel: ReturnType<typeof uniform>;
-  uWetnessRange: ReturnType<typeof uniform>;
-  uWeatherWetness: ReturnType<typeof uniform>;
+  uTime: FloatUniform;
+  uWaterLevel: FloatUniform;
+  uWetnessRange: FloatUniform;
+  uWeatherWetness: FloatUniform;
 }
 
 function buildRiverColorNode(
@@ -92,7 +93,7 @@ function buildRiverColorNode(
   let diffuse = materialColor.rgb;
 
   if (enableTriplanar) {
-    const uv2Attr = attribute('uv2', 'vec2');
+    const uv2Attr = attribute<'vec2'>('uv2', 'vec2');
     const triplanarSample = uColorMap.sample(uv2Attr.add(parallaxOffset));
     const triplanarBlend = smoothstep(float(3), float(12), heightAboveWater);
     const cliffBlend = pow(
@@ -129,11 +130,11 @@ function buildRiverColorNode(
   const causticBand = smoothstep(uWetnessRange, float(0), abs(heightAboveWater));
   diffuse = diffuse.add(causticPattern.mul(causticBand).mul(0.04));
 
-  let highWaterMaskAttr = float(0);
+  let highWaterMaskAttr: FloatNode = float(0);
 
   if (enableMoss) {
-    const mossMaskAttr = attribute('mossMask', 'float');
-    highWaterMaskAttr = attribute('highWaterMask', 'float');
+    const mossMaskAttr = attribute<'float'>('mossMask', 'float');
+    highWaterMaskAttr = attribute<'float'>('highWaterMask', 'float');
 
     const explosionNoise = riverNoise(worldPos.xz.mul(0.06).add(13.7));
     const mossExplosion = smoothstep(float(0.74), float(0.9), explosionNoise)
@@ -201,9 +202,9 @@ function buildRiverColorNode(
 }
 
 function buildRiverRoughnessNode(
-  heightAboveWater: ReturnType<typeof float>,
-  uWetnessRange: ReturnType<typeof uniform>,
-  uWeatherWetness: ReturnType<typeof uniform>,
+  heightAboveWater: FloatNode,
+  uWetnessRange: FloatUniform,
+  uWeatherWetness: FloatUniform,
   enableWetness: boolean
 ) {
   if (!enableWetness) return undefined;
