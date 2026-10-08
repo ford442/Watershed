@@ -265,7 +265,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     };
 
     return {
-      colorMap: createFallbackTexture('#8B7355'),
+      colorMap: Object.assign(createFallbackTexture('#8B7355'), { colorSpace: THREE.SRGBColorSpace }),
       normalMap: createFallbackTexture('#8080FF'),
       roughnessMap: createFallbackTexture('#D9D9D9'),
       aoMap: createFallbackTexture('#FFFFFF'),
@@ -275,6 +275,13 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
   useEffect(() => {
     const textures = [colorMap, normalMap, roughnessMap, aoMap, displacementMap];
+    // The albedo JPG is sRGB. Untagged, three samples it as linear — which only
+    // looked right while the GLSL post chain presented raw linear values; with
+    // the chain's one sRGB encode (#466) it would be encoded twice.
+    if (colorMap && colorMap.colorSpace !== THREE.SRGBColorSpace) {
+      colorMap.colorSpace = THREE.SRGBColorSpace;
+      colorMap.needsUpdate = true;
+    }
     textures.forEach((texture) => {
       if (!texture) return;
       texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
