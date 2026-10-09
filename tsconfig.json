@@ -16,11 +16,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "useDefineForClassFields": true,
-    "types": ["vite/client", "vitest/globals"],
-    "paths": {
-      "three/webgpu": ["./src/rendering/__mocks__/threeWebgpu.ts"],
-      "three/tsl": ["./src/rendering/__mocks__/threeWebgpu.ts"]
-    }
+    "types": ["vite/client", "vitest/globals"]
   },
   "include": ["src"]
 }

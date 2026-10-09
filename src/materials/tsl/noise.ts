@@ -17,14 +17,15 @@ import {
   mix,
   mul,
 } from 'three/tsl';
+import type { Vec2Node } from './nodeTypes';
 
 /** fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453) */
-export const hash2 = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const hash2 = Fn(([p]: [Vec2Node]) => {
   return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
 });
 
 /** Value noise on a 2D grid. */
-export const valueNoise = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const valueNoise = Fn(([p]: [Vec2Node]) => {
   const i = floor(p);
   const f = fract(p);
   const u = f.mul(f).mul(float(3).sub(f.mul(2)));
@@ -34,14 +35,14 @@ export const valueNoise = Fn(([p]: [ReturnType<typeof vec2>]) => {
 });
 
 /** 2-octave FBM (RiverShader fbm2). */
-export const fbm2 = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const fbm2 = Fn(([p]: [Vec2Node]) => {
   const n0 = valueNoise(p);
   const n1 = valueNoise(p.mul(2));
   return n0.mul(0.5).add(n1.mul(0.25));
 });
 
 /** 4-octave FBM (CanyonMaterial fbm). */
-export const fbm4 = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const fbm4 = Fn(([p]: [Vec2Node]) => {
   const n0 = valueNoise(p);
   const n1 = valueNoise(p.mul(2));
   const n2 = valueNoise(p.mul(4));
@@ -50,6 +51,6 @@ export const fbm4 = Fn(([p]: [ReturnType<typeof vec2>]) => {
 });
 
 /** Organic moss variation (RiverShader riverNoise). */
-export const riverNoise = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const riverNoise = Fn(([p]: [Vec2Node]) => {
   return sin(p.x.mul(3)).mul(sin(p.y.mul(3))).mul(0.5).add(0.5);
 });

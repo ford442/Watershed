@@ -1,3 +1,5 @@
+import type { GpuTimerSource } from '../rendering/gpuTimer';
+
 /**
  * perfMetrics.ts — Shared performance metrics store
  *
@@ -24,6 +26,12 @@ export interface PerfMetrics {
   fps: number;
   /** JS heap usage in MB (Chrome only; 0 on other browsers) */
   memoryMB: number;
+  /** Mean CPU work per frame (first callback → last render), ms; excludes vsync idle. 0 until measured. */
+  cpuWorkMs: number;
+  /** Latest GPU frame time, ms; null without a GPU timer (see gpuTimerSource). */
+  gpuMs: number | null;
+  /** Where gpuMs comes from — FrameWorkTimer / gpuTimer.ts (#466 Phase B). */
+  gpuTimerSource: GpuTimerSource;
 }
 
 const _metrics: PerfMetrics = {
@@ -34,6 +42,9 @@ const _metrics: PerfMetrics = {
   frameTimeMs: 0,
   fps: 0,
   memoryMB: 0,
+  cpuWorkMs: 0,
+  gpuMs: null,
+  gpuTimerSource: 'cpu-fallback',
 };
 
 type Listener = () => void;

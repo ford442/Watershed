@@ -139,7 +139,7 @@ export async function createGameRenderer(
     if (!context) return fallBackToGlsl();
 
     const nodeRenderer = await createNodeRenderer({
-      parameters: { ...webglParameters, context, forceWebGL: true },
+      parameters: { ...webglParameters, context, forceWebGL: true, trackTimestamp: true },
       contextOptions,
       clearOpaque: false,
     });
@@ -179,6 +179,7 @@ export interface NodeRendererParameters extends Omit<THREE.WebGLRendererParamete
   context?: WebGL2RenderingContext;
   /** True keeps the WebGL2 backend; false lets the renderer negotiate WebGPU. */
   forceWebGL?: boolean;
+  trackTimestamp?: boolean;
 }
 
 /** What the native WebGPU path passes — and nothing else. */
@@ -193,6 +194,11 @@ export interface NativeWebGPURendererParameters {
   /** Forwarded by three to `requestAdapter` only. Absent means the UA default. */
   powerPreference?: GPUPowerPreference;
   forceWebGL: false;
+  /**
+   * GPU frame time for the render-scale valve (#466 Phase B). Native WebGPU
+   * uses `timestamp-query`, which three requests when the adapter has it.
+   */
+  trackTimestamp: true;
 }
 
 /**
@@ -225,6 +231,7 @@ export function nativeWebGPURendererParameters(
     stencil: false,
     ...(powerPreference ? { powerPreference } : {}),
     forceWebGL: false,
+    trackTimestamp: true,
   };
 }
 
@@ -273,6 +280,8 @@ async function createNodeRenderer(
       loadNodePost(),
     ]);
     const { WebGPURenderer } = nodeModule;
+    // `parameters` already carries the boot graphics contract (#463) and
+    // `trackTimestamp` for the render-scale valve (#466 Phase B).
     const renderer = new WebGPURenderer(request.parameters);
     await renderer.init();
     if (request.clearOpaque) renderer.setClearAlpha(1);

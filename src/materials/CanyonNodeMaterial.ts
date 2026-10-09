@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
+import type { UniformNode } from 'three/webgpu';
 import {
   float,
   vec2,
@@ -30,6 +31,7 @@ import {
   step,
 } from 'three/tsl';
 import { fbm4 } from './tsl/noise';
+import type { FloatUniform, Vec3Node } from './tsl/nodeTypes';
 import { isAutumnLike } from '../configs/biomes';
 
 const GEOLOGICAL_LAYERS = {
@@ -39,6 +41,8 @@ const GEOLOGICAL_LAYERS = {
   moss: '#4a5a40',
   soil: '#5a5040',
 };
+
+type ColorUniform = UniformNode<'color', THREE.Color>;
 
 const BIOME_ADAPTATIONS: Record<
   string,
@@ -78,19 +82,19 @@ export interface CanyonMaterialOptions {
 }
 
 export interface CanyonUniformRefs {
-  time: ReturnType<typeof uniform>;
-  wallHeight: ReturnType<typeof uniform>;
-  parallaxScale: ReturnType<typeof uniform>;
-  flowSpeed: ReturnType<typeof uniform>;
-  mossCoverage: ReturnType<typeof uniform>;
-  highWaterMark: ReturnType<typeof uniform>;
-  highWaterIntensity: ReturnType<typeof uniform>;
-  weatheringIntensity: ReturnType<typeof uniform>;
-  bedrockColor: ReturnType<typeof uniform>;
-  sedimentaryColor: ReturnType<typeof uniform>;
-  graniteColor: ReturnType<typeof uniform>;
-  mossColor: ReturnType<typeof uniform>;
-  soilColor: ReturnType<typeof uniform>;
+  time: FloatUniform;
+  wallHeight: FloatUniform;
+  parallaxScale: FloatUniform;
+  flowSpeed: FloatUniform;
+  mossCoverage: FloatUniform;
+  highWaterMark: FloatUniform;
+  highWaterIntensity: FloatUniform;
+  weatheringIntensity: FloatUniform;
+  bedrockColor: ColorUniform;
+  sedimentaryColor: ColorUniform;
+  graniteColor: ColorUniform;
+  mossColor: ColorUniform;
+  soilColor: ColorUniform;
 }
 
 function buildCanyonColorNode(uniforms: CanyonUniformRefs) {
@@ -113,9 +117,9 @@ function buildCanyonColorNode(uniforms: CanyonUniformRefs) {
   const worldPos = positionWorld;
   const worldNormal = normalize(normalWorld);
   const viewDir = normalize(cameraPosition.sub(worldPos));
-  const vertexColor = attribute('color', 'vec3');
-  const mossMaskAttr = attribute('mossMask', 'float');
-  const highWaterMaskAttr = attribute('highWaterMask', 'float');
+  const vertexColor = attribute<'vec3'>('color', 'vec3');
+  const mossMaskAttr = attribute<'float'>('mossMask', 'float');
+  const highWaterMaskAttr = attribute<'float'>('highWaterMask', 'float');
 
   const surfaceNoise = fbm4(worldPos.xz.mul(0.15)).mul(0.3).add(fbm4(worldPos.xz.mul(0.5)).mul(0.1));
   const h = clamp(
@@ -127,7 +131,7 @@ function buildCanyonColorNode(uniforms: CanyonUniformRefs) {
   const parallaxOffset = viewDir.xy.mul(parallaxScale).mul(float(1).sub(dot(worldNormal, vec3(0, 1, 0))));
   const sampleUv = uv().add(parallaxOffset);
 
-  let color = bedrockColor;
+  let color: ColorUniform | Vec3Node = bedrockColor;
 
   const layerMix1 = smoothstep(float(0), float(0.5), h).sub(smoothstep(float(0.5), float(0.7), h));
   color = mix(color, sedimentaryColor, layerMix1);

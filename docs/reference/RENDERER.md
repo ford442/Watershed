@@ -30,6 +30,10 @@ Antialias, `powerPreference`, and `failIfMajorPerformanceCaveat` are deliberatel
 
 All presets set `outputColorSpace = SRGBColorSpace`, `toneMapping = ACESFilmicToneMapping`, and `toneMappingExposure = 1.0` at renderer setup via `applyRendererContextOptions()`, and re-apply them on every preset change via `applyRendererQualityUpdate()`.
 
+**One output transform, at the end of either post chain (#466 Phase A).** three applies `toneMapping` / `outputColorSpace` only when a material renders to the screen and includes the tonemapping/colorspace chunks — never into a render target. So on a post-processed frame these settings reach the image only through the chain's last pass: the GLSL `EffectComposer` ends with three's `OutputPass`, and the node `RenderPipeline` keeps `outputColorTransform` (its default). Every pass upstream — SSAO, god rays, bloom, hue/saturation, chromatic, vignette, rainbow — works on linear HDR. Before #466 the GLSL chain had no `OutputPass`, so it presented raw linear values: about 2.5× darker than the TSL path in mean luma, and `toneMappingExposure` did nothing there. `pnpm test:post-parity` (`verification/post_parity.mjs` → `src/debug/postParity.ts`) renders one deterministic frame through both drivers on SwiftShader and fails at a 2% mean-luma gap. Two corrections came with it:
+- The vignette's `darkness` is decoded to linear (`linearVignetteDarkness`), so the grey it mixes toward stays the one tuned by eye.
+- The node path scales bloom strength by `UNREAL_BLOOM_STRENGTH_SCALE` (3). `UnrealBloomPass` multiplies by 3.0 internally and `BloomNode` doesn't, so before this the TSL path bloomed at a third of the tuned strength.
+
 ### Pinned context attributes
 
 These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`, in `src/rendering/contextAttributes.ts` so the probe and the renderer can share them without an import cycle), but they are pinned rather than left to THREE's defaults so a version bump cannot move them silently:
@@ -167,6 +171,20 @@ One condition, two stages. Both thresholds are the frame-time form of the lines 
 | Valve opens | frame time < `0.92 × budget` | 3 ticks | `renderScale += 0.1`, up to 1.0 |
 | Preset steps up | same, **and** valve at 1.0 | 2 ticks | `medium → high → ultra` |
 
+### What "frame time" means (#466 Phase B)
+
+Not rAF time. On a vsync-capped 60 Hz display rAF sits at ≈16.7 ms however light the frame is, and that never gets under the 15.3 ms open line. Before #466 a closed valve stayed closed, and the preset ladder could never step up either. Each tick now reads one window from `summarizeFrameWindow` ([`frameWork.ts`](../../src/rendering/frameWork.ts)):
+
+| Source | When | Valve reads |
+|--------|------|-------------|
+| `gpu` | a GPU timer exists ([`gpuTimer.ts`](../../src/rendering/gpuTimer.ts): `EXT_disjoint_timer_query_webgl2` on `WebGLRenderer`; three's `trackTimestamp` on the node renderer) | mean of `max(gpuMs, cpuWorkMs)` |
+| `cpu` | no GPU timer (Safari, many Android GPUs) | mean CPU work: from R3F's `addEffect` to its `addAfterEffect`, so post is included and vsync idle is not |
+| `raf` | no GPU timer **and** rAF misses the slow line, or `FrameWorkTimer` not mounted | mean rAF interval, the pre-#466 behaviour. CPU work can't see a GPU-bound frame, but a missed vsync can |
+
+`FrameWorkTimer` is always mounted (`Experience.tsx`). The `?debug=1` panel shows both "CPU work / frame" and the GPU row, which is labelled with its source; without a timer it reads "CPU fallback — no GPU timer". FPS on the HUD and panel stays rAF-based, because that is what the player sees.
+
+**The valve shrinks the scene render, not just the blit.** The JSM composer follows `viewport.dpr`, which is what `setDpr` writes: `renderTarget1/2` (and with them the scene pass, SSAO and bloom) are CSS size × DPR. A resize no longer rebuilds the driver; three resizes each target's depth texture on the next bind. Pinned by `PostProcessingPipeline.composer.test.ts`.
+
 Resolution gives first because it is the cheap, reversible trade; the preset changes shadow filtering and map size, which is a change of *look* and should stay rare. Opening the valve is slower than closing it (3 ticks vs 2) — giving pixels back is what re-loads the GPU, so an eager open is how a valve starts oscillating. Between the two thresholds is a dead band where nothing moves.
 
 `stepAdaptiveQuality` treats an **omitted** `renderScale` as "this system has no valve" and keeps the pre-#419 preset-only ladder; passing `RENDER_SCALE_MAX` is the opposite statement — a valve that is currently wide open, i.e. the one with the most room to close — and does defer the preset. Two different claims, deliberately not collapsed into one default.
@@ -212,9 +230,31 @@ http://localhost:3000/?debug=1&renderer=webgl&wireframe=1&physicsDebug=1
 http://localhost:3000/?screenshot=1
 ```
 
-## WebGL context loss recovery
+## GPU loss recovery (WebGL context, WebGPU device)
 
-`App.tsx` registers `webglcontextlost` (with `preventDefault`) and `webglcontextrestored` on the Canvas element. On loss, a minimal “Graphics paused — recovering…” toast appears; on restore, the Canvas remounts via an epoch counter in its React `key`.
+`App.tsx` routes every renderer through [`gpuLossRecovery.ts`](../../src/rendering/gpuLossRecovery.ts) (`attachGpuLossHandlers`), and detaches the previous canvas's handlers when the next renderer comes up:
+
+- **WebGL2** (GLSL, and the node renderer's WebGL2 backend): `webglcontextlost` (with `preventDefault`) and `webglcontextrestored` on the canvas. On loss a minimal "Graphics paused — recovering…" toast appears and `bootCrashGuard` records `context-lost`. On restore the Canvas remounts via an epoch counter in its React `key`.
+- **Native WebGPU** (#466 Phase C): three's `renderer.onDeviceLost`. A lost `GPUDevice` never comes back, so `device-lost` is recorded and the epoch bumps at once; the new renderer requests a new device. three's default handler still runs and logs. three already ignores `reason: 'destroyed'`, which is its own disposal, so an intentional remount can't loop.
+
+Run state is Zustand outside the Canvas, so it survives either remount. **Simulate:** `?debugGpuLoss=1` exposes `window.__watershedLoseGpu()`. On WebGL it calls `WEBGL_lose_context` (restoring after 1 s). On WebGPU it calls `device.destroy()` and then reports the loss through the same hook, because three filters out a `destroyed` loss.
+
+## In-chain anti-aliasing (#466 Phase C)
+
+The canvas's `antialias` is a boot-frozen envelope attribute (#463), and with post on it multisamples only the final fullscreen quad. The scene renders into single-sample composer targets, so edge AA lives in the post chain, keyed off the post quality (`aaTierFor`) and switched live with no remount:
+
+| Post quality | GLSL (`EffectComposer`) | Node (`RenderPipeline`) |
+|---|---|---|
+| low | none | none |
+| medium / high | `SMAAPass` after `OutputPass` | `smaa(renderOutput(color))`, with `outputColorTransform` off, so there is still one transform |
+| ultra | 4× MSAA ping-pong targets (`samples = 4`), SMAA off | SMAA. The scene pass stays single-sampled because GTAO and god rays sample its depth, and multisampled depth can't be sampled on native WebGPU |
+
+SMAA runs on display-referred colour, after the output transform. The parity gate has a `grade+smaa` scenario: luma stays within 0.2% across drivers, and edge energy drops on both. The composer depth is now 24-bit (`UnsignedIntType`); 16-bit banded SSAO and god rays at canyon distances. **Per-tier GPU cost has not been measured yet.** It needs a real GPU: read the debug panel's GPU row (#466 Phase B) per tier. That number decides whether #463's envelope should keep requesting context MSAA.
+
+## Real `three/webgpu` types, KTX2 rock textures (#466 Phase D)
+
+- **Typecheck.** `pnpm typecheck` resolves `three/webgpu` and `three/tsl` to three's real declarations (`@types/three`). The 266-line double in `src/rendering/__mocks__/threeWebgpu.ts` is now a vitest alias only (`vitest.config.ts`), and `tsconfig.typecheck.json` excludes `__mocks__`. Turning the real types on surfaced 231 errors, all of them typing: undimensioned uniforms, `attribute()` without a type argument, and Fn params typed `ReturnType<typeof vec2>`. They were fixed with the shared aliases in `src/materials/tsl/nodeTypes.ts` (`Vec2Node`, `FloatUniform`, …). No shader changed, and the post parity numbers are identical. A new TSL API you call has to exist in three, not just in the mock.
+- **KTX2.** Rock031 ships as KTX2 too (`public/textures/`, encoded by `scripts/build-textures.mjs` with KTX-Software `ktx` ≥ 4.3; dev-only, outputs committed), with three's Basis transcoder copied to `public/basis/`. `TrackManager` and `BootAssetPreloader` load KTX2 when `shouldUseKtx2(gl)` (`src/rendering/ktx2Textures.ts`) finds a compressed target format, and the JPGs otherwise. Desktop VRAM for the set goes from 28 MB to 7 MB; see `ALLOCATION_BASELINE.md`. Rows are stored bottom-first, so KTX2 (`flipY` false) and JPG (`flipY` true) sample identical texels at identical UVs. A headless check against the JPGs gave mean abs error 1–6/255 unflipped, against 10–24 flipped. Don't encode normals with `--normal-mode`: it repacks to RGB=X, A=Y.
 
 ## Material backends (#256 path A)
 
@@ -281,6 +321,7 @@ Scene-wide:
 pnpm build && pnpm preview --port 4173
 pnpm test:visual-smoke            # default GLSL baselines
 pnpm test:visual-smoke:tsl        # ?material=tsl, baselines suffixed __material-tsl
+pnpm test:post-parity             # one fixed frame, GLSL vs node driver, Δ mean luma < 2% (own Vite server)
 ```
 
 `VISUAL_EXTRA_QUERY` appends a query to every shot and namespaces the captures, so a TSL run can never overwrite GLSL baselines.

@@ -22,9 +22,6 @@ import {
 } from 'three/tsl';
 import { fbm2 } from '../tsl/noise';
 
-type NodeHandle = ReturnType<typeof float>;
-const nd = (u: { value: unknown }): NodeHandle => u as unknown as NodeHandle;
-
 export interface CloudUniformInit {
   time?: number;
   opacity: number;
@@ -45,19 +42,19 @@ export function createCloudNodeMaterial(init: CloudUniformInit): MeshBasicNodeMa
   const sunDir2D = uniform(init.sunDir2D.clone());
 
   const colorNode = Fn(() => {
-    const scrolled = uv().mul(2.8).add(vec2(nd(time).mul(0.003), nd(time).mul(0.0018)));
+    const scrolled = uv().mul(2.8).add(vec2(time.mul(0.003), time.mul(0.0018)));
     const n = fbm2(scrolled);
     const cloud = smoothstep(float(0.52), float(0.8), n);
-    const nSun = fbm2(scrolled.add(vec2(nd(sunDir2D).x, nd(sunDir2D).z).mul(0.18)));
+    const nSun = fbm2(scrolled.add(vec2(sunDir2D.x, sunDir2D.z).mul(0.18)));
     const cloudSun = smoothstep(float(0.52), float(0.8), nSun);
     const litFactor = clamp(float(0.5).add(cloud.sub(cloudSun).mul(1.6)), 0, 1);
-    const cloudColor = mix(nd(cloudColorA), nd(cloudColorB), nd(sunsetBlend));
+    const cloudColor = mix(cloudColorA, cloudColorB, sunsetBlend);
     const shadowColor = cloudColor.mul(0.55);
     const highlightColor = mix(cloudColor, vec3(1.0, 0.98, 0.92), 0.55);
     const litColor = mix(shadowColor, highlightColor, litFactor);
-    const overcast = mix(litColor, vec3(0.55, 0.57, 0.6), nd(overcastBlend).mul(0.85));
-    const coverage = mix(cloud, clamp(cloud.add(0.35), 0, 1), nd(overcastBlend));
-    return vec4(overcast, coverage.mul(nd(opacity)));
+    const overcast = mix(litColor, vec3(0.55, 0.57, 0.6), overcastBlend.mul(0.85));
+    const coverage = mix(cloud, clamp(cloud.add(0.35), 0, 1), overcastBlend);
+    return vec4(overcast, coverage.mul(opacity));
   })();
 
   const material = new MeshBasicNodeMaterial({
@@ -82,11 +79,11 @@ export function createCloudNodeMaterial(init: CloudUniformInit): MeshBasicNodeMa
 export function createStarNodeMaterial(init: { uTime?: number; uOpacity: number }): PointsNodeMaterial {
   const uTime = uniform(init.uTime ?? 0);
   const uOpacity = uniform(init.uOpacity);
-  const aSize = attribute('aSize', 'float');
-  const aPhase = attribute('aPhase', 'float');
-  const aSpeed = attribute('aSpeed', 'float');
-  const twinkle = float(0.55).add(sin(nd(uTime).mul(aSpeed).add(aPhase)).mul(0.45));
-  const vertexColor = attribute('color', 'vec3');
+  const aSize = attribute<'float'>('aSize', 'float');
+  const aPhase = attribute<'float'>('aPhase', 'float');
+  const aSpeed = attribute<'float'>('aSpeed', 'float');
+  const twinkle = float(0.55).add(sin(uTime.mul(aSpeed).add(aPhase)).mul(0.45));
+  const vertexColor = attribute<'vec3'>('color', 'vec3');
 
   const material = new PointsNodeMaterial({
     transparent: true,
@@ -98,7 +95,7 @@ export function createStarNodeMaterial(init: { uTime?: number; uOpacity: number 
   material.colorNode = Fn(() => {
     const d = length(uv().sub(0.5));
     const core = smoothstep(float(0.5), float(0.0), d);
-    return vec4(vertexColor, core.mul(twinkle).mul(nd(uOpacity)));
+    return vec4(vertexColor, core.mul(twinkle).mul(uOpacity));
   })();
   material.userData.uniforms = { uTime, uOpacity };
   material.userData.materialBackend = 'tsl';
@@ -118,7 +115,7 @@ export function createMoonNodeMaterial(phase: number): MeshStandardNodeMaterial 
   });
   const terminator = Fn(() => {
     const n = normalize(positionWorld.sub(cameraPosition).mul(-1));
-    return smoothstep(float(-0.15), float(0.15), n.x.sub(nd(uPhase).sub(0.5).mul(2.0)));
+    return smoothstep(float(-0.15), float(0.15), n.x.sub(uPhase.sub(0.5).mul(2.0)));
   })();
   material.colorNode = vec3(0.81, 0.84, 0.89).mul(mix(float(0.18), float(1.0), terminator));
   material.userData.uniforms = { uPhase };
@@ -143,9 +140,9 @@ export function createSkyDomeNodeMaterial(init: SkyDomeInit): MeshBasicNodeMater
   material.colorNode = Fn(() => {
     const dir = normalize(positionWorld);
     const h = clamp(dir.y.mul(0.5).add(0.5), 0, 1);
-    const col = mix(nd(horizonColor), nd(zenithColor), h);
-    const sun = pow(clamp(dot(dir, normalize(nd(sunDir))), 0, 1), 32);
-    return col.add(nd(sunColor).mul(sun).mul(0.65));
+    const col = mix(horizonColor, zenithColor, h);
+    const sun = pow(clamp(dot(dir, normalize(sunDir)), 0, 1), 32);
+    return col.add(sunColor.mul(sun).mul(0.65));
   })();
   material.userData.uniforms = { zenithColor, horizonColor, sunColor, sunDir };
   material.userData.materialBackend = 'tsl';

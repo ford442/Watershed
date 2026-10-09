@@ -5,6 +5,8 @@ import {
   computePostFrameParams,
   createPostSmoothedState,
   godRaysAllowed,
+  aaTierFor,
+  linearVignetteDarkness,
   type PostFrameInput,
 } from './postFrameParams';
 
@@ -49,12 +51,38 @@ function settle(input: PostFrameInput, frames = 600) {
   return params;
 }
 
+describe('aaTierFor', () => {
+  it('maps post quality to an in-chain AA tier', () => {
+    expect(aaTierFor('low')).toBe('none');
+    expect(aaTierFor('medium')).toBe('smaa');
+    expect(aaTierFor('high')).toBe('smaa');
+    expect(aaTierFor('ultra')).toBe('msaa4');
+  });
+});
+
+describe('linearVignetteDarkness', () => {
+  it('decodes the tuned display grey to linear (0.5 grey → ~0.214)', () => {
+    expect(linearVignetteDarkness(0.5)).toBeCloseTo(1 - 0.2140, 3);
+    expect(linearVignetteDarkness(0)).toBeCloseTo(0, 6);
+    expect(linearVignetteDarkness(1)).toBeCloseTo(1, 6);
+  });
+
+  it('is monotonic through the boosted (> 1) range', () => {
+    let prev = -Infinity;
+    for (let d = 0; d <= 1.4; d += 0.05) {
+      const v = linearVignetteDarkness(d);
+      expect(v).toBeGreaterThan(prev);
+      prev = v;
+    }
+  });
+});
+
 describe('computePostFrameParams', () => {
   it('is neutral at rest in clear midday weather', () => {
     const p = settle(makeInput());
     expect(p.hueSaturation.saturation).toBeCloseTo(0, 5);
     expect(p.chromatic.amount).toBeCloseTo(DEFAULT_POST_TUNING.chromaticBaseOffset, 6);
-    expect(p.vignette.darkness).toBeCloseTo(DEFAULT_POST_TUNING.vignetteDarkness, 5);
+    expect(p.vignette.darkness).toBeCloseTo(linearVignetteDarkness(DEFAULT_POST_TUNING.vignetteDarkness), 5);
     expect(p.rainbow.intensity).toBeCloseTo(0, 5);
     expect(p.bloom.strength).toBeCloseTo(DEFAULT_POST_TUNING.bloomIntensity, 5);
   });
@@ -64,7 +92,7 @@ describe('computePostFrameParams', () => {
     expect(p.hueSaturation.saturation).toBeCloseTo(-0.5, 3);
     expect(p.chromatic.amount).toBeCloseTo(DEFAULT_POST_TUNING.chromaticMaxOffset, 5);
     // Over 0.9 × 25 m/s the "speed rush" vignette adds 0.3, plus the sprint 0.18.
-    expect(p.vignette.darkness).toBeCloseTo(DEFAULT_POST_TUNING.vignetteDarkness + 0.3, 3);
+    expect(p.vignette.darkness).toBeCloseTo(linearVignetteDarkness(DEFAULT_POST_TUNING.vignetteDarkness + 0.3), 3);
   });
 
   it('tightens the vignette and dims bloom under a storm', () => {

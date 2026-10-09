@@ -9,14 +9,15 @@
  */
 
 import { Fn, float, vec2, sin, dot, fract, floor, mix } from 'three/tsl';
+import type { Vec2Node } from './nodeTypes';
 
 /** `fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)` — FlowingWater `hash`. */
-export const waterHash = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const waterHash = Fn(([p]: [Vec2Node]) => {
   return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
 });
 
 /** Smoothstep-interpolated value noise — FlowingWater `noise`. */
-export const waterNoise = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const waterNoise = Fn(([p]: [Vec2Node]) => {
   const i = floor(p);
   const f = fract(p);
   const s = f.mul(f).mul(float(3).sub(f.mul(2)));
@@ -26,7 +27,7 @@ export const waterNoise = Fn(([p]: [ReturnType<typeof vec2>]) => {
 });
 
 /** 3-octave fbm with per-octave offsets — FlowingWater `fbm3`. */
-export const waterFbm3 = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const waterFbm3 = Fn(([p]: [Vec2Node]) => {
   const p1 = p.mul(2.1).add(vec2(1.2, 3.4));
   const p2 = p1.mul(2.1).add(vec2(4.5, 2.1));
   return waterNoise(p)
@@ -36,7 +37,7 @@ export const waterFbm3 = Fn(([p]: [ReturnType<typeof vec2>]) => {
 });
 
 /** 2-octave fbm with a per-octave offset — FlowingWater `fbm2`. */
-export const waterFbm2 = Fn(([p]: [ReturnType<typeof vec2>]) => {
+export const waterFbm2 = Fn(([p]: [Vec2Node]) => {
   const p1 = p.mul(2.2).add(vec2(3.1, 1.7));
   return waterNoise(p).mul(0.6).add(waterNoise(p1).mul(0.3));
 });

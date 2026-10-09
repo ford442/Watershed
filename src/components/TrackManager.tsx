@@ -7,9 +7,10 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
-import { useTexture } from '@react-three/drei';
-import { TRACK_ROCK_TEXTURE_PATHS } from '../constants/trackTextures';
+import { useFrame, useLoader, useThree } from '@react-three/fiber';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { TRACK_ROCK_TEXTURE_PATHS, TRACK_ROCK_TEXTURE_PATHS_KTX2 } from '../constants/trackTextures';
+import { configureKtx2Loader, shouldUseKtx2, tagRockColorSpaces } from '../rendering/ktx2Textures';
 import TrackSegment from './TrackSegment';
 import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
@@ -245,9 +246,17 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   }, []);
 
   // PBR texture loading
-  const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = useTexture([
-    ...TRACK_ROCK_TEXTURE_PATHS,
-  ]);
+  // KTX2 (block-compressed in VRAM, no JPG decode) when the GPU has a target
+  // format, else the JPGs. A session constant per renderer, so this one
+  // useLoader call always sees the same loader class (#466 Phase D).
+  const gl = useThree((state) => state.gl);
+  const useKtx2 = useMemo(() => shouldUseKtx2(gl), [gl]);
+  const rockTextures = useLoader(
+    (useKtx2 ? KTX2Loader : THREE.TextureLoader) as typeof THREE.TextureLoader,
+    useKtx2 ? [...TRACK_ROCK_TEXTURE_PATHS_KTX2] : [...TRACK_ROCK_TEXTURE_PATHS],
+    useKtx2 ? (loader) => configureKtx2Loader(loader as unknown as KTX2Loader, gl) : undefined,
+  ) as THREE.Texture[];
+  const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = rockTextures;
 
   // Fallback texture generator
   const fallbackTextures = useMemo(() => {
@@ -265,7 +274,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     };
 
     return {
-      colorMap: createFallbackTexture('#8B7355'),
+      colorMap: Object.assign(createFallbackTexture('#8B7355'), { colorSpace: THREE.SRGBColorSpace }),
       normalMap: createFallbackTexture('#8080FF'),
       roughnessMap: createFallbackTexture('#D9D9D9'),
       aoMap: createFallbackTexture('#FFFFFF'),
@@ -275,6 +284,9 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
   useEffect(() => {
     const textures = [colorMap, normalMap, roughnessMap, aoMap, displacementMap];
+    // Albedo sRGB, data maps linear — on the JPG path too, where an untagged
+    // sRGB albedo would be encoded twice by the chain's one sRGB encode (#466).
+    tagRockColorSpaces(textures);
     textures.forEach((texture) => {
       if (!texture) return;
       texture.wrapS = texture.wrapT = THREE.RepeatWrapping;

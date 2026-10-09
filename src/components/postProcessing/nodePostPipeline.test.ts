@@ -3,7 +3,14 @@ import { qualityToEffects } from '../../systems/settings/settingsDerive';
 import { createNodePostPipeline, nodePostStructureKey, type NodePostStructure } from './nodePostPipeline';
 import { DEFAULT_POST_TUNING, computePostFrameParams, createPostSmoothedState } from './postFrameParams';
 
-const made = vi.hoisted(() => ({ bloom: 0, ao: 0, disposed: 0 }));
+const made = vi.hoisted(() => ({ bloom: 0, ao: 0, smaa: 0, disposed: 0 }));
+
+vi.mock('three/examples/jsm/tsl/display/SMAANode.js', () => ({
+  smaa: () => {
+    made.smaa += 1;
+    return { dispose: () => (made.disposed += 1) };
+  },
+}));
 
 vi.mock('three/examples/jsm/tsl/display/BloomNode.js', () => ({
   bloom: () => {
@@ -21,7 +28,7 @@ vi.mock('three/examples/jsm/tsl/display/GTAONode.js', () => ({
   },
 }));
 
-const ALL: NodePostStructure = { bloom: true, ssao: true, godRays: true, chromatic: true };
+const ALL: NodePostStructure = { bloom: true, ssao: true, godRays: true, chromatic: true, aa: 'none' };
 
 function makePipeline(structure: NodePostStructure = ALL) {
   // The RenderPipeline double never touches the renderer; no GL context needed.
@@ -32,12 +39,13 @@ function makePipeline(structure: NodePostStructure = ALL) {
 beforeEach(() => {
   made.bloom = 0;
   made.ao = 0;
+  made.smaa = 0;
   made.disposed = 0;
 });
 
 describe('createNodePostPipeline', () => {
   it('builds only the expensive passes the structure asks for', () => {
-    makePipeline({ bloom: true, ssao: false, godRays: false, chromatic: false });
+    makePipeline({ bloom: true, ssao: false, godRays: false, chromatic: false, aa: 'none' });
     expect(made.bloom).toBe(1);
     expect(made.ao).toBe(0);
   });
@@ -92,7 +100,22 @@ describe('createNodePostPipeline', () => {
   });
 
   it('keys structures stably', () => {
-    expect(nodePostStructureKey(ALL)).toBe('1111');
-    expect(nodePostStructureKey({ bloom: false, ssao: true, godRays: false, chromatic: true })).toBe('0101');
+    expect(nodePostStructureKey(ALL)).toBe('1111-');
+    expect(nodePostStructureKey({ bloom: false, ssao: true, godRays: false, chromatic: true, aa: 'smaa' })).toBe('0101S');
+  });
+
+  it('switches SMAA live by rebuilding the graph, with exactly one output transform', () => {
+    const post = makePipeline();
+    expect(made.smaa).toBe(0);
+    expect(post.pipeline.outputColorTransform).toBe(true);
+
+    expect(post.setStructure({ ...ALL, aa: 'smaa' })).toBe(true);
+    expect(made.smaa).toBe(1);
+    // The transform moved inside the graph (renderOutput before SMAA).
+    expect(post.pipeline.outputColorTransform).toBe(false);
+    expect((post.pipeline.outputNode as { type?: string }).type).not.toBe('renderOutput');
+
+    expect(post.setStructure(ALL)).toBe(true);
+    expect(post.pipeline.outputColorTransform).toBe(true);
   });
 });

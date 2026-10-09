@@ -13,6 +13,26 @@ import { getGodRaySunColor } from '../../systems/volumetric/VolumetricGodRays';
 
 export type PostQualityLevel = 'low' | 'medium' | 'high' | 'ultra';
 
+/**
+ * Anti-aliasing inside the post chain (#466 Phase C). The canvas's own
+ * `antialias` is a boot-frozen envelope attribute (#463) and only multisamples
+ * the final fullscreen quad — the scene renders into single-sample targets —
+ * so edge AA has to live here, where it can switch live with no remount.
+ *   none   Low.
+ *   smaa   Medium / High: SMAA after the output transform (display-referred).
+ *   msaa4  Ultra: 4x multisampled composer targets on the GLSL path. The node
+ *          path runs SMAA instead: its scene pass must stay single-sampled,
+ *          because GTAO and the god-ray march sample its depth and a
+ *          multisampled depth texture can't be sampled on native WebGPU.
+ */
+export type PostAaTier = 'none' | 'smaa' | 'msaa4';
+
+export function aaTierFor(quality: PostQualityLevel): PostAaTier {
+  if (quality === 'low') return 'none';
+  if (quality === 'ultra') return 'msaa4';
+  return 'smaa';
+}
+
 /** Tunables that arrive as `PostProcessingPipeline` props. */
 export interface PostTuning {
   bloomIntensity: number;
@@ -115,6 +135,23 @@ export interface PostFrameParams {
     time: number;
   };
   rainbow: { intensity: number; time: number; aspectRatio: number };
+  aa: PostAaTier;
+}
+
+/**
+ * Vignette darkness, re-expressed for a linear chain. Eskil's vignette mixes
+ * toward `1 - darkness` — a grey the tuning picked by eye while the GLSL
+ * composer still presented raw linear values. Both chains now grade in linear
+ * and encode once at the end (#466 Phase A), so decode that grey to linear to
+ * keep the corners where they were tuned. Sign-preserving: a boosted darkness
+ * > 1 asks for a below-black target, which the mix then clamps visually.
+ */
+export function linearVignetteDarkness(darkness: number): number {
+  const grey = 1 - darkness;
+  const g = Math.abs(grey);
+  // sRGB EOTF (three's ColorManagement SRGBToLinear, which `three` doesn't export).
+  const linear = g < 0.04045 ? g * 0.0773993808 : Math.pow(g * 0.9478672986 + 0.0521327014, 2.4);
+  return 1 - Math.sign(grey) * linear;
 }
 
 const _sunClip = new THREE.Vector3();
@@ -211,7 +248,7 @@ export function computePostFrameParams(
     vignette: {
       enabled: effectPresence.vignette,
       offset: tuning.vignetteOffset,
-      darkness: tuning.vignetteDarkness + smoothed.vignetteBoost,
+      darkness: linearVignetteDarkness(tuning.vignetteDarkness + smoothed.vignetteBoost),
     },
     godRays: {
       allowed,
@@ -233,5 +270,6 @@ export function computePostFrameParams(
       time: input.elapsed,
       aspectRatio: input.aspectRatio,
     },
+    aa: aaTierFor(quality),
   };
 }

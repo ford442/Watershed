@@ -194,3 +194,16 @@ Lower the number whenever the count drops, never raise it. It covers every
 rule in the backlog rather than just the two R3F ones, and needs no
 commit-hook infrastructure and no per-directory severity overrides in
 `eslint.config.js`.
+
+## Texture VRAM: Rock031 JPG vs KTX2 (#466 Phase D, 2026-10-08)
+
+Computed from dimensions × the GPU format three uploads (all maps 1024², full mip chain = ×4/3). This is deterministic, not sampled: SwiftShader exposes no compressed formats, so this harness can't capture the KTX2 path, and `renderer.info.memory` counts textures, not bytes.
+
+| Path | Upload format per map | Per map | 5 maps | Download |
+|------|-----------------------|---------|--------|----------|
+| JPG (before; also any GPU with no compressed format) | RGBA8 (decoded on the main thread) | 5.59 MB | **27.96 MB** | 5.3 MB |
+| KTX2, desktop (BPTC; ETC1S and UASTC both → BC7) | 1 B/px | 1.40 MB | **6.99 MB** (4.0× less) | 2.8 MB |
+| KTX2, mobile ETC2 (ETC1S → ETC1 RGB, UASTC → ETC2 EAC) | 0.5 / 1 B/px | 0.70 / 1.40 MB | **4.89 MB** (5.7× less) | 2.8 MB |
+| KTX2, ASTC (UASTC → ASTC 4×4; ETC1S → ETC1 RGB) | 1 / 0.5 B/px | 1.40 / 0.70 MB | **4.89 MB** | 2.8 MB |
+
+KTX2 also removes the JPG decode, and the full-resolution RGBA staging copy, from segment streaming. Choice and fallback: `src/rendering/ktx2Textures.ts`. Encoder: `scripts/build-textures.mjs`, which needs KTX-Software `ktx` ≥ 4.3 and is dev-only. Re-measure on a real GPU with the Chrome task manager "GPU memory" column if the set grows.

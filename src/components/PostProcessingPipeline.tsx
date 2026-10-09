@@ -6,6 +6,8 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
@@ -19,6 +21,7 @@ import { qualityToEffects } from '../systems/settings/settingsDerive';
 import type { VehicleRigidBodyRef } from '../experience/types';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
+  aaTierFor,
   computePostFrameParams,
   createPostSmoothedState,
   godRaysAllowed,
@@ -197,12 +200,14 @@ interface ComposerPassBundle {
   chromaticPass: ShaderPass;
   vignettePass: ShaderPass;
   rainbowPass: ShaderPass;
+  outputPass: OutputPass;
+  smaaPass: SMAAPass;
 }
 
 type WatershedComposer = EffectComposer & { userData: ComposerPassBundle };
 
 /** A post driver: the JSM composer on WebGLRenderer, or the node pipeline. */
-interface PostDriver {
+export interface PostDriver {
   apply(params: PostFrameParams): void;
   render(): void;
   setSize(width: number, height: number, pixelRatio: number): void;
@@ -213,20 +218,30 @@ function isNodeRenderer(gl: unknown): gl is WebGPURenderer {
   return (gl as { isWebGPURenderer?: boolean } | null)?.isWebGPURenderer === true;
 }
 
-/** GLSL path: JSM EffectComposer. WebGLRenderer only. */
-function createComposerDriver(
+/**
+ * GLSL path: JSM EffectComposer. WebGLRenderer only.
+ *
+ * Every pass works on linear HDR in the composer's half-float targets; the
+ * closing OutputPass is the chain's one tone-map (`gl.toneMapping`, exposure)
+ * and one sRGB encode (`gl.outputColorSpace`) — the same transform the node
+ * RenderPipeline applies via `outputColorTransform` (#466 Phase A). three skips
+ * both when rendering into a target, so without it the screen got raw linear.
+ */
+export function createComposerDriver(
   gl: THREE.WebGLRenderer,
   scene: THREE.Scene,
   camera: THREE.Camera,
   width: number,
   height: number,
   tuning: PostTuning,
-): PostDriver {
+): PostDriver & { readonly composer: EffectComposer } {
   const composer = new EffectComposer(gl) as WatershedComposer;
   composer.renderTarget1.depthBuffer = true;
   composer.renderTarget2.depthBuffer = true;
-  composer.renderTarget1.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedShortType);
-  composer.renderTarget2.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedShortType);
+  // 24-bit depth (UnsignedIntType → DEPTH_COMPONENT24): SSAO and god rays
+  // sample it at canyon distances, where 16 bits band (#466 Phase C).
+  composer.renderTarget1.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
+  composer.renderTarget2.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
   composer.addPass(new RenderPass(scene, camera));
 
   const resolution = new THREE.Vector2(width, height);
@@ -270,9 +285,30 @@ function createComposerDriver(
   rainbowPass.uniforms.aspectRatio.value = width / Math.max(1, height);
   composer.addPass(rainbowPass);
 
-  composer.userData = { ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass };
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
+
+  // Edge AA, after the output transform: SMAA's edge detection is tuned for
+  // display-referred (sRGB) input. Off until apply() picks the tier.
+  const smaaPass = new SMAAPass();
+  smaaPass.enabled = false;
+  composer.addPass(smaaPass);
+
+  composer.userData = {
+    ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass, smaaPass,
+  };
+
+  /** Multisample both ping-pong targets; three reallocates them on next use. */
+  const setTargetSamples = (samples: number) => {
+    for (const target of [composer.renderTarget1, composer.renderTarget2]) {
+      if (target.samples === samples) continue;
+      target.samples = samples;
+      target.dispose();
+    }
+  };
 
   return {
+    composer,
     apply(p) {
       bloomPass.enabled = p.bloom.enabled;
       bloomPass.strength = p.bloom.strength;
@@ -306,6 +342,9 @@ function createComposerDriver(
       rainbowPass.uniforms.intensity.value = p.rainbow.intensity;
       rainbowPass.uniforms.time.value = p.rainbow.time;
       rainbowPass.uniforms.aspectRatio.value = p.rainbow.aspectRatio;
+
+      smaaPass.enabled = p.aa === 'smaa';
+      setTargetSamples(p.aa === 'msaa4' ? 4 : 0);
     },
     render() {
       composer.render();
@@ -318,6 +357,8 @@ function createComposerDriver(
       // EffectComposer.dispose() only frees its own render targets, not each
       // pass's — SSAOPass owns three full-res render targets of its own.
       ssaoPass.dispose();
+      outputPass.dispose();
+      smaaPass.dispose();
       composer.dispose();
     },
   };
@@ -329,6 +370,7 @@ function nodeStructureFor(p: PostFrameParams): NodePostStructure {
     ssao: p.ssao.enabled,
     godRays: p.godRays.allowed,
     chromatic: p.chromatic.enabled,
+    aa: p.aa === 'none' ? 'none' : 'smaa',
   };
 }
 
@@ -444,29 +486,35 @@ export function PostProcessingPipeline({
     ssao: effectPresence.ssao,
     godRays: godRaysAllowed({ effectPresence, quality, enableGodRays: config.enableGodRays }),
     chromatic: effectPresence.chromaticAberration,
+    aa: aaTierFor(quality) === 'none' ? 'none' : 'smaa',
   });
 
-  // The composer's depth textures are sized at construction, so the JSM driver
-  // is rebuilt on resize (as before); the node driver sizes itself.
-  const nodePath = isNodeRenderer(gl);
-  const composerWidth = nodePath ? 0 : size.width;
-  const composerHeight = nodePath ? 0 : size.height;
+  // Construction size only — the JSM driver follows later CSS-size and DPR
+  // changes through setSize (three resizes each target's depth texture to match
+  // on the next bind), so a resize never rebuilds it. The node driver sizes
+  // itself from the renderer.
+  const constructionSize = useRef({ width: size.width, height: size.height });
 
   const driver = useMemo((): PostDriver | null => {
     if (!gl || !scene || !camera) return null;
     if (isNodeRenderer(gl)) {
       return createNodeDriver(gl, scene, camera, initialStructure.current);
     }
-    return createComposerDriver(gl, scene, camera, composerWidth, composerHeight, tuning);
+    const { width, height } = constructionSize.current;
+    return createComposerDriver(gl, scene, camera, width, height, tuning);
     // tuning seeds construction only; per-frame values flow through apply().
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, scene, camera, composerWidth, composerHeight]);
+  }, [gl, scene, camera]);
 
-  // Handle resize
+  // Follow CSS size *and* DPR. `viewport.dpr` is what R3F's setDpr writes —
+  // RendererQualitySync drives it from the render-scale valve (#419) — so a
+  // closing valve now shrinks the composer's targets (scene render, SSAO,
+  // bloom), not just the final blit (#466 Phase B).
+  const dpr = useThree((s) => s.viewport.dpr);
   useEffect(() => {
     if (!driver) return;
-    driver.setSize(size.width, size.height, gl.getPixelRatio());
-  }, [size.width, size.height, driver, gl]);
+    driver.setSize(size.width, size.height, dpr);
+  }, [size.width, size.height, dpr, driver]);
 
   useEffect(() => () => driver?.dispose(), [driver]);
 

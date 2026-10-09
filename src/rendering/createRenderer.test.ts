@@ -748,6 +748,7 @@ describe('node renderer honors the boot graphics contract', () => {
       const params = await lastNodeParameters();
       expect(params?.context).toBe(spy.mock.results[0].value);
       expect(params?.forceWebGL).toBe(true);
+      expect(params?.trackTimestamp).toBe(true);
 
       spy.mockRestore();
       renderer.dispose();
@@ -870,6 +871,7 @@ describe('node renderer honors the boot graphics contract', () => {
       stencil: false,
       powerPreference: 'high-performance',
       forceWebGL: false,
+      trackTimestamp: true,
     });
     // Premultiplied canvas, opaque clear — what WebGLBackground does on WebGL.
     expect(renderer.getClearAlpha()).toBe(1);

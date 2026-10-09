@@ -1,0 +1,24 @@
+<!doctype html>
+<!--
+  GLSL vs TSL post parity harness (#466 Phase A). Driven by
+  verification/post_parity.mjs; served by a Vite dev server.
+-->
+<html>
+  <head><meta charset="utf-8" /><title>Post parity</title></head>
+  <body style="margin:0;background:#000">
+    <pre id="out" style="color:#ccc">running…</pre>
+    <script type="module">
+      import { runPostParity } from '/src/debug/postParity.ts';
+
+      const out = document.getElementById('out');
+      try {
+        const results = await runPostParity();
+        window.__postParity = { results };
+        out.textContent = JSON.stringify(results, null, 2);
+      } catch (error) {
+        window.__postParity = { error: String((error && error.stack) || error) };
+        out.textContent = window.__postParity.error;
+      }
+    </script>
+  </body>
+</html>
