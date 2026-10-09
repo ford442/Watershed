@@ -56,6 +56,9 @@ function walkMap(mapId: MapRegistryId, seed: number = DEFAULT_MAP_CONFIG.seed, m
     record();
     cursor += 1;
   }
+  // Biome changes arm a 400ms debounce. Drop it with the treadmill so a node
+  // test does not dispatch `biome-change` after the environment is gone.
+  chunks.dispose();
   return { manager, frames: [...frames.values()].sort((a, b) => a.index - b.index), entered };
 }
 
