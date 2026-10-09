@@ -141,6 +141,7 @@ export const BIOME_HUD_LABELS: Record<string, string> = {
   slotCanyon: 'SLOT CANYON',
   glacier: 'GLACIER',
   glacialMelt: 'GLACIAL MELT',
+  cavern: 'ICE CAVERN',
   lumberFlume: 'LUMBER FLUME',
   hydroDam: 'HYDRO DAM',
 };

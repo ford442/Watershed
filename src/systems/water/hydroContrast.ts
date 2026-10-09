@@ -34,6 +34,8 @@ import { sampleSWEFlow } from './sampleSWEFlow';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
 import type { SweEventCall } from './sweSim';
 import { createRiverRouter } from './riverRouter';
+import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
+import type { RunWeather } from '../map/weatherInflow';
 import { getRoutingReach, routingChainIndex } from '../map/routingReach';
 import type { MapRegistryId } from '../../maps/registry';
 import type { WatershedNativeModule } from './WatershedWasm';
@@ -300,9 +302,15 @@ export function routedEdgeEtaAt(
   mapId: MapRegistryId,
   segmentIndex: number,
   hour: number,
+  weather?: RunWeather | null,
 ): number {
   const reach = getRoutingReach();
-  const router = createRiverRouter(wasm, reach, hour);
+  const router = createRiverRouter(
+    wasm,
+    reach,
+    hour,
+    weather ? { forecast: { ...DEFAULT_FORECAST_INPUTS, weather } } : {},
+  );
   if (!router) throw new Error('routedEdgeEtaAt: binary has no routing exports (ABI < 10)');
   try {
     const k = routingChainIndex(reach, mapId, segmentIndex);

@@ -12,6 +12,7 @@ import {
   geometryHasFinitePositions,
   applyTubeProfile,
   resolveTubeProfile,
+  CAVERN_PROFILE,
   ICE_TUBE_PROFILE,
   OVERFLOW_PIPE_PROFILE,
   TUBE_MAX_CANYON_WIDTH,
@@ -200,7 +201,21 @@ describe('ice-tube / overflow-pipe wall profile', () => {
     return max;
   }
 
-  it('only applies to glacial melt and the hydro overflow pipe', () => {
+  it('roofs the cavern as a closed vault, lower than the ice tube (#464)', () => {
+    expect(resolveTubeProfile({ isGlacier: false, biome: 'cavern', canyonWidth: 28 })).toBe(CAVERN_PROFILE);
+    expect(CAVERN_PROFILE.curl).toBeGreaterThan(ICE_TUBE_PROFILE.curl);
+    expect(CAVERN_PROFILE.ceilingHeight).toBeLessThan(ICE_TUBE_PROFILE.ceilingHeight);
+    // The glacial map authors the cave on segments 1–2, both narrow enough to roof.
+    const segments = (glacialSource as { segments: Array<{ index: number; width: number; biomeOverride?: string }> })
+      .segments;
+    const cave = segments.filter((seg) => seg.biomeOverride === 'cavern');
+    expect(cave.map((seg) => seg.index)).toEqual([1, 2]);
+    for (const seg of cave) {
+      expect(resolveTubeProfile({ isGlacier: false, biome: 'cavern', canyonWidth: seg.width })).toBe(CAVERN_PROFILE);
+    }
+  });
+
+  it('only applies to glacial melt, the cavern and the hydro overflow pipe', () => {
     expect(resolveTubeProfile({ isGlacier: true, biome: 'glacialMelt', canyonWidth: 25 })).toBe(
       ICE_TUBE_PROFILE,
     );

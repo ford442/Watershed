@@ -25,10 +25,11 @@ const BIOME_TYPES = [
   { value: 'slotCanyon', label: 'Slot Canyon' },
   { value: 'glacialMelt', label: 'Glacial Melt' },
   { value: 'glacier', label: 'Glacier' },
+  { value: 'cavern', label: 'Ice Cavern' },
   { value: 'lumberFlume', label: 'Lumber Flume' },
   { value: 'hydroDam', label: 'Hydro-Dam' },
   { value: 'delta', label: 'Delta' },
-  // alpineSpring / cavern / midnightMist are palette-only clones
+  // alpineSpring / midnightMist are palette-only clones
   // (PALETTE_ONLY_BIOMES) — not offered until they get their own walls.
 ];
 

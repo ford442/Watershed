@@ -13,6 +13,9 @@ import type { GameSettings } from '../GameState';
 import type { RunSplitEntry } from '../ghost/ghostCodec';
 import type { WsGhostFile } from '../ghost/ghostExport';
 import { launchHourOverride } from '../../utils/launchHourOverride';
+import { launchWeatherOverride } from '../../utils/launchWeatherOverride';
+import { DEFAULT_WEATHER_INTENSITY, type RunWeather } from '../map/weatherInflow';
+import type { WeatherType } from '../../constants/weather';
 
 // =============================================================================
 // TYPES
@@ -48,6 +51,8 @@ export interface PersistencePayload {
   completedMaps?: string[];
   /** Last selected pre-run launch hour (0–23). */
   launchHour?: number;
+  /** Last selected pre-run weather (#464). Absent = clear. */
+  launchWeather?: WeatherType;
   runs: Record<string, RunBest>;
   /** Last imported rival `.wsghost` per map id — offline-only, no accounts/server. */
   rivals?: Record<string, WsGhostFile>;
@@ -341,6 +346,23 @@ export function setLaunchHour(hour: number): number {
   });
   flushPersistence();
   return normalized;
+}
+
+export function getLaunchWeather(): RunWeather {
+  // `?weather=` wins for this page load only — scouting / smoke (#464).
+  const override = launchWeatherOverride();
+  if (override !== null) return override;
+  const type = loadPersistence().launchWeather ?? 'clear';
+  return { type, intensity: DEFAULT_WEATHER_INTENSITY[type] };
+}
+
+export function setLaunchWeather(type: WeatherType): WeatherType {
+  touchCache((data) => {
+    if (type === 'clear') delete data.launchWeather;
+    else data.launchWeather = type;
+  });
+  flushPersistence();
+  return type;
 }
 
 /** Best score across all seeds for a map id (`mapId:*` run keys). */

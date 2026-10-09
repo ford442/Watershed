@@ -31,7 +31,8 @@ export const OPEN_WALL_TIGHTNESS = 0.35;
 const WALL_WETNESS: Partial<Record<BiomeId, number>> = {
   glacialMelt: 0.9,
   glacier: 0.85,
-  cavern: 0.75,
+  // Closed wet vault: nearly as live as the ice tube.
+  cavern: 0.85,
   hydroDam: 0.7,
   lumberFlume: 0.55,
   canyonSummer: 0.45,

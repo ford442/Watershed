@@ -313,6 +313,30 @@ describeNative('hydroContrast — the routed upstream edge (ABI 10)', () => {
     expect(delay).toBeLessThan(1.25 * lag);
   });
 
+  it('a storm launch stands higher at the edge than the same hour clear, on every map; snow does not (#464)', () => {
+    const storm = { type: 'storm', intensity: 0.9 } as const;
+    const rain = { type: 'rain', intensity: 0.7 } as const;
+    const snow = { type: 'snow', intensity: 1 } as const;
+    for (const mapId of ['glacial', 'lumber', 'meander', 'hydro', 'delta'] as const) {
+      const clear = routedEdgeEtaAt(wasm, mapId, 2, DAM_HOUR);
+      expect(routedEdgeEtaAt(wasm, mapId, 2, DAM_HOUR, { type: 'clear', intensity: 0 }), mapId).toBe(clear);
+      expect(routedEdgeEtaAt(wasm, mapId, 2, DAM_HOUR, snow), mapId).toBe(clear);
+      const wet = routedEdgeEtaAt(wasm, mapId, 2, DAM_HOUR, rain);
+      const stormy = routedEdgeEtaAt(wasm, mapId, 2, DAM_HOUR, storm);
+      expect(wet, mapId).toBeGreaterThan(clear);
+      expect(stormy - clear, mapId).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+      expect(stormy, mapId).toBeGreaterThan(wet);
+    }
+  });
+
+  it('the storm edge moves the mesh and the hull through the boundary, like the dam hour', async () => {
+    const clear = routedEdgeEtaAt(wasm, 'glacial', 2, DAM_HOUR);
+    const storm = routedEdgeEtaAt(wasm, 'glacial', 2, DAM_HOUR, { type: 'storm', intensity: 0.9 });
+    const contrast = await measureEdgeStageContrastWith(wasmEdgeStep, clear, storm);
+    expect(contrast.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(contrast.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
+  });
+
   it('spin-up flushes the whole chain before launch', () => {
     const reach = getRoutingReach();
     const router = createRiverRouter(wasm, reach, DAM_HOUR)!;

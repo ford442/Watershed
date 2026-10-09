@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { currentWetnessMuffle } from './wetnessMuffle';
 import { fillSpeedWindChannel, speedWindLoopLength } from './speedWindBuffer';
+import { fillThunderChannel, thunderLength } from './thunderBuffer';
 import {
   PRELOAD_SOUNDS,
   SOUND_DEFS,
@@ -93,6 +94,7 @@ export class AudioManager {
   private sfxVolume: number = 1.0;
   /** Lazily synthesized speed-wind loop — see getSpeedWindBuffer(). */
   private speedWindBuffer: AudioBuffer | null = null;
+  private thunderBuffer: AudioBuffer | null = null;
 
   // Category limits tracking
   private categoryCounts: Map<SoundCategory, number> = new Map();
@@ -540,6 +542,40 @@ export class AudioManager {
 
     this.speedWindBuffer = buffer;
     return buffer;
+  }
+
+  /** Synthesized thunder clap (#464) — no asset; generated once per manager and cached. */
+  getThunderBuffer(): AudioBuffer | null {
+    if (this.thunderBuffer) return this.thunderBuffer;
+    if (!this.audioContext) return null;
+    const sampleRate = this.audioContext.sampleRate;
+    const buffer = this.audioContext.createBuffer(2, thunderLength(sampleRate), sampleRate);
+    fillThunderChannel(buffer.getChannelData(0), sampleRate, 0x7d0e);
+    fillThunderChannel(buffer.getChannelData(1), sampleRate, 0x3a11);
+    this.thunderBuffer = buffer;
+    return buffer;
+  }
+
+  /**
+   * Thunder one-shot for a lightning strike, `delaySeconds` after the flash
+   * (sound travel). Not a SOUND_DEFS entry — the buffer is synthesized — but it
+   * obeys the same mute / unlock / SFX-channel rules as `playSound`.
+   */
+  playThunder(volume = 1, delaySeconds = 0, pitch = 1): boolean {
+    if (this.isMuted || !this.unlockGate.unlocked) return false;
+    const buffer = this.getThunderBuffer();
+    if (!buffer) return false;
+    const source = new THREE.Audio(this.listener) as THREE.Audio<AudioNode>;
+    source.setBuffer(buffer);
+    source.setVolume(Math.max(0, Math.min(1, volume * this.getEffectiveSfxGain())));
+    source.setPlaybackRate(Math.max(0.5, Math.min(2, pitch)));
+    const ended = source.onEnded.bind(source);
+    source.onEnded = () => {
+      ended();
+      source.disconnect();
+    };
+    source.play(Math.max(0, delaySeconds));
+    return true;
   }
 
   /**

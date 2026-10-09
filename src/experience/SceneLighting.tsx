@@ -6,6 +6,8 @@ import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { deriveRendererContextOptions } from '../rendering';
 import { BIOME_LIGHTING } from './constants';
 
+const KEY_LIGHT_USER_DATA = { keyLight: true } as const;
+
 interface SceneLightingProps {
   biome: string;
   currentSegmentIndex: number;
@@ -138,6 +140,8 @@ export default function SceneLighting({
       <hemisphereLight color={hemiSkyColor} groundColor={hemiGroundColor} intensity={hemiIntensity} />
       <directionalLight
         ref={sunRef}
+        // WeatherSystem strobes the key light, and only it, on a lightning strike (#464).
+        userData={KEY_LIGHT_USER_DATA}
         color={L.dirColor}
         position={sharedSunPosition}
         intensity={L.dirIntensity}

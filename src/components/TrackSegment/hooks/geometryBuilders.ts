@@ -56,6 +56,12 @@ export const ICE_TUBE_PROFILE: TubeProfile = { curl: 0.88, ceilingHeight: 9.5 };
 export const OVERFLOW_PIPE_PROFILE: TubeProfile = { curl: 0.72, ceilingHeight: 8 };
 
 /**
+ * Cavern (#464): a closed rock vault, lower than the ice tube and with no slot
+ * of sky — the ice cave the glacial source runs out of before the tube opens.
+ */
+export const CAVERN_PROFILE: TubeProfile = { curl: 0.97, ceilingHeight: 8.5 };
+
+/**
  * Widest canyon that still reads as an enclosed tube.
  *
  * The glacial map is not a tube end to end — it runs ice cave → tube apex →
@@ -78,6 +84,7 @@ export function resolveTubeProfile(opts: {
   if (!Number.isFinite(opts.canyonWidth) || opts.canyonWidth > TUBE_MAX_CANYON_WIDTH) {
     return null;
   }
+  if (opts.biome === 'cavern') return CAVERN_PROFILE;
   if (opts.isGlacier) return ICE_TUBE_PROFILE;
   // The overflow pipe is authored as a `waterfall` on the hydro map; the type
   // alone is not enough, or every plunge in the game would grow a roof.
@@ -314,7 +321,11 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
   const color = new THREE.Color();
 
   const isHydro = biome === 'hydroDam';
-  const dryColor = isSlotCanyon
+  // Wet basalt with cave algae at the waterline — not ice, not canyon sandstone.
+  const isCavern = biome === 'cavern';
+  const dryColor = isCavern
+    ? new THREE.Color('#5a6068')
+    : isSlotCanyon
     ? new THREE.Color(SHADERS.SLOT_ROCK_RIM)
     : isGlacier
       ? new THREE.Color('#c8dce8')
@@ -323,7 +334,9 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
       : isAutumnLike(biome)
         ? new THREE.Color('#b89868')
         : new THREE.Color('#9a8e78');
-  const wetColor = isSlotCanyon
+  const wetColor = isCavern
+    ? new THREE.Color('#1c2226')
+    : isSlotCanyon
     ? new THREE.Color(SHADERS.SLOT_ROCK_SHADOW)
     : isGlacier
       ? new THREE.Color('#2a4858')
@@ -332,7 +345,9 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
       : isAutumnLike(biome)
         ? new THREE.Color('#4a3828')
         : new THREE.Color('#3e5038');
-  const shoreColor = isSlotCanyon
+  const shoreColor = isCavern
+    ? new THREE.Color('#3a4248')
+    : isSlotCanyon
     ? new THREE.Color(SHADERS.SLOT_ROCK_BASE)
     : isGlacier
       ? new THREE.Color('#6a9ab0')
@@ -341,7 +356,9 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
       : isAutumnLike(biome)
         ? new THREE.Color('#685840')
         : new THREE.Color('#4a5c44');
-  const mossColor = isSlotCanyon
+  const mossColor = isCavern
+    ? new THREE.Color('#3e5a52')
+    : isSlotCanyon
     ? new THREE.Color('#7c4a2d')
     : isGlacier
       ? new THREE.Color('#4a7888')
@@ -350,7 +367,9 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
       : isAutumnLike(biome)
         ? new THREE.Color('#7a6640')
         : new THREE.Color('#587248');
-  const bankColor = isSlotCanyon
+  const bankColor = isCavern
+    ? new THREE.Color('#4c545a')
+    : isSlotCanyon
     ? new THREE.Color('#bf7444')
     : isGlacier
       ? new THREE.Color('#a0b8c8')
@@ -512,7 +531,15 @@ export function buildWallShellGeometry(ctx: GeometryBuildContext): THREE.BufferG
   const mossMask = new Float32Array(positions.count);
   const highWaterMask = new Float32Array(positions.count);
 
-  const bandPalette = isSlotCanyon
+  const bandPalette = biomeProfile.id === 'cavern'
+    ? {
+        waterline: new THREE.Color('#101519'),
+        lower: new THREE.Color('#262e34'),
+        mid: new THREE.Color('#3a444c'),
+        upper: new THREE.Color('#4e5860'),
+        rim: new THREE.Color('#6a747c'),
+      }
+    : isSlotCanyon
     ? {
         waterline: new THREE.Color('#2f1a12'),
         lower: new THREE.Color('#7e4123'),

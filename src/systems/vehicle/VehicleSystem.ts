@@ -42,7 +42,7 @@ export const MATERIAL_FROM_BIOME: Record<string, SurfaceMaterial> = {
   glacialMelt: SurfaceMaterial.ROCK,
   glacier: SurfaceMaterial.ROCK,
   delta: SurfaceMaterial.MOSS,
-  cavern: SurfaceMaterial.CONCRETE,
+  cavern: SurfaceMaterial.ROCK,
   midnightMist: SurfaceMaterial.MOSS,
   lumberFlume: SurfaceMaterial.WOOD,
   hydroDam: SurfaceMaterial.CONCRETE,

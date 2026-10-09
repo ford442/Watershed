@@ -17,10 +17,14 @@ import {
   getCompletedMaps,
   getLastMapId,
   getLaunchHour,
+  getLaunchWeather,
   setLaunchHour,
+  setLaunchWeather,
 } from '../systems/persistence/PersistenceSystem';
 import { DAM_RELEASE_SCHEDULE } from '../experience/constants';
 import LaunchHourPicker from './LaunchHourPicker';
+import LaunchWeatherPicker from './LaunchWeatherPicker';
+import type { WeatherType } from '../constants/weather';
 import CachePlacementPanel from './CachePlacementPanel';
 import LoadoutPicker from './LoadoutPicker';
 import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/survival/portageCache';
@@ -75,6 +79,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const journeyStack = useMemo(() => getDefaultJourneyStack(), []);
   const [playMode, setPlayMode] = useState<JourneyMode>('single');
   const [launchHour, setLaunchHourLocal] = useState(() => getLaunchHour());
+  const [launchWeather, setLaunchWeatherLocal] = useState<WeatherType>(() => getLaunchWeather().type);
   const [placedCacheIds, setPlacedCacheIds] = useState<string[]>([]);
   const [loadoutId, setLoadoutId] = useState<LoadoutId>(DEFAULT_LOADOUT_ID);
 
@@ -90,6 +95,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const handleLaunchHourChange = (hour: number) => {
     setLaunchHourLocal(hour);
     setLaunchHour(hour);
+  };
+
+  const handleLaunchWeatherChange = (type: WeatherType) => {
+    setLaunchWeatherLocal(type);
+    setLaunchWeather(type);
   };
 
   const handleCacheToggle = (slotId: string) => {
@@ -226,6 +236,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               value={launchHour}
               onChange={handleLaunchHourChange}
               damReleaseSchedule={DAM_RELEASE_SCHEDULE}
+            />
+
+            <LaunchWeatherPicker
+              value={launchWeather}
+              launchHour={launchHour}
+              onChange={handleLaunchWeatherChange}
             />
 
             <LoadoutPicker selectedId={loadoutId} onSelect={setLoadoutId} />

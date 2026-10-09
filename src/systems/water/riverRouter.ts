@@ -18,6 +18,7 @@
  * the head earlier (a 13:00 release has reached the hydro basin by 14:00).
  */
 import { computeFlowRate } from '../map/flowForecast';
+import { weatherFlowRateDelta, type RunWeather } from '../map/weatherInflow';
 import type { RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import type { SweInflow } from './sweScroll';
@@ -47,21 +48,27 @@ export interface RoutingForecast {
   temperature: number;
   snowpackIndex: number;
   damReleaseSchedule: ReadonlyArray<{ hour: number; release: number }>;
+  /**
+   * The run's weather (#464). Rain and storm add head discharge, so the storm
+   * reaches the window's edge with the routed lag; absent or clear routes
+   * exactly as before.
+   */
+  weather?: RunWeather | null;
 }
 
 function wrapHour(hour: number): number {
   return ((hour % 24) + 24) % 24;
 }
 
-/** The head hydrograph: the forecast `flowRate` at `hour` as a discharge (m³/s). */
+/** The head hydrograph: the forecast `flowRate` (plus any rain / storm runoff) at `hour` as a discharge (m³/s). */
 export function headDischargeAtHour(
   hour: number,
   forecast: RoutingForecast = DEFAULT_FORECAST_INPUTS,
 ): number {
-  return (
-    computeFlowRate(wrapHour(hour), forecast.temperature, forecast.snowpackIndex, forecast.damReleaseSchedule) *
-    ROUTING_NOMINAL_DISCHARGE
-  );
+  const h = wrapHour(hour);
+  const flowRate = computeFlowRate(h, forecast.temperature, forecast.snowpackIndex, forecast.damReleaseSchedule);
+  // Clear weather adds exactly 0, so a clear day routes bit-identically to pre-weather.
+  return (flowRate + weatherFlowRateDelta(h, forecast.weather)) * ROUTING_NOMINAL_DISCHARGE;
 }
 
 type RoutingModule = WatershedNativeModule &

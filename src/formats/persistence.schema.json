@@ -50,6 +50,10 @@
       "minimum": 0,
       "maximum": 23
     },
+    "launchWeather": {
+      "type": "string",
+      "enum": ["clear", "rain", "fog", "storm", "snow"]
+    },
     "runs": {
       "type": "object",
       "additionalProperties": {
