@@ -4,7 +4,8 @@ import {
   RapierWorkerInitPayload,
   RapierWorkerLike,
   RapierWorkerResponse,
-  StaticBoxColliderSpec,
+  StaticColliderSpec,
+  staticColliderTransferables,
   Vec3Tuple,
   WaterForceDiagnostics,
   WaterForceTickConfig,
@@ -113,8 +114,16 @@ export class RapierWorkerProxy {
     });
   }
 
-  addStaticCollider(collider: StaticBoxColliderSpec, handle?: number): Promise<number> {
-    return this.request({ type: 'ADD_STATIC_COLLIDER', collider, handle }).then((response) => {
+  /**
+   * Trimesh/hull buffers are transferred, not copied: pass a spec the caller
+   * owns outright (workerColliderRegistry builds a fresh one per send).
+   */
+  addStaticCollider(collider: StaticColliderSpec, handle?: number): Promise<number> {
+    const transfer = staticColliderTransferables(collider);
+    return this.request(
+      { type: 'ADD_STATIC_COLLIDER', collider, handle },
+      transfer.length > 0 ? transfer : undefined,
+    ).then((response) => {
       if (response.type !== 'ACK' || response.handle == null) {
         throw new Error('ADD_STATIC_COLLIDER did not return a handle');
       }

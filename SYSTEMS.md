@@ -73,7 +73,7 @@ without prop-drilling.
 
 **Exports:**
 - `useGameStore` — Zustand store hook (primary access)
-- Selector hooks: `usePlayerPosition`, `usePlayerSpeed`, `usePlayerBiome`,
+- Selector hooks: `usePlayerPosition`, `usePlayerBiome`,
   `useGamePaused`, `useGameWipeout`, `useGameSettings`, `useQualityPreset`,
   `useGravityMultiplier`
 - `batchFrameUpdate(pos, speed, segmentIndex)` — throttled frame writer (updates Zustand every 3rd frame)
@@ -365,8 +365,6 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
   (spawn-count scale)
 - `injectSWEDisturbance` from `SWEHeightField`
 - `useFrame` from `@react-three/fiber`
-- **Does NOT import `SplashParticles.tsx`** — that is a separate unused legacy component.
-- **Does NOT import `useRiverAudio`.**
 
 **Props:**
 - `playerRef` — Rapier rigid body ref (`vehicleRef` from `InnerExperience`)
@@ -449,8 +447,6 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 
 **Boundaries (Do NOT):**
 - Do NOT mount without the LOD gate — duplicate scene renders are expensive.
-- Do NOT assume `EnhancedWaterMaterial.js` is live — it remains an unused legacy sample
-  reference; the production consumer is `FlowingWater.tsx`.
 - Do NOT leave the store populated after unmount — always `clear()` in the dispose path.
 
 **Known Pain:**
@@ -506,6 +502,21 @@ the browser exposes `Worker` + `WebAssembly`. Kill switches, in precedence order
 Settings → Physics > default on. The decision is made once per vehicle mount by
 `resolvePhysicsWorker` (`src/utils/physicsWorkerFlag.ts`); switching mid-session would strand
 the Rapier body between two authorities.
+
+**The worker's static world is the level (#465 C2).** There is no authored floor: the old
+`INIT` box at an absolute `y = LEVEL − 0.65` did not descend with the centreline, so the raft
+floated through walls and rocks. Static colliders register in `src/physics/workerColliderRegistry.ts`
+as they mount — track-segment trimesh (`seg:<id>`, `TrackSegmentCollisionMeshes`), rock and pillar
+hulls (`Rock.tsx`), canyon boulders (`CanyonDecorations.tsx`), active pooled obstacles, intact
+trestle planks — and unregister on unmount/shatter/break. Entries are lazy factories, so nothing is
+copied while no worker exists. `raftWorkerSession.ts` waits for the first `seg:` collider, `INIT`s
+the worker at the raft's current pose, replays the registry (`attachColliderRegistry`, ACKed), then
+hands the proxy to `RaftVehicle`; until then the main-thread path owns the raft. Shapes: `box`,
+`trimesh` (world-space), `hull` (`staticColliderBody.ts`); buffers are transferred. The worker
+runs commands in arrival order, so an add posted during `INIT` waits for it.
+Not mirrored: floating debris (dynamic) and the splash/pond safety box (absolute `y = −8`).
+Collision **events** (pillar cracks, trestle breaks, collision particles) still fire on the
+main-thread mirror body, which the worker's state overwrites each step.
 
 **Who owns the raft's water force (#455 Phase B):** the **sim worker**. The Rapier worker does
 not load `watershed_native` (no `workerWasm.ts` in its module graph —

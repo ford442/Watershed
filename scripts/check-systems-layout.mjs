@@ -3,7 +3,7 @@
  * CI guard (#371, tightened here): `src/systems/` root holds the store and the
  * thin barrel, nothing else. Everything is a domain folder.
  *
- * Allowed root `*.ts`: GameState.ts, index.ts
+ * Allowed root `*.ts`: GameState.ts (the systems/index.ts barrel had no importers; #465 D)
  * Allowed root `*.tsx`: none. The three deferred React hosts moved —
  * BiomeSystem → biome/, LODManager → lod/, SplashSystem → water/ — and
  * PostProcessing.tsx must not return (deleted in #371). The carve-out that
@@ -17,13 +17,13 @@ import { fileURLToPath } from 'node:url';
 
 const systemsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'systems');
 
-const ALLOWED_ROOT_TS = new Set(['GameState.ts', 'index.ts']);
+const ALLOWED_ROOT_TS = new Set(['GameState.ts']);
 
 const rootTs = readdirSync(systemsDir).filter((name) => name.endsWith('.ts'));
 const banned = rootTs.filter((name) => !ALLOWED_ROOT_TS.has(name));
 
 if (banned.length > 0) {
-  console.error('[systems-layout] Root-level src/systems/*.ts must be GameState.ts or index.ts only.');
+  console.error('[systems-layout] Root-level src/systems/*.ts must be GameState.ts only.');
   console.error('  Move new modules into a domain folder (journey/, water/, map/, …).');
   console.error('  Banned:');
   for (const name of banned) console.error(`    - ${name}`);

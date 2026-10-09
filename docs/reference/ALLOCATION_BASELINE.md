@@ -159,7 +159,7 @@ vars, which has nothing to do with allocation.
 | 6 | `src/components/WaterFlowForces.tsx` |
 | 6 | `src/components/WaterReflection.tsx` |
 | 5 | `src/components/WeatherSystem.tsx` |
-| 4 | `src/components/Environment/FloatingDebris.tsx` |
+| 4 | `FloatingDebris.tsx` (deleted in #465 — had no importer) |
 | 4 | `src/components/TrackSegment/PondFog.tsx` |
 | 3 | `src/components/EnhancedSky.tsx` |
 | 3 | `src/components/PostProcessingPipeline.tsx` |

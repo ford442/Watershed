@@ -1,7 +1,6 @@
-import type { RefObject } from 'react';
+import { useEffect, useState, type ComponentType, type RefObject } from 'react';
 import RunnerVehicle from '../vehicles/RunnerVehicle';
 import RaftVehicle from '../vehicles/RaftVehicle';
-import WasmWaterForceTest from '../components/WasmWaterForceTest';
 import PhysicsDebugOverlay from '../components/PhysicsDebugOverlay';
 import WireframeDebug from '../rendering/WireframeDebug';
 import type { VehicleRigidBodyRef, VehicleType } from './types';
@@ -24,9 +23,27 @@ export default function VehicleMount({
   wireframeDebug,
   cleanTest,
 }: VehicleMountProps) {
+  // Dev-only harness: a dynamic import behind import.meta.env.DEV so the
+  // production bundle carries neither it nor its WASM consumer (#465 C5).
+  const [WasmWaterForceTest, setWasmWaterForceTest] =
+    useState<ComponentType<{ ref: RefObject<VehicleRigidBodyRef | null> }> | null>(null);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !wasmWaterTest) return;
+    let cancelled = false;
+    import('../components/WasmWaterForceTest')
+      .then((m) => {
+        if (!cancelled) setWasmWaterForceTest(() => m.default);
+      })
+      .catch((err) => console.error('[VehicleMount] Failed to load WasmWaterForceTest:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [wasmWaterTest]);
+
   return (
     <>
-      {wasmWaterTest ? (
+      {WasmWaterForceTest ? (
         <WasmWaterForceTest ref={vehicleRef} />
       ) : vehicleType === 'runner' ? (
         <RunnerVehicle ref={vehicleRef} />

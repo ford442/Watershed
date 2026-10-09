@@ -43,7 +43,7 @@ export interface GameState {
   currentSpeed: number;
   currentBiome: BiomeId;
   isPaused: boolean;
-  distanceTraveled: number;
+  /** Whole metres downstream; written once per frame by useExperienceLifecycle. */
   distance: number;
   score: number;
   multiplier: number;
@@ -94,7 +94,6 @@ export interface GameActions {
   setCurrentSpeed: (speed: number) => void;
   setCurrentBiome: (biome: BiomeId) => void;
   setIsPaused: (paused: boolean) => void;
-  setDistanceTraveled: (distance: number) => void;
   setDistance: (distance: number) => void;
   setScore: (score: number) => void;
   setMultiplier: (multiplier: number) => void;
@@ -139,7 +138,6 @@ const INITIAL_STATE: GameState = {
   currentSpeed: 0,
   currentBiome: DEFAULT_BIOME_ID,
   isPaused: false,
-  distanceTraveled: 0,
   distance: 0,
   score: 0,
   multiplier: 1,
@@ -180,8 +178,6 @@ export const useGameStore = create<GameStore>((set) => ({
   setCurrentBiome: (biome) => set({ currentBiome: biome }),
 
   setIsPaused: (paused) => set({ isPaused: paused }),
-
-  setDistanceTraveled: (distance) => set({ distanceTraveled: distance, distance }),
 
   setDistance: (distance) => set({ distance }),
 
@@ -296,11 +292,6 @@ export const useGameStore = create<GameStore>((set) => ({
 /** Subscribe only to player position — useful for UI that tracks coordinates */
 export function usePlayerPosition() {
   return useGameStore((s) => s.playerPosition);
-}
-
-/** Subscribe only to speed — useful for speedometer HUD */
-export function usePlayerSpeed() {
-  return useGameStore((s) => s.currentSpeed);
 }
 
 /** Subscribe only to score */

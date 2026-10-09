@@ -7,15 +7,15 @@
 ## Quick Start
 
 ```bash
-npm install
-npm start          # dev server on port 3000 (Vite)
-npm test           # unit tests (Vitest + Testing Library)
-npm run lint       # ESLint (flat config, TS + react-hooks + R3F rules)
-npm run typecheck  # tsc --noEmit + the layout/GLSL/typecheck-surface guards
-npm run build      # production build → build/
+pnpm install       # pnpm only — a preinstall guard refuses npm/yarn (pnpm-lock.yaml is the one lockfile)
+pnpm start         # dev server on port 3000 (Vite)
+pnpm test          # unit tests (Vitest + Testing Library)
+pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
+pnpm typecheck     # tsc --noEmit + the layout/GLSL/typecheck-surface/orphan guards
+pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/)
 ```
 
-> Requires Chrome 90+ for WebGL 2.0. The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
+> Requires WebGL 2.0. The build targets `es2022` (`build.target` in `vite.config.ts`; syntax floor Chrome 94). The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
 > NodeMaterial/TSL backend (WebGL2 on the wire; add `&renderer=webgpu` for native WebGPU) — see [`docs/reference/RENDERER.md`](./docs/reference/RENDERER.md).
 
 ---
@@ -29,7 +29,7 @@ npm run build      # production build → build/
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
 | Shaders | GLSL (injected via `onBeforeCompile`) by default; opt-in NodeMaterial/TSL backend via `?material=tsl` (#256 path A) |
-| Package manager | pnpm (npm also works) |
+| Package manager | pnpm only (`packageManager`, `preinstall` guard) |
 
 ---
 
@@ -62,7 +62,7 @@ src/
 │   ├── ReactiveAudio.tsx        # Biome/speed-reactive audio
 │   ├── WeatherSystem.tsx        # Rain/snow/fog particles
 │   ├── PostProcessingPipeline.tsx
-│   ├── GameHUD.tsx / UI.tsx / PauseMenu.tsx / Loader.tsx
+│   ├── GameHUD.tsx / PauseMenu.tsx / Loader.tsx
 │   ├── Environment/             # Instanced biome decorations (~34 types, all `.tsx`)
 │   ├── Obstacles/               # Rocks, pillar break VFX, breakable trestle
 │   ├── VFX/                     # Splash particles
@@ -73,10 +73,10 @@ src/
 │   └── RaftVehicle/             # Third-person raft mode
 │
 ├── systems/                     # Core game systems (see SYSTEMS.md)
-│   ├── MapSystem.ts             # ★ JSON maps, chunk config, procedural fallback
-│   ├── ChunkManager.ts          # Segment pool / treadmill
-│   ├── ReachManager.tsx         # Reach streaming wrapper
-│   ├── GameState.ts             # ★ Zustand store — the only root *.ts besides index.ts
+│   ├── map/MapSystem.ts         # ★ JSON maps, chunk config, procedural fallback
+│   ├── map/ChunkManager.ts      # Segment pool / treadmill
+│   ├── reach/ReachManager.tsx   # Reach streaming wrapper
+│   ├── GameState.ts             # ★ Zustand store — the only root *.ts (no barrel)
 │   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
 │   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality (render scale, then preset)
 │   ├── lumber/trestleSpan.ts    # Breakable trestle deck (forecast + hydroEvents)
@@ -90,15 +90,15 @@ src/
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts
-├── configs/                     # BiomePalettes.ts, TrackBiomes.ts
-├── constants/                   # game.ts, biomes.ts, weather.ts, …
-├── hooks/                       # useWaterFlowField, useShaderLoader, …
-├── materials/                   # CanyonMaterial, CausticsMaterial, EnhancedWaterMaterial
+├── configs/                     # biomes.ts (BiomeId, WATER_PROFILES, HUD labels), BiomePalettes.ts, TrackBiomes.ts
+├── constants/                   # game.ts, weather.ts, waterFlow.ts, …
+├── hooks/                       # useShaderLoader, usePlayerControls, … (no barrel)
+├── materials/                   # CanyonMaterial + backend hosts below
 │   ├── water/                   # ★ Water material host (GLSL | TSL) + node material
 │   ├── river/ canyon/           # Surface hosts routing GLSL vs TSL (#256 path A)
 │   └── tsl/                     # Shared TSL noise helpers
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
-├── physics/                     # Rapier worker proxy, WaterForces
+├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
@@ -244,7 +244,7 @@ along with the `vendor-post` `manualChunks` bucket in `vite.config.ts`.
 - **SSAO** — ✅ three's own `SSAOPass` (JSM) / GTAO (node), gated by `EffectPresence.ssao` (`settingsDerive.ts`) — off on Low/Medium, on at High
 
 ### Step 5 — Map-driven TrackManager ✅
-`MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
+`systems/map/MapSystem.ts` + authored JSON in `src/maps/` feed `TrackManager` via `maps/registry.ts`. Change `ACTIVE_MAP_ID` or `?map=glacial` to swap maps without editing TrackManager.
 
 ### Step 6 — Author maps
 With the above in place:
@@ -268,11 +268,11 @@ With the above in place:
 ## Testing
 
 ```bash
-npm test                          # unit tests (Vitest)
-npm run lint                      # ESLint — 0 errors is the gate; warnings are a tracked backlog
-npm run typecheck                 # tsc + repo layout guards
-npm run test:visual-smoke         # headless WebGL pixel gate (needs `npm run preview`)
-npm run test:wgsl                 # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
+pnpm test                         # unit tests (Vitest)
+pnpm lint                         # ESLint — 0 errors is the gate; warnings are a tracked backlog
+pnpm typecheck                    # tsc + repo layout guards
+pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`)
+pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
 

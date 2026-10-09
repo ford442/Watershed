@@ -29,6 +29,8 @@ import {
 } from '../../systems/lumber/trestlePlacement';
 import { emitTrestleBreak } from '../../systems/lumber/trestleBreakEvents';
 import { isPlayerRigidBody, vec3FromRapier } from './pillarCrumble';
+import { useWorkerStaticCollider } from '../../physics/workerColliderRegistry';
+import { boxSpec } from '../../physics/colliderSpecsFromThree';
 
 /** How long a knocked-loose board stays in the world before it is culled. */
 const DEBRIS_LIFETIME_S = 6;
@@ -64,6 +66,19 @@ function PlankBody({
   const { rapier } = useRapier();
   const bodyRef = useRef<RapierRigidBody>(null);
   const [broken, setBroken] = useState(false);
+
+  // The intact deck is static ground for the raft's Rapier worker (#465 C2).
+  const buildWorkerDeck = useCallback(
+    () =>
+      boxSpec(
+        [placement.width / 2, TRESTLE_PLANK_THICKNESS / 2, TRESTLE_PLANK_LENGTH / 2],
+        placement.position,
+        { x: 0, y: placement.yaw, z: 0 },
+        { friction: 0.85, restitution: 0.05 },
+      ),
+    [placement],
+  );
+  useWorkerStaticCollider(`trestle:${segmentId}:${placement.index}`, broken ? null : buildWorkerDeck);
 
   const handleCollisionEnter = useCallback(
     ({

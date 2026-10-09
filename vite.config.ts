@@ -48,12 +48,41 @@ function buildIdentityPlugin(identity: string): Plugin {
   };
 }
 
+/** `build.sourcemap: 'hidden'` writes `*.map` next to the chunks without a
+ *  sourceMappingURL comment. Move them out of build/ so the deploy zip and
+ *  check-build-manifest never see them; keep them in build-sourcemaps/ to
+ *  symbolicate field crashes (#465 B). */
+function sourcemapsOutOfBuildPlugin(): Plugin {
+  return {
+    name: 'watershed-sourcemaps-out-of-build',
+    apply: 'build',
+    writeBundle(options) {
+      const outDir = path.resolve(options.dir ?? 'build');
+      const mapsDir = path.resolve('build-sourcemaps');
+      fs.rmSync(mapsDir, { recursive: true, force: true });
+      const walk = (dir: string) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const from = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(from);
+          } else if (entry.name.endsWith('.map')) {
+            const to = path.join(mapsDir, path.relative(outDir, from));
+            fs.mkdirSync(path.dirname(to), { recursive: true });
+            fs.renameSync(from, to);
+          }
+        }
+      };
+      walk(outDir);
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __WATERSHED_ASSET_BASE__: JSON.stringify('./'),
     __WATERSHED_BUILD_IDENTITY__: JSON.stringify(BUILD_IDENTITY),
   },
-  plugins: [react(), buildIdentityPlugin(BUILD_IDENTITY)],
+  plugins: [react(), buildIdentityPlugin(BUILD_IDENTITY), sourcemapsOutOfBuildPlugin()],
   resolve: {
     // Prevent duplicate Three.js when three/webgpu is lazy-loaded in a separate chunk.
     dedupe: ['three'],
@@ -79,8 +108,17 @@ export default defineConfig({
   // Treat .wasm files as assets so Vite copies them to the output directory.
   assetsInclude: ['**/*.wasm'],
   base: './',
+  // Both workers are `new Worker(new URL(..), { type: 'module' })`; iife (the
+  // default) cannot code-split, es matches what the browser is told to load.
+  worker: {
+    format: 'es',
+  },
   build: {
     outDir: 'build',
+    // Explicit floor instead of Vite 7's moving "baseline-widely-available"
+    // default (~Chrome 107). es2022 = Chrome 94+, under the WebGL2 path's needs.
+    target: 'es2022',
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         manualChunks: {

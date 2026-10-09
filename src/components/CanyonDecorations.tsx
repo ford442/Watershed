@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useId, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useFrame } from '@react-three/fiber';
 import type { BiomeDecorationTransform, CanyonDecorationsProps } from './Environment/types';
 import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { registerWorkerCollider, unregisterWorkerCollider } from '../physics/workerColliderRegistry';
+import { hullSpecFromGeometry } from '../physics/colliderSpecsFromThree';
 
 type EulerTuple = [number, number, number];
 
@@ -275,6 +277,28 @@ export default function CanyonDecorations({
     const vegetationRef = useRef<THREE.InstancedMesh>(null);
     const hangingGrowthRef = useRef<THREE.InstancedMesh>(null);
     const boulderGeometry = useMemo(() => new THREE.DodecahedronGeometry(1, 1), []);
+
+    // Gameplay boulders, mirrored into the raft's Rapier worker (#465 C2).
+    const workerKeyPrefix = `deco:${useId()}`;
+    useEffect(() => {
+        const keys = decorationData.largeBoulders.map((boulder, i) => {
+            const key = `${workerKeyPrefix}:${i}`;
+            const [rx, ry, rz] = boulder.rotation;
+            registerWorkerCollider(key, () =>
+                hullSpecFromGeometry(
+                    boulderGeometry,
+                    {
+                        position: boulder.position,
+                        rotation: { x: rx, y: ry, z: rz },
+                        scale: { x: boulder.scale, y: boulder.scale * 0.8, z: boulder.scale },
+                    },
+                    { friction: 1.1, restitution: 0.05 },
+                ),
+            );
+            return key;
+        });
+        return () => keys.forEach(unregisterWorkerCollider);
+    }, [decorationData, boulderGeometry, workerKeyPrefix]);
     const wallRockGeometry = useMemo(() => new THREE.DodecahedronGeometry(1, 1), []);
     const vegetationGeometry = useMemo(() => new THREE.SphereGeometry(1, 8, 6), []);
     const hangingGrowthGeometry = useMemo(() => {

@@ -53,7 +53,7 @@ export function useExperienceLifecycle({
   const setCurrentSegmentIndex = useGameStore((s) => s.setCurrentSegmentIndex);
   const setRespawnSegmentIndex = useGameStore((s) => s.setRespawnSegmentIndex);
   const setWaterfallGravityMultiplier = useGameStore((s) => s.setWaterfallGravityMultiplier);
-  const setDistanceTraveled = useGameStore((s) => s.setDistanceTraveled);
+  const setDistance = useGameStore((s) => s.setDistance);
   const setSpawnPoint = useGameStore((s) => s.setSpawnPoint);
   const setSpawnPoints = useGameStore((s) => s.setSpawnPoints);
 
@@ -336,7 +336,7 @@ export function useExperienceLifecycle({
             speed,
             useGameStore.getState().currentSegmentIndex,
           );
-          setDistanceTraveled(meters);
+          setDistance(meters);
 
           const game = useGameStore.getState();
           if (!game.isPaused && !game.isWipeout && posOk) {

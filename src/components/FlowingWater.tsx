@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { WATER_LEVEL, WATER_SHADER } from '../constants/game';
 import { useShaderLoader } from '../hooks/useShaderLoader';
-import { BIOMES } from '../constants/biomes';
+import { DEFAULT_BIOME_ID, getWaterProfile, type BiomeId } from '../configs/biomes';
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { SWE_DRY_DEPTH } from '../systems/water/sampleSWEFlow';
@@ -32,7 +32,7 @@ export interface FlowingWaterProps {
   edgeHighlightColor?: THREE.ColorRepresentation;
   shaderId?: string | null;
   onShaderLoad?: (code: string | null, error: string | null) => void;
-  biome?: string;
+  biome?: BiomeId | string;
   isNight?: boolean;
   flowMap?: THREE.Texture | null;
   vehiclePos?: THREE.Vector3 | null;
@@ -56,7 +56,7 @@ export default function FlowingWater({
   edgeHighlightColor,
   shaderId = null,
   onShaderLoad,
-  biome = 'river',
+  biome = DEFAULT_BIOME_ID,
   isNight = false,
   flowMap = null,
   vehiclePos = null,
@@ -77,11 +77,11 @@ export default function FlowingWater({
   // Canvas is remounted when the debug toggle changes it.
   const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
 
-  const biomeData = BIOMES[biome as keyof typeof BIOMES] || BIOMES.river;
-  const effectiveWaterColor = baseColor || biomeData.waterColor;
-  const effectiveFoamColor = foamColor || biomeData.foamColor;
-  const effectiveEdgeColor = edgeHighlightColor || biomeData.edgeHighlight;
-  const effectiveFlowSpeed = flowSpeed * (biomeData.flowMultiplier || 1.0) * (1.0 + slushiness * 0.25);
+  const water = getWaterProfile(biome);
+  const effectiveWaterColor = baseColor || water.waterColor;
+  const effectiveFoamColor = foamColor || water.foamColor;
+  const effectiveEdgeColor = edgeHighlightColor || water.edgeHighlight;
+  const effectiveFlowSpeed = flowSpeed * water.flowMultiplier * (1.0 + slushiness * 0.25);
   const effectiveFlowMap = flowMap;
 
   // Shared noise helpers for GLSL
@@ -503,7 +503,7 @@ export default function FlowingWater({
   `, [noiseHelpers]);
 
   // Load dynamic shader
-  const effectiveShaderId = shaderId || biomeData.shaderId;
+  const effectiveShaderId = shaderId || water.shaderId;
 
   const { code: dynamicShaderCode, loading: shaderLoading, error: shaderError } =
     useShaderLoader(effectiveShaderId ?? null, builtinFragmentShader);

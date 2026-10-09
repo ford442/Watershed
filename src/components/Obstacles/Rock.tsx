@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { InstancedRigidBodies, RigidBody, useRapier, type RapierRigidBody } from '@react-three/rapier';
@@ -18,6 +18,12 @@ import { emitPillarBreak } from './pillarBreakEvents';
 import { enqueuePillarFragments } from './PillarFragmentPool';
 import { tryAcquirePillarFragmentSlots } from '../../systems/pools/PillarFragmentRegistry';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import {
+  registerWorkerCollider,
+  unregisterWorkerCollider,
+  useWorkerStaticCollider,
+} from '../../physics/workerColliderRegistry';
+import { hullSpecFromGeometry } from '../../physics/colliderSpecsFromThree';
 
 const VARIANTS_BY_TYPE = {
   boulder: ['boulderRiverworn', 'boulderAngular'],
@@ -210,6 +216,13 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
   });
 
   const phaseKey = `${segmentId}:${pillarIndex}`;
+
+  // Mirrored into the raft's Rapier worker until it shatters (#465 C2).
+  const buildWorkerHull = useCallback(
+    () => hullSpecFromGeometry(geometry, transform),
+    [geometry, transform],
+  );
+  useWorkerStaticCollider(`pillar:${phaseKey}`, phase === 'shattered' ? null : buildWorkerHull);
 
   const setPillarPhase = useCallback(
     (next: PillarPhase) => {
@@ -404,6 +417,25 @@ export default function Rock({
     });
     return byVariant;
   }, [scatterTransforms]);
+
+  // Collidable rocks, mirrored into the raft's Rapier worker (#465 C2). Slabs
+  // are cuboids on the main thread; their hull is the same box.
+  const workerKeyPrefix = `rock:${useId()}`;
+  useEffect(() => {
+    const keys: string[] = [];
+    Object.entries(collidableGroups).forEach(([variant, instances]) => {
+      const geometryKey =
+        variant === 'columnFractured' || variant === 'columnLayered' ? variant : variant === 'slab' ? 'slab' : variant;
+      const geometry = geometryLibrary[geometryKey as keyof typeof geometryLibrary];
+      if (!geometry) return;
+      instances.forEach((instance, index) => {
+        const key = `${workerKeyPrefix}:${variant}:${index}`;
+        registerWorkerCollider(key, () => hullSpecFromGeometry(geometry, instance));
+        keys.push(key);
+      });
+    });
+    return () => keys.forEach(unregisterWorkerCollider);
+  }, [collidableGroups, geometryLibrary, workerKeyPrefix]);
 
   useEffect(() => {
     const matrix = new THREE.Matrix4();

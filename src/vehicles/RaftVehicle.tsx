@@ -17,6 +17,7 @@ import type { RapierWorkerProxy } from '../physics/RapierWorkerProxy';
 import type { Vec3Tuple, WorkerRaftState } from '../physics/rapierWorkerProtocol';
 import { resolvePhysicsWorker } from '../utils/physicsWorkerFlag';
 import { linkPhysicsToSim } from '../sim/linkPhysicsToSim';
+import { startRaftWorkerSession, type RaftWorkerSession } from './RaftVehicle/raftWorkerSession';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
@@ -113,50 +114,48 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
           };
         }
       }
+    }).catch((error) => {
+      // A step in flight when the session stops rejects with "disposed".
+      if (workerProxyRef.current === proxy) console.warn('[RaftVehicle] Rapier worker step failed', error);
     }).finally(() => {
       workerStepPendingRef.current = false;
     });
   };
 
   useEffect(() => {
-    let unlinkSim = () => {};
+    let workerSession: RaftWorkerSession<RapierWorkerProxy> | null = null;
     if (bodyRef.current) {
       raftVehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
       raftVehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
+      // The main-thread body owns the raft until the worker session is ready:
+      // the worker world is the streamed level, so it waits for the track (#465 C2).
+      bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
       if (useWorkerPhysics) {
-        const proxy = createRapierWorkerProxy();
-        workerProxyRef.current = proxy;
-        proxy.init({
+        workerSession = startRaftWorkerSession({
+          createProxy: createRapierWorkerProxy,
           raft: {
-            position: [...PLAYER_SPAWN.position],
             halfExtents: [WATER_PHYSICS.RAFT_WIDTH * 0.5, WATER_PHYSICS.RAFT_HEIGHT * 0.5, WATER_PHYSICS.RAFT_LENGTH * 0.5],
             mass: WATER_PHYSICS.RAFT_MASS,
             linearDamping: 2,
             angularDamping: 2.5,
           },
-          staticColliders: [
-            {
-              position: [0, WATER_PHYSICS.LEVEL - 0.65, -80],
-              halfExtents: [28, 0.25, 220],
-            },
-          ],
-        }).then((workerState) => {
-          workerReadyRef.current = true;
-          setPhysicsWorkerActive(true);
-          syncBodyFromWorkerState(bodyRef.current, workerState);
-          // The raft's water force comes from the sim worker's field (#455 Phase B).
-          unlinkSim = linkPhysicsToSim(proxy);
-          return proxy.applyImpulse([0, 2, 0]);
-        }).catch((error) => {
-          console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
-          workerReadyRef.current = false;
-          setPhysicsWorkerActive(false);
-          workerProxyRef.current?.dispose();
-          workerProxyRef.current = null;
-          bodyRef.current?.applyImpulse?.({ x: 0, y: 2, z: 0 }, true);
+          getRaftPosition: () => {
+            const t = bodyRef.current?.translation?.();
+            return t ? [t.x, t.y, t.z] : [...PLAYER_SPAWN.position];
+          },
+          linkSim: linkPhysicsToSim,
+          onReady: (proxy, workerState) => {
+            workerProxyRef.current = proxy;
+            workerReadyRef.current = true;
+            setPhysicsWorkerActive(true);
+            syncBodyFromWorkerState(bodyRef.current, workerState);
+          },
+          onFallback: (error) => {
+            console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
+            workerReadyRef.current = false;
+            setPhysicsWorkerActive(false);
+          },
         });
-      } else {
-        bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
       }
       tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
     }
@@ -182,13 +181,16 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     window.addEventListener('segment-spawn', handleSegmentSpawn);
 
     return () => {
-      unlinkSim();
       window.removeEventListener('biome-change', handleBiomeChange);
       window.removeEventListener('segment-spawn', handleSegmentSpawn);
+      if (workerSession) {
+        workerSession.stop();
+        if (workerProxyRef.current === workerSession.proxy) workerProxyRef.current = null;
+      }
+      workerReadyRef.current = false;
+      workerStepPendingRef.current = false;
       setPhysicsWorkerActive(false);
       setPhysicsWorkerDiagnostics(null);
-      workerProxyRef.current?.dispose();
-      workerProxyRef.current = null;
     };
   }, [useWorkerPhysics]);
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { usePlayerBiome, useGameStore } from '../systems/GameState';
+import React, { useEffect, useRef, useState } from 'react';
+import { usePlayerBiome, useGameStore, type GameStore } from '../systems/GameState';
 import { getActiveLaunchAirSeconds } from '../systems/score/LaunchScoringSession';
 import {
   getActiveLoadoutId,
@@ -11,7 +11,24 @@ import {
 import { getLoadoutDefinition } from '../systems/survival';
 import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
 import RunResultsPanel from './RunResultsPanel';
-import { BIOME_HUD_LABELS } from '../constants/biomes';
+import { BIOME_HUD_LABELS } from '../configs/biomes';
+
+/*
+ * Per-frame readouts (#465 C4). The store gets speed, distance and score every
+ * frame; selecting the raw floats here reconciled the whole HUD at 60 Hz. Each
+ * readout is a leaf that selects its *formatted* string, so only that text node
+ * re-renders, and only when the visible text changes.
+ */
+type HudTextSelector = (s: GameStore) => string;
+const selectSpeedText: HudTextSelector = (s) => String(Math.max(0, Math.round(s.currentSpeed)));
+const selectDistanceKmText: HudTextSelector = (s) => (s.distance / 1000).toFixed(2);
+const selectScoreText: HudTextSelector = (s) => Math.floor(s.score).toLocaleString();
+const selectHighScoreText: HudTextSelector = (s) => Math.floor(s.highScore).toLocaleString();
+const selectTopSpeedText: HudTextSelector = (s) => String(Math.round(s.topSpeed));
+
+function HudText({ select }: { select: HudTextSelector }) {
+  return <>{useGameStore(select)}</>;
+}
 
 interface GameHUDProps {
   isWipeout?: boolean;
@@ -41,13 +58,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   ghostBestScore = 0,
 }) => {
   const currentBiome = usePlayerBiome();
-  const rawSpeed = useGameStore((s) => s.currentSpeed);
-  const distanceMeters = useGameStore((s) => s.distance);
-  const score = useGameStore((s) => s.score);
   const multiplier = useGameStore((s) => s.multiplier);
   const comboLabel = useGameStore((s) => s.comboLabel);
-  const highScore = useGameStore((s) => s.highScore);
-  const topSpeed = useGameStore((s) => s.topSpeed);
+  const isNewHighScore = useGameStore((s) => s.score >= s.highScore && s.score > 0);
   const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
   const vehicleType = useGameStore((s) => s.vehicleType);
 
@@ -223,8 +236,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     status: 'loading',
   }));
 
-  const speedMs = Math.max(0, Math.round(rawSpeed));
-  const distanceKm = useMemo(() => (distanceMeters / 1000).toFixed(2), [distanceMeters]);
   const biomeLabel = BIOME_HUD_LABELS[currentBiome] ?? 'CANYON SUMMER';
 
   useEffect(() => {
@@ -273,10 +284,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           <div className="text-2xl md:text-4xl text-white mb-2">
-            Score: <span className="font-mono font-bold">{Math.floor(score).toLocaleString()}</span>
+            Score: <span className="font-mono font-bold"><HudText select={selectScoreText} /></span>
           </div>
           <div className="text-zinc-400 text-lg mb-8">
-            High Score: <span className="font-mono text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>
+            High Score: <span className="font-mono text-emerald-400"><HudText select={selectHighScoreText} /></span>
           </div>
 
           <button
@@ -297,7 +308,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   }
 
   if (isJourneyComplete) {
-    const isNewHighScore = score >= highScore && score > 0;
     const title = isFinalMap ? 'Campaign Complete' : 'Journey Complete';
     const journeyResults = getJourneyResultsSummary();
     return (
@@ -314,7 +324,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           <div className="text-3xl md:text-5xl text-white mb-4">
-            <span className="font-mono font-bold">{Math.floor(score).toLocaleString()}</span>
+            <span className="font-mono font-bold"><HudText select={selectScoreText} /></span>
           </div>
 
           <div className="text-lg md:text-xl mb-2">
@@ -322,13 +332,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <span className="text-emerald-400 font-bold">New High Score!</span>
             ) : (
               <span className="text-zinc-400">
-                High Score: <span className="font-mono text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>
+                High Score: <span className="font-mono text-emerald-400"><HudText select={selectHighScoreText} /></span>
               </span>
             )}
           </div>
 
           <div className="text-zinc-500 text-base mb-2">
-            Top Speed: <span className="font-mono text-white">{Math.round(topSpeed)} m/s</span>
+            Top Speed: <span className="font-mono text-white"><HudText select={selectTopSpeedText} /> m/s</span>
           </div>
 
           {journeyResults && (
@@ -446,10 +456,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       <div className="fixed top-4 right-4 md:top-6 md:right-6 bg-black/55 backdrop-blur-md text-right px-4 py-3 md:px-5 md:py-4 rounded-2xl border border-white/10 shadow-lg font-mono text-[#f5f1e8] min-w-[220px]">
-        <div className="text-2xl md:text-3xl font-bold leading-none">{speedMs} <span className="text-sm text-white/60">m/s</span></div>
-        <div className="mt-1 text-lg md:text-xl leading-none">{distanceKm} <span className="text-xs text-white/60">km</span></div>
+        <div className="text-2xl md:text-3xl font-bold leading-none"><HudText select={selectSpeedText} /> <span className="text-sm text-white/60">m/s</span></div>
+        <div className="mt-1 text-lg md:text-xl leading-none"><HudText select={selectDistanceKmText} /> <span className="text-xs text-white/60">km</span></div>
         <div className="mt-3 text-xs uppercase tracking-wider text-white/50">Score</div>
-        <div className="text-xl md:text-2xl font-bold leading-none">{Math.floor(score).toLocaleString()}</div>
+        <div className="text-xl md:text-2xl font-bold leading-none"><HudText select={selectScoreText} /></div>
       </div>
 
       {multiplier > 1 && (
@@ -483,8 +493,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div ref={rewardPopupRef} className="air-reward-popup" aria-live="polite" />
 
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 text-white/40 text-xs md:text-sm font-mono">
-        Best: <span className="text-emerald-400">{Math.floor(highScore).toLocaleString()}</span>
-        <span className="ml-4 text-white/50">Top {Math.round(topSpeed)} m/s</span>
+        Best: <span className="text-emerald-400"><HudText select={selectHighScoreText} /></span>
+        <span className="ml-4 text-white/50">Top <HudText select={selectTopSpeedText} /> m/s</span>
       </div>
 
       <div

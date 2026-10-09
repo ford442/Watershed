@@ -6,13 +6,11 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PALETTE_ONLY_BIOMES, TRACK_BIOMES } from './TrackBiomes';
-import { normalizeBiomeId } from './biomes';
-import { BIOME_HUD_LABELS } from '../constants/biomes';
+import { BIOME_HUD_LABELS, LEGACY_BIOME_ALIASES, normalizeBiomeId } from './biomes';
 import { MAP_REGISTRY, mapRegistryIds } from '../maps/registry';
 import { BiomeSelector } from '../components/LevelEditor/BiomeSelector';
 import levelSchema from '../formats/level.schema.json';
 import reachSchema from '../formats/reach.schema.json';
-import { LEGACY_BIOME_ALIASES } from './biomes';
 
 function shippedBiomes(): Set<string> {
   const biomes = new Set<string>();

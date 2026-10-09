@@ -10,11 +10,10 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   DEFAULT_RAFT_WORKER_INIT,
-  QuatTuple,
   RapierWorkerCommand,
   RapierWorkerInitPayload,
   RapierWorkerResponse,
-  StaticBoxColliderSpec,
+  StaticColliderSpec,
   Vec3Tuple,
   WaterForceDiagnostics,
   WaterForceTickConfig,
@@ -27,6 +26,7 @@ import {
   PHYSICS_WORKER_IMPULSE_SCALE,
 } from './physicsWorkerWaterForces';
 import { createHullLinkClient, type HullLinkClient, type RapierHullPort } from './hullLinkClient';
+import { createStaticColliderBody } from './staticColliderBody';
 
 let world: RAPIER.World | null = null;
 let raftBody: RAPIER.RigidBody | null = null;
@@ -38,13 +38,6 @@ const staticColliderBodies = new Map<number, RAPIER.RigidBody>();
 const ctx = self as DedicatedWorkerGlobalScope;
 
 const vec3 = (value: Vec3Tuple) => ({ x: value[0], y: value[1], z: value[2] });
-
-const quat = (value: QuatTuple) => ({
-  x: value[0],
-  y: value[1],
-  z: value[2],
-  w: value[3],
-});
 
 const ensureRapier = async () => {
   if (!rapierReady) {
@@ -76,24 +69,11 @@ const serializeState = (): WorkerRaftState => {
   };
 };
 
-const createStaticBox = (collider: StaticBoxColliderSpec) => {
-  if (!world) return null;
+const createStaticBody = (collider: StaticColliderSpec) =>
+  world ? createStaticColliderBody(RAPIER, world, collider) : null;
 
-  const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(...collider.position);
-  if (collider.rotation) {
-    bodyDesc.setRotation(quat(collider.rotation));
-  }
-
-  const body = world.createRigidBody(bodyDesc);
-  world.createCollider(
-    RAPIER.ColliderDesc.cuboid(...collider.halfExtents),
-    body,
-  );
-  return body;
-};
-
-const addStaticCollider = (collider: StaticBoxColliderSpec, requestedHandle?: number) => {
-  const body = createStaticBox(collider);
+const addStaticCollider = (collider: StaticColliderSpec, requestedHandle?: number) => {
+  const body = createStaticBody(collider);
   if (!body) throw new Error('Rapier worker has not been initialized');
 
   const handle = requestedHandle ?? nextColliderHandle++;
@@ -137,7 +117,7 @@ const initWorld = async (payload: RapierWorkerInitPayload = {}) => {
 
   for (const collider of staticColliders) {
     const handle = nextColliderHandle++;
-    const body = createStaticBox(collider);
+    const body = createStaticBody(collider);
     if (body) staticColliderBodies.set(handle, body);
   }
 
@@ -205,6 +185,13 @@ const respond = (response: RapierWorkerResponse) => {
   ctx.postMessage(response);
 };
 
+/**
+ * Commands run strictly in arrival order. INIT awaits RAPIER.init(), and the
+ * main thread streams segment colliders as they mount — without this queue an
+ * ADD_STATIC_COLLIDER posted during INIT would throw "not initialized" (#465 C2).
+ */
+let commandQueue: Promise<void> = Promise.resolve();
+
 ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
   const receivedAt = performance.now();
   const command = event.data;
@@ -264,7 +251,7 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
     }
   };
 
-  run().catch((error) => {
+  commandQueue = commandQueue.then(run).catch((error) => {
     respond({
       id: command.id,
       type: 'ERROR',

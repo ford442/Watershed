@@ -16,10 +16,10 @@ To get the project running locally, follow these steps:
     ```bash
     pnpm install
     ```
-    > Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; do not commit `package-lock.json`.
+    > Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; a `preinstall` guard (`scripts/only-pnpm.mjs`) refuses `npm install`, which would ignore `pnpm-lock.yaml` and the `pnpm.overrides` pins.
 2.  **Start the development server:**
     ```bash
-    npm start
+    pnpm start
     ```
 
 This will open the project in your default browser.
