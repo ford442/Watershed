@@ -12,7 +12,9 @@
  *   with `alpha: true` (r178), so this does not change the context itself; what
  *   it changes is `WebGLBackground`, which then clears the drawing buffer fully
  *   opaque instead of letting the page show through. Matches THREE's default;
- *   pinned so it cannot drift silently.
+ *   pinned so it cannot drift silently. Native WebGPU is the exception: there
+ *   `alpha` *is* the canvas `alphaMode`, so that path passes `alpha: true`
+ *   (premultiplied) and clears opaque itself — see `nativeWebGPURendererParameters`.
  * - `premultipliedAlpha: true` — THREE's default, and *not* only a compositing
  *   concern: `WebGLState.setBlending` picks premultiplied blend functions from
  *   this flag, so every transparent material in the game (splash particles,
@@ -34,3 +36,34 @@ export const SHARED_CONTEXT_ATTRIBUTES = {
  * this codebase — the shaders are GLSL ES 3.00.
  */
 export const GL_CONTEXT_NAME = 'webgl2';
+
+/**
+ * The attribute object `THREE.WebGLRenderer` (0.185) builds from its constructor
+ * parameters and hands to `getContext` — its defaults, its hardcoded
+ * `alpha: true`, nothing else.
+ *
+ * The node renderer's WebGL2 backend builds a *different* object (antialias from
+ * its internal sample count, no power preference, no caveat flag, no
+ * preserveDrawingBuffer). So on `?material=tsl` the context is created here,
+ * from this object, and passed in as `context` — one context, the probed one.
+ */
+export function webGLContextAttributesFor(parameters: {
+  depth?: boolean;
+  stencil?: boolean;
+  antialias?: boolean;
+  premultipliedAlpha?: boolean;
+  preserveDrawingBuffer?: boolean;
+  powerPreference?: WebGLPowerPreference;
+  failIfMajorPerformanceCaveat?: boolean;
+}): WebGLContextAttributes {
+  return {
+    alpha: true,
+    depth: parameters.depth ?? true,
+    stencil: parameters.stencil ?? false,
+    antialias: parameters.antialias ?? false,
+    premultipliedAlpha: parameters.premultipliedAlpha ?? true,
+    preserveDrawingBuffer: parameters.preserveDrawingBuffer ?? false,
+    powerPreference: parameters.powerPreference ?? 'default',
+    failIfMajorPerformanceCaveat: parameters.failIfMajorPerformanceCaveat ?? false,
+  };
+}

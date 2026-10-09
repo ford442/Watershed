@@ -54,6 +54,8 @@ A partial migration that instantiates native `WebGPURenderer` while residual GLS
 
 `createGameRenderer()` no longer takes only `antialias` + `powerPreference`: when a caller passes `contextOptions`, `toContextAttributes()` supplies the full creation-time attribute set (`antialias`, `alpha`, `premultipliedAlpha`, `depth`, `stencil`, `failIfMajorPerformanceCaveat`, `powerPreference`, `logarithmicDepthBuffer`). Those attributes are spread **after** `canvasProps`, so the contract wins over R3F defaults while the caller's `preserveDrawingBuffer` (capture mode) survives.
 
+On the node renderer the same attributes are honored, not merely spread: with `forceWebGL` the WebGL2 context is created by `createGameRenderer` from `webGLContextAttributesFor()` (identical to the `THREE.WebGLRenderer` request and the boot probe) and passed as `context`; native WebGPU takes `nativeWebGPURendererParameters()` (premultiplied `alpha: true`, adapter `powerPreference`, no stencil, no caveat flag). See RENDERER.md, *Boot-time graphics negotiation*.
+
 Two rules follow, and both are locked by tests:
 
 1. **Creation-time attributes are the only reason to remount the Canvas, and no quality preset can move one.** `rendererContextCreationKey()` serializes exactly that set; `buildCanvasIdentityKey()` composes the Canvas `key` from it plus renderer preference, material backend, and the context-loss epoch. The quality preset is not in the key, and since boot-time negotiation neither are `antialias`, `powerPreference`, or `failIfMajorPerformanceCaveat` — they come from the session's frozen `GraphicsEnvelope`. **Every** quality transition, `low` ↔ `ultra` included, keeps Physics, `TrackManager`, and the vehicle mounted.

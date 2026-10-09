@@ -114,10 +114,16 @@ export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
  * which is exactly what `forceWebGL: true` produces in the browser.
  */
 export class WebGPURenderer extends THREE.WebGLRenderer {
+  /** The parameters the most recent instance was constructed with. */
+  static lastParameters: Record<string, unknown> | null = null;
+
   isWebGPURenderer = true;
   backend: { isWebGPUBackend: boolean };
 
   constructor(parameters: THREE.WebGLRendererParameters & { forceWebGL?: boolean } = {}) {
+    WebGPURenderer.lastParameters = { ...parameters };
+    // A supplied `context` reaches the WebGLRenderer super untouched, so the
+    // double, like the real WebGL2 backend, never calls getContext itself.
     const { forceWebGL, ...rest } = parameters;
     super(rest);
     this.backend = { isWebGPUBackend: !forceWebGL };
