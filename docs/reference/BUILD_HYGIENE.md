@@ -11,13 +11,16 @@ this file and [`scripts/check-build-manifest.mjs`](../../scripts/check-build-man
 
 Commands run: `pnpm install --frozen-lockfile`, `pnpm build` ×2, `pnpm audit`.
 
-> **Drift since this snapshot (updated 2026-09-28, #454).** The figures below are the 2026-09-17
+> **Drift since this snapshot (updated 2026-10-08).** The figures below are the 2026-09-17
 > measurements. Since then: the WASM pair is rebuilt for `ENVIRONMENT='web,worker'` with LTO,
 > closure, `FILESYSTEM=0`, emmalloc and a 16 MB heap — current stamp **`e2d26214c2863608`**, pair
 > **54,279 B** (glue 15,482 + wasm 38,797); the stamp still proves pairing exactly as §3 describes.
 > The Three.js r168 pin (#419) is gone — `three` is 0.185 — so §7's "blocked by the r168 pin" group
 > is historical. The `vendor-post` chunk and the `postprocessing` packages were removed (see
 > `CLAUDE.md` Step 4), so §4's `vendor-post` finding is resolved.
+> The pinned `public/` inventory is no longer 37. `.htaccess` (#461: `DirectoryIndex`, a UTF-8
+> charset, no COOP/COEP; `verify:deploy` checks it), the Basis transcoder, and the Rock031 KTX2 set
+> (#466 Phase D) bring `EXPECTED_PASSENGERS` to 45. The "37/37" row below is the 2026-09-17 measurement.
 
 ---
 

@@ -47,6 +47,7 @@ process.stdout.on('error', (err) => {
  * If you legitimately add an asset to public/, add it here in the same commit.
  * ------------------------------------------------------------------ */
 const EXPECTED_PASSENGERS = [
+  '.htaccess', // directory-owned Apache config (DirectoryIndex, UTF-8 charset, no COOP/COEP) — #461
   'Rock031.png',
   'Rock031_1K-JPG_AmbientOcclusion.jpg',
   'Rock031_1K-JPG_Color.jpg',

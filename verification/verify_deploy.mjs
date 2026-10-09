@@ -4,10 +4,15 @@
  *
  * The load-bearing fetch is the directory URL (…/watershed/), NOT index.html.
  * Fetching index.html is what hid the UTF-16 DirectoryIndex shadow for a month.
+ * Both are fetched and decoded the way a browser does (BOM, then Content-Type
+ * charset, then <meta charset>): a UTF-8 body under `charset=utf-16` is a blank
+ * page in Chrome, and a BOM-only sniff cannot see that (#461). A headless render
+ * check then confirms the directory URL loads scripts and has the game title.
  *
  * Usage:
  *   node verification/verify_deploy.mjs
  *   node verification/verify_deploy.mjs --url http://127.0.0.1:4179/
+ *   node verification/verify_deploy.mjs --skip-render   # no Chrome available
  *   pnpm verify:deploy
  */
 import { createHash } from 'node:crypto';
@@ -21,14 +26,22 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_LIVE = 'https://test.1ink.us/watershed/';
 
 function parseArgs(argv) {
-  const out = { url: DEFAULT_LIVE, buildDir: path.join(REPO_ROOT, 'build'), skipZip: false };
+  const out = {
+    url: DEFAULT_LIVE,
+    buildDir: path.join(REPO_ROOT, 'build'),
+    skipZip: false,
+    skipRender: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--url') out.url = argv[++i];
     else if (a === '--build-dir') out.buildDir = path.resolve(argv[++i]);
     else if (a === '--skip-zip') out.skipZip = true;
+    else if (a === '--skip-render') out.skipRender = true;
     else if (a === '--help' || a === '-h') {
-      console.log('Usage: node verification/verify_deploy.mjs [--url <directory-url>] [--build-dir build] [--skip-zip]');
+      console.log(
+        'Usage: node verification/verify_deploy.mjs [--url <directory-url>] [--build-dir build] [--skip-zip] [--skip-render]',
+      );
       process.exit(0);
     }
   }
@@ -40,14 +53,219 @@ export function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
-export function decodeHtml(buf) {
-  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
-    return { encoding: 'utf-16le', text: buf.slice(2).toString('utf16le') };
+/** `Content-Type` → `{ essence, charset }`. First `charset` parameter wins, as in the MIME sniffing spec. */
+export function parseContentType(value) {
+  const [essence = '', ...params] = String(value ?? '').split(';');
+  let charset = null;
+  for (const param of params) {
+    const m = param.trim().match(/^charset\s*=\s*(?:"([^"]*)"|(.*))$/i);
+    if (m && charset === null) charset = (m[1] ?? m[2]).trim();
   }
-  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
-    return { encoding: 'utf-16be', text: buf.swap16().slice(2).toString('utf16le') };
+  return { essence: essence.trim().toLowerCase(), charset };
+}
+
+/** Charset label → canonical WHATWG encoding name (`utf-16` → `utf-16le`), or null if a browser would ignore it. */
+export function resolveCharsetLabel(label) {
+  if (!label) return null;
+  try {
+    return new TextDecoder(String(label).trim()).encoding;
+  } catch {
+    return null;
   }
-  return { encoding: 'utf-8', text: buf.toString('utf8') };
+}
+
+/** HTML prescan: the first 1024 bytes, `<meta charset=…>` or `<meta http-equiv content="…; charset=…">`. */
+function sniffMetaCharset(buf) {
+  const head = buf.subarray(0, 1024).toString('latin1');
+  const m = head.match(/<meta[^>]+?charset\s*=\s*["']?\s*([^\s"'>;/]+)/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * Decode an HTML response the way a browser does: BOM, then the transport
+ * (`Content-Type`) charset, then `<meta charset>`, then the windows-1252 default.
+ *
+ * Returns `{ encoding, source, transportCharset, text, problems, ok }`. `ok` means the
+ * document is UTF-8 HTML *and* is labelled consistently; a UTF-8 BOM under a
+ * `charset=utf-16` label still decodes (the BOM wins) but keeps its label problem,
+ * so the verifier stays red until the label is fixed.
+ */
+export function decodeHtml(buf, contentType = '') {
+  const { charset: transportCharset } = parseContentType(contentType);
+  const transport = resolveCharsetLabel(transportCharset);
+
+  let encoding;
+  let source;
+  let body = buf;
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    encoding = 'utf-8';
+    source = 'bom';
+    body = buf.subarray(3);
+  } else if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    encoding = 'utf-16le';
+    source = 'bom';
+    body = buf.subarray(2);
+  } else if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    encoding = 'utf-16be';
+    source = 'bom';
+    body = buf.subarray(2);
+  } else if (transport) {
+    encoding = transport;
+    source = 'transport';
+  } else {
+    const meta = resolveCharsetLabel(sniffMetaCharset(buf));
+    if (meta) {
+      // A UTF-16 <meta> on bytes that are ASCII-compatible is read as UTF-8 (HTML spec).
+      encoding = meta === 'utf-16le' || meta === 'utf-16be' ? 'utf-8' : meta;
+      source = 'meta';
+    } else {
+      encoding = 'windows-1252';
+      source = 'default';
+    }
+  }
+
+  const text = new TextDecoder(encoding, { ignoreBOM: true }).decode(body);
+
+  const problems = [];
+  if (transportCharset && transport && transport !== 'utf-8') {
+    problems.push(
+      `Content-Type says charset=${transportCharset} (${transport}), not UTF-8` +
+        (transport.startsWith('utf-16') ? ' — the UTF-16 label is what blanked the page' : ''),
+    );
+  }
+  if (encoding !== 'utf-8') {
+    problems.push(`a browser decodes this document as ${encoding} (from ${source}), not UTF-8`);
+  }
+  if (!/^\s*<!doctype\s+html/i.test(text)) {
+    problems.push(`decoded text is not an HTML document (starts ${JSON.stringify(text.slice(0, 16))})`);
+  }
+  return { encoding, source, transportCharset, text, problems, ok: problems.length === 0 };
+}
+
+export function parseTitle(html) {
+  const m = html.match(/<title>([^<]*)<\/title>/i);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Both documents a visitor can reach — the directory URL and index.html — must decode
+ * as UTF-8 and be the build's index.html. `dir` / `index` are `{ buf, contentType }`.
+ */
+export function checkDirectoryDocuments({ dir, index, builtIndexText }) {
+  const failures = [];
+  const notes = [];
+  const decoded = {};
+  for (const [name, res] of [['directory URL', dir], ['index.html', index]]) {
+    const dec = decodeHtml(res.buf, res.contentType);
+    decoded[name] = dec;
+    for (const problem of dec.problems) failures.push(`${name}: ${problem}`);
+    if (!dec.transportCharset) notes.push(`${name}: no transport charset (meta charset decides)`);
+    if (dec.ok && builtIndexText != null && dec.text !== builtIndexText) {
+      failures.push(
+        `${name}: decoded document is not build/index.html (${dec.text.length} chars vs ${builtIndexText.length})`,
+      );
+    }
+  }
+  if (decoded['directory URL'].text !== decoded['index.html'].text) {
+    failures.push(
+      'directory URL and index.html decode to different documents — a browser at the directory URL is not loading index.html',
+    );
+  }
+  return { failures, notes, directory: decoded['directory URL'], index: decoded['index.html'] };
+}
+
+/** The web build is single-threaded (#454): no response may demand cross-origin isolation. */
+export function checkIsolationHeaders(name, { coep, coop }) {
+  const failures = [];
+  const notes = [];
+  if (coep) {
+    failures.push(`${name}: sends Cross-Origin-Embedder-Policy: ${coep} — the single-threaded web build must not require it`);
+  }
+  if (coop) notes.push(`${name}: sends Cross-Origin-Opener-Policy: ${coop} (not needed by the web build)`);
+  return { failures, notes };
+}
+
+/** `.htaccess` invariants: directory index, UTF-8 charset, and nothing that *sets* COOP/COEP. */
+export function checkHtaccess(text) {
+  const failures = [];
+  const active = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  if (!active.some((l) => /^DirectoryIndex\s+index\.html$/i.test(l))) {
+    failures.push('.htaccess lacks "DirectoryIndex index.html"');
+  }
+  if (!active.some((l) => /^AddDefaultCharset\s+UTF-8$/i.test(l))) {
+    failures.push('.htaccess lacks "AddDefaultCharset UTF-8"');
+  }
+  const addCharset = active
+    .map((l) => l.match(/^AddCharset\s+UTF-8\s+(.+)$/i))
+    .filter(Boolean)
+    .flatMap((m) => m[1].split(/\s+/).map((ext) => ext.toLowerCase()));
+  for (const ext of ['.html', '.js', '.wasm']) {
+    if (!addCharset.includes(ext)) failures.push(`.htaccess lacks "AddCharset UTF-8 ${ext}"`);
+  }
+  const isolation = /^Header(?:\s+(?:always|onsuccess|early))?\s+(?:set|add|append|merge|edit\*?|echo)\s+Cross-Origin-(?:Opener|Embedder)-Policy\b/i;
+  for (const line of active.filter((l) => isolation.test(l))) {
+    failures.push(`.htaccess sets cross-origin isolation (${line}); the web build must not require COOP/COEP`);
+  }
+  return failures;
+}
+
+function resolveChrome(puppeteer) {
+  for (const candidate of [process.env.PUPPETEER_EXECUTABLE_PATH, process.env.CHROME_PATH]) {
+    if (candidate) return candidate;
+  }
+  try {
+    const bundled = puppeteer.executablePath();
+    if (bundled && fs.existsSync(bundled)) return bundled;
+  } catch {
+    /* no puppeteer-managed browser */
+  }
+  return fs.existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined;
+}
+
+/**
+ * Load the directory URL in headless Chrome. Reads the DOM only (no WebGL), so it needs
+ * a browser but no GPU. A launch failure is a failure, not a silent skip (`--skip-render`).
+ */
+export async function renderCheck(url, expectedTitle) {
+  const failures = [];
+  let puppeteer;
+  try {
+    puppeteer = (await import('puppeteer')).default;
+  } catch (err) {
+    return { failures: [`render check: cannot load puppeteer (${err instanceof Error ? err.message : err})`], info: null };
+  }
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: resolveChrome(puppeteer),
+      args: ['--no-sandbox', '--disable-gpu'],
+    });
+    const page = await browser.newPage();
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const info = await page.evaluate(() => ({
+      characterSet: document.characterSet,
+      title: document.title,
+      scripts: document.scripts.length,
+    }));
+    info.status = response ? response.status() : null;
+    info.coep = response ? response.headers()['cross-origin-embedder-policy'] || null : null;
+    if (info.characterSet !== 'UTF-8') failures.push(`render: document.characterSet is ${info.characterSet}, not UTF-8`);
+    if (info.scripts === 0) failures.push('render: document.scripts.length is 0 — the page loads no scripts');
+    if (!info.title) failures.push('render: document.title is empty');
+    else if (expectedTitle && info.title !== expectedTitle) {
+      failures.push(`render: document.title is ${JSON.stringify(info.title)}, expected ${JSON.stringify(expectedTitle)}`);
+    }
+    if (info.coep) failures.push(`render: response carries Cross-Origin-Embedder-Policy: ${info.coep}`);
+    return { failures, info };
+  } catch (err) {
+    return { failures: [`render check could not run: ${err instanceof Error ? err.message : err}`], info: null };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
 }
 
 export function parseBuildIdMeta(html) {
@@ -107,7 +325,16 @@ async function fetchBuf(url) {
   const headerSize = cl != null && cl !== '' && (enc === 'identity' || enc === '')
     ? Number(cl)
     : null;
-  return { ok: res.ok, status: res.status, buf, headerSize, url: res.url };
+  return {
+    ok: res.ok,
+    status: res.status,
+    buf,
+    headerSize,
+    url: res.url,
+    contentType: res.headers.get('content-type') || '',
+    coep: res.headers.get('cross-origin-embedder-policy'),
+    coop: res.headers.get('cross-origin-opener-policy'),
+  };
 }
 
 function loadZipManifest() {
@@ -138,6 +365,10 @@ function ok(message) {
   console.log(`ok    ${message}`);
 }
 
+function note(message) {
+  console.log(`note  ${message}`);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const failures = [];
@@ -158,25 +389,56 @@ async function main() {
     else ok(`zip manifest ${zipped.files.size} members`);
   }
 
+  const htaccessPath = path.join(args.buildDir, '.htaccess');
+  if (!fs.existsSync(htaccessPath)) {
+    fail(failures, 'build/.htaccess missing (public/.htaccess owns DirectoryIndex, the UTF-8 charset and no COOP/COEP)');
+  } else {
+    const htaccessFailures = checkHtaccess(fs.readFileSync(htaccessPath, 'utf8'));
+    for (const f of htaccessFailures) fail(failures, f);
+    if (!htaccessFailures.length) ok('build/.htaccess: DirectoryIndex, UTF-8 charset, no COOP/COEP');
+  }
+
+  const builtIndexPath = path.join(args.buildDir, 'index.html');
+  const builtIndexText = fs.existsSync(builtIndexPath)
+    ? decodeHtml(fs.readFileSync(builtIndexPath), 'text/html; charset=utf-8').text
+    : null;
+  if (builtIndexText == null) fail(failures, 'build/index.html missing — cannot compare the live documents');
+
+  const indexUrl = joinUrl(args.url, 'index.html');
   console.log(`\nFetching DIRECTORY URL  ${args.url}`);
-  console.log('(not index.html — that fetch is what hid the UTF-16 shadow)');
+  console.log('(not just index.html — that fetch is what hid the UTF-16 shadow)');
+  console.log(`Fetching               ${indexUrl}`);
   let dir;
+  let indexDoc;
   try {
     dir = await fetchBuf(args.url);
+    indexDoc = await fetchBuf(indexUrl);
   } catch (err) {
-    fail(failures, `directory URL fetch threw: ${err instanceof Error ? err.message : err}`);
+    fail(failures, `directory URL / index.html fetch threw: ${err instanceof Error ? err.message : err}`);
     console.log('VERDICT: NOT LIVE');
     process.exit(1);
   }
   if (!dir.ok) fail(failures, `directory URL HTTP ${dir.status}`);
+  if (!indexDoc.ok) fail(failures, `index.html HTTP ${indexDoc.status}`);
 
-  const htmlDec = decodeHtml(dir.buf);
-  console.log(`directory encoding=${htmlDec.encoding} bytes=${dir.buf.length} headerSize=${dir.headerSize ?? 'n/a'}`);
-  if (htmlDec.encoding !== 'utf-8') {
-    fail(failures, `directory URL is not UTF-8 (got ${htmlDec.encoding}, ${dir.buf.length} bytes)`);
-  } else {
-    ok('directory URL is UTF-8');
+  for (const [name, res] of [['directory URL', dir], ['index.html', indexDoc]]) {
+    console.log(`${name}  content-type=${JSON.stringify(res.contentType)} bytes=${res.buf.length} headerSize=${res.headerSize ?? 'n/a'}`);
   }
+
+  const docs = checkDirectoryDocuments({ dir, index: indexDoc, builtIndexText });
+  for (const f of docs.failures) fail(failures, f);
+  for (const n of docs.notes) note(n);
+  if (!docs.failures.length) {
+    ok(`directory URL and index.html are the same UTF-8 document as build/index.html (${docs.directory.source})`);
+  }
+  for (const [name, res] of [['directory URL', dir], ['index.html', indexDoc]]) {
+    const iso = checkIsolationHeaders(name, res);
+    for (const f of iso.failures) fail(failures, f);
+    for (const n of iso.notes) note(n);
+  }
+
+  // Everything below reads the directory URL's own document, decoded as a browser would.
+  const htmlDec = docs.directory;
 
   const liveBuildId = parseBuildIdMeta(htmlDec.text);
   const localBuildIdPath = path.join(args.buildDir, 'BUILD_ID');
@@ -305,12 +567,25 @@ async function main() {
     fail(failures, 'directory URL names no module entry script');
   }
 
+  if (args.skipRender) {
+    note('render check skipped (--skip-render)');
+  } else {
+    console.log(`\nRendering ${args.url} in headless Chrome`);
+    const render = await renderCheck(args.url, builtIndexText == null ? null : parseTitle(builtIndexText));
+    for (const f of render.failures) fail(failures, f);
+    if (render.info && !render.failures.length) {
+      ok(
+        `render: characterSet=${render.info.characterSet} title=${JSON.stringify(render.info.title)} scripts=${render.info.scripts}`,
+      );
+    }
+  }
+
   console.log('');
   if (failures.length) {
     console.log(`VERDICT: NOT LIVE  (${failures.length} check(s) failed)`);
     process.exit(1);
   }
-  console.log('VERDICT: LIVE');
+  console.log(args.skipRender ? 'VERDICT: LIVE (render check skipped)' : 'VERDICT: LIVE');
   process.exit(0);
 }
 

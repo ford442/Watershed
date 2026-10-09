@@ -13,10 +13,15 @@ The application will open at `http://localhost:3000`
 ### Deploy identity (`pnpm verify:deploy`)
 
 `node verification/verify_deploy.mjs` fetches the **directory URL**
-`https://test.1ink.us/watershed/` (not `index.html`) and three-way diffs
-`build/` vs `deploy.py --manifest` vs live on size + sha256. It must fail on
-today's UTF-16 DirectoryIndex document and pass against a coherent local
-`build/` served over a static file server.
+`https://test.1ink.us/watershed/` **and** `…/index.html`, decodes each the way a browser does
+(BOM, then the `Content-Type` charset, then `<meta charset>`), and three-way diffs
+`build/` vs `deploy.py --manifest` vs live on size + sha256. It fails when either document does
+not decode to UTF-8 `build/index.html`, when the two differ, when the directory response is labelled
+`charset=utf-16` (a UTF-8 body under that label is a blank page in Chrome), when a response sends
+`Cross-Origin-Embedder-Policy`, or when `build/.htaccess` lacks `DirectoryIndex` / the UTF-8
+charset or sets COOP/COEP. A headless-Chrome render check then requires the directory URL to have
+`document.characterSet === "UTF-8"`, at least one script, and the game's `<title>`.
+`--skip-render` skips only that last step (no Chrome available); the verdict then says so.
 
 ```bash
 pnpm build
@@ -26,7 +31,14 @@ pnpm verify:deploy -- --url http://127.0.0.1:4180/
 ```
 
 (`pnpm verify:deploy -- --url …` if the script wrapper swallows flags; otherwise
-`node verification/verify_deploy.mjs --url http://127.0.0.1:4180/`.)
+`node verification/verify_deploy.mjs --url http://127.0.0.1:4180/`.) Use a plain static server
+as the local target, not `vite preview`, which sends COOP/COEP for dev isolation and is flagged.
+Avoid ports on the Fetch spec's blocked list (e.g. 4190); `fetch` and Chrome refuse them.
+
+Unit tests: `npx vitest run verification/verify_deploy.test.mjs` (decoder, document, header and
+`.htaccess` checks; fixture `verification/fixtures/live-dir-2026-10-04.html` is the 729 bytes the
+live directory URL served) and `python3 -m unittest verification.test_deploy -v` (`deploy.py`
+shadow cloning).
 
 See [`DEPLOY_AUDIT.md`](./DEPLOY_AUDIT.md).
 
