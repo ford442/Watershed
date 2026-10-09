@@ -11,6 +11,10 @@ this file and [`scripts/check-build-manifest.mjs`](../../scripts/check-build-man
 
 Commands run: `pnpm install --frozen-lockfile`, `pnpm build` ×2, `pnpm audit`.
 
+> **Update 2026-10-07 (#461):** `public/.htaccess` joined the pinned inventory, so the passenger
+> count quoted below (37) is now 38. It is the directory's own `DirectoryIndex` / UTF-8 charset /
+> no-COOP-COEP config; `verify:deploy` also checks its contents.
+
 ---
 
 ## 0. Summary

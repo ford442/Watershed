@@ -287,7 +287,11 @@ Manual checklist before every commit:
 ```bash
 python3 build_and_patch.py    # build → build/, then invokes deploy.py
 python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com (Contabo)
+pnpm verify:deploy            # after an upload: both live URLs decode as UTF-8 build/index.html + headless render
 ```
+
+`public/.htaccess` (copied into `build/`) owns the directory: `DirectoryIndex index.html`, a UTF-8 charset,
+and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY_AUDIT.md`](./docs/reference/DEPLOY_AUDIT.md).
 
 ---
 

@@ -50,8 +50,15 @@ DEPLOY_TOKEN: Optional[str] = os.environ.get("DEPLOY_TOKEN")
 # Live directory URL on 2026-09-16 served a 1438-byte UTF-16LE document that is
 # NOT index.html (index.html is 718-byte UTF-8, different mtime/etag). Apache
 # DirectoryIndex resolves /watershed/ to that shadow. Overwrite any remote-only
-# root HTML (and any 1438-byte root file) with the current UTF-8 index.html.
+# root HTML (and any 1438-byte root file) with the current index.html.
+#
+# 2026-09-26 (#461): the first clone wrote BOM-less UTF-8 onto that shadow, which was
+# still served as `charset=utf-16`. The old file was UTF-16LE *with a BOM*, so the label
+# had been right; the clone removed the BOM and kept the label, and Chrome decoded the
+# UTF-8 bytes as UTF-16LE and loaded zero scripts. A clone's bytes must therefore be
+# correct under whatever label the file is served with — see encode_shadow().
 DIRECTORY_INDEX_SHADOW_SIZE = 1438
+UTF8_BOM = b"\xef\xbb\xbf"
 DIRECTORY_INDEX_NAME_RE = re.compile(
     r"^(index|default|home|welcome).*\.html?$",
     re.IGNORECASE,
@@ -154,8 +161,10 @@ def directory_index_shadows(
       - any root file whose remote size is 1438 (the UTF-16 shadow measured 2026-09-16)
       - root names matching index/default/home/welcome*.htm(l)
       - any other remote-only root *.htm / *.html
-    Cloning UTF-8 index.html onto every candidate makes the directory URL the
-    deploy's responsibility even before the owner names the shadow via --list-remote.
+    Cloning index.html (encode_shadow: UTF-8 + BOM) onto every candidate makes the
+    directory URL the deploy's responsibility even before the owner names the shadow via
+    --list-remote. public/.htaccess (`DirectoryIndex index.html`) is the primary fix; this
+    is the fallback for a vhost that does not honor it.
     """
     shadows = set()
     for rel, size in remote_files.items():
@@ -174,6 +183,23 @@ def directory_index_shadows(
         if lower.endswith(".htm") or lower.endswith(".html"):
             shadows.add(rel)
     return sorted(shadows)
+
+
+def encode_shadow(index_bytes: bytes) -> bytes:
+    """Bytes to write onto a DirectoryIndex shadow: index.html as UTF-8 *with a BOM*.
+
+    The deploy API only reports remote sizes, never the Content-Type a file is served
+    with, so the clone cannot pick an encoding to match its label. A BOM outranks the
+    transport charset in every browser (BOM, then Content-Type, then <meta charset>), so
+    these bytes are the same UTF-8 document under `charset=utf-8`, `charset=utf-16`, or
+    no label at all. Measured in headless Chrome 155: UTF-8 BOM + `charset=utf-16` gives
+    document.characterSet "UTF-8" and the scripts load; BOM-less gives UTF-16LE and none do.
+    public/.htaccess supplies the header that says UTF-8, and its DirectoryIndex makes
+    /watershed/ serve index.html itself, so this is the fallback if that file is ignored.
+    """
+    if index_bytes.startswith(UTF8_BOM):
+        return index_bytes
+    return UTF8_BOM + index_bytes
 
 
 def list_remote(build_path: Path, remote: RemoteSizesResult) -> int:
@@ -295,7 +321,7 @@ def build_zip(
             _log(f"  + {rel_s} ({local_size} bytes)")
         for rel_s, payload in sorted(extra_members.items()):
             zf.writestr(rel_s, payload)
-            _log(f"  + {rel_s} (cloned from index.html, {len(payload)} bytes)")
+            _log(f"  + {rel_s} (cloned from index.html as UTF-8 + BOM, {len(payload)} bytes)")
     return buf.getvalue()
 
 
@@ -324,11 +350,11 @@ def deploy_bundle(build_path: Path, dry_run: bool = False, manifest: bool = Fals
             "  until --list-remote succeeds and a deploy re-runs with a size map."
         )
     elif index_path.is_file():
-        index_bytes = index_path.read_bytes()
+        shadow_bytes = encode_shadow(index_path.read_bytes())
         build_files = local_build_files(build_path)
         shadows = directory_index_shadows(remote.files, build_files)
         for rel in shadows:
-            extra_members[rel] = index_bytes
+            extra_members[rel] = shadow_bytes
         if not shadows:
             _log("  DirectoryIndex clones: none (heuristic found no remote-only root HTML)")
     else:

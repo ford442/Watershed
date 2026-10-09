@@ -1,0 +1,32 @@
+# public/.htaccess — copied to build/.htaccess by Vite and uploaded with the bundle (#461).
+#
+# This directory owns three things the vhost must not be trusted with:
+#   1. Which file the directory URL (/watershed/) serves.
+#   2. The charset every HTML/JS/WASM response is labelled with.
+#   3. Cross-origin isolation: the web build is single-threaded (emscripten/build.sh,
+#      #454) and must NOT require COOP/COEP. Nothing below sets them; if the vhost
+#      forces them, they are dropped for this directory only.
+#
+# Every block is IfModule-guarded so a missing module means "directive ignored",
+# not HTTP 500. It cannot guard against AllowOverride forbidding these classes
+# (FileInfo / Indexes): then Apache answers 500 for the directory. Rollback is
+# deleting the remote .htaccess.
+
+# The directory URL resolves to index.html, never to a stray root HTML file.
+<IfModule mod_dir.c>
+  DirectoryIndex index.html
+</IfModule>
+
+# The transport charset must agree with the bytes (UTF-8, as Vite emits them).
+<IfModule mod_mime.c>
+  AddDefaultCharset UTF-8
+  AddCharset UTF-8 .html .js .wasm
+</IfModule>
+
+# `Header` and `Header always` write to different tables; a vhost may use either.
+<IfModule mod_headers.c>
+  Header unset Cross-Origin-Embedder-Policy
+  Header always unset Cross-Origin-Embedder-Policy
+  Header unset Cross-Origin-Opener-Policy
+  Header always unset Cross-Origin-Opener-Policy
+</IfModule>

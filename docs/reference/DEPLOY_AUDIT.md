@@ -4,6 +4,17 @@
 That theory is withdrawn. `/watershed/` and `/watershed/index.html` are two different files;
 see the rewritten §5(a)(4).
 
+**Addendum 2026-10-07 (#461):** the 2026-09-26 shadow clone is what made the `charset=utf-16`
+label lethal. The old shadow was UTF-16LE *with a BOM*, so its label was right; `deploy.py` cloned
+BOM-less UTF-8 onto it and left the label, and Chrome (BOM, then `Content-Type`, then `<meta>`) read
+the bytes as UTF-16LE and loaded zero scripts. The old `decodeHtml` sniffed only the BOM, so it could
+pass while the page was blank. Fixed in the pipeline: `verify:deploy` decodes in browser order and
+fetches both URLs, `deploy.py` clones UTF-8 **with a BOM** (correct under any label), and
+`public/.htaccess` pins `DirectoryIndex index.html` and a UTF-8 charset. The vhost's
+`Cross-Origin-Embedder-Policy` / `Cross-Origin-Opener-Policy` headers are out of band (not in this
+repo); `public/.htaccess` only unsets them for this directory — the web build is single-threaded
+and must not require COOP/COEP.
+
 Read-only, full round-trip audit of `pnpm build` → `deploy.py` → `https://test.1ink.us/watershed/`.
 No credential was requested, printed, or committed; `DEPLOY_TOKEN` was unset for the whole audit
 and every finding that depends on it says so explicitly. `deploy.py`, `build_and_patch.py`, and
