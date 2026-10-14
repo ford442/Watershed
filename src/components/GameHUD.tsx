@@ -45,6 +45,12 @@ interface GameHUDProps {
   ghostBestScore?: number;
 }
 
+function isDebugQuery(): boolean {
+  if (typeof window === 'undefined') return false;
+  const raw = new URLSearchParams(window.location.search).get('debug');
+  return raw === '1' || raw === 'true';
+}
+
 export const GameHUD: React.FC<GameHUDProps> = ({
   isWipeout = false,
   onRespawn,
@@ -235,6 +241,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const [native, setNative] = useState<NativeStatus & { dismissed?: boolean }>(() => ({
     status: 'loading',
   }));
+
+  // Raw native-init errors are for `?debug=1|true`; players get a short notice.
+  const debugMode = isDebugQuery();
 
   const biomeLabel = BIOME_HUD_LABELS[currentBiome] ?? 'CANYON SUMMER';
 
@@ -428,16 +437,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   return (
     <>
       {native.status === 'failed' && !native.dismissed && (
-        <div className="wasm-init-banner" role="alert" data-testid="wasm-init-banner">
+        <div className="wasm-init-banner" role="status" data-testid="wasm-init-banner">
           <div className="wasm-init-banner__body">
-            <strong>
-              {native.mismatched
-                ? 'Native WASM provenance mismatch — stale deploy'
-                : native.timedOut
-                  ? 'Native WASM init timed out'
-                  : 'Native WASM failed to init'}
-            </strong>
-            <pre>{native.error}</pre>
+            {debugMode ? (
+              <>
+                <strong>
+                  {native.mismatched
+                    ? 'Native WASM provenance mismatch — stale deploy'
+                    : native.timedOut
+                      ? 'Native WASM init timed out'
+                      : 'Native WASM failed to init'}
+                </strong>
+                <pre>{native.error}</pre>
+              </>
+            ) : (
+              <span>Running in compatibility mode — some water effects may look simpler.</span>
+            )}
           </div>
           <button
             type="button"
