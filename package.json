@@ -53,6 +53,7 @@
     "test:visual-smoke:tsl": "VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
     "test:visual-smoke:tsl:update": "UPDATE_BASELINES=1 VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
     "profile:physics": "node verification/physics_profile.mjs",
+    "check:build-manifest": "node scripts/check-build-manifest.mjs",
     "verify:deploy": "node verification/verify_deploy.mjs"
   },
   "browserslist": {

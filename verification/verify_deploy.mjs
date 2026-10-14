@@ -53,6 +53,19 @@ export function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
+/** The runtime's provenance stamp for an emcc pair — sha256(glue || wasm)[0:16],
+ *  the same value emscripten/build.sh writes to wasmArtifactStamp.ts and
+ *  WatershedWasm.ts recomputes in the browser. */
+export function nativePairStamp(glueBuf, wasmBuf) {
+  return createHash('sha256').update(glueBuf).update(wasmBuf).digest('hex').slice(0, 16);
+}
+
+/** True when a served JS bundle embeds `stamp` as a string literal, i.e. it was
+ *  compiled against that exact glue/wasm pair. */
+export function bundleDeclaresStamp(text, stamp) {
+  return text.includes(`"${stamp}"`) || text.includes(`'${stamp}'`) || text.includes(`\`${stamp}\``);
+}
+
 /** `Content-Type` → `{ essence, charset }`. First `charset` parameter wins, as in the MIME sniffing spec. */
 export function parseContentType(value) {
   const [essence = '', ...params] = String(value ?? '').split(';');
@@ -488,6 +501,7 @@ async function main() {
     }
   }
 
+  const liveNativeBufs = new Map();
   for (const name of ['watershed_native.js', 'watershed_native.wasm']) {
     const local = built.get(name);
     if (!local) {
@@ -505,6 +519,7 @@ async function main() {
       fail(failures, `${name} HTTP ${liveNative.status}`);
       continue;
     }
+    liveNativeBufs.set(name, liveNative.buf);
     const liveSize = liveNative.buf.length;
     if (liveSize !== local.size) {
       fail(failures, `${name} size live=${liveSize} HEAD/build=${local.size}`);
@@ -554,6 +569,24 @@ async function main() {
         fail(failures, 'served entry bundle missing WasmInitTimeoutError');
       } else {
         ok('entry bundle contains WasmInitTimeoutError');
+      }
+      // The browser throws WasmProvenanceMismatchError (and the game drops to the
+      // TypeScript fallbacks) when the stamp compiled into the entry bundle differs
+      // from sha256(glue||wasm) of the pair served beside it.
+      const liveGlue = liveNativeBufs.get('watershed_native.js');
+      const liveWasm = liveNativeBufs.get('watershed_native.wasm');
+      if (liveGlue && liveWasm) {
+        const liveStamp = nativePairStamp(liveGlue, liveWasm);
+        if (bundleDeclaresStamp(text, liveStamp)) {
+          ok(`entry bundle declares the served WASM pair's stamp ${liveStamp}`);
+        } else {
+          fail(
+            failures,
+            `entry bundle does not declare the served WASM pair's stamp ${liveStamp} — ` +
+              'the bundle and watershed_native.{js,wasm} are from different builds ' +
+              '(the browser logs provenance-mismatch and falls back to TypeScript); redeploy the whole build/',
+          );
+        }
       }
       if (!text.includes('negotiateBootGraphics')) {
         fail(failures, 'served entry bundle missing negotiateBootGraphics');

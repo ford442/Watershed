@@ -94,6 +94,9 @@ jobs:
       - name: Assert build output exists
         run: test -f build/index.html
 
+      - name: Assert the WASM pair, its stamp and BUILD_ID agree
+        run: pnpm check:build-manifest
+
       - name: Run test suite
         run: pnpm test
 
