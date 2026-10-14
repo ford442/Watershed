@@ -12,7 +12,7 @@
 import React from 'react';
 import { act, render } from '@testing-library/react';
 import * as THREE from 'three';
-import type { WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
 import { scrollField } from './sweScroll';
 
 const h = vi.hoisted(() => ({
@@ -47,12 +47,12 @@ vi.mock('./bathymetrySampler', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('./WatershedWasm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./WatershedWasm')>()),
+vi.mock('./wasmLoader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./wasmLoader')>()),
   getWasm: vi.fn(),
 }));
 
-import { getWasm } from './WatershedWasm';
+import { getWasm } from './wasmLoader';
 import { getSWEHeightFieldSnapshot } from './SWEHeightField';
 import { SWE_BUDGETS } from './sweQuality';
 import { WaterForceSystem } from './WaterForceSystem';
@@ -68,7 +68,7 @@ function stubModule() {
   const view = (ptr: number) => new Float32Array(heap.buffer, ptr, COUNT);
   const mod = {
     HEAPF32: heap,
-    getVersion: () => 9,
+    getVersion: () => 12,
     allocateGrid: (count: number) => {
       const ptr = next * 4;
       next += count;
@@ -76,6 +76,7 @@ function stubModule() {
       return ptr;
     },
     freeGrid: () => {},
+    reserveShallowWaterScratch: vi.fn(),
     stepShallowWater: vi.fn(() => {
       h.calls.push('step');
     }),

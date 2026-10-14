@@ -17,7 +17,7 @@ import {
 import { HISTOGRAM_BINS } from './types';
 import { createWatershedChoresRuntime } from './createRuntime';
 import { createTsCpuHost } from './cpuBackend';
-import { getWasm } from '../../systems/water/WatershedWasm';
+import { getWasm } from '../../systems/water/wasmLoader';
 import { bindChoreWasm, hasChoreExports, resetChoreWasmBinding } from './watershedHost';
 
 /** 8×8 ramp: h[y,x] = 0.1*x + 0.01*y */

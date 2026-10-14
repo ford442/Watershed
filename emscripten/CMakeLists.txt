@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(WatershedNative CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# C++20 (#467): std::span / std::bit_cast / [[likely]]. emcc 3.1.56's clang
+# and the host toolchains in CI both support it.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Compute TUs are Embind-free and compile on host and WASM.
-# bindings.cpp is WASM-only (Embind). Keep this list in sync with WASM.md.
+# Compute TUs compile on host and WASM. bindings.cpp is WASM-only: the plain
+# C ABI (extern "C" ws_* exports). Keep this list in sync with WASM.md.
 set(COMPUTE_SOURCES
     forces.cpp
     swe.cpp
@@ -64,12 +66,8 @@ if(EMSCRIPTEN)
         target_compile_options(watershed_compute PRIVATE ${EM_COMPILE_FLAGS})
         target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS})
     else()
-        # Compute TUs stay -fno-rtti / -fno-exceptions.
-        # bindings.cpp keeps RTTI: Embind type IDs must match the embind
-        # library (typeid). Compiling the bindings TU with -fno-rtti plus
-        # -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0 leaves every function
-        # unbound at runtime (CanonicalizedID addresses do not merge with
-        # the prebuilt embind objects).
+        # Every TU, bindings.cpp included, is -fno-rtti / -fno-exceptions:
+        # the C ABI (#467) has no Embind typeid to match, so nothing needs RTTI.
         # FP contract (#404): the WASM Release build keeps -ffast-math while the
         # host build below uses -ffp-contract=off. The two are deliberately not
         # identical — the shipped binary wants the vectoriser, the host smoke
@@ -103,7 +101,11 @@ if(EMSCRIPTEN)
             -fno-exceptions
             -fno-rtti
         )
-        target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS})
+        target_compile_options(watershed_native PRIVATE
+            ${EM_COMPILE_FLAGS}
+            -fno-exceptions
+            -fno-rtti
+        )
     endif()
 
     if(WATERSHED_THREADS)
@@ -121,7 +123,7 @@ if(EMSCRIPTEN)
 
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         # -flto at link matches the compile flag above; --closure 1 minifies
-        # the glue (Embind / HEAP* / createWatershedNative are exported names
+        # the glue (_ws_* / HEAP* / createWatershedNative are exported names
         # and survive it).
         target_link_options(watershed_native PRIVATE "SHELL:-flto" "SHELL:--closure 1")
     endif()
@@ -137,10 +139,16 @@ if(EMSCRIPTEN)
         "SHELL:-s INITIAL_MEMORY=${INITIAL_MEMORY_BYTES}"
         "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY_BYTES}"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=HEAPF32,HEAP32,HEAPU8"
+        # The Module options wasmLoader.ts passes (#467). Named explicitly: emcc
+        # 4.x+ dropped wasmBinary from the default list, so without this a newer
+        # glue silently ignores the verified bytes and fetches the wasm again.
+        "SHELL:-s INCOMING_MODULE_JS_API=wasmBinary,locateFile"
         "SHELL:-s EXPORT_ES6=1"
         "SHELL:-s MODULARIZE=1"
         "SHELL:-s EXPORT_NAME='createWatershedNative'"
-        "SHELL:--bind"
+        # No --bind (#467): the ws_* exports are EMSCRIPTEN_KEEPALIVE C functions,
+        # bound in TS from the wasmAbi.ts table. -fno-rtti at link too.
+        "SHELL:-fno-rtti"
         "SHELL:${EM_THREAD_FLAGS}"
     )
 
@@ -149,7 +157,7 @@ if(EMSCRIPTEN)
         RUNTIME_OUTPUT_DIRECTORY "${WATERSHED_OUTPUT_DIR}"
     )
 else()
-    # Native host build — clangd / host smoke. No Embind, no -s flags, no -ffast-math.
+    # Native host build — clangd / host smoke. No -s flags, no -ffast-math.
     # -ffp-contract=off keeps FMA contraction out of the golden path so
     # host_smoke.cpp results stay bit-reproducible; see the FP contract note
     # on the Emscripten branch above (#404).

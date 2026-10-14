@@ -1,5 +1,5 @@
 /**
- * particles.h — Embind-free SoA particle buffers (waterfall + splash integrate).
+ * particles.h — host-clean SoA particle buffers (waterfall + splash integrate).
  *
  * Layout: 9 planes of `capacity` floats, packed as
  *   px, py, pz, vx, vy, vz, life, maxLife, scale

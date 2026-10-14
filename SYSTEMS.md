@@ -599,7 +599,7 @@ rebuilds) and is freed by `DISPOSE_ROUTER` on unmount.
 `FORCES {seq, gridId, origin, samples}` for the vehicle (unless the Rapier worker owns it) and
 every debris body — authored flow cap and water level, flow-independent config. The worker
 samples the flow on its live grid (`sampleSWEFlow`, same function), stages the level
-(`stagedWaterLevel`) and runs `computeWaterForcesBatch`, one Embind call per run of samples
+(`stagedWaterLevel`) and runs `computeWaterForcesBatch`, one native call per run of samples
 whose configs are equal at float32 — the ABI takes one config per call, and each body has its
 own sampled speed and stage; one call for all bodies needs a per-sample-config export (ABI
 bump). Results come back in the request's buffer and are applied at the top of the next frame,
@@ -743,12 +743,12 @@ HeightmapFlow was deleted (#413) and must not come back.
 
 ## WASM Module
 
-### `src/systems/water/WatershedWasm.ts` + `emscripten/`
+### `src/systems/water/{wasmAbi,wasmLoader,WatershedWasm,waterForceFallback}.ts` + `emscripten/`
 
-**Layout:** `emscripten/common.h` (shared constants/types, `WATERSHED_KEEPALIVE`) + `forces.h`/`forces.cpp` (water force
+**Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
-not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `bindings.cpp` (the only `<emscripten/bind.h>` include; Embind surface,
-`getVersion()` — **8** in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**8** — ABI 6 changed `stepShallowWater`'s arity, so older binaries are rejected rather than partially used; ABI 7 particle SoA and ABI 8 `applySWEEvent` are now guaranteed exports, not optional TS branches, since the floor moved to 8). After ABI 6, `swe.cpp` SIMD is **damping**, **conserved-state lift**, and **CFL max reduction** only — HLL / hydrostatic reconstruction stay scalar. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
+exports, the only Emscripten include; `ws_getVersion()` — **12**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**12** — the C ABI replaced Embind, so nothing older can be bound; every export is required). After ABI 6, `swe.cpp` SIMD is **damping**, **conserved-state lift**, and **CFL max reduction** only — HLL / hydrostatic reconstruction stay scalar. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
@@ -803,7 +803,7 @@ pnpm build:wasm                # runs emscripten/build.sh
 ```
 
 Output written to `public/` (served as static assets by Vite):
-- `public/watershed_native.js` — Emscripten glue + Embind dispatch
+- `public/watershed_native.js` — Emscripten glue (`_ws_*` C exports; ends with `WATERSHED_WASM_SHA`)
 - `public/watershed_native.wasm` — WASM binary
 - `--threads` builds go to `emscripten/build-threads/out/` (with the `watershed_native.worker.mjs`
   pthread shim) and never overwrite the shipped `public/` pair or the artifact stamp (#454)
@@ -817,8 +817,8 @@ pinned release build ever writes `public/` or the stamp.
 **Pairing:** `public/watershed_native.{js,wasm}` are committed and must be rebuilt
 from pinned emcc **3.1.56** in one `pnpm build:wasm`. CI instantiates that committed
 pair (`createWatershedNative()` / `emscripten/smoke_test.mjs`) and
-`git diff --exit-code`s the artifacts after rebuild. A mixed js+wasm pair throws at
-`__embind_register_value_object_field`.
+`git diff --exit-code`s the artifacts after rebuild. The loader rejects a mixed js+wasm pair
+by hash before instantiating it (`WATERSHED_WASM_SHA` vs `WASM_BINARY_SHA`).
 
 **Flags:**
 | Flag | Effect |

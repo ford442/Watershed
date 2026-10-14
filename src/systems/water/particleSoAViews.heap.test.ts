@@ -4,7 +4,7 @@ import {
   type SplashWasmSlot,
   type WaterfallSoAViews,
 } from '../pools/nativeParticles';
-import { PARTICLE_SOA_PLANES, type WatershedNativeModule } from './WatershedWasm';
+import { PARTICLE_SOA_PLANES, type WatershedNativeModule } from './wasmAbi';
 
 /**
  * Mirrors sim/simForces.test.ts (heap growth): proves the

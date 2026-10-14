@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import glacial from '../../maps/glacial_source.json';
 import hydro from '../../maps/hydro_dam.json';
@@ -23,7 +23,7 @@ import {
   type HydroEventApplier,
 } from './hydroContrast';
 import { createWasmSweSim } from './sweSim';
-import type { WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
 import {
   ROUTING_NOMINAL_DISCHARGE,
@@ -36,6 +36,7 @@ import { sampleSWEFlow } from './sampleSWEFlow';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
 import { buildForecastSamples, FLOW_FORECAST_STATES } from '../map/flowForecast';
 import { DAM_RELEASE_SCHEDULE } from '../../experience/constants';
+import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
 
 const SCOUT_HOUR = 6;
 const DAM_HOUR = 14;
@@ -219,7 +220,6 @@ describe('hydroContrast event appliers (#435)', () => {
 // -----------------------------------------------------------------------------
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
-const jsPath = resolve(publicDir, 'watershed_native.js');
 const describeNative =
   process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath) ? describe : describe.skip;
 
@@ -230,14 +230,7 @@ describeNative('hydroContrast — the routed upstream edge (ABI 10)', () => {
   let wasm: WatershedNativeModule;
 
   beforeAll(async () => {
-    const wasmBinary = readFileSync(wasmPath);
-    const { default: create } = await import(/* @vite-ignore */ pathToFileURL(jsPath).href);
-    wasm = await create({
-      instantiateWasm: (imports: WebAssembly.Imports, receive: (i: WebAssembly.Instance) => void) => {
-        WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => receive(instance));
-        return {};
-      },
-    });
+    wasm = await loadNativeFromDisk();
   });
 
   /** stepShallowWaterInflow on a contrast grid — no hydroEvents, only the edge. */

@@ -3,18 +3,13 @@
  *
  * The stub's `computeWaterForcesBatch` is the TS twin of forces.cpp reading and
  * writing the stub heap, so these pin the wiring: which config reaches which
- * sample, runs of equal configs share one Embind call, and the heap views
+ * sample, runs of equal configs share one native call, and the heap views
  * survive memory growth (the old physicsWorkerWaterForces.heap test, moved with
  * the batch). Bit parity against the real binary: simWorker.integration.test.ts.
  */
 import { describe, expect, it, vi } from 'vitest';
-import {
-  WATER_FORCE_INPUT_STRIDE,
-  WATER_FORCE_OUTPUT_STRIDE,
-  calculateWaterForceFallback,
-  type NativeWaterForceConfig,
-  type WatershedNativeModule,
-} from '../systems/water/WatershedWasm';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, type NativeWaterForceConfig, type WatershedNativeModule } from '../systems/water/wasmAbi';
+import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { sampleSWEFlow, SWE_STAGE_SPEED_BOOST, stagedWaterLevel, type SWEFlowGrid } from '../systems/water/sampleSWEFlow';
 import {
   FORCE_RESULT_STRIDE,
@@ -145,7 +140,7 @@ describe('computeSimForces', () => {
     });
   });
 
-  it('takes one Embind call per run of float32-equal configs', () => {
+  it('takes one native call per run of float32-equal configs', () => {
     const wasm = stubModule();
     const batch = createSimForceBatch(wasm);
     const samples = new Float64Array(BODIES.length * FORCE_SAMPLE_STRIDE);

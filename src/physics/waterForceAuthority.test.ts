@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { calculateWaterForceFallback } from '../systems/water/WatershedWasm';
+import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { WATER_FORCE_FIXTURES } from './__tests__/waterForceFixtures';
 import {
   applyLocalAbiWaterForceIfOwner,

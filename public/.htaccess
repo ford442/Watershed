@@ -30,3 +30,13 @@
   Header unset Cross-Origin-Opener-Policy
   Header always unset Cross-Origin-Opener-Policy
 </IfModule>
+
+# Script policy (#467). watershed_native no longer needs eval: the glue is a
+# plain ES module (no Embind invokers) imported by URL, and only
+# WebAssembly.instantiate needs 'wasm-unsafe-eval'. Report-Only until #485
+# drops the runtime ajv schema compiler (`new Function` at module load in
+# levelValidator / reachValidator / PersistenceSystem) — enforcing it before
+# then blanks the page. Then rename the header to Content-Security-Policy.
+<IfModule mod_headers.c>
+  Header always set Content-Security-Policy-Report-Only "script-src 'self' 'wasm-unsafe-eval'"
+</IfModule>

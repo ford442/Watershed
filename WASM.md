@@ -28,27 +28,30 @@ TypeScript bindings are in `src/systems/water/WatershedWasm.ts`.
 
 ```
 emscripten/
-├── common.h          # Shared constants, Vec2/Vec3, clampf, WATERSHED_KEEPALIVE — Embind-free
-├── forces.h          # WaterForceResult + water-force declarations — Embind-free
+├── common.h          # Shared constants, Vec2/Vec3, clampf — host-clean
+├── forces.h          # WaterForceResult + water-force declarations — host-clean
 ├── forces.cpp        # Buoyancy / drag / flow / batched water forces
-├── swe.h             # Shallow-water solver + heap grid declarations — Embind-free
+├── swe.h             # Shallow-water solver + heap grid declarations — host-clean
 ├── swe.cpp           # Nonlinear HLL stepper; SIMD lift/CFL/damping only
 ├── simdf32.h         # Portable f32x4 (wasm_simd128 / SSE2 / NEON / scalar)
-├── chores.h          # Optional gpu-chores (reduce/hist/downsample/blur) — Embind-free
+├── chores.h          # Optional gpu-chores (reduce/hist/downsample/blur) — host-clean
 ├── chores.cpp        # Generic grid helpers; not SWE
-├── particles.h       # SoA waterfall / splash integrate — Embind-free
+├── particles.h       # SoA waterfall / splash integrate — host-clean
 ├── particles.cpp     # Euler + chute recycle / age
-├── routing.h         # Channel routing along the campaign chain — Embind-free
+├── routing.h         # Channel routing along the campaign chain — host-clean
 ├── routing.cpp       # Kinematic-storage routing + edge-stage rating (ABI 10)
-├── bindings.cpp      # getVersion() + the ONLY <emscripten/bind.h> include (the ABI)
-├── host_smoke.cpp    # Host assert runner (no Embind)
+├── bindings.cpp      # The C ABI: extern "C" ws_* exports + ws_getVersion(); the only Emscripten include
+├── host_smoke.cpp    # Host assert runner (no Emscripten headers)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake); enforces the emcc pin
 ├── EMCC_VERSION      # The pinned emcc (3.1.56) — read by build.sh and scripts/emsdk-pinned.sh
 └── CMakeLists.txt    # Compute static lib + WASM exe + host smoke; compile_commands ON
 
 src/systems/water/
-├── WatershedWasm.ts        # TypeScript bindings + SWEGrid helper (tests colocated)
-└── wasmArtifactStamp.ts    # sha256(glue || wasm)[:16], written by build.sh
+├── wasmAbi.ts              # WASM_ABI table, WatershedNativeModule, bindNativeModule()
+├── wasmLoader.ts           # fetch once, hash once, instantiate, bind — getWasm() + the worker's loader
+├── WatershedWasm.ts        # createSWEGrid / createWaterForceBatch (heap views)
+├── waterForceFallback.ts   # pure-TS twin of forces.cpp
+└── wasmArtifactStamp.ts    # pair stamp + wasm hash, written by build.sh
 
 public/               # COMMITTED build artefacts — the shipped pair
 ├── watershed_native.js
@@ -57,14 +60,14 @@ public/               # COMMITTED build artefacts — the shipped pair
 
 `main.cpp` is gone (#354 split the module into the TUs above). Hard rules:
 
-- `#include <emscripten/bind.h>` appears only in `bindings.cpp`.
-- Compute TUs never include `<emscripten/emscripten.h>`. Use `WATERSHED_KEEPALIVE` from `common.h`.
-- Bound types (`Vec3`, `WaterForceResult`, `RoutedEdge`) are concrete and non-polymorphic;
-  `bindings.cpp` `static_assert`s `!std::is_polymorphic_v<T>` for each.
-- Compute TUs compile with `-fno-rtti -fno-exceptions`. The bindings TU keeps RTTI so Embind
-  `typeid` matches the embind library (a `-fno-rtti` + `EMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0`
-  bindings TU left every `function()` unbound at runtime).
-- `value_object` registrations run before any `function()` that uses those types.
+- `<emscripten/emscripten.h>` appears only in `bindings.cpp`, the plain C ABI (#467). Compute
+  TUs build on the host too.
+- Every export is `extern "C" EMSCRIPTEN_KEEPALIVE ws_<name>` (JS: `Module._ws_<name>`). Only
+  scalars and heap byte offsets cross; the three struct results (`WaterForceResult`, `Vec3`,
+  `RoutedEdge`) are written through a trailing out-pointer, and `bindings.cpp`
+  `static_assert`s their packed float layout.
+- Every TU, `bindings.cpp` included, compiles with `-fno-rtti -fno-exceptions`. There is no
+  `--bind` and no RTTI anywhere in the release link.
 - The default CMake target has no `-pthread` / `SHARED_MEMORY`. Threads stay
   `WATERSHED_THREADS=ON` / `./build.sh --threads` only, and never ship.
 
@@ -98,7 +101,9 @@ pair:
 
 Rebuilding unchanged sources at the pin reproduces the committed pair byte for byte (CI
 asserts this with `git diff --exit-code`), so a matching stamp is good evidence the
-toolchain is right.
+toolchain is right. Since the plain C ABI (ABI 12) the pin is a **reproducibility** choice,
+not a crash guard: any emcc ≥ 3.1.56 (6.x included) builds the same `_ws_*` export list, and
+CI's informational *WASM exports on current emsdk* job checks that on every PR.
 
 ### pnpm scripts
 
@@ -138,7 +143,9 @@ cd emscripten
 | `ENVIRONMENT='web,worker'` (both variants) | The sim worker loads the same glue (`src/sim/workerWasm.ts`, #455); the Rapier worker no longer does (Phase B — its raft force comes from the sim worker). `smoke_test.mjs` fails if the glue hard-codes the worker flag. |
 | `-ffast-math -fno-finite-math-only` | Keep reassociation for the vectoriser, but stop clang folding `std::isfinite` to `true` — the `chores.cpp` NaN guards depend on it (`gpuChores/watershedHost.integration.test.ts`). |
 | `-flto` (compile + link) | Cross-TU inlining across the five compute TUs and `bindings.cpp`. |
-| `--closure 1` | Minifies the glue (~33 KB → ~15 KB). Embind names, `HEAP*`, `createWatershedNative` are exports and survive. |
+| `--closure 1` | Minifies the glue (~5 KB with the C ABI). `_ws_*`, `HEAP*`, `createWatershedNative` are exports and survive. |
+| `INCOMING_MODULE_JS_API=wasmBinary,locateFile` | The options `wasmLoader.ts` passes. Named explicitly: emcc 4.x+ dropped `wasmBinary` from the default, and a glue that ignores it fetches the wasm a second time. |
+| no `--bind` | The plain C ABI (#467). No Embind invokers, no `new Function`, no RTTI. |
 | `-s FILESYSTEM=0`, `-s MALLOC=emmalloc` | No file I/O; a handful of long-lived blocks, so the small allocator wins on size. |
 
 `--threads` builds into `emscripten/build-threads/out/` and never writes `public/` or the
@@ -146,7 +153,7 @@ artifact stamp: the single-thread pair is the only thing that ships.
 
 ### Host (clangd / smoke, no Emscripten)
 
-Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`) compile with a plain host compiler. `bindings.cpp` is WASM-only. `WATERSHED_KEEPALIVE` in `common.h` is `__attribute__((used))` under Emscripten and a no-op on host — never `#include <emscripten/emscripten.h>` from compute TUs.
+Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`) compile with a plain host compiler (C++20). `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs.
 
 ```bash
 cmake -S emscripten -B emscripten/build-host
@@ -173,19 +180,45 @@ After clone, `pnpm test:native` configures + builds the host tree (`emscripten/b
 | `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate. Growth **replaces** the `ArrayBuffer`; prior `Float32Array` views detach (`byteLength === 0`). `heapF32()` rebinds the worker water-force batch, SWE grid, and `createWaterForceBatch`. |
 
 Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2` and `SAFE_HEAP=1`.
-TypeScript init (`getWasm`) is bounded by an 8 s deadline regardless — see `WASM_INIT_TIMEOUT_MS` in `WatershedWasm.ts`. After the factory resolves, `getWasm()` hashes the served glue+wasm pair (`sha256(glue \|\| wasm)[:16]`) against `WASM_ARTIFACT_STAMP` and rejects on mismatch so the GameHUD `wasm-init-banner` fires. The TypeScript water-force fallback remains the gameplay path.
+### Loading: once, hashed once (#467)
+
+`wasmLoader.ts` is the only place the glue is instantiated — `getWasm()` on the main thread
+(`?simWorker=0`, dev tools) and `getWorkerWasm()` in the sim worker both call
+`loadWatershedNative()`:
+
+1. `import(glue)` and `fetch(wasm)` in parallel — each file is requested **once** per session.
+2. `sha256(wasm bytes)[:16]` must equal `WASM_BINARY_SHA`, and the glue's own
+   `WATERSHED_WASM_SHA` export (appended by `build.sh`) must name the same wasm. Either
+   mismatch rejects with `WasmProvenanceMismatchError` before anything is instantiated.
+3. The same bytes go to the factory as `wasmBinary`, so the bytes hashed are the bytes that run.
+4. `ws_getVersion() >= MIN_WASM_ABI_VERSION` (12), then `bindNativeModule()` binds every
+   `WASM_ABI` entry; a missing export is a `WasmAbiMismatchError`, not a later crash.
+
+The whole sequence is bounded by an 8 s deadline (`WASM_INIT_TIMEOUT_MS`, `?wasmInitTimeout=`).
+Any failure rejects `getWasm()` / resolves the worker's loader to `null`, the GameHUD
+`wasm-init-banner` fires, and the TypeScript water-force fallback remains the gameplay path.
+`WASM_ARTIFACT_STAMP` (`sha256(glue || wasm)[:16]`) stays the pair's identity for the
+cache-busting `?v=` query, `BUILD_ID`, and `scripts/check-build-manifest.mjs`.
+
+The glue is imported by URL, never evaluated from a string or blob, so the module needs only
+`script-src 'self' 'wasm-unsafe-eval'`. `public/.htaccess` sends that policy as
+**Report-Only** until #485 removes the runtime ajv compiler, which still needs `new Function`.
 
 ---
 
 ## API reference
 
-All functions are exposed via [Embind](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/embind.html)
-and callable after `await getWasm()`.
+Every function below is a `ws_<name>` C export, listed once in `WASM_ABI`
+(`src/systems/water/wasmAbi.ts`) with its arity, and bound onto `WatershedNativeModule` by
+`bindNativeModule()`: scalar exports are the raw functions themselves; the three struct results
+are read back from a scratch block the binding reserves once. `wasmLoader.test.ts` asserts the
+glue exposes exactly the table's exports with the declared arities, and
+`node scripts/wasm-exports.mjs public <other-dir>` diffs two builds' export lists.
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **11**;
-`MIN_WASM_ABI_VERSION` is **8**). Bump in `bindings.cpp` whenever the
+Returns the module ABI version integer (currently **12**;
+`MIN_WASM_ABI_VERSION` is **12**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 `>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
 `stepShallowWater`'s arity, which is why the floor moved with it.
@@ -203,8 +236,9 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 9 | `scrollShallowWater` — whole-cell scroll of `h`/`u`/`w`/`b` so the moving SWE window stays world-stable. Additive; `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays 8 and the export is typed optional. |
 | 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
 | 11 | `reserveShallowWaterScratch(width, height)` — pre-size the solver scratch (step, upstream-edge ghosts, scroll temp) so a step never allocates mid-call. Additive; `MIN_WASM_ABI_VERSION` stays 8. Same release: glue built for `web,worker`, emmalloc, `FILESYSTEM=0`, 16 MiB heap (#454). |
+| 12 | **Breaking (#467).** Plain C ABI: Embind and `--bind` are gone; every export is `extern "C" ws_<name>`. `calculateWaterForce` / `computeFlowForce` / `routedEdgeState` take a trailing out-pointer (8 / 3 / 2 floats). The duplicate `calculateBuoyancyAndDrag` C export is gone. `MIN_WASM_ABI_VERSION` moves to 12 — the binding table cannot drive an Embind binary — and every export is required (the exact stamp check already guaranteed it). |
 
-TypeScript (`src/systems/water/WatershedWasm.ts`) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 8).
+TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 12).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
 binary cannot be called with the new argument list at all, so the floor moves with
 it and a stale binary is rejected at load. Chore kernels live in
@@ -214,8 +248,11 @@ it and a stale binary is rejected at load. Chore kernels live in
 > both from the same pinned emcc (**3.1.56**, matching CI) via `pnpm build:wasm`
 > (`build.sh` refuses any other emcc)
 > and commit the pair together plus `src/systems/water/wasmArtifactStamp.ts`.
-> Mixing glue JS and wasm from different emcc versions throws at
-> `__embind_register_value_object_field` (`reading 'fields'`).
+> Under Embind (ABI ≤ 11), mixing glue and wasm from different emcc versions threw at
+> `__embind_register_value_object_field`. The C ABI removed that coupling — 3.1.56 and 6.x
+> build the same export list — but closure still minifies the wasm's import/export names per
+> build, so a glue and wasm from different builds still cannot run together. The loader
+> rejects such a pair by hash before instantiating it.
 >
 > CI instantiates the **committed** pair with `node emscripten/smoke_test.mjs`
 > (including the no-emcc job) and, after rebuild, `git diff --exit-code`s the
@@ -227,12 +264,12 @@ it and a stale binary is rejected at load. Chore kernels live in
 ### Adding a translation unit
 
 Add the `.cpp` to `COMPUTE_SOURCES` in `CMakeLists.txt` (the source of truth;
-`build.sh` wraps CMake). Declare exports in an Embind-free header
-(`common.h`, or a new `<unit>.h` that includes it), and bind them in
-`bindings.cpp` — the only file allowed to include `<emscripten/bind.h>`.
-Register `value_object` types before any `function()` that uses them. Never
-put compile or link flags in a shell script. Compute TUs stay `-fno-rtti`;
-the bindings TU keeps RTTI so Embind type IDs match the embind library.
+`build.sh` wraps CMake). Declare its functions in a host-clean header
+(`common.h`, or a new `<unit>.h` that includes it), export each one as a
+`WS_EXPORT ws_<name>` forwarder in `bindings.cpp`, add the matching entry
+(arity, and `out` / `returns: 'u32'` where needed) to `WASM_ABI` and the
+`WatershedNativeModule` interface in `wasmAbi.ts`, and bump `ws_getVersion()`.
+Never put compile or link flags in a shell script.
 
 ### `computeBuoyancy(submergedVolume, waterDensity, gravity): number`
 
@@ -372,9 +409,9 @@ window world-stable.
 - **Order, every frame:** `scroll` (previous step's `h/u/w/b` into the new index frame) →
   `refreshBed()` (rewrites `b` with the world-correct floor) → disturbances → `step`.
 - **Additive.** Pure data movement — bit-exact, no arithmetic. `getVersion()` is 9, but
-  `stepShallowWater` is unchanged, so `MIN_WASM_ABI_VERSION` stays **8**; the export is typed
-  optional in `WatershedWasm.ts`, and `createWasmSweSim` falls back to the TypeScript twin
-  (`scrollField`) on an ABI-8 binary.
+  `stepShallowWater` was unchanged, so `MIN_WASM_ABI_VERSION` stayed **8** at the time. Since
+  ABI 12 the export is required; the TypeScript twin (`scrollField`) remains the reference for
+  the WGSL and sim-worker mirrors.
 - **Backends.** The WGSL twin is the `scroll` entry point of `swe.wgsl` (gather into scratch,
   copy back over the field). `WgslSweSim.scroll` shifts its CPU mirror in the same call and drops
   a readback that was taken before the scroll, so readers never pair a stale-frame field with the
@@ -392,7 +429,7 @@ solver as authored `hydroEvents` disks. Now it is a **discharge at the head of t
 chain** (`glacial → lumber → meander → hydro → delta`), routed downstream with a travel time,
 and the routed discharge at the player's segment drives the SWE window's **upstream edge**.
 
-**`routing.cpp`** (Embind-free, same `-fno-rtti -fno-exceptions` as the other compute TUs) —
+**`routing.cpp`** (host-clean, same `-fno-rtti -fno-exceptions` as the other compute TUs) —
 one number per segment, not a second 2D grid. Each segment is `ROUTING_SUBREACHES` (4)
 reservoirs holding their real water volume `S = l·B·y`, `y` from Manning on a wide rectangle
 (`n = 0.035`, slope clamped to [0.002, 0.25]). Each step linearises `Q(S)` about the current
@@ -430,7 +467,7 @@ the reference discharge. The ghost's wave speed joins the CFL max.
   and to seed a freshly placed window. A binary without the exports (ABI < 10) steps
   transmissive, as before.
 - **Additive.** `stepShallowWater` / `applySWEEvent` / `scrollShallowWater` keep their
-  signatures, so `MIN_WASM_ABI_VERSION` stays **8** and the new exports are typed optional.
+  signatures, so `MIN_WASM_ABI_VERSION` stayed **8** at the time (since ABI 12 every export is required).
 - **FP contract (#404).** The routing goldens hold across the host (`-ffp-contract=off`) and the
   `-ffast-math` WASM build at 1e-4 relative, so `routing.cpp` needs no pinned FP flags. If they
   ever diverge, pin `-ffp-contract=off` on `routing.cpp` only.
@@ -456,7 +493,8 @@ Prefer `createSWEGrid()` which wraps these with automatic live views.
 ## TypeScript usage
 
 ```typescript
-import { getWasm, createSWEGrid } from './systems/water/WatershedWasm';
+import { getWasm } from './systems/water/wasmLoader';
+import { createSWEGrid } from './systems/water/WatershedWasm';
 import { sampleSWEFlow } from './systems/water/sampleSWEFlow';
 
 // In a React component or game-init function:
@@ -492,7 +530,7 @@ grid.dispose();
 ```
 
 Pure-TypeScript fallbacks (`buoyancyFallback`, `dragForceFallback`,
-`calculateWaterForceFallback`) are also exported and match the C++
+`calculateWaterForceFallback`, in `waterForceFallback.ts`) match the C++
 implementations — they are what runs when `watershed_native.wasm` fails to load,
 so the two must stay in lockstep.
 

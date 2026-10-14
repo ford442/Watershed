@@ -1,8 +1,8 @@
 /**
  * swe.h — public declarations for the shallow-water solver + heap grid helpers.
  *
- * Implemented in swe.cpp. Embind-free — bindings.cpp includes this header
- * and registers the Embind surface separately.
+ * Implemented in swe.cpp. Host-clean — bindings.cpp includes this header
+ * and exports the C ABI (ws_*) separately.
  */
 
 #ifndef WATERSHED_SWE_H

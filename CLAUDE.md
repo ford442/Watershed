@@ -87,7 +87,7 @@ src/
 │   ├── water/sweScroll.ts       # SWE window cell lattice + scroll twin (keeps the moving field world-stable)
 │   ├── water/riverRouter.ts     # Launch-hour discharge routed down the campaign chain → SWE upstream-edge stage
 │   ├── map/routingReach.ts      # Campaign chain as (length, slope, width) per segment for the routing
-│   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/WatershedWasm.ts
+│   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/wasmLoader.ts (+ wasmAbi.ts)
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts

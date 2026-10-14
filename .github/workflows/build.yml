@@ -247,3 +247,45 @@ jobs:
             public/watershed_native.js \
             public/watershed_native.wasm \
             src/systems/water/wasmArtifactStamp.ts
+
+  # #467: the plain C ABI should not depend on the emcc version. Build the same
+  # sources with the current emsdk (aside — WATERSHED_ALLOW_EMCC_MISMATCH never
+  # touches public/) and diff the _ws_* export list and arities against the
+  # committed pinned pair. Informational: a new emsdk can break this without
+  # blocking a PR, but the log says exactly which export moved.
+  wasm-exports-current-emsdk:
+    name: WASM exports on current emsdk (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      CI: true
+      PUPPETEER_SKIP_DOWNLOAD: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Set up Emscripten (latest)
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build aside with the current emcc
+        run: |
+          emcc --version | head -n1
+          WATERSHED_ALLOW_EMCC_MISMATCH=1 pnpm build:wasm
+          git diff --exit-code -- public/ src/systems/water/wasmArtifactStamp.ts
+
+      - name: Export list matches the pinned pair
+        run: node scripts/wasm-exports.mjs public emscripten/build/out

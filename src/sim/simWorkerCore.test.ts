@@ -3,7 +3,7 @@
  * records calls; bit parity against the real binary is the integration test.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createSimWorkerCore } from './simWorkerCore';
 import type { SimWorkerResponse } from './simWorkerProtocol';
 
@@ -12,13 +12,14 @@ function stubModule() {
   let next = 16;
   return {
     HEAPF32: heap,
-    getVersion: () => 11,
+    getVersion: () => 12,
     allocateGrid: (count: number) => {
       const ptr = next * 4;
       next += count;
       return ptr;
     },
     freeGrid: vi.fn(),
+    reserveShallowWaterScratch: vi.fn(),
     stepShallowWater: vi.fn(),
     stepShallowWaterInflow: vi.fn(),
     applySWEEvent: vi.fn(),

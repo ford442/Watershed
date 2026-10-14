@@ -15,11 +15,8 @@
  *      diagnostics to the render thread
  */
 
-import {
-  WATER_FORCE_OUTPUT_STRIDE,
-  calculateWaterForceFallback,
-  type NativeWaterForceConfig,
-} from '../systems/water/WatershedWasm';
+import { WATER_FORCE_OUTPUT_STRIDE, type NativeWaterForceConfig } from '../systems/water/wasmAbi';
+import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { FORCE_SAMPLE_STRIDE, readForceFlow, readForceResult, writeForceSample } from '../sim/simForces';
 import type { Vec3Tuple, WorkerRaftState } from './rapierWorkerProtocol';
 import type { WaterForceDiagnostics } from './physicsWorkerRegistry';

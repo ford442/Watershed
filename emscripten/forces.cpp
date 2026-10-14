@@ -51,7 +51,6 @@ float computeDragForce(float vx, float vy, float vz,
 // current drag. This is intentionally small and stable so the TypeScript side
 // can prove C++ -> WASM -> browser wiring before deeper fluid math lands.
 // ---------------------------------------------------------------------------
-extern "C" WATERSHED_KEEPALIVE
 float calculateBuoyancyAndDrag(float raftMass,
                                float submergedVolume,
                                float waterVelocityX,

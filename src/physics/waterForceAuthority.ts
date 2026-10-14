@@ -11,12 +11,8 @@
  * segment's SWE sink.
  */
 
-import {
-  calculateWaterForceFallback,
-  type NativeWaterForceConfig,
-  type NativeWaterForceResult,
-  type NativeWaterForceSample,
-} from '../systems/water/WatershedWasm';
+import type { NativeWaterForceConfig, NativeWaterForceResult, NativeWaterForceSample } from '../systems/water/wasmAbi';
+import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 
 export type RaftWaterForceOwner = 'worker' | 'main-thread-abi' | 'local-abi';
 

@@ -14,7 +14,7 @@
  *   for the Rapier worker's hull over its MessagePort (HULL), both sampled on
  *   the live grid at the origin the main thread last placed it at.
  */
-import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createWasmSweSim, type SweSim } from '../systems/water/sweSim';
 import { SWE_REST_INFLOW, type SweInflow } from '../systems/water/sweScroll';
 import { createRiverRouter, routedEdgeInflow, type RiverRouter } from '../systems/water/riverRouter';

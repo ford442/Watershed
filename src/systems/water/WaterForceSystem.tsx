@@ -30,12 +30,9 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
 import { WATER_PHYSICS } from '../../vehicles/RaftVehicle/constants';
-import {
-  calculateWaterForceFallback,
-  getWasm,
-  type NativeWaterForceConfig,
-  type WatershedNativeModule,
-} from './WatershedWasm';
+import type { NativeWaterForceConfig, WatershedNativeModule } from './wasmAbi';
+import { getWasm } from './wasmLoader';
+import { calculateWaterForceFallback } from './waterForceFallback';
 import { createWasmSweSim, type SweEventCall, type SweSim, type SweStepInput } from './sweSim';
 import { createWgslSweSim } from './WgslSweSim';
 import {
@@ -370,7 +367,7 @@ interface WorkerRouterState {
  * `currentRouter` for the `wasm-worker` backend: the router lives in the sim
  * worker. (Re)send it when the run or its launch hour changes — the same
  * trigger, at the same point in the frame, as the main-thread rebuild — and
- * return the chain index the frame's SCROLL / STEP carry. No Embind here.
+ * return the chain index the frame's SCROLL / STEP carry. No native call here.
  */
 function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number | null {
   const session = getRunSession();

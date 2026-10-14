@@ -4,7 +4,7 @@ import {
   hullSampleFromState,
   PHYSICS_WORKER_IMPULSE_SCALE,
 } from './physicsWorkerWaterForces';
-import { calculateWaterForceFallback } from '../systems/water/WatershedWasm';
+import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { FORCE_RESULT_STRIDE, FORCE_SAMPLE_STRIDE } from '../sim/simForces';
 import type { WorkerRaftState } from './rapierWorkerProtocol';
 
