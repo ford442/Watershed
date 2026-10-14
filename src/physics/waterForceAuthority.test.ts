@@ -1,115 +1,101 @@
 /**
- * waterForceAuthority.test.ts — one owner per tick; local ABI is calculateWaterForceFallback.
+ * waterForceAuthority.test.ts — two water-force paths, one owner per tick (#467).
  */
 
 import { describe, expect, it } from 'vitest';
 import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { WATER_FORCE_FIXTURES } from './__tests__/waterForceFixtures';
+import { computeHullMirrorForce } from './hullMirrorForce';
+import { PHYSICS_WORKER_IMPULSE_SCALE } from './physicsWorkerWaterForces';
+import type { WaterForceDiagnostics } from './rapierWorkerProtocol';
 import {
-  applyLocalAbiWaterForceIfOwner,
-  localAbiWaterImpulse,
-  RAFT_WATER_FORCE_IMPULSE_SCALE,
-  resolveRaftWaterForceOwner,
-  shouldApplyLocalAbiWaterForce,
-  shouldSkipMainThreadVehicleForce,
-  type RaftWaterForceOwner,
+  pickHullForce,
+  resolveWaterForceOwner,
+  WATER_FORCE_IMPULSE_SCALE,
+  type WaterForceOwner,
 } from './waterForceAuthority';
 
-describe('resolveRaftWaterForceOwner', () => {
-  const cases: Array<{
-    workerPhysicsReady: boolean;
-    waterForceSystemActive: boolean;
-    expected: RaftWaterForceOwner;
-  }> = [
-    { workerPhysicsReady: true, waterForceSystemActive: true, expected: 'worker' },
-    { workerPhysicsReady: true, waterForceSystemActive: false, expected: 'worker' },
-    { workerPhysicsReady: false, waterForceSystemActive: true, expected: 'main-thread-abi' },
-    { workerPhysicsReady: false, waterForceSystemActive: false, expected: 'local-abi' },
+const force = (source: WaterForceDiagnostics['source'], forceX: number): WaterForceDiagnostics => ({
+  source,
+  forceX,
+  forceY: 0,
+  forceZ: 0,
+  buoyancy: 0,
+  drag: 0,
+  flow: 0,
+  turbulence: 0,
+  submergedRatio: 1,
+});
+
+describe('resolveWaterForceOwner — the two-way choice', () => {
+  const cases: Array<{ simWorkerForces: boolean; expected: WaterForceOwner }> = [
+    { simWorkerForces: true, expected: 'sim-worker' },
+    { simWorkerForces: false, expected: 'ts-mirror' },
   ];
-
-  cases.forEach(({ workerPhysicsReady, waterForceSystemActive, expected }) => {
-    it(`worker=${workerPhysicsReady} wfs=${waterForceSystemActive} → ${expected}`, () => {
-      const owner = resolveRaftWaterForceOwner({
-        workerPhysicsReady,
-        waterForceSystemActive,
-      });
-      expect(owner).toBe(expected);
-      const owners = [owner];
-      expect(new Set(owners).size).toBe(1);
+  for (const { simWorkerForces, expected } of cases) {
+    it(`simWorkerForces=${simWorkerForces} → ${expected}`, () => {
+      expect(resolveWaterForceOwner({ simWorkerForces })).toBe(expected);
     });
-  });
+  }
 
-  it('never selects two owners when worker and WaterForceSystem are both live', () => {
-    const owner = resolveRaftWaterForceOwner({
-      workerPhysicsReady: true,
-      waterForceSystemActive: true,
-    });
-    expect(owner).toBe('worker');
-    expect(shouldApplyLocalAbiWaterForce(owner)).toBe(false);
-  });
-
-  it('WaterForceSystem skips the vehicle body when the worker is active', () => {
-    expect(shouldSkipMainThreadVehicleForce(true, true)).toBe(true);
-    expect(shouldSkipMainThreadVehicleForce(true, false)).toBe(false);
-    expect(shouldSkipMainThreadVehicleForce(false, true)).toBe(false);
+  it('has exactly two owners', () => {
+    const owners = new Set([true, false].map((simWorkerForces) => resolveWaterForceOwner({ simWorkerForces })));
+    expect([...owners].sort()).toEqual(['sim-worker', 'ts-mirror']);
   });
 });
 
-describe('applyLocalAbiWaterForceIfOwner', () => {
-  const fixture = WATER_FORCE_FIXTURES[0];
-  const impulses: Array<{ x: number; y: number; z: number }> = [];
-  const body = {
-    translation: () => fixture.sample.position,
-    linvel: () => fixture.sample.velocity,
-    applyImpulse: (impulse: { x: number; y: number; z: number }) => {
-      impulses.push(impulse);
-    },
-  };
-  const delta = 1 / 60;
-
-  it('does not apply impulse when the worker owns the tick', () => {
-    impulses.length = 0;
-    const result = applyLocalAbiWaterForceIfOwner(
-      'worker',
-      body,
-      fixture.config,
-      delta,
-      fixture.sample.flowDirection,
-    );
-    expect(result).toBeNull();
-    expect(impulses).toHaveLength(0);
+describe('pickHullForce — the Rapier worker applies one force and computes none', () => {
+  it('takes the sim worker force when the hull link has a fresh one', () => {
+    const fromSim = force('wasm', 5);
+    const picked = pickHullForce(fromSim, force('fallback', 9));
+    expect(picked).toEqual({ owner: 'sim-worker', force: fromSim });
   });
 
-  it('does not apply impulse when WaterForceSystem owns the tick', () => {
-    impulses.length = 0;
-    const result = applyLocalAbiWaterForceIfOwner(
-      'main-thread-abi',
-      body,
-      fixture.config,
-      delta,
-      fixture.sample.flowDirection,
-    );
-    expect(result).toBeNull();
-    expect(impulses).toHaveLength(0);
+  it('takes the main thread mirror when the link has none (startup, stale, unlinked)', () => {
+    const mirror = force('fallback', 9);
+    expect(pickHullForce(null, mirror)).toEqual({ owner: 'ts-mirror', force: mirror });
   });
 
-  it('applies calculateWaterForceFallback (not WaterForces.ts) when local ABI owns the tick', () => {
-    impulses.length = 0;
-    const expectedForce = calculateWaterForceFallback(fixture.sample, fixture.config);
-    const result = applyLocalAbiWaterForceIfOwner(
-      'local-abi',
-      body,
-      fixture.config,
-      delta,
-      fixture.sample.flowDirection,
+  it('applies nothing when neither exists', () => {
+    expect(pickHullForce(null, undefined)).toBeNull();
+    expect(pickHullForce(null, null)).toBeNull();
+  });
+});
+
+describe('computeHullMirrorForce — the TS mirror the hull falls back to', () => {
+  it('is calculateWaterForceFallback on the tick params, for every fixture', () => {
+    for (const fixture of WATER_FORCE_FIXTURES) {
+      const mirror = computeHullMirrorForce(
+        { position: fixture.sample.position, velocity: fixture.sample.velocity },
+        {
+          enabled: true,
+          ...fixture.config,
+          flowDirX: fixture.sample.flowDirection.x,
+          flowDirZ: fixture.sample.flowDirection.z,
+        },
+      );
+      const expected = calculateWaterForceFallback(fixture.sample, fixture.config);
+      expect(mirror.source).toBe('fallback');
+      expect(mirror.forceX).toBe(expected.forceX);
+      expect(mirror.forceY).toBe(expected.forceY);
+      expect(mirror.forceZ).toBe(expected.forceZ);
+      expect(mirror.submergedRatio).toBe(expected.submergedRatio);
+    }
+  });
+
+  it('reports disabled when water forces are off', () => {
+    const fixture = WATER_FORCE_FIXTURES[0];
+    const mirror = computeHullMirrorForce(
+      { position: fixture.sample.position, velocity: fixture.sample.velocity },
+      { enabled: false, ...fixture.config, flowDirX: 0, flowDirZ: -1 },
     );
-    expect(result).not.toBeNull();
-    expect(result!.forceX).toBeCloseTo(expectedForce.forceX, 4);
-    expect(result!.forceY).toBeCloseTo(expectedForce.forceY, 4);
-    expect(result!.forceZ).toBeCloseTo(expectedForce.forceZ, 4);
-    expect(impulses).toHaveLength(1);
-    expect(impulses[0]).toEqual(localAbiWaterImpulse(expectedForce, delta));
-    expect(RAFT_WATER_FORCE_IMPULSE_SCALE).toBe(0.001);
+    expect(mirror.source).toBe('disabled');
+    expect(mirror.forceX).toBe(0);
+  });
+
+  it('uses one impulse scale on every path', () => {
+    expect(WATER_FORCE_IMPULSE_SCALE).toBe(0.001);
+    expect(PHYSICS_WORKER_IMPULSE_SCALE).toBe(WATER_FORCE_IMPULSE_SCALE);
   });
 });
 
@@ -133,27 +119,5 @@ describe('SWE velocity into calculateWaterForceFallback', () => {
     expect(Math.abs(plusX.forceX)).toBeGreaterThan(Math.abs(plusX.forceZ));
     expect(plusX.forceX).not.toBeCloseTo(downstream.forceX, 2);
     expect(downstream.forceZ).toBeLessThan(0);
-  });
-
-  it('local ABI applies the +X sample when it owns the tick', () => {
-    const impulses: Array<{ x: number; y: number; z: number }> = [];
-    const body = {
-      translation: () => plusXSample.position,
-      linvel: () => plusXSample.velocity,
-      applyImpulse: (impulse: { x: number; y: number; z: number }) => {
-        impulses.push(impulse);
-      },
-    };
-    const result = applyLocalAbiWaterForceIfOwner(
-      'local-abi',
-      body,
-      fixture.config,
-      1 / 60,
-      plusXSample.flowDirection,
-    );
-    expect(result).not.toBeNull();
-    expect(result!.forceX).toBeGreaterThan(0);
-    expect(impulses).toHaveLength(1);
-    expect(impulses[0].x).toBeGreaterThan(0);
   });
 });

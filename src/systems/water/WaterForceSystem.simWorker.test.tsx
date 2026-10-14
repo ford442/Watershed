@@ -370,8 +370,10 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(demoteSweSimBackendToWasmMain).toHaveBeenCalled();
     expect(getPhysicsWorkerStatus().sweGrid).toMatch(/wasm-main$/);
     expect(main.stepShallowWater.mock.calls.length + main.stepShallowWaterInflow.mock.calls.length).toBeGreaterThan(0);
-    // Today's main-thread path, forces and router included.
-    expect(main.calculateWaterForce).toHaveBeenCalled();
+    // The main module steps the field and routes the edge; forces are the TS
+    // mirror (#467: forces.cpp runs only in the sim worker).
+    expect(main.calculateWaterForce).not.toHaveBeenCalled();
+    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
     expect(main.routeReachSteady).toHaveBeenCalled();
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
     // The main module loads only once the worker is known to be unavailable.
@@ -398,7 +400,7 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(main.stepShallowWater).not.toHaveBeenCalled();
     // Forces fail open to the TS math on this thread, not to the main module.
     expect(main.calculateWaterForce).not.toHaveBeenCalled();
-    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('main-ts');
+    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
     // The worker's death does not start a second module here either.
     expect(getWasm).not.toHaveBeenCalled();
@@ -420,7 +422,7 @@ describe('WaterForceSystem on the wgsl backend', () => {
       expect(getWasm).not.toHaveBeenCalled();
       expect(getSimWorkerProxy).not.toHaveBeenCalled();
       expect(main.calculateWaterForce).not.toHaveBeenCalled();
-      expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('main-ts');
+      expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
       expect(info).toHaveBeenCalledWith(expect.stringContaining('no WASM module this session'));
       unmount();
     } finally {

@@ -86,7 +86,7 @@ describe('SimWorkerProxy frames', () => {
     const buffer = new ArrayBuffer(64);
     stub.reply({
       type: 'FRAME',
-      frame: { gridId: 99, frameIndex: 1, epoch: 0, width: 2, height: 2, computeMicros: 5, backend: 'wasm-worker', inflow: null, buffer },
+      frame: { gridId: 99, frameIndex: 1, epoch: 0, width: 2, height: 2, computeMicros: 5, backend: 'wasm-worker', inflow: null, bed: true, buffer },
     });
     await Promise.resolve();
     expect(proxy.latestFrame()).toMatchObject({ gridId: 99, frameIndex: 1, computeMicros: 5 });

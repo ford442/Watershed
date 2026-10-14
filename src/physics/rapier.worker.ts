@@ -1,10 +1,10 @@
 /// <reference lib="webworker" />
 /**
  * The Rapier worker: rigid bodies only. It does not load watershed_native
- * (#455 Phase B) — the raft's native water force is computed by the sim worker
- * on the SWE field it steps and arrives over the hull link (CONNECT_SIM;
- * src/sim/hullLinkProtocol.ts). Without a link it uses the TS fallback on the
- * tick params. Tick order: physicsWorkerWaterForces.ts.
+ * (#455 Phase B) and computes no water force (#467): the raft's force is the
+ * sim worker's, over the hull link (CONNECT_SIM; src/sim/hullLinkProtocol.ts),
+ * or — without a fresh one — the TS mirror force the main thread sent with the
+ * step (waterForceAuthority.ts pickHullForce). Tick order: physicsWorkerWaterForces.ts.
  */
 
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -22,9 +22,10 @@ import {
 import {
   applyImpulseList,
   applyWaterForceImpulse,
-  computePhysicsWorkerWaterForces,
+  DISABLED_WATER_FORCE,
   PHYSICS_WORKER_IMPULSE_SCALE,
 } from './physicsWorkerWaterForces';
+import { pickHullForce } from './waterForceAuthority';
 import { createHullLinkClient, type HullLinkClient, type RapierHullPort } from './hullLinkClient';
 import { createStaticColliderBody } from './staticColliderBody';
 
@@ -142,9 +143,12 @@ const applyWaterForcesBeforeStep = (
   if (!raftBody || !waterForce) return undefined;
 
   // The sim worker's force for the state this tick starts from (posted after
-  // the previous step); the TS fallback when there is none or it is stale.
-  const fromSim = waterForce.enabled && waterForce.simFlow ? hullLink?.latestForce() ?? null : null;
-  const diagnostics = fromSim ?? computePhysicsWorkerWaterForces(serializeState(), waterForce);
+  // the previous step); the main thread's TS mirror force when there is none
+  // or it is stale. One of the two, never both, never computed here.
+  if (!waterForce.enabled) return { ...DISABLED_WATER_FORCE };
+  const fromSim = waterForce.simFlow ? hullLink?.latestForce() ?? null : null;
+  const picked = pickHullForce(fromSim, waterForce.mirror);
+  const diagnostics = picked?.force ?? { ...DISABLED_WATER_FORCE };
 
   applyWaterForceImpulse(
     raftBody,

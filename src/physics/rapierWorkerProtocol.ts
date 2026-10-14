@@ -71,9 +71,15 @@ export interface WaterForceTickConfig {
   /**
    * flowSpeed / waterLevel are AUTHORED: the force comes from the sim worker
    * over the hull link (CONNECT_SIM), which samples and stages them on its live
-   * SWE field (#455 Phase B). Without a link the tick uses the TS fallback.
+   * SWE field (#455 Phase B). Without a fresh link force the tick applies `mirror`.
    */
   simFlow?: boolean;
+  /**
+   * The TS mirror's force for the raft state this step starts from, computed on
+   * the main thread (hullMirrorForce.ts, #467). The worker applies it only when
+   * the hull link has no fresh force (pickHullForce); it computes no force itself.
+   */
+  mirror?: WaterForceDiagnostics;
 }
 
 export interface WaterForceDiagnostics {

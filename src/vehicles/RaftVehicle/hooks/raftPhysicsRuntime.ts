@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { applyLocalAbiWaterForceIfOwner } from '../../../physics/waterForceAuthority';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { useGameStore } from '../../../systems/GameState';
@@ -62,34 +61,6 @@ const calculateSubmergedRatio = (raftY: number): number => {
 
   const submergedHeight = waterLevel - raftBottom;
   return Math.max(0, Math.min(1, submergedHeight / WATER_PHYSICS.RAFT_HEIGHT));
-};
-
-/**
- * Local ABI water force — same math as WaterForceSystem / the physics worker.
- * Caller must only invoke this when resolveRaftWaterForceOwner === 'local-abi'.
- */
-const applyAbiWaterForce = (body: any, delta: number) => {
-  const force = applyLocalAbiWaterForceIfOwner(
-    'local-abi',
-    body,
-    {
-      flowSpeed: 1.2,
-      waterLevel: WATER_PHYSICS.LEVEL,
-      raftMass: WATER_PHYSICS.RAFT_MASS,
-      raftVolume: WATER_PHYSICS.RAFT_VOLUME,
-      dragCoefficient: WATER_PHYSICS.DRAG_COEFFICIENT,
-      frontalArea: WATER_PHYSICS.RAFT_WIDTH * WATER_PHYSICS.RAFT_HEIGHT,
-      sideArea: WATER_PHYSICS.RAFT_LENGTH * WATER_PHYSICS.RAFT_HEIGHT,
-      timeSeconds: deps.timeRef.current,
-      turbulenceStrength: 0.1,
-      turbulenceFrequency: 2.4,
-    },
-    delta,
-  );
-  if (!force) return;
-  deps.buoyancyState.current.buoyancyForce = force.buoyancy;
-  deps.buoyancyState.current.submergedRatio = force.submergedRatio;
-  deps.buoyancyState.current.isFloating = force.submergedRatio > 0.1;
 };
 
 const applyTurbulence = (body: any, time: number, delta: number) => {
@@ -623,7 +594,6 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
 
   return {
     calculateSubmergedRatio,
-    applyAbiWaterForce,
     applyTurbulence,
     applyTippingForce,
     dampenRotation,

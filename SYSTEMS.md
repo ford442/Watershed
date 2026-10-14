@@ -548,11 +548,20 @@ turbulence); result = the 8-float native output `[forceXYZ, buoyancy, drag, flow
 submergedRatio]` + the flow sample used `[dirX, dirZ, speed, surfaceOffset, depth, flags]`.
 `STEP`'s `waterForce.simFlow` tells the worker the tick params are authored (sim-sampled).
 
-**Fallback:** no link (`wasm-main` / `wgsl` backends, `?simWorker=0`, failed handshake) →
-`calculateWaterForceFallback` inside the same tick on the tick params `WaterForceSystem`
-samples on the main thread (what actually ran before Phase B). Parity of the TS twin with the
+**Fallback (#467):** the Rapier worker computes no force. With no fresh link force (`wasm-main` /
+`wgsl` backends, `?simWorker=0`, failed handshake, the first ticks, a stalled sim worker) it
+applies the TS mirror force `RaftVehicle` computed on the main thread for the state that step
+starts from (`hullMirrorForce.ts`, sent as `waterForce.mirror`) — the same
+`calculateWaterForceFallback` on the same tick params and state that used to run inside the
+worker; `waterForceAuthority.ts` `pickHullForce` takes exactly one. Parity of the TS twin with the
 C++ path is pinned by `src/physics/__tests__/waterForceParity.test.ts`. Worker init failure or
 an explicit off → the main-thread `WaterForceSystem` + Rapier path.
+
+**Two force paths (#467, `waterForceAuthority.ts`):** `'sim-worker'` (forces.cpp in the sim
+worker: debris + main-thread vehicle via `FORCES`, the Rapier raft via the hull link) or
+`'ts-mirror'` (`calculateWaterForceFallback` on the main thread). `WaterForceSystem` is split into
+`sweHost.ts` (the field) and `waterForceBridge.ts` (the forces); the main thread never calls
+forces.cpp, even on `wasm-main` (its module only steps the field).
 
 **Phase 2 protocol (collider registration):** `ADD_STATIC_COLLIDER`, `REMOVE_STATIC_COLLIDER`,
 `CLEAR_STATIC_COLLIDERS` — segment treadmill meshes can be streamed without a second worker.
@@ -604,7 +613,7 @@ whose configs are equal at float32 — the ABI takes one config per call, and ea
 own sampled speed and stage; one call for all bodies needs a per-sample-config export (ABI
 bump). Results come back in the request's buffer and are applied at the top of the next frame,
 with the sampling frame's dt, to bodies still registered (`simForceRequests.ts`). Bit-identical
-to the main-thread `calculateWaterForce` loop on the `wasm-main` field (integration test). The
+to a direct `calculateWaterForce` loop over the same field (integration test). The
 Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, see Physics
 Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
 never pairs the new index frame with the old origin.
@@ -625,7 +634,9 @@ one by one), `DISPOSE_GRID`; `ROUTER`, `DISPOSE_ROUTER`; `FORCES` ↔ `FORCES` r
 copies it into a stable mirror (`workerSweSim.ts` — readers such as gpu-chores hold `h`
 across awaits, so the mirror is never a transferable) and returns the buffer; the worker
 pools two. The worker copies out of the WASM heap on publish, so no heap view crosses
-threads. `b` is in the frame because authored events carve the bed. `inflow` is the routed
+threads. `b` is filled only when the worker's bed changed in a way the main thread cannot
+reproduce — a scroll, or an authored braid carving it (`bed: true`, #467); a bed the main
+thread just committed is already in its mirror, so steady-state frames skip both copies. `inflow` is the routed
 state the worker last derived; the mirror fills scrolled-in cells with it until the next frame
 replaces the whole mirror (cosmetic only).
 

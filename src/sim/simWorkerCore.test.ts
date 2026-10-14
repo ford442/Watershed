@@ -102,3 +102,39 @@ describe('simWorkerCore routing (Phase B)', () => {
     expect(wasm.freeGrid.mock.calls.length - freed).toBe(6); // the router's six heap arrays
   });
 });
+
+describe('simWorkerCore bed plane (#467)', () => {
+  const frames = (out: SimWorkerResponse[]) =>
+    out.flatMap((r) => (r.type === 'FRAME' ? [r.frame] : []));
+  const step = (c: ReturnType<typeof core>['c'], events: typeof STEP.events = []) =>
+    c.handle({ type: 'STEP', gridId: 1, surface: [], input: { ...STEP, events } });
+
+  it('sends the bed on the first frame, then only when it changed', () => {
+    const { out, c } = core();
+    step(c);
+    step(c);
+    expect(frames(out).map((f) => f.bed)).toEqual([true, false]);
+  });
+
+  it('does not echo a bed the main thread just committed', () => {
+    const { out, c } = core();
+    step(c);
+    c.handle({ type: 'COMMIT_BED', gridId: 1, b: new Float32Array(8 * 6).fill(0.25) });
+    step(c);
+    expect(frames(out).map((f) => f.bed)).toEqual([true, false]);
+  });
+
+  it('sends it after a scroll moved it and after a braid carved it', () => {
+    const { out, c } = core();
+    step(c);
+    c.handle({
+      type: 'SCROLL', gridId: 1, surface: [], shiftX: 0, shiftZ: 1,
+      fill: { kind: 'inflow', inflow: { eta: 0, u: 0, w: 0 } },
+    });
+    step(c);
+    step(c);
+    step(c, [{ kind: 2, cx: 1, cz: 1, radius: 1, strength: 0.5, dt: 1 / 60 }]);
+    step(c, [{ kind: 0, cx: 1, cz: 1, radius: 1, strength: 0.5, dt: 1 / 60 }]);
+    expect(frames(out).map((f) => f.bed)).toEqual([true, true, false, true, false]);
+  });
+});

@@ -258,7 +258,7 @@ one growing translation unit:
 
 `getVersion()` was **7** (particle SoA) when this was written, with `MIN_WASM_ABI_VERSION` **6**: unlike the additive 1–5 and 7 bumps, ABI 6 changed `stepShallowWater`'s arity. Today both are **12** — the plain C ABI (#467); see [`WASM.md`](../../WASM.md).
 
-Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Exactly one owner applies it per raft tick (`resolveRaftWaterForceOwner`: worker, main-thread ABI, or local ABI). `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
+Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Since #467 there are exactly two paths (`waterForceAuthority.ts`): forces.cpp in the sim worker (`resolveWaterForceOwner` → `'sim-worker'`; the Rapier worker's raft over the hull link), or the TS mirror on the main thread (`'ts-mirror'`; a Rapier-worker raft receives it with its step and applies it only when the hull link has no fresh force — `pickHullForce`). The main thread never calls forces.cpp, the raft never applies its own force, and the Rapier worker computes none. `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
 
 Authored segment currents (`WaterFlowForces`) and vortex fields stay separate gameplay systems; they are not this ABI and were not ported to C++.
 
