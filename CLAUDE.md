@@ -12,7 +12,8 @@ pnpm start         # dev server on port 3000 (Vite)
 pnpm test          # unit tests (Vitest + Testing Library)
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
 pnpm typecheck     # tsc --noEmit + the layout/GLSL/typecheck-surface/orphan guards
-pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/)
+pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); ships the committed WASM pair
+pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 3.1.56 (`bash scripts/emsdk-pinned.sh`)
 ```
 
 > Requires WebGL 2.0. The build targets `es2022` (`build.target` in `vite.config.ts`; syntax floor Chrome 94). The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the

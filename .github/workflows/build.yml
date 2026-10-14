@@ -184,7 +184,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
-      WATERSHED_REQUIRE_WASM: "1"
       WATERSHED_WASM_INTEGRATION: "1"
       WATERSHED_WASM_MAX_BYTES: "131072"
       PUPPETEER_SKIP_DOWNLOAD: true
@@ -215,6 +214,8 @@ jobs:
       - name: Instantiate committed watershed_native pair
         run: node emscripten/smoke_test.mjs
 
+      # build.sh exits 1 unless emcc matches emscripten/EMCC_VERSION, so this
+      # step also proves setup-emsdk's version and the repo pin agree.
       - name: Compile watershed_native.wasm
         run: pnpm build:wasm
 

@@ -798,7 +798,8 @@ implementations when the module is unavailable.
 **Primary path — `build.sh`:**
 
 ```bash
-npm run build:wasm        # runs emscripten/build.sh
+bash scripts/emsdk-pinned.sh   # once: emcc 3.1.56 into ./emsdk
+pnpm build:wasm                # runs emscripten/build.sh
 ```
 
 Output written to `public/` (served as static assets by Vite):
@@ -807,10 +808,11 @@ Output written to `public/` (served as static assets by Vite):
 - `--threads` builds go to `emscripten/build-threads/out/` (with the `watershed_native.worker.mjs`
   pthread shim) and never overwrite the shipped `public/` pair or the artifact stamp (#454)
 
-**Graceful skip:** `build.sh` exits 0 with a warning when `emcc` is not in `PATH` —
-the JS/WASM output is simply not regenerated. Physics TypeScript fallbacks keep the
-canyon playable; GameHUD banners native-init throw instead of showing a TS smoke
-value as a health signal.
+**Toolchain pin (#467):** `pnpm build` no longer runs `build.sh` (the pair is committed;
+`pnpm build:full` is the old chain). `build.sh` exits 1 when emcc is missing or differs from
+`emscripten/EMCC_VERSION`; `WATERSHED_ALLOW_EMCC_MISMATCH=1` builds aside into
+`emscripten/build/out/`, and `--debug` / `--threads` always build aside, so nothing but a
+pinned release build ever writes `public/` or the stamp.
 
 **Pairing:** `public/watershed_native.{js,wasm}` are committed and must be rebuilt
 from pinned emcc **3.1.56** in one `pnpm build:wasm`. CI instantiates that committed
@@ -823,10 +825,10 @@ pair (`createWatershedNative()` / `emscripten/smoke_test.mjs`) and
 |------|--------|
 | _(none)_ | Single-threaded, `-O3`, SIMD |
 | `--threads` | Multi-threaded (pthreads); requires COOP/COEP response headers |
-| `--debug` | `-O0 -g3`, assertions, safe heap |
+| `--debug` | `-O0 -g3`, assertions, safe heap → `emscripten/build-debug/out/` |
 
 **Alternative — CMake:** `emscripten/CMakeLists.txt` provides a CMake build path for
-IDE integration, but `build.sh` is the canonical route used by `npm run build:wasm`.
+IDE integration, but `build.sh` is the canonical route used by `pnpm build:wasm`.
 
 **Emscripten settings of note:**
 - `MODULARIZE=1` + `EXPORT_NAME='createWatershedNative'` — module factory pattern

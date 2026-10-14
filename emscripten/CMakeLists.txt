@@ -44,7 +44,8 @@ if(EMSCRIPTEN)
     # happened to work because EXPORT_ES6 resolves the .wasm via import.meta.url.
     option(WATERSHED_THREADS "Enable Emscripten pthreads" OFF)
     if(WATERSHED_THREADS)
-        set(EM_THREAD_FLAGS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='web,worker'")
+        # -pthread at link replaces the deprecated -s USE_PTHREADS=1 (#467).
+        set(EM_THREAD_FLAGS "-pthread -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='web,worker'")
     else()
         set(EM_THREAD_FLAGS "-s ENVIRONMENT='web,worker'")
     endif()

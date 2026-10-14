@@ -211,7 +211,7 @@ builds also expose `window.__watershedPhysicsWorker`.
 
 The shallow-water height field is a *visual* system and is budgeted per quality preset in
 `src/systems/water/sweQuality.ts`. Since ABI 6 the solver is nonlinear and
-well-balanced with wetting/drying (see [`WASM.md`](./WASM.md#shallow-water-solver));
+well-balanced with wetting/drying (see [`WASM.md`](../../WASM.md#stepshallowwaterhptr-uptr-wptr-bptr-width-height-dt-g-dx-h-void));
 the budgets below are unchanged by that, because the scheme is still one pass over
 the same grid.
 
