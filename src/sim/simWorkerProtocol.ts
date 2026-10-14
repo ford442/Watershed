@@ -172,7 +172,7 @@ export interface SimForceResult {
   count: number;
   /** `count * FORCE_RESULT_STRIDE` values — the request's buffer, reused. */
   results: Float64Array;
-  /** Embind calls the batch took. */
+  /** Native calls the batch took. */
   calls: number;
   computeMicros: number;
 }

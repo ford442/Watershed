@@ -9,40 +9,28 @@
  *
  * Gated like the other integration tests (`pnpm test:wasm`): needs public/*.wasm.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { WatershedNativeModule } from '../../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
 import { bindChoreWasm, createWatershedCpuHost, resetChoreWasmBinding } from './watershedHost';
+import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
 
 const loaded = vi.hoisted(() => ({ mod: null as WatershedNativeModule | null }));
 
 // createWatershedCpuHost() best-effort binds getWasm(); hand it the module under test.
-vi.mock('../../systems/water/WatershedWasm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../systems/water/WatershedWasm')>()),
+vi.mock('../../systems/water/wasmLoader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../systems/water/wasmLoader')>()),
   getWasm: () => (loaded.mod ? Promise.resolve(loaded.mod) : Promise.reject(new Error('not loaded'))),
 }));
 
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
-const jsPath = resolve(publicDir, 'watershed_native.js');
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 
-async function loadModule(): Promise<WatershedNativeModule> {
-  const wasmBinary = readFileSync(wasmPath);
-  const { default: create } = await import(/* @vite-ignore */ pathToFileURL(jsPath).href);
-  return create({
-    instantiateWasm: (
-      imports: WebAssembly.Imports,
-      receive: (instance: WebAssembly.Instance) => void,
-    ) => {
-      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => receive(instance));
-      return {};
-    },
-  });
-}
+const loadModule = loadNativeFromDisk;
 
 describeIntegration('gpu-chores wasm lane — non-finite samples are skipped (real binary)', () => {
   const samples = new Float32Array([1, Number.NaN, 3, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]);

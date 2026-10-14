@@ -23,16 +23,12 @@
  *
  * Gated like the other integration tests (`pnpm test:wasm`).
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  createWaterForceBatch,
-  type NativeWaterForceConfig,
-  type NativeWaterForceResult,
-  type WatershedNativeModule,
-} from '../systems/water/WatershedWasm';
+import type { NativeWaterForceConfig, NativeWaterForceResult, WatershedNativeModule } from '../systems/water/wasmAbi';
+import { createWaterForceBatch } from '../systems/water/WatershedWasm';
 import { createWasmSweSim, type SweEventCall, type SweSim } from '../systems/water/sweSim';
 import { SWE_REST_INFLOW } from '../systems/water/sweScroll';
 import { createRiverRouter, routedEdgeInflow } from '../systems/water/riverRouter';
@@ -60,26 +56,14 @@ import { createSplashIntegrator, createWaterfallIntegrator } from '../systems/po
 import { ParticlePool, VFXParticle } from '../systems/pools/ParticlePool';
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { heightfieldThumbSize, summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
+import { loadNativeFromDisk } from '../testing/nativeFromDisk';
 
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
-const jsPath = resolve(publicDir, 'watershed_native.js');
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 
-async function loadModule(): Promise<WatershedNativeModule> {
-  const wasmBinary = readFileSync(wasmPath);
-  const { default: create } = await import(/* @vite-ignore */ pathToFileURL(jsPath).href);
-  return create({
-    instantiateWasm: (
-      imports: WebAssembly.Imports,
-      receive: (instance: WebAssembly.Instance) => void,
-    ) => {
-      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => receive(instance));
-      return {};
-    },
-  });
-}
+const loadModule = loadNativeFromDisk;
 
 function mulberry32(seed: number): () => number {
   let a = seed;

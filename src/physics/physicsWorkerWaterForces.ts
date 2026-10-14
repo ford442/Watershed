@@ -6,8 +6,9 @@
  * worker over the hull link (src/sim/hullLinkProtocol.ts). Tick order when the
  * worker path is enabled:
  *   1. Take the latest HULL_FORCE from the sim worker (computed from the state
- *      posted after the previous tick) — or, without a live link, the TS
- *      fallback on the tick params (calculateWaterForceFallback)
+ *      posted after the previous tick) — or, without a fresh one, the TS mirror
+ *      force the main thread computed for the same state (hullMirrorForce.ts)
+ *      and sent with the step. The worker itself computes no force (#467).
  *   2. Apply force * dt * impulseScale impulses
  *   3. Apply external impulses (paddle, etc.)
  *   4. world.step()
@@ -15,22 +16,14 @@
  *      diagnostics to the render thread
  */
 
-import {
-  WATER_FORCE_OUTPUT_STRIDE,
-  calculateWaterForceFallback,
-  type NativeWaterForceConfig,
-} from '../systems/water/WatershedWasm';
+import { WATER_FORCE_OUTPUT_STRIDE, type NativeWaterForceConfig } from '../systems/water/wasmAbi';
 import { FORCE_SAMPLE_STRIDE, readForceFlow, readForceResult, writeForceSample } from '../sim/simForces';
 import type { Vec3Tuple, WorkerRaftState } from './rapierWorkerProtocol';
 import type { WaterForceDiagnostics } from './physicsWorkerRegistry';
-
-/** High-resolution clock, degrading to Date.now where performance is absent. */
-function now(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
-}
+import { WATER_FORCE_IMPULSE_SCALE } from './waterForceAuthority';
 
 /** Matches WaterForceSystem impulse scaling to Rapier game units. */
-export const PHYSICS_WORKER_IMPULSE_SCALE = 0.001;
+export const PHYSICS_WORKER_IMPULSE_SCALE = WATER_FORCE_IMPULSE_SCALE;
 
 export interface PhysicsWorkerWaterTickConfig {
   enabled: boolean;
@@ -91,7 +84,8 @@ export function readWaterForceDiagnostics(
   };
 }
 
-const DISABLED: WaterForceDiagnostics = {
+/** What the tick reports when water forces are off. */
+export const DISABLED_WATER_FORCE: WaterForceDiagnostics = {
   source: 'disabled',
   forceX: 0,
   forceY: 0,
@@ -102,39 +96,6 @@ const DISABLED: WaterForceDiagnostics = {
   turbulence: 0,
   submergedRatio: 0,
 };
-
-/**
- * The raft force when the sim worker's is not available this tick: the TS
- * twin of forces.cpp on the tick params (which the main thread sampled, or the
- * authored flow when `simFlow` is set and the link is down).
- */
-export function computePhysicsWorkerWaterForces(
-  state: WorkerRaftState,
-  config: PhysicsWorkerWaterTickConfig,
-): WaterForceDiagnostics {
-  if (!config.enabled) return { ...DISABLED };
-
-  const startedAt = now();
-  const fallback = calculateWaterForceFallback(
-    {
-      position: { x: state.position[0], y: state.position[1], z: state.position[2] },
-      velocity: { x: state.velocity[0], y: state.velocity[1], z: state.velocity[2] },
-      flowDirection: { x: config.flowDirX, z: config.flowDirZ },
-    },
-    toNativeWaterForceConfig(config),
-  );
-  const output = [
-    fallback.forceX,
-    fallback.forceY,
-    fallback.forceZ,
-    fallback.buoyancy,
-    fallback.drag,
-    fallback.flow,
-    fallback.turbulence,
-    fallback.submergedRatio,
-  ];
-  return readWaterForceDiagnostics(output, 'fallback', (now() - startedAt) * 1000);
-}
 
 /**
  * The hull sample the Rapier worker posts to the sim worker after a step: the

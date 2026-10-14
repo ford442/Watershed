@@ -1,95 +1,55 @@
 /**
- * waterForceAuthority.ts — exactly one gameplay water-force owner per raft tick.
+ * waterForceAuthority.ts — two water-force paths, one owner per body per tick (#467).
  *
- * Worker, WaterForceSystem (main-thread ABI), and the raft local ABI fallback
- * all call calculateWaterForce / calculateWaterForceFallback. This helper is
- * the gate that keeps them from stacking in one physics tick.
+ *   'sim-worker'  forces.cpp in the sim worker, sampling the SWE field it steps:
+ *                 debris and a main-thread vehicle through WaterForceSystem's
+ *                 batch (simForces.ts), the Rapier worker's raft through the
+ *                 hull link (hullLinkProtocol.ts).
+ *   'ts-mirror'   calculateWaterForceFallback (waterForceFallback.ts) on the
+ *                 main thread: `?simWorker=0`, native-WebGPU / no-WASM boots, a
+ *                 sim worker that never came up or died, and the hull's first
+ *                 ticks before the link answers.
+ *
+ * There is no third path. The main thread no longer calls forces.cpp itself
+ * (its module, when it has one, only steps the SWE field), the raft no longer
+ * applies its own force, and the Rapier worker computes nothing: it applies the
+ * hull link's force when that is fresh and otherwise the mirror force the main
+ * thread computed for the same state and sent with the step (pickHullForce).
  *
  * Authored WaterFlowForces *currents* are gated off while WaterForceSystem is
- * active (SWE u,w drives the ABI). Centering / seating / alignment stay
+ * active (SWE u,w drives the forces). Centering / seating / alignment stay
  * separate. Vortex *impulses* remain until a hydroEvent vortex owns that
  * segment's SWE sink.
  */
 
-import {
-  calculateWaterForceFallback,
-  type NativeWaterForceConfig,
-  type NativeWaterForceResult,
-  type NativeWaterForceSample,
-} from '../systems/water/WatershedWasm';
+import type { WaterForceDiagnostics } from './rapierWorkerProtocol';
 
-export type RaftWaterForceOwner = 'worker' | 'main-thread-abi' | 'local-abi';
+export type WaterForceOwner = 'sim-worker' | 'ts-mirror';
 
-/** Matches WaterForceSystem / physicsWorkerWaterForces impulse scaling. */
-export const RAFT_WATER_FORCE_IMPULSE_SCALE = 0.001;
+/** Force (N) → Rapier impulse per second, shared by every path. */
+export const WATER_FORCE_IMPULSE_SCALE = 0.001;
 
-export function resolveRaftWaterForceOwner(opts: {
-  workerPhysicsReady: boolean;
-  waterForceSystemActive: boolean;
-}): RaftWaterForceOwner {
-  if (opts.workerPhysicsReady) return 'worker';
-  if (opts.waterForceSystemActive) return 'main-thread-abi';
-  return 'local-abi';
-}
-
-export function shouldApplyLocalAbiWaterForce(owner: RaftWaterForceOwner): boolean {
-  return owner === 'local-abi';
+/**
+ * Who computes this frame's forces for the bodies WaterForceSystem owns
+ * (debris, and the vehicle while the main thread holds it): the sim worker
+ * while it is up and answering, otherwise the TS mirror.
+ */
+export function resolveWaterForceOwner(opts: { simWorkerForces: boolean }): WaterForceOwner {
+  return opts.simWorkerForces ? 'sim-worker' : 'ts-mirror';
 }
 
 /**
- * WaterForceSystem must not apply the vehicle impulse when the Rapier worker
- * already owns that body's water force this tick.
+ * The Rapier worker's raft force for one tick: the sim worker's (hull link),
+ * when it has a fresh one, else the mirror force the main thread sent with the
+ * step. Exactly one is applied; null means neither exists (water forces off).
  */
-export function shouldSkipMainThreadVehicleForce(
-  isVehicle: boolean,
-  workerActive: boolean,
-): boolean {
-  return isVehicle && workerActive;
-}
-
-export function localAbiWaterImpulse(
-  force: Pick<NativeWaterForceResult, 'forceX' | 'forceY' | 'forceZ'>,
-  delta: number,
-  scale = RAFT_WATER_FORCE_IMPULSE_SCALE,
-): { x: number; y: number; z: number } {
-  return {
-    x: force.forceX * delta * scale,
-    y: force.forceY * delta * scale,
-    z: force.forceZ * delta * scale,
-  };
-}
-
-export interface LocalAbiWaterForceBody {
-  translation: () => { x: number; y: number; z: number };
-  linvel: () => { x: number; y: number; z: number };
-  applyImpulse: (impulse: { x: number; y: number; z: number }, wake: boolean) => void;
-}
-
-/**
- * Apply calculateWaterForceFallback when this tick's owner is the local ABI.
- * Returns the force result when applied, otherwise null (no impulse).
- */
-export function applyLocalAbiWaterForceIfOwner(
-  owner: RaftWaterForceOwner,
-  body: LocalAbiWaterForceBody,
-  config: NativeWaterForceConfig,
-  delta: number,
-  flowDirection: { x: number; z: number } = { x: 0, z: -1 },
-): NativeWaterForceResult | null {
-  if (!shouldApplyLocalAbiWaterForce(owner)) return null;
-
-  const pos = body.translation();
-  const vel = body.linvel();
-  const sample: NativeWaterForceSample = {
-    position: { x: pos.x, y: pos.y, z: pos.z },
-    velocity: { x: vel.x, y: vel.y, z: vel.z },
-    flowDirection,
-  };
-  const force = calculateWaterForceFallback(sample, config);
-  if (force.submergedRatio <= 0) return force;
-
-  body.applyImpulse(localAbiWaterImpulse(force, delta), true);
-  return force;
+export function pickHullForce(
+  fromSim: WaterForceDiagnostics | null,
+  mirror: WaterForceDiagnostics | null | undefined,
+): { owner: WaterForceOwner; force: WaterForceDiagnostics } | null {
+  if (fromSim) return { owner: 'sim-worker', force: fromSim };
+  if (mirror) return { owner: 'ts-mirror', force: mirror };
+  return null;
 }
 
 /**

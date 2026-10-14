@@ -30,7 +30,7 @@
  *   storage[nSeg * ROUTING_SUBREACHES]   reservoir state (m³), owned by routeReach
  *   outflow[nSeg]   mean discharge leaving each segment over the last step (m³/s)
  *
- * Embind-free; bindings.cpp registers the surface.
+ * Host-clean; bindings.cpp exports the C ABI (ws_*).
  */
 
 #ifndef WATERSHED_ROUTING_H

@@ -15,7 +15,9 @@
 namespace {
 
 float* plane(uintptr_t base, int which, int capacity) {
-    return reinterpret_cast<float*>(base) + which * capacity;
+    // Offset in ptrdiff_t: which * capacity in int overflows for a large
+    // capacity before it widens (#467, clang-tidy).
+    return reinterpret_cast<float*>(base) + static_cast<std::ptrdiff_t>(which) * capacity;
 }
 
 uint32_t xorshift32(uint32_t& s) {

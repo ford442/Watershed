@@ -10,6 +10,7 @@
 #include "forces.h"
 
 #include <cmath>
+#include <cstddef>
 #include <algorithm>
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,6 @@ float computeDragForce(float vx, float vy, float vz,
 // current drag. This is intentionally small and stable so the TypeScript side
 // can prove C++ -> WASM -> browser wiring before deeper fluid math lands.
 // ---------------------------------------------------------------------------
-extern "C" WATERSHED_KEEPALIVE
 float calculateBuoyancyAndDrag(float raftMass,
                                float submergedVolume,
                                float waterVelocityX,
@@ -199,7 +199,7 @@ void computeWaterForcesBatch(uintptr_t inputPtr,
     float* output = reinterpret_cast<float*>(outputPtr);
 
     for (int i = 0; i < sampleCount; ++i) {
-        const float* s = input + i * WATER_FORCE_INPUT_STRIDE;
+        const float* s = input + static_cast<std::ptrdiff_t>(i) * WATER_FORCE_INPUT_STRIDE;
         const WaterForceResult r = calculateWaterForce(
             s[0], s[1], s[2],
             s[3], s[4], s[5],
@@ -216,7 +216,7 @@ void computeWaterForcesBatch(uintptr_t inputPtr,
             turbulenceFrequency
         );
 
-        float* o = output + i * WATER_FORCE_OUTPUT_STRIDE;
+        float* o = output + static_cast<std::ptrdiff_t>(i) * WATER_FORCE_OUTPUT_STRIDE;
         o[0] = r.forceX;
         o[1] = r.forceY;
         o[2] = r.forceZ;

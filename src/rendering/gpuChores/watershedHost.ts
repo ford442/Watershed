@@ -7,7 +7,7 @@
  * accepted binary already has them, so the decline path is now defensive.
  */
 
-import type { WatershedNativeModule } from '../../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
 import {
   blurSeparableF32,
   downsampleF32,

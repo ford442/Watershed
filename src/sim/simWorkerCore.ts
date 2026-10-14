@@ -14,7 +14,7 @@
  *   for the Rapier worker's hull over its MessagePort (HULL), both sampled on
  *   the live grid at the origin the main thread last placed it at.
  */
-import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createWasmSweSim, type SweSim } from '../systems/water/sweSim';
 import { SWE_REST_INFLOW, type SweInflow } from '../systems/water/sweScroll';
 import { createRiverRouter, routedEdgeInflow, type RiverRouter } from '../systems/water/riverRouter';
@@ -72,6 +72,9 @@ export function createSimWorkerCore(
   let sim: SweSim | null = null;
   let gridId = -1;
   let epoch = 0;
+  // The bed differs from what the main thread last committed: a scroll moved
+  // it or an authored braid carved it. Only then does a frame carry `b` (#467).
+  let bedDirty = true;
   let frameIndex = 0;
   let frameBytes = 0;
   // World XZ of the live grid's cell (0, 0); NaN until the main thread places it.
@@ -150,7 +153,9 @@ export function createSimWorkerCore(
     planes.eta.set(grid.h);
     planes.u.set(grid.u);
     planes.w.set(grid.w);
-    planes.b.set(grid.b);
+    const bed = bedDirty;
+    if (bed) planes.b.set(grid.b);
+    bedDirty = false;
     frameIndex += 1;
     post(
       {
@@ -164,6 +169,7 @@ export function createSimWorkerCore(
           computeMicros,
           backend: 'wasm-worker',
           inflow: lastInflow,
+          bed,
           buffer,
         },
       },
@@ -247,6 +253,7 @@ export function createSimWorkerCore(
           sim = createWasmSweSim(wasm, command.width, command.height, command.dx);
           gridId = command.gridId;
           epoch = 0;
+          bedDirty = true;
           frameIndex = 0;
           frameBytes = simFrameByteLength(command.width * command.height);
           pool.length = 0;
@@ -254,7 +261,11 @@ export function createSimWorkerCore(
         case 'COMMIT_BED': {
           const grid = live(command.gridId);
           if (!grid) return;
-          if (command.b.length === grid.b.length) grid.b.set(command.b);
+          if (command.b.length === grid.b.length) {
+            grid.b.set(command.b);
+            // The main thread's mirror holds exactly this bed now.
+            bedDirty = false;
+          }
           epoch += 1;
           return;
         }
@@ -281,6 +292,7 @@ export function createSimWorkerCore(
           }
           // Always: the mirror advanced its epoch when it posted this.
           epoch += 1;
+          bedDirty = true;
           return;
         }
         case 'STEP': {
@@ -290,6 +302,8 @@ export function createSimWorkerCore(
           const routed = routedAt(command.route);
           if (command.route) routing.router?.advance(command.input.dt);
           applySurface(grid, command.surface);
+          // A braid (kind 2) raises `b` inside the solver; the mirror needs it.
+          if (command.input.events.some((e) => e.kind === 2)) bedDirty = true;
           const t0 = now();
           grid.step(command.route ? { ...command.input, edgeEta: routed?.edgeEta } : command.input);
           publish(grid, Math.round((now() - t0) * 1000));
