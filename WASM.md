@@ -175,7 +175,7 @@ After clone, `pnpm test:native` configures + builds the host tree (`emscripten/b
 
 | Flag | Value | Rationale |
 |------|-------|-----------|
-| `INITIAL_MEMORY` | 16 MiB | The module allocates a few hundred KB at most (largest SWE budget 64×40 × 4 planes, particle SoA, chore scratch). `reserveShallowWaterScratch` (ABI 11, called by `createSWEGrid`) sizes the solver scratch up front, so no step allocates mid-call and the heap does not grow in steady state — `smoke_test.mjs` asserts the heap byte length is unchanged across step / inflow step / scroll at 64×40. |
+| `INITIAL_MEMORY` | 16 MiB | The module allocates about 1 MB at most (largest SWE budget 128×80 × 4 planes plus the solver's cell planes and O(width) face rows, particle SoA, chore scratch). `reserveShallowWaterScratch` (ABI 11, called by `createSWEGrid`) sizes the solver scratch up front, so no step allocates mid-call and the heap does not grow in steady state — `smoke_test.mjs` asserts the heap byte length is unchanged across step / inflow step / scroll at 128×80. |
 | `MAXIMUM_MEMORY` | 256 MiB | Hard ceiling so a runaway init or growth loop cannot consume unbounded tab RAM |
 | `ALLOW_MEMORY_GROWTH` | 1 | Heap may grow between initial and maximum as SWE grids / particle SoA allocate. Growth **replaces** the `ArrayBuffer`; prior `Float32Array` views detach (`byteLength === 0`). `heapF32()` rebinds the worker water-force batch, SWE grid, and `createWaterForceBatch`. |
 
@@ -584,19 +584,35 @@ at test time.
 
 ## Performance notes
 
-- **Cold load:** The `.wasm` file is ~30–50 KB gzipped.  Loaded once, cached
-  by the browser.
+- **Cold load:** The `.wasm` is ~34 KB and the glue ~5 KB (uncompressed), each fetched
+  once per session (`wasmLoader.ts`).
 - **No GC pressure:** All simulation memory is in WASM heap (`allocateGrid`).
 - **CFL safety:** `stepShallowWater` clamps `dt` internally — no instability
   at low frame rates.
-- **SIMD:** After ABI 6, `swe.cpp` uses 4-wide kernels (`simdf32.h`) for:
-  1. **velocity damping** (`dampVelocities` on `u`/`w`)
-  2. **conserved-state lift** (depth clamp, dry-mask momentum, acc-buffer zero)
-  3. **CFL max reduction** (same per-cell `|v|+√(gd)`, then horizontal max)
-  The nonlinear **HLL / hydrostatic reconstruction / wetting-drying writeback**
-  is scalar. `particles.cpp` uses 4-wide Euler. Emscripten `-msimd128` also
-  lets chores autovectorize. Host uses SSE2/NEON. Do not treat the compile
-  flag as a vectorized Riemann solver.
+- **SIMD stepper (#467):** the whole step is 4-wide (`simdf32.h`):
+  1. **lift** (depth clamp, dry-mask momentum, cell velocities) and the **CFL max**;
+  2. **faces, row by row** — x-faces four adjacent at a time, z-faces a row at a time
+     (no `width` stride), through a **branchless HLL + hydrostatic reconstruction**:
+     both dry-front speed estimates and all three HLL outcomes are computed and
+     selected per lane (`f32x4_select`). The face fluxes live in O(width) row buffers;
+  3. **gather** `F[in] − F[out]` per cell, write back (η, u, w) with damping fused.
+  Each lane evaluates the scalar expression in the same order, and `f32x4_max/min` are
+  `std::max/min` on every backend (wasm `pmax/pmin`, SSE `_mm_max_ps(b, a)`), so on the
+  host the vector step is **bit-identical** to the scalar one — `swe_goldens.h` did not
+  move. The `-ffast-math` WASM build reassociates differently, so WASM-vs-WASM drift
+  across the change is ~1e-5 after hundreds of chaotic steps; the WGSL twin stays within
+  its 1e-5 parity gate (`pnpm test:wgsl`). A NaN in one lane no longer poisons the WASM
+  CFL max (`wasm_f32x4_max` propagated it; `pmax` ignores it, like SSE).
+- **Measured** (`pnpm profile:swe`, median of 1000 steps, release build, Node on the
+  8-core dev box): 64×40 0.178 → **0.057 ms (3.1×)**; 128×80 ~0.235 ms. Every enabled
+  preset is gated at `SWE_STEP_BUDGET_MS` (0.3 ms) by `profile:swe` / `profile:physics`.
+- **Also:** a missing bed reads a zero plane (no per-cell branch), `applySWEEvent` visits
+  only the event's bounding box, and `scrollShallowWater` moves rows with copies instead
+  of a bounds test per element. `particles.cpp` uses 4-wide Euler; chores autovectorize.
+- **Host checks:** `pnpm test:native:sanitize` (host smoke under ASan + UBSan, span
+  bounds via `_GLIBCXX_ASSERTIONS`), `pnpm test:native:fuzz` (libFuzzer over
+  step / inflow step / events / scroll with random-but-valid grids; clang), and
+  `pnpm lint:native` (clang-tidy `bugprone-*`, `performance-*`). CI runs all three.
 
 ---
 
@@ -609,5 +625,5 @@ at test time.
 | 3 — Integration | ✅ Done | Default-on Rapier+WASM worker; `WaterForceSystem` + TS fallback |
 | 4 — Bed + force coupling | ✅ Done | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` via `sampleSWEFlow` ([#386](https://github.com/ford442/Watershed/issues/386)) |
 | 5 — Source terms / events | ✅ Done | `hydroEvents[]` + `applySWEEvent` (ABI 8, additive) ([#389](https://github.com/ford442/Watershed/issues/389)) |
-| 6 — SIMD + particles | ✅ Done | HLL stays scalar; SIMD lift/CFL/damping + particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)) |
+| 6 — SIMD + particles | ✅ Done | SIMD lift/CFL/damping + particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)); the HLL faces went 4-wide in [#467](https://github.com/ford442/Watershed/issues/467) (3.1× at 64×40, Ultra → 128×80) |
 | 7 — pthreads / compute SWE | 🟡 WGSL done, sim worker Phases A–B | **[#435](https://github.com/ford442/Watershed/issues/435)**: `src/systems/water/swe.wgsl` twins `stepShallowWater` + `applySWEEvent` on native-WebGPU boots, one backend per session (`sweBackend.ts`); `pnpm test:wgsl` pins parity at 1e-5. **[#455](https://github.com/ford442/Watershed/issues/455)**: the SWE step moved off the main thread into one plain `Worker` (`src/sim/`, `wasm-worker` backend, default on WebGL2; `?simWorker=0` kill switch) — no pthreads, no SharedArrayBuffer, no COOP/COEP; field bit-identical to the main-thread stepper. Phase B moved the river router and the water forces (hull + debris, `simForces.ts`; the Rapier worker's raft over a `MessageChannel`) into the same worker — two module instances per session (main + sim worker), bit-identical forces. Phases C–D (particles/chores, SAB fast path) follow. No Electron. No default-on COOP-COEP / pthreads. |

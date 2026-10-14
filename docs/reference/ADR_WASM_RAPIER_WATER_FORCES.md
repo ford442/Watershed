@@ -220,7 +220,7 @@ the same grid.
 | low | — | — | off | 0 |
 | medium | 32×24 | 0.75 m | 30 Hz | 0.14 |
 | high | 48×32 | 0.5 m | 60 Hz | 0.22 |
-| ultra | 64×40 | 0.5 m | 60 Hz | 0.26 |
+| ultra | 128×80 | 0.5 m | 60 Hz | 0.26 |
 
 `injectSWEDisturbance` is gated by the same budget, so splash events don't queue work that
 nobody drains on `low`. Force math is **not** quality-gated — buoyancy, drag, and flow are

@@ -592,10 +592,10 @@ if (version >= 11) {
   if (heapBytes() !== INITIAL_MEMORY) {
     throw new Error(`INITIAL_MEMORY drifted: heap is ${heapBytes()} B, expected ${INITIAL_MEMORY}`);
   }
-  // Largest SWE budget (sweQuality.ts `high`: 64 x 40). Step, inflow step and
+  // Largest SWE budget (sweQuality.ts `ultra`: 128 x 80). Step, inflow step and
   // scroll after the reserve must leave the heap byte length untouched.
-  const W = 64;
-  const Hh = 40;
+  const W = 128;
+  const Hh = 80;
   const N = W * Hh;
   const planes = [0, 1, 2, 3].map(() => wasm.allocateGrid(N));
   wasm.reserveShallowWaterScratch(W, Hh);

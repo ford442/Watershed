@@ -289,3 +289,50 @@ jobs:
 
       - name: Export list matches the pinned pair
         run: node scripts/wasm-exports.mjs public emscripten/build/out
+
+  # #467: the C ABI trusts JS for every heap pointer and width * height. Host
+  # build of the compute TUs under ASan + UBSan, 60 s of libFuzzer over the SWE
+  # entry points (random-but-valid grids), and clang-tidy bugprone/performance.
+  native-sanitizers:
+    name: Native sanitizers, fuzz, tidy
+    runs-on: ubuntu-24.04
+    env:
+      CI: true
+      PUPPETEER_SKIP_DOWNLOAD: true
+      CXX_FUZZ: clang++-18
+      CLANG_TIDY: clang-tidy-18
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install clang 18 + clang-tidy 18
+        run: sudo apt-get update && sudo apt-get install -y clang-18 clang-tidy-18
+
+      - name: Host smoke under ASan + UBSan
+        run: pnpm test:native:sanitize
+
+      - name: clang-tidy (bugprone-*, performance-*)
+        run: pnpm lint:native
+
+      - name: Fuzz the SWE entry points for 60 s
+        run: pnpm test:native:fuzz
+
+      - name: Upload fuzz crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swe-fuzz-crashes
+          path: |
+            crash-*
+            timeout-*
+            oom-*
+          if-no-files-found: ignore
