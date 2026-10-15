@@ -131,9 +131,9 @@ describe('map registry contract — (c) resolveMapRegistryId round-trips', () =>
  *
  * Registered map JSONs satisfy `level.schema.json` (optional `decorations`,
  * negative pre-roll indices down to -10). `levelValidator` excludes pre-roll
- * segments from `totalSegments` count checks. Registry load uses
- * `assertLevelData()` — keep `KNOWN_LEVEL_SCHEMA_DEBT` empty unless documenting
- * a deliberate temporary exception.
+ * segments from `totalSegments` count checks. This suite is the only schema
+ * gate for bundled maps (the registry no longer validates at import, #485) — keep
+ * `KNOWN_LEVEL_SCHEMA_DEBT` empty unless documenting a deliberate temporary exception.
  */
 describe('map registry contract — authored JSON shape drift (ajv)', () => {
   const entries = registeredLevelDataEntries();
