@@ -10,9 +10,11 @@
 import { raceWithDeadline, resolvePublicAsset, resolveWasmInitTimeoutMs } from '../systems/water/wasmLoader';
 import type { SimFrame, SimFrameHeader } from './SimFrame';
 import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
+import type { SegmentMeshSpec } from '../terrain/segmentMeshBuild';
 import type {
   SimForceResult,
   SimParticleResult,
+  SimTileResult,
   SimWorkerCommand,
   SimWorkerLike,
   SimWorkerResponse,
@@ -32,10 +34,12 @@ export class SimWorkerProxy {
   private forceListener: ForceListener | null = null;
   private readonly particleListeners = new Map<number, ParticleListener>();
   private readonly choreRequests = new Map<number, (summary: HeightfieldSummary | null) => void>();
+  private readonly tileRequests = new Map<number, (result: SimTileResult | null) => void>();
   private nextGrid = 1;
   private nextPool = 1;
   private nextForceSeq = 1;
   private nextChoreSeq = 1;
+  private nextTileSeq = 1;
   private latest: SimFrameHeader | null = null;
   private readyResolve: ((abi: number) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
@@ -74,6 +78,13 @@ export class SimWorkerProxy {
         const resolve = this.choreRequests.get(response.seq);
         this.choreRequests.delete(response.seq);
         resolve?.(response.summary);
+        return;
+      }
+      case 'TILE': {
+        const { type: _type, ...result } = response;
+        const resolve = this.tileRequests.get(result.seq);
+        this.tileRequests.delete(result.seq);
+        resolve?.(result);
         return;
       }
       case 'ERROR':
@@ -196,6 +207,21 @@ export class SimWorkerProxy {
     });
   }
 
+  /**
+   * Build a segment's meshes on the worker (#487 B). Resolves null when the
+   * worker has died (now or before the answer lands); a result whose `meshes`
+   * is null means the build threw there. Either way the caller builds on the
+   * main thread.
+   */
+  requestTile(spec: SegmentMeshSpec): Promise<SimTileResult | null> {
+    if (this.failure) return Promise.resolve(null);
+    const seq = this.nextTileSeq++;
+    return new Promise((resolve) => {
+      this.tileRequests.set(seq, resolve);
+      this.post({ type: 'BUILD_TILE', seq, spec });
+    });
+  }
+
   /** Hand the worker its end of the Rapier worker's hull link (hullLinkProtocol.ts). */
   connectPhysics(port: MessagePort): void {
     this.post({ type: 'CONNECT_PHYSICS', port }, [port]);
@@ -215,13 +241,15 @@ export class SimWorkerProxy {
     this.fatalListeners.clear();
     this.forceListener = null;
     this.particleListeners.clear();
-    this.settleChores();
+    this.settlePending();
     this.worker.terminate?.();
   }
 
-  private settleChores(): void {
+  private settlePending(): void {
     for (const resolve of this.choreRequests.values()) resolve(null);
     this.choreRequests.clear();
+    for (const resolve of this.tileRequests.values()) resolve(null);
+    this.tileRequests.clear();
   }
 
   private fail(error: string): void {
@@ -231,7 +259,7 @@ export class SimWorkerProxy {
     this.readyResolve = null;
     this.readyReject = null;
     console.error('[sim worker] fatal:', error);
-    this.settleChores();
+    this.settlePending();
     for (const listener of this.fatalListeners) listener(error);
     this.worker.terminate?.();
   }

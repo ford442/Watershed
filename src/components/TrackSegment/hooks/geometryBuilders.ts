@@ -16,7 +16,9 @@ import {
   sampleChannelShape,
   TerrainProfile,
   type TerrainTile,
+  type TerrainTileParams,
   type TubeProfile,
+  type WallShellParams,
 } from '../../../terrain/terrainTile';
 
 // The profile itself lives in src/terrain/terrainTile.ts (the TS mirror of
@@ -37,13 +39,28 @@ export interface GeometryBuildContext {
   channelProfile: readonly ChannelProfileSample[];
   isSlotCanyon: boolean;
   isGlacier: boolean;
-  biomeProfile: TrackBiomeProfile;
+  /** The two fields the builders read — the context crosses to the sim worker (#487 B). */
+  biomeProfile: Pick<TrackBiomeProfile, 'id' | 'wallHeight'>;
   /**
    * Inward-curving wall profile (ice tube / overflow pipe). Null for open-sky
    * segments, which is every biome that is not glacial melt or a hydro pipe.
    */
   tubeProfile?: TubeProfile | null;
+  /** Who builds the tile planes: the TS mirror by default, the WASM module in the sim worker. */
+  terrain?: TerrainBuilders;
 }
+
+/** The tile builders, TS mirror or native (`buildTerrainTileNative` / `buildWallShellHeightsNative`). */
+export interface TerrainBuilders {
+  tile(params: TerrainTileParams): TerrainTile | null;
+  wallShell(params: WallShellParams): Float32Array | null;
+}
+
+/** The TS mirror (src/terrain/terrainTile.ts). */
+export const MIRROR_TERRAIN: TerrainBuilders = {
+  tile: buildTerrainTile,
+  wallShell: buildWallShellHeights,
+};
 
 /** Glacial melt: a near-closed ice tube with a slot of sky at the crown. */
 export const ICE_TUBE_PROFILE: TubeProfile = { curl: 0.88, ceilingHeight: 9.5 };
@@ -162,7 +179,7 @@ export function buildCanyonTile(
   kind: 'visual' | 'collision'
 ): TerrainTile | null {
   const { segmentsX, segmentsZ } = canyonSubdivisionCounts(pathLength, kind);
-  return buildTerrainTile({
+  return (ctx.terrain ?? MIRROR_TERRAIN).tile({
     pathLength,
     canyonWidth: ctx.canyonWidth,
     waterWidth: ctx.waterWidth,
@@ -402,7 +419,7 @@ export function buildWallShellGeometry(ctx: GeometryBuildContext): THREE.BufferG
   const shellWidth = isSlotCanyon ? canyonWidth * 0.92 : canyonWidth * 1.5;
   const segmentsX = 24;
   const segmentsZ = Math.max(2, Math.floor(len / 2));
-  const shellHeights = buildWallShellHeights({
+  const shellHeights = (ctx.terrain ?? MIRROR_TERRAIN).wallShell({
     pathLength: len,
     shellWidth,
     segmentsX,

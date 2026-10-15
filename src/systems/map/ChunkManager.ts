@@ -262,6 +262,7 @@ export class ChunkManager {
 
     const nextIndex = this.nextSegmentId;
     const nextSegment = this.buildSegment(nextIndex, previousSegment, true);
+    nextSegment.buildAhead = true;
 
     // Atomic pool swap
     pool[slotToRecycle] = {

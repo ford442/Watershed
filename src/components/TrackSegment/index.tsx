@@ -35,6 +35,7 @@ export default function TrackSegment({
   verticalBias = 0,
   weatherWetnessRef,
   usePooledStaticObstacles = false,
+  buildAhead = false,
 }: TrackSegmentProps) {
   const spawnStart = spawnTimingStart();
   const biomeId: BiomeId = typeof biome === 'string' ? normalizeBiomeId(biome) : biome;
@@ -111,6 +112,7 @@ export default function TrackSegment({
 
   const geometryStart = spawnTimingStart();
   const {
+    source: geometrySource,
     canyonGeometry,
     collisionGeometry,
     wallShellGeometry,
@@ -130,6 +132,7 @@ export default function TrackSegment({
     canyonWidth,
     waterWidth,
     biome: biomeId,
+    buildAhead,
   });
 
   // #487 B spawn profile (no-op without ?spawnProfile=1).
@@ -137,7 +140,7 @@ export default function TrackSegment({
     noteSegmentBuilt(segmentPath, spawnStart, {
       segmentId,
       biome: biomeId,
-      source: 'main',
+      source: geometrySource,
       geometryMs: geometryStart ? spawnTimingStart() - geometryStart : 0,
     });
   }

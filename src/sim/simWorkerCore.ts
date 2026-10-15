@@ -38,6 +38,9 @@ import {
 } from './simWorkerProtocol';
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
+import { buildTerrainTileNative, buildWallShellHeightsNative } from '../terrain/terrainTile';
+import type { TerrainBuilders } from '../components/TrackSegment/hooks/geometryBuilders';
+import { buildSegmentMeshBuffers, contextFromSpec, segmentMeshTransferables } from '../terrain/segmentMeshBuild';
 
 /** Particle SoA plane order (emscripten/particles.h). */
 const PARTICLE_PLANE_SCALE = 8;
@@ -88,6 +91,11 @@ export function createSimWorkerCore(
   let physicsPort: PhysicsPort | null = null;
   const particles = new Map<number, ParticleSlot>();
   const choreHost = createNativeChoreHost(() => wasm);
+  // The segment builders on this module's terrain tile (emscripten/terrain.cpp).
+  const terrain: TerrainBuilders = {
+    tile: (params) => buildTerrainTileNative(wasm, params),
+    wallShell: (params) => buildWallShellHeightsNative(wasm, params),
+  };
 
   const live =(id: number): SweSim | null => (sim && id === gridId ? sim : null);
 
@@ -242,6 +250,26 @@ export function createSimWorkerCore(
     );
   };
 
+  const buildTile = (command: Extract<SimWorkerCommand, { type: 'BUILD_TILE' }>) => {
+    const t0 = now();
+    try {
+      const meshes = buildSegmentMeshBuffers(contextFromSpec(command.spec, terrain));
+      post(
+        { type: 'TILE', seq: command.seq, meshes, buildMicros: Math.round((now() - t0) * 1000) },
+        segmentMeshTransferables(meshes),
+      );
+    } catch (error) {
+      // Not fatal: the main thread builds this segment itself.
+      post({
+        type: 'TILE',
+        seq: command.seq,
+        meshes: null,
+        error: error instanceof Error ? error.message : String(error),
+        buildMicros: Math.round((now() - t0) * 1000),
+      });
+    }
+  };
+
   return {
     handle(command) {
       switch (command.type) {
@@ -370,6 +398,9 @@ export function createSimWorkerCore(
           return;
         case 'PARTICLES_FREE':
           freeParticles(command.poolId);
+          return;
+        case 'BUILD_TILE':
+          buildTile(command);
           return;
         case 'CHORES': {
           const grid = live(command.gridId);
