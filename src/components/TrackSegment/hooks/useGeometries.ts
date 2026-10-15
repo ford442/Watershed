@@ -7,6 +7,7 @@ import {
   buildWaterGeometry,
   computePlungeImpactPlacement,
   computeWaterfallPos,
+  geometryFromBuffers,
   resolveTubeProfile,
   type GeometryBuildContext,
 } from './geometryBuilders';
@@ -18,7 +19,7 @@ import {
 import { isGlacialBiome } from '../../../configs/TrackBiomes';
 import { peekSimWorkerProxy } from '../../../sim/createSimWorkerProxy';
 import type { SimTileResult } from '../../../sim/simWorkerProtocol';
-import { geometryFromBuffers, segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
+import { segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
 
 export function useGeometries({
   active,

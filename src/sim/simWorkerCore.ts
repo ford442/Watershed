@@ -39,8 +39,12 @@ import {
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
 import { buildTerrainTileNative, buildWallShellHeightsNative } from '../terrain/terrainTile';
-import type { TerrainBuilders } from '../components/TrackSegment/hooks/geometryBuilders';
-import { buildSegmentMeshBuffers, contextFromSpec, segmentMeshTransferables } from '../terrain/segmentMeshBuild';
+import {
+  buildSegmentMeshBuffers,
+  contextFromSpec,
+  segmentMeshTransferables,
+  type TerrainBuilders,
+} from '../terrain/segmentMeshBuild';
 
 /** Particle SoA plane order (emscripten/particles.h). */
 const PARTICLE_PLANE_SCALE = 8;

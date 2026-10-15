@@ -5,6 +5,7 @@ import {
   buildCollisionGeometry,
   buildWallShellGeometry,
   buildWaterGeometry,
+  geometryFromBuffers,
   ICE_TUBE_PROFILE,
   type GeometryBuildContext,
 } from '../../components/TrackSegment/hooks/geometryBuilders';
@@ -14,7 +15,6 @@ import {
   buildSegmentMeshBuffers,
   contextFromSpec,
   curveFromSpec,
-  geometryFromBuffers,
   segmentMeshSpec,
   segmentMeshTransferables,
   segmentPathSpec,
