@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { MaterialBackend } from '../../rendering/materialBackend';
 import { createDualVfxMaterial } from './vfxDualFactory';
-import * as VfxNodes from './VfxNodeMaterials';
+import { getLoadedNodeMaterials } from '../nodeMaterials';
+import type { VfxNodeModule } from '../nodeMaterials';
 import {
   POND_FOG_FRAGMENT,
   POND_FOG_VERTEX,
@@ -13,6 +14,19 @@ import {
   SUN_SHAFT_MOTE_VERTEX,
   VFX_NOISE_HELPERS,
 } from './vfxGlslShaders';
+
+/**
+ * The TSL half of every factory below. A static `import * from './VfxNodeMaterials'`
+ * here dragged `three/tsl` -> `three.webgpu.js` into the GLSL entry chunk (#485 A),
+ * so the node module is read from the lazy cache instead. `tslBuild` closures only
+ * run once `createDualVfxMaterial` has seen `nodes.vfx`; if that ever stops being
+ * true the throw lands in its try/catch and the material falls back to GLSL.
+ */
+function vfxNodes(): VfxNodeModule {
+  const vfx = getLoadedNodeMaterials()?.vfx;
+  if (!vfx) throw new Error('VFX node materials are not loaded');
+  return vfx;
+}
 
 export function createRainbowMaterial(
   backend: MaterialBackend,
@@ -34,7 +48,7 @@ export function createRainbowMaterial(
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     },
-    () => VfxNodes.createRainbowNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createRainbowNodeMaterial(init) as unknown as THREE.Material,
   );
 }
 
@@ -59,7 +73,7 @@ export function createPondFogMaterial(
       fragmentShader: POND_FOG_FRAGMENT,
     },
     () =>
-      VfxNodes.createPondFogNodeMaterial({ tintColor: init.tintColor }) as unknown as THREE.Material,
+      vfxNodes().createPondFogNodeMaterial({ tintColor: init.tintColor }) as unknown as THREE.Material,
   );
 }
 
@@ -74,7 +88,7 @@ export function createSplashBowWaveMaterial(backend: MaterialBackend): THREE.Mat
       transparent: true,
       side: THREE.DoubleSide,
     },
-    () => VfxNodes.createSplashBowWaveNodeMaterial() as unknown as THREE.Material,
+    () => vfxNodes().createSplashBowWaveNodeMaterial() as unknown as THREE.Material,
   );
 }
 
@@ -163,7 +177,7 @@ export function createWaterfallSheetMaterial(
         }
       `,
     },
-    () => VfxNodes.createWaterfallSheetNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createWaterfallSheetNodeMaterial(init) as unknown as THREE.Material,
   );
 }
 
@@ -220,7 +234,7 @@ export function createWaterfallPlumeMaterial(
         }
       `,
     },
-    () => VfxNodes.createWaterfallPlumeNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createWaterfallPlumeNodeMaterial(init) as unknown as THREE.Material,
   );
 }
 
@@ -268,7 +282,7 @@ export function createWaterfallFoamMaterial(
         }
       `,
     },
-    () => VfxNodes.createWaterfallFoamNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createWaterfallFoamNodeMaterial(init) as unknown as THREE.Material,
   );
 }
 
@@ -356,7 +370,7 @@ export function createSunShaftMaterial(
       `,
     },
     () =>
-      VfxNodes.createSunShaftNodeMaterial({
+      vfxNodes().createSunShaftNodeMaterial({
         flowSpeed: init.flowSpeed,
         shaftOpacity: init.shaftOpacity,
         colorBase: init.colorBase,
@@ -387,7 +401,7 @@ export function createSunShaftMoteMaterial(
       fragmentShader: SUN_SHAFT_MOTE_FRAGMENT,
     },
     () =>
-      VfxNodes.createSunShaftMoteNodeMaterial({
+      vfxNodes().createSunShaftMoteNodeMaterial({
         colorBase: init.colorBase,
         opacity: init.opacity,
       }) as unknown as THREE.Material,
@@ -481,7 +495,7 @@ export function createMistMaterial(
         }
       `,
     },
-    () => VfxNodes.createMistNodeMaterial({ colorBase: init.colorBase }) as unknown as THREE.Material,
+    () => vfxNodes().createMistNodeMaterial({ colorBase: init.colorBase }) as unknown as THREE.Material,
   );
 }
 
@@ -538,7 +552,7 @@ export function createFireflyMaterial(
         }
       `,
     },
-    () => VfxNodes.createFireflyNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createFireflyNodeMaterial(init) as unknown as THREE.Material,
   );
 }
 
@@ -602,7 +616,7 @@ export function createCanyonDustMaterial(
         }
       `,
     },
-    () => VfxNodes.createCanyonDustNodeMaterial({ colorBase: init.colorBase }) as unknown as THREE.Material,
+    () => vfxNodes().createCanyonDustNodeMaterial({ colorBase: init.colorBase }) as unknown as THREE.Material,
   );
 }
 
@@ -656,6 +670,6 @@ export function createRockFoamMaterial(
         }
       `,
     },
-    () => VfxNodes.createRockFoamNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createRockFoamNodeMaterial(init) as unknown as THREE.Material,
   );
 }

@@ -88,11 +88,21 @@ jobs:
       - name: Instantiate committed watershed_native pair
         run: node emscripten/smoke_test.mjs
 
+      # `tee` keeps the full vite log for the chunk guard below (#485 A): pipefail
+      # makes a failed build still fail this step.
       - name: Build production bundle
-        run: pnpm build
+        shell: bash
+        run: pnpm build 2>&1 | tee build.log
 
       - name: Assert build output exists
         run: test -f build/index.html
+
+      - name: Chunk guard (no node stack in the GLSL entry)
+        run: node scripts/check-build-manifest.mjs --chunks --build-log build.log
+
+      # Prints the chunk table and fails on a ceiling in build-budget.json (#485 D).
+      - name: Payload budget
+        run: node scripts/check-build-manifest.mjs --budget
 
       - name: Run test suite
         run: pnpm test

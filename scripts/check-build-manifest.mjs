@@ -25,6 +25,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -123,7 +124,16 @@ const HASHED_RE = /-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/;
 /* ------------------------------------------------------------------ */
 
 function parseArgs(argv) {
-  const opts = { buildDir: 'build', publicDir: 'public', manifest: false, json: null };
+  const opts = {
+    buildDir: 'build',
+    publicDir: 'public',
+    manifest: false,
+    json: null,
+    chunks: false,
+    buildLog: null,
+    budget: false,
+    budgetFile: 'build-budget.json',
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const next = () => {
@@ -136,6 +146,10 @@ function parseArgs(argv) {
     else if (arg === '--public-dir') opts.publicDir = next();
     else if (arg === '--manifest') opts.manifest = true;
     else if (arg === '--json') opts.json = next();
+    else if (arg === '--chunks') opts.chunks = true;
+    else if (arg === '--build-log') opts.buildLog = next();
+    else if (arg === '--budget') opts.budget = true;
+    else if (arg === '--budget-file') opts.budgetFile = next();
     else if (arg === '--help' || arg === '-h') {
       process.stdout.write(HELP);
       process.exit(0);
@@ -150,6 +164,13 @@ const HELP = `check-build-manifest.mjs — assert the unhashed-passenger contrac
   --public-dir <dir>  passenger sources          (default: public)
   --manifest          print the full manifest to stdout
   --json <file>       write the manifest as JSON
+  --chunks            assert the GLSL boot's eager chunks carry no three.webgpu node stack
+                      (#485 A); with --build-log, also that vite emitted no
+                      "dynamic import will not move module into another chunk" warning
+  --budget            enforce build-budget.json (entry / vendor-three / per-chunk / total JS
+                      ceilings, wasm counted once) and print the chunk table (#485 D)
+  --budget-file <f>   budget to enforce          (default: build-budget.json)
+  --build-log <file>  captured \`vite build\` stdout+stderr to scan (used by --chunks)
   -h, --help          this text
 
 Exit 0 contract holds | 1 violated | 2 cannot run
@@ -388,6 +409,183 @@ for (const entry of manifest) {
     entry.hashed,
     `${opts.buildDir}/${entry.path} lives in assets/ but has no 8-char content hash`,
   );
+}
+
+/* --- 9. --chunks: the GLSL boot must not carry the node stack (#485 A) -- */
+
+/* Why markers and not a bare "WebGPURenderer" grep: app code legitimately holds
+ * that string (`isWebGPURenderer` flag reads, diagnostic labels), so it appears
+ * in the entry on a healthy build. These four only exist inside three.webgpu.js:
+ * the WGSL builder, the WebGL2 fallback backend, the node builder base class, and
+ * the renderer class's own `isWebGPURenderer = true` assignment. */
+const WEBGPU_STACK_MARKERS = [
+  { label: 'WGSLNodeBuilder', re: /WGSLNodeBuilder/ },
+  { label: 'WebGLBackend', re: /WebGLBackend/ },
+  { label: 'NodeBuilder', re: /NodeBuilder/ },
+  { label: 'WebGPURenderer class (isWebGPURenderer = true)', re: /isWebGPURenderer\s*=\s*(!0|true)\b/ },
+];
+
+if (opts.chunks) {
+  const eager = new Set(
+    manifest.filter((e) => /^assets\/index-[^/]+\.js$/.test(e.path)).map((e) => e.path),
+  );
+  if (indexEntry) {
+    const html = fs.readFileSync(path.join(buildDir, 'index.html'), 'utf8');
+    for (const m of html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.js)"/g)) eager.add(m[1]);
+  }
+  check(eager.size > 0, '--chunks: found no eager JS chunk (assets/index-*.js) to inspect');
+  for (const rel of [...eager].sort()) {
+    const text = fs.readFileSync(path.join(buildDir, rel), 'utf8');
+    for (const { label, re } of WEBGPU_STACK_MARKERS) {
+      check(
+        !re.test(text),
+        `--chunks: ${rel} (loaded on every boot) contains ${label} — three.webgpu.js is in the ` +
+          'GLSL entry. Some module reachable from src/index.tsx imports three/webgpu, three/tsl ' +
+          'or a *NodeMaterial statically; route it through src/materials/nodeMaterials.ts.',
+      );
+    }
+  }
+  notes.push(`--chunks: ${[...eager].sort().join(', ')} carry no three.webgpu node-stack markers`);
+
+  if (opts.buildLog) {
+    const logPath = path.resolve(process.cwd(), opts.buildLog);
+    if (!fs.existsSync(logPath)) {
+      failures.push(`--build-log ${opts.buildLog} does not exist`);
+    } else {
+      const log = fs.readFileSync(logPath, 'utf8');
+      const hits = log.split('\n').filter((l) => l.includes('will not move module into another chunk'));
+      check(
+        hits.length === 0,
+        `--chunks: vite build emitted ${hits.length} "dynamic import will not move module into ` +
+          `another chunk" warning(s) — a lazy chunk is also imported statically, so the split is a ` +
+          `no-op:\n${hits.map((h) => `      ${h.trim().replace(/\/[^ ]*\/node_modules\/\.pnpm\//g, '')}`).join('\n')}`,
+      );
+      notes.push(`--chunks: build log ${opts.buildLog} has ${hits.length} "will not move module" warnings`);
+    }
+  } else {
+    notes.push('--chunks: no --build-log given, so the "will not move module" warning count was NOT checked');
+  }
+}
+
+/* --- 10. --budget: the payload ceilings (#485 D) ------------------------- */
+
+if (opts.budget) {
+  const budgetPath = path.resolve(REPO_ROOT, opts.budgetFile);
+  let budget = null;
+  try {
+    budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
+  } catch (err) {
+    failures.push(`--budget: cannot read ${opts.budgetFile}: ${err instanceof Error ? err.message : err}`);
+  }
+
+  if (budget) {
+    const kB = (n) => `${(n / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 })} kB`;
+    const jsChunks = manifest
+      .filter((e) => /^assets\/[^/]+\.js$/.test(e.path))
+      .map((e) => ({ ...e, gzip: zlib.gzipSync(fs.readFileSync(path.join(buildDir, e.path))).length }));
+
+    /* The entry is the module script index.html boots, not "whatever matches index-*". */
+    let entryPath = null;
+    if (indexEntry) {
+      const html = fs.readFileSync(path.join(buildDir, 'index.html'), 'utf8');
+      const m = html.match(/<script type="module"[^>]*src="\.\/(assets\/[^"]+\.js)"/);
+      entryPath = m ? m[1] : null;
+    }
+    const entry = jsChunks.find((c) => c.path === entryPath);
+    const vendorThree = jsChunks.find((c) => /^assets\/vendor-three-/.test(c.path));
+    const totalJs = jsChunks.reduce((n, c) => n + c.size, 0);
+    const totalJsGzip = jsChunks.reduce((n, c) => n + c.gzip, 0);
+    const biggest = jsChunks.reduce((a, c) => (c.size > a.size ? c : a), { size: 0, path: '(none)' });
+
+    const limitFor = (c) => {
+      if (c.path === entryPath) return budget.entryMaxBytes;
+      if (/^assets\/vendor-three-/.test(c.path)) return budget.vendorThreeMaxBytes;
+      return budget.chunkMaxBytes;
+    };
+    const ceilings = jsChunks.map((c) => ({ c, limit: Math.min(limitFor(c), budget.chunkMaxBytes) }));
+
+    /* wasm: bytes counted once (by content), duplicates reported. */
+    const wasmFiles = manifest.filter((e) => e.path.endsWith('.wasm'));
+    const bySha = new Map();
+    for (const w of wasmFiles) {
+      const group = bySha.get(w.sha256) ?? [];
+      group.push(w);
+      bySha.set(w.sha256, group);
+    }
+    const uniqueWasmBytes = [...bySha.values()].reduce((n, g) => n + g[0].size, 0);
+
+    /* ---- the table the log must show ---- */
+    const rows = [...jsChunks].sort((a, b) => b.size - a.size);
+    const pad = (v, n) => String(v).padStart(n);
+    process.stdout.write('\nBUDGET  (raw bytes of build/assets/*.js; wasm counted once by content)\n');
+    process.stdout.write(`${'CHUNK'.padEnd(46)}${pad('RAW', 11)}${pad('GZIP', 11)}${pad('CEILING', 11)}  STATUS\n`);
+    for (const c of rows) {
+      const limit = ceilings.find((x) => x.c === c).limit;
+      const tag = c.path === entryPath ? ' [entry]' : /^assets\/vendor-three-/.test(c.path) ? ' [vendor-three]' : '';
+      process.stdout.write(
+        `${(c.path.replace(/^assets\//, '') + tag).padEnd(46)}${pad(kB(c.size), 11)}${pad(kB(c.gzip), 11)}` +
+          `${pad(kB(limit), 11)}  ${c.size <= limit ? 'ok' : 'OVER'}\n`,
+      );
+    }
+    process.stdout.write(
+      `${'TOTAL JS'.padEnd(46)}${pad(kB(totalJs), 11)}${pad(kB(totalJsGzip), 11)}${pad(kB(budget.totalJsMaxBytes), 11)}  ` +
+        `${totalJs <= budget.totalJsMaxBytes ? 'ok' : 'OVER'}\n`,
+    );
+    for (const group of bySha.values()) {
+      const label = `wasm ${path.basename(group[0].path)}`;
+      process.stdout.write(
+        `${label.slice(0, 46).padEnd(46)}${pad(kB(group[0].size), 11)}` +
+          `${group.length > 1 ? `   x${group.length} (counted once): ${group.map((g) => g.path).join(', ')}` : ''}\n`,
+      );
+    }
+    process.stdout.write(`${'TOTAL WASM (unique bytes)'.padEnd(46)}${pad(kB(uniqueWasmBytes), 11)}\n`);
+    /* Targets are the issue's numbers; the ceilings above are what CI enforces today. */
+    for (const [label, actual, target] of [
+      ['entry', entry?.size, budget.entryTargetBytes],
+      ['total JS', totalJs, budget.totalJsTargetBytes],
+    ]) {
+      if (!target || actual === undefined) continue;
+      const over = actual - target;
+      process.stdout.write(`${label} target ${kB(target)}: ${over > 0 ? `${kB(over)} still to remove` : 'met'}\n`);
+    }
+
+    /* ---- the gates ---- */
+    check(entry !== undefined, `--budget: could not identify the entry chunk from build/index.html (${entryPath})`);
+    if (entry) {
+      check(
+        entry.size <= budget.entryMaxBytes,
+        `--budget: entry ${entry.path} is ${entry.size} B, over the ${budget.entryMaxBytes} B ceiling ` +
+          `(+${entry.size - budget.entryMaxBytes} B). Something big joined the boot path; see ` +
+          '`pnpm build:analyze` or raise build-budget.json with a reason.',
+      );
+    }
+    check(vendorThree !== undefined, '--budget: no assets/vendor-three-*.js chunk found');
+    if (vendorThree) {
+      check(
+        vendorThree.size <= budget.vendorThreeMaxBytes,
+        `--budget: ${vendorThree.path} is ${vendorThree.size} B, over the ${budget.vendorThreeMaxBytes} B ceiling`,
+      );
+    }
+    check(
+      biggest.size <= budget.chunkMaxBytes,
+      `--budget: ${biggest.path} is ${biggest.size} B, over the ${budget.chunkMaxBytes} B per-chunk ceiling`,
+    );
+    check(
+      totalJs <= budget.totalJsMaxBytes,
+      `--budget: total JS is ${totalJs} B, over the ${budget.totalJsMaxBytes} B ceiling (+${totalJs - budget.totalJsMaxBytes} B)`,
+    );
+    for (const name of budget.singleCopyWasm ?? []) {
+      const copies = wasmFiles.filter((w) => path.basename(w.path).startsWith(name));
+      check(copies.length === 1, `--budget: expected exactly one ${name}*.wasm in the build, found ${copies.length}`);
+      /* Same bytes under a second name still counts as a second copy on the wire. */
+      const shaCopies = copies.length === 1 ? bySha.get(copies[0].sha256).length : copies.length;
+      check(shaCopies === 1, `--budget: ${name} wasm bytes ship ${shaCopies} times (once is the contract)`);
+    }
+    notes.push(
+      `--budget: entry ${kB(entry?.size ?? 0)} / vendor-three ${kB(vendorThree?.size ?? 0)} / biggest chunk ` +
+        `${kB(biggest.size)} / total JS ${kB(totalJs)}; unique wasm ${kB(uniqueWasmBytes)}`,
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */

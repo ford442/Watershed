@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { mergeBufferGeometries } from 'three-stdlib';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 interface AssetResult {
   geometry: THREE.BufferGeometry;
@@ -21,7 +21,7 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
         });
     });
     try {
-        return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+        return mergeGeometries(normalized) || new THREE.BufferGeometry();
     } catch (e) {
         return new THREE.BufferGeometry();
     }

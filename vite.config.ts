@@ -17,6 +17,13 @@ function readWasmArtifactStamp(): string {
   return 'unknown';
 }
 
+/** The chunk ceiling lives in build-budget.json so `vite build` warnings and the CI
+ *  gate (scripts/check-build-manifest.mjs --budget) cannot disagree (#485 D). Vite
+ *  compares chunk size / 1000 against `chunkSizeWarningLimit`, i.e. decimal kB. */
+const CHUNK_BUDGET_KB = Math.ceil(
+  (JSON.parse(fs.readFileSync(path.resolve('build-budget.json'), 'utf8')) as { chunkMaxBytes: number }).chunkMaxBytes / 1000,
+);
+
 function shortGitSha(): string {
   try {
     return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
@@ -77,12 +84,110 @@ function sourcemapsOutOfBuildPlugin(): Plugin {
   };
 }
 
+/** One Rapier wasm, shipped once, as a real hashed asset (#485 B).
+ *
+ *  `@dimforge/rapier3d-compat` inlines its 1.57 MB `.wasm` as a 2.09 M-char
+ *  base64 literal and decodes it in `init()`. Bundled into both the main-thread
+ *  `<Physics>` world and `physics/rapier.worker.ts`, that was two copies of the
+ *  bytes as JS text (+33 %, all through the JS parser). `-compat`'s `init()`
+ *  takes no argument and `@react-three/rapier` hard-codes
+ *  `import('@dimforge/rapier3d-compat'); r.init()` against a peer-dep pin, while
+ *  the non-compat package has no `init()` at all — so neither swapping packages
+ *  nor passing `module_or_path` is available without forking r3r. Instead this
+ *  rewrites the one decode site so the glue's own wasm-bindgen loader is handed
+ *  the asset URL (it already accepts a URL: fetch + instantiateStreaming).
+ *
+ *  Safety: the literal must decode to exactly the `.wasm` file shipped in the
+ *  package, and the pattern must match exactly once, or the build fails — a
+ *  rapier bump that moves either is a build error, never a silent re-inline.
+ *  Build only: dev's dependency optimizer and vitest keep the stock package.
+ *  Registered for the worker build too (`worker.plugins`); both emit the same
+ *  content-hashed file name, so build/assets holds a single copy. */
+const RAPIER_COMPAT_ESM = /[\\/]@dimforge[\\/]rapier3d-compat[\\/]rapier\.mjs$/;
+const RAPIER_WASM_DECODE = /yield (\w+)\((\w+)\.toByteArray\("([A-Za-z0-9+/=]{100000,})"\)\.buffer\)/g;
+
+function rapierWasmAssetPlugin(): Plugin {
+  const wasmFile = path.resolve('node_modules/@dimforge/rapier3d-compat/rapier_wasm3d_bg.wasm');
+  return {
+    name: 'watershed-rapier-wasm-asset',
+    apply: 'build',
+    transform(code, id) {
+      if (!RAPIER_COMPAT_ESM.test(id.split('?')[0])) return null;
+      const sites = [...code.matchAll(RAPIER_WASM_DECODE)];
+      if (sites.length !== 1) {
+        this.error(
+          `watershed-rapier-wasm-asset: expected exactly 1 inlined wasm decode site in ${id}, ` +
+            `found ${sites.length}. @dimforge/rapier3d-compat changed shape — re-audit this plugin.`,
+        );
+      }
+      const [site, initFn, , base64] = sites[0];
+      const bytes = fs.readFileSync(wasmFile);
+      if (!Buffer.from(base64, 'base64').equals(bytes)) {
+        this.error(
+          'watershed-rapier-wasm-asset: the base64 literal in rapier.mjs does not decode to ' +
+            `${wasmFile}. Refusing to ship a wasm the package does not contain.`,
+        );
+      }
+      const ref = this.emitFile({ type: 'asset', name: 'rapier_wasm3d_bg.wasm', source: bytes });
+      return {
+        code: code.replace(site, `yield ${initFn}(import.meta.ROLLUP_FILE_URL_${ref})`),
+        map: null,
+      };
+    },
+  };
+}
+
+/** `<link rel="preload" as="fetch" crossorigin>` for the Rapier wasm, so the
+ *  download starts with the HTML instead of after the entry chunk has run. The
+ *  loader's `fetch(url)` is a same-origin CORS-mode request, which is what
+ *  `crossorigin` (anonymous) preloads, so the preload is actually consumed. */
+function rapierWasmPreloadPlugin(): Plugin {
+  return {
+    name: 'watershed-rapier-wasm-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const wasm = Object.keys(ctx.bundle ?? {}).find((f) => /^assets\/rapier_wasm3d_bg-[^/]+\.wasm$/.test(f));
+        if (!wasm) throw new Error('watershed-rapier-wasm-preload: no rapier_wasm3d_bg-*.wasm in the bundle');
+        return [
+          {
+            tag: 'link',
+            attrs: { rel: 'preload', as: 'fetch', type: 'application/wasm', crossorigin: '', href: `./${wasm}` },
+            injectTo: 'head',
+          },
+        ];
+      },
+    },
+  };
+}
+
+/** `pnpm build:analyze` (= `ANALYZE=1 vite build`): a treemap + raw module graph of the
+ *  production bundle under build-analyze/ (outside build/, so the manifest guard and the
+ *  deploy zip never see it). Dev-only: the import is lazy, so a normal build and Vitest
+ *  (which merges this config) never load it. */
+const analyzePlugins: Plugin[] = [];
+if (process.env.ANALYZE === '1') {
+  const { visualizer } = await import('rollup-plugin-visualizer');
+  analyzePlugins.push(
+    visualizer({ filename: 'build-analyze/stats.html', template: 'treemap', gzipSize: true, title: 'Watershed bundle' }) as Plugin,
+    visualizer({ filename: 'build-analyze/stats.json', template: 'raw-data', gzipSize: true }) as Plugin,
+  );
+}
+
 export default defineConfig({
   define: {
     __WATERSHED_ASSET_BASE__: JSON.stringify('./'),
     __WATERSHED_BUILD_IDENTITY__: JSON.stringify(BUILD_IDENTITY),
   },
-  plugins: [react(), buildIdentityPlugin(BUILD_IDENTITY), sourcemapsOutOfBuildPlugin()],
+  plugins: [
+    react(),
+    buildIdentityPlugin(BUILD_IDENTITY),
+    sourcemapsOutOfBuildPlugin(),
+    rapierWasmAssetPlugin(),
+    rapierWasmPreloadPlugin(),
+    ...analyzePlugins,
+  ],
   resolve: {
     // Prevent duplicate Three.js when three/webgpu is lazy-loaded in a separate chunk.
     dedupe: ['three'],
@@ -112,6 +217,7 @@ export default defineConfig({
   // default) cannot code-split, es matches what the browser is told to load.
   worker: {
     format: 'es',
+    plugins: () => [rapierWasmAssetPlugin()],
   },
   build: {
     outDir: 'build',
@@ -119,11 +225,11 @@ export default defineConfig({
     // default (~Chrome 107). es2022 = Chrome 94+, under the WebGL2 path's needs.
     target: 'es2022',
     sourcemap: 'hidden',
+    chunkSizeWarningLimit: CHUNK_BUDGET_KB,
     rollupOptions: {
       output: {
         manualChunks: {
           'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
-          'vendor-rapier': ['@dimforge/rapier3d-compat'],
         },
       },
     },
