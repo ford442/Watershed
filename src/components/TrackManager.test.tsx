@@ -22,6 +22,7 @@ describe('TrackManager.tsx surface', () => {
       synthesizeSegmentEnter: (index: number) => index,
       isInitialized: () => true,
       getLastEnteredSegment: () => 0,
+      appendSegmentForHarness: () => false,
     };
     expect(ref.isInitialized()).toBe(true);
   });

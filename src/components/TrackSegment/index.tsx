@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../../constants/game';
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
@@ -9,6 +9,7 @@ import type { ChannelProfileSample, SegmentKind, TrackSegmentProps } from './typ
 import { usePlacementData } from './hooks/usePlacementData';
 import { useGeometries } from './hooks/useGeometries';
 import { TrackSegmentMeshes } from './TrackSegmentMeshes';
+import { noteSegmentBuilt, noteSegmentMounted, spawnTimingStart } from '../../terrain/spawnTiming';
 
 export default function TrackSegment({
   segmentId = 0,
@@ -35,6 +36,7 @@ export default function TrackSegment({
   weatherWetnessRef,
   usePooledStaticObstacles = false,
 }: TrackSegmentProps) {
+  const spawnStart = spawnTimingStart();
   const biomeId: BiomeId = typeof biome === 'string' ? normalizeBiomeId(biome) : biome;
   const biomeProfile = useMemo(() => getTrackBiomeProfile(biomeId), [biomeId]);
   const segmentType = type as SegmentKind;
@@ -107,6 +109,7 @@ export default function TrackSegment({
     biomeProfile,
   });
 
+  const geometryStart = spawnTimingStart();
   const {
     canyonGeometry,
     collisionGeometry,
@@ -128,6 +131,19 @@ export default function TrackSegment({
     waterWidth,
     biome: biomeId,
   });
+
+  // #487 B spawn profile (no-op without ?spawnProfile=1).
+  if (active && canyonGeometry) {
+    noteSegmentBuilt(segmentPath, spawnStart, {
+      segmentId,
+      biome: biomeId,
+      source: 'main',
+      geometryMs: geometryStart ? spawnTimingStart() - geometryStart : 0,
+    });
+  }
+  useEffect(() => {
+    if (active && canyonGeometry) noteSegmentMounted(segmentPath);
+  }, [active, canyonGeometry, segmentPath]);
 
   if (
     !active ||

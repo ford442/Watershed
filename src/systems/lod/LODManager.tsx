@@ -26,6 +26,7 @@ import {
 } from '../../rendering/renderScale';
 import { isVisualCaptureMode } from '../../rendering/rendererConfig';
 import { frameWorkMs, getFrameWork, summarizeFrameWindow } from '../../rendering/frameWork';
+import { spawnProfileEnabled } from '../../terrain/spawnTiming';
 
 export {
   ADAPTIVE_LIVE_BAND,
@@ -190,7 +191,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
 
   const [quality, setQualityState] = useState<QualityLevel>(storeQuality || initialQuality);
   const [fps, setFps] = useState(60);
-  const [enableAdaptive, setEnableAdaptive] = useState(initialAdaptive);
+  const [enableAdaptive, setEnableAdaptive] = useState(() => initialAdaptive && !spawnProfileEnabled());
 
   const config = QUALITY_SETTINGS[quality];
 
