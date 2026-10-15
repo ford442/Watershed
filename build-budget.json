@@ -1,13 +1,13 @@
 {
   "$comment": "Boot-payload budget (#485 D), enforced by `node scripts/check-build-manifest.mjs --budget` in the 'Build without Emscripten' CI job and mirrored into vite.config.ts build.chunkSizeWarningLimit. Sizes are raw (un-gzipped) bytes of build/assets/*.js; 1 kB = 1000 bytes like Vite's reporter. Raise a number only with a reason in the PR; lower it whenever a phase earns the room.",
-  "entryMaxBytes": 1355000,
+  "entryMaxBytes": 1166000,
   "entryTargetBytes": 700000,
-  "entryNote": "Ceiling = the entry as measured after #485 C (1,354,581 B) rounded up to the next kB. It sits above the 1,343,000 B that A+B reached because the precompiled validators (src/formats/*.validate.js, ~185 kB minified) replaced Ajv (~181 kB with the schema JSON) but stay on the boot path: registry.ts validates the bundled maps at import and ReachStreamer imports reachValidator. gzip still falls (422 -> 390 kB). Moving that validation off the boot path needs files outside #485's scope; it is worth ~237 kB raw / ~22 kB gzip. Tighten entryMaxBytes toward entryTargetBytes when it lands.",
+  "entryNote": "Ceiling = the entry after the validators left the boot path (1,165,739 B) rounded up to the next kB. #485 C left it at 1,354,581 B because registry.ts validated the bundled maps at import and ReachStreamer/useLevel imported the validators statically; the bundled maps are now checked only by registry.contract.test.ts and the validators load on demand (levelValidator ~98 kB, reachValidator ~94 kB chunks). The remaining ~466 kB to entryTargetBytes is app code and eager three/jsm add-ons, tracked in its own issue.",
   "vendorThreeMaxBytes": 1200000,
   "chunkMaxBytes": 1500000,
-  "totalJsMaxBytes": 3513000,
+  "totalJsMaxBytes": 3516000,
   "totalJsTargetBytes": 3500000,
-  "totalJsNote": "Issue #485 asks for <= 3.5 MB raw. After C it is 3,512,137 B: 12 kB over, for the same reason as entryNote. The ceiling is today's number rounded up; the gap to the target is printed on every run.",
+  "totalJsNote": "Issue #485 asks for <= 3.5 MB raw. Total JS counts every chunk, so moving the validators into lazy chunks cannot lower it: it went 3,512,137 -> 3,515,342 B (+3.2 kB of chunk-split overhead) while the boot entry fell 189 kB. The ceiling is today's number rounded up; the gap to the target is printed on every run and needs code actually removed, not moved.",
   "singleCopyWasm": [
     "rapier_wasm3d_bg"
   ]

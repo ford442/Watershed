@@ -12,20 +12,10 @@ import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 import validateSchema from '../formats/reach.validate.js';
 import { valueAtPointer } from '../formats/valueAtPointer';
 
-// Validation result type
-export interface ValidationError {
-  field: string;
-  error: string;
-  value?: any;
-  lineNum?: number;
-  suggestion?: string;
-}
+import type { ValidationError, ValidationResult } from './validationReport';
 
-export interface ValidationResult {
-  valid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationError[];
-}
+export type { ValidationError, ValidationResult } from './validationReport';
+export { formatValidationErrors } from './validationReport';
 
 // Canonical BiomeId values plus deprecated aliases (accepted for one release)
 const BIOME_TYPES = [
@@ -587,35 +577,6 @@ function getErrorField(error: any): string {
   }
 
   return path || 'root';
-}
-
-/**
- * Format validation errors for display
- */
-export function formatValidationErrors(result: ValidationResult): string {
-  if (result.valid) {
-    return result.warnings.length > 0
-      ? `Valid with ${result.warnings.length} warning(s)`
-      : 'Valid!';
-  }
-
-  const lines: string[] = [`Found ${result.errors.length} error(s):`];
-
-  for (const err of result.errors) {
-    lines.push(`  • ${err.field}: ${err.error}`);
-    if (err.suggestion) {
-      lines.push(`    → ${err.suggestion}`);
-    }
-  }
-
-  if (result.warnings.length > 0) {
-    lines.push(`\n${result.warnings.length} warning(s):`);
-    for (const warn of result.warnings) {
-      lines.push(`  • ${warn.field}: ${warn.error}`);
-    }
-  }
-
-  return lines.join('\n');
 }
 
 export default validateReach;
