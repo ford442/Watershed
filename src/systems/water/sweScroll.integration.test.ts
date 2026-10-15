@@ -5,37 +5,26 @@
  * Gated like WatershedWasm.integration.test.ts (`pnpm test:wasm`): it needs the
  * compiled module. The Node smoke script covers the raw kernel; this covers the
  * TS side — createWasmSweSim's export path, advanceSweWindow's shifts, and that
- * the binary and the TypeScript twin (`scrollField`, which the WGSL mirror and an
- * ABI-8 fallback rely on) move the field identically.
+ * the binary and the TypeScript twin (`scrollField`, which the WGSL and sim-worker
+ * mirrors rely on) move the field identically.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { SWE_BUDGETS } from './sweQuality';
 import { advanceSweWindow, scrollField, type SweWindow } from './sweScroll';
 import { createWasmSweSim } from './sweSim';
-import { createSWEGrid, type WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
+import { createSWEGrid } from './WatershedWasm';
+import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
 
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
-const jsPath = resolve(publicDir, 'watershed_native.js');
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 
-async function loadModule(): Promise<WatershedNativeModule> {
-  const wasmBinary = readFileSync(wasmPath);
-  const { default: create } = await import(/* @vite-ignore */ pathToFileURL(jsPath).href);
-  return create({
-    instantiateWasm: (
-      imports: WebAssembly.Imports,
-      receive: (instance: WebAssembly.Instance) => void,
-    ) => {
-      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => receive(instance));
-      return {};
-    },
-  });
-}
+const loadModule = loadNativeFromDisk;
 
 function mulberry32(seed: number): () => number {
   let a = seed;

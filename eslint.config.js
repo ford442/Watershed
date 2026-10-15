@@ -27,6 +27,8 @@ export default tseslint.config(
       'build/**',
       'node_modules/**',
       'emscripten/**',
+      // Repo-local pinned toolchain (scripts/emsdk-pinned.sh), git-ignored.
+      'emsdk/**',
       'public/**',
       'verification/output/**',
       'coverage/**',

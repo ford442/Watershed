@@ -7,6 +7,7 @@ import { CollisionParticles } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
 import { buildRaftWorkerWaterForceConfig } from '../physics/physicsWorkerConfig';
+import { computeHullMirrorForce } from '../physics/hullMirrorForce';
 import {
   getPhysicsWorkerTickParams,
   setPhysicsWorkerActive,
@@ -90,11 +91,21 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     workerStepPendingRef.current = true;
     const tickParams = getPhysicsWorkerTickParams();
-    const waterForce = buildRaftWorkerWaterForceConfig(
+    const waterForceConfig = buildRaftWorkerWaterForceConfig(
       tickParams,
       performance.now() / 1000,
       true,
     );
+    // The TS mirror for the state this step starts from (the body mirrors the
+    // worker's last post-step state). The worker applies it only when the hull
+    // link has no fresh sim-worker force (#467).
+    const waterForce = {
+      ...waterForceConfig,
+      mirror: computeHullMirrorForce(
+        { position: body.translation(), velocity: body.linvel() },
+        waterForceConfig,
+      ),
+    };
 
     proxy.step(delta, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
       if (workerState) syncBodyFromWorkerState(bodyRef.current, workerState);
@@ -105,7 +116,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
             simLinked: proxy.isSimLinked,
             waterForce: diagnostics,
             tickOrder: [
-              'take-sim-hull-force (or TS fallback)',
+              'take-sim-hull-force (or the main thread\'s TS mirror force)',
               'apply-impulses',
               'rapier-step',
               'post-hull-to-sim',

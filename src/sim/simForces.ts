@@ -25,7 +25,7 @@
  * `computeWaterForcesBatch` takes ONE config per call, but every body has its
  * own SWE-sampled speed and stage, so the worker batches runs of consecutive
  * samples whose configs are equal at float32 (what the ABI sees). Each run is
- * one Embind call; the per-sample math is `calculateWaterForce` either way
+ * one native call; the per-sample math is `calculateWaterForce` either way
  * (forces.cpp), so the result is bit-identical to one `calculateWaterForce` per
  * body on the main thread. Folding speed/stage into one call for all bodies
  * would need a per-sample-config export (an ABI bump) — out of scope here.
@@ -33,14 +33,7 @@
  * This module is imported by the Rapier worker and the main thread for the wire
  * helpers only; the batch half needs a module and runs only in the sim worker.
  */
-import {
-  WATER_FORCE_INPUT_STRIDE,
-  WATER_FORCE_OUTPUT_STRIDE,
-  heapF32,
-  type NativeWaterForceConfig,
-  type NativeWaterForceResult,
-  type WatershedNativeModule,
-} from '../systems/water/WatershedWasm';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import {
   SWE_STAGE_SPEED_BOOST,
   sampleSWEFlow,
@@ -200,7 +193,7 @@ function sameAtFloat32(configs: Float64Array, a: number, b: number): boolean {
 }
 
 export interface SimForceStats {
-  /** Embind calls this batch took (one per run of equal configs). */
+  /** Native calls this batch took (one per run of equal configs). */
   calls: number;
   /** Wall time of sampling + native calls, microseconds. */
   computeMicros: number;

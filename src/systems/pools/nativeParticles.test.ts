@@ -8,7 +8,7 @@ import { SimWorkerProxy } from '../../sim/createSimWorkerProxy';
 import { createSimWorkerCore } from '../../sim/simWorkerCore';
 import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from '../../sim/simWorkerProtocol';
 import { stubNativeModule } from '../../testing/stubNativeModule';
-import type { WatershedNativeModule } from '../water/WatershedWasm';
+import type { WatershedNativeModule } from '../water/wasmAbi';
 import { createSplashIntegrator, createWaterfallIntegrator } from './nativeParticles';
 import { ParticlePool, VFXParticle } from './ParticlePool';
 

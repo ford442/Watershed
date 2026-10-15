@@ -3,13 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { CuboidCollider, RigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../constants/game';
-import {
-  calculateWaterForceFallback,
-  getWasm,
-  type NativeWaterForceConfig,
-  type NativeWaterForceResult,
-  type WatershedNativeModule,
-} from '../systems/water/WatershedWasm';
+import type { NativeWaterForceConfig, NativeWaterForceResult, WatershedNativeModule } from '../systems/water/wasmAbi';
+import { getWasm } from '../systems/water/wasmLoader';
+import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 
 const TEST_CONFIG: NativeWaterForceConfig = {
   flowSpeed: 5.2,

@@ -142,12 +142,12 @@ pnpm install
 pnpm dev          # Vite on :3000 (alias: pnpm start)
 pnpm test         # vitest run (one-shot)
 pnpm typecheck    # tsc -p tsconfig.typecheck.json --noEmit
-pnpm build        # optional emscripten WASM + vite → build/
+pnpm build        # vite → build/ (ships the committed WASM pair)
 ```
 
 Use pnpm only — the pinned version lives in `package.json`'s `packageManager` field; do not commit `package-lock.json` (it is gitignored). The `preinstall` guard (`scripts/only-pnpm.mjs`) fails `npm install`/`yarn` outright: a stray local `package-lock.json` once pinned three r168 against r185 and broke typecheck, tests and build.
 
-`pnpm build` runs `emscripten/build.sh` first; if Emscripten is missing it prints a skip message and exits 0, then Vite proceeds.
+`pnpm build` does not compile WASM: `public/watershed_native.{js,wasm}` are committed and CI verifies them. To rebuild them, `bash scripts/emsdk-pinned.sh` once, then `pnpm build:wasm` (or `pnpm build:full` for WASM + Vite). `build.sh` refuses any emcc other than `emscripten/EMCC_VERSION` (#467) — see [`WASM.md`](./WASM.md#toolchain-pin-467).
 
 ---
 
@@ -255,7 +255,7 @@ Single-service frontend — only the Vite dev server. Dependencies come from `pn
 | Dev server | `pnpm dev` | Port 3000; use tmux/background |
 | Tests | `pnpm test` | Vitest one-shot (`vitest run`) |
 | Typecheck | `pnpm typecheck` | Typed surface |
-| Build | `pnpm build` | Emscripten optional (skip if missing) |
+| Build | `pnpm build` | Vite only; WASM pair is committed (`pnpm build:wasm` needs the pinned emcc) |
 | Visual smoke | `pnpm test:visual-smoke` | Needs preview/dev + Chromium; see `docs/reference/TESTING.md` |
 | Docs paths | `node scripts/validate-markdown-paths.js` | Living docs + banned stale stems |
 

@@ -1,0 +1,18 @@
+# Host-side static checks for the compute TUs and the fuzz target (#467), with
+# the host compile database:  pnpm lint:native  (CI: "Native sanitizers, fuzz,
+# tidy"). host_smoke.cpp is a test harness and is not part of the run.
+#
+# Disabled, with reasons:
+#   bugprone-easily-swappable-parameters  The ABI is long runs of floats by
+#                                         design (it mirrors the JS call sites).
+#   performance-no-int-to-ptr             Heap byte offsets -> pointers is what
+#                                         the C ABI is; bindings.cpp is the only
+#                                         caller and it is WASM-only.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -performance-no-int-to-ptr
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'emscripten/[a-z_0-9]+\.h$'

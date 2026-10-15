@@ -4,8 +4,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../systems/water/WatershedWasm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../systems/water/WatershedWasm')>()),
+vi.mock('../systems/water/wasmLoader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../systems/water/wasmLoader')>()),
   getWasm: vi.fn(),
 }));
 
@@ -19,7 +19,8 @@ vi.mock('./createSimWorkerProxy', async (importOriginal) => ({
   getSimWorkerProxy: vi.fn(),
 }));
 
-import { WasmInitTimeoutError, getWasm, type WatershedNativeModule } from '../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/wasmAbi';
+import { WasmInitTimeoutError, getWasm } from '../systems/water/wasmLoader';
 import { resolveSweSimBackendDecision, type SweSimBackend } from '../systems/water/sweBackend';
 import { getSimWorkerProxy, type SimWorkerProxy } from './createSimWorkerProxy';
 import { probeNativeStatus, resolveNativeOwner } from './nativeOwner';

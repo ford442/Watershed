@@ -65,15 +65,30 @@ export const SWE_BUDGETS: Record<QualityPreset, SWEBudget> = {
     stepHz: 60,
     displacementScale: 0.22,
   },
+  // 64 m x 40 m (#467): with the SIMD128 HLL stepper 128 x 80 fits
+  // SWE_STEP_BUDGET_MS — enough for a raft wake that is still there two
+  // segments later and a plunge pool the solver actually resolves.
   ultra: {
     enabled: true,
-    width: 64,
-    height: 40,
+    width: 128,
+    height: 80,
     cellSize: 0.5,
     stepHz: 60,
     displacementScale: 0.26,
   },
 };
+
+/**
+ * Worker time one `stepShallowWater[Inflow]` may take at any preset's grid, as
+ * a median over 1000 steps of the release binary (#467) — 1.8% of a 60 Hz
+ * frame on the sim worker, which also runs forces, the router and particles.
+ * On the 8-core dev box the pre-SIMD Ultra step (64 x 40) was 0.18 ms; the
+ * SIMD128 HLL stepper runs 64 x 40 in ~0.057 ms and 128 x 80 in ~0.235 ms, so
+ * the bigger Ultra window costs ~1.3x the old one. `pnpm profile:physics` (and
+ * `pnpm profile:swe`) measure every enabled preset and fail above this, so a
+ * bigger grid is only added once it has been measured to fit.
+ */
+export const SWE_STEP_BUDGET_MS = 0.3;
 
 /** Budget for a quality preset. Unknown presets fall back to `high`. */
 export function sweBudgetForQuality(quality: QualityPreset): SWEBudget {

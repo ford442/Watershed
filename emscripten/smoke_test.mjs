@@ -28,28 +28,47 @@ if (typeof createWatershedNative !== 'function') {
   throw new Error('watershed_native.js did not export createWatershedNative()');
 }
 
-let wasm;
+let raw;
 try {
-  wasm = await createWatershedNative({
-    instantiateWasm: (imports, receiveInstance) => {
-      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => {
-        receiveInstance(instance);
-      });
-      return {};
-    },
-  });
+  // The loader passes the fetched bytes as wasmBinary (#467); do the same here.
+  raw = await createWatershedNative({ wasmBinary });
 } catch (error) {
   const msg = error instanceof Error ? error.stack || error.message : String(error);
-  throw new Error(
-    `createWatershedNative() threw (js+wasm pair out of sync or Embind failed): ${msg}`,
-  );
+  throw new Error(`createWatershedNative() threw (js+wasm pair out of sync?): ${msg}`);
 }
 
-if (typeof wasm?.calculateWaterForce !== 'function' || typeof wasm?.getVersion !== 'function') {
-  throw new Error(
-    'createWatershedNative() resolved without Embind exports (calculateWaterForce / getVersion)',
-  );
+// Plain C ABI (#467): every export is Module._ws_<name>. This script stays
+// independent of src/systems/water/wasmAbi.ts on purpose — it is the raw
+// binary's check — so it binds by name here, and reads the three out-pointer
+// results through a scratch block the same way.
+if (typeof raw?._ws_getVersion !== 'function' || typeof raw?._ws_calculateWaterForce !== 'function') {
+  throw new Error('createWatershedNative() resolved without the _ws_* C exports (getVersion / calculateWaterForce)');
 }
+const outPtr = raw._ws_allocateGrid(8);
+const OUT_READERS = {
+  calculateWaterForce: (f, i) => ({
+    forceX: f[i], forceY: f[i + 1], forceZ: f[i + 2], buoyancy: f[i + 3],
+    drag: f[i + 4], flow: f[i + 5], turbulence: f[i + 6], submergedRatio: f[i + 7],
+  }),
+  computeFlowForce: (f, i) => ({ x: f[i], y: f[i + 1], z: f[i + 2] }),
+  routedEdgeState: (f, i) => ({ eta: f[i], speed: f[i + 1] }),
+};
+const U32_RESULTS = new Set(['initWaterfallParticles', 'stepWaterfallParticles']);
+const wasm = new Proxy(raw, {
+  get(target, name) {
+    if (typeof name !== 'string' || name.startsWith('HEAP')) return target[name];
+    const fn = target[`_ws_${name}`];
+    if (typeof fn !== 'function') return undefined;
+    if (OUT_READERS[name]) {
+      return (...args) => {
+        fn(...args, outPtr);
+        return OUT_READERS[name](target.HEAPF32, outPtr >>> 2);
+      };
+    }
+    if (U32_RESULTS.has(name)) return (...args) => fn(...args) >>> 0;
+    return fn;
+  },
+});
 
 const buoyancy = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
 
@@ -58,11 +77,10 @@ if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
 }
 
 const version = wasm.getVersion();
-// ABI 6 changed stepShallowWater's arity (bed pointer). A binary older than
-// that cannot be driven by the current TypeScript at all, so this floor is what
-// catches a stale committed public/watershed_native.wasm.
-if (!Number.isInteger(version) || version < 8) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 8)`);
+// ABI 12 is the plain C ABI (#467); the TypeScript binding table cannot drive
+// anything older, so this floor is what catches a stale committed pair.
+if (!Number.isInteger(version) || version < 12) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 12)`);
 }
 
 if (typeof wasm.applySWEEvent !== 'function') {
@@ -574,10 +592,10 @@ if (version >= 11) {
   if (heapBytes() !== INITIAL_MEMORY) {
     throw new Error(`INITIAL_MEMORY drifted: heap is ${heapBytes()} B, expected ${INITIAL_MEMORY}`);
   }
-  // Largest SWE budget (sweQuality.ts `high`: 64 x 40). Step, inflow step and
+  // Largest SWE budget (sweQuality.ts `ultra`: 128 x 80). Step, inflow step and
   // scroll after the reserve must leave the heap byte length untouched.
-  const W = 64;
-  const Hh = 40;
+  const W = 128;
+  const Hh = 80;
   const N = W * Hh;
   const planes = [0, 1, 2, 3].map(() => wasm.allocateGrid(N));
   wasm.reserveShallowWaterScratch(W, Hh);

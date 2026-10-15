@@ -5,38 +5,36 @@ Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_W
 Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `swe.h`
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
 `chores.cpp` (optional gpu-chores; not SWE), `particles.cpp` (waterfall / splash SoA),
-and `bindings.cpp` (the only file including `<emscripten/bind.h>`; ABI `getVersion()` = 11 in source,
-`MIN_WASM_ABI_VERSION` = 8).
+and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 12,
+`MIN_WASM_ABI_VERSION` = 12).
 It builds to:
 
 - `public/watershed_native.js`
 - `public/watershed_native.wasm`
 
-Run:
+Rebuild them (needs the pinned emcc — `bash scripts/emsdk-pinned.sh` once) with:
 
 ```bash
-npm run build:wasm
+pnpm build:wasm
 ```
 
-The normal production build also runs the single-threaded WASM build first:
-
-```bash
-npm run build
-```
+`pnpm build` does **not** rebuild them: the pair is committed and CI verifies it
+(`pnpm build:full` runs both).
 
 Threaded WASM remains opt-in because it needs COOP/COEP headers (it builds into
 `emscripten/build-threads/out/` and never ships):
 
 ```bash
-npm run build:wasm:threads
+pnpm build:wasm:threads
 ```
 
 ## TypeScript Import
 
-Use `src/systems/water/WatershedWasm.ts`:
+Load with `src/systems/water/wasmLoader.ts`; heap helpers live in `WatershedWasm.ts`:
 
 ```ts
-import { getWasm, createWaterForceBatch } from '../systems/water/WatershedWasm';
+import { getWasm } from '../systems/water/wasmLoader';
+import { createWaterForceBatch } from '../systems/water/WatershedWasm';
 
 const wasm = await getWasm();
 const smoke = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);

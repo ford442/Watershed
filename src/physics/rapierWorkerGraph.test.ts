@@ -26,6 +26,13 @@ describe('Rapier worker module graph', () => {
     expect(files).toContain('physics/hullLinkClient.ts');
   });
 
+  it('computes no water force: the TS mirror and the native force batch stay out (#467)', () => {
+    // The hull force is the sim worker's (hull link) or the main thread's TS
+    // mirror sent with the step — waterForceAuthority.ts pickHullForce.
+    expect(files).not.toContain('systems/water/waterForceFallback.ts');
+    expect(files).not.toContain('physics/hullMirrorForce.ts');
+  });
+
   it('does not import the worker WASM loader', () => {
     expect(files).not.toContain('sim/workerWasm.ts');
     expect(files).not.toContain('physics/workerWasm.ts');

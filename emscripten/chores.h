@@ -1,7 +1,7 @@
 /**
  * chores.h — generic image/grid helpers (gpu-chores WASM lane).
  *
- * Embind-free. Not SWE / flow / water-force math. Optional ABI 5 exports;
+ * Host-clean (no Emscripten headers). Not SWE / flow / water-force math. Optional ABI 5 exports;
  * MIN_WASM_ABI_VERSION stays 4 so older binaries still load for forces.
  */
 

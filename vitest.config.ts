@@ -1,6 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, mergeConfig } from 'vitest/config';
+import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
 import viteConfig from './vite.config';
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
@@ -13,6 +13,8 @@ export default mergeConfig(
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/setupTests.ts'],
+      // ./emsdk is the repo-local pinned toolchain (scripts/emsdk-pinned.sh); its own tests are not ours.
+      exclude: [...configDefaults.exclude, 'emsdk/**'],
       alias: {
         'three/webgpu': threeWebgpuMock,
         'three/tsl': threeWebgpuMock,

@@ -5,7 +5,7 @@
  * Two stub modules: one is the main-thread module (chores only, on wasm-worker),
  * the other sits behind the sim worker's core. Pins that on the `wasm-worker`
  * backend the main thread never steps the field, routes the river or computes a
- * water force itself (Phase B: zero Embind calls on that path in steady state),
+ * water force itself (Phase B: zero native calls on that path in steady state),
  * that forces computed in the worker land a frame later and are applied then,
  * that the surface is uploaded from the worker's frames, that a failed
  * handshake falls back to the main-thread stepper — forces included — with a
@@ -15,7 +15,7 @@
 import React from 'react';
 import { act, render } from '@testing-library/react';
 import * as THREE from 'three';
-import type { WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
 import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from '../../sim/simWorkerProtocol';
 
 const h = vi.hoisted(() => ({
@@ -47,8 +47,8 @@ vi.mock('./bathymetrySampler', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('./WatershedWasm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./WatershedWasm')>()),
+vi.mock('./wasmLoader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./wasmLoader')>()),
   getWasm: vi.fn(),
 }));
 
@@ -74,7 +74,7 @@ vi.mock('../../sim/createSimWorkerProxy', async (importOriginal) => ({
   getSimWorkerProxy: vi.fn(),
 }));
 
-import { getWasm } from './WatershedWasm';
+import { getWasm } from './wasmLoader';
 import {
   demoteSweSimBackendToWasm,
   demoteSweSimBackendToWasmMain,
@@ -101,13 +101,14 @@ function stubModule(stepMarker: number) {
   let next = 16;
   const mod = {
     HEAPF32: heap,
-    getVersion: () => 11,
+    getVersion: () => 12,
     allocateGrid: (count: number) => {
       const ptr = next * 4;
       next += count;
       return ptr;
     },
     freeGrid: () => {},
+    reserveShallowWaterScratch: vi.fn(),
     stepShallowWater: vi.fn((hp: number) => {
       heap[hp >> 2] = stepMarker;
     }),
@@ -265,7 +266,7 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(bindHeightfieldChoreWorker).toHaveBeenLastCalledWith(null);
   });
 
-  it('makes no SWE / router / force Embind call on the main thread in steady state', async () => {
+  it('makes no SWE / router / force native call on the main thread in steady state', async () => {
     const main = stubModule(1);
     const inWorker = stubModule(7);
     const { worker, pump } = fakeWorker(inWorker);
@@ -369,8 +370,10 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(demoteSweSimBackendToWasmMain).toHaveBeenCalled();
     expect(getPhysicsWorkerStatus().sweGrid).toMatch(/wasm-main$/);
     expect(main.stepShallowWater.mock.calls.length + main.stepShallowWaterInflow.mock.calls.length).toBeGreaterThan(0);
-    // Today's main-thread path, forces and router included.
-    expect(main.calculateWaterForce).toHaveBeenCalled();
+    // The main module steps the field and routes the edge; forces are the TS
+    // mirror (#467: forces.cpp runs only in the sim worker).
+    expect(main.calculateWaterForce).not.toHaveBeenCalled();
+    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
     expect(main.routeReachSteady).toHaveBeenCalled();
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
     // The main module loads only once the worker is known to be unavailable.
@@ -397,7 +400,7 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(main.stepShallowWater).not.toHaveBeenCalled();
     // Forces fail open to the TS math on this thread, not to the main module.
     expect(main.calculateWaterForce).not.toHaveBeenCalled();
-    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('main-ts');
+    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
     // The worker's death does not start a second module here either.
     expect(getWasm).not.toHaveBeenCalled();
@@ -419,7 +422,7 @@ describe('WaterForceSystem on the wgsl backend', () => {
       expect(getWasm).not.toHaveBeenCalled();
       expect(getSimWorkerProxy).not.toHaveBeenCalled();
       expect(main.calculateWaterForce).not.toHaveBeenCalled();
-      expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('main-ts');
+      expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
       expect(info).toHaveBeenCalledWith(expect.stringContaining('no WASM module this session'));
       unmount();
     } finally {

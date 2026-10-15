@@ -12,7 +12,8 @@
  * verification/swe_wgsl_parity.html and drives it in headless Chromium.
  * Never imported by the game.
  */
-import { createSWEGrid, type WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
+import { createSWEGrid } from './WatershedWasm';
 import { createWasmSweSim, type SweEventCall, type SweSim, type SweStepInput } from './sweSim';
 import { createWgslSweSim, WGSL_SWE_MAX_EVENTS_PER_DISPATCH, type WgslSweSim } from './WgslSweSim';
 import { sampleSWEFlow } from './sampleSWEFlow';

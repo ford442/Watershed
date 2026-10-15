@@ -71,12 +71,19 @@ describe('one watershed_native per session', () => {
     expect(forceSystem.code.match(/\bgetWasm\s*\(/g)).toHaveLength(1);
   });
 
-  it('instantiates the glue in exactly two loaders: the sim worker and the wasm-main fallback', () => {
+  it('instantiates the glue in exactly one place, shared by the sim worker and the wasm-main fallback', () => {
+    // #467: one loader (fetch once, hash once). Anything else that calls the
+    // factory is a second, unverified instantiation path.
     const instantiators = files
-      .filter((f) => /\bWatershedNativeFactory\b/.test(f.code) && /\bfactory\s*\(\s*\{/.test(f.code))
+      .filter((f) => /\bwasmBinary\s*:/.test(f.code) || /\bimportGlue\s*\(/.test(f.code))
       .map((f) => f.rel)
       .sort();
-    expect(instantiators).toEqual(['sim/workerWasm.ts', 'systems/water/WatershedWasm.ts']);
+    expect(instantiators).toEqual(['systems/water/wasmLoader.ts']);
+    const loaderUsers = files
+      .filter((f) => /\bloadWatershedNative\s*\(/.test(f.code))
+      .map((f) => f.rel)
+      .sort();
+    expect(loaderUsers).toEqual(['sim/workerWasm.ts', 'systems/water/wasmLoader.ts']);
   });
 
   it('the sim worker graph holds the particle and chore kernels it now runs', () => {
