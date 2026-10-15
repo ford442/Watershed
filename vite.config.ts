@@ -17,6 +17,13 @@ function readWasmArtifactStamp(): string {
   return 'unknown';
 }
 
+/** The chunk ceiling lives in build-budget.json so `vite build` warnings and the CI
+ *  gate (scripts/check-build-manifest.mjs --budget) cannot disagree (#485 D). Vite
+ *  compares chunk size / 1000 against `chunkSizeWarningLimit`, i.e. decimal kB. */
+const CHUNK_BUDGET_KB = Math.ceil(
+  (JSON.parse(fs.readFileSync(path.resolve('build-budget.json'), 'utf8')) as { chunkMaxBytes: number }).chunkMaxBytes / 1000,
+);
+
 function shortGitSha(): string {
   try {
     return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
@@ -204,6 +211,7 @@ export default defineConfig({
     // default (~Chrome 107). es2022 = Chrome 94+, under the WebGL2 path's needs.
     target: 'es2022',
     sourcemap: 'hidden',
+    chunkSizeWarningLimit: CHUNK_BUDGET_KB,
     rollupOptions: {
       output: {
         manualChunks: {

@@ -3,10 +3,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  HASHED_ASSET_RE,
+  REVALIDATED_RE,
+  checkCacheControl,
   checkDirectoryDocuments,
   checkHtaccess,
+  checkHtaccessCachePolicy,
   checkIsolationHeaders,
   decodeHtml,
+  isLocalUrl,
   parseAssetRefs,
   parseBuildIdMeta,
   parseContentType,
@@ -206,5 +211,50 @@ describe('checkHtaccess', () => {
     const closes = shipped.match(/<\/IfModule>/g) ?? [];
     expect(opens.length).toBeGreaterThanOrEqual(3);
     expect(opens.length).toBe(closes.length);
+  });
+});
+
+describe('cache policy (#485 D)', () => {
+  const shipped = fs.readFileSync(path.join(here, '..', 'public', '.htaccess'), 'utf8');
+
+  it('a hashed asset needs max-age of a year and immutable', () => {
+    expect(checkCacheControl('a.js', 'public, max-age=31536000, immutable', 'immutable')).toEqual([]);
+    expect(checkCacheControl('a.js', 'public, max-age=31536000', 'immutable')).toHaveLength(1);
+    expect(checkCacheControl('a.js', 'public, max-age=3600, immutable', 'immutable')).toHaveLength(1);
+    expect(checkCacheControl('a.js', null, 'immutable')).toHaveLength(1);
+  });
+
+  it('an unhashed file must revalidate', () => {
+    expect(checkCacheControl('index.html', 'no-cache', 'revalidate')).toEqual([]);
+    expect(checkCacheControl('index.html', 'no-store', 'revalidate')).toEqual([]);
+    expect(checkCacheControl('index.html', 'max-age=0, must-revalidate', 'revalidate')).toEqual([]);
+    expect(checkCacheControl('index.html', 'public, max-age=31536000, immutable', 'revalidate')).toHaveLength(1);
+    expect(checkCacheControl('index.html', null, 'revalidate')).toHaveLength(1);
+  });
+
+  it('names split the way the .htaccess FilesMatch splits them', () => {
+    for (const n of ['index-BsUHTGG_.js', 'vendor-three-CUndWYA-.js', 'rapier_wasm3d_bg-Dl0GQskJ.wasm', 'index-C3D_Oega.css']) {
+      expect(HASHED_ASSET_RE.test(n), n).toBe(true);
+      expect(REVALIDATED_RE.test(n), n).toBe(false);
+    }
+    for (const n of ['index.html', 'BUILD_ID', 'watershed_native.js', 'watershed_native.wasm']) {
+      expect(REVALIDATED_RE.test(n), n).toBe(true);
+      expect(HASHED_ASSET_RE.test(n), n).toBe(false);
+    }
+  });
+
+  it('the shipped .htaccess carries both rules, and removing either is caught', () => {
+    expect(checkHtaccessCachePolicy(shipped)).toEqual([]);
+    expect(checkHtaccessCachePolicy(shipped.replace(/immutable/g, 'public')).join('\n')).toMatch(/immutable/);
+    expect(checkHtaccessCachePolicy(shipped.replace(/"no-cache"/g, '"public"')).join('\n')).toMatch(/no-cache/);
+  });
+
+  it('is skipped against a local preview and enforced elsewhere', () => {
+    for (const u of ['http://127.0.0.1:4179/', 'http://localhost:4173/', 'http://[::1]:4173/', 'http://x.localhost/']) {
+      expect(isLocalUrl(u), u).toBe(true);
+    }
+    for (const u of ['https://test.1ink.us/watershed/', 'https://storage.noahcohn.com/', 'not a url']) {
+      expect(isLocalUrl(u), u).toBe(false);
+    }
   });
 });

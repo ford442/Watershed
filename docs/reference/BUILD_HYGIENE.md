@@ -511,6 +511,48 @@ fetch.
 
 ---
 
+## 10. Boot payload gate (#485)
+
+§4 and §6.1 measured the payload on 2026-09-17 and called the sizes "already unreasonable".
+#485 acts on it. Raw sizes of a plain `pnpm exec vite build`, `main` `9e9c746` vs this branch:
+
+| Chunk | Before | After A+B |
+|---|---|---|
+| `vendor-rapier-*.js` | 2,237 kB | gone |
+| `rapier.worker-*.js` | 2,243 kB | 149 kB |
+| `rapier_wasm3d_bg-*.wasm` | inside both of the above, as base64 | 1,569 kB, one hashed asset |
+| `index-*.js` (entry) | 1,891 kB | 1,342 kB |
+| `three.webgpu-*.js` | inside the entry | 673 kB, loaded only by the TSL boot |
+| `vendor-three-*.js` | 1,124 kB | 1,124 kB |
+| **Total JS** | **~7.5 MB** | **3.49 MB** (gzip 2.65 → 1.04 MB) |
+
+**What keeps it that way**
+
+- `node scripts/check-build-manifest.mjs --chunks --build-log build.log`: the entry and every chunk
+  `index.html` loads must not contain `three.webgpu.js` definition markers, and `vite build` must not
+  have printed "dynamic import will not move module into another chunk". (A literal `WebGPURenderer`
+  grep cannot be the test: the app's own `isWebGPURenderer` flag reads contain it.)
+- `node scripts/check-build-manifest.mjs --budget`: prints the chunk table and enforces
+  `build-budget.json`. `build.chunkSizeWarningLimit` is read from the same file, so a local build
+  and CI agree. Wasm is counted once by content (the Basis transcoder ships twice, byte-identical:
+  `public/basis/` and a hashed asset — reported, not yet fixed). Rapier's wasm must exist exactly once.
+- `src/physics/rapierWorkerGraph.test.ts` inspects `build/`: one `.wasm`, byte-equal to the package,
+  no Rapier-sized base64 literal in any chunk.
+- `public/.htaccess` cache section: `immutable` for `-<8 hash chars>.(js|css|wasm)`, `no-cache` for
+  `index.html`, `BUILD_ID`, `watershed_native.*`. `verify_deploy.mjs` asserts both on a live URL and
+  skips them (with a note) on `localhost` / `127.0.0.1`, where `vite preview` does not run `.htaccess`.
+
+**Rapier, and why it is a build plugin.** `@dimforge/rapier3d-compat@0.19.2`'s `init()` takes no
+argument (there is no `module_or_path` on the -compat build), `@react-three/rapier` hard-codes
+`import('@dimforge/rapier3d-compat'); r.init()` against a peer-dep pin, and the non-compat package
+has no `init()` at all. `rapierWasmAssetPlugin` in `vite.config.ts` therefore rewrites the one base64
+decode site in `rapier.mjs` to load the emitted asset by URL, and fails the build if the site is not
+found exactly once or the literal is not byte-identical to the package's `.wasm`. A Rapier bump
+fails the build on purpose; re-audit the plugin then. It runs for production builds only, so dev
+and vitest use the stock package.
+
+---
+
 ## Appendix: reproducing this
 
 ```bash

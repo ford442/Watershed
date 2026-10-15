@@ -30,3 +30,22 @@
   Header unset Cross-Origin-Opener-Policy
   Header always unset Cross-Origin-Opener-Policy
 </IfModule>
+
+# --- Cache policy (#485 D) -------------------------------------------------
+# Own section on purpose: it is independent of the charset/isolation blocks above
+# and of the CSP block, so it merges cleanly with either.
+#
+# Vite content-hashes everything in assets/ (an 8-char Rollup hash before the
+# extension), so a changed file always has a new name: those can be cached for a
+# year and never revalidated. The names that do NOT change when their bytes do
+# (index.html, BUILD_ID, the emcc pair watershed_native.*) must be revalidated on
+# every visit or a deploy would be invisible. `Header set` (not `always`) only
+# touches successful responses, so a 404 for a hashed name is never pinned.
+<IfModule mod_headers.c>
+  <FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css|wasm)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "^(index\.html|BUILD_ID|watershed_native\..*)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

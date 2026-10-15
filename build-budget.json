@@ -1,0 +1,10 @@
+{
+  "$comment": "Boot-payload budget (#485 D), enforced by `node scripts/check-build-manifest.mjs --budget` in the 'Build without Emscripten' CI job and mirrored into vite.config.ts build.chunkSizeWarningLimit. Sizes are raw (un-gzipped) bytes of build/assets/*.js; 1 kB = 1000 bytes like Vite's reporter. Raise a number only with a reason in the PR; lower it whenever a phase earns the room.",
+  "entryMaxBytes": 1343000,
+  "entryTargetBytes": 700000,
+  "entryNote": "Ceiling = the entry measured after #485 A+B (1,342,039 B) rounded up to the next kB; the 700 kB target is not reached until the validators and dev tools leave the entry (#485 C). Tighten entryMaxBytes toward entryTargetBytes then.",
+  "vendorThreeMaxBytes": 1200000,
+  "chunkMaxBytes": 1500000,
+  "totalJsMaxBytes": 3500000,
+  "singleCopyWasm": ["rapier_wasm3d_bg"]
+}
