@@ -17,8 +17,13 @@
  * The meander map is used for both biomes the issue names: its first ~16
  * segments are canyonSummer and segments 20–22 are slot canyon.
  *
+ * It also counts WebGL program links (a patched `linkProgram`) at boot and per
+ * append: renderer-independent, and the cost a light-count change used to add
+ * to every mount (sceneLightPool.tsx).
+ *
  * On SwiftShader the absolute numbers include software rasterisation of every
- * frame that lands in a measure, so they are larger than on a GPU. `segment-build`
+ * frame that lands in a measure, so they are larger than on a GPU — and most
+ * frames are longtasks by themselves, so `over50` mostly says a frame overlapped. `segment-build`
  * is pure JS and comparable before/after on the same box; read the rest as
  * before/after deltas under one harness.
  *
@@ -115,6 +120,18 @@ async function profileQuality(quality) {
         /* storage blocked: the preset falls back to the default */
       }
       window.__spawnLongtasks = [];
+      // Program links: renderer-independent. A light-count change recompiles every lit program.
+      window.__spawnLinks = [];
+      try {
+        const proto = WebGL2RenderingContext.prototype;
+        const link = proto.linkProgram;
+        proto.linkProgram = function (program) {
+          window.__spawnLinks.push(performance.now());
+          return link.call(this, program);
+        };
+      } catch {
+        /* no WebGL2: link counts stay empty */
+      }
       try {
         new PerformanceObserver((list) => {
           for (const e of list.getEntries()) {
@@ -165,7 +182,12 @@ async function profileQuality(quality) {
           duration: e.duration,
           ...(e.detail ?? {}),
         }));
-      return { build: pick('segment-build'), mount: pick('segment-mount'), longtasks: window.__spawnLongtasks ?? [] };
+      return {
+        build: pick('segment-build'),
+        mount: pick('segment-mount'),
+        longtasks: window.__spawnLongtasks ?? [],
+        links: window.__spawnLinks ?? [],
+      };
     });
 
     const builds = new Map(raw.build.map((b) => [`${b.segmentId}@${Math.round(b.startTime)}`, b]));
@@ -185,7 +207,16 @@ async function profileQuality(quality) {
       };
     });
 
-    return { quality, appended, mounts, pageErrors, longtaskCount: raw.longtasks.length };
+    const treadmillLinks = raw.links.filter((t) => t >= bootCutoff).length;
+    return {
+      quality,
+      appended,
+      mounts,
+      pageErrors,
+      longtaskCount: raw.longtasks.length,
+      bootLinks: raw.links.length - treadmillLinks,
+      treadmillLinks,
+    };
   } finally {
     await browser.close().catch(() => {});
   }
@@ -232,6 +263,7 @@ async function main() {
     const summary = summarise(run);
     report.runs.push({ ...run, summary });
     console.log(`\n[${quality}] appended ${run.appended}, ${run.mounts.length} mounts measured, ${run.longtaskCount} longtasks, boot mounts ${summary.boot.n} (build Σ ${summary.boot.buildSum} ms)`);
+    console.log(`  program links: ${run.bootLinks} at boot, ${run.treadmillLinks} over ${run.appended} appends (${(run.treadmillLinks / Math.max(1, run.appended)).toFixed(1)} per append)`);
     console.table(summary.rows);
     if (run.pageErrors.length) console.log(`  page errors: ${run.pageErrors.slice(0, 5).join(' | ')}`);
     if (quality === 'high' && summary.rows.some((r) => r.over50 > 0)) gateFailed = true;
