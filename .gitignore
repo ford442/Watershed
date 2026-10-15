@@ -26,3 +26,4 @@ emscripten/compile_commands.json
 verification/output/
 
 .aider*
+build-analyze/

@@ -6,9 +6,6 @@
  * Hydrates Zustand on boot; debounced subscribe for writes.
  */
 
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
-import persistenceSchema from '../../formats/persistence.schema.json';
 import type { GameSettings } from '../GameState';
 import type { RunSplitEntry } from '../ghost/ghostCodec';
 import type { WsGhostFile } from '../ghost/ghostExport';
@@ -59,12 +56,110 @@ export interface PersistencePayload {
 }
 
 // =============================================================================
-// AJV
+// SHAPE GUARD
 // =============================================================================
 
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
-const validatePersistence = ajv.compile(persistenceSchema);
+// #485 C: this is our own tiny shape, not a schema we load from elsewhere, so it is
+// checked by hand instead of shipping an Ajv compiler to every player. It mirrors
+// formats/persistence.schema.json exactly (the schema stays as the written contract);
+// PersistenceSystem.guard.test.ts cross-checks the two on a mutation corpus.
+// Ajv semantics reproduced on purpose: a key set to `undefined` counts as absent, an
+// unknown key is rejected even when undefined, and (the old compiler ran `strict: false`,
+// which also turns off `strictNumbers`) any `typeof === 'number'` counts as a number,
+// NaN and Infinity included — `minimum`/`maximum` still bound them where the schema has any.
+
+const QUALITIES = ['low', 'medium', 'high', 'ultra'] as const;
+const WEATHERS = ['clear', 'rain', 'fog', 'storm', 'snow'] as const;
+
+type Check = (v: unknown) => boolean;
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+const isNumber = (v: unknown): v is number => typeof v === 'number';
+const isInteger = (v: unknown): v is number => typeof v === 'number' && !(v % 1) && !Number.isNaN(v);
+const numberMin = (min: number): Check => (v) => isNumber(v) && v >= min;
+const integerIn = (min: number, max: number): Check => (v) => isInteger(v) && v >= min && v <= max;
+const nonEmptyString: Check = (v) => typeof v === 'string' && v.length >= 1;
+const stringMaxLength = (max: number): Check => (v) => typeof v === 'string' && [...v].length <= max;
+const oneOf = (values: readonly string[]): Check => (v) => typeof v === 'string' && values.includes(v);
+const isBoolean: Check = (v) => typeof v === 'boolean';
+
+/** Object whose keys are exactly `fields` (no extras); `undefined` values count as absent. */
+function shape(fields: Record<string, Check>, required: readonly string[]): Check {
+  return (v) => {
+    if (!isObject(v)) return false;
+    for (const key of Object.keys(v)) if (!Object.prototype.hasOwnProperty.call(fields, key)) return false;
+    for (const key of required) if (v[key] === undefined) return false;
+    for (const [key, check] of Object.entries(fields)) {
+      if (v[key] !== undefined && !check(v[key])) return false;
+    }
+    return true;
+  };
+}
+
+/** Object used as a string-keyed map whose every value must satisfy `check`. */
+const mapOf = (check: Check): Check => (v) => isObject(v) && Object.keys(v).every((k) => check(v[k]));
+const arrayOf = (check: Check, unique = false): Check => (v) => {
+  if (!Array.isArray(v)) return false;
+  // Index loop, not `.every`: Ajv visits holes of a sparse array as `undefined` (invalid).
+  for (let i = 0; i < v.length; i++) if (!check(v[i])) return false;
+  return !unique || new Set(v).size === v.length;
+};
+
+const isRunSplits = arrayOf(
+  shape({ segmentIndex: isNumber, tMs: numberMin(0), speed: isNumber }, ['segmentIndex', 'tMs', 'speed']),
+);
+
+const isPersistenceShape = shape(
+  {
+    version: (v) => v === PERSISTENCE_VERSION,
+    settings: shape({ quality: oneOf(QUALITIES), soundVolume: (v) => isNumber(v) && v >= 0 && v <= 1 }, [
+      'quality',
+      'soundVolume',
+    ]),
+    vehicleType: oneOf(['runner', 'raft']),
+    ghostEnabled: isBoolean,
+    lastMapId: nonEmptyString,
+    completedMaps: arrayOf(nonEmptyString, true),
+    launchHour: integerIn(0, 23),
+    launchWeather: oneOf(WEATHERS),
+    runs: mapOf(
+      shape(
+        {
+          bestScore: numberMin(0),
+          bestAirTime: numberMin(0),
+          bestTimeMs: numberMin(0),
+          ghostData: nonEmptyString,
+          splits: isRunSplits,
+          launchHour: integerIn(0, 23),
+          hydroEventHash: stringMaxLength(32),
+        },
+        ['bestScore', 'bestAirTime'],
+      ),
+    ),
+    rivals: mapOf(
+      shape(
+        {
+          codecVersion: numberMin(1),
+          mapId: nonEmptyString,
+          timeMs: numberMin(0),
+          ghostData: nonEmptyString,
+          exportedAt: isNumber,
+          splits: isRunSplits,
+          launchHour: integerIn(0, 23),
+          hydroEventHash: stringMaxLength(32),
+          qualityPreset: oneOf(QUALITIES),
+        },
+        ['codecVersion', 'mapId', 'timeMs', 'ghostData', 'exportedAt'],
+      ),
+    ),
+  },
+  ['version', 'settings', 'vehicleType', 'ghostEnabled', 'runs'],
+);
+
+/** Does `value` have the persisted-save shape (`persistence.schema.json`)? */
+export function isPersistencePayload(value: unknown): boolean {
+  return isPersistenceShape(value);
+}
 
 // =============================================================================
 // IN-MEMORY CACHE (single source between reads/writes)
@@ -105,7 +200,7 @@ export function buildRunKey(mapId: string, seed: number): string {
 // =============================================================================
 
 function normalizePayload(raw: unknown): PersistencePayload | null {
-  if (!validatePersistence(raw)) return null;
+  if (!isPersistencePayload(raw)) return null;
   const payload = raw as unknown as PersistencePayload;
   if (!Array.isArray(payload.completedMaps)) {
     payload.completedMaps = [];
@@ -163,7 +258,7 @@ function schedulePersist(): void {
 }
 
 export function savePersistence(next: PersistencePayload): void {
-  if (!validatePersistence(next)) {
+  if (!isPersistencePayload(next)) {
     console.warn('[Persistence] Refusing to save invalid payload');
     return;
   }

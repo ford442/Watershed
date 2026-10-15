@@ -526,6 +526,10 @@ fetch.
 | `vendor-three-*.js` | 1,124 kB | 1,124 kB |
 | **Total JS** | **~7.5 MB** | **3.49 MB** (gzip 2.65 → 1.04 MB) |
 
+After C (precompiled validators, dev tools lazy): entry 1,355 kB raw / 390 kB gzip, total JS 3,512 kB
+raw / 1,014 kB gzip. The entry is **12 kB larger raw than after B and 32 kB smaller gzipped** — see
+"Validators" below for why, and what removes the rest.
+
 **What keeps it that way**
 
 - `node scripts/check-build-manifest.mjs --chunks --build-log build.log`: the entry and every chunk
@@ -541,6 +545,34 @@ fetch.
 - `public/.htaccess` cache section: `immutable` for `-<8 hash chars>.(js|css|wasm)`, `no-cache` for
   `index.html`, `BUILD_ID`, `watershed_native.*`. `verify_deploy.mjs` asserts both on a live URL and
   skips them (with a note) on `localhost` / `127.0.0.1`, where `vite preview` does not run `.htaccess`.
+
+**Validators (C).** `levelValidator.ts` / `reachValidator.ts` no longer build an `Ajv` in the browser.
+`scripts/compile-validators.mjs` (`pnpm compile:validators`) turns `level.schema.json` /
+`reach.schema.json` into self-contained `src/formats/*.validate.js` with `ajv/dist/standalone`;
+`ajv` is a devDependency, and `ajv`, `ajv-formats`, `fast-uri` are gone from `pnpm why -P`. The generated
+code is trimmed of what no caller reads (`verbose`, `schemaPath`, annotation text; the `value` of an error is
+recovered from `instancePath` by `src/formats/valueAtPointer.ts`) and `validators.drift.test.ts` fails if a
+checked-in file is stale or stops matching a verbose Ajv on the authored maps plus thousands of mutated documents.
+`PersistenceSystem.ts` checks its own save shape with a hand-written guard that
+`PersistenceSystem.guard.test.ts` cross-checks against `persistence.schema.json` on a mutation corpus.
+
+The honest cost: the two validators (~185 kB minified) roughly replace Ajv + the schema JSON (~181 kB), so
+the raw entry does not shrink — only the gzip does. They stay in the entry because `maps/registry.ts`
+validates the eight bundled maps at import time and `ReachStreamer` imports `reachValidator`. Both
+callers' maps are already validated by `pnpm test`; skipping or deferring that call at runtime is the
+~237 kB-raw / ~22 kB-gzip follow-up that gets the entry toward its 700 kB target.
+
+**Dev tools (C).** `DebugPanel` and `PhysicsPerfMonitor` are `React.lazy` chunks, fetched only for `?debug=1`
+(the monitor also for `?cleanTest=1`, which `pnpm profile:physics` uses to read
+`window.__watershedPhysicsPerf`). `LevelEditor` and `WasmWaterForceTest` were already dynamic imports and are
+absent from production builds. `VehicleTuner` is **not** a dev tool — it is the raft's boost / drift /
+wall-riding physics — so it stays in the entry. `pnpm build:analyze` (`ANALYZE=1 vite build`) writes a
+treemap and raw module graph to `build-analyze/` (git-ignored).
+
+`three-stdlib` is no longer a direct dependency (the 8 `mergeBufferGeometries` imports now use three's
+`BufferGeometryUtils.mergeGeometries`), but `@react-three/drei` and `@react-three/rapier` still depend on
+it, so ~17 kB of it remains inside `vendor-three`. `pnpm audit --prod` lists two moderate `fflate`
+advisories through that path; `fflate` is tree-shaken to 0 bytes and no chunk contains `unzipSync`.
 
 **Rapier, and why it is a build plugin.** `@dimforge/rapier3d-compat@0.19.2`'s `init()` takes no
 argument (there is no `module_or_path` on the -compat build), `@react-three/rapier` hard-codes

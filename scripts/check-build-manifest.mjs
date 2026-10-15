@@ -539,11 +539,14 @@ if (opts.budget) {
       );
     }
     process.stdout.write(`${'TOTAL WASM (unique bytes)'.padEnd(46)}${pad(kB(uniqueWasmBytes), 11)}\n`);
-    if (budget.entryTargetBytes && entry) {
-      const over = entry.size - budget.entryTargetBytes;
-      process.stdout.write(
-        `entry target ${kB(budget.entryTargetBytes)}: ${over > 0 ? `${kB(over)} still to remove` : 'met'}\n`,
-      );
+    /* Targets are the issue's numbers; the ceilings above are what CI enforces today. */
+    for (const [label, actual, target] of [
+      ['entry', entry?.size, budget.entryTargetBytes],
+      ['total JS', totalJs, budget.totalJsTargetBytes],
+    ]) {
+      if (!target || actual === undefined) continue;
+      const over = actual - target;
+      process.stdout.write(`${label} target ${kB(target)}: ${over > 0 ? `${kB(over)} still to remove` : 'met'}\n`);
     }
 
     /* ---- the gates ---- */

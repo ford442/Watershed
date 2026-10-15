@@ -5,20 +5,12 @@
  * and performs additional semantic validation.
  */
 
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import * as THREE from 'three';
 import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
-// Import the JSON schema
-import levelSchema from '../formats/level.schema.json';
-
-// Initialize AJV
-const ajv = new Ajv({ allErrors: true, verbose: true });
-addFormats(ajv);
-
-// Compile schema
-const validateSchema = ajv.compile(levelSchema);
+// Precompiled from level.schema.json by scripts/compile-validators.mjs (#485 C): no Ajv in the browser.
+import validateSchema from '../formats/level.validate.js';
+import { valueAtPointer } from '../formats/valueAtPointer';
 
 // Validation result type
 export interface ValidationError {
@@ -102,7 +94,7 @@ export function validateLevel(levelData: any): ValidationResult {
       errors.push({
         field: getErrorField(err),
         error: err.message || 'Invalid value',
-        value: err.data,
+        value: valueAtPointer(levelData, err.instancePath),
         suggestion: getSuggestionForError(err),
       });
     }

@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { mergeBufferGeometries } from 'three-stdlib';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { WATER_LEVEL } from '../../constants/game';
 import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
@@ -47,7 +47,7 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
     });
   });
   try {
-    return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+    return mergeGeometries(normalized) || new THREE.BufferGeometry();
   } catch (e) {
     return new THREE.BufferGeometry();
   }

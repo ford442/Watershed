@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { mergeBufferGeometries } from 'three-stdlib';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeScopedDecorationProps } from './types';
@@ -74,7 +74,7 @@ export default function Grass({ transforms, biome = 'canyonSummer' }: BiomeScope
       buildBlade(0.95, 0.15, 0.15, base, tip).rotateY(-Math.PI / 3),
     ];
 
-    const merged = mergeBufferGeometries(blades) || blades[0];
+    const merged = mergeGeometries(blades) || blades[0];
     merged.computeVertexNormals();
     return merged;
   }, [baseColor, tipColor]);

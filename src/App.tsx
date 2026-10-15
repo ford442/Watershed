@@ -5,7 +5,6 @@ import { Loader } from './components/Loader';
 import { useProgress } from '@react-three/drei';
 import { StartMenu } from './components/StartMenu';
 import { PauseMenu } from './components/PauseMenu';
-import DebugPanel from './components/DebugPanel';
 import SWEBedDebugOverlay, { isSWEDebugEnabled } from './components/SWEBedDebugOverlay';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { SettingsSync } from './ui/SettingsSync';
@@ -49,6 +48,9 @@ import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
 import { initRunSession } from './systems/journey/runSession';
+
+// #485 C: the inspector is `?debug=1` only — a player never pays for its ~700 lines.
+const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only
@@ -649,23 +651,25 @@ function App({ graphicsBoot }: AppProps = {}) {
           )}
           {sweDebug && <SWEBedDebugOverlay />}
           {debug.debugEnabled && !cleanTest && (
-            <DebugPanel
-              debug={debug}
-              physicsDebug={physicsDebug}
-              onTogglePhysicsDebug={setPhysicsDebug}
-              rendererPreference={rendererPreference}
-              onRendererPreferenceChange={handleRendererPreferenceChange}
-              materialBackend={materialBackend}
-              onMaterialBackendChange={handleMaterialBackendChange}
-              wireframeDebug={wireframeDebug}
-              onToggleWireframeDebug={setWireframeDebug}
-              onEnableCleanTest={() => {
-                setCleanTestMode(true);
-                setCleanTestActive(true);
-                setPhysicsDebug(false);
-                setWireframeDebug(false);
-              }}
-            />
+            <React.Suspense fallback={null}>
+              <DebugPanel
+                debug={debug}
+                physicsDebug={physicsDebug}
+                onTogglePhysicsDebug={setPhysicsDebug}
+                rendererPreference={rendererPreference}
+                onRendererPreferenceChange={handleRendererPreferenceChange}
+                materialBackend={materialBackend}
+                onMaterialBackendChange={handleMaterialBackendChange}
+                wireframeDebug={wireframeDebug}
+                onToggleWireframeDebug={setWireframeDebug}
+                onEnableCleanTest={() => {
+                  setCleanTestMode(true);
+                  setCleanTestActive(true);
+                  setPhysicsDebug(false);
+                  setWireframeDebug(false);
+                }}
+              />
+            </React.Suspense>
           )}
           {cleanTest && debug.debugEnabled && (
             <button

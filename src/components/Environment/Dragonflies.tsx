@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { mergeBufferGeometries } from 'three-stdlib';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import {
@@ -41,7 +41,7 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[], useGroups
     });
   });
   try {
-    return mergeBufferGeometries(normalized, useGroups) || new THREE.BufferGeometry();
+    return mergeGeometries(normalized, useGroups) || new THREE.BufferGeometry();
   } catch (e) {
     return new THREE.BufferGeometry();
   }

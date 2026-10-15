@@ -162,6 +162,19 @@ function rapierWasmPreloadPlugin(): Plugin {
   };
 }
 
+/** `pnpm build:analyze` (= `ANALYZE=1 vite build`): a treemap + raw module graph of the
+ *  production bundle under build-analyze/ (outside build/, so the manifest guard and the
+ *  deploy zip never see it). Dev-only: the import is lazy, so a normal build and Vitest
+ *  (which merges this config) never load it. */
+const analyzePlugins: Plugin[] = [];
+if (process.env.ANALYZE === '1') {
+  const { visualizer } = await import('rollup-plugin-visualizer');
+  analyzePlugins.push(
+    visualizer({ filename: 'build-analyze/stats.html', template: 'treemap', gzipSize: true, title: 'Watershed bundle' }) as Plugin,
+    visualizer({ filename: 'build-analyze/stats.json', template: 'raw-data', gzipSize: true }) as Plugin,
+  );
+}
+
 export default defineConfig({
   define: {
     __WATERSHED_ASSET_BASE__: JSON.stringify('./'),
@@ -173,6 +186,7 @@ export default defineConfig({
     sourcemapsOutOfBuildPlugin(),
     rapierWasmAssetPlugin(),
     rapierWasmPreloadPlugin(),
+    ...analyzePlugins,
   ],
   resolve: {
     // Prevent duplicate Three.js when three/webgpu is lazy-loaded in a separate chunk.
