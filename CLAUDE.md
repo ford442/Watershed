@@ -101,6 +101,7 @@ src/
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
+├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — TS mirror of emscripten/terrain.cpp (#487)
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
@@ -329,6 +330,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
 | `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
 | `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
+| `emscripten/terrain.cpp` / `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes (C++ + TS mirror, parity-tested); the canyon and hull builders read the tile (#487, ABI 13) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

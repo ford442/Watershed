@@ -2,14 +2,31 @@ import * as THREE from 'three';
 import { isAutumnLike, type BiomeId } from '../../../configs/biomes';
 import type { TrackBiomeProfile } from '../../../configs/TrackBiomes';
 import { WALL_WATERLINE_Y, SHADERS, WATER_LEVEL } from '../../../constants/game';
-import { hasFiniteCoordinates, lerpValue } from '../utils';
+import { hasFiniteCoordinates } from '../utils';
 import type {
   ChannelProfileSample,
-  ChannelShape,
   PlungeImpactPlacement,
   SegmentKind,
   WaterChannelShape,
 } from '../types';
+import {
+  buildTerrainTile,
+  buildWallShellHeights,
+  packChannelProfile,
+  sampleChannelShape,
+  TerrainProfile,
+  type TerrainTile,
+  type TubeProfile,
+} from '../../../terrain/terrainTile';
+
+// The profile itself lives in src/terrain/terrainTile.ts (the TS mirror of
+// emscripten/terrain.cpp, #487); these names stay importable from here.
+export {
+  applyTubeProfile,
+  computeCanyonFloorHeight,
+  type CanyonHeightSample,
+  type TubeProfile,
+} from '../../../terrain/terrainTile';
 
 export interface GeometryBuildContext {
   segmentPath: THREE.CatmullRomCurve3;
@@ -26,27 +43,6 @@ export interface GeometryBuildContext {
    * segments, which is every biome that is not glacial melt or a hydro pipe.
    */
   tubeProfile?: TubeProfile | null;
-}
-
-/**
- * Tube cross-section (`plan.md` §1: "produce inward-curving walls … to form a
- * tube/tunnel").
- *
- * The canyon mesh is a heightfield in `x`, so a tunnel cannot come from `y`
- * alone — the wall vertices have to move inward as they climb. `curl` folds
- * them back over the channel, `ceilingHeight` is where the crown lands. The
- * corridor itself is never touched, so the thalweg, the water mesh and the SWE
- * bed sampler all keep reading the same floor they did before.
- */
-export interface TubeProfile {
-  /**
-   * Inward fold, 0 (open canyon) – 1 (walls meet on the centreline). Above
-   * ~2/3 the fold is non-monotone in x, which is the overhang: the crown sits
-   * inboard of the springing.
-   */
-  curl: number;
-  /** Local Y of the tube crown, in the same datum as `yHeight`. */
-  ceilingHeight: number;
 }
 
 /** Glacial melt: a near-closed ice tube with a slot of sky at the crown. */
@@ -90,76 +86,6 @@ export function resolveTubeProfile(opts: {
   // alone is not enough, or every plunge in the game would grow a roof.
   if (opts.biome === 'hydroDam' && opts.type === 'waterfall') return OVERFLOW_PIPE_PROFILE;
   return null;
-}
-
-/**
- * Fold one canyon vertex into the tube cross-section.
- *
- * Inside `corridorHalfWidth` nothing moves. Outside it the vertex climbs an
- * arc toward `ceilingHeight` while `x` is pulled back toward the centreline by
- * `curl * climb²`, so the wall leaves the springing vertical and finishes
- * overhanging.
- */
-export function applyTubeProfile(
-  xLocal: number,
-  yHeight: number,
-  corridorHalfWidth: number,
-  canyonHalfWidth: number,
-  profile: TubeProfile,
-): { x: number; y: number } {
-  const edge = Math.abs(xLocal);
-  const open = Math.max(0.5, Math.min(corridorHalfWidth, canyonHalfWidth * 0.9));
-  if (!Number.isFinite(edge) || edge <= open) return { x: xLocal, y: yHeight };
-
-  const span = Math.max(1e-3, canyonHalfWidth - open);
-  const climb = Math.min(1, (edge - open) / span);
-  const curl = THREE.MathUtils.clamp(profile.curl, 0, 1);
-  const folded = open + (edge - open) * (1 - curl * climb * climb);
-
-  // Quarter-sine arc: leaves the springing at the canyon's own wall height and
-  // lands exactly on the authored crown, so the roof is a number an author set
-  // rather than one that fell out of the biome's wall curve.
-  const arc = Math.sin(climb * Math.PI * 0.5);
-  const y = yHeight * (1 - arc) + profile.ceilingHeight * arc;
-
-  return { x: Math.sign(xLocal) * folded, y };
-}
-
-function sampleChannelShape(
-  channelProfile: readonly ChannelProfileSample[],
-  waterWidth: number,
-  t: number
-): ChannelShape {
-  if (!channelProfile.length) {
-    return {
-      leftHalfWidth: waterWidth * 0.5,
-      rightHalfWidth: waterWidth * 0.5,
-      corridorHalfWidth: Math.max(3.2, waterWidth * 0.5 - 1.2),
-      floorDepth: 0,
-      floorWave: 0,
-      riffleStrength: 0,
-      gravelBarSide: 1,
-      undercutSide: -1,
-      flowScale: 1,
-    };
-  }
-  const scaled = THREE.MathUtils.clamp(t, 0, 1) * (channelProfile.length - 1);
-  const lower = Math.floor(scaled);
-  const upper = Math.min(channelProfile.length - 1, lower + 1);
-  const alpha = scaled - lower;
-  const from = channelProfile[lower];
-  const to = channelProfile[upper];
-  return {
-    leftHalfWidth: lerpValue(from.leftHalfWidth, to.leftHalfWidth, alpha),
-    rightHalfWidth: lerpValue(from.rightHalfWidth, to.rightHalfWidth, alpha),
-    corridorHalfWidth: lerpValue(from.corridorHalfWidth, to.corridorHalfWidth, alpha),
-    floorDepth: lerpValue(from.floorDepth, to.floorDepth, alpha),
-    floorWave: lerpValue(from.floorWave, to.floorWave, alpha),
-    riffleStrength: lerpValue(from.riffleStrength, to.riffleStrength, alpha),
-    gravelBarSide: alpha < 0.5 ? from.gravelBarSide : to.gravelBarSide,
-    undercutSide: alpha < 0.5 ? from.undercutSide : to.undercutSide,
-    flowScale: lerpValue(from.flowScale, to.flowScale, alpha),
-  };
 }
 
 function sampleWaterChannelShape(
@@ -210,67 +136,6 @@ export const CANYON_VISUAL_SEGMENTS_X = 40;
  */
 export const CANYON_COLLISION_SUBDIVISION_DIVISOR = 4;
 
-export interface CanyonHeightSample {
-  yHeight: number;
-  /** Channel shape at this sample — used for vertex coloring on the visual mesh. */
-  channelShape: ChannelShape;
-  normalizedDist: number;
-}
-
-/**
- * Shared U-profile height used by visual and collision canyon meshes.
- * Collision omits high-frequency rock noise so contacts stay smooth without
- * changing bank angles enough to break wall-ride / grounding raycasts.
- */
-export function computeCanyonFloorHeight(
-  xLocal: number,
-  zLocal: number,
-  pathLen: number,
-  canyonWidth: number,
-  waterWidth: number,
-  channelProfile: readonly ChannelProfileSample[],
-  isSlotCanyon: boolean,
-  options: { includeRockNoise?: boolean } = {}
-): CanyonHeightSample {
-  const { includeRockNoise = true } = options;
-  const t = (zLocal + pathLen / 2) / pathLen;
-  const safeT = Math.max(0, Math.min(1, t));
-  const channelShape = sampleChannelShape(channelProfile, waterWidth, safeT);
-  const signedBankWidth = xLocal < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
-  const corridorWidth = Math.max(1.2, channelShape.corridorHalfWidth);
-  const distFromCenter = Math.abs(xLocal);
-  const normalizedDist = distFromCenter / (canyonWidth * 0.45);
-  const bankRatio = distFromCenter / Math.max(0.001, signedBankWidth);
-  const gravelBarInfluence = channelShape.gravelBarSide === Math.sign(xLocal || 1) ? 1 : 0;
-  const undercutInfluence = channelShape.undercutSide === Math.sign(xLocal || 1) ? 1 : 0;
-
-  let yHeight = isSlotCanyon
-    ? 22 + Math.pow(Math.max(0, normalizedDist), 1.8) * 18
-    : Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-
-  if (distFromCenter < signedBankWidth) {
-    const inChannel = distFromCenter / Math.max(0.001, signedBankWidth);
-    const corridorEase = THREE.MathUtils.smoothstep(inChannel, 0, 1);
-    yHeight *= isSlotCanyon ? 0.18 : 0.1;
-    yHeight -= channelShape.floorDepth * 1.4;
-    yHeight += channelShape.floorWave * (distFromCenter < corridorWidth ? 0.2 : 0.55);
-    yHeight += Math.max(0, channelShape.riffleStrength) * inChannel * 0.35;
-    yHeight += Math.max(0, 1 - corridorEase) * 0.05;
-  } else {
-    const aboveBank = Math.max(0, bankRatio - 1);
-    yHeight += aboveBank * aboveBank * 4.5 * undercutInfluence;
-    yHeight -= aboveBank * 1.25 * gravelBarInfluence;
-  }
-
-  if (includeRockNoise) {
-    const rockNoise =
-      Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
-    yHeight += rockNoise * (0.5 + normalizedDist);
-  }
-
-  return { yHeight, channelShape, normalizedDist };
-}
-
 export function canyonSubdivisionCounts(
   pathLen: number,
   kind: 'visual' | 'collision'
@@ -288,6 +153,60 @@ export function canyonSubdivisionCounts(
 }
 
 /**
+ * The segment's floor tile at one grid density (#487). The visual mesh and the
+ * hull ask for the same profile; only the grid and the rock noise differ.
+ */
+export function buildCanyonTile(
+  ctx: GeometryBuildContext,
+  pathLength: number,
+  kind: 'visual' | 'collision'
+): TerrainTile | null {
+  const { segmentsX, segmentsZ } = canyonSubdivisionCounts(pathLength, kind);
+  return buildTerrainTile({
+    pathLength,
+    canyonWidth: ctx.canyonWidth,
+    waterWidth: ctx.waterWidth,
+    segmentsX,
+    segmentsZ,
+    profile: ctx.isSlotCanyon ? TerrainProfile.SLOT : TerrainProfile.OPEN,
+    rockNoise: kind === 'visual',
+    tube: ctx.tubeProfile ?? null,
+    channel: packChannelProfile(ctx.channelProfile),
+  });
+}
+
+/**
+ * Path point per grid row (row iz sits at t = iz / segmentsZ): every vertex of
+ * a row shares it, so the curve is evaluated once per row, not once per vertex.
+ */
+function rowPathPoints(
+  segmentPath: THREE.CatmullRomCurve3,
+  segmentsZ: number,
+  segmentId: number
+): THREE.Vector3[] {
+  return Array.from({ length: segmentsZ + 1 }, (_, iz) => safePathPoint(segmentPath, iz / segmentsZ, segmentId));
+}
+
+/** Write path point + local tile offset into a vertex, or the fallback when non-finite. */
+function setTileVertex(
+  positions: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+  i: number,
+  point: THREE.Vector3,
+  x: number,
+  y: number,
+  fallbackY = 0
+): void {
+  const finalX = point.x + x;
+  const finalY = point.y + y;
+  const finalZ = point.z;
+  if (Number.isFinite(finalX) && Number.isFinite(finalY) && Number.isFinite(finalZ)) {
+    positions.setXYZ(i, finalX, finalY, finalZ);
+  } else {
+    positions.setXYZ(i, 0, fallbackY, 0);
+  }
+}
+
+/**
  * Build canyon floor BufferGeometry for a segment path.
  * Returns null when path length is invalid.
  */
@@ -301,7 +220,6 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     channelProfile,
     isSlotCanyon,
     isGlacier,
-    tubeProfile,
   } = ctx;
 
   const len = segmentPath.getLength();
@@ -310,7 +228,16 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     return null;
   }
 
-  const { segmentsX, segmentsZ } = canyonSubdivisionCounts(len, 'visual');
+  const tile = buildCanyonTile(ctx, len, 'visual');
+  if (!tile) {
+    console.warn(`[TrackSegment ${segmentId}] Invalid canyon tile (width ${canyonWidth})`);
+    return null;
+  }
+  const { segmentsX, segmentsZ } = tile;
+  const rowPoints = rowPathPoints(segmentPath, segmentsZ, segmentId);
+  const rowFloorDepth = rowPoints.map(
+    (_, iz) => sampleChannelShape(channelProfile, waterWidth, iz / segmentsZ).floorDepth
+  );
 
   const geo = new THREE.PlaneGeometry(canyonWidth, len, segmentsX, segmentsZ);
   geo.rotateX(-Math.PI / 2);
@@ -383,27 +310,12 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     vertex.fromBufferAttribute(positions, i);
     const xLocal = vertex.x;
     const zLocal = vertex.z;
-    const { yHeight: floorHeight, channelShape } = computeCanyonFloorHeight(
-      xLocal,
-      zLocal,
-      len,
-      canyonWidth,
-      waterWidth,
-      channelProfile,
-      isSlotCanyon,
-      { includeRockNoise: true }
-    );
-    // Fold before colouring, so the crown is tinted by the height it ends up
-    // at rather than the open-canyon wall height it would have had.
-    const tubed = tubeProfile
-      ? applyTubeProfile(xLocal, floorHeight, channelShape.corridorHalfWidth, canyonWidth * 0.5, tubeProfile)
-      : { x: xLocal, y: floorHeight };
-    const yHeight = tubed.y;
-    const t = (zLocal + len / 2) / len;
-    const safeT = Math.max(0, Math.min(1, t));
-    const point = safePathPoint(segmentPath, safeT, segmentId);
+    const row = Math.floor(i / (segmentsX + 1));
+    // The tile is already folded, so the crown is tinted by the height it ends
+    // up at rather than the open-canyon wall height it would have had.
+    const yHeight = tile.h[i];
 
-    const depthTint = THREE.MathUtils.clamp(-channelShape.floorDepth * 0.25, 0, 0.2);
+    const depthTint = THREE.MathUtils.clamp(-rowFloorDepth[row] * 0.25, 0, 0.2);
     const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2 + depthTint) / 2.5));
     if (dryness < 0.2) {
       color.copy(wetColor).lerp(shoreColor, dryness / 0.2);
@@ -423,15 +335,7 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
 
-    const finalX = point.x + tubed.x;
-    const finalY = point.y + yHeight;
-    const finalZ = point.z;
-
-    if (Number.isFinite(finalX) && Number.isFinite(finalY) && Number.isFinite(finalZ)) {
-      positions.setXYZ(i, finalX, finalY, finalZ);
-    } else {
-      positions.setXYZ(i, 0, 0, 0);
-    }
+    setTileVertex(positions, i, rowPoints[row], tile.x[i], yHeight);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
@@ -447,8 +351,7 @@ export function buildCanyonGeometry(ctx: GeometryBuildContext): THREE.BufferGeom
  * trimesh RigidBody so the visual mesh no longer owns Rapier colliders.
  */
 export function buildCollisionGeometry(ctx: GeometryBuildContext): THREE.BufferGeometry | null {
-  const { segmentPath, segmentId, canyonWidth, waterWidth, channelProfile, isSlotCanyon, tubeProfile } =
-    ctx;
+  const { segmentPath, segmentId, canyonWidth } = ctx;
 
   const len = segmentPath.getLength();
   if (!len || len <= 0 || !Number.isFinite(len)) {
@@ -456,44 +359,22 @@ export function buildCollisionGeometry(ctx: GeometryBuildContext): THREE.BufferG
     return null;
   }
 
-  const { segmentsX, segmentsZ } = canyonSubdivisionCounts(len, 'collision');
+  // Same tile as the visual mesh at the hull's grid, folded the same way —
+  // the hull must ride the tube it can see.
+  const tile = buildCanyonTile(ctx, len, 'collision');
+  if (!tile) {
+    console.warn(`[TrackSegment ${segmentId}] Invalid collision tile (width ${canyonWidth})`);
+    return null;
+  }
+  const { segmentsX, segmentsZ } = tile;
   const geo = new THREE.PlaneGeometry(canyonWidth, len, segmentsX, segmentsZ);
   geo.rotateX(-Math.PI / 2);
 
   const positions = geo.attributes.position;
-  const vertex = new THREE.Vector3();
+  const rowPoints = rowPathPoints(segmentPath, segmentsZ, segmentId);
 
   for (let i = 0; i < positions.count; i++) {
-    vertex.fromBufferAttribute(positions, i);
-    const xLocal = vertex.x;
-    const zLocal = vertex.z;
-    const { yHeight: floorHeight, channelShape } = computeCanyonFloorHeight(
-      xLocal,
-      zLocal,
-      len,
-      canyonWidth,
-      waterWidth,
-      channelProfile,
-      isSlotCanyon,
-      { includeRockNoise: false }
-    );
-    // Same fold as the visual mesh — the hull must ride the tube it can see.
-    const tubed = tubeProfile
-      ? applyTubeProfile(xLocal, floorHeight, channelShape.corridorHalfWidth, canyonWidth * 0.5, tubeProfile)
-      : { x: xLocal, y: floorHeight };
-    const t = (zLocal + len / 2) / len;
-    const safeT = Math.max(0, Math.min(1, t));
-    const point = safePathPoint(segmentPath, safeT, segmentId);
-
-    const finalX = point.x + tubed.x;
-    const finalY = point.y + tubed.y;
-    const finalZ = point.z;
-
-    if (Number.isFinite(finalX) && Number.isFinite(finalY) && Number.isFinite(finalZ)) {
-      positions.setXYZ(i, finalX, finalY, finalZ);
-    } else {
-      positions.setXYZ(i, 0, 0, 0);
-    }
+    setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))], tile.x[i], tile.h[i]);
   }
 
   // Drop UVs — collision mesh is invisible and Rapier only needs positions + indices.
@@ -521,6 +402,20 @@ export function buildWallShellGeometry(ctx: GeometryBuildContext): THREE.BufferG
   const shellWidth = isSlotCanyon ? canyonWidth * 0.92 : canyonWidth * 1.5;
   const segmentsX = 24;
   const segmentsZ = Math.max(2, Math.floor(len / 2));
+  const shellHeights = buildWallShellHeights({
+    pathLength: len,
+    shellWidth,
+    segmentsX,
+    segmentsZ,
+    profile: isSlotCanyon ? TerrainProfile.SLOT : TerrainProfile.OPEN,
+    wallHeight: biomeProfile.wallHeight,
+    segmentId,
+  });
+  if (!shellHeights) {
+    console.warn(`[TrackSegment ${segmentId}] Invalid wall shell (width ${shellWidth})`);
+    return null;
+  }
+  const rowPoints = rowPathPoints(segmentPath, segmentsZ, segmentId);
 
   const geo = new THREE.PlaneGeometry(shellWidth, len, segmentsX, segmentsZ);
   geo.rotateX(-Math.PI / 2);
@@ -568,30 +463,13 @@ export function buildWallShellGeometry(ctx: GeometryBuildContext): THREE.BufferG
     vertex.fromBufferAttribute(positions, i);
     const xLocal = vertex.x;
     const zLocal = vertex.z;
-    const distFromCenter = Math.abs(xLocal);
 
-    let yHeight = isSlotCanyon
-      ? biomeProfile.wallHeight + distFromCenter * 0.18
-      : 15 + distFromCenter * 0.5;
-    yHeight +=
-      Math.sin(zLocal * 0.1) * (isSlotCanyon ? 1.8 : 3) +
-      Math.cos(xLocal * 0.2) * (isSlotCanyon ? 1.1 : 2);
+    // Wall height above the path point: emscripten/terrain.cpp buildWallShell (#487).
+    const localY = shellHeights[i];
     const strataWarp =
       Math.sin(zLocal * 0.14 + xLocal * 0.06 + segmentId * 0.17) * (isSlotCanyon ? 1.6 : 1.1) +
       Math.cos(zLocal * 0.22 - xLocal * 0.09) * (isSlotCanyon ? 0.8 : 0.55);
 
-    const ribPhase = segmentId * 0.91;
-    const ribbing =
-      Math.sin(zLocal * (isSlotCanyon ? 0.5 : 0.38) + xLocal * 0.12 + ribPhase) *
-      Math.sin(xLocal * 0.22 - ribPhase * 0.6);
-    yHeight += ribbing * (isSlotCanyon ? 1.1 : 0.7);
-
-    const shelfRaw = Math.sin(zLocal * 0.085 + xLocal * 0.04 + segmentId * 0.21) * 0.5 + 0.5;
-    const shelfSteps = isSlotCanyon ? 5.0 : 3.0;
-    const shelf = Math.floor(shelfRaw * shelfSteps) / shelfSteps;
-    yHeight += (shelf - 0.5) * (isSlotCanyon ? 2.2 : 1.2);
-
-    const localY = yHeight - 2;
     const relY = localY - WALL_WATERLINE_Y;
     const warpedRelY = relY + strataWarp;
 
@@ -639,19 +517,7 @@ export function buildWallShellGeometry(ctx: GeometryBuildContext): THREE.BufferG
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
 
-    const t = (zLocal + len / 2) / len;
-    const safeT = Math.max(0, Math.min(1, t));
-    const point = safePathPoint(segmentPath, safeT, segmentId);
-
-    const finalX = point.x + xLocal;
-    const finalY = point.y + yHeight - 2;
-    const finalZ = point.z;
-
-    if (Number.isFinite(finalX) && Number.isFinite(finalY) && Number.isFinite(finalZ)) {
-      positions.setXYZ(i, finalX, finalY, finalZ);
-    } else {
-      positions.setXYZ(i, 0, 10, 0);
-    }
+    setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))], xLocal, localY, 10);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setAttribute('mossMask', new THREE.BufferAttribute(mossMask, 1));

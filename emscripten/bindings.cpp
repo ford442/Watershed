@@ -16,7 +16,7 @@
  *
  * This is the only translation unit that includes <emscripten/emscripten.h> —
  * every other header (common.h, forces.h, swe.h, chores.h, particles.h,
- * routing.h) compiles on the host too.
+ * routing.h, terrain.h) compiles on the host too.
  *
  * Build:
  *   cd emscripten && ./build.sh      (or: pnpm build:wasm)
@@ -27,9 +27,11 @@
 #include "chores.h"
 #include "particles.h"
 #include "routing.h"
+#include "terrain.h"
 
 #include <emscripten/emscripten.h>
 #include <cstdint>
+#include <span>
 #include <type_traits>
 
 // ---------------------------------------------------------------------------
@@ -53,8 +55,11 @@
 //       routedEdgeState take a trailing out-pointer (8 / 3 / 2 floats) instead
 //       of returning a value object. MIN_WASM_ABI_VERSION moves to 12: the TS
 //       binding layer cannot drive an Embind binary at all.
+//  13 — terrain tiles (#487): buildTerrainTile / buildWallShell. Additive,
+//       but MIN_WASM_ABI_VERSION moves to 13 with it: the loader binds every
+//       WASM_ABI entry or rejects, so an ABI 12 binary cannot load anyway.
 // ---------------------------------------------------------------------------
-static constexpr int WATERSHED_ABI_VERSION = 12;
+static constexpr int WATERSHED_ABI_VERSION = 13;
 
 // Out-pointer layouts. Mirrored by the readers in wasmAbi.ts.
 static_assert(std::is_standard_layout_v<WaterForceResult> && sizeof(WaterForceResult) == 8 * sizeof(float),
@@ -192,6 +197,55 @@ WS_EXPORT void ws_routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr
 /** Writes RoutedEdge (eta, speed) to `outPtr`. */
 WS_EXPORT void ws_routedEdgeState(float Q, float Qref, float H, float g, uintptr_t outPtr) {
     writeOut(outPtr, routedEdgeState(Q, Qref, H, g));
+}
+
+// ---- Terrain tiles (terrain.h, #487) ---------------------------------------
+
+/**
+ * Fill TERRAIN_TILE_PLANES planes of (segmentsX + 1)(segmentsZ + 1) floats at
+ * `outPtr` (plane-major). `channelPtr` holds channelCount packed samples
+ * (TERRAIN_CHANNEL_STRIDE floats each), or 0 for the default channel. Returns
+ * the vertex count, or 0 on invalid input (nothing written).
+ */
+WS_EXPORT int ws_buildTerrainTile(double pathLength, double canyonWidth, double waterWidth,
+                                  int segmentsX, int segmentsZ, int profile,
+                                  int rockNoise, int hasTube, double tubeCurl, double tubeCeiling,
+                                  uintptr_t channelPtr, int channelCount, uintptr_t outPtr) {
+    const int n = terrainVertexCount(segmentsX, segmentsZ);
+    if (n == 0 || outPtr == 0 || channelCount < 0 || (channelCount > 0 && channelPtr == 0)) return 0;
+    TileParams params;
+    params.pathLength = pathLength;
+    params.canyonWidth = canyonWidth;
+    params.waterWidth = waterWidth;
+    params.segmentsX = segmentsX;
+    params.segmentsZ = segmentsZ;
+    params.profile = profile;
+    params.rockNoise = rockNoise != 0;
+    params.hasTube = hasTube != 0;
+    params.tubeCurl = tubeCurl;
+    params.tubeCeiling = tubeCeiling;
+    if (channelCount > 0) {
+        params.channel = std::span<const float>(reinterpret_cast<const float*>(channelPtr),
+                                                static_cast<size_t>(channelCount) * TERRAIN_CHANNEL_STRIDE);
+    }
+    TerrainTile tile{std::span<float>(reinterpret_cast<float*>(outPtr), static_cast<size_t>(n) * TERRAIN_TILE_PLANES)};
+    return buildTerrainTile(params, tile);
+}
+
+/** One plane of wall-shell heights at `outPtr`. Returns the vertex count, or 0. */
+WS_EXPORT int ws_buildWallShell(double pathLength, double shellWidth, int segmentsX, int segmentsZ,
+                                int profile, double wallHeight, int segmentId, uintptr_t outPtr) {
+    const int n = terrainVertexCount(segmentsX, segmentsZ);
+    if (n == 0 || outPtr == 0) return 0;
+    WallShellParams params;
+    params.pathLength = pathLength;
+    params.shellWidth = shellWidth;
+    params.segmentsX = segmentsX;
+    params.segmentsZ = segmentsZ;
+    params.profile = profile;
+    params.wallHeight = wallHeight;
+    params.segmentId = segmentId;
+    return buildWallShell(params, std::span<float>(reinterpret_cast<float*>(outPtr), static_cast<size_t>(n)));
 }
 
 // ---- gpu-chores -----------------------------------------------------------

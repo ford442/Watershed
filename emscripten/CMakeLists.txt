@@ -15,6 +15,7 @@ set(COMPUTE_SOURCES
     chores.cpp
     particles.cpp
     routing.cpp
+    terrain.cpp
 )
 
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
@@ -83,7 +84,7 @@ if(EMSCRIPTEN)
         # NaN guards in chores.cpp that keep NaN out of the HUD histogram /
         # reduce chores. Keep the rest of fast-math (reassociation for the
         # vectoriser) but let isfinite / isnan mean what they say.
-        # -flto: five small TUs; lets calculateWaterForce etc. inline across
+        # -flto: six small TUs; lets calculateWaterForce etc. inline across
         # forces.cpp / bindings.cpp. Also passed at link (below).
         set(EM_COMPILE_FLAGS
             -O3
