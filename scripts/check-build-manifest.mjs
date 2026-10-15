@@ -123,7 +123,14 @@ const HASHED_RE = /-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/;
 /* ------------------------------------------------------------------ */
 
 function parseArgs(argv) {
-  const opts = { buildDir: 'build', publicDir: 'public', manifest: false, json: null };
+  const opts = {
+    buildDir: 'build',
+    publicDir: 'public',
+    manifest: false,
+    json: null,
+    chunks: false,
+    buildLog: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const next = () => {
@@ -136,6 +143,8 @@ function parseArgs(argv) {
     else if (arg === '--public-dir') opts.publicDir = next();
     else if (arg === '--manifest') opts.manifest = true;
     else if (arg === '--json') opts.json = next();
+    else if (arg === '--chunks') opts.chunks = true;
+    else if (arg === '--build-log') opts.buildLog = next();
     else if (arg === '--help' || arg === '-h') {
       process.stdout.write(HELP);
       process.exit(0);
@@ -150,6 +159,10 @@ const HELP = `check-build-manifest.mjs — assert the unhashed-passenger contrac
   --public-dir <dir>  passenger sources          (default: public)
   --manifest          print the full manifest to stdout
   --json <file>       write the manifest as JSON
+  --chunks            assert the GLSL boot's eager chunks carry no three.webgpu node stack
+                      (#485 A); with --build-log, also that vite emitted no
+                      "dynamic import will not move module into another chunk" warning
+  --build-log <file>  captured \`vite build\` stdout+stderr to scan (used by --chunks)
   -h, --help          this text
 
 Exit 0 contract holds | 1 violated | 2 cannot run
@@ -388,6 +401,62 @@ for (const entry of manifest) {
     entry.hashed,
     `${opts.buildDir}/${entry.path} lives in assets/ but has no 8-char content hash`,
   );
+}
+
+/* --- 9. --chunks: the GLSL boot must not carry the node stack (#485 A) -- */
+
+/* Why markers and not a bare "WebGPURenderer" grep: app code legitimately holds
+ * that string (`isWebGPURenderer` flag reads, diagnostic labels), so it appears
+ * in the entry on a healthy build. These four only exist inside three.webgpu.js:
+ * the WGSL builder, the WebGL2 fallback backend, the node builder base class, and
+ * the renderer class's own `isWebGPURenderer = true` assignment. */
+const WEBGPU_STACK_MARKERS = [
+  { label: 'WGSLNodeBuilder', re: /WGSLNodeBuilder/ },
+  { label: 'WebGLBackend', re: /WebGLBackend/ },
+  { label: 'NodeBuilder', re: /NodeBuilder/ },
+  { label: 'WebGPURenderer class (isWebGPURenderer = true)', re: /isWebGPURenderer\s*=\s*(!0|true)\b/ },
+];
+
+if (opts.chunks) {
+  const eager = new Set(
+    manifest.filter((e) => /^assets\/index-[^/]+\.js$/.test(e.path)).map((e) => e.path),
+  );
+  if (indexEntry) {
+    const html = fs.readFileSync(path.join(buildDir, 'index.html'), 'utf8');
+    for (const m of html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.js)"/g)) eager.add(m[1]);
+  }
+  check(eager.size > 0, '--chunks: found no eager JS chunk (assets/index-*.js) to inspect');
+  for (const rel of [...eager].sort()) {
+    const text = fs.readFileSync(path.join(buildDir, rel), 'utf8');
+    for (const { label, re } of WEBGPU_STACK_MARKERS) {
+      check(
+        !re.test(text),
+        `--chunks: ${rel} (loaded on every boot) contains ${label} — three.webgpu.js is in the ` +
+          'GLSL entry. Some module reachable from src/index.tsx imports three/webgpu, three/tsl ' +
+          'or a *NodeMaterial statically; route it through src/materials/nodeMaterials.ts.',
+      );
+    }
+  }
+  notes.push(`--chunks: ${[...eager].sort().join(', ')} carry no three.webgpu node-stack markers`);
+
+  if (opts.buildLog) {
+    const logPath = path.resolve(process.cwd(), opts.buildLog);
+    if (!fs.existsSync(logPath)) {
+      failures.push(`--build-log ${opts.buildLog} does not exist`);
+    } else {
+      const log = fs.readFileSync(logPath, 'utf8');
+      const hits = log.split('\n').filter((l) => l.includes('will not move module into another chunk'));
+      check(
+        hits.length === 0,
+        `--chunks: vite build emitted ${hits.length} "dynamic import will not move module into ` +
+          `another chunk" warning(s) — a lazy chunk is also imported statically, so the split is a ` +
+          `no-op:\n${hits.map((h) => `      ${h.trim().replace(/\/[^ ]*\/node_modules\/\.pnpm\//g, '')}`).join('\n')}`,
+      );
+      notes.push(`--chunks: build log ${opts.buildLog} has ${hits.length} "will not move module" warnings`);
+    }
+  } else {
+    notes.push('--chunks: no --build-log given, so the "will not move module" warning count was NOT checked');
+  }
 }
 
 /* ------------------------------------------------------------------ */
