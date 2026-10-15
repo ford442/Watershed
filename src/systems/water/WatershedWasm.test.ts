@@ -12,30 +12,10 @@
  *   4. Physics correctness — reference values derived from the C++ formulas.
  */
 
-import {
-  buoyancyFallback,
-  calculateBuoyancyAndDragFallback,
-  calculateWaterForceFallback,
-  createWaterForceBatch,
-  dragForceFallback,
-  createSWEGrid,
-  heapF32,
-  getWasm,
-  peekWasm,
-  peekWasmInitError,
-  __resetWasmLoaderForTests,
-  MIN_WASM_ABI_VERSION,
-  PARTICLE_SOA_PLANES,
-  resolveWasmInitTimeoutMs,
-  WASM_INIT_TIMEOUT_MS,
-  WasmInitTimeoutError,
-  isWasmProvenanceMismatchError,
-  hashGlueWasmPair,
-  type Vec3,
-  type WatershedNativeModule,
-  type SWEGrid,
-} from './WatershedWasm';
-import { WASM_ARTIFACT_STAMP } from './wasmArtifactStamp';
+import { heapF32, MIN_WASM_ABI_VERSION, PARTICLE_SOA_PLANES, type Vec3, type WatershedNativeModule } from './wasmAbi';
+import { getWasm, peekWasm } from './wasmLoader';
+import { buoyancyFallback, calculateBuoyancyAndDragFallback, calculateWaterForceFallback, dragForceFallback } from './waterForceFallback';
+import { createWaterForceBatch, createSWEGrid } from './WatershedWasm';
 
 // ---------------------------------------------------------------------------
 // 1. Export surface
@@ -50,11 +30,10 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 8+, since applySWEEvent/particle SoA are now guaranteed exports', () => {
-    // ABI 8 is the floor: applySWEEvent and the particle SoA exports are
-    // required (non-optional) in WatershedNativeModule, so an older binary
-    // cannot be accepted — this floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(8);
+  it('requires ABI 12+, the plain C ABI the binding table describes', () => {
+    // ABI 12 replaced Embind with ws_* C exports (#467); wasmAbi.ts cannot
+    // bind an older binary at all, so the floor must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBe(12);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -335,6 +314,19 @@ function buildMockModule(): WatershedNativeModule {
     stepWaterfallParticles() { return 1; },
     stepSplashParticles() { /* heap views only — no C++ numerics in this mock */ },
     applySWEEvent() { /* source-term kernel not exercised by this mock */ },
+    // Not exercised here; present because the bound module always has them.
+    stepShallowWaterInflow() {},
+    scrollShallowWater() {},
+    reserveShallowWaterScratch() {},
+    routeReach() {},
+    routeReachSteady() {},
+    routeReachTravelTime() {},
+    routedEdgeState: () => ({ eta: 0, speed: 0 }),
+    reduceF32Grid() {},
+    histogramF32() {},
+    lumaHistogramU8() {},
+    downsampleF32() {},
+    blurSeparableF32() {},
   };
 
   return mod;
@@ -620,208 +612,5 @@ describe('particle SoA heap layout', () => {
     expect(mod.HEAPF32[(ptr >> 2) + 0]).toBe(1.25);
     expect(mod.HEAPF32[(ptr >> 2) + 8 * capacity]).toBe(0.5);
     mod.freeParticleSoA!(ptr);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. getWasm — lazy-load behaviour (dynamic import is mocked)
-// ---------------------------------------------------------------------------
-
-describe('getWasm', () => {
-  beforeEach(() => {
-    __resetWasmLoaderForTests();
-  });
-
-  it('returns a Promise', () => {
-    const result = getWasm().catch(() => {
-      // Expected to reject in jsdom (no /watershed_native.js)
-    });
-    expect(result).toBeInstanceOf(Promise);
-  });
-
-  it('records init failure so HUD can banner instead of showing a TS smoke value', async () => {
-    await expect(getWasm()).rejects.toBeInstanceOf(Error);
-    expect(peekWasm()).toBeNull();
-    const err = peekWasmInitError();
-    expect(err).toBeInstanceOf(Error);
-    expect(err?.message.length).toBeGreaterThan(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 7. resolveWasmInitTimeoutMs + deadline behaviour
-// ---------------------------------------------------------------------------
-
-describe('resolveWasmInitTimeoutMs', () => {
-  const envKey = 'WATERSHED_WASM_INIT_TIMEOUT_MS';
-  let savedEnv: string | undefined;
-
-  beforeEach(() => {
-    savedEnv = process.env[envKey];
-    delete process.env[envKey];
-  });
-
-  afterEach(() => {
-    if (savedEnv === undefined) delete process.env[envKey];
-    else process.env[envKey] = savedEnv;
-  });
-
-  it('defaults to WASM_INIT_TIMEOUT_MS', () => {
-    expect(resolveWasmInitTimeoutMs('')).toBe(WASM_INIT_TIMEOUT_MS);
-    expect(WASM_INIT_TIMEOUT_MS).toBe(8000);
-  });
-
-  it('reads ?wasmInitTimeout= from search', () => {
-    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=1500')).toBe(1500);
-  });
-
-  it('ignores invalid query values', () => {
-    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=0')).toBe(WASM_INIT_TIMEOUT_MS);
-    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=abc')).toBe(WASM_INIT_TIMEOUT_MS);
-  });
-
-  it('prefers env override over query', () => {
-    process.env[envKey] = '250';
-    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=9999')).toBe(250);
-  });
-});
-
-describe('getWasm init deadline', () => {
-  const envKey = 'WATERSHED_WASM_INIT_TIMEOUT_MS';
-  const RealFunction = globalThis.Function;
-
-  beforeEach(() => {
-    __resetWasmLoaderForTests();
-    vi.useFakeTimers();
-    process.env[envKey] = '50';
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      headers: { get: () => '12345' },
-      arrayBuffer: async () => new ArrayBuffer(0),
-    }));
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    delete process.env[envKey];
-    __resetWasmLoaderForTests();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    globalThis.Function = RealFunction;
-  });
-
-  it('rejects with a greppable timeout error when the factory never settles', async () => {
-    const never = new Promise<WatershedNativeModule>(() => { /* hang */ });
-    globalThis.Function = new Proxy(RealFunction, {
-      construct(target, args: string[]) {
-        if (args[0] === 'url' && args[1] === 'return import(url)') {
-          return () => Promise.resolve({ default: () => never });
-        }
-        return new target(...args);
-      },
-    }) as typeof Function;
-
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const pending = getWasm();
-    const settled = expect(pending).rejects.toBeInstanceOf(WasmInitTimeoutError);
-    await vi.advanceTimersByTimeAsync(60);
-    await settled;
-
-    const err = peekWasmInitError();
-    expect(err?.message).toContain('init timed out after 50ms');
-    expect(errorSpy).toHaveBeenCalledWith('[Watershed WASM] timed-out(50ms)');
-
-    infoSpy.mockRestore();
-    errorSpy.mockRestore();
-  });
-});
-
-describe('getWasm artifact stamp', () => {
-  const RealFunction = globalThis.Function;
-
-  function stubFactory(mod: Pick<WatershedNativeModule, 'getVersion'>): void {
-    globalThis.Function = new Proxy(RealFunction, {
-      construct(target, args: string[]) {
-        if (args[0] === 'url' && args[1] === 'return import(url)') {
-          return () => Promise.resolve({ default: async () => mod });
-        }
-        return new target(...args);
-      },
-    }) as typeof Function;
-  }
-
-  beforeEach(() => {
-    __resetWasmLoaderForTests();
-  });
-
-  afterEach(() => {
-    __resetWasmLoaderForTests();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    globalThis.Function = RealFunction;
-  });
-
-  it('rejects a module reporting ABI 7 (below MIN_WASM_ABI_VERSION 8)', async () => {
-    stubFactory({ getVersion: () => 7 });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-
-    await expect(getWasm()).rejects.toThrow(/ABI 7 is older than required 8/);
-    expect(peekWasm()).toBeNull();
-
-    errorSpy.mockRestore();
-  });
-
-  it('rejects when served glue+wasm hash does not match WASM_ARTIFACT_STAMP', async () => {
-    stubFactory({ getVersion: () => 8 });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: () => null },
-      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-    }));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-
-    await expect(getWasm()).rejects.toThrow(/stamp mismatch/);
-    expect(peekWasm()).toBeNull();
-    expect(peekWasmInitError()?.message).toMatch(/stamp mismatch/);
-    expect(isWasmProvenanceMismatchError(peekWasmInitError())).toBe(true);
-    expect(errorSpy.mock.calls.some((c) => String(c[0]).includes('provenance-mismatch('))).toBe(true);
-
-    errorSpy.mockRestore();
-  });
-
-  it('resolves when served glue+wasm hash matches WASM_ARTIFACT_STAMP', async () => {
-    const { readFileSync } = await import('node:fs');
-    const glue = new Uint8Array(readFileSync('public/watershed_native.js'));
-    const wasm = new Uint8Array(readFileSync('public/watershed_native.wasm'));
-    expect(await hashGlueWasmPair(glue, wasm)).toBe(WASM_ARTIFACT_STAMP);
-
-    stubFactory({ getVersion: () => 8 } as Pick<WatershedNativeModule, 'getVersion'>);
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      const body = url.includes('.wasm') ? wasm : glue;
-      return {
-        ok: true,
-        headers: { get: () => String(body.byteLength) },
-        arrayBuffer: async () => body.buffer,
-      };
-    }));
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const loaded = await getWasm();
-    expect(loaded.getVersion()).toBe(8);
-    expect(peekWasm()).toBe(loaded);
-    expect(peekWasmInitError()).toBeNull();
-  });
-
-  it('hashGlueWasmPair is stable and 16 hex chars', async () => {
-    const glue = new Uint8Array([9, 8, 7]);
-    const wasm = new Uint8Array([6, 5, 4]);
-    const expected = await hashGlueWasmPair(glue, wasm);
-    expect(expected).toMatch(/^[0-9a-f]{16}$/);
-    expect(await hashGlueWasmPair(glue, wasm)).toBe(expected);
   });
 });

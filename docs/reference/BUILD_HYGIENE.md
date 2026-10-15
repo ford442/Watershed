@@ -56,6 +56,11 @@ reproducible here: **this run did not exercise emcc determinism at all.** A mach
 loaded would recompile both files, and whether *that* is byte-reproducible is a separate,
 unanswered question. `WATERSHED_REQUIRE_WASM=1` converts the skip into a hard failure.
 
+> **Superseded (#467).** `pnpm build` is now `vite build` alone and ships the committed pair;
+> `pnpm build:full` is the old chain. `build.sh` fails without emcc or with an emcc other than
+> `emscripten/EMCC_VERSION`, and rebuilding at the pin *is* byte-reproducible (it reproduces the
+> committed stamp). See [`WASM.md`](../../WASM.md#toolchain-pin-467).
+
 `vite build` succeeded both times: 1102 modules, ~12 s, no errors. The two pre-existing warnings
 (dynamic-vs-static import of `three.webgpu.js`; >500 kB chunks) reproduced identically and are
 unrelated to determinism.

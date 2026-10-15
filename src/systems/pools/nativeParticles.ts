@@ -14,7 +14,7 @@
  */
 import type { NativeOwner } from '../../sim/nativeOwner';
 import { createSimParticleChannel, type SimParticleChannel } from '../../sim/simParticles';
-import { heapF32, type WatershedNativeModule } from '../water/WatershedWasm';
+import { heapF32, type WatershedNativeModule } from '../water/wasmAbi';
 import type { VFXParticle } from './ParticlePool';
 
 /** Cached heap views over one particle-SoA allocation (px…maxLife planes). */

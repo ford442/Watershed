@@ -38,7 +38,7 @@ import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import type { RunWeather } from '../map/weatherInflow';
 import { getRoutingReach, routingChainIndex } from '../map/routingReach';
 import type { MapRegistryId } from '../../maps/registry';
-import type { WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
 
 /** Seeded downstream current (−Z), so `roughness` has something to damp. */
 export const CONTRAST_BASE_FLOW = 1.2;

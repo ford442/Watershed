@@ -9,7 +9,7 @@
  * Also channel routing (routing.cpp): a step release reaches a downstream
  * segment only after the routed lag, volume is conserved, and the routed
  * upstream edge (stepShallowWaterInflow) keeps lake-at-rest at the reference
- * discharge. No Embind.
+ * discharge. Host only (no Emscripten headers).
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host

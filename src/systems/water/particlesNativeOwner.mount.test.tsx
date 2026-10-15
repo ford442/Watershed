@@ -34,8 +34,8 @@ vi.mock('./SWEHeightField', async (importOriginal) => ({
   injectSWEDisturbance: vi.fn(),
 }));
 
-vi.mock('./WatershedWasm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./WatershedWasm')>()),
+vi.mock('./wasmLoader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./wasmLoader')>()),
   getWasm: vi.fn(),
 }));
 
@@ -49,7 +49,7 @@ vi.mock('../../sim/createSimWorkerProxy', async (importOriginal) => ({
   getSimWorkerProxy: vi.fn(),
 }));
 
-import { getWasm } from './WatershedWasm';
+import { getWasm } from './wasmLoader';
 import { resolveSweSimBackendDecision, type SweSimBackend } from './sweBackend';
 import { SimWorkerProxy, getSimWorkerProxy } from '../../sim/createSimWorkerProxy';
 import type { SimWorkerCommand, SimWorkerLike } from '../../sim/simWorkerProtocol';

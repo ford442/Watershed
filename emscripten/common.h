@@ -2,24 +2,15 @@
  * common.h — shared value types, constants, and math helpers.
  *
  * Included by forces.h and swe.h (and transitively by forces.cpp / swe.cpp /
- * bindings.cpp). Embind-free by design: <emscripten/bind.h> is quarantined
- * to bindings.cpp only, so this header must never pull it in.
- * Types that cross the JS↔C++ boundary must stay concrete and non-polymorphic.
+ * bindings.cpp). Host-clean by design: <emscripten/emscripten.h> is
+ * quarantined to bindings.cpp (the C ABI), so this header must never pull it in.
+ * Types written through the ABI's out-pointers stay standard-layout.
  */
 
 #ifndef WATERSHED_COMMON_H
 #define WATERSHED_COMMON_H
 
 #include <cstdint>
-
-// Portable keep-alive: used on Emscripten so hello-world C exports survive DCE.
-// A no-op on host. Never include <emscripten/emscripten.h> from compute TUs —
-// that header is WASM-only and kills the host build.
-#if defined(__EMSCRIPTEN__)
-#  define WATERSHED_KEEPALIVE __attribute__((used))
-#else
-#  define WATERSHED_KEEPALIVE
-#endif
 
 // ---------------------------------------------------------------------------
 // Compile-time constants
@@ -33,7 +24,7 @@ static constexpr int WATER_FORCE_INPUT_STRIDE  = 8;
 static constexpr int WATER_FORCE_OUTPUT_STRIDE = 8;
 
 // ---------------------------------------------------------------------------
-// Value types (Embind-registered in bindings.cpp only)
+// Value types
 // ---------------------------------------------------------------------------
 
 /** 2-component float vector (sampling / flow-direction helpers). Not bound. */

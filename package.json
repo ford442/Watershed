@@ -30,7 +30,8 @@
     "preinstall": "node scripts/only-pnpm.mjs",
     "dev": "vite",
     "start": "vite",
-    "build": "npm run build:wasm && vite build",
+    "build": "vite build",
+    "build:full": "pnpm build:wasm && vite build",
     "build_colab": "npm run build:wasm_colab && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit && node scripts/check-typecheck-surface.mjs && node scripts/check-systems-layout.mjs && node scripts/check-glsl-hosts.mjs && node scripts/check-orphans.mjs",
@@ -50,9 +51,13 @@
     "test:wgsl": "node verification/swe_wgsl_parity.mjs",
     "test:post-parity": "node verification/post_parity.mjs",
     "test:native": "cmake -S emscripten -B emscripten/build-host && cmake --build emscripten/build-host && emscripten/build-host/watershed_host_smoke",
+    "test:native:sanitize": "cmake -S emscripten -B emscripten/build-host-asan -DWATERSHED_SANITIZE=ON && cmake --build emscripten/build-host-asan && emscripten/build-host-asan/watershed_host_smoke",
+    "lint:native": "cmake -S emscripten -B emscripten/build-host >/dev/null && ${CLANG_TIDY:-clang-tidy} -p emscripten/build-host --quiet emscripten/swe.cpp emscripten/forces.cpp emscripten/chores.cpp emscripten/particles.cpp emscripten/routing.cpp emscripten/swe_fuzz.cpp",
+    "test:native:fuzz": "cmake -S emscripten -B emscripten/build-fuzz -DWATERSHED_FUZZ=ON -DCMAKE_CXX_COMPILER=${CXX_FUZZ:-clang++} && cmake --build emscripten/build-fuzz --target watershed_swe_fuzz && mkdir -p emscripten/build-fuzz/corpus && emscripten/build-fuzz/watershed_swe_fuzz -max_total_time=${FUZZ_SECONDS:-60} -print_funcs=0 -print_final_stats=1 emscripten/build-fuzz/corpus",
     "test:visual-smoke:tsl": "VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
     "test:visual-smoke:tsl:update": "UPDATE_BASELINES=1 VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
     "profile:physics": "node verification/physics_profile.mjs",
+    "profile:swe": "node verification/swe_step_bench.mjs",
     "verify:deploy": "node verification/verify_deploy.mjs"
   },
   "browserslist": {

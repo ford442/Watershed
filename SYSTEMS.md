@@ -548,11 +548,20 @@ turbulence); result = the 8-float native output `[forceXYZ, buoyancy, drag, flow
 submergedRatio]` + the flow sample used `[dirX, dirZ, speed, surfaceOffset, depth, flags]`.
 `STEP`'s `waterForce.simFlow` tells the worker the tick params are authored (sim-sampled).
 
-**Fallback:** no link (`wasm-main` / `wgsl` backends, `?simWorker=0`, failed handshake) →
-`calculateWaterForceFallback` inside the same tick on the tick params `WaterForceSystem`
-samples on the main thread (what actually ran before Phase B). Parity of the TS twin with the
+**Fallback (#467):** the Rapier worker computes no force. With no fresh link force (`wasm-main` /
+`wgsl` backends, `?simWorker=0`, failed handshake, the first ticks, a stalled sim worker) it
+applies the TS mirror force `RaftVehicle` computed on the main thread for the state that step
+starts from (`hullMirrorForce.ts`, sent as `waterForce.mirror`) — the same
+`calculateWaterForceFallback` on the same tick params and state that used to run inside the
+worker; `waterForceAuthority.ts` `pickHullForce` takes exactly one. Parity of the TS twin with the
 C++ path is pinned by `src/physics/__tests__/waterForceParity.test.ts`. Worker init failure or
 an explicit off → the main-thread `WaterForceSystem` + Rapier path.
+
+**Two force paths (#467, `waterForceAuthority.ts`):** `'sim-worker'` (forces.cpp in the sim
+worker: debris + main-thread vehicle via `FORCES`, the Rapier raft via the hull link) or
+`'ts-mirror'` (`calculateWaterForceFallback` on the main thread). `WaterForceSystem` is split into
+`sweHost.ts` (the field) and `waterForceBridge.ts` (the forces); the main thread never calls
+forces.cpp, even on `wasm-main` (its module only steps the field).
 
 **Phase 2 protocol (collider registration):** `ADD_STATIC_COLLIDER`, `REMOVE_STATIC_COLLIDER`,
 `CLEAR_STATIC_COLLIDERS` — segment treadmill meshes can be streamed without a second worker.
@@ -599,12 +608,12 @@ rebuilds) and is freed by `DISPOSE_ROUTER` on unmount.
 `FORCES {seq, gridId, origin, samples}` for the vehicle (unless the Rapier worker owns it) and
 every debris body — authored flow cap and water level, flow-independent config. The worker
 samples the flow on its live grid (`sampleSWEFlow`, same function), stages the level
-(`stagedWaterLevel`) and runs `computeWaterForcesBatch`, one Embind call per run of samples
+(`stagedWaterLevel`) and runs `computeWaterForcesBatch`, one native call per run of samples
 whose configs are equal at float32 — the ABI takes one config per call, and each body has its
 own sampled speed and stage; one call for all bodies needs a per-sample-config export (ABI
 bump). Results come back in the request's buffer and are applied at the top of the next frame,
 with the sampling frame's dt, to bodies still registered (`simForceRequests.ts`). Bit-identical
-to the main-thread `calculateWaterForce` loop on the `wasm-main` field (integration test). The
+to a direct `calculateWaterForce` loop over the same field (integration test). The
 Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, see Physics
 Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
 never pairs the new index frame with the old origin.
@@ -625,7 +634,9 @@ one by one), `DISPOSE_GRID`; `ROUTER`, `DISPOSE_ROUTER`; `FORCES` ↔ `FORCES` r
 copies it into a stable mirror (`workerSweSim.ts` — readers such as gpu-chores hold `h`
 across awaits, so the mirror is never a transferable) and returns the buffer; the worker
 pools two. The worker copies out of the WASM heap on publish, so no heap view crosses
-threads. `b` is in the frame because authored events carve the bed. `inflow` is the routed
+threads. `b` is filled only when the worker's bed changed in a way the main thread cannot
+reproduce — a scroll, or an authored braid carving it (`bed: true`, #467); a bed the main
+thread just committed is already in its mirror, so steady-state frames skip both copies. `inflow` is the routed
 state the worker last derived; the mirror fills scrolled-in cells with it until the next frame
 replaces the whole mirror (cosmetic only).
 
@@ -657,7 +668,7 @@ The SWE height field is a visual system and is budgeted by the live quality pres
 | low | — | — | off | 0 |
 | medium | 32×24 | 0.75 m | 30 Hz | 0.14 |
 | high | 48×32 | 0.5 m | 60 Hz | 0.22 |
-| ultra | 64×40 | 0.5 m | 60 Hz | 0.26 |
+| ultra | 128×80 | 0.5 m | 60 Hz | 0.26 |
 
 `WaterForceSystem` reallocates the grid + upload texture when the budget changes, steps at
 most `stepHz` times per second, and publishes `displacementScale` through the height-field
@@ -743,12 +754,12 @@ HeightmapFlow was deleted (#413) and must not come back.
 
 ## WASM Module
 
-### `src/systems/water/WatershedWasm.ts` + `emscripten/`
+### `src/systems/water/{wasmAbi,wasmLoader,WatershedWasm,waterForceFallback}.ts` + `emscripten/`
 
-**Layout:** `emscripten/common.h` (shared constants/types, `WATERSHED_KEEPALIVE`) + `forces.h`/`forces.cpp` (water force
+**Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
-not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `bindings.cpp` (the only `<emscripten/bind.h>` include; Embind surface,
-`getVersion()` — **8** in source) + `host_smoke.cpp` (host assert runner). TypeScript asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**8** — ABI 6 changed `stepShallowWater`'s arity, so older binaries are rejected rather than partially used; ABI 7 particle SoA and ABI 8 `applySWEEvent` are now guaranteed exports, not optional TS branches, since the floor moved to 8). After ABI 6, `swe.cpp` SIMD is **damping**, **conserved-state lift**, and **CFL max reduction** only — HLL / hydrostatic reconstruction stay scalar. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
+exports, the only Emscripten include; `ws_getVersion()` — **12**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**12** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
@@ -798,35 +809,37 @@ implementations when the module is unavailable.
 **Primary path — `build.sh`:**
 
 ```bash
-npm run build:wasm        # runs emscripten/build.sh
+bash scripts/emsdk-pinned.sh   # once: emcc 3.1.56 into ./emsdk
+pnpm build:wasm                # runs emscripten/build.sh
 ```
 
 Output written to `public/` (served as static assets by Vite):
-- `public/watershed_native.js` — Emscripten glue + Embind dispatch
+- `public/watershed_native.js` — Emscripten glue (`_ws_*` C exports; ends with `WATERSHED_WASM_SHA`)
 - `public/watershed_native.wasm` — WASM binary
 - `--threads` builds go to `emscripten/build-threads/out/` (with the `watershed_native.worker.mjs`
   pthread shim) and never overwrite the shipped `public/` pair or the artifact stamp (#454)
 
-**Graceful skip:** `build.sh` exits 0 with a warning when `emcc` is not in `PATH` —
-the JS/WASM output is simply not regenerated. Physics TypeScript fallbacks keep the
-canyon playable; GameHUD banners native-init throw instead of showing a TS smoke
-value as a health signal.
+**Toolchain pin (#467):** `pnpm build` no longer runs `build.sh` (the pair is committed;
+`pnpm build:full` is the old chain). `build.sh` exits 1 when emcc is missing or differs from
+`emscripten/EMCC_VERSION`; `WATERSHED_ALLOW_EMCC_MISMATCH=1` builds aside into
+`emscripten/build/out/`, and `--debug` / `--threads` always build aside, so nothing but a
+pinned release build ever writes `public/` or the stamp.
 
 **Pairing:** `public/watershed_native.{js,wasm}` are committed and must be rebuilt
 from pinned emcc **3.1.56** in one `pnpm build:wasm`. CI instantiates that committed
 pair (`createWatershedNative()` / `emscripten/smoke_test.mjs`) and
-`git diff --exit-code`s the artifacts after rebuild. A mixed js+wasm pair throws at
-`__embind_register_value_object_field`.
+`git diff --exit-code`s the artifacts after rebuild. The loader rejects a mixed js+wasm pair
+by hash before instantiating it (`WATERSHED_WASM_SHA` vs `WASM_BINARY_SHA`).
 
 **Flags:**
 | Flag | Effect |
 |------|--------|
 | _(none)_ | Single-threaded, `-O3`, SIMD |
 | `--threads` | Multi-threaded (pthreads); requires COOP/COEP response headers |
-| `--debug` | `-O0 -g3`, assertions, safe heap |
+| `--debug` | `-O0 -g3`, assertions, safe heap → `emscripten/build-debug/out/` |
 
 **Alternative — CMake:** `emscripten/CMakeLists.txt` provides a CMake build path for
-IDE integration, but `build.sh` is the canonical route used by `npm run build:wasm`.
+IDE integration, but `build.sh` is the canonical route used by `pnpm build:wasm`.
 
 **Emscripten settings of note:**
 - `MODULARIZE=1` + `EXPORT_NAME='createWatershedNative'` — module factory pattern

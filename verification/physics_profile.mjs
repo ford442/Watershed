@@ -20,12 +20,17 @@
  * per segment regardless of biome, so the measured order of magnitude holds
  * across the level script. Treat per-map (not per-biome) as the real axis here.
  *
+ * Before the browser cases it times the SWE step on the release binary at every
+ * enabled preset (swe_step_bench.mjs, no browser needed) and exits non-zero if
+ * a median is over SWE_STEP_BUDGET_MS (#467). SKIP_BROWSER=1 runs only that.
+ *
  * Usage:
- *   npm start (or pnpm build && pnpm preview) in one terminal
+ *   pnpm start (or pnpm build && pnpm preview) in one terminal
  *   WATERSHED_URL=http://127.0.0.1:3000 node verification/physics_profile.mjs
  */
 import puppeteer from 'puppeteer';
 import fs from 'fs';
+import { gateSweStepBudget } from './swe_step_bench.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -127,17 +132,23 @@ async function profileCase(kase) {
 
 async function run() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
+  process.stderr.write('[profile] SWE step (release wasm, Node)...\n');
+  const sweStep = await gateSweStepBudget();
   const results = [];
-  for (const kase of CASES) {
+  for (const kase of process.env.SKIP_BROWSER === '1' ? [] : CASES) {
     process.stderr.write(`[profile] ${kase.label}...\n`);
     const result = await profileCase(kase);
     results.push(result);
     process.stderr.write(`${JSON.stringify(result)}\n`);
   }
   const reportPath = path.join(OUT_DIR, 'report.json');
-  fs.writeFileSync(reportPath, JSON.stringify({ url: BASE_URL, capturedAt: new Date().toISOString(), results }, null, 2));
+  fs.writeFileSync(reportPath, JSON.stringify({ url: BASE_URL, capturedAt: new Date().toISOString(), sweStep, results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
   console.log(`\nReport: ${reportPath}`);
+  if (!sweStep.ok) {
+    console.error(`SWE step over budget (${sweStep.budgetMs} ms) at one or more presets — see [swe-step] lines above.`);
+    process.exitCode = 1;
+  }
 }
 
 run();

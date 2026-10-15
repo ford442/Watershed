@@ -1,10 +1,8 @@
 import {
-  computePhysicsWorkerWaterForces,
   diagnosticsFromHullResult,
   hullSampleFromState,
   PHYSICS_WORKER_IMPULSE_SCALE,
 } from './physicsWorkerWaterForces';
-import { calculateWaterForceFallback } from '../systems/water/WatershedWasm';
 import { FORCE_RESULT_STRIDE, FORCE_SAMPLE_STRIDE } from '../sim/simForces';
 import type { WorkerRaftState } from './rapierWorkerProtocol';
 
@@ -46,78 +44,6 @@ describe('physicsWorkerWaterForces', () => {
     expect(diagnostics.sampledFlow).toEqual({
       dirX: 0.6, dirZ: -0.8, speed: 2.25, surfaceOffset: 0.1, depth: 1.3, wet: true, source: 'swe',
     });
-  });
-
-  it('uses the TypeScript water-force math when the sim worker has no force for the tick', () => {
-    const diagnostics = computePhysicsWorkerWaterForces(
-      SAMPLE_STATE,
-      {
-        enabled: true,
-        flowSpeed: 4.5,
-        waterLevel: 0.5,
-        raftMass: 150,
-        raftVolume: 1.2,
-        dragCoefficient: 0.47,
-        frontalArea: 1.05,
-        sideArea: 0.7,
-        timeSeconds: 12.5,
-        turbulenceStrength: 0.08,
-        turbulenceFrequency: 2.4,
-        flowDirX: 0,
-        flowDirZ: -1,
-      },
-    );
-
-    const expected = calculateWaterForceFallback(
-      {
-        position: { x: 0, y: 0.45, z: -10 },
-        velocity: { x: 0.2, y: 0, z: -1.4 },
-        flowDirection: { x: 0, z: -1 },
-      },
-      {
-        flowSpeed: 4.5,
-        waterLevel: 0.5,
-        raftMass: 150,
-        raftVolume: 1.2,
-        dragCoefficient: 0.47,
-        frontalArea: 1.05,
-        sideArea: 0.7,
-        timeSeconds: 12.5,
-        turbulenceStrength: 0.08,
-        turbulenceFrequency: 2.4,
-      },
-    );
-
-    expect(diagnostics.source).toBe('fallback');
-    expect(diagnostics.forceX).toBeCloseTo(expected.forceX, 3);
-    expect(diagnostics.forceZ).toBeCloseTo(expected.forceZ, 3);
-    expect(diagnostics.submergedRatio).toBeCloseTo(expected.submergedRatio, 5);
-    expect(diagnostics.buoyancy).toBe(expected.buoyancy);
-    expect(diagnostics.computeMicros).toBeGreaterThanOrEqual(0);
-  });
-
-  it('returns disabled diagnostics when worker water forces are turned off', () => {
-    const diagnostics = computePhysicsWorkerWaterForces(
-      SAMPLE_STATE,
-      {
-        enabled: false,
-        flowSpeed: 1,
-        waterLevel: 0.5,
-        raftMass: 150,
-        raftVolume: 1.2,
-        dragCoefficient: 0.47,
-        frontalArea: 1,
-        sideArea: 1,
-        timeSeconds: 0,
-        turbulenceStrength: 0,
-        turbulenceFrequency: 1,
-        flowDirX: 0,
-        flowDirZ: -1,
-      },
-    );
-
-    expect(diagnostics.source).toBe('disabled');
-    expect(diagnostics.submergedRatio).toBe(0);
   });
 });
 

@@ -1,8 +1,8 @@
 /**
  * forces.h — public declarations for water-force math.
  *
- * Implemented in forces.cpp. Embind-free — bindings.cpp includes this header
- * and registers the Embind surface separately.
+ * Implemented in forces.cpp. Host-clean — bindings.cpp includes this header
+ * and exports the C ABI (ws_*) separately.
  */
 
 #ifndef WATERSHED_FORCES_H
@@ -32,10 +32,10 @@ float computeDragForce(float vx, float vy, float vz,
                        float cd, float area, float density) noexcept;
 
 /** Browser smoke-test helper — combines upward buoyancy and current drag. */
-extern "C" WATERSHED_KEEPALIVE float calculateBuoyancyAndDrag(float raftMass,
-                                          float submergedVolume,
-                                          float waterVelocityX,
-                                          float waterVelocityZ) noexcept;
+float calculateBuoyancyAndDrag(float raftMass,
+                               float submergedVolume,
+                               float waterVelocityX,
+                               float waterVelocityZ) noexcept;
 
 /** River-current force on a partially submerged object, along relative velocity. */
 Vec3 computeFlowForce(float vx, float vy, float vz,

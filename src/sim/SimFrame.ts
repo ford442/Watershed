@@ -2,9 +2,11 @@
  * SimFrame — what the sim worker publishes after a step (#455).
  *
  * One ArrayBuffer per frame holds the SWE planes the main thread reads, SoA in
- * swe.h order: η | u | w | b, `count = width * height` floats each. The bed is
- * in the frame because the solver writes it too (authored events carve it), so
- * the main thread's rasterized copy is only the input, not the field.
+ * swe.h order: η | u | w | b, `count = width * height` floats each. The bed
+ * plane is filled only when the worker's bed changed in a way the main thread
+ * cannot reproduce (`bed`, #467): an authored braid carved it, or a scroll moved
+ * it. A bed the main thread just committed is already in its mirror, and a
+ * frame with `bed: false` leaves the mirror's bed alone.
  *
  * Frames cross threads by transfer, not structured copy: the worker fills a
  * buffer from its pool and transfers it; the main thread copies it into its
@@ -65,6 +67,8 @@ export interface SimFrameHeader {
    * replaces the whole mirror — cosmetic, never fed back to the solver.
    */
   inflow: { eta: number; u: number; w: number } | null;
+  /** The `b` plane is filled (the worker's bed changed since the last commit). */
+  bed: boolean;
 }
 
 export interface SimFrame extends SimFrameHeader {

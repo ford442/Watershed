@@ -1,8 +1,8 @@
 /**
  * swe.h — public declarations for the shallow-water solver + heap grid helpers.
  *
- * Implemented in swe.cpp. Embind-free — bindings.cpp includes this header
- * and registers the Embind surface separately.
+ * Implemented in swe.cpp. Host-clean — bindings.cpp includes this header
+ * and exports the C ABI (ws_*) separately.
  */
 
 #ifndef WATERSHED_SWE_H
@@ -119,6 +119,13 @@ void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_
  * before. Safe to call again for a different size.
  */
 void reserveShallowWaterScratch(int width, int height);
+
+/**
+ * Largest width or height any SWE entry point accepts (#467). Larger grids are
+ * a no-op rather than an int overflow in width * height — the extents arrive
+ * from JS untrusted. The biggest budget is 128 x 80.
+ */
+static constexpr int SWE_MAX_GRID_EXTENT = 4096;
 
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;

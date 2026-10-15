@@ -14,10 +14,11 @@
  * GPU by the readback latency (one step at the budgeted rates). `fieldVersion`
  * bumps whenever the mirror changes, which is what upload consumers key on.
  */
-import type { SWEGrid, WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
+import type { SWEGrid } from './WatershedWasm';
 import { createSWEGrid } from './WatershedWasm';
 import type { SweSimBackend } from './sweBackend';
-import { SWE_REST_INFLOW, scrollField, type SweInflow } from './sweScroll';
+import { SWE_REST_INFLOW, type SweInflow } from './sweScroll';
 
 /** One `applySWEEvent` call, in world XZ (ABI 8 kinds: 0 inflow … 3 roughness). */
 export interface SweEventCall {
@@ -123,24 +124,16 @@ export function createWasmSweSim(
       const sx = Math.max(-width, Math.min(width, Math.trunc(shiftX)));
       const sz = Math.max(-height, Math.min(height, Math.trunc(shiftZ)));
       if (sx === 0 && sz === 0) return;
-      if (typeof wasm.scrollShallowWater === 'function') {
-        wasm.scrollShallowWater(
-          grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
-          width, height, sx, sz, inflow.eta, inflow.u, inflow.w,
-        );
-      } else {
-        // An ABI-8 binary has no scroll export. The stamp check keeps a shipped
-        // pair in step with the source, so this is a stale-dev-build guard, not
-        // a supported path — but the TS twin moves the field identically.
-        scrollField(grid, width, height, sx, sz, inflow);
-      }
+      wasm.scrollShallowWater(
+        grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
+        width, height, sx, sz, inflow.eta, inflow.u, inflow.w,
+      );
       fieldVersion += 1;
     },
     step({ dt, g, H, originX, originZ, events, edgeEta }) {
-      if (edgeEta !== undefined && typeof wasm.stepShallowWaterInflow === 'function') {
+      if (edgeEta !== undefined) {
         wasm.stepShallowWaterInflow(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H, edgeEta);
       } else {
-        // Pre-ABI-10 binaries have no routed edge; they step transmissive.
         wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);
       }
       for (const e of events) {
