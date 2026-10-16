@@ -7,11 +7,7 @@
  * session, never a hang). Nothing here blocks: frames are pushed to the grid
  * that owns them as they arrive, and `latestFrame()` reads the last header.
  */
-import {
-  raceWithDeadline,
-  resolvePublicAsset,
-  resolveWasmInitTimeoutMs,
-} from '../systems/water/WatershedWasm';
+import { raceWithDeadline, resolvePublicAsset, resolveWasmInitTimeoutMs } from '../systems/water/wasmLoader';
 import type { SimFrame, SimFrameHeader } from './SimFrame';
 import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
 import type {

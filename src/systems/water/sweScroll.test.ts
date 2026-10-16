@@ -8,7 +8,7 @@ import {
   type SweWindowStep,
 } from './sweScroll';
 import { createWasmSweSim, type SweSim } from './sweSim';
-import type { WatershedNativeModule } from './WatershedWasm';
+import type { WatershedNativeModule } from './wasmAbi';
 
 const HIGH = SWE_BUDGETS.high; // 48 x 32 at 0.5 m
 const MEDIUM = SWE_BUDGETS.medium; // 32 x 24 at 0.75 m
@@ -210,14 +210,14 @@ describe('scrollField — the TypeScript twin of scrollShallowWater', () => {
 });
 
 /**
- * A heap-backed module with no `scrollShallowWater`: exactly what an ABI-8
- * binary looks like, so `createWasmSweSim` takes the TS-twin fallback. The
- * real export is exercised against the same scenario in
- * sweScroll.integration.test.ts.
+ * A heap-backed module whose `scrollShallowWater` is the TS twin, so these
+ * frame-order scenarios run without the binary. The real export is exercised
+ * against the same scenario in sweScroll.integration.test.ts.
  */
-function abi8Module(): WatershedNativeModule {
+function twinModule(): WatershedNativeModule {
   const heap = new Float32Array(1 << 18);
   let next = 16; // floats; keep 0 free so no grid gets pointer 0
+  const view = (ptr: number, count: number) => new Float32Array(heap.buffer, ptr, count);
   return {
     HEAPF32: heap,
     allocateGrid(count: number) {
@@ -226,6 +226,15 @@ function abi8Module(): WatershedNativeModule {
       return ptr;
     },
     freeGrid() {},
+    reserveShallowWaterScratch() {},
+    scrollShallowWater(hp: number, up: number, wp: number, bp: number, width: number, height: number,
+      sx: number, sz: number, eta: number, u: number, w: number) {
+      const n = width * height;
+      scrollField(
+        { h: view(hp, n), u: view(up, n), w: view(wp, n), b: bp ? view(bp, n) : null },
+        width, height, sx, sz, { eta, u, w },
+      );
+    },
   } as unknown as WatershedNativeModule;
 }
 
@@ -288,7 +297,7 @@ describe('a world-fixed splash while the window travels (WaterForceSystem frame 
   for (let f = 0; f <= 60; f += 1) path.push([0.05 * f, -0.2 * f]);
 
   it('keeps the peak on its world cell every frame', () => {
-    const sim = createWasmSweSim(abi8Module(), budget.width, budget.height, budget.cellSize);
+    const sim = createWasmSweSim(twinModule(), budget.width, budget.height, budget.cellSize);
     const { seen, bump } = drive(sim, path, true);
     expect(seen.length).toBe(path.length - 1);
     for (const p of seen) {
@@ -300,7 +309,7 @@ describe('a world-fixed splash while the window travels (WaterForceSystem frame 
   });
 
   it('control: without the scroll the same splash rides the camera', () => {
-    const sim = createWasmSweSim(abi8Module(), budget.width, budget.height, budget.cellSize);
+    const sim = createWasmSweSim(twinModule(), budget.width, budget.height, budget.cellSize);
     const { seen, bump } = drive(sim, path, false);
     const last = seen[seen.length - 1];
     // The bug this fixes: η stays in its index slot, so its world position
@@ -311,7 +320,7 @@ describe('a world-fixed splash while the window travels (WaterForceSystem frame 
   });
 
   it('drops a splash that scrolls off the upstream edge instead of wrapping it', () => {
-    const sim = createWasmSweSim(abi8Module(), budget.width, budget.height, budget.cellSize);
+    const sim = createWasmSweSim(twinModule(), budget.width, budget.height, budget.cellSize);
     // Vehicle runs 40 m downstream: the splash is far upstream of the window.
     const long: [number, number][] = [];
     for (let f = 0; f <= 100; f += 1) long.push([0, -0.4 * f]);
@@ -323,7 +332,7 @@ describe('a world-fixed splash while the window travels (WaterForceSystem frame 
   });
 
   it('bumps fieldVersion on a scroll so the height texture is re-uploaded against the new origin', () => {
-    const sim = createWasmSweSim(abi8Module(), budget.width, budget.height, budget.cellSize);
+    const sim = createWasmSweSim(twinModule(), budget.width, budget.height, budget.cellSize);
     const v0 = sim.fieldVersion;
     sim.scroll(0, 0);
     sim.scroll(Number.NaN, 1);

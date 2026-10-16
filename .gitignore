@@ -10,6 +10,9 @@ build-sourcemaps/
 emscripten/build/
 emscripten/build-host/
 emscripten/build-threads/
+emscripten/build-debug/
+emscripten/build-host-asan/
+emscripten/build-fuzz/
 emscripten/compile_commands.json
 
 # Ephemeral screenshot / diagnostic outputs (repo root)
@@ -26,3 +29,4 @@ emscripten/compile_commands.json
 verification/output/
 
 .aider*
+build-analyze/

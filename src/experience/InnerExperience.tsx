@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { PointerLockControls } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import EnhancedSky from '../components/EnhancedSky';
@@ -22,11 +22,15 @@ import PillarFragmentPool from '../components/Obstacles/PillarFragmentPool';
 import GhostReplayer from '../components/GhostReplayer';
 import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
 import SettingsLookSync from '../ui/SettingsLookSync';
-import PhysicsPerfMonitor from '../debug/PhysicsPerfMonitor';
+import { isCleanTestMode } from '../utils/cleanTestMode';
 import { useInnerExperience } from './hooks/useInnerExperience';
 import WeatherSystem from '../components/WeatherSystem';
 import { getActiveWeather } from '../systems/journey/runSession';
 import type { InnerExperienceProps } from './types';
+
+// #485 C: step-time instrumentation for the DebugPanel and `pnpm profile:physics`
+// (which runs with ?cleanTest=1, never ?debug=1) — not part of play, so not in the entry.
+const PhysicsPerfMonitor = lazy(() => import('../debug/PhysicsPerfMonitor'));
 
 /**
  * InnerExperience — game scene composition (providers are mounted in Experience.tsx).
@@ -84,7 +88,11 @@ export default function InnerExperience({
 
       {worldEnabled && debug.isStageEnabled('physics') && (
         <Physics debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
-          <PhysicsPerfMonitor />
+          {(debug.debugEnabled || isCleanTestMode()) && (
+            <Suspense fallback={null}>
+              <PhysicsPerfMonitor />
+            </Suspense>
+          )}
           {!state.noPointerLock && (
             <>
               <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />

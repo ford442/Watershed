@@ -5,35 +5,17 @@
  * and performs additional semantic validation.
  */
 
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import * as THREE from 'three';
 import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
-// Import the JSON schema
-import reachSchema from '../formats/reach.schema.json';
+// Precompiled from reach.schema.json by scripts/compile-validators.mjs (#485 C): no Ajv in the browser.
+import validateSchema from '../formats/reach.validate.js';
+import { valueAtPointer } from '../formats/valueAtPointer';
 
-// Initialize AJV
-const ajv = new Ajv({ allErrors: true, verbose: true });
-addFormats(ajv);
+import type { ValidationError, ValidationResult } from './validationReport';
 
-// Compile schema
-const validateSchema = ajv.compile(reachSchema);
-
-// Validation result type
-export interface ValidationError {
-  field: string;
-  error: string;
-  value?: any;
-  lineNum?: number;
-  suggestion?: string;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationError[];
-}
+export type { ValidationError, ValidationResult } from './validationReport';
+export { formatValidationErrors } from './validationReport';
 
 // Canonical BiomeId values plus deprecated aliases (accepted for one release)
 const BIOME_TYPES = [
@@ -70,7 +52,7 @@ export function validateReach(reachData: any): ValidationResult {
       errors.push({
         field: getErrorField(err),
         error: err.message || 'Invalid value',
-        value: err.data,
+        value: valueAtPointer(reachData, err.instancePath),
         suggestion: getSuggestionForError(err),
       });
     }
@@ -595,35 +577,6 @@ function getErrorField(error: any): string {
   }
 
   return path || 'root';
-}
-
-/**
- * Format validation errors for display
- */
-export function formatValidationErrors(result: ValidationResult): string {
-  if (result.valid) {
-    return result.warnings.length > 0
-      ? `Valid with ${result.warnings.length} warning(s)`
-      : 'Valid!';
-  }
-
-  const lines: string[] = [`Found ${result.errors.length} error(s):`];
-
-  for (const err of result.errors) {
-    lines.push(`  • ${err.field}: ${err.error}`);
-    if (err.suggestion) {
-      lines.push(`    → ${err.suggestion}`);
-    }
-  }
-
-  if (result.warnings.length > 0) {
-    lines.push(`\n${result.warnings.length} warning(s):`);
-    for (const warn of result.warnings) {
-      lines.push(`  • ${warn.field}: ${warn.error}`);
-    }
-  }
-
-  return lines.join('\n');
 }
 
 export default validateReach;

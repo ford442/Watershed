@@ -56,6 +56,11 @@ reproducible here: **this run did not exercise emcc determinism at all.** A mach
 loaded would recompile both files, and whether *that* is byte-reproducible is a separate,
 unanswered question. `WATERSHED_REQUIRE_WASM=1` converts the skip into a hard failure.
 
+> **Superseded (#467).** `pnpm build` is now `vite build` alone and ships the committed pair;
+> `pnpm build:full` is the old chain. `build.sh` fails without emcc or with an emcc other than
+> `emscripten/EMCC_VERSION`, and rebuilding at the pin *is* byte-reproducible (it reproduces the
+> committed stamp). See [`WASM.md`](../../WASM.md#toolchain-pin-467).
+
 `vite build` succeeded both times: 1102 modules, ~12 s, no errors. The two pre-existing warnings
 (dynamic-vs-static import of `three.webgpu.js`; >500 kB chunks) reproduced identically and are
 unrelated to determinism.
@@ -508,6 +513,80 @@ about whether `build/` arrives on the server intact. That is `verify:deploy`'s j
 `DEPLOY_AUDIT.md`'s subject. The manifest is designed to be the input to that check — `--json`
 emits path/size/sha256 for all 52 files in a form a deploy verifier can compare against a live
 fetch.
+
+---
+
+## 10. Boot payload gate (#485)
+
+§4 and §6.1 measured the payload on 2026-09-17 and called the sizes "already unreasonable".
+#485 acts on it. Raw sizes of a plain `pnpm exec vite build`, `main` `9e9c746` vs this branch:
+
+| Chunk | Before | After A+B |
+|---|---|---|
+| `vendor-rapier-*.js` | 2,237 kB | gone |
+| `rapier.worker-*.js` | 2,243 kB | 149 kB |
+| `rapier_wasm3d_bg-*.wasm` | inside both of the above, as base64 | 1,569 kB, one hashed asset |
+| `index-*.js` (entry) | 1,891 kB | 1,342 kB |
+| `three.webgpu-*.js` | inside the entry | 673 kB, loaded only by the TSL boot |
+| `vendor-three-*.js` | 1,124 kB | 1,124 kB |
+| **Total JS** | **~7.5 MB** | **3.49 MB** (gzip 2.65 → 1.04 MB) |
+
+After C (precompiled validators, dev tools lazy): entry 1,355 kB raw / 390 kB gzip, total JS 3,512 kB
+raw / 1,014 kB gzip. The entry is **12 kB larger raw than after B and 32 kB smaller gzipped** — see
+"Validators" below for why, and what removes the rest.
+
+**What keeps it that way**
+
+- `node scripts/check-build-manifest.mjs --chunks --build-log build.log`: the entry and every chunk
+  `index.html` loads must not contain `three.webgpu.js` definition markers, and `vite build` must not
+  have printed "dynamic import will not move module into another chunk". (A literal `WebGPURenderer`
+  grep cannot be the test: the app's own `isWebGPURenderer` flag reads contain it.)
+- `node scripts/check-build-manifest.mjs --budget`: prints the chunk table and enforces
+  `build-budget.json`. `build.chunkSizeWarningLimit` is read from the same file, so a local build
+  and CI agree. Wasm is counted once by content (the Basis transcoder ships twice, byte-identical:
+  `public/basis/` and a hashed asset — reported, not yet fixed). Rapier's wasm must exist exactly once.
+- `src/physics/rapierWorkerGraph.test.ts` inspects `build/`: one `.wasm`, byte-equal to the package,
+  no Rapier-sized base64 literal in any chunk.
+- `public/.htaccess` cache section: `immutable` for `-<8 hash chars>.(js|css|wasm)`, `no-cache` for
+  `index.html`, `BUILD_ID`, `watershed_native.*`. `verify_deploy.mjs` asserts both on a live URL and
+  skips them (with a note) on `localhost` / `127.0.0.1`, where `vite preview` does not run `.htaccess`.
+
+**Validators (C).** `levelValidator.ts` / `reachValidator.ts` no longer build an `Ajv` in the browser.
+`scripts/compile-validators.mjs` (`pnpm compile:validators`) turns `level.schema.json` /
+`reach.schema.json` into self-contained `src/formats/*.validate.js` with `ajv/dist/standalone`;
+`ajv` is a devDependency, and `ajv`, `ajv-formats`, `fast-uri` are gone from `pnpm why -P`. The generated
+code is trimmed of what no caller reads (`verbose`, `schemaPath`, annotation text; the `value` of an error is
+recovered from `instancePath` by `src/formats/valueAtPointer.ts`) and `validators.drift.test.ts` fails if a
+checked-in file is stale or stops matching a verbose Ajv on the authored maps plus thousands of mutated documents.
+`PersistenceSystem.ts` checks its own save shape with a hand-written guard that
+`PersistenceSystem.guard.test.ts` cross-checks against `persistence.schema.json` on a mutation corpus.
+
+The honest cost: the two validators (~185 kB minified) roughly replace Ajv + the schema JSON (~181 kB), so
+the raw entry does not shrink — only the gzip does. They stay in the entry because `maps/registry.ts`
+validates the eight bundled maps at import time and `ReachStreamer` imports `reachValidator`. Both
+callers' maps are already validated by `pnpm test`; skipping or deferring that call at runtime is the
+~237 kB-raw / ~22 kB-gzip follow-up that gets the entry toward its 700 kB target.
+
+**Dev tools (C).** `DebugPanel` and `PhysicsPerfMonitor` are `React.lazy` chunks, fetched only for `?debug=1`
+(the monitor also for `?cleanTest=1`, which `pnpm profile:physics` uses to read
+`window.__watershedPhysicsPerf`). `LevelEditor` and `WasmWaterForceTest` were already dynamic imports and are
+absent from production builds. `VehicleTuner` is **not** a dev tool — it is the raft's boost / drift /
+wall-riding physics — so it stays in the entry. `pnpm build:analyze` (`ANALYZE=1 vite build`) writes a
+treemap and raw module graph to `build-analyze/` (git-ignored).
+
+`three-stdlib` is no longer a direct dependency (the 8 `mergeBufferGeometries` imports now use three's
+`BufferGeometryUtils.mergeGeometries`), but `@react-three/drei` and `@react-three/rapier` still depend on
+it, so ~17 kB of it remains inside `vendor-three`. `pnpm audit --prod` lists two moderate `fflate`
+advisories through that path; `fflate` is tree-shaken to 0 bytes and no chunk contains `unzipSync`.
+
+**Rapier, and why it is a build plugin.** `@dimforge/rapier3d-compat@0.19.2`'s `init()` takes no
+argument (there is no `module_or_path` on the -compat build), `@react-three/rapier` hard-codes
+`import('@dimforge/rapier3d-compat'); r.init()` against a peer-dep pin, and the non-compat package
+has no `init()` at all. `rapierWasmAssetPlugin` in `vite.config.ts` therefore rewrites the one base64
+decode site in `rapier.mjs` to load the emitted asset by URL, and fails the build if the site is not
+found exactly once or the literal is not byte-identical to the package's `.wasm`. A Rapier bump
+fails the build on purpose; re-audit the plugin then. It runs for production builds only, so dev
+and vitest use the stock package.
 
 ---
 

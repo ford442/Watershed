@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { WeatherType } from '../../constants/weather';
-import { validateReach, ValidationResult, formatValidationErrors } from '../../utils/reachValidator';
+import { formatValidationErrors, type ValidationResult } from '../../utils/validationReport';
 import { REACH_API_BASE } from '../../constants/game';
 
 // =============================================================================
@@ -408,6 +408,8 @@ export const ReachStreamer = {
       const rawManifest = await response.json();
 
       // Validate manifest
+      // Loaded on demand: the precompiled schema validator stays out of the entry chunk (#485).
+      const { validateReach } = await import('../../utils/reachValidator');
       const validation: ValidationResult = validateReach(rawManifest);
       if (!validation.valid) {
         throw new Error(`Invalid Reach manifest:\n${formatValidationErrors(validation)}`);

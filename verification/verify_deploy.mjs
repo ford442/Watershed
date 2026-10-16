@@ -212,6 +212,67 @@ export function checkHtaccess(text) {
   return failures;
 }
 
+/** True for a local preview/dev server: it serves hashed assets with whatever
+ *  headers Vite chose, not the ones public/.htaccess ships, so cache-policy
+ *  assertions are skipped there (they are about the deployed directory). */
+export function isLocalUrl(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+    return host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/** Rollup's 8-char content hash before the extension (#485 D). Same expression as
+ *  the FilesMatch in public/.htaccess. */
+export const HASHED_ASSET_RE = /-[A-Za-z0-9_-]{8}\.(js|css|wasm)$/;
+/** Names that keep their name when their bytes change: must be revalidated. */
+export const REVALIDATED_RE = /^(index\.html|BUILD_ID|watershed_native\..*)$/;
+
+function cacheDirectives(value) {
+  const out = new Map();
+  for (const part of String(value ?? '').split(',')) {
+    const [k, v] = part.trim().toLowerCase().split('=');
+    if (k) out.set(k, v ?? true);
+  }
+  return out;
+}
+
+/** `kind`: 'immutable' (hashed asset: max-age >= 1 year + immutable) or
+ *  'revalidate' (unhashed: no-cache / no-store / max-age=0). */
+export function checkCacheControl(name, value, kind) {
+  const d = cacheDirectives(value);
+  if (kind === 'immutable') {
+    const maxAge = Number(d.get('max-age'));
+    if (!(maxAge >= 31536000) || !d.has('immutable')) {
+      return [`${name}: Cache-Control ${JSON.stringify(value ?? null)} — a content-hashed asset must be "public, max-age=31536000, immutable"`];
+    }
+    return [];
+  }
+  const revalidates = d.has('no-cache') || d.has('no-store') || Number(d.get('max-age')) === 0;
+  if (!revalidates) {
+    return [`${name}: Cache-Control ${JSON.stringify(value ?? null)} — an unhashed file must be "no-cache" or a deploy would be invisible`];
+  }
+  return [];
+}
+
+/** The shipped .htaccess must carry both cache rules (static twin of the live-header check). */
+export function checkHtaccessCachePolicy(text) {
+  const failures = [];
+  const active = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  if (!active.some((l) => /^Header\s+set\s+Cache-Control\s+"public,\s*max-age=31536000,\s*immutable"$/i.test(l))) {
+    failures.push('.htaccess lacks the immutable Cache-Control rule for hashed assets');
+  }
+  if (!active.some((l) => /^Header\s+set\s+Cache-Control\s+"no-cache"$/i.test(l))) {
+    failures.push('.htaccess lacks the no-cache Cache-Control rule for index.html / BUILD_ID / watershed_native.*');
+  }
+  if (!active.some((l) => /^<FilesMatch\s+".*\(js\|css\|wasm\)\$"\s*>$/i.test(l))) {
+    failures.push('.htaccess has no FilesMatch for hashed (js|css|wasm) assets');
+  }
+  return failures;
+}
+
 function resolveChrome(puppeteer) {
   for (const candidate of [process.env.PUPPETEER_EXECUTABLE_PATH, process.env.CHROME_PATH]) {
     if (candidate) return candidate;
@@ -334,6 +395,7 @@ async function fetchBuf(url) {
     contentType: res.headers.get('content-type') || '',
     coep: res.headers.get('cross-origin-embedder-policy'),
     coop: res.headers.get('cross-origin-opener-policy'),
+    cacheControl: res.headers.get('cache-control'),
   };
 }
 
@@ -396,6 +458,9 @@ async function main() {
     const htaccessFailures = checkHtaccess(fs.readFileSync(htaccessPath, 'utf8'));
     for (const f of htaccessFailures) fail(failures, f);
     if (!htaccessFailures.length) ok('build/.htaccess: DirectoryIndex, UTF-8 charset, no COOP/COEP');
+    const cacheRuleFailures = checkHtaccessCachePolicy(fs.readFileSync(htaccessPath, 'utf8'));
+    for (const f of cacheRuleFailures) fail(failures, f);
+    if (!cacheRuleFailures.length) ok('build/.htaccess: immutable rule for hashed assets, no-cache rule for the rest');
   }
 
   const builtIndexPath = path.join(args.buildDir, 'index.html');
@@ -435,6 +500,27 @@ async function main() {
     const iso = checkIsolationHeaders(name, res);
     for (const f of iso.failures) fail(failures, f);
     for (const n of iso.notes) note(n);
+  }
+
+  const checkCache = !isLocalUrl(args.url);
+  if (!checkCache) {
+    note('cache-policy headers not asserted: local URL (vite preview does not run public/.htaccess)');
+  } else {
+    for (const [name, res] of [['directory URL', dir], ['index.html', indexDoc]]) {
+      const cacheFailures = checkCacheControl(name, res.cacheControl, 'revalidate');
+      for (const f of cacheFailures) fail(failures, f);
+      if (!cacheFailures.length) ok(`${name}: Cache-Control ${JSON.stringify(res.cacheControl)}`);
+    }
+    try {
+      const buildIdRes = await fetchBuf(joinUrl(args.url, 'BUILD_ID'));
+      const cacheFailures = buildIdRes.ok
+        ? checkCacheControl('BUILD_ID', buildIdRes.cacheControl, 'revalidate')
+        : [`BUILD_ID HTTP ${buildIdRes.status}`];
+      for (const f of cacheFailures) fail(failures, f);
+      if (!cacheFailures.length) ok(`BUILD_ID: Cache-Control ${JSON.stringify(buildIdRes.cacheControl)}`);
+    } catch (err) {
+      fail(failures, `BUILD_ID fetch threw: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // Everything below reads the directory URL's own document, decoded as a browser would.
@@ -477,6 +563,11 @@ async function main() {
       fail(failures, `asset HTTP ${liveAsset.status}: ${ref}`);
       continue;
     }
+    if (checkCache && HASHED_ASSET_RE.test(fromBuild)) {
+      const cacheFailures = checkCacheControl(fromBuild, liveAsset.cacheControl, 'immutable');
+      for (const f of cacheFailures) fail(failures, f);
+      if (!cacheFailures.length) ok(`asset ${fromBuild}: Cache-Control ${JSON.stringify(liveAsset.cacheControl)}`);
+    }
     const local = built.get(fromBuild);
     if (liveAsset.buf.length !== local.size || sha256(liveAsset.buf) !== local.sha256) {
       fail(
@@ -504,6 +595,11 @@ async function main() {
     if (!liveNative.ok) {
       fail(failures, `${name} HTTP ${liveNative.status}`);
       continue;
+    }
+    if (checkCache) {
+      const cacheFailures = checkCacheControl(name, liveNative.cacheControl, 'revalidate');
+      for (const f of cacheFailures) fail(failures, f);
+      if (!cacheFailures.length) ok(`${name}: Cache-Control ${JSON.stringify(liveNative.cacheControl)}`);
     }
     const liveSize = liveNative.buf.length;
     if (liveSize !== local.size) {

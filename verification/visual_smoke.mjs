@@ -612,6 +612,54 @@ async function captureShot(shot, report) {
   return compareToBaseline(shotLabel(shot), last.outPath, report);
 }
 
+/**
+ * #467: one session fetches watershed_native.js and .wasm exactly once — the
+ * loader hashes the bytes it fetched and hands them to the factory as
+ * wasmBinary, and nothing else (no HEAD, no post-instantiate re-fetch) asks
+ * for them. Counts requests from the page and its workers until the sim
+ * worker logs a terminal `[Watershed WASM]` line. A load that never settles on
+ * SwiftShader is recorded as skipped; a repeat fetch or a failed load fails.
+ */
+async function checkNativeFetchedOnce(report) {
+  const NATIVE_DEADLINE_MS = 150_000;
+  const result = { glue: 0, wasm: 0, outcome: 'pending', status: 'pending' };
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.setViewport(VIEWPORT);
+    page.on('request', (r) => {
+      const name = new URL(r.url()).pathname.split('/').pop();
+      if (name === 'watershed_native.js') result.glue += 1;
+      if (name === 'watershed_native.wasm') result.wasm += 1;
+    });
+    page.on('console', (m) => {
+      const hit = /\[Watershed WASM\] (ready|failed|timed-out|provenance-mismatch)/.exec(m.text());
+      if (hit && result.outcome === 'pending') result.outcome = hit[1];
+    });
+    await page.goto(`${BASE_URL}/?renderer=webgl&wasmInitTimeout=${NATIVE_DEADLINE_MS}${EXTRA_QUERY ? `&${EXTRA_QUERY}` : ''}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
+    });
+    const t0 = Date.now();
+    while (result.outcome === 'pending' && Date.now() - t0 < NATIVE_DEADLINE_MS) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    // A late duplicate (e.g. a second loader) would land after `ready`.
+    await new Promise((r) => setTimeout(r, 3000));
+  } catch (err) {
+    result.error = String(err.message || err);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  if (result.glue > 1 || result.wasm > 1) result.status = 'fail-refetch';
+  else if (result.outcome === 'ready') result.status = result.glue === 1 && result.wasm === 1 ? 'pass' : 'fail-missing-request';
+  else if (result.outcome === 'pending') result.status = 'skipped-never-settled';
+  else result.status = `fail-${result.outcome}`;
+  report.nativeFetch = result;
+  console.log(`[native-once] glue=${result.glue} wasm=${result.wasm} outcome=${result.outcome} → ${result.status}`);
+  return !result.status.startsWith('fail');
+}
+
 async function run() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.mkdirSync(BASELINE_DIR, { recursive: true });
@@ -628,6 +676,7 @@ async function run() {
     pageErrors: [],
     parityNotes: [
       'Required gate: 00_start_menu (prestart canyon + UI) via ?cleanTest=1&renderer=webgl&screenshot=1.',
+      'Required gate (#467): watershed_native.js and .wasm are each fetched once per session (report.nativeFetch); a load that never settles on SwiftShader is skipped, not failed.',
       'Best-effort: top-down in-run shots (?no-pointer-lock=1). Skipped on F-8 — not treated as sky-only (F-1).',
       'First-person post-start SwiftShader frames are sky-only — never gate on them.',
       'Force ?renderer=webgl; WebGPU errors under SwiftShader (lightNodeClass).',
@@ -643,6 +692,7 @@ async function run() {
   console.log(`Mode: ${UPDATE_BASELINES ? 'UPDATE baselines' : 'compare'}`);
 
   let allOk = true;
+  const nativeOnce = await checkNativeFetchedOnce(report);
   for (const shot of SHOTS) {
     const ok = await captureShot(shot, report);
     if (!ok) allOk = false;
@@ -668,7 +718,7 @@ async function run() {
   // SwiftShader in-run frame is mostly sky and HUD, so two set-piece captures
   // can be near-identical without the set-piece being missing. The mechanics
   // are gated by unit tests; this is the eyes-on check for a real GPU.
-  report.passed = report.requiredPassed;
+  report.passed = report.requiredPassed && nativeOnce;
 
   const reportPath = path.join(OUT_DIR, 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
@@ -676,6 +726,7 @@ async function run() {
   console.log('\n── visual-smoke summary ──');
   console.log(`Captures: ${report.captures.length}`);
   console.log(`Required passed: ${report.requiredPassed}`);
+  console.log(`Native fetched once: ${report.nativeFetch.status}`);
   console.log(`Hard page errors: ${hard.length}`);
   console.log(`Soft F-8 errors: ${soft.length}`);
   console.log(

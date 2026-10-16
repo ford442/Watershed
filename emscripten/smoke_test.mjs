@@ -28,28 +28,47 @@ if (typeof createWatershedNative !== 'function') {
   throw new Error('watershed_native.js did not export createWatershedNative()');
 }
 
-let wasm;
+let raw;
 try {
-  wasm = await createWatershedNative({
-    instantiateWasm: (imports, receiveInstance) => {
-      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) => {
-        receiveInstance(instance);
-      });
-      return {};
-    },
-  });
+  // The loader passes the fetched bytes as wasmBinary (#467); do the same here.
+  raw = await createWatershedNative({ wasmBinary });
 } catch (error) {
   const msg = error instanceof Error ? error.stack || error.message : String(error);
-  throw new Error(
-    `createWatershedNative() threw (js+wasm pair out of sync or Embind failed): ${msg}`,
-  );
+  throw new Error(`createWatershedNative() threw (js+wasm pair out of sync?): ${msg}`);
 }
 
-if (typeof wasm?.calculateWaterForce !== 'function' || typeof wasm?.getVersion !== 'function') {
-  throw new Error(
-    'createWatershedNative() resolved without Embind exports (calculateWaterForce / getVersion)',
-  );
+// Plain C ABI (#467): every export is Module._ws_<name>. This script stays
+// independent of src/systems/water/wasmAbi.ts on purpose — it is the raw
+// binary's check — so it binds by name here, and reads the three out-pointer
+// results through a scratch block the same way.
+if (typeof raw?._ws_getVersion !== 'function' || typeof raw?._ws_calculateWaterForce !== 'function') {
+  throw new Error('createWatershedNative() resolved without the _ws_* C exports (getVersion / calculateWaterForce)');
 }
+const outPtr = raw._ws_allocateGrid(8);
+const OUT_READERS = {
+  calculateWaterForce: (f, i) => ({
+    forceX: f[i], forceY: f[i + 1], forceZ: f[i + 2], buoyancy: f[i + 3],
+    drag: f[i + 4], flow: f[i + 5], turbulence: f[i + 6], submergedRatio: f[i + 7],
+  }),
+  computeFlowForce: (f, i) => ({ x: f[i], y: f[i + 1], z: f[i + 2] }),
+  routedEdgeState: (f, i) => ({ eta: f[i], speed: f[i + 1] }),
+};
+const U32_RESULTS = new Set(['initWaterfallParticles', 'stepWaterfallParticles']);
+const wasm = new Proxy(raw, {
+  get(target, name) {
+    if (typeof name !== 'string' || name.startsWith('HEAP')) return target[name];
+    const fn = target[`_ws_${name}`];
+    if (typeof fn !== 'function') return undefined;
+    if (OUT_READERS[name]) {
+      return (...args) => {
+        fn(...args, outPtr);
+        return OUT_READERS[name](target.HEAPF32, outPtr >>> 2);
+      };
+    }
+    if (U32_RESULTS.has(name)) return (...args) => fn(...args) >>> 0;
+    return fn;
+  },
+});
 
 const buoyancy = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
 
@@ -58,11 +77,11 @@ if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
 }
 
 const version = wasm.getVersion();
-// ABI 6 changed stepShallowWater's arity (bed pointer). A binary older than
-// that cannot be driven by the current TypeScript at all, so this floor is what
-// catches a stale committed public/watershed_native.wasm.
-if (!Number.isInteger(version) || version < 8) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 8)`);
+// ABI 12 is the plain C ABI (#467) and 13 adds the terrain tile (#487); the
+// TypeScript binding table requires every export, so this floor is what
+// catches a stale committed pair.
+if (!Number.isInteger(version) || version < 13) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 13)`);
 }
 
 if (typeof wasm.applySWEEvent !== 'function') {
@@ -574,10 +593,10 @@ if (version >= 11) {
   if (heapBytes() !== INITIAL_MEMORY) {
     throw new Error(`INITIAL_MEMORY drifted: heap is ${heapBytes()} B, expected ${INITIAL_MEMORY}`);
   }
-  // Largest SWE budget (sweQuality.ts `high`: 64 x 40). Step, inflow step and
+  // Largest SWE budget (sweQuality.ts `ultra`: 128 x 80). Step, inflow step and
   // scroll after the reserve must leave the heap byte length untouched.
-  const W = 64;
-  const Hh = 40;
+  const W = 128;
+  const Hh = 80;
   const N = W * Hh;
   const planes = [0, 1, 2, 3].map(() => wasm.allocateGrid(N));
   wasm.reserveShallowWaterScratch(W, Hh);
@@ -591,6 +610,88 @@ if (version >= 11) {
     throw new Error(`heap grew during step/scroll after reserve: ${before} -> ${heapBytes()} B`);
   }
   for (const p of planes) wasm.freeGrid(p);
+}
+
+// --- ABI 13: terrain tiles (#487) ---------------------------------------------
+// Same fixtures and goldens as emscripten/terrain_goldens.h (host) and
+// src/terrain/__tests__/terrainFixtures.ts (TS mirror), here against the -ffast-math build.
+{
+  const STRIDE = 9;
+  const PLANES = 7;
+  const fixtures = [
+    {
+      name: 'summer meander', args: [96, 35, 14, 40, 96, 0, 1, 0, 0, 0],
+      channel: [
+        7.4, 6.6, 4.9, 0.55, 0.06, -0.4, 1, -1, 0.95,
+        7.9, 6.2, 4.9, 0.20, -0.10, 0.3, 1, -1, 1.05,
+        6.8, 7.3, 4.9, -0.10, 0.12, 0.8, -1, 1, 1.14,
+        6.1, 7.8, 4.9, 0.75, 0.02, -0.7, -1, 1, 0.92,
+        7.0, 7.0, 4.9, 0.40, -0.05, -0.1, 1, -1, 0.99,
+      ],
+      golden: { absX: 35647.5, h: 19824.7554, bank: 2423, probes: [[1988, 0.214000002], [1998, 2.5464499], [2008, 24.8384438]] },
+    },
+    {
+      name: 'slot canyon (collision grid)', args: [110, 24, 8, 10, 27, 1, 0, 0, 0, 0],
+      channel: [
+        4.6, 3.9, 3.2, 1.10, 0.08, -0.6, 1, -1, 0.93,
+        4.1, 4.4, 3.2, 0.30, -0.12, 0.5, -1, 1, 1.09,
+        3.9, 4.8, 3.2, 1.40, 0.15, -1.0, -1, 1, 0.88,
+        4.4, 4.0, 3.2, -0.20, 0.00, 0.9, 1, -1, 1.16,
+      ],
+      golden: { absX: 2016.00003, h: 8351.60272, bank: 223, probes: [[148, 2.90555549], [151, 32.1523018], [153, 55.5884781]] },
+    },
+    {
+      name: 'glacial ice tube', args: [90, 25, 10, 40, 90, 0, 1, 1, 0.88, 9.5],
+      channel: [
+        5.2, 4.8, 3.5, 0.60, 0.04, -0.5, 1, -1, 0.94,
+        4.6, 5.4, 3.5, 0.10, -0.08, 0.6, -1, 1, 1.11,
+        5.0, 5.0, 3.5, 0.35, 0.10, 0.0, 1, -1, 1.00,
+      ],
+      golden: { absX: 17952.578, h: 18642.1421, bank: 2276, probes: [[1865, -0.105999999], [1848, 9.47856712], [1883, 9.68077946]] },
+    },
+  ];
+  const close = (actual, expected, what) => {
+    const tol = Math.max(Math.abs(expected) * 1e-5, 1e-4);
+    if (!(Math.abs(actual - expected) <= tol)) throw new Error(`terrain golden ${what}: expected ${expected}, got ${actual}`);
+  };
+  for (const fx of fixtures) {
+    const [, , , sx, sz] = fx.args;
+    const n = (sx + 1) * (sz + 1);
+    const count = fx.channel.length / STRIDE;
+    const chPtr = wasm.allocateGrid(fx.channel.length);
+    const outPtr = wasm.allocateGrid(n * PLANES);
+    new Float32Array(wasm.HEAPF32.buffer, chPtr, fx.channel.length).set(fx.channel);
+    const written = wasm.buildTerrainTile(...fx.args, chPtr, count, outPtr);
+    if (written !== n) throw new Error(`buildTerrainTile(${fx.name}) returned ${written}, want ${n}`);
+    const planes = new Float32Array(wasm.HEAPF32.buffer, outPtr, n * PLANES);
+    let absX = 0;
+    let h = 0;
+    let bank = 0;
+    for (let i = 0; i < n; i += 1) {
+      absX += Math.abs(planes[i]);
+      h += planes[n + i];
+      bank += planes[2 * n + i];
+    }
+    close(absX, fx.golden.absX, `${fx.name} sum |X|`);
+    close(h, fx.golden.h, `${fx.name} sum H`);
+    close(bank, fx.golden.bank, `${fx.name} sum bank`);
+    for (const [i, want] of fx.golden.probes) close(planes[n + i], want, `${fx.name} H[${i}]`);
+    wasm.freeGrid(outPtr);
+    wasm.freeGrid(chPtr);
+  }
+  // A degenerate path is rejected rather than written.
+  const guardPtr = wasm.allocateGrid(PLANES * 4);
+  if (wasm.buildTerrainTile(0, 30, 10, 1, 1, 0, 0, 0, 0, 0, 0, 0, guardPtr) !== 0) {
+    throw new Error('buildTerrainTile accepted a zero-length path');
+  }
+  wasm.freeGrid(guardPtr);
+
+  const shellPtr = wasm.allocateGrid(25 * 49);
+  if (wasm.buildWallShell(96, 52.5, 24, 48, 0, 0, 7, shellPtr) !== 25 * 49) throw new Error('buildWallShell failed');
+  const shell = new Float32Array(wasm.HEAPF32.buffer, shellPtr, 25 * 49);
+  close(shell.reduce((a, v) => a + v, 0), 23614.6625, 'summer shell sum');
+  close(shell[612], 15.238183, 'summer shell probe');
+  wasm.freeGrid(shellPtr);
 }
 
 console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)} abi=${version})`);

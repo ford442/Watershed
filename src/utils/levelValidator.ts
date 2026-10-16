@@ -5,35 +5,17 @@
  * and performs additional semantic validation.
  */
 
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import * as THREE from 'three';
 import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
-// Import the JSON schema
-import levelSchema from '../formats/level.schema.json';
+// Precompiled from level.schema.json by scripts/compile-validators.mjs (#485 C): no Ajv in the browser.
+import validateSchema from '../formats/level.validate.js';
+import { valueAtPointer } from '../formats/valueAtPointer';
 
-// Initialize AJV
-const ajv = new Ajv({ allErrors: true, verbose: true });
-addFormats(ajv);
+import type { ValidationError, ValidationResult } from './validationReport';
 
-// Compile schema
-const validateSchema = ajv.compile(levelSchema);
-
-// Validation result type
-export interface ValidationError {
-  field: string;
-  error: string;
-  value?: any;
-  lineNum?: number;
-  suggestion?: string;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationError[];
-}
+export type { ValidationError, ValidationResult } from './validationReport';
+export { formatValidationErrors } from './validationReport';
 
 // Canonical BiomeId values plus deprecated aliases (accepted for one release)
 const BIOME_TYPES = [
@@ -102,7 +84,7 @@ export function validateLevel(levelData: any): ValidationResult {
       errors.push({
         field: getErrorField(err),
         error: err.message || 'Invalid value',
-        value: err.data,
+        value: valueAtPointer(levelData, err.instancePath),
         suggestion: getSuggestionForError(err),
       });
     }
@@ -596,35 +578,6 @@ export function validateDecorationCount(type: string, count: number): { valid: b
   }
 
   return { valid: true };
-}
-
-/**
- * Format validation errors for display
- */
-export function formatValidationErrors(result: ValidationResult): string {
-  if (result.valid) {
-    return result.warnings.length > 0
-      ? `Valid with ${result.warnings.length} warning(s)`
-      : 'Valid!';
-  }
-
-  const lines: string[] = [`Found ${result.errors.length} error(s):`];
-  
-  for (const err of result.errors) {
-    lines.push(`  • ${err.field}: ${err.error}`);
-    if (err.suggestion) {
-      lines.push(`    → ${err.suggestion}`);
-    }
-  }
-
-  if (result.warnings.length > 0) {
-    lines.push(`\n${result.warnings.length} warning(s):`);
-    for (const warn of result.warnings) {
-      lines.push(`  • ${warn.field}: ${warn.error}`);
-    }
-  }
-
-  return lines.join('\n');
 }
 
 export default validateLevel;

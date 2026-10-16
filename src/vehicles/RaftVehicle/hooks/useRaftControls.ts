@@ -22,8 +22,6 @@ import {
 import { emitShelfLaunch } from '../../../systems/score/shelfLaunchEvents';
 import type { RapierWorkerProxy } from '../../../physics/RapierWorkerProxy';
 import { createRaftPhysicsRuntime } from './raftPhysicsRuntime';
-import { isWaterForceSystemActive } from '../../../systems/water/WaterForceRegistry';
-import { resolveRaftWaterForceOwner } from '../../../physics/waterForceAuthority';
 import { recordUprightDistance } from '../../../systems/journey/runSession';
 
 export interface UseRaftControlsParams {
@@ -142,14 +140,10 @@ export function useRaftControls({
       }
     }
 
-    const owner = resolveRaftWaterForceOwner({
-      workerPhysicsReady: Boolean(
-        useWorkerPhysics && workerProxyRef.current && workerReadyRef.current,
-      ),
-      waterForceSystemActive: isWaterForceSystemActive(),
-    });
-
-    if (owner === 'worker') {
+    // The Rapier worker owns the body once it is ready; until then the
+    // main-thread body does, and WaterForceSystem applies its water force
+    // (waterForceAuthority.ts — the raft never applies its own, #467).
+    if (useWorkerPhysics && workerProxyRef.current && workerReadyRef.current) {
       runtime.updateWorkerPhysicsFrame(body, delta);
       return;
     }
@@ -157,10 +151,6 @@ export function useRaftControls({
     const submergedRatio = runtime.calculateSubmergedRatio(pos.y);
     buoyancyState.current.submergedRatio = submergedRatio;
     buoyancyState.current.isFloating = submergedRatio > 0.1;
-
-    if (owner === 'local-abi') {
-      runtime.applyAbiWaterForce(body, delta);
-    }
 
     runtime.applyTurbulence(body, timeRef.current, delta);
     runtime.applyTippingForce(body, submergedRatio, delta);

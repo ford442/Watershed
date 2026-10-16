@@ -22,11 +22,7 @@ import { weatherFlowRateDelta, type RunWeather } from '../map/weatherInflow';
 import type { RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import type { SweInflow } from './sweScroll';
-import {
-  ROUTING_SUBREACHES,
-  type RoutedEdge,
-  type WatershedNativeModule,
-} from './WatershedWasm';
+import { ROUTING_SUBREACHES, type RoutedEdge, type WatershedNativeModule } from './wasmAbi';
 
 /**
  * Head discharge at `flowRate` 1 (m³/s). It is also the reference discharge

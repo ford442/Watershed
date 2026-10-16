@@ -12,7 +12,8 @@ pnpm start         # dev server on port 3000 (Vite)
 pnpm test          # unit tests (Vitest + Testing Library)
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
 pnpm typecheck     # tsc --noEmit + the layout/GLSL/typecheck-surface/orphan guards
-pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/)
+pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); ships the committed WASM pair
+pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 3.1.56 (`bash scripts/emsdk-pinned.sh`)
 ```
 
 > Requires WebGL 2.0. The build targets `es2022` (`build.target` in `vite.config.ts`; syntax floor Chrome 94). The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
@@ -86,7 +87,7 @@ src/
 │   ├── water/sweScroll.ts       # SWE window cell lattice + scroll twin (keeps the moving field world-stable)
 │   ├── water/riverRouter.ts     # Launch-hour discharge routed down the campaign chain → SWE upstream-edge stage
 │   ├── map/routingReach.ts      # Campaign chain as (length, slope, width) per segment for the routing
-│   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/WatershedWasm.ts
+│   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/wasmLoader.ts (+ wasmAbi.ts)
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts
@@ -100,6 +101,7 @@ src/
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
+├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — TS mirror of emscripten/terrain.cpp (#487)
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
@@ -328,6 +330,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
 | `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
 | `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
+| `emscripten/terrain.cpp` / `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes (C++ + TS mirror, parity-tested); the canyon and hull builders read the tile (#487, ABI 13) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

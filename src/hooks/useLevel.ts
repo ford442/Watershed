@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { validateLevel, ValidationResult, formatValidationErrors } from '../utils/levelValidator';
+import { formatValidationErrors, type ValidationResult } from '../utils/validationReport';
 import { DecorationPlacement } from '../systems/map/MapSystem';
 
 // Level state types
@@ -327,6 +327,8 @@ export function useLevel(): UseLevelReturn {
       }
 
       // Validate
+      // Loaded on demand: the precompiled schema validator stays out of the entry chunk (#485).
+      const { validateLevel } = await import('../utils/levelValidator');
       const validationResult = validateLevel(json);
       
       if (!validationResult.valid) {

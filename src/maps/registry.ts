@@ -12,7 +12,6 @@ import meanderLevel from './meander_to_waterfall.json';
 import deltaLevel from './delta_rapids.json';
 import lumberLevel from './lumber_flume.json';
 import hydroLevel from './hydro_dam.json';
-import { assertLevelData } from './assertLevelData';
 import {
   GLACIER_START_INDEX,
   MEANDER_FALLBACK_PROGRESSION,
@@ -82,11 +81,18 @@ export interface MapDefinition {
   menuHidden?: boolean;
 }
 
+/**
+ * Bundled map JSON is schema-checked by `registry.contract.test.ts` (every entry, continuations
+ * included) rather than at import: validating here put the precompiled level validator on the
+ * boot path (#485). User-authored levels still go through `assertLevelData`.
+ */
+const bundledLevel = (raw: unknown): LevelData => raw as LevelData;
+
 export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   glacial: {
     id: 'glacial',
     label: 'Glacial Source',
-    levelData: assertLevelData(glacialLevel, 'glacial'),
+    levelData: bundledLevel(glacialLevel),
     fallbackProgression: GLACIAL_SOURCE_FALLBACK_PROGRESSION,
     startIndex: GLACIAL_SOURCE_START_INDEX,
     initialBiome: 'glacialMelt',
@@ -95,14 +101,14 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     nextMapId: 'lumber',
     continuation: {
       mapId: 'lumber',
-      levelData: assertLevelData(lumberLevel, 'glacial → lumber continuation'),
+      levelData: bundledLevel(lumberLevel),
       startIndex: 0,
     },
   },
   lumber: {
     id: 'lumber',
     label: 'Lumber Flume',
-    levelData: assertLevelData(lumberLevel, 'lumber'),
+    levelData: bundledLevel(lumberLevel),
     fallbackProgression: LUMBER_FLUME_FALLBACK_PROGRESSION,
     startIndex: LUMBER_FLUME_START_INDEX,
     initialBiome: 'lumberFlume',
@@ -112,14 +118,14 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     nextMapId: 'meander',
     continuation: {
       mapId: 'meander',
-      levelData: assertLevelData(meanderLevel, 'lumber → meander continuation'),
+      levelData: bundledLevel(meanderLevel),
       startIndex: 0,
     },
   },
   meander: {
     id: 'meander',
     label: 'Meander to Waterfall',
-    levelData: assertLevelData(meanderLevel, 'meander'),
+    levelData: bundledLevel(meanderLevel),
     fallbackProgression: MEANDER_FALLBACK_PROGRESSION,
     startIndex: GLACIER_START_INDEX,
     initialBiome: 'canyonSummer',
@@ -131,7 +137,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   hydro: {
     id: 'hydro',
     label: 'Hydro-Dam',
-    levelData: assertLevelData(hydroLevel, 'hydro'),
+    levelData: bundledLevel(hydroLevel),
     fallbackProgression: HYDRO_DAM_FALLBACK_PROGRESSION,
     startIndex: HYDRO_DAM_START_INDEX,
     initialBiome: 'hydroDam',
@@ -141,14 +147,14 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     nextMapId: 'delta',
     continuation: {
       mapId: 'delta',
-      levelData: assertLevelData(deltaLevel, 'hydro → delta continuation'),
+      levelData: bundledLevel(deltaLevel),
       startIndex: DELTA_RAPIDS_CONTINUED_START_INDEX,
     },
   },
   delta: {
     id: 'delta',
     label: 'River Delta',
-    levelData: assertLevelData(deltaLevel, 'delta'),
+    levelData: bundledLevel(deltaLevel),
     fallbackProgression: DELTA_RAPIDS_FALLBACK_PROGRESSION,
     startIndex: DELTA_RAPIDS_START_INDEX,
     initialBiome: 'delta',

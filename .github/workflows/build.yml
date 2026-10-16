@@ -88,11 +88,21 @@ jobs:
       - name: Instantiate committed watershed_native pair
         run: node emscripten/smoke_test.mjs
 
+      # `tee` keeps the full vite log for the chunk guard below (#485 A): pipefail
+      # makes a failed build still fail this step.
       - name: Build production bundle
-        run: pnpm build
+        shell: bash
+        run: pnpm build 2>&1 | tee build.log
 
       - name: Assert build output exists
         run: test -f build/index.html
+
+      - name: Chunk guard (no node stack in the GLSL entry)
+        run: node scripts/check-build-manifest.mjs --chunks --build-log build.log
+
+      # Prints the chunk table and fails on a ceiling in build-budget.json (#485 D).
+      - name: Payload budget
+        run: node scripts/check-build-manifest.mjs --budget
 
       - name: Run test suite
         run: pnpm test
@@ -184,7 +194,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
-      WATERSHED_REQUIRE_WASM: "1"
       WATERSHED_WASM_INTEGRATION: "1"
       WATERSHED_WASM_MAX_BYTES: "131072"
       PUPPETEER_SKIP_DOWNLOAD: true
@@ -215,6 +224,8 @@ jobs:
       - name: Instantiate committed watershed_native pair
         run: node emscripten/smoke_test.mjs
 
+      # build.sh exits 1 unless emcc matches emscripten/EMCC_VERSION, so this
+      # step also proves setup-emsdk's version and the repo pin agree.
       - name: Compile watershed_native.wasm
         run: pnpm build:wasm
 
@@ -246,3 +257,92 @@ jobs:
             public/watershed_native.js \
             public/watershed_native.wasm \
             src/systems/water/wasmArtifactStamp.ts
+
+  # #467: the plain C ABI should not depend on the emcc version. Build the same
+  # sources with the current emsdk (aside — WATERSHED_ALLOW_EMCC_MISMATCH never
+  # touches public/) and diff the _ws_* export list and arities against the
+  # committed pinned pair. Informational: a new emsdk can break this without
+  # blocking a PR, but the log says exactly which export moved.
+  wasm-exports-current-emsdk:
+    name: WASM exports on current emsdk (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      CI: true
+      PUPPETEER_SKIP_DOWNLOAD: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Set up Emscripten (latest)
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build aside with the current emcc
+        run: |
+          emcc --version | head -n1
+          WATERSHED_ALLOW_EMCC_MISMATCH=1 pnpm build:wasm
+          git diff --exit-code -- public/ src/systems/water/wasmArtifactStamp.ts
+
+      - name: Export list matches the pinned pair
+        run: node scripts/wasm-exports.mjs public emscripten/build/out
+
+  # #467: the C ABI trusts JS for every heap pointer and width * height. Host
+  # build of the compute TUs under ASan + UBSan, 60 s of libFuzzer over the SWE
+  # entry points (random-but-valid grids), and clang-tidy bugprone/performance.
+  native-sanitizers:
+    name: Native sanitizers, fuzz, tidy
+    runs-on: ubuntu-24.04
+    env:
+      CI: true
+      PUPPETEER_SKIP_DOWNLOAD: true
+      CXX_FUZZ: clang++-18
+      CLANG_TIDY: clang-tidy-18
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install clang 18 + clang-tidy 18
+        run: sudo apt-get update && sudo apt-get install -y clang-18 clang-tidy-18
+
+      - name: Host smoke under ASan + UBSan
+        run: pnpm test:native:sanitize
+
+      - name: clang-tidy (bugprone-*, performance-*)
+        run: pnpm lint:native
+
+      - name: Fuzz the SWE entry points for 60 s
+        run: pnpm test:native:fuzz
+
+      - name: Upload fuzz crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swe-fuzz-crashes
+          path: |
+            crash-*
+            timeout-*
+            oom-*
+          if-no-files-found: ignore

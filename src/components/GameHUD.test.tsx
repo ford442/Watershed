@@ -7,8 +7,8 @@ const { getWasmMock, probeMock } = vi.hoisted(() => ({
   probeMock: vi.fn(),
 }));
 
-vi.mock('../systems/water/WatershedWasm', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../systems/water/WatershedWasm')>();
+vi.mock('../systems/water/wasmLoader', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../systems/water/wasmLoader')>();
   return {
     ...actual,
     getWasm: () => getWasmMock(),

@@ -12,12 +12,8 @@
  * Besides WaterForceSystem's own `wasm-main` path, this is the only place
  * that may call `getWasm()` (singleNativeInstance.test.ts).
  */
-import {
-  getWasm,
-  isWasmInitTimeoutError,
-  isWasmProvenanceMismatchError,
-  type WatershedNativeModule,
-} from '../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/wasmAbi';
+import { getWasm, isWasmInitTimeoutError, isWasmProvenanceMismatchError } from '../systems/water/wasmLoader';
 import { resolveSweSimBackendDecision } from '../systems/water/sweBackend';
 import { getSimWorkerProxy, type SimWorkerProxy } from './createSimWorkerProxy';
 

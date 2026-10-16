@@ -11,10 +11,7 @@
  * (no submersion), diagonal flow, and a turbulence-active tick.
  */
 
-import type {
-  NativeWaterForceConfig,
-  NativeWaterForceSample,
-} from '../../systems/water/WatershedWasm';
+import type { NativeWaterForceConfig, NativeWaterForceSample } from '../../systems/water/wasmAbi';
 
 export interface WaterForceFixture {
   name: string;

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Instance } from '@react-three/drei';
-import { mergeBufferGeometries } from 'three-stdlib';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
@@ -26,7 +26,7 @@ const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.Bu
         });
     });
     try {
-        return mergeBufferGeometries(normalized) || new THREE.BufferGeometry();
+        return mergeGeometries(normalized) || new THREE.BufferGeometry();
     } catch (e) {
         return new THREE.BufferGeometry();
     }

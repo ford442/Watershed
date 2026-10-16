@@ -1,0 +1,238 @@
+/**
+ * wasmLoader.test.ts — load once, hash once (#467).
+ *
+ * The committed public/ pair is real input here: the glue is imported from
+ * disk and instantiated on the fetched bytes, so `pnpm test` (no Emscripten,
+ * no env flag) proves the loader binds the shipped binary.
+ */
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import { MIN_WASM_ABI_VERSION, WASM_ABI, wasmExportName, type WasmAbiFunctionName } from './wasmAbi';
+import { WASM_ARTIFACT_STAMP, WASM_BINARY_SHA } from './wasmArtifactStamp';
+import {
+  __resetWasmLoaderForTests,
+  __setGlueImporterForTests,
+  getWasm,
+  isWasmProvenanceMismatchError,
+  loadWatershedNative,
+  peekWasm,
+  peekWasmInitError,
+  resolveWasmInitTimeoutMs,
+  sha256Hex16,
+  WASM_INIT_TIMEOUT_MS,
+  WasmInitTimeoutError,
+  type WatershedGlueModule,
+} from './wasmLoader';
+
+const publicDir = resolve(__dirname, '../../../public');
+const gluePath = resolve(publicDir, 'watershed_native.js');
+const glueText = readFileSync(gluePath, 'utf8');
+const glueBytes = new Uint8Array(readFileSync(gluePath));
+const wasmBytes = new Uint8Array(readFileSync(resolve(publicDir, 'watershed_native.wasm')));
+
+const URLS = {
+  glue: 'https://example.test/watershed_native.js?v=x',
+  wasm: 'https://example.test/watershed_native.wasm?v=x',
+};
+
+const realGlue = (): Promise<WatershedGlueModule> =>
+  import(/* @vite-ignore */ pathToFileURL(gluePath).href) as Promise<WatershedGlueModule>;
+
+function stubFetch(body: Uint8Array): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => body.slice().buffer,
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function quietConsole(): { error: ReturnType<typeof vi.spyOn> } {
+  vi.spyOn(console, 'info').mockImplementation(() => {});
+  return { error: vi.spyOn(console, 'error').mockImplementation(() => {}) };
+}
+
+afterEach(() => {
+  __setGlueImporterForTests(null);
+  __resetWasmLoaderForTests();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe('committed pair', () => {
+  it('the stamp file matches the committed bytes (build.sh hashing)', async () => {
+    expect(await sha256Hex16(glueBytes, wasmBytes)).toBe(WASM_ARTIFACT_STAMP);
+    expect(await sha256Hex16(wasmBytes)).toBe(WASM_BINARY_SHA);
+  });
+
+  it('the glue names the wasm it was linked with', () => {
+    expect(glueText).toContain(`export const WATERSHED_WASM_SHA = "${WASM_BINARY_SHA}";`);
+  });
+
+  it('the glue has no runtime code generation (CSP script-src without unsafe-eval)', () => {
+    expect(glueText).not.toMatch(/\bnew Function\b|\bFunction\(|\beval\(/);
+  });
+
+  it('the glue exposes every _ws_* export in WASM_ABI, and nothing else', () => {
+    const inGlue = new Set(glueText.match(/_ws_[A-Za-z0-9]+/g));
+    const inTable = new Set((Object.keys(WASM_ABI) as WasmAbiFunctionName[]).map(wasmExportName));
+    expect([...inGlue].sort()).toEqual([...inTable].sort());
+  });
+});
+
+describe('loadWatershedNative', () => {
+  it('fetches only the wasm, instantiates those bytes, and binds the real module', async () => {
+    __setGlueImporterForTests(realGlue);
+    const fetchMock = stubFetch(wasmBytes);
+    quietConsole();
+
+    const wasm = await loadWatershedNative(URLS, 10_000);
+
+    // One fetch: the wasm. The glue is the import; the factory got wasmBinary
+    // and never fetched on its own.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(URLS.wasm);
+    expect(wasm.getVersion()).toBeGreaterThanOrEqual(MIN_WASM_ABI_VERSION);
+    expect(wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3)).toBeGreaterThan(0);
+    expect(wasm.routedEdgeState(40, 40, 1, 9.80665)).toEqual({ eta: 0, speed: 0 });
+    const flow = wasm.computeFlowForce(0, 0, 0, 0, 0, -1, 2, 80, 1, 0.47, 1.5);
+    expect(flow.z).toBeLessThan(0);
+    expect(flow.x).toBe(0);
+  });
+
+  it('every raw export has the arity the table declares', async () => {
+    const glue = await realGlue();
+    const raw = await glue.default({ wasmBinary: wasmBytes }) as unknown as Record<string, unknown>;
+    for (const name of Object.keys(WASM_ABI) as WasmAbiFunctionName[]) {
+      const fn = raw[wasmExportName(name)] as ((...a: number[]) => number) | undefined;
+      expect(typeof fn, name).toBe('function');
+      expect(fn!.length, name).toBe(WASM_ABI[name].arity);
+    }
+  });
+
+  it('rejects wasm bytes that do not match WASM_BINARY_SHA, before instantiating', async () => {
+    const factory = vi.fn();
+    __setGlueImporterForTests(async () => ({ default: factory, WATERSHED_WASM_SHA: WASM_BINARY_SHA }));
+    stubFetch(new Uint8Array([1, 2, 3]));
+    const { error } = quietConsole();
+
+    await expect(loadWatershedNative(URLS, 10_000)).rejects.toThrow(/stamp mismatch: wasm=/);
+    expect(factory).not.toHaveBeenCalled();
+    expect(error.mock.calls.some((c) => String(c[0]).includes('provenance-mismatch('))).toBe(true);
+  });
+
+  it('rejects a glue linked against a different wasm', async () => {
+    const factory = vi.fn();
+    __setGlueImporterForTests(async () => ({ default: factory, WATERSHED_WASM_SHA: '0123456789abcdef' }));
+    stubFetch(wasmBytes);
+    quietConsole();
+
+    const err = await loadWatershedNative(URLS, 10_000).catch((e: unknown) => e);
+    expect(isWasmProvenanceMismatchError(err)).toBe(true);
+    expect(String(err)).toMatch(/glue built for wasm=0123456789abcdef/);
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('rejects a binary below MIN_WASM_ABI_VERSION', async () => {
+    __setGlueImporterForTests(async () => ({
+      default: async () => ({ _ws_getVersion: () => 11 }) as never,
+      WATERSHED_WASM_SHA: WASM_BINARY_SHA,
+    }));
+    stubFetch(wasmBytes);
+    quietConsole();
+
+    await expect(loadWatershedNative(URLS, 10_000))
+      .rejects.toThrow(`ABI 11 is older than required ${MIN_WASM_ABI_VERSION}`);
+  });
+
+  it('rejects a binary missing a table export (ABI mismatch, not a crash later)', async () => {
+    __setGlueImporterForTests(async () => ({
+      default: async () => ({ _ws_getVersion: () => MIN_WASM_ABI_VERSION }) as never,
+      WATERSHED_WASM_SHA: WASM_BINARY_SHA,
+    }));
+    stubFetch(wasmBytes);
+    quietConsole();
+
+    await expect(loadWatershedNative(URLS, 10_000)).rejects.toThrow(/ABI mismatch: missing _ws_calculateBuoyancyAndDrag/);
+  });
+
+  it('times out with a greppable error when the factory never settles', async () => {
+    vi.useFakeTimers();
+    __setGlueImporterForTests(async () => ({
+      default: () => new Promise(() => { /* hang */ }),
+      WATERSHED_WASM_SHA: WASM_BINARY_SHA,
+    }));
+    stubFetch(wasmBytes);
+    const { error } = quietConsole();
+
+    const pending = loadWatershedNative(URLS, 50);
+    const settled = expect(pending).rejects.toBeInstanceOf(WasmInitTimeoutError);
+    await vi.advanceTimersByTimeAsync(60);
+    await settled;
+    expect(error).toHaveBeenCalledWith('[Watershed WASM] timed-out(50ms)');
+  });
+});
+
+describe('getWasm', () => {
+  it('records init failure so the HUD can banner instead of showing a TS smoke value', async () => {
+    __setGlueImporterForTests(async () => { throw new Error('glue 404'); });
+    stubFetch(wasmBytes);
+    quietConsole();
+
+    await expect(getWasm()).rejects.toThrow('glue 404');
+    expect(peekWasm()).toBeNull();
+    expect(peekWasmInitError()?.message).toBe('glue 404');
+  });
+
+  it('caches one module per session', async () => {
+    __setGlueImporterForTests(realGlue);
+    const fetchMock = stubFetch(wasmBytes);
+    quietConsole();
+
+    const a = await getWasm();
+    const b = await getWasm();
+    expect(a).toBe(b);
+    expect(peekWasm()).toBe(a);
+    expect(peekWasmInitError()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('resolveWasmInitTimeoutMs', () => {
+  const envKey = 'WATERSHED_WASM_INIT_TIMEOUT_MS';
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedEnv = process.env[envKey];
+    delete process.env[envKey];
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env[envKey];
+    else process.env[envKey] = savedEnv;
+  });
+
+  it('defaults to WASM_INIT_TIMEOUT_MS', () => {
+    expect(resolveWasmInitTimeoutMs('')).toBe(WASM_INIT_TIMEOUT_MS);
+    expect(WASM_INIT_TIMEOUT_MS).toBe(8000);
+  });
+
+  it('reads ?wasmInitTimeout= from search', () => {
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=1500')).toBe(1500);
+  });
+
+  it('ignores invalid query values', () => {
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=0')).toBe(WASM_INIT_TIMEOUT_MS);
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=abc')).toBe(WASM_INIT_TIMEOUT_MS);
+  });
+
+  it('prefers env override over query', () => {
+    process.env[envKey] = '250';
+    expect(resolveWasmInitTimeoutMs('?wasmInitTimeout=9999')).toBe(250);
+  });
+});

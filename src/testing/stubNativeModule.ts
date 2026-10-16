@@ -1,6 +1,6 @@
 /** Test-only: no production module imports this. */
 import { vi } from 'vitest';
-import type { WatershedNativeModule } from '../systems/water/WatershedWasm';
+import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 
 const PLANES = 9;
 
@@ -24,13 +24,14 @@ export function stubNativeModule() {
   const mod = {
     HEAPF32: heap,
     HEAP32: heap32,
-    getVersion: () => 11,
+    getVersion: () => 12,
     allocateGrid: alloc,
     freeGrid: vi.fn(),
     stepShallowWater: vi.fn(),
     stepShallowWaterInflow: vi.fn(),
     applySWEEvent: vi.fn(),
     scrollShallowWater: vi.fn(),
+    reserveShallowWaterScratch: vi.fn(),
     allocateParticleSoA: vi.fn((cap: number) => alloc(PLANES * cap)),
     freeParticleSoA: vi.fn(),
     initWaterfallParticles: vi.fn((base: number, cap: number, active: number, _w: number, height: number) => {

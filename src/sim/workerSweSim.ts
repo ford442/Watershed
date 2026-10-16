@@ -95,7 +95,7 @@ export function createWorkerSweSim(
       h.set(planes.eta);
       u.set(planes.u);
       w.set(planes.w);
-      b.set(planes.b);
+      if (frame.bed) b.set(planes.b);
       fieldVersion += 1;
     }
     if (!disposed) reportedInflow = frame.inflow;

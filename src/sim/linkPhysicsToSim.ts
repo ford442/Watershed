@@ -4,8 +4,8 @@
  * travel worker-to-worker without a main-thread hop (hullLinkProtocol.ts).
  *
  * Only on the `wasm-worker` backend, and only once the sim worker is READY; a
- * failed handshake leaves the Rapier worker unlinked (TS fallback on the tick
- * params WaterForceSystem samples on the main thread, as before Phase B).
+ * failed handshake leaves the Rapier worker unlinked: it then applies the
+ * main thread's TS mirror force that RaftVehicle sends with each step (#467).
  */
 import { resolveSweSimBackendDecision } from '../systems/water/sweBackend';
 import { getSimWorkerProxy } from './createSimWorkerProxy';
