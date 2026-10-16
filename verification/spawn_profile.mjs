@@ -113,6 +113,12 @@ async function profileQuality(quality) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
     page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
+    // Which SWE backend the session settled on: the worker tile build needs the sim worker.
+    const backendLines = [];
+    page.on('console', (m) => {
+      const text = m.text();
+      if (/^\[SWE\] backend=|\[sim worker\]/.test(text)) backendLines.push(text.slice(0, 160));
+    });
     await page.evaluateOnNewDocument((q) => {
       try {
         localStorage.setItem('watershed-settings', JSON.stringify({ state: { quality: q }, version: 1 }));
@@ -213,6 +219,7 @@ async function profileQuality(quality) {
       appended,
       mounts,
       pageErrors,
+      backendLines,
       longtaskCount: raw.longtasks.length,
       bootLinks: raw.links.length - treadmillLinks,
       treadmillLinks,
@@ -263,6 +270,9 @@ async function main() {
     const summary = summarise(run);
     report.runs.push({ ...run, summary });
     console.log(`\n[${quality}] appended ${run.appended}, ${run.mounts.length} mounts measured, ${run.longtaskCount} longtasks, boot mounts ${summary.boot.n} (build Σ ${summary.boot.buildSum} ms)`);
+    const sources = {};
+    for (const m of run.mounts) sources[`${m.phase}/${m.source}`] = (sources[`${m.phase}/${m.source}`] ?? 0) + 1;
+    console.log(`  backend: ${run.backendLines.join(' | ') || '(no [SWE] line)'}; mounts by phase/source: ${JSON.stringify(sources)}`);
     console.log(`  program links: ${run.bootLinks} at boot, ${run.treadmillLinks} over ${run.appended} appends (${(run.treadmillLinks / Math.max(1, run.appended)).toFixed(1)} per append)`);
     console.table(summary.rows);
     if (run.pageErrors.length) console.log(`  page errors: ${run.pageErrors.slice(0, 5).join(' | ')}`);
