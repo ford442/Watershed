@@ -24,4 +24,4 @@ b._ws_stepWaterfallParticles=(a,c,d,e,f,g,k,l)=>(b._ws_stepWaterfallParticles=X.
 );
 })();
 export default createWatershedNative;
-export const WATERSHED_WASM_SHA = "d5bc41823600aac3";
+export const WATERSHED_WASM_SHA = "2f53e3d545326bac";

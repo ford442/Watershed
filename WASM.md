@@ -489,8 +489,9 @@ the reference discharge. The ghost's wave speed joins the CFL max.
 
 The canyon floor used to be an analytic U-profile that TypeScript evaluated three times (visual
 floor, Rapier hull, SWE bed). **`terrain.cpp`** is that profile as one pure function over a grid —
-`computeCanyonFloorHeight`, the channel-shape sampler, `applyTubeProfile` and the wall-shell
-height, ported unchanged. Grid and plane conventions are documented once, in `terrain.h`; the
+the floor height, the channel-shape sampler, `applyTubeProfile` and the wall-shell
+height, ported unchanged (#487 C then lowered the slot profile by `TERRAIN_SLOT_FLOOR_LIFT`
+onto the shared water datum). Grid and plane conventions are documented once, in `terrain.h`; the
 grid is three's `PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ)` after
 `rotateX(−π/2)`, so the builders keep their index buffers.
 
@@ -500,7 +501,8 @@ grid is three's `PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ)` a
 | `buildWallShell(pathLength, shellWidth, segmentsX, segmentsZ, profile, wallHeight, segmentId, outPtr) → int` | One plane: outer wall height above the path point. |
 
 - **Mirror.** `src/terrain/terrainTile.ts` is the same function in TS (and owns the per-point
-  `computeCanyonFloorHeight` / `applyTubeProfile` that `geometryBuilders.ts` re-exports). The
+  `applyTubeProfile` that `geometryBuilders.ts` re-exports; the tile is the only evaluation of
+  the floor profile — the SWE bed reads the hull tile, #487 C). The
   canyon, collision and wall-shell builders (`src/terrain/segmentMeshBuild.ts`, three-free) take
   their tile from `GeometryBuildContext.terrain`:
   the mirror on the main thread, `buildTerrainTileNative` / `buildWallShellHeightsNative` in the

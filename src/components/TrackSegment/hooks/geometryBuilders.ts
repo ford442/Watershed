@@ -17,12 +17,7 @@ import {
 // emscripten/terrain.cpp, #487) and the mesh builders in
 // src/terrain/segmentMeshBuild.ts (three-free, shared with the sim worker);
 // these names stay importable from here.
-export {
-  applyTubeProfile,
-  computeCanyonFloorHeight,
-  type CanyonHeightSample,
-  type TubeProfile,
-} from '../../../terrain/terrainTile';
+export { applyTubeProfile, type TubeProfile } from '../../../terrain/terrainTile';
 export {
   buildCanyonTile,
   canyonSubdivisionCounts,

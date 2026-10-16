@@ -62,10 +62,20 @@ static constexpr int TERRAIN_PLANE_UV_V = 6;
 
 /**
  * Cross-section family (an int on the wire). Slot canyons have their own wall
- * curve and floor datum. Mirrored by TerrainProfile in terrainTile.ts.
+ * curve; since #487 C they share the floor datum. Mirrored by TerrainProfile in terrainTile.ts.
  */
 static constexpr int TERRAIN_PROFILE_OPEN = 0;
 static constexpr int TERRAIN_PROFILE_SLOT = 1;
+
+/**
+ * How far the slot profile is lowered so its thalweg sits at the same datum as
+ * every other biome (#487 C): the slot curve's in-channel constant, 22 × 0.18.
+ * Without it the slot floor sat 2–4 m above the water sheet (path + WATER_LEVEL)
+ * and the SWE bed needed a per-segment re-datum. Applied to the slot floor and
+ * the slot wall shell alike, so the slot canyon moves down rigidly.
+ * Mirrored by TERRAIN_SLOT_FLOOR_LIFT in terrainTile.ts.
+ */
+static constexpr double TERRAIN_SLOT_FLOOR_LIFT = 22.0 * 0.18;
 
 /**
  * Upper bound on grid segments per axis. A 600 m set-piece at the visual
@@ -114,7 +124,7 @@ struct WallShellParams {
 /** (segmentsX + 1) · (segmentsZ + 1), or 0 when either is out of range. */
 int terrainVertexCount(int segmentsX, int segmentsZ);
 
-/** One floor sample before the tube fold (the TS computeCanyonFloorHeight). */
+/** One floor sample before the tube fold (canyonFloorFromShape in terrainTile.ts). */
 struct CanyonFloorSample {
     double yHeight;
     /** Interpolated corridor half-width — the tube fold's springing. */

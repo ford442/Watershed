@@ -1,44 +1,35 @@
 /**
- * bathymetrySampler — canyon floor → SWE bed field (`grid.b`).
+ * bathymetrySampler — the segment hull → SWE bed field (`grid.b`).
  *
- * Phase 2 of #374. The nonlinear solver has taken a bed elevation field since
- * ABI 6, but nothing ever wrote it: every biome simulated a flat rectangle.
- * This module closes that gap without a new dependency and without touching
- * Rapier — the collision canyon is an analytic U-profile
- * (`computeCanyonFloorHeight`), so the live treadmill registers its build
- * inputs here and the sampler evaluates the same profile straight onto the
- * player-centred SWE grid.
+ * Phase 2 of #374 gave the solver a real bed; #487 C makes it the same surface
+ * the raft collides with. Each live segment registers the hull grid its Rapier
+ * trimesh was built from (`SegmentBedGrid`, from `buildSegmentMeshBuffers` on
+ * the main thread or the sim worker), and the sampler interpolates the same
+ * triangles, so the SWE bed and the trimesh floor agree to float rounding.
+ * The canyon profile is evaluated once, by the terrain tile — there is no
+ * second evaluation here.
  *
  * Convention (see `emscripten/swe.h`, do not drift from it):
  *   b is bed elevation above the channel-floor datum, `b = 0` meaning the full
  *   still-water depth H. Total depth is `H + eta - b`, so a cell is dry once
  *   `b > H + eta`.
  *
- * The canyon builders express the floor as `yHeight`, an offset from the
- * segment path point. That offset carries a large per-biome constant — a slot
- * canyon's floor sits ~3.9 above its path point where a summer canyon's sits
- * near 0 — so it cannot be compared against `WATER_LEVEL` directly without
- * declaring the whole slot canyon dry. Each segment is therefore re-datumed
- * against its own thalweg: the channel-centre floor height at mid-segment maps
- * to `b = 0` (full still depth H), and every lateral rise above it shallows
- * the simulated depth by the same amount the authored canyon rises.
+ * The water sheet hangs WATER_LEVEL above the path and the hull floor hangs
+ * `floorHeight` above it, so the still depth is `WATER_LEVEL − floorHeight`
+ * and, with H the solver's mean depth,
  *
- *   b = yHeight - yHeightAtChannelCentre
+ *   b = floorHeight − (WATER_LEVEL − H)        (one datum, every segment)
  *
- * So the shape of the canyon reaches the solver, not the biome's arbitrary
- * vertical offset: a slot canyon dries out a couple of metres off-centre, a
- * delta stays wet across the window.
+ * A cell dries exactly where the floor rises through the water sheet. This
+ * used to need a per-segment re-datum (`b = yHeight − yHeightAtChannelCentre`)
+ * because the slot profile floated its floor ~4 m above the sheet; the slot
+ * profile now sits on the shared datum (TERRAIN_SLOT_FLOOR_LIFT), so the bed is
+ * continuous across segment joins too.
  */
 
-import * as THREE from 'three';
-import {
-  computeCanyonFloorHeight,
-  type GeometryBuildContext,
-} from '../../components/TrackSegment/hooks/geometryBuilders';
+import { WATER_LEVEL } from '../../constants/game';
+import type { SegmentBedGrid } from '../../terrain/segmentMeshBuild';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
-
-/** Centerline samples per segment used to invert world Z → curve parameter. */
-const CENTERLINE_SAMPLES = 24;
 
 /**
  * Bed height used where no segment covers a cell, and the ceiling every
@@ -50,6 +41,9 @@ export const BATHYMETRY_DRY_BED = SWE_MEAN_DEPTH + 2;
 /** Deepest bed the sampler will emit (depth is capped at 2H in the thalweg). */
 const MIN_BED = -SWE_MEAN_DEPTH;
 
+/** Floor height above the path at which `b = 0` (still depth H under the water sheet). */
+export const BED_DATUM = WATER_LEVEL - SWE_MEAN_DEPTH;
+
 export interface BathymetrySource {
   segmentId: number;
   /** World-Z span this segment covers (min/max, direction-agnostic). */
@@ -58,112 +52,98 @@ export interface BathymetrySource {
   /** Path midpoint used to place hydroEvents in world XZ. */
   centerX: number;
   centerZ: number;
+  /**
+   * Hull floor height above the (row-interpolated) path at world XZ, on the
+   * trimesh's own triangles, or null if not covered.
+   */
+  sampleFloorHeight(worldX: number, worldZ: number): number | null;
   /** Bed elevation above the floor datum at world XZ, or null if not covered. */
   sampleBed(worldX: number, worldZ: number): number | null;
 }
 
-/**
- * Convert a canyon `yHeight` to an SWE bed value, relative to that segment's
- * own thalweg reference (see the module header).
- */
-export function bedFromFloorHeight(yHeight: number, floorReference: number): number {
-  const b = yHeight - floorReference;
+/** Convert a hull floor height (above the path) to an SWE bed value. */
+export function bedFromFloorHeight(floorHeight: number): number {
+  const b = floorHeight - BED_DATUM;
   if (!Number.isFinite(b)) return BATHYMETRY_DRY_BED;
-  return THREE.MathUtils.clamp(b, MIN_BED, BATHYMETRY_DRY_BED);
+  return Math.min(BATHYMETRY_DRY_BED, Math.max(MIN_BED, b));
 }
 
 /**
- * Build a bathymetry source from the same context the canyon meshes are built
- * from. Rock noise is excluded, matching `buildCollisionGeometry` — the SWE
- * grid is coarser than the noise wavelength anyway.
+ * A bathymetry source over a segment's hull grid.
+ *
+ * The hull's vertex (ix, iz) sits at `row[iz] + (x_ix, h, 0)` in world space,
+ * so a quad is a parallelogram sheared along the path and its two triangles —
+ * (a, b, d) and (b, c, d), PlaneGeometry's split — are affine images of the
+ * unit square's halves. Interpolating `h` over them in grid coordinates is
+ * therefore exactly the trimesh floor minus the path. Tube folds pull wall
+ * vertices inward; the bed keeps the unfolded column positions, which only
+ * differs above the corridor, where the bed is dry anyway.
  */
 export function createSegmentBathymetrySource(
-  ctx: GeometryBuildContext
+  segmentId: number,
+  bed: SegmentBedGrid | null
 ): BathymetrySource | null {
-  const { segmentPath, segmentId, canyonWidth, waterWidth, channelProfile, isSlotCanyon } = ctx;
-  const len = segmentPath?.getLength?.();
-  if (!segmentPath || !len || !Number.isFinite(len) || len <= 0) return null;
-
-  // Sample the centerline once. `buildCanyonGeometry` places every vertex at
-  // `path(t).z`, so world Z alone identifies t and the centerline X offset.
-  const ts: number[] = [];
-  const xs: number[] = [];
-  const zs: number[] = [];
-  for (let i = 0; i < CENTERLINE_SAMPLES; i += 1) {
-    const t = i / (CENTERLINE_SAMPLES - 1);
-    const p = segmentPath.getPoint(t);
-    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
-    ts.push(t);
-    xs.push(p.x);
-    zs.push(p.z);
+  if (!bed) return null;
+  const { segmentsX, segmentsZ, width, h, rows } = bed;
+  const cols = segmentsX + 1;
+  if (segmentsX < 1 || segmentsZ < 1 || h.length < cols * (segmentsZ + 1) || rows.length < (segmentsZ + 1) * 3) {
+    return null;
   }
+  for (let i = 0; i < rows.length; i += 1) if (!Number.isFinite(rows[i])) return null;
 
-  const first = zs[0];
-  const last = zs[zs.length - 1];
+  const rowX = (iz: number) => rows[iz * 3];
+  const rowZ = (iz: number) => rows[iz * 3 + 2];
+  const first = rowZ(0);
+  const last = rowZ(segmentsZ);
+  if (first === last) return null;
   // Segments run downstream (−Z) but the sampler stays direction-agnostic.
   const descending = last < first;
   const minZ = Math.min(first, last);
   const maxZ = Math.max(first, last);
-  const mid = Math.floor(CENTERLINE_SAMPLES / 2);
-  const centerX = xs[mid] ?? xs[0];
-  const centerZ = zs[mid] ?? first;
-  const halfWidth = canyonWidth * 0.5;
+  const mid = Math.floor(segmentsZ / 2);
+  const cellX = width / segmentsX;
+  const halfWidth = width / 2;
 
-  // Thalweg reference: the channel-centre floor at mid-segment. Sampled once,
-  // so the whole segment shares one datum and the lateral profile survives.
-  const floorReference = computeCanyonFloorHeight(
-    0,
-    0,
-    len,
-    canyonWidth,
-    waterWidth,
-    channelProfile,
-    isSlotCanyon,
-    { includeRockNoise: false }
-  ).yHeight;
-  if (!Number.isFinite(floorReference)) return null;
+  const sampleFloorHeight = (worldX: number, worldZ: number): number | null => {
+    if (!(worldZ >= minZ && worldZ <= maxZ)) return null;
 
-  const sampleBed = (worldX: number, worldZ: number): number | null => {
-    if (worldZ < minZ || worldZ > maxZ) return null;
-
-    // Locate the bracketing centerline pair by world Z.
-    let lo = 0;
-    for (let i = 0; i < zs.length - 1; i += 1) {
-      const a = zs[i];
-      const b = zs[i + 1];
-      const inside = descending ? worldZ <= a && worldZ >= b : worldZ >= a && worldZ <= b;
-      if (inside) {
-        lo = i;
+    // Bracketing row pair by world Z.
+    let iz = segmentsZ - 1;
+    for (let i = 0; i < segmentsZ; i += 1) {
+      const a = rowZ(i);
+      const b = rowZ(i + 1);
+      if (descending ? worldZ <= a && worldZ >= b : worldZ >= a && worldZ <= b) {
+        iz = i;
         break;
       }
-      lo = i;
     }
-    const zA = zs[lo];
-    const zB = zs[lo + 1];
-    const span = zB - zA;
-    const alpha = Math.abs(span) < 1e-6 ? 0 : THREE.MathUtils.clamp((worldZ - zA) / span, 0, 1);
-    const centerX = THREE.MathUtils.lerp(xs[lo], xs[lo + 1], alpha);
-    const t = THREE.MathUtils.lerp(ts[lo], ts[lo + 1], alpha);
+    const zA = rowZ(iz);
+    const span = rowZ(iz + 1) - zA;
+    const fz = Math.abs(span) < 1e-9 ? 0 : Math.min(1, Math.max(0, (worldZ - zA) / span));
 
-    const xLocal = worldX - centerX;
-    if (Math.abs(xLocal) > halfWidth) return null;
-    const zLocal = t * len - len / 2;
+    // Column by the sheared x: the row origin moves linearly along the quad.
+    const originX = rowX(iz) + (rowX(iz + 1) - rowX(iz)) * fz;
+    const u = (worldX - originX + halfWidth) / cellX;
+    if (!(u >= 0 && u <= segmentsX)) return null;
+    const ix = Math.min(segmentsX - 1, Math.floor(u));
+    const fx = u - ix;
 
-    const { yHeight } = computeCanyonFloorHeight(
-      xLocal,
-      zLocal,
-      len,
-      canyonWidth,
-      waterWidth,
-      channelProfile,
-      isSlotCanyon,
-      { includeRockNoise: false }
-    );
-    if (!Number.isFinite(yHeight)) return null;
-    return bedFromFloorHeight(yHeight, floorReference);
+    const ha = h[iz * cols + ix];
+    const hd = h[iz * cols + ix + 1];
+    const hb = h[(iz + 1) * cols + ix];
+    const hc = h[(iz + 1) * cols + ix + 1];
+    const y = fx + fz <= 1
+      ? ha + (hd - ha) * fx + (hb - ha) * fz
+      : hc + (hb - hc) * (1 - fx) + (hd - hc) * (1 - fz);
+    return Number.isFinite(y) ? y : null;
   };
 
-  return { segmentId, minZ, maxZ, centerX, centerZ, sampleBed };
+  const sampleBed = (worldX: number, worldZ: number): number | null => {
+    const floor = sampleFloorHeight(worldX, worldZ);
+    return floor === null ? null : bedFromFloorHeight(floor);
+  };
+
+  return { segmentId, minZ, maxZ, centerX: rowX(mid), centerZ: rowZ(mid), sampleFloorHeight, sampleBed };
 }
 
 // ---------------------------------------------------------------------------

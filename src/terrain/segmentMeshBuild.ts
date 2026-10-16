@@ -91,12 +91,14 @@ export interface GeometryBuffers {
   index: Uint16Array | Uint32Array | null;
 }
 
-/** A segment's four meshes; null where the builder rejected its input. */
+/** A segment's four meshes and its SWE bed grid; null where the builder rejected its input. */
 export interface SegmentMeshBuffers {
   canyon: GeometryBuffers | null;
   collision: GeometryBuffers | null;
   wallShell: GeometryBuffers | null;
   water: GeometryBuffers | null;
+  /** The hull's grid: the SWE bed reads the same triangles Rapier collides with (#487 C). */
+  bed: SegmentBedGrid | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,15 +316,30 @@ export function buildCanyonBuffers(ctx: GeometryBuildContext): GeometryBuffers |
 // ---------------------------------------------------------------------------
 
 /**
- * Low-poly collision-only canyon mesh (same U-profile, ~1/4 XZ density, no
- * vertex colours / decorative rock noise). Mounted invisible under a fixed
- * trimesh RigidBody so the visual mesh owns no Rapier collider.
+ * The hull's grid as data: what the Rapier trimesh is built from and what the
+ * SWE bed reads (#487 C, `bathymetrySampler.ts`), so the two cannot disagree.
  */
-export function buildCollisionBuffers(ctx: GeometryBuildContext): GeometryBuffers | null {
+export interface SegmentBedGrid {
+  segmentsX: number;
+  segmentsZ: number;
+  /** Grid extent across (the canyon width); column ix sits at ix · width / segmentsX − width / 2. */
+  width: number;
+  /** Floor height above the row's path point per vertex: the hull tile's H plane (no rock noise, folded). */
+  h: Float32Array;
+  /** Path point per row, x | y | z: the points the hull's vertices hang from. */
+  rows: Float32Array;
+}
+
+interface HullTile {
+  tile: TerrainTile;
+  rowPoints: Vec3[];
+  len: number;
+}
+
+function hullTile(ctx: GeometryBuildContext): HullTile | null {
   const { segmentPath, segmentId, canyonWidth } = ctx;
   const len = validLength(ctx, ' for collision');
   if (len === null) return null;
-
   // Same tile as the visual mesh at the hull's grid, folded the same way —
   // the hull must ride the tube it can see.
   const tile = buildCanyonTile(ctx, len, 'collision');
@@ -330,10 +347,14 @@ export function buildCollisionBuffers(ctx: GeometryBuildContext): GeometryBuffer
     console.warn(`[TrackSegment ${segmentId}] Invalid collision tile (width ${canyonWidth})`);
     return null;
   }
+  return { tile, rowPoints: rowPathPoints(segmentPath, tile.segmentsZ, segmentId), len };
+}
+
+function collisionFromHull(ctx: GeometryBuildContext, hull: HullTile): GeometryBuffers {
+  const { tile, rowPoints, len } = hull;
   const { segmentsX, segmentsZ } = tile;
-  const grid = planeGrid(canyonWidth, len, segmentsX, segmentsZ);
+  const grid = planeGrid(ctx.canyonWidth, len, segmentsX, segmentsZ);
   const { positions, count } = grid;
-  const rowPoints = rowPathPoints(segmentPath, segmentsZ, segmentId);
 
   for (let i = 0; i < count; i++) {
     setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))], tile.x[i], tile.h[i]);
@@ -347,6 +368,33 @@ export function buildCollisionBuffers(ctx: GeometryBuildContext): GeometryBuffer
     attributes.normal = { array: normals, itemSize: 3 };
   }
   return { attributes, index: grid.index };
+}
+
+function bedFromHull(ctx: GeometryBuildContext, hull: HullTile): SegmentBedGrid {
+  const { tile, rowPoints } = hull;
+  const rows = new Float32Array(rowPoints.length * 3);
+  rowPoints.forEach((p, i) => {
+    rows[i * 3] = p.x;
+    rows[i * 3 + 1] = p.y;
+    rows[i * 3 + 2] = p.z;
+  });
+  return { segmentsX: tile.segmentsX, segmentsZ: tile.segmentsZ, width: ctx.canyonWidth, h: tile.h.slice(), rows };
+}
+
+/**
+ * Low-poly collision-only canyon mesh (same U-profile, ~1/4 XZ density, no
+ * vertex colours / decorative rock noise). Mounted invisible under a fixed
+ * trimesh RigidBody so the visual mesh owns no Rapier collider.
+ */
+export function buildCollisionBuffers(ctx: GeometryBuildContext): GeometryBuffers | null {
+  const hull = hullTile(ctx);
+  return hull ? collisionFromHull(ctx, hull) : null;
+}
+
+/** The SWE bed grid alone (tests; the treadmill gets it from `buildSegmentMeshBuffers`). */
+export function buildBedGrid(ctx: GeometryBuildContext): SegmentBedGrid | null {
+  const hull = hullTile(ctx);
+  return hull ? bedFromHull(ctx, hull) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -537,23 +585,29 @@ export function buildWaterBuffers(ctx: GeometryBuildContext): GeometryBuffers | 
   };
 }
 
-/** Build all four meshes of a segment. */
+/** Build all four meshes of a segment and its bed grid; the hull tile is built once for both. */
 export function buildSegmentMeshBuffers(ctx: GeometryBuildContext): SegmentMeshBuffers {
+  const hull = hullTile(ctx);
   return {
     canyon: buildCanyonBuffers(ctx),
-    collision: buildCollisionBuffers(ctx),
+    collision: hull ? collisionFromHull(ctx, hull) : null,
     wallShell: buildWallShellBuffers(ctx),
     water: buildWaterBuffers(ctx),
+    bed: hull ? bedFromHull(ctx, hull) : null,
   };
 }
 
-/** Every array buffer in `meshes`, once, for postMessage's transfer list. */
+/** Every array buffer in `meshes` (bed included), once, for postMessage's transfer list. */
 export function segmentMeshTransferables(meshes: SegmentMeshBuffers): ArrayBuffer[] {
   const out = new Set<ArrayBuffer>();
   for (const mesh of [meshes.canyon, meshes.collision, meshes.wallShell, meshes.water]) {
     if (!mesh) continue;
     for (const { array } of Object.values(mesh.attributes)) out.add(array.buffer as ArrayBuffer);
     if (mesh.index) out.add(mesh.index.buffer as ArrayBuffer);
+  }
+  if (meshes.bed) {
+    out.add(meshes.bed.h.buffer as ArrayBuffer);
+    out.add(meshes.bed.rows.buffer as ArrayBuffer);
   }
   return [...out];
 }

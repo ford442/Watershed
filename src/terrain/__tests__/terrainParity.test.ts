@@ -189,6 +189,14 @@ describeNative('worker-built segment meshes vs main thread', () => {
     for (const key of ['canyon', 'collision', 'wallShell', 'water'] as const) {
       compare(key, worker?.[key] ?? null, main[key]);
     }
+    // The SWE bed grid (#487 C): same hull tile, so the same floor heights.
+    const wb = worker!.bed!;
+    const mb = main.bed!;
+    expect([wb.segmentsX, wb.segmentsZ, wb.width]).toEqual([mb.segmentsX, mb.segmentsZ, mb.width]);
+    expect(wb.rows).toEqual(mb.rows);
+    let worst = 0;
+    for (let i = 0; i < mb.h.length; i += 1) worst = Math.max(worst, Math.abs(wb.h[i] - mb.h[i]));
+    expect(worst).toBeLessThanOrEqual(DEFAULT_TOLERANCE);
   });
 });
 
