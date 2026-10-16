@@ -1,12 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { TrackSegmentGeometries, UseGeometriesParams } from '../types';
 import {
-  buildCanyonGeometry,
-  buildCollisionGeometry,
-  buildWallShellGeometry,
-  buildWaterGeometry,
   computePlungeImpactPlacement,
   computeWaterfallPos,
+  geometryFromBuffers,
   resolveTubeProfile,
   type GeometryBuildContext,
 } from './geometryBuilders';
@@ -16,6 +13,9 @@ import {
   unregisterSegmentBathymetry,
 } from '../../../systems/water/bathymetrySampler';
 import { isGlacialBiome } from '../../../configs/TrackBiomes';
+import { peekSimWorkerProxy } from '../../../sim/createSimWorkerProxy';
+import type { SimTileResult } from '../../../sim/simWorkerProtocol';
+import { buildSegmentMeshBuffers, segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
 
 export function useGeometries({
   active,
@@ -29,6 +29,7 @@ export function useGeometries({
   canyonWidth,
   waterWidth,
   biome,
+  buildAhead = false,
 }: UseGeometriesParams): TrackSegmentGeometries {
   // `glacialMelt` is the campaign's glacial map; the old literal check for
   // 'glacier' alone never matched it, so the source biome got canyon rock
@@ -68,37 +69,58 @@ export function useGeometries({
     tubeProfile,
   ]);
 
-  const canyonGeometry = useMemo(() => {
-    if (!buildCtx) return null;
-    return buildCanyonGeometry(buildCtx);
-  }, [buildCtx, pathLength]);
-
-  const collisionGeometry = useMemo(() => {
-    if (!buildCtx) return null;
-    return buildCollisionGeometry(buildCtx);
-  }, [buildCtx, pathLength]);
-
-  const wallShellGeometry = useMemo(() => {
-    if (!buildCtx) return null;
-    return buildWallShellGeometry(buildCtx);
-  }, [buildCtx, pathLength, biomeProfile.wallHeight]);
-
-  const waterGeometry = useMemo(() => {
-    if (!buildCtx) return null;
-    return buildWaterGeometry(buildCtx);
-  }, [buildCtx, pathLength]);
-
-  // #374 Phase 2: publish this segment's canyon floor so the SWE grid can
-  // sample a real bed instead of stepping over zeros. Keyed by segment ID, so
-  // a recycled treadmill slot replaces its own entry.
+  // #487 B: a segment the treadmill appends ~150 m ahead is built on the sim
+  // worker (WASM tile + the same builders) and mounts when its buffers land.
+  // Boot and restart pools — the ground under the player — build here,
+  // synchronously, as does every session without a live sim worker.
+  const tileWorker = useMemo(
+    () => (buildAhead && buildCtx ? peekSimWorkerProxy() : null),
+    [buildAhead, buildCtx],
+  );
+  const [tile, setTile] = useState<{ ctx: GeometryBuildContext; result: SimTileResult | null } | null>(null);
   useEffect(() => {
-    if (!buildCtx) {
+    if (!buildCtx || !tileWorker) return undefined;
+    let live = true;
+    void tileWorker.requestTile(segmentMeshSpec(buildCtx)).then((result) => {
+      if (result?.error) console.warn(`[TrackSegment ${buildCtx.segmentId}] worker tile failed; building here`, result.error);
+      if (live) setTile({ ctx: buildCtx, result });
+    });
+    return () => {
+      live = false;
+    };
+  }, [buildCtx, tileWorker]);
+  const workerMeshes = tile && tile.ctx === buildCtx ? tile.result?.meshes ?? null : null;
+  // In flight: render nothing yet. Answered without meshes (the worker died or
+  // the build threw): fall through to the main-thread build.
+  const awaitingWorker = tileWorker !== null && (!tile || tile.ctx !== buildCtx);
+  const source = workerMeshes ? 'worker' : 'main';
+
+  // Main-thread build: no worker for this segment, or it answered without meshes.
+  const mainMeshes = useMemo(
+    () => (!buildCtx || awaitingWorker || workerMeshes ? null : buildSegmentMeshBuffers(buildCtx)),
+    [buildCtx, awaitingWorker, workerMeshes, pathLength, biomeProfile.wallHeight],
+  );
+  const meshes = workerMeshes ?? mainMeshes;
+
+  const canyonGeometry = useMemo(() => geometryFromBuffers(meshes?.canyon ?? null), [meshes]);
+  const collisionGeometry = useMemo(() => geometryFromBuffers(meshes?.collision ?? null), [meshes]);
+  const wallShellGeometry = useMemo(() => geometryFromBuffers(meshes?.wallShell ?? null), [meshes]);
+  const waterGeometry = useMemo(() => geometryFromBuffers(meshes?.water ?? null), [meshes]);
+
+  // Publish this segment's hull as the SWE bed (#374 Phase 2, #487 C): the
+  // grid the trimesh was built from, so bed and collider are one surface.
+  // Keyed by segment ID, so a recycled treadmill slot replaces its own entry;
+  // a segment still waiting on its worker tile publishes nothing yet.
+  const bed = meshes?.bed ?? null;
+  useEffect(() => {
+    const source = createSegmentBathymetrySource(segmentId, bed);
+    if (!source) {
       unregisterSegmentBathymetry(segmentId);
-      return;
+      return undefined;
     }
-    registerSegmentBathymetry(segmentId, createSegmentBathymetrySource(buildCtx));
+    registerSegmentBathymetry(segmentId, source);
     return () => unregisterSegmentBathymetry(segmentId);
-  }, [buildCtx, segmentId, pathLength]);
+  }, [bed, segmentId]);
 
   const waterfallPos = useMemo(() => {
     if (!active || !segmentPath) return null;
@@ -111,6 +133,7 @@ export function useGeometries({
   }, [active, segmentId, segmentPath, type, waterfallPos, waterWidth]);
 
   return {
+    source,
     canyonGeometry,
     collisionGeometry,
     wallShellGeometry,

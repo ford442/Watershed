@@ -48,6 +48,7 @@
     "profile:physics": "node verification/physics_profile.mjs",
     "compile:validators": "node scripts/compile-validators.mjs",
     "profile:swe": "node verification/swe_step_bench.mjs",
+    "profile:spawn": "node verification/spawn_profile.mjs",
     "verify:deploy": "node verification/verify_deploy.mjs"
   },
   "browserslist": {

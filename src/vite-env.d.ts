@@ -12,6 +12,8 @@ interface Window {
     teleportToZ: (z: number, y?: number) => boolean;
     teleportToSegment: (segmentIndex: number) => boolean;
     getSpawnPoints: () => Record<number, { x: number; y: number; z: number }>;
+    /** Generate the next treadmill segment now (verification/spawn_profile.mjs). */
+    advanceTreadmill: () => boolean;
   };
   gpuComputeAvailable?: boolean;
   gpuComputeReason?: string | null;

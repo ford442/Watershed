@@ -1,13 +1,13 @@
 {
   "$comment": "Boot-payload budget (#485 D), enforced by `node scripts/check-build-manifest.mjs --budget` in the 'Build without Emscripten' CI job and mirrored into vite.config.ts build.chunkSizeWarningLimit. Sizes are raw (un-gzipped) bytes of build/assets/*.js; 1 kB = 1000 bytes like Vite's reporter. Raise a number only with a reason in the PR; lower it whenever a phase earns the room.",
-  "entryMaxBytes": 1169000,
+  "entryMaxBytes": 1175000,
   "entryTargetBytes": 700000,
-  "entryNote": "Ceiling = the entry after the validators left the boot path (1,165,739 B) rounded up to the next kB. #485 C left it at 1,354,581 B because registry.ts validated the bundled maps at import and ReachStreamer/useLevel imported the validators statically; the bundled maps are now checked only by registry.contract.test.ts and the validators load on demand (levelValidator ~98 kB, reachValidator ~94 kB chunks). The remaining ~466 kB to entryTargetBytes is app code and eager three/jsm add-ons, tracked in its own issue. #487 Phase A raised it to 1,169,000 B (+3.0 kB): terrainTile.ts, the canyon profile as a tile (TS mirror of emscripten/terrain.cpp) plus its native wrapper, is on the boot path because the canyon builders call it.",
+  "entryNote": "Ceiling = the entry after the validators left the boot path (1,165,739 B) rounded up to the next kB. #485 C left it at 1,354,581 B because registry.ts validated the bundled maps at import and ReachStreamer/useLevel imported the validators statically; the bundled maps are now checked only by registry.contract.test.ts and the validators load on demand (levelValidator ~98 kB, reachValidator ~94 kB chunks). The remaining ~466 kB to entryTargetBytes is app code and eager three/jsm add-ons, tracked in its own issue. #487 Phase A raised it to 1,169,000 B (+3.0 kB): terrainTile.ts, the canyon profile as a tile (TS mirror of emscripten/terrain.cpp) plus its native wrapper, is on the boot path because the canyon builders call it. #487 Phase B raised it to 1,175,000 B (+5.6 kB): the three-free segment mesh builders (segmentMeshBuild.ts + meshMath.ts, shared with the sim worker so the worker carries no three.js), the scene light pool and the worker tile request.",
   "vendorThreeMaxBytes": 1200000,
   "chunkMaxBytes": 1500000,
-  "totalJsMaxBytes": 3519000,
+  "totalJsMaxBytes": 3543000,
   "totalJsTargetBytes": 3500000,
-  "totalJsNote": "Issue #485 asks for <= 3.5 MB raw. Total JS counts every chunk, so moving the validators into lazy chunks cannot lower it: it went 3,512,137 -> 3,515,342 B (+3.2 kB of chunk-split overhead) while the boot entry fell 189 kB. The ceiling is today's number rounded up; the gap to the target is printed on every run and needs code actually removed, not moved. #487 Phase A: 3,518,645 B (+2.6 kB, the terrain tile mirror) -> ceiling 3,519,000.",
+  "totalJsNote": "Issue #485 asks for <= 3.5 MB raw. Total JS counts every chunk, so moving the validators into lazy chunks cannot lower it: it went 3,512,137 -> 3,515,342 B (+3.2 kB of chunk-split overhead) while the boot entry fell 189 kB. The ceiling is today's number rounded up; the gap to the target is printed on every run and needs code actually removed, not moved. #487 Phase A: 3,518,645 B (+2.6 kB, the terrain tile mirror) -> ceiling 3,519,000. #487 Phase B: 3,542,049 B (+23.4 kB) -> ceiling 3,543,000: the entry growth above plus the sim worker's copy of the mesh builders (simWorker 22 -> 40 kB; it was 135 kB while the builders used three).",
   "singleCopyWasm": [
     "rapier_wasm3d_bg"
   ]

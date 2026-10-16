@@ -62,6 +62,11 @@ export interface SegmentData {
   };
   /** Backing MapSystem chunk for pool recycling. */
   _baseChunk?: BaseMapChunk;
+  /**
+   * Appended by the treadmill ahead of the camera (not the boot / restart
+   * pool), so TrackSegment may build its meshes on the sim worker (#487 B).
+   */
+  buildAhead?: boolean;
 }
 
 export function baseChunkToSegmentData(

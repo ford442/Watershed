@@ -377,6 +377,7 @@ export function useExperienceWorld({
         return true;
       },
       getSpawnPoints: () => ({ ...spawnPoints }),
+      advanceTreadmill: () => trackManagerRef.current?.appendSegmentForHarness() ?? false,
     };
 
     window.__watershedScreenshot = api;

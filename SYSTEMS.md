@@ -618,6 +618,23 @@ Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, se
 Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
 never pairs the new index frame with the old origin.
 
+**Segment meshes (#487 Phase B, `src/terrain/segmentMeshBuild.ts`):** a segment the treadmill
+appends ahead of the camera (`SegmentData.buildAhead`, set by `ChunkManager.appendSegment`) asks
+the live sim worker for its meshes: `BUILD_TILE {seq, spec}` carries the build context as
+structured-clone data (`SegmentMeshSpec` — the path as its control points), the worker runs the
+canyon / collision / wall / water builders on its WASM terrain tile (`buildTerrainTileNative`)
+and answers `TILE {seq, meshes}` with every attribute array transferred; `useGeometries` wraps
+them in `BufferGeometry` and `TrackSegment` mounts when they land (nothing renders in that slot
+until then — the segment is ~150 m ahead). The builders are three-free (`segmentMeshBuild.ts`,
+with exact ports of the curve / colour / plane / normals math in `meshMath.ts`, pinned against
+three by `meshMath.test.ts`), so the worker chunk carries no three.js and the main thread runs
+the very same code; `geometryBuilders.ts` only wraps their buffers. The boot and
+restart pools (the ground under the player), sessions without a live sim worker, and a `TILE`
+without meshes (the build threw) or a dead worker all build on the main thread on the TS mirror,
+as before. Worker meshes match the main-thread build within 1e-4 (2e-3 for normals;
+`terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
+the main thread (`useWorkerStaticCollider`): the main world needs it anyway, and it is ~10 KB.
+
 **Main thread on `wasm-worker`, steady state:** no `calculateWaterForce`, `routeReach*`,
 `routedEdgeState`, `stepShallowWater*`, `applySWEEvent` or `scrollShallowWater` calls
 (`WaterForceSystem.simWorker.test.tsx` spies on every one). Its module still serves gpu-chores
@@ -628,7 +645,7 @@ location is its script, not the page) → `READY {abi}`; `CONFIGURE`, `COMMIT_BE
 `SCROLL {fill: inflow | routed}`, `STEP {route?}` (queued `addSurface` ops ride along, applied
 one by one), `DISPOSE_GRID`; `ROUTER`, `DISPOSE_ROUTER`; `FORCES` ↔ `FORCES` result;
 `CONNECT_PHYSICS {port}`; `FRAME {gridId, frameIndex, epoch, computeMicros, inflow, buffer}` ↔
-`RETURN_FRAME`.
+`RETURN_FRAME`; `BUILD_TILE {seq, spec}` ↔ `TILE {seq, meshes, buildMicros}` (#487 B).
 
 **Frames (`SimFrame.ts`):** η | u | w | b in one transferred `ArrayBuffer`. The main thread
 copies it into a stable mirror (`workerSweSim.ts` — readers such as gpu-chores hold `h`
@@ -681,9 +698,12 @@ gameplay-affecting and must run identically at every preset.
 ### SWE bathymetry — `src/systems/water/bathymetrySampler.ts`
 
 The solver's bed field `b` is **sampled from the canyon**, not left at 0 (#374 Phase 2).
-Each live `TrackSegment` publishes a bathymetry source from the same
-`GeometryBuildContext` its collision mesh is built from (`useGeometries`), keyed by segment
-ID so a recycled treadmill slot replaces its own entry. `WaterForceSystem.refreshBed()`
+Each live `TrackSegment` publishes its **hull grid** (`SegmentBedGrid` — the collision tile's
+`h` plane plus the path point of each row, from `buildSegmentMeshBuffers` on the main thread
+or the sim worker) once its meshes exist (`useGeometries`), keyed by segment ID so a recycled
+treadmill slot replaces its own entry. The sampler interpolates the hull's own triangles,
+so the SWE bed and the Rapier trimesh are one surface (#487 C; `terrainBedAgreement.test.ts`
+holds them to 1e-4 at 200 random points per segment). `WaterForceSystem.refreshBed()`
 rasterizes the registered sources into `grid.b` before stepping — only when the
 player-centred window slides a whole cell or the registered set changes, not every frame.
 The same whole-cell move first scrolls `h`/`u`/`w`/`b` through the index frame
@@ -700,13 +720,16 @@ changes η — and therefore the hull through `sampleSWEFlow` — at the boundar
 authored `hydroEvents` disks. `applyForecastToSegmentParams` still reshapes the authored
 channel; the edge adds the wave. The routing never runs in TypeScript.
 
-**Datum:** `computeCanyonFloorHeight`'s `yHeight` carries a large per-biome constant (a slot
-canyon floor sits ~3.9 above its path point, a summer canyon near 0), so each segment is
-re-datumed against its own thalweg: the channel-centre floor at mid-segment maps to `b = 0`
-(full still depth `H`), and lateral rise above it shallows the simulated depth by the same
-amount. Rock noise is excluded, matching `buildCollisionGeometry`. Cells no segment covers
+**Datum (#487 C):** one for every segment. The water sheet hangs `WATER_LEVEL` above the path
+and the hull floor `floorHeight` above it, so `b = floorHeight − (WATER_LEVEL − H)`
+(`BED_DATUM`): a cell dries exactly where the floor rises through the water sheet, and the bed
+is continuous across segment joins. This used to be a per-segment re-datum against the
+mid-segment thalweg, because the slot profile floated its floor ~4 m above the sheet; the slot
+profile is now lowered onto the shared datum (`TERRAIN_SLOT_FLOOR_LIFT`, floor and wall shell
+together). Rock noise is excluded (the hull has none). Cells no segment covers
 get `BATHYMETRY_DRY_BED` (`H + 2`) — dry land, not open water. Every cell is rewritten on
-each refresh, so a previous slot's bed cannot leak into the next window.
+each refresh, so a previous slot's bed cannot leak into the next window. The strongest
+riffle crests reach the sheet and read shallow-to-dry, as the meshes show them.
 
 The result: a slot canyon dries out a couple of metres off-centre, a delta/pond stays wet
 across the whole window, at identical grid sizes. `?sweDebug=1` mounts `SWEBedDebugOverlay`
@@ -759,7 +782,7 @@ HeightmapFlow was deleted (#413) and must not come back.
 **Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
 not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
-exports, the only Emscripten include; `ws_getVersion()` — **12**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**12** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+exports, the only Emscripten include; `ws_getVersion()` — **13**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**13** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:

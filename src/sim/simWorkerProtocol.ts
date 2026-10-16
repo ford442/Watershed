@@ -15,6 +15,10 @@
  * Phase C (one module per session): splash / waterfall particle integrate
  * (PARTICLES_*) and the heightfield chores (CHORES) run here too, so a WebGL
  * session never instantiates `watershed_native` on the main thread.
+ *
+ * #487 Phase B: a treadmill segment's meshes are built here (BUILD_TILE →
+ * TILE): the WASM terrain tile plus the TS mesh builders, posted back as
+ * transferred attribute arrays, so the main thread only wraps them.
  */
 import type { SweEventCall, SweStepInput } from '../systems/water/sweSim';
 import type { SweInflow } from '../systems/water/sweScroll';
@@ -22,6 +26,7 @@ import type { RoutingReach } from '../systems/map/routingReach';
 import type { RoutingForecast } from '../systems/water/riverRouter';
 import type { SimFrame } from './SimFrame';
 import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
+import type { SegmentMeshBuffers, SegmentMeshSpec } from '../terrain/segmentMeshBuild';
 
 /**
  * Queued `addSurface` calls as flat (index, amount) pairs, applied in order
@@ -154,7 +159,9 @@ export type SimWorkerCommand =
     }
   | { type: 'PARTICLES_FREE'; poolId: number }
   /** Heightfield chore summary (gpuChores/heightfieldSummary.ts) of grid `gridId`'s live h. */
-  | { type: 'CHORES'; seq: number; gridId: number; thumbWidth: number; thumbHeight: number };
+  | { type: 'CHORES'; seq: number; gridId: number; thumbWidth: number; thumbHeight: number }
+  /** Build a segment's canyon / collision / wall / water meshes on the worker's terrain tile (#487 B). */
+  | { type: 'BUILD_TILE'; seq: number; spec: SegmentMeshSpec };
 
 /** Planes per particle on the wire (SPLASH_WIRE_PLANES for splash, WATERFALL_WIRE_PLANES for waterfall). */
 export const SPLASH_WIRE_PLANES = 8;
@@ -165,6 +172,14 @@ export interface SimParticleResult {
   seq: number;
   count: number;
   buffer: ArrayBuffer;
+}
+
+export interface SimTileResult {
+  seq: number;
+  /** Null when the build threw; the caller builds on the main thread instead. */
+  meshes: SegmentMeshBuffers | null;
+  error?: string;
+  buildMicros: number;
 }
 
 export interface SimForceResult {
@@ -184,6 +199,7 @@ export type SimWorkerResponse =
   | ({ type: 'PARTICLES' } & SimParticleResult)
   /** `summary` is null when `gridId` is not the live grid. */
   | { type: 'CHORES'; seq: number; summary: HeightfieldSummary | null }
+  | ({ type: 'TILE' } & SimTileResult)
   | { type: 'ERROR'; error: string; fatal: boolean };
 
 export interface SimWorkerLike {

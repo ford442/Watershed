@@ -146,3 +146,40 @@ describe('SimWorkerProxy forces and the hull link (Phase B)', () => {
     expect(stub.posted.at(-1)).toEqual({ command: { type: 'CONNECT_PHYSICS', port }, transfer: [port] });
   });
 });
+
+describe('SimWorkerProxy.requestTile (#487 B)', () => {
+  const spec = {
+    segmentId: 4,
+    path: { points: [0, 0, 0, 0, 0, -10, 0, 0, -20, 0, 0, -30], closed: false, curveType: 'catmullrom' as const, tension: 0.5 },
+    canyonWidth: 30,
+    waterWidth: 12,
+    biome: 'canyonSummer',
+    channelProfile: [],
+    isSlotCanyon: false,
+    isGlacier: false,
+    biomeProfile: { id: 'canyonSummer' as const, wallHeight: 15 },
+    tubeProfile: null,
+  };
+
+  it('pairs each TILE with its request by seq', async () => {
+    const { worker } = stubWorker((c, reply) => {
+      if (c.type === 'BUILD_TILE') {
+        reply({ type: 'TILE', seq: c.seq, meshes: null, error: `segment ${c.spec.segmentId}`, buildMicros: c.seq });
+      }
+    });
+    const proxy = new SimWorkerProxy(worker);
+    const [a, b] = await Promise.all([proxy.requestTile(spec), proxy.requestTile({ ...spec, segmentId: 5 })]);
+    expect(a).toMatchObject({ seq: 1, error: 'segment 4' });
+    expect(b).toMatchObject({ seq: 2, error: 'segment 5' });
+  });
+
+  it('settles pending tiles with null when the worker dies, and answers null after', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stub = stubWorker();
+    const proxy = new SimWorkerProxy(stub.worker);
+    const pending = proxy.requestTile(spec);
+    stub.scriptError('worker crashed');
+    await expect(pending).resolves.toBeNull();
+    await expect(proxy.requestTile(spec)).resolves.toBeNull();
+  });
+});

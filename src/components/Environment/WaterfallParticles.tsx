@@ -6,6 +6,10 @@ import type { WaterfallParticlesProps } from './types';
 import { resolveNativeOwner } from '../../sim/nativeOwner';
 import { createWaterfallIntegrator, type WaterfallIntegrator } from '../../systems/pools/nativeParticles';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { usePooledPointLights } from '../../rendering/sceneLightPool';
+
+/** The spray's glow, borrowed from the scene's fixed light pool (#487). */
+const SPRAY_LIGHT = { color: '#aaddff', distance: 20, decay: 2 } as const;
 
 interface WaterfallParticle {
   x: number;
@@ -38,7 +42,8 @@ export default function WaterfallParticles({
   const fanSpreadRad = (fanAngle * Math.PI) / 180;
   const { config: lodConfig } = useLOD();
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const lightRef = useRef<THREE.PointLight>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const [sprayLight] = usePooledPointLights(1, SPRAY_LIGHT);
   const currentCountRef = useRef(baseCount);
   const targetCountRef = useRef(baseCount);
   const fadeAlphaRef = useRef(1.0);
@@ -203,27 +208,22 @@ export default function WaterfallParticles({
 
     mesh.instanceMatrix.needsUpdate = true;
 
-    const light = lightRef.current;
-    if (light) {
+    const group = groupRef.current;
+    if (sprayLight && group) {
+      // Where the old child <pointLight> sat: the group's origin.
+      group.getWorldPosition(sprayLight.position);
       const intensityScale = currentCount / 300;
-      light.intensity = (2 + Math.sin(state.clock.elapsedTime * 10) * 0.5) * intensityScale;
-      light.intensity *= fadeAlphaRef.current;
+      sprayLight.intensity = (2 + Math.sin(state.clock.elapsedTime * 10) * 0.5) * intensityScale;
+      sprayLight.intensity *= fadeAlphaRef.current;
     }
   });
 
   return (
-    <group position={[0, -height / 2, 0]}>
+    <group ref={groupRef} position={[0, -height / 2, 0]}>
       <NonEmptyInstancedMesh
         ref={meshRef}
         args={[geometry, material, MAX_POOL]}
         frustumCulled={false}
-      />
-      <pointLight
-        ref={lightRef}
-        distance={20}
-        color="#aaddff"
-        decay={2}
-        intensity={2}
       />
     </group>
   );

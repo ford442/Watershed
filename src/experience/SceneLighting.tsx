@@ -5,6 +5,7 @@ import { useLOD } from '../systems/lod/LODManager';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { deriveRendererContextOptions } from '../rendering';
 import { BIOME_LIGHTING } from './constants';
+import { SceneLightPool } from '../rendering/sceneLightPool';
 
 const KEY_LIGHT_USER_DATA = { keyLight: true } as const;
 
@@ -157,6 +158,8 @@ export default function SceneLighting({
         shadow-camera-bottom={-60}
       />
       <directionalLight color={L.fillColor} position={[-10, 15, -20]} intensity={L.fillIntensity} />
+      {/* Segment lights (fireflies, waterfall spray, slot fill) borrow these: a fixed light count, so a mount never recompiles the scene's programs (#487). */}
+      <SceneLightPool />
     </>
   );
 }

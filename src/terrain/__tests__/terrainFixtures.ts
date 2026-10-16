@@ -72,9 +72,9 @@ export const TERRAIN_FIXTURES: readonly TerrainFixture[] = [
       channel: new Float32Array(SLOT_CHANNEL),
     },
     golden: {
-      sumAbsX: 2016.00003, sumH: 8351.60272, sumBank: 223,
-      sumSlopeX: 56.1832799, sumSlopeZ: 2.37521822, sumAbsSlopeX: 1189.26742,
-      probes: [[148, 2.90555549], [151, 32.1523018], [153, 55.5884781]],
+      sumAbsX: 2016.00003, sumH: 7131.92271, sumBank: 223,
+      sumSlopeX: 56.1832751, sumSlopeZ: 2.37521543, sumAbsSlopeX: 1189.26743,
+      probes: [[148, -1.05444443], [151, 28.1923027], [153, 51.628479]],
     },
   },
   {
@@ -109,6 +109,6 @@ export const WALL_SHELL_FIXTURES: readonly WallShellFixture[] = [
   {
     name: 'slot shell',
     params: { pathLength: 110, shellWidth: 22.08, segmentsX: 24, segmentsZ: 55, profile: TerrainProfile.SLOT, wallHeight: 26, segmentId: 21 },
-    sum: 35516.3319, probe: 700, probeY: 24.9836178,
+    sum: 29972.3319, probe: 700, probeY: 21.0236168,
   },
 ];

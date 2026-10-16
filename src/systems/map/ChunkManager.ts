@@ -223,6 +223,82 @@ export class ChunkManager {
     return this.lastEnteredSegment;
   }
 
+  /**
+   * Generate the next segment into the oldest slot (or a free one). The
+   * treadmill calls this when the camera nears the newest end; the spawn
+   * profiler (#487) calls it through `appendForHarness`, because headless the
+   * player cannot move.
+   */
+  private appendSegment(activeSegments: SegmentData[]): boolean {
+    const { pool, activeOrder } = this;
+    const newestEndPoint = activeSegments[activeSegments.length - 1].segmentPath.getPoint(1);
+    const currentActive = [...activeOrder];
+    const slotToRecycle =
+      currentActive.length >= MAX_ACTIVE_SEGMENTS
+        ? currentActive.shift()
+        : currentActive.length;
+
+    if (slotToRecycle === undefined) {
+      return false;
+    }
+
+    const recycledSlot = pool[slotToRecycle];
+    if (recycledSlot?.segment?._baseChunk) {
+      this.chunkPool.release(recycledSlot.segment._baseChunk);
+    }
+
+    const previousSegment = activeSegments[activeSegments.length - 1];
+
+    // Defensive epsilon guard: check for gaps between segments
+    if (previousSegment) {
+      const prevEnd = previousSegment.segmentPath.getPoint(1);
+      const gap = prevEnd.distanceTo(newestEndPoint);
+      if (gap > 0.001) {
+        console.warn(
+          `[ChunkManager] Handoff gap detected: ${gap.toFixed(4)} — proceeding with caution`
+        );
+      }
+    }
+
+    const nextIndex = this.nextSegmentId;
+    const nextSegment = this.buildSegment(nextIndex, previousSegment, true);
+    nextSegment.buildAhead = true;
+
+    // Atomic pool swap
+    pool[slotToRecycle] = {
+      slotIndex: slotToRecycle,
+      active: true,
+      segment: nextSegment,
+    };
+
+    activeOrder.splice(0, 1);
+    activeOrder.push(slotToRecycle);
+
+    this.nextSegmentId += 1;
+
+    // Track spawn point
+    const spawnPoint = nextSegment.segmentPath.getPoint(0);
+    this.spawnPoints.set(nextSegment.id, spawnPoint);
+
+    // Broadcast spawn point for respawn system
+    window.dispatchEvent(
+      new CustomEvent('segment-spawn', {
+        detail: { segmentIndex: nextSegment.id, spawnPoint: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z } },
+      })
+    );
+
+    this.callbacks.onSegmentGenerated?.(nextIndex);
+    return true;
+  }
+
+  /** Append one segment regardless of the camera (screenshot/profile harnesses only). */
+  appendForHarness(): boolean {
+    if (!this.initialized) return false;
+    const activeSegments = this.getActiveSegments();
+    if (activeSegments.length === 0) return false;
+    return this.appendSegment(activeSegments);
+  }
+
   // ---------------------------------------------------------------------------
   // Per-frame update
   // ---------------------------------------------------------------------------
@@ -248,67 +324,11 @@ export class ChunkManager {
       return { poolChanged: false };
     }
 
-    const newestSegment = activeSegments[activeSegments.length - 1];
-    const newestEndPoint = newestSegment.segmentPath.getPoint(1);
+    const newestEndPoint = activeSegments[activeSegments.length - 1].segmentPath.getPoint(1);
 
     // ---- Generation threshold: create new segment ahead ----
     if (cameraZ - newestEndPoint.z < GENERATION_THRESHOLD) {
-      const currentActive = [...activeOrder];
-      const slotToRecycle =
-        currentActive.length >= MAX_ACTIVE_SEGMENTS
-          ? currentActive.shift()
-          : currentActive.length;
-
-      if (slotToRecycle === undefined) {
-        return { poolChanged: false };
-      }
-
-      const recycledSlot = pool[slotToRecycle];
-      if (recycledSlot?.segment?._baseChunk) {
-        this.chunkPool.release(recycledSlot.segment._baseChunk);
-      }
-
-      const previousSegment = activeSegments[activeSegments.length - 1];
-
-      // Defensive epsilon guard: check for gaps between segments
-      if (previousSegment) {
-        const prevEnd = previousSegment.segmentPath.getPoint(1);
-        const gap = prevEnd.distanceTo(newestEndPoint);
-        if (gap > 0.001) {
-          console.warn(
-            `[ChunkManager] Handoff gap detected: ${gap.toFixed(4)} — proceeding with caution`
-          );
-        }
-      }
-
-      const nextIndex = this.nextSegmentId;
-      const nextSegment = this.buildSegment(nextIndex, previousSegment, true);
-
-      // Atomic pool swap
-      pool[slotToRecycle] = {
-        slotIndex: slotToRecycle,
-        active: true,
-        segment: nextSegment,
-      };
-
-      activeOrder.splice(0, 1);
-      activeOrder.push(slotToRecycle);
-
-      this.nextSegmentId += 1;
-      poolChanged = true;
-
-      // Track spawn point
-      const spawnPoint = nextSegment.segmentPath.getPoint(0);
-      this.spawnPoints.set(nextSegment.id, spawnPoint);
-
-      // Broadcast spawn point for respawn system
-      window.dispatchEvent(
-        new CustomEvent('segment-spawn', {
-          detail: { segmentIndex: nextSegment.id, spawnPoint: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z } },
-        })
-      );
-
-      this.callbacks.onSegmentGenerated?.(nextIndex);
+      poolChanged = this.appendSegment(activeSegments);
     }
 
     // ---- Segment entry: the segment the camera is actually on ----
