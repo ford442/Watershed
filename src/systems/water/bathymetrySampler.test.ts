@@ -4,11 +4,14 @@ import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import type { ChannelProfileSample } from '../../components/TrackSegment/types';
 import type { GeometryBuildContext } from '../../components/TrackSegment/hooks/geometryBuilders';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
+import { WATER_LEVEL } from '../../constants/game';
+import { buildBedGrid } from '../../terrain/segmentMeshBuild';
 import {
   BATHYMETRY_DRY_BED,
+  BED_DATUM,
   bedFromFloorHeight,
   clearSegmentBathymetry,
-  createSegmentBathymetrySource,
+  createSegmentBathymetrySource as createFromGrid,
   getBathymetryRevision,
   registerSegmentBathymetry,
   sampleBathymetryInto,
@@ -62,6 +65,11 @@ function makeContext(overrides: Partial<GeometryBuildContext> = {}): GeometryBui
   };
 }
 
+/** A segment's bathymetry, from the hull grid its trimesh is built from. */
+function createSegmentBathymetrySource(ctx: GeometryBuildContext) {
+  return createFromGrid(ctx.segmentId, buildBedGrid(ctx));
+}
+
 /** Depth the solver sees at rest for a bed value. */
 const restDepth = (bed: number) => SWE_MEAN_DEPTH - bed;
 
@@ -70,16 +78,17 @@ afterEach(() => {
 });
 
 describe('bedFromFloorHeight', () => {
-  it('puts the thalweg reference at the full still depth', () => {
-    expect(bedFromFloorHeight(3.9, 3.9)).toBeCloseTo(0, 6);
-    expect(restDepth(bedFromFloorHeight(3.9, 3.9))).toBeCloseTo(SWE_MEAN_DEPTH, 6);
-    // A floor standing H above the thalweg is exactly the drying threshold.
-    expect(restDepth(bedFromFloorHeight(3.9 + SWE_MEAN_DEPTH, 3.9))).toBeCloseTo(0, 6);
+  it('puts a floor H below the water sheet at the full still depth', () => {
+    expect(BED_DATUM).toBeCloseTo(WATER_LEVEL - SWE_MEAN_DEPTH, 12);
+    expect(bedFromFloorHeight(WATER_LEVEL - SWE_MEAN_DEPTH)).toBeCloseTo(0, 6);
+    // A floor at the water sheet is exactly the drying threshold.
+    expect(restDepth(bedFromFloorHeight(WATER_LEVEL))).toBeCloseTo(0, 6);
   });
 
   it('clamps banks to the dry ceiling and never emits NaN', () => {
-    expect(bedFromFloorHeight(500, 0)).toBe(BATHYMETRY_DRY_BED);
-    expect(bedFromFloorHeight(Number.NaN, 0)).toBe(BATHYMETRY_DRY_BED);
+    expect(bedFromFloorHeight(500)).toBe(BATHYMETRY_DRY_BED);
+    expect(bedFromFloorHeight(Number.NaN)).toBe(BATHYMETRY_DRY_BED);
+    expect(bedFromFloorHeight(-500)).toBe(-SWE_MEAN_DEPTH);
   });
 });
 
@@ -125,6 +134,19 @@ describe('createSegmentBathymetrySource', () => {
     expect(wetCells(slot)).toBeGreaterThan(0);
   });
 
+  it('has no per-segment datum: one floor height reads as one bed everywhere', () => {
+    const summer = createSegmentBathymetrySource(makeContext())!;
+    const slot = createSegmentBathymetrySource(
+      makeContext({ isSlotCanyon: true, waterWidth: 6, channelProfile: makeChannelProfile(6) })
+    )!;
+    for (const source of [summer, slot]) {
+      for (const [x, z] of [[0, -LENGTH / 2], [1.5, -10], [-2, -30]]) {
+        const floor = source.sampleFloorHeight(x, z)!;
+        expect(source.sampleBed(x, z)).toBeCloseTo(bedFromFloorHeight(floor), 6);
+      }
+    }
+  });
+
   it('follows the centerline when the path is offset in X', () => {
     const offset = createSegmentBathymetrySource(
       makeContext({ segmentPath: makeStraightPath(LENGTH, 12) })
@@ -154,8 +176,12 @@ describe('sampleBathymetryInto', () => {
 
   it('rasterizes a registered U-channel with a wet thalweg between dry banks', () => {
     registerSegmentBathymetry(0, createSegmentBathymetrySource(makeContext()));
-    const originZ = -LENGTH / 2 - (HEIGHT * CELL) / 2;
-    const { target, covered } = fill(-(WIDTH * CELL) / 2, originZ);
+    // 1 m cells: the window spans ±12 m, past the water sheet's ±7.25 m edge
+    // (the floor rises through the sheet there, so the edges read dry).
+    const cell = 1;
+    const originZ = -LENGTH / 2 - (HEIGHT * cell) / 2;
+    const target = new Float32Array(WIDTH * HEIGHT);
+    const covered = sampleBathymetryInto(target, -(WIDTH * cell) / 2, originZ, cell, WIDTH, HEIGHT);
     expect(covered).toBe(WIDTH * HEIGHT);
 
     const row = HEIGHT / 2;

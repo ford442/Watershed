@@ -12,7 +12,8 @@ import {
   applyTubeProfile,
   buildTerrainTile,
   buildWallShellHeights,
-  computeCanyonFloorHeight,
+  canyonFloorFromShape,
+  sampleChannelShape,
   packChannelProfile,
   TERRAIN_CHANNEL_STRIDE,
   TERRAIN_TILE_PLANES,
@@ -148,12 +149,12 @@ describe('terrain tile — one profile for every consumer', () => {
         const i = iz * cols + ix;
         const x = ix * (params.canyonWidth / params.segmentsX) - params.canyonWidth / 2;
         const z = iz * (params.pathLength / params.segmentsZ) - params.pathLength / 2;
-        const point = computeCanyonFloorHeight(
-          x, z, params.pathLength, params.canyonWidth, params.waterWidth, samples,
-          profile === TerrainProfile.SLOT, { includeRockNoise: rockNoise },
+        const shape = sampleChannelShape(samples, params.waterWidth, iz / params.segmentsZ);
+        const point = canyonFloorFromShape(
+          x, z, params.canyonWidth, shape, profile === TerrainProfile.SLOT, rockNoise,
         );
         const folded = tubeProfile
-          ? applyTubeProfile(x, point.yHeight, point.channelShape.corridorHalfWidth, params.canyonWidth / 2, tubeProfile)
+          ? applyTubeProfile(x, point.yHeight, shape.corridorHalfWidth, params.canyonWidth / 2, tubeProfile)
           : { x, y: point.yHeight };
         // float32 channel packing + plane rounding, nothing more.
         expectClose(tile.h[i], folded.y, `h[${ix},${iz}]`, 1e-5, 1e-4);

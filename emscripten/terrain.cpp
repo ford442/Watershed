@@ -148,6 +148,7 @@ CanyonFloorSample sampleCanyonFloor(const TileParams& p, double xLocal, double z
         y += aboveBank * aboveBank * 4.5 * undercut;
         y -= aboveBank * 1.25 * gravelBar;
     }
+    if (slot) y -= TERRAIN_SLOT_FLOOR_LIFT;
 
     if (p.rockNoise) {
         const double rockNoise =
@@ -242,6 +243,7 @@ int buildWallShell(const WallShellParams& p, std::span<float> out) {
             const double shelfRaw = std::sin(z * 0.085 + x * 0.04 + seg * 0.21) * 0.5 + 0.5;
             const double shelf = std::floor(shelfRaw * shelfSteps) / shelfSteps;
             y += (shelf - 0.5) * (slot ? 2.2 : 1.2);
+            if (slot) y -= TERRAIN_SLOT_FLOOR_LIFT;
             out[static_cast<size_t>(iz) * cols + ix] = static_cast<float>(y - 2.0);
         }
     }

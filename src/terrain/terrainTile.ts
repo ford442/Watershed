@@ -41,6 +41,13 @@ export const TerrainProfile = {
 } as const;
 export type TerrainProfileId = (typeof TerrainProfile)[keyof typeof TerrainProfile];
 
+/**
+ * TERRAIN_SLOT_FLOOR_LIFT in terrain.h (#487 C): the slot profile is lowered by
+ * its in-channel constant so its thalweg sits at the same datum as every other
+ * biome, at or below the water sheet. Floor and wall shell move together.
+ */
+export const TERRAIN_SLOT_FLOOR_LIFT = 22.0 * 0.18;
+
 /** TERRAIN_MAX_SEGMENTS / TERRAIN_MAX_VERTICES in terrain.h. */
 export const TERRAIN_MAX_SEGMENTS = 4096;
 export const TERRAIN_MAX_VERTICES = 1 << 20;
@@ -246,6 +253,7 @@ export function canyonFloorFromShape(
     yHeight += aboveBank * aboveBank * 4.5 * undercutInfluence;
     yHeight -= aboveBank * 1.25 * gravelBarInfluence;
   }
+  if (isSlotCanyon) yHeight -= TERRAIN_SLOT_FLOOR_LIFT;
 
   if (rockNoise) {
     const noise = Math.sin(zLocal * 0.8 + xLocal * 0.5) * 0.3 + Math.sin(zLocal * 2.5 + xLocal * 1.2) * 0.1;
@@ -253,38 +261,6 @@ export function canyonFloorFromShape(
   }
 
   return { yHeight, normalizedDist, bankHalfWidth: signedBankWidth };
-}
-
-export interface CanyonHeightSample {
-  yHeight: number;
-  /** Channel shape at this sample — used for vertex coloring on the visual mesh. */
-  channelShape: ChannelShape;
-  normalizedDist: number;
-}
-
-/**
- * Shared U-profile height at one point. The tile builders below evaluate the
- * same profile on a grid; this per-point form is for the callers that have
- * not moved to tiles yet (the SWE bed sampler until #487 C, side placement).
- * Collision omits high-frequency rock noise so contacts stay smooth.
- */
-export function computeCanyonFloorHeight(
-  xLocal: number,
-  zLocal: number,
-  pathLen: number,
-  canyonWidth: number,
-  waterWidth: number,
-  channelProfile: readonly ChannelProfileSample[],
-  isSlotCanyon: boolean,
-  options: { includeRockNoise?: boolean } = {},
-): CanyonHeightSample {
-  const { includeRockNoise = true } = options;
-  const t = (zLocal + pathLen / 2) / pathLen;
-  const channelShape = sampleChannelShape(channelProfile, waterWidth, clamp01(t));
-  const { yHeight, normalizedDist } = canyonFloorFromShape(
-    xLocal, zLocal, canyonWidth, channelShape, isSlotCanyon, includeRockNoise,
-  );
-  return { yHeight, channelShape, normalizedDist };
 }
 
 /**
@@ -425,6 +401,7 @@ export function buildWallShellHeights(p: WallShellParams): Float32Array | null {
       const shelfRaw = Math.sin(z * 0.085 + x * 0.04 + seg * 0.21) * 0.5 + 0.5;
       const shelf = Math.floor(shelfRaw * shelfSteps) / shelfSteps;
       y += (shelf - 0.5) * (slot ? 2.2 : 1.2);
+      if (slot) y -= TERRAIN_SLOT_FLOOR_LIFT;
       out[iz * cols + ix] = y - 2;
     }
   }
