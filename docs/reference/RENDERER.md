@@ -396,6 +396,18 @@ Besides the η height texture, `WaterForceSystem` uploads a second RGBA float `D
 - **WebGPU preference (`?renderer=webgpu`)** is an experimental no-op on the default material backend; it falls back to WebGL2.
 - **`?material=tsl`** boots the node renderer with `forceWebGL: true` (WebGL2 on the wire). `?material=tsl&renderer=webgpu` negotiates native WebGPU while `canEnableNativeWebgpu()` holds (open since epic #434 B2).
 
+## Scene light count is fixed (#487 Phase B)
+
+three.js bakes the number of lights of each kind (`NUM_POINT_LIGHTS`, `NUM_HEMI_LIGHTS`, …) into
+every lit program, GLSL and node materials alike. A light that mounts with a treadmill segment
+therefore recompiles every lit material in the scene on each append — ~37 program links per
+append on the meander before this was fixed (`pnpm profile:spawn`). Segment content borrows
+instead from `src/rendering/sceneLightPool.tsx`, mounted once by `SceneLighting`:
+`POINT_LIGHT_POOL_SIZE` (6) point lights handed each frame to the requests brightest at the
+camera (fireflies' glow, waterfall spray; dark ones at intensity 0, which three still counts),
+and one slot-canyon fill hemisphere at 0.55 × slot segments mounted. Only session-lifetime
+components may mount a light (`sceneLightPool.test.ts` scans `src/`).
+
 ## Keyboard Shortcuts (debug mode)
 
 | Key | Action |

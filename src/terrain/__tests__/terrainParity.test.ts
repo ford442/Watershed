@@ -23,6 +23,14 @@ import {
   type WallShellParams,
 } from '../terrainTile';
 import { TERRAIN_FIXTURES, WALL_SHELL_FIXTURES } from './terrainFixtures';
+import {
+  buildSegmentMeshBuffers,
+  contextFromSpec,
+  type GeometryBuffers,
+  type SegmentMeshSpec,
+} from '../segmentMeshBuild';
+import { createSimWorkerCore } from '../../sim/simWorkerCore';
+import type { SimWorkerResponse } from '../../sim/simWorkerProtocol';
 
 const runNative = process.env.WATERSHED_WASM_INTEGRATION === '1' && nativePairOnDisk();
 const describeNative = runNative ? describe : describe.skip;
@@ -136,3 +144,93 @@ describeNative('terrain parity — native C++ vs TS mirror', () => {
     expect(buildTerrainTile(params)).toBeNull();
   });
 });
+
+/**
+ * #487 B: a treadmill segment's meshes built in the sim worker (WASM tile) vs
+ * on the main thread (TS mirror). The tile agrees to 1e-5; positions add the
+ * path point (float32 world coordinates) and normals are re-derived from them,
+ * so those carry a looser bound.
+ */
+describeNative('worker-built segment meshes vs main thread', () => {
+  let wasm: WatershedNativeModule;
+
+  beforeAll(async () => {
+    wasm = await loadNativeFromDisk();
+  });
+
+  const TOLERANCE: Record<string, number> = { normal: 2e-3 };
+  const DEFAULT_TOLERANCE = 1e-4;
+
+  function compare(label: string, worker: GeometryBuffers | null, main: GeometryBuffers | null) {
+    expect(worker, label).not.toBeNull();
+    expect(main, label).not.toBeNull();
+    expect(Object.keys(worker!.attributes).sort(), label).toEqual(Object.keys(main!.attributes).sort());
+    for (const [name, { array }] of Object.entries(main!.attributes)) {
+      const other = worker!.attributes[name].array;
+      expect(other.length, `${label}.${name}`).toBe(array.length);
+      const tol = TOLERANCE[name] ?? DEFAULT_TOLERANCE;
+      let worst = 0;
+      for (let i = 0; i < array.length; i += 1) worst = Math.max(worst, Math.abs(other[i] - array[i]));
+      expect(worst, `${label}.${name}`).toBeLessThanOrEqual(tol);
+    }
+    expect(worker!.index, `${label}.index`).toEqual(main!.index);
+  }
+
+  it.each(TERRAIN_FIXTURES.map((f) => [f.name, f] as const))('BUILD_TILE matches the mirror build: %s', (_name, fixture) => {
+    const spec = fixtureSegmentSpec(fixture);
+    const responses: SimWorkerResponse[] = [];
+    const core = createSimWorkerCore(wasm, (response) => responses.push(response));
+    core.handle({ type: 'BUILD_TILE', seq: 3, spec: structuredClone(spec) });
+    core.dispose();
+    const tile = responses.find((r) => r.type === 'TILE');
+    expect(tile).toMatchObject({ type: 'TILE', seq: 3 });
+    const worker = tile?.type === 'TILE' ? tile.meshes : null;
+    const main = buildSegmentMeshBuffers(contextFromSpec(spec));
+    for (const key of ['canyon', 'collision', 'wallShell', 'water'] as const) {
+      compare(key, worker?.[key] ?? null, main[key]);
+    }
+  });
+});
+
+/** A curving segment of the fixture's length, with its channel unpacked back into samples. */
+function fixtureSegmentSpec(fixture: (typeof TERRAIN_FIXTURES)[number]): SegmentMeshSpec {
+  const p = fixture.params;
+  const L = p.pathLength;
+  const samples = p.channel.length / TERRAIN_CHANNEL_STRIDE;
+  const channelProfile = Array.from({ length: samples }, (_, i) => {
+    const o = i * TERRAIN_CHANNEL_STRIDE;
+    const t = samples === 1 ? 0 : i / (samples - 1);
+    return {
+      t,
+      worldArc: t,
+      leftHalfWidth: p.channel[o],
+      rightHalfWidth: p.channel[o + 1],
+      corridorHalfWidth: p.channel[o + 2],
+      floorDepth: p.channel[o + 3],
+      floorWave: p.channel[o + 4],
+      riffleStrength: p.channel[o + 5],
+      gravelBarSide: (p.channel[o + 6] < 0 ? -1 : 1) as -1 | 1,
+      undercutSide: (p.channel[o + 7] < 0 ? -1 : 1) as -1 | 1,
+      flowScale: p.channel[o + 8],
+    };
+  });
+  const slot = p.profile === TerrainProfile.SLOT;
+  const biome = slot ? 'slotCanyon' : p.tube ? 'glacialMelt' : 'canyonSummer';
+  return {
+    segmentId: 11,
+    path: {
+      points: [0, -6, 0, 5, -8, -L / 3, -4, -10, (-2 * L) / 3, 2, -12, -L],
+      closed: false,
+      curveType: 'catmullrom',
+      tension: 0.5,
+    },
+    canyonWidth: p.canyonWidth,
+    waterWidth: p.waterWidth,
+    biome,
+    channelProfile,
+    isSlotCanyon: slot,
+    isGlacier: Boolean(p.tube),
+    biomeProfile: { id: biome as SegmentMeshSpec['biomeProfile']['id'], wallHeight: slot ? 26 : 15 },
+    tubeProfile: p.tube ? { ...p.tube } : null,
+  };
+}

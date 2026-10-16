@@ -16,6 +16,7 @@ import IceSheets from '../Environment/IceSheets';
 import VortexVisual from '../VortexVisual';
 import BreakableTrestle from '../Obstacles/BreakableTrestle';
 import { effectiveVortexStrength } from '../../physics/vortexForces';
+import { useSlotCanyonFill } from '../../rendering/sceneLightPool';
 
 import { useLOD } from '../../systems/lod/LODManager';
 import { useBiome } from '../../systems/biome/BiomeSystem';
@@ -107,6 +108,8 @@ export function TrackSegmentMeshes({
     const showCanyonBackground = biomeProfile.id === 'slotCanyon';
     // Clone material for wall to apply RiverShader effects
     const wallMaterialRef = useRef<WallMaterial | null>(null);
+    // The slot's warm bounce fill is the scene's shared hemisphere (sceneLightPool), not a per-segment light.
+    useSlotCanyonFill(isSlotCanyon);
 
     /**
      * The run's authored hydro events + launch hour. Fixed for the run, so it
@@ -477,13 +480,6 @@ export function TrackSegmentMeshes({
 
     return (
         <group name={`track-segment-${segmentId}`} visible={true}>
-            {isSlotCanyon && (
-                <hemisphereLight
-                    color="#ff8c4a"
-                    groundColor="#3d1a0a"
-                    intensity={0.55}
-                />
-            )}
             {/* Visual canyon — no Rapier collider (physics uses low-poly collisionGeometry). */}
             <mesh geometry={canyonGeometry} material={rockMaterial} />
 

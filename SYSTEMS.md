@@ -618,6 +618,23 @@ Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, se
 Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
 never pairs the new index frame with the old origin.
 
+**Segment meshes (#487 Phase B, `src/terrain/segmentMeshBuild.ts`):** a segment the treadmill
+appends ahead of the camera (`SegmentData.buildAhead`, set by `ChunkManager.appendSegment`) asks
+the live sim worker for its meshes: `BUILD_TILE {seq, spec}` carries the build context as
+structured-clone data (`SegmentMeshSpec` — the path as its control points), the worker runs the
+canyon / collision / wall / water builders on its WASM terrain tile (`buildTerrainTileNative`)
+and answers `TILE {seq, meshes}` with every attribute array transferred; `useGeometries` wraps
+them in `BufferGeometry` and `TrackSegment` mounts when they land (nothing renders in that slot
+until then — the segment is ~150 m ahead). The builders are three-free (`segmentMeshBuild.ts`,
+with exact ports of the curve / colour / plane / normals math in `meshMath.ts`, pinned against
+three by `meshMath.test.ts`), so the worker chunk carries no three.js and the main thread runs
+the very same code; `geometryBuilders.ts` only wraps their buffers. The boot and
+restart pools (the ground under the player), sessions without a live sim worker, and a `TILE`
+without meshes (the build threw) or a dead worker all build on the main thread on the TS mirror,
+as before. Worker meshes match the main-thread build within 1e-4 (2e-3 for normals;
+`terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
+the main thread (`useWorkerStaticCollider`): the main world needs it anyway, and it is ~10 KB.
+
 **Main thread on `wasm-worker`, steady state:** no `calculateWaterForce`, `routeReach*`,
 `routedEdgeState`, `stepShallowWater*`, `applySWEEvent` or `scrollShallowWater` calls
 (`WaterForceSystem.simWorker.test.tsx` spies on every one). Its module still serves gpu-chores
@@ -628,7 +645,7 @@ location is its script, not the page) → `READY {abi}`; `CONFIGURE`, `COMMIT_BE
 `SCROLL {fill: inflow | routed}`, `STEP {route?}` (queued `addSurface` ops ride along, applied
 one by one), `DISPOSE_GRID`; `ROUTER`, `DISPOSE_ROUTER`; `FORCES` ↔ `FORCES` result;
 `CONNECT_PHYSICS {port}`; `FRAME {gridId, frameIndex, epoch, computeMicros, inflow, buffer}` ↔
-`RETURN_FRAME`.
+`RETURN_FRAME`; `BUILD_TILE {seq, spec}` ↔ `TILE {seq, meshes, buildMicros}` (#487 B).
 
 **Frames (`SimFrame.ts`):** η | u | w | b in one transferred `ArrayBuffer`. The main thread
 copies it into a stable mirror (`workerSweSim.ts` — readers such as gpu-chores hold `h`
@@ -759,7 +776,7 @@ HeightmapFlow was deleted (#413) and must not come back.
 **Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
 not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
-exports, the only Emscripten include; `ws_getVersion()` — **12**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**12** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+exports, the only Emscripten include; `ws_getVersion()` — **13**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**13** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:

@@ -6,10 +6,12 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createFireflyMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { usePooledPointLights } from '../../rendering/sceneLightPool';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const MAX_LIGHTS = 5;
 const SEED = 8.731;
+const GLOW_LIGHT = { color: '#ffdd55', distance: 3, decay: 2 } as const;
 
 const hash = (n: number): number => {
   const x = Math.sin(n * SEED) * 43758.5453;
@@ -18,7 +20,7 @@ const hash = (n: number): number => {
 
 export default function Fireflies({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const lightRefs = useRef<(THREE.PointLight | null)[]>([]);
+  const groupRef = useRef<THREE.Group>(null);
 
   const geometry = useMemo(() => new THREE.TetrahedronGeometry(0.1, 0), []);
 
@@ -50,21 +52,26 @@ export default function Fireflies({ transforms }: BiomeDecorationProps) {
     return picked;
   }, [transforms]);
 
+  // Glow lights are borrowed from the scene's fixed pool: a segment mounting
+  // its own <pointLight>s recompiled every lit material in the scene (#487).
+  const glowLights = usePooledPointLights(glowFireflies.length, GLOW_LIGHT);
+
   useFrame((state) => {
     const time = state.clock.elapsedTime;
     const u = materialUniformBag(material);
     if (u?.time) u.time.value = time;
 
+    const group = groupRef.current;
     glowFireflies.forEach((f, i) => {
-      const light = lightRefs.current[i];
-      if (!light) return;
+      const light = glowLights[i];
+      if (!light || !group) return;
 
       const swarmAngle = time * f.swarmSpeed + f.rand * 6.2831;
       const x = f.base.x + Math.cos(swarmAngle) * f.swarmRadius + Math.sin(time * f.floatSpeed + f.rand * 10.0) * f.floatAmp;
       const y = f.base.y + Math.sin(time * f.floatSpeed * 1.3 + f.rand2 * 10.0) * f.floatAmp * 0.6 + Math.sin(swarmAngle * 1.5) * 0.25;
       const z = f.base.z + Math.sin(swarmAngle) * f.swarmRadius + Math.cos(time * f.floatSpeed * 0.8 + f.rand * 20.0) * f.floatAmp;
 
-      light.position.set(x, y, z);
+      group.localToWorld(light.position.set(x, y, z));
 
       let blink = Math.sin(time * f.blinkSpeed + f.blinkPhase);
       blink = THREE.MathUtils.smoothstep(blink, -0.2, 0.8);
@@ -91,21 +98,8 @@ export default function Fireflies({ transforms }: BiomeDecorationProps) {
   if (!transforms || transforms.length === 0) return null;
 
   return (
-    <group>
+    <group ref={groupRef}>
       <NonEmptyInstancedMesh ref={meshRef} args={[geometry, material, transforms.length]} frustumCulled={false} />
-      {glowFireflies.map((f, i) => (
-        <pointLight
-          key={`firefly-glow-${i}`}
-          ref={(el) => {
-            lightRefs.current[i] = el;
-          }}
-          color="#ffdd55"
-          intensity={0.3}
-          distance={3}
-          decay={2}
-          position={[f.base.x, f.base.y, f.base.z]}
-        />
-      ))}
     </group>
   );
 }

@@ -501,8 +501,11 @@ grid is three's `PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ)` a
 
 - **Mirror.** `src/terrain/terrainTile.ts` is the same function in TS (and owns the per-point
   `computeCanyonFloorHeight` / `applyTubeProfile` that `geometryBuilders.ts` re-exports). The
-  canyon, collision and wall-shell builders build their geometry from the mirror's tile today;
-  the sim-worker build (Phase B) calls `buildTerrainTileNative`.
+  canyon, collision and wall-shell builders (`src/terrain/segmentMeshBuild.ts`, three-free) take
+  their tile from `GeometryBuildContext.terrain`:
+  the mirror on the main thread, `buildTerrainTileNative` / `buildWallShellHeightsNative` in the
+  sim worker, which builds every segment the treadmill appends ahead (`BUILD_TILE`, #487 Phase B;
+  see SYSTEMS.md, Sim Worker).
 - **FP.** Both backends compute in double and round once into the float planes, so the host
   (`-ffp-contract=off`), the `-ffast-math` WASM build and the float64 mirror agree to ~1 ulp.
 - **Pinned by:** `host_smoke.cpp` §9 (three golden segments — summer meander, slot canyon on the

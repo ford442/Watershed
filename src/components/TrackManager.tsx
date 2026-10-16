@@ -48,6 +48,11 @@ export interface TrackManagerRef {
   isInitialized: () => boolean;
   getLastEnteredSegment: () => number;
   /**
+   * Generate the next segment now, ignoring the camera (spawn profiler / screenshot
+   * harness only — headless the player cannot drive the treadmill).
+   */
+  appendSegmentForHarness: () => boolean;
+  /**
    * Seamless map handoff: attach next map configs without remounting the
    * TrackManager React tree or wiping the live segment pool.
    */
@@ -153,6 +158,11 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     },
     isInitialized: () => chunkManagerRef.current?.isInitialized() ?? false,
     getLastEnteredSegment: () => chunkManagerRef.current?.getLastEnteredSegment?.() ?? -1,
+    appendSegmentForHarness: () => {
+      const appended = chunkManagerRef.current?.appendForHarness() ?? false;
+      if (appended) setPoolVersion((v) => v + 1);
+      return appended;
+    },
     handoffToMap: ({ nextMapId, plan }) => {
       const cm = chunkManagerRef.current;
       if (!cm?.isInitialized()) return false;

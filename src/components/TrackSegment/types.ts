@@ -142,6 +142,8 @@ export interface PlungeImpactPlacement {
 }
 
 export interface TrackSegmentGeometries {
+  /** Where the meshes were built: here, or on the sim worker (#487 B). */
+  source: 'main' | 'worker';
   canyonGeometry: THREE.BufferGeometry | null;
   /** Low-poly U-profile for Rapier trimesh; visual mesh stays collider-free. */
   collisionGeometry: THREE.BufferGeometry | null;
@@ -196,6 +198,8 @@ export interface UseGeometriesParams {
   canyonWidth: number;
   waterWidth: number;
   biome: BiomeId | string;
+  /** Appended by the treadmill ahead of the player: build on the sim worker when one is live (#487 B). */
+  buildAhead?: boolean;
 }
 
 /** Biome profile as seen by placement (optional treeDensity override from older maps). */
@@ -304,6 +308,8 @@ export interface TrackSegmentProps {
   verticalBias?: number;
   weatherWetnessRef?: MutableRefObject<number> | null;
   usePooledStaticObstacles?: boolean;
+  /** Spread from SegmentData: appended ahead by the treadmill, so its meshes may build on the sim worker (#487 B). */
+  buildAhead?: boolean;
   /** Spread from SegmentData — accepted but not required by the component API. */
   treeDensity?: number;
   rockDensity?: 'low' | 'medium' | 'high' | string;
