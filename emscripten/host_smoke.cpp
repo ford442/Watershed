@@ -9,7 +9,9 @@
  * Also channel routing (routing.cpp): a step release reaches a downstream
  * segment only after the routed lag, volume is conserved, and the routed
  * upstream edge (stepShallowWaterInflow) keeps lake-at-rest at the reference
- * discharge. Host only (no Emscripten headers).
+ * discharge. And the terrain tile (terrain.cpp, #487): the three golden
+ * segments' plane sums, the tube overhang, and the input guards.
+ * Host only (no Emscripten headers).
  *
  *   cmake -S emscripten -B emscripten/build-host
  *   cmake --build emscripten/build-host
@@ -20,10 +22,13 @@
 #include "swe.h"
 #include "particles.h"
 #include "routing.h"
+#include "terrain.h"
+#include "terrain_goldens.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <span>
 #include <cstdint>
 #include <algorithm>
 #include <limits>
@@ -849,6 +854,130 @@ int main() {
             checkClose(lagFar, 264.890015f, 1e-4f, "routing golden: far-segment lag (s)");
             checkClose(riseAtLag, 0.999229f, 1e-4f, "routing golden: release fraction at 1.25 x lag");
             checkClose(high.eta, 0.197293f, 1e-4f, "routing golden: edge stage for +35% discharge");
+        }
+    }
+
+
+    // 9. Terrain tile (terrain.cpp, ABI 13, #487). Goldens are mirrored in
+    //    src/terrain/__tests__/terrainFixtures.ts and emscripten/smoke_test.mjs.
+    {
+        using namespace terrain_goldens;
+        const bool print = std::getenv("WATERSHED_PRINT_TERRAIN_GOLDENS") != nullptr;
+        for (int f = 0; f < kFixtureCount; ++f) {
+            const Fixture& fx = kFixtures[f];
+            const Golden& g = kGoldens[f];
+            TileParams params;
+            params.pathLength = fx.pathLength;
+            params.canyonWidth = fx.canyonWidth;
+            params.waterWidth = fx.waterWidth;
+            params.segmentsX = fx.segmentsX;
+            params.segmentsZ = fx.segmentsZ;
+            params.profile = fx.profile;
+            params.rockNoise = fx.rockNoise;
+            params.hasTube = fx.hasTube;
+            params.tubeCurl = fx.tubeCurl;
+            params.tubeCeiling = fx.tubeCeiling;
+            params.channel = std::span<const float>(fx.channel, static_cast<size_t>(fx.channelCount) * TERRAIN_CHANNEL_STRIDE);
+            const int n = terrainVertexCount(fx.segmentsX, fx.segmentsZ);
+            std::vector<float> planes(static_cast<size_t>(n) * TERRAIN_TILE_PLANES, -999.f);
+            TerrainTile tile{planes};
+            check(buildTerrainTile(params, tile) == n, "terrain: buildTerrainTile returns the vertex count");
+            const auto at = [&](int k, int i) { return planes[static_cast<size_t>(k) * n + i]; };
+            double sums[TERRAIN_TILE_PLANES] = {};
+            double absX = 0.0;
+            double absSlopeX = 0.0;
+            bool finite = true;
+            for (int k = 0; k < TERRAIN_TILE_PLANES; ++k) {
+                for (int i = 0; i < n; ++i) {
+                    finite = finite && std::isfinite(at(k, i));
+                    sums[k] += at(k, i);
+                }
+            }
+            for (int i = 0; i < n; ++i) {
+                absX += std::abs(at(TERRAIN_PLANE_X, i));
+                absSlopeX += std::abs(at(TERRAIN_PLANE_SLOPE_X, i));
+            }
+            check(finite, "terrain: every plane is finite");
+            if (print) {
+                std::printf("    {%.9g, %.9g, %.9g, %.9g, %.9g, %.9g, {%d, %d, %d}, {%.9g, %.9g, %.9g}},  // %s\n",
+                            absX, sums[TERRAIN_PLANE_H], sums[TERRAIN_PLANE_BANK],
+                            sums[TERRAIN_PLANE_SLOPE_X], sums[TERRAIN_PLANE_SLOPE_Z], absSlopeX,
+                            g.probe[0], g.probe[1], g.probe[2],
+                            at(TERRAIN_PLANE_H, g.probe[0]), at(TERRAIN_PLANE_H, g.probe[1]),
+                            at(TERRAIN_PLANE_H, g.probe[2]), fx.name);
+                continue;
+            }
+            const auto close = [&](double actual, double expected, const char* what) {
+                const double tol = std::max(std::abs(expected) * 1e-5, 1e-4);
+                if (!(std::abs(actual - expected) <= tol)) {
+                    std::fprintf(stderr, "FAIL  terrain golden %s / %s: expected %.9g, got %.9g\n",
+                                 fx.name, what, expected, actual);
+                    ++g_failures;
+                }
+            };
+            close(absX, g.sumAbsX, "sum |X|");
+            close(sums[TERRAIN_PLANE_H], g.sumH, "sum H");
+            close(sums[TERRAIN_PLANE_BANK], g.sumBank, "sum bank");
+            close(sums[TERRAIN_PLANE_SLOPE_X], g.sumSlopeX, "sum slopeX");
+            close(sums[TERRAIN_PLANE_SLOPE_Z], g.sumSlopeZ, "sum slopeZ");
+            close(absSlopeX, g.sumAbsSlopeX, "sum |slopeX|");
+            for (int p = 0; p < 3; ++p) close(at(TERRAIN_PLANE_H, g.probe[p]), g.probeH[p], "probe H");
+
+            // Structural: uv spans the tile, the centre column is wet, the outer columns are bank.
+            const int cols = fx.segmentsX + 1;
+            const int midRow = (fx.segmentsZ / 2) * cols;
+            check(at(TERRAIN_PLANE_UV_U, 0) == 0.f && at(TERRAIN_PLANE_UV_U, cols - 1) == 1.f, "terrain: uvU spans 0..1");
+            checkClose(at(TERRAIN_PLANE_UV_V, n - 1), static_cast<float>(fx.pathLength), 1e-6f, "terrain: uvV ends at the path length");
+            check(at(TERRAIN_PLANE_BANK, midRow + cols / 2) == 0.f, "terrain: the thalweg is in the channel");
+            check(at(TERRAIN_PLANE_BANK, midRow) == 1.f && at(TERRAIN_PLANE_BANK, midRow + cols - 1) == 1.f,
+                  "terrain: the canyon edges are bank");
+            if (fx.hasTube) {
+                // The fold pulls the outer column inboard of a column further in: the overhang.
+                const float outer = std::abs(at(TERRAIN_PLANE_X, midRow));
+                const float inner = std::abs(at(TERRAIN_PLANE_X, midRow + 2));
+                check(outer < inner, "terrain: the ice tube overhangs (outer wall inboard of its springing)");
+                checkClose(at(TERRAIN_PLANE_H, midRow), static_cast<float>(fx.tubeCeiling), 1e-5f,
+                           "terrain: the tube crown lands on the authored ceiling");
+            } else {
+                check(at(TERRAIN_PLANE_X, 0) == static_cast<float>(-fx.canyonWidth / 2), "terrain: open canyon x is the grid x");
+            }
+        }
+
+        // Guards: nothing is written for a degenerate path or a short buffer.
+        std::vector<float> small(TERRAIN_TILE_PLANES * 4, 7.f);
+        TerrainTile smallTile{small};
+        TileParams bad;
+        bad.pathLength = 0.0;
+        bad.canyonWidth = 30.0;
+        bad.segmentsX = 1;
+        bad.segmentsZ = 1;
+        check(buildTerrainTile(bad, smallTile) == 0, "terrain: zero path length is rejected");
+        bad.pathLength = std::numeric_limits<double>::quiet_NaN();
+        check(buildTerrainTile(bad, smallTile) == 0, "terrain: NaN path length is rejected");
+        bad.pathLength = 10.0;
+        bad.segmentsX = 2;
+        check(buildTerrainTile(bad, smallTile) == 0, "terrain: a short output buffer is rejected");
+        bad.segmentsX = TERRAIN_MAX_SEGMENTS + 1;
+        check(terrainVertexCount(bad.segmentsX, 1) == 0, "terrain: oversized grids are rejected");
+        check(std::all_of(small.begin(), small.end(), [](float v) { return v == 7.f; }),
+              "terrain: rejected calls write nothing");
+
+        for (const WallFixture& wf : kWallFixtures) {
+            const int n = terrainVertexCount(wf.params.segmentsX, wf.params.segmentsZ);
+            std::vector<float> shell(static_cast<size_t>(n));
+            check(buildWallShell(wf.params, shell) == n, "terrain: buildWallShell returns the vertex count");
+            double sum = 0.0;
+            for (float v : shell) sum += v;
+            if (print) {
+                std::printf("    wall %s: sum %.9g probe[%d] %.9g\n", wf.name, sum, wf.probe, shell[wf.probe]);
+                continue;
+            }
+            const double tol = std::max(std::abs(wf.sum) * 1e-5, 1e-4);
+            if (!(std::abs(sum - wf.sum) <= tol) || !(std::abs(shell[wf.probe] - wf.probeY) <= 1e-4)) {
+                std::fprintf(stderr, "FAIL  wall golden %s: sum %.9g (want %.9g), probe %.9g (want %.9g)\n",
+                             wf.name, sum, wf.sum, shell[wf.probe], wf.probeY);
+                ++g_failures;
+            }
         }
     }
 

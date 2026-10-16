@@ -23,7 +23,7 @@ webgpu  →  wasm  →  ts
 
 - **WebGPU** is registered only when Three's backend is real WebGPU (`renderer.backend.isWebGPUBackend`) **and** `?no_gpu_compute` is absent. The kit **never** calls `requestAdapter` / `requestDevice`.
 - A default WebGL2 session registers **no** webgpu lane, so a GL context and a compute device cannot both be live for one job.
-- **WASM** is the ABI-5 chore exports (`emscripten/chores.cpp`). `MIN_WASM_ABI_VERSION` is **12** (the plain C ABI, #467) and the loader binds every `WASM_ABI` entry or rejects, so any accepted binary carries the chore exports — the decline path remains for safety, not as a supported configuration.
+- **WASM** is the ABI-5 chore exports (`emscripten/chores.cpp`). `MIN_WASM_ABI_VERSION` is **13** (the plain C ABI, #467; terrain exports, #487) and the loader binds every `WASM_ABI` entry or rejects, so any accepted binary carries the chore exports — the decline path remains for safety, not as a supported configuration.
 - **JS** (`src/rendering/gpuChores/cpuMath.ts`) is the terminal lane. Goldens pin it.
 - WebGL2 FBO chores are out of scope.
 

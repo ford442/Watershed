@@ -68,13 +68,15 @@ export interface RoutedEdge {
 // ---------------------------------------------------------------------------
 
 /** ABI this table describes — ws_getVersion() in bindings.cpp. */
-export const WASM_ABI_VERSION = 12;
+export const WASM_ABI_VERSION = 13;
 
 /**
  * Minimum ABI accepted. ABI 12 replaced Embind with the C ABI, so nothing
- * older can be bound at all: the floor is the table's own version.
+ * older can be bound at all; ABI 13 (#487) added the terrain exports, and
+ * bindNativeModule requires every table entry, so the floor is the table's
+ * own version.
  */
-export const MIN_WASM_ABI_VERSION = 12;
+export const MIN_WASM_ABI_VERSION = 13;
 
 /** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in common.h. */
 export const WATER_FORCE_INPUT_STRIDE = 8;
@@ -120,7 +122,7 @@ export interface WatershedNativeModule {
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
 
-  /** ABI version (12: plain C ABI). */
+  /** ABI version (12: plain C ABI; 13: terrain tiles). */
   getVersion(): number;
 
   // ---- Water forces ----
@@ -232,6 +234,24 @@ export interface WatershedNativeModule {
   /** Routed discharge → edge stage η (m) and inflow speed (m/s). Qref ↦ exactly (0, 0). */
   routedEdgeState(Q: number, Qref: number, H: number, g: number): RoutedEdge;
 
+  // ---- Terrain tiles (ABI 13, #487; layout in emscripten/terrain.h) ----
+  /**
+   * Fill TERRAIN_TILE_PLANES plane-major planes at `outPtr`. `channelPtr` holds
+   * `channelCount` packed samples (0 = default channel). Returns the vertex
+   * count, or 0 on invalid input.
+   */
+  buildTerrainTile(
+    pathLength: number, canyonWidth: number, waterWidth: number,
+    segmentsX: number, segmentsZ: number, profile: number,
+    rockNoise: number, hasTube: number, tubeCurl: number, tubeCeiling: number,
+    channelPtr: number, channelCount: number, outPtr: number,
+  ): number;
+  /** One plane of wall-shell heights at `outPtr`. Returns the vertex count, or 0. */
+  buildWallShell(
+    pathLength: number, shellWidth: number, segmentsX: number, segmentsZ: number,
+    profile: number, wallHeight: number, segmentId: number, outPtr: number,
+  ): number;
+
   // ---- gpu-chores (not SWE) ----
   reduceF32Grid(srcPtr: number, count: number, out3Ptr: number): void;
   histogramF32(srcPtr: number, count: number, rangeMin: number, rangeMax: number, binsPtr: number): void;
@@ -303,6 +323,8 @@ export const WASM_ABI = {
   routeReachSteady: { arity: 7 },
   routeReachTravelTime: { arity: 6 },
   routedEdgeState: { arity: 5, out: { floats: 2, read: readRoutedEdge } },
+  buildTerrainTile: { arity: 13 },
+  buildWallShell: { arity: 8 },
   reduceF32Grid: { arity: 3 },
   histogramF32: { arity: 5 },
   lumaHistogramU8: { arity: 3 },

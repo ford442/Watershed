@@ -30,10 +30,11 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 12+, the plain C ABI the binding table describes', () => {
-    // ABI 12 replaced Embind with ws_* C exports (#467); wasmAbi.ts cannot
-    // bind an older binary at all, so the floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(12);
+  it('requires ABI 13+, the plain C ABI with the terrain exports the binding table describes', () => {
+    // ABI 12 replaced Embind with ws_* C exports (#467); ABI 13 added the
+    // terrain tile (#487) and the loader binds every table entry, so the floor
+    // must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBe(13);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {

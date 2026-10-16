@@ -40,6 +40,9 @@ emscripten/
 ├── particles.cpp     # Euler + chute recycle / age
 ├── routing.h         # Channel routing along the campaign chain — host-clean
 ├── routing.cpp       # Kinematic-storage routing + edge-stage rating (ABI 10)
+├── terrain.h         # Terrain tile planes + grid convention (#487) — host-clean
+├── terrain.cpp       # Canyon floor / tube fold / wall shell as planes (ABI 13)
+├── terrain_goldens.h # Terrain fixtures + goldens for host_smoke.cpp
 ├── bindings.cpp      # The C ABI: extern "C" ws_* exports + ws_getVersion(); the only Emscripten include
 ├── host_smoke.cpp    # Host assert runner (no Emscripten headers)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake); enforces the emcc pin
@@ -153,7 +156,7 @@ artifact stamp: the single-thread pair is the only thing that ships.
 
 ### Host (clangd / smoke, no Emscripten)
 
-Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`) compile with a plain host compiler (C++20). `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs.
+Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`, `terrain.cpp`) compile with a plain host compiler (C++20). `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs.
 
 ```bash
 cmake -S emscripten -B emscripten/build-host
@@ -217,8 +220,8 @@ glue exposes exactly the table's exports with the declared arities, and
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **12**;
-`MIN_WASM_ABI_VERSION` is **12**). Bump in `bindings.cpp` whenever the
+Returns the module ABI version integer (currently **13**;
+`MIN_WASM_ABI_VERSION` is **13**). Bump in `bindings.cpp` whenever the
 exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 `>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
 `stepShallowWater`'s arity, which is why the floor moved with it.
@@ -237,8 +240,9 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 10 | Channel routing (`routeReach`, `routeReachSteady`, `routeReachTravelTime`, `routedEdgeState`) and `stepShallowWaterInflow`, the step whose upstream edge takes the routed stage. Additive; `MIN_WASM_ABI_VERSION` stays 8 and the exports are typed optional. |
 | 11 | `reserveShallowWaterScratch(width, height)` — pre-size the solver scratch (step, upstream-edge ghosts, scroll temp) so a step never allocates mid-call. Additive; `MIN_WASM_ABI_VERSION` stays 8. Same release: glue built for `web,worker`, emmalloc, `FILESYSTEM=0`, 16 MiB heap (#454). |
 | 12 | **Breaking (#467).** Plain C ABI: Embind and `--bind` are gone; every export is `extern "C" ws_<name>`. `calculateWaterForce` / `computeFlowForce` / `routedEdgeState` take a trailing out-pointer (8 / 3 / 2 floats). The duplicate `calculateBuoyancyAndDrag` C export is gone. `MIN_WASM_ABI_VERSION` moves to 12 — the binding table cannot drive an Embind binary — and every export is required (the exact stamp check already guaranteed it). |
+| 13 | Terrain tiles (#487): `buildTerrainTile`, `buildWallShell`. Additive in shape, but `MIN_WASM_ABI_VERSION` moves to 13 with it — `bindNativeModule` requires every `WASM_ABI` entry, so an ABI 12 binary is rejected at bind anyway. |
 
-TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 12).
+TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 13).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
 binary cannot be called with the new argument list at all, so the floor moves with
 it and a stale binary is rejected at load. Chore kernels live in
@@ -480,6 +484,33 @@ the reference discharge. The ghost's wave speed joins the CFL max.
   `hydroContrast.test.ts` (`pnpm test:wasm`: hydro 06:00 vs 14:00 through the edge alone, every
   chain map, the release lag to the hydro basin, spin-up covering the chain), and
   `pnpm test:wgsl` (edge scenarios + the hydro edge contrast, WGSL vs WASM at 1e-5).
+
+### Terrain tiles  (ABI 13, #487)
+
+The canyon floor used to be an analytic U-profile that TypeScript evaluated three times (visual
+floor, Rapier hull, SWE bed). **`terrain.cpp`** is that profile as one pure function over a grid —
+`computeCanyonFloorHeight`, the channel-shape sampler, `applyTubeProfile` and the wall-shell
+height, ported unchanged. Grid and plane conventions are documented once, in `terrain.h`; the
+grid is three's `PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ)` after
+`rotateX(−π/2)`, so the builders keep their index buffers.
+
+| Export | |
+|---|---|
+| `buildTerrainTile(pathLength, canyonWidth, waterWidth, segmentsX, segmentsZ, profile, rockNoise, hasTube, tubeCurl, tubeCeiling, channelPtr, channelCount, outPtr) → int` | Fills 7 plane-major planes of `(segmentsX+1)(segmentsZ+1)` floats at `outPtr`: folded **x**, floor **h**, **bank** mask, **slopeX**, **slopeZ**, **uvU** (across, 0–1), **uvV** (metres downstream). `channelPtr` holds `channelCount` packed samples (9 floats: left/right/corridor half-widths, floorDepth, floorWave, riffle, gravelBarSide, undercutSide, flowScale), or 0 for the default channel. `profile` 0 = open, 1 = slot. Returns the vertex count, or 0 (nothing written) on non-finite / out-of-range input. Lengths are `double` on the wire. |
+| `buildWallShell(pathLength, shellWidth, segmentsX, segmentsZ, profile, wallHeight, segmentId, outPtr) → int` | One plane: outer wall height above the path point. |
+
+- **Mirror.** `src/terrain/terrainTile.ts` is the same function in TS (and owns the per-point
+  `computeCanyonFloorHeight` / `applyTubeProfile` that `geometryBuilders.ts` re-exports). The
+  canyon, collision and wall-shell builders build their geometry from the mirror's tile today;
+  the sim-worker build (Phase B) calls `buildTerrainTileNative`.
+- **FP.** Both backends compute in double and round once into the float planes, so the host
+  (`-ffp-contract=off`), the `-ffast-math` WASM build and the float64 mirror agree to ~1 ulp.
+- **Pinned by:** `host_smoke.cpp` §9 (three golden segments — summer meander, slot canyon on the
+  collision grid, glacial ice tube — plus the overhang, uv / bank invariants and the input
+  guards), `smoke_test.mjs` (same goldens against the WASM build), `terrainTile.test.ts`
+  (the mirror against the same goldens; tile == per-point profile) and `terrainParity.test.ts`
+  (`pnpm test:wasm`: every plane, golden fixtures + 200 random segments, native vs mirror within
+  1e-5).
 
 ### `allocateGrid(count): number` / `freeGrid(ptr): void`
 
