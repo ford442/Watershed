@@ -7,10 +7,8 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import * as THREE from 'three';
-import { useFrame, useLoader, useThree } from '@react-three/fiber';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { TRACK_ROCK_TEXTURE_PATHS, TRACK_ROCK_TEXTURE_PATHS_KTX2 } from '../constants/trackTextures';
-import { configureKtx2Loader, shouldUseKtx2, tagRockColorSpaces } from '../rendering/ktx2Textures';
+import { useFrame, useThree } from '@react-three/fiber';
+import { readRockTextures, tagRockColorSpaces } from '../rendering/ktx2Textures';
 import TrackSegment from './TrackSegment';
 import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
@@ -18,7 +16,7 @@ import PooledObstacles from './PooledObstacles';
 import { createRiverSurfaceMaterial } from '../materials/river/createRiverSurfaceMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { WATER_LEVEL, REACH_API_BASE } from '../constants/game';
-import { AssetCache } from '../systems/reach/ReachStreamer';
+import { AssetCache } from '../systems/reach/reachAssetCache';
 import { useNightMode } from '../hooks/useNightMode';
 import {
   ProceduralMapManager,
@@ -257,15 +255,10 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
 
   // PBR texture loading
   // KTX2 (block-compressed in VRAM, no JPG decode) when the GPU has a target
-  // format, else the JPGs. A session constant per renderer, so this one
-  // useLoader call always sees the same loader class (#466 Phase D).
+  // format, else the JPGs. A session constant per renderer, decided inside
+  // the one resource BootAssetPreloader already started (#466 Phase D).
   const gl = useThree((state) => state.gl);
-  const useKtx2 = useMemo(() => shouldUseKtx2(gl), [gl]);
-  const rockTextures = useLoader(
-    (useKtx2 ? KTX2Loader : THREE.TextureLoader) as typeof THREE.TextureLoader,
-    useKtx2 ? [...TRACK_ROCK_TEXTURE_PATHS_KTX2] : [...TRACK_ROCK_TEXTURE_PATHS],
-    useKtx2 ? (loader) => configureKtx2Loader(loader as unknown as KTX2Loader, gl) : undefined,
-  ) as THREE.Texture[];
+  const rockTextures = readRockTextures(gl);
   const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = rockTextures;
 
   // Fallback texture generator

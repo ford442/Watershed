@@ -167,8 +167,8 @@ const HELP = `check-build-manifest.mjs — assert the unhashed-passenger contrac
   --chunks            assert the GLSL boot's eager chunks carry no three.webgpu node stack
                       (#485 A); with --build-log, also that vite emitted no
                       "dynamic import will not move module into another chunk" warning
-  --budget            enforce build-budget.json (entry / vendor-three / per-chunk / total JS
-                      ceilings, wasm counted once) and print the chunk table (#485 D)
+  --budget            enforce build-budget.json (entry / boot JS / vendor-three / per-chunk /
+                      all-chunks JS ceilings, wasm counted once) and print the chunk table (#485 D)
   --budget-file <f>   budget to enforce          (default: build-budget.json)
   --build-log <file>  captured \`vite build\` stdout+stderr to scan (used by --chunks)
   -h, --help          this text
@@ -492,6 +492,17 @@ if (opts.budget) {
       entryPath = m ? m[1] : null;
     }
     const entry = jsChunks.find((c) => c.path === entryPath);
+    /* Boot JS = the entry plus every chunk index.html modulepreloads. Vite emits that list as the
+     * entry's static-import closure, so it is exactly what a boot must fetch before the first
+     * module runs; dynamic imports (the TSL node stack, validators, overlays, raft, ...) are not in it. */
+    const bootPaths = new Set(entryPath ? [entryPath] : []);
+    if (indexEntry) {
+      const html = fs.readFileSync(path.join(buildDir, 'index.html'), 'utf8');
+      for (const m of html.matchAll(/<link[^>]*rel="modulepreload"[^>]*href="\.\/(assets\/[^"]+\.js)"/g)) bootPaths.add(m[1]);
+    }
+    const bootChunks = jsChunks.filter((c) => bootPaths.has(c.path));
+    const bootJs = bootChunks.reduce((n, c) => n + c.size, 0);
+    const bootJsGzip = bootChunks.reduce((n, c) => n + c.gzip, 0);
     const vendorThree = jsChunks.find((c) => /^assets\/vendor-three-/.test(c.path));
     const totalJs = jsChunks.reduce((n, c) => n + c.size, 0);
     const totalJsGzip = jsChunks.reduce((n, c) => n + c.gzip, 0);
@@ -521,14 +532,26 @@ if (opts.budget) {
     process.stdout.write(`${'CHUNK'.padEnd(46)}${pad('RAW', 11)}${pad('GZIP', 11)}${pad('CEILING', 11)}  STATUS\n`);
     for (const c of rows) {
       const limit = ceilings.find((x) => x.c === c).limit;
-      const tag = c.path === entryPath ? ' [entry]' : /^assets\/vendor-three-/.test(c.path) ? ' [vendor-three]' : '';
+      const tag =
+        c.path === entryPath
+          ? ' [entry]'
+          : /^assets\/vendor-three-/.test(c.path)
+            ? ' [vendor-three]'
+            : bootPaths.has(c.path)
+              ? ' [boot]'
+              : '';
       process.stdout.write(
         `${(c.path.replace(/^assets\//, '') + tag).padEnd(46)}${pad(kB(c.size), 11)}${pad(kB(c.gzip), 11)}` +
           `${pad(kB(limit), 11)}  ${c.size <= limit ? 'ok' : 'OVER'}\n`,
       );
     }
     process.stdout.write(
-      `${'TOTAL JS'.padEnd(46)}${pad(kB(totalJs), 11)}${pad(kB(totalJsGzip), 11)}${pad(kB(budget.totalJsMaxBytes), 11)}  ` +
+      `${'BOOT JS (entry + modulepreload)'.padEnd(46)}${pad(kB(bootJs), 11)}${pad(kB(bootJsGzip), 11)}` +
+        `${pad(budget.bootJsMaxBytes ? kB(budget.bootJsMaxBytes) : '-', 11)}  ` +
+        `${!budget.bootJsMaxBytes || bootJs <= budget.bootJsMaxBytes ? 'ok' : 'OVER'}\n`,
+    );
+    process.stdout.write(
+      `${'TOTAL JS (all chunks, growth guard)'.padEnd(46)}${pad(kB(totalJs), 11)}${pad(kB(totalJsGzip), 11)}${pad(kB(budget.totalJsMaxBytes), 11)}  ` +
         `${totalJs <= budget.totalJsMaxBytes ? 'ok' : 'OVER'}\n`,
     );
     for (const group of bySha.values()) {
@@ -543,6 +566,7 @@ if (opts.budget) {
     for (const [label, actual, target] of [
       ['entry', entry?.size, budget.entryTargetBytes],
       ['total JS', totalJs, budget.totalJsTargetBytes],
+      ['boot JS', bootJs, budget.bootJsTargetBytes],
     ]) {
       if (!target || actual === undefined) continue;
       const over = actual - target;
@@ -570,6 +594,14 @@ if (opts.budget) {
       biggest.size <= budget.chunkMaxBytes,
       `--budget: ${biggest.path} is ${biggest.size} B, over the ${budget.chunkMaxBytes} B per-chunk ceiling`,
     );
+    if (budget.bootJsMaxBytes) {
+      check(
+        bootJs <= budget.bootJsMaxBytes,
+        `--budget: boot JS (${[...bootPaths].join(', ')}) is ${bootJs} B, over the ${budget.bootJsMaxBytes} B ceiling ` +
+          `(+${bootJs - budget.bootJsMaxBytes} B). A static import pulled something onto the boot path; ` +
+          'see `pnpm build:analyze` or raise build-budget.json with a reason.',
+      );
+    }
     check(
       totalJs <= budget.totalJsMaxBytes,
       `--budget: total JS is ${totalJs} B, over the ${budget.totalJsMaxBytes} B ceiling (+${totalJs - budget.totalJsMaxBytes} B)`,
@@ -582,8 +614,8 @@ if (opts.budget) {
       check(shaCopies === 1, `--budget: ${name} wasm bytes ship ${shaCopies} times (once is the contract)`);
     }
     notes.push(
-      `--budget: entry ${kB(entry?.size ?? 0)} / vendor-three ${kB(vendorThree?.size ?? 0)} / biggest chunk ` +
-        `${kB(biggest.size)} / total JS ${kB(totalJs)}; unique wasm ${kB(uniqueWasmBytes)}`,
+      `--budget: entry ${kB(entry?.size ?? 0)} / boot JS ${kB(bootJs)} / vendor-three ${kB(vendorThree?.size ?? 0)} / ` +
+        `biggest chunk ${kB(biggest.size)} / total JS ${kB(totalJs)}; unique wasm ${kB(uniqueWasmBytes)}`,
     );
   }
 }

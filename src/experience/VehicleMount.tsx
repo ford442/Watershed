@@ -1,9 +1,13 @@
-import { useEffect, useState, type ComponentType, type RefObject } from 'react';
+import { Suspense, useEffect, useState, type ComponentType, type RefObject } from 'react';
 import RunnerVehicle from '../vehicles/RunnerVehicle';
-import RaftVehicle from '../vehicles/RaftVehicle';
-import PhysicsDebugOverlay from '../components/PhysicsDebugOverlay';
-import WireframeDebug from '../rendering/WireframeDebug';
+import { LazyRaftVehicle, prefetchRaftVehicle } from '../vehicles/raftVehicleChunk';
+import { whenIdle } from '../utils/whenIdle';
+import { lazyComponent } from '../utils/lazyComponent';
 import type { VehicleRigidBodyRef, VehicleType } from './types';
+
+// Debug-only views (`?physicsDebug=1`, the DebugPanel wireframe toggle): not part of play.
+const PhysicsDebugOverlay = lazyComponent(() => import('../components/PhysicsDebugOverlay')).Component;
+const WireframeDebug = lazyComponent(() => import('../rendering/WireframeDebug')).Component;
 
 interface VehicleMountProps {
   vehicleType: VehicleType;
@@ -41,6 +45,13 @@ export default function VehicleMount({
     };
   }, [wasmWaterTest]);
 
+  // The raft is its own chunk. A runner session fetches it when the main thread is idle, so a
+  // later swap (or the delta hand-off) finds it already loaded instead of suspending.
+  useEffect(() => {
+    if (vehicleType === 'raft') return;
+    return whenIdle(prefetchRaftVehicle);
+  }, [vehicleType]);
+
   return (
     <>
       {WasmWaterForceTest ? (
@@ -48,13 +59,21 @@ export default function VehicleMount({
       ) : vehicleType === 'runner' ? (
         <RunnerVehicle ref={vehicleRef} />
       ) : (
-        <RaftVehicle ref={vehicleRef} />
+        <Suspense fallback={null}>
+          <LazyRaftVehicle ref={vehicleRef} />
+        </Suspense>
       )}
 
       {physicsDebugEnabled && (
-        <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
+        <Suspense fallback={null}>
+          <PhysicsDebugOverlay enabled={physicsDebugEnabled} vehicleRef={vehicleRef} />
+        </Suspense>
       )}
-      {wireframeDebug && !cleanTest && <WireframeDebug enabled={wireframeDebug} />}
+      {wireframeDebug && !cleanTest && (
+        <Suspense fallback={null}>
+          <WireframeDebug enabled={wireframeDebug} />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -6,8 +6,6 @@ import FlowForecast from '../components/FlowForecast';
 import { PostProcessingPipeline } from '../components/PostProcessingPipeline';
 import TrackManager from '../components/TrackManager';
 import SpeedWindAudio from '../components/SpeedWindAudio';
-import LevelLoader from '../systems/map/LevelLoader';
-import ReachManager from '../systems/reach/ReachManager';
 import { useLOD } from '../systems/lod/LODManager';
 import { PHYSICS } from '../constants/game';
 import { DAM_RELEASE_SCHEDULE, NOOP_DEBUG } from './constants';
@@ -31,6 +29,13 @@ import type { InnerExperienceProps } from './types';
 // #485 C: step-time instrumentation for the DebugPanel and `pnpm profile:physics`
 // (which runs with ?cleanTest=1, never ?debug=1) — not part of play, so not in the entry.
 const PhysicsPerfMonitor = lazy(() => import('../debug/PhysicsPerfMonitor'));
+
+// Map sources behind a URL flag: `?level=` (LevelLoader) and `?reach=` (ReachManager + the Reach
+// streamer, reactive audio and manifest normalizer). The campaign default mounts neither, so
+// their code loads only for the session that asks. Suspense stays local: the vehicle, water and
+// HUD keep running while the chunk lands.
+const LevelLoader = lazy(() => import('../systems/map/LevelLoader'));
+const ReachManager = lazy(() => import('../systems/reach/ReachManager'));
 
 /**
  * InnerExperience — game scene composition (providers are mounted in Experience.tsx).
@@ -134,25 +139,29 @@ export default function InnerExperience({
           />
           {debug.isStageEnabled('dataProcessing') &&
             (state.levelUrl ? (
-              <LevelLoader
-                levelUrl={state.levelUrl}
-                onLoad={state.handleLevelLoad}
-                onError={state.handleLevelError}
-                showLoader={false}
-                showError={false}
-                raftRef={state.vehicleRef}
-                onBiomeChange={state.handleBiomeChange}
-              />
+              <Suspense fallback={null}>
+                <LevelLoader
+                  levelUrl={state.levelUrl}
+                  onLoad={state.handleLevelLoad}
+                  onError={state.handleLevelError}
+                  showLoader={false}
+                  showError={false}
+                  raftRef={state.vehicleRef}
+                  onBiomeChange={state.handleBiomeChange}
+                />
+              </Suspense>
             ) : state.reachId ? (
-              <ReachManager
-                playerRef={state.vehicleRef}
-                onBiomeChange={state.handleBiomeChange}
-                forecastSamples={state.forecastSamples}
-                reachId={state.reachId}
-                onLoadingChange={state.setReachLoading}
-                onError={state.setReachError}
-                retryKey={state.reachRetryKey}
-              />
+              <Suspense fallback={null}>
+                <ReachManager
+                  playerRef={state.vehicleRef}
+                  onBiomeChange={state.handleBiomeChange}
+                  forecastSamples={state.forecastSamples}
+                  reachId={state.reachId}
+                  onLoadingChange={state.setReachLoading}
+                  onError={state.setReachError}
+                  retryKey={state.reachRetryKey}
+                />
+              </Suspense>
             ) : (
               <>
                 <TrackManager

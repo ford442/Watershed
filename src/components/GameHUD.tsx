@@ -10,8 +10,13 @@ import {
 } from '../systems/journey/runSession';
 import { getLoadoutDefinition } from '../systems/survival';
 import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
-import RunResultsPanel from './RunResultsPanel';
+import { lazyComponent } from '../utils/lazyComponent';
+import { whenIdle } from '../utils/whenIdle';
 import { BIOME_HUD_LABELS } from '../configs/biomes';
+
+// The end-of-run summary only mounts on a wipeout / finish; the HUD preloads it at idle.
+const RunResultsChunk = lazyComponent(() => import('./RunResultsPanel'));
+const RunResultsPanel = RunResultsChunk.Component;
 
 /*
  * Per-frame readouts (#465 C4). The store gets speed, distance and score every
@@ -57,6 +62,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   isFinalMap = false,
   ghostBestScore = 0,
 }) => {
+  useEffect(() => whenIdle(RunResultsChunk.preload), []);
   const currentBiome = usePlayerBiome();
   const multiplier = useGameStore((s) => s.multiplier);
   const comboLabel = useGameStore((s) => s.comboLabel);
@@ -297,7 +303,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             RESPAWN
           </button>
 
-          <RunResultsPanel outcome="wipeout" />
+          <React.Suspense fallback={null}>
+            <RunResultsPanel outcome="wipeout" />
+          </React.Suspense>
 
           <p className="mt-8 text-zinc-600 text-sm">
             Press SPACE to respawn
@@ -380,7 +388,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           )}
 
-          <RunResultsPanel outcome="complete" />
+          <React.Suspense fallback={null}>
+            <RunResultsPanel outcome="complete" />
+          </React.Suspense>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-4 mt-10">
             <button

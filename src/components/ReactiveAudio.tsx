@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getAudioManager } from '../systems/audio/AudioSystem';
-import { AssetCache } from '../systems/reach/ReachStreamer';
+import { AssetCache } from '../systems/reach/reachAssetCache';
 import { REACH_API_BASE } from '../constants/game';
 import { AUDIO_CONFIG } from '../constants/audioConfig';
 import { useGameStore } from '../systems/GameState';

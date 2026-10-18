@@ -334,6 +334,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `emscripten/terrain.cpp` / `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes (C++ + TS mirror, parity-tested); the canyon and hull builders read the tile (#487, ABI 13) |
 | `src/terrain/segmentMeshBuild.ts` | Canyon / collision / wall / water meshes as typed arrays; the sim worker builds treadmill appends with it (`BUILD_TILE`), `pnpm profile:spawn` measures mounts (#487 B) |
 | `src/rendering/sceneLightPool.tsx` | Fixed scene light count — segment content borrows pooled lights so a mount never recompiles every lit program (#487 B) |
+| `src/utils/lazyModule.ts` / `lazyComponent.ts` | Entry-chunk budget tools: a dynamic import with a sync `get()`, and `React.lazy` + `preload()`; `build-budget.json` gates entry and boot JS |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

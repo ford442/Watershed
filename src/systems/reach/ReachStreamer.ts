@@ -7,10 +7,14 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import type { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { WeatherType } from '../../constants/weather';
 import { formatValidationErrors, type ValidationResult } from '../../utils/validationReport';
 import { REACH_API_BASE } from '../../constants/game';
+import { AssetCache, type FlowMapData } from './reachAssetCache';
+
+export { AssetCache };
+export type { FlowMapData };
 
 // =============================================================================
 // Types
@@ -61,12 +65,6 @@ export interface ReachManifest {
   weather?: { type: WeatherType; intensity: number };
 }
 
-export interface FlowMapData {
-  data: Float32Array;
-  width: number;
-  height: number;
-}
-
 export interface StreamResult {
   manifest: ReachManifest;
   loaded: {
@@ -81,29 +79,27 @@ export interface StreamResult {
 }
 
 // =============================================================================
-// Global Asset Cache
-// =============================================================================
-
-export const AssetCache = {
-  textures: new Map<string, THREE.Texture>(),
-  noiseTextures: new Map<string, THREE.Texture>(),
-  models: new Map<string, THREE.Group>(),
-  audioBuffers: new Map<string, AudioBuffer>(),
-  shaders: new Map<string, string>(),
-  flowMaps: new Map<string, THREE.Texture | THREE.DataTexture>(),
-  flowMapData: new Map<string, FlowMapData>(),
-  reaches: new Map<string, ReachManifest>(),
-};
-
-// =============================================================================
 // Three.js Loaders
 // =============================================================================
 
 const textureLoader = new THREE.TextureLoader();
 textureLoader.crossOrigin = 'anonymous';
 
-const gltfLoader = new GLTFLoader();
-gltfLoader.crossOrigin = 'anonymous';
+// GLTFLoader is ~113 kB of the pre-minify entry and only a manifest that lists models needs
+// it, so it is fetched on the first model preload instead of riding in the entry.
+let gltfLoaderPromise: Promise<GLTFLoader> | null = null;
+function getGltfLoader(): Promise<GLTFLoader> {
+  gltfLoaderPromise ??= import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader: Loader }) => {
+    const loader = new Loader();
+    loader.crossOrigin = 'anonymous';
+    return loader;
+  });
+  // A failed chunk fetch must not poison every later model preload.
+  gltfLoaderPromise.catch(() => {
+    gltfLoaderPromise = null;
+  });
+  return gltfLoaderPromise;
+}
 
 const audioLoader = new THREE.AudioLoader();
 audioLoader.crossOrigin = 'anonymous';
@@ -224,14 +220,21 @@ function preloadNoiseTexture(reachId: string, url: string): Promise<THREE.Textur
   });
 }
 
-function preloadModel(reachId: string, url: string): Promise<THREE.Group> {
+async function preloadModel(reachId: string, url: string): Promise<THREE.Group> {
   const fullUrl = resolveAssetUrl(reachId, url);
 
-  return new Promise((resolve, reject) => {
-    if (AssetCache.models.has(fullUrl)) {
-      return resolve(AssetCache.models.get(fullUrl)!);
-    }
+  const cached = AssetCache.models.get(fullUrl);
+  if (cached) return cached;
 
+  let gltfLoader: GLTFLoader;
+  try {
+    gltfLoader = await getGltfLoader();
+  } catch (err) {
+    console.error(`[ReachStreamer] Failed to load the glTF loader for: ${fullUrl}`, err);
+    throw new Error(`Model load failed: ${fullUrl}`, { cause: err });
+  }
+
+  return new Promise((resolve, reject) => {
     gltfLoader.load(
       fullUrl,
       (gltf) => {
