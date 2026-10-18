@@ -25,6 +25,8 @@ import { useInnerExperience } from './hooks/useInnerExperience';
 import WeatherSystem from '../components/WeatherSystem';
 import { getActiveWeather } from '../systems/journey/runSession';
 import type { InnerExperienceProps } from './types';
+import { InputHubTick } from '../input/InputHubTick';
+import { isScriptedRunLive } from '../input/scriptedRun';
 
 // #485 C: step-time instrumentation for the DebugPanel and `pnpm profile:physics`
 // (which runs with ?cleanTest=1, never ?debug=1) — not part of play, so not in the entry.
@@ -98,6 +100,8 @@ export default function InnerExperience({
               <PhysicsPerfMonitor />
             </Suspense>
           )}
+          {/* Ticks the input hub at priority −100, ahead of the vehicle step. */}
+          <InputHubTick isRunLive={() => isScriptedRunLive(state.vehicleRef.current)} />
           {!state.noPointerLock && (
             <>
               <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />

@@ -1,5 +1,5 @@
 import { useRunnerControls } from './RunnerVehicle/hooks/useRunnerControls';
-import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider, useRapier } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
@@ -43,6 +43,11 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
   const { camera } = useThree();
   const { world, rapier } = useRapier();
   const controls = usePlayerControls(camera);
+  // Stable per mount: @react-three/rapier re-applies `userData` (replacing the
+  // object) whenever its identity changes, and the physics step keeps its boot
+  // latches (__terrainReady, __holdTarget, …) on it. A fresh literal per render
+  // wiped them, so any re-render while airborne snapped the runner to spawn.
+  const playerUserData = useMemo(() => ({ isPlayer: true }), []);
 
 
   
@@ -258,7 +263,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
         restitution={0.15}
         linearDamping={0.35}
         angularDamping={0.9}
-        userData={{ isPlayer: true }}
+        userData={playerUserData}
       >
         <CapsuleCollider args={[0.4, 0.5]} />
       </RigidBody>

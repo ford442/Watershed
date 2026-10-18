@@ -5,6 +5,11 @@ import { useBiome } from '../../systems/biome/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
 import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { commitTimedFinish } from '../../systems/ghost/runFinish';
+import { getRecordedSplits } from '../../systems/ghost/SplitRecorder';
+import { getGhostElapsedMs } from '../../systems/ghost/GhostRecorder';
+import { inputHub } from '../../input/InputHub';
+import { getScriptedSimTimeSec, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
+import { resolveActiveEnvelope } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -378,6 +383,27 @@ export function useExperienceWorld({
       },
       getSpawnPoints: () => ({ ...spawnPoints }),
       advanceTreadmill: () => trackManagerRef.current?.appendSegmentForHarness() ?? false,
+      stepScripted: (n: number) => stepScripted(n),
+      isScriptedReady: () => inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current),
+      getSplits: () => getRecordedSplits(),
+      getScriptedTelemetry: () => {
+        const body = vehicleRef.current;
+        const t = body?.translation();
+        const game = useGameStore.getState();
+        const stats = inputHub.getTickStats();
+        const envelope = t ? resolveActiveEnvelope(t) : null;
+        return {
+          pos: t ? { x: t.x, y: t.y, z: t.z } : null,
+          speed: game.currentSpeed,
+          segmentIndex: game.currentSegmentIndex,
+          isWipeout: game.isWipeout,
+          envelope: envelope ? { segmentIndex: envelope.segmentIndex, yMin: envelope.yMin, yMax: envelope.yMax } : null,
+          simTimeSec: getScriptedSimTimeSec(),
+          ghostElapsedMs: getGhostElapsedMs(),
+          hubTickMeanMs: stats.meanMs,
+          hubTicks: stats.ticks,
+        };
+      },
     };
 
     window.__watershedScreenshot = api;

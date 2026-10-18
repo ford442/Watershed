@@ -74,6 +74,10 @@ export function TrackSegmentCollisionMeshes({
           key={`rb-collision-${segmentId}`}
           type="fixed"
           colliders="trimesh"
+          // The collision mesh is invisible on purpose; without this,
+          // @react-three/rapier's auto-collider pass (traverseVisible) skips
+          // it and the canyon has no floor.
+          includeInvisible
           friction={friction}
           restitution={restitution}
         >
