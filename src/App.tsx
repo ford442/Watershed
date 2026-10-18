@@ -48,6 +48,7 @@ import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
 import { initRunSession } from './systems/journey/runSession';
+import { isScriptedInputMode } from './input/scriptedRun';
 
 // #485 C: the inspector is `?debug=1` only — a player never pays for its ~700 lines.
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
@@ -355,7 +356,8 @@ function App({ graphicsBoot }: AppProps = {}) {
             // Don't auto-resume while the Options panel is open — the player
             // must dismiss settings and click RESUME (user gesture) to re-lock.
             if (locked && prev === 'paused' && !settingsOpenRef.current) return 'playing';
-            if (!locked && prev === 'playing') return 'paused';
+            // A scripted run (?input=script:) never holds pointer lock — #486 A.
+            if (!locked && prev === 'playing' && !isScriptedInputMode()) return 'paused';
             return prev;
           });
         } catch (error) {
@@ -372,7 +374,7 @@ function App({ graphicsBoot }: AppProps = {}) {
   }, [debug.isStageEnabled, debug.setStageFailure, debug.setStageLoading, debug.setStageSuccess]);
 
   const requestPointerLockSafely = useCallback(() => {
-    if (window.location.search.includes('no-pointer-lock')) return;
+    if (window.location.search.includes('no-pointer-lock') || isScriptedInputMode()) return;
     // Canvas may already be locked (e.g. PointerLockControls' own lockOnClick
     // handler beat us to it), or detached/swapped (renderer preference change
     // remounts the Canvas with a new key). Guard both to avoid the
@@ -521,7 +523,7 @@ function App({ graphicsBoot }: AppProps = {}) {
             }}
             camera={{ position: [0, 10, -10], fov: 75 }}
             shadows={shadowModeToCanvasProp(rendererContextOptions.shadowMode)}
-            frameloop="always"
+            frameloop={isScriptedInputMode() ? 'never' : 'always'}
             onCreated={({ gl }) => {
               debug.runStage('visualization', () => undefined);
               setCanvasReady(true);

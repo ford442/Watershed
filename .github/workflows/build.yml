@@ -165,6 +165,13 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
+      # #486 A: a scripted meander run stepped headlessly at a fixed 1/60 s
+      # (frameloop="never"); gates on the segment-3 split and on two runs
+      # producing identical split times. Shares the preview + Chrome above.
+      - name: Scripted input smoke
+        run: pnpm test:input-smoke
+        timeout-minutes: 15
+
       # #435: the WGSL SWE twin must track the committed C++ stepper within
       # 1e-5. Runs in headless Chrome on SwiftShader's WebGPU adapter; brings
       # up its own Vite dev server, independent of the preview above.
