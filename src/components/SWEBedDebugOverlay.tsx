@@ -14,13 +14,9 @@ import {
   type SWEBedSnapshot,
 } from '../systems/water/sweBedDebug';
 
-const CELL_PX = 4;
+export { isSWEDebugEnabled } from './sweDebugFlag';
 
-/** True when the URL opts into the bed overlay. */
-export function isSWEDebugEnabled(search = typeof window === 'undefined' ? '' : window.location.search): boolean {
-  const raw = new URLSearchParams(search).get('sweDebug');
-  return raw === '1' || raw === 'true';
-}
+const CELL_PX = 4;
 
 /** Depth (H − b) → RGB. Dry cells fade to bank tan rather than clamping to black. */
 export function bedColor(bed: number): [number, number, number] {

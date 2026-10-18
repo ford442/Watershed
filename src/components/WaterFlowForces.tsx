@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { sampleSegmentFlow } from '../utils/segmentSampler';
 import { WATER_FLOW_CONFIG } from '../constants/waterFlow';
 import { RAFT, WATER_LEVEL } from '../constants/game';
-import { AssetCache } from '../systems/reach/ReachStreamer';
+import { AssetCache } from '../systems/reach/reachAssetCache';
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { isWaterForceSystemActive } from '../systems/water/WaterForceRegistry';
 

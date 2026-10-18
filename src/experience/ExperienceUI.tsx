@@ -5,7 +5,7 @@ import ForecastHUD from '../components/ForecastHUD';
 import AudioDiagnosticsOverlay from '../components/AudioDiagnosticsOverlay';
 import GhostTimeDelta from '../components/GhostTimeDelta';
 import GhostFairnessBanner from '../components/GhostFairnessBanner';
-import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoader';
+import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoadStatus';
 import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
 import { useGameStore } from '../systems/GameState';
 import { getActiveMap } from '../maps/registry';

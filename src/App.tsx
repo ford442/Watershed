@@ -4,9 +4,10 @@ import Experience from './Experience';
 import { Loader } from './components/Loader';
 import { useProgress } from '@react-three/drei';
 import { StartMenu } from './components/StartMenu';
-import { PauseMenu } from './components/PauseMenu';
-import SWEBedDebugOverlay, { isSWEDebugEnabled } from './components/SWEBedDebugOverlay';
-import { SettingsPanel } from './ui/SettingsPanel';
+import { isSWEDebugEnabled } from './components/sweDebugFlag';
+import { lazyComponent } from './utils/lazyComponent';
+import { whenIdle } from './utils/whenIdle';
+import { preloadEnvironmentExtras } from './components/Environment/lazyExtras';
 import { SettingsSync } from './ui/SettingsSync';
 import { rehydrateSettings, useSettingsStore } from './systems/settings/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
@@ -48,6 +49,24 @@ import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
 import { initRunSession } from './systems/journey/runSession';
+import { resolveInitialVehicle } from './experience/hooks/useInnerExperience';
+import { prefetchRaftVehicle } from './vehicles/raftVehicleChunk';
+
+// Menus and overlays that only mount on a user action or a flag stay out of the entry chunk.
+// `preloadOverlays` (idle, once the app is up) fetches the two a player is likely to open, so
+// the first PAUSE / OPTIONS click finds them loaded instead of suspending.
+const PauseMenuChunk = lazyComponent(() => import('./components/PauseMenu'));
+const SettingsPanelChunk = lazyComponent(() => import('./ui/SettingsPanel'));
+const SWEBedDebugOverlayChunk = lazyComponent(() => import('./components/SWEBedDebugOverlay'));
+const PauseMenu = PauseMenuChunk.Component;
+const SettingsPanel = SettingsPanelChunk.Component;
+const SWEBedDebugOverlay = SWEBedDebugOverlayChunk.Component;
+function preloadOverlays() {
+  PauseMenuChunk.preload();
+  SettingsPanelChunk.preload();
+  // Fauna / biome props / set pieces (Environment/extras.ts) a segment mounts after the menu.
+  preloadEnvironmentExtras();
+}
 import { isScriptedInputMode } from './input/scriptedRun';
 
 // #485 C: the inspector is `?debug=1` only — a player never pays for its ~700 lines.
@@ -150,6 +169,11 @@ function App({ graphicsBoot }: AppProps = {}) {
   }, [settingsOpen]);
   const debug = useDebugStages();
   const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
+  useEffect(() => whenIdle(preloadOverlays), []);
+  // The raft is its own chunk: a map that starts on it fetches it while the menu is up.
+  useEffect(() => {
+    if (resolveInitialVehicle(selectedMapId) === 'raft') prefetchRaftVehicle();
+  }, [selectedMapId]);
   const [activeLaunchHour, setActiveLaunchHour] = useState(() => getLaunchHour());
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
   const [physicsDebug, setPhysicsDebug] = useState(() => {
@@ -635,12 +659,14 @@ function App({ graphicsBoot }: AppProps = {}) {
           )}
           {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
           {debug.isStageEnabled('uiOverlay') && phase === 'paused' && !settingsOpen && (
-            <PauseMenu
-              onResume={handleResume}
-              onRestart={handleRestart}
-              onQuit={handleQuit}
-              onOpenOptions={() => setSettingsOpen(true)}
-            />
+            <React.Suspense fallback={null}>
+              <PauseMenu
+                onResume={handleResume}
+                onRestart={handleRestart}
+                onQuit={handleQuit}
+                onOpenOptions={() => setSettingsOpen(true)}
+              />
+            </React.Suspense>
           )}
           {/* Options — reachable from StartMenu and PauseMenu. Rendered in the
               unlocked (menu/paused) state so key/mouse capture never fights
@@ -648,10 +674,16 @@ function App({ graphicsBoot }: AppProps = {}) {
               menu that lands on RESUME, which re-locks on the user's click. */}
           {debug.isStageEnabled('uiOverlay') && settingsOpen && (phase === 'menu' || phase === 'paused') && (
             <div className="settings-panel-overlay">
-              <SettingsPanel onClose={() => setSettingsOpen(false)} />
+              <React.Suspense fallback={null}>
+                <SettingsPanel onClose={() => setSettingsOpen(false)} />
+              </React.Suspense>
             </div>
           )}
-          {sweDebug && <SWEBedDebugOverlay />}
+          {sweDebug && (
+            <React.Suspense fallback={null}>
+              <SWEBedDebugOverlay />
+            </React.Suspense>
+          )}
           {debug.debugEnabled && !cleanTest && (
             <React.Suspense fallback={null}>
               <DebugPanel

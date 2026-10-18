@@ -9,6 +9,7 @@ import {
   type PostFrameParams,
 } from './postProcessing/postFrameParams';
 import { qualityToEffects } from '../systems/settings/settingsDerive';
+import { smaaPassModule, ssaoPassModule } from './postProcessing/composerPassModules';
 
 /** Just enough WebGLRenderer for EffectComposer's constructor and setSize. */
 function stubRenderer(width = 1280, height = 720, pixelRatio = 1): THREE.WebGLRenderer {
@@ -62,14 +63,19 @@ describe('createComposerDriver', () => {
     return { ...params, aa };
   }
 
-  it('switches the AA tier live: SMAA after the output pass, or 4x MSAA targets — #466 Phase C', () => {
+  it('builds SMAA only once a frame asks for it, then switches the AA tier live: SMAA after the output pass, or 4x MSAA targets — #466 Phase C', async () => {
+    smaaPassModule.reset();
     const driver = build();
     const passes = driver.composer.passes as Array<{ enabled: boolean; isOutputPass?: boolean; constructor: { name: string } }>;
+    // The SMAA code is a lazy chunk: no pass (and no fetch) until a frame wants SMAA.
+    expect(passes.some((pass) => pass.constructor.name === 'SMAAPass')).toBe(false);
+
+    driver.apply(frame('smaa'));
+    await smaaPassModule.load();
+    driver.apply(frame('smaa'));
     const smaa = passes[passes.length - 1];
     expect(smaa.constructor.name).toBe('SMAAPass');
     expect(passes[passes.length - 2].isOutputPass).toBe(true);
-
-    driver.apply(frame('smaa'));
     expect(smaa.enabled).toBe(true);
     expect(driver.composer.renderTarget1.samples).toBe(0);
 
@@ -81,6 +87,23 @@ describe('createComposerDriver', () => {
     driver.apply(frame('none'));
     expect(smaa.enabled).toBe(false);
     expect(driver.composer.renderTarget1.samples).toBe(0);
+  });
+
+  it('inserts SSAO right after the scene render once a frame enables it, and not before', async () => {
+    ssaoPassModule.reset();
+    const driver = build();
+    const names = () => (driver.composer.passes as Array<{ constructor: { name: string } }>).map((pass) => pass.constructor.name);
+    expect(names()).not.toContain('SSAOPass');
+
+    driver.apply(frame('none'));
+    await ssaoPassModule.load();
+    driver.apply(frame('none'));
+    expect(names().slice(0, 2)).toEqual(['RenderPass', 'SSAOPass']);
+
+    const off = frame('none');
+    driver.apply({ ...off, ssao: { ...off.ssao, enabled: false } });
+    const ssao = (driver.composer.passes as Array<{ enabled: boolean; constructor: { name: string } }>)[1];
+    expect(ssao.enabled).toBe(false);
   });
 
   it('samples a 24-bit depth texture', () => {

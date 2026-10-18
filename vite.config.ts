@@ -230,6 +230,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
+          'vendor-rapier': ['@dimforge/rapier3d-compat', '@react-three/rapier'],
         },
       },
     },

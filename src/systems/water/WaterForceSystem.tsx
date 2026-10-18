@@ -25,7 +25,6 @@ import { WATER_LEVEL } from '../../constants/game';
 import type { WatershedNativeModule } from './wasmAbi';
 import { getWasm } from './wasmLoader';
 import { createWasmSweSim, type SweSim } from './sweSim';
-import { createWgslSweSim } from './WgslSweSim';
 import {
   demoteSweSimBackendToWasm,
   demoteSweSimBackendToWasmMain,
@@ -235,7 +234,10 @@ export function WaterForceSystem({
     };
 
     if (device) {
-      createWgslSweSim(device, budget.width, budget.height, budget.cellSize)
+      // The WGSL twin (stepper + swe.wgsl, ~46 kB pre-minify) is native-WebGPU-only, so a
+      // WebGL2 boot never fetches it. Its init is already async; the import joins that wait.
+      import('./WgslSweSim')
+        .then(({ createWgslSweSim }) => createWgslSweSim(device, budget.width, budget.height, budget.cellSize))
         .then((next) => {
           if (cancelled) {
             next.dispose();
