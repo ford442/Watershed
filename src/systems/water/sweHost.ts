@@ -46,8 +46,8 @@ import { runHeightfieldChores } from '../../rendering/gpuChores';
 import type { SWEFlowGrid } from './sampleSWEFlow';
 import { packSweSurfaceField } from './sweSurfaceField';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
-import { ACTIVE_MAP_ID, getActiveMap } from '../../maps/registry';
-import { getActiveLaunchHour, getActiveWeather, getRunSession } from '../journey/runSession';
+import { ACTIVE_MAP_ID } from '../../maps/registry';
+import { getActiveLaunchHour, getActiveWeather, getRunMap, getRunSession } from '../journey/runSession';
 
 export const GRAVITY = 9.80665;
 
@@ -380,7 +380,7 @@ export function sweHostFrame(
       applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
       // Authored hydro events run after the step, through the same backend.
-      const hydroEvents = parseHydroEvents(getActiveMap().levelData.hydroEvents);
+      const hydroEvents = parseHydroEvents(getRunMap().levelData.hydroEvents);
       const eventCalls: SweEventCall[] = [];
       applyHydroEventsToGrid(
         {

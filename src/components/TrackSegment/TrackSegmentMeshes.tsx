@@ -34,8 +34,7 @@ import {
 } from '../../materials/canyon/createCanyonSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { parseHydroEvents } from '../../systems/water/hydroEvents';
-import { getActiveLaunchHour } from '../../systems/journey/runSession';
-import { getActiveMap } from '../../maps/registry';
+import { getActiveLaunchHour, getRunMap } from '../../systems/journey/runSession';
 import { resolveTrestleSpan } from '../../systems/lumber/trestleSpan';
 import { resolveSurfaceSwirl, resolveVortexDecoration } from '../../systems/water/sweSwirl';
 import PondFog from './PondFog';
@@ -119,7 +118,7 @@ export function TrackSegmentMeshes({
     const runHydro = useMemo(() => {
       try {
         return {
-          events: parseHydroEvents(getActiveMap().levelData.hydroEvents),
+          events: parseHydroEvents(getRunMap().levelData.hydroEvents),
           hour: getActiveLaunchHour(),
         };
       } catch {
