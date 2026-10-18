@@ -14,9 +14,24 @@ import {
 describe('bindingsToDreiMap', () => {
   it('derives one drei entry per key-bound action, using event.code', () => {
     const map = bindingsToDreiMap(DEFAULT_BINDINGS);
-    expect(map).toContainEqual({ name: 'forward', keys: ['KeyW'] });
+    expect(map).toContainEqual({ name: 'forward', keys: ['KeyW', 'ArrowUp'] });
     expect(map).toContainEqual({ name: 'jump', keys: ['Space'] });
     expect(map).toHaveLength(SETTINGS_ACTIONS.length);
+  });
+
+  it('adds the arrow keys as alternates for the four movement actions only', () => {
+    const map = bindingsToDreiMap(DEFAULT_BINDINGS);
+    expect(map.find((e) => e.name === 'backward')?.keys).toEqual(['KeyS', 'ArrowDown']);
+    expect(map.find((e) => e.name === 'leftward')?.keys).toEqual(['KeyA', 'ArrowLeft']);
+    expect(map.find((e) => e.name === 'rightward')?.keys).toEqual(['KeyD', 'ArrowRight']);
+    expect(map.find((e) => e.name === 'sprint')?.keys).toEqual(['ShiftLeft']);
+  });
+
+  it('leaves an arrow alone when the player bound it to another action', () => {
+    const bindings: Bindings = { ...DEFAULT_BINDINGS, jump: { kind: 'key', code: 'ArrowUp' } };
+    const map = bindingsToDreiMap(bindings);
+    expect(map.find((e) => e.name === 'forward')?.keys).toEqual(['KeyW']);
+    expect(map.find((e) => e.name === 'jump')?.keys).toEqual(['ArrowUp']);
   });
 
   it('excludes mouse-bound actions from the drei map', () => {

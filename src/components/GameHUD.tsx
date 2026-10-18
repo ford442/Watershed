@@ -11,6 +11,7 @@ import {
 import { getLoadoutDefinition } from '../systems/survival';
 import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
 import RunResultsPanel from './RunResultsPanel';
+import MovementReadout from './MovementReadout';
 import { BIOME_HUD_LABELS } from '../configs/biomes';
 
 /*
@@ -286,29 +287,29 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   if (isWipeout) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-        <div className="text-center animate-in fade-in zoom-in duration-300">
-          <div className="text-7xl md:text-9xl font-black text-red-500 mb-6 tracking-tighter">
+      <div className="hud-overlay">
+        <div className="hud-overlay__card">
+          <div className="hud-overlay__title hud-overlay__title--wipeout">
             WIPEOUT
           </div>
 
-          <div className="text-2xl md:text-4xl text-white mb-2">
-            Score: <span className="font-mono font-bold"><HudText select={selectScoreText} /></span>
+          <div className="hud-overlay__score">
+            Score: <span><HudText select={selectScoreText} /></span>
           </div>
-          <div className="text-zinc-400 text-lg mb-8">
-            High Score: <span className="font-mono text-emerald-400"><HudText select={selectHighScoreText} /></span>
+          <div className="hud-overlay__line">
+            High Score: <span className="hud-val--good"><HudText select={selectHighScoreText} /></span>
           </div>
 
           <button
             onClick={onRespawn}
-            className="px-12 py-5 bg-white text-black text-2xl md:text-3xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
+            className="hud-btn hud-btn--primary"
           >
             RESPAWN
           </button>
 
           <RunResultsPanel outcome="wipeout" />
 
-          <p className="mt-8 text-zinc-600 text-sm">
+          <p className="hud-overlay__hint">
             Press SPACE to respawn
           </p>
         </div>
@@ -321,58 +322,58 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const journeyResults = getJourneyResultsSummary();
     return (
       <div
-        className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
+        className={`hud-overlay journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
       >
-        <div className="text-center max-w-3xl px-4">
-          <div className="text-5xl md:text-7xl font-black text-amber-300 mb-6 tracking-tighter">
+        <div className="hud-overlay__card">
+          <div className="hud-overlay__title hud-overlay__title--complete">
             {title}
           </div>
 
-          <div className="text-sm md:text-base text-white/45 font-mono uppercase tracking-[0.18em] mb-6">
+          <div className="hud-overlay__map">
             {mapLabel}
           </div>
 
-          <div className="text-3xl md:text-5xl text-white mb-4">
-            <span className="font-mono font-bold"><HudText select={selectScoreText} /></span>
+          <div className="hud-overlay__score">
+            <span><HudText select={selectScoreText} /></span>
           </div>
 
-          <div className="text-lg md:text-xl mb-2">
+          <div className="hud-overlay__line">
             {isNewHighScore ? (
-              <span className="text-emerald-400 font-bold">New High Score!</span>
+              <span className="hud-overlay__new-best">New High Score!</span>
             ) : (
-              <span className="text-zinc-400">
-                High Score: <span className="font-mono text-emerald-400"><HudText select={selectHighScoreText} /></span>
+              <span>
+                High Score: <span className="hud-val--good"><HudText select={selectHighScoreText} /></span>
               </span>
             )}
           </div>
 
-          <div className="text-zinc-500 text-base mb-2">
-            Top Speed: <span className="font-mono text-white"><HudText select={selectTopSpeedText} /> m/s</span>
+          <div className="hud-overlay__line hud-overlay__line--dim">
+            Top Speed: <span className="hud-val--white"><HudText select={selectTopSpeedText} /> m/s</span>
           </div>
 
           {journeyResults && (
-            <div className="mt-4 mb-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-left max-w-lg mx-auto text-zinc-400 text-sm md:text-base">
+            <div className="hud-overlay__stats">
               <div>
                 Launch hour:{' '}
-                <span className="font-mono text-amber-200">
+                <span className="hud-val--amber">
                   H{String(journeyResults.launchHour).padStart(2, '0')}:00
                 </span>
               </div>
               <div>
                 Peak wetness:{' '}
-                <span className="font-mono text-sky-300">
+                <span className="hud-val--sky">
                   {Math.round(journeyResults.peakWetness * 100)}%
                 </span>
               </div>
               <div>
                 Upright distance:{' '}
-                <span className="font-mono text-emerald-300">
+                <span className="hud-val--good">
                   {Math.round(journeyResults.uprightDistanceMeters)} m
                 </span>
               </div>
               <div>
                 Caches:{' '}
-                <span className="font-mono text-white">
+                <span className="hud-val--white">
                   {journeyResults.cachesRetrieved} recovered
                   {journeyResults.cachesLost > 0 ? ` / ${journeyResults.cachesLost} lost` : ''}
                 </span>
@@ -381,9 +382,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           )}
 
           {isFinalMap && (
-            <div className="text-zinc-500 text-base mb-2">
+            <div className="hud-overlay__line hud-overlay__line--dim">
               Ghost Best:{' '}
-              <span className="font-mono text-sky-300">
+              <span className="hud-val--sky">
                 {ghostBestScore > 0 ? Math.floor(ghostBestScore).toLocaleString() : '—'}
               </span>
             </div>
@@ -391,12 +392,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           <RunResultsPanel outcome="complete" />
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-4 mt-10">
+          <div className="hud-overlay__actions">
             <button
               onClick={() => {
                 onLoopMap?.();
               }}
-              className="px-10 py-5 bg-white text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-emerald-400 hover:text-white hover:scale-105 transition-all shadow-2xl"
+              className="hud-btn"
             >
               RETRY MAP
             </button>
@@ -406,7 +407,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 onClick={() => {
                   onContinueJourney();
                 }}
-                className="px-10 py-5 bg-amber-300 text-black text-xl md:text-2xl font-black rounded-3xl hover:bg-sky-300 hover:scale-105 transition-all shadow-2xl"
+                className="hud-btn hud-btn--continue"
               >
                 {continueLabel ?? 'CONTINUE'}
               </button>
@@ -417,14 +418,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 onClick={() => {
                   onReturnToMenu();
                 }}
-                className="px-10 py-5 bg-transparent text-white/80 text-xl md:text-2xl font-black rounded-3xl border border-white/25 hover:bg-white/10 hover:scale-105 transition-all"
+                className="hud-btn hud-btn--ghost"
               >
                 MENU
               </button>
             )}
           </div>
 
-          <p className="mt-8 text-zinc-600 text-sm">
+          <p className="hud-overlay__hint">
             Press Enter to {onContinueJourney ? 'continue' : 'retry'}
           </p>
         </div>
@@ -463,23 +464,25 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </button>
         </div>
       )}
-      <div className="fixed top-4 left-4 md:top-6 md:left-6 text-xs font-mono text-white/50 tracking-[0.12em]">
+      <div className="hud-biome">
         <div>{biomeLabel}</div>
         <div className="survival-loadout-badge">
           LOADOUT <span ref={loadoutLabelRef}>—</span>
         </div>
       </div>
 
-      <div className="fixed top-4 right-4 md:top-6 md:right-6 bg-black/55 backdrop-blur-md text-right px-4 py-3 md:px-5 md:py-4 rounded-2xl border border-white/10 shadow-lg font-mono text-[#f5f1e8] min-w-[220px]">
-        <div className="text-2xl md:text-3xl font-bold leading-none"><HudText select={selectSpeedText} /> <span className="text-sm text-white/60">m/s</span></div>
-        <div className="mt-1 text-lg md:text-xl leading-none"><HudText select={selectDistanceKmText} /> <span className="text-xs text-white/60">km</span></div>
-        <div className="mt-3 text-xs uppercase tracking-wider text-white/50">Score</div>
-        <div className="text-xl md:text-2xl font-bold leading-none"><HudText select={selectScoreText} /></div>
+      <MovementReadout />
+
+      <div className="hud-readout" data-testid="hud-readout">
+        <div className="hud-readout__speed"><HudText select={selectSpeedText} /> <span className="hud-readout__unit">m/s</span></div>
+        <div className="hud-readout__distance"><HudText select={selectDistanceKmText} /> <span className="hud-readout__unit">km</span></div>
+        <div className="hud-readout__label">Score</div>
+        <div className="hud-readout__score"><HudText select={selectScoreText} /></div>
       </div>
 
       {multiplier > 1 && (
         <div
-          className="fixed top-10 left-1/2 -translate-x-1/2 font-mono font-black tracking-wider transition-opacity"
+          className="hud-multiplier"
           style={{
             color: multiplierColor,
             fontSize: multiplier >= 7 ? '3rem' : '2.25rem',
@@ -492,7 +495,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {comboFlash && (
         <div
-          className="fixed top-24 left-1/2 -translate-x-1/2 font-mono font-bold uppercase tracking-[0.16em] pointer-events-none"
+          className="hud-combo"
           style={{
             color: '#fbbf24',
             fontSize: '1.1rem',
@@ -507,22 +510,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div ref={launchAirTimeRef} className="launch-airtime-hud" aria-live="polite" />
       <div ref={rewardPopupRef} className="air-reward-popup" aria-live="polite" />
 
-      <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 text-white/40 text-xs md:text-sm font-mono">
-        Best: <span className="text-emerald-400"><HudText select={selectHighScoreText} /></span>
-        <span className="ml-4 text-white/50">Top <HudText select={selectTopSpeedText} /> m/s</span>
+      <div className="hud-best">
+        Best: <strong><HudText select={selectHighScoreText} /></strong>
+        <span className="hud-best__top">Top <HudText select={selectTopSpeedText} /> m/s</span>
       </div>
 
       <div
-        className="fixed bottom-12 right-4 md:bottom-14 md:right-6 text-white/40 text-[10px] md:text-xs font-mono text-right"
+        className="hud-native"
         data-testid="wasm-smoke-status"
       >
         {native.status === 'none' ? 'WASM OFF' : `WASM ${native.status.toUpperCase()}`}
         {native.status === 'ready' && (
-          <span className="ml-2 text-sky-200/60">
+          <span className="hud-native__detail">
             {native.where === 'worker' ? 'SIM WORKER' : 'MAIN'} ABI {native.abi}
           </span>
         )}
-        {native.status === 'none' && <span className="ml-2 text-sky-200/60">WGSL</span>}
+        {native.status === 'none' && <span className="hud-native__detail">WGSL</span>}
       </div>
 
       {vehicleType === 'runner' && (
