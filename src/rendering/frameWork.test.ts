@@ -5,6 +5,7 @@ import {
   endFrameWork,
   frameWorkMs,
   getFrameWork,
+  isAdaptiveWindowFull,
   resetFrameWork,
   summarizeFrameWindow,
 } from './frameWork';
@@ -68,5 +69,22 @@ describe('summarizeFrameWindow', () => {
     const s = summarizeFrameWindow(fill(60, VSYNC_60), fill(60, 7), { gpuTimed: false, missedFrameMs: MISSED });
     expect(s.workSource).toBe('cpu');
     expect(s.meanWorkMs).toBe(7);
+  });
+});
+
+describe('isAdaptiveWindowFull', () => {
+  it('closes at 60 frames when the display keeps up', () => {
+    expect(isAdaptiveWindowFull(fill(59, VSYNC_60))).toBe(false);
+    expect(isAdaptiveWindowFull(fill(60, VSYNC_60))).toBe(true);
+  });
+
+  it('closes on ~1 s of frame time when frames are slow (software GL)', () => {
+    expect(isAdaptiveWindowFull(fill(10, 90))).toBe(false); // 900 ms
+    expect(isAdaptiveWindowFull(fill(11, 100))).toBe(true); // 1.1 s, not 60 s
+  });
+
+  it('never closes under the minimum frame count, however long the frames', () => {
+    expect(isAdaptiveWindowFull(fill(9, 2000))).toBe(false);
+    expect(isAdaptiveWindowFull(fill(10, 2000))).toBe(true);
   });
 });
