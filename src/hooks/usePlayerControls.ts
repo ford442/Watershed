@@ -1,26 +1,23 @@
 /**
- * usePlayerControls.ts — Unified input hook for all vehicle types
+ * usePlayerControls.ts — vehicle-facing adapter over the InputHub (#486 A).
  *
- * RESPONSIBILITIES:
- * - Abstract keyboard/mouse input into a single reactive interface
- * - Support runner (WASD + jump + sprint) and raft (WASD + paddle Q/E) controls
- * - Provide camera-relative direction vectors for runner movement
- * - Gate input when pointer lock is not active (prevents stuck keys)
+ * Devices live in `src/input/` now: sources write into the InputHub, which
+ * `<InputHubTick />` ticks once per frame ahead of every vehicle. This hook
+ * keeps the old `PlayerControls` shape for the runner and raft steps:
+ * `getControls()` fills one preallocated object from `inputHub.readFrame()`
+ * (no spread, no allocation), so repeated calls in one frame return the same
+ * object holding the same snapshot.
  *
- * DESIGN:
- * - Uses @react-three/drei useKeyboardControls for mapped keys.
- * - Adds raw window event listeners for keys not in the KeyboardControls map
- *   (Q/E paddle, Shift sprint).
- * - Raw key state is stored in refs so useFrame callbacks always read fresh
- *   values without waiting for a React re-render.
- * - isPointerLocked is in state so UI can subscribe to it.
+ * `forwardDir` / `rightDir` are stable vectors refreshed in place on render.
+ * `isPointerLocked` stays React state for UI; no vehicle gates on it.
+ *
+ * New code reads the frame directly with `useInputFrame()`.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { useSettingsStore } from '../systems/settings/useSettingsStore';
-import { bindingsToMouseMap, type SettingsAction } from '../systems/settings/settingsDerive';
+import { inputHub } from '../input/InputHub';
+import { InputButton, type InputFrame } from '../input/InputFrame';
 
 export interface PlayerControls {
   /** Forward input (W / ArrowUp) */
@@ -35,9 +32,9 @@ export interface PlayerControls {
   jump: boolean;
   /** Sprint / boost (Shift) */
   sprint: boolean;
-  /** Brake (not currently mapped, reserved) */
+  /** Brake / slide */
   brake: boolean;
-  /** Dodge / dash (Alt or double-tap direction) */
+  /** Dodge / dash (Alt) */
   dodge: boolean;
   /** Left paddle (Q) — raft only */
   paddleLeft: boolean;
@@ -54,129 +51,86 @@ export interface PlayerControlVectors {
   rightDir: THREE.Vector3;
 }
 
+/** Axis magnitude that counts as a held digital direction. */
+const AXIS_PRESSED = 0.5;
+
+/** Fill `out` from a hub frame. Pure, allocation-free. */
+export function fillPlayerControls(
+  frame: Readonly<InputFrame>,
+  isPointerLocked: boolean,
+  out: PlayerControls,
+): PlayerControls {
+  const b = frame.buttons;
+  out.forward = frame.moveY > AXIS_PRESSED;
+  out.backward = frame.moveY < -AXIS_PRESSED;
+  out.leftward = frame.moveX < -AXIS_PRESSED;
+  out.rightward = frame.moveX > AXIS_PRESSED;
+  out.jump = (b & InputButton.JUMP) !== 0;
+  out.sprint = (b & InputButton.SPRINT) !== 0;
+  out.brake = (b & InputButton.BRAKE) !== 0;
+  out.dodge = (b & InputButton.DODGE) !== 0;
+  out.paddleLeft = frame.paddleL > AXIS_PRESSED;
+  out.paddleRight = frame.paddleR > AXIS_PRESSED;
+  out.isPointerLocked = isPointerLocked;
+  return out;
+}
+
+export function createPlayerControls(): PlayerControls {
+  return {
+    forward: false,
+    backward: false,
+    leftward: false,
+    rightward: false,
+    jump: false,
+    sprint: false,
+    brake: false,
+    dodge: false,
+    paddleLeft: false,
+    paddleRight: false,
+    isPointerLocked: false,
+  };
+}
+
+/** This frame's merged input. The same object every call; read it, never keep a field across frames. */
+export function useInputFrame(): Readonly<InputFrame> {
+  return inputHub.readFrame();
+}
+
 /**
- * Hook that provides unified player input state.
+ * @deprecated Read `useInputFrame()` in new code. Kept as the adapter for the
+ * runner / raft steps until #486 B–D retire the last caller.
  *
- * @param camera — Three.js camera instance (needed for camera-relative vectors)
- * @returns Object with:
- *   - Reactive `isPointerLocked` for UI
- *   - `getControls()` imperative accessor for useFrame (always fresh)
- *   - `forwardDir` / `rightDir` camera-relative vectors
+ * @param camera — Three.js camera (for the camera-relative vectors)
  */
 export function usePlayerControls(camera?: THREE.Camera): PlayerControlVectors & { getControls: () => PlayerControls } {
-  const [, getKeys] = useKeyboardControls();
-
-  // Refs for high-frequency keys — always fresh inside useFrame
-  const extraKeysRef = useRef({ q: false, e: false, shift: false, alt: false });
-  // Pressed mouse buttons ('Mouse0'|'Mouse1'|'Mouse2') for mouse-bound actions
-  // (e.g. right-click-forward). Read transiently in getControls.
-  const mouseButtonsRef = useRef<Set<string>>(new Set());
-  const [isPointerLocked, setIsPointerLocked] = useState(false);
+  // State (not just the ref) so a lock change still re-renders the host, as before.
+  const [, setIsPointerLocked] = useState(false);
+  const lockedRef = useRef(false);
+  const controlsRef = useRef<PlayerControls | null>(null);
+  if (controlsRef.current === null) controlsRef.current = createPlayerControls();
 
   // Track pointer lock state (low frequency, OK to use state)
   useEffect(() => {
     const handleLockChange = () => {
-      setIsPointerLocked(!!document.pointerLockElement);
+      lockedRef.current = !!document.pointerLockElement;
+      setIsPointerLocked(lockedRef.current);
     };
     document.addEventListener('pointerlockchange', handleLockChange);
     handleLockChange();
     return () => document.removeEventListener('pointerlockchange', handleLockChange);
   }, []);
 
-  // Raw window listeners for Q/E paddle keys and Shift sprint
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 'q') extraKeysRef.current.q = true;
-      if (key === 'e') extraKeysRef.current.e = true;
-      if (key === 'shift') extraKeysRef.current.shift = true;
-      if (key === 'alt') extraKeysRef.current.alt = true;
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 'q') extraKeysRef.current.q = false;
-      if (key === 'e') extraKeysRef.current.e = false;
-      if (key === 'shift') extraKeysRef.current.shift = false;
-      if (key === 'alt') extraKeysRef.current.alt = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
-
-  // Mouse-button bindings (right-click-forward etc.). Track pressed buttons and
-  // suppress the context menu while any mouse button is a binding so a bound
-  // right-click drives movement instead of popping the browser menu.
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      mouseButtonsRef.current.add(`Mouse${e.button}`);
-    };
-    const onMouseUp = (e: MouseEvent) => {
-      mouseButtonsRef.current.delete(`Mouse${e.button}`);
-    };
-    const clear = () => mouseButtonsRef.current.clear();
-    const onContextMenu = (e: MouseEvent) => {
-      const mouseMap = bindingsToMouseMap(useSettingsStore.getState().bindings);
-      if (Object.values(mouseMap).includes('Mouse2')) e.preventDefault();
-    };
-
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('blur', clear);
-    window.addEventListener('contextmenu', onContextMenu);
-    return () => {
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('blur', clear);
-      window.removeEventListener('contextmenu', onContextMenu);
-    };
-  }, []);
-
   // Imperative accessor — safe to call inside useFrame every tick
-  const getControls = useCallback((): PlayerControls => {
-    const keys = getKeys();
-    const extra = extraKeysRef.current;
+  const getControls = useCallback(
+    (): PlayerControls => fillPlayerControls(inputHub.readFrame(), lockedRef.current, controlsRef.current!),
+    [],
+  );
 
-    // Base state from the drei KeyboardControls map (rebindable keys).
-    const state: Record<SettingsAction, boolean> = {
-      forward: keys.forward ?? false,
-      backward: keys.backward ?? false,
-      leftward: keys.leftward ?? false,
-      rightward: keys.rightward ?? false,
-      jump: keys.jump ?? false,
-      // Sprint/dodge now flow through the rebindable map; keep the legacy raw
-      // Shift/Alt refs as a fallback so held modifiers still register.
-      sprint: (keys as Record<string, boolean>).sprint || extra.shift,
-      brake: (keys as Record<string, boolean>).brake ?? false,
-      dodge: (keys as Record<string, boolean>).dodge || extra.alt,
-    };
-
-    // Merge mouse-bound actions (e.g. right-click-forward).
-    const pressed = mouseButtonsRef.current;
-    if (pressed.size > 0) {
-      const mouseMap = bindingsToMouseMap(useSettingsStore.getState().bindings);
-      for (const action of Object.keys(mouseMap) as SettingsAction[]) {
-        const code = mouseMap[action];
-        if (code && pressed.has(code)) state[action] = true;
-      }
-    }
-
-    return {
-      ...state,
-      paddleLeft: extra.q,
-      paddleRight: extra.e,
-      isPointerLocked,
-    };
-  }, [getKeys, isPointerLocked]);
-
-  // Camera-relative direction vectors
-  const forwardDir = useRef(new THREE.Vector3(0, 0, -1));
-  const rightDir = useRef(new THREE.Vector3(1, 0, 0));
+  // Camera-relative direction vectors, stable instances refreshed in place.
+  const forwardDir = useRef<THREE.Vector3 | null>(null);
+  const rightDir = useRef<THREE.Vector3 | null>(null);
+  if (forwardDir.current === null) forwardDir.current = new THREE.Vector3(0, 0, -1);
+  if (rightDir.current === null) rightDir.current = new THREE.Vector3(1, 0, 0);
 
   if (camera) {
     camera.getWorldDirection(forwardDir.current);
@@ -188,8 +142,8 @@ export function usePlayerControls(camera?: THREE.Camera): PlayerControlVectors &
   }
 
   return {
-    forwardDir: forwardDir.current.clone(),
-    rightDir: rightDir.current.clone(),
+    forwardDir: forwardDir.current,
+    rightDir: rightDir.current,
     getControls,
   };
 }
