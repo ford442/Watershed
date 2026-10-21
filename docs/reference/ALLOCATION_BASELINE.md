@@ -186,8 +186,9 @@ rebind. Both blocks now carry an `eslint-disable`/`eslint-enable` pair naming
 
 ## The ratchet
 
-`.github/workflows/build.yml` runs `pnpm lint --max-warnings 280` (296 minus
-the 16 warnings the #415 annotations suppress). Errors still fail the build,
+`.github/workflows/build.yml` runs `pnpm lint --max-warnings 152` (280 when it
+was introduced — 296 minus the 16 warnings the #415 annotations suppress —
+then 249, and 152 after #503). Errors still fail the build,
 and so does any *new* warning; the existing backlog stays non-blocking.
 
 Lower the number whenever the count drops, never raise it. It covers every
@@ -207,3 +208,25 @@ Computed from dimensions × the GPU format three uploads (all maps 1024², full 
 | KTX2, ASTC (UASTC → ASTC 4×4; ETC1S → ETC1 RGB) | 1 / 0.5 B/px | 1.40 / 0.70 MB | **4.89 MB** | 2.8 MB |
 
 KTX2 also removes the JPG decode, and the full-resolution RGBA staging copy, from segment streaming. Choice and fallback: `src/rendering/ktx2Textures.ts`. Encoder: `scripts/build-textures.mjs`, which needs KTX-Software `ktx` ≥ 4.3 and is dev-only. Re-measure on a real GPU with the Chrome task manager "GPU memory" column if the set grows.
+
+## #503 B — hidden allocations hoisted (2026-10-21)
+
+The vehicle physics helpers called from `useFrame` (invisible to
+`no-new-in-loop`) now use module scratch objects and one reusable Rapier `Ray`;
+raft foam / shed spray and both vehicles' collision bursts are `ParticlePool`s
+drawn by one `InstancedMesh` each instead of per-particle React children.
+
+Same harness, production builds of `main` (`ff9bf71`) and the #503 B commit,
+served by `vite preview`, `ALLOC_SETTLE_MS=30000 ALLOC_SAMPLE_MS=40000`:
+
+| Case | Before (B/frame) | After (B/frame) | GC max before → after |
+|---|---|---|---|
+| Ordinary biome (seg 2) | 920 | 946 | 13.4 → 13.9 ms |
+| Waterfall (seg 14) | 1004 | 1211 | 14.5 → 18.6 ms |
+
+Both sides are inside the sampler's 4 KiB interval, and both are dominated by
+`vendor-three` (≈ 80 %). The measurement agrees with the 2026-09-17 verdict:
+app-code allocation is not a measurable share of frame time under this
+harness. The hoisting landed for correctness (the particles render from
+`useFrame` now, not when something else re-renders the vehicle) and for the
+lint ratchet, not for a measured speed-up.

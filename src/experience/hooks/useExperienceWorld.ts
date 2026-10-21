@@ -428,9 +428,14 @@ export function useExperienceWorld({
         syncMapUrl(targetMapId);
         setLastMapId(targetMapId);
         hydrateStoreForRun(getActiveRunKey(targetMapId));
+        // One hour for the new session and its forecast. The forecast used to
+        // read the hour captured at the last render (and launchHour was not a
+        // dependency), so a switch could forecast a different hour than the
+        // session it started (#503 F).
+        const runHour = getActiveLaunchHour();
         initRunSession({
           mapId: targetMapId,
-          launchHour: getActiveLaunchHour(),
+          launchHour: runHour,
           placedCacheIds: getRunSession()?.placedCacheIds ?? [],
           loadoutId: getRunSession()?.loadoutId,
           journeyMode: getRunSession()?.journeyMode,
@@ -444,7 +449,7 @@ export function useExperienceWorld({
         setWaterfallGravityMultiplier(1.0);
         snapBiomeContext(targetMap.initialBiome);
         useGameStore.setState({ currentBiome: targetMap.initialBiome, isPaused: false });
-        setForecastSamples(buildDefaultForecastSamples(launchHour));
+        setForecastSamples(buildDefaultForecastSamples(runHour));
         awardedWaterfallSegmentsRef.current?.clear();
         resetScoreSystemState();
         resetRunSession({
