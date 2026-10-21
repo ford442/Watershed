@@ -30,11 +30,14 @@ type Vec3Tuple = readonly [number, number, number];
 /** Centreline samples kept per segment (t = 0, 1/N, …, 1). */
 export const FRAME_SAMPLES = 32;
 
-export interface SegmentFrame {
-  index: number;
-  /** Centreline z at t = 0 / t = 1. Downstream is −z, so zStart > zEnd. */
+/** A segment's centreline z at t = 0 / t = 1 (downstream is −z, so zStart > zEnd). */
+export interface ZSpan {
   zStart: number;
   zEnd: number;
+}
+
+export interface SegmentFrame extends ZSpan {
+  index: number;
   /** Centreline y range over the whole segment. */
   pathYMin: number;
   pathYMax: number;
@@ -75,6 +78,34 @@ export function buildSegmentFrame(
 }
 
 /**
+ * The one "which segment is at z" rule (#503 A): the index of the span that
+ * contains `z`; otherwise the nearest one by z distance; -1 only when `spans`
+ * is empty. ChunkManager (segment entry, biome detection) and the frame
+ * readers below both resolve through it.
+ */
+export function indexOfSpanAtZ(spans: ArrayLike<ZSpan>, z: number): number {
+  let nearest = -1;
+  let nearestDistance = Infinity;
+  for (let i = 0; i < spans.length; i += 1) {
+    const span = spans[i];
+    const hi = Math.max(span.zStart, span.zEnd);
+    const lo = Math.min(span.zStart, span.zEnd);
+    if (z <= hi && z >= lo) return i;
+    const distance = z > hi ? z - hi : lo - z;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = i;
+    }
+  }
+  return nearest;
+}
+
+/** True when `z` lies inside `span` (ends inclusive). */
+export function spanContainsZ(span: ZSpan, z: number): boolean {
+  return z <= Math.max(span.zStart, span.zEnd) && z >= Math.min(span.zStart, span.zEnd);
+}
+
+/**
  * The frame whose z span contains `z`; otherwise the nearest one by z. Only
  * null when there are no frames at all.
  */
@@ -82,19 +113,8 @@ export function findSegmentFrameAtZ(
   frames: ReadonlyArray<SegmentFrame>,
   z: number,
 ): SegmentFrame | null {
-  let nearest: SegmentFrame | null = null;
-  let nearestDistance = Infinity;
-  for (const frame of frames) {
-    const hi = Math.max(frame.zStart, frame.zEnd);
-    const lo = Math.min(frame.zStart, frame.zEnd);
-    if (z <= hi && z >= lo) return frame;
-    const distance = z > hi ? z - hi : lo - z;
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearest = frame;
-    }
-  }
-  return nearest;
+  const index = indexOfSpanAtZ(frames, z);
+  return index < 0 ? null : frames[index];
 }
 
 export interface VerticalBounds {

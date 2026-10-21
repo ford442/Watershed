@@ -5,6 +5,7 @@ import { useBiome } from '../../systems/biome/BiomeSystem';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createPondFogMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { WATER_LEVEL } from '../../constants/game';
 
 export interface PondFogProps {
   segmentCenter: THREE.Vector3;
@@ -16,7 +17,7 @@ export interface PondFogProps {
  * swirling ground-hugging mist bank that sits on the water surface and
  * catches sun/moon color and reacts to weather.
  */
-export default function PondFog({ segmentCenter, waterLevel = 0.5 }: PondFogProps) {
+export default function PondFog({ segmentCenter, waterLevel = WATER_LEVEL }: PondFogProps) {
   const { camera, scene } = useThree();
   const { timeOfDay } = useBiome();
   const originalFogRef = useRef<{

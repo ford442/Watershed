@@ -30,6 +30,7 @@ import {
   DEFAULT_MAP_CONFIG,
   DEFAULT_SEGMENT_PROGRESSION,
 } from './MapSystem.generation';
+import { WATER_LEVEL } from '../../constants/game';
 
 // Re-export types and generation helpers (public API unchanged).
 export type {
@@ -60,7 +61,6 @@ export {
   generateRiverPath,
   generateSegmentPath,
   INITIAL_TREADMILL_POINTS,
-  SeededRandom,
   type BuildProceduralSegmentOptions,
 } from './MapSystem.generation';
 
@@ -351,7 +351,7 @@ export class JSONMapManager implements MapManager {
       length: pathLength,
       biome: normalizeBiomeId(biomeOverride),
       flowSpeed: config.physics?.waterFlowIntensity || this.levelData.world.biome.water.flowSpeed,
-      waterLevel: 0.5,
+      waterLevel: WATER_LEVEL,
       waterWidth: config.waterWidth ?? this.levelData.world.track.width ?? DEFAULT_MAP_CONFIG.waterWidth,
       canyonWidth: config.width || this.levelData.world.track.width || DEFAULT_MAP_CONFIG.canyonWidth,
       spawns,

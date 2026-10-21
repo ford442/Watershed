@@ -7,6 +7,7 @@ import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createFishBodyMaterial, createFishRingMaterial, updateCritterMaterialTime } from '../../materials/critters/createCritterMaterials';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { sinHash } from '../../math/hash';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -24,10 +25,7 @@ const DARK_PALETTE = ['#3a3324', '#46402c', '#33422f', '#3e3b2a'];
 const RING_DUMMY = new THREE.Object3D();
 const RING_LIFETIME = 1.0;
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * SEED) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * SEED);
 
 // Normalize attribute sets across geometries (fills missing attrs with zeros) before merging.
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {

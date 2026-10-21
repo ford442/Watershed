@@ -23,6 +23,10 @@ import {
 import { seamLoopBuffer } from './loopBuffer';
 import { canyonAcousticParams, DEFAULT_WALL_WETNESS } from './canyonAcoustics';
 import { createAudioUnlockGate, type AudioUnlockGate } from './audioUnlock';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xa1c12f5b);
 
 export { SoundCategory } from './soundDefs';
 
@@ -85,6 +89,8 @@ export class AudioManager {
   private activeSounds: Map<string, ActiveSound[]> = new Map();
   private ambientTrack: THREE.Audio<AudioNode> | THREE.PositionalAudio | null = null;
   private ambientRequest = 0;
+  /** Monotonic suffix for active-sound ids. */
+  private soundSerial = 0;
   private isMuted: boolean = false;
   private masterVolume: number = 1.0;
   // Per-channel multipliers driven by the settings panel. Applied on TOP of the
@@ -331,7 +337,7 @@ export class AudioManager {
     source.setPlaybackRate(finalPlaybackRate);
     
     // Generate unique ID
-    const id = `${name}_${Date.now()}_${Math.random()}`;
+    const id = `${name}_${(this.soundSerial += 1)}`;
     
     // Track active sound
     if (!this.activeSounds.has(name)) {
@@ -651,7 +657,7 @@ export class AudioManager {
       for (let i = 0; i < length; i += 1) {
         const t = i / length;
         const envelope = Math.pow(1 - t, 2.2);
-        data[i] = (Math.random() * 2 - 1) * envelope;
+        data[i] = (random() * 2 - 1) * envelope;
       }
     }
 

@@ -3,6 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { BatsProps } from './types';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { sinHash } from '../../math/hash';
+import { WATER_LEVEL } from '../../constants/game';
 
 const DUMMY = new THREE.Object3D();
 const TEMP_POS = new THREE.Vector3();
@@ -37,11 +39,6 @@ interface BatPathState {
   hopCount: number;
   lastForward: THREE.Vector3;
 }
-
-const hash = (n: number): number => {
-  const x = Math.sin(n) * 43758.5453123;
-  return x - Math.floor(x);
-};
 
 const cubicBezier = (
   target: number,
@@ -82,9 +79,9 @@ const createWingGeometry = (side: number): THREE.BufferGeometry => {
 
 const chooseNextPath = (bat: BatPathState, seedBias = 0): void => {
   const seed = bat.seed + bat.hopCount * 17.0 + seedBias;
-  const lateral = (hash(seed + 1.3) - 0.5) * bat.rangeX;
-  const forward = (hash(seed + 2.6) - 0.5) * bat.rangeZ;
-  const targetY = bat.waterLevel + 2 + hash(seed + 3.9) * 2.0;
+  const lateral = (sinHash(seed + 1.3) - 0.5) * bat.rangeX;
+  const forward = (sinHash(seed + 2.6) - 0.5) * bat.rangeZ;
+  const targetY = bat.waterLevel + 2 + sinHash(seed + 3.9) * 2.0;
   const target = new THREE.Vector3(
     bat.origin.x + lateral,
     targetY,
@@ -94,8 +91,8 @@ const chooseNextPath = (bat: BatPathState, seedBias = 0): void => {
   const span = target.clone().sub(bat.current);
   const tangent = span.clone().normalize();
   const side = new THREE.Vector3().crossVectors(tangent, TEMP_UP).normalize();
-  const arcHeight = 0.3 + hash(seed + 5.2) * 0.9;
-  const sideDrift = (hash(seed + 6.7) - 0.5) * 1.2;
+  const arcHeight = 0.3 + sinHash(seed + 5.2) * 0.9;
+  const sideDrift = (sinHash(seed + 6.7) - 0.5) * 1.2;
 
   bat.p0.copy(bat.current);
   bat.p1.copy(bat.current).addScaledVector(tangent, bat.current.distanceTo(target) * 0.28).addScaledVector(side, sideDrift);
@@ -105,11 +102,11 @@ const chooseNextPath = (bat: BatPathState, seedBias = 0): void => {
   bat.p3.copy(target);
 
   bat.progress = 0;
-  bat.duration = 0.38 + hash(seed + 7.4) * 0.55;
+  bat.duration = 0.38 + sinHash(seed + 7.4) * 0.55;
   bat.hopCount += 1;
 };
 
-export default function Bats({ transforms, visible = false, waterLevel = 0.5 }: BatsProps) {
+export default function Bats({ transforms, visible = false, waterLevel = WATER_LEVEL }: BatsProps) {
   const bodyRef = useRef<THREE.InstancedMesh>(null);
   const leftWingRef = useRef<THREE.InstancedMesh>(null);
   const rightWingRef = useRef<THREE.InstancedMesh>(null);
@@ -123,18 +120,18 @@ export default function Bats({ transforms, visible = false, waterLevel = 0.5 }: 
     return activeTransforms.map((transform, index) => {
       const basePos = transform.position || new THREE.Vector3();
       const seed = basePos.x * 11.7 + basePos.z * 4.3 + index * 23.1;
-      const scale = 0.24 + hash(seed + 0.9) * 0.14;
+      const scale = 0.24 + sinHash(seed + 0.9) * 0.14;
       const origin = new THREE.Vector3(basePos.x, basePos.y, basePos.z);
       const current = origin.clone();
 
       const bat = {
         seed,
         scale,
-        flapFreq: 7.5 + hash(seed + 2.2) * 2.5,
-        flapAmp: 0.68 + hash(seed + 3.7) * 0.35,
-        phase: hash(seed + 4.5) * Math.PI * 2,
-        rangeX: 5.5 + hash(seed + 6.1) * 6.5,
-        rangeZ: 5.5 + hash(seed + 7.3) * 6.5,
+        flapFreq: 7.5 + sinHash(seed + 2.2) * 2.5,
+        flapAmp: 0.68 + sinHash(seed + 3.7) * 0.35,
+        phase: sinHash(seed + 4.5) * Math.PI * 2,
+        rangeX: 5.5 + sinHash(seed + 6.1) * 6.5,
+        rangeZ: 5.5 + sinHash(seed + 7.3) * 6.5,
         origin,
         current,
         waterLevel,

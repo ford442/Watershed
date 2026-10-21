@@ -7,6 +7,10 @@ import { resolveNativeOwner } from '../../sim/nativeOwner';
 import { createWaterfallIntegrator, type WaterfallIntegrator } from '../../systems/pools/nativeParticles';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 import { usePooledPointLights } from '../../rendering/sceneLightPool';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xee778f55);
 
 /** The spray's glow, borrowed from the scene's fixed light pool (#487). */
 const SPRAY_LIGHT = { color: '#aaddff', distance: 20, decay: 2 } as const;
@@ -104,12 +108,12 @@ export default function WaterfallParticles({
   const particles = useMemo((): WaterfallParticle[] => {
     const temp: WaterfallParticle[] = [];
     for (let i = 0; i < MAX_POOL_JS; i++) {
-      const x = (Math.random() - 0.5) * width;
-      const y = Math.random() * height;
-      const z = (Math.random() - 0.5) * DEPTH_Z;
-      const speed = 0.2 + Math.random() * 0.3;
-      const scale = 0.5 + Math.random() * 0.5;
-      const randomAngle = (Math.random() - 0.5) * fanSpreadRad;
+      const x = (random() - 0.5) * width;
+      const y = random() * height;
+      const z = (random() - 0.5) * DEPTH_Z;
+      const speed = 0.2 + random() * 0.3;
+      const scale = 0.5 + random() * 0.5;
+      const randomAngle = (random() - 0.5) * fanSpreadRad;
       const vx = fanSpreadRad > 0 ? Math.sin(randomAngle) * speed * 1.5 : 0;
       const vz = fanSpreadRad > 0 ? Math.cos(randomAngle) * speed * 0.3 : 0;
 
@@ -189,8 +193,8 @@ export default function WaterfallParticles({
 
           if (p.y < 0) {
             p.y = height;
-            p.x = (Math.random() - 0.5) * width;
-            p.z = (Math.random() - 0.5) * DEPTH_Z;
+            p.x = (random() - 0.5) * width;
+            p.z = (random() - 0.5) * DEPTH_Z;
           }
 
           dummy.position.set(p.x, p.y, p.z);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { pickTreeSpecies, seededRandom } from '../utils';
+import { pickTreeSpecies } from '../utils';
 import { WATER_LEVEL } from '../../../constants/game';
 import { populateSide } from './populateSide';
 import { isAutumnLike } from '../../../configs/biomes';
@@ -20,8 +20,6 @@ export function populateZSteps(args: PopulatePlacementArgs): void {
     const waterLevel = WATER_LEVEL;
     const lodQuality = config?.lodQuality || 'high';
     const particleCount = config?.particleCount || 100;
-
-    const seedState = { value: segmentId * 1000 };
 
         for (let z = 0; z < zSteps; z++) {
             const t = z / zSteps;
@@ -51,7 +49,7 @@ export function populateZSteps(args: PopulatePlacementArgs): void {
                     birds, bats, fish, pebbles, sandBars, mist, waterLilies, sunShafts,
                     ferns, rapids, dragonflies, pinecones, mushrooms, rimTrees, rockFoam, canyonDust,
                     icicles, iceSheets,
-                    pathPoint, tangent, binormal, up, seedState, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
+                    pathPoint, tangent, binormal, up, lodQuality, particleCount, curvatureStrength, insideSide, tNext, tangentNext
                 });
             }
         }
@@ -61,12 +59,12 @@ export function populateZSteps(args: PopulatePlacementArgs): void {
         for (let sideIdx = 0; sideIdx < rimSides.length; sideIdx++) {
             const side = rimSides[sideIdx];
             const perSideCount = isSlotCanyon
-                ? 3 + Math.floor(seededRandom(seedState.value++) * 2) // 3-4
-                : 3 + Math.floor(seededRandom(seedState.value++) * 4); // 3-6
+                ? 3 + Math.floor(rng() * 2) // 3-4
+                : 3 + Math.floor(rng() * 4); // 3-6
 
             for (let i = 0; i < perSideCount && rimTrees.length < 12; i++) {
                 const baseT = (i + 0.5) / perSideCount;
-                const t = Math.max(0.03, Math.min(0.97, baseT + (seededRandom(seedState.value++) - 0.5) * 0.28));
+                const t = Math.max(0.03, Math.min(0.97, baseT + (rng() - 0.5) * 0.28));
                 const zLocal = (t - 0.5) * geoLength;
                 const pathPoint = segmentPath.getPoint(t);
                 const tangent = segmentPath.getTangent(t).normalize();
@@ -87,11 +85,11 @@ export function populateZSteps(args: PopulatePlacementArgs): void {
                 const position = new THREE.Vector3().copy(pathPoint).add(
                     binormal.clone().multiplyScalar(rimOffset)
                 );
-                position.y += wallTopY - 1.8 + seededRandom(seedState.value++) * 1.3;
+                position.y += wallTopY - 1.8 + rng() * 1.3;
 
                 const baseScale = isSlotCanyon
-                    ? 0.85 + seededRandom(seedState.value++) * 0.65
-                    : 1.0 + seededRandom(seedState.value++) * 1.1;
+                    ? 0.85 + rng() * 0.65
+                    : 1.0 + rng() * 1.1;
                 const scale = isSlotCanyon
                     ? new THREE.Vector3(baseScale * 1.2, baseScale * 0.85, baseScale * 1.2)
                     : new THREE.Vector3(baseScale * 0.8, baseScale * 1.7, baseScale * 0.8);
@@ -107,7 +105,7 @@ export function populateZSteps(args: PopulatePlacementArgs): void {
                 });
                 rimTrees.push({
                     position,
-                    rotation: new THREE.Euler(0, seededRandom(seedState.value++) * Math.PI * 2, 0),
+                    rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
                     scale,
                     ...treeSpecies,
                 });
@@ -118,21 +116,21 @@ export function populateZSteps(args: PopulatePlacementArgs): void {
             const minBats = 6;
             if (bats.length < minBats) {
                 const maxBats = 12;
-                const targetBatCount = minBats + Math.floor(seededRandom(seedState.value++) * (maxBats - minBats + 1));
+                const targetBatCount = minBats + Math.floor(rng() * (maxBats - minBats + 1));
                 const missing = targetBatCount - bats.length;
                 for (let i = 0; i < missing; i++) {
-                    const t = Math.max(0.02, Math.min(0.98, seededRandom(seedState.value++)));
+                    const t = Math.max(0.02, Math.min(0.98, rng()));
                     const pathPoint = segmentPath.getPoint(t);
                     const tangent = segmentPath.getTangent(t).normalize();
                     const up = new THREE.Vector3(0, 1, 0);
                     const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-                    const wallSign = seededRandom(seedState.value++) > 0.5 ? 1 : -1;
+                    const wallSign = rng() > 0.5 ? 1 : -1;
                     const creviceOffset = isSlotCanyon
-                        ? wallSign * (waterWidth * 0.46 + seededRandom(seedState.value++) * 2.1)
-                        : wallSign * (bankStart + 4.0 + seededRandom(seedState.value++) * 4.0);
+                        ? wallSign * (waterWidth * 0.46 + rng() * 2.1)
+                        : wallSign * (bankStart + 4.0 + rng() * 4.0);
                     const batPos = new THREE.Vector3().copy(pathPoint);
                     batPos.add(binormal.multiplyScalar(creviceOffset));
-                    batPos.y = waterLevel + 2 + seededRandom(seedState.value++) * 2.0;
+                    batPos.y = waterLevel + 2 + rng() * 2.0;
                     bats.push({
                         position: batPos,
                         rotation: new THREE.Euler(),

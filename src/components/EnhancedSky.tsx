@@ -15,6 +15,7 @@ import {
   createStarMaterial,
 } from '../materials/sky/createSkyMaterials';
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
+import { sinHash } from '../math/hash';
 
 interface SkyProfile {
   sunPosition: [number, number, number];
@@ -113,10 +114,7 @@ const buildStarField = (count: number, { radiusMin, radiusMax, band = false, see
     const speeds = new Float32Array(count);
     const tmpColor = new THREE.Color();
 
-    const hash = (n: number) => {
-        const x = Math.sin(n * 17.31 + seedOffset) * 43758.5453;
-        return x - Math.floor(x);
-    };
+    const hash = (n: number) => sinHash(n * 17.31 + seedOffset);
 
     for (let i = 0; i < count; i++) {
         const a = hash(i * 1.7);
@@ -178,10 +176,7 @@ const MOON_PHASE = 0.32; // 0 = new, 0.5 = full, 1 = new again (waxing gibbous)
 const buildMoonGeometry = () => {
     const geo = new THREE.IcosahedronGeometry(1, 4);
     const positions = geo.attributes.position;
-    const hash = (n: number) => {
-        const x = Math.sin(n * 91.7) * 43758.5453;
-        return x - Math.floor(x);
-    };
+    const hash = (n: number) => sinHash(n * 91.7);
     for (let i = 0; i < positions.count; i++) {
         const x = positions.getX(i);
         const y = positions.getY(i);

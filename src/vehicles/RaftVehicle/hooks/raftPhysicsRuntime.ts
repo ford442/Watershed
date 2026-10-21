@@ -19,6 +19,10 @@ import {
 } from '../../../systems/score/LaunchScoringSession';
 import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { isBiomeId, type BiomeId } from '../../../configs/biomes';
+import { createRng } from '../../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x6e0183eb);
 
 export interface RaftPhysicsRuntimeDeps {
   buoyancyState: { current: any };
@@ -304,7 +308,7 @@ const applyPaddleForces = (body: any, delta: number) => {
     deps.forwardBiasTimer.current = BIAS.DURATION;
 
     // Spawn foam on both sides
-    if (Math.random() > 0.7) {
+    if (random() > 0.7) {
       spawnFoamParticle(body, 'left');
       spawnFoamParticle(body, 'right');
     }
@@ -337,7 +341,7 @@ const applyPaddleForces = (body: any, delta: number) => {
       z: 0
     }, true);
 
-    if (Math.random() > 0.6) {
+    if (random() > 0.6) {
       spawnFoamParticle(body, 'left');
       playPaddleSound('left');
     }
@@ -367,7 +371,7 @@ const applyPaddleForces = (body: any, delta: number) => {
       z: 0
     }, true);
 
-    if (Math.random() > 0.6) {
+    if (random() > 0.6) {
       spawnFoamParticle(body, 'right');
       playPaddleSound('right');
     }
@@ -389,9 +393,9 @@ const spawnFoamParticle = (body: any, side: 'left' | 'right') => {
   ).applyQuaternion(rot);
 
   const velocity = new THREE.Vector3(
-    (Math.random() - 0.5) * 0.5,
-    Math.random() * 0.3,
-    (Math.random() - 0.5) * 0.5
+    (random() - 0.5) * 0.5,
+    random() * 0.3,
+    (random() - 0.5) * 0.5
   );
 
   deps.paddleState.current.foamParticles.push({
@@ -418,19 +422,19 @@ const spawnShedParticle = (body: any) => {
   const sternOffset = new THREE.Vector3(0, -0.1, 1.6).applyQuaternion(rot);
   // Wider spread at higher speeds
   const spread = new THREE.Vector3(
-    (Math.random() - 0.5) * (0.8 + speedFactor * 0.6),
-    Math.random() * 0.2,
-    (Math.random() - 0.5) * (0.4 + speedFactor * 0.3)
+    (random() - 0.5) * (0.8 + speedFactor * 0.6),
+    random() * 0.2,
+    (random() - 0.5) * (0.4 + speedFactor * 0.3)
   );
 
   // Velocity opposes raft motion + slight upward arc, stronger at speed
   const vel = new THREE.Vector3(
-    (Math.random() - 0.5) * (0.6 + speedFactor * 0.8),
-    0.3 + Math.random() * (0.4 + speedFactor * 0.4),
-    0.5 + Math.random() * (0.5 + speedFactor * 0.5)
+    (random() - 0.5) * (0.6 + speedFactor * 0.8),
+    0.3 + random() * (0.4 + speedFactor * 0.4),
+    0.5 + random() * (0.5 + speedFactor * 0.5)
   ).applyQuaternion(rot);
 
-  const particleSize = SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + Math.random() * 0.03;
+  const particleSize = SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + random() * 0.03;
 
   deps.shedParticles.current.push({
     id: deps.nextShedId.current++,
@@ -456,19 +460,19 @@ const spawnContactBurst = (body: any, contactPoint: THREE.Vector3, impactForce: 
   const rot = body.rotation();
 
   for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 1.5 + Math.random() * 3.0 * forceFactor;
+    const angle = random() * Math.PI * 2;
+    const speed = 1.5 + random() * 3.0 * forceFactor;
     const vel = new THREE.Vector3(
       Math.cos(angle) * speed,
-      0.8 + Math.random() * 2.0 * forceFactor,
+      0.8 + random() * 2.0 * forceFactor,
       Math.sin(angle) * speed
     );
     deps.shedParticles.current.push({
       id: deps.nextShedId.current++,
-      position: contactPoint.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.1, (Math.random() - 0.5) * 0.4)),
+      position: contactPoint.clone().add(new THREE.Vector3((random() - 0.5) * 0.4, 0.1, (random() - 0.5) * 0.4)),
       velocity: vel,
-      life: SHED.LIFETIME * (0.6 + Math.random() * 0.6),
-      scale: SHED.SIZE_BASE * 1.5 + Math.random() * 0.06 * forceFactor,
+      life: SHED.LIFETIME * (0.6 + random() * 0.6),
+      scale: SHED.SIZE_BASE * 1.5 + random() * 0.06 * forceFactor,
     });
   }
 

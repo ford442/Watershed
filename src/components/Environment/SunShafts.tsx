@@ -9,6 +9,10 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSunShaftMaterial, createSunShaftMoteMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xdd9ac591);
 
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();
@@ -45,9 +49,9 @@ const buildDustMotes = (transforms: BiomeDecorationTransform[]): THREE.BufferGeo
 
     for (let m = 0; m < MOTES_PER_SHAFT; m++) {
       const idx = s * MOTES_PER_SHAFT + m;
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * 4; // within the wide base radius (cylinder bottom radius 6)
-      const localY = (Math.random() - 0.5) * 30; // cylinder spans -15..15 locally
+      const a = random() * Math.PI * 2;
+      const r = random() * 4; // within the wide base radius (cylinder bottom radius 6)
+      const localY = (random() - 0.5) * 30; // cylinder spans -15..15 locally
 
       local.set(Math.cos(a) * r, localY, Math.sin(a) * r);
       world.copy(local).applyMatrix4(matrix);
@@ -57,9 +61,9 @@ const buildDustMotes = (transforms: BiomeDecorationTransform[]): THREE.BufferGeo
       basePositions[idx * 3 + 2] = world.z;
 
       heights[idx] = shaftHeight;
-      radii[idx] = 0.15 + Math.random() * 0.35;
-      phases[idx] = Math.random() * Math.PI * 2;
-      speeds[idx] = 0.3 + Math.random() * 0.6;
+      radii[idx] = 0.15 + random() * 0.35;
+      phases[idx] = random() * Math.PI * 2;
+      speeds[idx] = 0.3 + random() * 0.6;
     }
   }
 

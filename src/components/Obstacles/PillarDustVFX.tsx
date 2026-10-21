@@ -11,6 +11,10 @@ import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle } from '../../systems/pools/ParticlePool';
 import { PILLAR_BREAK_EVENT, type PillarBreakEventDetail } from './pillarBreakEvents';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x0eafa63f);
 
 const DUST_POOL_SIZE = 120;
 const DUST_POOL_MAX = 400;
@@ -37,23 +41,23 @@ export default function PillarDustVFX() {
 
     particles.forEach((p, i) => {
       p.position.copy(point);
-      p.position.x += (Math.random() - 0.5) * 1.2;
-      p.position.y += Math.random() * 0.6;
-      p.position.z += (Math.random() - 0.5) * 1.2;
+      p.position.x += (random() - 0.5) * 1.2;
+      p.position.y += random() * 0.6;
+      p.position.z += (random() - 0.5) * 1.2;
 
       const angle = (i / count) * Math.PI * 2;
-      const speed = 1.5 + Math.random() * 2.5;
+      const speed = 1.5 + random() * 2.5;
       p.velocity.set(
         Math.cos(angle) * speed,
-        2 + Math.random() * 3,
+        2 + random() * 3,
         Math.sin(angle) * speed,
       );
 
-      p.maxLife = 0.6 + Math.random() * 0.8;
+      p.maxLife = 0.6 + random() * 0.8;
       p.life = p.maxLife;
-      p.scale = 0.25 + Math.random() * 0.35;
+      p.scale = 0.25 + random() * 0.35;
       p.color.set('#a08060');
-      p.rotationSpeed = (Math.random() - 0.5) * 6;
+      p.rotationSpeed = (random() - 0.5) * 6;
     });
   }, []);
 

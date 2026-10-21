@@ -3,11 +3,9 @@ import * as THREE from 'three';
 import { Instance } from '@react-three/drei';
 import type { BiomeDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { sinHash } from '../../math/hash';
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * 18.233) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * 18.233);
 
 export default function DesertSage({ transforms }: BiomeDecorationProps) {
   const safeTransforms = Array.isArray(transforms) ? transforms : [];

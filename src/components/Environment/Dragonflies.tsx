@@ -10,6 +10,7 @@ import {
   updateCritterMaterialTime,
 } from '../../materials/critters/createCritterMaterials';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { sinHash } from '../../math/hash';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const TEMP_COLOR = new THREE.Color();
@@ -18,10 +19,7 @@ const SEED = 12.989;
 
 const DRAGONFLY_PALETTE = ['#3a6ea5', '#5b8c3e', '#a83246', '#3aa0a0', '#8a5fb0'];
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * SEED) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * SEED);
 
 // Normalize attribute sets across geometries (fills missing attrs with zeros) before merging.
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[], useGroups = false): THREE.BufferGeometry => {

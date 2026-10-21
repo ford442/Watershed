@@ -25,6 +25,10 @@ import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
+import { createRng } from '../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x57f94569);
 
 const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
@@ -268,7 +272,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
       {paddleState.current.foamParticles.map(particle => (
         <mesh key={particle.id} position={particle.position}>
-          <sphereGeometry args={[0.15 + Math.random() * 0.1, 8, 8]} />
+          <sphereGeometry args={[0.15 + random() * 0.1, 8, 8]} />
           <meshBasicMaterial
             color="white"
             transparent

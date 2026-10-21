@@ -10,6 +10,7 @@
  */
 
 import type { PhysicsWorkerReason } from '../utils/physicsWorkerFlag';
+import { WATER_LEVEL } from '../constants/game';
 
 export interface PhysicsWorkerTickParams {
   flowSpeed: number;
@@ -73,7 +74,7 @@ export interface PhysicsWorkerStatus {
 
 const DEFAULT_TICK_PARAMS: PhysicsWorkerTickParams = {
   flowSpeed: 1.2,
-  waterLevel: 0.5,
+  waterLevel: WATER_LEVEL,
   turbulenceStrength: 0.1,
   turbulenceFrequency: 2.4,
   flowDirX: 0,

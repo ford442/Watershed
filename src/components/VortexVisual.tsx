@@ -5,6 +5,10 @@ import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { createRng } from '../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x9edc778a);
 
 interface VortexVisualProps {
   /** Center position of the vortex */
@@ -42,9 +46,9 @@ export const VortexVisual: React.FC<VortexVisualProps> = ({
   const particleData = useMemo(() => {
     return Array.from({ length: particleCount }, (_, i) => {
       const angle = (i / particleCount) * Math.PI * 2;
-      const dist = radius * (0.3 + 0.7 * Math.random()); // Random distance from center
-      const yOffset = (Math.random() - 0.5) * 1.5; // Slight vertical spread
-      return { angle, dist, yOffset, speed: 0.5 + Math.random() * 0.5 };
+      const dist = radius * (0.3 + 0.7 * random()); // Random distance from center
+      const yOffset = (random() - 0.5) * 1.5; // Slight vertical spread
+      return { angle, dist, yOffset, speed: 0.5 + random() * 0.5 };
     });
   }, [particleCount, radius]);
 

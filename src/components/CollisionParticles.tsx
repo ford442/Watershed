@@ -2,6 +2,10 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SurfaceMaterial } from '../systems/vehicle/VehicleSystem';
+import { createRng } from '../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x1b54776f);
 
 interface Particle {
   id: number;
@@ -85,26 +89,26 @@ export const CollisionParticles: React.FC<CollisionParticlesProps> = ({
     const config = configs[material];
 
     for (let i = 0; i < count; i++) {
-      const color = config.colors[Math.floor(Math.random() * config.colors.length)];
-      const angle = Math.random() * Math.PI * 2;
-      const elevation = Math.random() * Math.PI * 0.5;
-      const speed = (0.5 + Math.random() * 0.5) * config.velocityScale * intensity;
+      const color = config.colors[Math.floor(random() * config.colors.length)];
+      const angle = random() * Math.PI * 2;
+      const elevation = random() * Math.PI * 0.5;
+      const speed = (0.5 + random() * 0.5) * config.velocityScale * intensity;
 
       newParticles.push({
         id: nextId.current++,
         position: position.clone().add(new THREE.Vector3(
-          (Math.random() - 0.5) * 0.2,
-          (Math.random() - 0.5) * 0.2,
-          (Math.random() - 0.5) * 0.2
+          (random() - 0.5) * 0.2,
+          (random() - 0.5) * 0.2,
+          (random() - 0.5) * 0.2
         )),
         velocity: new THREE.Vector3(
           Math.cos(angle) * Math.sin(elevation) * speed,
           Math.cos(elevation) * speed * 0.8 + 0.5, // Upward bias
           Math.sin(angle) * Math.sin(elevation) * speed
         ),
-        life: 0.5 + Math.random() * 0.5,
+        life: 0.5 + random() * 0.5,
         maxLife: 1.0,
-        size: config.sizeRange[0] + Math.random() * (config.sizeRange[1] - config.sizeRange[0]),
+        size: config.sizeRange[0] + random() * (config.sizeRange[1] - config.sizeRange[0]),
         color: new THREE.Color(color),
       });
     }
@@ -176,7 +180,7 @@ export const CollisionManager: React.FC = () => {
       if (!isHighImpact) return;
 
       const newCollision = {
-        id: Date.now() + Math.random(),
+        id: Date.now() + random(),
         material,
         position: new THREE.Vector3(point.x, point.y, point.z),
         intensity: Math.min(1, force / 10),

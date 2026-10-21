@@ -45,11 +45,10 @@ import { useGameStore } from '../GameState';
 import { runHeightfieldChores } from '../../rendering/gpuChores';
 import type { SWEFlowGrid } from './sampleSWEFlow';
 import { packSweSurfaceField } from './sweSurfaceField';
+import { GRAVITY } from '../../constants/game';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { ACTIVE_MAP_ID, getActiveMap } from '../../maps/registry';
 import { getActiveLaunchHour, getActiveWeather, getRunSession } from '../journey/runSession';
-
-export const GRAVITY = 9.80665;
 
 function worldToGridIndex(
   worldX: number,

@@ -28,6 +28,7 @@ import { getActiveMap, getMapDefinition, type MapDefinition, type MapRegistryId 
 import { getProceduralBaseSeed, getActiveRunKey } from '../utils/runContext';
 import { commitTimedFinish } from '../systems/ghost/runFinish';
 import { ChunkManager } from '../systems/map/ChunkManager';
+import type { SegmentData } from '../systems/map/ChunkManager';
 import {
   buildSegmentFrame,
   clearSegmentFrames,
@@ -87,10 +88,10 @@ export interface TrackManagerProps {
 interface RenderSlot {
   slotIndex: number;
   active: boolean;
-  segment: any;
+  segment: SegmentData | null;
 }
 
-function cloneForRender(segment: any, slotIndex: number, active: boolean): RenderSlot {
+function cloneForRender(segment: SegmentData | null, slotIndex: number, active: boolean): RenderSlot {
   if (!segment) {
     return {
       slotIndex,
@@ -606,6 +607,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
           rockMaterial={rockMaterial}
           rockNormalMap={normalMap}
           raftRef={raftRef}
+          {...(segment || {})}
           segmentPath={segment?.segmentPath}
           segmentState={segment?.segmentState || 'Normal'}
           waterWidth={segment?.waterWidth}
@@ -613,7 +615,6 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
           isNight={isNight}
           weatherWetnessRef={weatherWetnessRef}
           usePooledStaticObstacles
-          {...(segment || {})}
           slipperiness={
             (mapManagerRef.current?.getChunkConfig?.(segment?.id ?? 0)?.slipperiness ?? 0) +
             (segment?.slipperinessAdd ?? 0)

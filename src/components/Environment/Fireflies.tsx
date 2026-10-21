@@ -7,16 +7,14 @@ import { createFireflyMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 import { usePooledPointLights } from '../../rendering/sceneLightPool';
+import { sinHash } from '../../math/hash';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const MAX_LIGHTS = 5;
 const SEED = 8.731;
 const GLOW_LIGHT = { color: '#ffdd55', distance: 3, decay: 2 } as const;
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * SEED) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * SEED);
 
 export default function Fireflies({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);

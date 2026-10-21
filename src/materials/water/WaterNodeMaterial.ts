@@ -63,7 +63,7 @@ import {
   vec3,
   vec4,
 } from 'three/tsl';
-import { WATER_SHADER } from '../../constants/game';
+import { WATER_LEVEL, WATER_SHADER } from '../../constants/game';
 import { SWE_DRY_DEPTH } from '../../systems/water/sampleSWEFlow';
 import { waterFbm2 as fbm2, waterFbm3 as fbm3 } from '../tsl/waterNoise';
 import type { FloatUniform, Vec2Node } from '../tsl/nodeTypes';
@@ -183,7 +183,7 @@ function buildDisplacement(u: WaterUniformNodes) {
       .mul(0.04)
       .mul(isPond);
 
-    const heightDiff = abs(cameraHeight.sub(0.5));
+    const heightDiff = abs(cameraHeight.sub(WATER_LEVEL));
     const heightProx = float(1).sub(smoothstep(float(0), float(6), heightDiff));
     const proximityScale = float(1).add(heightProx.mul(0.35));
 

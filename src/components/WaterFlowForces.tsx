@@ -16,6 +16,10 @@ import { RAFT, WATER_LEVEL } from '../constants/game';
 import { AssetCache } from '../systems/reach/reachAssetCache';
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { isWaterForceSystemActive } from '../systems/water/WaterForceRegistry';
+import { createRng } from '../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x28932736);
 
 const tmpPoint = new THREE.Vector3();
 /** Two reusable samples (#502 D): the closest so far and the one being taken. */
@@ -333,7 +337,7 @@ export default function WaterFlowForces({
       const now = state.clock.elapsedTime;
       if (now - audioStateRef.current.lastAudioTime > 4.0) {
         audioStateRef.current.lastAudioTime = now;
-        getAudioManager()?.playSound('rapids_roar', Math.min(1, effectiveFlowSpeed / 2.5), 0.95 + Math.random() * 0.1);
+        getAudioManager()?.playSound('rapids_roar', Math.min(1, effectiveFlowSpeed / 2.5), 0.95 + random() * 0.1);
       }
     } else if (!isHighFlow && audioStateRef.current.inHighFlow) {
       audioStateRef.current.inHighFlow = false;
