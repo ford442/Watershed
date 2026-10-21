@@ -15,8 +15,9 @@
  *   sample (FORCE_SAMPLE_STRIDE): px py pz | vx vy vz | flowSpeed flowScale
  *     waterLevel | raftMass raftVolume dragCoefficient frontalArea sideArea |
  *     timeSeconds turbulenceStrength turbulenceFrequency
- *   `flowSpeed` / `waterLevel` are the AUTHORED values (the SWE speed cap and the
- *   still level); the native call gets `flow.speed * flowScale` and the staged level.
+ *   `flowSpeed` is the AUTHORED SWE speed cap and `waterLevel` the body's still
+ *   level (the sheet over it, `sampleWaterSheetY`); the native call gets
+ *   `flow.speed * flowScale` and that level staged by the sampled η.
  *
  *   result (FORCE_RESULT_STRIDE): the WATER_FORCE_OUTPUT_STRIDE native output
  *     (forceX forceY forceZ buoyancy drag flow turbulence submergedRatio), then
@@ -62,7 +63,7 @@ export interface ForceSampleBody {
  * from the sampled flow — pass the authored cap as `flowSpeed` and the factor
  * the body scales the sampled speed by as `flowScale` (1 for a hull,
  * FLOATING_OBJECT.FLOW_INFLUENCE for debris). `config.waterLevel` is the
- * authored level; the worker stages it.
+ * body's still level (the sheet over it); the worker stages it.
  */
 export function writeForceSample(
   out: Float64Array,

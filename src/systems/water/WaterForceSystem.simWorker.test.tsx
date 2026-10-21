@@ -45,6 +45,8 @@ vi.mock('./bathymetrySampler', async (importOriginal) => ({
     out.fill(0.25);
     return w * hh;
   }),
+  // A level river (path y 0) under every body: the sheet is the authored level.
+  sampleWaterSheetY: vi.fn((_x: number, _z: number, offset: number) => offset),
 }));
 
 vi.mock('./wasmLoader', async (importOriginal) => ({
