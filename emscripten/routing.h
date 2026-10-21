@@ -1,5 +1,5 @@
 /**
- * routing.h — 1D channel routing along the campaign chain (ABI 10, additive).
+ * routing.h — 1D channel routing along the campaign chain (ABI 10, additive; lateral inflow ABI 14).
  *
  * The SWE window is ~24 m of river. Upstream of it sits the rest of the basin
  * (glacial → lumber → meander → hydro → delta), which this module reduces to
@@ -29,6 +29,7 @@
  *   widths[nSeg]    wetted width (m)
  *   storage[nSeg * ROUTING_SUBREACHES]   reservoir state (m³), owned by routeReach
  *   outflow[nSeg]   mean discharge leaving each segment over the last step (m³/s)
+ *   lateral[nSeg]   routeReachLateral only: discharge joining each segment (m³/s)
  *
  * Host-clean; bindings.cpp exports the C ABI (ws_*).
  */
@@ -78,6 +79,20 @@ void routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t width
  */
 void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                 float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr);
+
+/**
+ * routeReach with lateral inflow (ABI 14): lateral[nSeg] (m³/s, ≥ 0) joins
+ * each segment at its top, on top of whatever the segment upstream sends —
+ * rain over reach k feeds reach k now and the reaches below it with the
+ * routed lag, never the reaches above. Volume balance counts it:
+ *
+ *     Σ (inflowQ + Σ lateral) · dt = Σ outflow[nSeg−1] · dt + ΔS
+ *
+ * All-zero lateral is routeReach bit for bit (routeReach calls this with none).
+ */
+void routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+                       float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
+                       uintptr_t outflowPtr);
 
 /**
  * Cumulative kinematic travel time (s) from the chain head to the downstream

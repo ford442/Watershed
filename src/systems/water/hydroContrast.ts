@@ -26,7 +26,9 @@
 import {
   applySWEEventFallback,
   eventsActiveAtHour,
+  HYDRO_KIND_SURGE,
   hydroKindToInt,
+  SURGE_DEFAULT_HALF_WIDTH,
   type HydroEvent,
   type SWEEventGrid,
 } from './hydroEvents';
@@ -88,6 +90,16 @@ export interface HydroHourContrast {
   hullDelta: number;
 }
 
+/**
+ * The storm fixture (#464 D): a squall's flood front as an authored `surge` at
+ * 14:00, the stage a 0.9 storm sends (weatherSurge SQUALL_SURGE_STAGE × 0.9).
+ * The margins gate it like any shipped hour: a storm has to show on the mesh
+ * and in the hull, or it stopped mattering.
+ */
+export const STORM_SURGE_FIXTURE: readonly HydroEvent[] = [
+  { id: 'storm-surge', kind: 'surge', segmentIndex: 2, hours: [14], strength: 0.225 },
+];
+
 /** Fresh contrast grid: 48×48 at 0.5 m, centred on the world origin, seeded current. */
 export function makeContrastGrid(): SWEEventGrid {
   const n = GRID * GRID;
@@ -111,7 +123,7 @@ export function makeContrastGrid(): SWEEventGrid {
  * Every `applySWEEvent` call one hour makes on one segment, in order: 30 steps
  * of the active events, centred on the segment's path midpoint at world origin
  * (the runtime places it via `getRegisteredBathymetrySource`; the offset is
- * irrelevant to a delta).
+ * irrelevant to a delta). A surge is measured as its front crosses that centre.
  */
 export function hourEventCalls(
   events: readonly HydroEvent[] | undefined,
@@ -124,11 +136,12 @@ export function hourEventCalls(
   const calls: SweEventCall[] = [];
   for (let step = 0; step < STEPS; step += 1) {
     for (const event of active) {
+      const kind = hydroKindToInt(event.kind);
       calls.push({
-        kind: hydroKindToInt(event.kind),
+        kind,
         cx: event.lateralOffset ?? 0,
         cz: 0,
-        radius: event.radius ?? 8,
+        radius: event.radius ?? (kind === HYDRO_KIND_SURGE ? SURGE_DEFAULT_HALF_WIDTH : 8),
         strength: event.strength ?? 1,
         dt: STEP_DT,
       });

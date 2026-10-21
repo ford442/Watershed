@@ -856,6 +856,81 @@ int main() {
             checkClose(riseAtLag, 0.999229f, 1e-4f, "routing golden: release fraction at 1.25 x lag");
             checkClose(high.eta, 0.197293f, 1e-4f, "routing golden: edge stage for +35% discharge");
         }
+
+        // 8h. Lateral inflow (ABI 14): rain over reach 2 feeds reach 2 at once,
+        //     the reaches below with the routed lag, never the reaches above;
+        //     zero lateral is routeReach bit for bit; volume still balances.
+        {
+            constexpr int kStorm = 2;
+            std::vector<float> lateral(kSeg, 0.f);
+            std::vector<float> storageA(kSeg * ROUTING_SUBREACHES), outflowA(kSeg);
+            routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+            routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storageA), P(outflowA));
+            bool same = true;
+            for (int t = 0; t < 50; ++t) {
+                routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow));
+                routeReachLateral(P(L), P(S), P(B), kSeg, kQ0 + kRelease, P(lateral), kRouteDt, P(storageA), P(outflowA));
+                for (int k = 0; k < kSeg; ++k) same = same && outflow[k] == outflowA[k];
+            }
+            check(same, "lateral: all-zero lateral routes bit for bit like routeReach");
+
+            routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
+            lateral[kStorm] = kRelease;
+            const double s0 = totalStorage();
+            double in = 0.0, out = 0.0;
+            float firstAt2 = -1.f, firstAt0 = -1.f, firstAtLast = -1.f;
+            for (int t = 1; t <= 4000; ++t) {
+                const bool raining = t <= 300;
+                lateral[kStorm] = raining ? kRelease : 0.f;
+                routeReachLateral(P(L), P(S), P(B), kSeg, kQ0, P(lateral), kRouteDt, P(storage), P(outflow));
+                in += static_cast<double>(kQ0 + (raining ? kRelease : 0.f)) * kRouteDt;
+                out += static_cast<double>(outflow[kSeg - 1]) * kRouteDt;
+                const float time = static_cast<float>(t) * kRouteDt;
+                // Stage into a reach = what joins it: the outflow above (head
+                // for reach 0) plus its own lateral.
+                const float into2 = outflow[kStorm - 1] + lateral[kStorm];
+                if (firstAt2 < 0.f && into2 > kQ0 + 0.5f * kRelease) firstAt2 = time;
+                if (firstAt0 < 0.f && outflow[0] > kQ0 + 0.01f * kRelease) firstAt0 = time;
+                if (firstAtLast < 0.f && outflow[kSeg - 1] > kQ0 + 0.5f * kRelease) firstAtLast = time;
+            }
+            check(firstAt2 > 0.f && firstAt2 <= kRouteDt, "lateral: rain over reach 2 raises reach 2 at once");
+            check(firstAt0 < 0.f, "lateral: the reaches above the storm never see it");
+            check(firstAtLast > firstAt2 + 0.5f * (lag[kSeg - 1] - lag[kStorm]), "lateral: the reaches below hear it after the lag");
+            const double balance = in - out - (totalStorage() - s0);
+            check(std::abs(balance) < 1e-4 * in, "lateral: volume in (head + lateral) = out + stored");
+        }
+    }
+
+    // 8i. Surge front (applySWEEvent kind 4, ABI 14): a band across the whole
+    //     window takes the stage step and the bore's downstream speed; it only
+    //     raises, and cells off the band are untouched.
+    {
+        const int w = 8, h = 16, N = w * h;
+        std::vector<float> hS(N, 0.f), uS(N, 0.f), wS(N, 0.f), bS(N, 0.f);
+        auto surge = [&](float cz) {
+            applySWEEvent(
+                reinterpret_cast<uintptr_t>(hS.data()),
+                reinterpret_cast<uintptr_t>(uS.data()),
+                reinterpret_cast<uintptr_t>(wS.data()),
+                reinterpret_cast<uintptr_t>(bS.data()),
+                w, h, 1.f, 0.f, 0.f, 1.2f,
+                4, 3.5f, cz, 2.f, 0.3f, 1.f / 60.f);
+        };
+        for (int t = 0; t < 60; ++t) surge(10.f);
+        float edgeLo = 1e9f, centre = 0.f, offBand = 0.f, minW = 0.f;
+        for (int i = 0; i < w; ++i) {
+            edgeLo = std::min(edgeLo, hS[10 * w + i]);
+            centre = std::max(centre, hS[10 * w + i]);
+            offBand = std::max({offBand, std::abs(hS[2 * w + i]), std::abs(wS[2 * w + i])});
+            minW = std::min(minW, wS[10 * w + i]);
+        }
+        check(edgeLo > 0.25f, "surge: the band spans the window (cx is not a centre)");
+        check(centre <= 0.3f + 1e-6f, "surge: the stage settles on the step, not past it");
+        check(minW < -0.1f, "surge: the water under the front moves downstream");
+        check(offBand == 0.f, "surge: cells off the band are untouched");
+        hS[10 * w + 3] = 0.6f;
+        surge(10.f);
+        check(hS[10 * w + 3] == 0.6f, "surge: water above the step is left alone");
     }
 
 

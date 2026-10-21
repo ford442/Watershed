@@ -444,6 +444,7 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
               <option value="vortex">Vortex sink</option>
               <option value="braid">Braid / dry tongue</option>
               <option value="roughness">Slush roughness</option>
+              <option value="surge">Surge front</option>
             </select>
             {localSegment.hydroKind ? (
               <>

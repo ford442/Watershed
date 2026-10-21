@@ -63,6 +63,7 @@ import {
   getRunSession,
 } from '../journey/runSession';
 import { getDirectorOverSegment } from '../weather/weatherDirector';
+import { createWeatherSurgeState, resetWeatherSurge, stepWeatherSurge, type WeatherSurgeState } from './weatherSurge';
 import { launchWeatherOf } from '../weather/weatherScript';
 
 function worldToGridIndex(
@@ -309,6 +310,16 @@ export interface SweHostState {
   /** Where the live grid's window sits on the world's cell lattice; null until the first frame after a (re)build. */
   window: SweWindow | null;
   stepAccumulator: number;
+  /**
+   * Seconds of solver steps this run (the sum of step dts): the clock authored
+   * surge fronts and the squall front move on, so a replay stepped alike puts
+   * them in the same cells on the same step.
+   */
+  simTime: number;
+  /** The run (`runId`) `simTime` and `surge` count for; a new run restarts both. */
+  simRun: number | null;
+  /** The director's squall front, if one is crossing the window. */
+  surge: WeatherSurgeState;
   uploadedVersion: number;
   /** Bed refresh bookkeeping: re-rasterize only when the window slides a cell or the treadmill changes. */
   bed: BedState;
@@ -323,6 +334,9 @@ export function createSweHostState(): SweHostState {
     flowTexture: null,
     window: null,
     stepAccumulator: 0,
+    simTime: 0,
+    simRun: null,
+    surge: createWeatherSurgeState(),
     uploadedVersion: -1,
     bed: { valid: false, revision: -1, originX: 0, originZ: 0 },
     router: { router: null, session: null, launchHour: Number.NaN },
@@ -333,6 +347,7 @@ export function createSweHostState(): SweHostState {
 /** A freshly installed grid starts on a new window, an empty bed and no upload. */
 export function resetSweHostForGrid(state: SweHostState): void {
   state.stepAccumulator = 0;
+  resetWeatherSurge(state.surge);
   state.uploadedVersion = -1;
   state.bed = { valid: false, revision: -1, originX: 0, originZ: 0 };
   state.window = null;
@@ -419,6 +434,13 @@ export function sweHostFrame(
       const weather = routerWeatherNow();
       router?.setWeather(weather);
       router?.advance(stepDt);
+      const run = getRunSession()?.runId ?? null;
+      if (state.simRun !== run) {
+        state.simRun = run;
+        state.simTime = 0;
+        resetWeatherSurge(state.surge);
+      }
+      state.simTime += stepDt;
 
       applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
@@ -449,7 +471,17 @@ export function sweHostFrame(
         (kind, cx, cz, radius, strength, dtEvent) => {
           eventCalls.push({ kind, cx, cz, radius, strength, dt: dtEvent });
         },
+        state.simTime,
       );
+      // A squall the director strengthens over (or above) the player's reach sends one front.
+      const squall = stepWeatherSurge(
+        state.surge,
+        weather,
+        playerChainIndex(getRoutingReach()),
+        { originX, originZ, width: grid.width, height: grid.height, dx: grid.dx, depth: SWE_MEAN_DEPTH },
+        stepDt,
+      );
+      if (squall) eventCalls.push(squall);
 
       // Bed sampled from the canyon floor by refreshBed() above (#374
       // Phase 2). Uncovered cells read as dry land, not open water.

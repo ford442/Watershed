@@ -95,6 +95,12 @@ void routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t width
 
 void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                 float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr) {
+    routeReachLateral(lengthsPtr, slopesPtr, widthsPtr, nSeg, inflowQ, 0, dt, storagePtr, outflowPtr);
+}
+
+void routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+                       float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
+                       uintptr_t outflowPtr) {
     if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return;
     if (storagePtr == 0 || outflowPtr == 0) return;
     if (!(dt > 0.f)) return;
@@ -103,10 +109,15 @@ void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, 
     const std::span<const float> B = segmentPlane<const float>(widthsPtr, nSeg);
     const std::span<float> storage = storagePlane(storagePtr, nSeg);
     const std::span<float> outflow = segmentPlane<float>(outflowPtr, nSeg);
+    // No plane at all is routeReach: the head inflow alone, bit for bit.
+    const std::span<const float> lateral =
+        lateralPtr != 0 ? segmentPlane<const float>(lateralPtr, nSeg) : std::span<const float>{};
 
     // Mean inflow to the next reservoir over this step.
     float inflow = std::max(inflowQ, 0.f);
     for (int k = 0; k < nSeg; ++k) {
+        // Rain over this reach joins at its top (a non-finite or negative entry adds nothing).
+        if (!lateral.empty() && lateral[k] > 0.f && std::isfinite(lateral[k])) inflow += lateral[k];
         const float l = std::max(L[k], 1e-3f) / static_cast<float>(ROUTING_SUBREACHES);
         const float alpha = volumeCoeff(l, B[k], slope[k]);
         for (int j = 0; j < ROUTING_SUBREACHES; ++j) {

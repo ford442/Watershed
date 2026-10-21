@@ -19,10 +19,12 @@ import {
   measureEdgeStageContrastWith,
   routedEdgeEtaAt,
   simulateHourGrid,
+  STORM_SURGE_FIXTURE,
   type HydroEdgeStepper,
   type HydroEventApplier,
 } from './hydroContrast';
 import { createWasmSweSim } from './sweSim';
+import { createSWEGrid } from './WatershedWasm';
 import type { WatershedNativeModule } from './wasmAbi';
 import { SWE_MEAN_DEPTH } from './SWEHeightField';
 import {
@@ -190,6 +192,19 @@ describe('glacial slush roughness damps the hull', () => {
   });
 });
 
+describe('hydroContrast — the storm fixture (#464 D)', () => {
+  it('a squall front clears the margins on the mesh and in the hull, and only in its hour', () => {
+    const contrast = measureHydroHourContrast(STORM_SURGE_FIXTURE, 2, SCOUT_HOUR, DAM_HOUR);
+    expect(contrast.idsA).toEqual([]);
+    expect(contrast.idsB).toEqual(['storm-surge']);
+    expect(contrast.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(contrast.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
+    // The front raises the river and runs it downstream; it does not move the bed.
+    expect(contrast.maxBedDelta).toBe(0);
+    expect(contrast.hullStageDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+  });
+});
+
 describe('hydroContrast event appliers (#435)', () => {
   it('replays 30 steps of the hour’s active events, in authored order', () => {
     const events = parseHydroEvents(hydro.hydroEvents);
@@ -328,6 +343,54 @@ describeNative('hydroContrast — the routed upstream edge (ABI 10)', () => {
     const contrast = await measureEdgeStageContrastWith(wasmEdgeStep, clear, storm);
     expect(contrast.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
     expect(contrast.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
+  });
+
+  it('a storm over reach 2 raises reach 2’s edge and drives the mesh and hull through it (#464 D)', async () => {
+    const reach = getRoutingReach();
+    const k = routingChainIndex(reach, 'glacial', 2)!;
+    const edgeAfter = (weather: { type: 'storm'; intensity: number; overChainIndex: number } | null) => {
+      const router = createRiverRouter(wasm, reach, DAM_HOUR)!;
+      router.setWeather(weather);
+      for (let s = 0; s < 120; s += 1) router.advance(1);
+      const eta = router.edgeState(k, SWE_MEAN_DEPTH, 9.80665).eta;
+      const above = router.edgeState(k - 1, SWE_MEAN_DEPTH, 9.80665).eta;
+      router.dispose();
+      return { eta, above };
+    };
+    const clear = edgeAfter(null);
+    const storm = edgeAfter({ type: 'storm', intensity: 0.9, overChainIndex: k });
+    expect(storm.above).toBe(clear.above);
+    expect(storm.eta - clear.eta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    const contrast = await measureEdgeStageContrastWith(wasmEdgeStep, clear.eta, storm.eta);
+    expect(contrast.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(contrast.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
+  });
+
+  it('the storm fixture’s surge clears the margins through the native kernel', async () => {
+    const wasmApply: HydroEventApplier = (grid, calls) => {
+      const sim = createSWEGrid(wasm, grid.width, grid.height, grid.cellSize);
+      sim.h.set(grid.h);
+      sim.u.set(grid.u);
+      sim.w.set(grid.w);
+      sim.b.set(grid.b);
+      for (const c of calls) {
+        wasm.applySWEEvent(
+          sim.hPtr, sim.uPtr, sim.wPtr, sim.bPtr,
+          grid.width, grid.height, grid.cellSize, grid.originX, grid.originZ, grid.stillDepth,
+          c.kind, c.cx, c.cz, c.radius, c.strength, c.dt,
+        );
+      }
+      grid.h.set(sim.h);
+      grid.u.set(sim.u);
+      grid.w.set(sim.w);
+      grid.b.set(sim.b);
+      sim.dispose();
+    };
+    const native = await measureHydroHourContrastWith(wasmApply, STORM_SURGE_FIXTURE, 2, SCOUT_HOUR, DAM_HOUR);
+    const ts = measureHydroHourContrast(STORM_SURGE_FIXTURE, 2, SCOUT_HOUR, DAM_HOUR);
+    expect(native.maxEtaDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minEtaDelta);
+    expect(native.hullDelta).toBeGreaterThan(HYDRO_CONTRAST_MARGINS.minHullDelta);
+    expect(native.maxEtaDelta).toBeCloseTo(ts.maxEtaDelta, 4);
   });
 
   it('spin-up flushes the whole chain before launch', () => {

@@ -68,15 +68,15 @@ export interface RoutedEdge {
 // ---------------------------------------------------------------------------
 
 /** ABI this table describes — ws_getVersion() in bindings.cpp. */
-export const WASM_ABI_VERSION = 13;
+export const WASM_ABI_VERSION = 14;
 
 /**
  * Minimum ABI accepted. ABI 12 replaced Embind with the C ABI, so nothing
- * older can be bound at all; ABI 13 (#487) added the terrain exports, and
- * bindNativeModule requires every table entry, so the floor is the table's
- * own version.
+ * older can be bound at all; ABI 13 (#487) added the terrain exports and ABI
+ * 14 lateral routing inflow, and bindNativeModule requires every table entry,
+ * so the floor is the table's own version.
  */
-export const MIN_WASM_ABI_VERSION = 13;
+export const MIN_WASM_ABI_VERSION = 14;
 
 /** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in common.h. */
 export const WATER_FORCE_INPUT_STRIDE = 8;
@@ -227,6 +227,14 @@ export interface WatershedNativeModule {
     lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
     inflowQ: number, dt: number, storagePtr: number, outflowPtr: number,
   ): void;
+  /**
+   * routeReach plus `lateralPtr` (nSeg floats, m³/s) joining each segment at
+   * its top (ABI 14). 0 = no plane = routeReach.
+   */
+  routeReachLateral(
+    lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
+    inflowQ: number, lateralPtr: number, dt: number, storagePtr: number, outflowPtr: number,
+  ): void;
   routeReachTravelTime(
     lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
     Q: number, lagPtr: number,
@@ -320,6 +328,7 @@ export const WASM_ABI = {
   allocateGrid: { arity: 1 },
   freeGrid: { arity: 1 },
   routeReach: { arity: 8 },
+  routeReachLateral: { arity: 9 },
   routeReachSteady: { arity: 7 },
   routeReachTravelTime: { arity: 6 },
   routedEdgeState: { arity: 5, out: { floats: 2, read: readRoutedEdge } },

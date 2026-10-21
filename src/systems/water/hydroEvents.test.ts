@@ -10,6 +10,12 @@ import {
   type SWEEventGrid,
   HYDRO_KIND_INFLOW,
   HYDRO_KIND_BRAID,
+  HYDRO_KIND_SURGE,
+  SURGE_RUN_IN,
+  SURGE_PAUSE_SECONDS,
+  applyHydroEventsToGrid,
+  authoredSurgeFrontZ,
+  surgeFrontSpeed,
   hydroVortexSegments,
 } from './hydroEvents';
 
@@ -139,5 +145,50 @@ describe('hydroEvents', () => {
     };
     expect([...hydroVortexSegments([PULSE, vortex], 14)]).toEqual([5]);
     expect(hydroVortexSegments([PULSE, vortex], 6).size).toBe(0);
+  });
+});
+
+describe('surge (ABI 14)', () => {
+  it('runs at the bore speed of its stage: faster for a higher step, √(gh) for a vanishing one', () => {
+    expect(surgeFrontSpeed(0, 1)).toBeCloseTo(Math.sqrt(9.80665), 5);
+    expect(surgeFrontSpeed(0.3, 1)).toBeGreaterThan(surgeFrontSpeed(0.1, 1));
+  });
+
+  it('an authored front crosses its segment downstream, then pauses before the next', () => {
+    const speed = surgeFrontSpeed(0.3, 1);
+    const travel = (2 * SURGE_RUN_IN) / speed;
+    expect(authoredSurgeFrontZ(-50, 0.3, 1, 0)).toBeCloseTo(-50 + SURGE_RUN_IN, 5);
+    expect(authoredSurgeFrontZ(-50, 0.3, 1, travel / 2)).toBeCloseTo(-50, 4);
+    expect(authoredSurgeFrontZ(-50, 0.3, 1, travel + 1)).toBeNull();
+    expect(authoredSurgeFrontZ(-50, 0.3, 1, travel + SURGE_PAUSE_SECONDS)).toBeCloseTo(-50 + SURGE_RUN_IN, 4);
+  });
+
+  it('paints a band across the whole window: raises η and runs the water downstream (−Z)', () => {
+    const grid = makeGrid();
+    applySWEEventFallback(grid, HYDRO_KIND_SURGE, 0, 3.5, 1, 0.3, 0.5);
+    const at = (x: number, z: number) => z * grid.width + x;
+    for (const x of [0, 7]) {
+      expect(grid.h[at(x, 3)]).toBeGreaterThan(0.1);
+      expect(grid.w[at(x, 3)]).toBeLessThan(0);
+    }
+    expect(grid.h[at(3, 0)]).toBe(0);
+    expect(grid.h[at(3, 7)]).toBe(0);
+    // Only raises: water already above the step is left alone.
+    const high = makeGrid(0.6);
+    applySWEEventFallback(high, HYDRO_KIND_SURGE, 0, 3.5, 1, 0.3, 0.5);
+    expect(high.h[at(3, 3)]).toBe(Math.fround(0.6));
+  });
+
+  it('applyHydroEventsToGrid moves the front with the sim clock it is handed', () => {
+    const surge: HydroEvent = { id: 's', kind: 'surge', segmentIndex: 1, strength: 0.3 };
+    const fronts = (timeSec: number) => {
+      const calls: number[] = [];
+      applyHydroEventsToGrid(makeGrid(), [surge], 12, () => ({ x: 0, z: 0 }), 1 / 60, (_k, _x, cz) => calls.push(cz), timeSec);
+      return calls;
+    };
+    expect(fronts(0)).toEqual([SURGE_RUN_IN]);
+    expect(fronts(1)[0]).toBeCloseTo(SURGE_RUN_IN - surgeFrontSpeed(0.3, 1.2), 5);
+    // Between fronts nothing is painted.
+    expect(fronts((2 * SURGE_RUN_IN) / surgeFrontSpeed(0.3, 1.2) + 1)).toEqual([]);
   });
 });

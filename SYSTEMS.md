@@ -720,6 +720,20 @@ changes η — and therefore the hull through `sampleSWEFlow` — at the boundar
 authored `hydroEvents` disks. `applyForecastToSegmentParams` still reshapes the authored
 channel; the edge adds the wave. The routing never runs in TypeScript.
 
+**Weather over a reach (ABI 14, #464 D):** the WeatherDirector's river weather reaches the
+router once per step (`setWeather`). Weather with no reach (`overSegment` unset) rains on the
+head, as before. A storm the script sits over a segment is **lateral inflow** there:
+`routeReachLateral` routes the day's own head hydrograph and adds the weather's runoff
+(`weatherFlowRateDelta × 40 m³/s`) at the top of that chain segment — so that reach's edge
+rises at once, the reaches below with the routed lag, the reaches above never
+(`riverRouter.lateral.test.ts`). A zero lateral routes bit-identically to `routeReach`.
+
+**Squall front:** when the river weather strengthens to a storm ≥ `SQUALL_SURGE_INTENSITY`
+while the player is on or below the reach it sits over, `weatherSurge.ts` sends one `surge`
+front (stage `0.25 × intensity`) through the window at its bore speed, in world z, entering on
+the side it will cross from (a runner outruns a ~3 m/s bore and meets it ahead; a slow raft is
+overtaken). One front per squall: the storm must ease below half the trigger to re-arm.
+
 **Datum (#487 C):** one for every segment. The water sheet hangs `WATER_LEVEL` above the path
 and the hull floor `floorHeight` above it, so `b = floorHeight − (WATER_LEVEL − H)`
 (`BED_DATUM`): a cell dries exactly where the floor rises through the water sheet, and the bed
@@ -740,10 +754,14 @@ cyan shallow, tan dry.
 
 ### Authored hydroEvents — `src/systems/water/hydroEvents.ts`
 
-Maps declare `hydroEvents[]` (launch-hour keyed inflow / vortex / braid / roughness).
+Maps declare `hydroEvents[]` (launch-hour keyed inflow / vortex / braid / roughness / surge).
 After each SWE step, `WaterForceSystem` applies active events onto the same grid
-(`applySWEEvent` C++ ABI 8, or TS fallback). Ghosts hash the live set
-(`hydroFairness.ts`).
+(`applySWEEvent` C++ ABI 8 — `surge` since ABI 14 — or TS fallback). Ghosts hash the live set
+(`hydroFairness.ts`). A `surge` is a stage step moving downstream at the bore speed of its
+height (`surgeFrontSpeed`): the host places the front on the run's solver clock
+(`authoredSurgeFrontZ` — from `SURGE_RUN_IN` m above the segment centre to as far below, then
+`SURGE_PAUSE_SECONDS` before the next), and the kernel paints a band across the whole window
+that raises η to the stage and carries the water downstream.
 
 **Playability contract (#398).** An authored hour has to be *seen and felt*:
 
@@ -753,10 +771,12 @@ After each SWE step, `WaterForceSystem` applies active events onto the same grid
 | `vortex` | η sink | swirl in `u,w` — **and** `VortexForceSystem` stands down on that segment (`shouldApplyAuthoredVortexImpulse`), one field, one owner |
 | `braid` | bed shoal (idempotent max, not an accumulation) | lateral push around the shoal |
 | `roughness` | — | `u,w` damped, slower line |
+| `surge` | η step crossing the window (only raises) | stage + downstream momentum as the front passes |
 
 `hydroContrast.ts` measures both halves for a pair of hours and
 `hydroContrast.test.ts` asserts `glacial` / `hydro` / `delta` clear
-`HYDRO_CONTRAST_MARGINS` at 06:00 vs 14:00. The lumber braid is authored only on
+`HYDRO_CONTRAST_MARGINS` at 06:00 vs 14:00, as does the storm fixture
+(`STORM_SURGE_FIXTURE`, a squall's front) on every backend. The lumber braid is authored only on
 hours the forecast actually opens `washedOutGap`. `hydroHud.ts` turns the live set
 into the HUD's hour board (`ForecastHUD`). `?hour=14` overrides the launch hour for
 one page load (read-only, never written to persistence) so the same map can be
@@ -782,7 +802,7 @@ HeightmapFlow was deleted (#413) and must not come back.
 **Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
 not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
-exports, the only Emscripten include; `ws_getVersion()` — **13**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**13** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+exports, the only Emscripten include; `ws_getVersion()` — **14**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**14** — the C ABI replaced Embind, so nothing older can be bound; every export is required; 14 added `routeReachLateral` and the `surge` event kind). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:

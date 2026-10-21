@@ -30,11 +30,11 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 13+, the plain C ABI with the terrain exports the binding table describes', () => {
+  it('requires ABI 14+, the plain C ABI with the exports the binding table describes', () => {
     // ABI 12 replaced Embind with ws_* C exports (#467); ABI 13 added the
-    // terrain tile (#487) and the loader binds every table entry, so the floor
-    // must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(13);
+    // terrain tile (#487), ABI 14 lateral routing inflow and the surge event;
+    // the loader binds every table entry, so the floor must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBe(14);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -320,6 +320,7 @@ function buildMockModule(): WatershedNativeModule {
     scrollShallowWater() {},
     reserveShallowWaterScratch() {},
     routeReach() {},
+    routeReachLateral() {},
     routeReachSteady() {},
     routeReachTravelTime() {},
     routedEdgeState: () => ({ eta: 0, speed: 0 }),

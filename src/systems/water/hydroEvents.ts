@@ -6,7 +6,7 @@
  * Rapier already sample. This is not a sixth decoration type.
  */
 
-export const HYDRO_EVENT_KINDS = ['inflowPulse', 'vortex', 'braid', 'roughness'] as const;
+export const HYDRO_EVENT_KINDS = ['inflowPulse', 'vortex', 'braid', 'roughness', 'surge'] as const;
 export type HydroEventKind = (typeof HYDRO_EVENT_KINDS)[number];
 
 /** Packed kind ids matching `applySWEEvent` in emscripten/swe.cpp. */
@@ -14,6 +14,7 @@ export const HYDRO_KIND_INFLOW = 0;
 export const HYDRO_KIND_VORTEX = 1;
 export const HYDRO_KIND_BRAID = 2;
 export const HYDRO_KIND_ROUGHNESS = 3;
+export const HYDRO_KIND_SURGE = 4;
 
 /**
  * Kernel tuning shared with `applySWEEvent` in emscripten/swe.cpp (#397).
@@ -34,6 +35,47 @@ export const HYDRO_KIND_ROUGHNESS = 3;
 export const HYDRO_INFLOW_DOWNSTREAM = 0.5;
 export const HYDRO_VORTEX_SINK = 0.35;
 export const HYDRO_BRAID_LATERAL = 0.75;
+/**
+ * Surge (ABI 14): how fast (1/s) a cell under the front takes the front's
+ * stage. The front itself moves on the host (surgeFrontZ); the kernel only
+ * paints the band where it is this step.
+ */
+export const HYDRO_SURGE_RELAX = 6;
+/** g the surge kernel's bore speed uses (swe.cpp kHydroSurgeGravity). */
+export const HYDRO_SURGE_GRAVITY = 9.80665;
+
+/**
+ * An authored surge runs a front from SURGE_RUN_IN metres upstream of its
+ * segment's centre to as far below it, then waits SURGE_PAUSE_SECONDS and
+ * sends the next — every period, for as long as its hour is live.
+ */
+export const SURGE_RUN_IN = 24;
+export const SURGE_PAUSE_SECONDS = 12;
+/** Half-thickness (m) of a surge band when the event names no radius. */
+export const SURGE_DEFAULT_HALF_WIDTH = 3;
+
+/**
+ * Speed (m/s) of a bore of height `stage` running into still water `depth`
+ * deep: c = √(g·h₂·(h₁ + h₂) / (2·h₁)), h₁ = depth, h₂ = depth + stage.
+ */
+export function surgeFrontSpeed(stage: number, depth: number, g = HYDRO_SURGE_GRAVITY): number {
+  const h1 = Math.max(depth, 1e-3);
+  const h2 = h1 + Math.max(stage, 0);
+  return Math.sqrt((g * h2 * (h1 + h2)) / (2 * h1));
+}
+
+/**
+ * Where an authored surge's front is at `timeSec` (world z; downstream is −Z),
+ * or null between fronts. Fronts start at `centerZ + SURGE_RUN_IN`.
+ */
+export function authoredSurgeFrontZ(centerZ: number, stage: number, depth: number, timeSec: number): number | null {
+  const speed = surgeFrontSpeed(stage, depth);
+  const travel = (2 * SURGE_RUN_IN) / speed;
+  const period = travel + SURGE_PAUSE_SECONDS;
+  const age = ((timeSec % period) + period) % period;
+  if (age > travel) return null;
+  return centerZ + SURGE_RUN_IN - speed * age;
+}
 
 export interface HydroEvent {
   id: string;
@@ -74,6 +116,8 @@ export function hydroKindToInt(kind: HydroEventKind): number {
       return HYDRO_KIND_BRAID;
     case 'roughness':
       return HYDRO_KIND_ROUGHNESS;
+    case 'surge':
+      return HYDRO_KIND_SURGE;
     default:
       return HYDRO_KIND_INFLOW;
   }
@@ -178,13 +222,15 @@ export function applySWEEventFallback(
   const mag = Math.max(0, strength);
   const step = Math.max(0, dt);
   const { width, height, cellSize, originX, originZ, stillDepth } = grid;
+  // A surge front is a band across the whole window: only its distance in z counts.
+  const band = kind === HYDRO_KIND_SURGE;
 
   for (let j = 0; j < height; j += 1) {
     const wz = originZ + j * cellSize;
     const dz = wz - cz;
     for (let i = 0; i < width; i += 1) {
       const wx = originX + i * cellSize;
-      const dx = wx - cx;
+      const dx = band ? 0 : wx - cx;
       const d2 = dx * dx + dz * dz;
       if (d2 > r2) continue;
       const dist = Math.sqrt(d2);
@@ -210,11 +256,28 @@ export function applySWEEventFallback(
         const damp = Math.max(0, 1 - mag * step * wgt);
         grid.u[idx] *= damp;
         grid.w[idx] *= damp;
+      } else if (kind === HYDRO_KIND_SURGE) {
+        // The front's stage here and the downstream speed a simple wave of
+        // that height carries; only raises (water above the step stays).
+        const still = stillDepth > 0 ? stillDepth : 1.2;
+        const stage = Math.min(mag * wgt, still);
+        if (grid.h[idx] < stage) {
+          const k = Math.min(1, HYDRO_SURGE_RELAX * step);
+          grid.h[idx] += (stage - grid.h[idx]) * k;
+          const carried =
+            -2 * (Math.sqrt(HYDRO_SURGE_GRAVITY * (still + stage)) - Math.sqrt(HYDRO_SURGE_GRAVITY * still));
+          if (grid.w[idx] > carried) grid.w[idx] += (carried - grid.w[idx]) * k;
+        }
       }
     }
   }
 }
 
+/**
+ * Apply the events live at `hour`. `timeSec` is the run's sim clock: a surge
+ * front's position along its segment is a function of it (authoredSurgeFrontZ),
+ * so two runs stepped alike paint the same band on the same step.
+ */
 export function applyHydroEventsToGrid(
   grid: SWEEventGrid,
   events: readonly HydroEvent[],
@@ -229,6 +292,7 @@ export function applyHydroEventsToGrid(
     strength: number,
     dt: number,
   ) => void,
+  timeSec = 0,
 ): number {
   const active = eventsActiveAtHour(events, hour);
   let applied = 0;
@@ -236,10 +300,13 @@ export function applyHydroEventsToGrid(
     const world = worldOf(event);
     if (!world) continue;
     const kind = hydroKindToInt(event.kind);
-    const radius = event.radius ?? 8;
+    const surge = kind === HYDRO_KIND_SURGE;
+    const radius = event.radius ?? (surge ? SURGE_DEFAULT_HALF_WIDTH : 8);
     const strength = event.strength ?? 1;
     const cx = world.x + (event.lateralOffset ?? 0);
-    const cz = world.z;
+    const front = surge ? authoredSurgeFrontZ(world.z, strength, grid.stillDepth, timeSec) : world.z;
+    if (front === null) continue;
+    const cz = front;
     if (nativeApply) {
       nativeApply(kind, cx, cz, radius, strength, dt);
     } else {
