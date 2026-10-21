@@ -12,7 +12,7 @@ import {
 import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
-import { triggerCameraShake } from '../utils';
+import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import type { RapierBody } from '../../../physics/rapierTypes';
 import type { RunnerJumpData } from './useRunnerPhysics';
 

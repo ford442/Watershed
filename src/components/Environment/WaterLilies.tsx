@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const PAD_COLOR = new THREE.Color('#3a8c40');

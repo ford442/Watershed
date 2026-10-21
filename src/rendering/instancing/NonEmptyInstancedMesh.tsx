@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useRef } from 'react';
 import type * as THREE from 'three';
 import type { ThreeElements } from '@react-three/fiber';
-import { useHideWhileEmpty } from '../hooks/useHideWhileEmpty';
+import { useHideWhileEmpty } from '../../hooks/useHideWhileEmpty';
 import { instancedMeshCapacity } from './instanceGuards';
 
 type InstancedMeshProps = ThreeElements['instancedMesh'];

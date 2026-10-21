@@ -12,7 +12,7 @@ import {
 } from '../../systems/water/WaterForceRegistry';
 import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 
 // =============================================================================

@@ -8,9 +8,9 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Html } from '@react-three/drei';
-import { useLevel, NormalizedLevelState } from '../../hooks/useLevel';
-import TrackManager from '../../components/TrackManager';
-import { ErrorDisplay, LoadingDisplay } from './LevelLoadStatus';
+import { useLevel, NormalizedLevelState } from '../hooks/useLevel';
+import TrackManager from '../components/TrackManager';
+import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoadStatus';
 
 // Props interface
 interface LevelLoaderProps {

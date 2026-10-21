@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { useGameStore } from '../../../systems/GameState';
+import { WATER_PHYSICS } from '../../../constants/waterPhysics';
 import {
-  WATER_PHYSICS, TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
+  TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
   type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
 } from '../constants';
 import { playPaddleSound, playRaftTipSound } from '../audio';

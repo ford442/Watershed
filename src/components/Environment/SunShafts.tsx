@@ -8,7 +8,7 @@ import type { BiomeDecorationTransform, WeatherAwareDecorationProps } from './ty
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSunShaftMaterial, createSunShaftMoteMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 import { useGameStore } from '../../systems/GameState';
 

@@ -10,19 +10,19 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import TrackManager from '../../components/TrackManager';
-import ReactiveAudio from '../../components/ReactiveAudio';
-import WeatherSystem from '../../components/WeatherSystem';
-import { ReachStreamer, ReachManifest } from './ReachStreamer';
-import { normalizeReachManifest, NormalizedSegment } from './ReachNormalizer';
-import { type BiomeId, normalizeBiomeId } from '../../configs/biomes';
-import { samplesToForecastByIndex } from '../map/flowForecast';
-import { FLOW_FORECAST_STATES } from '../../constants/game';
-import { joinWaypoints } from '../journey/journeyContinuity';
-import { prefetchNextReach, resolveNextReachId } from '../journey/journeyHandoff';
-import { getActiveWeather, saveJourneyCheckpoint } from '../journey/runSession';
-import { useGameStore } from '../GameState';
-import { useBiome } from '../biome/BiomeSystem';
+import TrackManager from '../components/TrackManager';
+import ReactiveAudio from '../components/ReactiveAudio';
+import WeatherSystem from '../components/WeatherSystem';
+import { ReachStreamer, ReachManifest } from '../systems/reach/ReachStreamer';
+import { normalizeReachManifest, NormalizedSegment } from '../systems/reach/ReachNormalizer';
+import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
+import { samplesToForecastByIndex } from '../systems/map/flowForecast';
+import { FLOW_FORECAST_STATES } from '../constants/game';
+import { joinWaypoints } from '../systems/journey/journeyContinuity';
+import { prefetchNextReach, resolveNextReachId } from '../systems/journey/journeyHandoff';
+import { getActiveWeather, saveJourneyCheckpoint } from '../systems/journey/runSession';
+import { useGameStore } from '../systems/GameState';
+import { useBiome } from '../systems/biome/BiomeSystem';
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */
@@ -298,7 +298,7 @@ export default function ReachManager({
           />
           <WeatherSystem
             targetRef={playerRef}
-            weather={weather as { type: import('../../constants/weather').WeatherType; intensity: number }}
+            weather={weather as { type: import('../constants/weather').WeatherType; intensity: number }}
           />
         </>
       )}

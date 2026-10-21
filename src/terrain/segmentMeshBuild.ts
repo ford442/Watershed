@@ -16,7 +16,7 @@
 import { isAutumnLike, type BiomeId } from '../configs/biomes';
 import type { TrackBiomeProfile } from '../configs/TrackBiomes';
 import { SHADERS, WALL_WATERLINE_Y, WATER_LEVEL } from '../constants/game';
-import type { ChannelProfileSample } from '../components/TrackSegment/types';
+import type { ChannelProfileSample } from './types';
 import {
   buildTerrainTile,
   buildWallShellHeights,

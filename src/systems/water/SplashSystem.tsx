@@ -35,7 +35,7 @@ import { createSplashBowWaveMaterial } from '../../materials/vfx/createVfxMateri
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { resolveNativeOwner } from '../../sim/nativeOwner';
 import { createSplashIntegrator, type SplashIntegrator } from '../pools/nativeParticles';
-import { NonEmptyInstancedMesh } from '../../components/NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 import { WATER_LEVEL } from '../../constants/game';
 

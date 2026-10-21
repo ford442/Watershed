@@ -119,7 +119,8 @@ src/
 ├── systems/                     # See SYSTEMS.md
 │   ├── map/MapSystem.ts         # ★ JSON maps, chunk config
 │   ├── map/ChunkManager.ts
-│   ├── reach/ReachManager.tsx / ReachStreamer.ts / ReachNormalizer.ts
+│   ├── reach/ReachStreamer.ts / ReachNormalizer.ts (ReachManager / LevelLoader hosts live in experience/)
+│   ├── events/GameEvents.ts     # typed event bus — never window.dispatchEvent
 │   ├── biome/BiomeSystem.tsx / lod/LODManager.tsx / GameState.ts
 │   ├── water/SplashSystem.tsx / water/WaterForceSystem.tsx / audio/AudioSystem.ts
 │   └── …

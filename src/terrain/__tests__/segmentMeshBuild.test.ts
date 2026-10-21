@@ -9,7 +9,7 @@ import {
   ICE_TUBE_PROFILE,
   type GeometryBuildContext,
 } from '../../components/TrackSegment/hooks/geometryBuilders';
-import type { ChannelProfileSample } from '../../components/TrackSegment/types';
+import type { ChannelProfileSample } from '../types';
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import {
   buildSegmentMeshBuffers,

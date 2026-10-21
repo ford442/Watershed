@@ -11,7 +11,7 @@ import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle } from '../../systems/pools/ParticlePool';
 import { gameEvents } from '../../systems/events/GameEvents';
 import { SurfaceMaterial } from '../../systems/vehicle/VehicleSystem';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */

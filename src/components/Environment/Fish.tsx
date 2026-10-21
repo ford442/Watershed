@@ -6,7 +6,7 @@ import { WATER_LEVEL } from '../../constants/game';
 import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createFishBodyMaterial, createFishRingMaterial, updateCritterMaterialTime } from '../../materials/critters/createCritterMaterials';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { sinHash } from '../../math/hash';
 
 const DUMMY_OBJ = new THREE.Object3D();

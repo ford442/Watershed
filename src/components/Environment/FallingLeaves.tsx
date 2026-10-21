@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import type { BiomeId } from '../../configs/biomes';
 import type { FallingLeavesProps } from './types';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */

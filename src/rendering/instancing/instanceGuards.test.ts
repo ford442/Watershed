@@ -6,7 +6,7 @@
  */
 
 import { instancedMeshCapacity, isProvablyEmptyLayer } from './instanceGuards';
-import { resolveInstancedVisibility } from '../hooks/useHideWhileEmpty';
+import { resolveInstancedVisibility } from '../../hooks/useHideWhileEmpty';
 
 describe('instancedMeshCapacity', () => {
   it('reads the capacity out of an args tuple', () => {

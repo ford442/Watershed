@@ -6,6 +6,11 @@ import { gameEvents, type CameraShakeDetail } from '../systems/events/GameEvents
 /** Frequency defaults to 20 (lower = heavier/slower; the waterfall uses 8), roll to 0. */
 type ShakeEvent = Required<CameraShakeDetail>;
 
+/** One-shot camera shake (any system; useCameraShake applies it). */
+export const triggerCameraShake = (intensity: number, duration: number = 0.3) => {
+  gameEvents.emit('camera-shake', { intensity, duration });
+};
+
 /**
  * useCameraShake — spring-damped camera shake with optional angular roll.
  *

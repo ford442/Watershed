@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { BiomeDecorationTransform, FoliageProps } from './types';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 
 type PaletteSeason = 'summer' | 'autumn';

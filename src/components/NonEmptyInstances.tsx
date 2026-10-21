@@ -2,7 +2,7 @@ import { Children, forwardRef, useCallback, useRef, type ComponentProps } from '
 import type * as THREE from 'three';
 import { Instances } from '@react-three/drei';
 import { useHideWhileEmpty } from '../hooks/useHideWhileEmpty';
-import { isProvablyEmptyLayer } from './instanceGuards';
+import { isProvablyEmptyLayer } from '../rendering/instancing/instanceGuards';
 
 type InstancesProps = ComponentProps<typeof Instances>;
 

@@ -5,6 +5,7 @@ import type { TrackBiomeProfile, TreeSpeciesId } from '../../configs/TrackBiomes
 import type { FlowForecastState } from '../../constants/game';
 import type { DecorationPlacement } from '../../systems/map/MapSystem';
 import type { Rng } from '../../math/random';
+import type { ChannelProfileSample, ChannelShape } from '../../terrain/types';
 
 /** Segment kind used by TrackSegment geometry and placement. */
 export type SegmentKind = 'normal' | 'waterfall' | 'splash' | 'pond' | 'rapids';
@@ -15,36 +16,9 @@ export type RockTypeId = 'boulder' | 'slab' | 'column';
 /** Wildflower variant ids from placement helpers. */
 export type FlowerVariantId = 'bloom' | 'spike' | 'daisy' | 'bell';
 
-/**
- * Sampled channel cross-section along a segment path.
- * Produced by TrackSegment and consumed by geometry + placement hooks.
- */
-export interface ChannelProfileSample {
-  t: number;
-  worldArc: number;
-  leftHalfWidth: number;
-  rightHalfWidth: number;
-  corridorHalfWidth: number;
-  floorDepth: number;
-  floorWave: number;
-  riffleStrength: number;
-  gravelBarSide: 1 | -1;
-  undercutSide: 1 | -1;
-  flowScale: number;
-}
-
-/** Interpolated channel shape at a single path parameter t. */
-export interface ChannelShape {
-  leftHalfWidth: number;
-  rightHalfWidth: number;
-  corridorHalfWidth: number;
-  floorDepth: number;
-  floorWave: number;
-  riffleStrength: number;
-  gravelBarSide: 1 | -1;
-  undercutSide: 1 | -1;
-  flowScale: number;
-}
+// Plain-data channel profile types live with the worker-safe terrain mirror
+// (#503 E): terrain/ must not import components/.
+export type { ChannelProfileSample, ChannelShape };
 
 /** Narrower shape used by water-surface geometry (subset of ChannelShape). */
 export type WaterChannelShape = Pick<

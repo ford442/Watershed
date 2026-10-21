@@ -34,7 +34,7 @@ import {
     BANK_CONFIG, RUNNER_SPRINT
 } from '../constants';
 import { playJumpSound } from '../audio';
-import { triggerCameraShake } from '../utils';
+import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import {
   tryFireShelfLaunch,
   getShelfDownstreamSpeed,

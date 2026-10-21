@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import type { BiomeDecorationProps, BiomeDecorationTransform } from './types';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();

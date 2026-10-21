@@ -13,7 +13,7 @@ import {
   type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
 } from '../constants';
 import { playSplashSound } from '../audio';
-import { triggerCameraShake } from '../../RunnerVehicle/utils';
+import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import {
   tryFireShelfLaunch,
   getShelfDownstreamSpeed,

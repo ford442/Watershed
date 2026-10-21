@@ -6,7 +6,7 @@ import type { CanyonDustProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createCanyonDustMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 
 const DUMMY_OBJ = new THREE.Object3D();
 

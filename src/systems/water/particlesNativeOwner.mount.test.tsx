@@ -25,7 +25,7 @@ vi.mock('../biome/BiomeSystem', () => ({
   useBiomeMaterials: () => ({ water: { foamColor: '#ffffff' } }),
 }));
 
-vi.mock('../../components/NonEmptyInstancedMesh', () => ({
+vi.mock('../../rendering/instancing/NonEmptyInstancedMesh', () => ({
   NonEmptyInstancedMesh: () => null,
 }));
 
