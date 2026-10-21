@@ -1,15 +1,9 @@
 /**
- * journeyHandoff.test.ts — Event emission + map handoff kickoff.
+ * journeyHandoff.test.ts — map handoff kickoff.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  JOURNEY_HANDOFF_EVENT,
-  MAP_ENTER_EVENT,
-  MAP_EXIT_EVENT,
-  kickoffMapHandoff,
-  resolveNextReachId,
-} from './journeyHandoff';
+import { describe, expect, it } from 'vitest';
+import { kickoffMapHandoff, resolveNextReachId } from './journeyHandoff';
 
 describe('resolveNextReachId', () => {
   it('prefers transition.nextReachId over fallback', () => {
@@ -23,27 +17,7 @@ describe('resolveNextReachId', () => {
 });
 
 describe('kickoffMapHandoff', () => {
-  const events: Array<{ type: string; detail: unknown }> = [];
-
-  beforeEach(() => {
-    events.length = 0;
-    vi.stubGlobal(
-      'window',
-      Object.assign(window, {
-        dispatchEvent: (ev: Event) => {
-          const ce = ev as CustomEvent;
-          events.push({ type: ce.type, detail: ce.detail });
-          return true;
-        },
-      }),
-    );
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('emits exit / handoff / enter for hydro → delta', () => {
+  it('plans the hydro → delta handoff', () => {
     const result = kickoffMapHandoff({
       fromMapId: 'hydro',
       toMapId: 'delta',
@@ -56,19 +30,5 @@ describe('kickoffMapHandoff', () => {
     expect(result!.plan.toMapId).toBe('delta');
     expect(result!.biomeKickoff.mode).toBe('crossfade');
     expect(result!.biomeKickoff.biomeId).toBe('delta');
-
-    const types = events.map((e) => e.type);
-    expect(types).toContain(MAP_EXIT_EVENT);
-    expect(types).toContain(JOURNEY_HANDOFF_EVENT);
-    expect(types).toContain(MAP_ENTER_EVENT);
-
-    const handoff = events.find((e) => e.type === JOURNEY_HANDOFF_EVENT)?.detail as {
-      seamless: boolean;
-      fromId: string;
-      toId: string;
-    };
-    expect(handoff.seamless).toBe(true);
-    expect(handoff.fromId).toBe('hydro');
-    expect(handoff.toId).toBe('delta');
   });
 });

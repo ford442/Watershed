@@ -8,12 +8,7 @@ import type {
   RockTypeId,
   SegmentKind,
 } from './types';
-
-/** Simple seeded random in [0, 1). Mutates the caller's seed expression via post-increment at call sites. */
-export const seededRandom = (seed: number): number => {
-  const x = Math.sin(seed++) * 10000;
-  return x - Math.floor(x);
-};
+import { sinHash } from '../../math/hash';
 
 export const TREE_SPECIES: readonly TreeSpeciesId[] = ['conifer', 'broadleaf', 'birch', 'snag'];
 export const FLOWER_VARIANTS: readonly FlowerVariantId[] = ['bloom', 'spike', 'daisy', 'bell'];
@@ -53,7 +48,7 @@ export const pickTreeSpecies = ({
     return { species: 'conifer', speciesIndex: 0 };
   }
 
-  const roll = seededRandom(segmentId * 137 + instanceIndex * 97 + (isRim ? 53 : 11)) * total;
+  const roll = sinHash(segmentId * 137 + instanceIndex * 97 + (isRim ? 53 : 11)) * total;
   let cursor = 0;
   for (let i = 0; i < TREE_SPECIES.length; i++) {
     const species = TREE_SPECIES[i];
@@ -84,7 +79,7 @@ export const createFlowerPayload = ({
   instanceIndex,
 }: CreateFlowerPayloadParams): FlowerPlacement => {
   const variantIndex = Math.floor(
-    seededRandom(segmentId * 137 + instanceIndex * 71 + 23) * FLOWER_VARIANTS.length
+    sinHash(segmentId * 137 + instanceIndex * 71 + 23) * FLOWER_VARIANTS.length
   );
   return {
     position,
@@ -92,10 +87,10 @@ export const createFlowerPayload = ({
     scale,
     variant: FLOWER_VARIANTS[variantIndex],
     variantIndex,
-    colorIndex: Math.floor(seededRandom(segmentId * 137 + instanceIndex * 89 + 31) * 6),
-    hueJitter: seededRandom(segmentId * 137 + instanceIndex * 113 + 7) - 0.5,
+    colorIndex: Math.floor(sinHash(segmentId * 137 + instanceIndex * 89 + 31) * 6),
+    hueJitter: sinHash(segmentId * 137 + instanceIndex * 113 + 7) - 0.5,
     lightnessJitter:
-      seededRandom(segmentId * 137 + instanceIndex * 131 + (isAutumnLike(biome) ? 41 : 17)) - 0.5,
+      sinHash(segmentId * 137 + instanceIndex * 131 + (isAutumnLike(biome) ? 41 : 17)) - 0.5,
   };
 };
 
@@ -129,10 +124,10 @@ export const createRockPayload = ({
   if (rockTypeOverride && (ROCK_TYPES as readonly string[]).includes(rockTypeOverride)) {
     rockType = rockTypeOverride as RockTypeId;
   } else if (biome === 'slotCanyon') {
-    const roll = seededRandom(segmentId * 137 + instanceIndex * 59 + (isScatter ? 17 : 7));
+    const roll = sinHash(segmentId * 137 + instanceIndex * 59 + (isScatter ? 17 : 7));
     rockType = roll > 0.68 ? 'column' : roll > 0.36 ? 'slab' : 'boulder';
   } else if (nearWall) {
-    rockType = seededRandom(segmentId * 137 + instanceIndex * 47 + 13) > 0.58 ? 'slab' : 'boulder';
+    rockType = sinHash(segmentId * 137 + instanceIndex * 47 + 13) > 0.58 ? 'slab' : 'boulder';
   }
 
   const shadePalette = isAutumnLike(biome)
@@ -142,9 +137,9 @@ export const createRockPayload = ({
       : ['#8f8576', '#9d8b78', '#6f675d'];
 
   const color =
-    shadePalette[Math.floor(seededRandom(segmentId * 137 + instanceIndex * 83 + 29) * shadePalette.length)];
+    shadePalette[Math.floor(sinHash(segmentId * 137 + instanceIndex * 83 + 29) * shadePalette.length)];
   const scaled = isScatter
-    ? scale.clone().multiplyScalar(0.35 + seededRandom(segmentId * 137 + instanceIndex * 97 + 5) * 0.35)
+    ? scale.clone().multiplyScalar(0.35 + sinHash(segmentId * 137 + instanceIndex * 97 + 5) * 0.35)
     : scale;
 
   return {
@@ -157,12 +152,8 @@ export const createRockPayload = ({
   };
 };
 
-export const lerpValue = (a: number, b: number, t: number): number => a + (b - a) * t;
-
-export const smoothNoise = (seed: number): number => {
-  const x = Math.sin(seed * 12.9898) * 43758.5453;
-  return (x - Math.floor(x)) * 2 - 1;
-};
+/** Signed hash in [-1, 1) — not smooth despite the name; callers smooth it with sines. */
+export const smoothNoise = (seed: number): number => sinHash(seed * 12.9898) * 2 - 1;
 
 export const SLOT_CANYON_STRATA = {
   bedrockColor: new THREE.Color('#5b2f1f'),

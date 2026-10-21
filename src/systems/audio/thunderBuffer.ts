@@ -10,17 +10,10 @@
  * unit-tested without an AudioContext.
  */
 
+import { createRng } from '../../math/random';
+
 /** Clap length — long enough for the roll to die away under the bed. */
 export const THUNDER_SECONDS = 4.5;
-
-/** Deterministic 32-bit LCG; a fixed seed keeps CI output byte-stable. */
-function makeRng(seed: number): () => number {
-  let state = (seed >>> 0) || 1;
-  return () => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
 
 /** Sample count for one clap at a given rate. */
 export function thunderLength(sampleRate: number): number {
@@ -34,7 +27,7 @@ export function thunderLength(sampleRate: number): number {
 export function fillThunderChannel(out: Float32Array, sampleRate: number, seed = 0x7d0e): void {
   const n = out.length;
   if (n === 0 || !(sampleRate > 0)) return;
-  const rng = makeRng(seed);
+  const rng = createRng(seed);
 
   // Rumble: two cascaded one-pole lowpasses (~60 Hz) over white noise.
   const rumbleK = Math.exp((-2 * Math.PI * 60) / sampleRate);

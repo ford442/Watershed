@@ -3,6 +3,10 @@ import * as THREE from 'three';
 import type { BiomeId } from '../../configs/biomes';
 import type { FallingLeavesProps } from './types';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x02eb3df2);
 
 const LEAF_PALETTES: Record<string, string[]> = {
   summer: ['#4a6b2f', '#6b8c42', '#3d5229', '#8f9e58'],
@@ -52,9 +56,9 @@ export default function FallingLeaves({
 
       mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
 
-      const hex = palette[Math.floor(Math.random() * palette.length)] ?? palette[0];
+      const hex = palette[Math.floor(random() * palette.length)] ?? palette[0];
       color.set(hex);
-      color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
+      color.offsetHSL(0, 0, (random() - 0.5) * 0.1);
 
       mesh.setColorAt(i, color);
     });

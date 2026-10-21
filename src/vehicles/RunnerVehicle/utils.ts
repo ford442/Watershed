@@ -1,10 +1,8 @@
 import { pulse } from '../../input/haptics';
+import { gameEvents } from '../../systems/events/GameEvents';
 
-// Camera shake effect. Every caller is an impact (wall hit, landing, raft
-// collision), so it doubles as the gamepad's impact rumble (#486 B).
+// Camera shake effect; impacts also provide feedback to the active gamepad.
 export const triggerCameraShake = (intensity: number, duration: number = 0.3) => {
   pulse('impact', Math.min(1, intensity * 1.8));
-  window.dispatchEvent(new CustomEvent('camera-shake', {
-    detail: { intensity, duration }
-  }));
+  gameEvents.emit('camera-shake', { intensity, duration });
 };

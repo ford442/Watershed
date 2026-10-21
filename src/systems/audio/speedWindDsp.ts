@@ -28,6 +28,8 @@
 
 import { DEFAULT_SPEED_WIND, mapSpeedToWind, type SpeedWindOptions } from './speedWind';
 import { wetnessMuffleParams } from './wetnessMuffle';
+import { clamp01 } from '../../math/scalar';
+import { createRng, type Rng } from '../../math/random';
 
 export interface SpeedWindFrameParams {
   /** Horizontal speed (m/s). */
@@ -67,19 +69,7 @@ const MAX_BUBBLES = 24;
 const GURGLE_RATE = 48;
 const GURGLE_SCALE = 0.55;
 
-type Rng = () => number;
-
-function makeRng(seed: number): Rng {
-  let state = (seed >>> 0) || 1;
-  return () => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
-
 const finiteOr = (v: number, fallback: number) => (Number.isFinite(v) ? v : fallback);
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-
 /** TPT state-variable filter, one channel, coefficients set per block. */
 class Svf {
   private ic1 = 0;
@@ -167,6 +157,7 @@ export class SpeedWindSynth {
   private readonly bPanL = new Float64Array(MAX_BUBBLES);
   private readonly bPanR = new Float64Array(MAX_BUBBLES);
   private readonly bubbleRng: Rng;
+  /** Unit-exponential wait left before the next bubble (spent at rate/sampleRate per sample). */
   private untilNextBubble = 0;
 
   constructor(sampleRate: number, options: SpeedWindDspOptions = {}) {
@@ -182,9 +173,9 @@ export class SpeedWindSynth {
     this.cutoff = this.opts.cutoffAtRest;
     const seedL = options.seedLeft ?? 0x5eed;
     const seedR = options.seedRight ?? 0xb1a5;
-    this.left = new WindChannel(makeRng(seedL), this.sampleRate, 0.3);
-    this.right = new WindChannel(makeRng(seedR), this.sampleRate, 2.1);
-    this.bubbleRng = makeRng(seedL ^ seedR ^ 0x9e3779b9);
+    this.left = new WindChannel(createRng(seedL), this.sampleRate, 0.3);
+    this.right = new WindChannel(createRng(seedR), this.sampleRate, 2.1);
+    this.bubbleRng = createRng(seedL ^ seedR ^ 0x9e3779b9);
     this.gustInc = Float64Array.from(GUST_HZ, (hz) => (Math.PI * 2 * hz) / this.sampleRate);
   }
 
@@ -306,11 +297,14 @@ export class SpeedWindSynth {
 
   private maybeSpawnBubble(rate: number): void {
     if (rate <= 0.01) return;
-    this.untilNextBubble -= 1;
+    // Time-varying Poisson stream: the wait is a unit exponential spent at the
+    // *current* rate each sample. Drawing it in seconds at spawn time instead
+    // let the first draw, made while gurgle was still ramping up from ~0, park
+    // the next bubble minutes away.
+    this.untilNextBubble -= rate / this.sampleRate;
     if (this.untilNextBubble > 0) return;
     const rng = this.bubbleRng;
-    // Exponential inter-arrival → Poisson stream at `rate`.
-    this.untilNextBubble = Math.max(1, Math.round((-Math.log(1 - rng()) / rate) * this.sampleRate));
+    this.untilNextBubble = -Math.log(1 - rng());
 
     let slot = -1;
     for (let b = 0; b < MAX_BUBBLES; b += 1) {

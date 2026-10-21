@@ -12,6 +12,7 @@ import { useGameStore } from '../systems/GameState';
 import { getActiveMapId } from '../utils/runContext';
 import { currentRunFairness, judgeStoredPB, judgeStoredRival } from '../systems/ghost/raceFairness';
 import { formatLaunchHour } from '../systems/ghost/hydroFairness';
+import { gameEvents } from '../systems/events/GameEvents';
 
 const VISIBLE_MS = 6000;
 
@@ -26,9 +27,7 @@ export default function GhostFairnessBanner({ mapLabel }: GhostFairnessBannerPro
   const [resetTick, setResetTick] = useState(0);
 
   useEffect(() => {
-    const onReset = () => setResetTick((n) => n + 1);
-    window.addEventListener('watershed-run-reset', onReset);
-    return () => window.removeEventListener('watershed-run-reset', onReset);
+    return gameEvents.on('watershed-run-reset', () => setResetTick((n) => n + 1));
   }, []);
 
   useEffect(() => {

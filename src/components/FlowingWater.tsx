@@ -114,6 +114,7 @@ export default function FlowingWater({
   // Built-in vertex shader — displacement + analytic normals. Shared with the
   // GLSL backend only; the TSL backend rebuilds this math as a node graph.
   const builtinVertexShader = useMemo(() => `
+          #define WATER_LEVEL ${WATER_LEVEL.toFixed(4)}
           uniform float time;
           uniform float flowSpeed;
           uniform float weatherRipple;
@@ -168,7 +169,7 @@ export default function FlowingWater({
             // Pond/delta: subtle slow concentric ripples instead of choppiness.
             float pondRipple = sin(length(p - vehiclePos.xz) * 1.4 - time * 1.5) * 0.04 * isPond;
 
-            float waterLevel = 0.5;
+            float waterLevel = WATER_LEVEL;
             float heightDiff = abs(cameraHeight - waterLevel);
             float heightProx = 1.0 - smoothstep(0.0, 6.0, heightDiff);
             float proximityScale = 1.0 + heightProx * 0.35;

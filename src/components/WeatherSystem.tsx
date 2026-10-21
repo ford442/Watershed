@@ -19,8 +19,13 @@ import { createWeatherParticleMaterial } from '../materials/weather/createWeathe
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
 import { createLightningState, lightningSeed, stepLightning } from '../systems/weather/lightning';
 import { getAudioManager } from '../systems/audio/AudioSystem';
+import { useGameStore } from '../systems/GameState';
 import { getActiveLaunchHour } from '../systems/journey/runSession';
 import { getActiveMapId } from '../utils/runContext';
+import { createRng } from '../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x27da25f2);
 
 /** Key-light intensity added at a full-nearness lightning flash. */
 const LIGHTNING_KEY_BOOST = 7;
@@ -99,11 +104,11 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     const speedVars = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * WEATHER_CONFIG.rain.spawnWidth;
-      positions[i * 3 + 1] = Math.random() * WEATHER_CONFIG.rain.spawnHeight;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * WEATHER_CONFIG.rain.spawnLength;
-      offsets[i] = Math.random() * 100;
-      speedVars[i] = 0.8 + Math.random() * 0.4;
+      positions[i * 3] = (random() - 0.5) * WEATHER_CONFIG.rain.spawnWidth;
+      positions[i * 3 + 1] = random() * WEATHER_CONFIG.rain.spawnHeight;
+      positions[i * 3 + 2] = (random() - 0.5) * WEATHER_CONFIG.rain.spawnLength;
+      offsets[i] = random() * 100;
+      speedVars[i] = 0.8 + random() * 0.4;
     }
 
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -142,11 +147,11 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     const speedVars = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * WEATHER_CONFIG.snow.spawnWidth;
-      positions[i * 3 + 1] = Math.random() * WEATHER_CONFIG.snow.spawnHeight;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * WEATHER_CONFIG.snow.spawnLength;
-      offsets[i] = Math.random() * 100;
-      speedVars[i] = 0.6 + Math.random() * 0.8;
+      positions[i * 3] = (random() - 0.5) * WEATHER_CONFIG.snow.spawnWidth;
+      positions[i * 3 + 1] = random() * WEATHER_CONFIG.snow.spawnHeight;
+      positions[i * 3 + 2] = (random() - 0.5) * WEATHER_CONFIG.snow.spawnLength;
+      offsets[i] = random() * 100;
+      speedVars[i] = 0.6 + random() * 0.8;
     }
 
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -171,8 +176,8 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
       origins[i * 3] = 0;
       origins[i * 3 + 1] = WATER_LEVEL;
       origins[i * 3 + 2] = 0;
-      durations[i] = 0.3 + Math.random() * 0.3;
-      sizes[i] = 1.5 + Math.random() * 2.5;
+      durations[i] = 0.3 + random() * 0.3;
+      sizes[i] = 1.5 + random() * 2.5;
     }
 
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -214,7 +219,6 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
 
   useFrame((state, delta) => {
     const targetType = targetWeatherRef.current;
-    const currentType = currentWeatherRef.current;
     const targetInt = targetIntensityRef.current;
 
     // Smoothly transition weather type and intensity
@@ -302,8 +306,8 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
           const idx = data.nextIndex;
           data.nextIndex = (idx + 1) % WEATHER_CONFIG.rain.splashCount;
 
-          const sx = playerPos.x + (Math.random() - 0.5) * WEATHER_CONFIG.rain.spawnWidth * 0.8;
-          const sz = playerPos.z + (Math.random() - 0.5) * WEATHER_CONFIG.rain.spawnLength * 0.8;
+          const sx = playerPos.x + (random() - 0.5) * WEATHER_CONFIG.rain.spawnWidth * 0.8;
+          const sz = playerPos.z + (random() - 0.5) * WEATHER_CONFIG.rain.spawnLength * 0.8;
           const sy = WATER_LEVEL;
 
           data.spawnTimes[idx] = state.clock.elapsedTime;
@@ -438,42 +442,25 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     }
 
     // ======================================================================
-    // 5. Dispatch weather event for shaders / gameplay
+    // 5. Publish the weather to the store (10 Hz; skipped when unchanged)
     // ======================================================================
     if (state.clock.elapsedTime % 0.1 < delta) {
-      window.dispatchEvent(
-        new CustomEvent('weather-update', {
-          detail: {
-            type: weatherType,
-            intensity: intensityRef.current,
-            transition: t,
-            rippleStrength:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.water.stormRippleStrength
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.water.rainRippleStrength
-                : 0,
-            flowSpeedMultiplier:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.water.stormFlowSpeedMultiplier
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.water.rainFlowSpeedMultiplier
-                : 1.0,
-            dragBoost:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.gameplay.stormDragBoost
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.gameplay.rainDragBoost
-                : 0,
-            boostMultiplier:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.gameplay.stormBoostMultiplier
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.gameplay.rainBoostMultiplier
-                : 1.0,
-          },
-        })
-      );
+      const store = useGameStore.getState();
+      const rippleStrength =
+        weatherType === 'storm'
+          ? WEATHER_CONFIG.water.stormRippleStrength
+          : weatherType === 'rain'
+          ? WEATHER_CONFIG.water.rainRippleStrength
+          : 0;
+      const prev = store.weather;
+      if (
+        prev.type !== weatherType ||
+        prev.intensity !== intensityRef.current ||
+        prev.transition !== t ||
+        prev.rippleStrength !== rippleStrength
+      ) {
+        store.setWeather({ type: weatherType, intensity: intensityRef.current, transition: t, rippleStrength });
+      }
     }
   });
 

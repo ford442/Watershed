@@ -4,12 +4,10 @@
  */
 
 import { getAudioManager } from '../systems/audio/AudioSystem';
+import { gameEvents, type RunResetDetail } from '../systems/events/GameEvents';
+import { CLEAR_WEATHER, useGameStore } from '../systems/GameState';
 
-export type RunSessionResetDetail = {
-  biome?: string;
-  flowSpeed?: number;
-  segmentIndex?: number;
-};
+export type RunSessionResetDetail = RunResetDetail;
 
 export function resetRunSession(detail: RunSessionResetDetail = {}): void {
   if (typeof window === 'undefined') return;
@@ -20,27 +18,9 @@ export function resetRunSession(detail: RunSessionResetDetail = {}): void {
     (window as any).__watershedSlipperiness = 0;
   }
 
-  window.dispatchEvent(
-    new CustomEvent('weather-update', {
-      detail: { type: 'clear', intensity: 0 },
-    })
-  );
-
-  window.dispatchEvent(
-    new CustomEvent('water-flow-update', {
-      detail: {
-        flowSpeed,
-        turbulence: 0,
-        state: 'Normal',
-      },
-    })
-  );
-
-  window.dispatchEvent(
-    new CustomEvent('watershed-run-reset', {
-      detail,
-    })
-  );
+  useGameStore.getState().setWeather(CLEAR_WEATHER);
+  gameEvents.emit('water-flow-update', { flowSpeed, turbulence: 0, state: 'Normal' });
+  gameEvents.emit('watershed-run-reset', detail);
 
   const am = getAudioManager();
   am?.disableCanyonAcoustics();

@@ -3,11 +3,9 @@ import * as THREE from 'three';
 import { Instance } from '@react-three/drei';
 import type { BiomeDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { sinHash } from '../../math/hash';
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * 12.9898);
 
 export default function Cactus({ transforms }: BiomeDecorationProps) {
   const safeTransforms = Array.isArray(transforms) ? transforms : [];

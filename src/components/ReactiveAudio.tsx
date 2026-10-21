@@ -22,7 +22,7 @@ import { AUDIO_CONFIG } from '../constants/audioConfig';
 import { useGameStore } from '../systems/GameState';
 import { getActiveSurvivalModifiers } from '../systems/journey/runSession';
 import { useLOD } from '../systems/lod/LODManager';
-import { PILLAR_BREAK_EVENT } from '../components/Obstacles/pillarBreakEvents';
+import { gameEvents } from '../systems/events/GameEvents';
 import { isGlacialBiome } from '../configs/TrackBiomes';
 import SpeedWindAudio from './SpeedWindAudio';
 import type { ReachManifest } from '../systems/reach/ReachStreamer';
@@ -269,35 +269,33 @@ export default function ReactiveAudio({
   // Listen to global flow events
   // ========================================================================
   useEffect(() => {
-    const onFlow = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail) {
-        flowRef.current = {
-          flowSpeed: detail.flowSpeed ?? 1,
-          turbulence: detail.turbulence ?? 0,
-          state: detail.state ?? 'Normal',
-        };
-      }
-    };
-    const onRunReset = () => {
+    const offFlow = gameEvents.on('water-flow-update', (detail) => {
+      flowRef.current = {
+        flowSpeed: detail.flowSpeed ?? 1,
+        turbulence: detail.turbulence ?? 0,
+        state: detail.state ?? 'Normal',
+      };
+    });
+    const offRunReset = gameEvents.on('watershed-run-reset', () => {
       flowRef.current = { flowSpeed: 1, turbulence: 0, state: 'Normal' };
       volumesRef.current = { low: 0, mid: 0, high: 0, rapids: 0, whoosh: 0, transition: 0, coldWind: 0, iceCrack: 0 };
       splashCooldownRef.current = 0;
-    };
-    const onPillarBreak = () => {
+    });
+    const onDemolition = () => {
       // Brief biome duck so the demolition rumble reads over ambient stems.
       volumesRef.current.low *= 0.45;
       volumesRef.current.mid *= 0.55;
       volumesRef.current.high *= 0.65;
       volumesRef.current.transition = Math.max(volumesRef.current.transition, 0.9);
     };
-    window.addEventListener('water-flow-update', onFlow);
-    window.addEventListener('watershed-run-reset', onRunReset);
-    window.addEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
+    const offPillar = gameEvents.on('pillarBreak', onDemolition);
+    // A trestle board giving way is the same beat (it had no listener before #503 C).
+    const offTrestle = gameEvents.on('trestleBreak', onDemolition);
     return () => {
-      window.removeEventListener('water-flow-update', onFlow);
-      window.removeEventListener('watershed-run-reset', onRunReset);
-      window.removeEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
+      offFlow();
+      offRunReset();
+      offPillar();
+      offTrestle();
     };
   }, []);
 

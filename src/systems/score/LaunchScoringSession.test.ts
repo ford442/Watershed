@@ -12,7 +12,7 @@ import {
   TIER_SCORES,
 } from './scoreLaunch';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
-import { SHELF_LAUNCH_EVENT } from './shelfLaunchEvents';
+import { gameEvents } from '../events/GameEvents';
 import {
   cancelLaunch,
   getActiveLaunchAirSeconds,
@@ -456,18 +456,14 @@ describe('LaunchScoringSession', () => {
   });
 
   describe('shelfLaunch event bridge', () => {
-    it('starts a session when the shelfLaunch CustomEvent fires', () => {
+    it('starts a session when the shelfLaunch game event fires', () => {
       initShelfLaunchScoringListener();
 
-      window.dispatchEvent(
-        new CustomEvent(SHELF_LAUNCH_EVENT, {
-          detail: {
-            bodyHandle: BODY_HANDLE,
-            launchPos: LAUNCH_POS,
-            downstreamSpeed: 18,
-          },
-        }),
-      );
+      gameEvents.emit('shelfLaunch', {
+        bodyHandle: BODY_HANDLE,
+        launchPos: LAUNCH_POS,
+        downstreamSpeed: 18,
+      });
 
       expect(hasActiveLaunch()).toBe(true);
       expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'GREAT!' });

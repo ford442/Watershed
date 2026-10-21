@@ -6,6 +6,8 @@ import type { BiomeDecorationTransform, CanyonDecorationsProps } from './Environ
 import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
 import { registerWorkerCollider, unregisterWorkerCollider } from '../physics/workerColliderRegistry';
 import { hullSpecFromGeometry } from '../physics/colliderSpecsFromThree';
+import { createRng } from '../math/random';
+import { WATER_LEVEL } from '../constants/game';
 
 type EulerTuple = [number, number, number];
 
@@ -49,11 +51,6 @@ interface DecorationData {
     rockFoam: BiomeDecorationTransform[];
 }
 
-const seededRandom = (seed: number): number => {
-    const x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
-};
-
 const isFiniteVec3 = (v: THREE.Vector3 | null | undefined): v is THREE.Vector3 =>
     !!v && isFinite(v.x) && isFinite(v.y) && isFinite(v.z);
 
@@ -63,7 +60,7 @@ export default function CanyonDecorations({
     wallHeight = 12,
     segmentSeed = 1,
     wallTightness = 0.6,
-    waterLevel = 0.5,
+    waterLevel = WATER_LEVEL,
     rockDensityBias = 1.0,
     onRockFoamUpdate,
 }: CanyonDecorationsProps) {
@@ -78,7 +75,7 @@ export default function CanyonDecorations({
         const vegetation: VegetationPlacement[] = [];
         const hangingGrowth: HangingGrowthPlacement[] = [];
         const sampleCount = 17;
-        let seed = Math.max(1, segmentSeed);
+        const rng = createRng(segmentSeed);
 
         const boulderChance = Math.min(0.58, Math.max(0.5, 0.45 + rockDensityBias * 0.07));
 
@@ -88,16 +85,16 @@ export default function CanyonDecorations({
             right: THREE.Vector3,
             tangent: THREE.Vector3,
         ): BoulderData | null => {
-            if (seededRandom(seed++) > boulderChance) return null;
+            if (rng() > boulderChance) return null;
 
             const lateralMin = trackWidth * 0.24;
             const lateralMax = trackWidth * 0.45;
-            const lateralOffset = lateralMin + seededRandom(seed++) * (lateralMax - lateralMin);
-            const alongOffset = (seededRandom(seed++) - 0.5) * 4.5;
+            const lateralOffset = lateralMin + rng() * (lateralMax - lateralMin);
+            const alongOffset = (rng() - 0.5) * 4.5;
             const position = point.clone()
                 .add(right.clone().multiplyScalar(side * lateralOffset))
                 .add(tangent.clone().multiplyScalar(alongOffset));
-            position.y += 0.1 + seededRandom(seed++) * 1.0;
+            position.y += 0.1 + rng() * 1.0;
 
             return {
                 side,
@@ -107,11 +104,11 @@ export default function CanyonDecorations({
                 centerPoint: point,
                 alongOffset,
                 position,
-                scale: 1.2 + seededRandom(seed++) * 1.8, // 1.2 - 3.0
+                scale: 1.2 + rng() * 1.8, // 1.2 - 3.0
                 rotation: [
-                    seededRandom(seed++) * 0.9,
-                    seededRandom(seed++) * Math.PI * 2,
-                    seededRandom(seed++) * 0.8,
+                    rng() * 0.9,
+                    rng() * Math.PI * 2,
+                    rng() * 0.8,
                 ] as EulerTuple,
             };
         };
@@ -138,7 +135,7 @@ export default function CanyonDecorations({
             // Create deterministic choke-points by forcing mirrored pairs with narrow safe gaps.
             if (leftBoulder && rightBoulder) {
                 const innerGap = trackWidth - leftBoulder.lateralOffset - rightBoulder.lateralOffset;
-                if (innerGap < 10.0 && seededRandom(seed++) > 0.3) {
+                if (innerGap < 10.0 && rng() > 0.3) {
                     const leftRadius = leftBoulder.scale * 0.55;
                     const rightRadius = rightBoulder.scale * 0.55;
                     const desiredInnerGap = 6.0;
@@ -159,92 +156,92 @@ export default function CanyonDecorations({
             if (rightBoulder && isFiniteVec3(rightBoulder.position)) boulders.push(rightBoulder);
 
             for (let side = -1; side <= 1; side += 2) {
-                const wallRockCount = 1 + Math.floor(seededRandom(seed++) * 2); // 1-2
+                const wallRockCount = 1 + Math.floor(rng() * 2); // 1-2
                 for (let j = 0; j < wallRockCount; j++) {
-                    const wallOffset = (trackWidth * 0.5) + seededRandom(seed++) * 1.2;
-                    const heightOnWall = seededRandom(seed++) * wallHeight * 0.85;
+                    const wallOffset = (trackWidth * 0.5) + rng() * 1.2;
+                    const heightOnWall = rng() * wallHeight * 0.85;
                     const position = point.clone()
                         .add(right.clone().multiplyScalar(side * wallOffset))
-                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 5.0));
+                        .add(tangent.clone().multiplyScalar((rng() - 0.5) * 5.0));
                     position.y += heightOnWall;
 
                     if (!isFiniteVec3(position)) continue;
                     wallRocks.push({
                         position,
-                        scale: 0.25 + seededRandom(seed++) * 0.45,
+                        scale: 0.25 + rng() * 0.45,
                         rotation: [
-                            seededRandom(seed++) * Math.PI,
-                            seededRandom(seed++) * Math.PI * 2,
-                            seededRandom(seed++) * Math.PI,
+                            rng() * Math.PI,
+                            rng() * Math.PI * 2,
+                            rng() * Math.PI,
                         ] as EulerTuple,
                     });
                 }
 
                 // Wall-clinging mid-height near-miss rocks pushed into channel by wall tightness.
-                if (seededRandom(seed++) < 0.65) {
-                    const channelPush = 0.35 + wallTightness * 1.4 + seededRandom(seed++) * 0.4;
+                if (rng() < 0.65) {
+                    const channelPush = 0.35 + wallTightness * 1.4 + rng() * 0.4;
                     const clingOffset = (trackWidth * 0.5) - channelPush;
-                    const clingHeight = wallHeight * (0.3 + seededRandom(seed++) * 0.4);
+                    const clingHeight = wallHeight * (0.3 + rng() * 0.4);
                     const clingPos = point.clone()
                         .add(right.clone().multiplyScalar(side * clingOffset))
-                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 3.5));
+                        .add(tangent.clone().multiplyScalar((rng() - 0.5) * 3.5));
                     clingPos.y += clingHeight;
 
                     if (isFiniteVec3(clingPos)) {
                         wallRocks.push({
                             position: clingPos,
-                            scale: 0.45 + seededRandom(seed++) * 0.65,
+                            scale: 0.45 + rng() * 0.65,
                             rotation: [
-                                seededRandom(seed++) * Math.PI * 0.6,
-                                seededRandom(seed++) * Math.PI * 2,
-                                seededRandom(seed++) * Math.PI * 0.6,
+                                rng() * Math.PI * 0.6,
+                                rng() * Math.PI * 2,
+                                rng() * Math.PI * 0.6,
                             ] as EulerTuple,
                         });
                     }
                 }
 
                 // Sparse vegetation high on walls.
-                if (seededRandom(seed++) > 0.72) {
-                    const vegOffset = (trackWidth * 0.5) + 0.8 + seededRandom(seed++) * 1.2;
+                if (rng() > 0.72) {
+                    const vegOffset = (trackWidth * 0.5) + 0.8 + rng() * 1.2;
                     const position = point.clone()
                         .add(right.clone().multiplyScalar(side * vegOffset))
-                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 4.0));
-                    position.y += wallHeight * (0.5 + seededRandom(seed++) * 0.35);
+                        .add(tangent.clone().multiplyScalar((rng() - 0.5) * 4.0));
+                    position.y += wallHeight * (0.5 + rng() * 0.35);
 
                     if (isFiniteVec3(position)) {
                         vegetation.push({
                             position,
-                            scale: 0.35 + seededRandom(seed++) * 0.6,
-                            rotation: seededRandom(seed++) * Math.PI * 2,
+                            scale: 0.35 + rng() * 0.6,
+                            rotation: rng() * Math.PI * 2,
                         });
                     }
                 }
 
-                const waterlineBias = seededRandom(seed++);
+                const waterlineBias = rng();
                 const hangingChance = side === -1 ? 0.62 : 0.48;
                 if (waterlineBias < hangingChance) {
-                    const wallOffset = (trackWidth * 0.5) + 0.45 + seededRandom(seed++) * 1.35;
-                    const ledgeHeight = wallHeight * (0.18 + seededRandom(seed++) * 0.55);
-                    const droopLength = 1.2 + seededRandom(seed++) * 2.4;
+                    const wallOffset = (trackWidth * 0.5) + 0.45 + rng() * 1.35;
+                    const ledgeHeight = wallHeight * (0.18 + rng() * 0.55);
+                    const droopLength = 1.2 + rng() * 2.4;
                     const position = point.clone()
                         .add(right.clone().multiplyScalar(side * wallOffset))
-                        .add(tangent.clone().multiplyScalar((seededRandom(seed++) - 0.5) * 3.5));
+                        .add(tangent.clone().multiplyScalar((rng() - 0.5) * 3.5));
                     position.y += ledgeHeight;
 
                     if (isFiniteVec3(position)) {
                         hangingGrowth.push({
                             position,
                             scale: new THREE.Vector3(
-                                0.45 + seededRandom(seed++) * 0.35,
+                                0.45 + rng() * 0.35,
                                 droopLength,
-                                0.45 + seededRandom(seed++) * 0.25
+                                0.45 + rng() * 0.25
                             ),
                             rotation: [
-                                0.05 + seededRandom(seed++) * 0.12,
-                                seededRandom(seed++) * Math.PI * 2,
-                                side * (0.12 + seededRandom(seed++) * 0.18),
+                                0.05 + rng() * 0.12,
+                                rng() * Math.PI * 2,
+                                side * (0.12 + rng() * 0.18),
                             ] as EulerTuple,
-                            color: seededRandom(seed++) > 0.45 ? '#4b5f32' : '#6b7d46',
+                            color: rng() > 0.45 ? '#4b5f32' : '#6b7d46',
                         });
                     }
                 }

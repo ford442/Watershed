@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/biome/BiomeSystem';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createPondFogMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
+import { WATER_LEVEL } from '../../constants/game';
+import { useGameStore } from '../../systems/GameState';
 
 export interface PondFogProps {
   segmentCenter: THREE.Vector3;
@@ -16,7 +18,7 @@ export interface PondFogProps {
  * swirling ground-hugging mist bank that sits on the water surface and
  * catches sun/moon color and reacts to weather.
  */
-export default function PondFog({ segmentCenter, waterLevel = 0.5 }: PondFogProps) {
+export default function PondFog({ segmentCenter, waterLevel = WATER_LEVEL }: PondFogProps) {
   const { camera, scene } = useThree();
   const { timeOfDay } = useBiome();
   const originalFogRef = useRef<{
@@ -26,16 +28,8 @@ export default function PondFog({ segmentCenter, waterLevel = 0.5 }: PondFogProp
   } | null>(null);
   const isActiveRef = useRef(false);
   const groundMistRef = useRef<THREE.Mesh>(null);
-  const [weatherType, setWeatherType] = useState('clear');
+  const weatherType = useGameStore((s) => s.weather.type);
 
-  useEffect(() => {
-    const onWeatherUpdate = (event: Event) => {
-      const incoming = (event as CustomEvent<{ type?: string }>).detail?.type;
-      if (typeof incoming === 'string') setWeatherType(incoming);
-    };
-    window.addEventListener('weather-update', onWeatherUpdate);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate);
-  }, []);
 
   useEffect(() => {
     const fog = scene.fog as THREE.Fog | null;

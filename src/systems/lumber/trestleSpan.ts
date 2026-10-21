@@ -24,6 +24,7 @@
 
 import { FLOW_FORECAST_STATES, type FlowForecastState } from '../../constants/game';
 import { eventsActiveAtHour, type HydroEvent } from '../water/hydroEvents';
+import { clamp01 } from '../../math/scalar';
 
 /** Deck boards laid across the corridor when the trestle is fully intact. */
 export const TRESTLE_PLANK_COUNT = 12;
@@ -115,11 +116,6 @@ const EMPTY_SPAN: TrestleSpan = {
   breakSpeed: TRESTLE_BREAK_SPEED_DRY,
   washout: 0,
 };
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(1, Math.max(0, value));
-}
 
 function coerceState(state: FlowForecastState | string): FlowForecastState {
   return (STATE_WASHOUT as Record<string, number>)[state] !== undefined

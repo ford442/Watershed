@@ -22,6 +22,7 @@ import { getRecordedSplits } from './SplitRecorder';
 import { getRunBest } from '../persistence/PersistenceSystem';
 import type { RunSplitEntry } from './ghostCodec';
 import { currentRunFairness } from './raceFairness';
+import { gameEvents } from '../events/GameEvents';
 
 export interface RunFinishSummary {
   runKey: string;
@@ -72,9 +73,9 @@ let listenerAttached = false;
 
 /** Wire `watershed-run-reset` → re-arm commitTimedFinish (call once at app boot). */
 export function initRunFinishListener(): void {
-  if (listenerAttached || typeof window === 'undefined') return;
+  if (listenerAttached) return;
   listenerAttached = true;
-  window.addEventListener('watershed-run-reset', () => {
+  gameEvents.on('watershed-run-reset', () => {
     committedForRun = false;
     lastFinishSummary = null;
   });

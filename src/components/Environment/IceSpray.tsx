@@ -3,9 +3,13 @@ import React, { useRef, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { IceSprayProps } from './types';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x5c7db341);
 
 const MAX_PARTICLES = 20;
-const GRAVITY = -4.5;
+const SPRAY_GRAVITY = -4.5;
 const BASE_LIFETIME = 1.0;
 
 const SHARED_GEO = new THREE.PlaneGeometry(0.12, 0.12);
@@ -50,21 +54,21 @@ export default function IceSpray({ origin, intensity = 0.5, active = true }: Ice
   const lastIntensity = useRef(-1);
   const spawnBurst = (count: number, spawnOrigin: THREE.Vector3) => {
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 1.5 + Math.random() * 3.0;
-      const upward = 1.0 + Math.random() * 2.5;
+      const angle = random() * Math.PI * 2;
+      const speed = 1.5 + random() * 3.0;
+      const upward = 1.0 + random() * 2.5;
       particles.current.push({
         pos: new THREE.Vector3(
-          spawnOrigin.x + (Math.random() - 0.5) * 0.3,
-          spawnOrigin.y + Math.random() * 0.2,
-          spawnOrigin.z + (Math.random() - 0.5) * 0.3,
+          spawnOrigin.x + (random() - 0.5) * 0.3,
+          spawnOrigin.y + random() * 0.2,
+          spawnOrigin.z + (random() - 0.5) * 0.3,
         ),
         vel: new THREE.Vector3(Math.cos(angle) * speed, upward, Math.sin(angle) * speed),
-        life: BASE_LIFETIME * (0.5 + Math.random() * 0.8),
+        life: BASE_LIFETIME * (0.5 + random() * 0.8),
         maxLife: BASE_LIFETIME,
-        rotSpeed: (Math.random() - 0.5) * 4.0,
-        rot: Math.random() * Math.PI * 2,
-        scale: 0.6 + Math.random() * 0.9,
+        rotSpeed: (random() - 0.5) * 4.0,
+        rot: random() * Math.PI * 2,
+        scale: 0.6 + random() * 0.9,
       });
     }
     if (particles.current.length > MAX_PARTICLES) {
@@ -88,7 +92,7 @@ export default function IceSpray({ origin, intensity = 0.5, active = true }: Ice
 
     particles.current = particles.current
       .map((p) => {
-        p.vel.y += GRAVITY * delta;
+        p.vel.y += SPRAY_GRAVITY * delta;
         p.pos.addScaledVector(p.vel, delta);
         p.rot += p.rotSpeed * delta;
         p.life -= delta;

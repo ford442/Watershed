@@ -9,6 +9,7 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
 import type { FlowerPlacement, WildflowersProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { sinHash } from '../../math/hash';
 
 const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'] as const;
 type FlowerVariant = typeof FLOWER_VARIANTS[number];
@@ -157,7 +158,7 @@ export default function Wildflowers({ transforms, biome = 'canyonSummer' }: Wild
       const lightnessJitter = (t.lightnessJitter ?? 0) * (isAutumnLike(biome) ? 0.05 : 0.09);
       color.offsetHSL(hueJitter, isAutumnLike(biome) ? -0.1 : 0.04, lightnessJitter);
 
-      const wiltRoll = ((Math.sin((t.position.x * 12.9898 + t.position.z * 78.233 + i) * 43758.5453) % 1) + 1) % 1;
+      const wiltRoll = sinHash(t.position.x * 12.9898 + t.position.z * 78.233 + i);
       const isWilted = wiltRoll < 0.12;
       const baseRotation = t.rotation ?? DEFAULT_ROTATION;
       let rotation = baseRotation;

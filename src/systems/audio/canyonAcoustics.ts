@@ -19,6 +19,7 @@
  */
 
 import type { BiomeId } from '../../configs/biomes';
+import { clamp01 } from '../../math/scalar';
 
 /** Below this wall tightness a reach is open water — acoustics stay off. */
 export const OPEN_WALL_TIGHTNESS = 0.35;
@@ -71,8 +72,6 @@ export interface CanyonAcousticParams {
 
 /** Tap spacing relative to the first reflection — deliberately non-harmonic. */
 const TAP_RATIOS = [1, 1.37, 1.83, 2.41, 3.05, 3.9];
-
-const clamp01 = (v: number) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
 
 export function canyonAcousticParams(
   wallTightness: number,

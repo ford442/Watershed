@@ -1,7 +1,18 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import * as THREE from 'three';
-import { BuoyancyState, TippingState, PaddleState, StaminaState, StunState, ShedParticle, STAMINA } from '../constants';
-import { SurfaceMaterial } from '../../../systems/vehicle/VehicleSystem';
+import { BuoyancyState, TippingState, PaddleState, StaminaState, StunState, SHED, STAMINA } from '../constants';
+import { ParticlePool } from '../../../components/particlePool';
+import { COLLISION_PARTICLE_CAPACITY } from '../../../components/CollisionParticles';
+
+/** Paddle foam: a few per stroke, 1 s each. */
+const FOAM_PARTICLE_CAPACITY = 48;
+
+export interface RaftCollisionState {
+  currentBiome: string;
+  /** Collision bursts, drawn by ParticlePoolMesh in RaftVehicle. */
+  particles: ParticlePool;
+  prevVelocity: THREE.Vector3;
+}
 
 export function useRaftPhysicsState() {
   const buoyancyState = useRef<BuoyancyState>({
@@ -21,7 +32,6 @@ export function useRaftPhysicsState() {
   const paddleState = useRef<PaddleState>({
     leftPaddle: false,
     rightPaddle: false,
-    foamParticles: [],
   });
 
   const staminaState = useRef<StaminaState>({
@@ -36,28 +46,20 @@ export function useRaftPhysicsState() {
   });
 
   const forwardBiasState = useRef(0);
-  const shedParticles = useRef<ShedParticle[]>([]);
+  // Stepped and drawn by ParticlePoolMesh; physics only spawns into them.
+  // Lazy useState, not a useRef initialiser: that would build a pool per render.
+  const [foamParticles] = useState(() => new ParticlePool(FOAM_PARTICLE_CAPACITY));
+  const [shedParticles] = useState(() => new ParticlePool(SHED.COUNT_LIMIT));
+  const [collisionParticles] = useState(() => new ParticlePool(COLLISION_PARTICLE_CAPACITY));
 
-  const collisionState = useRef({
+  const collisionState = useRef<RaftCollisionState>({
     currentBiome: 'canyonSummer',
-    activeParticles: [] as Array<{
-      id: number;
-      material: SurfaceMaterial;
-      position: THREE.Vector3;
-      intensity: number;
-    }>,
+    particles: collisionParticles,
     prevVelocity: new THREE.Vector3(),
   });
 
-  const sharedPhysicsState = useRef({
-    linearVelocity: new THREE.Vector3(),
-    angularVelocity: new THREE.Vector3(),
-  });
-
-  const lastWorkerSync = useRef(0);
-
   return {
     buoyancyState, tippingState, paddleState, staminaState, stunState,
-    forwardBiasState, shedParticles, collisionState, sharedPhysicsState, lastWorkerSync
+    forwardBiasState, foamParticles, shedParticles, collisionState,
   };
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WATER_LEVEL } from '../constants/game';
 
 export interface RockShaderOptions {
   waterLevel?: number;
@@ -36,7 +37,7 @@ export function extendRockMaterial(
     if (!material) return material;
 
     const {
-        waterLevel = 0.5,
+        waterLevel = WATER_LEVEL,
         mossStrength = 0.4,
         mossColor = '#3f5c2a',
         lichenColor = '#9aa66b',

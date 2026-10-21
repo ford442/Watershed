@@ -1,9 +1,10 @@
-import React, { useRef, useEffect, forwardRef, useState } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
-import { RigidBody, useRapier } from '@react-three/rapier';
+import React, { useRef, useEffect, forwardRef } from 'react';
+import { useThree } from '@react-three/fiber';
+import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
+import type { RapierBody } from '../physics/rapierTypes';
 import * as THREE from 'three';
 import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
-import { CollisionParticles } from '../components/CollisionParticles';
+import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
 import { buildRaftWorkerWaterForceConfig } from '../physics/physicsWorkerConfig';
@@ -21,16 +22,16 @@ import { linkPhysicsToSim } from '../sim/linkPhysicsToSim';
 import { startRaftWorkerSession, type RaftWorkerSession } from './RaftVehicle/raftWorkerSession';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
-import { WATER_PHYSICS, PADDLE, SHED } from './RaftVehicle/constants';
+import { WATER_PHYSICS } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
+import { gameEvents } from '../systems/events/GameEvents';
 
 const RaftVehicle = forwardRef((props, forwardedRef) => {
-  const bodyRef = useRef<any>(null);
-  const raftMaterialRef = useRef<any>(null);
+  const bodyRef = useRef<RapierRigidBody>(null);
+  const raftMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
   const { camera } = useThree();
-  const { world } = useRapier();
   // Default-on: the worker runs unless the browser can't host it, the player
   // turned it off, or ?physicsWorker=0 is set. Read once per mount — switching
   // mid-session would strand the Rapier body between two authorities.
@@ -55,7 +56,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const physicsState = useRaftPhysicsState();
   const {
     buoyancyState, tippingState, paddleState, staminaState, stunState,
-    forwardBiasState, shedParticles, collisionState, sharedPhysicsState, lastWorkerSync
+    forwardBiasState, foamParticles, shedParticles, collisionState,
   } = physicsState;
 
   // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
@@ -63,9 +64,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const shelfLaunchFiredRef = useRef(false);
   const shelfTriggerRef = useRef<ReturnType<typeof computeShelfTrigger>>(null);
 
-  React.useImperativeHandle(forwardedRef, () => bodyRef.current);
+  React.useImperativeHandle(forwardedRef, () => bodyRef.current as RapierRigidBody);
 
-  const syncBodyFromWorkerState = (body: any, workerState: WorkerRaftState | null) => {
+  const syncBodyFromWorkerState = (body: RapierBody | null, workerState: WorkerRaftState | null) => {
     if (!body || !workerState) return;
     const [px, py, pz] = workerState.position;
     const [rx, ry, rz, rw] = workerState.rotation;
@@ -77,15 +78,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     body.setAngvel({ x: avx, y: avy, z: avz }, true);
   };
 
-  const applyWorkerImpulse = (impulse: THREE.Vector3) => {
-    const proxy = workerProxyRef.current;
-    if (!proxy || !workerReadyRef.current) return;
-    proxy.applyImpulse([impulse.x, impulse.y, impulse.z]).catch((error) => {
-      console.warn('[RaftVehicle] Rapier worker impulse failed', error);
-    });
-  };
-
-  const stepWorkerProxy = (body: any, delta: number, impulses: Vec3Tuple[] = []) => {
+  const stepWorkerProxy = (body: RapierBody, delta: number, impulses: Vec3Tuple[] = []) => {
     const proxy = workerProxyRef.current;
     if (!proxy || !workerReadyRef.current || workerStepPendingRef.current) return;
 
@@ -112,7 +105,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       if (diagnostics) {
         setPhysicsWorkerDiagnostics(diagnostics);
         if (typeof window !== 'undefined' && import.meta.env.DEV) {
-          (window as any).__watershedPhysicsWorker = {
+          window.__watershedPhysicsWorker = {
             simLinked: proxy.isSimLinked,
             waterForce: diagnostics,
             tickOrder: [
@@ -171,29 +164,22 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
     }
 
-    const handleBiomeChange = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'canyonSummer';
+    const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.WATER;
       raftVehicle.current.setSurfaceMaterial(material);
-    };
+    });
 
-    window.addEventListener('biome-change', handleBiomeChange);
-
-    const handleSegmentSpawn = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { segmentIndex, spawnPoint } = customEvent.detail ?? {};
-      if (segmentIndex === 14 && spawnPoint) {
+    const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
+      if (segmentIndex === 14) {
         shelfSpawnPointRef.current = spawnPoint;
         shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
       }
-    };
-    window.addEventListener('segment-spawn', handleSegmentSpawn);
+    });
 
     return () => {
-      window.removeEventListener('biome-change', handleBiomeChange);
-      window.removeEventListener('segment-spawn', handleSegmentSpawn);
+      offBiomeChange();
+      offSegmentSpawn();
       if (workerSession) {
         workerSession.stop();
         if (workerProxyRef.current === workerSession.proxy) workerProxyRef.current = null;
@@ -213,7 +199,6 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     workerProxyRef,
     workerReadyRef,
     useWorkerPhysics,
-    applyWorkerImpulse,
     stepWorkerProxy,
     buoyancyState,
     tippingState,
@@ -221,6 +206,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     staminaState,
     stunState,
     forwardBiasState,
+    foamParticles,
     shedParticles,
     collisionState,
     raftMaterialRef,
@@ -266,41 +252,10 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         />
       </RigidBody>
 
-      {paddleState.current.foamParticles.map(particle => (
-        <mesh key={particle.id} position={particle.position}>
-          <sphereGeometry args={[0.15 + Math.random() * 0.1, 8, 8]} />
-          <meshBasicMaterial
-            color="white"
-            transparent
-            opacity={particle.life / PADDLE.FOAM_LIFETIME}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-
-      {shedParticles.current.map(particle => (
-        <mesh key={particle.id} position={particle.position}>
-          <sphereGeometry args={[particle.scale, 8, 8]} />
-          <meshBasicMaterial
-            color="#e0f0ff"
-            transparent
-            opacity={(particle.life / SHED.LIFETIME) * 0.6}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-
-      {collisionState.current.activeParticles.map(particle => (
-        <CollisionParticles
-          key={particle.id}
-          material={particle.material}
-          position={particle.position}
-          intensity={particle.intensity}
-          onComplete={() => {
-            collisionState.current.activeParticles = collisionState.current.activeParticles.filter(p => p.id !== particle.id);
-          }}
-        />
-      ))}
+      {/* Stepped and drawn in useFrame: physics spawns, nothing re-renders (#503 B). */}
+      <ParticlePoolMesh pool={foamParticles} opacity={0.85} />
+      <ParticlePoolMesh pool={shedParticles} opacity={0.6} />
+      <ParticlePoolMesh pool={collisionState.current.particles} />
     </group>
   );
 });

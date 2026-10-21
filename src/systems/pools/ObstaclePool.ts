@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sinHash } from '../../math/hash';
 
 const HIDDEN_POSITION = new THREE.Vector3(0, -1000, 0);
 
@@ -40,11 +41,6 @@ export interface ObstaclePlacementRequest extends ObstaclePoolOptions {
   type: ObstacleType;
   position: THREE.Vector3;
 }
-
-const seededRandom = (seed: number): number => {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-};
 
 const isFiniteVector = (value: THREE.Vector3 | null | undefined): boolean => (
   !!value
@@ -168,23 +164,23 @@ export function buildSegmentObstacleRequests(segment: SegmentObstacleSource): Ob
 
   for (let index = 0; index < count; index += 1) {
     const seed = segment.id * 911 + index * 73;
-    const t = THREE.MathUtils.clamp(0.24 + index * 0.24 + seededRandom(seed) * 0.08, 0.08, 0.92);
+    const t = THREE.MathUtils.clamp(0.24 + index * 0.24 + sinHash(seed) * 0.08, 0.08, 0.92);
     const point = segment.segmentPath.getPoint(t);
     const tangent = segment.segmentPath.getTangent(t).normalize();
     const lateral = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0));
     if (lateral.lengthSq() < 1e-6) lateral.set(1, 0, 0);
     lateral.normalize();
 
-    const side = seededRandom(seed + 3) > 0.5 ? 1 : -1;
-    const bankOffset = Math.min(canyonWidth * 0.44, waterWidth * 0.5 + 1.1 + seededRandom(seed + 7) * 3.2);
+    const side = sinHash(seed + 3) > 0.5 ? 1 : -1;
+    const bankOffset = Math.min(canyonWidth * 0.44, waterWidth * 0.5 + 1.1 + sinHash(seed + 7) * 3.2);
     const position = point.clone().add(lateral.multiplyScalar(side * bankOffset));
-    position.y += segment.type === 'waterfall' ? 0.6 : 0.25 + seededRandom(seed + 11) * 0.5;
+    position.y += segment.type === 'waterfall' ? 0.6 : 0.25 + sinHash(seed + 11) * 0.5;
 
     const type: ObstacleType = isPond && index === 0 ? 'log' : 'rock';
-    const yaw = Math.atan2(tangent.x, tangent.z) + (seededRandom(seed + 17) - 0.5) * Math.PI;
+    const yaw = Math.atan2(tangent.x, tangent.z) + (sinHash(seed + 17) - 0.5) * Math.PI;
     const scaleValue = type === 'log'
-      ? 0.85 + seededRandom(seed + 19) * 0.35
-      : 0.85 + seededRandom(seed + 23) * (highDensity ? 0.9 : 0.55);
+      ? 0.85 + sinHash(seed + 19) * 0.35
+      : 0.85 + sinHash(seed + 23) * (highDensity ? 0.9 : 0.55);
 
     requests.push({
       key: `${segment.id}:${type}:${index}`,
@@ -193,7 +189,7 @@ export function buildSegmentObstacleRequests(segment: SegmentObstacleSource): Ob
       position,
       rotation: type === 'log'
         ? new THREE.Euler(0, yaw, Math.PI / 2)
-        : new THREE.Euler(seededRandom(seed + 29) * 0.4, yaw, seededRandom(seed + 31) * 0.35),
+        : new THREE.Euler(sinHash(seed + 29) * 0.4, yaw, sinHash(seed + 31) * 0.35),
       scale: new THREE.Vector3(scaleValue, scaleValue, scaleValue),
     });
   }

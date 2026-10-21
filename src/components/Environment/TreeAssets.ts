@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { createRng } from '../../math/random';
 
 export type TreeSpecies = 'conifer' | 'broadleaf' | 'birch' | 'snag';
 
@@ -114,16 +115,6 @@ const applyVertexColor = (geometry: THREE.BufferGeometry, color: string): THREE.
   return geometry;
 };
 
-// Deterministic pseudo-random generator (mulberry32) for repeatable scatter patterns.
-const seededRandom = (seed: number): () => number => {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-};
 
 // Adds a per-vertex isFoliageCard mask + per-card leafSeed + cardUv (copy of uv),
 // used by TreeShader to flutter and carve a leaf/needle silhouette out of a quad.
@@ -152,7 +143,7 @@ const createLeafCard = ({ width, height, position, rotation = [0, 0, 0], seed, c
 
 // Scatters leaf/needle cards around a set of canopy cluster centers.
 const scatterLeafCards = ({ centers, count, sizeRange, color, windBase, windHeightScale, seed, spread = 0.6, elongated = false }: ScatterLeafCardsOptions): THREE.BufferGeometry[] => {
-  const rand = seededRandom(seed);
+  const rand = createRng(seed);
   const cards: THREE.BufferGeometry[] = [];
   for (let i = 0; i < count; i++) {
     const center = centers[i % centers.length];
@@ -178,7 +169,7 @@ const scatterLeafCards = ({ centers, count, sizeRange, color, windBase, windHeig
 
 // Hangs a thin drooping vine from an attachment point; sway increases toward the tip.
 const createVine = (attachPoint: [number, number, number], length: number, seed: number): THREE.BufferGeometry => {
-  const rand = seededRandom(seed);
+  const rand = createRng(seed);
   const lean = (rand() - 0.5) * 0.5;
   const geo = new THREE.CylinderGeometry(0.012, 0.035, length, 4, 3)
     .translate(0, -length / 2, 0)

@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { SeededRandom } from '../../../systems/map/MapSystem';
+import { createRng } from '../../../math/random';
 import type { DecorationPlacement } from '../../../systems/map/MapSystem';
-import { createRockPayload, lerpValue } from '../utils';
+import { createRockPayload } from '../utils';
+import { lerp } from '../../../math/scalar';
 import type {
   ChannelShape,
   PlacementData,
@@ -67,7 +68,7 @@ export function usePlacementData({
       return emptyPlacementData();
     }
 
-    const rng = new SeededRandom(segmentId);
+    const rng = createRng(segmentId);
     const placement = emptyPlacementData();
     const {
       rocks,
@@ -131,15 +132,15 @@ export function usePlacementData({
       const to = channelProfile[upper];
 
       return {
-        leftHalfWidth: lerpValue(from.leftHalfWidth, to.leftHalfWidth, alpha),
-        rightHalfWidth: lerpValue(from.rightHalfWidth, to.rightHalfWidth, alpha),
-        corridorHalfWidth: lerpValue(from.corridorHalfWidth, to.corridorHalfWidth, alpha),
-        floorDepth: lerpValue(from.floorDepth, to.floorDepth, alpha),
-        floorWave: lerpValue(from.floorWave, to.floorWave, alpha),
-        riffleStrength: lerpValue(from.riffleStrength, to.riffleStrength, alpha),
+        leftHalfWidth: lerp(from.leftHalfWidth, to.leftHalfWidth, alpha),
+        rightHalfWidth: lerp(from.rightHalfWidth, to.rightHalfWidth, alpha),
+        corridorHalfWidth: lerp(from.corridorHalfWidth, to.corridorHalfWidth, alpha),
+        floorDepth: lerp(from.floorDepth, to.floorDepth, alpha),
+        floorWave: lerp(from.floorWave, to.floorWave, alpha),
+        riffleStrength: lerp(from.riffleStrength, to.riffleStrength, alpha),
         gravelBarSide: alpha < 0.5 ? from.gravelBarSide : to.gravelBarSide,
         undercutSide: alpha < 0.5 ? from.undercutSide : to.undercutSide,
-        flowScale: lerpValue(from.flowScale, to.flowScale, alpha),
+        flowScale: lerp(from.flowScale, to.flowScale, alpha),
       };
     };
 
@@ -189,7 +190,7 @@ export function usePlacementData({
         const rotEuler =
           rot != null
             ? new THREE.Euler(0, rot, 0)
-            : new THREE.Euler(rng.next() * Math.PI, rng.next() * Math.PI, rng.next() * Math.PI);
+            : new THREE.Euler(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
         rocks.push(
           createRockPayload({
             position: pos,

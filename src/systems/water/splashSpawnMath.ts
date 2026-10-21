@@ -2,6 +2,11 @@
  * Pure spawn-gate helpers for SplashSystem — unit-testable without R3F.
  */
 
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x5a294f95);
+
 export const CRUISE_MIN_SPEED = 1.0;
 export const CRUISE_BASE_COUNT = 5;
 export const CRUISE_MAX_COUNT = 20;
@@ -116,5 +121,5 @@ export function entryExitSplashCount(
 
 /** Foam trail burst count scaled by LOD density. */
 export function foamTrailCount(particleDensity: number): number {
-  return Math.max(1, Math.floor((3 + Math.random() * 3) * particleDensity));
+  return Math.max(1, Math.floor((3 + random() * 3) * particleDensity));
 }

@@ -1,4 +1,8 @@
 import { getAudioManager, AudioManager } from '../../systems/audio/AudioSystem';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xc22a10c3);
 
 let audioManager: AudioManager | null = null;
 
@@ -13,7 +17,7 @@ export const playPaddleSound = (side: 'left' | 'right') => {
   if (!audioManager) return;
 
   const sound = side === 'left' ? 'paddle_left' : 'paddle_right';
-  const pitch = 0.95 + Math.random() * 0.1;
+  const pitch = 0.95 + random() * 0.1;
   audioManager.playSound(sound, 0.8, pitch);
 };
 
@@ -22,28 +26,8 @@ export const playSplashSound = (intensity: number) => {
   if (!audioManager) return;
 
   const volume = Math.max(0.2, Math.min(1.0, intensity));
-  const pitch = 0.9 + Math.random() * 0.2;
+  const pitch = 0.9 + random() * 0.2;
   audioManager.playSound('water_splash', volume, pitch);
-};
-
-export const playCollisionSound = (material: string, impactForce: number) => {
-  initAudio();
-  if (!audioManager) return;
-
-  let soundName = 'land_impact'; // Default hard collision
-  let volume = Math.min(1.0, impactForce / 15);
-  let pitch = 1.0;
-
-  if (material === 'debris') {
-    soundName = 'impact_wood';
-    volume = Math.min(0.8, impactForce / 10);
-    pitch = 0.8 + Math.random() * 0.4;
-  } else if (material === 'flesh') {
-    soundName = 'land_soft';
-    volume = Math.min(0.6, impactForce / 10);
-  }
-
-  audioManager.playSound(soundName, volume, pitch);
 };
 
 export const playRaftTipSound = () => {

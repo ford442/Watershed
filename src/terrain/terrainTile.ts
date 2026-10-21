@@ -16,6 +16,7 @@
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { heapF32 } from '../systems/water/wasmAbi';
 import type { ChannelProfileSample, ChannelShape } from '../components/TrackSegment/types';
+import { clamp01, lerp, smoothstep } from '../math/scalar';
 
 /** Floats per packed channel sample — TERRAIN_CHANNEL_STRIDE in terrain.h. */
 export const TERRAIN_CHANNEL_STRIDE = 9;
@@ -143,17 +144,6 @@ export function packChannelProfile(samples: readonly ChannelProfileSample[]): Fl
 // ---------------------------------------------------------------------------
 // The profile (shared with the per-point callers: bathymetry, side placement)
 // ---------------------------------------------------------------------------
-
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-
-/** THREE.MathUtils.smoothstep, without pulling three into the worker-bound mirror. */
-function smoothstep(x: number, min: number, max: number): number {
-  if (x <= min) return 0;
-  if (x >= max) return 1;
-  const s = (x - min) / (max - min);
-  return s * s * (3 - 2 * s);
-}
 
 function defaultChannelShape(waterWidth: number): ChannelShape {
   return {

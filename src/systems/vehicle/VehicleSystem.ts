@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Ray } from '@dimforge/rapier3d-compat';
+import { gameEvents } from '../events/GameEvents';
 
 // =============================================================================
 // MATERIAL ENUMS & CONFIGURATION
@@ -199,20 +200,6 @@ export abstract class BaseVehicle {
     Object.assign(this.input, input);
   }
   
-  /** Apply water flow force */
-  applyFlowForce(flowDirection: THREE.Vector3, flowStrength: number): void {
-    if (!this.body) return;
-    
-    const force = flowDirection.clone().multiplyScalar(
-      flowStrength * this.config.flowResponsiveness
-    );
-    
-    this.body.applyImpulse(
-      { x: force.x, y: force.y, z: force.z },
-      true
-    );
-  }
-  
   /** Main update loop - called every frame */
   update(delta: number): void {
     if (!this.body) return;
@@ -293,13 +280,6 @@ export abstract class BaseVehicle {
   
   /** Emit collision event to all registered callbacks */
   protected emitCollision(event: CollisionEvent): void {
-    // Dispatch global event for audio system
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('vehicle-collision', {
-        detail: event
-      }));
-    }
-    
     // Call registered callbacks
     this.collisionCallbacks.forEach(cb => {
       try { cb(event); } catch (e) { console.error('Collision callback error:', e); }
@@ -334,19 +314,20 @@ export abstract class BaseVehicle {
       point: contactPoint.clone(),
       velocity: relativeVelocity.clone(),
       timestamp: now,
-      isHighImpact: impactForce > this.highImpactThreshold,
+      isHighImpact: this.isHighImpact(impactForce),
     };
     
     this.emitCollision(event);
     
-    // F1: Trigger collision sound via global event
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('collision-sound', {
-        detail: { material, force: impactForce, point: contactPoint }
-      }));
-    }
+    // F1: collision sound (useExperienceLifecycle plays collide_<material>)
+    gameEvents.emit('collision-sound', { material, force: impactForce, point: event.point });
   }
   
+  /** True when an impact is hard enough for the particle burst. */
+  isHighImpact(impactForce: number): boolean {
+    return impactForce > this.highImpactThreshold;
+  }
+
   /** Update friction based on current surface material */
   updateFrictionForMaterial(material?: SurfaceMaterial): void {
     if (!this.body) return;
@@ -407,71 +388,12 @@ export class RunnerVehicle extends BaseVehicle {
     };
   }
   
-  protected applyPhysics(delta: number): void {
-    if (!this.body) return;
-    
-    // Auto river flow - always pushing forward
-    this.body.applyImpulse(
-      { x: 0, y: 0, z: -this.config.flowResponsiveness * delta },
-      true
-    );
-    
-    // Player movement
-    const speed = this.input.sprint 
-      ? this.config.baseSpeed * this.config.sprintMultiplier 
-      : this.config.baseSpeed;
-    
-    // Camera-relative movement
-    const forwardDir = this.getCameraForward();
-    const rightDir = this.getCameraRight();
-    
-    if (this.input.moveY > 0) {
-      this.body.applyImpulse({
-        x: forwardDir.x * speed * delta,
-        y: 0,
-        z: forwardDir.z * speed * delta
-      }, true);
-    }
-    if (this.input.moveY < 0) {
-      this.body.applyImpulse({
-        x: forwardDir.x * -speed * 0.6 * delta,
-        y: 0,
-        z: forwardDir.z * -speed * 0.6 * delta
-      }, true);
-    }
-    if (this.input.moveX < 0) {
-      this.body.applyImpulse({
-        x: rightDir.x * -speed * 0.8 * delta,
-        y: 0,
-        z: rightDir.z * -speed * 0.8 * delta
-      }, true);
-    }
-    if (this.input.moveX > 0) {
-      this.body.applyImpulse({
-        x: rightDir.x * speed * 0.8 * delta,
-        y: 0,
-        z: rightDir.z * speed * 0.8 * delta
-      }, true);
-    }
-    
-    // Jump
-    if (this.input.jump && this.isGrounded) {
-      this.body.applyImpulse(
-        { x: 0, y: this.config.jumpForce, z: 0 },
-        true
-      );
-    }
-  }
-  
-  private getCameraForward(): THREE.Vector3 {
-    // This will be injected from the React component
-    // For now, return default forward
-    return new THREE.Vector3(0, 0, -1);
-  }
-  
-  private getCameraRight(): THREE.Vector3 {
-    return new THREE.Vector3(1, 0, 0);
-  }
+  /**
+   * Unused: the runner's movement is RunnerPhysicsStep, and nothing calls
+   * `update()` on a RunnerVehicle — it only tracks collisions and material.
+   * (The old body pushed camera-relative impulses along a hard-coded −z stub.)
+   */
+  protected applyPhysics(_delta: number): void {}
 }
 
 // =============================================================================

@@ -8,6 +8,10 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { isAutumnLike } from '../../configs/biomes';
 import type { BiomeScopedDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xe7121542);
 
 const mergeCompatibleGeometries = (geometries: THREE.BufferGeometry[]): THREE.BufferGeometry => {
     if (!geometries.length) return new THREE.BufferGeometry();
@@ -76,7 +80,7 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: BiomeScope
 
              // Rotate around center
              // Spread them out in a circle
-             const angle = (i / frondCount) * Math.PI * 2 + (Math.random() * 0.5);
+             const angle = (i / frondCount) * Math.PI * 2 + (random() * 0.5);
              geo.rotateY(angle);
 
              // Tilt out slightly from the base
@@ -130,16 +134,16 @@ export default function Ferns({ transforms, biome = 'canyonSummer' }: BiomeScope
             // Autumn: Brown/Orange variations
             let baseColor;
             if (isAutumnLike(biome)) {
-                const isGreen = Math.random() > 0.8; // Some still green
+                const isGreen = random() > 0.8; // Some still green
                 baseColor = isGreen ? new THREE.Color('#2d5a27') : new THREE.Color('#8b4513');
-                if (!isGreen) baseColor.lerp(new THREE.Color('#d2691e'), Math.random());
+                if (!isGreen) baseColor.lerp(new THREE.Color('#d2691e'), random());
             } else {
                 baseColor = new THREE.Color('#2d5a27');
                 // Mix in some lighter greens
-                baseColor.lerp(new THREE.Color('#4a7023'), Math.random() * 0.5);
+                baseColor.lerp(new THREE.Color('#4a7023'), random() * 0.5);
             }
 
-            const shade = 0.8 + Math.random() * 0.4;
+            const shade = 0.8 + random() * 0.4;
             const color = baseColor.clone().multiplyScalar(shade);
 
             return {

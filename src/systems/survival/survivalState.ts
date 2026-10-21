@@ -6,6 +6,7 @@
 
 import type { BiomeId } from '../../configs/biomes';
 import type { LoadoutDefinition } from './loadout';
+import { clamp01 } from '../../math/scalar';
 
 /** Normalized comfort: 1 = warm/optimal, 0 = hypothermic. */
 export interface SurvivalState {
@@ -81,10 +82,6 @@ const PADDLE_COST_WETNESS = 0.2;
 const PADDLE_COST_EXPOSURE = 0.35;
 const PADDLE_REGEN_WETNESS = 0.18;
 const PADDLE_REGEN_EXPOSURE = 0.4;
-
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
 
 function sunDryingFactor(launchHour: number): number {
   const hour = ((launchHour % 24) + 24) % 24;

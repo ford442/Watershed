@@ -18,6 +18,7 @@
 
 import { WATER_SHADER } from '../../constants/game';
 import { FALLBACK_FLOW_DIR, SWE_DRY_DEPTH } from './sampleSWEFlow';
+import { smoothstep } from '../../math/scalar';
 
 export const SWE_FLOW_CHANNELS = 4;
 
@@ -30,12 +31,6 @@ export interface SweSurfaceGrid {
   height: number;
   /** Cell size in metres (`SweSim.dx`). */
   dx: number;
-}
-
-/** GLSL `smoothstep`: edge0 < edge1 assumed; result clamped to [0, 1]. */
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -88,8 +83,8 @@ export interface SweStreakAxis {
 export function sweStreakAxis(u: number, w: number, depth: number): SweStreakAxis {
   const speed = Math.hypot(u, w);
   const blend =
-    smoothstep(WATER_SHADER.SWE_STREAK_MIN_SPEED, WATER_SHADER.SWE_STREAK_FULL_SPEED, speed) *
-    smoothstep(0, WATER_SHADER.SWE_WET_BAND, depth);
+    smoothstep(speed, WATER_SHADER.SWE_STREAK_MIN_SPEED, WATER_SHADER.SWE_STREAK_FULL_SPEED) *
+    smoothstep(depth, 0, WATER_SHADER.SWE_WET_BAND);
   if (blend <= 0 || speed < 1e-8) {
     return { dirX: FALLBACK_FLOW_DIR.x, dirZ: FALLBACK_FLOW_DIR.z, blend: 0 };
   }
@@ -113,9 +108,9 @@ export interface SweFoamWeight {
 
 /** Foam weight from a texel's `depth` and `div`. */
 export function sweFoamWeight(depth: number, div: number): SweFoamWeight {
-  const bank = 1 - smoothstep(0, WATER_SHADER.SWE_WET_BAND, depth);
+  const bank = 1 - smoothstep(depth, 0, WATER_SHADER.SWE_WET_BAND);
   const wet = depth > SWE_DRY_DEPTH ? 1 : 0;
-  const jump = smoothstep(WATER_SHADER.SWE_JUMP_DIV_LO, WATER_SHADER.SWE_JUMP_DIV_HI, div) * wet;
+  const jump = smoothstep(div, WATER_SHADER.SWE_JUMP_DIV_LO, WATER_SHADER.SWE_JUMP_DIV_HI) * wet;
   const total = Math.min(1, Math.max(0, bank + jump * WATER_SHADER.SWE_JUMP_FOAM_INTENSITY));
   return { bank, jump, total };
 }

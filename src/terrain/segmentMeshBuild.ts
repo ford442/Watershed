@@ -30,18 +30,17 @@ import {
 } from './terrainTile';
 import {
   CatmullRomPath,
-  clamp,
   computeVertexNormals,
   copyRgb,
   lerpRgb,
   planeGrid,
   rgb,
   scaleRgb,
-  smoothstep,
   type CurveType,
   type Rgb,
   type Vec3,
 } from './meshMath';
+import { clamp, smoothstep } from '../math/scalar';
 
 /** What the builders need of a path — THREE.CatmullRomCurve3 and meshMath's CatmullRomPath both are one. */
 export interface SegmentPath {

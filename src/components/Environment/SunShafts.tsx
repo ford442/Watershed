@@ -1,14 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/biome/BiomeSystem';
 import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 
-import type { BiomeDecorationTransform, WeatherAwareDecorationProps, WeatherUpdateEvent } from './types';
+import type { BiomeDecorationTransform, WeatherAwareDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSunShaftMaterial, createSunShaftMoteMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
+import { useGameStore } from '../../systems/GameState';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xdd9ac591);
 
 const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();
@@ -45,9 +50,9 @@ const buildDustMotes = (transforms: BiomeDecorationTransform[]): THREE.BufferGeo
 
     for (let m = 0; m < MOTES_PER_SHAFT; m++) {
       const idx = s * MOTES_PER_SHAFT + m;
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * 4; // within the wide base radius (cylinder bottom radius 6)
-      const localY = (Math.random() - 0.5) * 30; // cylinder spans -15..15 locally
+      const a = random() * Math.PI * 2;
+      const r = random() * 4; // within the wide base radius (cylinder bottom radius 6)
+      const localY = (random() - 0.5) * 30; // cylinder spans -15..15 locally
 
       local.set(Math.cos(a) * r, localY, Math.sin(a) * r);
       world.copy(local).applyMatrix4(matrix);
@@ -57,9 +62,9 @@ const buildDustMotes = (transforms: BiomeDecorationTransform[]): THREE.BufferGeo
       basePositions[idx * 3 + 2] = world.z;
 
       heights[idx] = shaftHeight;
-      radii[idx] = 0.15 + Math.random() * 0.35;
-      phases[idx] = Math.random() * Math.PI * 2;
-      speeds[idx] = 0.3 + Math.random() * 0.6;
+      radii[idx] = 0.15 + random() * 0.35;
+      phases[idx] = random() * Math.PI * 2;
+      speeds[idx] = 0.3 + random() * 0.6;
     }
   }
 
@@ -85,16 +90,8 @@ export default function SunShafts({
   const { sunWorldPosition } = useSunPosition();
   const prevCamPosRef = useRef(new THREE.Vector3());
   const streakStrengthRef = useRef(0);
-  const [weatherType, setWeatherType] = useState('clear');
+  const weatherType = useGameStore((s) => s.weather.type);
 
-  useEffect(() => {
-    const onWeatherUpdate = (event: WeatherUpdateEvent) => {
-      const incoming = event?.detail?.type;
-      if (typeof incoming === 'string') setWeatherType(incoming);
-    };
-    window.addEventListener('weather-update', onWeatherUpdate as EventListener);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate as EventListener);
-  }, []);
 
   // Geometry: Cone/Cylinder representing the light beam
   const geometry = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useState, type RefObject } from 'react';
+import { useMemo, useRef, useEffect, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -33,6 +33,7 @@ import { getLoadedNodePost } from './postProcessing/nodePostLoader';
 import { getComfort } from '../systems/settings/comfortRuntime';
 import { smaaPassModule, ssaoPassModule } from './postProcessing/composerPassModules';
 import type { NodePostPipeline, NodePostStructure } from './postProcessing/nodePostPipeline';
+import { gameEvents } from '../systems/events/GameEvents';
 
 const CHROMATIC_ABERRATION_SHADER = {
   name: 'ChromaticAberrationShader',
@@ -484,29 +485,18 @@ export function PostProcessingPipeline({
 
   const smoothed = useRef(createPostSmoothedState(tuning));
   const boostRef = useRef({ active: 0, intensity: 0 });
-  const [weatherType, setWeatherType] = useState('clear');
+  const weatherType = useGameStore((s) => s.weather.type);
 
   // Listen for boost events
   useEffect(() => {
-    const onBoost = (e: Event) => {
-      const detail = (e as CustomEvent<{ duration?: number; intensity?: number }>).detail || {};
-      boostRef.current.active = detail.duration ?? 0.8;
-      boostRef.current.intensity = detail.intensity ?? 1.5;
-    };
-    window.addEventListener('boost-triggered', onBoost);
-    return () => window.removeEventListener('boost-triggered', onBoost);
+    return gameEvents.on('boost-triggered', ({ duration, intensity }) => {
+      boostRef.current.active = duration;
+      boostRef.current.intensity = intensity;
+    });
   }, []);
 
   // Listen for weather changes — desaturates and softens the scene under
   // overcast/storm, and tightens the vignette for stormy drama.
-  useEffect(() => {
-    const onWeatherUpdate = (e: Event) => {
-      const incoming = (e as CustomEvent<{ type?: string }>)?.detail?.type;
-      if (typeof incoming === 'string') setWeatherType(incoming);
-    };
-    window.addEventListener('weather-update', onWeatherUpdate);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate);
-  }, []);
 
   // Initial node-graph structure only; later changes rebuild in place via
   // setStructure, so they must not recreate the driver.

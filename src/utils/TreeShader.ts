@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WATER_LEVEL } from '../constants/game';
 
 export interface TreeShaderOptions {
   windStrength?: number;
@@ -36,7 +37,7 @@ export function extendTreeMaterial(material: TreeMaterial | null | undefined, op
         windSpeed = 1.6,
         sssColor = '#ffe8b0',
         sssStrength = 0.35,
-        waterLevel = 0.5,
+        waterLevel = WATER_LEVEL,
         rustleRadius = 6.0,
         rustleStrength = 2.5,
     } = options;

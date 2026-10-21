@@ -6,16 +6,15 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   CatmullRomPath,
-  clamp,
   computeVertexNormals,
   copyRgb,
   lerpRgb,
   planeGrid,
   rgb,
   scaleRgb,
-  smoothstep,
   type CurveType,
 } from '../meshMath';
+import { clamp, smoothstep } from '../../math/scalar';
 
 /** Deterministic LCG. */
 function rng(seed: number): () => number {

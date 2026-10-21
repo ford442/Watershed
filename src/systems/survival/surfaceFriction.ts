@@ -19,6 +19,8 @@
  * "wire slipperiness into Rapier" TODO in MapSystem.types.ts / LEVEL_DESIGN.md.
  */
 
+import { clamp01 } from '../../math/scalar';
+
 /** Friction of a fully frictionless (slipperiness = 1) surface. Never exactly 0 —
  *  Rapier bodies with zero friction can slide forever and jitter against walls. */
 export const ICE_MIN_FRICTION = 0.04;
@@ -40,11 +42,6 @@ export interface SegmentFrictionInput {
   slipperiness?: number;
   /** FlowForecast segment state ('Normal' | 'HighFlow' | 'Flooded' | 'WashedOut'). */
   segmentState?: string;
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(1, Math.max(0, value));
 }
 
 /** Flood-state override for this segment, or null when the state is normal. */

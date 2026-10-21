@@ -7,6 +7,10 @@ import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x15dc8719);
 
 const STALK_GREEN = new THREE.Color('#3f6b34');
 const STALK_TIP = new THREE.Color('#7da84a');
@@ -67,15 +71,15 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
         const count = 5; // Reeds per clump
 
         for (let i = 0; i < count; i++) {
-            const offsetX = (Math.random() - 0.5) * 0.6;
-            const offsetZ = (Math.random() - 0.5) * 0.6;
-            const tiltX = (Math.random() - 0.5) * 0.2;
-            const tiltZ = (Math.random() - 0.5) * 0.2;
-            const isBroken = Math.random() < 0.15;
+            const offsetX = (random() - 0.5) * 0.6;
+            const offsetZ = (random() - 0.5) * 0.6;
+            const tiltX = (random() - 0.5) * 0.2;
+            const tiltZ = (random() - 0.5) * 0.2;
+            const isBroken = random() < 0.15;
 
             if (isBroken) {
                 // Broken/snapped stalk - short, jaggedly tilted, frayed tip, no cattail head
-                const height = 0.45 + Math.random() * 0.35;
+                const height = 0.45 + random() * 0.35;
                 const stalkGeo = new THREE.CylinderGeometry(0.018, 0.022, height, 4);
                 stalkGeo.translate(0, height / 2, 0);
                 stalkGeo.rotateX(tiltX * 2.2 + 0.35);
@@ -86,7 +90,7 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
                 continue;
             }
 
-            const height = 1.2 + Math.random() * 0.8;
+            const height = 1.2 + random() * 0.8;
 
             // Stalk
             const stalkRadius = 0.02;
@@ -99,7 +103,7 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
             geos.push(stalkGeo);
 
             // Cattail head - two-part silhouette: plump cylindrical body + tapered velvet tip
-            if (Math.random() > 0.4) {
+            if (random() > 0.4) {
                 const bodyHeight = 0.32;
                 const bodyRadius = 0.065;
                 const bodyGeo = new THREE.CylinderGeometry(bodyRadius * 0.85, bodyRadius, bodyHeight, 6);
@@ -154,8 +158,8 @@ export default function Reeds({ transforms }: BiomeDecorationProps) {
   const instances = useMemo(() => {
       if (!transforms) return [];
       return transforms.map((t, i) => {
-          const isDry = Math.random() > 0.7;
-          const shade = (isDry ? 0.75 : 0.9) + Math.random() * 0.3;
+          const isDry = random() > 0.7;
+          const shade = (isDry ? 0.75 : 0.9) + random() * 0.3;
 
           return {
               key: `reeds-${i}`,

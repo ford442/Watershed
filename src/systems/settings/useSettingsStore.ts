@@ -37,6 +37,7 @@ import { FOV_DEFAULT, FOV_MAX, FOV_MIN, type ReducedMotionPref } from './comfort
 
 /** Persisted shape version. v2 (#486 D) adds the comfort / haptics / gamepad / touch fields. */
 export const SETTINGS_VERSION = 2;
+import { clamp } from '../../math/scalar';
 
 // ---------------------------------------------------------------------------
 // State + actions
@@ -125,8 +126,8 @@ export interface SettingsActions {
 
 export type SettingsStore = SettingsState & SettingsActions;
 
-const clamp = (v: number, lo: number, hi: number) =>
-  Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : lo));
+/** A non-finite stored value reads as the floor, never NaN. */
+const clampSetting = (v: number, lo: number, hi: number) => clamp(Number.isFinite(v) ? v : lo, lo, hi);
 
 /** A persisted number clamped to [lo, hi], or the default when absent / not a number. */
 const num = (v: unknown, lo: number, hi: number, fallback: number) =>
@@ -251,14 +252,14 @@ export function migrateSettings(
 
   return {
     masterVolume:
-      typeof p.masterVolume === 'number' ? clamp(p.masterVolume, 0, 1) : base.masterVolume,
+      typeof p.masterVolume === 'number' ? clampSetting(p.masterVolume, 0, 1) : base.masterVolume,
     musicVolume:
-      typeof p.musicVolume === 'number' ? clamp(p.musicVolume, 0, 1) : base.musicVolume,
+      typeof p.musicVolume === 'number' ? clampSetting(p.musicVolume, 0, 1) : base.musicVolume,
     sfxVolume:
-      typeof p.sfxVolume === 'number' ? clamp(p.sfxVolume, 0, 1) : base.sfxVolume,
+      typeof p.sfxVolume === 'number' ? clampSetting(p.sfxVolume, 0, 1) : base.sfxVolume,
     mouseSensitivity:
       typeof p.mouseSensitivity === 'number'
-        ? clamp(p.mouseSensitivity, 0.1, 2.0)
+        ? clampSetting(p.mouseSensitivity, 0.1, 2.0)
         : base.mouseSensitivity,
     invertY: typeof p.invertY === 'boolean' ? p.invertY : base.invertY,
     quality:
@@ -308,9 +309,9 @@ export const useSettingsStore = create<SettingsStore>()(
       padBindings: { ...DEFAULT_PAD_BINDINGS },
 
       setVolume: (channel, value) =>
-        set({ [VOLUME_KEY[channel]]: clamp(value, 0, 1) } as Partial<SettingsState>),
+        set({ [VOLUME_KEY[channel]]: clampSetting(value, 0, 1) } as Partial<SettingsState>),
 
-      setSensitivity: (value) => set({ mouseSensitivity: clamp(value, 0.1, 2.0) }),
+      setSensitivity: (value) => set({ mouseSensitivity: clampSetting(value, 0.1, 2.0) }),
 
       setInvertY: (value) => set({ invertY: value }),
 

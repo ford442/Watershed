@@ -1,12 +1,13 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/biome/BiomeSystem';
-import type { MistPlacement, MistProps, WeatherUpdateEvent } from './types';
+import type { MistPlacement, MistProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createMistMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { useGameStore } from '../../systems/GameState';
 
 const DUMMY_OBJ = new THREE.Object3D();
 
@@ -19,16 +20,8 @@ export default function Mist({
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const { camera } = useThree();
   const { timeOfDay } = useBiome();
-  const [weatherType, setWeatherType] = useState('clear');
+  const weatherType = useGameStore((s) => s.weather.type);
 
-  useEffect(() => {
-    const onWeatherUpdate = (event: WeatherUpdateEvent) => {
-      const incoming = event?.detail?.type;
-      if (typeof incoming === 'string') setWeatherType(incoming);
-    };
-    window.addEventListener('weather-update', onWeatherUpdate as EventListener);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate as EventListener);
-  }, []);
 
   const geometry = useMemo(() => {
     const geo = new THREE.PlaneGeometry(1, 1);
