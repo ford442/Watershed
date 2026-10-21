@@ -538,22 +538,28 @@ async function attemptTouch(shot) {
     const sy = Math.round(height * 0.6);
     await cdpTouch(client, 'touchStart', sx, sy);
     await cdpTouch(client, 'touchMove', sx, sy + 70);
-    const moved = await page
+    // The hub must see the thumb: device 'touch', stick pulled back. This is the
+    // gate. SwiftShader runs a handful of sim frames per wall minute, so how far
+    // the runner has travelled by now says more about the rasteriser than the
+    // stick (the unit tests cover stick -> frame -> controls); distance is logged.
+    const seen = await page
       .waitForFunction(
-        (b) => {
-          const p = window.__watershedScreenshot.getScriptedTelemetry().pos;
-          return !!p && Math.hypot(p.x - b.x, p.z - b.z) > 1.5;
+        () => {
+          const i = window.__watershedScreenshot.getScriptedTelemetry().input;
+          return i.source === 'touch' && i.moveY < -0.5;
         },
-        { timeout: 40_000, polling: 250 },
-        before,
+        { timeout: 60_000, polling: 250 },
       )
       .then(() => true)
       .catch(() => false);
+    const input = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().input);
+    await sleep(shot.settleMs ?? 4_000);
     const after = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().pos);
     const knob = await page.evaluate(() => {
       const base = document.querySelector('.touch-stick-base');
       return base ? getComputedStyle(base).opacity : null;
     });
+    const moved = seen;
     const outPath = path.join(OUT_DIR, `${shotLabel(shot)}.png`);
     const capture = await capturePng(page, outPath);
     await cdpTouch(client, 'touchEnd', sx, sy + 70);
@@ -561,13 +567,13 @@ async function attemptTouch(shot) {
     if (!moved) {
       return {
         ok: false,
-        reason: `the stick did not move the runner (before ${JSON.stringify(before)}, after ${JSON.stringify(after)})`,
+        reason: `the hub never saw the touch stick (last input ${JSON.stringify(input)})`,
         pageErrors,
         softSkip: true,
       };
     }
     console.log(
-      `  stick moved the runner ${Math.hypot(after.x - before.x, after.z - before.z).toFixed(2)} m; stick base opacity ${knob}`,
+      `  hub saw touch ${JSON.stringify(input)}; runner moved ${Math.hypot(after.x - before.x, after.z - before.z).toFixed(2)} m; stick base opacity ${knob}`,
     );
     return {
       ok: capture.bytes >= MIN_GOOD_BYTES,

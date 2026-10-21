@@ -32,6 +32,8 @@ interface Window {
       ghostElapsedMs: number;
       hubTickMeanMs: number;
       hubTicks: number;
+      /** The hub's merged frame as of the last tick (#486 C smoke: which device, how hard). */
+      input: { source: string; moveX: number; moveY: number; lookDX: number; lookDY: number; buttons: number; frameIdx: number };
     };
   };
   gpuComputeAvailable?: boolean;
