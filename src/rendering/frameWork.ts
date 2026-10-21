@@ -84,6 +84,29 @@ export interface FrameWindowOptions {
   missedFrameMs: number;
 }
 
+/** Frames per adaptive window when the display keeps up. */
+export const ADAPTIVE_WINDOW_FRAMES = 60;
+
+/** Wall-clock span a window may not outlast — the "tick ≈ a second" the valve's fuses assume. */
+export const ADAPTIVE_WINDOW_MAX_MS = 1000;
+
+/** Fewest frames a time-closed window may hold, so one hitch cannot decide a tick. */
+export const ADAPTIVE_WINDOW_MIN_FRAMES = 10;
+
+/**
+ * True once the adaptive window should be summarized: 60 frames, or ~1 s of
+ * frame time (at least `ADAPTIVE_WINDOW_MIN_FRAMES`) — whichever comes first.
+ * A pure frame count made a tick last 60 s at 1 fps, so software GL (Safe
+ * Graphics Mode) never got the render-scale valve in time to matter.
+ */
+export function isAdaptiveWindowFull(rafMs: readonly number[]): boolean {
+  if (rafMs.length >= ADAPTIVE_WINDOW_FRAMES) return true;
+  if (rafMs.length < ADAPTIVE_WINDOW_MIN_FRAMES) return false;
+  let span = 0;
+  for (let i = 0; i < rafMs.length; i += 1) span += rafMs[i];
+  return span >= ADAPTIVE_WINDOW_MAX_MS;
+}
+
 /**
  * One adaptive window (≈60 frames).
  *   gpu  GPU timer present: mean of max(gpuMs, cpuWorkMs).

@@ -8,8 +8,32 @@ import GhostFairnessBanner from '../components/GhostFairnessBanner';
 import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoadStatus';
 import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
 import { useGameStore } from '../systems/GameState';
-import { getActiveMap } from '../maps/registry';
+import { getRunMap } from '../systems/journey/runSession';
 import { parseHydroEvents } from '../systems/water/hydroEvents';
+
+/**
+ * Pin drei's <Html> to the top-left of the canvas.
+ *
+ * By default drei translates the Html root to the screen projection of its
+ * parent object every frame, so the HUD drifted with the camera (the forecast
+ * panel sat ~140 px low), and hid it outright whenever that object was behind
+ * the camera. `fullscreen` offsets the wrapper by -size/2, so a root at
+ * size/2 puts the wrapper exactly over the canvas.
+ */
+const screenOrigin = (_obj: unknown, _camera: unknown, size: { width: number; height: number }) => [
+  size.width / 2,
+  size.height / 2,
+];
+
+/** drei's default hides the Html while its parent is behind the camera; a HUD never hides. */
+const keepHudVisible = () => {};
+
+/**
+ * `transform` on the wrapper makes it the containing block for the HUD's
+ * `position: fixed` elements. Without it they anchor to drei's zero-size root
+ * and the right- and bottom-anchored ones land mid-screen.
+ */
+const HUD_WRAPPER_STYLE = { pointerEvents: 'none', transform: 'translateZ(0)' } as const;
 
 interface ExperienceUIProps {
   enabled: boolean;
@@ -69,7 +93,7 @@ export default function ExperienceUI({
   // launch hour against the other scouting hour (#397).
   const hydroEvents = useMemo(() => {
     try {
-      return parseHydroEvents(getActiveMap().levelData.hydroEvents);
+      return parseHydroEvents(getRunMap().levelData.hydroEvents);
     } catch {
       return [];
     }
@@ -79,7 +103,13 @@ export default function ExperienceUI({
   if (!enabled) return null;
 
   return (
-    <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
+    <Html
+      fullscreen
+      zIndexRange={[100, 0]}
+      calculatePosition={screenOrigin}
+      onOcclude={keepHudVisible}
+      style={HUD_WRAPPER_STYLE}
+    >
       {!cleanTest && (
         <ForecastHUD
           samples={forecastSamples}

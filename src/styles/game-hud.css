@@ -1,0 +1,386 @@
+/*
+ * In-run HUD (GameHUD.tsx) and its wipeout / journey-complete overlays.
+ *
+ * The project has no Tailwind (never a direct dependency, no config), so the
+ * utility classes this component used to carry produced no CSS at all: the
+ * speed / distance / score panel rendered as unstyled static text stacked in
+ * the top-left corner, under the forecast panel. Everything the HUD needs is
+ * spelled out here instead.
+ */
+
+:root {
+  --hud-ink: #f5f1e8;
+  --hud-dim: rgba(255, 255, 255, 0.5);
+  --hud-faint: rgba(255, 255, 255, 0.4);
+  --hud-good: #34d399;
+  --hud-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Top-centre: the left corner belongs to the flow-forecast panel. */
+.hud-biome {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font: 0.75rem/1.4 var(--hud-mono);
+  letter-spacing: 0.12em;
+  color: var(--hud-dim);
+  pointer-events: none;
+}
+
+.hud-readout {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  min-width: 220px;
+  padding: 0.75rem 1rem;
+  text-align: right;
+  font-family: var(--hud-mono);
+  color: var(--hud-ink);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.hud-readout__speed {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hud-readout__distance {
+  margin-top: 0.25rem;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.hud-readout__label {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+
+.hud-readout__score {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hud-readout__unit {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.hud-readout__speed .hud-readout__unit {
+  font-size: 0.875rem;
+}
+
+.hud-multiplier,
+.hud-combo {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--hud-mono);
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.hud-multiplier {
+  top: 4.5rem;
+  letter-spacing: 0.05em;
+  transition: opacity 0.2s;
+}
+
+.hud-combo {
+  top: 8rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hud-best {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  font: 0.75rem/1.4 var(--hud-mono);
+  color: var(--hud-faint);
+  pointer-events: none;
+}
+
+.hud-best strong {
+  font-weight: 400;
+  color: var(--hud-good);
+}
+
+.hud-best__top {
+  margin-left: 1rem;
+  color: var(--hud-dim);
+}
+
+.hud-native {
+  position: fixed;
+  right: 1rem;
+  bottom: 3rem;
+  text-align: right;
+  font: 0.625rem/1.4 var(--hud-mono);
+  color: var(--hud-faint);
+  pointer-events: none;
+}
+
+.hud-native__detail {
+  margin-left: 0.5rem;
+  color: rgba(186, 230, 253, 0.6);
+}
+
+/* ── Wipeout / journey-complete overlays ─────────────────────────────────── */
+
+.hud-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  font-family: var(--hud-mono);
+  color: #fff;
+}
+
+.hud-overlay__card {
+  box-sizing: border-box;
+  max-width: 48rem;
+  max-height: 100%;
+  padding: 1rem;
+  text-align: center;
+}
+
+.hud-overlay__title {
+  margin-bottom: 1.5rem;
+  font-size: clamp(3rem, 9vw, 6rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.hud-overlay__title--wipeout {
+  color: #ef4444;
+}
+
+.hud-overlay__title--complete {
+  color: #fcd34d;
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+}
+
+.hud-overlay__map {
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.hud-overlay__score {
+  margin-bottom: 0.5rem;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 700;
+}
+
+.hud-overlay__line {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  color: #a1a1aa;
+}
+
+.hud-overlay__line--dim {
+  font-size: 1rem;
+  color: #71717a;
+}
+
+.hud-overlay__new-best {
+  font-weight: 700;
+  color: #34d399;
+}
+
+.hud-overlay__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.25rem 2rem;
+  max-width: 32rem;
+  margin: 1rem auto 0.5rem;
+  text-align: left;
+  font-size: 0.95rem;
+  color: #a1a1aa;
+}
+
+.hud-overlay__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+.hud-overlay__hint {
+  margin-top: 2rem;
+  font-size: 0.875rem;
+  color: #52525b;
+}
+
+.hud-val--good { color: #34d399; }
+.hud-val--sky { color: #7dd3fc; }
+.hud-val--amber { color: #fde68a; }
+.hud-val--white { color: #fff; }
+
+.hud-btn {
+  padding: 1.1rem 2.5rem;
+  font: 900 1.4rem/1 var(--hud-mono);
+  color: #000;
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s, color 0.15s;
+}
+
+.hud-btn:hover {
+  background: #34d399;
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.hud-btn--primary {
+  padding-inline: 3rem;
+  font-size: 1.6rem;
+}
+
+.hud-btn--continue {
+  background: #fcd34d;
+}
+
+.hud-btn--continue:hover {
+  background: #7dd3fc;
+  color: #000;
+}
+
+.hud-btn--ghost {
+  color: rgba(255, 255, 255, 0.8);
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+}
+
+.hud-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ── Movement readout (F3 / ?debug=1) ────────────────────────────────────── */
+
+/* Sits above the sprint / wet / exposure stack (bottom-left). */
+.move-readout {
+  position: fixed;
+  left: 1rem;
+  bottom: 7.5rem;
+  z-index: 45;
+  width: 15.5rem;
+  box-sizing: border-box;
+  padding: 0.6rem 0.8rem;
+  font: 0.75rem/1.5 var(--hud-mono);
+  color: var(--hud-ink);
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
+
+.move-readout__title {
+  margin-bottom: 0.25rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  color: var(--hud-dim);
+}
+
+.move-readout__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.move-readout__row span:first-child {
+  color: var(--hud-dim);
+}
+
+.move-readout__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.move-readout__key {
+  min-width: 1.6rem;
+  padding: 0.1rem 0.35rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.25rem;
+}
+
+.move-readout__key--down {
+  color: #000;
+  background: #fbbf24;
+  border-color: #fbbf24;
+}
+
+@media (max-width: 640px) {
+  .hud-readout {
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .hud-readout__speed {
+    font-size: 1.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .hud-biome,
+  .hud-readout {
+    top: 1.5rem;
+  }
+
+  .hud-readout {
+    right: 1.5rem;
+  }
+
+  .hud-readout__speed {
+    font-size: 1.875rem;
+  }
+
+  .hud-best {
+    right: 1.5rem;
+    bottom: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .hud-native {
+    right: 1.5rem;
+    bottom: 3.5rem;
+    font-size: 0.75rem;
+  }
+}

@@ -15,6 +15,7 @@ import {
   parseUrlMapId,
   resolveMapId,
 } from './campaign';
+import { ACTIVE_MAP_ID } from './registry';
 
 describe('resolveMapId', () => {
   it('prefers explicit selection over URL and last played', () => {
@@ -117,6 +118,12 @@ describe('campaign menu helpers', () => {
     expect(maps.find((m) => m.id === 'delta')?.estimatedDurationSec).toBe(360);
     expect(maps.find((m) => m.id === 'delta')?.difficulty).toBe('intermediate');
     expect(formatDuration(240)).toBe('~4 min');
+  });
+
+  it('defaults a fresh player (no URL, no last played) to an unlocked map', () => {
+    const fresh = resolveMapId();
+    expect(fresh).toBe(ACTIVE_MAP_ID);
+    expect(isMapUnlocked(fresh, [])).toBe(true);
   });
 
   it('soft-locks maps until prerequisites are completed', () => {

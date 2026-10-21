@@ -193,6 +193,8 @@ Pure `ShaderMaterial`. Two-layer fbm foam, Fresnel highlight, depth gradient, cu
 | ESC | Release pointer lock (pause) |
 | Enter | Start / Resume |
 | R | Open restart confirmation |
+| Arrow keys | Same as WASD (movement alternates, not rebindable) |
+| F3 | Movement readout: position, speed, live key/mouse input (`?debug=1` opens it at boot) |
 
 ---
 

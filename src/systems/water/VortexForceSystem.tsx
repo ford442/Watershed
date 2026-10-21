@@ -23,8 +23,7 @@ import type { VortexConfig } from '../map/MapSystem';
 import { getAudioManager } from '../audio/AudioSystem';
 import { hydroVortexSegments, parseHydroEvents } from './hydroEvents';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
-import { getActiveMap } from '../../maps/registry';
-import { getActiveLaunchHour } from '../journey/runSession';
+import { getActiveLaunchHour, getRunMap } from '../journey/runSession';
 
 interface VortexForceSystemProps {
   targetRef: React.RefObject<any>;
@@ -65,7 +64,7 @@ export default function VortexForceSystem({
   // + hour pair the run session already fixes at start.
   const liveHydroVortices = useMemo(() => {
     try {
-      const events = parseHydroEvents(getActiveMap().levelData.hydroEvents);
+      const events = parseHydroEvents(getRunMap().levelData.hydroEvents);
       return hydroVortexSegments(events, getActiveLaunchHour());
     } catch {
       return new Set<number>();

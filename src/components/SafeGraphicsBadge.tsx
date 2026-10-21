@@ -45,7 +45,7 @@ export function writeSafeGraphicsAck(): void {
 const REASON_COPY: Record<GraphicsCapabilityReason, string> = {
   hardware: 'Full graphics.',
   caveat:
-    'This browser refused a hardware-accelerated WebGL context, so the game is running with antialiasing off and the default GPU adapter. Enabling hardware acceleration in your browser settings, or updating your graphics driver, usually restores full quality.',
+    'This browser refused a hardware-accelerated WebGL context, so the game is running with antialiasing off, the default GPU adapter, and Low quality for this session (raise it in Options). Enabling hardware acceleration in your browser settings, or updating your graphics driver, usually restores full quality.',
   'previous-boot-failed':
     'The previous start did not get a working WebGL context, so this one began in safe mode at Low quality. Raise it again in Options — one start that draws a frame clears the clamp on its own.',
   'capture-mode': 'Capture harness — graphics envelope pinned, not probed.',

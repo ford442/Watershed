@@ -41,7 +41,7 @@ import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
 const SCOUT_HOUR = 6;
 const DAM_HOUR = 14;
 
-/** Shipped maps the #397 gate covers — meander is the default ACTIVE_MAP_ID. */
+/** Shipped maps the #397 gate covers — glacial is the default ACTIVE_MAP_ID. */
 const GATED_MAPS = [
   { id: 'glacial', events: parseHydroEvents(glacial.hydroEvents) },
   { id: 'meander', events: parseHydroEvents(meander.hydroEvents) },

@@ -13,13 +13,16 @@ import {
   type ShelfTrigger,
 } from './shelfLaunch';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
+import { getMapDefinition } from '../../maps/registry';
 
 describe('shelfLaunch', () => {
   const spawnPoint: Vec3 = { x: 10, y: -40, z: -200 };
+  // The shelf is authored on meander; the run-map default is now the campaign's first map.
+  const meander = getMapDefinition('meander');
 
   describe('getSegment14LaunchShelfConfig', () => {
     it('returns the authored launchShelf config for segment 14', () => {
-      const config = getSegment14LaunchShelfConfig();
+      const config = getSegment14LaunchShelfConfig(meander);
       expect(config).not.toBeNull();
       expect(config?.rockRef.localX).toBe(-13);
       expect(config?.rockRef.localZ).toBe(-35);
@@ -33,7 +36,7 @@ describe('shelfLaunch', () => {
     });
 
     it('returns a trigger whose center is downstream of the spawn point', () => {
-      const trigger = computeShelfTrigger(spawnPoint);
+      const trigger = computeShelfTrigger(spawnPoint, meander);
       expect(trigger).not.toBeNull();
       // Waterfall tangent points downward and slightly forward (-Z).
       expect(trigger!.center.z).toBeLessThan(spawnPoint.z);
@@ -41,7 +44,7 @@ describe('shelfLaunch', () => {
     });
 
     it('uses positive half-extents', () => {
-      const trigger = computeShelfTrigger(spawnPoint)!;
+      const trigger = computeShelfTrigger(spawnPoint, meander)!;
       expect(trigger.halfWidth).toBeGreaterThan(0);
       expect(trigger.halfHeight).toBeGreaterThan(0);
       expect(trigger.halfLength).toBeGreaterThan(0);

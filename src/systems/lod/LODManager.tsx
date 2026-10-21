@@ -25,7 +25,7 @@ import {
   stepRenderScale,
 } from '../../rendering/renderScale';
 import { isVisualCaptureMode } from '../../rendering/rendererConfig';
-import { frameWorkMs, getFrameWork, summarizeFrameWindow } from '../../rendering/frameWork';
+import { frameWorkMs, getFrameWork, isAdaptiveWindowFull, summarizeFrameWindow } from '../../rendering/frameWork';
 import { spawnProfileEnabled } from '../../terrain/spawnTiming';
 
 export {
@@ -254,8 +254,8 @@ export const LODProvider: React.FC<LODProviderProps> = ({
       workTimes.current.shift();
     }
 
-    // Check every ~1 second (60 frames)
-    if (frameTimes.current.length >= 60) {
+    // Check every ~1 second: 60 frames, or ~1 s of frame time on a slow machine
+    if (isAdaptiveWindowFull(frameTimes.current)) {
       const frameWindow = summarizeFrameWindow(frameTimes.current, workTimes.current, {
         gpuTimed: getFrameWork().gpuMs !== null,
         missedFrameMs: frameTimeBudgetMs(targetFPS) * SLOW_FRAME_RATIO,

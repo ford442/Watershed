@@ -5,16 +5,26 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   advanceRunSessionMap,
+  getRunMap,
   getRunSession,
   initRunSession,
   resetRunSessionForTests,
   saveJourneyCheckpoint,
   tickRunSurvival,
 } from './runSession';
+import { ACTIVE_MAP_ID } from '../../maps/registry';
 
 describe('runSession journey mode', () => {
   beforeEach(() => {
     resetRunSessionForTests();
+  });
+
+  it('getRunMap follows the session map, and falls back to the code default with none', () => {
+    expect(getRunMap().id).toBe(ACTIVE_MAP_ID);
+    initRunSession({ mapId: 'meander' });
+    expect(getRunMap().id).toBe('meander');
+    advanceRunSessionMap('hydro');
+    expect(getRunMap().id).toBe('hydro');
   });
 
   it('builds a campaign stack when journeyMode is journey', () => {
