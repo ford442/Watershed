@@ -50,7 +50,6 @@ export function useRunnerPhysicsState() {
   const platformState = useRef({
     isOnPlatform: false,
     platformVelocity: new THREE.Vector3(0, 0, 0),
-    platformBody: null as any,
   });
 
   // Track last applied gravity multiplier to avoid redundant world.gravity mutations
@@ -85,8 +84,6 @@ export function useRunnerPhysicsState() {
     particles: collisionParticles,
   });
 
-  // Goal 2: Collision groups for i-frames
-  const defaultCollisionGroups = useRef(0);
   const fovRef = useRef(75);
   const debugState = useRef({
     recentImpulses: [] as DebugImpulse[],
@@ -130,9 +127,11 @@ export function useRunnerPhysicsState() {
     footstepState,
     prevFrame,
     collisionState,
-    defaultCollisionGroups,
     fovRef,
     debugState,
     debugSnapshotRef
   };
 }
+
+export type RunnerPhysicsState = ReturnType<typeof useRunnerPhysicsState>;
+export type RunnerJumpData = RunnerPhysicsState['jumpState']['current'];

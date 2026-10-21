@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, forwardRef } from 'react';
 import { useThree } from '@react-three/fiber';
-import { RigidBody } from '@react-three/rapier';
+import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
+import type { RapierBody } from '../physics/rapierTypes';
 import * as THREE from 'three';
 import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
@@ -28,8 +29,8 @@ import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
 
 const RaftVehicle = forwardRef((props, forwardedRef) => {
-  const bodyRef = useRef<any>(null);
-  const raftMaterialRef = useRef<any>(null);
+  const bodyRef = useRef<RapierRigidBody>(null);
+  const raftMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
   const { camera } = useThree();
   // Default-on: the worker runs unless the browser can't host it, the player
   // turned it off, or ?physicsWorker=0 is set. Read once per mount — switching
@@ -63,9 +64,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const shelfLaunchFiredRef = useRef(false);
   const shelfTriggerRef = useRef<ReturnType<typeof computeShelfTrigger>>(null);
 
-  React.useImperativeHandle(forwardedRef, () => bodyRef.current);
+  React.useImperativeHandle(forwardedRef, () => bodyRef.current as RapierRigidBody);
 
-  const syncBodyFromWorkerState = (body: any, workerState: WorkerRaftState | null) => {
+  const syncBodyFromWorkerState = (body: RapierBody | null, workerState: WorkerRaftState | null) => {
     if (!body || !workerState) return;
     const [px, py, pz] = workerState.position;
     const [rx, ry, rz, rw] = workerState.rotation;
@@ -77,7 +78,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     body.setAngvel({ x: avx, y: avy, z: avz }, true);
   };
 
-  const stepWorkerProxy = (body: any, delta: number, impulses: Vec3Tuple[] = []) => {
+  const stepWorkerProxy = (body: RapierBody, delta: number, impulses: Vec3Tuple[] = []) => {
     const proxy = workerProxyRef.current;
     if (!proxy || !workerReadyRef.current || workerStepPendingRef.current) return;
 
@@ -104,7 +105,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       if (diagnostics) {
         setPhysicsWorkerDiagnostics(diagnostics);
         if (typeof window !== 'undefined' && import.meta.env.DEV) {
-          (window as any).__watershedPhysicsWorker = {
+          window.__watershedPhysicsWorker = {
             simLinked: proxy.isSimLinked,
             waterForce: diagnostics,
             tickOrder: [

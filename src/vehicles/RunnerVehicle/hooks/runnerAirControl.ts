@@ -13,6 +13,8 @@ import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
 import { triggerCameraShake } from '../utils';
+import type { RapierBody } from '../../../physics/rapierTypes';
+import type { RunnerJumpData } from './useRunnerPhysics';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -112,11 +114,7 @@ export const isPositionSane = (
   Math.abs(pos.z) <= bounds.xzMax;
 
 export const holdBodyAtSpawn = (
-  body: {
-    setTranslation: Function;
-    setLinvel: Function;
-    setAngvel: Function;
-  },
+  body: Pick<RapierBody, 'setTranslation' | 'setLinvel' | 'setAngvel'>,
   target?: Vec3,
 ) => {
   const [sx, sy, sz] = PLAYER_SPAWN.position;
@@ -248,7 +246,7 @@ export function tickJumpStateMachine({
   applyImpulseWithDebugTracking,
   setLinvelSafe,
 }: {
-  js: any;
+  js: RunnerJumpData;
   dt: number;
   isGrounded: boolean;
   jump: boolean;

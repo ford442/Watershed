@@ -52,4 +52,8 @@ interface Window {
   } | null;
   gpuChoreBackend?: string | null;
   gpuChoreReason?: string | null;
+  /** Raft worker water-force diagnostics (dev builds). */
+  __watershedPhysicsWorker?: { simLinked: boolean; waterForce: unknown; tickOrder: string[] };
+  /** The runner's last physics step (PhysicsDebugOverlay, verification harnesses). */
+  __watershedPhysicsDebug?: import('./vehicles/RunnerVehicle/constants').PhysicsDebugSnapshot;
 }

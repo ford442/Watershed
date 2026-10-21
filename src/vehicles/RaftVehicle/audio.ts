@@ -30,26 +30,6 @@ export const playSplashSound = (intensity: number) => {
   audioManager.playSound('water_splash', volume, pitch);
 };
 
-export const playCollisionSound = (material: string, impactForce: number) => {
-  initAudio();
-  if (!audioManager) return;
-
-  let soundName = 'land_impact'; // Default hard collision
-  let volume = Math.min(1.0, impactForce / 15);
-  let pitch = 1.0;
-
-  if (material === 'debris') {
-    soundName = 'impact_wood';
-    volume = Math.min(0.8, impactForce / 10);
-    pitch = 0.8 + random() * 0.4;
-  } else if (material === 'flesh') {
-    soundName = 'land_soft';
-    volume = Math.min(0.6, impactForce / 10);
-  }
-
-  audioManager.playSound(soundName, volume, pitch);
-};
-
 export const playRaftTipSound = () => {
   initAudio();
   if (!audioManager) return;

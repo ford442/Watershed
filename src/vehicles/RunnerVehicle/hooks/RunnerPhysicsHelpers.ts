@@ -17,9 +17,17 @@ import { triggerCameraShake } from '../utils';
 import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/score/LaunchScoringSession';
 import { emitCollisionBurst } from '../../../components/CollisionParticles';
 import { gameEvents } from '../../../systems/events/GameEvents';
-
-type Vec3Like = { x: number; y: number; z: number };
-type RapierRayCtor = new (origin: Vec3Like, dir: Vec3Like) => { origin: Vec3Like; dir: Vec3Like };
+import {
+  bodyUserData,
+  type RapierBody,
+  type RapierNamespace,
+  type RapierRay,
+  type RapierRayHit,
+  type RapierWorldQueries,
+  type Vec3Like,
+} from '../../../physics/rapierTypes';
+import type { RunnerVehicle as RunnerVehicleClass } from '../../../systems/vehicle/VehicleSystem';
+import type { RunnerPhysicsState } from './useRunnerPhysics';
 
 // Per-step scratch (#503 B): these helpers run inside useFrame every physics
 // step, where `new` is invisible to @react-three/no-new-in-loop.
@@ -29,7 +37,7 @@ const _relativeVelocity = new THREE.Vector3();
 const _forwardDir = new THREE.Vector3();
 const _rightDir = new THREE.Vector3();
 const _sideDir = new THREE.Vector3();
-const scratchRays = new WeakMap<object, { origin: Vec3Like; dir: Vec3Like }>();
+const scratchRays = new WeakMap<object, RapierRay>();
 
 /**
  * The one reusable Rapier `Ray` per Rapier namespace, set to origin `o` and
@@ -37,10 +45,10 @@ const scratchRays = new WeakMap<object, { origin: Vec3Like; dir: Vec3Like }>();
  * cast with it immediately and never keep (or free) it.
  */
 export function scratchRay(
-  rapier: { Ray: RapierRayCtor },
+  rapier: Pick<RapierNamespace, 'Ray'>,
   ox: number, oy: number, oz: number,
   dx: number, dy: number, dz: number,
-): { origin: Vec3Like; dir: Vec3Like } {
+): RapierRay {
   let ray = scratchRays.get(rapier);
   if (!ray) {
     ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
@@ -55,12 +63,6 @@ export function scratchRay(
   return ray;
 }
 
-type RapierRayHit = {
-  timeOfImpact?: number | (() => number);
-  free?: () => void;
-  collider?: { parent?: () => { handle?: number; linvel?: () => { x: number; y: number; z: number }; free?: () => void } | null };
-};
-
 export function getRayTimeOfImpact(hit: RapierRayHit | null | undefined): number | null {
   if (!hit) return null;
   const toi = typeof hit.timeOfImpact === 'function' ? hit.timeOfImpact() : hit.timeOfImpact;
@@ -69,27 +71,8 @@ export function getRayTimeOfImpact(hit: RapierRayHit | null | undefined): number
 
 /** Downward ground ray that excludes the player's rigid body (avoids capsule self-hit at TOI 0). */
 export function castPlayerGroundRay(
-  world: {
-    castRay: (
-      ray: unknown,
-      maxToi: number,
-      solid: boolean,
-      filterFlags?: unknown,
-      filterGroups?: unknown,
-      filterExcludeCollider?: unknown,
-      filterExcludeRigidBody?: unknown,
-    ) => RapierRayHit | null;
-    castRayAndGetNormal?: (
-      ray: unknown,
-      maxToi: number,
-      solid: boolean,
-      filterFlags?: unknown,
-      filterGroups?: unknown,
-      filterExcludeCollider?: unknown,
-      filterExcludeRigidBody?: unknown,
-    ) => RapierRayHit | null;
-  },
-  rapier: { Ray: RapierRayCtor },
+  world: RapierWorldQueries,
+  rapier: Pick<RapierNamespace, 'Ray'>,
   body: unknown,
   origin: { x: number; y: number; z: number },
   maxDist: number = RAYCAST_DISTANCE,
@@ -111,10 +94,10 @@ export function calculateSlopeAngle({
   rapier,
   slopeState,
 }: {
-  body: any;
-  world: any;
-  rapier: any;
-  slopeState: any;
+  body: RapierBody;
+  world: RapierWorldQueries;
+  rapier: Pick<RapierNamespace, 'Ray'>;
+  slopeState: RunnerPhysicsState['slopeState'];
 }): number {
   if (!body || !world) return 0;
 
@@ -124,7 +107,7 @@ export function calculateSlopeAngle({
   // This gives accurate per-triangle surface orientation on the canyon walls and U-banks,
   // which the height-gradient fallback cannot capture for near-vertical faces.
   // Note: castRayAndGetNormal exists in rapier3d-compat 0.19+ but @react-three/rapier's
-  // TypeScript types may not declare it, hence the runtime presence check via `as any`.
+  // TypeScript types may not declare it, hence the optional member on RapierWorldQueries.
   const centerNormalRay = scratchRay(rapier, pos.x, pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, pos.z, 0, -1, 0);
   const normalHit = world.castRayAndGetNormal
     ? world.castRayAndGetNormal(
@@ -140,12 +123,12 @@ export function calculateSlopeAngle({
 
   const normalToi = getRayTimeOfImpact(normalHit);
   if (normalHit && isTerrainGroundHit(normalToi)) {
-    const n = normalHit.normal ?? normalHit;
+    const n: Vec3Like = normalHit.normal ?? (normalHit as unknown as Vec3Like);
     const nLen = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
     if (nLen > 0.001) {
       slopeState.current.lastGroundNormal.set(n.x / nLen, n.y / nLen, n.z / nLen);
     }
-    if (typeof (normalHit as any).free === 'function') (normalHit as any).free();
+    normalHit.free?.();
 
     const gn = slopeState.current.lastGroundNormal;
     // Bank angle: atan2(gn.x, gn.y) gives the lateral tilt of the surface normal.
@@ -262,14 +245,12 @@ export function handleDodgeAndCollision({
   camera,
   leftward,
   rightward,
-  forward,
   backward,
   dt,
   body,
   pos,
   vel,
   prevFrame,
-  js,
   vehicle,
   collisionState,
   debugState,
@@ -278,27 +259,25 @@ export function handleDodgeAndCollision({
   rapier,
   world,
 }: {
-  dodgeState: any;
+  dodgeState: RunnerPhysicsState['dodgeState'];
   dodgeJustPressed: boolean;
   isGrounded: boolean;
   camera: THREE.Camera;
   leftward: boolean;
   rightward: boolean;
-  forward: boolean;
   backward: boolean;
   dt: number;
-  body: any;
-  pos: { x: number; y: number; z: number };
-  vel: { x: number; y: number; z: number };
-  prevFrame: any;
-  js: any;
-  vehicle: any;
-  collisionState: any;
-  debugState: any;
+  body: RapierBody;
+  pos: Vec3Like;
+  vel: Vec3Like;
+  prevFrame: RunnerPhysicsState['prevFrame'];
+  vehicle: { current: RunnerVehicleClass };
+  collisionState: RunnerPhysicsState['collisionState'];
+  debugState: RunnerPhysicsState['debugState'];
   now: number;
-  applyImpulseWithDebugTracking: (tag: string, impulse: { x: number; y: number; z: number }) => void;
-  rapier: any;
-  world: any;
+  applyImpulseWithDebugTracking: (tag: string, impulse: Vec3Like) => void;
+  rapier: Pick<RapierNamespace, 'Ray'>;
+  world: RapierWorldQueries;
 }) {
     // === DODGE STATE MACHINE (Goal 2) ===
     const ds = dodgeState.current;
@@ -339,11 +318,10 @@ export function handleDodgeAndCollision({
 
           // I-frames: temporarily disable collision with obstacles (not ground)
           // We achieve this by applying a collision group mask if supported
-          try {
-            // Rapier doesn't have simple collision group toggling on RigidBody ref,
-            // so we use a flag that other systems can check
-            body.userData = { ...body.userData, isDodging: true };
-          } catch (e) { /* ignore */ }
+          // Rapier has no simple collision-group toggle on a RigidBody ref, so
+          // other systems read this flag. Set in place: the object also holds
+          // the physics step's boot latches.
+          bodyUserData(body).isDodging = true;
 
           playDodgeSound();
           triggerCameraShake(0.3, 0.15);
@@ -362,12 +340,8 @@ export function handleDodgeAndCollision({
             const checkSide = (sign: number) => {
               const ray = scratchRay(rapier, pos.x, pos.y + 0.6, pos.z, sideDir.x * sign, 0, sideDir.z * sign);
               const hit = world.castRay(ray, NEAR_MISS_RAY_LENGTH, true);
-              const toi = hit
-                ? (typeof (hit as any).timeOfImpact === 'function'
-                  ? (hit as any).timeOfImpact()
-                  : (hit as any).timeOfImpact)
-                : null;
-              if (hit && typeof (hit as any).free === 'function') (hit as any).free();
+              const toi = getRayTimeOfImpact(hit);
+              hit?.free?.();
               return toi !== null && toi >= NEAR_MISS_TOI_MIN && toi <= NEAR_MISS_TOI_MAX;
             };
 
@@ -382,9 +356,7 @@ export function handleDodgeAndCollision({
         if (ds.timer <= 0) {
           ds.state = 'cooldown';
           ds.timer = MOVEMENT.DODGE_COOLDOWN;
-          try {
-            body.userData = { ...body.userData, isDodging: false };
-          } catch (e) { /* ignore */ }
+          bodyUserData(body).isDodging = false;
           useGameStore.getState().setIsDodging(false);
         }
         break;

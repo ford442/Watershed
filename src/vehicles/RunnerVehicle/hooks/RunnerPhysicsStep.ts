@@ -46,29 +46,33 @@ import {
   hasActiveLaunch,
 } from '../../../systems/score/LaunchScoringSession';
 import { gameEvents } from '../../../systems/events/GameEvents';
+import { bodyUserData as userDataOf, type RapierBody, type RapierNamespace, type RapierWorld } from '../../../physics/rapierTypes';
+import type { PlayerControls } from '../../../hooks/usePlayerControls';
+import type { RunnerPhysicsState } from './useRunnerPhysics';
 
 type Vec3 = { x: number; y: number; z: number };
 
-export function updateRunnerPhysics({
-  state, delta: dt, world, body, rapier, camera, controls, vehicleState,
-  shelfLaunchFiredRef,
-  shelfTriggerRef,
-}: {
-  state: any;
+export interface RunnerPhysicsStepArgs {
   delta: number;
-  world: any;
-  body: any;
-  rapier: any;
-  camera: any;
-  controls: any;
-  vehicleState: any;
+  world: RapierWorld;
+  body: RapierBody;
+  rapier: RapierNamespace;
+  camera: THREE.PerspectiveCamera;
+  controls: { getControls: () => PlayerControls };
+  vehicleState: RunnerPhysicsState;
   shelfLaunchFiredRef: { current: boolean };
   shelfTriggerRef: { current: ShelfTrigger | null };
-}) {
+}
+
+export function updateRunnerPhysics({
+  delta: dt, world, body, rapier, camera, controls, vehicleState,
+  shelfLaunchFiredRef,
+  shelfTriggerRef,
+}: RunnerPhysicsStepArgs) {
   const {
     vehicle, slopeState, jumpState, ungroundedFramesRef, dodgeState, platformState,
     appliedGravMultRef, sprintLockedRef, jumpForwardDirRef, footstepState,
-    prevFrame, collisionState, defaultCollisionGroups, fovRef, debugState, debugSnapshotRef
+    prevFrame, collisionState, fovRef, debugState, debugSnapshotRef
   } = vehicleState;
 
   const noPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
@@ -98,7 +102,7 @@ export function updateRunnerPhysics({
     const envelope = posOk ? resolveActiveEnvelope(pos) : null;
     const positionBounds = getEffectivePositionBounds(envelope);
 
-    const bodyUserData = (body.userData ??= {} as Record<string, unknown>);
+    const bodyUserData = userDataOf(body);
     const holdAtSpawn = () => {
       // After an OOB the body is parked on its checkpoint until the terrain ray
       // lands again; without the latch the terrain-warm hold below would yank
@@ -139,7 +143,7 @@ export function updateRunnerPhysics({
       snapshot.linearVelocity = { x: vel.x, y: vel.y, z: vel.z };
       snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
       if (typeof window !== 'undefined') {
-        (window as any).__watershedPhysicsDebug = snapshot;
+        window.__watershedPhysicsDebug = snapshot;
       }
       return;
     }
@@ -174,7 +178,7 @@ export function updateRunnerPhysics({
       snapshot.linearVelocity = { x: 0, y: 0, z: 0 };
       snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
       if (typeof window !== 'undefined') {
-        (window as any).__watershedPhysicsDebug = snapshot;
+        window.__watershedPhysicsDebug = snapshot;
       }
       return;
     }
@@ -246,7 +250,6 @@ export function updateRunnerPhysics({
 
     // Goal 2: Platform detection via raycast handle registry
     platformState.current.isOnPlatform = false;
-    platformState.current.platformBody = null;
     if (rawGrounded && groundHit) {
       try {
         const collider = groundHit.collider;
@@ -254,18 +257,17 @@ export function updateRunnerPhysics({
         if (parent) {
           if (isFloatingPlatform(parent.handle)) {
             platformState.current.isOnPlatform = true;
-            platformState.current.platformBody = true; // used only as boolean at line 709
             const pVel = parent.linvel?.();
             if (pVel) {
               platformState.current.platformVelocity.set(pVel.x, pVel.y, pVel.z);
             }
           }
-          if (typeof (parent as any).free === 'function') (parent as any).free();
+          parent.free?.();
         }
       } catch {
         // Ignore colliders without parent
       }
-      if (typeof (groundHit as any).free === 'function') (groundHit as any).free();
+      groundHit.free?.();
     }
 
     if (isGrounded) {
@@ -402,8 +404,8 @@ export function updateRunnerPhysics({
     });
 
     handleDodgeAndCollision({
-        dodgeState, dodgeJustPressed, isGrounded, camera, leftward, rightward, forward, backward, dt,
-        body, pos, vel, prevFrame, js, vehicle, collisionState, debugState, now,
+        dodgeState, dodgeJustPressed, isGrounded, camera, leftward, rightward, backward, dt,
+        body, pos, vel, prevFrame, vehicle, collisionState, debugState, now,
         applyImpulseWithDebugTracking, rapier, world,
     });
     // === FOOTSTEP AUDIO (F1) ===
@@ -539,7 +541,7 @@ export function updateRunnerPhysics({
     }
 
     // Goal 2: Platform riding - apply platform velocity to player
-    if (platformState.current.isOnPlatform && platformState.current.platformBody) {
+    if (platformState.current.isOnPlatform) {
       const pVel = platformState.current.platformVelocity;
       const transfer = MOVEMENT.PLAYER_MOMENTUM_TRANSFER ?? 0.3;
       applyImpulseWithDebugTracking('platformTransfer', {
@@ -590,13 +592,12 @@ export function updateRunnerPhysics({
       debugState.current.recentImpulses.push({ tag, at: now, impulse });
     });
     debugState.current.recentImpulses = debugState.current.recentImpulses
-      .filter((entry: { at: number }) => now - entry.at <= 2000)
+      .filter((entry) => now - entry.at <= 2000)
       .slice(-16);
     debugState.current.recentContacts = debugState.current.recentContacts
-      .filter((entry: { at: number }) => now - entry.at <= 2500)
+      .filter((entry) => now - entry.at <= 2500)
       .slice(-8);
 
-    const gravMult = useGameStore.getState().waterfallGravityMultiplier;
     const snapshot = debugSnapshotRef.current;
     snapshot.position = { x: pos.x, y: pos.y, z: pos.z };
     snapshot.linearVelocity = { x: vel.x, y: vel.y, z: vel.z };
@@ -627,7 +628,7 @@ export function updateRunnerPhysics({
 
     bodyUserData.physicsDebug = snapshot;
     if (typeof window !== 'undefined') {
-      (window as any).__watershedPhysicsDebug = snapshot;
+      window.__watershedPhysicsDebug = snapshot;
     }
 
 }

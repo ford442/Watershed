@@ -77,6 +77,18 @@ export interface RapierWorldQueries {
   ): RapierRayHit | null;
 }
 
+/** The world as the runner's physics step uses it: queries, plus its timestep and gravity. */
+export interface RapierWorld extends RapierWorldQueries {
+  timestep: number;
+  /** Mutated in place (no allocation) when the waterfall gravity multiplier changes. */
+  gravity: Vec3Like;
+}
+
+/** `body.userData` as an object (created on first use). */
+export function bodyUserData(body: RapierBody): Record<string, unknown> {
+  return (body.userData ??= {}) as Record<string, unknown>;
+}
+
 /** The Rapier namespace members the vehicles construct. */
 export interface RapierNamespace {
   Ray: RapierRayCtor;
