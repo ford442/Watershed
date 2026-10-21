@@ -42,7 +42,6 @@ export function useSegmentAudio(currentSegmentIndex: number) {
   const lastSegmentRef = useRef(-1);
   const flowSpeedRef = useRef(1);
   const volumesRef = useRef({ low: 1, high: 0 });
-  const playerSpeed = useGameStore((s) => s.currentSpeed);
 
   useEffect(() => {
     // Debounce: only react when segment index actually changes
@@ -101,6 +100,9 @@ export function useSegmentAudio(currentSegmentIndex: number) {
     if (!audio || !isFinite(delta) || delta <= 0) return;
 
     const flowSpeed = isFinite(flowSpeedRef.current) ? flowSpeedRef.current : 1;
+    // Read, don't subscribe: batchFrameUpdate writes currentSpeed every frame,
+    // and a selector here re-rendered the scene root (InnerExperience) with it.
+    const playerSpeed = useGameStore.getState().currentSpeed;
     const speed = isFinite(playerSpeed) ? playerSpeed : 0;
     const phase = lastPhaseRef.current;
 

@@ -1,56 +1,54 @@
 import * as THREE from 'three';
-import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
 import { useGameStore } from '../../../systems/GameState';
 import {
-  WATER_PHYSICS, DENSITY, TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
+  WATER_PHYSICS, TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
+  type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
 } from '../constants';
-import { playPaddleSound, playSplashSound, playCollisionSound, updateWaterRushingSound, playRaftTipSound } from '../audio';
-import { triggerCameraShake } from '../../RunnerVehicle/utils';
-import {
-  tryFireShelfLaunch,
-  getShelfDownstreamSpeed,
-  isInsideShelfTrigger,
-} from '../../utils/shelfLaunch';
-import {
-  // Shelf launch air-time scoring (physics-step time)
-  tickLaunchScoring,
-  hasActiveLaunch,
-} from '../../../systems/score/LaunchScoringSession';
+import { playPaddleSound, playRaftTipSound } from '../audio';
+import type { PlayerControls } from '../../../hooks/usePlayerControls';
+import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
+import type { ParticlePool } from '../../../components/particlePool';
 import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { isBiomeId, type BiomeId } from '../../../configs/biomes';
+import { clamp01 } from '../../../math/scalar';
 import { createRng } from '../../../math/random';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0x6e0183eb);
 
+// Per-step scratch (#503 B): these run inside useFrame every physics step,
+// where `new` is invisible to @react-three/no-new-in-loop.
+const _euler = new THREE.Euler();
+const _quat = new THREE.Quaternion();
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _velocity = new THREE.Vector3();
+const _offset = new THREE.Vector3();
+const _cameraTarget = new THREE.Vector3();
+const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 } as const;
+
+/** The body's rotation as a THREE quaternion (scratch — use before the next call). */
+function bodyQuaternion(body: RapierBody): THREE.Quaternion {
+  const r = body.rotation();
+  return _quat.set(r.x, r.y, r.z, r.w);
+}
+
+export type RaftImpulse = [number, number, number];
+
 export interface RaftPhysicsRuntimeDeps {
-  buoyancyState: { current: any };
-  tippingState: { current: any };
-  paddleState: { current: any };
-  staminaState: { current: any };
-  stunState: { current: any };
+  buoyancyState: { current: BuoyancyState };
+  tippingState: { current: TippingState };
+  paddleState: { current: PaddleState };
+  staminaState: { current: StaminaState };
+  stunState: { current: StunState };
   forwardBiasTimer: { current: number };
-  raftMaterialRef: { current: THREE.MeshStandardMaterial | null };
-  raftBaseColor: { current: THREE.Color };
-  shedParticles: { current: any[] };
-  nextShedId: { current: number };
-  shedTimer: { current: number };
-  timeRef: { current: number };
-  nextParticleId: { current: number };
-  collisionState: { current: any };
-  raftVehicle: { current: any };
-  controls: { getControls: () => any };
+  /** Paddle foam and the stern/contact shed spray, drawn by ParticlePoolMesh. */
+  foamParticles: ParticlePool;
+  shedParticles: ParticlePool;
   camera: THREE.Camera;
-  workerProxyRef: { current: any };
-  workerReadyRef: { current: boolean };
-  workerStepPendingRef: { current: boolean };
-  useWorkerPhysics: boolean;
-  applyWorkerImpulse: (impulse: THREE.Vector3) => void;
-  stepWorkerProxy: (body: any, delta: number, impulses?: [number, number, number][]) => void;
+  controls: { getControls: () => PlayerControls };
+  stepWorkerProxy: (body: RapierBody, delta: number, impulses?: RaftImpulse[]) => void;
   currentFov: { current: number };
-  shelfLaunchFiredRef: { current: boolean };
-  shelfTriggerRef: { current: any };
 }
 
 export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
@@ -64,10 +62,10 @@ const calculateSubmergedRatio = (raftY: number): number => {
   if (raftTop <= waterLevel) return 1;
 
   const submergedHeight = waterLevel - raftBottom;
-  return Math.max(0, Math.min(1, submergedHeight / WATER_PHYSICS.RAFT_HEIGHT));
+  return clamp01(submergedHeight / WATER_PHYSICS.RAFT_HEIGHT);
 };
 
-const applyTurbulence = (body: any, time: number, delta: number) => {
+const applyTurbulence = (body: RapierBody, time: number, delta: number) => {
   if (!deps.buoyancyState.current.isFloating) return;
 
   const vel = body.linvel();
@@ -84,16 +82,14 @@ const applyTurbulence = (body: any, time: number, delta: number) => {
   const rollWobble = Math.cos(time * WATER_PHYSICS.TURBULENCE_FREQ * 1.3) * amp * 0.8 +
     Math.sin(time * WATER_PHYSICS.TURBULENCE_FREQ * 2.1) * amp * 0.2;
 
-  const currentRot = body.rotation();
-  const euler = new THREE.Euler().setFromQuaternion(currentRot);
+  const euler = _euler.setFromQuaternion(bodyQuaternion(body));
   euler.x += pitchWobble * delta * 2;
   euler.z += rollWobble * delta * 2;
 
-  const targetRot = new THREE.Quaternion().setFromEuler(euler);
-  body.setRotation(targetRot, true);
+  body.setRotation(_quat.setFromEuler(euler), true);
 };
 
-const applyTippingForce = (body: any, submergedRatio: number, delta: number) => {
+const applyTippingForce = (body: RapierBody, submergedRatio: number, delta: number) => {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   const calm = useGameStore.getState().currentBiome === 'delta';
@@ -117,7 +113,7 @@ const applyTippingForce = (body: any, submergedRatio: number, delta: number) => 
   }, true);
 };
 
-const dampenRotation = (body: any, delta: number) => {
+const dampenRotation = (body: RapierBody, delta: number) => {
   const angVel = body.angvel();
   const damping = Math.pow(WATER_PHYSICS.ROTATION_DAMPING, delta * 60);
 
@@ -131,9 +127,8 @@ const dampenRotation = (body: any, delta: number) => {
 /**
  * Handle tipping mechanics - righting torque and danger detection
  */
-const handleTipping = (body: any, delta: number): boolean => {
-  const rot = body.rotation();
-  const euler = new THREE.Euler().setFromQuaternion(rot);
+const handleTipping = (body: RapierBody, delta: number): boolean => {
+  const euler = _euler.setFromQuaternion(bodyQuaternion(body));
 
   deps.tippingState.current.rollAngle = euler.z;
   deps.tippingState.current.pitchAngle = euler.x;
@@ -167,7 +162,8 @@ const handleTipping = (body: any, delta: number): boolean => {
 
     // Update last safe position when stable
     if (maxTilt < TIPPING.RIGHTING_THRESHOLD * 0.5) {
-      deps.tippingState.current.lastSafePosition.copy(body.translation());
+      const t = body.translation();
+      deps.tippingState.current.lastSafePosition.set(t.x, t.y, t.z);
     }
   }
 
@@ -185,7 +181,7 @@ const handleTipping = (body: any, delta: number): boolean => {
  * run session is active (free-play / editor), in which case stamina behaves
  * exactly as it did before survival existed.
  */
-const tickRaftSurvival = (body: any, delta: number) => {
+const tickRaftSurvival = (body: RapierBody, delta: number) => {
   const vel = body?.linvel?.();
   const windSpeed = vel ? Math.sqrt(vel.x * vel.x + vel.z * vel.z) : 0;
   const storeBiome = useGameStore.getState().currentBiome;
@@ -255,7 +251,7 @@ const consumeStamina = (): number => {
 /**
  * Apply brake forces (broadside drag) when S/backward is held
  */
-const applyBrake = (body: any, delta: number) => {
+const applyBrake = (body: RapierBody, delta: number) => {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   if (speed < 0.1) return;
@@ -280,7 +276,7 @@ const applyBrake = (body: any, delta: number) => {
 /**
  * Apply paddle forces based on Q/E input with stamina-gated power
  */
-const applyPaddleForces = (body: any, delta: number) => {
+const applyPaddleForces = (body: RapierBody, delta: number) => {
   const { paddleLeft, paddleRight, forward } = deps.controls.getControls();
 
   deps.paddleState.current.leftPaddle = paddleLeft;
@@ -289,9 +285,9 @@ const applyPaddleForces = (body: any, delta: number) => {
   // If stunned, reduce input effectiveness
   const stunMultiplier = deps.stunState.current.active ? COLLISION.STUN_EFFECTIVENESS : 1.0;
 
-  const rot = body.rotation();
-  const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
-  const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
+  const rot = bodyQuaternion(body);
+  const forwardDir = _forward.set(0, 0, -1).applyQuaternion(rot);
+  const rightDir = _right.set(1, 0, 0).applyQuaternion(rot);
 
   // Both paddles or W key = straight forward
   if ((paddleLeft && paddleRight) || forward) {
@@ -382,110 +378,93 @@ const applyPaddleForces = (body: any, delta: number) => {
 /**
  * Spawn a foam particle for paddle visual feedback
  */
-const spawnFoamParticle = (body: any, side: 'left' | 'right') => {
+const spawnFoamParticle = (body: RapierBody, side: 'left' | 'right') => {
   const pos = body.translation();
-  const rot = body.rotation();
+  const offset = _offset
+    .set(side === 'left' ? -1.2 : 1.2, -0.2, side === 'left' ? 0.5 : -0.5)
+    .applyQuaternion(bodyQuaternion(body));
 
-  const offset = new THREE.Vector3(
-    side === 'left' ? -1.2 : 1.2,
-    -0.2,
-    side === 'left' ? 0.5 : -0.5
-  ).applyQuaternion(rot);
-
-  const velocity = new THREE.Vector3(
-    (random() - 0.5) * 0.5,
-    random() * 0.3,
-    (random() - 0.5) * 0.5
-  );
-
-  deps.paddleState.current.foamParticles.push({
-    id: deps.nextParticleId.current++,
-    position: new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z),
-    velocity,
+  deps.foamParticles.spawn({
+    x: pos.x + offset.x,
+    y: pos.y + offset.y,
+    z: pos.z + offset.z,
+    vx: (random() - 0.5) * 0.5,
+    vy: random() * 0.3,
+    vz: (random() - 0.5) * 0.5,
     life: PADDLE.FOAM_LIFETIME,
-    side,
+    size: 0.15 + random() * 0.1,
   });
 };
+
+/** Linear RGB of the shed spray (#e0f0ff). */
+const SHED_COLOR = new THREE.Color('#e0f0ff');
+/** Shed spray falls slowly — the old per-frame `velocity.y -= 1.5·dt`. */
+const SHED_GRAVITY = -1.5;
 
 /**
  * Goal 2: Spawn a water-shedding particle trailing the raft
  * Particle size and spread scale with current speed for velocity-reactive VFX
  */
-const spawnShedParticle = (body: any) => {
+const spawnShedParticle = (body: RapierBody) => {
   const pos = body.translation();
-  const rot = body.rotation();
+  const rot = bodyQuaternion(body);
   const bodyVel = body.linvel();
   const speed = Math.sqrt(bodyVel.x * bodyVel.x + bodyVel.z * bodyVel.z);
   const speedFactor = Math.min(1, (speed - SHED.MIN_SPEED) / (SHED.SPEED_REF - SHED.MIN_SPEED));
 
   // Spawn at the stern (raft moves -Z, so stern is +Z relative to raft)
-  const sternOffset = new THREE.Vector3(0, -0.1, 1.6).applyQuaternion(rot);
-  // Wider spread at higher speeds
-  const spread = new THREE.Vector3(
-    (random() - 0.5) * (0.8 + speedFactor * 0.6),
-    random() * 0.2,
-    (random() - 0.5) * (0.4 + speedFactor * 0.3)
-  );
+  const stern = _offset.set(0, -0.1, 1.6).applyQuaternion(rot);
+  const px = pos.x + stern.x + (random() - 0.5) * (0.8 + speedFactor * 0.6); // wider spread at speed
+  const py = pos.y + stern.y + random() * 0.2;
+  const pz = pos.z + stern.z + (random() - 0.5) * (0.4 + speedFactor * 0.3);
 
   // Velocity opposes raft motion + slight upward arc, stronger at speed
-  const vel = new THREE.Vector3(
+  const vel = _velocity.set(
     (random() - 0.5) * (0.6 + speedFactor * 0.8),
     0.3 + random() * (0.4 + speedFactor * 0.4),
-    0.5 + random() * (0.5 + speedFactor * 0.5)
+    0.5 + random() * (0.5 + speedFactor * 0.5),
   ).applyQuaternion(rot);
 
-  const particleSize = SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + random() * 0.03;
-
-  deps.shedParticles.current.push({
-    id: deps.nextShedId.current++,
-    position: new THREE.Vector3(pos.x + sternOffset.x, pos.y + sternOffset.y, pos.z + sternOffset.z).add(spread),
-    velocity: vel,
+  deps.shedParticles.spawn({
+    x: px, y: py, z: pz,
+    vx: vel.x, vy: vel.y, vz: vel.z,
     life: SHED.LIFETIME,
-    scale: particleSize,
+    size: SHED.SIZE_BASE + speedFactor * SHED.SIZE_SPEED_SCALE + random() * 0.03,
+    gravity: SHED_GRAVITY,
+    r: SHED_COLOR.r, g: SHED_COLOR.g, b: SHED_COLOR.b,
   });
-
-  // Trim excess particles
-  if (deps.shedParticles.current.length > SHED.COUNT_LIMIT) {
-    deps.shedParticles.current.shift();
-  }
 };
 
 /**
  * Spawn a burst of shed particles at a wall contact point.
  * Gives the "shedding water on hard impact" feel without a full particle system.
  */
-const spawnContactBurst = (body: any, contactPoint: THREE.Vector3, impactForce: number) => {
+const spawnContactBurst = (contactPoint: Vec3Like, impactForce: number) => {
   const forceFactor = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE);
   const count = Math.floor(COLLISION.CONTACT_BURST_COUNT * forceFactor) + 4;
-  const rot = body.rotation();
 
   for (let i = 0; i < count; i++) {
     const angle = random() * Math.PI * 2;
     const speed = 1.5 + random() * 3.0 * forceFactor;
-    const vel = new THREE.Vector3(
-      Math.cos(angle) * speed,
-      0.8 + random() * 2.0 * forceFactor,
-      Math.sin(angle) * speed
-    );
-    deps.shedParticles.current.push({
-      id: deps.nextShedId.current++,
-      position: contactPoint.clone().add(new THREE.Vector3((random() - 0.5) * 0.4, 0.1, (random() - 0.5) * 0.4)),
-      velocity: vel,
+    deps.shedParticles.spawn({
+      x: contactPoint.x + (random() - 0.5) * 0.4,
+      y: contactPoint.y + 0.1,
+      z: contactPoint.z + (random() - 0.5) * 0.4,
+      vx: Math.cos(angle) * speed,
+      vy: 0.8 + random() * 2.0 * forceFactor,
+      vz: Math.sin(angle) * speed,
       life: SHED.LIFETIME * (0.6 + random() * 0.6),
-      scale: SHED.SIZE_BASE * 1.5 + random() * 0.06 * forceFactor,
+      size: SHED.SIZE_BASE * 1.5 + random() * 0.06 * forceFactor,
+      gravity: SHED_GRAVITY,
+      r: SHED_COLOR.r, g: SHED_COLOR.g, b: SHED_COLOR.b,
     });
-  }
-
-  // Trim if over limit
-  if (deps.shedParticles.current.length > SHED.COUNT_LIMIT) {
-    deps.shedParticles.current.splice(0, deps.shedParticles.current.length - SHED.COUNT_LIMIT);
   }
 };
 
 /**
  * Reset raft to safe position after tipping
  */
-const resetRaft = (body: any) => {
+const resetRaft = (body: RapierBody) => {
   playRaftTipSound();
 
   const safePos = deps.tippingState.current.lastSafePosition.clone();
@@ -494,7 +473,7 @@ const resetRaft = (body: any) => {
   body.setTranslation(safePos, true);
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-  body.setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0)), true);
+  body.setRotation(IDENTITY_ROTATION, true);
 
   deps.tippingState.current.dangerTime = 0;
   deps.tippingState.current.isTipped = false;
@@ -504,7 +483,7 @@ const resetRaft = (body: any) => {
   }));
 };
 
-const updateCameraFromBody = (body: any) => {
+const updateCameraFromBody = (body: RapierBody) => {
   const pos = body.translation();
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
@@ -514,7 +493,7 @@ const updateCameraFromBody = (body: any) => {
   const angVel = body.angvel();
   const leanOffset = -angVel.y * CAMERA.LEAN_FACTOR;
 
-  const targetPos = new THREE.Vector3(
+  const targetPos = _cameraTarget.set(
     pos.x + velLagX + leanOffset,
     pos.y + CAMERA.BASE_OFFSET_Y,
     pos.z + CAMERA.BASE_OFFSET_Z + velLagZ
@@ -535,15 +514,16 @@ const updateCameraFromBody = (body: any) => {
   return { pos, vel, speed };
 };
 
-const updateWorkerPhysicsFrame = (body: any, delta: number) => {
+const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
   const { paddleLeft, paddleRight, forward } = deps.controls.getControls();
   deps.paddleState.current.leftPaddle = paddleLeft;
   deps.paddleState.current.rightPaddle = paddleRight;
 
-  const rot = body.rotation();
-  const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(rot);
-  const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(rot);
-  const impulses: [number, number, number][] = [];
+  const rot = bodyQuaternion(body);
+  const forwardDir = _forward.set(0, 0, -1).applyQuaternion(rot);
+  const rightDir = _right.set(1, 0, 0).applyQuaternion(rot);
+  // Posted to the worker (structured clone), so a fresh small array per step.
+  const impulses: RaftImpulse[] = [];
 
   if ((paddleLeft && paddleRight) || forward) {
     const power = consumeStamina();
@@ -586,14 +566,6 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
 
   deps.stepWorkerProxy(body, delta, impulses);
   updateCameraFromBody(body);
-
-  window.dispatchEvent(new CustomEvent('raft-stamina', {
-    detail: {
-      current: deps.staminaState.current.current,
-      max: STAMINA.MAX,
-      isExhausted: deps.staminaState.current.isExhausted,
-    }
-  }));
 };
 
   return {

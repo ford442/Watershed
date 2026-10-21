@@ -289,11 +289,6 @@ export const useGameStore = create<GameStore>((set) => ({
 // SELECTOR HOOKS (convenience)
 // =============================================================================
 
-/** Subscribe only to player position — useful for UI that tracks coordinates */
-export function usePlayerPosition() {
-  return useGameStore((s) => s.playerPosition);
-}
-
 /** Subscribe only to score */
 export function useScore() {
   return useGameStore((s) => s.score);
@@ -383,8 +378,8 @@ export function batchFrameUpdate(
       currentSegmentIndex: segmentIndex,
     });
   } else {
-    // Speed and segment index are lower frequency — update every frame is fine
-    // because few components subscribe to them.
+    // currentSpeed changes every frame: only HUD leaves may subscribe to it.
+    // Scene-root hooks read it with getState() inside useFrame (#503 B).
     useGameStore.setState({
       currentSpeed: speed,
       currentSegmentIndex: segmentIndex,

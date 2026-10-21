@@ -5,7 +5,7 @@ import { RigidBody, CapsuleCollider, useRapier } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import * as THREE from 'three';
 import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
-import { CollisionParticles } from '../components/CollisionParticles';
+import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../constants/game';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
 import { isFloatingPlatform } from '../systems/pools/FloatingObjectRegistry';
@@ -270,19 +270,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
       {isNoPointerLock && <HeadlessPlayerMarker bodyRef={bodyRef} />}
       
-      {/* Collision particle effects */}
-      {collisionState.current.activeParticles.map(particle => (
-        <CollisionParticles
-          key={particle.id}
-          material={particle.material}
-          position={particle.position}
-          intensity={particle.intensity}
-          onComplete={() => {
-            collisionState.current.activeParticles =
-              collisionState.current.activeParticles.filter((p) => p.id !== particle.id);
-          }}
-        />
-      ))}
+      {/* Collision particle effects (stepped and drawn in useFrame, not by re-render) */}
+      <ParticlePoolMesh pool={collisionState.current.particles} />
     </>
   );
 });
