@@ -29,7 +29,15 @@
 #include "routing.h"
 #include "terrain.h"
 
+// lint:native (#502) runs clang-tidy over this TU with the HOST compile
+// database, where there is no Emscripten sysroot. The fallback keeps the
+// exports parseable there; it never reaches a build (the host CMake branch
+// does not compile this file).
+#if __has_include(<emscripten/emscripten.h>)
 #include <emscripten/emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE __attribute__((used))
+#endif
 #include <cstdint>
 #include <span>
 #include <type_traits>
@@ -296,3 +304,16 @@ WS_EXPORT void ws_stepSplashParticles(uintptr_t base, int capacity, int count,
                                       float dt, float gravityY, float damp) {
     stepSplashParticles(base, capacity, count, dt, gravityY, damp);
 }
+
+// ---- Debug-only ------------------------------------------------------------
+
+#ifdef WATERSHED_TRAP_TEST
+/**
+ * Debug builds only (CMake WATERSHED_TRAP_TEST, never the shipped pair, so not
+ * in the WASM_ABI table or the version): traps on purpose, so ?wasmTrapTest=1
+ * can prove a RuntimeError is mapped to a function name (wasmTrap.ts, #502).
+ */
+WS_EXPORT void ws_trapTest() {
+    __builtin_trap();
+}
+#endif

@@ -13,6 +13,7 @@
  *   emscripten/build-fuzz/watershed_swe_fuzz -max_total_time=600
  */
 
+#include "fuzz_input.h"
 #include "swe.h"
 
 #include <cmath>
@@ -25,25 +26,8 @@
 
 namespace {
 
-/** Consumes the fuzz input; past the end it yields zeros. */
-struct Input {
-    const uint8_t* data;
-    size_t size;
-    size_t at = 0;
-
-    uint32_t u32() {
-        uint32_t v = 0;
-        for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(at < size ? data[at++] : 0) << (8 * i);
-        return v;
-    }
-    /** Uniform in [lo, hi]. */
-    float range(float lo, float hi) {
-        return lo + (hi - lo) * (static_cast<float>(u32() & 0xffffffu) / static_cast<float>(0xffffff));
-    }
-    int pick(int lo, int hi) { return lo + static_cast<int>(u32() % static_cast<uint32_t>(hi - lo + 1)); }
-};
-
-uintptr_t ptr(std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); }
+using fuzz::Input;
+using fuzz::ptr;
 
 void requireFinite(const std::vector<float>& v, const char* name, int step) {
     for (std::size_t i = 0; i < v.size(); ++i) {

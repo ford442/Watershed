@@ -16,6 +16,11 @@
  *
  * The glue is imported by URL, never evaluated from a string or a blob, so the
  * page runs under `script-src 'self' 'wasm-unsafe-eval'`.
+ *
+ * #502 C: the deadline aborts the losing wasm fetch, and a timeout or a
+ * network failure is retried once (`loadWatershedNativeWithRetry`) before the
+ * session-wide fallback; a provenance or ABI mismatch is deterministic and is
+ * not.
  */
 
 import { BUILD_IDENTITY, GRAPHICS_BOOT_TOKEN } from '../../buildIdentity';
@@ -27,6 +32,7 @@ import {
   type WatershedNativeModule,
 } from './wasmAbi';
 import { WASM_ARTIFACT_STAMP, WASM_BINARY_SHA } from './wasmArtifactStamp';
+import { wantsWasmTrapTest } from './wasmTrapMarker';
 
 /** Default deadline for watershed_native load + initialisation (ms). */
 export const WASM_INIT_TIMEOUT_MS = 8000;
@@ -185,8 +191,8 @@ export async function sha256Hex16(...parts: Uint8Array[]): Promise<string> {
   return hex.slice(0, 16);
 }
 
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
+async function fetchBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
+  const response = await fetch(url, signal ? { signal } : undefined);
   if (!response.ok) {
     throw new Error(`watershed_native fetch failed ${response.status} for ${url}`);
   }
@@ -237,20 +243,35 @@ function logTerminal(error: Error, timeoutMs: number): void {
   }
 }
 
+export interface NativeLoadOptions {
+  /**
+   * `?wasmTrapTest=1` (#502): after bind, call the Debug-only `ws_trapTest`
+   * and reject with the WasmTrapError naming the function it trapped in.
+   */
+  trapTest?: boolean;
+}
+
 /**
  * Fetch, verify, instantiate and bind one module instance. Rejects with
- * WasmInitTimeoutError, WasmProvenanceMismatchError, WasmAbiMismatchError or a
- * plain Error; the terminal outcome is logged either way.
+ * WasmInitTimeoutError, WasmProvenanceMismatchError, WasmAbiMismatchError,
+ * WasmTrapError or a plain Error; the terminal outcome is logged either way.
+ * The deadline aborts the wasm fetch if it is still in flight (#502 C), so a
+ * lost request does not keep the connection busy for the retry.
  */
 export async function loadWatershedNative(
   urls: NativeAssetUrls,
   timeoutMs: number,
+  options: NativeLoadOptions = {},
 ): Promise<WatershedNativeModule> {
   console.info(`${WASM_LOG_PREFIX} init started url=${urls.glue} stamp=${WASM_ARTIFACT_STAMP}`);
+  const abort = typeof AbortController === 'function' ? new AbortController() : null;
   try {
     const loaded = await raceWithDeadline(
       (async () => {
-        const [glue, wasmBytes] = await Promise.all([importGlue(urls.glue), fetchBytes(urls.wasm)]);
+        const [glue, wasmBytes] = await Promise.all([
+          importGlue(urls.glue),
+          fetchBytes(urls.wasm, abort?.signal),
+        ]);
         const wasmSha = await sha256Hex16(wasmBytes);
         const glueSha = glue.WATERSHED_WASM_SHA ?? 'none';
         console.info(
@@ -281,10 +302,16 @@ export async function loadWatershedNative(
             `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
           );
         }
-        return { module: bindNativeModule(raw), version };
+        const module = bindNativeModule(raw);
+        // The parser is not on the boot path: loaded only for ?wasmTrapTest=1.
+        if (options.trapTest) await (await import('./wasmTrap')).runWasmTrapTest(raw, urls.wasm);
+        return { module, version };
       })(),
       timeoutMs,
-      () => new WasmInitTimeoutError(timeoutMs),
+      () => {
+        abort?.abort();
+        return new WasmInitTimeoutError(timeoutMs);
+      },
     );
     console.info(`${WASM_LOG_PREFIX} ready (abi=${loaded.version})`);
     return loaded.module;
@@ -293,6 +320,41 @@ export async function loadWatershedNative(
     logTerminal(err, timeoutMs);
     throw err;
   }
+}
+
+/**
+ * A failure worth one more attempt (#502 C): the deadline, or the network
+ * losing a request. A stamp / ABI mismatch or a trap would fail the same way
+ * again, so those go straight to the fallback.
+ */
+export function isRetryableWasmInitError(error: unknown): boolean {
+  if (isWasmInitTimeoutError(error)) return true;
+  if (!(error instanceof Error)) return false;
+  // fetch() / import() reject with a TypeError on a network failure ("Failed
+  // to fetch", "NetworkError…", "error loading dynamically imported module");
+  // a 5xx is fetchBytes' own message. Other TypeErrors are bugs, not weather.
+  if (error instanceof TypeError && /fetch|network|load/i.test(error.message)) return true;
+  return /fetch failed 5\d\d/.test(error.message);
+}
+
+/** loadWatershedNative, retried once on a timeout or network failure (#502 C). */
+export async function loadWatershedNativeWithRetry(
+  urls: NativeAssetUrls,
+  timeoutMs: number,
+  options: NativeLoadOptions = {},
+): Promise<WatershedNativeModule> {
+  try {
+    return await loadWatershedNative(urls, timeoutMs, options);
+  } catch (error) {
+    if (!isRetryableWasmInitError(error)) throw error;
+    console.warn(`${WASM_LOG_PREFIX} retrying once after: ${(error as Error).message}`);
+    return loadWatershedNative(urls, timeoutMs, options);
+  }
+}
+
+/** Worst case of loadWatershedNativeWithRetry: two full deadlines. */
+export function retryBudgetMs(timeoutMs: number): number {
+  return 2 * timeoutMs;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,19 +370,21 @@ let _initError: Error | null = null;
  * path and dev tools use it — by default the sim worker owns the one instance.
  *
  * Safe to call many times — subsequent calls return the same settled promise.
- * On failure (throw, mismatch or deadline) the promise **rejects**; call sites
- * must `.catch()` and fall back to the TypeScript implementations.
+ * On failure (throw, mismatch or deadline — a deadline or network failure is
+ * retried once first) the promise **rejects**; call sites must `.catch()` and
+ * fall back to the TypeScript implementations.
  */
 export function getWasm(): Promise<WatershedNativeModule> {
   if (_modulePromise) return _modulePromise;
 
   console.info(`${WASM_LOG_PREFIX} build-id=${BUILD_IDENTITY} boot=${GRAPHICS_BOOT_TOKEN}`);
-  _modulePromise = loadWatershedNative(
+  _modulePromise = loadWatershedNativeWithRetry(
     {
       glue: resolvePublicAsset('watershed_native.js'),
       wasm: resolvePublicAsset('watershed_native.wasm'),
     },
     resolveWasmInitTimeoutMs(),
+    { trapTest: wantsWasmTrapTest() },
   ).then(
     (loaded) => {
       _loaded = loaded;

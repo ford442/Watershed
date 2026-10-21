@@ -11,13 +11,23 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstddef>
+#include <span>
 
 namespace {
 
-float* plane(uintptr_t base, int which, int capacity) {
-    // Offset in ptrdiff_t: which * capacity in int overflows for a large
-    // capacity before it widens (#467, clang-tidy).
-    return reinterpret_cast<float*>(base) + static_cast<std::ptrdiff_t>(which) * capacity;
+/**
+ * Plane `which` of a SoA block as a capacity-long view (#502). Offsets in
+ * size_t: which * capacity in int overflows for a large capacity before it
+ * widens (#467, clang-tidy); PARTICLE_MAX_CAPACITY keeps the whole block
+ * addressable.
+ */
+std::span<float> plane(uintptr_t base, int which, int capacity) {
+    const std::size_t cap = static_cast<std::size_t>(capacity);
+    return heapSpan<float>(base, PARTICLE_SOA_PLANES * cap).subspan(static_cast<std::size_t>(which) * cap, cap);
+}
+
+bool validCapacity(int capacity) {
+    return capacity > 0 && capacity <= PARTICLE_MAX_CAPACITY;
 }
 
 uint32_t xorshift32(uint32_t& s) {
@@ -38,9 +48,9 @@ void euler4(float* px, float* py, float* pz,
     const f32x4 vdt = f32x4_splat(dt);
     int i = 0;
     for (; i + 4 <= n; i += 4) {
-        f32x4_store(px + i, f32x4_add(f32x4_load(px + i), f32x4_mul(f32x4_load(vx + i), vdt)));
-        f32x4_store(py + i, f32x4_add(f32x4_load(py + i), f32x4_mul(f32x4_load(vy + i), vdt)));
-        f32x4_store(pz + i, f32x4_add(f32x4_load(pz + i), f32x4_mul(f32x4_load(vz + i), vdt)));
+        f32x4_store(px + i, f32x4_add(f32x4_load(px + i), f32x4_mul(f32x4_load(&vx[i]), vdt)));
+        f32x4_store(py + i, f32x4_add(f32x4_load(py + i), f32x4_mul(f32x4_load(&vy[i]), vdt)));
+        f32x4_store(pz + i, f32x4_add(f32x4_load(pz + i), f32x4_mul(f32x4_load(&vz[i]), vdt)));
     }
     for (; i < n; ++i) {
         px[i] += vx[i] * dt;
@@ -52,7 +62,7 @@ void euler4(float* px, float* py, float* pz,
 }  // namespace
 
 uintptr_t allocateParticleSoA(int capacity) {
-    if (capacity <= 0) return 0;
+    if (!validCapacity(capacity)) return 0;
     const int count = PARTICLE_SOA_PLANES * capacity;
     void* ptr = std::calloc(static_cast<std::size_t>(count), sizeof(float));
     return reinterpret_cast<uintptr_t>(ptr);
@@ -65,19 +75,19 @@ void freeParticleSoA(uintptr_t ptr) {
 uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
                                 float width, float height, float depthZ,
                                 float fanSpreadRad, uint32_t seed) {
-    if (base == 0 || capacity <= 0) return seed;
+    if (base == 0 || !validCapacity(capacity)) return seed;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
-    float* px = plane(base, PARTICLE_PX, capacity);
-    float* py = plane(base, PARTICLE_PY, capacity);
-    float* pz = plane(base, PARTICLE_PZ, capacity);
-    float* vx = plane(base, PARTICLE_VX, capacity);
-    float* vy = plane(base, PARTICLE_VY, capacity);
-    float* vz = plane(base, PARTICLE_VZ, capacity);
-    float* life = plane(base, PARTICLE_LIFE, capacity);
-    float* maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
-    float* scale = plane(base, PARTICLE_SCALE, capacity);
+    const std::span<float> px = plane(base, PARTICLE_PX, capacity);
+    const std::span<float> py = plane(base, PARTICLE_PY, capacity);
+    const std::span<float> pz = plane(base, PARTICLE_PZ, capacity);
+    const std::span<float> vx = plane(base, PARTICLE_VX, capacity);
+    const std::span<float> vy = plane(base, PARTICLE_VY, capacity);
+    const std::span<float> vz = plane(base, PARTICLE_VZ, capacity);
+    const std::span<float> life = plane(base, PARTICLE_LIFE, capacity);
+    const std::span<float> maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
+    const std::span<float> scale = plane(base, PARTICLE_SCALE, capacity);
 
     uint32_t s = seed ? seed : 0x9e3779b9u;
     constexpr float kHz = 60.f;
@@ -105,18 +115,18 @@ uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
 uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
                                 float dt, float width, float height, float depthZ,
                                 uint32_t seed) {
-    if (base == 0 || capacity <= 0 || dt <= 0.f) return seed;
+    if (base == 0 || !validCapacity(capacity) || dt <= 0.f) return seed;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
-    float* px = plane(base, PARTICLE_PX, capacity);
-    float* py = plane(base, PARTICLE_PY, capacity);
-    float* pz = plane(base, PARTICLE_PZ, capacity);
-    const float* vx = plane(base, PARTICLE_VX, capacity);
-    const float* vy = plane(base, PARTICLE_VY, capacity);
-    const float* vz = plane(base, PARTICLE_VZ, capacity);
+    const std::span<float> px = plane(base, PARTICLE_PX, capacity);
+    const std::span<float> py = plane(base, PARTICLE_PY, capacity);
+    const std::span<float> pz = plane(base, PARTICLE_PZ, capacity);
+    const std::span<const float> vx = plane(base, PARTICLE_VX, capacity);
+    const std::span<const float> vy = plane(base, PARTICLE_VY, capacity);
+    const std::span<const float> vz = plane(base, PARTICLE_VZ, capacity);
 
-    euler4(px, py, pz, vx, vy, vz, active, dt);
+    euler4(px.data(), py.data(), pz.data(), vx.data(), vy.data(), vz.data(), active, dt);
 
     uint32_t s = seed ? seed : 0x9e3779b9u;
     for (int i = 0; i < active; ++i) {
@@ -131,30 +141,30 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
 
 void stepSplashParticles(uintptr_t base, int capacity, int count,
                          float dt, float gravityY, float damp) {
-    if (base == 0 || capacity <= 0 || count <= 0 || dt <= 0.f) return;
+    if (base == 0 || !validCapacity(capacity) || count <= 0 || dt <= 0.f) return;
     if (count > capacity) count = capacity;
 
-    float* px = plane(base, PARTICLE_PX, capacity);
-    float* py = plane(base, PARTICLE_PY, capacity);
-    float* pz = plane(base, PARTICLE_PZ, capacity);
-    float* vx = plane(base, PARTICLE_VX, capacity);
-    float* vy = plane(base, PARTICLE_VY, capacity);
-    float* vz = plane(base, PARTICLE_VZ, capacity);
-    float* life = plane(base, PARTICLE_LIFE, capacity);
-    const float* maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
+    const std::span<float> px = plane(base, PARTICLE_PX, capacity);
+    const std::span<float> py = plane(base, PARTICLE_PY, capacity);
+    const std::span<float> pz = plane(base, PARTICLE_PZ, capacity);
+    const std::span<float> vx = plane(base, PARTICLE_VX, capacity);
+    const std::span<float> vy = plane(base, PARTICLE_VY, capacity);
+    const std::span<float> vz = plane(base, PARTICLE_VZ, capacity);
+    const std::span<float> life = plane(base, PARTICLE_LIFE, capacity);
+    const std::span<const float> maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
 
-    euler4(px, py, pz, vx, vy, vz, count, dt);
+    euler4(px.data(), py.data(), pz.data(), vx.data(), vy.data(), vz.data(), count, dt);
 
     const f32x4 vdt = f32x4_splat(dt);
     const f32x4 vg = f32x4_splat(gravityY);
     const f32x4 vd = f32x4_splat(damp);
     int i = 0;
     for (; i + 4 <= count; i += 4) {
-        f32x4_store(vy + i, f32x4_add(f32x4_load(vy + i), f32x4_mul(vg, vdt)));
-        f32x4_store(vx + i, f32x4_mul(f32x4_load(vx + i), vd));
-        f32x4_store(vy + i, f32x4_mul(f32x4_load(vy + i), vd));
-        f32x4_store(vz + i, f32x4_mul(f32x4_load(vz + i), vd));
-        f32x4_store(life + i, f32x4_add(f32x4_load(life + i), vdt));
+        f32x4_store(&vy[i], f32x4_add(f32x4_load(&vy[i]), f32x4_mul(vg, vdt)));
+        f32x4_store(&vx[i], f32x4_mul(f32x4_load(&vx[i]), vd));
+        f32x4_store(&vy[i], f32x4_mul(f32x4_load(&vy[i]), vd));
+        f32x4_store(&vz[i], f32x4_mul(f32x4_load(&vz[i]), vd));
+        f32x4_store(&life[i], f32x4_add(f32x4_load(&life[i]), vdt));
     }
     for (; i < count; ++i) {
         vy[i] += gravityY * dt;

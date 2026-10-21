@@ -13,7 +13,13 @@
  *   node verification/verify_deploy.mjs
  *   node verification/verify_deploy.mjs --url http://127.0.0.1:4179/
  *   node verification/verify_deploy.mjs --skip-render   # no Chrome available
+ *   node verification/verify_deploy.mjs --preview-url http://127.0.0.1:4173/   # + preview/live isolation parity
  *   pnpm verify:deploy
+ *
+ * Preview parity (#502 E): `vite preview` is where visual smoke runs, so it
+ * must look like production. vite.config.ts is checked statically for a
+ * preview block that sets COOP/COEP on every run; with --preview-url the live
+ * and preview directory URLs must also send the same isolation headers.
  */
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -31,6 +37,7 @@ function parseArgs(argv) {
     buildDir: path.join(REPO_ROOT, 'build'),
     skipZip: false,
     skipRender: false,
+    previewUrl: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -38,9 +45,10 @@ function parseArgs(argv) {
     else if (a === '--build-dir') out.buildDir = path.resolve(argv[++i]);
     else if (a === '--skip-zip') out.skipZip = true;
     else if (a === '--skip-render') out.skipRender = true;
+    else if (a === '--preview-url') out.previewUrl = argv[++i];
     else if (a === '--help' || a === '-h') {
       console.log(
-        'Usage: node verification/verify_deploy.mjs [--url <directory-url>] [--build-dir build] [--skip-zip] [--skip-render]',
+        'Usage: node verification/verify_deploy.mjs [--url <directory-url>] [--build-dir build] [--skip-zip] [--skip-render] [--preview-url <vite-preview-url>]',
       );
       process.exit(0);
     }
@@ -183,6 +191,31 @@ export function checkIsolationHeaders(name, { coep, coop }) {
   }
   if (coop) notes.push(`${name}: sends Cross-Origin-Opener-Policy: ${coop} (not needed by the web build)`);
   return { failures, notes };
+}
+
+/**
+ * Preview and live must agree on cross-origin isolation (#502 E): visual
+ * smoke runs on `vite preview`, so an isolated preview tests a page players
+ * never get. Inputs are fetchBuf results (or any `{ coep, coop }`).
+ */
+export function checkIsolationParity(preview, live) {
+  const failures = [];
+  for (const [header, key] of [['Cross-Origin-Embedder-Policy', 'coep'], ['Cross-Origin-Opener-Policy', 'coop']]) {
+    const a = preview[key] ?? null;
+    const b = live[key] ?? null;
+    if (a !== b) {
+      failures.push(`isolation parity: vite preview sends ${header}: ${a ?? '(none)'} but live sends ${b ?? '(none)'}`);
+    }
+  }
+  return failures;
+}
+
+/** vite.config.ts must not give `preview` COOP/COEP headers (it used to, for "dev parity"). */
+export function checkPreviewConfig(viteConfigText) {
+  const block = /\bpreview\s*:\s*\{([\s\S]*?)\n\s{2}\}/.exec(viteConfigText)?.[1] ?? '';
+  return /Cross-Origin-(?:Opener|Embedder)-Policy/.test(block)
+    ? ['vite.config.ts: `preview` sends COOP/COEP; production does not, so visual smoke would run isolated']
+    : [];
 }
 
 /** `.htaccess` invariants: directory index, UTF-8 charset, and nothing that *sets* COOP/COEP. */
@@ -500,6 +533,24 @@ async function main() {
     const iso = checkIsolationHeaders(name, res);
     for (const f of iso.failures) fail(failures, f);
     for (const n of iso.notes) note(n);
+  }
+
+  const viteConfigPath = path.join(REPO_ROOT, 'vite.config.ts');
+  if (fs.existsSync(viteConfigPath)) {
+    const previewFailures = checkPreviewConfig(fs.readFileSync(viteConfigPath, 'utf8'));
+    for (const f of previewFailures) fail(failures, f);
+    if (!previewFailures.length) ok('vite.config.ts: preview sends no COOP/COEP (same as production)');
+  }
+  if (args.previewUrl) {
+    const previewUrl = args.previewUrl.endsWith('/') ? args.previewUrl : `${args.previewUrl}/`;
+    try {
+      const preview = await fetchBuf(previewUrl);
+      const parity = checkIsolationParity(preview, dir);
+      for (const f of parity) fail(failures, f);
+      if (!parity.length) ok(`isolation parity: ${previewUrl} and ${args.url} send the same COOP/COEP`);
+    } catch (err) {
+      fail(failures, `preview fetch threw: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   const checkCache = !isLocalUrl(args.url);

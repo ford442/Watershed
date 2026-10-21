@@ -18,9 +18,12 @@ import { useRef, useEffect } from 'react';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
 import { getAudioManager, AudioManager } from '../systems/audio/AudioSystem';
 import { WATER_LEVEL } from '../constants/game';
-import { sampleSegmentFlow } from '../utils/segmentSampler';
+import { createSegmentFlowSample, sampleSegmentFlow, type SegmentFlowSample } from '../utils/segmentSampler';
 
 const tmpPos = new THREE.Vector3();
+/** Two reusable samples (#502 D): the closest so far and the one being taken. */
+let sampleBest = createSegmentFlowSample();
+let sampleScratch = createSegmentFlowSample();
 const tmpVel = new THREE.Vector3();
 const tmpForward = new THREE.Vector3();
 const tmpRight = new THREE.Vector3();
@@ -103,15 +106,17 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     // ========================================================================
     // 1. Sample current segment for flow data
     // ========================================================================
-    let closestSample: ReturnType<typeof sampleSegmentFlow> = null;
+    let closestSample: SegmentFlowSample | null = null;
     let closestDist = Infinity;
 
     for (const seg of segments) {
       if (!seg?.active || !seg.segmentPath) continue;
-      const sample = sampleSegmentFlow(seg, tmpPos);
+      const sample = sampleSegmentFlow(seg, tmpPos, sampleScratch);
       if (sample && sample.distance < closestDist) {
         closestDist = sample.distance;
-        closestSample = sample;
+        // Keep the winner; the next segment samples into the other buffer.
+        [sampleBest, sampleScratch] = [sampleScratch, sampleBest];
+        closestSample = sampleBest;
       }
     }
 

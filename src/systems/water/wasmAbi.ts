@@ -360,6 +360,48 @@ export class WasmAbiMismatchError extends Error {
   }
 }
 
+/** Marker in a WasmHeapExhaustedError message (nativeOwner.ts classifies it for the HUD). */
+export const HEAP_EXHAUSTED_MARKER = 'heap exhausted';
+
+/**
+ * `allocateGrid(count > 0)` returned 0 (#502): the heap could not grow to
+ * `count` floats. Thrown by the bound `allocateGrid` instead of handing a 0
+ * offset on to a writer — in wasm, address 0 is writable, so a null grid
+ * silently corrupts low memory.
+ */
+export class WasmHeapExhaustedError extends Error {
+  readonly count: number;
+
+  constructor(count: number) {
+    super(`watershed_native ${HEAP_EXHAUSTED_MARKER}: allocateGrid(${count}) returned 0`);
+    this.name = 'WasmHeapExhaustedError';
+    this.count = count;
+  }
+}
+
+export function isWasmHeapExhaustedError(error: unknown): boolean {
+  return error instanceof WasmHeapExhaustedError
+    || (error instanceof Error && error.message.includes(HEAP_EXHAUSTED_MARKER));
+}
+
+/**
+ * Exports whose JS arity disagrees with the table (#502). The release glue
+ * wraps each export as `(a, c, …) => …` with exactly the C parameter count,
+ * so `fn.length` is the binary's arity; a length of 0 is an unwrapped variadic
+ * shim (the ASSERTIONS=2 debug glue, test fakes) and is not checked.
+ */
+export function arityMismatches(raw: Partial<RawWatershedModule>): string[] {
+  const record = raw as Record<string, unknown>;
+  const bad: string[] = [];
+  for (const name of Object.keys(WASM_ABI) as WasmAbiFunctionName[]) {
+    const exported = record[wasmExportName(name)];
+    if (typeof exported !== 'function' || exported.length === 0) continue;
+    const want = (WASM_ABI[name] as WasmAbiEntry).arity;
+    if (exported.length !== want) bad.push(`${wasmExportName(name)} takes ${exported.length}, table says ${want}`);
+  }
+  return bad;
+}
+
 /** Names in WASM_ABI with no `_ws_*` function on `raw`. */
 export function missingAbiExports(raw: Partial<RawWatershedModule>): WasmAbiFunctionName[] {
   const record = raw as Record<string, unknown>;
@@ -377,6 +419,13 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
   if (missing.length > 0) {
     throw new WasmAbiMismatchError(`missing ${missing.map((n) => wasmExportName(n)).join(', ')}`);
   }
+  // Arity parity is a unit test against the committed glue; dev builds also
+  // check the binary actually served, so a stale pair fails at bind rather
+  // than as a mis-sliced argument list deep in a step.
+  if (import.meta.env.DEV) {
+    const arity = arityMismatches(raw);
+    if (arity.length > 0) throw new WasmAbiMismatchError(`arity ${arity.join('; ')}`);
+  }
   const fn = (name: WasmAbiFunctionName): RawExport => raw[wasmExportName(name)] as RawExport;
 
   // One scratch block for every out-pointer result. Calls are synchronous and
@@ -384,7 +433,13 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
   const outFloats = Math.max(
     ...Object.values(WASM_ABI).map((e: WasmAbiEntry) => e.out?.floats ?? 0),
   );
-  const outPtr = fn('allocateGrid')(outFloats);
+  const rawAllocateGrid = fn('allocateGrid');
+  const allocateGrid = (count: number): number => {
+    const ptr = rawAllocateGrid(count);
+    if (ptr === 0 && count > 0) throw new WasmHeapExhaustedError(count);
+    return ptr;
+  };
+  const outPtr = allocateGrid(outFloats);
   const outAt = outPtr >>> 2;
 
   const bound: Record<string, unknown> = {};
@@ -398,7 +453,9 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
     const entry: WasmAbiEntry = WASM_ABI[name];
     const call = fn(name);
     const out = entry.out;
-    if (out) {
+    if (name === 'allocateGrid') {
+      bound[name] = allocateGrid;
+    } else if (out) {
       bound[name] = (...args: number[]) => {
         call(...args, outPtr);
         return out.read(raw.HEAPF32, outAt);

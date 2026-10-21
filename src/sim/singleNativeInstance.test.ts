@@ -79,8 +79,9 @@ describe('one watershed_native per session', () => {
       .map((f) => f.rel)
       .sort();
     expect(instantiators).toEqual(['systems/water/wasmLoader.ts']);
+    // #502 C: both owners go through the one-retry wrapper, which lives in the loader.
     const loaderUsers = files
-      .filter((f) => /\bloadWatershedNative\s*\(/.test(f.code))
+      .filter((f) => /\bloadWatershedNative(?:WithRetry)?\s*\(/.test(f.code))
       .map((f) => f.rel)
       .sort();
     expect(loaderUsers).toEqual(['sim/workerWasm.ts', 'systems/water/wasmLoader.ts']);

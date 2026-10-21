@@ -7,7 +7,13 @@
  * session, never a hang). Nothing here blocks: frames are pushed to the grid
  * that owns them as they arrive, and `latestFrame()` reads the last header.
  */
-import { raceWithDeadline, resolvePublicAsset, resolveWasmInitTimeoutMs } from '../systems/water/wasmLoader';
+import {
+  raceWithDeadline,
+  resolvePublicAsset,
+  resolveWasmInitTimeoutMs,
+  retryBudgetMs,
+} from '../systems/water/wasmLoader';
+import { wantsWasmTrapTest } from '../systems/water/wasmTrapMarker';
 import type { SimFrame, SimFrameHeader } from './SimFrame';
 import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
 import type { SegmentMeshSpec } from '../terrain/segmentMeshBuild';
@@ -105,8 +111,12 @@ export class SimWorkerProxy {
     worker.addEventListener('error', this.onError);
   }
 
-  /** Handshake: resolves the worker module's ABI, rejects on error or deadline. */
-  ready(timeoutMs: number): Promise<number> {
+  /**
+   * Handshake: resolves the worker module's ABI, rejects on error or deadline.
+   * `wasmTimeoutMs` is the in-worker load deadline (sent in INIT); `timeoutMs`
+   * bounds the whole handshake and must cover the worker's one retry.
+   */
+  ready(timeoutMs: number, wasmTimeoutMs = resolveWasmInitTimeoutMs(), trapTest = false): Promise<number> {
     if (this.failure) return Promise.reject(new Error(this.failure));
     const handshake = new Promise<number>((resolve, reject) => {
       this.readyResolve = resolve;
@@ -118,6 +128,8 @@ export class SimWorkerProxy {
         glue: resolvePublicAsset('watershed_native.js'),
         wasm: resolvePublicAsset('watershed_native.wasm'),
       },
+      timeoutMs: wasmTimeoutMs,
+      trapTest,
     });
     return raceWithDeadline(
       handshake,
@@ -283,8 +295,13 @@ export function getSimWorkerProxy(factory: SimWorkerFactory = defaultFactory): P
     proxyPromise = (async () => {
       const proxy = new SimWorkerProxy(factory());
       const search = typeof location !== 'undefined' ? location.search : undefined;
+      const wasmTimeoutMs = resolveWasmInitTimeoutMs(search);
       try {
-        await proxy.ready(resolveWasmInitTimeoutMs(search) + HANDSHAKE_SLACK_MS);
+        await proxy.ready(
+          retryBudgetMs(wasmTimeoutMs) + HANDSHAKE_SLACK_MS,
+          wasmTimeoutMs,
+          wantsWasmTrapTest(search),
+        );
       } catch (error) {
         proxy.dispose();
         throw error;

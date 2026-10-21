@@ -33,10 +33,15 @@ if(EMSCRIPTEN)
         set(CMAKE_BUILD_TYPE Release)
     endif()
 
+    # Stack (#502): emcc 3.1.56 defaults to a 64 KiB stack. Release names it so
+    # the budget is visible here; Debug gets 256 KiB (-O0 frames are several
+    # times larger) and STACK_OVERFLOW_CHECK=2, which checks the stack pointer
+    # on every function entry, so an overflow is a named abort instead of the
+    # stack silently running into the heap's static data.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(EM_OPT_FLAGS "-O0 -g3 -s ASSERTIONS=2 -s SAFE_HEAP=1")
+        set(EM_OPT_FLAGS "-O0 -g3 -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_SIZE=256KB -s STACK_OVERFLOW_CHECK=2")
     else()
-        set(EM_OPT_FLAGS "-O3 -s ASSERTIONS=0")
+        set(EM_OPT_FLAGS "-O3 -s ASSERTIONS=0 -s STACK_SIZE=64KB")
     endif()
 
     # Default production path MUST NOT require SharedArrayBuffer.
@@ -45,12 +50,20 @@ if(EMSCRIPTEN)
     # this same glue (src/physics/workerWasm.ts), and so will the sim worker
     # (#455). A 'web'-only glue hard-codes ENVIRONMENT_IS_WORKER=false and only
     # happened to work because EXPORT_ES6 resolves the .wasm via import.meta.url.
+    # Debug adds 'node' (#502): the Debug binary is never shipped, and with it
+    # the ws_trapTest path is tested under vitest against a binary that really
+    # traps (wasmTrap.integration.test.ts). ASSERTIONS=2 otherwise aborts on node.
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(EM_ENVIRONMENT "web,worker,node")
+    else()
+        set(EM_ENVIRONMENT "web,worker")
+    endif()
     option(WATERSHED_THREADS "Enable Emscripten pthreads" OFF)
     if(WATERSHED_THREADS)
         # -pthread at link replaces the deprecated -s USE_PTHREADS=1 (#467).
-        set(EM_THREAD_FLAGS "-pthread -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='web,worker'")
+        set(EM_THREAD_FLAGS "-pthread -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='${EM_ENVIRONMENT}'")
     else()
-        set(EM_THREAD_FLAGS "-s ENVIRONMENT='web,worker'")
+        set(EM_THREAD_FLAGS "-s ENVIRONMENT='${EM_ENVIRONMENT}'")
     endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -64,8 +77,13 @@ if(EMSCRIPTEN)
             -msimd128
             -mbulk-memory
         )
-        target_compile_options(watershed_compute PRIVATE ${EM_COMPILE_FLAGS})
-        target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS})
+        # -fno-exceptions / -fno-rtti at compile too (#502), as in Release: the
+        # Debug binary is the one that reproduces a field trap, so it should
+        # be the same language as the shipped one. WATERSHED_TRAP_TEST adds
+        # ws_trapTest (bindings.cpp), which ?wasmTrapTest=1 calls (wasmTrap.ts).
+        target_compile_options(watershed_compute PRIVATE ${EM_COMPILE_FLAGS} -fno-exceptions -fno-rtti)
+        target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS} -fno-exceptions -fno-rtti)
+        target_compile_definitions(watershed_native PRIVATE WATERSHED_TRAP_TEST=1)
     else()
         # Every TU, bindings.cpp included, is -fno-rtti / -fno-exceptions:
         # the C ABI (#467) has no Embind typeid to match, so nothing needs RTTI.
@@ -127,7 +145,17 @@ if(EMSCRIPTEN)
         # -flto at link matches the compile flag above; --closure 1 minifies
         # the glue (_ws_* / HEAP* / createWatershedNative are exported names
         # and survive it).
-        target_link_options(watershed_native PRIVATE "SHELL:-flto" "SHELL:--closure 1")
+        #
+        # --emit-symbol-map (#502, linked below for both variants): a release trap reads `wasm-function[N]` (no
+        # name section ships). The map is `N:name` per line, written next to the
+        # glue as watershed_native.js.symbols; build.sh moves it out of public/
+        # (emscripten/watershed_native.symbols, committed with the pair) and Vite
+        # copies it into build-sourcemaps/ next to the JS maps (#465 B).
+        # scripts/wasm-symbolicate.mjs maps a field stack with it.
+        # -sSTRICT: no deprecated settings or implicit legacy runtime exports;
+        # everything the loader uses is named on the link line below. STRICT also
+        # stops assuming a main(): --no-entry says there is none.
+        target_link_options(watershed_native PRIVATE "SHELL:-flto" "SHELL:--closure 1" "SHELL:-s STRICT=1" "SHELL:--no-entry")
     endif()
 
     # No FILESYSTEM: nothing touches files. emmalloc: a handful of long-lived
@@ -151,6 +179,9 @@ if(EMSCRIPTEN)
         # No --bind (#467): the ws_* exports are EMSCRIPTEN_KEEPALIVE C functions,
         # bound in TS from the wasmAbi.ts table. -fno-rtti at link too.
         "SHELL:-fno-rtti"
+        # Both variants (#502): Debug's own map lets the symbolicate path be
+        # tested against a binary that really traps (ws_trapTest).
+        "SHELL:--emit-symbol-map"
         "SHELL:${EM_THREAD_FLAGS}"
     )
 
@@ -171,10 +202,11 @@ else()
     # #467: the C ABI trusts JS for every pointer and width * height. Host-only
     # checks for that trust:
     #   WATERSHED_SANITIZE=ON  host smoke under ASan + UBSan (pnpm test:native:sanitize)
-    #   WATERSHED_FUZZ=ON      libFuzzer target over the SWE entry points (clang;
-    #                          pnpm test:native:fuzz). Implies the sanitizers.
+    #   WATERSHED_FUZZ=ON      libFuzzer targets over every entry-point family —
+    #                          swe, chores, forces (+ routing, particles), terrain
+    #                          (clang; pnpm test:native:fuzz). Implies the sanitizers.
     option(WATERSHED_SANITIZE "Host build with -fsanitize=address,undefined" OFF)
-    option(WATERSHED_FUZZ "Build the libFuzzer SWE target (clang only)" OFF)
+    option(WATERSHED_FUZZ "Build the libFuzzer targets (clang only)" OFF)
     if(WATERSHED_SANITIZE OR WATERSHED_FUZZ)
         # _GLIBCXX_ASSERTIONS bounds-checks std::span / vector indexing.
         set(WATERSHED_SAN_FLAGS -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
@@ -187,11 +219,15 @@ else()
         if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             message(FATAL_ERROR "WATERSHED_FUZZ needs clang (libFuzzer): -DCMAKE_CXX_COMPILER=clang++")
         endif()
-        add_executable(watershed_swe_fuzz swe_fuzz.cpp)
-        target_link_libraries(watershed_swe_fuzz PRIVATE watershed_compute)
         target_compile_options(watershed_compute PRIVATE -fsanitize=fuzzer-no-link)
-        target_compile_options(watershed_swe_fuzz PRIVATE -O1 -ffp-contract=off -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
-        target_link_options(watershed_swe_fuzz PRIVATE -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
+        # One target per entry-point family (#502); pnpm test:native:fuzz runs each.
+        foreach(fuzz_target swe chores forces terrain)
+            add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
+            target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
+            target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE
+                -O1 -ffp-contract=off -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
+            target_link_options(watershed_${fuzz_target}_fuzz PRIVATE -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
+        endforeach()
     endif()
 
     # Copy compile_commands.json next to the sources so clangd finds it without

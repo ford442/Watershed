@@ -55,6 +55,35 @@ function buildIdentityPlugin(identity: string): Plugin {
   };
 }
 
+/** `pnpm dev` with `?isolated=1` (#502 E): COOP/COEP for a threads experiment
+ *  (`pnpm build:wasm:threads`) only. The headers ride on the document that
+ *  asks and on what it loads (its Referer carries the flag) — dedicated workers
+ *  included, which must send COEP themselves to load under require-corp.
+ *  Default dev, preview and production are not isolated. */
+function devIsolationOptInPlugin(): Plugin {
+  const wantsIsolation = (value: string | undefined) => {
+    if (!value) return false;
+    try {
+      return new URL(value, 'http://localhost').searchParams.get('isolated') === '1';
+    } catch {
+      return false;
+    }
+  };
+  return {
+    name: 'watershed-dev-isolation-opt-in',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (wantsIsolation(req.url) || wantsIsolation(req.headers.referer)) {
+          res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+          res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+        }
+        next();
+      });
+    },
+  };
+}
+
 /** `build.sourcemap: 'hidden'` writes `*.map` next to the chunks without a
  *  sourceMappingURL comment. Move them out of build/ so the deploy zip and
  *  check-build-manifest never see them; keep them in build-sourcemaps/ to
@@ -80,6 +109,17 @@ function sourcemapsOutOfBuildPlugin(): Plugin {
         }
       };
       walk(outDir);
+      // The shipped wasm's symbol map (#502 B) sits with the JS maps, named by
+      // the pair stamp so a field trap is symbolicated against the exact
+      // binary: node scripts/wasm-symbolicate.mjs <stack>.
+      const symbols = path.resolve('emscripten/watershed_native.symbols');
+      if (fs.existsSync(symbols)) {
+        const stamp = /WASM_ARTIFACT_STAMP = '([0-9a-f]+)'/.exec(
+          fs.readFileSync(path.resolve('src/systems/water/wasmArtifactStamp.ts'), 'utf8'),
+        )?.[1] ?? 'unstamped';
+        fs.mkdirSync(mapsDir, { recursive: true });
+        fs.copyFileSync(symbols, path.join(mapsDir, `watershed_native.${stamp}.symbols`));
+      }
     },
   };
 }
@@ -184,6 +224,7 @@ export default defineConfig({
     react(),
     buildIdentityPlugin(BUILD_IDENTITY),
     sourcemapsOutOfBuildPlugin(),
+    devIsolationOptInPlugin(),
     rapierWasmAssetPlugin(),
     rapierWasmPreloadPlugin(),
     ...analyzePlugins,
@@ -194,21 +235,14 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    headers: {
-      // Required for SharedArrayBuffer (used by the --threads WASM build
-      // and also by Rapier's multithreaded physics worker).
-      // Safe to enable unconditionally in development.
-      'Cross-Origin-Opener-Policy':   'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
   },
-  // Same COOP/COEP for `vite preview` so visual-smoke CI matches dev isolation.
+  // No COOP/COEP on `vite preview` (#502 E): production (public/.htaccess)
+  // sends neither, nothing in src/ uses SharedArrayBuffer / Atomics /
+  // crossOriginIsolated, and an isolated preview made visual smoke run in a
+  // different environment from players' (COEP blocking, performance.now()
+  // resolution). verify_deploy.mjs checks preview and live send the same.
   preview: {
     port: 4173,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
   },
   // Treat .wasm files as assets so Vite copies them to the output directory.
   assetsInclude: ['**/*.wasm'],

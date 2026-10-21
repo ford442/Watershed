@@ -641,3 +641,72 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
   });
 });
 
+
+/**
+ * #502 C: the worker is created with no query string, so `?wasmInitTimeout=`
+ * only reaches it through INIT. This drives the real worker entry
+ * (simWorker.ts) over a stub `self` with a glue that never settles: with the
+ * page's 1 ms deadline the worker must give up (after its one retry) and post
+ * the fatal ERROR the proxy falls back on — not sit out the 8 s default.
+ * Needs no binary, so it runs in `pnpm test` too.
+ */
+describe('sim worker init deadline comes from the page (INIT), not the worker URL', () => {
+  it('?wasmInitTimeout=1 makes the worker fall back', async () => {
+    const { vi } = await import('vitest');
+    // A fresh module graph, so simWorker.ts boots now and shares this loader.
+    vi.resetModules();
+    const { __setGlueImporterForTests, resolveWasmInitTimeoutMs, retryBudgetMs } =
+      await import('../systems/water/wasmLoader');
+    const { SimWorkerProxy: Proxy } = await import('./createSimWorkerProxy');
+
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    __setGlueImporterForTests(() => new Promise(() => { /* never settles */ }));
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => { /* lost */ })));
+
+    // The worker global: messages in through its listener, out through postMessage.
+    const workerListeners = new Set<(event: MessageEvent<SimWorkerCommand>) => void>();
+    const mainListeners = new Set<(event: MessageEvent<SimWorkerResponse>) => void>();
+    const workerSelf = {
+      // The worker URL has no query — the bug was reading this.
+      location: { search: '' },
+      addEventListener: (_type: string, l: (event: MessageEvent<SimWorkerCommand>) => void) => workerListeners.add(l),
+      postMessage: (data: SimWorkerResponse) => {
+        queueMicrotask(() => mainListeners.forEach((l) => l({ data } as MessageEvent<SimWorkerResponse>)));
+      },
+    };
+    vi.stubGlobal('self', workerSelf);
+    await import('./simWorker');
+
+    const worker = {
+      postMessage: (data: SimWorkerCommand) => {
+        queueMicrotask(() => workerListeners.forEach((l) => l({ data } as MessageEvent<SimWorkerCommand>)));
+      },
+      addEventListener: (type: string, l: (event: MessageEvent<SimWorkerResponse>) => void) => {
+        if (type === 'message') mainListeners.add(l);
+      },
+      removeEventListener: (type: string, l: (event: MessageEvent<SimWorkerResponse>) => void) => {
+        if (type === 'message') mainListeners.delete(l);
+      },
+      terminate: () => {},
+    } as unknown as SimWorkerLike;
+
+    try {
+      const wasmTimeoutMs = resolveWasmInitTimeoutMs('?wasmInitTimeout=1');
+      expect(wasmTimeoutMs).toBe(1);
+      const proxy = new Proxy(worker);
+      const started = Date.now();
+      // The handshake allows far more than the worker needs; a worker still on
+      // the 8 s default would hit this deadline instead of answering ERROR.
+      await expect(proxy.ready(retryBudgetMs(wasmTimeoutMs) + 2000, wasmTimeoutMs))
+        .rejects.toThrow(/failed to load in the sim worker: watershed_native init timed out after 1ms/);
+      expect(Date.now() - started).toBeLessThan(2000);
+    } finally {
+      __setGlueImporterForTests(null);
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      vi.resetModules();
+    }
+  });
+});
