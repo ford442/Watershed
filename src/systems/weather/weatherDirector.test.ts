@@ -142,4 +142,19 @@ describe('weatherBroadcastOf', () => {
     stepWeatherDirector(state, 0.4, 30);
     expect(weatherBroadcastOf(state, broadcast()).rippleStrength).toBe(WEATHER_CONFIG.water.stormRippleStrength);
   });
+
+  it('calms the ripple across a clearing ramp instead of dropping it at the end', () => {
+    const state = createWeatherDirectorState(SQUALL);
+    stepWeatherDirector(state, 0.4, 0);
+    stepWeatherDirector(state, 0.4, 30);
+    const full = WEATHER_CONFIG.water.stormRippleStrength;
+    expect(weatherBroadcastOf(state, broadcast()).rippleStrength).toBe(full);
+    // The clear step takes 40 s; halfway the storm is half-faded, and so is the ripple.
+    stepWeatherDirector(state, 0.7, 0);
+    stepWeatherDirector(state, 0.7, 20);
+    const mid = weatherBroadcastOf(state, broadcast());
+    expect(mid.type).toBe('storm');
+    expect(mid.rippleStrength).toBeGreaterThan(0.3 * full);
+    expect(mid.rippleStrength).toBeLessThan(0.7 * full);
+  });
 });

@@ -144,8 +144,12 @@ export function weatherBroadcastOf(state: WeatherDirectorState, out: WeatherBroa
     out.rippleStrength = rippleFor(visual.type);
     return out;
   }
+  // The ripple scales with how far the ramp has come: toward the step's
+  // intensity while a weather fades in, from the ramp's start while it fades out.
   const step = state.stepIndex >= 0 ? state.script[state.stepIndex] : null;
-  const target = step && step.weather === visual.type && step.intensity > 0 ? step.intensity : visual.intensity;
+  const fadingIn = step !== null && step.weather === visual.type && step.intensity > 0;
+  const fadingOut = step !== null && step.weather !== visual.type && state.from.type === visual.type && state.from.intensity > 0;
+  const target = fadingIn ? step.intensity : fadingOut ? state.from.intensity : visual.intensity;
   out.type = visual.type;
   out.intensity = visual.intensity;
   out.transition = visual.intensity;

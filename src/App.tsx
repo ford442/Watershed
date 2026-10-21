@@ -503,6 +503,9 @@ function App({ graphicsBoot }: AppProps = {}) {
         loadoutId: options?.loadoutId,
         journeyMode: options?.journeyMode ?? 'single',
       });
+      // The run key depends on the new session (a Daily River keys by date),
+      // so the store's bests hydrate again now that it exists.
+      hydrateStoreForRun(getActiveRunKey(mapId));
       setActiveLaunchHour(options?.launchHour ?? getLaunchHour());
       setPhase('playing');
       if (isTouchInputMode()) void import('./input/handheld').then((m) => m.tryLockLandscape());
