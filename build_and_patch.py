@@ -24,7 +24,7 @@ def main():
     if deploy_args:
         deploy_cmd += " " + " ".join(shlex.quote(a) for a in deploy_args)
 
-    if not run_command("pnpm run build", cwd=WEBGPU_TS_DIR):
+    if not run_command("pnpm run build:full", cwd=WEBGPU_TS_DIR):
         return
     if os.path.exists(DEPLOY_SCRIPT):
         if not run_command(deploy_cmd, cwd=WEBGPU_TS_DIR):

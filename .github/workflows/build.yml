@@ -48,7 +48,7 @@ jobs:
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
       - name: Lint
-        run: pnpm lint --max-warnings 280
+        run: pnpm lint --max-warnings 249
 
   build-without-emscripten:
     name: Build without Emscripten
@@ -232,9 +232,13 @@ jobs:
         run: node emscripten/smoke_test.mjs
 
       # build.sh exits 1 unless emcc matches emscripten/EMCC_VERSION, so this
-      # step also proves setup-emsdk's version and the repo pin agree.
-      - name: Compile watershed_native.wasm
-        run: pnpm build:wasm
+      # step also proves setup-emsdk's version and the repo pin agree. `build:full`
+      # is the deploy path (build_and_patch.py): pinned wasm, then the bundle on top.
+      - name: Compile watershed_native.wasm and build the bundle
+        run: pnpm build:full
+
+      - name: Assert build output exists
+        run: test -f build/index.html
 
       - name: Assert WASM artifacts match the pinned emcc rebuild
         run: |
