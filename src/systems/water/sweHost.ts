@@ -31,7 +31,13 @@ import {
 } from './SWEHeightField';
 import { sweStepInterval, type SWEBudget } from './sweQuality';
 import { SWE_REST_INFLOW, advanceSweWindow, type SweInflow, type SweWindow } from './sweScroll';
-import { createRiverRouter, routedEdgeInflow, type RiverRouter } from './riverRouter';
+import {
+  createRiverRouter,
+  routedEdgeInflow,
+  type RiverRouter,
+  type RouterWeather,
+  type RoutingForecast,
+} from './riverRouter';
 import { getRoutingReach, routingChainIndex, type RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import {
@@ -48,7 +54,15 @@ import { packSweSurfaceField } from './sweSurfaceField';
 import { GRAVITY } from '../../constants/game';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
-import { getActiveLaunchHour, getActiveWeather, getRunMap, getRunSession } from '../journey/runSession';
+import {
+  getActiveConditions,
+  getActiveLaunchHour,
+  getActiveWeather,
+  getRunMap,
+  getRunSession,
+} from '../journey/runSession';
+import { getDirectorOverChainIndex } from '../weather/weatherDirector';
+import { launchWeatherOf } from '../weather/weatherScript';
 
 function worldToGridIndex(
   worldX: number,
@@ -193,8 +207,8 @@ function refreshBed(
 
 export interface RouterState {
   router: RiverRouter | null;
-  /** The run the router was spun up for; a new run (or hour) re-routes from launch. */
-  session: unknown;
+  /** The run (`runId`) the router was spun up for; a new run (or hour) re-routes from launch. */
+  session: number | null;
   launchHour: number;
 }
 
@@ -205,16 +219,29 @@ export interface RouterState {
  */
 function currentRouter(wasm: WatershedNativeModule | null, state: RouterState): RiverRouter | null {
   if (!wasm) return null;
-  const session = getRunSession();
+  const session = getRunSession()?.runId ?? null;
   const launchHour = getActiveLaunchHour();
   if (state.router && state.session === session && state.launchHour === launchHour) return state.router;
   state.router?.dispose();
-  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour, {
-    forecast: { ...DEFAULT_FORECAST_INPUTS, weather: getActiveWeather() },
-  });
+  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour, { forecast: runRoutingForecast() });
   state.session = session;
   state.launchHour = launchHour;
   return state.router;
+}
+
+/**
+ * The forecast the run's router spins up on: the day's melt inputs and the
+ * weather at launch (script step 0). Later steps arrive per step (setWeather).
+ */
+function runRoutingForecast(): RoutingForecast {
+  const { temperature, snowpackIndex, weatherScript } = getActiveConditions();
+  return { ...DEFAULT_FORECAST_INPUTS, temperature, snowpackIndex, weather: launchWeatherOf(weatherScript) };
+}
+
+/** The river weather this step routes: the WeatherDirector's, as a fresh value for the worker message. */
+function routerWeatherNow(): RouterWeather {
+  const weather = getActiveWeather();
+  return { type: weather.type, intensity: weather.intensity, overChainIndex: getDirectorOverChainIndex() };
 }
 
 /** The player's position on the routed chain, or null off it. */
@@ -232,7 +259,7 @@ function routedInflow(router: RiverRouter | null): { edgeEta: number; inflow: Sw
 export interface WorkerRouterState {
   /** Proxy the router was sent to; a different one (never, today) re-sends. */
   proxy: SimWorkerProxy | null;
-  session: unknown;
+  session: number | null;
   launchHour: number;
   reach: RoutingReach | null;
 }
@@ -244,7 +271,7 @@ export interface WorkerRouterState {
  * return the chain index the frame's SCROLL / STEP carry. No native call here.
  */
 function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number | null {
-  const session = getRunSession();
+  const session = getRunSession()?.runId ?? null;
   const launchHour = getActiveLaunchHour();
   if (state.proxy !== grid.proxy || state.session !== session || state.launchHour !== launchHour || !state.reach) {
     const reach = getRoutingReach();
@@ -252,7 +279,7 @@ function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number 
       type: 'ROUTER',
       reach,
       launchHour,
-      forecast: { ...DEFAULT_FORECAST_INPUTS, weather: getActiveWeather() },
+      forecast: runRoutingForecast(),
       H: SWE_MEAN_DEPTH,
       g: GRAVITY,
     });
@@ -374,6 +401,9 @@ export function sweHostFrame(
     if (state.stepAccumulator >= interval) {
       const stepDt = Math.min(state.stepAccumulator, 0.05);
       state.stepAccumulator = 0;
+      // The director's weather for this step, then the advance (the worker does the same).
+      const weather = routerWeatherNow();
+      router?.setWeather(weather);
       router?.advance(stepDt);
 
       applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
@@ -420,7 +450,7 @@ export function sweHostFrame(
         // hull reads it back through sampleSWEFlow like any other η.
         edgeEta: routed?.edgeEta,
       };
-      if (remote) remote.stepRouted(stepInput, { chainIndex });
+      if (remote) remote.stepRouted(stepInput, { chainIndex, weather });
       else grid.step(stepInput);
     }
     // WASM bumps fieldVersion inside step(); WGSL when its readback lands.

@@ -26,10 +26,16 @@ export function buildGhostHydroFairness(input: {
   qualityPreset: QualityPreset;
   /** Run weather; a storm or snow river hashes apart from a clear one (#464). */
   weather?: RunWeather | null;
+  /**
+   * The run's whole conditions key (weather script, melt inputs, daily seed —
+   * `runConditionsFairnessKey`); wins over `weather`. '' for a clear default day.
+   */
+  conditionsKey?: string;
 }): GhostHydroFairness {
+  const key = input.conditionsKey ?? weatherFairnessKey(input.weather);
   return {
     launchHour: input.launchHour,
-    hydroEventHash: hashHydroEvents(input.events, input.launchHour, weatherFairnessKey(input.weather)),
+    hydroEventHash: hashHydroEvents(input.events, input.launchHour, key),
     qualityPreset: input.qualityPreset,
   };
 }

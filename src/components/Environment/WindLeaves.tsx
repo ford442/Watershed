@@ -6,8 +6,8 @@
  * drifts out of the box re-enters on the upwind side. No Rapier colliders,
  * no simulation beyond that — it is a readable, not physics.
  *
- * Density is zero outside autumn-like biomes; a storm (the `weather-update`
- * broadcast) thickens it and doubles the wind. Everything per frame mutates
+ * Density is zero outside autumn-like biomes; a storm (the store's `weather`
+ * slice, written by the WeatherDirector) thickens it and doubles the wind. Everything per frame mutates
  * module scratch or preallocated typed arrays — no allocation in the loop.
  */
 import { useEffect, useMemo, useRef } from 'react';

@@ -33,10 +33,12 @@ import { hydrateStoreForRun } from '../../systems/persistence/persistenceBootstr
 import { getActiveRunKey } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 import { buildForecastSamples } from '../../systems/map/flowForecast';
+import type { LevelData } from '../../systems/map/MapSystem';
 import {
   initRunSession,
   getActiveLaunchHour,
-  getActiveWeather,
+  getActiveConditions,
+  getRunMap,
   getRunSession,
   isJourneyMode,
   advanceRunSessionMap,
@@ -46,16 +48,26 @@ import { getLaunchHour } from '../../systems/persistence/PersistenceSystem';
 import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
 
-const DEFAULT_FORECAST_OPTIONS = {
-  ...DEFAULT_FORECAST_INPUTS,
-  horizonHours: 24,
-} as const;
-
+/** The run's 24 h forecast: the day's melt inputs (the run's conditions) from the launch hour. */
 function buildDefaultForecastSamples(launchHour: number): FlowForecastSample[] {
+  const { temperature, snowpackIndex } = getActiveConditions();
   return buildForecastSamples({
-    ...DEFAULT_FORECAST_OPTIONS,
+    ...DEFAULT_FORECAST_INPUTS,
+    temperature,
+    snowpackIndex,
+    horizonHours: 24,
     startHour: launchHour,
   });
+}
+
+/**
+ * The biome cross-fade a segment authors (`effects.transitionDuration`, ms) in
+ * seconds, or undefined for the palette's own duration.
+ */
+function authoredBiomeTransitionSeconds(levelData: LevelData, segmentIndex: number | undefined): number | undefined {
+  if (segmentIndex === undefined) return undefined;
+  const ms = levelData.segments.find((seg) => seg.index === segmentIndex)?.effects?.transitionDuration;
+  return typeof ms === 'number' && ms >= 0 ? ms / 1000 : undefined;
 }
 
 function forecastSamplesEqual(
@@ -276,21 +288,11 @@ export function useExperienceWorld({
     [debug, setBiomeContext],
   );
 
+  // Biome only: the weather (glacial snow included) is the WeatherDirector's.
   const handleBiomeChange = useCallback(
     (newBiome: string, segmentIndex?: number) => {
       const biomeId = normalizeBiomeId(newBiome);
-      const isTransitionSegment = segmentIndex === 15 || segmentIndex === 17;
-      const duration = isTransitionSegment ? 2.0 : undefined;
-      setBiomeContext(biomeId, duration);
-
-      // A launch weather (#464) outranks the glacial biome's ambient snow.
-      const runWeather = getActiveWeather();
-      const isGlacial = biomeId === 'glacialMelt' || biomeId === 'glacier';
-      useGameStore.getState().setWeather(
-        runWeather.type !== 'clear'
-          ? { type: runWeather.type, intensity: runWeather.intensity, transition: 1, rippleStrength: 0 }
-          : { type: isGlacial ? 'snow' : 'clear', intensity: isGlacial ? 0.65 : 0, transition: 1, rippleStrength: 0 },
-      );
+      setBiomeContext(biomeId, authoredBiomeTransitionSeconds(getRunMap().levelData, segmentIndex));
     },
     [setBiomeContext],
   );
@@ -435,6 +437,8 @@ export function useExperienceWorld({
         initRunSession({
           mapId: targetMapId,
           launchHour: getActiveLaunchHour(),
+          // The day's weather and melt carry over a loop / restart; the script starts again.
+          conditions: getRunSession()?.conditions,
           placedCacheIds: getRunSession()?.placedCacheIds ?? [],
           loadoutId: getRunSession()?.loadoutId,
           journeyMode: getRunSession()?.journeyMode,

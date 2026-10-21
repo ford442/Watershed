@@ -332,7 +332,10 @@ export function createSimWorkerCore(
           if (!grid) return;
           // Main-thread order: edge from the router's current state, then advance.
           const routed = routedAt(command.route);
-          if (command.route) routing.router?.advance(command.input.dt);
+          if (command.route) {
+            if (command.route.weather !== undefined) routing.router?.setWeather(command.route.weather);
+            routing.router?.advance(command.input.dt);
+          }
           applySurface(grid, command.surface);
           // A braid (kind 2) raises `b` inside the solver; the mirror needs it.
           if (command.input.events.some((e) => e.kind === 2)) bedDirty = true;

@@ -45,11 +45,20 @@ export interface RoutingForecast {
   snowpackIndex: number;
   damReleaseSchedule: ReadonlyArray<{ hour: number; release: number }>;
   /**
-   * The run's weather (#464). Rain and storm add head discharge, so the storm
-   * reaches the window's edge with the routed lag; absent or clear routes
-   * exactly as before.
+   * The weather at launch (#464): the spin-up routes it, and it stays in force
+   * until `RiverRouter.setWeather` says otherwise. Rain and storm add head
+   * discharge, so the storm reaches the window's edge with the routed lag;
+   * absent or clear routes exactly as before.
    */
   weather?: RunWeather | null;
+}
+
+/** The WeatherDirector's river weather as one routed step reads it. */
+export interface RouterWeather {
+  type: RunWeather['type'];
+  intensity: number;
+  /** Chain segment the weather sits over; null = the head. */
+  overChainIndex: number | null;
 }
 
 function wrapHour(hour: number): number {
@@ -93,6 +102,8 @@ export interface RiverRouter {
   edgeState(k: number, H: number, g: number): RoutedEdge;
   /** Kinematic travel time (s) from the head to segment `k`'s outflow at the nominal discharge. */
   lag(k: number): number;
+  /** The weather the next `advance` routes (the director's, once per step). */
+  setWeather(weather: RouterWeather | null): void;
   dispose(): void;
 }
 
@@ -116,7 +127,7 @@ export function createRiverRouter(
   const n = reach.segments.length;
   if (n === 0) return null;
 
-  const forecast = options.forecast ?? DEFAULT_FORECAST_INPUTS;
+  const forecast: RoutingForecast = options.forecast ?? DEFAULT_FORECAST_INPUTS;
   const spinUpHours = options.spinUpHours ?? ROUTING_SPINUP_HOURS;
   const spinUpDt = options.spinUpDt ?? ROUTING_SPINUP_DT;
 
@@ -147,7 +158,9 @@ export function createRiverRouter(
   wasm.routeReachTravelTime(ptrs.lengths, ptrs.slopes, ptrs.widths, n, ROUTING_NOMINAL_DISCHARGE, ptrs.lag);
 
   let elapsed = 0;
-  let headQ = headDischargeAtHour(launchHour, forecast);
+  // The weather the steps route: the launch weather until the director says otherwise.
+  const live: RoutingForecast = { ...forecast, weather: forecast.weather ? { ...forecast.weather } : null };
+  let headQ = headDischargeAtHour(launchHour, live);
   let disposed = false;
   const clampK = (k: number) => Math.max(0, Math.min(n - 1, Math.trunc(k)));
 
@@ -159,7 +172,7 @@ export function createRiverRouter(
     },
     advance(dt) {
       if (disposed || !(dt > 0)) return;
-      headQ = headDischargeAtHour(launchHour + (elapsed + 0.5 * dt) / 3600, forecast);
+      headQ = headDischargeAtHour(launchHour + (elapsed + 0.5 * dt) / 3600, live);
       route(headQ, dt);
       elapsed += dt;
     },
@@ -174,6 +187,17 @@ export function createRiverRouter(
     },
     lag(k) {
       return disposed ? 0 : view(ptrs.lag)[clampK(k)];
+    },
+    setWeather(weather) {
+      if (!weather) {
+        live.weather = null;
+        return;
+      }
+      if (!live.weather) live.weather = { type: weather.type, intensity: weather.intensity };
+      else {
+        live.weather.type = weather.type;
+        live.weather.intensity = weather.intensity;
+      }
     },
     dispose() {
       if (disposed) return;

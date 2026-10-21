@@ -39,9 +39,9 @@ export interface SpawnPoint {
 }
 
 /**
- * The weather as the scene reads it (#503 C; was the `weather-update` window
- * event). WeatherSystem writes it at 10 Hz during a transition; a biome
- * change or a run reset writes it once. Subscribe to `weather.type` (it
+ * The weather as the scene reads it (#503 C). The WeatherDirector is its one
+ * writer (WeatherDirectorTick, when the visual weather changes — about every
+ * 1% of a ramp); a run reset clears it. Subscribe to `weather.type` (it
  * changes rarely); read the rest with getState() where it is used per frame.
  */
 export interface WeatherBroadcast {

@@ -33,7 +33,7 @@ export interface BiomeDecorationProps {
 }
 
 export interface WeatherAwareDecorationProps extends BiomeDecorationProps {
-  /** Optional explicit weather override (defaults to window `weather-update`). */
+  /** Optional explicit weather override (defaults to the store's `weather.type`). */
   weatherType?: string;
 }
 
