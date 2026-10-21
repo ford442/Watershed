@@ -531,11 +531,13 @@ async function attemptTouch(shot) {
     );
     const before = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().pos);
 
-    // Left thumb: plant low on the left half, push up (forward) and hold.
+    // Left thumb: plant on the left half and pull down (backward), then hold.
+    // The runner spawns facing upstream with no mouse look, so "forward" would
+    // push against the current and net ~0 m; backward goes with the flow.
     const sx = Math.round(width * 0.25);
-    const sy = Math.round(height * 0.75);
+    const sy = Math.round(height * 0.6);
     await cdpTouch(client, 'touchStart', sx, sy);
-    await cdpTouch(client, 'touchMove', sx, sy - 70);
+    await cdpTouch(client, 'touchMove', sx, sy + 70);
     const moved = await page
       .waitForFunction(
         (b) => {
@@ -554,7 +556,7 @@ async function attemptTouch(shot) {
     });
     const outPath = path.join(OUT_DIR, `${shotLabel(shot)}.png`);
     const capture = await capturePng(page, outPath);
-    await cdpTouch(client, 'touchEnd', sx, sy - 70);
+    await cdpTouch(client, 'touchEnd', sx, sy + 70);
 
     if (!moved) {
       return {
