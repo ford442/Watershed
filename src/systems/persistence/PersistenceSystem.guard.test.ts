@@ -43,6 +43,17 @@ const FULL = {
       launchHour: 23,
       hydroEventHash: 'cafe',
       qualityPreset: 'ultra',
+      seed: 12345,
+      vehicle: 'runner',
+      conditions: {
+        weatherScript: [
+          { atReachFraction: 0, weather: 'clear', intensity: 0, rampSeconds: 0 },
+          { atReachFraction: 0.5, weather: 'storm', intensity: 0.9, rampSeconds: 30, overSegment: 5 },
+        ],
+        temperature: 9.5,
+        snowpackIndex: 0.5,
+        dailyKey: '2026-10-21',
+      },
     },
   },
 };

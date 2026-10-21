@@ -20,6 +20,10 @@ interface Window {
     isScriptedReady: () => boolean;
     /** Checkpoint splits recorded so far this run (SplitRecorder). */
     getSplits: () => Array<{ segmentIndex: number; tMs: number; speed: number }>;
+    /** SWE state checksum at each split, aligned with getSplits() (null where SWE was off). */
+    getSplitChecksums: () => Array<string | null>;
+    /** This run so far as a `.wsghost` JSON string (`?replay=`-able), or null before the first sample. */
+    getGhostFile: () => string | null;
     /** Runner pose / speed / segment plus the script and hub clocks. */
     getScriptedTelemetry: () => {
       pos: { x: number; y: number; z: number } | null;

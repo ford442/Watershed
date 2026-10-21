@@ -9,6 +9,7 @@ import { useExperienceLifecycle } from './useExperienceLifecycle';
 import { useExperienceWorld } from './useExperienceWorld';
 import { getMapDefinition, isMapRegistryId } from '../../maps/registry';
 import { gameEvents } from '../../systems/events/GameEvents';
+import { getVehicleOverride } from '../../utils/runContext';
 
 function readVehicleTypeFromUrl(): VehicleType | null {
   if (typeof window === 'undefined') return null;
@@ -18,6 +19,8 @@ function readVehicleTypeFromUrl(): VehicleType | null {
 }
 
 export function resolveInitialVehicle(mapId?: string): VehicleType {
+  const pinned = getVehicleOverride();
+  if (pinned) return pinned;
   const fromUrl = readVehicleTypeFromUrl();
   if (fromUrl) return fromUrl;
   if (mapId && isMapRegistryId(mapId)) {
@@ -57,7 +60,7 @@ export function useInnerExperience({
   const trackManagerRef = useRef<TrackManagerRef | null>(null);
   const playerVelocityRef = useRef(0);
   const awardedWaterfallSegmentsRef = useRef(new Set<number>());
-  const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null);
+  const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null || getVehicleOverride() !== null);
 
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   const physicsDebugEnabled =

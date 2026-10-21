@@ -5,8 +5,10 @@ import { useBiome } from '../../systems/biome/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
 import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { commitTimedFinish } from '../../systems/ghost/runFinish';
-import { getRecordedSplits } from '../../systems/ghost/SplitRecorder';
-import { getGhostElapsedMs } from '../../systems/ghost/GhostRecorder';
+import { getRecordedSplitChecksums, getRecordedSplits } from '../../systems/ghost/SplitRecorder';
+import { getCurrentGhostPayload, getGhostElapsedMs } from '../../systems/ghost/GhostRecorder';
+import { exportGhostToJson } from '../../systems/ghost/ghostExport';
+import { currentRunFairness } from '../../systems/ghost/raceFairness';
 import { inputHub } from '../../input/InputHub';
 import { getScriptedSimTimeSec, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
 import { resolveActiveEnvelope } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
@@ -30,7 +32,7 @@ import {
   setLastMapId,
 } from '../../systems/persistence/PersistenceSystem';
 import { hydrateStoreForRun } from '../../systems/persistence/persistenceBootstrap';
-import { getActiveRunKey } from '../../utils/runContext';
+import { getActiveRunKey, getProceduralBaseSeed } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 import { buildForecastSamples } from '../../systems/map/flowForecast';
 import type { LevelData } from '../../systems/map/MapSystem';
@@ -388,6 +390,24 @@ export function useExperienceWorld({
       stepScripted: (n: number) => stepScripted(n),
       isScriptedReady: () => inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current),
       getSplits: () => getRecordedSplits(),
+      getSplitChecksums: () => getRecordedSplitChecksums(),
+      getGhostFile: () => {
+        const payload = getCurrentGhostPayload();
+        if (!payload) return null;
+        const mapId = getRunMap().id;
+        return exportGhostToJson(
+          mapId,
+          getGhostElapsedMs(),
+          payload,
+          getRecordedSplits(),
+          currentRunFairness(mapId as MapRegistryId),
+          {
+            seed: getProceduralBaseSeed(),
+            vehicle: useGameStore.getState().vehicleType,
+            conditions: getActiveConditions(),
+          },
+        );
+      },
       getScriptedTelemetry: () => {
         const body = vehicleRef.current;
         const t = body?.translation();

@@ -172,6 +172,13 @@ jobs:
         run: pnpm test:input-smoke
         timeout-minutes: 15
 
+      # #464 A: record that run as a .wsghost, then `?replay=` it twice in
+      # fresh browsers; gates on identical split times and identical SWE
+      # state checksums at every split.
+      - name: Replay determinism smoke
+        run: pnpm test:replay-smoke
+        timeout-minutes: 20
+
       # #435: the WGSL SWE twin must track the committed C++ stepper within
       # 1e-5. Runs in headless Chrome on SwiftShader's WebGPU adapter; brings
       # up its own Vite dev server, independent of the preview above.

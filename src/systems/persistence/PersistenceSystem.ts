@@ -109,6 +109,30 @@ const isRunSplits = arrayOf(
   shape({ segmentIndex: isNumber, tMs: numberMin(0), speed: isNumber }, ['segmentIndex', 'tMs', 'speed']),
 );
 
+const unitInterval: Check = (v) => isNumber(v) && v >= 0 && v <= 1;
+
+/** A ghost's day (`RunConditions`): weather script steps, melt inputs, Daily River date. */
+export const isRunConditionsShape = shape(
+  {
+    weatherScript: arrayOf(
+      shape(
+        {
+          atReachFraction: unitInterval,
+          weather: oneOf(WEATHERS),
+          intensity: unitInterval,
+          rampSeconds: numberMin(0),
+          overSegment: isInteger,
+        },
+        ['atReachFraction', 'weather', 'intensity', 'rampSeconds'],
+      ),
+    ),
+    temperature: isNumber,
+    snowpackIndex: unitInterval,
+    dailyKey: (v) => nonEmptyString(v) && stringMaxLength(16)(v),
+  },
+  ['weatherScript', 'temperature', 'snowpackIndex'],
+);
+
 const isPersistenceShape = shape(
   {
     version: (v) => v === PERSISTENCE_VERSION,
@@ -148,6 +172,9 @@ const isPersistenceShape = shape(
           launchHour: integerIn(0, 23),
           hydroEventHash: stringMaxLength(32),
           qualityPreset: oneOf(QUALITIES),
+          seed: isInteger,
+          vehicle: oneOf(['runner', 'raft']),
+          conditions: isRunConditionsShape,
         },
         ['codecVersion', 'mapId', 'timeMs', 'ghostData', 'exportedAt'],
       ),

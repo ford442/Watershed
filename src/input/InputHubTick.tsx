@@ -8,10 +8,11 @@
  * PAUSE bit's rising edge into a pause request (`pauseBus`), feeds the river's
  * flow rumble to the haptics, and applies gamepad/touch look to the camera.
  *
- * With `?input=script:<url>` it also loads the script into a ScriptedSource
- * (live once `isRunLive()` says the run started), holds the camera at the
- * script's `headingYaw` while it is live, and exposes the root's `advance()`
- * to `stepScripted(n)` for the headless harness.
+ * With `?input=script:<url>` (or `?replay=<ghost>`, whose input track becomes
+ * the script) it also loads the script into a ScriptedSource (live once
+ * `isRunLive()` says the run started), holds the camera at the row's recorded
+ * look or the script's `headingYaw` while it is live, and exposes the root's
+ * `advance()` to `stepScripted(n)` for the headless harness.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -25,7 +26,13 @@ import { InputLookApply } from './InputLookApply';
 import { preloadHaptics, pulse, stopHaptics } from './haptics';
 import { useGameStore } from '../systems/GameState';
 import type { ScriptedSource } from './sources/ScriptedSource';
-import { getInputScriptUrl, setScriptedStepper, stepRootFrames } from './scriptedRun';
+import {
+  getInputScriptUrl,
+  getReplayGhostUrl,
+  isScriptedInputMode,
+  setScriptedStepper,
+  stepRootFrames,
+} from './scriptedRun';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 
 /** Ahead of every default-priority (0) subscriber — vehicles, Rapier stepper. */
@@ -117,17 +124,24 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): Reac
 
   useEffect(() => {
     const url = getInputScriptUrl();
-    if (!url) return undefined;
+    const replayUrl = url ? null : getReplayGhostUrl();
+    if (!url && !replayUrl) return undefined;
     let cancelled = false;
     let source: ScriptedSource | null = null;
-    // Dynamic import: only `?input=script:` pages need the source, so it stays off the boot path.
-    Promise.all([
-      import('./sources/ScriptedSource'),
-      fetch(url).then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<unknown>;
-      }),
-    ])
+    // Dynamic import: only `?input=script:` / `?replay=` pages need the source, so it stays off the boot path.
+    // A replay's script is its ghost's input track (input/replay.ts).
+    const script: Promise<unknown> = url
+      ? fetch(url).then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json() as Promise<unknown>;
+        })
+      : import('./replay')
+          .then(({ loadReplayPlan }) => loadReplayPlan(replayUrl!))
+          .then((plan) => {
+            if (!plan) throw new Error('ghost cannot be replayed');
+            return plan.script;
+          });
+    Promise.all([import('./sources/ScriptedSource'), script])
       .then(([{ parseInputScript, ScriptedSource }, raw]) => {
         if (cancelled) return;
         source = new ScriptedSource(parseInputScript(raw), () => isRunLiveRef.current());
@@ -135,7 +149,7 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): Reac
         scriptedRef.current = source;
       })
       .catch((err: unknown) => {
-        console.error(`[InputHubTick] input script ${url} failed to load:`, err);
+        console.error(`[InputHubTick] input script ${url ?? replayUrl} failed to load:`, err);
       });
     return () => {
       cancelled = true;
@@ -145,7 +159,7 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): Reac
   }, []);
 
   useEffect(() => {
-    if (!getInputScriptUrl()) return undefined;
+    if (!isScriptedInputMode()) return undefined;
     setScriptedStepper((n) => stepRootFrames(getRoot, n));
     return () => setScriptedStepper(null);
   }, [getRoot]);
@@ -172,11 +186,18 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): Reac
       if (speed > FLOW_HAPTIC_MIN_SPEED) pulse('flow', Math.min(1, speed / FLOW_HAPTIC_FULL_SPEED));
     }
 
+    // A replay row holds its recorded camera; otherwise the script's fixed heading.
     const scripted = scriptedRef.current;
-    const yaw = scripted?.script.headingYaw;
-    if (yaw !== undefined && scripted!.isRunning()) {
-      state.camera.rotation.set(0, yaw, 0, 'YXZ');
-      state.camera.updateMatrixWorld();
+    if (scripted?.isRunning()) {
+      const look = scripted.currentLook();
+      const yaw = scripted.script.headingYaw;
+      if (look) {
+        state.camera.rotation.set(look[1], look[0], 0, 'YXZ');
+        state.camera.updateMatrixWorld();
+      } else if (yaw !== undefined) {
+        state.camera.rotation.set(0, yaw, 0, 'YXZ');
+        state.camera.updateMatrixWorld();
+      }
     }
   }, INPUT_HUB_PRIORITY);
 

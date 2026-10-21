@@ -47,6 +47,7 @@ import {
   sampleBathymetryInto,
 } from './bathymetrySampler';
 import { publishSWEBedSnapshot } from './sweBedDebug';
+import { setSweChecksumGrid } from './sweChecksum';
 import { useGameStore } from '../GameState';
 import { runHeightfieldChores } from '../../rendering/gpuChores';
 import type { SWEFlowGrid } from './sampleSWEFlow';
@@ -205,6 +206,9 @@ function refreshBed(
   });
 }
 
+/** Seconds of slack in the step-rate compare (see sweHostFrame). */
+const SWE_STEP_EPSILON = 1e-6;
+
 export interface RouterState {
   router: RiverRouter | null;
   /** The run (`runId`) the router was spun up for; a new run (or hour) re-routes from launch. */
@@ -340,6 +344,7 @@ export function disposeSweHostRouters(state: SweHostState): void {
   state.router = { router: null, session: null, launchHour: Number.NaN };
   state.workerRouter.proxy?.post({ type: 'DISPOSE_ROUTER' });
   state.workerRouter = { proxy: null, session: null, launchHour: Number.NaN, reach: null };
+  setSweChecksumGrid(null);
 }
 
 /**
@@ -402,9 +407,12 @@ export function sweHostFrame(
 
     // Step-rate budget: accumulate render deltas and take one SWE step per
     // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
+    // The epsilon keeps a fixed 1/60 s clock (scripted / replay frames) on
+    // exactly one step per 60 Hz interval: float sums of 1/60 can land a hair
+    // short of it and skip a step, which a replay would then carry forever.
     const interval = sweStepInterval(budget);
     state.stepAccumulator += dt;
-    if (state.stepAccumulator >= interval) {
+    if (state.stepAccumulator >= interval - SWE_STEP_EPSILON) {
       const stepDt = Math.min(state.stepAccumulator, 0.05);
       state.stepAccumulator = 0;
       // The director's weather for this step, then the advance (the worker does the same).
@@ -471,5 +479,6 @@ export function sweHostFrame(
     }
   }
 
+  setSweChecksumGrid(budget.enabled ? grid : null);
   return { originX, originZ, sweEnabled: Boolean(budget.enabled && grid) };
 }

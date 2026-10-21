@@ -17,9 +17,27 @@ export function parseUrlSeed(): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Base seed driving procedural generation (URL override or default). */
+let seedOverride: number | null = null;
+let vehicleOverride: 'runner' | 'raft' | null = null;
+
+/** Pin the vehicle for this page (a `?replay=` runs its ghost's vehicle); null releases it. */
+export function setVehicleOverride(vehicle: 'runner' | 'raft' | null): void {
+  vehicleOverride = vehicle;
+}
+
+/** The pinned vehicle, if any (wins over `?vehicle=` and the map's preference). */
+export function getVehicleOverride(): 'runner' | 'raft' | null {
+  return vehicleOverride;
+}
+
+/** Pin the procedural seed for this page (a `?replay=` plays its ghost's seed); null releases it. */
+export function setProceduralSeedOverride(seed: number | null): void {
+  seedOverride = seed !== null && Number.isFinite(seed) ? Math.floor(seed) : null;
+}
+
+/** Base seed driving procedural generation (replay pin, URL override, or default). */
 export function getProceduralBaseSeed(): number {
-  return parseUrlSeed() ?? DEFAULT_MAP_CONFIG.seed;
+  return seedOverride ?? parseUrlSeed() ?? DEFAULT_MAP_CONFIG.seed;
 }
 
 /**

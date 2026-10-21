@@ -1,4 +1,5 @@
 import {
+  GROUND_RAY_MIN_TOI,
   JUMP_CONFIG,
   RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET,
 } from '../constants';
@@ -10,6 +11,13 @@ import {
 export { castPlayerGroundRay, isTerrainGroundHit };
 
 type Vec3 = { x: number; y: number; z: number };
+
+/**
+ * How far below the runner the boot / respawn warm-up looks for canyon before
+ * releasing the body to fall onto it (the grounded test itself stays at
+ * RAYCAST_DISTANCE). Spawns stand up to ~6 m over their floor.
+ */
+export const TERRAIN_READY_RAY_DISTANCE = 40;
 
 /** Downward ground-ray origin: body translation + capsule-top clearance. */
 export function buildGroundRayOrigin(pos: Vec3): Vec3 {
@@ -72,4 +80,15 @@ export function resolvePlayerGroundRay(
     hitPoint,
     rawGrounded: isTerrainGroundHit(toi),
   };
+}
+
+/** True when the runner has canyon somewhere below it, within TERRAIN_READY_RAY_DISTANCE. */
+export function hasTerrainBelow(
+  world: Parameters<typeof castPlayerGroundRay>[0],
+  rapier: Parameters<typeof castPlayerGroundRay>[1],
+  body: Parameters<typeof castPlayerGroundRay>[2],
+  pos: Vec3,
+): boolean {
+  const { toi } = castPlayerGroundRay(world, rapier, body, buildGroundRayOrigin(pos), TERRAIN_READY_RAY_DISTANCE);
+  return toi !== null && toi >= GROUND_RAY_MIN_TOI;
 }
