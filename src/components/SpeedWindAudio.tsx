@@ -22,6 +22,7 @@ import { getAudioManager } from '../systems/audio/AudioSystem';
 import { mapCloseGurgle } from '../systems/audio/speedWind';
 import { createSpeedWindVoice, type SpeedWindInput, type SpeedWindVoice } from '../systems/audio/speedWindVoice';
 import { getSfxWetnessMultiplier } from '../systems/audio/wetnessMuffle';
+import { gameEvents } from '../systems/events/GameEvents';
 
 interface SpeedWindAudioProps {
   /** Vehicle rigid body ref — same speed source as ReactiveAudio whoosh ducking. */
@@ -71,23 +72,19 @@ export default function SpeedWindAudio({
 
   // Fade with end-of-run / wipeout audio reset (vehicle is also zeroed → stays silent).
   useEffect(() => {
-    const onRunReset = () => {
+    const offRunReset = gameEvents.on('watershed-run-reset', () => {
       voiceRef.current?.reset();
       flowRef.current = { flowSpeed: 1, turbulence: 0 };
-    };
-    const onFlow = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail) return;
+    });
+    const offFlow = gameEvents.on('water-flow-update', (detail) => {
       flowRef.current = {
         flowSpeed: Number.isFinite(detail.flowSpeed) ? detail.flowSpeed : 1,
         turbulence: Number.isFinite(detail.turbulence) ? detail.turbulence : 0,
       };
-    };
-    window.addEventListener('watershed-run-reset', onRunReset);
-    window.addEventListener('water-flow-update', onFlow);
+    });
     return () => {
-      window.removeEventListener('watershed-run-reset', onRunReset);
-      window.removeEventListener('water-flow-update', onFlow);
+      offRunReset();
+      offFlow();
     };
   }, []);
 

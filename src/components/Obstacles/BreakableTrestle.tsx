@@ -27,7 +27,7 @@ import {
   placeTrestlePlanks,
   type TrestlePlankPlacement,
 } from '../../systems/lumber/trestlePlacement';
-import { emitTrestleBreak } from '../../systems/lumber/trestleBreakEvents';
+import { gameEvents } from '../../systems/events/GameEvents';
 import { isPlayerRigidBody, vec3FromRapier } from './pillarCrumble';
 import { useWorkerStaticCollider } from '../../physics/workerColliderRegistry';
 import { boxSpec } from '../../physics/colliderSpecsFromThree';
@@ -117,7 +117,7 @@ function PlankBody({
         0.9,
         new THREE.Vector3(contact.x, contact.y, contact.z),
       );
-      emitTrestleBreak({
+      gameEvents.emit('trestleBreak', {
         segmentIndex: segmentId,
         plankIndex: placement.index,
         impactPoint: vec3FromRapier(contact),

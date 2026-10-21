@@ -45,7 +45,7 @@ import {
   tickLaunchScoring,
   hasActiveLaunch,
 } from '../../../systems/score/LaunchScoringSession';
-import { emitShelfLaunch } from '../../../systems/score/shelfLaunchEvents';
+import { gameEvents } from '../../../systems/events/GameEvents';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -352,7 +352,7 @@ export function updateRunnerPhysics({
         applyImpulseWithDebugTracking('shelfLaunch', launch.impulse);
         triggerCameraShake(0.45, 0.25);
         playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
-        emitShelfLaunch({
+        gameEvents.emit('shelfLaunch', {
           bodyHandle: body.handle,
           launchPos: pos,
           downstreamSpeed: getShelfDownstreamSpeed(vel),

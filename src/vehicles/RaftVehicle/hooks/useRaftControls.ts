@@ -25,7 +25,7 @@ import {
   hasActiveLaunch,
   recordLaunchWallContact,
 } from '../../../systems/score/LaunchScoringSession';
-import { emitShelfLaunch } from '../../../systems/score/shelfLaunchEvents';
+import { gameEvents } from '../../../systems/events/GameEvents';
 import type { RapierWorkerProxy } from '../../../physics/RapierWorkerProxy';
 import { createRaftPhysicsRuntime, type RaftImpulse } from './raftPhysicsRuntime';
 import type { RaftCollisionState } from './useRaftPhysicsState';
@@ -227,7 +227,7 @@ export function useRaftControls({
         body.applyImpulse(launch.impulse, true);
         triggerCameraShake(0.45, 0.25);
         playSplashSound(Math.min(1.5, speed));
-        emitShelfLaunch({
+        gameEvents.emit('shelfLaunch', {
           bodyHandle: body.handle,
           launchPos: pos,
           downstreamSpeed: getShelfDownstreamSpeed(vel),
@@ -295,10 +295,6 @@ export function useRaftControls({
         const scaledStun = COLLISION.STUN_DURATION + forceFactor * (COLLISION.STUN_MAX - COLLISION.STUN_DURATION);
         stunState.current.active = true;
         stunState.current.timer = Math.min(scaledStun, COLLISION.STUN_MAX);
-
-        window.dispatchEvent(new CustomEvent('raft-wall-impact', {
-          detail: { force: impactForce, isWall: isLateralWallHit },
-        }));
       }
 
       if (impactForce > 8) {

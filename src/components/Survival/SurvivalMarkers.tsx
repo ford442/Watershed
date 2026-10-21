@@ -81,14 +81,6 @@ function resolveAnchorOnTrack(
   return frame ? resolveSegmentAnchor(frame, anchor) : null;
 }
 
-/** Emit a HUD toast without coupling this component to the HUD implementation. */
-function announce(label: string, detail: Record<string, unknown> = {}): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(
-    new CustomEvent('survival-marker', { detail: { label, ...detail } }),
-  );
-}
-
 export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
   const session = getRunSession();
   const mapId = session?.mapId;
@@ -180,13 +172,11 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
       if (slot?.status === 'unplaced') {
         dispatchPortageCacheEvent({ type: 'PLACE_CACHE', slotId: nearCache.id });
         setSlotStatuses((prev) => ({ ...prev, [nearCache.id]: 'placed' }));
-        announce('CACHE STASHED', { slotId: nearCache.id, cacheLabel: nearCache.label });
       } else if (slot?.status === 'placed') {
         dispatchPortageCacheEvent({ type: 'RETRIEVE_CACHE', slotId: nearCache.id });
         awardCacheRetrievalBonus(slot.segmentIndex);
         applyCacheRecovery();
         setSlotStatuses((prev) => ({ ...prev, [nearCache.id]: 'retrieved' }));
-        announce('CACHE RETRIEVED', { slotId: nearCache.id, cacheLabel: nearCache.label });
       }
     }
 
@@ -198,7 +188,6 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
           type: 'REACH_PORTAGE_WAYPOINT',
           segmentIndex: nearRoute.segmentIndex,
         });
-        announce('PORTAGE CLEARED', { segmentIndex: nearRoute.segmentIndex });
       }
     }
   });

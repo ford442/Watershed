@@ -10,6 +10,7 @@ import {
   pendingRetrievalBonus,
 } from '../survival/portageCache';
 import { getRunSession, markCacheBonusAwarded, getJourneyResultsSummary } from '../journey/runSession';
+import { gameEvents } from '../events/GameEvents';
 
 const HIGH_SPEED_THRESHOLD = 15;
 const RESET_SPEED_THRESHOLD = 8;
@@ -62,9 +63,7 @@ export function resetScoreSystemState(): void {
   });
 
   startGhostRecording();
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('watershed-run-reset'));
-  }
+  gameEvents.emit('watershed-run-reset', {});
 }
 
 export { cancelLaunch };

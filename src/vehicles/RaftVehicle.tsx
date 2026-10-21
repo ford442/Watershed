@@ -25,6 +25,7 @@ import { WATER_PHYSICS } from './RaftVehicle/constants';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
+import { gameEvents } from '../systems/events/GameEvents';
 
 const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
@@ -162,29 +163,22 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
       tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
     }
 
-    const handleBiomeChange = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'canyonSummer';
+    const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.WATER;
       raftVehicle.current.setSurfaceMaterial(material);
-    };
+    });
 
-    window.addEventListener('biome-change', handleBiomeChange);
-
-    const handleSegmentSpawn = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { segmentIndex, spawnPoint } = customEvent.detail ?? {};
-      if (segmentIndex === 14 && spawnPoint) {
+    const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
+      if (segmentIndex === 14) {
         shelfSpawnPointRef.current = spawnPoint;
         shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
       }
-    };
-    window.addEventListener('segment-spawn', handleSegmentSpawn);
+    });
 
     return () => {
-      window.removeEventListener('biome-change', handleBiomeChange);
-      window.removeEventListener('segment-spawn', handleSegmentSpawn);
+      offBiomeChange();
+      offSegmentSpawn();
       if (workerSession) {
         workerSession.stop();
         if (workerProxyRef.current === workerSession.proxy) workerProxyRef.current = null;

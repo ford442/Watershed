@@ -16,6 +16,7 @@ import { playDodgeSound } from '../audio';
 import { triggerCameraShake } from '../utils';
 import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/score/LaunchScoringSession';
 import { emitCollisionBurst } from '../../../components/CollisionParticles';
+import { gameEvents } from '../../../systems/events/GameEvents';
 
 type Vec3Like = { x: number; y: number; z: number };
 type RapierRayCtor = new (origin: Vec3Like, dir: Vec3Like) => { origin: Vec3Like; dir: Vec3Like };
@@ -347,8 +348,6 @@ export function handleDodgeAndCollision({
           playDodgeSound();
           triggerCameraShake(0.3, 0.15);
 
-          // Broadcast dodge state for HUD
-          window.dispatchEvent(new CustomEvent('player-dodge', { detail: { state: 'start' } }));
           useGameStore.getState().setIsDodging(true);
         }
         break;
@@ -374,7 +373,7 @@ export function handleDodgeAndCollision({
 
             if (checkSide(1) || checkSide(-1)) {
               ds.nearMissAwarded = true;
-              window.dispatchEvent(new CustomEvent('player-near-miss', { detail: { speed: dodgeSpeed } }));
+              gameEvents.emit('player-near-miss', { speed: dodgeSpeed });
             }
           }
         }
@@ -386,7 +385,6 @@ export function handleDodgeAndCollision({
           try {
             body.userData = { ...body.userData, isDodging: false };
           } catch (e) { /* ignore */ }
-          window.dispatchEvent(new CustomEvent('player-dodge', { detail: { state: 'end' } }));
           useGameStore.getState().setIsDodging(false);
         }
         break;

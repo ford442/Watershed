@@ -5,7 +5,7 @@
  * - Loads Reach manifest and assets in the background.
  * - Normalizes manifest data into TrackManager-compatible segments.
  * - On transition entry: prefetch next reach, append continuous segments,
- *   cross-fade biome, emit reach-exit / reach-enter (no Canvas remount).
+ *   cross-fade biome (no Canvas remount).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,13 +19,7 @@ import { type BiomeId, normalizeBiomeId } from '../../configs/biomes';
 import { samplesToForecastByIndex } from '../map/flowForecast';
 import { FLOW_FORECAST_STATES } from '../../constants/game';
 import { joinWaypoints } from '../journey/journeyContinuity';
-import {
-  emitReachEnter,
-  emitReachExit,
-  emitJourneyHandoff,
-  prefetchNextReach,
-  resolveNextReachId,
-} from '../journey/journeyHandoff';
+import { prefetchNextReach, resolveNextReachId } from '../journey/journeyHandoff';
 import { getActiveWeather, saveJourneyCheckpoint } from '../journey/runSession';
 import { useGameStore } from '../GameState';
 import { useBiome } from '../biome/BiomeSystem';
@@ -116,12 +110,6 @@ export default function ReachManager({
         setActiveReachId(reachId);
         console.log(`[ReachManager] Reach ${reachId} loaded with ${segments.length} segments.`);
 
-        emitReachEnter({
-          reachId,
-          nextReachId: resolveNextReachId(result.manifest.transition, nextReachIdProp),
-          segmentIndex: 0,
-          transitionType: result.manifest.transition?.type,
-        });
 
         if (onBiomeChange && result.manifest.world?.biome?.baseType) {
           onBiomeChange(normalizeBiomeId(result.manifest.world.biome.baseType));
@@ -154,12 +142,6 @@ export default function ReachManager({
       const nextId = resolveNextReachId(currentManifest.transition, nextReachIdProp);
       const transitionIndex = currentManifest.transition.segmentIndex;
 
-      emitReachExit({
-        reachId: fromReachId,
-        nextReachId: nextId,
-        segmentIndex: transitionIndex,
-        transitionType: currentManifest.transition.type,
-      });
 
       saveJourneyCheckpoint({
         segmentIndex: transitionIndex,
@@ -230,25 +212,6 @@ export default function ReachManager({
         // Cross-fade — no hard snap / Canvas remount
         setBiome(nextBiome, currentManifest.transition.durationSeconds || 2);
         onBiomeChange?.(nextBiome);
-
-        emitJourneyHandoff({
-          kind: 'reach',
-          fromId: fromReachId,
-          toId: nextId,
-          segmentIndex: transitionIndex,
-          seamless: true,
-          biomeKickoff: {
-            biomeId: nextBiome,
-            durationSeconds: currentManifest.transition.durationSeconds || 2,
-            mode: 'crossfade',
-          },
-        });
-        emitReachEnter({
-          reachId: nextId,
-          nextReachId: resolveNextReachId(nextManifest.transition),
-          segmentIndex: idOffset,
-          transitionType: nextManifest.transition?.type,
-        });
 
         console.log(
           `[ReachManager] Seamless handoff ${fromReachId} → ${nextId} (+${appended.length} segments)`,

@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Ray } from '@dimforge/rapier3d-compat';
+import { gameEvents } from '../events/GameEvents';
 
 // =============================================================================
 // MATERIAL ENUMS & CONFIGURATION
@@ -279,13 +280,6 @@ export abstract class BaseVehicle {
   
   /** Emit collision event to all registered callbacks */
   protected emitCollision(event: CollisionEvent): void {
-    // Dispatch global event for audio system
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('vehicle-collision', {
-        detail: event
-      }));
-    }
-    
     // Call registered callbacks
     this.collisionCallbacks.forEach(cb => {
       try { cb(event); } catch (e) { console.error('Collision callback error:', e); }
@@ -325,12 +319,8 @@ export abstract class BaseVehicle {
     
     this.emitCollision(event);
     
-    // F1: Trigger collision sound via global event
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('collision-sound', {
-        detail: { material, force: impactForce, point: contactPoint }
-      }));
-    }
+    // F1: collision sound (useExperienceLifecycle plays collide_<material>)
+    gameEvents.emit('collision-sound', { material, force: impactForce, point: event.point });
   }
   
   /** True when an impact is hard enough for the particle burst. */

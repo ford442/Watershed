@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { isAutumnLike } from '../../configs/biomes';
-import { useGameStore } from '../../systems/GameState';
+import { useGameStore, type WeatherBroadcast } from '../../systems/GameState';
 import { resolveLeafPalette } from './FallingLeaves';
 import { createRng } from '../../math/random';
 
@@ -70,15 +70,13 @@ export default function WindLeaves() {
     return { offset, phase, spin, rng };
   }, []);
 
-  // Storm state from the WeatherSystem broadcast — a ref, not React state.
+  // Storm state from the store's weather — a ref, not React state.
   useEffect(() => {
-    const onWeather = (event: Event) => {
-      const detail = (event as CustomEvent<{ type?: string; transition?: number; intensity?: number }>).detail;
-      if (!detail) return;
-      stormRef.current = detail.type === 'storm' ? detail.transition ?? detail.intensity ?? 1 : 0;
+    const read = (weather: WeatherBroadcast) => {
+      stormRef.current = weather.type === 'storm' ? weather.transition : 0;
     };
-    window.addEventListener('weather-update', onWeather);
-    return () => window.removeEventListener('weather-update', onWeather);
+    read(useGameStore.getState().weather);
+    return useGameStore.subscribe((state) => read(state.weather));
   }, []);
 
   // Colours once per biome (not per frame).

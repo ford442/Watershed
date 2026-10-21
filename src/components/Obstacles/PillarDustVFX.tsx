@@ -9,7 +9,8 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle } from '../../systems/pools/ParticlePool';
-import { PILLAR_BREAK_EVENT, type PillarBreakEventDetail } from './pillarBreakEvents';
+import { gameEvents } from '../../systems/events/GameEvents';
+import { SurfaceMaterial } from '../../systems/vehicle/VehicleSystem';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
 
@@ -62,29 +63,14 @@ export default function PillarDustVFX() {
   }, []);
 
   useEffect(() => {
-    const onPillarBreak = (event: Event) => {
-      const detail = (event as CustomEvent<PillarBreakEventDetail>).detail;
-      if (!detail?.impactPoint) return;
+    return gameEvents.on('pillarBreak', (detail) => {
       const point = new THREE.Vector3(detail.impactPoint.x, detail.impactPoint.y, detail.impactPoint.z);
       const intensity = Math.min(1, detail.impactSpeed / 20);
       spawnDustBurst(point, intensity);
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('camera-rumble', {
-          detail: { intensity: 0.35 + intensity * 0.45 },
-        }));
-        window.dispatchEvent(new CustomEvent('collision-sound', {
-          detail: {
-            material: 'rock',
-            force: 12 + intensity * 10,
-            point,
-          },
-        }));
-      }
-    };
-
-    window.addEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
-    return () => window.removeEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
+      gameEvents.emit('camera-rumble', { intensity: 0.35 + intensity * 0.45 });
+      gameEvents.emit('collision-sound', { material: SurfaceMaterial.ROCK, force: 12 + intensity * 10, point });
+    });
   }, [spawnDustBurst]);
 
   useFrame((_, delta) => {

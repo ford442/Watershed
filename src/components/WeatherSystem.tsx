@@ -19,6 +19,7 @@ import { createWeatherParticleMaterial } from '../materials/weather/createWeathe
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
 import { createLightningState, lightningSeed, stepLightning } from '../systems/weather/lightning';
 import { getAudioManager } from '../systems/audio/AudioSystem';
+import { useGameStore } from '../systems/GameState';
 import { getActiveLaunchHour } from '../systems/journey/runSession';
 import { getActiveMapId } from '../utils/runContext';
 import { createRng } from '../math/random';
@@ -218,7 +219,6 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
 
   useFrame((state, delta) => {
     const targetType = targetWeatherRef.current;
-    const currentType = currentWeatherRef.current;
     const targetInt = targetIntensityRef.current;
 
     // Smoothly transition weather type and intensity
@@ -442,42 +442,25 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     }
 
     // ======================================================================
-    // 5. Dispatch weather event for shaders / gameplay
+    // 5. Publish the weather to the store (10 Hz; skipped when unchanged)
     // ======================================================================
     if (state.clock.elapsedTime % 0.1 < delta) {
-      window.dispatchEvent(
-        new CustomEvent('weather-update', {
-          detail: {
-            type: weatherType,
-            intensity: intensityRef.current,
-            transition: t,
-            rippleStrength:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.water.stormRippleStrength
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.water.rainRippleStrength
-                : 0,
-            flowSpeedMultiplier:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.water.stormFlowSpeedMultiplier
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.water.rainFlowSpeedMultiplier
-                : 1.0,
-            dragBoost:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.gameplay.stormDragBoost
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.gameplay.rainDragBoost
-                : 0,
-            boostMultiplier:
-              weatherType === 'storm'
-                ? WEATHER_CONFIG.gameplay.stormBoostMultiplier
-                : weatherType === 'rain'
-                ? WEATHER_CONFIG.gameplay.rainBoostMultiplier
-                : 1.0,
-          },
-        })
-      );
+      const store = useGameStore.getState();
+      const rippleStrength =
+        weatherType === 'storm'
+          ? WEATHER_CONFIG.water.stormRippleStrength
+          : weatherType === 'rain'
+          ? WEATHER_CONFIG.water.rainRippleStrength
+          : 0;
+      const prev = store.weather;
+      if (
+        prev.type !== weatherType ||
+        prev.intensity !== intensityRef.current ||
+        prev.transition !== t ||
+        prev.rippleStrength !== rippleStrength
+      ) {
+        store.setWeather({ type: weatherType, intensity: intensityRef.current, transition: t, rippleStrength });
+      }
     }
   });
 

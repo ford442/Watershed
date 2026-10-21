@@ -14,6 +14,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../../configs/BiomePalettes';
 import { type BiomeId, DEFAULT_BIOME_ID, normalizeBiomeId } from '../../configs/biomes';
 import { useGameStore } from '../GameState';
+import { gameEvents } from '../events/GameEvents';
 
 // Context for biome state
 type BiomeContextType = {
@@ -100,11 +101,10 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     setTransitionProgress(1);
     delete (palette as any).__durationOverride;
     useGameStore.setState({ currentBiome: palette.id });
-    window.dispatchEvent(
-      new CustomEvent('biome-change', {
-        detail: { biome: palette.id, segmentIndex: useGameStore.getState().currentSegmentIndex },
-      })
-    );
+    gameEvents.emit('biome-change', {
+      biome: palette.id,
+      segmentIndex: useGameStore.getState().currentSegmentIndex,
+    });
   }, []);
   
   // Update transition progress
@@ -173,21 +173,7 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
 export const BiomeTransition: React.FC = () => {
   const { currentBiome, timeOfDay } = useBiome();
   const { scene } = useThree();
-  const [weatherType, setWeatherType] = useState('clear');
-
-  useEffect(() => {
-    const onWeatherUpdate = (event: Event) => {
-      const incoming = (event as CustomEvent)?.detail?.type;
-      if (typeof incoming === 'string') setWeatherType(incoming);
-    };
-    const onRunReset = () => setWeatherType('clear');
-    window.addEventListener('weather-update', onWeatherUpdate);
-    window.addEventListener('watershed-run-reset', onRunReset);
-    return () => {
-      window.removeEventListener('weather-update', onWeatherUpdate);
-      window.removeEventListener('watershed-run-reset', onRunReset);
-    };
-  }, []);
+  const weatherType = useGameStore((s) => s.weather.type);
 
   // Get lighting references
   const lightsRef = useRef<{

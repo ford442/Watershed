@@ -19,6 +19,7 @@ import { initAudio, playJumpSound, playLandSound, playFootstep, playDodgeSound }
 import { triggerCameraShake } from './RunnerVehicle/utils';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
 import { computeShelfTrigger } from './utils/shelfLaunch';
+import { gameEvents } from '../systems/events/GameEvents';
 
 const isNoPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
 
@@ -75,35 +76,22 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
     }
     
     // Listen for biome changes
-    const handleBiomeChange = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const biome = customEvent.detail?.biome || 'canyonSummer';
+    const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
       const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.ROCK;
       vehicle.current.setSurfaceMaterial(material);
-      
-      // Goal 2: Apply material friction to rigid body
-      if (bodyRef.current) {
-        const friction = vehicle.current.getConfig().friction;
-        // We'll override friction dynamically in useFrame based on material
-      }
-    };
-    
-    window.addEventListener('biome-change', handleBiomeChange);
+    });
 
-    const handleSegmentSpawn = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { segmentIndex, spawnPoint } = customEvent.detail ?? {};
-      if (segmentIndex === 14 && spawnPoint) {
+    const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
+      if (segmentIndex === 14) {
         shelfSpawnPointRef.current = spawnPoint;
         shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
       }
-    };
-    window.addEventListener('segment-spawn', handleSegmentSpawn);
+    });
 
     return () => {
-      window.removeEventListener('biome-change', handleBiomeChange);
-      window.removeEventListener('segment-spawn', handleSegmentSpawn);
+      offBiomeChange();
+      offSegmentSpawn();
     };
   }, []);
 

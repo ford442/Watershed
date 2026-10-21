@@ -1,6 +1,6 @@
+import { gameEvents } from '../../systems/events/GameEvents';
+
 // Camera shake effect
 export const triggerCameraShake = (intensity: number, duration: number = 0.3) => {
-  window.dispatchEvent(new CustomEvent('camera-shake', {
-    detail: { intensity, duration }
-  }));
+  gameEvents.emit('camera-shake', { intensity, duration });
 };

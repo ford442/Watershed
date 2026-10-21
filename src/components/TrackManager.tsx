@@ -41,6 +41,7 @@ import { samplesToForecastByIndex } from '../systems/map/flowForecast';
 import VortexForceSystem from '../systems/water/VortexForceSystem';
 import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
 import type { BiomeId } from '../configs/biomes';
+import { gameEvents } from '../systems/events/GameEvents';
 
 export interface TrackManagerRef {
   synthesizeSegmentEnter: (index: number) => void;
@@ -244,14 +245,13 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     setPoolVersion((v) => v + 1);
   }, [reachSegments]);
 
-  // Weather listener
+  // Weather wetness for the segments' surfaces — a ref, so a 10 Hz weather
+  // write never re-renders the treadmill.
   useEffect(() => {
-    const onWeatherUpdate = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      weatherWetnessRef.current = detail?.rippleStrength || 0;
-    };
-    window.addEventListener('weather-update', onWeatherUpdate);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate);
+    weatherWetnessRef.current = useGameStore.getState().weather.rippleStrength;
+    return useGameStore.subscribe((state) => {
+      weatherWetnessRef.current = state.weather.rippleStrength;
+    });
   }, []);
 
   // PBR texture loading
@@ -424,7 +424,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       },
       onSegmentEnter: (index: number) => {
         const activeSegments = chunkManagerRef.current?.getActiveSegments?.() ?? [];
-        const entered = activeSegments.find((s: any) => s?.id === index);
+        const entered = activeSegments.find((s) => s.id === index);
         const flowSpeed = entered?.flowSpeed ?? 1.0;
         const gravityMultiplier = entered?.gravityMultiplier;
         // slipperiness is stored on the config, not the live SegmentData — read from map manager
@@ -433,20 +433,16 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
           (segCfg?.slipperiness ?? 0) + (entered?.slipperinessAdd ?? 0);
         (window as any).__watershedFlowSpeed = flowSpeed;
         (window as any).__watershedSlipperiness = slipperiness;
-        window.dispatchEvent(
-          new CustomEvent('segment-enter', {
-            detail: {
-              segmentIndex: index,
-              flowSpeed,
-              gravityMultiplier,
-              slipperiness,
-              segmentState: entered?.segmentState ?? 'Normal',
-              surviveBonus: entered?.surviveBonus ?? 0,
-              washedOutGap: Boolean(entered?.washedOutGap),
-              forceVehicle: segCfg?.forceVehicle ?? null,
-            },
-          })
-        );
+        gameEvents.emit('segment-enter', {
+          segmentIndex: index,
+          flowSpeed,
+          gravityMultiplier,
+          slipperiness,
+          segmentState: entered?.segmentState ?? 'Normal',
+          surviveBonus: entered?.surviveBonus ?? 0,
+          washedOutGap: Boolean(entered?.washedOutGap),
+          forceVehicle: segCfg?.forceVehicle ?? null,
+        });
 
         // Teleport harnesses replay entry without generation; the generated
         // path below normally handled this segment already (idempotent).

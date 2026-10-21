@@ -477,10 +477,6 @@ const resetRaft = (body: RapierBody) => {
 
   deps.tippingState.current.dangerTime = 0;
   deps.tippingState.current.isTipped = false;
-
-  window.dispatchEvent(new CustomEvent('raft-tipped', {
-    detail: { resetPosition: safePos }
-  }));
 };
 
 const updateCameraFromBody = (body: RapierBody) => {

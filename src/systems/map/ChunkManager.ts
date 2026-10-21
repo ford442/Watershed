@@ -36,6 +36,7 @@ import {
 } from './chunkForecastApply';
 
 import { indexOfSpanAtZ, spanContainsZ, type ZSpan } from './segmentFrames';
+import { gameEvents } from '../events/GameEvents';
 
 export type { SegmentData } from './chunkForecastApply';
 
@@ -189,11 +190,7 @@ export class ChunkManager {
 
     // One batched spawn update — avoids N Zustand/React flushes during cold boot.
     if (Object.keys(spawnBatch).length > 0) {
-      window.dispatchEvent(
-        new CustomEvent('segment-spawns', {
-          detail: { points: spawnBatch },
-        })
-      );
+      gameEvents.emit('segment-spawns', { points: spawnBatch });
     }
 
     this.callbacks.onPoolChange?.();
@@ -302,11 +299,10 @@ export class ChunkManager {
     this.spawnPoints.set(nextSegment.id, spawnPoint);
 
     // Broadcast spawn point for respawn system
-    window.dispatchEvent(
-      new CustomEvent('segment-spawn', {
-        detail: { segmentIndex: nextSegment.id, spawnPoint: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z } },
-      })
-    );
+    gameEvents.emit('segment-spawn', {
+      segmentIndex: nextSegment.id,
+      spawnPoint: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z },
+    });
 
     this.callbacks.onSegmentGenerated?.(nextIndex);
     return true;
@@ -394,9 +390,7 @@ export class ChunkManager {
         if (this.pendingBiome === newBiome) {
           this.lastReportedBiome = newBiome;
           this.callbacks.onBiomeChange?.(newBiome, segmentIndex);
-          window.dispatchEvent(
-            new CustomEvent('biome-change', { detail: { biome: newBiome, segmentIndex } })
-          );
+          gameEvents.emit('biome-change', { biome: newBiome, segmentIndex });
         }
         this.pendingBiome = null;
       }, 400);

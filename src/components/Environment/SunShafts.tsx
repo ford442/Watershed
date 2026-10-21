@@ -1,15 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/biome/BiomeSystem';
 import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 
-import type { BiomeDecorationTransform, WeatherAwareDecorationProps, WeatherUpdateEvent } from './types';
+import type { BiomeDecorationTransform, WeatherAwareDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createSunShaftMaterial, createSunShaftMoteMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
+import { useGameStore } from '../../systems/GameState';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0xdd9ac591);
@@ -89,16 +90,8 @@ export default function SunShafts({
   const { sunWorldPosition } = useSunPosition();
   const prevCamPosRef = useRef(new THREE.Vector3());
   const streakStrengthRef = useRef(0);
-  const [weatherType, setWeatherType] = useState('clear');
+  const weatherType = useGameStore((s) => s.weather.type);
 
-  useEffect(() => {
-    const onWeatherUpdate = (event: WeatherUpdateEvent) => {
-      const incoming = event?.detail?.type;
-      if (typeof incoming === 'string') setWeatherType(incoming);
-    };
-    window.addEventListener('weather-update', onWeatherUpdate as EventListener);
-    return () => window.removeEventListener('weather-update', onWeatherUpdate as EventListener);
-  }, []);
 
   // Geometry: Cone/Cylinder representing the light beam
   const geometry = useMemo(() => {

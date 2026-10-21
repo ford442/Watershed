@@ -15,11 +15,23 @@
  *
  * Tightening any of these is welcome as its own PR, with the fixes in it.
  */
+import { readFileSync } from 'node:fs';
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import r3f from '@react-three/eslint-plugin';
+
+/**
+ * Game event names, read from the one typed bus (#503 C) so this rule and
+ * `GameEventMap` cannot drift. `weather-update` is the retired event that
+ * became the store's `weather` field.
+ */
+const GAME_EVENT_NAMES = [
+  ...readFileSync(new URL('./src/systems/events/GameEvents.ts', import.meta.url), 'utf8')
+    .match(/export interface GameEventMap \{([\s\S]*?)\n\}/)[1]
+    .matchAll(/^\s+'?([\w-]+)'?:/gm),
+].map((m) => m[1]).concat('weather-update');
 
 export default tseslint.config(
   {
@@ -99,6 +111,26 @@ export default tseslint.config(
       // `require` shows up in vi.mock factories, where ESM imports are hoisted
       // out from under the mock.
       '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+
+  // Game events go through `gameEvents` (src/systems/events/GameEvents.ts), not
+  // `window` — typed payloads, one map of who sends what, no orphan events.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/systems/events/GameEvents.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='window'][callee.property.name='dispatchEvent']",
+          message: 'Emit game events with gameEvents.emit (src/systems/events/GameEvents.ts), not window.dispatchEvent.',
+        },
+        {
+          selector: `CallExpression[callee.property.name=/^(add|remove)EventListener$/][arguments.0.value=/^(${GAME_EVENT_NAMES.join('|')})$/]`,
+          message: 'Listen to game events with gameEvents.on (src/systems/events/GameEvents.ts), not addEventListener.',
+        },
+      ],
     },
   },
 

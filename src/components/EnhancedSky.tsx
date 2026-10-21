@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
@@ -202,7 +202,7 @@ export default function EnhancedSky() {
     const { setSunWorldPosition } = useSunPosition();
     const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
     const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
-    const [weatherType, setWeatherType] = useState('clear');
+    const weatherType = useGameStore((s) => s.weather.type);
     const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
 
     const fogObjRef = useRef<THREE.Fog | null>(null);
@@ -335,14 +335,6 @@ export default function EnhancedSky() {
         return mat;
     }, [materialBackend]);
 
-    useEffect(() => {
-        const onWeatherUpdate = (event: Event) => {
-            const incoming = (event as CustomEvent<{ type?: string }>)?.detail?.type;
-            if (typeof incoming === 'string') setWeatherType(incoming);
-        };
-        window.addEventListener('weather-update', onWeatherUpdate);
-        return () => window.removeEventListener('weather-update', onWeatherUpdate);
-    }, []);
 
     useEffect(() => {
         scene.userData.skyOwnsFog = true;

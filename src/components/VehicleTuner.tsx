@@ -19,6 +19,7 @@ import { VEHICLE_TUNING } from '../constants/vehicleTuning';
 import { getAudioManager, AudioManager } from '../systems/audio/AudioSystem';
 import { WATER_LEVEL } from '../constants/game';
 import { createSegmentFlowSample, sampleSegmentFlow, type SegmentFlowSample } from '../utils/segmentSampler';
+import { gameEvents } from '../systems/events/GameEvents';
 
 const tmpPos = new THREE.Vector3();
 /** Two reusable samples (#502 D): the closest so far and the one being taken. */
@@ -79,14 +80,10 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
           getAudio()?.playSound('boost', 0.9, 1.0);
 
           // Visual / shader feedback
-          window.dispatchEvent(
-            new CustomEvent('boost-triggered', {
-              detail: {
-                intensity: VEHICLE_TUNING.boostVisualIntensity,
-                duration: VEHICLE_TUNING.boostVisualDuration,
-              },
-            })
-          );
+          gameEvents.emit('boost-triggered', {
+            intensity: VEHICLE_TUNING.boostVisualIntensity,
+            duration: VEHICLE_TUNING.boostVisualDuration,
+          });
         }
       }
     };

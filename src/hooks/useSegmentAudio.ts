@@ -15,6 +15,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { useGameStore } from '../systems/GameState';
+import { gameEvents } from '../systems/events/GameEvents';
 
 export type SegmentAudioPhase = 'meander' | 'approach' | 'waterfall' | 'splash' | 'pond' | 'rapids';
 
@@ -85,14 +86,9 @@ export function useSegmentAudio(currentSegmentIndex: number) {
   }, [currentSegmentIndex]);
 
   useEffect(() => {
-    const onFlow = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail && isFinite(detail.flowSpeed)) {
-        flowSpeedRef.current = detail.flowSpeed;
-      }
-    };
-    window.addEventListener('water-flow-update', onFlow);
-    return () => window.removeEventListener('water-flow-update', onFlow);
+    return gameEvents.on('water-flow-update', (detail) => {
+      if (isFinite(detail.flowSpeed)) flowSpeedRef.current = detail.flowSpeed;
+    });
   }, []);
 
   useFrame((_, delta) => {

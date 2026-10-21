@@ -18,6 +18,7 @@ import {
   type PillarFragmentSpawn,
 } from './pillarCrumble';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { gameEvents } from '../../systems/events/GameEvents';
 
 export interface ActivePillarFragment {
   id: number;
@@ -86,8 +87,7 @@ export default function PillarFragmentPool({ castShadow = false }: PillarFragmen
       clearPillarFragmentRegistry();
     };
 
-    window.addEventListener('watershed-run-reset', onReset);
-    return () => window.removeEventListener('watershed-run-reset', onReset);
+    return gameEvents.on('watershed-run-reset', onReset);
   }, []);
 
   useFrame(() => {
