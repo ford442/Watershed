@@ -402,6 +402,10 @@ export function useExperienceWorld({
           ghostElapsedMs: getGhostElapsedMs(),
           hubTickMeanMs: stats.meanMs,
           hubTicks: stats.ticks,
+          input: (() => {
+            const f = inputHub.readFrame();
+            return { source: f.source, moveX: f.moveX, moveY: f.moveY, lookDX: f.lookDX, lookDY: f.lookDY, buttons: f.buttons, frameIdx: f.frameIdx };
+          })(),
         };
       },
     };

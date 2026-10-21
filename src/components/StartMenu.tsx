@@ -1,7 +1,9 @@
 // src/components/StartMenu.tsx
 // Pre-game title screen with map select, start, and settings
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useMenuFocus } from '../hooks/useMenuFocus';
+import { useInputStore } from '../input/InputHub';
 import {
   formatDuration,
   getDefaultJourneyStack,
@@ -65,6 +67,7 @@ const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
  * - Start button (engages pointer lock)
  * - Settings panel toggle (graphics quality)
  * - Keyboard shortcut: Enter to start
+ * - Arrow keys / gamepad d-pad move focus (useMenuFocus); pad Start begins the run
  */
 export const StartMenu: React.FC<StartMenuProps> = ({
   onStart,
@@ -123,9 +126,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     journeyMode: playMode,
   };
 
+  // Arrow keys and the gamepad d-pad walk the menu; Start (pad) starts the run.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useMenuFocus(cardRef, {
+    onStart: () => {
+      if (bootReady) onStart(effectiveMapId, startOptions);
+    },
+  });
+  const usingGamepad = useInputStore((s) => s.activeSourceId === 'gamepad');
+
   return (
     <div className="start-menu-overlay">
-      <div className="start-menu-card start-menu-card--wide">
+      <div className="start-menu-card start-menu-card--wide" ref={cardRef}>
         <div className="start-menu-title-group">
           <h1 className="start-menu-title">WATERSHED</h1>
           <p className="start-menu-tagline">
@@ -297,6 +309,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <span className="start-menu-hint-key">Esc</span>
             <span className="start-menu-hint-action">Pause</span>
           </div>
+          {usingGamepad && (
+            <div className="start-menu-hint-row">
+              <span className="start-menu-hint-key">D-pad · A · Start</span>
+              <span className="start-menu-hint-action">Navigate · Select · Start run</span>
+            </div>
+          )}
           <div className="start-menu-hint-row">
             <span className="start-menu-hint-key">F3</span>
             <span className="start-menu-hint-action">Movement readout</span>

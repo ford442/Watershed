@@ -45,9 +45,9 @@
   transform: translateX(-50%);
   background: rgba(0,0,0,0.8);
   color: #fff;
-  padding: 12px 24px;
+  padding: clamp(8px, 1.6vw, 12px) clamp(14px, 3vw, 24px);
   border-radius: 8px;
-  font-size: 18px;
+  font-size: clamp(14px, 2.4vw, 18px);
   font-weight: 600;
   opacity: 0;
   visibility: hidden;

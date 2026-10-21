@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { NIGHT_MODE } from '../constants/nightMode';
+import { parseDebugEnabled } from '../debug/debugStages';
 
 export interface NightModeState {
   /** Whether night mode is active */
@@ -19,7 +20,7 @@ export interface NightModeState {
  * Usage:
  * const { isNight, toggle } = useNightMode();
  * 
- * Press 'N' to toggle day/night
+ * Press 'N' to toggle day/night — only under `?debug=1`; production never binds it (#486 B).
  */
 export const useNightMode = (): NightModeState => {
   const [isNight, setIsNight] = useState(NIGHT_MODE.enabled);
@@ -33,6 +34,7 @@ export const useNightMode = (): NightModeState => {
   }, []);
 
   useEffect(() => {
+    if (!parseDebugEnabled()) return undefined;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === NIGHT_MODE.toggleKey) {
         toggle();

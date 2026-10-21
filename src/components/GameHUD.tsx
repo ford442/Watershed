@@ -10,8 +10,8 @@ import {
 } from '../systems/journey/runSession';
 import { getLoadoutDefinition } from '../systems/survival';
 import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
-import RunResultsPanel from './RunResultsPanel';
 import MovementReadout from './MovementReadout';
+import MenuFocusScope from './MenuFocusScope';
 import { lazyComponent } from '../utils/lazyComponent';
 import { whenIdle } from '../utils/whenIdle';
 import { BIOME_HUD_LABELS } from '../configs/biomes';
@@ -294,7 +294,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   if (isWipeout) {
     return (
-      <div className="hud-overlay">
+      <MenuFocusScope className="hud-overlay" onStart={onRespawn}>
         <div className="hud-overlay__card">
           <div className="hud-overlay__title hud-overlay__title--wipeout">
             WIPEOUT
@@ -310,6 +310,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <button
             onClick={onRespawn}
             className="hud-btn hud-btn--primary"
+            autoFocus
           >
             RESPAWN
           </button>
@@ -319,10 +320,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </React.Suspense>
 
           <p className="hud-overlay__hint">
-            Press SPACE to respawn
+            Press SPACE to respawn · Gamepad: A / Start
           </p>
         </div>
-      </div>
+      </MenuFocusScope>
     );
   }
 
@@ -330,8 +331,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const title = isFinalMap ? 'Campaign Complete' : 'Journey Complete';
     const journeyResults = getJourneyResultsSummary();
     return (
-      <div
+      <MenuFocusScope
         className={`hud-overlay journey-complete-overlay ${overlayVisible ? 'visible' : ''}`}
+        onStart={onContinueJourney ?? onLoopMap}
       >
         <div className="hud-overlay__card">
           <div className="hud-overlay__title hud-overlay__title--complete">
@@ -437,10 +439,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           <p className="hud-overlay__hint">
-            Press Enter to {onContinueJourney ? 'continue' : 'retry'}
+            Press Enter to {onContinueJourney ? 'continue' : 'retry'} · Gamepad: Start
           </p>
         </div>
-      </div>
+      </MenuFocusScope>
     );
   }
 

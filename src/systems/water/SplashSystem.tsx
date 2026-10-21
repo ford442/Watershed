@@ -36,6 +36,7 @@ import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { resolveNativeOwner } from '../../sim/nativeOwner';
 import { createSplashIntegrator, type SplashIntegrator } from '../pools/nativeParticles';
 import { NonEmptyInstancedMesh } from '../../components/NonEmptyInstancedMesh';
+import { pulse } from '../../input/haptics';
 import { createRng } from '../../math/random';
 import { WATER_LEVEL } from '../../constants/game';
 
@@ -339,6 +340,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       const entryPos = new THREE.Vector3(playerPos.x, waterLevel, playerPos.z);
       spawnSplashArc(entryPos, 1.0);
       injectSWEDisturbance(playerPos.x, playerPos.z, 2.2, 0.55);
+      pulse('impact', 0.45); // gamepad: a splash entry is a soft thump
     } else if (events.exitSplash) {
       const exitPos = new THREE.Vector3(playerPos.x, waterLevel, playerPos.z);
       spawnSplashArc(exitPos, 0.5);

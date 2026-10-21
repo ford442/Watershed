@@ -80,6 +80,8 @@ function scratchIsActive(s: InputDeviceScratch): boolean {
     Math.abs(s.moveY) > AXIS_EPSILON ||
     Math.abs(s.paddleL) > AXIS_EPSILON ||
     Math.abs(s.paddleR) > AXIS_EPSILON ||
+    Math.abs(s.lookDX) > AXIS_EPSILON ||
+    Math.abs(s.lookDY) > AXIS_EPSILON ||
     s.buttons !== 0
   );
 }

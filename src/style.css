@@ -6,6 +6,7 @@
 @import './styles/start-menu.css';
 @import './styles/pause-menu.css';
 @import './styles/responsive.css';
+@import './styles/touch-controls.css';
 @import './styles/hud-effects.css';
 @import './styles/game-hud.css';
 @import './styles/graphics-boot.css';
