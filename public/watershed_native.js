@@ -6,7 +6,7 @@ var createWatershedNative = (() => {
 function(moduleArg = {}) {
 
 var b=moduleArg,h,q;b.ready=new Promise((a,c)=>{h=a;q=c});var t=Object.assign({},b),v="object"==typeof window,w="function"==typeof importScripts,x="",y;if(v||w)w?x=self.location.href:"undefined"!=typeof document&&document.currentScript&&(x=document.currentScript.src),_scriptDir&&(x=_scriptDir),x.startsWith("blob:")?x="":x=x.substr(0,x.replace(/[?#].*/,"").lastIndexOf("/")+1),w&&(y=a=>{var c=new XMLHttpRequest;c.open("GET",a,!1);c.responseType="arraybuffer";c.send(null);return new Uint8Array(c.response)});
-var z=console.error.bind(console);Object.assign(b,t);t=null;var A;b.wasmBinary&&(A=b.wasmBinary);var B,C=!1,D;function E(){var a=B.buffer;b.HEAP8=new Int8Array(a);b.HEAP16=new Int16Array(a);b.HEAPU8=D=new Uint8Array(a);b.HEAPU16=new Uint16Array(a);b.HEAP32=new Int32Array(a);b.HEAPU32=new Uint32Array(a);b.HEAPF32=new Float32Array(a);b.HEAPF64=new Float64Array(a);b.HEAP64=new BigInt64Array(a);b.HEAPU64=new BigUint64Array(a)}var F=[],J=[],K=[],L=0,M=null,N=null;
+var z=console.error.bind(console);Object.assign(b,t);t=null;var A;b.wasmBinary&&(A=b.wasmBinary);var B,C=!1,D;function E(){var a=B.buffer;new Int8Array(a);new Int16Array(a);b.HEAPU8=D=new Uint8Array(a);new Uint16Array(a);b.HEAP32=new Int32Array(a);new Uint32Array(a);b.HEAPF32=new Float32Array(a);new Float64Array(a);new BigInt64Array(a);new BigUint64Array(a)}var F=[],J=[],K=[],L=0,M=null,N=null;
 function O(a){a="Aborted("+a+")";z(a);C=!0;a=new WebAssembly.RuntimeError(a+". Build with -sASSERTIONS for more info.");q(a);throw a;}var P=a=>a.startsWith("data:application/octet-stream;base64,"),Q;if(b.locateFile){if(Q="watershed_native.wasm",!P(Q)){var R=Q;Q=b.locateFile?b.locateFile(R,x):x+R}}else Q=(new URL("watershed_native.wasm",import.meta.url)).href;function S(a){if(a==Q&&A)return new Uint8Array(A);if(y)return y(a);throw"both async and sync fetching of the wasm failed";}
 function T(a){return A||!v&&!w||"function"!=typeof fetch?Promise.resolve().then(()=>S(a)):fetch(a,{credentials:"same-origin"}).then(c=>{if(!c.ok)throw`failed to load wasm binary file at '${a}'`;return c.arrayBuffer()}).catch(()=>S(a))}function U(a,c,d){return T(a).then(e=>WebAssembly.instantiate(e,c)).then(d,e=>{z(`failed to asynchronously prepare wasm: ${e}`);O(e)})}
 function V(a,c){var d=Q;return A||"function"!=typeof WebAssembly.instantiateStreaming||P(d)||"function"!=typeof fetch?U(d,a,c):fetch(d,{credentials:"same-origin"}).then(e=>WebAssembly.instantiateStreaming(e,a).then(c,function(f){z(`wasm streaming compile failed: ${f}`);z("falling back to ArrayBuffer instantiation");return U(d,a,c)}))}
@@ -24,4 +24,4 @@ b._ws_stepWaterfallParticles=(a,c,d,e,f,g,k,l)=>(b._ws_stepWaterfallParticles=X.
 );
 })();
 export default createWatershedNative;
-export const WATERSHED_WASM_SHA = "2f53e3d545326bac";
+export const WATERSHED_WASM_SHA = "3c0d633c007398bc";

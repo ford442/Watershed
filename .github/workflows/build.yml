@@ -250,7 +250,12 @@ jobs:
           git diff --exit-code -- \
             public/watershed_native.js \
             public/watershed_native.wasm \
+            emscripten/watershed_native.symbols \
             src/systems/water/wasmArtifactStamp.ts
+          # The symbol map never ships (#502 B); it is copied next to the JS maps.
+          test ! -e public/watershed_native.js.symbols
+          test ! -e build/watershed_native.js.symbols
+          ls build-sourcemaps/watershed_native.*.symbols
 
       - name: Run WASM integration tests against real binary
         run: |
@@ -267,6 +272,7 @@ jobs:
           git diff --exit-code -- \
             public/watershed_native.js \
             public/watershed_native.wasm \
+            emscripten/watershed_native.symbols \
             src/systems/water/wasmArtifactStamp.ts
 
   # #467: the plain C ABI should not depend on the emcc version. Build the same
@@ -311,9 +317,10 @@ jobs:
       - name: Export list matches the pinned pair
         run: node scripts/wasm-exports.mjs public emscripten/build/out
 
-  # #467: the C ABI trusts JS for every heap pointer and width * height. Host
-  # build of the compute TUs under ASan + UBSan, 60 s of libFuzzer over the SWE
-  # entry points (random-but-valid grids), and clang-tidy bugprone/performance.
+  # #467 / #502: the C ABI trusts JS for every heap pointer and width * height.
+  # Host build of the compute TUs under ASan + UBSan, 60 s of libFuzzer per
+  # entry-point family (swe, chores, forces + routing + particles, terrain),
+  # and clang-tidy bugprone/performance over every TU, bindings.cpp included.
   native-sanitizers:
     name: Native sanitizers, fuzz, tidy
     runs-on: ubuntu-24.04
@@ -344,14 +351,14 @@ jobs:
       - name: clang-tidy (bugprone-*, performance-*)
         run: pnpm lint:native
 
-      - name: Fuzz the SWE entry points for 60 s
+      - name: Fuzz every entry-point family, 60 s each
         run: pnpm test:native:fuzz
 
       - name: Upload fuzz crash inputs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: swe-fuzz-crashes
+          name: native-fuzz-crashes
           path: |
             crash-*
             timeout-*

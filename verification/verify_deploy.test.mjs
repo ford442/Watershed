@@ -10,6 +10,8 @@ import {
   checkHtaccess,
   checkHtaccessCachePolicy,
   checkIsolationHeaders,
+  checkIsolationParity,
+  checkPreviewConfig,
   decodeHtml,
   isLocalUrl,
   parseAssetRefs,
@@ -256,5 +258,21 @@ describe('cache policy (#485 D)', () => {
     for (const u of ['https://test.1ink.us/watershed/', 'https://storage.noahcohn.com/', 'not a url']) {
       expect(isLocalUrl(u), u).toBe(false);
     }
+  });
+});
+
+describe('preview / live isolation parity (#502 E)', () => {
+  it('passes when both send nothing, fails when preview alone is isolated', () => {
+    expect(checkIsolationParity({ coep: null, coop: null }, { coep: null, coop: null })).toEqual([]);
+    const failures = checkIsolationParity({ coep: 'require-corp', coop: 'same-origin' }, { coep: null, coop: null });
+    expect(failures).toHaveLength(2);
+    expect(failures[0]).toMatch(/vite preview sends Cross-Origin-Embedder-Policy: require-corp but live sends \(none\)/);
+  });
+
+  it('the committed vite.config.ts preview block sends no COOP/COEP', () => {
+    const text = fs.readFileSync(path.join(here, '..', 'vite.config.ts'), 'utf8');
+    expect(checkPreviewConfig(text)).toEqual([]);
+    const isolated = "  preview: {\n    port: 4173,\n    headers: { 'Cross-Origin-Embedder-Policy': 'require-corp' },\n  },\n";
+    expect(checkPreviewConfig(isolated)).toHaveLength(1);
   });
 });

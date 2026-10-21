@@ -12,6 +12,9 @@ import {
   WorkerRaftState,
 } from './rapierWorkerProtocol';
 
+/** A command as callers write it: every RapierWorkerCommand variant, without the id `request` assigns. */
+type RapierWorkerRequest = RapierWorkerCommand extends infer C ? (C extends unknown ? Omit<C, 'id'> : never) : never;
+
 interface PendingRequest {
   startedAt: number;
   resolve: (response: RapierWorkerResponse) => void;
@@ -153,11 +156,15 @@ export class RapierWorkerProxy {
     this.worker.terminate?.();
   }
 
-  private request(
-    command: Record<string, unknown> & { type: RapierWorkerCommand['type'] },
-    transfer?: Transferable[],
-  ): Promise<RapierWorkerResponse> {
+  /**
+   * The one postMessage site (#502): `command` is a RapierWorkerCommand minus
+   * its id, checked per variant, so a misspelt field or a payload for the
+   * wrong type is a compile error rather than a cast.
+   */
+  private request(command: RapierWorkerRequest, transfer?: Transferable[]): Promise<RapierWorkerResponse> {
     const id = this.nextId++;
+    // Re-adding `id` to a distributive Omit is exact, but TS cannot prove it
+    // through the spread, hence the one assertion.
     const message = { ...command, id } as RapierWorkerCommand;
 
     return new Promise((resolve, reject) => {

@@ -445,7 +445,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 ? 'Native WASM provenance mismatch — stale deploy'
                 : native.timedOut
                   ? 'Native WASM init timed out'
-                  : 'Native WASM failed to init'}
+                  : native.trapFunction
+                    ? `Native WASM trapped in ${native.trapFunction}`
+                    : native.exhausted
+                      ? 'Native WASM heap exhausted'
+                      : 'Native WASM failed to init'}
             </strong>
             <pre>{native.error}</pre>
           </div>
@@ -518,6 +522,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </span>
         )}
         {native.status === 'none' && <span className="ml-2 text-sky-200/60">WGSL</span>}
+        {native.status === 'failed' && native.trapFunction && (
+          <span className="ml-2 text-red-300/70">TRAP {native.trapFunction}</span>
+        )}
       </div>
 
       {vehicleType === 'runner' && (

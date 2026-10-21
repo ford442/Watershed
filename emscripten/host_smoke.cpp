@@ -18,6 +18,7 @@
  *   ./emscripten/build-host/watershed_host_smoke
  */
 
+#include "chores.h"
 #include "forces.h"
 #include "swe.h"
 #include "particles.h"
@@ -979,6 +980,81 @@ int main() {
                 ++g_failures;
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Untrusted-input sentinels (#502): every entry point that takes a heap
+    // pointer or a JS extent returns early, writing nothing, on a null pointer
+    // or an out-of-range count / extent. Each rejected call below would write
+    // through null or past `guard` if it got that far (ASan catches it under
+    // test:native:sanitize); the 7.f fill proves nothing was written.
+    // ------------------------------------------------------------------
+    {
+        const auto at = [](auto& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        const auto untouched = [](const std::vector<float>& v) {
+            return std::all_of(v.begin(), v.end(), [](float x) { return x == 7.f; });
+        };
+        std::vector<float> src(16, 1.f);
+        std::vector<float> guard(16, 7.f);
+        std::vector<uint32_t> bins(256, 7u);
+        const auto binsUntouched = [&bins] {
+            return std::all_of(bins.begin(), bins.end(), [](uint32_t x) { return x == 7u; });
+        };
+
+        reduceF32Grid(at(src), 4, 0);
+        reduceF32Grid(0, 4, at(guard));
+        reduceF32Grid(at(src), -1, at(guard));
+        reduceF32Grid(at(src), WS_MAX_ELEMENTS + 1, at(guard));
+        check(untouched(guard), "chores: reduceF32Grid rejects null / negative / oversized");
+        reduceF32Grid(0, 0, at(guard));
+        check(guard[0] == 0.f && guard[1] == 0.f && guard[2] == 0.f && guard[3] == 7.f,
+              "chores: reduceF32Grid of an empty grid writes zeros");
+        std::fill(guard.begin(), guard.end(), 7.f);
+
+        histogramF32(at(src), 4, 0.f, 1.f, 0);
+        histogramF32(0, 4, 0.f, 1.f, at(bins));
+        histogramF32(at(src), -3, 0.f, 1.f, at(bins));
+        lumaHistogramU8(0, 4, at(bins));
+        lumaHistogramU8(at(src), -1, at(bins));
+        lumaHistogramU8(at(src), WS_MAX_ELEMENTS + 1, at(bins));
+        check(binsUntouched(), "chores: histograms reject null / negative / oversized");
+
+        downsampleF32(0, 4, 4, at(guard), 2, 2);
+        downsampleF32(at(src), 4, 4, 0, 2, 2);
+        downsampleF32(at(src), -4, 4, at(guard), 2, 2);
+        downsampleF32(at(src), 4, 0, at(guard), 2, 2);
+        downsampleF32(at(src), SWE_MAX_GRID_EXTENT + 1, 1, at(guard), 2, 2);
+        downsampleF32(at(src), 4, 4, at(guard), SWE_MAX_GRID_EXTENT + 1, 1);
+        check(untouched(guard), "chores: downsampleF32 rejects null / non-positive / oversized");
+        downsampleF32(at(src), 4, 4, at(guard), 0, -2);
+        check(guard[0] == 1.f && guard[1] == 7.f, "chores: downsampleF32 clamps a non-positive destination to 1x1");
+        std::fill(guard.begin(), guard.end(), 7.f);
+
+        blurSeparableF32(0, at(guard), 4, 4);
+        blurSeparableF32(at(src), 0, 4, 4);
+        blurSeparableF32(at(src), at(guard), -4, 4);
+        blurSeparableF32(at(src), at(guard), 4, 0);
+        blurSeparableF32(at(src), at(guard), SWE_MAX_GRID_EXTENT + 1, 1);
+        check(untouched(guard), "chores: blurSeparableF32 rejects null / non-positive / oversized");
+
+        computeWaterForcesBatch(at(src), at(guard), WATER_FORCE_MAX_SAMPLES + 1, 4.5f, 0.5f, 150.f, 1.2f,
+                                0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f);
+        computeWaterForcesBatch(at(src), at(guard), -1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f);
+        check(untouched(guard), "forces: computeWaterForcesBatch rejects negative / oversized counts");
+
+        std::vector<float> storage(16, 7.f);
+        routeReach(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, 1.f, at(storage), at(guard));
+        routeReach(at(src), at(src), at(src), -2, 1.f, 1.f, at(storage), at(guard));
+        routeReachSteady(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(storage), at(guard));
+        routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard));
+        check(untouched(guard) && untouched(storage), "routing: oversized / negative chains are rejected");
+
+        check(allocateParticleSoA(PARTICLE_MAX_CAPACITY + 1) == 0, "particles: oversized capacity is rejected");
+        check(allocateParticleSoA(-1) == 0, "particles: negative capacity is rejected");
+        check(stepWaterfallParticles(at(guard), PARTICLE_MAX_CAPACITY + 1, 4, 0.1f, 1.f, 1.f, 1.f, 42u) == 42u
+                  && untouched(guard),
+              "particles: oversized capacity steps nothing");
+        check(allocateGrid(0) == 0 && allocateGrid(-5) == 0, "swe: allocateGrid(<= 0) returns 0");
     }
 
     if (g_failures != 0) {

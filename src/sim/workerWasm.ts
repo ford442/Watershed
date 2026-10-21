@@ -1,17 +1,10 @@
 /// <reference lib="webworker" />
 
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
-import { loadWatershedNative, resolveWasmInitTimeoutMs } from '../systems/water/wasmLoader';
+import { loadWatershedNativeWithRetry, type NativeLoadOptions } from '../systems/water/wasmLoader';
 
 let modulePromise: Promise<WatershedNativeModule | null> | null = null;
 let lastInitError: string | null = null;
-
-function workerSearchString(): string | undefined {
-  if (typeof self !== 'undefined' && typeof self.location?.search === 'string') {
-    return self.location.search;
-  }
-  return undefined;
-}
 
 /** Why the last `getWorkerWasm` returned null (the message the HUD classifies), or null. */
 export function peekWorkerWasmInitError(): string | null {
@@ -31,16 +24,24 @@ export function peekWorkerWasmInitError(): string | null {
  *                     default: a worker's own location is its script
  *                     (src/... in dev, assets/ in a build), so resolving
  *                     public/ against it 404s.
+ * @param timeoutMs    The page's resolved deadline (`resolveWasmInitTimeoutMs`),
+ *                     handed over in INIT for the same reason (#502 C): the
+ *                     worker's URL carries no `?wasmInitTimeout=`, so reading
+ *                     its own `location.search` always found the default.
+ * @param options      `trapTest` (`?wasmTrapTest=1`), also from the page.
  */
 export function getWorkerWasm(
   failureNote: string,
   assetUrl: (path: string) => string,
+  timeoutMs: number,
+  options: NativeLoadOptions = {},
 ): Promise<WatershedNativeModule | null> {
   if (modulePromise) return modulePromise;
 
-  modulePromise = loadWatershedNative(
+  modulePromise = loadWatershedNativeWithRetry(
     { glue: assetUrl('watershed_native.js'), wasm: assetUrl('watershed_native.wasm') },
-    resolveWasmInitTimeoutMs(workerSearchString()),
+    timeoutMs,
+    options,
   ).then(
     (loaded) => loaded,
     (error: unknown) => {

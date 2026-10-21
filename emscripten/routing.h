@@ -41,6 +41,11 @@
 
 /** Reservoirs per segment. More sharpen the front; 4 keeps a ~100 m segment's lag crisp. */
 static constexpr int ROUTING_SUBREACHES = 4;
+/**
+ * Largest chain any routing entry point accepts (#502); more is a no-op, so
+ * nSeg * ROUTING_SUBREACHES cannot overflow. A campaign chain is ~100 segments.
+ */
+static constexpr int ROUTING_MAX_SEGMENTS = 1 << 16;
 /** Manning roughness of a cobble mountain channel (s/m^(1/3)). */
 static constexpr float ROUTING_MANNING_N = 0.035f;
 /** Slope clamp: a pond is not flat to the solver, a waterfall is not a free fall. */

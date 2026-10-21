@@ -32,7 +32,12 @@ pnpm verify:deploy -- --url http://127.0.0.1:4180/
 
 (`pnpm verify:deploy -- --url …` if the script wrapper swallows flags; otherwise
 `node verification/verify_deploy.mjs --url http://127.0.0.1:4180/`.) Use a plain static server
-as the local target, not `vite preview`, which sends COOP/COEP for dev isolation and is flagged.
+as the local target for the three-way diff (`vite preview` does not run `public/.htaccess`).
+Since #502 `vite preview` sends no COOP/COEP, the same as production: the verifier fails if
+`vite.config.ts` gives `preview` isolation headers again, and with
+`--preview-url http://127.0.0.1:4173/` it also fetches the preview and fails when its
+COOP/COEP differ from the live directory URL's. `pnpm dev` is isolated only on request
+(`?isolated=1`, for a `build:wasm:threads` experiment).
 Avoid ports on the Fetch spec's blocked list (e.g. 4190); `fetch` and Chrome refuse them.
 
 Unit tests: `npx vitest run verification/verify_deploy.test.mjs` (decoder, document, header and

@@ -25,6 +25,11 @@ static constexpr int PARTICLE_VZ = 5;
 static constexpr int PARTICLE_LIFE = 6;
 static constexpr int PARTICLE_MAXLIFE = 7;
 static constexpr int PARTICLE_SCALE = 8;
+/**
+ * Largest capacity any particle entry point accepts (#502): 9 planes stay
+ * addressable as int and inside the heap. Larger is a no-op (alloc returns 0).
+ */
+static constexpr int PARTICLE_MAX_CAPACITY = 1 << 20;
 
 /** Allocate 9 * capacity floats (zeroed). Same allocator as allocateGrid. */
 uintptr_t allocateParticleSoA(int capacity);

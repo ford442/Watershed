@@ -294,29 +294,41 @@ struct FaceRowStorage {
  * through HLL in one f32x4 and no access strides by `width`.
  */
 struct Scratch {
-    int width = 0;
-    int height = 0;
+    /** Capacity in cells and in columns: the buffers only ever grow (#502). */
+    std::size_t cells = 0;
+    int columns = 0;
     std::vector<float> d, qx, qz;
     /** Cell velocities (d > dry ? q / d : 0), shared by the four faces of a cell. */
     std::vector<float> vx, vz;
     /** One row of faces each: the current row's x-faces, and the z-faces below / above it. */
     FaceRowStorage xFaces, zFacesA, zFacesB;
-    /** The bed when the caller passes none: a flat bed without a per-cell branch. */
+    /** The bed when the caller passes none: a flat bed without a per-cell branch. Never written. */
     std::vector<float> zeroBed;
     /** Upstream-edge ghosts, SoA, one per column (z-face axes: qz normal), and their velocities. */
     std::vector<float> ghostD, ghostQz, ghostQx, ghostVz, ghostVx;
 
+    /**
+     * Grow to hold a w x h grid. Grow-only, so a session that steps two grids
+     * of different sizes (a quality change mid-flight, the WGSL parity bench)
+     * does not reallocate on every alternation as the old dimension key did.
+     * Every buffer is rewritten over [0, w * h) / [0, w] by each step before it
+     * is read, and the step indexes with its own width, so a larger buffer is
+     * indistinguishable from an exact one.
+     */
     void resize(int w, int h) {
-        if (w == width && h == height) return;
-        width = w;
-        height = h;
         const std::size_t n = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
-        for (auto* v : {&d, &qx, &qz, &vx, &vz, &zeroBed}) v->assign(n, 0.f);
-        xFaces.resize(w + 1);
-        zFacesA.resize(w);
-        zFacesB.resize(w);
-        for (auto* v : {&ghostD, &ghostQz, &ghostQx, &ghostVz, &ghostVx}) {
-            v->assign(static_cast<std::size_t>(w), 0.f);
+        if (n > cells) {
+            cells = n;
+            for (auto* v : {&d, &qx, &qz, &vx, &vz, &zeroBed}) v->assign(n, 0.f);
+        }
+        if (w > columns) {
+            columns = w;
+            xFaces.resize(w + 1);
+            zFacesA.resize(w);
+            zFacesB.resize(w);
+            for (auto* v : {&ghostD, &ghostQz, &ghostQx, &ghostVz, &ghostVx}) {
+                v->assign(static_cast<std::size_t>(w), 0.f);
+            }
         }
     }
 };
@@ -525,11 +537,13 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
     s.resize(width, height);
     const int N = width * height;
 
-    float* h = reinterpret_cast<float*>(hPtr);
-    float* u = reinterpret_cast<float*>(uPtr);
-    float* w = reinterpret_cast<float*>(wPtr);
+    const std::span<float> h = heapPlane(hPtr, width, height);
+    const std::span<float> u = heapPlane(uPtr, width, height);
+    const std::span<float> w = heapPlane(wPtr, width, height);
     // A missing bed reads the zero plane: a flat bed, no per-cell branch.
-    const float* b = bPtr ? reinterpret_cast<const float*>(bPtr) : s.zeroBed.data();
+    const std::span<const float> b = bPtr
+        ? std::span<const float>(heapPlane(bPtr, width, height))
+        : std::span<const float>(s.zeroBed).first(static_cast<std::size_t>(N));
 
     float* d  = s.d.data();
     float* qx = s.qx.data();
@@ -628,15 +642,15 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
     FaceRow xFaces = s.xFaces.row();
     FaceRow zBelow = s.zFacesA.row();
     FaceRow zAbove = s.zFacesB.row();
-    zFaceRow(s, d, vx, vz, b, width, height, edgeInflow, 0, k, g, zBelow);
+    zFaceRow(s, d, vx, vz, b.data(), width, height, edgeInflow, 0, k, g, zBelow);
 
     const float damp = 1.f - safeDt * DAMPING_COEFF;
     const f32x4 vDtdx = f32x4_splat(dtdx);
     const f32x4 vDamp = f32x4_splat(damp);
     for (int z = 0; z < height; ++z) {
         const int row = z * width;
-        xFaceRow(d, qx, qz, vx, vz, b, width, row, k, g, xFaces);
-        zFaceRow(s, d, vx, vz, b, width, height, edgeInflow, z + 1, k, g, zAbove);
+        xFaceRow(d, qx, qz, vx, vz, b.data(), width, row, k, g, xFaces);
+        zFaceRow(s, d, vx, vz, b.data(), width, height, edgeInflow, z + 1, k, g, zAbove);
 
         // Gather F[left] − F[right] in the operation order of the face-by-face
         // accumulation this replaced (x-face in, x-face out, z-face in, z-face
@@ -720,20 +734,6 @@ void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uint
 static constexpr float kHydroInflowDownstream = 0.5f;
 static constexpr float kHydroVortexSink = 0.35f;
 static constexpr float kHydroBraidLateral = 0.75f;
-
-namespace {
-
-/**
- * A width x height heap plane as a bounds-carrying view (#467). Indexing is
- * checked in the sanitizer / fuzz host builds (-D_GLIBCXX_ASSERTIONS); a null
- * pointer is an empty span.
- */
-std::span<float> heapPlane(uintptr_t ptr, int width, int height) {
-    if (ptr == 0) return {};
-    return {reinterpret_cast<float*>(ptr), static_cast<std::size_t>(width) * static_cast<std::size_t>(height)};
-}
-
-}  // namespace
 
 void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
                    int width, int height, float dx, float originX, float originZ, float H,

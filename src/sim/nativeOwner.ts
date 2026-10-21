@@ -12,9 +12,10 @@
  * Besides WaterForceSystem's own `wasm-main` path, this is the only place
  * that may call `getWasm()` (singleNativeInstance.test.ts).
  */
-import type { WatershedNativeModule } from '../systems/water/wasmAbi';
+import { isWasmHeapExhaustedError, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import { getWasm, isWasmInitTimeoutError, isWasmProvenanceMismatchError } from '../systems/water/wasmLoader';
 import { resolveSweSimBackendDecision } from '../systems/water/sweBackend';
+import { trapFunctionOf } from '../systems/water/wasmTrapMarker';
 import { getSimWorkerProxy, type SimWorkerProxy } from './createSimWorkerProxy';
 
 export type NativeOwner =
@@ -48,15 +49,27 @@ export type NativeStatus =
   | { status: 'ready'; where: 'worker' | 'main'; abi: number }
   /** Native WebGPU: the session has no module, by design. */
   | { status: 'none' }
-  | { status: 'failed'; error: string; timedOut: boolean; mismatched: boolean };
+  | {
+      status: 'failed';
+      error: string;
+      timedOut: boolean;
+      mismatched: boolean;
+      /** allocateGrid returned 0 (WasmHeapExhaustedError, #502). */
+      exhausted?: boolean;
+      /** The function a wasm trap happened in, from the symbol map (#502 B), when there is one. */
+      trapFunction?: string;
+    };
 
-function failedStatus(error: unknown): NativeStatus {
+export function failedStatus(error: unknown): NativeStatus {
   const message = error instanceof Error ? error.message : String(error);
+  const trapFunction = trapFunctionOf(error);
   return {
     status: 'failed',
     error: message,
     timedOut: isWasmInitTimeoutError(error) || message.includes('did not report READY'),
     mismatched: isWasmProvenanceMismatchError(error),
+    exhausted: isWasmHeapExhaustedError(error),
+    ...(trapFunction ? { trapFunction } : {}),
   };
 }
 

@@ -8,6 +8,7 @@
 import { getWorkerWasm, peekWorkerWasmInitError } from './workerWasm';
 import { createSimWorkerCore, type SimWorkerCore } from './simWorkerCore';
 import type { SimWorkerCommand, SimWorkerResponse } from './simWorkerProtocol';
+import { withTrapFunction } from '../systems/water/wasmTrap';
 
 const ctx = self as DedicatedWorkerGlobalScope;
 
@@ -23,14 +24,20 @@ const run = (command: SimWorkerCommand) => {
   try {
     core!.handle(command);
   } catch (error) {
-    post({ type: 'ERROR', error: error instanceof Error ? error.message : String(error), fatal: true });
+    // A trap names its function (wasmTrap.ts, #502) so the HUD row can show it.
+    const named = withTrapFunction(error);
+    post({ type: 'ERROR', error: named instanceof Error ? named.message : String(named), fatal: true });
   }
 };
 
-const boot = async (assets: { glue: string; wasm: string } | undefined) => {
-  const wasm = assets
-    ? await getWorkerWasm('[sim worker] native init failed; SWE falls back to the main thread', (path) =>
-        path.endsWith('.wasm') ? assets.wasm : assets.glue,
+const boot = async (init: Extract<SimWorkerCommand, { type: 'INIT' }> | undefined) => {
+  const assets = init?.assets;
+  const wasm = init && assets
+    ? await getWorkerWasm(
+        '[sim worker] native init failed; SWE falls back to the main thread',
+        (path) => (path.endsWith('.wasm') ? assets.wasm : assets.glue),
+        init.timeoutMs,
+        { trapTest: init.trapTest },
       )
     : null;
   if (!wasm) {
@@ -55,7 +62,8 @@ ctx.addEventListener('message', (event: MessageEvent<SimWorkerCommand>) => {
   queued.push(event.data);
   if (!booting) {
     booting = true;
-    // The proxy's first message is INIT; it carries where public/ lives.
-    void boot(event.data.type === 'INIT' ? event.data.assets : undefined);
+    // The proxy's first message is INIT; it carries where public/ lives and
+    // the page's init deadline.
+    void boot(event.data.type === 'INIT' ? event.data : undefined);
   }
 });
