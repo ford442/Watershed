@@ -16,7 +16,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import { inputHub } from './InputHub';
 import { KeyboardMouseSource } from './sources/KeyboardMouseSource';
-import { parseInputScript, ScriptedSource } from './sources/ScriptedSource';
+import type { ScriptedSource } from './sources/ScriptedSource';
 import { getInputScriptUrl, setScriptedStepper, stepRootFrames } from './scriptedRun';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 
@@ -51,12 +51,15 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): null
     if (!url) return undefined;
     let cancelled = false;
     let source: ScriptedSource | null = null;
-    fetch(url)
-      .then((res) => {
+    // Dynamic import: only `?input=script:` pages need the source, so it stays off the boot path.
+    Promise.all([
+      import('./sources/ScriptedSource'),
+      fetch(url).then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((raw: unknown) => {
+        return res.json() as Promise<unknown>;
+      }),
+    ])
+      .then(([{ parseInputScript, ScriptedSource }, raw]) => {
         if (cancelled) return;
         source = new ScriptedSource(parseInputScript(raw), () => isRunLiveRef.current());
         inputHub.registerSource(source);

@@ -432,7 +432,7 @@ pnpm exec vitest run src/rendering/gpuChores
 
 PR CI runs a headless capture path (no manual steps) in `.github/workflows/build.yml`:
 
-1. `pnpm build` (Emscripten **not** required — WASM compile is skipped when `emcc` is absent)
+1. `pnpm build` (Emscripten **not** required — `vite build` alone, shipping the committed WASM pair; `pnpm build:full` recompiles it first)
 2. `vite preview` on `127.0.0.1:4173`
 3. `pnpm test:visual-smoke` → `verification/visual_smoke.mjs`
 
