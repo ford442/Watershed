@@ -542,16 +542,14 @@ async function attemptTouch(shot) {
     // gate. SwiftShader runs a handful of sim frames per wall minute, so how far
     // the runner has travelled by now says more about the rasteriser than the
     // stick (the unit tests cover stick -> frame -> controls); distance is logged.
-    const seen = await page
-      .waitForFunction(
-        () => {
-          const i = window.__watershedScreenshot.getScriptedTelemetry().input;
-          return i.source === 'touch' && i.moveY < -0.5;
-        },
-        { timeout: 60_000, polling: 250 },
-      )
-      .then(() => true)
-      .catch(() => false);
+    // A plain sleep-and-look loop: waitForFunction's polling queues behind the
+    // multi-second frames and trips the protocol timeout on SwiftShader.
+    let seen = false;
+    for (let attempt = 0; attempt < 20 && !seen; attempt += 1) {
+      await sleep(3_000);
+      const i = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().input);
+      seen = i.source === 'touch' && i.moveY < -0.5;
+    }
     const input = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().input);
     await sleep(shot.settleMs ?? 4_000);
     const after = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().pos);
