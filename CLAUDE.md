@@ -290,6 +290,7 @@ pnpm typecheck                    # tsc + repo layout guards
 pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`); includes the 390×844 touch layout (10_touch_layout)
 pnpm test:input-smoke             # scripted keyboard-shaped run reaches segment 3, deterministic (needs `pnpm preview`)
 pnpm test:input-smoke:gamepad     # the same with a gamepad-shaped (analog) script
+pnpm test:replay-smoke            # that run saved as a .wsghost, ?replay= twice: identical splits + SWE checksums (needs `pnpm preview`)
 pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```

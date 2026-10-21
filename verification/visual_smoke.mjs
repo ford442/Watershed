@@ -196,13 +196,15 @@ const SHOTS = [
   },
   // The sun moves: the launch hour is the sky clock's start, so a 06:00 and a
   // 14:00 launch of the same reach light it from different places (low east
-  // dawn vs high south-west afternoon). Baselined per hour on two maps.
+  // dawn vs high south-west afternoon). Baselined per hour on two maps, each
+  // on its start segment: the teleport is then a no-op, so no OOB wipeout
+  // overlay can land in the frame.
   {
     label: '11_glacial_hour06',
     mode: 'topdown',
     required: false,
     query: 'map=glacial&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
-    segment: 4,
+    segment: 0,
     settleMs: 2_500,
   },
   {
@@ -210,7 +212,7 @@ const SHOTS = [
     mode: 'topdown',
     required: false,
     query: 'map=glacial&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
-    segment: 4,
+    segment: 0,
     settleMs: 2_500,
   },
   {
@@ -218,7 +220,7 @@ const SHOTS = [
     mode: 'topdown',
     required: false,
     query: 'map=meander&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
-    segment: 4,
+    segment: 2,
     settleMs: 2_500,
   },
   {
@@ -226,7 +228,7 @@ const SHOTS = [
     mode: 'topdown',
     required: false,
     query: 'map=meander&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
-    segment: 4,
+    segment: 2,
     settleMs: 2_500,
   },
 ];

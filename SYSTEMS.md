@@ -492,6 +492,96 @@ canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
 
 ---
 
+## The Living River (#464)
+
+One run is one river on one day: a launch hour, a weather script and the day's melt inputs
+(`RunConditions` in `runSession.ts`), all of it seeded and all of it stepped on the sim clock,
+so a ghost replays the same river. Erosion (the bed remembering) is under SWE bathymetry
+below; weather over a reach (lateral inflow, the squall front) under the upstream edge.
+
+---
+
+### `src/systems/weather/weatherDirector.ts` + `WeatherDirectorTick.tsx`
+
+**Purpose:** The one owner of the run's weather. Steps the run's weather script
+(`weatherScript.ts`: `[{ atReachFraction, weather, intensity, rampSeconds, overSegment? }]`)
+against how far down the map the player is (`reachFraction.ts`), ramping between steps.
+
+**Runs in:** `WeatherDirectorTick` — `useFrame` priority −90, on the frame's sim delta while
+unpaused. Module state mutated in place; a step allocates nothing.
+
+**Produces:**
+- *River weather* (`getDirectorRiverWeather`, `getDirectorOverSegment`) — script only: the
+  router's head or lateral discharge, the hull's snow drag, the surface slush.
+- *Visual weather* — the river weather when it is not clear, else the ambient one (a reach
+  manifest's, or the glacial biomes' snow); published to the store's `weather` slice, which
+  `WeatherSystem` renders and everything else subscribes to.
+
+**Boundaries (Do NOT):**
+- Do NOT post `weather-update` window events or write the `weather` slice anywhere else —
+  the director is its only writer.
+- Do NOT step it on wall time; a replay must reach the same step on the same frame.
+- Do NOT let ambient weather reach the water: it is visual only.
+- Steps only advance: a respawn upstream does not bring an earlier sky back.
+
+---
+
+### `src/systems/sky/skyClock.ts` + `sunPosition.ts` + `SkyClockTick.tsx`
+
+**Purpose:** The time of day. `hour = launchHour + elapsedSimSec × speedup / 3600` (default
+1 real minute = 10 game minutes, per map in `maps/atmosphere.ts` with its latitude and day of
+year); `sunPosition(hour, latitude, dayOfYear)` is NOAA's approximation (~60 lines, no
+dependency). World frame: +X east, +Y up, −Z north.
+
+**Runs in:** `SkyClockTick` — `useFrame` priority −85, sim delta, unpaused only. Reset per
+run by `runSession`.
+
+**Produces:** `getSkyClock()` per frame — the sun vector and factors (`daylight`, `night`,
+`golden`, `elevation01`) that `SceneLighting`, `EnhancedSky` (turbidity / horizon), fog, water
+(`sunDirection`, `nightFactor`, deep colour / specular), post and the stars gate all read —
+GLSL and TSL from the same uniforms. `subscribeSkyPhase()` for coarse React state (~every 5
+game minutes). Night mode follows the clock (`useNightMode`); the `N` key only overrides it
+under `?debug=1`.
+
+**Boundaries (Do NOT):** Do NOT read `Date` or wall time for the sky; do NOT keep a second
+time-of-day — `BiomeProvider`'s `timeOfDay` follows the clock's phase.
+
+---
+
+### `src/systems/daily/dailyRiver.ts` + `TodaysRiverCard.tsx`
+
+**Purpose:** Today's River — one river per UTC day, the same for every client. `dailySeed`
+is FNV-1a of the date; named sub-streams (`forkSeed(seed, 'map' | 'hour' | 'weather' | 'melt')`)
+pick the map, a daylight launch hour, a weather pattern (clear, a squall over one reach,
+showers, building, fog, flurries) and the melt inputs. No server, no date library.
+
+**Produces:** `dailyRiverFor(dateKey)` → `{ dateKey, seed, mapId, launchHour, pattern,
+conditions }`. The StartMenu's lazy card shows it above the map list with the 24 h flow
+strip and today's best; RUN TODAY'S RIVER starts it with those conditions. Runs key as
+`mapId@YYYY-MM-DD:seed` (`dailyRunKey`), so bests, the PB ghost and the fairness key are the
+day's; `pruneDailyRecords` keeps a week.
+
+**Boundaries (Do NOT):** Do NOT draw from a shared stream across the four picks (adding a
+weather pattern must not move the day's map); do NOT read the local timezone.
+
+---
+
+### Replay — `?replay=<ghost>` (`src/input/replay.ts`, `sweChecksum.ts`)
+
+**Purpose:** A `.wsghost` is a run: the v4 input track plus launch hour, seed, vehicle and
+conditions. `?replay=` (same-origin) skips the menu, starts that river and feeds the input
+track to `ScriptedSource` on the fixed 1/60 s scripted clock, holding the recorded look per
+10 Hz window.
+
+**Determinism contract:** two replays of one ghost produce identical split times and
+identical SWE checksums (`checksumSweState`, FNV-1a over h/u/w bits, stored per split).
+What makes it hold: a scripted or replay run steps SWE on the main thread
+(`sweBackend` `scripted-run`); the SWE step-rate compare takes a 1e-6 s epsilon; weather, sky,
+surge fronts and erosion refreshes all run on the solver / sim clock; adaptive LOD is off;
+scripted runs neither load nor save the eroded bed. `pnpm test:replay-smoke` gates it in CI.
+
+---
+
 ## Physics Worker (ADR v1)
 
 ### `src/physics/rapier.worker.ts` + `RapierWorkerProxy`
