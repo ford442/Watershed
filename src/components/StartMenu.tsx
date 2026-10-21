@@ -1,7 +1,7 @@
 // src/components/StartMenu.tsx
 // Pre-game title screen with map select, start, and settings
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useMenuFocus } from '../hooks/useMenuFocus';
 import { useInputStore } from '../input/InputHub';
 import {
@@ -31,7 +31,11 @@ import CachePlacementPanel from './CachePlacementPanel';
 import LoadoutPicker from './LoadoutPicker';
 import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/survival/portageCache';
 import { DEFAULT_LOADOUT_ID, type LoadoutId } from '../systems/survival';
-import type { JourneyMode } from '../systems/journey/runSession';
+import type { JourneyMode, RunConditions } from '../systems/journey/runSession';
+import { lazyComponent } from '../utils/lazyComponent';
+
+// Today's River pulls in the day generator; it loads after the menu paints.
+const TodaysRiverChunk = lazyComponent(() => import('./TodaysRiverCard'));
 
 interface StartMenuProps {
   onStart: (
@@ -41,6 +45,8 @@ interface StartMenuProps {
       placedCacheIds: string[];
       loadoutId: LoadoutId;
       journeyMode: 'single' | 'journey';
+      /** The day's conditions (Today's River); absent = the picked hour and weather. */
+      conditions?: Partial<RunConditions>;
     },
   ) => void;
   selectedMapId: MapRegistryId;
@@ -157,6 +163,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {(
           <div className="start-menu-buttons">
+            <Suspense fallback={null}>
+              <TodaysRiverChunk.Component
+                bootReady={bootReady}
+                onStart={(daily) =>
+                  onStart(daily.mapId, {
+                    launchHour: daily.launchHour,
+                    placedCacheIds: [],
+                    loadoutId,
+                    journeyMode: 'single',
+                    conditions: daily.conditions,
+                  })
+                }
+              />
+            </Suspense>
+
             <div className="start-menu-mode-select" role="radiogroup" aria-label="Play mode">
               <div className="start-menu-map-select-label">Play Mode</div>
               <div className="start-menu-mode-row">

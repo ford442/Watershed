@@ -43,8 +43,8 @@ export interface WeatherDirectorState {
   elapsed: number;
   /** The river's weather this frame (mutated in place). */
   river: RunWeather;
-  /** Chain segment the river weather sits over; null = the head. */
-  overChainIndex: number | null;
+  /** Map segment the river weather sits over; null = the head of the chain. */
+  overSegment: number | null;
   /** Ambient (visual-only) weather, or null. */
   ambient: RunWeather | null;
 }
@@ -57,7 +57,7 @@ export function createWeatherDirectorState(script: WeatherScript = constantWeath
     rampElapsed: 0,
     elapsed: 0,
     river: { ...CLEAR_WEATHER },
-    overChainIndex: null,
+    overSegment: null,
     ambient: null,
   };
 }
@@ -108,7 +108,7 @@ export function stepWeatherDirector(state: WeatherDirectorState, reachFraction: 
   state.rampElapsed += dt;
   const p = step.rampSeconds > 0 ? smoothstep(state.rampElapsed / step.rampSeconds, 0, 1) : 1;
   blendWeather(state.from, { type: step.weather, intensity: step.intensity }, p, state.river);
-  state.overChainIndex = step.overChainIndex ?? null;
+  state.overSegment = step.overSegment ?? null;
 }
 
 /** The weather the scene shows: the river's when it is live, else the ambient one. */
@@ -215,9 +215,9 @@ export function getDirectorRiverWeather(): Readonly<RunWeather> {
   return director.river;
 }
 
-/** Chain segment the river weather sits over (lateral inflow), or null for the head. */
-export function getDirectorOverChainIndex(): number | null {
-  return director.overChainIndex;
+/** Map segment the river weather sits over (lateral inflow), or null for the head. */
+export function getDirectorOverSegment(): number | null {
+  return director.overSegment;
 }
 
 /** The scene's weather right now. */

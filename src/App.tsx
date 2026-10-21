@@ -49,7 +49,7 @@ import { useGameStore, useQualityPreset, useRenderScale } from './systems/GameSt
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
-import { initRunSession } from './systems/journey/runSession';
+import { initRunSession, type RunConditions } from './systems/journey/runSession';
 import { resolveInitialVehicle } from './experience/hooks/useInnerExperience';
 import { prefetchRaftVehicle } from './vehicles/raftVehicleChunk';
 
@@ -475,12 +475,14 @@ function App({ graphicsBoot }: AppProps = {}) {
         placedCacheIds?: string[];
         loadoutId?: string;
         journeyMode?: 'single' | 'journey';
+        conditions?: Partial<RunConditions>;
       },
     ) => {
       handleSelectMap(mapId);
       initRunSession({
         mapId,
         launchHour: options?.launchHour,
+        conditions: options?.conditions,
         placedCacheIds: options?.placedCacheIds,
         loadoutId: options?.loadoutId,
         journeyMode: options?.journeyMode ?? 'single',

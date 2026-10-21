@@ -61,7 +61,7 @@ import {
   getRunMap,
   getRunSession,
 } from '../journey/runSession';
-import { getDirectorOverChainIndex } from '../weather/weatherDirector';
+import { getDirectorOverSegment } from '../weather/weatherDirector';
 import { launchWeatherOf } from '../weather/weatherScript';
 
 function worldToGridIndex(
@@ -238,10 +238,16 @@ function runRoutingForecast(): RoutingForecast {
   return { ...DEFAULT_FORECAST_INPUTS, temperature, snowpackIndex, weather: launchWeatherOf(weatherScript) };
 }
 
-/** The river weather this step routes: the WeatherDirector's, as a fresh value for the worker message. */
+/**
+ * The river weather this step routes: the WeatherDirector's, as a fresh value
+ * for the worker message, with the segment it sits over resolved to its reach.
+ */
 function routerWeatherNow(): RouterWeather {
   const weather = getActiveWeather();
-  return { type: weather.type, intensity: weather.intensity, overChainIndex: getDirectorOverChainIndex() };
+  const over = getDirectorOverSegment();
+  const overChainIndex =
+    over === null ? null : routingChainIndex(getRoutingReach(), getRunSession()?.mapId ?? ACTIVE_MAP_ID, over);
+  return { type: weather.type, intensity: weather.intensity, overChainIndex };
 }
 
 /** The player's position on the routed chain, or null off it. */

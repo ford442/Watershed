@@ -11,6 +11,7 @@ import {
   getRunBest,
   loadPersistence,
   markMapCompleted,
+  pruneDailyRecords,
   resetPersistenceForTests,
   setLastMapId,
   setLaunchHour,
@@ -143,5 +144,16 @@ describe('PersistenceSystem', () => {
       expect(getRivalGhost('meander')).toBeUndefined();
       expect(getRivalGhost('hydro_dam')).toBeDefined();
     });
+  });
+
+  it('keeps a week of Daily River records and never touches free-run bests', () => {
+    updateRunBest('meander:12345', { bestScore: 10, bestAirTime: 1, bestTimeMs: 90_000 });
+    for (const day of ['2026-10-10', '2026-10-14', '2026-10-15', '2026-10-21']) {
+      updateRunBest(`meander@${day}:12345`, { bestScore: 5, bestAirTime: 0, bestTimeMs: 80_000 });
+    }
+    expect(pruneDailyRecords('2026-10-21')).toBe(2);
+    const keys = Object.keys(loadPersistence().runs).sort();
+    expect(keys).toEqual(['meander:12345', 'meander@2026-10-15:12345', 'meander@2026-10-21:12345']);
+    expect(pruneDailyRecords('2026-10-21')).toBe(0);
   });
 });

@@ -16,11 +16,11 @@ describe('normalizeWeatherScript', () => {
       { atReachFraction: 1.4, weather: 'rain', intensity: 2 },
       { atReachFraction: 0, weather: 'storm', rampSeconds: -3 },
       { atReachFraction: 0.3, weather: 'hail' },
-      { atReachFraction: 0.2, weather: 'fog', overChainIndex: 2 },
+      { atReachFraction: 0.2, weather: 'fog', overSegment: 2 },
     ]);
     expect(script.map((s) => s.weather)).toEqual(['storm', 'fog', 'clear', 'rain']);
     expect(script[0]).toEqual({ atReachFraction: 0, weather: 'storm', intensity: 0.9, rampSeconds: 0 });
-    expect(script[1].overChainIndex).toBe(2);
+    expect(script[1].overSegment).toBe(2);
     expect(script[2].intensity).toBe(0);
     expect(script[3]).toEqual({ atReachFraction: 1, weather: 'rain', intensity: 1, rampSeconds: 0 });
   });
@@ -53,12 +53,12 @@ describe('weather script keys', () => {
     const atLaunch = constantWeatherScript({ type: 'storm', intensity: 0.9 });
     const squall = normalizeWeatherScript([
       { atReachFraction: 0, weather: 'clear' },
-      { atReachFraction: 0.4, weather: 'storm', intensity: 0.9, rampSeconds: 30, overChainIndex: 2 },
+      { atReachFraction: 0.4, weather: 'storm', intensity: 0.9, rampSeconds: 30, overSegment: 2 },
       { atReachFraction: 0.7, weather: 'clear', rampSeconds: 40 },
     ]);
     const elsewhere = normalizeWeatherScript([
       { atReachFraction: 0, weather: 'clear' },
-      { atReachFraction: 0.4, weather: 'storm', intensity: 0.9, rampSeconds: 30, overChainIndex: 3 },
+      { atReachFraction: 0.4, weather: 'storm', intensity: 0.9, rampSeconds: 30, overSegment: 3 },
       { atReachFraction: 0.7, weather: 'clear', rampSeconds: 40 },
     ]);
     const keys = new Set([atLaunch, squall, elsewhere].map(weatherScriptFairnessKey));

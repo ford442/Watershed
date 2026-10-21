@@ -19,7 +19,7 @@ import type { WeatherBroadcast } from '../GameState';
 
 const SQUALL = normalizeWeatherScript([
   { atReachFraction: 0, weather: 'clear' },
-  { atReachFraction: 0.4, weather: 'storm', intensity: 0.9, rampSeconds: 30, overChainIndex: 2 },
+  { atReachFraction: 0.4, weather: 'storm', intensity: 0.9, rampSeconds: 30, overSegment: 2 },
   { atReachFraction: 0.7, weather: 'clear', rampSeconds: 40 },
 ]);
 
@@ -49,7 +49,7 @@ describe('stepWeatherDirector', () => {
     stepWeatherDirector(state, 0.4, 1 / 60);
     expect(state.stepIndex).toBe(1);
     expect(state.river.type).toBe('storm');
-    expect(state.overChainIndex).toBe(2);
+    expect(state.overSegment).toBe(2);
     const early = state.river.intensity;
     expect(early).toBeGreaterThan(0);
     expect(early).toBeLessThan(0.05);
@@ -64,7 +64,7 @@ describe('stepWeatherDirector', () => {
     stepWeatherDirector(state, 0.7, 20);
     expect(state.river.type).toBe('storm');
     expect(state.river.intensity).toBeCloseTo(0.45, 5);
-    expect(state.overChainIndex).toBeNull();
+    expect(state.overSegment).toBeNull();
     stepWeatherDirector(state, 0.7, 20);
     expect(state.river).toEqual({ type: 'clear', intensity: 0 });
   });

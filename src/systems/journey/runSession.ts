@@ -22,7 +22,13 @@ import {
   type PortageCacheRunState,
   DEFAULT_MAX_CACHE_PLACEMENTS,
 } from '../survival/portageCache';
-import { getLaunchHour, getLaunchWeather, setLastMapId, markMapCompleted } from '../persistence/PersistenceSystem';
+import {
+  getLaunchHour,
+  getLaunchWeather,
+  markMapCompleted,
+  pruneDailyRecords,
+  setLastMapId,
+} from '../persistence/PersistenceSystem';
 import type { RunWeather } from '../map/weatherInflow';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import {
@@ -72,6 +78,8 @@ export interface RunConditions {
   temperature: number;
   /** 0..1 snowpack left to melt. */
   snowpackIndex: number;
+  /** UTC date (`YYYY-MM-DD`) of the Daily River this run is; absent for a free run. */
+  dailyKey?: string;
 }
 
 export const DEFAULT_RUN_CONDITIONS: Readonly<RunConditions> = Object.freeze({
@@ -95,6 +103,8 @@ export function runConditionsFairnessKey(conditions: RunConditions): string {
   ) {
     parts.push(`melt:${conditions.temperature.toFixed(1)}/${conditions.snowpackIndex.toFixed(2)}`);
   }
+  // A day's river is that day's: its bed carries every earlier day's erosion.
+  if (conditions.dailyKey) parts.push(`day:${conditions.dailyKey}`);
   return parts.join('|');
 }
 
@@ -163,6 +173,11 @@ export function initRunSession(options: {
     temperature: options.conditions?.temperature ?? DEFAULT_RUN_CONDITIONS.temperature,
     snowpackIndex: options.conditions?.snowpackIndex ?? DEFAULT_RUN_CONDITIONS.snowpackIndex,
   };
+  if (options.conditions?.dailyKey) {
+    conditions.dailyKey = options.conditions.dailyKey;
+    // A week of days stays on the device; older days' records go.
+    pruneDailyRecords(conditions.dailyKey);
+  }
   const forecastState =
     buildLaunchForecast({
       temperature: conditions.temperature,

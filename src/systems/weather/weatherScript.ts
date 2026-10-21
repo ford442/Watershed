@@ -4,9 +4,9 @@
  * A script is a list of steps keyed by how far down the map the player is
  * (`atReachFraction`, 0 = the map's first authored segment, 1 = past its last).
  * Each step names a weather, its intensity, how long (sim seconds) the change
- * takes, and optionally the routed chain segment the weather sits over — a
- * squall over reach 2 feeds the river at reach 2 (lateral inflow), not at the
- * head.
+ * takes, and optionally the map segment the weather sits over — a squall over
+ * segment 5 feeds the river there (lateral inflow at that segment's routed
+ * reach), not at the head of the chain.
  *
  * The launch picker's choice is the one-step script `constantWeatherScript`;
  * the Daily River generates longer ones (`dailyRiver.ts`). WeatherDirector is
@@ -34,10 +34,11 @@ export interface WeatherScriptStep {
   /** Sim seconds from the previous weather to this one (0 = immediate). */
   rampSeconds: number;
   /**
-   * Routed chain segment the weather sits over (lateral inflow). Absent = the
-   * head of the chain, which is how a launch weather has always fed the river.
+   * Treadmill segment of the run's map the weather sits over (lateral inflow
+   * into that segment's routed reach). Absent = the head of the chain, which
+   * is how a launch weather has always fed the river.
    */
-  overChainIndex?: number;
+  overSegment?: number;
 }
 
 export type WeatherScript = readonly WeatherScriptStep[];
@@ -77,8 +78,8 @@ export function normalizeWeatherScript(raw: unknown): WeatherScript {
       intensity: e.weather === 'clear' ? 0 : clamp01(intensity),
       rampSeconds: Math.max(0, ramp),
     };
-    const over = Number(e.overChainIndex);
-    if (e.overChainIndex !== undefined && Number.isInteger(over) && over >= 0) step.overChainIndex = over;
+    const over = Number(e.overSegment);
+    if (e.overSegment !== undefined && Number.isInteger(over)) step.overSegment = over;
     steps.push(step);
   }
   if (steps.length === 0) return constantWeatherScript();
@@ -119,7 +120,7 @@ export function weatherScriptFairnessKey(script: WeatherScript): string {
   return script
     .map((step) => {
       const at = step.atReachFraction.toFixed(3);
-      const over = step.overChainIndex === undefined ? '' : `>${step.overChainIndex}`;
+      const over = step.overSegment === undefined ? '' : `>${step.overSegment}`;
       const key = weatherFairnessKey(stepWeather(step)) || 'clear';
       return `${at}:${key}~${step.rampSeconds.toFixed(1)}${over}`;
     })

@@ -6,6 +6,7 @@ import { ACTIVE_MAP_ID, type MapRegistryId } from '../maps/registry';
 import { parseUrlMapId, resolveMapId } from '../maps/campaign';
 import { DEFAULT_MAP_CONFIG } from '../systems/map/MapSystem';
 import { buildRunKey, getLastMapId } from '../systems/persistence/PersistenceSystem';
+import { getRunSession } from '../systems/journey/runSession';
 
 /** Parse `?seed=` from the URL; returns null when absent or invalid. */
 export function parseUrlSeed(): number | null {
@@ -34,7 +35,14 @@ export function getActiveMapId(selection?: MapRegistryId | null): MapRegistryId 
   });
 }
 
-/** Persistence key for the active map + seed (`meander:12345`). */
+/** Persistence key for a Daily River run (`meander@2026-10-21:12345`): each day keeps its own best. */
+export function dailyRunKey(mapId: MapRegistryId, dateKey: string): string {
+  return buildRunKey(`${mapId}@${dateKey}`, getProceduralBaseSeed());
+}
+
+/** Persistence key for the active map + seed (`meander:12345`), or the day's key on a Daily River run. */
 export function getActiveRunKey(mapId: MapRegistryId = getActiveMapId()): string {
+  const dailyKey = getRunSession()?.conditions.dailyKey;
+  if (dailyKey) return dailyRunKey(mapId, dailyKey);
   return buildRunKey(mapId, getProceduralBaseSeed());
 }

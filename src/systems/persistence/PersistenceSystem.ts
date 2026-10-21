@@ -460,6 +460,39 @@ export function setLaunchWeather(type: WeatherType): WeatherType {
   return type;
 }
 
+// =============================================================================
+// DAILY RIVER (one river per UTC day; its runs key as `mapId@YYYY-MM-DD:seed`)
+// =============================================================================
+
+/** Days of Daily River records kept on the device (today included). */
+export const DAILY_KEEP_DAYS = 7;
+const DAILY_RUN_KEY = /@(\d{4}-\d{2}-\d{2}):/;
+
+/** The UTC date `days` before `dateKey` (`YYYY-MM-DD`). */
+function dateKeyMinus(dateKey: string, days: number): string {
+  return new Date(Date.parse(`${dateKey}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Drop Daily River records older than the last `keepDays` days (counting
+ * `todayKey`). Returns how many run entries went. Free-run bests never match.
+ */
+export function pruneDailyRecords(todayKey: string, keepDays: number = DAILY_KEEP_DAYS): number {
+  const cutoff = dateKeyMinus(todayKey, keepDays - 1);
+  let removed = 0;
+  touchCache((data) => {
+    for (const key of Object.keys(data.runs)) {
+      const day = DAILY_RUN_KEY.exec(key)?.[1];
+      if (day && day < cutoff) {
+        delete data.runs[key];
+        removed += 1;
+      }
+    }
+  });
+  if (removed > 0) flushPersistence();
+  return removed;
+}
+
 /** Best score across all seeds for a map id (`mapId:*` run keys). */
 export function getBestScoreForMap(mapId: string): number {
   const data = loadPersistence();
