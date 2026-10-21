@@ -44,8 +44,10 @@ html.touch-input .settings-panel-overlay {
   width: calc(var(--touch-stick-radius) * 2);
   height: calc(var(--touch-stick-radius) * 2);
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  /* The dark ring keeps it readable against a bright sky or white water. */
+  box-shadow: 0 0 0 2px rgba(10, 20, 30, 0.55), inset 0 0 0 2px rgba(10, 20, 30, 0.25);
+  background: rgba(10, 20, 30, 0.12);
   opacity: 0;
   pointer-events: none;
   will-change: transform, opacity;
@@ -59,8 +61,9 @@ html.touch-input .settings-panel-overlay {
   height: calc(var(--touch-stick-radius) * 0.9);
   margin: calc(var(--touch-stick-radius) * -0.45) 0 0 calc(var(--touch-stick-radius) * -0.45);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.65);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(10, 20, 30, 0.55);
   will-change: transform;
 }
 
@@ -84,7 +87,8 @@ html.touch-input .settings-panel-overlay {
 
 .touch-btn--pause {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top));
+  /* Below the speed / score readout (top-right), not on top of it. */
+  top: calc(max(12px, env(safe-area-inset-top)) + 6.5rem);
   right: max(12px, env(safe-area-inset-right));
   min-width: 48px;
   min-height: 48px;
@@ -115,6 +119,8 @@ html.touch-input .settings-panel-overlay {
 
 /* Left-handed: everything mirrors. */
 .touch-controls--left-handed .touch-btn--pause {
+  /* The readout stays top-right, so the left-handed pause can sit at the top. */
+  top: max(12px, env(safe-area-inset-top));
   right: auto;
   left: max(12px, env(safe-area-inset-left));
 }

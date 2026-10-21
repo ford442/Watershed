@@ -152,6 +152,8 @@ const SHOTS = [
     required: false,
     query: 'cleanTest=1&renderer=webgl&screenshot=1&input=touch',
     touchViewport: { width: 390, height: 844 },
+    // A 390×844 frame is a fifth the pixels of the 1280×720 shots.
+    minBytes: 12_000,
   },
   {
     label: '06_lumber_trestle_dawn',
@@ -574,12 +576,12 @@ async function attemptTouch(shot) {
       `  hub saw touch ${JSON.stringify(input)}; runner moved ${Math.hypot(after.x - before.x, after.z - before.z).toFixed(2)} m; stick base opacity ${knob}`,
     );
     return {
-      ok: capture.bytes >= MIN_GOOD_BYTES,
-      reason: capture.bytes >= MIN_GOOD_BYTES ? 'ok' : 'too-small',
+      ok: capture.bytes >= (shot.minBytes ?? MIN_GOOD_BYTES),
+      reason: capture.bytes >= (shot.minBytes ?? MIN_GOOD_BYTES) ? 'ok' : 'too-small',
       outPath,
       capture,
       pageErrors,
-      softSkip: capture.bytes < MIN_GOOD_BYTES,
+      softSkip: capture.bytes < (shot.minBytes ?? MIN_GOOD_BYTES),
     };
   } catch (err) {
     const msg = String(err.message || err);
