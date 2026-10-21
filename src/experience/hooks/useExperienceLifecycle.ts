@@ -17,8 +17,10 @@ import {
 import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
 import {
   resolveActiveEnvelope,
+  resolveActiveRaftEnvelope,
   triggerOutOfBoundsWipeout,
 } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
+import { getVehicleWaterLevel } from '../../systems/water/vehicleWaterDatum';
 import { tickGhostRecording } from '../../systems/ghost/GhostRecorder';
 import { isElevatedRisk } from '../../systems/map/flowForecast';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
@@ -352,8 +354,12 @@ export function useExperienceLifecycle({
 
         if (posOk && !isWipeout) {
           // Segment-relative envelope (authored safeZone, else POSITION_SANE
-          // margins) for the segment actually under the vehicle.
-          const envelope = resolveActiveEnvelope(pos);
+          // margins) for the segment actually under the vehicle; a raft's is
+          // depth under the surface it floats on instead.
+          const envelope =
+            useGameStore.getState().vehicleType === 'raft'
+              ? resolveActiveRaftEnvelope(pos, getVehicleWaterLevel())
+              : resolveActiveEnvelope(pos);
           if (pos.y < envelope.yMin || pos.y > envelope.yMax) {
             triggerOutOfBoundsWipeout(envelope);
           }

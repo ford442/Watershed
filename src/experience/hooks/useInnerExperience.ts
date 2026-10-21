@@ -9,7 +9,7 @@ import { useExperienceLifecycle } from './useExperienceLifecycle';
 import { useExperienceWorld } from './useExperienceWorld';
 import { getMapDefinition, isMapRegistryId } from '../../maps/registry';
 import { gameEvents } from '../../systems/events/GameEvents';
-import { getVehicleOverride } from '../../utils/runContext';
+import { getVehicleChoice, getVehicleOverride, subscribeVehicleChoice } from '../../utils/runContext';
 
 function readVehicleTypeFromUrl(): VehicleType | null {
   if (typeof window === 'undefined') return null;
@@ -23,6 +23,8 @@ export function resolveInitialVehicle(mapId?: string): VehicleType {
   if (pinned) return pinned;
   const fromUrl = readVehicleTypeFromUrl();
   if (fromUrl) return fromUrl;
+  const chosen = getVehicleChoice(mapId);
+  if (chosen) return chosen;
   if (mapId && isMapRegistryId(mapId)) {
     const preferred = getMapDefinition(mapId).preferredVehicle;
     if (preferred) return preferred;
@@ -89,13 +91,24 @@ export function useInnerExperience({
 
   // Map preferredVehicle when StartMenu / continue changes the active map.
   // URL `?vehicle=` wins for the whole session once present.
+  // A StartMenu pick for this map wins over its preference.
   useEffect(() => {
     if (!mapId || urlVehicleOverrideRef.current) return;
-    const preferred = getMapDefinition(mapId).preferredVehicle;
+    const preferred = getVehicleChoice(mapId) ?? getMapDefinition(mapId).preferredVehicle;
     if (preferred && preferred !== vehicleType) {
       setVehicleType(preferred);
     }
   }, [mapId, setVehicleType, vehicleType]);
+
+  // The pick can land after this mounts (the world mounts behind the menu).
+  useEffect(() => {
+    if (urlVehicleOverrideRef.current) return;
+    // "River decides" after an earlier pick returns to the map's own vehicle.
+    return subscribeVehicleChoice(() => {
+      const preferred = mapId && isMapRegistryId(mapId) ? getMapDefinition(mapId).preferredVehicle : undefined;
+      setVehicleType(getVehicleChoice(mapId) ?? preferred ?? 'runner');
+    });
+  }, [mapId, setVehicleType]);
 
   // Segment-authored forceVehicle (delta raft launch, hydro→delta continuation).
   useEffect(() => {

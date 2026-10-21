@@ -214,14 +214,22 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
     onExport?.(json);
   }, [hook, onExport]);
 
-  // Handle play — navigate to game root
+  // Handle play — save the draft and run it in the game (`?river=<id>`, which
+  // App starts as a player river). A draft that does not validate yet says why.
   const handlePlay = useCallback(() => {
     if (onPlay) {
       onPlay(null);
-    } else {
-      window.location.href = window.location.origin;
+      return;
     }
-  }, [onPlay]);
+    let id: string;
+    try {
+      id = hook.storeUserLevel();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    window.location.href = `${window.location.origin}${window.location.pathname}?river=${encodeURIComponent(id)}`;
+  }, [hook, onPlay]);
 
   // Get current segment by integer index
   const currentSegment = hook.segments.find(s => s.index === selectedSegmentIndex) || null;

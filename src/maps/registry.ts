@@ -71,6 +71,12 @@ export interface MapDefinition {
    * at boot; segment `forceVehicle` can override mid-run).
    */
   preferredVehicle?: 'runner' | 'raft';
+  /**
+   * Vehicles a player may pick for this map in the StartMenu. Omitted = both.
+   * A single entry is a map that forces it (the glacial tube is a runner
+   * course; the delta is a raft finale). `?vehicle=` still wins at boot.
+   */
+  allowedVehicles?: ReadonlyArray<'runner' | 'raft'>;
   /** Optional second authored map chained after primary segments are exhausted. */
   continuation?: MapContinuation;
   /**
@@ -96,6 +102,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     fallbackProgression: GLACIAL_SOURCE_FALLBACK_PROGRESSION,
     startIndex: GLACIAL_SOURCE_START_INDEX,
     initialBiome: 'glacialMelt',
+    allowedVehicles: ['runner'],
     difficulty: 'intermediate',
     estimatedDurationSec: 240,
     nextMapId: 'lumber',
@@ -162,6 +169,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
     estimatedDurationSec: 360,
     unlockAfter: 'hydro',
     preferredVehicle: 'raft',
+    allowedVehicles: ['raft'],
   },
 };
 
@@ -191,6 +199,11 @@ export function getMapDefinition(mapId: MapRegistryId = ACTIVE_MAP_ID): MapDefin
 
 export function getActiveMap(): MapDefinition {
   return getMapDefinition(ACTIVE_MAP_ID);
+}
+
+/** The vehicles a player may pick for `mapId` (both unless the map forces one). */
+export function allowedVehiclesForMap(mapId: MapRegistryId): ReadonlyArray<'runner' | 'raft'> {
+  return MAP_REGISTRY[mapId].allowedVehicles ?? ['runner', 'raft'];
 }
 
 /** Resolve `?map=` URL tokens (and registry ids) to a MapRegistryId. */

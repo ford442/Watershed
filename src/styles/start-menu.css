@@ -627,3 +627,32 @@
 .start-menu-hint-action {
   color: rgba(255,255,255,0.4);
 }
+
+/* Your Rivers (UserRiverPanel) — player .wsriver import + saved list */
+.user-river-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.user-river-paste-text {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.85);
+  font: 12px/1.4 ui-monospace, monospace;
+  padding: 8px;
+}
+
+.user-river-error {
+  margin: 6px 0;
+  font-size: 12px;
+  color: #ff9f8e;
+  white-space: pre-wrap;
+  max-height: 8em;
+  overflow-y: auto;
+}

@@ -142,6 +142,10 @@ export function useRaftControls({
       }
     }
 
+    // Floating reads the staged surface the hull force reads (one datum), on
+    // either physics path — survival's `inWater` comes from it.
+    const submergedRatio = runtime.updateBuoyancy(pos.y);
+
     // The Rapier worker owns the body once it is ready; until then the
     // main-thread body does, and WaterForceSystem applies its water force
     // (waterForceAuthority.ts — the raft never applies its own, #467).
@@ -149,10 +153,6 @@ export function useRaftControls({
       runtime.updateWorkerPhysicsFrame(body, delta);
       return;
     }
-
-    const submergedRatio = runtime.calculateSubmergedRatio(pos.y);
-    buoyancyState.current.submergedRatio = submergedRatio;
-    buoyancyState.current.isFloating = submergedRatio > 0.1;
 
     runtime.applyTurbulence(body, timeRef.current, delta);
     runtime.applyTippingForce(body, submergedRatio, delta);
