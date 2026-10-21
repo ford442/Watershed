@@ -56,6 +56,9 @@ const FULL = {
       },
     },
   },
+  erosion: {
+    'meander:2': { n: 286, q: 'gP8B', t: 1_700_000_000_000 },
+  },
 };
 
 const clone = <T,>(v: T): T => structuredClone(v);

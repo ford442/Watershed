@@ -745,6 +745,23 @@ get `BATHYMETRY_DRY_BED` (`H + 2`) — dry land, not open water. Every cell is r
 each refresh, so a previous slot's bed cannot leak into the next window. The strongest
 riffle crests reach the sheet and read shallow-to-dry, as the meshes show them.
 
+**Erosion (#487 E):** the river works its bed. Each mounted segment registers its hull grid
+as built with `erosionField.ts`, and every solver step `sweHost` hands the field (the h/u/w/b
+mirror every backend keeps on the main thread) to `accumulateFieldErosion`: each hull vertex
+inside the window integrates `dE/dt = 0.005·max(0, q − 0.12) − deposit(q)` with `q = |u|·d`
+(`terrain/erosion.ts`; still water does nothing, slowed water drops what it carries). The floor
+every consumer reads is `h − E` clamped to ±0.4 m: the trimesh and the bed take it at their own
+vertices, the visual floor interpolates it over the hull's own triangles — the three agree to
+1e-4 at every hull vertex (`erosion.test.ts`). A segment re-meshes (floor, trimesh remount,
+bathymetry re-register) when its plane has moved 1 cm since its last mesh, at most every 3 s
+of solver time — so a replay refreshes on the same step. The plane outlives the mount: it is
+saved per `mapId:segmentIndex` (`PersistenceSystem` `erosion`, quantized and run-length
+coded, ≤ 200 kB, oldest first out) and the next mount — later today or tomorrow's river —
+starts from it. Scripted / replay runs neither load nor save it. After a storm, meander's
+second bend has dug its outside flank ~5× a clear day and ~3× its inside
+(`erosionBend.test.ts`, committed binary); `safeZones.test.ts` holds every authored envelope
+to a body on the deepest pool dug the full 0.4 m.
+
 The result: a slot canyon dries out a couple of metres off-centre, a delta/pond stays wet
 across the whole window, at identical grid sizes. `?sweDebug=1` mounts `SWEBedDebugOverlay`
 (`src/components/SWEBedDebugOverlay.tsx`), a false-color view of the sampled bed — blue deep,

@@ -71,7 +71,9 @@ export function TrackSegmentCollisionMeshes({
     <>
       {!openFloor && (
         <RigidBody
-          key={`rb-collision-${segmentId}`}
+          // A new hull (an eroded floor, #487 E) is a new trimesh: the auto
+          // collider is built at mount, so the body remounts with its geometry.
+          key={`rb-collision-${segmentId}-${collisionGeometry.uuid}`}
           type="fixed"
           colliders="trimesh"
           // The collision mesh is invisible on purpose; without this,

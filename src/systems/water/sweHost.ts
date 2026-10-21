@@ -64,6 +64,8 @@ import {
 } from '../journey/runSession';
 import { getDirectorOverSegment } from '../weather/weatherDirector';
 import { createWeatherSurgeState, resetWeatherSurge, stepWeatherSurge, type WeatherSurgeState } from './weatherSurge';
+import { accumulateFieldErosion } from './erosionField';
+import type { ErosionFieldView } from '../../terrain/erosion';
 import { launchWeatherOf } from '../weather/weatherScript';
 
 function worldToGridIndex(
@@ -207,6 +209,25 @@ function refreshBed(
   });
 }
 
+/** Integrate one step of the field's shear into the live segments' erosion planes. */
+function erodeUnder(state: SweHostState, grid: SweSim, originX: number, originZ: number, dt: number): void {
+  const view = state.erosion ?? (state.erosion = {
+    h: grid.h, u: grid.u, w: grid.w, b: grid.b,
+    width: grid.width, height: grid.height, cellSize: grid.dx,
+    originX, originZ, stillDepth: SWE_MEAN_DEPTH,
+  });
+  view.h = grid.h;
+  view.u = grid.u;
+  view.w = grid.w;
+  view.b = grid.b;
+  view.width = grid.width;
+  view.height = grid.height;
+  view.cellSize = grid.dx;
+  view.originX = originX;
+  view.originZ = originZ;
+  accumulateFieldErosion(view, dt);
+}
+
 /** Seconds of slack in the step-rate compare (see sweHostFrame). */
 const SWE_STEP_EPSILON = 1e-6;
 
@@ -320,6 +341,8 @@ export interface SweHostState {
   simRun: number | null;
   /** The director's squall front, if one is crossing the window. */
   surge: WeatherSurgeState;
+  /** The field as the erosion integrator reads it (#487 E); reused every step. */
+  erosion: ErosionFieldView | null;
   uploadedVersion: number;
   /** Bed refresh bookkeeping: re-rasterize only when the window slides a cell or the treadmill changes. */
   bed: BedState;
@@ -337,6 +360,7 @@ export function createSweHostState(): SweHostState {
     simTime: 0,
     simRun: null,
     surge: createWeatherSurgeState(),
+    erosion: null,
     uploadedVersion: -1,
     bed: { valid: false, revision: -1, originX: 0, originZ: 0 },
     router: { router: null, session: null, launchHour: Number.NaN },
@@ -498,7 +522,11 @@ export function sweHostFrame(
       };
       if (remote) remote.stepRouted(stepInput, { chainIndex, weather });
       else grid.step(stepInput);
+      // The river works its bed (#487 E). On this thread the field just
+      // stepped; a worker's lands a message later, below.
+      if (!remote) erodeUnder(state, grid, originX, originZ, stepDt);
     }
+    if (remote && grid.fieldVersion !== state.uploadedVersion) erodeUnder(state, grid, originX, originZ, sweStepInterval(budget));
     // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
     if (grid.fieldVersion !== state.uploadedVersion) {
       state.uploadedVersion = grid.fieldVersion;

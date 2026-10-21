@@ -3,16 +3,20 @@ import { useGameStore } from '../GameState';
 import {
   buildRunKey,
   clearRivalGhost,
+  EROSION_STORE_CAP,
   getCompletedMaps,
   getDefaultPersistence,
   getLastMapId,
   getLaunchHour,
   getRivalGhost,
   getRunBest,
+  loadErosionPlane,
   loadPersistence,
   markMapCompleted,
   pruneDailyRecords,
   resetPersistenceForTests,
+  saveErosionPlane,
+  savePersistence,
   setLastMapId,
   setLaunchHour,
   setRivalGhost,
@@ -155,5 +159,36 @@ describe('PersistenceSystem', () => {
     const keys = Object.keys(loadPersistence().runs).sort();
     expect(keys).toEqual(['meander:12345', 'meander@2026-10-15:12345', 'meander@2026-10-21:12345']);
     expect(pruneDailyRecords('2026-10-21')).toBe(0);
+  });
+
+  it('keeps the eroded bed per map segment across a reload — tomorrow’s river starts from it', () => {
+    const plane = new Float32Array(286);
+    plane[40] = 0.2;
+    plane[41] = -0.12;
+    saveErosionPlane('meander:2', plane, 1000);
+    // Write through the shape guard now (saves are debounced), then reload from storage.
+    savePersistence(loadPersistence());
+    expect(localStorage.getItem(STORAGE_KEY)).toContain('"meander:2"');
+    resetPersistenceForTests();
+    const back = loadErosionPlane('meander:2', 286)!;
+    expect(back[40]).toBeCloseTo(0.2, 2);
+    expect(back[41]).toBeCloseTo(-0.12, 2);
+    expect(loadErosionPlane('meander:2', 287)).toBeNull();
+    expect(loadErosionPlane('meander:3', 286)).toBeNull();
+    // A plane worked back to nothing is dropped, not stored as zeros.
+    saveErosionPlane('meander:2', new Float32Array(286), 2000);
+    expect(loadPersistence().erosion).toBeUndefined();
+  });
+
+  it('drops the least recently written beds past the cap', () => {
+    // Every value non-zero and distinct-ish: a plane that does not run-length compress.
+    const plane = Float32Array.from({ length: 20_000 }, (_, i) => ((i % 200) - 100) / 300);
+    const keys = ['glacial:1', 'glacial:2', 'meander:1', 'meander:2', 'hydro:1', 'hydro:2', 'delta:1', 'delta:2', 'lumber:1', 'lumber:2', 'lumber:3'];
+    keys.forEach((key, i) => saveErosionPlane(key, plane, 1000 + i));
+    const stored = loadPersistence().erosion!;
+    const total = Object.values(stored).reduce((sum, r) => sum + r.q.length, 0);
+    expect(total).toBeLessThanOrEqual(EROSION_STORE_CAP);
+    expect(stored['lumber:3']).toBeDefined();
+    expect(stored['glacial:1']).toBeUndefined();
   });
 });

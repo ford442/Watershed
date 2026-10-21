@@ -10,7 +10,8 @@ import { getCurrentGhostPayload, getGhostElapsedMs } from '../../systems/ghost/G
 import { exportGhostToJson } from '../../systems/ghost/ghostExport';
 import { currentRunFairness } from '../../systems/ghost/raceFairness';
 import { inputHub } from '../../input/InputHub';
-import { getScriptedSimTimeSec, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
+import { getScriptedSimTimeSec, isScriptedInputMode, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
+import { flushErosion, setErosionStore } from '../../systems/water/erosionField';
 import { resolveActiveEnvelope } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
@@ -46,7 +47,7 @@ import {
   advanceRunSessionMap,
   saveJourneyCheckpoint,
 } from '../../systems/journey/runSession';
-import { getLaunchHour } from '../../systems/persistence/PersistenceSystem';
+import { getLaunchHour, loadErosionPlane, saveErosionPlane } from '../../systems/persistence/PersistenceSystem';
 import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
 
@@ -167,6 +168,20 @@ export function useExperienceWorld({
   useEffect(() => {
     setForecastSamples(buildDefaultForecastSamples(launchHour));
   }, [launchHour]);
+
+  // The river remembers its bed (#487 E): segments load the plane earlier runs
+  // eroded and save theirs as they leave. A scripted / replay run starts on the
+  // built floor and writes nothing, so two runs of one script meet one river.
+  useEffect(() => {
+    if (isScriptedInputMode()) return undefined;
+    setErosionStore({ load: loadErosionPlane, save: saveErosionPlane });
+    window.addEventListener('pagehide', flushErosion);
+    return () => {
+      window.removeEventListener('pagehide', flushErosion);
+      flushErosion();
+      setErosionStore(null);
+    };
+  }, []);
 
   // Keep local map state in sync when App / StartMenu changes selection.
   useEffect(() => {
