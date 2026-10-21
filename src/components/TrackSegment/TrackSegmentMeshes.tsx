@@ -89,7 +89,7 @@ export function TrackSegmentMeshes({
 }: TrackSegmentMeshesProps) {
     const { quality: lodQuality } = useLOD();
     const { timeOfDay } = useBiome();
-    const { sunWorldPosition } = useSunPosition();
+    const { sunDirection, sunWorldPosition } = useSunPosition();
     const waterSurfaceOffset = (segmentState === 'downhill' || verticalBias <= -1.2) ? 0.6 : 0;
     const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
     const biomeProfile = useMemo(() => getTrackBiomeProfile(biome), [biome]);
@@ -341,7 +341,7 @@ export function TrackSegmentMeshes({
             if (!hasFiniteCoordinates(point)) return null;
 
             const lateral = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
-            const toSun = new THREE.Vector3().copy(sunWorldPosition).sub(point);
+            const toSun = new THREE.Vector3().copy(sunDirection);
             toSun.y = 0;
             if (toSun.lengthSq() > 0.0001) {
                 toSun.normalize();
@@ -357,7 +357,7 @@ export function TrackSegmentMeshes({
             console.warn(`[TrackSegment ${segmentId}] Failed to compute rainbow placement`, error);
             return null;
         }
-    }, [segmentId, segmentPath, sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z, type]);
+    }, [segmentId, segmentPath, sunDirection.x, sunDirection.y, sunDirection.z, type]);
 
     const sandBarGeometry = useMemo(() => {
         if (!isSummerLike(biome) || !Array.isArray(placementData.sandBars) || placementData.sandBars.length === 0) {
@@ -592,7 +592,7 @@ export function TrackSegmentMeshes({
                     rotation={rainbowPlacement.rotation}
                 >
                     <Suspense fallback={null}>
-                        <Rainbow opacity={rainbowOpacity} sunDirection={sunWorldPosition} />
+                        <Rainbow opacity={rainbowOpacity} sunDirection={sunDirection} />
                     </Suspense>
                 </group>
             )}

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useBiome } from '../../systems/biome/BiomeSystem';
-import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
+import { SUN_DISTANCE, useSunPosition } from '../../systems/lighting/SunPositionSystem';
 
 import type { BiomeDecorationTransform, WeatherAwareDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
@@ -87,8 +87,9 @@ export default function SunShafts({
   const motesRef = useRef<THREE.Points>(null);
   const { camera } = useThree();
   const { timeOfDay } = useBiome();
-  const { sunWorldPosition } = useSunPosition();
+  const { sunDirection } = useSunPosition();
   const prevCamPosRef = useRef(new THREE.Vector3());
+  const initialTimeOfDay = useRef(timeOfDay);
   const streakStrengthRef = useRef(0);
   const weatherType = useGameStore((s) => s.weather.type);
 
@@ -107,9 +108,10 @@ export default function SunShafts({
         shaftOpacity: isSlotCanyon ? 0.5 : 0.3,
         colorBase: new THREE.Color('#fff6d8'),
         warmTint: new THREE.Color('#ffcc88'),
-        timeOfDay,
+        timeOfDay: initialTimeOfDay.current,
       }),
-    [flowSpeed, isSlotCanyon, timeOfDay],
+    // timeOfDay is a per-frame uniform: a new hour must not rebuild (recompile) the material.
+    [flowSpeed, isSlotCanyon],
   );
 
   const dustGeometry = useMemo(() => new THREE.PlaneGeometry(0.12, 1.0), []);
@@ -151,7 +153,7 @@ export default function SunShafts({
       if (shaftU.timeOfDay) shaftU.timeOfDay.value = timeOfDay;
       if (shaftU.speedStreak) shaftU.speedStreak.value = streakStrengthRef.current;
       if (shaftU.sunDirection?.value instanceof THREE.Vector3) {
-        shaftU.sunDirection.value.copy(sunWorldPosition).normalize();
+        shaftU.sunDirection.value.copy(sunDirection);
       }
       if (shaftU.overcastBlend) shaftU.overcastBlend.value = overcastBlend;
     }
@@ -164,7 +166,7 @@ export default function SunShafts({
     if (moteU) {
       if (moteU.time) moteU.time.value = state.clock.elapsedTime;
       if (moteU.flowSpeed) moteU.flowSpeed.value = flowSpeed;
-      const sunFacing = THREE.MathUtils.clamp(sunWorldPosition.y / 60, 0.25, 1.0);
+      const sunFacing = THREE.MathUtils.clamp((sunDirection.y * SUN_DISTANCE) / 60, 0.25, 1.0);
       if (moteU.sunFacing) moteU.sunFacing.value = sunFacing * (1 - overcastBlend * 0.5);
     }
   }, 0);

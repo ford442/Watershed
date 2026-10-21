@@ -26,6 +26,7 @@ import WeatherSystem from '../components/WeatherSystem';
 import { getActiveConditions } from '../systems/journey/runSession';
 import { weatherScriptHasWeather } from '../systems/weather/weatherScript';
 import { WeatherDirectorTick } from '../systems/weather/WeatherDirectorTick';
+import { SkyClockTick } from '../systems/sky/SkyClockTick';
 import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
 import { isTouchInputMode } from '../input/touchMode';
@@ -81,6 +82,8 @@ export default function InnerExperience({
 
       {/* The one weather owner: steps the run's script and writes the store's weather. */}
       <WeatherDirectorTick />
+      {/* The run's time of day: advances the sky clock and places the sun for every reader below. */}
+      <SkyClockTick />
 
       <SceneLighting
         biome={state.biome}

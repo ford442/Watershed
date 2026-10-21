@@ -36,6 +36,8 @@ import {
   resetWeatherDirector,
   resetWeatherDirectorForTests,
 } from '../weather/weatherDirector';
+import { getMapAtmosphere } from '../../maps/atmosphere';
+import { resetSkyClock, resetSkyClockForTests, setSkyAtmosphere } from '../sky/skyClock';
 import {
   createSurvivalState,
   getLoadoutDefinition,
@@ -209,6 +211,8 @@ export function initRunSession(options: {
   };
   awardedCacheSegments = new Set();
   resetWeatherDirector(conditions.weatherScript);
+  // The sun starts at the launch hour over the start map and runs on sim time.
+  resetSkyClock(launchHour, getMapAtmosphere(startMapId));
   return activeSession;
 }
 
@@ -417,6 +421,8 @@ export function advanceRunSessionMap(
 
   markMapCompleted(activeSession.mapId);
   setLastMapId(nextMapId);
+  // Same time of day, the next map's sky.
+  setSkyAtmosphere(getMapAtmosphere(nextMapId));
 
   const checkpoint: JourneyCheckpoint = {
     mapId: nextMapId,
@@ -477,6 +483,7 @@ export function resetRunSessionForTests(): void {
   awardedCacheSegments = new Set();
   resetWetnessMuffle();
   resetWeatherDirectorForTests();
+  resetSkyClockForTests();
 }
 
 function normalizeHour(hour: number): number {

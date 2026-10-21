@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useBiome } from '../../systems/biome/BiomeSystem';
+import { getSkyClock } from '../../systems/sky/skyClock';
 import type { MistPlacement, MistProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createMistMaterial } from '../../materials/vfx/createVfxMaterials';
@@ -19,7 +19,6 @@ export default function Mist({
 }: MistProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const { camera } = useThree();
-  const { timeOfDay } = useBiome();
   const weatherType = useGameStore((s) => s.weather.type);
 
 
@@ -51,9 +50,7 @@ export default function Mist({
         u.playerPos.value.copy(camera.position);
       }
 
-      const dayPhase = Math.abs(timeOfDay - 0.5) * 2;
-      const nightFactor = THREE.MathUtils.smoothstep(dayPhase, 0.6, 0.85);
-      const sunsetBlend = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
+      const { night: nightFactor, golden: sunsetBlend } = getSkyClock().factors;
       if (u.tintColor?.value instanceof THREE.Color) {
         if (nightFactor > sunsetBlend) {
           u.tintColor.value.set('#9fb6e8');

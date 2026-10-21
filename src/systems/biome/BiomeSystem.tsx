@@ -5,7 +5,8 @@
  * - Biome state management
  * - Smooth color/parameter interpolation between biomes
  * - Integration with lighting, fog, water, and materials
- * - Time-of-day progression
+ * - Time of day: the run's sky clock (systems/sky/skyClock.ts), as the daylight
+ *   fraction (0 = sunrise, 0.5 = noon, 1 = sunset; outside [0, 1] at night)
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -15,6 +16,7 @@ import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting 
 import { type BiomeId, DEFAULT_BIOME_ID, normalizeBiomeId } from '../../configs/biomes';
 import { useGameStore } from '../GameState';
 import { gameEvents } from '../events/GameEvents';
+import { getSkyClock, getSkyPhase, subscribeSkyPhase } from '../sky/skyClock';
 
 // Context for biome state
 type BiomeContextType = {
@@ -22,11 +24,11 @@ type BiomeContextType = {
   targetBiome: BiomePalette;
   transitionProgress: number;
   isTransitioning: boolean;
-  timeOfDay: number; // 0-1 (0=8am, 0.5=noon, 1=5pm)
+  /** Daylight fraction: 0 = sunrise, 0.5 = solar noon, 1 = sunset; below 0 / above 1 at night. */
+  timeOfDay: number;
   setBiome: (biomeId: BiomeId, durationOverride?: number) => void;
   /** Instant biome snap — used on journey loop / respawn so delta/end palettes don't linger. */
   snapBiome: (biomeId: BiomeId) => void;
-  setTimeOfDay: (time: number) => void;
 };
 
 const BiomeContext = createContext<BiomeContextType | null>(null);
@@ -41,9 +43,15 @@ export const useBiome = () => {
 interface BiomeProviderProps {
   children: React.ReactNode;
   initialBiome?: BiomeId;
+  /**
+   * Follow the run's sky clock (launch hour + sim time). Off = the old fixed
+   * mid-morning (0.25), for harnesses that want a frozen sky.
+   */
   enableTimeOfDay?: boolean;
-  timeOfDaySpeed?: number; // hours per second
 }
+
+/** The fixed mid-morning `timeOfDay` when the clock is off. */
+const FIXED_TIME_OF_DAY = 0.25;
 
 /**
  * BiomeProvider - Context provider for biome management
@@ -52,13 +60,12 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   children,
   initialBiome = DEFAULT_BIOME_ID,
   enableTimeOfDay = false,
-  timeOfDaySpeed = 0.1, // 0.1 game hours per real second
 }) => {
   const [currentBiome, setCurrentBiomeState] = useState(() => getBiomePalette(initialBiome));
   const [targetBiome, setTargetBiome] = useState(() => getBiomePalette(initialBiome));
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionProgress, setTransitionProgress] = useState(1);
-  const [timeOfDay, setTimeOfDay] = useState(0.25); // Start at 10am
+  const [timeOfDay, setTimeOfDay] = useState(() => (enableTimeOfDay ? getSkyPhase().timeOfDay : FIXED_TIME_OF_DAY));
   
   const transitionStartTime = useRef(0);
   const previousBiome = useRef(currentBiome);
@@ -140,16 +147,16 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     return () => cancelAnimationFrame(raf);
   }, [isTransitioning, targetBiome]);
   
-  // Time of day progression
+  // Time of day: the sky clock's coarse phase (~every 5 game minutes), so the
+  // context re-renders its consumers rarely; per-frame readers use getSkyClock().
   useEffect(() => {
-    if (!enableTimeOfDay) return;
-    
-    const interval = setInterval(() => {
-      setTimeOfDay(t => (t + timeOfDaySpeed / 3600) % 1);
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, [enableTimeOfDay, timeOfDaySpeed]);
+    if (!enableTimeOfDay) {
+      setTimeOfDay(FIXED_TIME_OF_DAY);
+      return undefined;
+    }
+    setTimeOfDay(getSkyPhase().timeOfDay);
+    return subscribeSkyPhase((phase) => setTimeOfDay(phase.timeOfDay));
+  }, [enableTimeOfDay]);
   
   return (
     <BiomeContext.Provider value={{
@@ -160,7 +167,6 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
       timeOfDay,
       setBiome,
       snapBiome,
-      setTimeOfDay,
     }}>
       {children}
     </BiomeContext.Provider>
@@ -171,7 +177,7 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
  * BiomeTransition - Component that applies biome to scene elements
  */
 export const BiomeTransition: React.FC = () => {
-  const { currentBiome, timeOfDay } = useBiome();
+  const { currentBiome } = useBiome();
   const { scene } = useThree();
   const weatherType = useGameStore((s) => s.weather.type);
 
@@ -183,42 +189,28 @@ export const BiomeTransition: React.FC = () => {
     fill?: THREE.DirectionalLight;
   }>({});
   
-  // Find lights in scene
+  // Find lights in scene. The key light is the one SceneLighting tags
+  // (`userData.keyLight`); the other directional is the fill. SceneLighting,
+  // not this component, places the key light (it follows the sky clock's sun).
   useEffect(() => {
     scene.traverse((obj) => {
       if (obj instanceof THREE.AmbientLight) lightsRef.current.ambient = obj;
       if (obj instanceof THREE.HemisphereLight) lightsRef.current.hemi = obj;
       if (obj instanceof THREE.DirectionalLight) {
-        // Assume first is sun, second is fill
-        if (!lightsRef.current.sun) lightsRef.current.sun = obj;
+        if (obj.userData.keyLight === true) lightsRef.current.sun = obj;
         else if (!lightsRef.current.fill) lightsRef.current.fill = obj;
       }
     });
   }, [scene]);
-  
-  // Update sun position based on time of day
-  // 0 = 8am (sunrise), 0.5 = noon, 1 = 5pm (sunset)
-  const getSunPosition = (time: number): [number, number, number] => {
-    // Sun arc: rises in east (-30°), peaks at noon (90°), sets in west (30°)
-    const angle = (time - 0.5) * Math.PI; // -PI/2 to PI/2
-    const height = Math.cos(angle * 0.8) * 40 + 15; // Arc height
-    const x = Math.sin(angle) * 60;
-    const z = Math.cos(angle) * 30 + 10;
-    return [x, height, z];
-  };
-  
+
   // Apply biome updates every frame
   useFrame(() => {
     const { ambient, hemi, sun, fill } = lightsRef.current;
     if (!ambient || !hemi || !sun || !fill) return;
 
-    // Update sun position
-    const sunPos = getSunPosition(timeOfDay);
-    sun.position.set(...sunPos);
-
-    // Sun elevation (0 = horizon/below, 1 = directly overhead) drives the
-    // warm/cool color temperature shift and intensity falloff.
-    const sunElevation = THREE.MathUtils.clamp(sunPos[1] / 40, 0, 1);
+    // Sun elevation (0 = horizon/below, 1 = well up) drives the warm/cool
+    // colour-temperature shift and intensity falloff.
+    const sunElevation = getSkyClock().factors.elevation01;
     const isSlotCanyon = currentBiome.id === 'slotCanyon';
 
     // Apply palette to lighting, with weather + time-of-day modulation

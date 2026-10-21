@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
 import { useBiome } from '../systems/biome/BiomeSystem';
-import { useSunPosition } from '../systems/lighting/SunPositionSystem';
+import { SUN_DISTANCE, useSunPosition } from '../systems/lighting/SunPositionSystem';
+import { getSkyClock } from '../systems/sky/skyClock';
 import { BiomePalettes } from '../configs/BiomePalettes';
 import { useGameStore } from '../systems/GameState';
 import type { BiomeId } from '../configs/biomes';
@@ -18,7 +19,6 @@ import { materialUniformBag } from '../materials/dual/materialUniformBag';
 import { sinHash } from '../math/hash';
 
 interface SkyProfile {
-  sunPosition: [number, number, number];
   turbidity: number;
   rayleigh: number;
   mieCoefficient: number;
@@ -27,70 +27,60 @@ interface SkyProfile {
 
 const SKY_OVERRIDES: Partial<Record<BiomeId | 'pond' | 'slotCanyon', SkyProfile>> = {
     alpineSpring: {
-        sunPosition: [90, 42, 65],
         turbidity: 5.8,
         rayleigh: 3.7,
         mieCoefficient: 0.0035,
         mieDirectionalG: 0.8,
     },
     canyonSummer: {
-        sunPosition: [100, 34, 90],
         turbidity: 6.4,
         rayleigh: 3.8,
         mieCoefficient: 0.004,
         mieDirectionalG: 0.82,
     },
     canyonAutumn: {
-        sunPosition: [95, 24, 55],
         turbidity: 9.5,
         rayleigh: 2.5,
         mieCoefficient: 0.007,
         mieDirectionalG: 0.86,
     },
     cavern: {
-        sunPosition: [0, 8, 12],
         turbidity: 12.0,
         rayleigh: 0.8,
         mieCoefficient: 0.012,
         mieDirectionalG: 0.9,
     },
     delta: {
-        sunPosition: [80, 22, 80],
         turbidity: 7.2,
         rayleigh: 3.3,
         mieCoefficient: 0.005,
         mieDirectionalG: 0.83,
     },
     midnightMist: {
-        sunPosition: [20, 14, 30],
         turbidity: 11.0,
         rayleigh: 1.2,
         mieCoefficient: 0.01,
         mieDirectionalG: 0.88,
     },
     pond: {
-        sunPosition: [80, 18, 80],
         turbidity: 6.8,
         rayleigh: 3.1,
         mieCoefficient: 0.0048,
         mieDirectionalG: 0.82,
     },
     slotCanyon: {
-        sunPosition: [100, 60, 20],
         turbidity: 10.8,
         rayleigh: 2.0,
         mieCoefficient: 0.009,
         mieDirectionalG: 0.88,
     },
     glacialMelt: {
-        sunPosition: [70, 48, 40],
         turbidity: 4.2,
         rayleigh: 4.8,
         mieCoefficient: 0.0025,
         mieDirectionalG: 0.76,
     },
     glacier: {
-        sunPosition: [75, 50, 45],
         turbidity: 4.5,
         rayleigh: 4.6,
         mieCoefficient: 0.0028,
@@ -196,10 +186,21 @@ const getSkyProfile = (biomeId: string, isSlotCanyon: boolean): SkyProfile => {
     return SKY_OVERRIDES[biomeId as keyof typeof SKY_OVERRIDES] || SKY_OVERRIDES.canyonSummer!;
 };
 
+// Sky-at-infinity distances from the camera (the old fixed sun / moon points sat this far from the origin).
+const MOON_DISTANCE = 185;
+const NIGHT_FOG = new THREE.Color('#1a2a4a');
+const GOLDEN_FOG = new THREE.Color('#f0b07a');
+const DAWN_FOG = new THREE.Color('#8fa7c8');
+const SUN_GLOW_DAY = new THREE.Color('#fff7e0');
+const SUN_GLOW_LOW = new THREE.Color('#ffb066');
+// Frame scratch.
+const _targetFog = new THREE.Color();
+const _moonDir = new THREE.Vector3();
+
 export default function EnhancedSky() {
     const { scene } = useThree();
-    const { currentBiome, timeOfDay, transitionProgress } = useBiome();
-    const { setSunWorldPosition } = useSunPosition();
+    const { currentBiome, transitionProgress } = useBiome();
+    const { sunDirection } = useSunPosition();
     const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
     const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
     const weatherType = useGameStore((s) => s.weather.type);
@@ -211,11 +212,12 @@ export default function EnhancedSky() {
     const starsMatRef = useRef<THREE.Material | null>(null);
     const milkyMatRef = useRef<THREE.Material | null>(null);
     const skyDomeMatRef = useRef<THREE.Material | null>(null);
+    const skyRef = useRef<React.ComponentRef<typeof Sky> | null>(null);
+    /** Sun glow, stars, moon: things at infinity, carried with the camera. */
+    const celestialRef = useRef<THREE.Group | null>(null);
     const moonGroupRef = useRef<THREE.Group | null>(null);
     const moonLightRef = useRef<THREE.PointLight | null>(null);
     const sunGlowRef = useRef<THREE.Sprite | null>(null);
-    const sunWorldPosRef = useRef(new THREE.Vector3());
-    const moonWorldPosRef = useRef(new THREE.Vector3());
     const fogStateRef = useRef({
         color: new THREE.Color(BiomePalettes.canyonSummer.fogColor),
         near: 65,
@@ -228,29 +230,11 @@ export default function EnhancedSky() {
     );
 
     const cloudOpacity = isSlotCanyon ? 0.3 : currentBiome.id === 'delta' ? 0.5 : 0.42;
-    const sunsetBlend = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
-
-    // 0 at noon, 1 at midnight - drives star/moon visibility and moonlight strength.
-    const dayPhase = Math.abs(timeOfDay - 0.5) * 2;
-    const nightFactor = THREE.MathUtils.smoothstep(dayPhase, 0.6, 0.85);
-
-    const skySunPosition = useMemo((): [number, number, number] => {
-        const dayArc = (timeOfDay - 0.5) * Math.PI;
-        const base = skyProfile.sunPosition;
-        const x = base[0] + Math.sin(dayArc) * (isSlotCanyon ? 8 : 24);
-        const y = Math.max(8, base[1] + Math.cos(dayArc * 0.85) * 18);
-        const z = base[2] + Math.cos(dayArc) * (isSlotCanyon ? 6 : 14);
-        return [x, y, z] as [number, number, number];
-    }, [isSlotCanyon, skyProfile.sunPosition, timeOfDay]);
-
-    // Moon rides the opposite side of the sky from the sun, on the same arc.
-    const moonWorldPosition = useMemo((): [number, number, number] => {
-        const dayArc = (timeOfDay - 0.5) * Math.PI + Math.PI;
-        const x = Math.sin(dayArc) * 130;
-        const y = Math.max(15, Math.cos(dayArc * 0.85) * 70 + 30);
-        const z = Math.cos(dayArc) * 110;
-        return [x, y, z] as [number, number, number];
-    }, [timeOfDay]);
+    // The sun at mount (the drei Sky's first uniform); every frame after comes from the sky clock.
+    const initialSunPosition = useMemo((): [number, number, number] => {
+        const { sun } = getSkyClock();
+        return [sun.x * SUN_DISTANCE, sun.y * SUN_DISTANCE, sun.z * SUN_DISTANCE];
+    }, []);
 
     const sunGlowTexture = useMemo(() => {
         const size = 128;
@@ -347,8 +331,16 @@ export default function EnhancedSky() {
 
     useFrame((state, delta) => {
         const step = Math.min(1.0, delta * (0.9 + transitionProgress * 0.2));
+        const { sun, factors } = getSkyClock();
+        const { night, golden, elevation01 } = factors;
+        const morningLow = sun.hourAngle < 0 ? (1 - elevation01) * (1 - night) : 0;
 
-        const targetFogColor = new THREE.Color(currentBiome.fogColor);
+        // Fog (and the background it paints): the biome's colour, darkened by
+        // night, warmed by the golden hour, cooled by a low morning sun.
+        const targetFogColor = _targetFog.set(currentBiome.fogColor);
+        targetFogColor.lerp(DAWN_FOG, morningLow * 0.3);
+        targetFogColor.lerp(GOLDEN_FOG, golden * 0.25);
+        targetFogColor.lerp(NIGHT_FOG, night * 0.85);
         const slotFogNear = 40;
         const slotFogFar = 145;
         const pondFogNear = 85;
@@ -376,26 +368,31 @@ export default function EnhancedSky() {
 
         state.scene.userData.skyOwnsFog = true;
 
-        sunWorldPosRef.current.set(skySunPosition[0], skySunPosition[1], skySunPosition[2]);
-        setSunWorldPosition(sunWorldPosRef.current);
-        moonWorldPosRef.current.set(moonWorldPosition[0], moonWorldPosition[1], moonWorldPosition[2]);
+        // Scattering sky: the clock's sun, hazier toward the horizon.
+        const skyUniforms = skyRef.current?.material.uniforms;
+        if (skyUniforms) {
+            skyUniforms.sunPosition?.value.copy(sunDirection).multiplyScalar(SUN_DISTANCE);
+            if (skyUniforms.turbidity) skyUniforms.turbidity.value = skyProfile.turbidity * (1 + 0.35 * golden);
+            if (skyUniforms.rayleigh) skyUniforms.rayleigh.value = skyProfile.rayleigh * (1 + 0.4 * (1 - elevation01));
+        }
 
-        const sunDirNorm = sunWorldPosRef.current.clone().normalize();
+        // Sun glow, stars and the moon sit at infinity: they travel with the camera.
+        celestialRef.current?.position.copy(state.camera.position);
 
         const writeCloud = (mat: THREE.Material | null, time: number, opacity: number) => {
             const u = materialUniformBag(mat);
             if (!u) return;
             if (u.time) u.time.value = time;
             if (u.opacity) u.opacity.value = opacity;
-            if (u.sunsetBlend) u.sunsetBlend.value = sunsetBlend;
+            if (u.sunsetBlend) u.sunsetBlend.value = golden;
             if (u.overcastBlend) u.overcastBlend.value = overcastBlend;
-            if (u.sunDir2D?.value instanceof THREE.Vector3) u.sunDir2D.value.copy(sunDirNorm);
+            if (u.sunDir2D?.value instanceof THREE.Vector3) u.sunDir2D.value.copy(sunDirection);
         };
         writeCloud(cloudMatNearRef.current, state.clock.elapsedTime, cloudOpacity);
         writeCloud(cloudMatFarRef.current, state.clock.elapsedTime + 23.0, cloudOpacity * 0.8);
 
         const starsBlockedByWeather = weatherType === 'overcast' || weatherType === 'fog' || weatherType === 'storm';
-        const starAlpha = starsBlockedByWeather ? 0 : nightFactor;
+        const starAlpha = starsBlockedByWeather ? 0 : night;
 
         const starNear = materialUniformBag(starsMatRef.current);
         if (starNear?.uTime) starNear.uTime.value = state.clock.elapsedTime;
@@ -406,36 +403,36 @@ export default function EnhancedSky() {
         if (starMilky?.uOpacity) starMilky.uOpacity.value = starAlpha * milkyBoost;
 
         const dome = materialUniformBag(skyDomeMatRef.current);
-        if (dome?.sunDir?.value instanceof THREE.Vector3) dome.sunDir.value.copy(sunDirNorm);
+        if (dome?.sunDir?.value instanceof THREE.Vector3) dome.sunDir.value.copy(sunDirection);
 
-        // Moon: fades in at night, sits opposite the sun.
+        // Moon: opposite the sun's bearing, always above the horizon, fading in at night.
+        _moonDir.set(-sun.x, Math.abs(sun.y) * 0.8 + 0.25, -sun.z).normalize();
         if (moonGroupRef.current) {
-            moonGroupRef.current.position.copy(moonWorldPosRef.current);
-            const dist = moonGroupRef.current.position.length();
-            const moonScale = Math.max(6, dist * 0.045);
+            moonGroupRef.current.position.copy(_moonDir).multiplyScalar(MOON_DISTANCE);
+            const moonScale = Math.max(6, MOON_DISTANCE * 0.045);
             moonGroupRef.current.scale.setScalar(moonScale);
-            moonGroupRef.current.lookAt(0, 0, 0);
+            moonGroupRef.current.lookAt(state.camera.position);
         }
-        moonMaterial.opacity = THREE.MathUtils.lerp(moonMaterial.opacity, nightFactor, 0.05);
+        moonMaterial.opacity = THREE.MathUtils.lerp(moonMaterial.opacity, night, 0.05);
         if (moonLightRef.current) {
-            moonLightRef.current.position.copy(moonWorldPosRef.current);
+            moonLightRef.current.position.copy(_moonDir).multiplyScalar(MOON_DISTANCE);
             moonLightRef.current.intensity = THREE.MathUtils.lerp(
                 moonLightRef.current.intensity,
-                0.18 * nightFactor * (1 - overcastBlend * 0.7),
+                0.18 * night * (1 - overcastBlend * 0.7),
                 0.05
             );
         }
 
-        // Sun glow sprite: brighter and warmer near the horizon (golden hour),
-        // fades out entirely at night or under heavy overcast.
+        // Sun glow sprite: bigger and warmer near the horizon, gone below it,
+        // at night, or under heavy overcast.
         if (sunGlowRef.current) {
-            sunGlowRef.current.position.set(skySunPosition[0], skySunPosition[1], skySunPosition[2]);
-            const elevation = THREE.MathUtils.clamp(skySunPosition[1] / 60, 0, 1);
-            const glowScale = 28 + (1 - elevation) * 26;
+            sunGlowRef.current.position.copy(sunDirection).multiplyScalar(SUN_DISTANCE);
+            const glowScale = 28 + (1 - elevation01) * 26;
             sunGlowRef.current.scale.setScalar(glowScale);
             const mat = sunGlowRef.current.material;
-            mat.opacity = (1 - nightFactor) * (1 - overcastBlend * 0.8);
-            mat.color.set(sunsetBlend > 0.01 ? '#ffb066' : '#fff7e0').lerp(new THREE.Color('#fff7e0'), 1 - sunsetBlend);
+            const aboveHorizon = THREE.MathUtils.smoothstep(sun.elevation, -0.035, 0.035);
+            mat.opacity = aboveHorizon * (1 - night) * (1 - overcastBlend * 0.8);
+            mat.color.copy(SUN_GLOW_DAY).lerp(SUN_GLOW_LOW, Math.max(golden, (1 - elevation01) * 0.6));
         }
     });
 
@@ -448,8 +445,9 @@ export default function EnhancedSky() {
                 </mesh>
             ) : (
                 <Sky
+                    ref={skyRef}
                     distance={450000}
-                    sunPosition={skySunPosition}
+                    sunPosition={initialSunPosition}
                     turbidity={skyProfile.turbidity}
                     rayleigh={skyProfile.rayleigh}
                     mieCoefficient={skyProfile.mieCoefficient}
@@ -457,29 +455,31 @@ export default function EnhancedSky() {
                 />
             )}
 
-            <sprite ref={sunGlowRef} position={skySunPosition} scale={[40, 40, 1]}>
-                <spriteMaterial
-                    map={sunGlowTexture}
-                    transparent
-                    depthWrite={false}
-                    blending={THREE.AdditiveBlending}
-                    opacity={0}
+            <group ref={celestialRef}>
+                <sprite ref={sunGlowRef} position={initialSunPosition} scale={[40, 40, 1]}>
+                    <spriteMaterial
+                        map={sunGlowTexture}
+                        transparent
+                        depthWrite={false}
+                        blending={THREE.AdditiveBlending}
+                        opacity={0}
+                    />
+                </sprite>
+
+                <points geometry={starGeometry} frustumCulled={false} material={starsMat} />
+                <points geometry={milkyWayGeometry} frustumCulled={false} material={milkyMat} />
+
+                <group ref={moonGroupRef}>
+                    <mesh geometry={moonGeometry} material={moonMaterial} />
+                </group>
+                <pointLight
+                    ref={moonLightRef}
+                    color="#9db4ff"
+                    intensity={0}
+                    distance={0}
+                    decay={0}
                 />
-            </sprite>
-
-            <points geometry={starGeometry} frustumCulled={false} material={starsMat} />
-            <points geometry={milkyWayGeometry} frustumCulled={false} material={milkyMat} />
-
-            <group ref={moonGroupRef}>
-                <mesh geometry={moonGeometry} material={moonMaterial} />
             </group>
-            <pointLight
-                ref={moonLightRef}
-                color="#9db4ff"
-                intensity={0}
-                distance={0}
-                decay={0}
-            />
 
             <mesh position={[0, 40, 0]} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
                 <planeGeometry args={[700, 700, 1, 1]} />

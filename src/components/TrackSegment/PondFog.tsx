@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useBiome } from '../../systems/biome/BiomeSystem';
+import { getSkyClock } from '../../systems/sky/skyClock';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createPondFogMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
@@ -20,7 +20,6 @@ export interface PondFogProps {
  */
 export default function PondFog({ segmentCenter, waterLevel = WATER_LEVEL }: PondFogProps) {
   const { camera, scene } = useThree();
-  const { timeOfDay } = useBiome();
   const originalFogRef = useRef<{
     color: THREE.Color;
     near: number;
@@ -62,9 +61,7 @@ export default function PondFog({ segmentCenter, waterLevel = WATER_LEVEL }: Pon
     const shouldBeActive = dist < 40;
     const stormBlend = weatherType === 'storm' ? 1 : weatherType === 'overcast' ? 0.4 : 0;
 
-    const dayPhase = Math.abs(timeOfDay - 0.5) * 2;
-    const nightFactor = THREE.MathUtils.smoothstep(dayPhase, 0.6, 0.85);
-    const sunsetBlend = THREE.MathUtils.smoothstep(timeOfDay, 0.65, 0.9);
+    const { night: nightFactor, golden: sunsetBlend } = getSkyClock().factors;
     const baseFogColor = new THREE.Color('#c8d8d0');
     if (nightFactor > sunsetBlend) {
       baseFogColor.lerp(new THREE.Color('#7e8fb0'), nightFactor * 0.5);
