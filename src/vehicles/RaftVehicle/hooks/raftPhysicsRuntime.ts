@@ -18,6 +18,8 @@ import {
   hasActiveLaunch,
 } from '../../../systems/score/LaunchScoringSession';
 import { tickRunSurvival } from '../../../systems/journey/runSession';
+import { getComfort } from '../../../systems/settings/comfortRuntime';
+import { raftTargetFov } from '../../../systems/settings/comfort';
 import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 
 export interface RaftPhysicsRuntimeDeps {
@@ -274,10 +276,31 @@ const applyBrake = (body: any, delta: number) => {
 };
 
 /**
+ * Stroke strength per paddle, 0..1. A keyboard key reports a full 1; a gamepad
+ * trigger reports how far it is pulled (`paddleLeftAxis` / `paddleRightAxis`,
+ * #486 B), so a half-pull is a half-strength stroke. Both paddles (or W) average
+ * the two; W alone is a full stroke.
+ */
+const paddleStrokeScales = (c: {
+  paddleLeft: boolean;
+  paddleRight: boolean;
+  paddleLeftAxis?: number;
+  paddleRightAxis?: number;
+}) => {
+  const strokeLeft = c.paddleLeft ? Math.max(0.35, Math.min(1, c.paddleLeftAxis ?? 1)) : 0;
+  const strokeRight = c.paddleRight ? Math.max(0.35, Math.min(1, c.paddleRightAxis ?? 1)) : 0;
+  const strokeBoth =
+    c.paddleLeft && c.paddleRight ? (strokeLeft + strokeRight) / 2 : c.paddleLeft ? strokeLeft : c.paddleRight ? strokeRight : 1;
+  return { strokeLeft, strokeRight, strokeBoth };
+};
+
+/**
  * Apply paddle forces based on Q/E input with stamina-gated power
  */
 const applyPaddleForces = (body: any, delta: number) => {
-  const { paddleLeft, paddleRight, forward } = deps.controls.getControls();
+  const controls = deps.controls.getControls();
+  const { paddleLeft, paddleRight, forward } = controls;
+  const { strokeLeft, strokeRight, strokeBoth } = paddleStrokeScales(controls);
 
   deps.paddleState.current.leftPaddle = paddleLeft;
   deps.paddleState.current.rightPaddle = paddleRight;
@@ -291,7 +314,7 @@ const applyPaddleForces = (body: any, delta: number) => {
 
   // Both paddles or W key = straight forward
   if ((paddleLeft && paddleRight) || forward) {
-    const power = consumeStamina() * stunMultiplier;
+    const power = consumeStamina() * strokeBoth * stunMultiplier;
     if (power <= 0) return;
 
     body.applyImpulse({
@@ -313,7 +336,7 @@ const applyPaddleForces = (body: any, delta: number) => {
 
   // Left paddle (Q) - apply force at left attachment point, rotate left
   if (paddleLeft) {
-    const power = consumeStamina() * stunMultiplier;
+    const power = consumeStamina() * strokeLeft * stunMultiplier;
     if (power <= 0) return;
 
     // Forward thrust component
@@ -346,7 +369,7 @@ const applyPaddleForces = (body: any, delta: number) => {
 
   // Right paddle (E) - apply force at right attachment point, rotate right
   if (paddleRight) {
-    const power = consumeStamina() * stunMultiplier;
+    const power = consumeStamina() * strokeRight * stunMultiplier;
     if (power <= 0) return;
 
     body.applyImpulse({
@@ -518,9 +541,14 @@ const updateCameraFromBody = (body: any) => {
   deps.camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
   deps.camera.lookAt(pos.x, pos.y, pos.z);
 
-  const targetFov = Math.min(
-    CAMERA.FOV_MAX,
-    CAMERA.FOV_BASE + (speed / CAMERA.FOV_SPEED_REFERENCE) * CAMERA.FOV_SPEED_SCALE
+  // Base FOV and kick strength are the player's comfort settings (#486 D); the
+  // authored headroom (FOV_MAX − FOV_BASE) still caps the kick.
+  const targetFov = raftTargetFov(
+    speed,
+    CAMERA.FOV_SPEED_REFERENCE,
+    CAMERA.FOV_SPEED_SCALE,
+    CAMERA.FOV_MAX - CAMERA.FOV_BASE,
+    getComfort(),
   );
   deps.currentFov.current += (targetFov - deps.currentFov.current) * CAMERA.FOV_LERP;
   if ('fov' in deps.camera) {
@@ -532,7 +560,9 @@ const updateCameraFromBody = (body: any) => {
 };
 
 const updateWorkerPhysicsFrame = (body: any, delta: number) => {
-  const { paddleLeft, paddleRight, forward } = deps.controls.getControls();
+  const controls = deps.controls.getControls();
+  const { paddleLeft, paddleRight, forward } = controls;
+  const { strokeLeft, strokeRight, strokeBoth } = paddleStrokeScales(controls);
   deps.paddleState.current.leftPaddle = paddleLeft;
   deps.paddleState.current.rightPaddle = paddleRight;
 
@@ -542,7 +572,7 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
   const impulses: [number, number, number][] = [];
 
   if ((paddleLeft && paddleRight) || forward) {
-    const power = consumeStamina();
+    const power = consumeStamina() * strokeBoth;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * power * delta,
@@ -551,7 +581,7 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
       ]);
     }
   } else if (paddleLeft) {
-    const power = consumeStamina();
+    const power = consumeStamina() * strokeLeft;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
@@ -565,7 +595,7 @@ const updateWorkerPhysicsFrame = (body: any, delta: number) => {
       ]);
     }
   } else if (paddleRight) {
-    const power = consumeStamina();
+    const power = consumeStamina() * strokeRight;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,

@@ -26,6 +26,7 @@ import WeatherSystem from '../components/WeatherSystem';
 import { getActiveWeather } from '../systems/journey/runSession';
 import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
+import { isTouchInputMode } from '../input/touchMode';
 import { isScriptedRunLive } from '../input/scriptedRun';
 
 // #485 C: step-time instrumentation for the DebugPanel and `pnpm profile:physics`
@@ -102,7 +103,7 @@ export default function InnerExperience({
           )}
           {/* Ticks the input hub at priority −100, ahead of the vehicle step. */}
           <InputHubTick isRunLive={() => isScriptedRunLive(state.vehicleRef.current)} />
-          {!state.noPointerLock && (
+          {!state.noPointerLock && !isTouchInputMode() && (
             <>
               <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />
               <SettingsLookSync />

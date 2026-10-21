@@ -13,6 +13,8 @@ import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
 import { triggerCameraShake } from '../utils';
+import { getComfort } from '../../../systems/settings/comfortRuntime';
+import { runnerTargetFov } from '../../../systems/settings/comfort';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -483,7 +485,8 @@ export function updateRunnerFovKick({
 }) {
   const isWaterfallSeg = currentSegmentIndex === 14 || currentSegmentIndex === 29;
   const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-  const targetFov = 75 + Math.min(12, hSpeed * 0.45) + (isWaterfallSeg ? 10 : 0);
+  // Base FOV and the kick's strength are the player's comfort settings (#486 D).
+  const targetFov = runnerTargetFov(hSpeed, isWaterfallSeg, getComfort());
   fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-dt * 5));
   if (Math.abs(camera.fov - fovRef.current) > 0.05) {
     camera.fov = fovRef.current;

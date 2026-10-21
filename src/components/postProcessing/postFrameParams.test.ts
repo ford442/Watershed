@@ -149,3 +149,49 @@ describe('godRaysAllowed', () => {
     expect(godRaysAllowed({ effectPresence: qualityToEffects('low'), quality: 'high', enableGodRays: true })).toBe(false);
   });
 });
+
+describe('comfort (#486 D)', () => {
+  const baseInput = (over: Partial<PostFrameInput> = {}): PostFrameInput => ({
+    delta: 1 / 60,
+    elapsed: 0,
+    velocity: 20,
+    waterfallIntensity: 0,
+    isTightCanyon: false,
+    biomeId: 'canyonSummer',
+    weatherType: 'clear',
+    timeOfDay: 12,
+    sunWorldPosition: new THREE.Vector3(0, 40, -100),
+    camera: new THREE.PerspectiveCamera(),
+    quality: 'high',
+    enableGodRays: true,
+    volumetricSamples: 48,
+    effectPresence: qualityToEffects('high'),
+    isRunner: true,
+    sprintStamina: 1,
+    boostActive: 0,
+    boostIntensity: 0,
+    aspectRatio: 16 / 9,
+    ...over,
+  });
+
+  it('is a no-op without a comfort argument', () => {
+    const a = computePostFrameParams(baseInput(), DEFAULT_POST_TUNING, createPostSmoothedState());
+    const b = computePostFrameParams(baseInput(), DEFAULT_POST_TUNING, createPostSmoothedState(), { speedEffects: true, vignette: 1 });
+    expect(b.chromatic).toEqual(a.chromatic);
+    expect(b.vignette).toEqual(a.vignette);
+  });
+
+  it('speed effects off drops chromatic aberration even where the preset has it', () => {
+    const p = computePostFrameParams(baseInput(), DEFAULT_POST_TUNING, createPostSmoothedState(), { speedEffects: false, vignette: 1 });
+    expect(p.chromatic.enabled).toBe(false);
+  });
+
+  it('vignette strength scales darkness and 0 removes the pass', () => {
+    const full = computePostFrameParams(baseInput(), DEFAULT_POST_TUNING, createPostSmoothedState(), { speedEffects: true, vignette: 1 });
+    const half = computePostFrameParams(baseInput(), DEFAULT_POST_TUNING, createPostSmoothedState(), { speedEffects: true, vignette: 0.5 });
+    const none = computePostFrameParams(baseInput(), DEFAULT_POST_TUNING, createPostSmoothedState(), { speedEffects: true, vignette: 0 });
+    expect(half.vignette.darkness).toBeLessThan(full.vignette.darkness);
+    expect(half.vignette.enabled).toBe(true);
+    expect(none.vignette.enabled).toBe(false);
+  });
+});

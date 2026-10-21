@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { getComfort } from '../systems/settings/comfortRuntime';
 
 interface ShakeEvent {
   intensity: number;
@@ -103,7 +104,11 @@ export function useCameraShake() {
         }
       }
 
-      const ambientIntensity = rumbleIntensityRef.current;
+      // Comfort (#486 D): the player's shake amplitude, 0 under reduced motion.
+      // Scaling intensity scales position and roll alike (roll rides on transient).
+      const comfortShake = getComfort().shake;
+      transientIntensity *= comfortShake;
+      const ambientIntensity = rumbleIntensityRef.current * comfortShake;
       let intensity = transientIntensity + ambientIntensity;
       if (!Number.isFinite(intensity)) {
         intensity = 0;

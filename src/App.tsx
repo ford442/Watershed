@@ -11,6 +11,7 @@ import { preloadEnvironmentExtras } from './components/Environment/lazyExtras';
 import { SettingsSync } from './ui/SettingsSync';
 import { rehydrateSettings, useSettingsStore } from './systems/settings/useSettingsStore';
 import { useDebugStages } from './debug/debugStages';
+import { useDebugHotkeys } from './debug/useDebugHotkeys';
 import { isCleanTestMode, setCleanTestMode } from './utils/cleanTestMode';
 import ErrorBoundary from './components/ErrorBoundary';
 import meadowToWaterfall from './maps/meander_to_waterfall.json';
@@ -61,13 +62,21 @@ const SWEBedDebugOverlayChunk = lazyComponent(() => import('./components/SWEBedD
 const PauseMenu = PauseMenuChunk.Component;
 const SettingsPanel = SettingsPanelChunk.Component;
 const SWEBedDebugOverlay = SWEBedDebugOverlayChunk.Component;
+// Touch devices only (#486 C): everyone else never fetches the on-screen controls.
+const TouchControlsChunk = lazyComponent(() => import('./components/TouchControls'));
+const TouchControls = TouchControlsChunk.Component;
 function preloadOverlays() {
   PauseMenuChunk.preload();
   SettingsPanelChunk.preload();
+  if (isTouchInputMode()) TouchControlsChunk.preload();
   // Fauna / biome props / set pieces (Environment/extras.ts) a segment mounts after the menu.
   preloadEnvironmentExtras();
 }
 import { isScriptedInputMode } from './input/scriptedRun';
+import { onPauseRequest } from './input/pauseBus';
+import { useInputStore } from './input/InputHub';
+import { isTouchInputMode } from './input/touchMode';
+import { stopHaptics } from './input/haptics';
 
 // #485 C: the inspector is `?debug=1` only — a player never pays for its ~700 lines.
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
@@ -290,6 +299,21 @@ function App({ graphicsBoot }: AppProps = {}) {
     rehydrateSettings();
   }, []);
 
+  // Handheld envelope (#486 C): viewport + HUD scale as CSS variables, touch-action: none.
+  const touchMode = isTouchInputMode();
+  useEffect(() => {
+    if (!touchMode) return undefined;
+    let dispose: (() => void) | null = null;
+    let cancelled = false;
+    void import('./input/handheld').then((m) => {
+      if (!cancelled) dispose = m.applyHandheldEnvelope();
+    });
+    return () => {
+      cancelled = true;
+      dispose?.();
+    };
+  }, [touchMode]);
+
   const handleSelectMap = useCallback((mapId: MapRegistryId) => {
     setSelectedMapId(mapId);
     syncMapUrl(mapId);
@@ -348,39 +372,42 @@ function App({ graphicsBoot }: AppProps = {}) {
     setMaterialBackend(next);
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return;
-      if (e.repeat) return;
-      if (cleanTest) return;
-      if (e.code === 'KeyF') {
-        setPhysicsDebug((prev) => !prev);
-      }
-      if (e.code === 'KeyG') {
-        setWireframeDebug((prev) => !prev);
-      }
-      if (e.code === 'KeyP') {
-        const snapshot = (window as any).__watershedPhysicsDebug;
-        if (snapshot) {
-          console.info('[PhysicsDebug] Snapshot', snapshot);
-        }
-      }
-      if (e.code === 'KeyO') {
-        const snapshot = (window as any).__watershedPhysicsPerf;
-        if (snapshot) {
-          console.info('[PhysicsPerf] Snapshot', snapshot);
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cleanTest]);
+  // F/G/P/O developer hotkeys exist only under ?debug=1 (#486 B): a player's
+  // stray tap must never draw collider wireframes.
+  const togglePhysicsDebug = useCallback(() => setPhysicsDebug((prev) => !prev), []);
+  const toggleWireframeDebug = useCallback(() => setWireframeDebug((prev) => !prev), []);
+  useDebugHotkeys(debug.debugEnabled && !cleanTest, {
+    togglePhysicsDebug,
+    toggleWireframe: toggleWireframeDebug,
+  });
 
   useEffect(() => {
     if (!cleanTest) return;
     setPhysicsDebug(false);
     setWireframeDebug(false);
   }, [cleanTest]);
+
+  // The one PAUSE consumer (#486 B). A gamepad's Start and the touch Pause button
+  // arrive as the hub's PAUSE bit; Escape pauses a player who is not holding
+  // pointer lock (with lock, the browser eats Escape and `pointerlockchange`
+  // below does the pausing). Resume is each menu's own job.
+  useEffect(() => {
+    const pause = () => {
+      if (isScriptedInputMode()) return;
+      if (document.pointerLockElement) document.exitPointerLock();
+      stopHaptics();
+      setPhase((prev) => (prev === 'playing' ? 'paused' : prev));
+    };
+    const offBus = onPauseRequest(pause);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Escape' && !e.repeat && !document.pointerLockElement) pause();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      offBus();
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   // Detect pointer lock loss as pause trigger
   useEffect(() => {
@@ -395,7 +422,15 @@ function App({ graphicsBoot }: AppProps = {}) {
             // must dismiss settings and click RESUME (user gesture) to re-lock.
             if (locked && prev === 'paused' && !settingsOpenRef.current) return 'playing';
             // A scripted run (?input=script:) never holds pointer lock — #486 A.
-            if (!locked && prev === 'playing' && !isScriptedInputMode()) return 'paused';
+            // Neither does a touch player: their unlock is not a pause (#486 C).
+            if (
+              !locked &&
+              prev === 'playing' &&
+              !isScriptedInputMode() &&
+              useInputStore.getState().activeSourceId !== 'touch'
+            ) {
+              return 'paused';
+            }
             return prev;
           });
         } catch (error) {
@@ -412,7 +447,9 @@ function App({ graphicsBoot }: AppProps = {}) {
   }, [debug.isStageEnabled, debug.setStageFailure, debug.setStageLoading, debug.setStageSuccess]);
 
   const requestPointerLockSafely = useCallback(() => {
-    if (window.location.search.includes('no-pointer-lock') || isScriptedInputMode()) return;
+    // Touch has no pointer to lock (iOS has no Pointer Lock at all): the start
+    // button works on a plain tap.
+    if (window.location.search.includes('no-pointer-lock') || isScriptedInputMode() || isTouchInputMode()) return;
     // Canvas may already be locked (e.g. PointerLockControls' own lockOnClick
     // handler beat us to it), or detached/swapped (renderer preference change
     // remounts the Canvas with a new key). Guard both to avoid the
@@ -450,6 +487,7 @@ function App({ graphicsBoot }: AppProps = {}) {
       });
       setActiveLaunchHour(options?.launchHour ?? getLaunchHour());
       setPhase('playing');
+      if (isTouchInputMode()) void import('./input/handheld').then((m) => m.tryLockLandscape());
       // Defer world mount by two frames so StartMenu can unmount and paint
       // before Rapier + 7 track segments block the main thread.
       requestAnimationFrame(() => {
@@ -621,6 +659,14 @@ function App({ graphicsBoot }: AppProps = {}) {
               />
             </React.Suspense>
           </Canvas>
+
+          {/* Touch layer (#486 C): only while the run is live. Unmounting it on pause releases every finger. */}
+          {touchMode && phase === 'playing' && worldEnabled && (
+            <React.Suspense fallback={null}>
+              <TouchControls />
+            </React.Suspense>
+          )}
+          {touchMode && phase === 'playing' && <div className="landscape-hint" role="note">Rotate to landscape for the best view</div>}
 
           {webglRecovering && (
             <div

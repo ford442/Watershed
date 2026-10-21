@@ -38,7 +38,8 @@ export interface DebugStageController {
 
 const STAGE_STORAGE_KEY = 'watershed.debug.stages';
 
-const parseDebugEnabled = (): boolean => {
+/** `?debug=1` (or `true`). The only switch for debug hotkeys and the inspector (#486). */
+export const parseDebugEnabled = (): boolean => {
   if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   const raw = params.get('debug');

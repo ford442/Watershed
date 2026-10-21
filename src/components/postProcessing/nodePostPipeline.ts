@@ -357,7 +357,7 @@ export function createNodePostPipeline(
       u.bloomRadius.value = params.bloom.radius;
       u.bloomThreshold.value = params.bloom.threshold;
       u.saturation.value = params.hueSaturation.saturation;
-      u.chromaticAmount.value = params.chromatic.amount;
+      u.chromaticAmount.value = params.chromatic.enabled ? params.chromatic.amount : 0;
       u.vignetteOffset.value = params.vignette.offset;
       u.vignetteDarkness.value = params.vignette.darkness;
       u.vignetteEnabled.value = params.vignette.enabled ? 1 : 0;

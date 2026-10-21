@@ -40,6 +40,10 @@ export interface PlayerControls {
   paddleLeft: boolean;
   /** Right paddle (E) — raft only */
   paddleRight: boolean;
+  /** Left trigger / Q pull, 0..1 — scales a raft stroke (#486 B). Keys report 0 or 1. */
+  paddleLeftAxis: number;
+  /** Right trigger / E pull, 0..1 */
+  paddleRightAxis: number;
   /** Is pointer lock currently active */
   isPointerLocked: boolean;
 }
@@ -71,6 +75,8 @@ export function fillPlayerControls(
   out.dodge = (b & InputButton.DODGE) !== 0;
   out.paddleLeft = frame.paddleL > AXIS_PRESSED;
   out.paddleRight = frame.paddleR > AXIS_PRESSED;
+  out.paddleLeftAxis = frame.paddleL;
+  out.paddleRightAxis = frame.paddleR;
   out.isPointerLocked = isPointerLocked;
   return out;
 }
@@ -87,6 +93,8 @@ export function createPlayerControls(): PlayerControls {
     dodge: false,
     paddleLeft: false,
     paddleRight: false,
+    paddleLeftAxis: 0,
+    paddleRightAxis: 0,
     isPointerLocked: false,
   };
 }
