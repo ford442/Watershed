@@ -1,6 +1,7 @@
 import { handleDodgeAndCollision, calculateSlopeAngle, calculateSlopeMultiplier } from './RunnerPhysicsHelpers';
 import {
   buildGroundRayOrigin,
+  hasTerrainBelow,
   updateUngroundedHysteresis,
   resolvePlayerGroundRay,
   isTerrainGroundHit,
@@ -193,7 +194,15 @@ export function updateRunnerPhysics({
       rawGrounded,
     } = resolvePlayerGroundRay(world, rapier, body, pos);
 
-    if (isTerrainGroundHit(groundRayDistance)) {
+    // Terrain is "ready" once there is canyon under the runner — not only within
+    // the grounded reach. The meander spawn stands ~6 m over its floor, past the
+    // 5 m grounded ray: a variable-dt boot only got there because its first
+    // (large) step dropped the body before the hold began, and a fixed-dt
+    // scripted boot held it in mid-air forever.
+    if (
+      isTerrainGroundHit(groundRayDistance) ||
+      (!bodyUserData.__terrainReady && hasTerrainBelow(world, rapier, body, pos))
+    ) {
       bodyUserData.__terrainReady = true;
       bodyUserData.__holdTarget = undefined;
     }

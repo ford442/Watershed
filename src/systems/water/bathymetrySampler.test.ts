@@ -15,6 +15,7 @@ import {
   getBathymetryRevision,
   registerSegmentBathymetry,
   sampleBathymetryInto,
+  sampleWaterSheetY,
   unregisterSegmentBathymetry,
 } from './bathymetrySampler';
 
@@ -154,6 +155,24 @@ describe('createSegmentBathymetrySource', () => {
     const z = -LENGTH / 2;
     expect(restDepth(offset.sampleBed(12, z)!)).toBeGreaterThan(0.1);
     expect(restDepth(offset.sampleBed(0, z)!)).toBeLessThanOrEqual(0);
+  });
+});
+
+describe('sampleWaterSheetY', () => {
+  it('is the covering segment’s path y plus the sheet offset, so it descends with the river', () => {
+    registerSegmentBathymetry(0, createSegmentBathymetrySource(makeContext()));
+    // The straight path drops 3 m over its 48 m; the sheet hangs WATER_LEVEL above it.
+    expect(sampleWaterSheetY(0, 0)).toBeCloseTo(WATER_LEVEL, 4);
+    expect(sampleWaterSheetY(0, -LENGTH / 2)).toBeCloseTo(-1.5 + WATER_LEVEL, 1);
+    expect(sampleWaterSheetY(3, -LENGTH)).toBeCloseTo(-3 + WATER_LEVEL, 4);
+    expect(sampleWaterSheetY(0, -LENGTH / 2, 0)).toBeCloseTo(-1.5, 1);
+  });
+
+  it('is null where no segment covers the point', () => {
+    expect(sampleWaterSheetY(0, -10)).toBeNull();
+    registerSegmentBathymetry(0, createSegmentBathymetrySource(makeContext()));
+    expect(sampleWaterSheetY(0, 10)).toBeNull();
+    expect(sampleWaterSheetY(100, -10)).toBeNull();
   });
 });
 

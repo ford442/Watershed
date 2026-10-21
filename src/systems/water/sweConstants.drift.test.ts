@@ -14,6 +14,8 @@ import { SWE_DRY_DEPTH } from './sampleSWEFlow';
 import {
   HYDRO_BRAID_LATERAL,
   HYDRO_INFLOW_DOWNSTREAM,
+  HYDRO_SURGE_GRAVITY,
+  HYDRO_SURGE_RELAX,
   HYDRO_VORTEX_SINK,
 } from './hydroEvents';
 
@@ -47,6 +49,8 @@ const PAIRS: { cpp: string; file: 'swe.cpp' | 'common.h'; wgsl: string; ts?: num
   { cpp: 'kHydroInflowDownstream', file: 'swe.cpp', wgsl: 'HYDRO_INFLOW_DOWNSTREAM', ts: HYDRO_INFLOW_DOWNSTREAM },
   { cpp: 'kHydroVortexSink', file: 'swe.cpp', wgsl: 'HYDRO_VORTEX_SINK', ts: HYDRO_VORTEX_SINK },
   { cpp: 'kHydroBraidLateral', file: 'swe.cpp', wgsl: 'HYDRO_BRAID_LATERAL', ts: HYDRO_BRAID_LATERAL },
+  { cpp: 'kHydroSurgeRelax', file: 'swe.cpp', wgsl: 'HYDRO_SURGE_RELAX', ts: HYDRO_SURGE_RELAX },
+  { cpp: 'kHydroSurgeGravity', file: 'swe.cpp', wgsl: 'HYDRO_SURGE_GRAVITY', ts: HYDRO_SURGE_GRAVITY },
 ];
 
 describe('SWE solver constants: swe.cpp / common.h vs swe.wgsl', () => {
@@ -58,9 +62,9 @@ describe('SWE solver constants: swe.cpp / common.h vs swe.wgsl', () => {
     if (ts !== undefined) expect(Math.fround(ts), `TS mirror of ${cpp}`).toBe(Math.fround(native));
   });
 
-  it('dispatches the hydro event kinds in the same order (0 inflow, 1 vortex, 2 braid, 3 roughness)', () => {
+  it('dispatches the hydro event kinds in the same order (0 inflow, 1 vortex, 2 braid, 3 roughness, 4 surge)', () => {
     const kinds = (source: string, pattern: RegExp) => [...source.matchAll(pattern)].map((m) => Number(m[1]));
-    expect(kinds(sweCpp, /\bkind\s*==\s*(\d)/g)).toEqual([0, 1, 2, 3]);
-    expect(kinds(sweWgsl, /\bev\.kind\s*==\s*(\d)/g)).toEqual([0, 1, 2, 3]);
+    expect(kinds(sweCpp, /\bkind\s*==\s*(\d)/g)).toEqual([0, 1, 2, 3, 4]);
+    expect(kinds(sweWgsl, /\bev\.kind\s*==\s*(\d)/g)).toEqual([0, 1, 2, 3, 4]);
   });
 });

@@ -45,11 +45,20 @@ export interface RoutingForecast {
   snowpackIndex: number;
   damReleaseSchedule: ReadonlyArray<{ hour: number; release: number }>;
   /**
-   * The run's weather (#464). Rain and storm add head discharge, so the storm
-   * reaches the window's edge with the routed lag; absent or clear routes
-   * exactly as before.
+   * The weather at launch (#464): the spin-up routes it, and it stays in force
+   * until `RiverRouter.setWeather` says otherwise. Rain and storm add head
+   * discharge, so the storm reaches the window's edge with the routed lag;
+   * absent or clear routes exactly as before.
    */
   weather?: RunWeather | null;
+}
+
+/** The WeatherDirector's river weather as one routed step reads it. */
+export interface RouterWeather {
+  type: RunWeather['type'];
+  intensity: number;
+  /** Chain segment the weather sits over; null = the head. */
+  overChainIndex: number | null;
 }
 
 function wrapHour(hour: number): number {
@@ -87,12 +96,17 @@ export interface RiverRouter {
   readonly elapsed: number;
   /** Advance the chain by `dt` seconds of run time. */
   advance(dt: number): void;
-  /** Discharge entering chain segment `k` (m³/s): the head inflow, or segment k−1's outflow. */
+  /**
+   * Discharge entering chain segment `k` (m³/s): the head inflow, or segment
+   * k−1's outflow, plus any weather runoff joining at k this step.
+   */
   dischargeInto(k: number): number;
   /** Upstream-edge state for a window in chain segment `k`, relative to ROUTING_NOMINAL_DISCHARGE. */
   edgeState(k: number, H: number, g: number): RoutedEdge;
   /** Kinematic travel time (s) from the head to segment `k`'s outflow at the nominal discharge. */
   lag(k: number): number;
+  /** The weather the next `advance` routes (the director's, once per step). */
+  setWeather(weather: RouterWeather | null): void;
   dispose(): void;
 }
 
@@ -116,7 +130,7 @@ export function createRiverRouter(
   const n = reach.segments.length;
   if (n === 0) return null;
 
-  const forecast = options.forecast ?? DEFAULT_FORECAST_INPUTS;
+  const forecast: RoutingForecast = options.forecast ?? DEFAULT_FORECAST_INPUTS;
   const spinUpHours = options.spinUpHours ?? ROUTING_SPINUP_HOURS;
   const spinUpDt = options.spinUpDt ?? ROUTING_SPINUP_DT;
 
@@ -127,6 +141,8 @@ export function createRiverRouter(
     storage: wasm.allocateGrid(n * ROUTING_SUBREACHES),
     outflow: wasm.allocateGrid(n),
     lag: wasm.allocateGrid(n),
+    // Discharge joining each segment at its top: the weather over a reach (ABI 14).
+    lateral: wasm.allocateGrid(n),
   };
   // Views are re-derived on each read: memory growth detaches HEAPF32.
   const view = (ptr: number) => wasm.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + n);
@@ -147,9 +163,24 @@ export function createRiverRouter(
   wasm.routeReachTravelTime(ptrs.lengths, ptrs.slopes, ptrs.widths, n, ROUTING_NOMINAL_DISCHARGE, ptrs.lag);
 
   let elapsed = 0;
-  let headQ = headDischargeAtHour(launchHour, forecast);
+  // The weather the steps route: the launch weather until the director says otherwise.
+  const live: RoutingForecast = { ...forecast, weather: forecast.weather ? { ...forecast.weather } : null };
+  // The same day without weather: the head's own hydrograph when the weather sits over a reach.
+  const dry: RoutingForecast = { ...forecast, weather: null };
+  /** Chain segment the weather sits over (lateral inflow), or null for the head. */
+  let liveOver: number | null = null;
+  let headQ = headDischargeAtHour(launchHour, live);
+  /** Lateral discharge joining `lateralAt` this step (m³/s). */
+  let lateralQ = 0;
+  let lateralAt = -1;
   let disposed = false;
   const clampK = (k: number) => Math.max(0, Math.min(n - 1, Math.trunc(k)));
+  const clearLateral = () => {
+    if (lateralAt >= 0) view(ptrs.lateral)[lateralAt] = 0;
+    lateralAt = -1;
+    lateralQ = 0;
+  };
+  const routeLateral = typeof wasm.routeReachLateral === 'function' ? wasm.routeReachLateral.bind(wasm) : null;
 
   return {
     reach,
@@ -159,14 +190,29 @@ export function createRiverRouter(
     },
     advance(dt) {
       if (disposed || !(dt > 0)) return;
-      headQ = headDischargeAtHour(launchHour + (elapsed + 0.5 * dt) / 3600, forecast);
-      route(headQ, dt);
+      const hour = launchHour + (elapsed + 0.5 * dt) / 3600;
+      if (liveOver !== null && routeLateral) {
+        // Rain over reach k: the head carries the day's own hydrograph and the
+        // weather's runoff joins at k — reach k hears it now, the reaches below
+        // with the routed lag, the reaches above never.
+        headQ = headDischargeAtHour(hour, dry);
+        clearLateral();
+        lateralAt = clampK(liveOver);
+        lateralQ = weatherFlowRateDelta(hour, live.weather) * ROUTING_NOMINAL_DISCHARGE;
+        view(ptrs.lateral)[lateralAt] = lateralQ;
+        routeLateral(ptrs.lengths, ptrs.slopes, ptrs.widths, n, headQ, ptrs.lateral, dt, ptrs.storage, ptrs.outflow);
+      } else {
+        headQ = headDischargeAtHour(hour, live);
+        clearLateral();
+        route(headQ, dt);
+      }
       elapsed += dt;
     },
     dischargeInto(k) {
       if (disposed) return ROUTING_NOMINAL_DISCHARGE;
       const kk = clampK(k);
-      return kk === 0 ? headQ : view(ptrs.outflow)[kk - 1];
+      const above = kk === 0 ? headQ : view(ptrs.outflow)[kk - 1];
+      return kk === lateralAt ? above + lateralQ : above;
     },
     edgeState(k, H, g) {
       if (disposed) return { eta: 0, speed: 0 };
@@ -174,6 +220,19 @@ export function createRiverRouter(
     },
     lag(k) {
       return disposed ? 0 : view(ptrs.lag)[clampK(k)];
+    },
+    setWeather(weather) {
+      if (!weather) {
+        live.weather = null;
+        liveOver = null;
+        return;
+      }
+      if (!live.weather) live.weather = { type: weather.type, intensity: weather.intensity };
+      else {
+        live.weather.type = weather.type;
+        live.weather.intensity = weather.intensity;
+      }
+      liveOver = weather.overChainIndex;
     },
     dispose() {
       if (disposed) return;

@@ -66,8 +66,11 @@
 //  13 — terrain tiles (#487): buildTerrainTile / buildWallShell. Additive,
 //       but MIN_WASM_ABI_VERSION moves to 13 with it: the loader binds every
 //       WASM_ABI entry or rejects, so an ABI 12 binary cannot load anyway.
+//  14 — weather on the river: routeReachLateral (lateral inflow per segment),
+//       applySWEEvent kind 4 (surge front). Additive; MIN moves to 14 for the
+//       same bind-every-entry reason as 13.
 // ---------------------------------------------------------------------------
-static constexpr int WATERSHED_ABI_VERSION = 13;
+static constexpr int WATERSHED_ABI_VERSION = 14;
 
 // Out-pointer layouts. Mirrored by the readers in wasmAbi.ts.
 static_assert(std::is_standard_layout_v<WaterForceResult> && sizeof(WaterForceResult) == 8 * sizeof(float),
@@ -190,6 +193,12 @@ WS_EXPORT void ws_freeGrid(uintptr_t ptr) {
 WS_EXPORT void ws_routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                              float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr) {
     routeReach(lengthsPtr, slopesPtr, widthsPtr, nSeg, inflowQ, dt, storagePtr, outflowPtr);
+}
+
+WS_EXPORT void ws_routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+                                    float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
+                                    uintptr_t outflowPtr) {
+    routeReachLateral(lengthsPtr, slopesPtr, widthsPtr, nSeg, inflowQ, lateralPtr, dt, storagePtr, outflowPtr);
 }
 
 WS_EXPORT void ws_routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,

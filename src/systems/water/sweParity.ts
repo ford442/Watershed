@@ -24,6 +24,7 @@ import {
   measureEdgeStageContrastWith,
   measureHydroHourContrastWith,
   routedEdgeEtaAt,
+  STORM_SURGE_FIXTURE,
   type HydroEdgeContrast,
   type HydroEdgeStepper,
   type HydroEventApplier,
@@ -238,6 +239,7 @@ export async function runSweParitySuite(
       { kind: 1, cx: 10, cz: 6, radius: 5, strength: 3, dt: 0.05 },
       { kind: 2, cx: 5, cz: 10, radius: 4, strength: 1.5, dt: 0.05 },
       { kind: 3, cx: 8, cz: 8, radius: 6, strength: 4, dt: 0.05 },
+      { kind: 4, cx: 0, cz: 12, radius: 3, strength: 0.3, dt: 0.05 },
     ];
     const events: SweEventCall[] = [];
     while (events.length <= WGSL_SWE_MAX_EVENTS_PER_DISPATCH + 5) events.push(...kinds);
@@ -527,7 +529,8 @@ export async function runSweParitySuite(
   });
 
   // #397 gate on both backends: the three gated maps at 06:00 vs 14:00, plus
-  // lumber, whose 14:00 braid is the washout shoal.
+  // lumber, whose 14:00 braid is the washout shoal, and the storm fixture's
+  // surge front (#464 D).
   const appliers: Record<'wasm' | 'wgsl', HydroEventApplier> = {
     wasm(grid, calls) {
       const heap = createSWEGrid(wasm, grid.width, grid.height, grid.cellSize);
@@ -564,7 +567,7 @@ export async function runSweParitySuite(
       sim.dispose();
     },
   };
-  const maps = { glacial, hydro, delta, lumber } as const;
+  const maps = { glacial, hydro, delta, lumber, storm: { hydroEvents: STORM_SURGE_FIXTURE } } as const;
   for (const backend of ['wasm', 'wgsl'] as const) {
     for (const [mapId, map] of Object.entries(maps)) {
       const name = `hydroContrast ${mapId} 06:00 vs 14:00 on ${backend}`;

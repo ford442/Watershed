@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense } from 'react';
 import { PointerLockControls } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import EnhancedSky from '../components/EnhancedSky';
@@ -23,7 +23,10 @@ import SettingsLookSync from '../ui/SettingsLookSync';
 import { isCleanTestMode } from '../utils/cleanTestMode';
 import { useInnerExperience } from './hooks/useInnerExperience';
 import WeatherSystem from '../components/WeatherSystem';
-import { getActiveWeather } from '../systems/journey/runSession';
+import { getActiveConditions } from '../systems/journey/runSession';
+import { weatherScriptHasWeather } from '../systems/weather/weatherScript';
+import { WeatherDirectorTick } from '../systems/weather/WeatherDirectorTick';
+import { SkyClockTick } from '../systems/sky/SkyClockTick';
 import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
 import { isTouchInputMode } from '../input/touchMode';
@@ -65,12 +68,9 @@ export default function InnerExperience({
   });
   const { config: lodConfig, quality: lodQuality } = useLOD();
 
-  // Fixed at launch with the hour (#464); primitives keep the prop stable across renders.
-  const activeWeather = getActiveWeather();
-  const runWeather = useMemo(
-    () => ({ type: activeWeather.type, intensity: activeWeather.intensity }),
-    [activeWeather.type, activeWeather.intensity],
-  );
+  // The day's conditions are fixed at launch with the hour; the director steps the weather script.
+  const conditions = getActiveConditions();
+  const scriptHasWeather = weatherScriptHasWeather(conditions.weatherScript);
   const isTightCanyon = isTightCanyonSegment(state.currentSegmentIndex);
   const waterfallFxIntensity = waterfallFxIntensityForSegment(state.currentSegmentIndex);
 
@@ -79,6 +79,11 @@ export default function InnerExperience({
       {state.noPointerLock && <HeadlessSkySphere />}
 
       {debug.isStageEnabled('visualization') && <EnhancedSky />}
+
+      {/* The one weather owner: steps the run's script and writes the store's weather. */}
+      <WeatherDirectorTick />
+      {/* The run's time of day: advances the sky clock and places the sun for every reader below. */}
+      <SkyClockTick />
 
       <SceneLighting
         biome={state.biome}
@@ -136,8 +141,8 @@ export default function InnerExperience({
           <GhostReplayer />
 
           <FlowForecast
-            temperature={8}
-            snowpackIndex={0.65}
+            temperature={conditions.temperature}
+            snowpackIndex={conditions.snowpackIndex}
             damReleaseSchedule={DAM_RELEASE_SCHEDULE}
             startHour={state.launchHour}
             onForecastChange={state.setForecastSamples}
@@ -182,11 +187,9 @@ export default function InnerExperience({
                 />
                 {/* Speed wind for default (non-Reach) maps — Reach path gets it via ReactiveAudio. */}
                 <SpeedWindAudio targetRef={state.vehicleRef} />
-                {/* Launch weather on the campaign maps (#464). Clear mounts nothing,
-                    so a clear run's lighting and fog are untouched. */}
-                {runWeather.type !== 'clear' && (
-                  <WeatherSystem targetRef={state.vehicleRef} weather={runWeather} />
-                )}
+                {/* The run's weather on the campaign maps (#464). An all-clear script
+                    mounts nothing, so a clear run's lighting and fog are untouched. */}
+                {scriptHasWeather && <WeatherSystem targetRef={state.vehicleRef} />}
               </>
             ))}
         </Physics>

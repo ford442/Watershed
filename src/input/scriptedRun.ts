@@ -1,5 +1,5 @@
 /**
- * scriptedRun.ts — `?input=script:<url>` mode and deterministic CI stepping (#486 A).
+ * scriptedRun.ts — `?input=script:<url>` / `?replay=<ghost>` mode and deterministic CI stepping (#486 A).
  *
  * With a script in the URL the Canvas boots `frameloop="never"` (App.tsx), and
  * the only thing that advances the sim is `stepScripted(n)`: n sim frames at
@@ -33,9 +33,26 @@ export function getInputScriptUrl(search: string = typeof window !== 'undefined'
   return url.length > 0 ? url : null;
 }
 
-/** Boot-time and constant for the page: a scripted page never takes keyboard play. */
+/**
+ * `?replay=<ghost-url>` → the ghost file's URL, else null. Same-origin only
+ * (like `?ghost=`): a replay plays a run's recorded inputs, so it must come
+ * from where the game is served.
+ */
+export function getReplayGhostUrl(search: string = typeof window !== 'undefined' ? window.location.search : ''): string | null {
+  const value = new URLSearchParams(search).get('replay');
+  if (!value) return null;
+  if (typeof window === 'undefined') return value;
+  try {
+    const url = new URL(value, window.location.href);
+    return url.origin === window.location.origin ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Boot-time and constant for the page: a scripted (or replay) page never takes keyboard play. */
 export function isScriptedInputMode(search?: string): boolean {
-  return getInputScriptUrl(search) !== null;
+  return getInputScriptUrl(search) !== null || getReplayGhostUrl(search) !== null;
 }
 
 /**

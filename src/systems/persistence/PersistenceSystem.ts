@@ -2,7 +2,8 @@
  * PersistenceSystem.ts — Versioned, schema-validated localStorage for Watershed saves.
  *
  * Stores per-map/seed bests, ghost payloads, graphics settings, vehicle preference,
- * ghost visibility, and campaign progress (last map + completed maps).
+ * ghost visibility, campaign progress (last map + completed maps), and the
+ * river bed the runs have eroded (per map segment).
  * Hydrates Zustand on boot; debounced subscribe for writes.
  */
 
@@ -13,6 +14,7 @@ import { launchHourOverride } from '../../utils/launchHourOverride';
 import { launchWeatherOverride } from '../../utils/launchWeatherOverride';
 import { DEFAULT_WEATHER_INTENSITY, type RunWeather } from '../map/weatherInflow';
 import type { WeatherType } from '../../constants/weather';
+import { decodeErosionPlane, encodeErosionPlane } from '../../terrain/erosionCodec';
 
 // =============================================================================
 // TYPES
@@ -53,6 +55,18 @@ export interface PersistencePayload {
   runs: Record<string, RunBest>;
   /** Last imported rival `.wsghost` per map id — offline-only, no accounts/server. */
   rivals?: Record<string, WsGhostFile>;
+  /** Eroded bed per map segment (`mapId:segmentIndex`, #487 E). */
+  erosion?: Record<string, ErosionRecord>;
+}
+
+/** One segment's erosion plane as saved (terrain/erosionCodec.ts). */
+export interface ErosionRecord {
+  /** Plane length (hull vertices); a mount whose grid differs starts fresh. */
+  n: number;
+  /** Quantized, run-length coded plane (base64). */
+  q: string;
+  /** When it was last written (ms since epoch) — the oldest go first past the cap. */
+  t: number;
 }
 
 // =============================================================================
@@ -109,6 +123,30 @@ const isRunSplits = arrayOf(
   shape({ segmentIndex: isNumber, tMs: numberMin(0), speed: isNumber }, ['segmentIndex', 'tMs', 'speed']),
 );
 
+const unitInterval: Check = (v) => isNumber(v) && v >= 0 && v <= 1;
+
+/** A ghost's day (`RunConditions`): weather script steps, melt inputs, Daily River date. */
+export const isRunConditionsShape = shape(
+  {
+    weatherScript: arrayOf(
+      shape(
+        {
+          atReachFraction: unitInterval,
+          weather: oneOf(WEATHERS),
+          intensity: unitInterval,
+          rampSeconds: numberMin(0),
+          overSegment: isInteger,
+        },
+        ['atReachFraction', 'weather', 'intensity', 'rampSeconds'],
+      ),
+    ),
+    temperature: isNumber,
+    snowpackIndex: unitInterval,
+    dailyKey: (v) => nonEmptyString(v) && stringMaxLength(16)(v),
+  },
+  ['weatherScript', 'temperature', 'snowpackIndex'],
+);
+
 const isPersistenceShape = shape(
   {
     version: (v) => v === PERSISTENCE_VERSION,
@@ -148,10 +186,14 @@ const isPersistenceShape = shape(
           launchHour: integerIn(0, 23),
           hydroEventHash: stringMaxLength(32),
           qualityPreset: oneOf(QUALITIES),
+          seed: isInteger,
+          vehicle: oneOf(['runner', 'raft']),
+          conditions: isRunConditionsShape,
         },
         ['codecVersion', 'mapId', 'timeMs', 'ghostData', 'exportedAt'],
       ),
     ),
+    erosion: mapOf(shape({ n: (v) => isInteger(v) && v >= 1, q: nonEmptyString, t: isNumber }, ['n', 'q', 't'])),
   },
   ['version', 'settings', 'vehicleType', 'ghostEnabled', 'runs'],
 );
@@ -460,6 +502,39 @@ export function setLaunchWeather(type: WeatherType): WeatherType {
   return type;
 }
 
+// =============================================================================
+// DAILY RIVER (one river per UTC day; its runs key as `mapId@YYYY-MM-DD:seed`)
+// =============================================================================
+
+/** Days of Daily River records kept on the device (today included). */
+export const DAILY_KEEP_DAYS = 7;
+const DAILY_RUN_KEY = /@(\d{4}-\d{2}-\d{2}):/;
+
+/** The UTC date `days` before `dateKey` (`YYYY-MM-DD`). */
+function dateKeyMinus(dateKey: string, days: number): string {
+  return new Date(Date.parse(`${dateKey}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Drop Daily River records older than the last `keepDays` days (counting
+ * `todayKey`). Returns how many run entries went. Free-run bests never match.
+ */
+export function pruneDailyRecords(todayKey: string, keepDays: number = DAILY_KEEP_DAYS): number {
+  const cutoff = dateKeyMinus(todayKey, keepDays - 1);
+  let removed = 0;
+  touchCache((data) => {
+    for (const key of Object.keys(data.runs)) {
+      const day = DAILY_RUN_KEY.exec(key)?.[1];
+      if (day && day < cutoff) {
+        delete data.runs[key];
+        removed += 1;
+      }
+    }
+  });
+  if (removed > 0) flushPersistence();
+  return removed;
+}
+
 /** Best score across all seeds for a map id (`mapId:*` run keys). */
 export function getBestScoreForMap(mapId: string): number {
   const data = loadPersistence();
@@ -510,6 +585,53 @@ export function clearRivalGhost(mapId: string): void {
     const next = { ...data.rivals };
     delete next[mapId];
     data.rivals = next;
+  });
+  flushPersistence();
+}
+
+// =============================================================================
+// ERODED BED (#487 E — the river remembers what earlier runs dug)
+// =============================================================================
+
+/** Characters of coded planes kept on the device; the least recently written go first. */
+export const EROSION_STORE_CAP = 200_000;
+
+/** The saved plane for `key` (`mapId:segmentIndex`) if it has `size` values. */
+export function loadErosionPlane(key: string, size: number): Float32Array | null {
+  const record = loadPersistence().erosion?.[key];
+  if (!record || record.n !== size) return null;
+  return decodeErosionPlane(record.q, size);
+}
+
+/**
+ * Save `plane` under `key`; an untouched (all-zero) plane removes the record.
+ * Past EROSION_STORE_CAP the oldest records are dropped.
+ */
+export function saveErosionPlane(key: string, plane: Float32Array, now: number = Date.now()): void {
+  const q = encodeErosionPlane(plane);
+  const untouched = decodeErosionPlane(q, plane.length)?.every((v) => v === 0) ?? true;
+  touchCache((data) => {
+    const next = { ...(data.erosion ?? {}) };
+    if (untouched) delete next[key];
+    else next[key] = { n: plane.length, q, t: now };
+    let total = 0;
+    for (const record of Object.values(next)) total += record.q.length;
+    const oldest = Object.entries(next).sort((a, b) => a[1].t - b[1].t);
+    for (const [k, record] of oldest) {
+      if (total <= EROSION_STORE_CAP) break;
+      delete next[k];
+      total -= record.q.length;
+    }
+    if (Object.keys(next).length === 0) delete data.erosion;
+    else data.erosion = next;
+  });
+  schedulePersist();
+}
+
+/** Forget every saved bed. */
+export function clearErosionPlanes(): void {
+  touchCache((data) => {
+    delete data.erosion;
   });
   flushPersistence();
 }

@@ -243,6 +243,78 @@
   opacity: 1;
 }
 
+/* Today's River (the Daily River card, above the play mode). */
+.start-menu-daily {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(79, 209, 199, 0.1), rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(79, 209, 199, 0.35);
+  text-align: left;
+}
+
+.start-menu-daily-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.start-menu-daily-date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.start-menu-daily-title {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 6px 0 8px;
+}
+
+.start-menu-daily-weather {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.start-menu-daily-at {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.start-menu-daily-step.weather-storm,
+.start-menu-daily-step.weather-rain {
+  color: #9cc4ff;
+}
+
+.start-menu-daily-step.weather-snow,
+.start-menu-daily-step.weather-fog {
+  color: #dbe6f0;
+}
+
+.start-menu-daily-btn {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+  border: 1px solid rgba(79, 209, 199, 0.6);
+  border-radius: 10px;
+  background: rgba(79, 209, 199, 0.15);
+  color: white;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.start-menu-daily-btn:hover:not(:disabled) {
+  background: rgba(79, 209, 199, 0.3);
+}
+
+.start-menu-daily-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .start-menu-cache-panel {
   width: 100%;
   margin-bottom: 12px;

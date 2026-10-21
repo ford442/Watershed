@@ -23,7 +23,7 @@
 import type { SweEventCall, SweStepInput } from '../systems/water/sweSim';
 import type { SweInflow } from '../systems/water/sweScroll';
 import type { RoutingReach } from '../systems/map/routingReach';
-import type { RoutingForecast } from '../systems/water/riverRouter';
+import type { RouterWeather, RoutingForecast } from '../systems/water/riverRouter';
 import type { SimFrame } from './SimFrame';
 import type { HeightfieldSummary } from '../rendering/gpuChores/heightfieldSummary';
 import type { SegmentMeshBuffers, SegmentMeshSpec } from '../terrain/segmentMeshBuild';
@@ -46,6 +46,12 @@ export interface SimStepPayload extends Omit<SweStepInput, 'events'> {
  */
 export interface SimRoute {
   chainIndex: number | null;
+  /**
+   * STEP only: the WeatherDirector's river weather for this step, set on the
+   * worker's router before it advances (the main-thread frame does the same).
+   * Absent = keep the weather the router has.
+   */
+  weather?: RouterWeather | null;
 }
 
 /** What cells entering on a SCROLL take. */

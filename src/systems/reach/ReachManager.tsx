@@ -8,7 +8,7 @@
  *   cross-fade biome (no Canvas remount).
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import TrackManager from '../../components/TrackManager';
 import ReactiveAudio from '../../components/ReactiveAudio';
@@ -20,7 +20,8 @@ import { samplesToForecastByIndex } from '../map/flowForecast';
 import { FLOW_FORECAST_STATES } from '../../constants/game';
 import { joinWaypoints } from '../journey/journeyContinuity';
 import { prefetchNextReach, resolveNextReachId } from '../journey/journeyHandoff';
-import { getActiveWeather, saveJourneyCheckpoint } from '../journey/runSession';
+import { saveJourneyCheckpoint } from '../journey/runSession';
+import { setReachAmbientWeather } from '../weather/WeatherDirectorTick';
 import { useGameStore } from '../GameState';
 import { useBiome } from '../biome/BiomeSystem';
 
@@ -258,16 +259,15 @@ export default function ReachManager({
     }
   });
 
-  // The run's launch weather (#464) wins over a manifest's when it is not clear,
-  // so the sky shows the storm the router is already carrying.
-  const runWeather = getActiveWeather();
-  const weather = useMemo(
-    () =>
-      runWeather.type !== 'clear'
-        ? { type: runWeather.type, intensity: runWeather.intensity }
-        : manifest?.weather ?? { type: 'clear' as const, intensity: 0.5 },
-    [manifest?.weather, runWeather.type, runWeather.intensity],
-  );
+  // A manifest's weather is ambient: the director shows it while the run's own
+  // weather (the one the router carries) is clear, and never feeds the river.
+  const manifestWeather = manifest?.weather;
+  useEffect(() => {
+    setReachAmbientWeather(
+      manifestWeather ? { type: manifestWeather.type, intensity: manifestWeather.intensity } : null,
+    );
+    return () => setReachAmbientWeather(null);
+  }, [manifestWeather]);
 
   if (loading) {
     return null;
@@ -296,10 +296,7 @@ export default function ReachManager({
             manifest={manifest ?? undefined}
             reachSegments={reachSegments ?? []}
           />
-          <WeatherSystem
-            targetRef={playerRef}
-            weather={weather as { type: import('../../constants/weather').WeatherType; intensity: number }}
-          />
+          <WeatherSystem targetRef={playerRef} />
         </>
       )}
     </>

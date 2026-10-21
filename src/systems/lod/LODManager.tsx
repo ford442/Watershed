@@ -26,6 +26,7 @@ import {
 } from '../../rendering/renderScale';
 import { isVisualCaptureMode } from '../../rendering/rendererConfig';
 import { frameWorkMs, getFrameWork, isAdaptiveWindowFull, summarizeFrameWindow } from '../../rendering/frameWork';
+import { isScriptedInputMode } from '../../input/scriptedRun';
 import { spawnProfileEnabled } from '../../terrain/spawnTiming';
 
 export {
@@ -191,7 +192,12 @@ export const LODProvider: React.FC<LODProviderProps> = ({
 
   const [quality, setQualityState] = useState<QualityLevel>(storeQuality || initialQuality);
   const [fps, setFps] = useState(60);
-  const [enableAdaptive, setEnableAdaptive] = useState(() => initialAdaptive && !spawnProfileEnabled());
+  // A scripted / replay page runs on the fixed sim clock: a preset change driven
+  // by wall-clock frame time would resize the SWE grid at a different frame on
+  // every run, so the adaptive step-down is off there (the preset is the page's).
+  const [enableAdaptive, setEnableAdaptive] = useState(
+    () => initialAdaptive && !spawnProfileEnabled() && !isScriptedInputMode(),
+  );
 
   const config = QUALITY_SETTINGS[quality];
 

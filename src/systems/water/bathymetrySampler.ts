@@ -59,6 +59,8 @@ export interface BathymetrySource {
   sampleFloorHeight(worldX: number, worldZ: number): number | null;
   /** Bed elevation above the floor datum at world XZ, or null if not covered. */
   sampleBed(worldX: number, worldZ: number): number | null;
+  /** The path (centreline) y the hull hangs from at world XZ, row-interpolated, or null if not covered. */
+  samplePathY(worldX: number, worldZ: number): number | null;
 }
 
 /** Convert a hull floor height (above the path) to an SWE bed value. */
@@ -104,8 +106,13 @@ export function createSegmentBathymetrySource(
   const cellX = width / segmentsX;
   const halfWidth = width / 2;
 
-  const sampleFloorHeight = (worldX: number, worldZ: number): number | null => {
-    if (!(worldZ >= minZ && worldZ <= maxZ)) return null;
+  const rowY = (iz: number) => rows[iz * 3 + 1];
+  // Scratch for `locate`: the quad and the point's place in it.
+  const at = { iz: 0, fz: 0, ix: 0, fx: 0 };
+
+  /** Fill `at` for world XZ; false when the segment does not cover it. */
+  const locate = (worldX: number, worldZ: number): boolean => {
+    if (!(worldZ >= minZ && worldZ <= maxZ)) return false;
 
     // Bracketing row pair by world Z.
     let iz = segmentsZ - 1;
@@ -124,10 +131,17 @@ export function createSegmentBathymetrySource(
     // Column by the sheared x: the row origin moves linearly along the quad.
     const originX = rowX(iz) + (rowX(iz + 1) - rowX(iz)) * fz;
     const u = (worldX - originX + halfWidth) / cellX;
-    if (!(u >= 0 && u <= segmentsX)) return null;
-    const ix = Math.min(segmentsX - 1, Math.floor(u));
-    const fx = u - ix;
+    if (!(u >= 0 && u <= segmentsX)) return false;
+    at.iz = iz;
+    at.fz = fz;
+    at.ix = Math.min(segmentsX - 1, Math.floor(u));
+    at.fx = u - at.ix;
+    return true;
+  };
 
+  const sampleFloorHeight = (worldX: number, worldZ: number): number | null => {
+    if (!locate(worldX, worldZ)) return null;
+    const { iz, fz, ix, fx } = at;
     const ha = h[iz * cols + ix];
     const hd = h[iz * cols + ix + 1];
     const hb = h[(iz + 1) * cols + ix];
@@ -143,7 +157,13 @@ export function createSegmentBathymetrySource(
     return floor === null ? null : bedFromFloorHeight(floor);
   };
 
-  return { segmentId, minZ, maxZ, centerX: rowX(mid), centerZ: rowZ(mid), sampleFloorHeight, sampleBed };
+  const samplePathY = (worldX: number, worldZ: number): number | null => {
+    if (!locate(worldX, worldZ)) return null;
+    const y = rowY(at.iz) + (rowY(at.iz + 1) - rowY(at.iz)) * at.fz;
+    return Number.isFinite(y) ? y : null;
+  };
+
+  return { segmentId, minZ, maxZ, centerX: rowX(mid), centerZ: rowZ(mid), sampleFloorHeight, sampleBed, samplePathY };
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +195,24 @@ export function clearSegmentBathymetry(): void {
   if (sources.size === 0) return;
   sources.clear();
   revision += 1;
+}
+
+/**
+ * World y of the still-water sheet over world XZ: the covering segment's path
+ * y plus `sheetOffset` (the sheet hangs WATER_LEVEL above the path). The
+ * centreline descends hundreds of metres over a map, so an absolute
+ * `WATER_LEVEL` is never a body's water level. Where segments overlap (a
+ * meander folding back) the lower sheet wins, as the deeper bed does in
+ * `sampleBathymetryInto`. Null where no segment covers the point.
+ */
+export function sampleWaterSheetY(worldX: number, worldZ: number, sheetOffset: number = WATER_LEVEL): number | null {
+  let best: number | null = null;
+  for (const source of sources.values()) {
+    if (!(worldZ >= source.minZ && worldZ <= source.maxZ)) continue;
+    const y = source.samplePathY(worldX, worldZ);
+    if (y !== null && (best === null || y < best)) best = y;
+  }
+  return best === null ? null : best + sheetOffset;
 }
 
 /** Bumps whenever the registered set changes — cheap "is my bed stale?" check. */

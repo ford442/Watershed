@@ -734,6 +734,10 @@ void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uint
 static constexpr float kHydroInflowDownstream = 0.5f;
 static constexpr float kHydroVortexSink = 0.35f;
 static constexpr float kHydroBraidLateral = 0.75f;
+/** Surge: how fast (1/s) a cell under the front takes its stage, and g for the bore speed. */
+static constexpr float kHydroSurgeRelax = 6.0f;
+static constexpr float kHydroSurgeGravity = 9.80665f;
+static constexpr int kHydroKindSurge = 4;
 
 void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
                    int width, int height, float dx, float originX, float originZ, float H,
@@ -764,16 +768,22 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
         first = static_cast<int>(std::clamp(a, 0.f, static_cast<float>(extent)));
         last = static_cast<int>(std::clamp(c, -1.f, static_cast<float>(extent - 1)));
     };
+    // A surge front is a band across the whole window: only its distance in z counts.
+    const bool band = kind == kHydroKindSurge;
     int i0, i1, j0, j1;
     cellRange(cx - r, cx + r, originX, width, i0, i1);
     cellRange(cz - r, cz + r, originZ, height, j0, j1);
+    if (band) {
+        i0 = 0;
+        i1 = width - 1;
+    }
 
     for (int j = j0; j <= j1; ++j) {
         const float wz = originZ + static_cast<float>(j) * dx;
         const float dz = wz - cz;
         for (int i = i0; i <= i1; ++i) {
             const float wx = originX + static_cast<float>(i) * dx;
-            const float ddx = wx - cx;
+            const float ddx = band ? 0.f : wx - cx;
             const float d2 = ddx * ddx + dz * dz;
             if (d2 > r2) continue;
             const float dist = std::sqrt(d2);
@@ -800,6 +810,18 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
                 const float damp = std::max(0.f, 1.f - mag * step * wgt);
                 u[idx] *= damp;
                 w[idx] *= damp;
+            } else if (kind == 4) {
+                // The front's stage here (full at its centre line) and the
+                // downstream (−Z) speed a simple wave of that height carries.
+                // Only raises: water already above the step is left alone.
+                const float stage = std::min(mag * wgt, still);
+                if (h[idx] < stage) {
+                    const float k = std::min(1.f, kHydroSurgeRelax * step);
+                    h[idx] += (stage - h[idx]) * k;
+                    const float carried = -2.f * (std::sqrt(kHydroSurgeGravity * (still + stage))
+                                                  - std::sqrt(kHydroSurgeGravity * still));
+                    if (w[idx] > carried) w[idx] += (carried - w[idx]) * k;
+                }
             }
         }
     }

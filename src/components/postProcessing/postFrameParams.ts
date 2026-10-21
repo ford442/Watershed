@@ -111,6 +111,7 @@ export interface PostFrameInput {
   biomeId: string | undefined;
   weatherType: string;
   timeOfDay: number;
+  /** A point toward the sun near the camera (SunPositionSystem); elevation and god rays aim from the camera. */
   sunWorldPosition: THREE.Vector3;
   camera: THREE.Camera;
   quality: PostQualityLevel;
@@ -192,7 +193,8 @@ export function computePostFrameParams(
     : input.weatherType === 'overcast' ? 0.6
     : input.weatherType === 'fog' ? 0.35
     : 0;
-  const sunElevation = THREE.MathUtils.clamp(input.sunWorldPosition.y / 40, 0, 1);
+  // Height of the sun point above the camera (it rides SUN_DISTANCE from the camera, not the origin).
+  const sunElevation = THREE.MathUtils.clamp((input.sunWorldPosition.y - input.camera.position.y) / 40, 0, 1);
   const nightFactor = 1 - sunElevation;
 
   const targetChromatic =

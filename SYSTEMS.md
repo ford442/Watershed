@@ -492,6 +492,96 @@ canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
 
 ---
 
+## The Living River (#464)
+
+One run is one river on one day: a launch hour, a weather script and the day's melt inputs
+(`RunConditions` in `runSession.ts`), all of it seeded and all of it stepped on the sim clock,
+so a ghost replays the same river. Erosion (the bed remembering) is under SWE bathymetry
+below; weather over a reach (lateral inflow, the squall front) under the upstream edge.
+
+---
+
+### `src/systems/weather/weatherDirector.ts` + `WeatherDirectorTick.tsx`
+
+**Purpose:** The one owner of the run's weather. Steps the run's weather script
+(`weatherScript.ts`: `[{ atReachFraction, weather, intensity, rampSeconds, overSegment? }]`)
+against how far down the map the player is (`reachFraction.ts`), ramping between steps.
+
+**Runs in:** `WeatherDirectorTick` — `useFrame` priority −90, on the frame's sim delta while
+unpaused. Module state mutated in place; a step allocates nothing.
+
+**Produces:**
+- *River weather* (`getDirectorRiverWeather`, `getDirectorOverSegment`) — script only: the
+  router's head or lateral discharge, the hull's snow drag, the surface slush.
+- *Visual weather* — the river weather when it is not clear, else the ambient one (a reach
+  manifest's, or the glacial biomes' snow); published to the store's `weather` slice, which
+  `WeatherSystem` renders and everything else subscribes to.
+
+**Boundaries (Do NOT):**
+- Do NOT post `weather-update` window events or write the `weather` slice anywhere else —
+  the director is its only writer.
+- Do NOT step it on wall time; a replay must reach the same step on the same frame.
+- Do NOT let ambient weather reach the water: it is visual only.
+- Steps only advance: a respawn upstream does not bring an earlier sky back.
+
+---
+
+### `src/systems/sky/skyClock.ts` + `sunPosition.ts` + `SkyClockTick.tsx`
+
+**Purpose:** The time of day. `hour = launchHour + elapsedSimSec × speedup / 3600` (default
+1 real minute = 10 game minutes, per map in `maps/atmosphere.ts` with its latitude and day of
+year); `sunPosition(hour, latitude, dayOfYear)` is NOAA's approximation (~60 lines, no
+dependency). World frame: +X east, +Y up, −Z north.
+
+**Runs in:** `SkyClockTick` — `useFrame` priority −85, sim delta, unpaused only. Reset per
+run by `runSession`.
+
+**Produces:** `getSkyClock()` per frame — the sun vector and factors (`daylight`, `night`,
+`golden`, `elevation01`) that `SceneLighting`, `EnhancedSky` (turbidity / horizon), fog, water
+(`sunDirection`, `nightFactor`, deep colour / specular), post and the stars gate all read —
+GLSL and TSL from the same uniforms. `subscribeSkyPhase()` for coarse React state (~every 5
+game minutes). Night mode follows the clock (`useNightMode`); the `N` key only overrides it
+under `?debug=1`.
+
+**Boundaries (Do NOT):** Do NOT read `Date` or wall time for the sky; do NOT keep a second
+time-of-day — `BiomeProvider`'s `timeOfDay` follows the clock's phase.
+
+---
+
+### `src/systems/daily/dailyRiver.ts` + `TodaysRiverCard.tsx`
+
+**Purpose:** Today's River — one river per UTC day, the same for every client. `dailySeed`
+is FNV-1a of the date; named sub-streams (`forkSeed(seed, 'map' | 'hour' | 'weather' | 'melt')`)
+pick the map, a daylight launch hour, a weather pattern (clear, a squall over one reach,
+showers, building, fog, flurries) and the melt inputs. No server, no date library.
+
+**Produces:** `dailyRiverFor(dateKey)` → `{ dateKey, seed, mapId, launchHour, pattern,
+conditions }`. The StartMenu's lazy card shows it above the map list with the 24 h flow
+strip and today's best; RUN TODAY'S RIVER starts it with those conditions. Runs key as
+`mapId@YYYY-MM-DD:seed` (`dailyRunKey`), so bests, the PB ghost and the fairness key are the
+day's; `pruneDailyRecords` keeps a week.
+
+**Boundaries (Do NOT):** Do NOT draw from a shared stream across the four picks (adding a
+weather pattern must not move the day's map); do NOT read the local timezone.
+
+---
+
+### Replay — `?replay=<ghost>` (`src/input/replay.ts`, `sweChecksum.ts`)
+
+**Purpose:** A `.wsghost` is a run: the v4 input track plus launch hour, seed, vehicle and
+conditions. `?replay=` (same-origin) skips the menu, starts that river and feeds the input
+track to `ScriptedSource` on the fixed 1/60 s scripted clock, holding the recorded look per
+10 Hz window.
+
+**Determinism contract:** two replays of one ghost produce identical split times and
+identical SWE checksums (`checksumSweState`, FNV-1a over h/u/w bits, stored per split).
+What makes it hold: a scripted or replay run steps SWE on the main thread
+(`sweBackend` `scripted-run`); the SWE step-rate compare takes a 1e-6 s epsilon; weather, sky,
+surge fronts and erosion refreshes all run on the solver / sim clock; adaptive LOD is off;
+scripted runs neither load nor save the eroded bed. `pnpm test:replay-smoke` gates it in CI.
+
+---
+
 ## Physics Worker (ADR v1)
 
 ### `src/physics/rapier.worker.ts` + `RapierWorkerProxy`
@@ -720,6 +810,20 @@ changes η — and therefore the hull through `sampleSWEFlow` — at the boundar
 authored `hydroEvents` disks. `applyForecastToSegmentParams` still reshapes the authored
 channel; the edge adds the wave. The routing never runs in TypeScript.
 
+**Weather over a reach (ABI 14, #464 D):** the WeatherDirector's river weather reaches the
+router once per step (`setWeather`). Weather with no reach (`overSegment` unset) rains on the
+head, as before. A storm the script sits over a segment is **lateral inflow** there:
+`routeReachLateral` routes the day's own head hydrograph and adds the weather's runoff
+(`weatherFlowRateDelta × 40 m³/s`) at the top of that chain segment — so that reach's edge
+rises at once, the reaches below with the routed lag, the reaches above never
+(`riverRouter.lateral.test.ts`). A zero lateral routes bit-identically to `routeReach`.
+
+**Squall front:** when the river weather strengthens to a storm ≥ `SQUALL_SURGE_INTENSITY`
+while the player is on or below the reach it sits over, `weatherSurge.ts` sends one `surge`
+front (stage `0.25 × intensity`) through the window at its bore speed, in world z, entering on
+the side it will cross from (a runner outruns a ~3 m/s bore and meets it ahead; a slow raft is
+overtaken). One front per squall: the storm must ease below half the trigger to re-arm.
+
 **Datum (#487 C):** one for every segment. The water sheet hangs `WATER_LEVEL` above the path
 and the hull floor `floorHeight` above it, so `b = floorHeight − (WATER_LEVEL − H)`
 (`BED_DATUM`): a cell dries exactly where the floor rises through the water sheet, and the bed
@@ -731,6 +835,23 @@ get `BATHYMETRY_DRY_BED` (`H + 2`) — dry land, not open water. Every cell is r
 each refresh, so a previous slot's bed cannot leak into the next window. The strongest
 riffle crests reach the sheet and read shallow-to-dry, as the meshes show them.
 
+**Erosion (#487 E):** the river works its bed. Each mounted segment registers its hull grid
+as built with `erosionField.ts`, and every solver step `sweHost` hands the field (the h/u/w/b
+mirror every backend keeps on the main thread) to `accumulateFieldErosion`: each hull vertex
+inside the window integrates `dE/dt = 0.005·max(0, q − 0.12) − deposit(q)` with `q = |u|·d`
+(`terrain/erosion.ts`; still water does nothing, slowed water drops what it carries). The floor
+every consumer reads is `h − E` clamped to ±0.4 m: the trimesh and the bed take it at their own
+vertices, the visual floor interpolates it over the hull's own triangles — the three agree to
+1e-4 at every hull vertex (`erosion.test.ts`). A segment re-meshes (floor, trimesh remount,
+bathymetry re-register) when its plane has moved 1 cm since its last mesh, at most every 3 s
+of solver time — so a replay refreshes on the same step. The plane outlives the mount: it is
+saved per `mapId:segmentIndex` (`PersistenceSystem` `erosion`, quantized and run-length
+coded, ≤ 200 kB, oldest first out) and the next mount — later today or tomorrow's river —
+starts from it. Scripted / replay runs neither load nor save it. After a storm, meander's
+second bend has dug its outside flank ~5× a clear day and ~3× its inside
+(`erosionBend.test.ts`, committed binary); `safeZones.test.ts` holds every authored envelope
+to a body on the deepest pool dug the full 0.4 m.
+
 The result: a slot canyon dries out a couple of metres off-centre, a delta/pond stays wet
 across the whole window, at identical grid sizes. `?sweDebug=1` mounts `SWEBedDebugOverlay`
 (`src/components/SWEBedDebugOverlay.tsx`), a false-color view of the sampled bed — blue deep,
@@ -740,10 +861,14 @@ cyan shallow, tan dry.
 
 ### Authored hydroEvents — `src/systems/water/hydroEvents.ts`
 
-Maps declare `hydroEvents[]` (launch-hour keyed inflow / vortex / braid / roughness).
+Maps declare `hydroEvents[]` (launch-hour keyed inflow / vortex / braid / roughness / surge).
 After each SWE step, `WaterForceSystem` applies active events onto the same grid
-(`applySWEEvent` C++ ABI 8, or TS fallback). Ghosts hash the live set
-(`hydroFairness.ts`).
+(`applySWEEvent` C++ ABI 8 — `surge` since ABI 14 — or TS fallback). Ghosts hash the live set
+(`hydroFairness.ts`). A `surge` is a stage step moving downstream at the bore speed of its
+height (`surgeFrontSpeed`): the host places the front on the run's solver clock
+(`authoredSurgeFrontZ` — from `SURGE_RUN_IN` m above the segment centre to as far below, then
+`SURGE_PAUSE_SECONDS` before the next), and the kernel paints a band across the whole window
+that raises η to the stage and carries the water downstream.
 
 **Playability contract (#398).** An authored hour has to be *seen and felt*:
 
@@ -753,10 +878,12 @@ After each SWE step, `WaterForceSystem` applies active events onto the same grid
 | `vortex` | η sink | swirl in `u,w` — **and** `VortexForceSystem` stands down on that segment (`shouldApplyAuthoredVortexImpulse`), one field, one owner |
 | `braid` | bed shoal (idempotent max, not an accumulation) | lateral push around the shoal |
 | `roughness` | — | `u,w` damped, slower line |
+| `surge` | η step crossing the window (only raises) | stage + downstream momentum as the front passes |
 
 `hydroContrast.ts` measures both halves for a pair of hours and
 `hydroContrast.test.ts` asserts `glacial` / `hydro` / `delta` clear
-`HYDRO_CONTRAST_MARGINS` at 06:00 vs 14:00. The lumber braid is authored only on
+`HYDRO_CONTRAST_MARGINS` at 06:00 vs 14:00, as does the storm fixture
+(`STORM_SURGE_FIXTURE`, a squall's front) on every backend. The lumber braid is authored only on
 hours the forecast actually opens `washedOutGap`. `hydroHud.ts` turns the live set
 into the HUD's hour board (`ForecastHUD`). `?hour=14` overrides the launch hour for
 one page load (read-only, never written to persistence) so the same map can be
@@ -782,7 +909,7 @@ HeightmapFlow was deleted (#413) and must not come back.
 **Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
 not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
-exports, the only Emscripten include; `ws_getVersion()` — **13**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**13** — the C ABI replaced Embind, so nothing older can be bound; every export is required). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+exports, the only Emscripten include; `ws_getVersion()` — **14**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**14** — the C ABI replaced Embind, so nothing older can be bound; every export is required; 14 added `routeReachLateral` and the `surge` event kind). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:

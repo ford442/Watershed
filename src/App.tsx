@@ -44,12 +44,17 @@ import {
 import { attachGpuLossHandlers, isGpuLossDebugEnabled, simulateGpuLoss } from './rendering/gpuLossRecovery';
 import './style.css';
 import { initPersistence, hydrateStoreForRun } from './systems/persistence/persistenceBootstrap';
-import { getActiveRunKey, getActiveMapId } from './utils/runContext';
+import {
+  getActiveRunKey,
+  getActiveMapId,
+  setProceduralSeedOverride,
+  setVehicleOverride,
+} from './utils/runContext';
 import { useGameStore, useQualityPreset, useRenderScale } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
-import { initRunSession } from './systems/journey/runSession';
+import { initRunSession, type RunConditions } from './systems/journey/runSession';
 import { resolveInitialVehicle } from './experience/hooks/useInnerExperience';
 import { prefetchRaftVehicle } from './vehicles/raftVehicleChunk';
 
@@ -72,7 +77,8 @@ function preloadOverlays() {
   // Fauna / biome props / set pieces (Environment/extras.ts) a segment mounts after the menu.
   preloadEnvironmentExtras();
 }
-import { isScriptedInputMode } from './input/scriptedRun';
+import { getReplayGhostUrl, isScriptedInputMode } from './input/scriptedRun';
+import { parseQualityOverride } from './utils/qualityOverride';
 import { onPauseRequest } from './input/pauseBus';
 import { useInputStore } from './input/InputHub';
 import { isTouchInputMode } from './input/touchMode';
@@ -264,6 +270,16 @@ function App({ graphicsBoot }: AppProps = {}) {
     caveatClampApplied.current = true;
     useGameStore.getState().setSettings({ quality: 'low' });
   }, [isCaveatBoot, settingsHydrated]);
+
+  // `?quality=` (harnesses) wins over both clamps for this session: the replay
+  // smoke runs SWE on a software boot that would otherwise start at Low.
+  const qualityOverrideApplied = useRef(false);
+  useEffect(() => {
+    const preset = parseQualityOverride();
+    if (!preset || !settingsHydrated || qualityOverrideApplied.current) return;
+    qualityOverrideApplied.current = true;
+    useGameStore.getState().setSettings({ quality: preset });
+  }, [settingsHydrated]);
 
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
@@ -475,16 +491,21 @@ function App({ graphicsBoot }: AppProps = {}) {
         placedCacheIds?: string[];
         loadoutId?: string;
         journeyMode?: 'single' | 'journey';
+        conditions?: Partial<RunConditions>;
       },
     ) => {
       handleSelectMap(mapId);
       initRunSession({
         mapId,
         launchHour: options?.launchHour,
+        conditions: options?.conditions,
         placedCacheIds: options?.placedCacheIds,
         loadoutId: options?.loadoutId,
         journeyMode: options?.journeyMode ?? 'single',
       });
+      // The run key depends on the new session (a Daily River keys by date),
+      // so the store's bests hydrate again now that it exists.
+      hydrateStoreForRun(getActiveRunKey(mapId));
       setActiveLaunchHour(options?.launchHour ?? getLaunchHour());
       setPhase('playing');
       if (isTouchInputMode()) void import('./input/handheld').then((m) => m.tryLockLandscape());
@@ -521,6 +542,36 @@ function App({ graphicsBoot }: AppProps = {}) {
     setWorldEnabled(false);
     setPhase('menu');
   }, []);
+
+  // `?replay=<ghost>`: no menu. Once boot is ready the run starts on the
+  // ghost's own river — map, hour, seed, vehicle and day — and the ghost's
+  // input track drives it (InputHubTick).
+  // The plan loads asynchronously; it starts the run with whatever handleStart
+  // is current then (it is rebuilt as the menu state settles).
+  const replayStartedRef = useRef(false);
+  const handleStartRef = useRef(handleStart);
+  useEffect(() => {
+    handleStartRef.current = handleStart;
+  }, [handleStart]);
+  useEffect(() => {
+    const replayUrl = getReplayGhostUrl();
+    if (!replayUrl || !bootReady || replayStartedRef.current) return;
+    replayStartedRef.current = true;
+    void import('./input/replay')
+      .then(({ loadReplayPlan }) => loadReplayPlan(replayUrl))
+      .then((plan) => {
+        // loadReplayPlan has already said why a ghost cannot be replayed.
+        if (!plan) return;
+        if (plan.seed !== undefined) setProceduralSeedOverride(plan.seed);
+        setVehicleOverride(plan.vehicle);
+        handleStartRef.current(plan.mapId, {
+          launchHour: plan.launchHour,
+          conditions: plan.conditions,
+          placedCacheIds: [],
+          journeyMode: 'single',
+        });
+      });
+  }, [bootReady]);
 
   // Enter starts from the menu with the selected map.
   useEffect(() => {

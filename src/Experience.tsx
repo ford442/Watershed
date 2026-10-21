@@ -61,7 +61,8 @@ export default function Experience({
       <FrameWorkTimer />
       <KeyboardControls map={keyboardMap}>
         <LODProvider initialQuality="high" enableAdaptive targetFPS={60}>
-          <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay={false}>
+          {/* timeOfDay follows the run's sky clock (launch hour + sim time). */}
+          <BiomeProvider initialBiome="canyonSummer" enableTimeOfDay>
             <SunPositionProvider>
               <BiomeTransition />
               <InnerExperience

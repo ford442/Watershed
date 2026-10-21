@@ -22,8 +22,28 @@ import {
   type PortageCacheRunState,
   DEFAULT_MAX_CACHE_PLACEMENTS,
 } from '../survival/portageCache';
-import { getLaunchHour, getLaunchWeather, setLastMapId, markMapCompleted } from '../persistence/PersistenceSystem';
+import {
+  getLaunchHour,
+  getLaunchWeather,
+  markMapCompleted,
+  pruneDailyRecords,
+  setLastMapId,
+} from '../persistence/PersistenceSystem';
 import type { RunWeather } from '../map/weatherInflow';
+import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
+import {
+  constantWeatherScript,
+  launchWeatherOf,
+  weatherScriptFairnessKey,
+  type WeatherScript,
+} from '../weather/weatherScript';
+import {
+  getDirectorRiverWeather,
+  resetWeatherDirector,
+  resetWeatherDirectorForTests,
+} from '../weather/weatherDirector';
+import { getMapAtmosphere } from '../../maps/atmosphere';
+import { resetSkyClock, resetSkyClockForTests, setSkyAtmosphere } from '../sky/skyClock';
 import {
   createSurvivalState,
   getLoadoutDefinition,
@@ -47,11 +67,60 @@ export interface JourneyCheckpoint {
   savedAtMs: number;
 }
 
+/**
+ * What the day brings to the river: the weather script and the forecast's
+ * melt inputs. Fixed at launch; the launch picker's weather is a one-step
+ * script and the inputs default to DEFAULT_FORECAST_INPUTS.
+ */
+export interface RunConditions {
+  weatherScript: WeatherScript;
+  /** Air temperature (°C) driving the forecast's melt. */
+  temperature: number;
+  /** 0..1 snowpack left to melt. */
+  snowpackIndex: number;
+  /** UTC date (`YYYY-MM-DD`) of the Daily River this run is; absent for a free run. */
+  dailyKey?: string;
+}
+
+export const DEFAULT_RUN_CONDITIONS: Readonly<RunConditions> = Object.freeze({
+  weatherScript: constantWeatherScript(),
+  temperature: DEFAULT_FORECAST_INPUTS.temperature,
+  snowpackIndex: DEFAULT_FORECAST_INPUTS.snowpackIndex,
+});
+
+/**
+ * Ghost fairness key for a run's conditions: the weather script's key, plus
+ * the melt inputs when they differ from the default day. The launch picker's
+ * runs (one-step script, default melt) key exactly as their weather always did.
+ */
+export function runConditionsFairnessKey(conditions: RunConditions): string {
+  const parts: string[] = [];
+  const weather = weatherScriptFairnessKey(conditions.weatherScript);
+  if (weather) parts.push(weather);
+  if (
+    conditions.temperature !== DEFAULT_RUN_CONDITIONS.temperature ||
+    conditions.snowpackIndex !== DEFAULT_RUN_CONDITIONS.snowpackIndex
+  ) {
+    parts.push(`melt:${conditions.temperature.toFixed(1)}/${conditions.snowpackIndex.toFixed(2)}`);
+  }
+  // A day's river is that day's: its bed carries every earlier day's erosion.
+  if (conditions.dailyKey) parts.push(`day:${conditions.dailyKey}`);
+  return parts.join('|');
+}
+
 export interface RunSessionSnapshot {
+  /**
+   * One per `initRunSession`, stable for the run. The snapshot object itself is
+   * replaced on every update (survival ticks each frame), so anything that must
+   * rebuild once per run — the river router — keys on this, never on identity.
+   */
+  runId: number;
   mapId: MapRegistryId;
   launchHour: number;
-  /** The run's weather, fixed at launch like the hour (#464). */
+  /** The weather in force at launch (step 0 of the script, #464). */
   weather: RunWeather;
+  /** Weather script + forecast inputs for the run; WeatherDirector steps the script. */
+  conditions: RunConditions;
   placedCacheIds: string[];
   loadoutId: LoadoutId;
   portageCache: PortageCacheRunState;
@@ -75,11 +144,15 @@ export interface RunSessionSnapshot {
 
 let activeSession: RunSessionSnapshot | null = null;
 let awardedCacheSegments = new Set<number>();
+let nextRunId = 1;
 
 export function initRunSession(options: {
   mapId: MapRegistryId;
   launchHour?: number;
+  /** Launch weather as a one-step script; ignored when `conditions` carries a script. */
   weather?: RunWeather;
+  /** The day's conditions (Daily River, replay); missing fields take the defaults. */
+  conditions?: Partial<RunConditions>;
   placedCacheIds?: string[];
   loadoutId?: LoadoutId | string;
   journeyMode?: JourneyMode;
@@ -94,10 +167,21 @@ export function initRunSession(options: {
 
   const survival = getMapSurvivalMetadata(startMapId);
   const launchHour = normalizeHour(options.launchHour ?? getLaunchHour());
+  const conditions: RunConditions = {
+    weatherScript:
+      options.conditions?.weatherScript ?? constantWeatherScript(options.weather ?? getLaunchWeather()),
+    temperature: options.conditions?.temperature ?? DEFAULT_RUN_CONDITIONS.temperature,
+    snowpackIndex: options.conditions?.snowpackIndex ?? DEFAULT_RUN_CONDITIONS.snowpackIndex,
+  };
+  if (options.conditions?.dailyKey) {
+    conditions.dailyKey = options.conditions.dailyKey;
+    // A week of days stays on the device; older days' records go.
+    pruneDailyRecords(conditions.dailyKey);
+  }
   const forecastState =
     buildLaunchForecast({
-      temperature: 8,
-      snowpackIndex: 0.65,
+      temperature: conditions.temperature,
+      snowpackIndex: conditions.snowpackIndex,
       damReleaseSchedule: [{ hour: 14, release: 0.35 }],
       startHour: launchHour,
       horizonHours: 1,
@@ -121,9 +205,11 @@ export function initRunSession(options: {
   }
 
   activeSession = {
+    runId: nextRunId++,
     mapId: startMapId,
     launchHour,
-    weather: options.weather ?? getLaunchWeather(),
+    weather: launchWeatherOf(conditions.weatherScript),
+    conditions,
     placedCacheIds,
     loadoutId,
     portageCache,
@@ -139,6 +225,9 @@ export function initRunSession(options: {
     lastCheckpoint: null,
   };
   awardedCacheSegments = new Set();
+  resetWeatherDirector(conditions.weatherScript);
+  // The sun starts at the launch hour over the start map and runs on sim time.
+  resetSkyClock(launchHour, getMapAtmosphere(startMapId));
   return activeSession;
 }
 
@@ -163,8 +252,28 @@ export function getActiveLaunchHour(): number {
   return activeSession?.launchHour ?? getLaunchHour();
 }
 
+/**
+ * The river's weather right now: the director's (it ramps through the run's
+ * script), or the persisted launch weather before any run.
+ */
 export function getActiveWeather(): RunWeather {
-  return activeSession?.weather ?? getLaunchWeather();
+  return activeSession ? getDirectorRiverWeather() : getLaunchWeather();
+}
+
+/** The run's weather script (a one-step script before any run). */
+export function getActiveWeatherScript(): WeatherScript {
+  return activeSession?.conditions.weatherScript ?? constantWeatherScript(getLaunchWeather());
+}
+
+/** The run's conditions, or the defaults with the persisted launch weather before any run. */
+export function getActiveConditions(): RunConditions {
+  if (activeSession) return activeSession.conditions;
+  return { ...DEFAULT_RUN_CONDITIONS, weatherScript: constantWeatherScript(getLaunchWeather()) };
+}
+
+/** Restart the run's weather from the top of its script (journey loop / map restart). */
+export function restartRunWeather(): void {
+  if (activeSession) resetWeatherDirector(activeSession.conditions.weatherScript);
 }
 
 export function getActiveLoadoutId(): LoadoutId {
@@ -327,6 +436,8 @@ export function advanceRunSessionMap(
 
   markMapCompleted(activeSession.mapId);
   setLastMapId(nextMapId);
+  // Same time of day, the next map's sky.
+  setSkyAtmosphere(getMapAtmosphere(nextMapId));
 
   const checkpoint: JourneyCheckpoint = {
     mapId: nextMapId,
@@ -386,6 +497,8 @@ export function resetRunSessionForTests(): void {
   activeSession = null;
   awardedCacheSegments = new Set();
   resetWetnessMuffle();
+  resetWeatherDirectorForTests();
+  resetSkyClockForTests();
 }
 
 function normalizeHour(hour: number): number {

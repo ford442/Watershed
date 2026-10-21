@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../systems/lod/LODManager';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
@@ -9,6 +9,18 @@ import { SceneLightPool } from '../rendering/sceneLightPool';
 import { gameEvents } from '../systems/events/GameEvents';
 
 const KEY_LIGHT_USER_DATA = { keyLight: true } as const;
+/** Key light's distance from the point it aims at (inside the shadow camera's near/far). */
+const KEY_LIGHT_DISTANCE = 100;
+/** Half-extent of the key light's shadow camera (m). */
+const SHADOW_HALF_EXTENT = 60;
+/** The key light never shines from below the horizon: its direction keeps at least this much up. */
+const KEY_LIGHT_MIN_UP = 0.08;
+const _lightDir = new THREE.Vector3();
+
+/** Snap to the shadow map's texel grid so the frustum moving with the camera does not shimmer. */
+function snapToTexel(value: number, texel: number): number {
+  return Math.round(value / texel) * texel;
+}
 
 interface SceneLightingProps {
   biome: string;
@@ -43,7 +55,10 @@ export default function SceneLighting({
   enabled,
 }: SceneLightingProps) {
   const { quality, config: lodConfig } = useLOD();
-  const { sunWorldPosition } = useSunPosition();
+  const { sunDirection } = useSunPosition();
+  // The key light aims at the camera, so its shadow frustum (±60 m) travels with
+  // the run instead of staying at the origin; the sky clock's sun sets the angle.
+  const keyTarget = useMemo(() => new THREE.Object3D(), []);
 
   // Prefer the renderer quality contract (DPR-aware ultra map size; shadows off on low).
   const shadowContract = useMemo(
@@ -80,10 +95,23 @@ export default function SceneLighting({
   const hemiSkyColor = isSlotCanyonLighting ? '#1a120a' : L.hemiSky;
   const hemiGroundColor = isSlotCanyonLighting ? '#0a0806' : L.hemiGround;
 
-  const sharedSunPosition = useMemo(
-    () => [sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z] as [number, number, number],
-    [sunWorldPosition.x, sunWorldPosition.y, sunWorldPosition.z],
-  );
+  useFrame(({ camera }) => {
+    const sun = sunRef.current;
+    if (!sun) return;
+    const texel = (2 * SHADOW_HALF_EXTENT) / shadowMapSize;
+    keyTarget.position.set(
+      snapToTexel(camera.position.x, texel),
+      snapToTexel(camera.position.y, texel),
+      snapToTexel(camera.position.z, texel),
+    );
+    keyTarget.updateMatrixWorld();
+    _lightDir.copy(sunDirection);
+    if (_lightDir.y < KEY_LIGHT_MIN_UP) {
+      _lightDir.y = KEY_LIGHT_MIN_UP;
+      _lightDir.normalize();
+    }
+    sun.position.copy(keyTarget.position).addScaledVector(_lightDir, KEY_LIGHT_DISTANCE);
+  });
 
   const lastWaterfallRumbleRef = useRef(-1);
   useFrame(() => {
@@ -124,12 +152,14 @@ export default function SceneLighting({
     <>
       <ambientLight intensity={ambientIntensity} />
       <hemisphereLight color={hemiSkyColor} groundColor={hemiGroundColor} intensity={hemiIntensity} />
+      <primitive object={keyTarget} />
       <directionalLight
         ref={sunRef}
         // WeatherSystem strobes the key light, and only it, on a lightning strike (#464).
         userData={KEY_LIGHT_USER_DATA}
         color={L.dirColor}
-        position={sharedSunPosition}
+        target={keyTarget}
+        position={[12, 35, 18]}
         intensity={L.dirIntensity}
         castShadow={castShadows}
         shadow-mapSize={[shadowMapSize, shadowMapSize]}
@@ -137,10 +167,10 @@ export default function SceneLighting({
         shadow-normalBias={lodConfig.shadowNormalBias}
         shadow-camera-near={1}
         shadow-camera-far={200}
-        shadow-camera-left={-60}
-        shadow-camera-right={60}
-        shadow-camera-top={60}
-        shadow-camera-bottom={-60}
+        shadow-camera-left={-SHADOW_HALF_EXTENT}
+        shadow-camera-right={SHADOW_HALF_EXTENT}
+        shadow-camera-top={SHADOW_HALF_EXTENT}
+        shadow-camera-bottom={-SHADOW_HALF_EXTENT}
       />
       <directionalLight color={L.fillColor} position={[-10, 15, -20]} intensity={L.fillIntensity} />
       {/* Segment lights (fireflies, waterfall spray, slot fill) borrow these: a fixed light count, so a mount never recompiles the scene's programs (#487). */}

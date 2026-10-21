@@ -11,6 +11,7 @@
 
 import { clamp01 } from '../../math/scalar';
 import { createRng, type Rng } from '../../math/random';
+import { fnv1a32 } from '../../math/hash';
 
 /** Seconds between strikes at full storm intensity (lighter storms stretch it). */
 export const LIGHTNING_INTERVAL = { min: 2, max: 8 } as const;
@@ -38,13 +39,7 @@ export interface LightningState {
 
 /** FNV-1a of the run identity → seed. */
 export function lightningSeed(mapId: string, launchHour: number): number {
-  const key = `${mapId}@${launchHour}`;
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < key.length; i += 1) {
-    hash ^= key.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
+  return fnv1a32(`${mapId}@${launchHour}`);
 }
 
 export function createLightningState(seed: number): LightningState {

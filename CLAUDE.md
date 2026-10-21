@@ -290,6 +290,7 @@ pnpm typecheck                    # tsc + repo layout guards
 pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`); includes the 390×844 touch layout (10_touch_layout)
 pnpm test:input-smoke             # scripted keyboard-shaped run reaches segment 3, deterministic (needs `pnpm preview`)
 pnpm test:input-smoke:gamepad     # the same with a gamepad-shaped (analog) script
+pnpm test:replay-smoke            # that run saved as a .wsghost, ?replay= twice: identical splits + SWE checksums (needs `pnpm preview`)
 pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
@@ -344,7 +345,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
-| `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
+| `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10); weather over a reach joins it as lateral inflow (ABI 14) |
 | `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `emscripten/terrain.cpp` / `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes (C++ + TS mirror, parity-tested); the canyon and hull builders read the tile (#487, ABI 13) |
 | `src/terrain/segmentMeshBuild.ts` | Canyon / collision / wall / water meshes as typed arrays; the sim worker builds treadmill appends with it (`BUILD_TILE`), `pnpm profile:spawn` measures mounts (#487 B) |

@@ -104,6 +104,10 @@ export interface FlowingWaterUniformFrameInput {
   wetness: number;
   slushiness: number;
   sunWorldPosition: THREE.Vector3 | null;
+  /** Unit vector toward the sun (sky clock); absent leaves `sunDir` as it is. */
+  sunDirection?: { x: number; y: number; z: number } | null;
+  /** 0 by day, 1 at full night (sky clock); dims the surface like `isNight`. */
+  nightFactor?: number;
   isPond: boolean;
   vortexCenter: THREE.Vector3 | null;
   vortexRadius: number;
@@ -130,6 +134,8 @@ export function updateFlowingWaterUniforms(
     wetness,
     slushiness,
     sunWorldPosition,
+    sunDirection,
+    nightFactor = 0,
     isPond,
     vortexCenter,
     vortexRadius,
@@ -169,7 +175,7 @@ export function updateFlowingWaterUniforms(
     mat.uniforms.bioLuminescence.value = (isNight && isGlacial) ? 1.0 : 0.0;
   }
   if (mat.uniforms.timeOfDay) {
-    mat.uniforms.timeOfDay.value = isNight ? 1.0 : 0.0;
+    mat.uniforms.timeOfDay.value = isNight ? 1.0 : nightFactor;
   }
   if (mat.uniforms.cameraHeight) {
     mat.uniforms.cameraHeight.value = cameraY;
@@ -179,10 +185,10 @@ export function updateFlowingWaterUniforms(
     const targetGodRay = (biome === 'canyon') ? 0.18 : 0.0;
     mat.uniforms.godRayStrength.value += (targetGodRay - mat.uniforms.godRayStrength.value) * Math.min(1, delta * 1.5);
   }
-  // Animate sun azimuth slowly for shifting canyon light feel
-  if (mat.uniforms.sunDir) {
-    const t = elapsedTime * 0.04;
-    mat.uniforms.sunDir.value.set(Math.sin(t) * 0.4, 1.0, Math.cos(t) * 0.3 - 0.4).normalize();
+  // The sky clock's sun (god-ray streaks run along its bearing); kept a hair
+  // above the horizon so the streaks never invert at night.
+  if (mat.uniforms.sunDir && sunDirection) {
+    mat.uniforms.sunDir.value.set(sunDirection.x, Math.max(0.05, sunDirection.y), sunDirection.z).normalize();
   }
   if (mat.uniforms.sunWorldPos && sunWorldPosition) {
     mat.uniforms.sunWorldPos.value.copy(sunWorldPosition);

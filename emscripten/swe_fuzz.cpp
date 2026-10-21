@@ -83,7 +83,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             case 2:
                 applySWEEvent(ptr(h), ptr(u), ptr(w), bPtr, width, height, dx,
-                              in.range(-50.f, 50.f), in.range(-50.f, 50.f), H, in.pick(0, 3),
+                              in.range(-50.f, 50.f), in.range(-50.f, 50.f), H, in.pick(0, 4),
                               in.range(-60.f, 60.f), in.range(-60.f, 60.f), in.range(0.f, 20.f),
                               in.range(0.f, 3.f), in.range(0.f, 0.1f));
                 break;

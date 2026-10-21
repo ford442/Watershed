@@ -12,6 +12,8 @@
  * 32-bit `Math.imul` and allocates nothing.
  */
 
+import { fnv1a32 } from './hash';
+
 /** A stream of uniform draws in `[0, 1)`. */
 export type Rng = () => number;
 
@@ -78,4 +80,13 @@ export function rngRange(rng: Rng, min: number, max: number): number {
 /** Uniform integer in `[min, max]` (both inclusive). */
 export function rngInt(rng: Rng, min: number, max: number): number {
   return Math.floor(rngRange(rng, min, max + 1));
+}
+
+/**
+ * A named sub-stream seed: `seed` forked by `label` (`forkSeed(runSeed,
+ * 'weather')`). Each system draws from its own stream, so adding a draw to
+ * one never shifts another's sequence.
+ */
+export function forkSeed(seed: number, label: string): number {
+  return (Math.imul((seed >>> 0) ^ fnv1a32(label), 0x9e3779b1) ^ fnv1a32(`${label}#${seed >>> 0}`)) >>> 0;
 }

@@ -750,7 +750,7 @@
     },
     "hydroEvents": {
       "type": "array",
-      "description": "Authored SWE source terms (inflow, vortex, braid, roughness) keyed to launch hours",
+      "description": "Authored SWE source terms (inflow, vortex, braid, roughness, surge) keyed to launch hours. A surge runs a stage-step front (strength = step in metres, radius = band half-width) down its segment every period while its hour is live.",
       "maxItems": 32,
       "items": {
         "type": "object",
@@ -764,7 +764,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["inflowPulse", "vortex", "braid", "roughness"]
+            "enum": ["inflowPulse", "vortex", "braid", "roughness", "surge"]
           },
           "segmentIndex": {
             "type": "integer",

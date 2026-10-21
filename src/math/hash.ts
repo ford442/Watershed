@@ -16,3 +16,13 @@ export function sinHash(n: number): number {
   const x = Math.sin(n) * 43758.5453;
   return x - Math.floor(x);
 }
+
+/** 32-bit FNV-1a of a string's UTF-16 code units — seeds from names (`map@hour`, a date). */
+export function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}

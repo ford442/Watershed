@@ -133,6 +133,38 @@
           "qualityPreset": {
             "type": "string",
             "enum": ["low", "medium", "high", "ultra"]
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "vehicle": {
+            "type": "string",
+            "enum": ["runner", "raft"]
+          },
+          "conditions": {
+            "$ref": "#/$defs/runConditions"
+          }
+        }
+      }
+    },
+    "erosion": {
+      "description": "Eroded bed per map segment (#487 E), keyed mapId:segmentIndex: the hull-grid erosion plane, quantized and run-length coded (terrain/erosionCodec.ts).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["n", "q", "t"],
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "q": {
+            "type": "string",
+            "minLength": 1
+          },
+          "t": {
+            "type": "number"
           }
         }
       }
@@ -150,6 +182,31 @@
           "tMs": { "type": "number", "minimum": 0 },
           "speed": { "type": "number" }
         }
+      }
+    },
+    "runConditions": {
+      "type": "object",
+      "required": ["weatherScript", "temperature", "snowpackIndex"],
+      "additionalProperties": false,
+      "properties": {
+        "weatherScript": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["atReachFraction", "weather", "intensity", "rampSeconds"],
+            "additionalProperties": false,
+            "properties": {
+              "atReachFraction": { "type": "number", "minimum": 0, "maximum": 1 },
+              "weather": { "type": "string", "enum": ["clear", "rain", "fog", "storm", "snow"] },
+              "intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+              "rampSeconds": { "type": "number", "minimum": 0 },
+              "overSegment": { "type": "integer" }
+            }
+          }
+        },
+        "temperature": { "type": "number" },
+        "snowpackIndex": { "type": "number", "minimum": 0, "maximum": 1 },
+        "dailyKey": { "type": "string", "minLength": 1, "maxLength": 16 }
       }
     }
   }

@@ -82,10 +82,17 @@ void fuzzRouting(fuzz::Input& in) {
     }
     const float q = value(0.f, 200.f);
     routeReachSteady(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(storage), ptr(outflow));
+    std::vector<float> lateral(n);
+    for (size_t k = 0; k < n; ++k) lateral[k] = in.coin() ? value(0.f, 50.f) : 0.f;
     const int steps = in.pick(1, 8);
     for (int s = 0; s < steps; ++s) {
-        routeReach(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), value(0.01f, 30.f),
-                   ptr(storage), ptr(outflow));
+        if (in.coin()) {
+            routeReach(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), value(0.01f, 30.f),
+                       ptr(storage), ptr(outflow));
+        } else {
+            routeReachLateral(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), ptr(lateral),
+                              value(0.01f, 30.f), ptr(storage), ptr(outflow));
+        }
     }
     routeReachTravelTime(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(lag));
     (void)routedEdgeState(in.raw(), in.raw(), in.raw(), in.raw());

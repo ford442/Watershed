@@ -85,7 +85,8 @@ function sampleCell(arr: ArrayLike<number>, width: number, i: number, j: number)
   return arr[j * width + i] ?? 0;
 }
 
-function bilinear(
+/** Bilinear sample of a cell-centred SWE plane at grid coordinates (edges clamp). */
+export function bilinear(
   arr: ArrayLike<number>,
   width: number,
   height: number,

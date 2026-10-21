@@ -10,6 +10,7 @@ import { DEFAULT_BIOME_ID, getWaterProfile, type BiomeId } from '../configs/biom
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { SWE_DRY_DEPTH } from '../systems/water/sampleSWEFlow';
+import { getSkyClock } from '../systems/sky/skyClock';
 import {
   createWaterBasicFallback,
   getBlackReflectionFallback,
@@ -629,6 +630,7 @@ export default function FlowingWater({
 
   // Update uniforms with strong guards
   useFrame((state, delta) => {
+    const sky = getSkyClock();
     updateFlowingWaterUniforms(materialRef.current, {
       elapsedTime: state.clock.elapsedTime,
       delta,
@@ -642,6 +644,8 @@ export default function FlowingWater({
       wetness,
       slushiness,
       sunWorldPosition,
+      sunDirection: sky.sun,
+      nightFactor: sky.factors.night,
       isPond,
       vortexCenter,
       vortexRadius,

@@ -194,6 +194,43 @@ const SHOTS = [
     segment: 16,
     settleMs: 2_500,
   },
+  // The sun moves: the launch hour is the sky clock's start, so a 06:00 and a
+  // 14:00 launch of the same reach light it from different places (low east
+  // dawn vs high south-west afternoon). Baselined per hour on two maps, each
+  // on its start segment: the teleport is then a no-op, so no OOB wipeout
+  // overlay can land in the frame.
+  {
+    label: '11_glacial_hour06',
+    mode: 'topdown',
+    required: false,
+    query: 'map=glacial&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 0,
+    settleMs: 2_500,
+  },
+  {
+    label: '12_glacial_hour14',
+    mode: 'topdown',
+    required: false,
+    query: 'map=glacial&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 0,
+    settleMs: 2_500,
+  },
+  {
+    label: '13_meander_hour06',
+    mode: 'topdown',
+    required: false,
+    query: 'map=meander&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 2,
+    settleMs: 2_500,
+  },
+  {
+    label: '14_meander_hour14',
+    mode: 'topdown',
+    required: false,
+    query: 'map=meander&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 2,
+    settleMs: 2_500,
+  },
 ];
 
 /**
@@ -231,6 +268,20 @@ const CONTRASTS = [
     b: '09_glacial_open_channel',
     minRatio: 0.0005,
     why: 'the ice-tube wall profile must not draw the same open U-channel as the melt-out',
+  },
+  {
+    label: 'glacial_sun_hours',
+    a: '11_glacial_hour06',
+    b: '12_glacial_hour14',
+    minRatio: 0.0005,
+    why: 'a 06:00 and a 14:00 launch must not be lit by the same sun',
+  },
+  {
+    label: 'meander_sun_hours',
+    a: '13_meander_hour06',
+    b: '14_meander_hour14',
+    minRatio: 0.0005,
+    why: 'a 06:00 and a 14:00 launch must not be lit by the same sun',
   },
 ];
 

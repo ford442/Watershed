@@ -10,7 +10,9 @@
  */
 
 import { useMemo, useState } from 'react';
-import { getActiveMapId, getActiveRunKey } from '../utils/runContext';
+import { getActiveMapId, getActiveRunKey, getProceduralBaseSeed } from '../utils/runContext';
+import { useGameStore } from '../systems/GameState';
+import { getActiveConditions } from '../systems/journey/runSession';
 import { getRunBest } from '../systems/persistence/PersistenceSystem';
 import { getRecordedSplits } from '../systems/ghost/SplitRecorder';
 import { getGhostElapsedMs, getCurrentGhostPayload } from '../systems/ghost/GhostRecorder';
@@ -120,6 +122,12 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
       thisRunSplits,
       ghostShareFilename(mapId, thisFairness.launchHour),
       thisFairness,
+      // Enough to `?replay=` the run on its own river.
+      {
+        seed: getProceduralBaseSeed(),
+        vehicle: useGameStore.getState().vehicleType,
+        conditions: getActiveConditions(),
+      },
     );
   };
 

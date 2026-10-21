@@ -6,7 +6,9 @@
  * - Water surface splash particles
  * - Dynamic fog density and color
  * - Dynamic lighting adjustments
- * - Weather event dispatch for shaders and gameplay
+ *
+ * Renders what the WeatherDirector says (its visual weather, read per frame);
+ * the director, not this component, owns the store's `weather` slice.
  */
 
 import { useEffect, useRef, useMemo } from 'react';
@@ -18,8 +20,8 @@ import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { createWeatherParticleMaterial } from '../materials/weather/createWeatherParticleMaterial';
 import { materialUniformBag } from '../materials/dual/materialUniformBag';
 import { createLightningState, lightningSeed, stepLightning } from '../systems/weather/lightning';
+import { getDirectorVisualWeather } from '../systems/weather/weatherDirector';
 import { getAudioManager } from '../systems/audio/AudioSystem';
-import { useGameStore } from '../systems/GameState';
 import { getActiveLaunchHour } from '../systems/journey/runSession';
 import { getActiveMapId } from '../utils/runContext';
 import { createRng } from '../math/random';
@@ -39,10 +41,9 @@ const TARGET_FOG_COLOR = new THREE.Color();
 
 interface WeatherSystemProps {
   targetRef: React.RefObject<any>;
-  weather?: { type: WeatherType; intensity: number };
 }
 
-export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps) {
+export default function WeatherSystem({ targetRef }: WeatherSystemProps) {
   const { scene, gl } = useThree();
   // Seeded from the run so the same map + hour strikes at the same moments.
   const lightningRef = useRef(createLightningState(lightningSeed(getActiveMapId(), getActiveLaunchHour())));
@@ -70,9 +71,7 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
   );
   const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
   const currentWeatherRef = useRef<WeatherType>('clear');
-  const targetWeatherRef = useRef<WeatherType>(weather?.type || 'clear');
-  const intensityRef = useRef(weather?.intensity ?? 0.5);
-  const targetIntensityRef = useRef(weather?.intensity ?? 0.5);
+  const intensityRef = useRef(getDirectorVisualWeather().intensity);
   const transitionRef = useRef(0); // 0 = clear, 1 = full weather
 
   const rainRef = useRef<THREE.Points | null>(null);
@@ -209,17 +208,10 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     });
   }, [scene]);
 
-  // Update target weather when prop changes
-  useEffect(() => {
-    if (weather) {
-      targetWeatherRef.current = weather.type;
-      targetIntensityRef.current = weather.intensity;
-    }
-  }, [weather]);
-
   useFrame((state, delta) => {
-    const targetType = targetWeatherRef.current;
-    const targetInt = targetIntensityRef.current;
+    const target = getDirectorVisualWeather();
+    const targetType = target.type;
+    const targetInt = target.intensity;
 
     // Smoothly transition weather type and intensity
     const isWeatherActive = targetType === 'rain' || targetType === 'storm' || targetType === 'fog' || targetType === 'snow';
@@ -439,28 +431,6 @@ export default function WeatherSystem({ targetRef, weather }: WeatherSystemProps
     } else if (exposure.written !== null) {
       gl.toneMappingExposure = exposure.base;
       exposure.written = null;
-    }
-
-    // ======================================================================
-    // 5. Publish the weather to the store (10 Hz; skipped when unchanged)
-    // ======================================================================
-    if (state.clock.elapsedTime % 0.1 < delta) {
-      const store = useGameStore.getState();
-      const rippleStrength =
-        weatherType === 'storm'
-          ? WEATHER_CONFIG.water.stormRippleStrength
-          : weatherType === 'rain'
-          ? WEATHER_CONFIG.water.rainRippleStrength
-          : 0;
-      const prev = store.weather;
-      if (
-        prev.type !== weatherType ||
-        prev.intensity !== intensityRef.current ||
-        prev.transition !== t ||
-        prev.rippleStrength !== rippleStrength
-      ) {
-        store.setWeather({ type: weatherType, intensity: intensityRef.current, transition: t, rippleStrength });
-      }
     }
   });
 

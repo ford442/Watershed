@@ -15,6 +15,12 @@
  *   that died (SWE is off then). A Rapier-worker raft gets the same mirror from
  *   RaftVehicle, sent with its step (hullMirrorForce.ts).
  *
+ * Water level: a body's still level is the sheet over it — the covering
+ * segment's path y plus the authored offset (`waterLevel`, WATER_LEVEL), from
+ * `sampleWaterSheetY`. The river descends hundreds of metres over a map, so an
+ * absolute level put every body below the surface (a runner on the floor was
+ * fully submerged, dragged to a crawl). A body over no segment feels no water.
+ *
  * The field half is sweHost.ts.
  */
 
@@ -42,6 +48,7 @@ import {
   type SWEFlowSample,
 } from './sampleSWEFlow';
 import { toFlowGrid } from './sweHost';
+import { sampleWaterSheetY } from './bathymetrySampler';
 import { resolveWaterForceOwner, WATER_FORCE_IMPULSE_SCALE, type WaterForceOwner } from '../../physics/waterForceAuthority';
 import type { VehicleType } from '../../experience/types';
 
@@ -190,11 +197,13 @@ function postWorkerForces(requests: SimForceRequests<ForceTarget>, frame: Worker
       const isVehicle = i === 0 && vehicleBody != null;
       // A Rapier-worker raft takes its force over the hull link instead.
       if (isVehicle && frame.workerOwnsVehicleForces) continue;
+      const sheet = sampleWaterSheetY(pos.x, pos.z, frame.waterLevel);
+      if (sheet === null) continue;
       const config = isVehicle
         ? vehicleForceConfig(
             frame.vehicleType,
             frame.flowSpeed,
-            frame.waterLevel,
+            sheet,
             frame.timeSeconds,
             frame.turbulenceStrength,
             frame.turbulenceFrequency,
@@ -202,7 +211,7 @@ function postWorkerForces(requests: SimForceRequests<ForceTarget>, frame: Worker
           )
         : floatingForceConfig(
             frame.flowSpeed,
-            frame.waterLevel,
+            sheet,
             frame.timeSeconds,
             body,
             frame.turbulenceStrength * 0.8,
@@ -335,6 +344,8 @@ export function applyWaterForces(frame: WaterForceFrame): {
       // A Rapier-worker raft gets this same mirror from RaftVehicle, which
       // sends it with the step (hullMirrorForce.ts).
       if (isVehicle && workerOwnsVehicleForces) continue;
+      const sheet = sampleWaterSheetY(pos.x, pos.z, frame.waterLevel);
+      if (sheet === null) continue;
       const flow = isVehicle
         ? vehicleFlow
         : sampleSWEFlow({
@@ -347,7 +358,7 @@ export function applyWaterForces(frame: WaterForceFrame): {
           });
       // Buoyancy reads the *local* surface, so an authored inflowPulse
       // floats the hull higher instead of only moving the mesh (#397).
-      const localWaterLevel = stagedWaterLevel(frame.waterLevel, flow);
+      const localWaterLevel = stagedWaterLevel(sheet, flow);
       const config = isVehicle
         ? vehicleForceConfig(
             frame.vehicleType,
