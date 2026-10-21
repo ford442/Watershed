@@ -111,6 +111,7 @@ describe.skipIf(!built)('Rapier wasm in the production build', () => {
     const name = wasm[0];
     const refs = chunks.filter((f) => readFileSync(join(assetsDir, f), 'utf8').includes(name));
     expect(refs.some((f) => f.startsWith('rapier.worker-'))).toBe(true);
-    expect(refs.some((f) => f.startsWith('index-'))).toBe(true);
+    // The main thread's copy of the glue lives in the vendor-rapier chunk (with @react-three/rapier).
+    expect(refs.some((f) => f.startsWith('vendor-rapier-'))).toBe(true);
   });
 });

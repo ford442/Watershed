@@ -48,7 +48,7 @@ jobs:
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
       - name: Lint
-        run: pnpm lint --max-warnings 280
+        run: pnpm lint --max-warnings 249
 
   build-without-emscripten:
     name: Build without Emscripten
@@ -165,6 +165,13 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
+      # #486 A: a scripted meander run stepped headlessly at a fixed 1/60 s
+      # (frameloop="never"); gates on the segment-3 split and on two runs
+      # producing identical split times. Shares the preview + Chrome above.
+      - name: Scripted input smoke
+        run: pnpm test:input-smoke
+        timeout-minutes: 15
+
       # #435: the WGSL SWE twin must track the committed C++ stepper within
       # 1e-5. Runs in headless Chrome on SwiftShader's WebGPU adapter; brings
       # up its own Vite dev server, independent of the preview above.
@@ -225,9 +232,13 @@ jobs:
         run: node emscripten/smoke_test.mjs
 
       # build.sh exits 1 unless emcc matches emscripten/EMCC_VERSION, so this
-      # step also proves setup-emsdk's version and the repo pin agree.
-      - name: Compile watershed_native.wasm
-        run: pnpm build:wasm
+      # step also proves setup-emsdk's version and the repo pin agree. `build:full`
+      # is the deploy path (build_and_patch.py): pinned wasm, then the bundle on top.
+      - name: Compile watershed_native.wasm and build the bundle
+        run: pnpm build:full
+
+      - name: Assert build output exists
+        run: test -f build/index.html
 
       - name: Assert WASM artifacts match the pinned emcc rebuild
         run: |
@@ -239,7 +250,12 @@ jobs:
           git diff --exit-code -- \
             public/watershed_native.js \
             public/watershed_native.wasm \
+            emscripten/watershed_native.symbols \
             src/systems/water/wasmArtifactStamp.ts
+          # The symbol map never ships (#502 B); it is copied next to the JS maps.
+          test ! -e public/watershed_native.js.symbols
+          test ! -e build/watershed_native.js.symbols
+          ls build-sourcemaps/watershed_native.*.symbols
 
       - name: Run WASM integration tests against real binary
         run: |
@@ -256,6 +272,7 @@ jobs:
           git diff --exit-code -- \
             public/watershed_native.js \
             public/watershed_native.wasm \
+            emscripten/watershed_native.symbols \
             src/systems/water/wasmArtifactStamp.ts
 
   # #467: the plain C ABI should not depend on the emcc version. Build the same
@@ -300,9 +317,10 @@ jobs:
       - name: Export list matches the pinned pair
         run: node scripts/wasm-exports.mjs public emscripten/build/out
 
-  # #467: the C ABI trusts JS for every heap pointer and width * height. Host
-  # build of the compute TUs under ASan + UBSan, 60 s of libFuzzer over the SWE
-  # entry points (random-but-valid grids), and clang-tidy bugprone/performance.
+  # #467 / #502: the C ABI trusts JS for every heap pointer and width * height.
+  # Host build of the compute TUs under ASan + UBSan, 60 s of libFuzzer per
+  # entry-point family (swe, chores, forces + routing + particles, terrain),
+  # and clang-tidy bugprone/performance over every TU, bindings.cpp included.
   native-sanitizers:
     name: Native sanitizers, fuzz, tidy
     runs-on: ubuntu-24.04
@@ -333,14 +351,14 @@ jobs:
       - name: clang-tidy (bugprone-*, performance-*)
         run: pnpm lint:native
 
-      - name: Fuzz the SWE entry points for 60 s
+      - name: Fuzz every entry-point family, 60 s each
         run: pnpm test:native:fuzz
 
       - name: Upload fuzz crash inputs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: swe-fuzz-crashes
+          name: native-fuzz-crashes
           path: |
             crash-*
             timeout-*

@@ -1,18 +1,20 @@
-import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import FlowingWater from '../FlowingWater';
 import CanyonDecorations from '../CanyonDecorations';
-import Rainbow from '../Environment/Rainbow';
-import WaterfallParticles from '../Environment/WaterfallParticles';
-import WaterfallSheet from '../Environment/WaterfallSheet';
-import WaterfallImpactZone from '../Environment/WaterfallImpactZone';
 import FloatingObjectManager from '../Environment/FloatingObjectManager';
-import CanyonBackground from '../Environment/CanyonBackground';
+import {
+    CanyonBackground,
+    IceSheets,
+    IceSpray,
+    Icicles,
+    Rainbow,
+    WaterfallImpactZone,
+    WaterfallParticles,
+    WaterfallSheet,
+} from '../Environment/lazyExtras';
 import Rock from '../Obstacles/Rock';
-import IceSpray from '../Environment/IceSpray';
-import Icicles from '../Environment/Icicles';
-import IceSheets from '../Environment/IceSheets';
 import VortexVisual from '../VortexVisual';
 import BreakableTrestle from '../Obstacles/BreakableTrestle';
 import { effectiveVortexStrength } from '../../physics/vortexForces';
@@ -499,12 +501,14 @@ export function TrackSegmentMeshes({
             <mesh geometry={wallShellGeometry} material={wallMaterial ?? undefined} />
 
             {showCanyonBackground && (
-                <CanyonBackground
-                    segmentId={segmentId}
-                    segmentCenter={segmentCenterRef.current}
-                    baseColor={biomeProfile.id === 'slotCanyon' ? '#bf5e2a' : biomeProfile.rockBaseColor}
-                    biome={biome}
-                />
+                <Suspense fallback={null}>
+                    <CanyonBackground
+                        segmentId={segmentId}
+                        segmentCenter={segmentCenterRef.current}
+                        baseColor={biomeProfile.id === 'slotCanyon' ? '#bf5e2a' : biomeProfile.rockBaseColor}
+                        biome={biome}
+                    />
+                </Suspense>
             )}
 
             {isSummerLike(biome) && sandBarGeometry && (
@@ -552,29 +556,33 @@ export function TrackSegmentMeshes({
 
             {/* Glacier: ice-crystal spray bursts at the segment midpoint, scale with player speed */}
             {isGlacier && active && (
-                <IceSpray
-                    origin={vehiclePos}
-                    intensity={Math.min(1, playerVelocityForParticles / 8)}
-                    active={vehiclePos.distanceTo(segmentCenterRef.current) < 60}
-                />
+                <Suspense fallback={null}>
+                    <IceSpray
+                        origin={vehiclePos}
+                        intensity={Math.min(1, playerVelocityForParticles / 8)}
+                        active={vehiclePos.distanceTo(segmentCenterRef.current) < 60}
+                    />
+                </Suspense>
             )}
 
             {isGlacier && (
-                <>
+                <Suspense fallback={null}>
                     <Icicles transforms={placementData.icicles} />
                     <IceSheets transforms={placementData.iceSheets} />
-                </>
+                </Suspense>
             )}
 
             {plungeImpactPlacement && (
                 <group position={plungeImpactPlacement.position}>
-                    <WaterfallImpactZone
-                        width={plungeImpactPlacement.width}
-                        flowSpeed={flowSpeed * (type === 'waterfall' ? 1.4 : 1.05)}
-                        intensity={plungeImpactPlacement.intensity}
-                        particleDensity={particleDensity}
-                        playerVelocity={playerVelocityForParticles}
-                    />
+                    <Suspense fallback={null}>
+                        <WaterfallImpactZone
+                            width={plungeImpactPlacement.width}
+                            flowSpeed={flowSpeed * (type === 'waterfall' ? 1.4 : 1.05)}
+                            intensity={plungeImpactPlacement.intensity}
+                            particleDensity={particleDensity}
+                            playerVelocity={playerVelocityForParticles}
+                        />
+                    </Suspense>
                 </group>
             )}
 
@@ -583,7 +591,9 @@ export function TrackSegmentMeshes({
                     position={rainbowPlacement.position}
                     rotation={rainbowPlacement.rotation}
                 >
-                    <Rainbow opacity={rainbowOpacity} sunDirection={sunWorldPosition} />
+                    <Suspense fallback={null}>
+                        <Rainbow opacity={rainbowOpacity} sunDirection={sunWorldPosition} />
+                    </Suspense>
                 </group>
             )}
 
@@ -644,20 +654,22 @@ export function TrackSegmentMeshes({
             {/* Waterfall Particles - with dynamic scaling (E4) */}
             {type === 'waterfall' && waterfallPos && (
                 <group position={waterfallPos}>
-                    <WaterfallSheet
-                        width={waterWidth}
-                        height={20}
-                        flowSpeed={flowSpeed * 1.35}
-                        fanAngle={waterfallFanAngle}
-                    />
-                    <WaterfallParticles
-                        count={particleCount || 300}
-                        width={waterWidth}
-                        height={20}
-                        playerVelocity={playerVelocityForParticles}
-                        particleDensity={particleDensity}
-                        fanAngle={waterfallFanAngle}
-                    />
+                    <Suspense fallback={null}>
+                        <WaterfallSheet
+                            width={waterWidth}
+                            height={20}
+                            flowSpeed={flowSpeed * 1.35}
+                            fanAngle={waterfallFanAngle}
+                        />
+                        <WaterfallParticles
+                            count={particleCount || 300}
+                            width={waterWidth}
+                            height={20}
+                            playerVelocity={playerVelocityForParticles}
+                            particleDensity={particleDensity}
+                            fanAngle={waterfallFanAngle}
+                        />
+                    </Suspense>
                 </group>
             )}
         </group>

@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <span>
 
 namespace {
 
@@ -44,6 +46,22 @@ float storageFor(float Q, float alpha) {
 }
 
 /** Inverse of storageFor: Q = (S / α)^(5/3). */
+/** A segment count from JS: [1, ROUTING_MAX_SEGMENTS]. */
+bool validSegments(int nSeg) {
+    return nSeg > 0 && nSeg <= ROUTING_MAX_SEGMENTS;
+}
+
+/** The nSeg-long per-segment plane at `ptr`. */
+template <typename T>
+std::span<T> segmentPlane(uintptr_t ptr, int nSeg) {
+    return heapSpan<T>(ptr, static_cast<std::size_t>(nSeg));
+}
+
+/** The nSeg * ROUTING_SUBREACHES reservoir storage at `ptr`. */
+std::span<float> storagePlane(uintptr_t ptr, int nSeg) {
+    return heapSpan<float>(ptr, static_cast<std::size_t>(nSeg) * ROUTING_SUBREACHES);
+}
+
 float dischargeFor(float S, float alpha) {
     return std::pow(std::max(S, 0.f) / alpha, 5.f / 3.f);
 }
@@ -56,20 +74,20 @@ float routingCelerity(float Q, float width, float slope) {
 
 void routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                       float Q, uintptr_t storagePtr, uintptr_t outflowPtr) {
-    if (nSeg <= 0 || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return;
+    if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return;
     if (storagePtr == 0 || outflowPtr == 0) return;
-    const float* L = reinterpret_cast<const float*>(lengthsPtr);
-    const float* slope = reinterpret_cast<const float*>(slopesPtr);
-    const float* B = reinterpret_cast<const float*>(widthsPtr);
-    float* storage = reinterpret_cast<float*>(storagePtr);
-    float* outflow = reinterpret_cast<float*>(outflowPtr);
+    const std::span<const float> L = segmentPlane<const float>(lengthsPtr, nSeg);
+    const std::span<const float> slope = segmentPlane<const float>(slopesPtr, nSeg);
+    const std::span<const float> B = segmentPlane<const float>(widthsPtr, nSeg);
+    const std::span<float> storage = storagePlane(storagePtr, nSeg);
+    const std::span<float> outflow = segmentPlane<float>(outflowPtr, nSeg);
     const float q = std::max(Q, 0.f);
 
     for (int k = 0; k < nSeg; ++k) {
         const float l = std::max(L[k], 1e-3f) / static_cast<float>(ROUTING_SUBREACHES);
         const float alpha = volumeCoeff(l, B[k], slope[k]);
         for (int j = 0; j < ROUTING_SUBREACHES; ++j) {
-            storage[k * ROUTING_SUBREACHES + j] = storageFor(q, alpha);
+            storage[static_cast<std::size_t>(k) * ROUTING_SUBREACHES + static_cast<std::size_t>(j)] = storageFor(q, alpha);
         }
         outflow[k] = q;
     }
@@ -77,14 +95,14 @@ void routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t width
 
 void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                 float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr) {
-    if (nSeg <= 0 || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return;
+    if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0) return;
     if (storagePtr == 0 || outflowPtr == 0) return;
     if (!(dt > 0.f)) return;
-    const float* L = reinterpret_cast<const float*>(lengthsPtr);
-    const float* slope = reinterpret_cast<const float*>(slopesPtr);
-    const float* B = reinterpret_cast<const float*>(widthsPtr);
-    float* storage = reinterpret_cast<float*>(storagePtr);
-    float* outflow = reinterpret_cast<float*>(outflowPtr);
+    const std::span<const float> L = segmentPlane<const float>(lengthsPtr, nSeg);
+    const std::span<const float> slope = segmentPlane<const float>(slopesPtr, nSeg);
+    const std::span<const float> B = segmentPlane<const float>(widthsPtr, nSeg);
+    const std::span<float> storage = storagePlane(storagePtr, nSeg);
+    const std::span<float> outflow = segmentPlane<float>(outflowPtr, nSeg);
 
     // Mean inflow to the next reservoir over this step.
     float inflow = std::max(inflowQ, 0.f);
@@ -92,7 +110,7 @@ void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, 
         const float l = std::max(L[k], 1e-3f) / static_cast<float>(ROUTING_SUBREACHES);
         const float alpha = volumeCoeff(l, B[k], slope[k]);
         for (int j = 0; j < ROUTING_SUBREACHES; ++j) {
-            float& S = storage[k * ROUTING_SUBREACHES + j];
+            float& S = storage[static_cast<std::size_t>(k) * ROUTING_SUBREACHES + static_cast<std::size_t>(j)];
             // Linearise Q(S) about the current state for the step:
             //   Q ≈ Q0 + (S − S0) / Kc,   Kc = dS/dQ = 0.6 S / Q = l / c(Q)
             // so a disturbance crosses the reservoir at the kinematic celerity.
@@ -112,11 +130,11 @@ void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, 
 
 void routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
                           float Q, uintptr_t lagPtr) {
-    if (nSeg <= 0 || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0 || lagPtr == 0) return;
-    const float* L = reinterpret_cast<const float*>(lengthsPtr);
-    const float* slope = reinterpret_cast<const float*>(slopesPtr);
-    const float* B = reinterpret_cast<const float*>(widthsPtr);
-    float* lag = reinterpret_cast<float*>(lagPtr);
+    if (!validSegments(nSeg) || lengthsPtr == 0 || slopesPtr == 0 || widthsPtr == 0 || lagPtr == 0) return;
+    const std::span<const float> L = segmentPlane<const float>(lengthsPtr, nSeg);
+    const std::span<const float> slope = segmentPlane<const float>(slopesPtr, nSeg);
+    const std::span<const float> B = segmentPlane<const float>(widthsPtr, nSeg);
+    const std::span<float> lag = segmentPlane<float>(lagPtr, nSeg);
     const float q = std::max(Q, ROUTING_MIN_DISCHARGE);
 
     float total = 0.f;

@@ -10,14 +10,17 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { sampleSegmentFlow } from '../utils/segmentSampler';
+import { createSegmentFlowSample, sampleSegmentFlow, type SegmentFlowSample } from '../utils/segmentSampler';
 import { WATER_FLOW_CONFIG } from '../constants/waterFlow';
 import { RAFT, WATER_LEVEL } from '../constants/game';
-import { AssetCache } from '../systems/reach/ReachStreamer';
+import { AssetCache } from '../systems/reach/reachAssetCache';
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { isWaterForceSystemActive } from '../systems/water/WaterForceRegistry';
 
 const tmpPoint = new THREE.Vector3();
+/** Two reusable samples (#502 D): the closest so far and the one being taken. */
+let sampleBest = createSegmentFlowSample();
+let sampleScratch = createSegmentFlowSample();
 const tmpForward = new THREE.Vector3();
 const tmpCross = new THREE.Vector3();
 const tmpFlowMapForce = new THREE.Vector3();
@@ -146,17 +149,19 @@ export default function WaterFlowForces({
     const translation = body.translation();
     tmpPoint.set(translation.x, translation.y, translation.z);
 
-    let closestSample: ReturnType<typeof sampleSegmentFlow> = null;
+    let closestSample: SegmentFlowSample | null = null;
     let closestDistance = Infinity;
 
     for (const segment of segments) {
       if (!segment?.active) continue;
-      const sample = sampleSegmentFlow(segment, tmpPoint);
+      const sample = sampleSegmentFlow(segment, tmpPoint, sampleScratch);
       if (!sample) continue;
 
       if (sample.distance < closestDistance) {
         closestDistance = sample.distance;
-        closestSample = sample;
+        // Keep the winner; the next segment samples into the other buffer.
+        [sampleBest, sampleScratch] = [sampleScratch, sampleBest];
+        closestSample = sampleBest;
       }
     }
 

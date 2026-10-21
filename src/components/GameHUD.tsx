@@ -12,7 +12,13 @@ import { getLoadoutDefinition } from '../systems/survival';
 import { probeNativeStatus, type NativeStatus } from '../sim/nativeOwner';
 import RunResultsPanel from './RunResultsPanel';
 import MovementReadout from './MovementReadout';
+import { lazyComponent } from '../utils/lazyComponent';
+import { whenIdle } from '../utils/whenIdle';
 import { BIOME_HUD_LABELS } from '../configs/biomes';
+
+// The end-of-run summary only mounts on a wipeout / finish; the HUD preloads it at idle.
+const RunResultsChunk = lazyComponent(() => import('./RunResultsPanel'));
+const RunResultsPanel = RunResultsChunk.Component;
 
 /*
  * Per-frame readouts (#465 C4). The store gets speed, distance and score every
@@ -64,6 +70,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   isFinalMap = false,
   ghostBestScore = 0,
 }) => {
+  useEffect(() => whenIdle(RunResultsChunk.preload), []);
   const currentBiome = usePlayerBiome();
   const multiplier = useGameStore((s) => s.multiplier);
   const comboLabel = useGameStore((s) => s.comboLabel);
@@ -307,7 +314,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             RESPAWN
           </button>
 
-          <RunResultsPanel outcome="wipeout" />
+          <React.Suspense fallback={null}>
+            <RunResultsPanel outcome="wipeout" />
+          </React.Suspense>
 
           <p className="hud-overlay__hint">
             Press SPACE to respawn
@@ -390,7 +399,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           )}
 
-          <RunResultsPanel outcome="complete" />
+          <React.Suspense fallback={null}>
+            <RunResultsPanel outcome="complete" />
+          </React.Suspense>
 
           <div className="hud-overlay__actions">
             <button
@@ -440,20 +451,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {native.status === 'failed' && !native.dismissed && (
         <div className="wasm-init-banner" role="status" data-testid="wasm-init-banner">
           <div className="wasm-init-banner__body">
-            {debugMode ? (
-              <>
-                <strong>
-                  {native.mismatched
-                    ? 'Native WASM provenance mismatch — stale deploy'
-                    : native.timedOut
-                      ? 'Native WASM init timed out'
+            <strong>
+              {native.mismatched
+                ? 'Native WASM provenance mismatch — stale deploy'
+                : native.timedOut
+                  ? 'Native WASM init timed out'
+                  : native.trapFunction
+                    ? `Native WASM trapped in ${native.trapFunction}`
+                    : native.exhausted
+                      ? 'Native WASM heap exhausted'
                       : 'Native WASM failed to init'}
-                </strong>
-                <pre>{native.error}</pre>
-              </>
-            ) : (
-              <span>Running in compatibility mode — some water effects may look simpler.</span>
-            )}
+            </strong>
+            <pre>{native.error}</pre>
           </div>
           <button
             type="button"
@@ -526,6 +535,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </span>
         )}
         {native.status === 'none' && <span className="hud-native__detail">WGSL</span>}
+        {native.status === 'failed' && native.trapFunction && (
+          <span className="ml-2 text-red-300/70">TRAP {native.trapFunction}</span>
+        )}
       </div>
 
       {vehicleType === 'runner' && (

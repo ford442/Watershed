@@ -5,9 +5,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import type { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import type { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
@@ -30,6 +30,7 @@ import {
   type PostTuning,
 } from './postProcessing/postFrameParams';
 import { getLoadedNodePost } from './postProcessing/nodePostLoader';
+import { smaaPassModule, ssaoPassModule } from './postProcessing/composerPassModules';
 import type { NodePostPipeline, NodePostStructure } from './postProcessing/nodePostPipeline';
 
 const CHROMATIC_ABERRATION_SHADER = {
@@ -193,7 +194,8 @@ interface PostProcessingPipelineProps {
 }
 
 interface ComposerPassBundle {
-  ssaoPass: SSAOPass;
+  /** Built on the first frame whose preset runs SSAO (`ssaoPassModule`); absent before that. */
+  ssaoPass?: SSAOPass;
   godRaysPass: GodRaysPass;
   bloomPass: UnrealBloomPass;
   hueSatPass: ShaderPass;
@@ -201,7 +203,8 @@ interface ComposerPassBundle {
   vignettePass: ShaderPass;
   rainbowPass: ShaderPass;
   outputPass: OutputPass;
-  smaaPass: SMAAPass;
+  /** Built on the first frame whose AA tier is SMAA (`smaaPassModule`); absent before that. */
+  smaaPass?: SMAAPass;
 }
 
 type WatershedComposer = EffectComposer & { userData: ComposerPassBundle };
@@ -246,16 +249,6 @@ export function createComposerDriver(
 
   const resolution = new THREE.Vector2(width, height);
 
-  // Ambient occlusion — contact shadows in canyon crevices (wall/floor joins,
-  // rock clusters). Runs first so god rays/bloom/vignette are applied on top
-  // of the occluded image. Gated off on low/medium via effectPresence.ssao.
-  const ssaoPass = new SSAOPass(scene, camera, width, height, 24);
-  ssaoPass.kernelRadius = 6;
-  ssaoPass.minDistance = 0.0025;
-  ssaoPass.maxDistance = 0.25;
-  ssaoPass.output = SSAOPass.OUTPUT.Default;
-  composer.addPass(ssaoPass);
-
   // Volumetric god rays (slot canyons)
   const godRaysPass = new GodRaysPass();
   godRaysPass.enabled = false;
@@ -288,14 +281,46 @@ export function createComposerDriver(
   const outputPass = new OutputPass();
   composer.addPass(outputPass);
 
-  // Edge AA, after the output transform: SMAA's edge detection is tuned for
-  // display-referred (sRGB) input. Off until apply() picks the tier.
-  const smaaPass = new SMAAPass();
-  smaaPass.enabled = false;
-  composer.addPass(smaaPass);
-
   composer.userData = {
-    ssaoPass, godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass, smaaPass,
+    godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass,
+  };
+  let disposed = false;
+
+  // Ambient occlusion — contact shadows in canyon crevices (wall/floor joins,
+  // rock clusters). Sits right after the scene render so god rays/bloom/vignette
+  // are applied on top of the occluded image. Gated off on low/medium via
+  // effectPresence.ssao, so its code and its render targets only exist once a
+  // frame asks for it (the import is kicked off from the pipeline's mount).
+  const ensureSsaoPass = () => {
+    if (composer.userData.ssaoPass || disposed) return;
+    const mod = ssaoPassModule.get();
+    if (!mod) {
+      void ssaoPassModule.load().catch(() => {});
+      return;
+    }
+    const { SSAOPass } = mod;
+    const ssaoPass = new SSAOPass(scene, camera, width, height, 24);
+    ssaoPass.kernelRadius = 6;
+    ssaoPass.minDistance = 0.0025;
+    ssaoPass.maxDistance = 0.25;
+    ssaoPass.output = SSAOPass.OUTPUT.Default;
+    composer.insertPass(ssaoPass, 1);
+    composer.userData.ssaoPass = ssaoPass;
+  };
+
+  // Edge AA, after the output transform: SMAA's edge detection is tuned for
+  // display-referred (sRGB) input. Added disabled-or-enabled on the first frame
+  // whose tier is SMAA; apply() flips `enabled` from then on.
+  const ensureSmaaPass = () => {
+    if (composer.userData.smaaPass || disposed) return;
+    const mod = smaaPassModule.get();
+    if (!mod) {
+      void smaaPassModule.load().catch(() => {});
+      return;
+    }
+    const smaaPass = new mod.SMAAPass();
+    composer.addPass(smaaPass);
+    composer.userData.smaaPass = smaaPass;
   };
 
   /** Multisample both ping-pong targets; three reallocates them on next use. */
@@ -319,7 +344,8 @@ export function createComposerDriver(
       vignettePass.uniforms.darkness.value = p.vignette.darkness;
       chromaticPass.enabled = p.chromatic.enabled;
       chromaticPass.uniforms.amount.value = p.chromatic.amount;
-      ssaoPass.enabled = p.ssao.enabled;
+      if (p.ssao.enabled) ensureSsaoPass();
+      if (composer.userData.ssaoPass) composer.userData.ssaoPass.enabled = p.ssao.enabled;
       hueSatPass.uniforms.saturation.value = p.hueSaturation.saturation;
 
       godRaysPass.enabled = p.godRays.enabled;
@@ -343,7 +369,8 @@ export function createComposerDriver(
       rainbowPass.uniforms.time.value = p.rainbow.time;
       rainbowPass.uniforms.aspectRatio.value = p.rainbow.aspectRatio;
 
-      smaaPass.enabled = p.aa === 'smaa';
+      if (p.aa === 'smaa') ensureSmaaPass();
+      if (composer.userData.smaaPass) composer.userData.smaaPass.enabled = p.aa === 'smaa';
       setTargetSamples(p.aa === 'msaa4' ? 4 : 0);
     },
     render() {
@@ -356,9 +383,10 @@ export function createComposerDriver(
     dispose() {
       // EffectComposer.dispose() only frees its own render targets, not each
       // pass's — SSAOPass owns three full-res render targets of its own.
-      ssaoPass.dispose();
+      disposed = true;
+      composer.userData.ssaoPass?.dispose();
       outputPass.dispose();
-      smaaPass.dispose();
+      composer.userData.smaaPass?.dispose();
       composer.dispose();
     },
   };
@@ -494,6 +522,16 @@ export function PostProcessingPipeline({
   // on the next bind), so a resize never rebuilds it. The node driver sizes
   // itself from the renderer.
   const constructionSize = useRef({ width: size.width, height: size.height });
+
+  // Start fetching the preset-gated passes at mount, a frame ahead of the first apply() that
+  // builds them. Only the GLSL composer uses them; the node pipeline has its own SSAO/SMAA.
+  const wantsSsao = effectPresence.ssao;
+  const wantsSmaa = aaTierFor(quality) === 'smaa';
+  useEffect(() => {
+    if (isNodeRenderer(gl)) return;
+    if (wantsSsao) void ssaoPassModule.load().catch(() => {});
+    if (wantsSmaa) void smaaPassModule.load().catch(() => {});
+  }, [gl, wantsSsao, wantsSmaa]);
 
   const driver = useMemo((): PostDriver | null => {
     if (!gl || !scene || !camera) return null;

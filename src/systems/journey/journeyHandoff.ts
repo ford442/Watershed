@@ -13,7 +13,6 @@ import {
   planMapHandoff,
   type HandoffPlan,
 } from './journeyContinuity';
-import { ReachStreamer } from '../reach/ReachStreamer';
 
 export const REACH_ENTER_EVENT = 'reach-enter';
 export const REACH_EXIT_EVENT = 'reach-exit';
@@ -74,6 +73,8 @@ export async function prefetchNextReach(
   nextReachId: string | null | undefined,
 ): Promise<{ reachId: string; ok: boolean; error?: string } | null> {
   if (!nextReachId) return null;
+  // The streamer (fetch + validate + loaders) is a Reach-only chunk; the campaign maps never prefetch.
+  const { ReachStreamer } = await import('../reach/ReachStreamer');
   if (ReachStreamer.isReachCached(nextReachId)) {
     return { reachId: nextReachId, ok: true };
   }

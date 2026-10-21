@@ -1,22 +1,32 @@
 /**
  * GhostRecorder.ts — 10 Hz ring-buffer recording for best-run ghost replay.
+ *
+ * Each sample is the pose plus the InputHub's ghost latch for that window
+ * (codec v4): the hub folds every frame between samples, so a jump tap
+ * shorter than the 100 ms sample interval still lands in the track. The latch
+ * is copied into the ring buffer by value — never pushed by reference.
  */
 
 import {
   encodeGhostBuffer,
   encodeGhostToBase64,
   GHOST_FLOATS_PER_SAMPLE,
+  GHOST_POSE_FLOATS,
   GHOST_SAMPLE_HZ,
   GHOST_SAMPLE_INTERVAL,
   type GhostSample,
   type RunSplitEntry,
 } from './ghostCodec';
 import { setRunGhostData, updatePBGhost } from '../persistence/PersistenceSystem';
+import { inputHub } from '../../input/InputHub';
+import { createInputFrame, encodeInputFrame, GHOST_BUTTON_MASK } from '../../input/InputFrame';
 
 export { GHOST_SAMPLE_HZ, GHOST_SAMPLE_INTERVAL };
 export const GHOST_MAX_SAMPLES = 3000; // ~5 minutes at 10 Hz
 
 const buffer = new Float32Array(GHOST_MAX_SAMPLES * GHOST_FLOATS_PER_SAMPLE);
+/** Recorder-owned copy target for the hub latch; the hub's own frame is never stored. */
+const latched = createInputFrame();
 let writeIndex = 0;
 let sampleAccum = 0;
 let recording = false;
@@ -25,6 +35,8 @@ export function startGhostRecording(): void {
   writeIndex = 0;
   sampleAccum = 0;
   recording = true;
+  // Drop whatever the hub folded before the run (menu, countdown).
+  inputHub.resetGhostLatch();
 }
 
 export function stopGhostRecording(): void {
@@ -73,6 +85,10 @@ function writeSample(sample: GhostSample): void {
   buffer[offset + 4] = sample.qy;
   buffer[offset + 5] = sample.qz;
   buffer[offset + 6] = sample.qw;
+  // First sample of a frame takes the window; any catch-up samples after it
+  // in the same frame get an empty one.
+  inputHub.consumeGhostLatch(latched);
+  encodeInputFrame(latched, buffer, offset + GHOST_POSE_FLOATS, GHOST_BUTTON_MASK);
   writeIndex += 1;
 }
 

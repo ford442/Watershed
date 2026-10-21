@@ -67,6 +67,13 @@ export type SimWorkerCommand =
        * public/ by itself.
        */
       assets: { glue: string; wasm: string };
+      /**
+       * The page's WASM init deadline (`resolveWasmInitTimeoutMs`, #502 C). The
+       * worker is created with no query, so it cannot read `?wasmInitTimeout=`.
+       */
+      timeoutMs: number;
+      /** `?wasmTrapTest=1` (wasmTrap.ts): call the Debug-only `ws_trapTest` after bind. */
+      trapTest?: boolean;
     }
   | { type: 'CONFIGURE'; gridId: number; width: number; height: number; dx: number }
   | { type: 'COMMIT_BED'; gridId: number; b: Float32Array }

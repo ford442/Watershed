@@ -165,6 +165,23 @@ echo "  WASM size: $(wc -c < "$OUTPUT_WASM") bytes"
 WASM_SHA=$(sha256sum < "$OUTPUT_WASM" | cut -c1-16)
 printf '\nexport const WATERSHED_WASM_SHA = "%s";\n' "$WASM_SHA" >> "$OUTPUT_JS"
 
+# Symbol map (#502): `N:name` per wasm function index, emitted next to the glue.
+# It must not ship (it names every internal function), so move it out of the
+# output dir. The shipped pair's map is committed with it as
+# emscripten/watershed_native.symbols — Vite copies it into build-sourcemaps/
+# and scripts/wasm-symbolicate.mjs reads it; aside builds keep theirs in
+# $BUILD_DIR.
+SYMBOLS_EMITTED="$OUTPUT_DIR/watershed_native.js.symbols"
+if [ -f "$SYMBOLS_EMITTED" ]; then
+    if [ "$SHIPPED" -eq 1 ]; then
+        mv "$SYMBOLS_EMITTED" "$SCRIPT_DIR/watershed_native.symbols"
+        echo "  Symbol map: $SCRIPT_DIR/watershed_native.symbols"
+    else
+        mv "$SYMBOLS_EMITTED" "$BUILD_DIR/watershed_native.symbols"
+        echo "  Symbol map: $BUILD_DIR/watershed_native.symbols"
+    fi
+fi
+
 # sha256(glue || wasm)[:16]: the pair's identity for cache-busting URLs,
 # deploy manifests and verify:deploy (scripts/check-build-manifest.mjs).
 STAMP=$(cat "$OUTPUT_JS" "$OUTPUT_WASM" | sha256sum | cut -c1-16)

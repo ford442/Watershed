@@ -10,14 +10,25 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { MIN_WASM_ABI_VERSION, WASM_ABI, wasmExportName, type WasmAbiFunctionName } from './wasmAbi';
+import {
+  arityMismatches,
+  bindNativeModule,
+  isWasmHeapExhaustedError,
+  MIN_WASM_ABI_VERSION,
+  WASM_ABI,
+  wasmExportName,
+  type RawWatershedModule,
+  type WasmAbiFunctionName,
+} from './wasmAbi';
 import { WASM_ARTIFACT_STAMP, WASM_BINARY_SHA } from './wasmArtifactStamp';
 import {
   __resetWasmLoaderForTests,
   __setGlueImporterForTests,
   getWasm,
+  isRetryableWasmInitError,
   isWasmProvenanceMismatchError,
   loadWatershedNative,
+  loadWatershedNativeWithRetry,
   peekWasm,
   peekWasmInitError,
   resolveWasmInitTimeoutMs,
@@ -175,6 +186,106 @@ describe('loadWatershedNative', () => {
     await vi.advanceTimersByTimeAsync(60);
     await settled;
     expect(error).toHaveBeenCalledWith('[Watershed WASM] timed-out(50ms)');
+  });
+});
+
+describe('deadline and retry (#502 C)', () => {
+  it('aborts the losing wasm fetch at the deadline', async () => {
+    vi.useFakeTimers();
+    __setGlueImporterForTests(async () => ({ default: async () => ({}) as never, WATERSHED_WASM_SHA: WASM_BINARY_SHA }));
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: { signal?: AbortSignal }) => {
+      signal = init?.signal;
+      return new Promise(() => { /* the request is lost */ });
+    }));
+    quietConsole();
+
+    const pending = loadWatershedNative(URLS, 50);
+    const settled = expect(pending).rejects.toBeInstanceOf(WasmInitTimeoutError);
+    await vi.advanceTimersByTimeAsync(60);
+    await settled;
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it('retries once after a timeout, then binds', async () => {
+    vi.useFakeTimers();
+    let imports = 0;
+    __setGlueImporterForTests(async () => {
+      imports += 1;
+      if (imports === 1) return new Promise(() => { /* lost */ });
+      return realGlue();
+    });
+    stubFetch(wasmBytes);
+    quietConsole();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const pending = loadWatershedNativeWithRetry(URLS, 50);
+    await vi.advanceTimersByTimeAsync(60);
+    vi.useRealTimers();
+    const wasm = await pending;
+    expect(imports).toBe(2);
+    expect(wasm.getVersion()).toBeGreaterThanOrEqual(MIN_WASM_ABI_VERSION);
+  });
+
+  it('does not retry a deterministic failure (provenance mismatch)', async () => {
+    const factory = vi.fn();
+    const importer = vi.fn(async () => ({ default: factory, WATERSHED_WASM_SHA: '0123456789abcdef' }));
+    __setGlueImporterForTests(importer);
+    stubFetch(wasmBytes);
+    quietConsole();
+
+    await expect(loadWatershedNativeWithRetry(URLS, 10_000)).rejects.toThrow(/stamp mismatch/);
+    expect(importer).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies timeouts and network failures as retryable, bugs and mismatches as not', () => {
+    expect(isRetryableWasmInitError(new WasmInitTimeoutError(5))).toBe(true);
+    expect(isRetryableWasmInitError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isRetryableWasmInitError(new Error('watershed_native fetch failed 503 for x'))).toBe(true);
+    expect(isRetryableWasmInitError(new Error('watershed_native fetch failed 404 for x'))).toBe(false);
+    expect(isRetryableWasmInitError(new TypeError('glue.default is not a function'))).toBe(false);
+    expect(isRetryableWasmInitError(new Error('watershed_native stamp mismatch: wasm=a'))).toBe(false);
+  });
+});
+
+describe('bindNativeModule guards (#502 A)', () => {
+  const fakeRaw = (overrides: Record<string, unknown> = {}): RawWatershedModule => {
+    const raw: Record<string, unknown> = { HEAPF32: new Float32Array(16), HEAP32: new Int32Array(16), HEAPU8: new Uint8Array(64) };
+    for (const name of Object.keys(WASM_ABI) as WasmAbiFunctionName[]) {
+      // Variadic shims (length 0) are not arity-checked.
+      raw[wasmExportName(name)] = (..._args: number[]) => 16;
+    }
+    return { ...raw, ...overrides } as unknown as RawWatershedModule;
+  };
+
+  it('allocateGrid returning 0 for a non-empty grid throws the HUD-classified heap error', () => {
+    let calls = 0;
+    const wasm = bindNativeModule(fakeRaw({
+      _ws_allocateGrid: (..._args: number[]) => (calls++ === 0 ? 16 : 0),
+    }));
+    const err = (() => {
+      try {
+        wasm.allocateGrid(4096);
+      } catch (e) {
+        return e;
+      }
+      return null;
+    })();
+    expect(isWasmHeapExhaustedError(err)).toBe(true);
+    expect(String(err)).toMatch(/heap exhausted: allocateGrid\(4096\) returned 0/);
+    expect(wasm.allocateGrid(0)).toBe(0);
+  });
+
+  it('an export whose arity disagrees with the table is an ABI mismatch at bind (dev builds)', () => {
+    const raw = fakeRaw({ _ws_stepShallowWater: (a: number, b: number) => a + b });
+    expect(arityMismatches(raw)).toEqual(['_ws_stepShallowWater takes 2, table says 10']);
+    expect(() => bindNativeModule(raw)).toThrow(/ABI mismatch: arity _ws_stepShallowWater takes 2, table says 10/);
+  });
+
+  it('the committed glue has no arity mismatch', async () => {
+    const glue = await realGlue();
+    const raw = await glue.default({ wasmBinary: wasmBytes });
+    expect(arityMismatches(raw)).toEqual([]);
   });
 });
 

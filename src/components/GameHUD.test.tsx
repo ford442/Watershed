@@ -135,4 +135,36 @@ describe('GameHUD native WASM smoke', () => {
     expect(banner).not.toHaveTextContent('failed to init');
     expect(banner).toHaveTextContent('watershed_native init timed out after 8000ms');
   });
+
+  it('names the function a native trap happened in, on the status row and the banner (#502)', async () => {
+    probeMock.mockResolvedValue({
+      status: 'failed',
+      error: 'watershed_native wasm trap in ws_trapTest: unreachable',
+      timedOut: false,
+      mismatched: false,
+      trapFunction: 'ws_trapTest',
+    });
+
+    render(<GameHUD />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WASM FAILED');
+    });
+    expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('TRAP ws_trapTest');
+    expect(screen.getByTestId('wasm-init-banner')).toHaveTextContent('Native WASM trapped in ws_trapTest');
+  });
+
+  it('banners an exhausted heap distinctly', async () => {
+    probeMock.mockResolvedValue({
+      status: 'failed',
+      error: 'watershed_native heap exhausted: allocateGrid(4096) returned 0',
+      timedOut: false,
+      mismatched: false,
+      exhausted: true,
+    });
+    render(<GameHUD />);
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-init-banner')).toHaveTextContent('Native WASM heap exhausted');
+    });
+  });
 });

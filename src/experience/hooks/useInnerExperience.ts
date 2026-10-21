@@ -16,7 +16,7 @@ function readVehicleTypeFromUrl(): VehicleType | null {
   return null;
 }
 
-function resolveInitialVehicle(mapId?: string): VehicleType {
+export function resolveInitialVehicle(mapId?: string): VehicleType {
   const fromUrl = readVehicleTypeFromUrl();
   if (fromUrl) return fromUrl;
   if (mapId && isMapRegistryId(mapId)) {

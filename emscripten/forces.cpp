@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
+#include <span>
 
 // ---------------------------------------------------------------------------
 // 1. Buoyancy  —  Archimedes' principle
@@ -193,13 +194,14 @@ void computeWaterForcesBatch(uintptr_t inputPtr,
                              float timeSeconds,
                              float turbulenceStrength,
                              float turbulenceFrequency) noexcept {
-    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0) return;
+    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0 || sampleCount > WATER_FORCE_MAX_SAMPLES) return;
 
-    const float* input = reinterpret_cast<const float*>(inputPtr);
-    float* output = reinterpret_cast<float*>(outputPtr);
+    const std::size_t n = static_cast<std::size_t>(sampleCount);
+    const std::span<const float> input = heapSpan<const float>(inputPtr, n * WATER_FORCE_INPUT_STRIDE);
+    const std::span<float> output = heapSpan<float>(outputPtr, n * WATER_FORCE_OUTPUT_STRIDE);
 
-    for (int i = 0; i < sampleCount; ++i) {
-        const float* s = input + static_cast<std::ptrdiff_t>(i) * WATER_FORCE_INPUT_STRIDE;
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::span<const float> s = input.subspan(i * WATER_FORCE_INPUT_STRIDE, WATER_FORCE_INPUT_STRIDE);
         const WaterForceResult r = calculateWaterForce(
             s[0], s[1], s[2],
             s[3], s[4], s[5],
@@ -216,7 +218,7 @@ void computeWaterForcesBatch(uintptr_t inputPtr,
             turbulenceFrequency
         );
 
-        float* o = output + static_cast<std::ptrdiff_t>(i) * WATER_FORCE_OUTPUT_STRIDE;
+        const std::span<float> o = output.subspan(i * WATER_FORCE_OUTPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE);
         o[0] = r.forceX;
         o[1] = r.forceY;
         o[2] = r.forceZ;

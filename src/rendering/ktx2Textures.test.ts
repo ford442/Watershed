@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { hasCompressedTarget, shouldUseKtx2, tagRockColorSpaces } from './ktx2Textures';
+import { hasCompressedTarget, ktx2LoaderModule, rendererMayUseKtx2, shouldUseKtx2, tagRockColorSpaces } from './ktx2Textures';
 import { TRACK_ROCK_TEXTURE_PATHS, TRACK_ROCK_TEXTURE_PATHS_KTX2 } from '../constants/trackTextures';
 
 function webglRenderer(extensions: string[]) {
@@ -15,15 +15,24 @@ describe('KTX2 rock textures', () => {
     expect(hasCompressedTarget({ dxtSupported: true })).toBe(true);
   });
 
-  it('keeps the JPGs on a GPU with no compressed format (transcoding to RGBA32 would cost more)', () => {
-    expect(shouldUseKtx2(webglRenderer([]))).toBe(false);
-    expect(shouldUseKtx2(webglRenderer(['WEBGL_compressed_texture_s3tc']))).toBe(true);
-    expect(shouldUseKtx2(null)).toBe(false);
+  it('keeps the JPGs on a GPU with no compressed format (transcoding to RGBA32 would cost more)', async () => {
+    expect(await shouldUseKtx2(webglRenderer([]))).toBe(false);
+    expect(await shouldUseKtx2(webglRenderer(['WEBGL_compressed_texture_s3tc']))).toBe(true);
+    expect(await shouldUseKtx2(null)).toBe(false);
   });
 
-  it('asks a node renderer for its texture-compression features', () => {
+  it('never fetches the KTX2 loader chunk for a GPU that cannot use it', async () => {
+    ktx2LoaderModule.reset();
+    expect(rendererMayUseKtx2(webglRenderer([]))).toBe(false);
+    await shouldUseKtx2(webglRenderer([]));
+    expect(ktx2LoaderModule.get()).toBeNull();
+    await shouldUseKtx2(webglRenderer(['EXT_texture_compression_bptc']));
+    expect(ktx2LoaderModule.get()).not.toBeNull();
+  });
+
+  it('asks a node renderer for its texture-compression features', async () => {
     const renderer = { isWebGPURenderer: true, hasFeature: (f: string) => f === 'texture-compression-bc' };
-    expect(shouldUseKtx2(renderer)).toBe(true);
+    expect(await shouldUseKtx2(renderer)).toBe(true);
   });
 
   it('ships the same maps, in the same order, in both formats', () => {

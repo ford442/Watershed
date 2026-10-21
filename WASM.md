@@ -28,7 +28,7 @@ TypeScript bindings are in `src/systems/water/WatershedWasm.ts`.
 
 ```
 emscripten/
-├── common.h          # Shared constants, Vec2/Vec3, clampf — host-clean
+├── common.h          # Shared constants, extent caps, Vec2/Vec3, clampf, heapSpan / heapPlane — host-clean
 ├── forces.h          # WaterForceResult + water-force declarations — host-clean
 ├── forces.cpp        # Buoyancy / drag / flow / batched water forces
 ├── swe.h             # Shallow-water solver + heap grid declarations — host-clean
@@ -44,7 +44,13 @@ emscripten/
 ├── terrain.cpp       # Canyon floor / tube fold / wall shell as planes (ABI 13)
 ├── terrain_goldens.h # Terrain fixtures + goldens for host_smoke.cpp
 ├── bindings.cpp      # The C ABI: extern "C" ws_* exports + ws_getVersion(); the only Emscripten include
-├── host_smoke.cpp    # Host assert runner (no Emscripten headers)
+├── host_smoke.cpp    # Host assert runner (no Emscripten headers), sentinels included
+├── fuzz_input.h      # Byte reader shared by the libFuzzer targets (host only)
+├── swe_fuzz.cpp      # libFuzzer: step / inflow step / event / scroll
+├── chores_fuzz.cpp   # libFuzzer: reduce / histograms / downsample / blur (#502)
+├── forces_fuzz.cpp   # libFuzzer: forces (single + batch), routing, particle SoA (#502)
+├── terrain_fuzz.cpp  # libFuzzer: terrain tile + wall shell (#502)
+├── watershed_native.symbols # `N:name` symbol map of the committed wasm (build.sh; never in public/)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake); enforces the emcc pin
 ├── EMCC_VERSION      # The pinned emcc (3.1.56) — read by build.sh and scripts/emsdk-pinned.sh
 └── CMakeLists.txt    # Compute static lib + WASM exe + host smoke; compile_commands ON
@@ -52,6 +58,7 @@ emscripten/
 src/systems/water/
 ├── wasmAbi.ts              # WASM_ABI table, WatershedNativeModule, bindNativeModule()
 ├── wasmLoader.ts           # fetch once, hash once, instantiate, bind — getWasm() + the worker's loader
+├── wasmTrap.ts             # name the function a trap happened in (symbol map / name section)
 ├── WatershedWasm.ts        # createSWEGrid / createWaterForceBatch (heap views)
 ├── waterForceFallback.ts   # pure-TS twin of forces.cpp
 └── wasmArtifactStamp.ts    # pair stamp + wasm hash, written by build.sh
@@ -198,6 +205,12 @@ Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2
    `WASM_ABI` entry; a missing export is a `WasmAbiMismatchError`, not a later crash.
 
 The whole sequence is bounded by an 8 s deadline (`WASM_INIT_TIMEOUT_MS`, `?wasmInitTimeout=`).
+The deadline aborts the wasm fetch if it is still in flight, and a timeout or a network
+failure is retried once (`loadWatershedNativeWithRetry`, #502 C); a provenance / ABI
+mismatch or a trap is deterministic and goes straight to the fallback. The sim worker gets
+the page's resolved deadline in its INIT message — the worker is created with no query
+string, so it cannot read `?wasmInitTimeout=` itself — and the proxy's handshake allows
+two deadlines plus slack for the retry.
 Any failure rejects `getWasm()` / resolves the worker's loader to `null`, the GameHUD
 `wasm-init-banner` fires, and the TypeScript water-force fallback remains the gameplay path.
 `WASM_ARTIFACT_STAMP` (`sha256(glue || wasm)[:16]`) stays the pair's identity for the
@@ -206,6 +219,74 @@ cache-busting `?v=` query, `BUILD_ID`, and `scripts/check-build-manifest.mjs`.
 The glue is imported by URL, never evaluated from a string or blob, so the module needs only
 `script-src 'self' 'wasm-unsafe-eval'`. `public/.htaccess` sends that policy as
 **Report-Only** until #485 removes the runtime ajv compiler, which still needs `new Function`.
+
+### Untrusted-input sentinels (#467, #502)
+
+Every pointer and extent arrives from JavaScript. In wasm, address 0 is **writable**, so a
+null out-pointer is silent corruption of low memory, not a crash (SAFE_HEAP is Debug only).
+Every `ws_*` entry point therefore returns early on bad input; `std::span` views
+(`heapSpan` / `heapPlane` in `common.h`, the only pointer → view path) carry the bounds so
+`-D_GLIBCXX_ASSERTIONS` checks indexing in the sanitizer and fuzz builds.
+
+| TU | Rejected (no write) | Sentinel |
+|----|---------------------|----------|
+| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); `dx`/`H`/`dt`/`g` ≤ 0 (step) | early return; `allocateGrid(≤ 0)` → 0 |
+| `chores.cpp` | null src / out; count < 0 or > `WS_MAX_ELEMENTS` (4096²); src/blur extents ≤ 0 or > 4096; destination extent > 4096 | early return. Count 0 is a valid empty grid (zeros / an all-zero histogram); a non-positive *destination* extent of `downsampleF32` is 1 (the `cpuMath.ts` contract) |
+| `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | early return |
+| `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` ≤ 0 | early return; `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
+| `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 | alloc → 0; init/step waterfall → `seed` unchanged; splash: early return |
+| `terrain.cpp` | null output; segments ≤ 0 or > `TERRAIN_MAX_SEGMENTS`; non-finite shape; short output | returns 0, writes nothing |
+
+`host_smoke.cpp` asserts each row on the host (ASan in `test:native:sanitize`);
+`src/systems/water/wasmSentinels.test.ts` asserts it through the committed wasm — a canary
+plane and the first KiB of the heap must be unchanged — in plain `pnpm test`.
+
+On the TS side, the bound `allocateGrid(count > 0)` throws `WasmHeapExhaustedError`
+(`"heap exhausted"`, banner-classified by `nativeOwner.ts`) instead of handing 0 to a writer,
+and in dev builds `bindNativeModule` rejects an export whose `fn.length` disagrees with the
+`WASM_ABI` arity (the release glue wraps each export with its exact C arity).
+
+### Traps and the symbol map (#502)
+
+A release binary ships no name section, so a trap reads `wasm-function[57]:0x1a2b`. The link
+passes `--emit-symbol-map`; `build.sh` moves the shipped pair's map out of `public/` to
+`emscripten/watershed_native.symbols` (committed with the pair — rebuilt, it is reproduced
+byte for byte like the pair), and Vite copies it into `build-sourcemaps/` as
+`watershed_native.<stamp>.symbols` next to the JS maps (#465 B).
+
+```bash
+node scripts/wasm-symbolicate.mjs '<stack from a field report>'   # rewrites wasm-function[N]
+node scripts/wasm-symbolicate.mjs 37                              # → ws_stepShallowWater
+```
+
+At runtime `wasmTrap.ts` names the innermost wasm frame (symbol map, else the engine's own
+name, else the index). A trap inside a sim-worker command is reported as
+`watershed_native wasm trap in <fn>`, and the HUD native-status row shows `TRAP <fn>`.
+The Debug build adds `ws_trapTest()` (a `__builtin_trap()`, `WATERSHED_TRAP_TEST`; never in
+the shipped pair, the table or the version). With a Debug pair in `public/` (not committed),
+`?wasmTrapTest=1` calls it right after bind; `wasmTrap.test.ts` runs that path against
+`emscripten/build-debug/out/` whenever `pnpm build:wasm:debug` has been run.
+
+### Flags (#502 B)
+
+| Variant | Flags |
+|---------|-------|
+| Release | `-s STACK_SIZE=64KB` (the emcc 3.1.56 default, named), `-s STRICT=1` (+ `--no-entry`: STRICT stops assuming a `main`), `--emit-symbol-map` |
+| Debug | `-s STACK_SIZE=256KB -s STACK_OVERFLOW_CHECK=2`, `-fno-exceptions -fno-rtti` at compile as in Release, `--emit-symbol-map`, `ENVIRONMENT='web,worker,node'` (so vitest can load it), `WATERSHED_TRAP_TEST` |
+
+The SWE solver scratch (`swe.cpp` `Scratch`) only grows, so a session stepping two grids of
+different sizes no longer reallocates on every alternation.
+
+### Fuzzing (#467, #502)
+
+`pnpm test:native:fuzz` (`scripts/native-fuzz.sh`) builds and runs four libFuzzer targets
+under ASan + UBSan, `FUZZ_SECONDS` (60) each: `swe`, `chores`, `forces` (forces + routing +
+particles) and `terrain`. They feed any float bit pattern and out-of-range or null
+arguments, and check that rejected calls write nothing. `FUZZ_TARGETS="chores terrain"`
+runs a subset. Needs clang with compiler-rt (`libclang-rt-18-dev` on Ubuntu).
+`pnpm lint:native` runs clang-tidy over every TU, `bindings.cpp` and the fuzz targets
+included (a host fallback for `EMSCRIPTEN_KEEPALIVE` keeps `bindings.cpp` parseable without
+the Emscripten sysroot).
 
 ---
 
@@ -596,8 +677,9 @@ Cross-Origin-Opener-Policy:   same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-The `vite.config.ts` already sets these headers for the **dev server**. Production
-does **not** send them, and the threaded pair is never shipped: `./build.sh --threads`
+`pnpm dev` sends these headers only on request: open the page with `?isolated=1`
+(`devIsolationOptInPlugin` in `vite.config.ts`, #502 E). `vite preview` never sends them
+(it must look like production for visual smoke), and production does **not** send them, and the threaded pair is never shipped: `./build.sh --threads`
 writes to `emscripten/build-threads/out/` (CI builds it and asserts `public/` is
 untouched). Nothing in the C++ creates a thread today.
 

@@ -590,6 +590,52 @@ and vitest use the stock package.
 
 ---
 
+## 11. Entry and boot payload (follow-up to #485)
+
+#485 left the entry at 1,166 kB against a 700 kB target. Raw sizes of a plain `pnpm exec vite build`:
+
+| | Before | After |
+|---|---|---|
+| `index-*.js` (entry) | 1,174.7 kB | **698.3 kB** (target 700 kB, met) |
+| Boot JS (entry + `modulepreload`ed chunks) | ~2,295 kB | **1,984.6 kB** |
+| Total JS, every chunk | 3,542.0 kB | 3,552.6 kB (growth guard, no longer a target) |
+
+**What left the entry, and what loads it**
+
+| Chunk (raw) | Holds | Loaded by |
+|---|---|---|
+| `vendor-rapier` 167 kB | `@dimforge/rapier3d-compat` glue + `@react-three/rapier` | static import, so `index.html` modulepreloads it next to the wasm; counted in boot JS |
+| `GLTFLoader` 44 kB | glTF loader | first `ReachStreamer.preloadModel` (a manifest that lists models) |
+| `SSAOPass` 12 kB / `SMAAPass` 61 kB | the preset-gated JSM passes | `composerPassModules.ts`; `PostProcessingPipeline` fetches them at mount when the preset needs them, `createComposerDriver.apply()` adds the pass on the first frame that wants it |
+| `KTX2Loader` 60 kB | KTX2 loader + zstddec + ktx-parse | `ktx2Textures.ts`; never fetched on a GPU with no compressed format (`rendererMayUseKtx2`) |
+| `RaftVehicle` 23 kB | the raft, its controls and physics runtime | `raftVehicleChunk.ts`; prefetched at idle in a runner session and at once for a raft-first map |
+| `WgslSweSim` 22 kB | WGSL SWE stepper + `swe.wgsl` | native-WebGPU boot only |
+| `extras` 42 kB | fauna, biome props, glacier / waterfall set pieces (`Environment/extras.ts`) | `Environment/lazyExtras.ts`, preloaded at idle once the app is up |
+| `ReachManager` / `ReachStreamer` / `LevelLoader` 27 kB | the `?reachId=` and `?level=` map sources | mounted lazily by `InnerExperience` only for those URLs |
+| `PauseMenu`, `SettingsPanel`, `RunResultsPanel`, debug overlays | UI that mounts on a user action or a flag | `lazyComponent`, preloaded at idle |
+
+The pattern is `src/utils/lazyModule.ts` (a dynamic import with a synchronous `get()`) and
+`src/utils/lazyComponent.ts` (`React.lazy` plus a `preload()` handle). Every lazy mount sits in its own
+`<Suspense fallback={null}>` so a pending chunk never hides the rest of the scene. That is the one
+behaviour change to know about: on a deep-linked boot straight into a run, the extras can appear a frame or two after the rest of
+the segment. In the normal menu → START flow they are preloaded before the player gets there.
+
+**Not done**
+
+- **Per-biome decoration loading.** The biome-exclusive decorations are ~38 kB pre-minify in total, so they ride in
+  `extras` with the fauna rather than adding a request per biome; nothing here depends on the biome transition.
+- **Maps.** The bundled map JSON (~43 kB) stays in the entry: `maps/registry.ts` is read synchronously by
+  `MapSystem`, the campaign routing, the StartMenu and persistence.
+- **Total JS ≤ 3,500 kB.** Not reached and no longer the metric: each lazy split adds a few kB, and the remaining gap is
+  ~53 kB of code that would have to be deleted. The gate now enforces **boot JS** (`bootJsMaxBytes`) and keeps the all-chunks
+  number as a growth guard (`totalJsMaxBytes`). The gate computes boot JS from the `modulepreload` list in `index.html`, which is
+  Vite's static-import closure of the entry.
+
+`pnpm build:analyze` plus a dominator walk of `build-analyze/stats.json` is how to find the next candidate: the
+remaining weight is the scene itself (`TrackManager` → `TrackSegment` ≈ 390 kB pre-minify, water ≈ 90 kB), which the first frame needs.
+
+---
+
 ## Appendix: reproducing this
 
 ```bash

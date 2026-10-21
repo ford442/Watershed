@@ -12,7 +12,8 @@ pnpm start         # dev server on port 3000 (Vite)
 pnpm test          # unit tests (Vitest + Testing Library)
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
 pnpm typecheck     # tsc --noEmit + the layout/GLSL/typecheck-surface/orphan guards
-pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); ships the committed WASM pair
+pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); no emcc needed — ships the committed WASM pair
+pnpm build:full    # build:wasm, then build — the deploy path (build_and_patch.py); needs the pinned emcc
 pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 3.1.56 (`bash scripts/emsdk-pinned.sh`)
 ```
 
@@ -66,7 +67,6 @@ src/
 │   ├── GameHUD.tsx / PauseMenu.tsx / Loader.tsx
 │   ├── Environment/             # Instanced biome decorations (~34 types, all `.tsx`)
 │   ├── Obstacles/               # Rocks, pillar break VFX, breakable trestle
-│   ├── VFX/                     # Splash particles
 │   └── LevelEditor/             # In-game level tools
 │
 ├── vehicles/
@@ -162,7 +162,7 @@ Y (up)
 X (left/right)
 ```
 
-Player spawns at `[0, 10, -10]`. The initial river centerline is around Y = -6 to -22 over the first two segments.
+Player spawns at `[0, -6, -10]` (`PLAYER_SPAWN` in `src/constants/game.ts`). The initial river centerline is around Y = -6 to -22 over the first two segments.
 The centreline keeps descending (hundreds of metres by a map's set-pieces), so never author or check an
 absolute world Y: OOB bounds, `safeZone` and survival waypoints are segment-relative via
 `src/systems/map/segmentFrames.ts`.
@@ -294,7 +294,7 @@ Manual checklist before every commit:
 ## Deployment
 
 ```bash
-python3 build_and_patch.py    # build → build/, then invokes deploy.py
+python3 build_and_patch.py    # pnpm build:full → build/, then invokes deploy.py
 python3 deploy.py             # zips build/ and uploads to storage.noahcohn.com (Contabo)
 pnpm verify:deploy            # after an upload: both live URLs decode as UTF-8 build/index.html + headless render
 ```
@@ -336,6 +336,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `emscripten/terrain.cpp` / `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes (C++ + TS mirror, parity-tested); the canyon and hull builders read the tile (#487, ABI 13) |
 | `src/terrain/segmentMeshBuild.ts` | Canyon / collision / wall / water meshes as typed arrays; the sim worker builds treadmill appends with it (`BUILD_TILE`), `pnpm profile:spawn` measures mounts (#487 B) |
 | `src/rendering/sceneLightPool.tsx` | Fixed scene light count — segment content borrows pooled lights so a mount never recompiles every lit program (#487 B) |
+| `src/utils/lazyModule.ts` / `lazyComponent.ts` | Entry-chunk budget tools: a dynamic import with a sync `get()`, and `React.lazy` + `preload()`; `build-budget.json` gates entry and boot JS |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
