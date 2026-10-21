@@ -24,9 +24,11 @@ describe('GameHUD native WASM smoke', () => {
   beforeEach(() => {
     getWasmMock.mockReset();
     probeMock.mockReset();
+    window.history.replaceState(null, '', '/?debug=1');
   });
 
   afterEach(() => {
+    window.history.replaceState(null, '', '/');
     // The HUD reads the session's native status; it never loads a module itself.
     expect(getWasmMock).not.toHaveBeenCalled();
   });
@@ -61,6 +63,28 @@ describe('GameHUD native WASM smoke', () => {
     });
     expect(screen.getByTestId('wasm-smoke-status')).toHaveTextContent('WGSL');
     expect(screen.queryByTestId('wasm-init-banner')).not.toBeInTheDocument();
+  });
+
+  it('shows players a friendly notice, not the raw error, outside debug mode', async () => {
+    window.history.replaceState(null, '', '/');
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    probeMock.mockResolvedValue({
+      status: 'failed',
+      error: 'watershed_native stamp mismatch: loaded=e2d26214c2863608 expected=48807a27dda538ad',
+      timedOut: false,
+      mismatched: true,
+    });
+
+    render(<GameHUD />);
+    await waitFor(() => {
+      expect(screen.getByTestId('wasm-init-banner')).toBeInTheDocument();
+    });
+
+    const banner = screen.getByTestId('wasm-init-banner');
+    expect(banner).toHaveTextContent(/compatibility mode/i);
+    expect(banner).not.toHaveTextContent(/stamp mismatch|WASM|provenance|48807a27/i);
+    expect(spy).toHaveBeenCalledWith('[Watershed WASM] native init failed', expect.stringContaining('stamp mismatch'));
+    spy.mockRestore();
   });
 
   it('banners native init failure and does not display the TS fallback smoke number', async () => {

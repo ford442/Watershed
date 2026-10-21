@@ -9,7 +9,8 @@
  * All math is plain object-based so this file is cheap to unit-test.
  */
 
-import { getActiveMap } from '../../maps/registry';
+import type { MapDefinition } from '../../maps/registry';
+import { getRunMap } from '../../systems/journey/runSession';
 import { JSONMapManager } from '../../systems/map/MapSystem';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 
@@ -96,10 +97,10 @@ function isFiniteVec3(v: Vec3 | null | undefined): v is Vec3 {
 }
 
 /**
- * Find the segment-14 launchShelf config from the active authored map JSON.
+ * Find the segment-14 launchShelf config from the run's authored map JSON
+ * (the run session's map unless one is passed).
  */
-export function getSegment14LaunchShelfConfig() {
-  const map = getActiveMap();
+export function getSegment14LaunchShelfConfig(map: MapDefinition = getRunMap()) {
   const manager = new JSONMapManager(map.levelData);
   return manager.getChunkConfig(14).launchShelf ?? null;
 }
@@ -108,8 +109,11 @@ export function getSegment14LaunchShelfConfig() {
  * Build the world-space trigger box for the launch shelf.
  * Returns null if the spawn point is invalid or no launchShelf config exists.
  */
-export function computeShelfTrigger(spawnPoint: Vec3 | null): ShelfTrigger | null {
-  const config = getSegment14LaunchShelfConfig();
+export function computeShelfTrigger(
+  spawnPoint: Vec3 | null,
+  map: MapDefinition = getRunMap(),
+): ShelfTrigger | null {
+  const config = getSegment14LaunchShelfConfig(map);
   if (!config || !isFiniteVec3(spawnPoint)) return null;
 
   const tangent = WATERFALL_TANGENT;

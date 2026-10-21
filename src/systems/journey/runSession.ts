@@ -5,7 +5,7 @@
  * StartMenu choices, then read by forecast / scoring / physics systems.
  */
 
-import type { MapRegistryId } from '../../maps/registry';
+import { ACTIVE_MAP_ID, getMapDefinition, type MapDefinition, type MapRegistryId } from '../../maps/registry';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
 import { buildCampaignStack } from '../../maps/campaign';
 import { buildLaunchForecast } from '../map/flowForecast';
@@ -144,6 +144,15 @@ export function initRunSession(options: {
 
 export function getRunSession(): RunSessionSnapshot | null {
   return activeSession;
+}
+
+/**
+ * The map this run is on: the session's, else the code default (no run yet, or
+ * a unit test). Prefer this to the registry's static `getActiveMap()` anywhere
+ * the answer depends on which map the player picked.
+ */
+export function getRunMap(): MapDefinition {
+  return getMapDefinition(activeSession?.mapId ?? ACTIVE_MAP_ID);
 }
 
 export function isJourneyMode(): boolean {

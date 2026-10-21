@@ -242,6 +242,20 @@ function App({ graphicsBoot }: AppProps = {}) {
     useGameStore.getState().setSettings({ quality: 'low' });
   }, [previousFailure, settingsHydrated]);
 
+  // A software / flagged-driver context ('caveat') is the machine that cannot
+  // afford `high`: the adaptive valve needs minutes there, so start at `low`
+  // instead. Session-only — it touches GameState but not the persisted settings,
+  // so a good GPU on a later load keeps the player's own preset. The settings
+  // panel still applies a deliberate change (SettingsSync fires on change only).
+  const caveatClampApplied = useRef(false);
+  const isCaveatBoot =
+    graphicsCapability.tier === 'degraded' && graphicsCapability.reason === 'caveat';
+  useEffect(() => {
+    if (!isCaveatBoot || !settingsHydrated || caveatClampApplied.current) return;
+    caveatClampApplied.current = true;
+    useGameStore.getState().setSettings({ quality: 'low' });
+  }, [isCaveatBoot, settingsHydrated]);
+
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
     const params = new URLSearchParams(window.location.search);

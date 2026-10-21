@@ -200,6 +200,15 @@ describe('boot-crash guard', () => {
     expect(mounts.canvas).toBe(1);
   });
 
+  it('starts a caveat (software GL) boot at low without persisting it', async () => {
+    useSettingsStore.setState({ quality: 'high', _hasHydrated: true });
+    render(<App graphicsBoot={bootFor('degraded')} />);
+
+    await waitFor(() => expect(useGameStore.getState().settings.quality).toBe('low'));
+    expect(useSettingsStore.getState().quality).toBe('high');
+    expect(mounts.canvas).toBe(1);
+  });
+
   it('leaves the player\'s persisted quality alone on a healthy boot', async () => {
     // Persisted, not just set: App rehydrates settings on mount, so a bare
     // setState would be overwritten by rehydration rather than by the clamp.

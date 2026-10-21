@@ -165,8 +165,12 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   },
 };
 
-/** Code-level fallback when URL / menu / last-played are absent. */
-export const ACTIVE_MAP_ID: MapRegistryId = 'meander';
+/**
+ * Code-level fallback when URL / menu / last-played are absent. Must be the
+ * campaign's first map (no `unlockAfter`): a fresh player lands on it, and the
+ * start menu marks any soft-locked map "Locked".
+ */
+export const ACTIVE_MAP_ID: MapRegistryId = 'glacial';
 
 /**
  * Stable registry id list in object-key order.

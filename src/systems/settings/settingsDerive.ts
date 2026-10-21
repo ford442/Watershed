@@ -154,13 +154,22 @@ export function findConflict(
 // drei <KeyboardControls> map derivation
 // ---------------------------------------------------------------------------
 
+/** Implicit arrow-key alternates for the four movement actions (not rebindable). */
+const ARROW_ALTERNATES: Partial<Record<SettingsAction, string>> = {
+  forward: 'ArrowUp',
+  backward: 'ArrowDown',
+  leftward: 'ArrowLeft',
+  rightward: 'ArrowRight',
+};
+
 export interface DreiKeyMapEntry {
   name: string;
   keys: string[];
 }
 
 /**
- * Derive the drei KeyboardControls `map` from bindings. Only key-kind bindings
+ * Derive the drei KeyboardControls `map` from bindings. Movement actions also
+ * answer to the arrow keys (`ARROW_ALTERNATES`). Only key-kind bindings
  * are included — mouse bindings are handled separately by usePlayerControls,
  * since drei's KeyboardControls only listens to the keyboard.
  *
@@ -168,11 +177,21 @@ export interface DreiKeyMapEntry {
  * event system.
  */
 export function bindingsToDreiMap(bindings: Bindings): DreiKeyMapEntry[] {
+  const claimed = new Set<string>();
+  for (const action of SETTINGS_ACTIONS) {
+    const b = bindings[action];
+    if (b.kind === 'key') claimed.add(b.code);
+  }
+
   const map: DreiKeyMapEntry[] = [];
   for (const action of SETTINGS_ACTIONS) {
     const b = bindings[action];
     if (b.kind === 'key') {
-      map.push({ name: action, keys: [b.code] });
+      const alt = ARROW_ALTERNATES[action];
+      // Arrows are a fixed second key for movement, unless the player has bound
+      // that arrow to something else.
+      const keys = alt && !claimed.has(alt) ? [b.code, alt] : [b.code];
+      map.push({ name: action, keys });
     }
   }
   return map;

@@ -282,7 +282,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         <div className="start-menu-controls-hint">
           <div className="start-menu-hint-row">
-            <span className="start-menu-hint-key">WASD</span>
+            <span className="start-menu-hint-key">WASD / ↑←↓→</span>
             <span className="start-menu-hint-action">Move</span>
           </div>
           <div className="start-menu-hint-row">
@@ -296,6 +296,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           <div className="start-menu-hint-row">
             <span className="start-menu-hint-key">Esc</span>
             <span className="start-menu-hint-action">Pause</span>
+          </div>
+          <div className="start-menu-hint-row">
+            <span className="start-menu-hint-key">F3</span>
+            <span className="start-menu-hint-action">Movement readout</span>
           </div>
         </div>
       </div>
