@@ -286,11 +286,11 @@ export function useExperienceWorld({
       // A launch weather (#464) outranks the glacial biome's ambient snow.
       const runWeather = getActiveWeather();
       const isGlacial = biomeId === 'glacialMelt' || biomeId === 'glacier';
-      const detail =
+      useGameStore.getState().setWeather(
         runWeather.type !== 'clear'
-          ? { type: runWeather.type, intensity: runWeather.intensity, rippleStrength: 0 }
-          : { type: isGlacial ? 'snow' : 'clear', intensity: isGlacial ? 0.65 : 0, rippleStrength: 0 };
-      window.dispatchEvent(new CustomEvent('weather-update', { detail }));
+          ? { type: runWeather.type, intensity: runWeather.intensity, transition: 1, rippleStrength: 0 }
+          : { type: isGlacial ? 'snow' : 'clear', intensity: isGlacial ? 0.65 : 0, transition: 1, rippleStrength: 0 },
+      );
     },
     [setBiomeContext],
   );

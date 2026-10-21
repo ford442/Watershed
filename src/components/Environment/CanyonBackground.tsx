@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import type { CanyonBackgroundProps } from './types';
+import { sinHash } from '../../math/hash';
 
 interface BackgroundLayerConfig {
   depthOffset: number;
@@ -26,10 +27,7 @@ const LAYERS: BackgroundLayerConfig[] = [
   { depthOffset: -350, desaturation: 0.94, opacity: 0.24, width: 680, heightVariance: 8.0, rimY: 33, parallax: 0.02, towers: false },
 ];
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * 12.9898);
 
 function createRidgelineGeometry(
   seed: number,

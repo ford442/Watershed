@@ -5,7 +5,8 @@
  * chunk for a curve, a colour and a plane. These are line-for-line ports of
  * three 0.185 (`CatmullRomCurve3` + `Curve.getLengths`, `Color.setHex` +
  * `SRGBToLinear`, `PlaneGeometry` after `rotateX(−π/2)`,
- * `BufferGeometry.computeVertexNormals`, `MathUtils.clamp` / `smoothstep`)
+ * `BufferGeometry.computeVertexNormals`; `MathUtils.clamp` / `smoothstep` are
+ * `src/math/scalar.ts`)
  * with the same operation order and the same float32 stores, so a mesh built
  * here is bit-identical to the three-built one (`meshMath.test.ts` pins each
  * against three itself).
@@ -15,19 +16,6 @@ export interface Vec3 {
   x: number;
   y: number;
   z: number;
-}
-
-/** MathUtils.clamp */
-export function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-/** MathUtils.smoothstep */
-export function smoothstep(x: number, min: number, max: number): number {
-  if (x <= min) return 0;
-  if (x >= max) return 1;
-  x = (x - min) / (max - min);
-  return x * x * (3 - 2 * x);
 }
 
 // ---------------------------------------------------------------------------

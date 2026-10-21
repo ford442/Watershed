@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createFlowerPayload, createRockPayload, pickTreeSpecies, seededRandom } from '../utils';
+import { createFlowerPayload, createRockPayload, pickTreeSpecies } from '../utils';
 import { isAutumnLike, isSummerLike } from '../../../configs/biomes';
 import type { PopulateSideArgs } from '../types';
 
@@ -9,7 +9,7 @@ export function populateSidePart1(args: PopulateSideArgs): void {
         biome, segmentId, rng, type, config, isSlotCanyon, biomeProfile,
         trees, rocks, scatterRocks, cactus, desertSage, grass, canyonGrass,
         wildflowers, pebbles, sandBars, ferns, pinecones, rockFoam,
-        pathPoint, tangent, binormal, seedState, particleCount, curvatureStrength, insideSide,
+        pathPoint, tangent, binormal, particleCount, curvatureStrength, insideSide,
     } = args;
     const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
@@ -30,8 +30,8 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                 const rockChanceMultipliers: Record<string, number> = { low: 0.4, high: 0.7 };
                 const riffleBoost = Math.max(0, channelShape.riffleStrength) * 0.22;
                 const rockChance = isPond ? 0.3 : (isSlotCanyon ? 0.8 : (rockChanceMultipliers[rockDensity] || 0.4) + riffleBoost);
-                if (seededRandom(seedState.value++) > (1.0 - rockChance)) {
-                    const dist = bankEdge + 0.6 + seededRandom(seedState.value++) * (2.6 + Math.max(0, channelShape.riffleStrength) * 1.5);
+                if (rng() > (1.0 - rockChance)) {
+                    const dist = bankEdge + 0.6 + rng() * (2.6 + Math.max(0, channelShape.riffleStrength) * 1.5);
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
 
@@ -46,11 +46,11 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
                     position.y += yHeight;
 
-                    const scale = 0.8 + seededRandom(seedState.value++) * 0.8;
+                    const scale = 0.8 + rng() * 0.8;
                     const rotation = new THREE.Euler(
-                        seededRandom(seedState.value++) * Math.PI,
-                        seededRandom(seedState.value++) * Math.PI,
-                        seededRandom(seedState.value++) * Math.PI
+                        rng() * Math.PI,
+                        rng() * Math.PI,
+                        rng() * Math.PI
                     );
                     rocks.push(createRockPayload({
                         position,
@@ -62,18 +62,18 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                         nearWall: dist > bankStart + 3,
                     }));
 
-                    const scatterCount = 2 + Math.floor(seededRandom(seedState.value++) * 4);
+                    const scatterCount = 2 + Math.floor(rng() * 4);
                     for (let sr = 0; sr < scatterCount; sr++) {
                         const scatterPos = position.clone()
-                            .add(tangent.clone().multiplyScalar((seededRandom(seedState.value++) - 0.5) * 2.4))
-                            .add(binormal.clone().multiplyScalar((seededRandom(seedState.value++) - 0.5) * 2.2));
-                        scatterPos.y = Math.max(waterLevel + 0.04, position.y - 0.2 + seededRandom(seedState.value++) * 0.35);
+                            .add(tangent.clone().multiplyScalar((rng() - 0.5) * 2.4))
+                            .add(binormal.clone().multiplyScalar((rng() - 0.5) * 2.2));
+                        scatterPos.y = Math.max(waterLevel + 0.04, position.y - 0.2 + rng() * 0.35);
                         scatterRocks.push(createRockPayload({
                             position: scatterPos,
                             rotation: new THREE.Euler(
-                                seededRandom(seedState.value++) * Math.PI,
-                                seededRandom(seedState.value++) * Math.PI * 2,
-                                seededRandom(seedState.value++) * Math.PI
+                                rng() * Math.PI,
+                                rng() * Math.PI * 2,
+                                rng() * Math.PI
                             ),
                             scale: new THREE.Vector3(1, 1, 1),
                             biome,
@@ -104,8 +104,8 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                 if (!Array.isArray(treeDef)) {
                     if (isSlotCanyon) {
                         const ledgeChance = 0.36;
-                        if (seededRandom(seedState.value++) > (1.0 - ledgeChance)) {
-                            const dryLedgeDist = bankStart + (canyonWidth * 0.22) + seededRandom(seedState.value++) * (canyonWidth * 0.16);
+                        if (rng() > (1.0 - ledgeChance)) {
+                            const dryLedgeDist = bankStart + (canyonWidth * 0.22) + rng() * (canyonWidth * 0.16);
                             if (dryLedgeDist > waterWidth * 0.6) {
                                 const offset = binormal.clone().multiplyScalar(side * dryLedgeDist);
                                 const xLocal = side * dryLedgeDist;
@@ -115,13 +115,13 @@ export function populateSidePart1(args: PopulateSideArgs): void {
 
                                 const position = new THREE.Vector3().copy(pathPoint).add(offset);
                                 position.y += ledgeHeight + 0.25;
-                                const rotation = new THREE.Euler(0, seededRandom(seedState.value++) * Math.PI * 2, 0);
+                                const rotation = new THREE.Euler(0, rng() * Math.PI * 2, 0);
 
-                                if (seededRandom(seedState.value++) > 0.5) {
-                                    const scale = 0.7 + seededRandom(seedState.value++) * 0.6;
+                                if (rng() > 0.5) {
+                                    const scale = 0.7 + rng() * 0.6;
                                     cactus.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                                 } else {
-                                    const scale = 0.9 + seededRandom(seedState.value++) * 0.7;
+                                    const scale = 0.9 + rng() * 0.7;
                                     desertSage.push({ position, rotation, scale: new THREE.Vector3(scale, scale, scale) });
                                 }
                             }
@@ -129,8 +129,8 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     } else {
                         const baseTreeChance = (isAutumnLike(biome) || isPond) ? 0.6 : 0.3;
                         const treeChance = baseTreeChance * treeDensity;
-                        if (seededRandom(seedState.value++) > (1.0 - treeChance)) {
-                            const dist = bankStart + 4 + seededRandom(seedState.value++) * 8;
+                        if (rng() > (1.0 - treeChance)) {
+                            const dist = bankStart + 4 + rng() * 8;
                             const offset = binormal.clone().multiplyScalar(side * dist);
                             const xLocal = side * dist;
 
@@ -138,13 +138,13 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                             let yHeight = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
                             yHeight += Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
 
-                            if (yHeight > 25) yHeight = 25 - seededRandom(seedState.value++) * 2;
+                            if (yHeight > 25) yHeight = 25 - rng() * 2;
 
                             const position = new THREE.Vector3().copy(pathPoint).add(offset);
                             position.y += yHeight - 0.5;
 
-                            const scale = 1.5 + seededRandom(seedState.value++) * 1.0;
-                            const rotation = new THREE.Euler(0, seededRandom(seedState.value++) * Math.PI * 2, 0);
+                            const scale = 1.5 + rng() * 1.0;
+                            const rotation = new THREE.Euler(0, rng() * Math.PI * 2, 0);
                             const treeIndex = trees.length;
                             const treeSpecies = pickTreeSpecies({
                                 biomeProfile,
@@ -161,24 +161,24 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                                 ...treeSpecies,
                             });
 
-                            const numPinecones = 2 + Math.floor(seededRandom(seedState.value++) * 4);
+                            const numPinecones = 2 + Math.floor(rng() * 4);
                             for (let pc = 0; pc < numPinecones; pc++) {
-                                const pcDist = 0.5 + seededRandom(seedState.value++) * 1.5;
-                                const pcAngle = seededRandom(seedState.value++) * Math.PI * 2;
+                                const pcDist = 0.5 + rng() * 1.5;
+                                const pcAngle = rng() * Math.PI * 2;
 
                                 const pcPos = position.clone();
                                 pcPos.x += Math.cos(pcAngle) * pcDist;
                                 pcPos.z += Math.sin(pcAngle) * pcDist;
                                 pcPos.y = position.y + 0.1;
 
-                                const pcScale = 0.15 + seededRandom(seedState.value++) * 0.1;
+                                const pcScale = 0.15 + rng() * 0.1;
 
                                 pinecones.push({
                                     position: pcPos,
                                     rotation: new THREE.Euler(
-                                        seededRandom(seedState.value++) * Math.PI,
-                                        seededRandom(seedState.value++) * Math.PI,
-                                        seededRandom(seedState.value++) * Math.PI
+                                        rng() * Math.PI,
+                                        rng() * Math.PI,
+                                        rng() * Math.PI
                                     ),
                                     scale: new THREE.Vector3(pcScale, pcScale, pcScale)
                                 });
@@ -189,11 +189,11 @@ export function populateSidePart1(args: PopulateSideArgs): void {
 
                 // PEBBLES (Shoreline scatter)
                 // High density, small objects along the water line
-                if (seededRandom(seedState.value++) > 0.3) { // 70% chance per step
+                if (rng() > 0.3) { // 70% chance per step
                     // Spawn a cluster of 1-3 pebbles
-                    const clusterSize = 1 + Math.floor(seededRandom(seedState.value++) * 3);
+                    const clusterSize = 1 + Math.floor(rng() * 3);
                     for (let p = 0; p < clusterSize; p++) {
-                        const dist = bankStart + seededRandom(seedState.value++) * 1.5; // Very close to water
+                        const dist = bankStart + rng() * 1.5; // Very close to water
                         const offset = binormal.clone().multiplyScalar(side * dist);
                         const position = new THREE.Vector3().copy(pathPoint).add(offset);
 
@@ -205,13 +205,13 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                         position.y += groundY + 0.1; // Slightly embedded
 
                         // Randomize scale
-                        const scale = 0.5 + seededRandom(seedState.value++) * 0.6;
+                        const scale = 0.5 + rng() * 0.6;
                         pebbles.push({
                             position,
                             rotation: new THREE.Euler(
-                                seededRandom(seedState.value++) * Math.PI,
-                                seededRandom(seedState.value++) * Math.PI,
-                                seededRandom(seedState.value++) * Math.PI
+                                rng() * Math.PI,
+                                rng() * Math.PI,
+                                rng() * Math.PI
                             ),
                             scale: new THREE.Vector3(scale, scale, scale)
                         });
@@ -224,13 +224,13 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     !isSlotCanyon &&
                     side === insideSide &&
                     curvatureStrength > 0.008 &&
-                    seededRandom(seedState.value++) > 0.55
+                    rng() > 0.55
                 ) {
-                    const barWidth = 2.5 + seededRandom(seedState.value++) * 3.0;
-                    const barLength = barWidth * (0.55 + seededRandom(seedState.value++) * 0.25);
-                    const barOffset = bankStart * 0.58 + seededRandom(seedState.value++) * (bankStart * 0.32);
+                    const barWidth = 2.5 + rng() * 3.0;
+                    const barLength = barWidth * (0.55 + rng() * 0.25);
+                    const barOffset = bankStart * 0.58 + rng() * (bankStart * 0.32);
                     const center = pathPoint.clone().add(binormal.clone().multiplyScalar(side * barOffset));
-                    center.y = waterLevel + 0.08 + seededRandom(seedState.value++) * 0.12;
+                    center.y = waterLevel + 0.08 + rng() * 0.12;
 
                     sandBars.push({
                         center,
@@ -241,21 +241,21 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     });
 
                     // Pebble clusters on bars: denser than regular shoreline scatter.
-                    const barPebbleCount = 3 + Math.floor(seededRandom(seedState.value++) * 5);
+                    const barPebbleCount = 3 + Math.floor(rng() * 5);
                     for (let pb = 0; pb < barPebbleCount; pb++) {
-                        const along = (seededRandom(seedState.value++) - 0.5) * barLength * 1.7;
-                        const across = (seededRandom(seedState.value++) - 0.5) * barWidth * 0.9;
+                        const along = (rng() - 0.5) * barLength * 1.7;
+                        const across = (rng() - 0.5) * barWidth * 0.9;
                         const pebblePos = center.clone()
                             .add(tangent.clone().multiplyScalar(along))
                             .add(binormal.clone().multiplyScalar(across));
                         pebblePos.y = center.y + 0.02;
-                        const scale = 0.45 + seededRandom(seedState.value++) * 0.55;
+                        const scale = 0.45 + rng() * 0.55;
                         pebbles.push({
                             position: pebblePos,
                             rotation: new THREE.Euler(
-                                seededRandom(seedState.value++) * Math.PI,
-                                seededRandom(seedState.value++) * Math.PI,
-                                seededRandom(seedState.value++) * Math.PI
+                                rng() * Math.PI,
+                                rng() * Math.PI,
+                                rng() * Math.PI
                             ),
                             scale: new THREE.Vector3(scale, scale, scale)
                         });
@@ -263,17 +263,17 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                 }
 
                 // 4. GRASS
-                if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > 0.6) {
-                    const dist = bankStart + seededRandom(seedState.value++) * 4;
+                if (!isSlotCanyon && !isGlacier && rng() > 0.6) {
+                    const dist = bankStart + rng() * 4;
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
                     position.y += 1.0;
-                    grass.push({ position, rotation: new THREE.Euler(0, rng.next(), 0), scale: new THREE.Vector3(0.5, 0.5, 0.5) });
+                    grass.push({ position, rotation: new THREE.Euler(0, rng(), 0), scale: new THREE.Vector3(0.5, 0.5, 0.5) });
                 }
 
                 // 4.1 CANYON GRASS (slot canyon waterline)
-                if (isSlotCanyon && seededRandom(seedState.value++) > 0.48) {
-                    const grassDist = bankStart + 0.6 + seededRandom(seedState.value++) * Math.max(0.4, bankStart * 0.35);
+                if (isSlotCanyon && rng() > 0.48) {
+                    const grassDist = bankStart + 0.6 + rng() * Math.max(0.4, bankStart * 0.35);
                     const offset = binormal.clone().multiplyScalar(side * grassDist);
                     const position = new THREE.Vector3().copy(pathPoint).add(offset);
 
@@ -282,10 +282,10 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     if (Math.abs(side * grassDist) < bankStart + 2) groundY *= 0.1;
 
                     position.y += Math.max(waterLevel + 0.05, groundY + 0.08);
-                    const scale = 0.55 + seededRandom(seedState.value++) * 0.45;
+                    const scale = 0.55 + rng() * 0.45;
                     canyonGrass.push({
                         position,
-                        rotation: new THREE.Euler(0, seededRandom(seedState.value++) * Math.PI * 2, 0),
+                        rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
                         scale: new THREE.Vector3(scale, scale, scale)
                     });
                 }
@@ -295,13 +295,13 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     const bankHeight = Math.max(1.5, biomeProfile.wallHeight * 0.55);
                     const minFlowerDist = bankStart + 0.35;
                     const maxFlowerDist = bankStart + Math.min(7.5, canyonWidth * 0.18);
-                    const dist = minFlowerDist + seededRandom(seedState.value++) * Math.max(0.5, maxFlowerDist - minFlowerDist);
+                    const dist = minFlowerDist + rng() * Math.max(0.5, maxFlowerDist - minFlowerDist);
                     const offset = binormal.clone().multiplyScalar(side * dist);
                     const xLocal = side * dist;
                     const normalizedDist = Math.abs(xLocal) / (canyonWidth * 0.45);
                     let groundY = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
                     groundY += Math.sin(zLocal * 0.15) * Math.cos(xLocal * 0.3) * 1.5;
-                    if (groundY > 25) groundY = 25 - seededRandom(seedState.value++) * 2;
+                    if (groundY > 25) groundY = 25 - rng() * 2;
 
                     const heightAboveWaterline = Math.max(0, (groundY - 0.5) - waterLevel);
                     const waterlineFactor = Math.min(1, heightAboveWaterline / bankHeight);
@@ -310,25 +310,25 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                     const wildflowerBoost = (type === 'normal' && particleCount > 0) ? Math.min(particleCount / 60, 2.5) : 1.0;
                     const spawnProbability = (highNearWater + (lowAtRim - highNearWater) * waterlineFactor) * wildflowerBoost;
 
-                    if (seededRandom(seedState.value++) < spawnProbability) {
-                        const clusterSize = 2 + Math.floor(seededRandom(seedState.value++) * 3);
-                        const baseScale = isAutumnLike(biome) ? 0.55 + seededRandom(seedState.value++) * 0.28 : 0.6 + seededRandom(seedState.value++) * 0.35;
+                    if (rng() < spawnProbability) {
+                        const clusterSize = 2 + Math.floor(rng() * 3);
+                        const baseScale = isAutumnLike(biome) ? 0.55 + rng() * 0.28 : 0.6 + rng() * 0.35;
 
                         for (let wf = 0; wf < clusterSize; wf++) {
-                            const spreadAlong = wf === 0 ? 0 : (seededRandom(seedState.value++) - 0.5) * 1.2;
-                            const spreadAcross = wf === 0 ? 0 : (seededRandom(seedState.value++) - 0.5) * 0.9;
+                            const spreadAlong = wf === 0 ? 0 : (rng() - 0.5) * 1.2;
+                            const spreadAcross = wf === 0 ? 0 : (rng() - 0.5) * 0.9;
                             const position = new THREE.Vector3().copy(pathPoint)
                                 .add(offset)
                                 .add(tangent.clone().multiplyScalar(spreadAlong))
                                 .add(binormal.clone().multiplyScalar(spreadAcross));
-                            position.y = Math.max(waterLevel + 0.05, groundY + 0.12 + seededRandom(seedState.value++) * 0.2);
+                            position.y = Math.max(waterLevel + 0.05, groundY + 0.12 + rng() * 0.2);
 
-                            const scaleMod = wf === 0 ? 1 : 0.78 + seededRandom(seedState.value++) * 0.32;
+                            const scaleMod = wf === 0 ? 1 : 0.78 + rng() * 0.32;
                             const flowerIndex = wildflowers.length;
                             wildflowers.push(createFlowerPayload({
                                 position,
-                                rotation: new THREE.Euler(0, seededRandom(seedState.value++) * Math.PI * 2, 0),
-                                scale: new THREE.Vector3(baseScale * scaleMod, baseScale * (0.9 + seededRandom(seedState.value++) * 0.4), baseScale * scaleMod),
+                                rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
+                                scale: new THREE.Vector3(baseScale * scaleMod, baseScale * (0.9 + rng() * 0.4), baseScale * scaleMod),
                                 biome,
                                 segmentId,
                                 instanceIndex: flowerIndex,
@@ -341,16 +341,16 @@ export function populateSidePart1(args: PopulateSideArgs): void {
                 // Ferns like the "floor" of the forest, often near trees or walls
                 const isLumberFlume = biomeProfile?.id === 'lumberFlume' || biome === 'lumberFlume';
                 const fernChance = isLumberFlume ? 0.7 : isAutumnLike(biome) ? 0.4 : 0.3;
-                if (!isSlotCanyon && !isGlacier && seededRandom(seedState.value++) > (1.0 - fernChance)) {
+                if (!isSlotCanyon && !isGlacier && rng() > (1.0 - fernChance)) {
                     // Spawn a cluster
-                    const clusterSize = 3 + Math.floor(seededRandom(seedState.value++) * 3);
+                    const clusterSize = 3 + Math.floor(rng() * 3);
 
                     // Placement: Between water edge and wall, leaning towards wall
-                    const baseDist = bankStart + 3 + seededRandom(seedState.value++) * 5;
+                    const baseDist = bankStart + 3 + rng() * 5;
 
                     for (let f = 0; f < clusterSize; f++) {
-                        const spreadX = (seededRandom(seedState.value++) - 0.5) * 3.0;
-                        const spreadZ = (seededRandom(seedState.value++) - 0.5) * 3.0;
+                        const spreadX = (rng() - 0.5) * 3.0;
+                        const spreadZ = (rng() - 0.5) * 3.0;
 
                         const dist = baseDist + spreadX;
                         const offset = binormal.clone().multiplyScalar(side * dist);
@@ -369,10 +369,10 @@ export function populateSidePart1(args: PopulateSideArgs): void {
 
                         position.y += groundY + 0.1;
 
-                        const scale = 0.8 + seededRandom(seedState.value++) * 0.6;
+                        const scale = 0.8 + rng() * 0.6;
                         ferns.push({
                             position,
-                            rotation: new THREE.Euler(0, seededRandom(seedState.value++) * Math.PI * 2, 0),
+                            rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
                             scale: new THREE.Vector3(scale, scale, scale)
                         });
                     }

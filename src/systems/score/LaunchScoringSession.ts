@@ -15,10 +15,10 @@ import {
   type Vec3,
 } from './scoreLaunch';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
-import { SHELF_LAUNCH_EVENT, type ShelfLaunchEventDetail } from './shelfLaunchEvents';
 import { updateRunBest } from '../persistence/PersistenceSystem';
 import { persistGhostRecording } from '../ghost/GhostRecorder';
 import { getActiveRunKey } from '../../utils/runContext';
+import { gameEvents } from '../events/GameEvents';
 
 export type ContactSurface = 'terrain' | 'water' | 'airborne';
 
@@ -221,16 +221,12 @@ export function notifyShelfLaunchImpulse(args: {
   });
 }
 
-/** Wire shelfLaunch CustomEvent → scoring session (call once at app boot). */
+/** Wire the shelfLaunch game event → scoring session (call once at app boot). */
 export function initShelfLaunchScoringListener(): void {
-  if (shelfLaunchListenerAttached || typeof window === 'undefined') return;
+  if (shelfLaunchListenerAttached) return;
   shelfLaunchListenerAttached = true;
 
-  window.addEventListener(SHELF_LAUNCH_EVENT, (event) => {
-    const detail = (event as CustomEvent<ShelfLaunchEventDetail>).detail;
-    if (!detail) return;
-    notifyShelfLaunchImpulse(detail);
-  });
+  gameEvents.on('shelfLaunch', notifyShelfLaunchImpulse);
 }
 
 export function resetLaunchScoringSession(): void {

@@ -131,13 +131,6 @@ export interface TippingState {
 export interface PaddleState {
   leftPaddle: boolean;
   rightPaddle: boolean;
-  foamParticles: Array<{
-    id: number;
-    position: THREE.Vector3;
-    velocity: THREE.Vector3;
-    life: number;
-    side: 'left' | 'right';
-  }>;
 }
 
 export interface StaminaState {
@@ -149,12 +142,4 @@ export interface StaminaState {
 export interface StunState {
   active: boolean;
   timer: number;
-}
-
-export interface ShedParticle {
-  id: number;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  life: number;
-  scale: number;
 }

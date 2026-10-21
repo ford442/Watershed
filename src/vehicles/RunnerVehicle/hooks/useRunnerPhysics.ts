@@ -1,8 +1,10 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import * as THREE from 'three';
 import { JumpState, DodgeState, DebugImpulse, DebugContact, PhysicsDebugSnapshot } from '../constants';
-import { RunnerVehicle as RunnerVehicleClass, SurfaceMaterial } from '../../../systems/vehicle/VehicleSystem';
+import { RunnerVehicle as RunnerVehicleClass } from '../../../systems/vehicle/VehicleSystem';
 import { PHYSICS } from '../../../constants/game';
+import { ParticlePool } from '../../../components/particlePool';
+import { COLLISION_PARTICLE_CAPACITY } from '../../../components/CollisionParticles';
 
 export function useRunnerPhysicsState() {
   const vehicle = useRef(new RunnerVehicleClass());
@@ -48,7 +50,6 @@ export function useRunnerPhysicsState() {
   const platformState = useRef({
     isOnPlatform: false,
     platformVelocity: new THREE.Vector3(0, 0, 0),
-    platformBody: null as any,
   });
 
   // Track last applied gravity multiplier to avoid redundant world.gravity mutations
@@ -75,19 +76,14 @@ export function useRunnerPhysicsState() {
     velocity: new THREE.Vector3(),
   });
 
-  // Collision & material state
+  // Collision & material state (lazy pool: a useRef initialiser runs every render)
+  const [collisionParticles] = useState(() => new ParticlePool(COLLISION_PARTICLE_CAPACITY));
   const collisionState = useRef({
     currentBiome: 'canyonSummer' as string,
-    activeParticles: [] as Array<{
-      id: number;
-      material: SurfaceMaterial;
-      position: THREE.Vector3;
-      intensity: number;
-    }>,
+    /** Collision bursts, drawn by ParticlePoolMesh in RunnerVehicle. */
+    particles: collisionParticles,
   });
 
-  // Goal 2: Collision groups for i-frames
-  const defaultCollisionGroups = useRef(0);
   const fovRef = useRef(75);
   const debugState = useRef({
     recentImpulses: [] as DebugImpulse[],
@@ -131,9 +127,11 @@ export function useRunnerPhysicsState() {
     footstepState,
     prevFrame,
     collisionState,
-    defaultCollisionGroups,
     fovRef,
     debugState,
     debugSnapshotRef
   };
 }
+
+export type RunnerPhysicsState = ReturnType<typeof useRunnerPhysicsState>;
+export type RunnerJumpData = RunnerPhysicsState['jumpState']['current'];

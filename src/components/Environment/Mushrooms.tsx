@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Instance } from '@react-three/drei';
 import type { BiomeScopedDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { sinHash } from '../../math/hash';
 
 const PALETTES: Record<string, string[]> = {
   summer: ['#ff4444', '#ff6600', '#ffaa00', '#ffffff'],
@@ -26,10 +27,7 @@ interface MushroomInstance {
 const DEFAULT_ROTATION = new THREE.Euler();
 const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * 5.371) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * 5.371);
 
 function resolvePalette(biome: string): string[] {
   if (PALETTES[biome]) return PALETTES[biome];

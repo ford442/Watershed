@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { DEFAULT_BIOME_ID } from '../../configs/biomes';
+import { createRng, rngInt } from '../../math/random';
 import type {
   BaseMapChunk,
   MapConfig,
@@ -13,6 +14,7 @@ import type {
   SegmentProgressionConfig,
   SpawnData,
 } from './MapSystem.types';
+import { WATER_LEVEL } from '../../constants/game';
 
 // =============================================================================
 // DEFAULT CONFIGURATION
@@ -58,30 +60,6 @@ export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
 // =============================================================================
 
 /**
- * Seeded random number generator for reproducible chunks
- */
-export class SeededRandom {
-  private seed: number;
-
-  constructor(seed: number) {
-    this.seed = seed;
-  }
-
-  next(): number {
-    this.seed = (this.seed * 9301 + 49297) % 233280;
-    return this.seed / 233280;
-  }
-
-  nextRange(min: number, max: number): number {
-    return min + this.next() * (max - min);
-  }
-
-  nextInt(min: number, max: number): number {
-    return Math.floor(this.nextRange(min, max + 1));
-  }
-}
-
-/**
  * Generate a smooth river path with controlled meandering
  * SWARM: Override this in biome-specific generators for different path styles
  */
@@ -92,7 +70,7 @@ export function generateRiverPath(
   seed: number,
   meanderStrength: number = 1.0
 ): THREE.Vector3[] {
-  const rng = new SeededRandom(seed);
+  const rng = createRng(seed);
   const points: THREE.Vector3[] = [startPoint.clone()];
 
   const currentPos = startPoint.clone();
@@ -105,8 +83,8 @@ export function generateRiverPath(
     const turnFactor = Math.sin(meanderPhase) * meanderStrength * 0.3;
 
     // Add random variation
-    direction.x += turnFactor + (rng.next() - 0.5) * 0.2;
-    direction.y += (rng.next() * 0.2 - 0.1); // Slight elevation changes
+    direction.x += turnFactor + (rng() - 0.5) * 0.2;
+    direction.y += (rng() * 0.2 - 0.1); // Slight elevation changes
 
     // Clamp upward slope
     if (direction.y > -0.1) direction.y = -0.1;
@@ -117,7 +95,7 @@ export function generateRiverPath(
     direction.normalize();
 
     // Step forward
-    const stepDistance = config.chunkLength * (0.8 + rng.next() * 0.4);
+    const stepDistance = config.chunkLength * (0.8 + rng() * 0.4);
     const step = direction.clone().multiplyScalar(stepDistance);
     currentPos.add(step);
 
@@ -147,7 +125,7 @@ export function generateSegmentPath(
     stepDistanceMax?: number;
   } = {}
 ): THREE.Vector3[] {
-  const rng = new SeededRandom(seed);
+  const rng = createRng(seed);
   const points: THREE.Vector3[] = [startPoint.clone()];
 
   const currentPos = startPoint.clone();
@@ -163,8 +141,8 @@ export function generateSegmentPath(
 
   for (let step = 0; step < stepCount; step += 1) {
     const turnFactor = Math.sin(index * 0.5 + step) * meanderStrength;
-    direction.x += turnFactor * 0.3 + (rng.next() - 0.5) * 0.2;
-    direction.y += rng.next() * 0.2 + verticalBias * 0.2;
+    direction.x += turnFactor * 0.3 + (rng() - 0.5) * 0.2;
+    direction.y += rng() * 0.2 + verticalBias * 0.2;
 
     const maxUpward = type === 'pond' ? -0.01 : -0.1;
     if (direction.y > maxUpward) direction.y = maxUpward;
@@ -180,7 +158,7 @@ export function generateSegmentPath(
 
     direction.normalize();
 
-    const distance = stepDistanceMin + rng.next() * (stepDistanceMax - stepDistanceMin);
+    const distance = stepDistanceMin + rng() * (stepDistanceMax - stepDistanceMin);
     currentPos.add(direction.clone().multiplyScalar(distance));
     points.push(currentPos.clone());
   }
@@ -199,7 +177,7 @@ export function calculateSpawns(
   seed: number,
   density: { trees: number; rocks: number; collectibles: number }
 ): SpawnData[] {
-  const rng = new SeededRandom(seed + chunkIndex * 1000);
+  const rng = createRng(seed + chunkIndex * 1000);
   const spawns: SpawnData[] = [];
 
   const pathLength = curve.getLength();
@@ -217,8 +195,8 @@ export function calculateSpawns(
       const bankStart = config.waterWidth / 2;
 
       // Trees
-      if (rng.next() < density.trees / steps) {
-        const dist = bankStart + 4 + rng.next() * 8;
+      if (rng() < density.trees / steps) {
+        const dist = bankStart + 4 + rng() * 8;
         const offset = binormal.clone().multiplyScalar(side * dist);
         const pos = point.clone().add(offset);
 
@@ -230,15 +208,15 @@ export function calculateSpawns(
         spawns.push({
           type: 'tree',
           position: pos,
-          rotation: new THREE.Euler(0, rng.next() * Math.PI * 2, 0),
-          scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng.next() * 0.5),
-          meta: { variant: rng.nextInt(0, 3) }
+          rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
+          scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng() * 0.5),
+          meta: { variant: rngInt(rng, 0, 3) }
         });
       }
 
       // Rocks (obstacles)
-      if (rng.next() < density.rocks / steps) {
-        const dist = bankStart + 1 + rng.next() * 4;
+      if (rng() < density.rocks / steps) {
+        const dist = bankStart + 1 + rng() * 4;
         const offset = binormal.clone().multiplyScalar(side * dist);
         const pos = point.clone().add(offset);
 
@@ -250,11 +228,11 @@ export function calculateSpawns(
           type: 'rock',
           position: pos,
           rotation: new THREE.Euler(
-            rng.next() * Math.PI,
-            rng.next() * Math.PI,
-            rng.next() * Math.PI
+            rng() * Math.PI,
+            rng() * Math.PI,
+            rng() * Math.PI
           ),
-          scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.8),
+          scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng() * 0.8),
           meta: { collider: true }
         });
       }
@@ -278,7 +256,7 @@ export function calculateSegmentSpawns(
   index: number,
   seed: number
 ): SpawnData[] {
-  const rng = new SeededRandom(seed + index * 1000);
+  const rng = createRng(seed + index * 1000);
   const spawns: SpawnData[] = [];
 
   const pathLength = curve.getLength();
@@ -315,8 +293,8 @@ export function calculateSegmentSpawns(
 
       // Trees
       const treeChance = treeCount / steps;
-      if (rng.next() < treeChance) {
-        const dist = bankStart + 4 + rng.next() * 8;
+      if (rng() < treeChance) {
+        const dist = bankStart + 4 + rng() * 8;
         const offset = binormal.clone().multiplyScalar(side * dist);
         const pos = point.clone().add(offset);
 
@@ -327,16 +305,16 @@ export function calculateSegmentSpawns(
         spawns.push({
           type: 'tree',
           position: pos,
-          rotation: new THREE.Euler(0, rng.next() * Math.PI * 2, 0),
-          scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng.next() * 0.5),
-          meta: { variant: rng.nextInt(0, 3) }
+          rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
+          scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng() * 0.5),
+          meta: { variant: rngInt(rng, 0, 3) }
         });
       }
 
       // Rocks
       const rockChance = rockCount / steps;
-      if (rng.next() < rockChance) {
-        const dist = bankStart + 1 + rng.next() * 4;
+      if (rng() < rockChance) {
+        const dist = bankStart + 1 + rng() * 4;
         const offset = binormal.clone().multiplyScalar(side * dist);
         const pos = point.clone().add(offset);
 
@@ -348,11 +326,11 @@ export function calculateSegmentSpawns(
           type: 'rock',
           position: pos,
           rotation: new THREE.Euler(
-            rng.next() * Math.PI,
-            rng.next() * Math.PI,
-            rng.next() * Math.PI
+            rng() * Math.PI,
+            rng() * Math.PI,
+            rng() * Math.PI
           ),
-          scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.8),
+          scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng() * 0.8),
           meta: { collider: true }
         });
       }
@@ -410,7 +388,7 @@ export interface BuildProceduralSegmentOptions {
 
 /**
  * Build a single treadmill segment using MapManager progression config and
- * deterministic SeededRandom path/spawn placement.
+ * deterministic `createRng` path/spawn placement.
  */
 export function buildProceduralSegment(
   index: number,
@@ -448,7 +426,7 @@ export function buildProceduralSegment(
     length: pathLength,
     biome: progression.biome,
     flowSpeed: progression.flowSpeed,
-    waterLevel: 0.5,
+    waterLevel: WATER_LEVEL,
     waterWidth: progression.waterWidth,
     canyonWidth: progression.width,
     spawns,

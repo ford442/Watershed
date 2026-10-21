@@ -49,7 +49,7 @@ export function updateUngroundedHysteresis(
   return { ungroundedFrames: nextFrames, isGrounded };
 }
 
-/** Cast player ground ray, free Rapier ray, and derive hit point + raw grounded. */
+/** Cast the player ground ray (the shared scratch ray) and derive hit point + raw grounded. */
 export function resolvePlayerGroundRay(
   world: Parameters<typeof castPlayerGroundRay>[0],
   rapier: Parameters<typeof castPlayerGroundRay>[1],
@@ -63,11 +63,8 @@ export function resolvePlayerGroundRay(
   rawGrounded: boolean;
 } {
   const origin = buildGroundRayOrigin(pos);
-  const { hit, toi, ray } = castPlayerGroundRay(world, rapier, body, origin);
+  const { hit, toi } = castPlayerGroundRay(world, rapier, body, origin);
   const hitPoint = computeGroundHitPoint(origin, toi);
-  if (typeof (ray as { free?: () => void }).free === 'function') {
-    (ray as { free: () => void }).free();
-  }
   return {
     hit,
     toi,

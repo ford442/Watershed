@@ -9,8 +9,13 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { ParticlePool, VFXParticle } from '../../systems/pools/ParticlePool';
-import { PILLAR_BREAK_EVENT, type PillarBreakEventDetail } from './pillarBreakEvents';
+import { gameEvents } from '../../systems/events/GameEvents';
+import { SurfaceMaterial } from '../../systems/vehicle/VehicleSystem';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0x0eafa63f);
 
 const DUST_POOL_SIZE = 120;
 const DUST_POOL_MAX = 400;
@@ -37,50 +42,35 @@ export default function PillarDustVFX() {
 
     particles.forEach((p, i) => {
       p.position.copy(point);
-      p.position.x += (Math.random() - 0.5) * 1.2;
-      p.position.y += Math.random() * 0.6;
-      p.position.z += (Math.random() - 0.5) * 1.2;
+      p.position.x += (random() - 0.5) * 1.2;
+      p.position.y += random() * 0.6;
+      p.position.z += (random() - 0.5) * 1.2;
 
       const angle = (i / count) * Math.PI * 2;
-      const speed = 1.5 + Math.random() * 2.5;
+      const speed = 1.5 + random() * 2.5;
       p.velocity.set(
         Math.cos(angle) * speed,
-        2 + Math.random() * 3,
+        2 + random() * 3,
         Math.sin(angle) * speed,
       );
 
-      p.maxLife = 0.6 + Math.random() * 0.8;
+      p.maxLife = 0.6 + random() * 0.8;
       p.life = p.maxLife;
-      p.scale = 0.25 + Math.random() * 0.35;
+      p.scale = 0.25 + random() * 0.35;
       p.color.set('#a08060');
-      p.rotationSpeed = (Math.random() - 0.5) * 6;
+      p.rotationSpeed = (random() - 0.5) * 6;
     });
   }, []);
 
   useEffect(() => {
-    const onPillarBreak = (event: Event) => {
-      const detail = (event as CustomEvent<PillarBreakEventDetail>).detail;
-      if (!detail?.impactPoint) return;
+    return gameEvents.on('pillarBreak', (detail) => {
       const point = new THREE.Vector3(detail.impactPoint.x, detail.impactPoint.y, detail.impactPoint.z);
       const intensity = Math.min(1, detail.impactSpeed / 20);
       spawnDustBurst(point, intensity);
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('camera-rumble', {
-          detail: { intensity: 0.35 + intensity * 0.45 },
-        }));
-        window.dispatchEvent(new CustomEvent('collision-sound', {
-          detail: {
-            material: 'rock',
-            force: 12 + intensity * 10,
-            point,
-          },
-        }));
-      }
-    };
-
-    window.addEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
-    return () => window.removeEventListener(PILLAR_BREAK_EVENT, onPillarBreak);
+      gameEvents.emit('camera-rumble', { intensity: 0.35 + intensity * 0.45 });
+      gameEvents.emit('collision-sound', { material: SurfaceMaterial.ROCK, force: 12 + intensity * 10, point });
+    });
   }, [spawnDustBurst]);
 
   useFrame((_, delta) => {

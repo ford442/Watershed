@@ -1,15 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { gameEvents, type CameraShakeDetail } from '../systems/events/GameEvents';
 
-interface ShakeEvent {
-  intensity: number;
-  duration: number;
-  /** Oscillation frequency — lower = heavier/slower (waterfall uses 8, default 20) */
-  frequency?: number;
-  /** Max rotation roll amplitude in radians (waterfall uses 0.03, default 0) */
-  angular?: number;
-}
+/** Frequency defaults to 20 (lower = heavier/slower; the waterfall uses 8), roll to 0. */
+type ShakeEvent = Required<CameraShakeDetail>;
 
 /**
  * useCameraShake — spring-damped camera shake with optional angular roll.
@@ -34,23 +29,16 @@ export function useCameraShake() {
   const rumbleIntensityRef = useRef(0);
 
   useEffect(() => {
-    const handleShake = (event: Event) => {
-      const e = event as CustomEvent<ShakeEvent>;
-      const { intensity, duration, frequency = 20, angular = 0 } = e.detail;
+    const offShake = gameEvents.on('camera-shake', ({ intensity, duration, frequency = 20, angular = 0 }) => {
       shakeRef.current = { intensity, duration, frequency, angular };
       shakeTimeRef.current = 0;
-    };
-
-    const handleRumble = (event: Event) => {
-      const e = event as CustomEvent<{ intensity: number }>;
-      rumbleIntensityRef.current = Math.max(0, e.detail?.intensity ?? 0);
-    };
-
-    window.addEventListener('camera-shake', handleShake);
-    window.addEventListener('camera-rumble', handleRumble);
+    });
+    const offRumble = gameEvents.on('camera-rumble', ({ intensity }) => {
+      rumbleIntensityRef.current = Math.max(0, intensity);
+    });
     return () => {
-      window.removeEventListener('camera-shake', handleShake);
-      window.removeEventListener('camera-rumble', handleRumble);
+      offShake();
+      offRumble();
     };
   }, [camera]);
 

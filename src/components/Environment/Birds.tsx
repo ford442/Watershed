@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { BirdsProps } from './types';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { sinHash } from '../../math/hash';
 
 const DUMMY_OBJ = new THREE.Object3D();
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
@@ -62,11 +63,6 @@ interface HawkState {
 }
 
 type BirdState = SongbirdState | HawkState;
-
-const hash = (n: number): number => {
-  const x = Math.sin(n) * 43758.5453123;
-  return x - Math.floor(x);
-};
 
 const createWingGeometry = (side: number, config: WingGeometryConfig): THREE.BufferGeometry => {
   const { span, chord, sweep, tipDrop } = config;
@@ -203,11 +199,11 @@ export default function Birds({ transforms, birdType = 'songbird', isNight = fal
    return activeTransforms.map((transform, index) => {
      const basePos = transform.position || new THREE.Vector3();
      const seedBase = (basePos.x * 13.31) + (basePos.y * 7.17) + (basePos.z * 5.27) + index * 17.11;
-     const r1 = hash(seedBase);
-     const r2 = hash(seedBase + 2.17);
-     const r3 = hash(seedBase + 5.73);
-     const r4 = hash(seedBase + 8.91);
-     const r5 = hash(seedBase + 12.37);
+     const r1 = sinHash(seedBase);
+     const r2 = sinHash(seedBase + 2.17);
+     const r3 = sinHash(seedBase + 5.73);
+     const r4 = sinHash(seedBase + 8.91);
+     const r5 = sinHash(seedBase + 12.37);
 
      const scale = isHawk ? (1.25 + r1 * 0.35) : (0.55 + r1 * 0.3);
 

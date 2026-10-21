@@ -9,6 +9,9 @@
  * Mutates one state object in place; nothing here allocates per frame.
  */
 
+import { clamp01 } from '../../math/scalar';
+import { createRng, type Rng } from '../../math/random';
+
 /** Seconds between strikes at full storm intensity (lighter storms stretch it). */
 export const LIGHTNING_INTERVAL = { min: 2, max: 8 } as const;
 /** Length of one flash envelope (s). */
@@ -17,8 +20,8 @@ export const LIGHTNING_FLASH_SECONDS = 0.45;
 export const THUNDER_DELAY = { min: 0.25, max: 2.6 } as const;
 
 export interface LightningState {
-  /** RNG state (mulberry32). */
-  rng: number;
+  /** The run's strike stream. */
+  rng: Rng;
   /** Run time of the next strike, or -1 before the first scheduled one. */
   nextStrikeAt: number;
   /** Run time of the latest strike, or -Infinity. */
@@ -46,7 +49,7 @@ export function lightningSeed(mapId: string, launchHour: number): number {
 
 export function createLightningState(seed: number): LightningState {
   return {
-    rng: seed >>> 0 || 1,
+    rng: createRng(seed),
     nextStrikeAt: -1,
     lastStrikeAt: Number.NEGATIVE_INFINITY,
     nearness: 0,
@@ -56,17 +59,10 @@ export function createLightningState(seed: number): LightningState {
   };
 }
 
-function nextRandom(state: LightningState): number {
-  let t = (state.rng = (state.rng + 0x6d2b79f5) >>> 0);
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
-
 function scheduleNext(state: LightningState, from: number, intensity: number): void {
-  const span = LIGHTNING_INTERVAL.min + (LIGHTNING_INTERVAL.max - LIGHTNING_INTERVAL.min) * nextRandom(state);
+  const span = LIGHTNING_INTERVAL.min + (LIGHTNING_INTERVAL.max - LIGHTNING_INTERVAL.min) * state.rng();
   // A weak storm strikes less often (up to 2× the interval at intensity 0).
-  state.nextStrikeAt = from + span * (2 - Math.min(1, Math.max(0, intensity)));
+  state.nextStrikeAt = from + span * (2 - clamp01(intensity));
 }
 
 /**
@@ -93,10 +89,10 @@ export function stepLightning(state: LightningState, time: number, active: boole
     scheduleNext(state, time, intensity);
   } else if (time >= state.nextStrikeAt) {
     state.lastStrikeAt = time;
-    state.nearness = 0.45 + 0.55 * nextRandom(state);
+    state.nearness = 0.45 + 0.55 * state.rng();
     // Near strikes thunder sooner.
     state.thunderDelay =
-      THUNDER_DELAY.min + (THUNDER_DELAY.max - THUNDER_DELAY.min) * (1 - state.nearness) * (0.7 + 0.3 * nextRandom(state));
+      THUNDER_DELAY.min + (THUNDER_DELAY.max - THUNDER_DELAY.min) * (1 - state.nearness) * (0.7 + 0.3 * state.rng());
     state.struck = true;
     scheduleNext(state, time, intensity);
   }

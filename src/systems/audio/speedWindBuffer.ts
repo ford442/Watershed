@@ -11,6 +11,8 @@
  * Pure Float32Array math so the loop can be unit-tested without an AudioContext.
  */
 
+import { createRng } from '../../math/random';
+
 /** Loop length. Long enough that the gust cycle is not obviously periodic. */
 export const SPEED_WIND_LOOP_SECONDS = 4;
 
@@ -19,15 +21,6 @@ const CROSSFADE_FRACTION = 0.12;
 
 /** One-pole coefficient — reddens white noise toward a wind-like spectrum. */
 const REDDEN = 0.86;
-
-/** Deterministic 32-bit LCG; a fixed seed keeps CI output byte-stable. */
-function makeRng(seed: number): () => number {
-  let state = (seed >>> 0) || 1;
-  return () => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
 
 /**
  * Slow gust envelope. Every partial completes a whole number of cycles per
@@ -56,7 +49,7 @@ export function fillSpeedWindChannel(out: Float32Array, seed = 0x5eed): void {
 
   const fade = Math.min(Math.floor(n * CROSSFADE_FRACTION), Math.floor(n / 2));
   const total = n + fade;
-  const rng = makeRng(seed);
+  const rng = createRng(seed);
 
   // Generate n + fade samples of reddened noise under the gust envelope.
   const raw = new Float32Array(total);

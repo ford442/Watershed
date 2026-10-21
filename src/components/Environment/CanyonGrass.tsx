@@ -6,11 +6,9 @@ import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { sinHash } from '../../math/hash';
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * 9.173) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * 9.173);
 
 export default function CanyonGrass({ transforms }: BiomeDecorationProps) {
   const grassRef = useRef<THREE.InstancedMesh>(null);

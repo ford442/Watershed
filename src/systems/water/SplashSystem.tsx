@@ -36,6 +36,11 @@ import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { resolveNativeOwner } from '../../sim/nativeOwner';
 import { createSplashIntegrator, type SplashIntegrator } from '../pools/nativeParticles';
 import { NonEmptyInstancedMesh } from '../../components/NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
+import { WATER_LEVEL } from '../../constants/game';
+
+/** This module's seeded stream (#503 A): draws are reproducible run to run. */
+const random = createRng(0xdb562dbf);
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -87,7 +92,7 @@ function RaftBowWave({
 
 export const SplashSystem: React.FC<SplashSystemProps> = ({
   playerRef,
-  waterLevel = 0.5,
+  waterLevel = WATER_LEVEL,
   waterWidth = 12,
   flowDirection = new THREE.Vector3(0, 0, -1),
   flowSpeed = 1.0,
@@ -176,14 +181,14 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       particles.forEach((p, i) => {
         p.position.copy(position);
         const angle = (i / count) * Math.PI * 2;
-        const speed = 2 + Math.random() * 3;
-        const upward = 3 + Math.random() * 2;
+        const speed = 2 + random() * 3;
+        const upward = 3 + random() * 2;
         p.velocity.set(Math.cos(angle) * speed, upward, Math.sin(angle) * speed);
-        p.maxLife = 0.5 + Math.random() * 0.5;
+        p.maxLife = 0.5 + random() * 0.5;
         p.life = 0;
-        p.scale = 0.3 + Math.random() * 0.4;
+        p.scale = 0.3 + random() * 0.4;
         p.color.set(water.foamColor);
-        p.rotationSpeed = (Math.random() - 0.5) * 10;
+        p.rotationSpeed = (random() - 0.5) * 10;
       });
     },
     [water.foamColor, particleDensity],
@@ -200,8 +205,8 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       const particles = splashPoolRef.current.acquireMultiple(count);
 
       particles.forEach((p) => {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 0.3 + Math.random() * 0.5;
+        const angle = random() * Math.PI * 2;
+        const radius = 0.3 + random() * 0.5;
         p.position.set(
           position.x + Math.cos(angle) * radius,
           waterLevel + 0.1,
@@ -209,14 +214,14 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
         );
         p.velocity.set(
           Math.cos(angle) * (1 + speed * 0.2) + velocity.x * 0.1,
-          1.5 + Math.random() * 2 + speed * 0.15,
+          1.5 + random() * 2 + speed * 0.15,
           Math.sin(angle) * (1 + speed * 0.2) + velocity.z * 0.1,
         );
-        p.maxLife = 0.4 + Math.random() * 0.4;
+        p.maxLife = 0.4 + random() * 0.4;
         p.life = 0;
-        p.scale = 0.1 + Math.random() * 0.2 + speed * 0.02;
+        p.scale = 0.1 + random() * 0.2 + speed * 0.02;
         p.color.set(water.foamColor);
-        p.rotationSpeed = (Math.random() - 0.5) * 8;
+        p.rotationSpeed = (random() - 0.5) * 8;
       });
     },
     [water.foamColor, waterLevel],
@@ -230,12 +235,12 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
 
       particles.forEach((p) => {
         p.position.copy(position);
-        p.position.x += (Math.random() - 0.5) * 2;
-        p.position.z += (Math.random() - 0.5) * 2;
-        p.driftSpeed = 0.5 + Math.random() * 0.5;
-        p.maxLife = 2 + Math.random() * 2;
+        p.position.x += (random() - 0.5) * 2;
+        p.position.z += (random() - 0.5) * 2;
+        p.driftSpeed = 0.5 + random() * 0.5;
+        p.maxLife = 2 + random() * 2;
         p.life = 0;
-        p.scale = 0.5 + Math.random() * 0.5;
+        p.scale = 0.5 + random() * 0.5;
         p.color.set(water.foamColor);
       });
     },
@@ -249,19 +254,19 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
 
       particles.forEach((p) => {
         p.position.set(
-          position.x + (Math.random() - 0.5) * 2,
+          position.x + (random() - 0.5) * 2,
           position.y + 0.3,
-          position.z + (Math.random() - 0.5) * 3,
+          position.z + (random() - 0.5) * 3,
         );
         p.velocity.set(
-          (Math.random() - 0.5) * 0.5,
-          0.5 + Math.random() * 0.5,
-          (Math.random() - 0.5) * 0.5,
+          (random() - 0.5) * 0.5,
+          0.5 + random() * 0.5,
+          (random() - 0.5) * 0.5,
         );
-        p.maxLife = 0.8 + Math.random() * 0.6;
+        p.maxLife = 0.8 + random() * 0.6;
         p.life = 0;
-        p.scale = 0.5 + Math.random() * 0.5;
-        p.rotation = Math.random() * Math.PI;
+        p.scale = 0.5 + random() * 0.5;
+        p.rotation = random() * Math.PI;
         p.rotationSpeed = 0.5;
       });
     },
@@ -350,9 +355,9 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       cruiseCooldownRef.current = CRUISE_COOLDOWN;
     }
 
-    if (events.foamEligible && Math.random() < 0.1 * speed) {
+    if (events.foamEligible && random() < 0.1 * speed) {
       spawnFoam(new THREE.Vector3(playerPos.x, waterLevel, playerPos.z));
-      if (Math.random() < 0.15) {
+      if (random() < 0.15) {
         injectSWEDisturbance(playerPos.x, playerPos.z, 0.9, 0.08);
       }
     }

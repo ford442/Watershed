@@ -38,6 +38,23 @@ export interface SpawnPoint {
   z: number;
 }
 
+/**
+ * The weather as the scene reads it (#503 C; was the `weather-update` window
+ * event). WeatherSystem writes it at 10 Hz during a transition; a biome
+ * change or a run reset writes it once. Subscribe to `weather.type` (it
+ * changes rarely); read the rest with getState() where it is used per frame.
+ */
+export interface WeatherBroadcast {
+  type: string;
+  intensity: number;
+  /** 0–1 progress of the transition into `type`. */
+  transition: number;
+  /** Water-surface ripple strength (0 = calm). */
+  rippleStrength: number;
+}
+
+export const CLEAR_WEATHER: WeatherBroadcast = { type: 'clear', intensity: 0, transition: 1, rippleStrength: 0 };
+
 export interface GameState {
   playerPosition: { x: number; y: number; z: number };
   currentSpeed: number;
@@ -79,6 +96,7 @@ export interface GameState {
   launchPopup: { label: string; id: number } | null;
   /** Last checkpoint split's delta vs the PB ghost (seconds; negative = ahead). `id` retriggers the HUD flash even when the value repeats. */
   lastSplitDelta: { deltaSeconds: number; id: number } | null;
+  weather: WeatherBroadcast;
   /** Committed air-time reward after a valid landing. */
   latestReward: {
     tier: string;
@@ -119,6 +137,7 @@ export interface GameActions {
   setVehicleType: (type: 'runner' | 'raft') => void;
   setGhostEnabled: (enabled: boolean) => void;
   setLastSplitDelta: (delta: { deltaSeconds: number; id: number } | null) => void;
+  setWeather: (weather: WeatherBroadcast) => void;
   resetGameState: () => void;
 }
 
@@ -159,6 +178,7 @@ const INITIAL_STATE: GameState = {
   launchPopup: null,
   latestReward: null,
   lastSplitDelta: null,
+  weather: CLEAR_WEATHER,
 };
 
 // =============================================================================
@@ -271,6 +291,8 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setLastSplitDelta: (delta) => set({ lastSplitDelta: delta }),
 
+  setWeather: (weather) => set({ weather }),
+
   resetGameState: () =>
     set((state) => ({
       ...INITIAL_STATE,
@@ -288,11 +310,6 @@ export const useGameStore = create<GameStore>((set) => ({
 // =============================================================================
 // SELECTOR HOOKS (convenience)
 // =============================================================================
-
-/** Subscribe only to player position — useful for UI that tracks coordinates */
-export function usePlayerPosition() {
-  return useGameStore((s) => s.playerPosition);
-}
 
 /** Subscribe only to score */
 export function useScore() {
@@ -383,8 +400,8 @@ export function batchFrameUpdate(
       currentSegmentIndex: segmentIndex,
     });
   } else {
-    // Speed and segment index are lower frequency — update every frame is fine
-    // because few components subscribe to them.
+    // currentSpeed changes every frame: only HUD leaves may subscribe to it.
+    // Scene-root hooks read it with getState() inside useFrame (#503 B).
     useGameStore.setState({
       currentSpeed: speed,
       currentSegmentIndex: segmentIndex,

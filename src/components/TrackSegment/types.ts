@@ -4,6 +4,7 @@ import type { BiomeId } from '../../configs/biomes';
 import type { TrackBiomeProfile, TreeSpeciesId } from '../../configs/TrackBiomes';
 import type { FlowForecastState } from '../../constants/game';
 import type { DecorationPlacement } from '../../systems/map/MapSystem';
+import type { Rng } from '../../math/random';
 
 /** Segment kind used by TrackSegment geometry and placement. */
 export type SegmentKind = 'normal' | 'waterfall' | 'splash' | 'pond' | 'rapids';
@@ -223,10 +224,6 @@ export interface UsePlacementDataParams {
   biomeProfile: PlacementBiomeProfile;
 }
 
-export interface SeedState {
-  value: number;
-}
-
 /** Shared mutable placement context for populateZSteps / populateSide. */
 export interface PopulatePlacementArgs extends PlacementLists {
   zSteps: number;
@@ -238,7 +235,8 @@ export interface PopulatePlacementArgs extends PlacementLists {
   waterWidth: number;
   biome: BiomeId | string;
   segmentId: number;
-  rng: { next: () => number };
+  /** The segment's placement stream (`createRng(segmentId)`), drawn in placement order. */
+  rng: Rng;
   type: SegmentKind | string;
   config?: TrackSegmentConfig | null;
   flowSpeed: number;
@@ -259,7 +257,8 @@ export interface PopulateSideArgs extends PlacementLists {
   waterLevel: number;
   biome: BiomeId | string;
   segmentId: number;
-  rng: { next: () => number };
+  /** The segment's placement stream (`createRng(segmentId)`), drawn in placement order. */
+  rng: Rng;
   type: SegmentKind | string;
   config?: TrackSegmentConfig | null;
   flowSpeed: number;
@@ -269,7 +268,6 @@ export interface PopulateSideArgs extends PlacementLists {
   tangent: THREE.Vector3;
   binormal: THREE.Vector3;
   up: THREE.Vector3;
-  seedState: SeedState;
   lodQuality: string;
   particleCount: number;
   curvatureStrength: number;

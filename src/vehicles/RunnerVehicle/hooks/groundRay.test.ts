@@ -70,7 +70,7 @@ describe('runner ground ray helpers', () => {
     });
   });
 
-  it('resolvePlayerGroundRay frees the ray and reports hit data', () => {
+  it('resolvePlayerGroundRay reports hit data', () => {
     const free = () => {};
     const world = {
       castRay: () => ({ timeOfImpact: 1.25 }),

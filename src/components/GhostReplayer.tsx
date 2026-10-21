@@ -12,6 +12,7 @@ import {
   type GhostPose,
 } from '../systems/ghost/ghostPlayback';
 import type { DecodedGhost } from '../systems/ghost/ghostCodec';
+import { gameEvents } from '../systems/events/GameEvents';
 
 interface GhostBodyProps {
   payload: string | undefined;
@@ -42,11 +43,9 @@ function GhostBody({ payload, color, emissive }: GhostBodyProps) {
   }, [payload]);
 
   useEffect(() => {
-    const onRunReset = () => {
+    return gameEvents.on('watershed-run-reset', () => {
       playbackTimeRef.current = 0;
-    };
-    window.addEventListener('watershed-run-reset', onRunReset);
-    return () => window.removeEventListener('watershed-run-reset', onRunReset);
+    });
   }, []);
 
   useFrame((_, delta) => {

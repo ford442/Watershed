@@ -13,6 +13,7 @@ import {
 import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
 
 // =============================================================================
 // TYPES
@@ -77,16 +78,11 @@ export default function FloatingObjectManager({
       type: FloatingObjectType;
     }> = [];
 
-    const seededRandom = (s: number) => {
-      const x = Math.sin(s) * 10000;
-      return x - Math.floor(x);
-    };
-
-    let seed = segmentId * 7919;
+    const rng = createRng(segmentId * 7919);
     const pathLen = path.getLength();
 
     for (let i = 0; i < count; i++) {
-      const t = seededRandom(seed++);
+      const t = rng();
       const point = path.getPointAt(t);
       const tangent = path.getTangentAt(t).normalize();
       const up = new THREE.Vector3(0, 1, 0);
@@ -94,43 +90,43 @@ export default function FloatingObjectManager({
 
       // Place in water channel, not on banks
       const lateralRange = waterWidth * 0.35;
-      const lateralOffset = (seededRandom(seed++) - 0.5) * 2 * lateralRange;
+      const lateralOffset = (rng() - 0.5) * 2 * lateralRange;
 
       const position = point.clone().add(binormal.multiplyScalar(lateralOffset));
       position.y = waterLevel - 0.2;
 
       // Randomize type
-      const typeRoll = seededRandom(seed++);
+      const typeRoll = rng();
       let type: FloatingObjectType;
       let scale: [number, number, number];
 
       if (typeRoll < 0.35) {
         type = 'log';
-        scale = [0.35, 0.35, 1.8 + seededRandom(seed++) * 0.4];
+        scale = [0.35, 0.35, 1.8 + rng() * 0.4];
       } else if (typeRoll < 0.55) {
         type = 'tire';
         scale = [
-          0.7 + seededRandom(seed++) * 0.2,
+          0.7 + rng() * 0.2,
           0.25,
-          0.7 + seededRandom(seed++) * 0.2,
+          0.7 + rng() * 0.2,
         ];
       } else if (typeRoll < 0.75) {
         type = 'boat';
         scale = [
-          0.9 + seededRandom(seed++) * 0.3,
+          0.9 + rng() * 0.3,
           0.35,
-          1.4 + seededRandom(seed++) * 0.4,
+          1.4 + rng() * 0.4,
         ];
       } else {
         type = 'debris';
-        const s = 0.25 + seededRandom(seed++) * 0.35;
+        const s = 0.25 + rng() * 0.35;
         scale = [s, s, s];
       }
 
       const rotation: [number, number, number] = [
-        (seededRandom(seed++) - 0.5) * 0.3,
-        seededRandom(seed++) * Math.PI * 2,
-        (seededRandom(seed++) - 0.5) * 0.3,
+        (rng() - 0.5) * 0.3,
+        rng() * Math.PI * 2,
+        (rng() - 0.5) * 0.3,
       ];
 
       items.push({

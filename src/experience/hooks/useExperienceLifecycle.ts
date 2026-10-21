@@ -31,6 +31,7 @@ import { dispatchPortageCacheEvent, getRunSession } from '../../systems/journey/
 import { resolveRespawnSegment } from '../../systems/survival';
 import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';
+import { gameEvents, type SegmentEnterDetail } from '../../systems/events/GameEvents';
 
 interface UseExperienceLifecycleOptions {
   debug: DebugStageController;
@@ -144,16 +145,10 @@ export function useExperienceLifecycle({
     try {
       debug.setStageLoading('stateManagement');
 
-      const handleSegmentEnter = (e: Event) => {
-        const detail = (e as CustomEvent<{
-          segmentIndex?: number;
-          gravityMultiplier?: number;
-          segmentState?: string;
-          surviveBonus?: number;
-        }>).detail;
-        const index = detail?.segmentIndex ?? 0;
-        const segmentState = detail?.segmentState ?? 'Normal';
-        const surviveBonus = detail?.surviveBonus ?? 0;
+      const handleSegmentEnter = (detail: SegmentEnterDetail) => {
+        const index = detail.segmentIndex;
+        const segmentState = detail.segmentState;
+        const surviveBonus = detail.surviveBonus;
         const session = getRunSession();
         const survivalMeta = session ? getMapSurvivalMetadata(session.mapId) : {};
         const requiresPortage = requiresPortageForSegment(
@@ -239,39 +234,26 @@ export function useExperienceLifecycle({
             audio.playSound('water_crash', 0.3);
           } else if (index === 29) {
             audio.playSound('water_crash', 1.0);
-            window.dispatchEvent(new CustomEvent('camera-shake', { detail: { intensity: 0.7 } }));
+            // (Dispatched without a duration before #503 C typed it — NaN shake.)
+            gameEvents.emit('camera-shake', { intensity: 0.7, duration: 0.3 });
           } else if (index === 30) {
             audio.setAmbient('ambient_water', 1500);
           }
         }
       };
 
-      const handleSegmentSpawn = (e: Event) => {
-        const { segmentIndex, spawnPoint } =
-          (e as CustomEvent<{ segmentIndex?: number; spawnPoint?: { x: number; y: number; z: number } }>).detail ??
-          {};
-        if (segmentIndex !== undefined && spawnPoint) {
+      const offs = [
+        gameEvents.on('segment-enter', handleSegmentEnter),
+        gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
           setSpawnPoint(segmentIndex, spawnPoint);
-        }
-      };
-
-      const handleSegmentSpawns = (e: Event) => {
-        const { points } =
-          (e as CustomEvent<{ points?: Record<number, { x: number; y: number; z: number }> }>).detail ??
-          {};
-        if (points && Object.keys(points).length > 0) {
-          setSpawnPoints(points);
-        }
-      };
-
-      window.addEventListener('segment-enter', handleSegmentEnter);
-      window.addEventListener('segment-spawn', handleSegmentSpawn);
-      window.addEventListener('segment-spawns', handleSegmentSpawns);
+        }),
+        gameEvents.on('segment-spawns', ({ points }) => {
+          if (Object.keys(points).length > 0) setSpawnPoints(points);
+        }),
+      ];
       debug.setStageSuccess('stateManagement');
       return () => {
-        window.removeEventListener('segment-enter', handleSegmentEnter);
-        window.removeEventListener('segment-spawn', handleSegmentSpawn);
-        window.removeEventListener('segment-spawns', handleSegmentSpawns);
+        for (const off of offs) off();
       };
     } catch (error) {
       debug.setStageFailure('stateManagement', error);
@@ -288,15 +270,18 @@ export function useExperienceLifecycle({
   ]);
 
   useEffect(() => {
-    const handleNearMiss = () => {
-      const game = useGameStore.getState();
-      if (!game.isWipeout) {
-        awardDodgeBonus();
-      }
-    };
+    return gameEvents.on('player-near-miss', () => {
+      if (!useGameStore.getState().isWipeout) awardDodgeBonus();
+    });
+  }, []);
 
-    window.addEventListener('player-near-miss', handleNearMiss);
-    return () => window.removeEventListener('player-near-miss', handleNearMiss);
+  // Collision audio (#503 C): VehicleSystem.processCollision and pillar breaks
+  // emitted this for months with nothing listening. One `collide_<material>`
+  // per hit; processCollision already rate-limits a vehicle to one per 100 ms.
+  useEffect(() => {
+    return gameEvents.on('collision-sound', ({ material, force }) => {
+      getAudioManager()?.playSound(`collide_${material}`, Math.min(1, force / 15));
+    });
   }, []);
 
   useFrame((_, delta) => {

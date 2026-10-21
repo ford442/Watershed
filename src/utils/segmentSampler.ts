@@ -10,6 +10,14 @@ export interface SegmentFlowSample {
   state: string;
 }
 
+/** What the sampler reads of a segment — `SegmentData` satisfies it; every field may be absent. */
+export interface FlowSampledSegment {
+  segmentPath?: THREE.Curve<THREE.Vector3> | null;
+  flowSpeed?: number;
+  width?: number;
+  segmentState?: string;
+}
+
 /** A reusable result for `sampleSegmentFlow`: callers keep two and swap the closer one in. */
 export function createSegmentFlowSample(): SegmentFlowSample {
   return {
@@ -70,13 +78,13 @@ function samplesFor(curve: THREE.Curve<THREE.Vector3>): Float64Array {
  * sample's tangent is degenerate (`target` is then left as it was).
  */
 export function sampleSegmentFlow(
-  segment: any,
+  segment: FlowSampledSegment | null | undefined,
   worldPosition: THREE.Vector3,
   target: SegmentFlowSample,
 ): SegmentFlowSample | null {
   if (!segment?.segmentPath) return null;
 
-  const samples = samplesFor(segment.segmentPath as THREE.Curve<THREE.Vector3>);
+  const samples = samplesFor(segment.segmentPath);
   let best = 0;
   let bestDistanceSq = Infinity;
   for (let index = 0; index < SAMPLES; index += 1) {

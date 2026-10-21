@@ -7,6 +7,7 @@ import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import type { BiomeScopedDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
+import { sinHash } from '../../math/hash';
 
 const BASE_COLORS = {
   default: '#4e7336',
@@ -18,10 +19,7 @@ const TIP_COLORS = {
   slotCanyon: '#e0c98a',
 };
 
-const hash = (n: number): number => {
-  const x = Math.sin(n * 7.531) * 43758.5453;
-  return x - Math.floor(x);
-};
+const hash = (n: number): number => sinHash(n * 7.531);
 
 const buildBlade = (
   height: number,

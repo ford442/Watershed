@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 import type { Vec3 } from '../../vehicles/utils/shelfLaunch';
+import { sinHash } from '../../math/hash';
 
 /** Minimum player speed (m/s) to shatter a crumbling pillar. */
 export const PILLAR_CRUMBLE_SPEED_THRESHOLD = VEHICLE_TUNING.pillarCrumble.speedThreshold;
@@ -136,6 +137,5 @@ export function buildPillarFragments(args: {
 }
 
 function seededUnit(seed: number): number {
-  const x = Math.sin(seed * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
+  return sinHash(seed * 12.9898);
 }

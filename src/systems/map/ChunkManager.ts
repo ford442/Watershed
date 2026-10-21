@@ -35,6 +35,9 @@ import {
   createSegmentData,
 } from './chunkForecastApply';
 
+import { indexOfSpanAtZ, spanContainsZ, type ZSpan } from './segmentFrames';
+import { gameEvents } from '../events/GameEvents';
+
 export type { SegmentData } from './chunkForecastApply';
 
 // =============================================================================
@@ -94,6 +97,24 @@ const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
 const GENERATION_THRESHOLD = GENERATION.THRESHOLD;
 const RECYCLE_MARGIN = GENERATION.RECYCLE_MARGIN;
 
+/**
+ * Centreline z span per segment curve. A segment's curve is built once and
+ * never mutated (a reused pool slot gets a new curve), so the span is computed
+ * on first lookup and the per-frame queries evaluate no curve at all.
+ */
+const zSpans = new WeakMap<THREE.Curve<THREE.Vector3>, ZSpan>();
+const _spanPoint = new THREE.Vector3();
+
+function zSpanOf(segment: SegmentData): ZSpan {
+  let span = zSpans.get(segment.segmentPath);
+  if (!span) {
+    const zStart = segment.segmentPath.getPoint(0, _spanPoint).z;
+    span = { zStart, zEnd: segment.segmentPath.getPoint(1, _spanPoint).z };
+    zSpans.set(segment.segmentPath, span);
+  }
+  return span;
+}
+
 // =============================================================================
 // CHUNK MANAGER CLASS
 // =============================================================================
@@ -115,6 +136,7 @@ export class ChunkManager {
   private startIndex: number;
   private proceduralBaseSeed?: number;
   private chunkPool = new ChunkPool();
+  private readonly spanScratch: ZSpan[] = [];
 
   constructor(options: ChunkManagerOptions) {
     this.mapManager = options.mapManager;
@@ -168,11 +190,7 @@ export class ChunkManager {
 
     // One batched spawn update — avoids N Zustand/React flushes during cold boot.
     if (Object.keys(spawnBatch).length > 0) {
-      window.dispatchEvent(
-        new CustomEvent('segment-spawns', {
-          detail: { points: spawnBatch },
-        })
-      );
+      gameEvents.emit('segment-spawns', { points: spawnBatch });
     }
 
     this.callbacks.onPoolChange?.();
@@ -281,11 +299,10 @@ export class ChunkManager {
     this.spawnPoints.set(nextSegment.id, spawnPoint);
 
     // Broadcast spawn point for respawn system
-    window.dispatchEvent(
-      new CustomEvent('segment-spawn', {
-        detail: { segmentIndex: nextSegment.id, spawnPoint: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z } },
-      })
-    );
+    gameEvents.emit('segment-spawn', {
+      segmentIndex: nextSegment.id,
+      spawnPoint: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z },
+    });
 
     this.callbacks.onSegmentGenerated?.(nextIndex);
     return true;
@@ -358,17 +375,7 @@ export class ChunkManager {
     }
 
     // ---- Biome change detection ----
-    let closestSegment: SegmentData | null = null;
-    let closestDistance = Infinity;
-
-    for (const segment of activeSegments) {
-      const centerPoint = segment.segmentPath.getPoint(0.5);
-      const distance = Math.abs(cameraZ - centerPoint.z);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestSegment = segment;
-      }
-    }
+    const closestSegment = this.segmentAtZ(activeSegments, cameraZ);
 
     if (closestSegment && closestSegment.biome !== this.lastReportedBiome) {
       const newBiome = closestSegment.biome;
@@ -383,9 +390,7 @@ export class ChunkManager {
         if (this.pendingBiome === newBiome) {
           this.lastReportedBiome = newBiome;
           this.callbacks.onBiomeChange?.(newBiome, segmentIndex);
-          window.dispatchEvent(
-            new CustomEvent('biome-change', { detail: { biome: newBiome, segmentIndex } })
-          );
+          gameEvents.emit('biome-change', { biome: newBiome, segmentIndex });
         }
         this.pendingBiome = null;
       }, 400);
@@ -406,12 +411,22 @@ export class ChunkManager {
 
   /** Active segment whose centreline z span contains `z` (downstream is −z). */
   findSegmentAtZ(z: number): SegmentData | null {
-    for (const segment of this.getActiveSegments()) {
-      const z0 = segment.segmentPath.getPoint(0).z;
-      const z1 = segment.segmentPath.getPoint(1).z;
-      if (z <= Math.max(z0, z1) && z >= Math.min(z0, z1)) return segment;
-    }
-    return null;
+    const segment = this.segmentAtZ(this.getActiveSegments(), z);
+    return segment && spanContainsZ(zSpanOf(segment), z) ? segment : null;
+  }
+
+  /** Id of the active segment at `z` — containing it, else nearest by z; -1 with none active. */
+  segmentIndexAtZ(z: number): number {
+    return this.segmentAtZ(this.getActiveSegments(), z)?.id ?? -1;
+  }
+
+  /** `indexOfSpanAtZ` over `segments`' cached spans; no curve evaluation, no allocation. */
+  private segmentAtZ(segments: readonly SegmentData[], z: number): SegmentData | null {
+    const spans = this.spanScratch;
+    spans.length = segments.length;
+    for (let i = 0; i < segments.length; i += 1) spans[i] = zSpanOf(segments[i]);
+    const index = indexOfSpanAtZ(spans, z);
+    return index < 0 ? null : segments[index];
   }
 
   getActiveSegments(): SegmentData[] {
@@ -427,23 +442,6 @@ export class ChunkManager {
       active: activeSet.has(slot.slotIndex) && slot.segment !== null,
       segment: slot.segment,
     }));
-  }
-
-  getSegmentIndexAtZ(z: number): number {
-    const activeSegments = this.getActiveSegments();
-    let closestIndex = -1;
-    let closestDistance = Infinity;
-
-    for (const segment of activeSegments) {
-      const centerPoint = segment.segmentPath.getPoint(0.5);
-      const distance = Math.abs(z - centerPoint.z);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = segment.id;
-      }
-    }
-
-    return closestIndex;
   }
 
   getSegmentSpawnPoint(index: number): THREE.Vector3 | null {

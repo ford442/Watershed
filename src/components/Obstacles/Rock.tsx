@@ -14,7 +14,7 @@ import {
   type PillarPhase,
   vec3FromRapier,
 } from './pillarCrumble';
-import { emitPillarBreak } from './pillarBreakEvents';
+import { gameEvents } from '../../systems/events/GameEvents';
 import { enqueuePillarFragments } from './PillarFragmentPool';
 import { tryAcquirePillarFragmentSlots } from '../../systems/pools/PillarFragmentRegistry';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
@@ -252,7 +252,7 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
         enqueuePillarFragments(spawns);
       }
 
-      emitPillarBreak({
+      gameEvents.emit('pillarBreak', {
         segmentIndex: segmentId,
         pillarIndex,
         impactPoint: vec3FromRapier(impactPoint),

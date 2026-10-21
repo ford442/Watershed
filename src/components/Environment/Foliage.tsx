@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { BiomeDecorationTransform, FoliageProps } from './types';
 import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { createRng } from '../../math/random';
 
 type PaletteSeason = 'summer' | 'autumn';
 
@@ -65,11 +66,9 @@ export default function Foliage({ transforms, biome = 'canyonSummer', density = 
     transforms.forEach((t: BiomeDecorationTransform, i: number) => {
       const baseScale = (t.scale ?? DEFAULT_SCALE).x;
       const baseRotation = t.rotation ?? DEFAULT_ROTATION;
-      const seed = i * 123.45;
-      const rand = () => {
-        const x = Math.sin(seed + Math.random() * 100) * 10000;
-        return x - Math.floor(x);
-      };
+      // Per-instance stream: instance i looks the same on every mount (it used to
+      // mix Math.random() into the seed, so a remount reshuffled the shrubs).
+      const rand = createRng(i);
 
       // Determine type based on random chance
       const typeRoll = rand();

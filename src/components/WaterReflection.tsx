@@ -9,6 +9,7 @@ import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useWaterReflectionStore } from '../systems/water/waterReflectionStore';
+import { WATER_LEVEL } from '../constants/game';
 
 export interface WaterReflectionProps {
   waterLevel?: number;
@@ -22,7 +23,7 @@ export interface WaterReflectionProps {
  * WaterReflection component - Manages reflection rendering
  */
 export default function WaterReflection({
-  waterLevel = 0.5,
+  waterLevel = WATER_LEVEL,
   resolution = 1024,
   updateInterval = 2,
   reflectionStrength = 0.6,

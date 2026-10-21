@@ -152,7 +152,6 @@ export function materialShaderUserData(
   return material.userData as MaterialShaderUserData;
 }
 
-export type WeatherUpdateEvent = CustomEvent<{ type?: string }>;
 
 /** Bridge MeshStandardMaterial into VegetationShader without `as any`. */
 export type VegetationMaterialInput = NonNullable<

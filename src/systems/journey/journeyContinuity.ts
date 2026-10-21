@@ -11,6 +11,7 @@ import { ensureTangentContinuity } from '../map/MapSystem.generation';
 import type { MapRegistryId } from '../../maps/registry';
 import { getMapDefinition } from '../../maps/registry';
 import { getContinuationTarget } from '../../maps/campaign';
+import { clamp01, lerp } from '../../math/scalar';
 import type { BiomeId } from '../../configs/biomes';
 
 /** Default number of segments over which width/water blend at a seam. */
@@ -215,13 +216,4 @@ function computeEndTangent(points: ReadonlyArray<Vec3Like>): THREE.Vector3 {
   const t = new THREE.Vector3().subVectors(b, a);
   if (!t.lengthSq() || !Number.isFinite(t.x)) return new THREE.Vector3(0, 0, -1);
   return t.normalize();
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * clamp01(t);
-}
-
-function clamp01(t: number): number {
-  if (!Number.isFinite(t)) return 0;
-  return Math.min(1, Math.max(0, t));
 }

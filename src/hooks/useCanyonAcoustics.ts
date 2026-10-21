@@ -15,6 +15,7 @@ import { TRACK_BIOMES, normalizeBiomeId } from '../configs/TrackBiomes';
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { isEnclosedReach, wallWetnessForBiome } from '../systems/audio/canyonAcoustics';
 import { useGameStore } from '../systems/GameState';
+import { gameEvents } from '../systems/events/GameEvents';
 
 export function applyBiomeAcoustics(biome: string): void {
   const am = getAudioManager();
@@ -39,16 +40,15 @@ export function useCanyonAcoustics(): void {
   // the current biome's walls back once that synchronous teardown is done.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const onRunReset = () => {
+    const offRunReset = gameEvents.on('watershed-run-reset', () => {
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
         applyBiomeAcoustics(useGameStore.getState().currentBiome);
       }, 0);
-    };
-    window.addEventListener('watershed-run-reset', onRunReset);
+    });
     return () => {
-      window.removeEventListener('watershed-run-reset', onRunReset);
+      offRunReset();
       if (timer !== null) clearTimeout(timer);
     };
   }, []);

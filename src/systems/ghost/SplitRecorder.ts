@@ -13,6 +13,7 @@ import type { RunSplitEntry } from './ghostCodec';
 import { useGameStore } from '../GameState';
 import { getRunBest } from '../persistence/PersistenceSystem';
 import { getActiveRunKey } from '../../utils/runContext';
+import { gameEvents } from '../events/GameEvents';
 
 let splits: RunSplitEntry[] = [];
 let recordedSegments = new Set<number>();
@@ -62,16 +63,13 @@ let listenerAttached = false;
 
 /** Wire `segment-enter` / `watershed-run-reset` → split recording (call once at app boot). */
 export function initSplitRecordingListener(): void {
-  if (listenerAttached || typeof window === 'undefined') return;
+  if (listenerAttached) return;
   listenerAttached = true;
 
-  window.addEventListener('segment-enter', (event) => {
-    const detail = (event as CustomEvent<{ segmentIndex?: number }>).detail;
-    if (!detail || typeof detail.segmentIndex !== 'number') return;
+  gameEvents.on('segment-enter', (detail) => {
     recordSplit(detail.segmentIndex, useGameStore.getState().currentSpeed);
   });
-
-  window.addEventListener('watershed-run-reset', () => {
+  gameEvents.on('watershed-run-reset', () => {
     resetSplitRecording();
   });
 }

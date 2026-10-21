@@ -14,6 +14,7 @@
  * Pure and leaf-level (type-only imports) so the sim worker's router reads it.
  */
 import type { WeatherType } from '../../constants/weather';
+import { clamp01 } from '../../math/scalar';
 
 export interface RunWeather {
   type: WeatherType;
@@ -43,10 +44,6 @@ export const WEATHER_FLOW_RATE_GAIN = {
 
 /** Extra storm runoff around the afternoon convective peak (hour, half-width h, gain). */
 export const STORM_CONVECTIVE_PEAK = { hour: 15, halfWidth: 3, gain: 0.1 } as const;
-
-function clamp01(value: number): number {
-  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-}
 
 function wrapHour(hour: number): number {
   return ((hour % 24) + 24) % 24;

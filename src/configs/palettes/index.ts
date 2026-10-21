@@ -17,6 +17,7 @@ import {
 } from '../biomes';
 
 import type { BiomeLightingOptions, BiomePalette } from './types';
+import { lerp } from '../../math/scalar';
 import { alpineSpring } from './alpineSpring';
 import { canyonSummer } from './canyonSummer';
 import { canyonAutumn } from './canyonAutumn';
@@ -74,7 +75,6 @@ export function lerpBiomePalettes(
   to: BiomePalette,
   alpha: number
 ): BiomePalette {
-  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
   const lerpColor = (a: string, b: string, t: number) => {
     const c1 = new THREE.Color(a);
     const c2 = new THREE.Color(b);

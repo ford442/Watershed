@@ -8,6 +8,7 @@ import type { InnerExperienceProps, VehicleRigidBodyRef, VehicleType } from '../
 import { useExperienceLifecycle } from './useExperienceLifecycle';
 import { useExperienceWorld } from './useExperienceWorld';
 import { getMapDefinition, isMapRegistryId } from '../../maps/registry';
+import { gameEvents } from '../../systems/events/GameEvents';
 
 function readVehicleTypeFromUrl(): VehicleType | null {
   if (typeof window === 'undefined') return null;
@@ -95,18 +96,11 @@ export function useInnerExperience({
 
   // Segment-authored forceVehicle (delta raft launch, hydro→delta continuation).
   useEffect(() => {
-    if (typeof window === 'undefined' || urlVehicleOverrideRef.current) return;
+    if (urlVehicleOverrideRef.current) return;
 
-    const onSegmentEnter = (event: Event) => {
-      const detail = (event as CustomEvent<{ forceVehicle?: VehicleType | null }>).detail;
-      const next = detail?.forceVehicle;
-      if (next === 'raft' || next === 'runner') {
-        setVehicleType(next);
-      }
-    };
-
-    window.addEventListener('segment-enter', onSegmentEnter);
-    return () => window.removeEventListener('segment-enter', onSegmentEnter);
+    return gameEvents.on('segment-enter', ({ forceVehicle }) => {
+      if (forceVehicle) setVehicleType(forceVehicle);
+    });
   }, [setVehicleType]);
 
   useExperienceLifecycle({

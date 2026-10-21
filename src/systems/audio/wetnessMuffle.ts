@@ -10,6 +10,8 @@
  * No Three.js / Web Audio imports — the curve is unit-testable on its own.
  */
 
+import { clamp } from '../../math/scalar';
+
 /**
  * Floor of `sfxWetnessMultiplier` (`1 - wetness * 0.35` at wetness = 1).
  * Kept in sync with survivalState.getSurvivalModifiers.
@@ -32,10 +34,6 @@ export interface WetnessMuffle {
 }
 
 const DRY: WetnessMuffle = { gain: 1, cutoffHz: WETNESS_CUTOFF_DRY, wet: 0 };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 /**
  * Map `SurvivalModifiers.sfxWetnessMultiplier` to a mixer gain + cutoff.
