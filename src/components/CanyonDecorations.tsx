@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RigidBody } from '@react-three/rapier';
 import { useFrame } from '@react-three/fiber';
 import type { BiomeDecorationTransform, CanyonDecorationsProps } from './Environment/types';
-import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../rendering/instancing/NonEmptyInstancedMesh';
 import { registerWorkerCollider, unregisterWorkerCollider } from '../physics/workerColliderRegistry';
 import { hullSpecFromGeometry } from '../physics/colliderSpecsFromThree';
 import { createRng } from '../math/random';

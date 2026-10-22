@@ -41,8 +41,8 @@ const PhysicsPerfMonitor = lazy(() => import('../debug/PhysicsPerfMonitor'));
 // streamer, reactive audio and manifest normalizer). The campaign default mounts neither, so
 // their code loads only for the session that asks. Suspense stays local: the vehicle, water and
 // HUD keep running while the chunk lands.
-const LevelLoader = lazy(() => import('../systems/map/LevelLoader'));
-const ReachManager = lazy(() => import('../systems/reach/ReachManager'));
+const LevelLoader = lazy(() => import('./LevelLoader'));
+const ReachManager = lazy(() => import('./ReachManager'));
 
 /**
  * InnerExperience — game scene composition (providers are mounted in Experience.tsx).

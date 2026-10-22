@@ -17,7 +17,7 @@ import {
   PILLAR_FRAGMENT_LIFETIME_S,
   type PillarFragmentSpawn,
 } from './pillarCrumble';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { gameEvents } from '../../systems/events/GameEvents';
 
 export interface ActivePillarFragment {

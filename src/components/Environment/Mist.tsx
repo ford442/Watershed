@@ -6,7 +6,7 @@ import type { MistPlacement, MistProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createMistMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { useGameStore } from '../../systems/GameState';
 
 const DUMMY_OBJ = new THREE.Object3D();

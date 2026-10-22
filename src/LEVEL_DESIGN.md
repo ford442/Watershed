@@ -132,7 +132,7 @@ player with a calm, visually rich recovery (alpine) before the main descent.
 
 ### Physics: Slipperiness
 
-`slipperiness` (0–1) is published in the `segment-enter` CustomEvent as `detail.slipperiness`.
+`slipperiness` (0–1) is published in the `segment-enter` game event (`gameEvents`, `src/systems/events/GameEvents.ts`) as `slipperiness`.
 `WaterFlowForces.tsx` reads it each frame and:
 - Reduces lateral drag by `slipperiness × 80%` — the raft can't fight the current sideways.
 - Adds a `0.18 × flowSpeed × slipperiness` slide bias along the downstream tangent each frame.

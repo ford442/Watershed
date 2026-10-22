@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ChannelProfileSample } from '../../components/TrackSegment/types';
+import type { ChannelProfileSample } from '../types';
 import {
   applyTubeProfile,
   buildTerrainTile,

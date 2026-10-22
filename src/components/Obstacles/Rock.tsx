@@ -17,7 +17,7 @@ import {
 import { gameEvents } from '../../systems/events/GameEvents';
 import { enqueuePillarFragments } from './PillarFragmentPool';
 import { tryAcquirePillarFragmentSlots } from '../../systems/pools/PillarFragmentRegistry';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import {
   registerWorkerCollider,
   unregisterWorkerCollider,

@@ -5,7 +5,7 @@ import { createRockSurfaceMaterial } from '../materials/foliage/createFoliageSur
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import type { ObstacleSlot } from '../systems/pools/ObstaclePool';
 import type { PooledObstaclesProps } from './Environment/types';
-import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../rendering/instancing/NonEmptyInstancedMesh';
 import { registerWorkerCollider, unregisterWorkerCollider } from '../physics/workerColliderRegistry';
 import { boxSpec } from '../physics/colliderSpecsFromThree';
 

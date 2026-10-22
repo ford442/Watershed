@@ -98,7 +98,7 @@ HUD components, and physics callers.
 
 ---
 
-### `src/systems/reach/ReachManager.tsx`
+### `src/experience/ReachManager.tsx`
 
 **Purpose:** Orchestrates a single Reach lifecycle — streams the manifest, normalizes it
 into TrackManager-compatible segments, and watches player position for transition entry.
@@ -127,8 +127,9 @@ into TrackManager-compatible segments, and watches player position for transitio
 - Renders `<TrackManager reachSegments={...} />` (plus `ReactiveAudio`, `WeatherSystem`).
 - On transition entry: prefetches `transition.nextReachId` (when authored), joins
   waypoints with control-point continuity, appends normalized segments, cross-fades
-  biome via `BiomeProvider.setBiome`, and emits `reach-exit` / `reach-enter` /
-  `journey-handoff` CustomEvents. Autosaves a journey checkpoint.
+  biome via `BiomeProvider.setBiome`. Autosaves a journey checkpoint. (The
+  `reach-exit` / `reach-enter` / `journey-handoff` window events it used to emit had
+  no listener and were removed with the window event bus, #503 C.)
 - On load error: renders `TrackManager` without segments so procedural generation takes over.
 
 **Boundaries (Do NOT):**

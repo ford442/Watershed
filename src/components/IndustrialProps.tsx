@@ -3,7 +3,7 @@
 
 import { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../rendering/instancing/NonEmptyInstancedMesh';
 
 export type IndustrialPropType = 'pipe' | 'railing' | 'catwalk' | 'gate';
 

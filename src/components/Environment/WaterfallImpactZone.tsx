@@ -8,7 +8,7 @@ import {
   createWaterfallPlumeMaterial,
 } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 
 const MAX_DROPLETS = 180;
 

@@ -15,7 +15,7 @@
 
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { heapF32 } from '../systems/water/wasmAbi';
-import type { ChannelProfileSample, ChannelShape } from '../components/TrackSegment/types';
+import type { ChannelProfileSample, ChannelShape } from './types';
 import { clamp01, lerp, smoothstep } from '../math/scalar';
 
 /** Floats per packed channel sample — TERRAIN_CHANNEL_STRIDE in terrain.h. */

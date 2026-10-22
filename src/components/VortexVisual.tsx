@@ -4,7 +4,7 @@
 import { useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { NonEmptyInstancedMesh } from './NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../math/random';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */

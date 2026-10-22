@@ -5,7 +5,7 @@ import { useLOD } from '../../systems/lod/LODManager';
 import type { WaterfallParticlesProps } from './types';
 import { resolveNativeOwner } from '../../sim/nativeOwner';
 import { createWaterfallIntegrator, type WaterfallIntegrator } from '../../systems/pools/nativeParticles';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { usePooledPointLights } from '../../rendering/sceneLightPool';
 import { createRng } from '../../math/random';
 

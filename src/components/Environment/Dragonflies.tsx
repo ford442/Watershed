@@ -9,7 +9,7 @@ import {
   createDragonflyWingMaterial,
   updateCritterMaterialTime,
 } from '../../materials/critters/createCritterMaterials';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { sinHash } from '../../math/hash';
 
 const DUMMY_OBJ = new THREE.Object3D();

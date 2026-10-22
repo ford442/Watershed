@@ -5,7 +5,7 @@ import type { BiomeDecorationProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createFireflyMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
-import { NonEmptyInstancedMesh } from '../NonEmptyInstancedMesh';
+import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { usePooledPointLights } from '../../rendering/sceneLightPool';
 import { sinHash } from '../../math/hash';
 

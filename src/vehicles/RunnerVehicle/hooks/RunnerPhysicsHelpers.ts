@@ -13,7 +13,7 @@ import {
   NEAR_MISS_TOI_MAX,
 } from '../constants';
 import { playDodgeSound } from '../audio';
-import { triggerCameraShake } from '../utils';
+import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/score/LaunchScoringSession';
 import { emitCollisionBurst } from '../../../components/CollisionParticles';
 import { gameEvents } from '../../../systems/events/GameEvents';

@@ -3,9 +3,16 @@ import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getComfort } from '../systems/settings/comfortRuntime';
 import { gameEvents, type CameraShakeDetail } from '../systems/events/GameEvents';
+import { pulse } from '../input/haptics';
 
 /** Frequency defaults to 20 (lower = heavier/slower; the waterfall uses 8), roll to 0. */
 type ShakeEvent = Required<CameraShakeDetail>;
+
+/** One-shot camera shake (any system; useCameraShake applies it). Impacts also pulse the active gamepad. */
+export const triggerCameraShake = (intensity: number, duration: number = 0.3) => {
+  pulse('impact', Math.min(1, intensity * 1.8));
+  gameEvents.emit('camera-shake', { intensity, duration });
+};
 
 /**
  * useCameraShake — spring-damped camera shake with optional angular roll.

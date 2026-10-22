@@ -1,5 +1,5 @@
 import { WATER_LEVEL } from '../constants/game';
-import { WATER_PHYSICS } from '../vehicles/RaftVehicle/constants';
+import { WATER_PHYSICS } from '../constants/waterPhysics';
 import type { PhysicsWorkerTickParams } from './physicsWorkerRegistry';
 import type { PhysicsWorkerWaterTickConfig } from './physicsWorkerWaterForces';
 import type { WaterForceTickConfig } from './rapierWorkerProtocol';

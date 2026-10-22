@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createRaftPhysicsRuntime, type RaftPhysicsRuntimeDeps } from './raftPhysicsRuntime';
-import { WATER_PHYSICS } from '../constants';
+import { WATER_PHYSICS } from '../../../constants/waterPhysics';
 import { stagedWaterLevel } from '../../../systems/water/sampleSWEFlow';
 import {
   publishVehicleWaterLevel,

@@ -1,0 +1,32 @@
+/**
+ * waterPhysics.ts — the raft's buoyancy / drag / tipping constants (#503 E).
+ *
+ * In constants/, not vehicles/RaftVehicle/, because the water-force bridge
+ * (systems/water) and the physics worker config (physics/) read them too, and
+ * neither may import vehicles/. No absolute water level: the surface a raft
+ * floats on is the staged sheet over it (vehicleWaterDatum.ts).
+ */
+import { RAFT } from './game';
+
+export const WATER_PHYSICS = {
+  RAFT_HEIGHT: RAFT.HEIGHT,
+  RAFT_WIDTH: RAFT.WIDTH,
+  RAFT_LENGTH: RAFT.LENGTH,
+  RAFT_VOLUME: RAFT.VOLUME,
+  RAFT_MASS: RAFT.MASS,
+
+  BUOYANCY_MAX_FORCE: RAFT.BUOYANCY_MAX_FORCE,
+  DRAG_COEFFICIENT: RAFT.DRAG_COEFFICIENT,
+  DRAG_AREA_FRONT: RAFT.DRAG_AREA_FRONT,
+  DRAG_AREA_SIDE: RAFT.DRAG_AREA_SIDE,
+
+  TURBULENCE_FREQ: RAFT.TURBULENCE_FREQ,
+  TURBULENCE_AMP: RAFT.TURBULENCE_AMP,
+  TIP_THRESHOLD_SPEED: RAFT.TIP_THRESHOLD_SPEED,
+  TIP_SUBMERGE_THRESHOLD: RAFT.TIP_SUBMERGE_THRESHOLD,
+  TIP_FORCE_MAGNITUDE: RAFT.TIP_FORCE_MAGNITUDE,
+  CALM_TIP_SCALE: RAFT.CALM_TIP_SCALE,
+  CALM_TURBULENCE_SCALE: RAFT.CALM_TURBULENCE_SCALE,
+  CALM_TIP_THRESHOLD_SPEED: RAFT.CALM_TIP_THRESHOLD_SPEED,
+  ROTATION_DAMPING: RAFT.ROTATION_DAMPING,
+};

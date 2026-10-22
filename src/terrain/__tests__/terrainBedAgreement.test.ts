@@ -18,7 +18,7 @@
  */
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import type { ChannelProfileSample } from '../../components/TrackSegment/types';
+import type { ChannelProfileSample } from '../types';
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import { BED_DATUM, BATHYMETRY_DRY_BED, createSegmentBathymetrySource } from '../../systems/water/bathymetrySampler';
 import { SWE_MEAN_DEPTH } from '../../systems/water/SWEHeightField';

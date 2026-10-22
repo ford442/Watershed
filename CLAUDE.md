@@ -11,7 +11,7 @@ pnpm install       # pnpm only — a preinstall guard refuses npm/yarn (pnpm-loc
 pnpm start         # dev server on port 3000 (Vite)
 pnpm test          # unit tests (Vitest + Testing Library)
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
-pnpm typecheck     # tsc --noEmit + the layout/GLSL/typecheck-surface/orphan guards
+pnpm typecheck     # tsc --noEmit + the layout/dependency-direction/GLSL/typecheck-surface/orphan guards
 pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); no emcc needed — ships the committed WASM pair
 pnpm build:full    # build:wasm, then build — the deploy path (build_and_patch.py); needs the pinned emcc
 pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 3.1.56 (`bash scripts/emsdk-pinned.sh`)
@@ -82,7 +82,8 @@ src/
 ├── systems/                     # Core game systems (see SYSTEMS.md)
 │   ├── map/MapSystem.ts         # ★ JSON maps, chunk config, procedural fallback
 │   ├── map/ChunkManager.ts      # Segment pool / treadmill
-│   ├── reach/ReachManager.tsx   # Reach streaming wrapper
+│   ├── reach/ReachStreamer.ts   # Reach manifest streaming (ReachManager host: experience/)
+│   ├── events/GameEvents.ts     # The one typed event bus (gameEvents.emit / on) — no window CustomEvents
 │   ├── GameState.ts             # ★ Zustand store — the only root *.ts (no barrel)
 │   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
 │   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality (render scale, then preset)
@@ -107,6 +108,7 @@ src/
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
+├── math/                        # scalar.ts (clamp/lerp/smoothstep), hash.ts (sinHash), random.ts (createRng: the one PRNG)
 ├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — TS mirror of emscripten/terrain.cpp (#487)
 ├── terrain/segmentMeshBuild.ts  # Segment meshes as buffers, three-free — built on the sim worker for treadmill appends (#487 B)
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator

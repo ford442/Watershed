@@ -22,7 +22,7 @@ import { linkPhysicsToSim } from '../sim/linkPhysicsToSim';
 import { startRaftWorkerSession, type RaftWorkerSession } from './RaftVehicle/raftWorkerSession';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
-import { WATER_PHYSICS } from './RaftVehicle/constants';
+import { WATER_PHYSICS } from '../constants/waterPhysics';
 import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';

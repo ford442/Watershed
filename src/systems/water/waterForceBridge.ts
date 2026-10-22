@@ -25,7 +25,7 @@
  */
 
 import { FLOATING_OBJECT } from '../../constants/game';
-import { WATER_PHYSICS } from '../../vehicles/RaftVehicle/constants';
+import { WATER_PHYSICS } from '../../constants/waterPhysics';
 import type { NativeWaterForceConfig } from './wasmAbi';
 import { calculateWaterForceFallback } from './waterForceFallback';
 import type { SweSim } from './sweSim';
