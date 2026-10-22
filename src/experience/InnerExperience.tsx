@@ -36,7 +36,8 @@ import { isScriptedRunLive } from '../input/scriptedRun';
 // (which runs with ?cleanTest=1, never ?debug=1) — not part of play, so not in the entry.
 const PhysicsPerfMonitor = lazy(() => import('../debug/PhysicsPerfMonitor'));
 
-// Map sources behind a URL flag: `?level=` (LevelLoader) and `?reach=` (ReachManager + the Reach
+// Map sources behind a URL flag: `?level=` (LevelLoader — a player's river from the StartMenu
+// takes the same path) and `?reach=` (ReachManager + the Reach
 // streamer, reactive audio and manifest normalizer). The campaign default mounts neither, so
 // their code loads only for the session that asks. Suspense stays local: the vehicle, water and
 // HUD keep running while the chunk lands.
@@ -160,6 +161,20 @@ export default function InnerExperience({
                   onBiomeChange={state.handleBiomeChange}
                 />
               </Suspense>
+            ) : state.userRiver ? (
+              <Suspense fallback={null}>
+                <LevelLoader
+                  key={state.userRiver.hash}
+                  levelData={state.userRiver.level}
+                  levelId={`river-${state.userRiver.hash}`}
+                  onLoad={state.handleLevelLoad}
+                  onError={state.handleLevelError}
+                  showLoader={false}
+                  showError={false}
+                  raftRef={state.vehicleRef}
+                  onBiomeChange={state.handleBiomeChange}
+                />
+              </Suspense>
             ) : state.reachId ? (
               <Suspense fallback={null}>
                 <ReachManager
@@ -217,7 +232,7 @@ export default function InnerExperience({
         onLoopMap={state.handleLoopCurrentMap}
         onContinueJourney={state.canContinueDefaultMap ? state.handleContinueJourney : undefined}
         onReturnToMenu={state.handleReturnToMenu}
-        mapLabel={state.activeDefaultMap.label}
+        mapLabel={state.userRiver?.label ?? state.activeDefaultMap.label}
         continueLabel={state.continueLabel}
         isFinalMap={state.isFinalMap}
         ghostBestScore={state.ghostBestScore}

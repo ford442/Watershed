@@ -18,6 +18,8 @@ interface LevelLoaderProps {
   levelData?: any;
   /** URL to load level from */
   levelUrl?: string;
+  /** Cache identity for `levelData` (a river's content hash); without it two levels can share a cache slot. */
+  levelId?: string;
   /** Callback when level loads successfully */
   onLoad?: (state: NormalizedLevelState) => void;
   /** Callback when loading fails */
@@ -42,6 +44,7 @@ interface LevelLoaderProps {
 const LevelLoader: React.FC<LevelLoaderProps> = ({
   levelData,
   levelUrl,
+  levelId,
   onLoad,
   onError,
   showLoader = true,
@@ -73,7 +76,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
       let success = false;
       
       if (levelData) {
-        success = await loadFromJSON(levelData);
+        success = await loadFromJSON(levelData, levelId);
       } else if (levelUrl) {
         success = await loadFromURL(levelUrl);
       }
@@ -88,7 +91,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
     if (levelData || levelUrl) {
       load();
     }
-  }, [levelData, levelUrl, loadAttempted, loadFromJSON, loadFromURL, normalizedState, error, onLoad, onError]);
+  }, [levelData, levelUrl, levelId, loadAttempted, loadFromJSON, loadFromURL, normalizedState, error, onLoad, onError]);
 
   // Handle retry
   const handleRetry = useCallback(() => {

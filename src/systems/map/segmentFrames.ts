@@ -16,6 +16,9 @@
  *     (`yMin` below its lowest point, `yMax` above its highest — or its
  *     upstream neighbour's, whichever is higher); segments
  *     without one get the global fallback margins, anchored the same way.
+ *   - `resolveRaftEnvelope` — the raft's envelope: depth below the surface it
+ *     floats on rather than a centreline y margin, so a raft drifting a wide
+ *     pond is never wiped by the runner's canyon envelope.
  *   - `resolveSegmentAnchor` — a waypoint placed at a path parameter `t` with a
  *     lateral offset, rather than at a guessed world position.
  *
@@ -161,6 +164,36 @@ export function resolveSegmentEnvelope(
     segmentIndex: frame.index,
     authored: Boolean(zone),
     ...(zone?.respawnAt !== undefined ? { respawnAt: zone.respawnAt } : {}),
+  };
+}
+
+/**
+ * Raft envelope margins. A raft's floor is measured from *the water it floats
+ * on* — this far under it is through the bed or swept under a ledge — not from
+ * a y band authored for a runner on the canyon floor. The ceiling is the
+ * segment's (a raft off a waterfall lip is up at lip height).
+ */
+export const RAFT_ENVELOPE = { depthBelowSurface: 8 } as const;
+
+/**
+ * World-space bounds for a raft at `pos`. `waterLevel` is the staged surface
+ * over it (vehicleWaterDatum.ts); with none (off the sheet, before the first
+ * force frame) the segment envelope stands.
+ */
+export function resolveRaftEnvelope(
+  frames: ReadonlyArray<SegmentFrame>,
+  pos: { z: number },
+  fallback: VerticalBounds,
+  waterLevel: number | null,
+): SegmentEnvelope {
+  const segment = resolveSegmentEnvelope(frames, pos, fallback);
+  if (waterLevel === null || !Number.isFinite(waterLevel)) return segment;
+  // Never tighter than the segment's: a tight runner `safeZone` (a splash
+  // pool's floor) must not wipe a raft that is merely floating over it.
+  return {
+    ...segment,
+    yMin: Math.min(segment.yMin, waterLevel - RAFT_ENVELOPE.depthBelowSurface),
+    yMax: Math.max(segment.yMax, waterLevel + fallback.yMax),
   };
 }
 

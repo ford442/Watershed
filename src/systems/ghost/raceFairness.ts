@@ -15,6 +15,7 @@ import { getActiveMapId, getActiveRunKey } from '../../utils/runContext';
 import { getActiveConditions, getActiveLaunchHour, runConditionsFairnessKey } from '../journey/runSession';
 import { getQualityPresetNow } from '../GameState';
 import { parseHydroEvents, type HydroEvent } from '../water/hydroEvents';
+import { getActiveUserRiver, userRiverFairnessPart } from '../map/userRiverSession';
 import { getRivalGhost, getRunBest } from '../persistence/PersistenceSystem';
 import type { WsGhostFile } from './ghostExport';
 import {
@@ -27,7 +28,9 @@ import {
 
 export function hydroEventsForMap(mapId: MapRegistryId): HydroEvent[] {
   try {
-    return parseHydroEvents(getMapDefinition(mapId)?.levelData.hydroEvents);
+    // A player's river runs its own events over the backing map id.
+    const river = getActiveUserRiver();
+    return parseHydroEvents((river ? river.level : getMapDefinition(mapId)?.levelData)?.hydroEvents);
   } catch {
     return [];
   }
@@ -39,8 +42,15 @@ export function currentRunFairness(mapId: MapRegistryId = getActiveMapId()): Gho
     launchHour: getActiveLaunchHour(),
     events: hydroEventsForMap(mapId),
     qualityPreset: getQualityPresetNow(),
-    conditionsKey: runConditionsFairnessKey(getActiveConditions()),
+    conditionsKey: withRiverPart(runConditionsFairnessKey(getActiveConditions())),
   });
+}
+
+/** A player river's ghosts carry its level hash: another river never races this one. */
+function withRiverPart(conditionsKey: string): string {
+  const river = userRiverFairnessPart();
+  if (!river) return conditionsKey;
+  return conditionsKey ? `${conditionsKey}|${river}` : river;
 }
 
 export interface JudgedRival {

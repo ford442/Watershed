@@ -8,6 +8,8 @@ import {
   getSegmentFramesVersion,
   publishSegmentFrames,
   resolveSegmentAnchor,
+  RAFT_ENVELOPE,
+  resolveRaftEnvelope,
   resolveSegmentEnvelope,
   subscribeSegmentFrames,
   type CurveLike,
@@ -102,6 +104,33 @@ describe('resolveSegmentEnvelope', () => {
     const envelope = resolveSegmentEnvelope(frames, { z: -1330 }, FALLBACK);
     expect(envelope.segmentIndex).toBe(15);
     expect(-805).toBeLessThan(envelope.yMax);
+  });
+});
+
+describe('resolveRaftEnvelope', () => {
+  // A wide pond with a runner-tight authored floor (at the centreline's lowest point).
+  const pond = [buildSegmentFrame(17, line([0, -600, -2000], [0, -602, -2100]), { yMin: 0, yMax: 40 })];
+
+  it('does not wipe a raft floating over a runner-tight safeZone', () => {
+    const surface = -601.8; // the staged sheet over the raft, a drawn-down stage
+    const raftY = -602.2; // riding low in a trough, under the runner's floor
+    const runner = resolveSegmentEnvelope(pond, { z: -2050 }, FALLBACK);
+    expect(raftY).toBeLessThan(runner.yMin);
+    const raft = resolveRaftEnvelope(pond, { z: -2050 }, FALLBACK, surface);
+    expect(raftY).toBeGreaterThan(raft.yMin);
+    expect(raft.yMin).toBeCloseTo(surface - RAFT_ENVELOPE.depthBelowSurface);
+    expect(raft).toMatchObject({ segmentIndex: 17, authored: true });
+  });
+
+  it('still catches a raft that has fallen through the bed', () => {
+    const raft = resolveRaftEnvelope(pond, { z: -2050 }, FALLBACK, -601);
+    expect(-601 - RAFT_ENVELOPE.depthBelowSurface - 1).toBeLessThan(raft.yMin);
+  });
+
+  it('is the segment envelope where no water covers the raft', () => {
+    expect(resolveRaftEnvelope(pond, { z: -2050 }, FALLBACK, null)).toEqual(
+      resolveSegmentEnvelope(pond, { z: -2050 }, FALLBACK),
+    );
   });
 });
 

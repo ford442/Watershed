@@ -14,6 +14,7 @@ import { raftTargetFov } from '../../../systems/settings/comfort';
 import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 import { clamp01 } from '../../../math/scalar';
 import { createRng } from '../../../math/random';
+import { getVehicleWaterLevel } from '../../../systems/water/vehicleWaterDatum';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0x6e0183eb);
@@ -35,6 +36,9 @@ function bodyQuaternion(body: RapierBody): THREE.Quaternion {
   return _quat.set(r.x, r.y, r.z, r.w);
 }
 
+/** A hull more than this fraction under the surface is floating (survival `inWater`). */
+export const FLOATING_SUBMERGED_RATIO = 0.1;
+
 export type RaftImpulse = [number, number, number];
 
 export interface RaftPhysicsRuntimeDeps {
@@ -51,11 +55,24 @@ export interface RaftPhysicsRuntimeDeps {
   controls: { getControls: () => PlayerControls };
   stepWorkerProxy: (body: RapierBody, delta: number, impulses?: RaftImpulse[]) => void;
   currentFov: { current: number };
+  /**
+   * The staged water level over the raft — the datum the hull's buoyancy reads
+   * (vehicleWaterDatum.ts); null where no water covers it. Injectable for tests.
+   */
+  sampleWaterLevel?: () => number | null;
 }
 
 export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
+const sampleWaterLevel = deps.sampleWaterLevel ?? getVehicleWaterLevel;
+
+/**
+ * Fraction of the hull below the staged surface — the same level the water
+ * force reads, so a lowered stage grounds the hull and this check together.
+ * No water under the raft (off the sheet, before the first force frame) is 0.
+ */
 const calculateSubmergedRatio = (raftY: number): number => {
-  const waterLevel = WATER_PHYSICS.LEVEL;
+  const waterLevel = sampleWaterLevel();
+  if (waterLevel === null) return 0;
   const raftHalfHeight = WATER_PHYSICS.RAFT_HEIGHT / 2;
   const raftBottom = raftY - raftHalfHeight;
   const raftTop = raftY + raftHalfHeight;
@@ -491,7 +508,9 @@ const resetRaft = (body: RapierBody) => {
   playRaftTipSound();
 
   const safePos = deps.tippingState.current.lastSafePosition.clone();
-  safePos.y = Math.max(safePos.y, WATER_PHYSICS.LEVEL + TIPPING.RESET_HEIGHT);
+  // Clear of the surface the raft was last floating on, never an absolute y.
+  const waterLevel = sampleWaterLevel();
+  if (waterLevel !== null) safePos.y = Math.max(safePos.y, waterLevel + TIPPING.RESET_HEIGHT);
 
   body.setTranslation(safePos, true);
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -594,8 +613,17 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
   updateCameraFromBody(body);
 };
 
+/** Refresh the buoyancy state from the staged datum; returns the submerged ratio. */
+const updateBuoyancy = (raftY: number): number => {
+  const submergedRatio = calculateSubmergedRatio(raftY);
+  deps.buoyancyState.current.submergedRatio = submergedRatio;
+  deps.buoyancyState.current.isFloating = submergedRatio > FLOATING_SUBMERGED_RATIO;
+  return submergedRatio;
+};
+
   return {
     calculateSubmergedRatio,
+    updateBuoyancy,
     applyTurbulence,
     applyTippingForce,
     dampenRotation,

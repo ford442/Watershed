@@ -1,8 +1,8 @@
 import { RAFT, WATER_DENSITY, HUMAN_DENSITY } from '../../constants/game';
 
-// Buoyancy and water physics configuration
+// Buoyancy and water physics configuration. No absolute water level: the
+// surface a raft floats on is the staged sheet over it (vehicleWaterDatum.ts).
 export const WATER_PHYSICS = {
-  LEVEL: RAFT.WATER_LEVEL,
   RAFT_HEIGHT: RAFT.HEIGHT,
   RAFT_WIDTH: RAFT.WIDTH,
   RAFT_LENGTH: RAFT.LENGTH,

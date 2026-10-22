@@ -43,6 +43,7 @@ import {
   resetWeatherDirectorForTests,
 } from '../weather/weatherDirector';
 import { getMapAtmosphere } from '../../maps/atmosphere';
+import { getActiveUserRiver, userRiverMapDefinition } from '../map/userRiverSession';
 import { resetSkyClock, resetSkyClockForTests, setSkyAtmosphere } from '../sky/skyClock';
 import {
   createSurvivalState,
@@ -237,11 +238,15 @@ export function getRunSession(): RunSessionSnapshot | null {
 
 /**
  * The map this run is on: the session's, else the code default (no run yet, or
- * a unit test). Prefer this to the registry's static `getActiveMap()` anywhere
+ * a unit test), or the player's river loaded over it (userRiverSession.ts).
+ * Prefer this to the registry's static `getActiveMap()` anywhere
  * the answer depends on which map the player picked.
  */
 export function getRunMap(): MapDefinition {
-  return getMapDefinition(activeSession?.mapId ?? ACTIVE_MAP_ID);
+  const mapId = activeSession?.mapId ?? ACTIVE_MAP_ID;
+  // A player's river, when one is loaded, is the run's map over its backing id.
+  const river = getActiveUserRiver();
+  return river ? userRiverMapDefinition(river, mapId) : getMapDefinition(mapId);
 }
 
 export function isJourneyMode(): boolean {

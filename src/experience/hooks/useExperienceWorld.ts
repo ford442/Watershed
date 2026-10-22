@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/biome/BiomeSystem';
@@ -49,6 +49,7 @@ import {
 } from '../../systems/journey/runSession';
 import { getLaunchHour, loadErosionPlane, saveErosionPlane } from '../../systems/persistence/PersistenceSystem';
 import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
+import { getActiveUserRiver, subscribeUserRiver, userRiverMapDefinition } from '../../systems/map/userRiverSession';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
 
 /** The run's 24 h forecast: the day's melt inputs (the run's conditions) from the launch hour. */
@@ -141,6 +142,9 @@ export function useExperienceWorld({
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState<Error | string | null>(null);
   const [reachRetryKey, setReachRetryKey] = useState(0);
+  // A player's river (StartMenu "Load river…" / the editor's Play) plays
+  // through LevelLoader like `?level=`, with the run's map resolving to it.
+  const userRiver = useSyncExternalStore(subscribeUserRiver, getActiveUserRiver, () => null);
   const [defaultMapRunKey, setDefaultMapRunKey] = useState(0);
   const [activeDefaultMapId, setActiveDefaultMapId] = useState<MapRegistryId>(() =>
     resolveInitialMapId(controlledMapId),
@@ -200,7 +204,7 @@ export function useExperienceWorld({
     setRespawnSegmentIndex(targetMap.startIndex);
     snapBiomeContext(targetMap.initialBiome);
     useGameStore.setState({ currentBiome: targetMap.initialBiome });
-    if (!levelUrl && !reachId) {
+    if (!levelUrl && !reachId && !userRiver) {
       setDefaultMapRunKey((key) => key + 1);
     }
   }, [
@@ -208,13 +212,24 @@ export function useExperienceWorld({
     controlledMapId,
     levelUrl,
     reachId,
+    userRiver,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
     snapBiomeContext,
   ]);
 
+  // A player's river starts at its own first segment, in its own biome.
   useEffect(() => {
-    if (levelUrl || reachId) return;
+    if (!userRiver) return;
+    const riverMap = userRiverMapDefinition(userRiver, activeDefaultMapId);
+    setCurrentSegmentIndex(riverMap.startIndex);
+    setRespawnSegmentIndex(riverMap.startIndex);
+    snapBiomeContext(riverMap.initialBiome);
+    useGameStore.setState({ currentBiome: riverMap.initialBiome });
+  }, [userRiver, activeDefaultMapId, setCurrentSegmentIndex, setRespawnSegmentIndex, snapBiomeContext]);
+
+  useEffect(() => {
+    if (levelUrl || reachId || userRiver) return;
     if (seamlessHandoffRef.current) return;
 
     // Only snap spawn/biome on hard map loads (TrackManager remount key), not
@@ -233,6 +248,7 @@ export function useExperienceWorld({
     defaultMapRunKey,
     levelUrl,
     reachId,
+    userRiver,
     snapBiomeContext,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
@@ -287,7 +303,8 @@ export function useExperienceWorld({
   // can render isJourneyComplete=true and read a stale getRunBest().
   useEffect(() => {
     if (!isJourneyComplete) return;
-    markMapCompleted(activeDefaultMapId);
+    // A player's river finishes without unlocking the campaign map behind it.
+    if (!getActiveUserRiver()) markMapCompleted(activeDefaultMapId);
     commitJourneyScore();
   }, [isJourneyComplete, activeDefaultMapId]);
 
@@ -654,6 +671,7 @@ export function useExperienceWorld({
 
   return {
     levelUrl,
+    userRiver,
     levelLoadError,
     isLoadingLevel,
     forecastSamples,

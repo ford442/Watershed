@@ -5,6 +5,7 @@ import { useGameStore } from '../../../systems/GameState';
 import { cancelLaunch } from '../../../systems/score/LaunchScoringSession';
 import {
   getSegmentFrames,
+  resolveRaftEnvelope,
   resolveSegmentEnvelope,
   type SegmentEnvelope,
   type VerticalBounds,
@@ -36,6 +37,13 @@ export const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 
  */
 export const resolveActiveEnvelope = (pos: { z: number }): SegmentEnvelope =>
   resolveSegmentEnvelope(getSegmentFrames(), pos, POSITION_SANE);
+
+/**
+ * The raft's envelope at `pos`: depth below the staged surface it floats on
+ * (`resolveRaftEnvelope`), the runner margins' ceiling.
+ */
+export const resolveActiveRaftEnvelope = (pos: { z: number }, waterLevel: number | null): SegmentEnvelope =>
+  resolveRaftEnvelope(getSegmentFrames(), pos, POSITION_SANE, waterLevel);
 
 /**
  * Merge a resolved (world-space) vertical envelope onto the global bounds.

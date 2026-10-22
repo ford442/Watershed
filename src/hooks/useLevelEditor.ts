@@ -83,7 +83,8 @@ export interface UseLevelEditorReturn {
   /** Serialises current state as LevelData-compatible JSON string */
   exportAsJSON: () => string;
   /** Validate + persist the current export in localStorage (workshop, not Steam). */
-  storeUserLevel: () => void;
+  /** Validate + save the draft to the user-level store; returns its id. Throws when invalid. */
+  storeUserLevel: () => string;
 
   // Additional derived state needed by editor UI
   /** Track waypoints extracted from the loaded JSON */
@@ -444,6 +445,7 @@ export function useLevelEditor(): UseLevelEditorReturn {
     const json = exportAsJSON();
     const slug = (state.levelName || 'user-level').toLowerCase().replace(/\s+/g, '-').slice(0, 40);
     saveUserLevel(slug, JSON.parse(json));
+    return slug;
   }, [exportAsJSON, state.levelName]);
 
   // ---- derived -------------------------------------------------------------

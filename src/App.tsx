@@ -48,10 +48,12 @@ import {
   getActiveRunKey,
   getActiveMapId,
   setProceduralSeedOverride,
+  setVehicleChoice,
   setVehicleOverride,
 } from './utils/runContext';
 import { useGameStore, useQualityPreset, useRenderScale } from './systems/GameState';
 import type { MapRegistryId } from './maps/registry';
+import { setActiveUserRiver, type UserRiver } from './systems/map/userRiverSession';
 import { syncMapUrl } from './maps/campaign';
 import { setLastMapId, getLaunchHour } from './systems/persistence/PersistenceSystem';
 import { initRunSession, type RunConditions } from './systems/journey/runSession';
@@ -492,8 +494,14 @@ function App({ graphicsBoot }: AppProps = {}) {
         loadoutId?: string;
         journeyMode?: 'single' | 'journey';
         conditions?: Partial<RunConditions>;
+        vehicle?: 'runner' | 'raft' | null;
+        userRiver?: UserRiver;
       },
     ) => {
+      // Before the run key is read: a player's river keys its own bests.
+      setActiveUserRiver(options?.userRiver ?? null);
+      // Absent (Enter, Daily River, replay) keeps the menu's pick for this map.
+      if (options?.vehicle !== undefined) setVehicleChoice(mapId, options.vehicle);
       handleSelectMap(mapId);
       initRunSession({
         mapId,
@@ -550,9 +558,11 @@ function App({ graphicsBoot }: AppProps = {}) {
   // is current then (it is rebuilt as the menu state settles).
   const replayStartedRef = useRef(false);
   const handleStartRef = useRef(handleStart);
+  const selectedMapIdRef = useRef(selectedMapId);
   useEffect(() => {
     handleStartRef.current = handleStart;
-  }, [handleStart]);
+    selectedMapIdRef.current = selectedMapId;
+  }, [handleStart, selectedMapId]);
   useEffect(() => {
     const replayUrl = getReplayGhostUrl();
     if (!replayUrl || !bootReady || replayStartedRef.current) return;
@@ -571,6 +581,24 @@ function App({ graphicsBoot }: AppProps = {}) {
           journeyMode: 'single',
         });
       });
+  }, [bootReady]);
+
+  // `?river=<id>`: the level editor's Play. Once boot is ready the saved river
+  // runs over the selected map (validated again on the way in — storage is
+  // the player's to edit). A missing or broken one leaves the menu up.
+  const riverStartedRef = useRef(false);
+  useEffect(() => {
+    const riverId = new URLSearchParams(window.location.search).get('river');
+    if (!riverId || !bootReady || riverStartedRef.current || getReplayGhostUrl()) return;
+    riverStartedRef.current = true;
+    void import('./systems/map/userRiverImport').then(({ loadSavedRiver }) => {
+      const userRiver = loadSavedRiver(riverId);
+      if (!userRiver) {
+        console.warn(`[App] ?river=${riverId}: no valid saved river by that id`);
+        return;
+      }
+      handleStartRef.current(selectedMapIdRef.current, { placedCacheIds: [], journeyMode: 'single', userRiver });
+    });
   }, [bootReady]);
 
   // Enter starts from the menu with the selected map.

@@ -49,6 +49,7 @@ import {
 } from './sampleSWEFlow';
 import { toFlowGrid } from './sweHost';
 import { sampleWaterSheetY } from './bathymetrySampler';
+import { publishVehicleWaterLevel } from './vehicleWaterDatum';
 import { resolveWaterForceOwner, WATER_FORCE_IMPULSE_SCALE, type WaterForceOwner } from '../../physics/waterForceAuthority';
 import type { VehicleType } from '../../experience/types';
 
@@ -238,6 +239,16 @@ function postWorkerForces(requests: SimForceRequests<ForceTarget>, frame: Worker
   requests.send(frame.gridId, frame.originX, frame.originZ, samples, targets, frame.dt);
 }
 
+/**
+ * The staged surface over the vehicle — the level its buoyancy reads — for the
+ * raft's floating / tipping check (vehicleWaterDatum.ts). Same sheet and stage
+ * offset as the hull sample, so the two can never disagree about a frame.
+ */
+function publishVehicleDatum(anchor: { x: number; z: number }, waterLevel: number, flow: SWEFlowSample): void {
+  const sheet = sampleWaterSheetY(anchor.x, anchor.z, waterLevel);
+  publishVehicleWaterLevel(sheet === null ? null : stagedWaterLevel(sheet, flow));
+}
+
 /** One frame's inputs to the force half. */
 export interface WaterForceFrame {
   bodies: readonly WaterForceBody[];
@@ -309,6 +320,7 @@ export function applyWaterForces(frame: WaterForceFrame): {
     const vehicleFlow =
       (workerOwnsVehicleForces ? getPhysicsWorkerDiagnostics()?.sampledFlow : frame.vehicleFlowRef.current) ??
       sampleSWEFlow({ worldX: anchor.x, worldZ: anchor.z, flowSpeed: frame.flowSpeed, grid: null, enabled: false });
+    publishVehicleDatum(anchor, frame.waterLevel, vehicleFlow);
     return { owner, vehicleFlow };
   }
 
@@ -323,6 +335,7 @@ export function applyWaterForces(frame: WaterForceFrame): {
     enabled: frame.sweEnabled,
     stageSpeedBoost: SWE_STAGE_SPEED_BOOST,
   });
+  publishVehicleDatum(anchor, frame.waterLevel, vehicleFlow);
   setPhysicsWorkerTickParams({
     flowSpeed: vehicleFlow.speed,
     waterLevel: stagedWaterLevel(frame.waterLevel, vehicleFlow),
