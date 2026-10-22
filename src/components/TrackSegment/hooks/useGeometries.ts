@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import type { BufferGeometry } from 'three';
 import type { TrackSegmentGeometries, UseGeometriesParams } from '../types';
 import {
   computePlungeImpactPlacement,
@@ -15,7 +16,22 @@ import {
 import { isGlacialBiome } from '../../../configs/TrackBiomes';
 import { peekSimWorkerProxy } from '../../../sim/createSimWorkerProxy';
 import type { SimTileResult } from '../../../sim/simWorkerProtocol';
-import { buildSegmentMeshBuffers, segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
+import { buildSegmentMeshBuffers, CANYON_VISUAL_SEGMENTS_X, segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
+import { erodeSegmentMeshes } from '../../../terrain/erosion';
+import {
+  getSegmentErosion,
+  getSegmentErosionVersion,
+  registerSegmentErosion,
+  subscribeSegmentErosion,
+  unregisterSegmentErosion,
+} from '../../../systems/water/erosionField';
+import { getRunSession } from '../../../systems/journey/runSession';
+import { ACTIVE_MAP_ID } from '../../../maps/registry';
+
+/** Dispose a geometry once it is replaced or unmounted (eroded floors are rebuilt every few seconds). */
+function useDisposeOnReplace(geometry: BufferGeometry | null): void {
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+}
 
 export function useGeometries({
   active,
@@ -100,12 +116,35 @@ export function useGeometries({
     () => (!buildCtx || awaitingWorker || workerMeshes ? null : buildSegmentMeshBuffers(buildCtx)),
     [buildCtx, awaitingWorker, workerMeshes, pathLength, biomeProfile.wallHeight],
   );
-  const meshes = workerMeshes ?? mainMeshes;
+  const builtMeshes = workerMeshes ?? mainMeshes;
 
-  const canyonGeometry = useMemo(() => geometryFromBuffers(meshes?.canyon ?? null), [meshes]);
-  const collisionGeometry = useMemo(() => geometryFromBuffers(meshes?.collision ?? null), [meshes]);
-  const wallShellGeometry = useMemo(() => geometryFromBuffers(meshes?.wallShell ?? null), [meshes]);
-  const waterGeometry = useMemo(() => geometryFromBuffers(meshes?.water ?? null), [meshes]);
+  // #487 E: the floor the river has worked. The hull grid as built registers
+  // its erosion plane (loaded from the save for this map segment); the SWE
+  // host integrates shear into it, and each version bump re-erodes the built
+  // floor, hull and bed together — at most once every few seconds.
+  const builtBed = builtMeshes?.bed ?? null;
+  useEffect(() => {
+    if (!builtBed) return undefined;
+    const mapId = getRunSession()?.mapId ?? ACTIVE_MAP_ID;
+    registerSegmentErosion(segmentId, builtBed, `${mapId}:${segmentId}`);
+    return () => unregisterSegmentErosion(segmentId);
+  }, [builtBed, segmentId]);
+  const subscribeErosion = useCallback((listener: () => void) => subscribeSegmentErosion(segmentId, listener), [segmentId]);
+  const erosionVersion = useSyncExternalStore(subscribeErosion, () => getSegmentErosionVersion(segmentId));
+  const meshes = useMemo(() => {
+    const entry = getSegmentErosion(segmentId);
+    if (!builtMeshes || !entry || entry.bed !== builtMeshes.bed || erosionVersion === 0) return builtMeshes;
+    return erodeSegmentMeshes(builtMeshes, entry.applied, CANYON_VISUAL_SEGMENTS_X);
+  }, [builtMeshes, erosionVersion, segmentId]);
+
+  const canyonGeometry = useMemo(() => geometryFromBuffers(meshes?.canyon ?? null), [meshes?.canyon]);
+  const collisionGeometry = useMemo(() => geometryFromBuffers(meshes?.collision ?? null), [meshes?.collision]);
+  const wallShellGeometry = useMemo(() => geometryFromBuffers(meshes?.wallShell ?? null), [meshes?.wallShell]);
+  const waterGeometry = useMemo(() => geometryFromBuffers(meshes?.water ?? null), [meshes?.water]);
+  useDisposeOnReplace(canyonGeometry);
+  useDisposeOnReplace(collisionGeometry);
+  useDisposeOnReplace(wallShellGeometry);
+  useDisposeOnReplace(waterGeometry);
 
   // Publish this segment's hull as the SWE bed (#374 Phase 2, #487 C): the
   // grid the trimesh was built from, so bed and collider are one surface.

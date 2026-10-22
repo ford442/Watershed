@@ -54,6 +54,17 @@ export const DEFAULT_POST_TUNING: PostTuning = {
   chromaticMaxOffset: 0.002,
 };
 
+/**
+ * The comfort settings (#486 D) the post stack honours. `speedEffects` off
+ * (the player's toggle, or reduced motion) drops the speed-driven chromatic
+ * aberration; `vignette` scales the darkness, 0 removing the pass.
+ */
+export interface PostComfort {
+  speedEffects: boolean;
+  /** 0..1 of the authored vignette darkness. */
+  vignette: number;
+}
+
 /** Exponentially smoothed values carried between frames. */
 export interface PostSmoothedState {
   chromaticOffset: number;
@@ -100,6 +111,7 @@ export interface PostFrameInput {
   biomeId: string | undefined;
   weatherType: string;
   timeOfDay: number;
+  /** A point toward the sun near the camera (SunPositionSystem); elevation and god rays aim from the camera. */
   sunWorldPosition: THREE.Vector3;
   camera: THREE.Camera;
   quality: PostQualityLevel;
@@ -166,6 +178,7 @@ export function computePostFrameParams(
   input: PostFrameInput,
   tuning: PostTuning,
   smoothed: PostSmoothedState,
+  comfort?: PostComfort,
 ): PostFrameParams {
   const { delta, velocity, effectPresence, quality } = input;
   const boostScale = input.boostActive > 0 ? input.boostIntensity : 0;
@@ -180,7 +193,8 @@ export function computePostFrameParams(
     : input.weatherType === 'overcast' ? 0.6
     : input.weatherType === 'fog' ? 0.35
     : 0;
-  const sunElevation = THREE.MathUtils.clamp(input.sunWorldPosition.y / 40, 0, 1);
+  // Height of the sun point above the camera (it rides SUN_DISTANCE from the camera, not the origin).
+  const sunElevation = THREE.MathUtils.clamp((input.sunWorldPosition.y - input.camera.position.y) / 40, 0, 1);
   const nightFactor = 1 - sunElevation;
 
   const targetChromatic =
@@ -244,11 +258,14 @@ export function computePostFrameParams(
     ssao: { enabled: effectPresence.ssao },
     // HueSaturationShader convention: 0 = unchanged, negative = desaturate.
     hueSaturation: { saturation: smoothed.saturation - 1.0 },
-    chromatic: { enabled: effectPresence.chromaticAberration, amount: smoothed.chromaticOffset },
+    chromatic: {
+      enabled: effectPresence.chromaticAberration && (comfort?.speedEffects ?? true),
+      amount: smoothed.chromaticOffset,
+    },
     vignette: {
-      enabled: effectPresence.vignette,
+      enabled: effectPresence.vignette && (comfort?.vignette ?? 1) > 0,
       offset: tuning.vignetteOffset,
-      darkness: linearVignetteDarkness(tuning.vignetteDarkness + smoothed.vignetteBoost),
+      darkness: linearVignetteDarkness((tuning.vignetteDarkness + smoothed.vignetteBoost) * (comfort?.vignette ?? 1)),
     },
     godRays: {
       allowed,

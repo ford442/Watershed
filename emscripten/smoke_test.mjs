@@ -77,11 +77,11 @@ if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
 }
 
 const version = wasm.getVersion();
-// ABI 12 is the plain C ABI (#467) and 13 adds the terrain tile (#487); the
-// TypeScript binding table requires every export, so this floor is what
-// catches a stale committed pair.
-if (!Number.isInteger(version) || version < 13) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 13)`);
+// ABI 12 is the plain C ABI (#467), 13 adds the terrain tile (#487) and 14
+// lateral routing inflow + the surge event; the TypeScript binding table
+// requires every export, so this floor is what catches a stale committed pair.
+if (!Number.isInteger(version) || version < 14) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 14)`);
 }
 
 if (typeof wasm.applySWEEvent !== 'function') {
@@ -692,6 +692,62 @@ if (version >= 11) {
   close(shell.reduce((a, v) => a + v, 0), 23614.6625, 'summer shell sum');
   close(shell[612], 15.238183, 'summer shell probe');
   wasm.freeGrid(shellPtr);
+}
+
+// --- ABI 14: lateral routing inflow + the surge event (#464 D) ---------------
+// Same contract as host_smoke.cpp §8h / §8i: a zero lateral routes exactly as
+// routeReach; runoff joining segment 2 never reaches 0 or 1; a surge band
+// raises η and runs the water downstream (−Z) across the whole width.
+if (version >= 14) {
+  if (typeof wasm.routeReachLateral !== 'function') throw new Error('ABI 14 must export routeReachLateral');
+  const SEG = 6;
+  const view = (ptr, count) => wasm.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + count);
+  const plane = (fill) => {
+    const ptr = wasm.allocateGrid(SEG * 4);
+    view(ptr, SEG * 4).fill(fill);
+    return ptr;
+  };
+  const L = plane(100);
+  const S = plane(0.03);
+  const B = plane(10);
+  const lateral = plane(0);
+  const storeA = plane(0);
+  const storeB = plane(0);
+  const outA = plane(0);
+  const outB = plane(0);
+  wasm.routeReachSteady(L, S, B, SEG, 40, storeA, outA);
+  wasm.routeReachSteady(L, S, B, SEG, 40, storeB, outB);
+  for (let s = 0; s < 30; s += 1) {
+    wasm.routeReach(L, S, B, SEG, 40, 1, storeA, outA);
+    wasm.routeReachLateral(L, S, B, SEG, 40, lateral, 1, storeB, outB);
+  }
+  for (let k = 0; k < SEG; k += 1) {
+    if (view(outA, SEG)[k] !== view(outB, SEG)[k]) throw new Error(`zero lateral differs from routeReach at ${k}`);
+  }
+  view(lateral, SEG)[2] = 20;
+  for (let s = 0; s < 5; s += 1) wasm.routeReachLateral(L, S, B, SEG, 40, lateral, 1, storeB, outB);
+  for (let s = 0; s < 5; s += 1) wasm.routeReach(L, S, B, SEG, 40, 1, storeA, outA);
+  const a = view(outA, SEG);
+  const b = view(outB, SEG);
+  if (a[0] !== b[0] || a[1] !== b[1]) throw new Error('lateral at segment 2 moved the reaches above it');
+  if (!(b[2] > a[2] + 0.1)) throw new Error(`lateral at segment 2 did not raise its outflow (${a[2]} → ${b[2]})`);
+  for (const ptr of [L, S, B, lateral, storeA, storeB, outA, outB]) wasm.freeGrid(ptr);
+
+  const W = 8;
+  const H = 8;
+  const hP = wasm.allocateGrid(W * H);
+  const uP = wasm.allocateGrid(W * H);
+  const wP = wasm.allocateGrid(W * H);
+  const bP = wasm.allocateGrid(W * H);
+  for (const ptr of [hP, uP, wP, bP]) view(ptr, W * H).fill(0);
+  wasm.applySWEEvent(hP, uP, wP, bP, W, H, 1, 0, 0, 1, 4, 0, 3.5, 1, 0.3, 0.5);
+  const h = view(hP, W * H);
+  const w = view(wP, W * H);
+  for (const x of [0, W - 1]) {
+    if (!(h[3 * W + x] > 0.1) || !(w[3 * W + x] < 0)) throw new Error(`surge band missing at column ${x}`);
+  }
+  if (h[0] !== 0 || h[(H - 1) * W] !== 0) throw new Error('surge painted outside its band');
+  for (const ptr of [hP, uP, wP, bP]) wasm.freeGrid(ptr);
 }
 
 console.log(`watershed_native smoke ok (buoyancy=${buoyancy.toFixed(2)} abi=${version})`);

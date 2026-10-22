@@ -37,6 +37,9 @@ const DAMPING_COEFF: f32 = 0.1;    // common.h
 const HYDRO_INFLOW_DOWNSTREAM: f32 = 0.5;
 const HYDRO_VORTEX_SINK: f32 = 0.35;
 const HYDRO_BRAID_LATERAL: f32 = 0.75;
+const HYDRO_SURGE_RELAX: f32 = 6.0;
+const HYDRO_SURGE_GRAVITY: f32 = 9.80665;
+const HYDRO_KIND_SURGE: i32 = 4;
 
 struct Params {
   width: u32,
@@ -65,7 +68,7 @@ struct Params {
   _pad2: f32,
 };
 
-// kind: 0 inflow, 1 vortex, 2 braid, 3 roughness (hydroEvents.ts HYDRO_KIND_*).
+// kind: 0 inflow, 1 vortex, 2 braid, 3 roughness, 4 surge (hydroEvents.ts HYDRO_KIND_*).
 struct HydroEvent {
   kind: i32,
   cx: f32,
@@ -390,7 +393,9 @@ fn apply_events(@builtin(global_invocation_id) gid: vec3u) {
     let mag = max(0.0, ev.strength);
     let stepDt = max(0.0, ev.dt);
     let dz = wz - ev.cz;
-    let ddx = wx - ev.cx;
+    // A surge front is a band across the whole window: only its distance in z counts.
+    var ddx = wx - ev.cx;
+    if (ev.kind == HYDRO_KIND_SURGE) { ddx = 0.0; }
     let d2 = ddx * ddx + dz * dz;
     if (d2 > r2) { continue; }
     let dist = sqrt(d2);
@@ -414,6 +419,14 @@ fn apply_events(@builtin(global_invocation_id) gid: vec3u) {
       let damp = max(0.0, 1.0 - mag * stepDt * wgt);
       setU(idx, uAt(idx) * damp);
       setW(idx, wAt(idx) * damp);
+    } else if (ev.kind == 4) {
+      let stage = min(mag * wgt, still);
+      if (hAt(idx) < stage) {
+        let k = min(1.0, HYDRO_SURGE_RELAX * stepDt);
+        setH(idx, hAt(idx) + (stage - hAt(idx)) * k);
+        let carried = -2.0 * (sqrt(HYDRO_SURGE_GRAVITY * (still + stage)) - sqrt(HYDRO_SURGE_GRAVITY * still));
+        if (wAt(idx) > carried) { setW(idx, wAt(idx) + (carried - wAt(idx)) * k); }
+      }
     }
   }
 }

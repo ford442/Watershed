@@ -5,6 +5,7 @@ import { useGameStore } from '../../../systems/GameState';
 import { cancelLaunch } from '../../../systems/score/LaunchScoringSession';
 import {
   getSegmentFrames,
+  resolveRaftEnvelope,
   resolveSegmentEnvelope,
   type SegmentEnvelope,
   type VerticalBounds,
@@ -13,6 +14,8 @@ import { tickRunSurvival } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
 import { triggerCameraShake } from '../../../hooks/useCameraShake';
+import { getComfort } from '../../../systems/settings/comfortRuntime';
+import { runnerTargetFov } from '../../../systems/settings/comfort';
 import type { RapierBody } from '../../../physics/rapierTypes';
 import type { RunnerJumpData } from './useRunnerPhysics';
 
@@ -34,6 +37,13 @@ export const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 
  */
 export const resolveActiveEnvelope = (pos: { z: number }): SegmentEnvelope =>
   resolveSegmentEnvelope(getSegmentFrames(), pos, POSITION_SANE);
+
+/**
+ * The raft's envelope at `pos`: depth below the staged surface it floats on
+ * (`resolveRaftEnvelope`), the runner margins' ceiling.
+ */
+export const resolveActiveRaftEnvelope = (pos: { z: number }, waterLevel: number | null): SegmentEnvelope =>
+  resolveRaftEnvelope(getSegmentFrames(), pos, POSITION_SANE, waterLevel);
 
 /**
  * Merge a resolved (world-space) vertical envelope onto the global bounds.
@@ -481,7 +491,8 @@ export function updateRunnerFovKick({
 }) {
   const isWaterfallSeg = currentSegmentIndex === 14 || currentSegmentIndex === 29;
   const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-  const targetFov = 75 + Math.min(12, hSpeed * 0.45) + (isWaterfallSeg ? 10 : 0);
+  // Base FOV and the kick's strength are the player's comfort settings (#486 D).
+  const targetFov = runnerTargetFov(hSpeed, isWaterfallSeg, getComfort());
   fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-dt * 5));
   if (Math.abs(camera.fov - fovRef.current) > 0.05) {
     camera.fov = fovRef.current;

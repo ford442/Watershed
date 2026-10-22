@@ -69,6 +69,12 @@ src/
 │   ├── Obstacles/               # Rocks, pillar break VFX, breakable trestle
 │   └── LevelEditor/             # In-game level tools
 │
+├── input/                       # ★ InputHub (#486): every device → one InputFrame per sim frame
+│   ├── InputHub.ts / InputFrame.ts / InputHubTick.tsx   # merge + tick at useFrame −100
+│   ├── sources/                 # KeyboardMouse, Gamepad (lazy), Touch (lazy), Scripted (?input=script:)
+│   ├── haptics.ts (+ hapticsImpl) / pauseBus.ts / menuNav.ts / touchMode.ts / handheld.ts
+│   └── InputLookApply.tsx       # gamepad right stick + touch drag → camera rotation
+│
 ├── vehicles/
 │   ├── RunnerVehicle/           # ★ Default first-person runner
 │   └── RaftVehicle/             # Third-person raft mode
@@ -197,6 +203,11 @@ Pure `ShaderMaterial`. Two-layer fbm foam, Fresnel highlight, depth gradient, cu
 | R | Open restart confirmation |
 | Arrow keys | Same as WASD (movement alternates, not rebindable) |
 | F3 | Movement readout: position, speed, live key/mouse input (`?debug=1` opens it at boot) |
+| Gamepad (standard mapping) | Left stick move · right stick look · A jump · RB sprint · LB brake · X dodge · LT/RT raft paddles (analog) · Start pause. Menus: d-pad/stick + A/B/Start. Rebind in Options → General |
+| Touch (`(pointer: coarse)` or `?input=touch`) | Left half floating stick · right half look-drag · JUMP · pause · raft: L/R paddle buttons. Left-handed layout in Options → Comfort & Devices |
+| `F` `G` `P` `O` `N` | Developer toggles (collider draw, wireframes, snapshots, night) — **`?debug=1` only**; production never binds them |
+
+**Comfort & Devices** (Options page, `useSettingsStore` v2): FOV 70–110, sprint FOV kick, camera shake %, vignette, speed blur / chromatic, reduced motion (`system` follows `prefers-reduced-motion`, which turns shake, FOV kick and speed effects off), left-handed touch, vibration + strength, gamepad dead zone + response curve. Consumers read the live, cached `getComfort()` (`systems/settings/comfortRuntime.ts`) — no re-render, no per-frame allocation.
 
 ---
 
@@ -278,7 +289,10 @@ With the above in place:
 pnpm test                         # unit tests (Vitest)
 pnpm lint                         # ESLint — 0 errors is the gate; warnings are a tracked backlog
 pnpm typecheck                    # tsc + repo layout guards
-pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`)
+pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`); includes the 390×844 touch layout (10_touch_layout)
+pnpm test:input-smoke             # scripted keyboard-shaped run reaches segment 3, deterministic (needs `pnpm preview`)
+pnpm test:input-smoke:gamepad     # the same with a gamepad-shaped (analog) script
+pnpm test:replay-smoke            # that run saved as a .wsghost, ?replay= twice: identical splits + SWE checksums (needs `pnpm preview`)
 pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 python3 src/verify_visuals.py     # visual regression (needs dev server)
 ```
@@ -333,7 +347,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/rendering/bootCrashGuard.ts` | Record of how the previous boot failed (`no-frame` / `context-lost` / `renderer-throw`) |
 | `src/rendering/RendererQualitySync.tsx` | Live quality apply (no Canvas remount) |
 | `src/rendering/gpuChores/` | HUD hist/reduce/downsample (#369); SWE stays domain |
-| `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10) |
+| `emscripten/routing.cpp` / `src/systems/water/riverRouter.ts` | Channel routing (C++) and its runtime clock; routed stage drives the SWE window's upstream edge (ABI 10); weather over a reach joins it as lateral inflow (ABI 14) |
 | `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `emscripten/terrain.cpp` / `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes (C++ + TS mirror, parity-tested); the canyon and hull builders read the tile (#487, ABI 13) |
 | `src/terrain/segmentMeshBuild.ts` | Canyon / collision / wall / water meshes as typed arrays; the sim worker builds treadmill appends with it (`BUILD_TILE`), `pnpm profile:spawn` measures mounts (#487 B) |

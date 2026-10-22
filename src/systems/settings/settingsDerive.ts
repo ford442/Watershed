@@ -28,11 +28,21 @@ export type SettingsQuality = 'low' | 'med' | 'high';
  * the physical `event.code` for keys (never `event.key`, which scrambles under
  * AZERTY/Dvorak), and a synthetic Mouse<button> code for mouse buttons.
  */
-export type BindingKind = 'key' | 'mouse';
+export type BindingKind = 'key' | 'mouse' | 'gamepad-button' | 'gamepad-axis';
 export interface Binding {
   kind: BindingKind;
-  /** `event.code` for keys (e.g. 'KeyW'); 'Mouse0'|'Mouse1'|'Mouse2' for buttons. */
+  /**
+   * `event.code` for keys (e.g. 'KeyW'); 'Mouse0'|'Mouse1'|'Mouse2' for mouse
+   * buttons; `Button<n>` for a standard-mapping gamepad button (0 = A … 15 =
+   * d-pad right); `Axis<n><+|->` for one direction of a gamepad axis
+   * (`Axis1-` = left stick up).
+   */
   code: string;
+}
+
+/** True for the two device kinds that live in the gamepad binding table. */
+export function isGamepadBinding(binding: Binding): boolean {
+  return binding.kind === 'gamepad-button' || binding.kind === 'gamepad-axis';
 }
 
 /** Rebindable actions — a subset that mirrors the drei KeyboardControls map. */
@@ -83,6 +93,34 @@ export const DEFAULT_BINDINGS: Bindings = {
   sprint: { kind: 'key', code: 'ShiftLeft' },
   brake: { kind: 'key', code: 'ControlLeft' },
   dodge: { kind: 'key', code: 'AltLeft' },
+};
+
+/**
+ * Standard-mapping gamepad defaults (#486 B). Sticks are the movement axes
+ * (axis 1 is up = −1), A jumps, X dodges, the bumpers sprint and brake. The
+ * triggers are the raft paddles and Start is PAUSE; neither is rebindable.
+ * The d-pad answers for the four directions unless the player claims it.
+ */
+export const DEFAULT_PAD_BINDINGS: Bindings = {
+  forward: { kind: 'gamepad-axis', code: 'Axis1-' },
+  backward: { kind: 'gamepad-axis', code: 'Axis1+' },
+  leftward: { kind: 'gamepad-axis', code: 'Axis0-' },
+  rightward: { kind: 'gamepad-axis', code: 'Axis0+' },
+  jump: { kind: 'gamepad-button', code: 'Button0' },
+  sprint: { kind: 'gamepad-button', code: 'Button5' },
+  brake: { kind: 'gamepad-button', code: 'Button4' },
+  dodge: { kind: 'gamepad-button', code: 'Button2' },
+};
+
+/** Standard-mapping buttons the game owns; never capturable as a rebind. */
+export const RESERVED_PAD_BUTTONS: ReadonlySet<number> = new Set([6, 7, 8, 9]);
+
+/** Fixed d-pad alternates for the movement actions (standard mapping 12–15). */
+export const DPAD_ALTERNATES: Partial<Record<SettingsAction, number>> = {
+  forward: 12,
+  backward: 13,
+  leftward: 14,
+  rightward: 15,
 };
 
 // ---------------------------------------------------------------------------

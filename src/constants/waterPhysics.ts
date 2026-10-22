@@ -3,12 +3,12 @@
  *
  * In constants/, not vehicles/RaftVehicle/, because the water-force bridge
  * (systems/water) and the physics worker config (physics/) read them too, and
- * neither may import vehicles/.
+ * neither may import vehicles/. No absolute water level: the surface a raft
+ * floats on is the staged sheet over it (vehicleWaterDatum.ts).
  */
 import { RAFT } from './game';
 
 export const WATER_PHYSICS = {
-  LEVEL: RAFT.WATER_LEVEL,
   RAFT_HEIGHT: RAFT.HEIGHT,
   RAFT_WIDTH: RAFT.WIDTH,
   RAFT_LENGTH: RAFT.LENGTH,

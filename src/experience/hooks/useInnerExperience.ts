@@ -9,6 +9,7 @@ import { useExperienceLifecycle } from './useExperienceLifecycle';
 import { useExperienceWorld } from './useExperienceWorld';
 import { getMapDefinition, isMapRegistryId } from '../../maps/registry';
 import { gameEvents } from '../../systems/events/GameEvents';
+import { getVehicleChoice, getVehicleOverride, subscribeVehicleChoice } from '../../utils/runContext';
 
 function readVehicleTypeFromUrl(): VehicleType | null {
   if (typeof window === 'undefined') return null;
@@ -18,8 +19,12 @@ function readVehicleTypeFromUrl(): VehicleType | null {
 }
 
 export function resolveInitialVehicle(mapId?: string): VehicleType {
+  const pinned = getVehicleOverride();
+  if (pinned) return pinned;
   const fromUrl = readVehicleTypeFromUrl();
   if (fromUrl) return fromUrl;
+  const chosen = getVehicleChoice(mapId);
+  if (chosen) return chosen;
   if (mapId && isMapRegistryId(mapId)) {
     const preferred = getMapDefinition(mapId).preferredVehicle;
     if (preferred) return preferred;
@@ -57,7 +62,7 @@ export function useInnerExperience({
   const trackManagerRef = useRef<TrackManagerRef | null>(null);
   const playerVelocityRef = useRef(0);
   const awardedWaterfallSegmentsRef = useRef(new Set<number>());
-  const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null);
+  const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null || getVehicleOverride() !== null);
 
   const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
   const physicsDebugEnabled =
@@ -86,13 +91,24 @@ export function useInnerExperience({
 
   // Map preferredVehicle when StartMenu / continue changes the active map.
   // URL `?vehicle=` wins for the whole session once present.
+  // A StartMenu pick for this map wins over its preference.
   useEffect(() => {
     if (!mapId || urlVehicleOverrideRef.current) return;
-    const preferred = getMapDefinition(mapId).preferredVehicle;
+    const preferred = getVehicleChoice(mapId) ?? getMapDefinition(mapId).preferredVehicle;
     if (preferred && preferred !== vehicleType) {
       setVehicleType(preferred);
     }
   }, [mapId, setVehicleType, vehicleType]);
+
+  // The pick can land after this mounts (the world mounts behind the menu).
+  useEffect(() => {
+    if (urlVehicleOverrideRef.current) return;
+    // "River decides" after an earlier pick returns to the map's own vehicle.
+    return subscribeVehicleChoice(() => {
+      const preferred = mapId && isMapRegistryId(mapId) ? getMapDefinition(mapId).preferredVehicle : undefined;
+      setVehicleType(getVehicleChoice(mapId) ?? preferred ?? 'runner');
+    });
+  }, [mapId, setVehicleType]);
 
   // Segment-authored forceVehicle (delta raft launch, hydro→delta continuation).
   useEffect(() => {

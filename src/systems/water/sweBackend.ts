@@ -5,7 +5,11 @@
  *   wasm-worker — the C++ HLL stepper (emscripten/swe.cpp) in the sim worker
  *                 (src/sim/). Default whenever WGSL is not clearly available.
  *   wasm-main   — the same stepper on the main thread. `?simWorker=0`, no
- *                 `Worker`, or the sim worker failed its handshake.
+ *                 `Worker`, the sim worker failed its handshake, or a
+ *                 scripted / replay run (`?input=script:`, `?replay=`): its
+ *                 field, worker tiles and hull link then land on the frame
+ *                 clock, not a message later at wall-clock time, so two runs
+ *                 of one script step the same world.
  *   wgsl        — the WGSL twin (swe.wgsl / WgslSweSim.ts) on the renderer's
  *                 own GPUDevice, on the main thread (it needs that device, and
  *                 the worker must never request a second one). Native-WebGPU
@@ -19,6 +23,7 @@
  */
 import { canEnableNativeWebgpu } from '../../rendering/nativeWebgpuGate';
 import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
+import { isScriptedInputMode } from '../../input/scriptedRun';
 
 export type SweSimBackend = 'wasm-worker' | 'wasm-main' | 'wgsl';
 
@@ -30,6 +35,7 @@ export type SweBackendReason =
   | 'device-limits'
   | 'wgsl-init-failed'
   | 'sim-worker-off'
+  | 'scripted-run'
   | 'no-worker'
   | 'sim-worker-failed';
 
@@ -65,6 +71,7 @@ function wasmStepper(inputs: SweBackendInputs, params: URLSearchParams, reason: 
 /** Pure decision — `resolveSweSimBackend()` feeds it the live session state. */
 export function chooseSweSimBackend(inputs: SweBackendInputs): SweBackendDecision {
   const params = new URLSearchParams(inputs.search ?? '');
+  if (isScriptedInputMode(inputs.search ?? '')) return { backend: 'wasm-main', reason: 'scripted-run' };
   if (params.get('swe') === 'wasm') return wasmStepper(inputs, params, 'query-wasm');
   if (!inputs.nativeWebgpuGate) return wasmStepper(inputs, params, 'gate-closed');
   if (!inputs.device) return wasmStepper(inputs, params, 'no-webgpu-device');

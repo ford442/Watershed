@@ -48,7 +48,7 @@ jobs:
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
       - name: Lint
-        run: pnpm lint --max-warnings 152
+        run: pnpm lint --max-warnings 150
 
   build-without-emscripten:
     name: Build without Emscripten
@@ -171,6 +171,13 @@ jobs:
       - name: Scripted input smoke
         run: pnpm test:input-smoke
         timeout-minutes: 15
+
+      # #464 A: record that run as a .wsghost, then `?replay=` it twice in
+      # fresh browsers; gates on identical split times and identical SWE
+      # state checksums at every split.
+      - name: Replay determinism smoke
+        run: pnpm test:replay-smoke
+        timeout-minutes: 20
 
       # #435: the WGSL SWE twin must track the committed C++ stepper within
       # 1e-5. Runs in headless Chrome on SwiftShader's WebGPU adapter; brings

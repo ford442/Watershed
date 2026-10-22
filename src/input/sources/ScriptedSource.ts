@@ -6,6 +6,10 @@
  *   { "version": 1, "dtMs": 16.6667, "headingYaw": 0,
  *     "frames": [[frameIdx, moveX, moveY, paddleL, paddleR, buttons], …] }
  *
+ * A row may carry two more numbers, `[…, yaw, pitch]` (radians, YXZ): the
+ * camera held for as long as that row is in force. `?replay=` scripts use it
+ * to put a recorded runner's look back (the ghost's pose is its camera).
+ *
  * Keyframes hold until the next one, so a 40 s run is a few dozen rows.
  * `headingYaw` (optional, radians, 0 = facing −Z / downstream) is an absolute
  * camera heading held for the whole run: movement is camera-relative and a
@@ -22,8 +26,10 @@
 import { INPUT_BUTTON_MASK, INPUT_FIXED_DT_MS } from '../InputFrame';
 import type { InputDeviceScratch, InputSource } from '../InputHub';
 
-/** [frameIdx, moveX, moveY, paddleL, paddleR, buttons] */
-export type InputScriptRow = [number, number, number, number, number, number];
+/** [frameIdx, moveX, moveY, paddleL, paddleR, buttons] or the same plus [yaw, pitch]. */
+export type InputScriptRow =
+  | [number, number, number, number, number, number]
+  | [number, number, number, number, number, number, number, number];
 
 export interface InputScript {
   version: 1;
@@ -46,14 +52,18 @@ export function parseInputScript(raw: unknown): InputScript {
     throw new Error('[ScriptedSource] frames must be a non-empty array');
   }
   const frames: InputScriptRow[] = obj.frames.map((row, i) => {
-    if (!Array.isArray(row) || row.length !== 6 || !row.every((v) => typeof v === 'number' && Number.isFinite(v))) {
-      throw new Error(`[ScriptedSource] frames[${i}] must be 6 finite numbers`);
+    if (
+      !Array.isArray(row) ||
+      (row.length !== 6 && row.length !== 8) ||
+      !row.every((v) => typeof v === 'number' && Number.isFinite(v))
+    ) {
+      throw new Error(`[ScriptedSource] frames[${i}] must be 6 (or 8, with yaw and pitch) finite numbers`);
     }
-    const [frameIdx, moveX, moveY, paddleL, paddleR, buttons] = row as number[];
+    const [frameIdx, moveX, moveY, paddleL, paddleR, buttons, yaw, pitch] = row as number[];
     if (!Number.isInteger(frameIdx) || frameIdx < 0) {
       throw new Error(`[ScriptedSource] frames[${i}] frameIdx must be a non-negative integer`);
     }
-    return [
+    const input: [number, number, number, number, number, number] = [
       frameIdx,
       clampAxis(moveX, -1),
       clampAxis(moveY, -1),
@@ -61,6 +71,7 @@ export function parseInputScript(raw: unknown): InputScript {
       clampAxis(paddleR, 0),
       Math.round(buttons) & INPUT_BUTTON_MASK,
     ];
+    return row.length === 8 ? [...input, yaw, pitch] : input;
   });
   frames.sort((a, b) => a[0] - b[0]);
   let headingYaw: number | undefined;
@@ -78,6 +89,8 @@ export class ScriptedSource implements InputSource {
   private scriptFrame = 0;
   /** Index of the keyframe in force at `scriptFrame`. */
   private row = 0;
+  /** currentLook()'s answer, reused. */
+  private readonly look: [number, number] = [0, 0];
 
   constructor(
     readonly script: InputScript,
@@ -98,6 +111,18 @@ export class ScriptedSource implements InputSource {
       out.buttons = k[5];
     }
     this.scriptFrame = f + 1;
+  }
+
+  /**
+   * The camera `[yaw, pitch]` the row in force holds, or null when the row has
+   * none (the script's `headingYaw`, if any, applies instead).
+   */
+  currentLook(): readonly [number, number] | null {
+    const k = this.script.frames[this.row];
+    if (!k || k.length !== 8) return null;
+    this.look[0] = k[6];
+    this.look[1] = k[7];
+    return this.look;
   }
 
   /** Script frames played so far. */

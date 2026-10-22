@@ -31,7 +31,13 @@ import {
 } from './SWEHeightField';
 import { sweStepInterval, type SWEBudget } from './sweQuality';
 import { SWE_REST_INFLOW, advanceSweWindow, type SweInflow, type SweWindow } from './sweScroll';
-import { createRiverRouter, routedEdgeInflow, type RiverRouter } from './riverRouter';
+import {
+  createRiverRouter,
+  routedEdgeInflow,
+  type RiverRouter,
+  type RouterWeather,
+  type RoutingForecast,
+} from './riverRouter';
 import { getRoutingReach, routingChainIndex, type RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import {
@@ -41,6 +47,7 @@ import {
   sampleBathymetryInto,
 } from './bathymetrySampler';
 import { publishSWEBedSnapshot } from './sweBedDebug';
+import { setSweChecksumGrid } from './sweChecksum';
 import { useGameStore } from '../GameState';
 import { runHeightfieldChores } from '../../rendering/gpuChores';
 import type { SWEFlowGrid } from './sampleSWEFlow';
@@ -48,7 +55,18 @@ import { packSweSurfaceField } from './sweSurfaceField';
 import { GRAVITY } from '../../constants/game';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
-import { getActiveLaunchHour, getActiveWeather, getRunMap, getRunSession } from '../journey/runSession';
+import {
+  getActiveConditions,
+  getActiveLaunchHour,
+  getActiveWeather,
+  getRunMap,
+  getRunSession,
+} from '../journey/runSession';
+import { getDirectorOverSegment } from '../weather/weatherDirector';
+import { createWeatherSurgeState, resetWeatherSurge, stepWeatherSurge, type WeatherSurgeState } from './weatherSurge';
+import { accumulateFieldErosion } from './erosionField';
+import type { ErosionFieldView } from '../../terrain/erosion';
+import { launchWeatherOf } from '../weather/weatherScript';
 
 function worldToGridIndex(
   worldX: number,
@@ -191,10 +209,32 @@ function refreshBed(
   });
 }
 
+/** Integrate one step of the field's shear into the live segments' erosion planes. */
+function erodeUnder(state: SweHostState, grid: SweSim, originX: number, originZ: number, dt: number): void {
+  const view = state.erosion ?? (state.erosion = {
+    h: grid.h, u: grid.u, w: grid.w, b: grid.b,
+    width: grid.width, height: grid.height, cellSize: grid.dx,
+    originX, originZ, stillDepth: SWE_MEAN_DEPTH,
+  });
+  view.h = grid.h;
+  view.u = grid.u;
+  view.w = grid.w;
+  view.b = grid.b;
+  view.width = grid.width;
+  view.height = grid.height;
+  view.cellSize = grid.dx;
+  view.originX = originX;
+  view.originZ = originZ;
+  accumulateFieldErosion(view, dt);
+}
+
+/** Seconds of slack in the step-rate compare (see sweHostFrame). */
+const SWE_STEP_EPSILON = 1e-6;
+
 export interface RouterState {
   router: RiverRouter | null;
-  /** The run the router was spun up for; a new run (or hour) re-routes from launch. */
-  session: unknown;
+  /** The run (`runId`) the router was spun up for; a new run (or hour) re-routes from launch. */
+  session: number | null;
   launchHour: number;
 }
 
@@ -205,16 +245,35 @@ export interface RouterState {
  */
 function currentRouter(wasm: WatershedNativeModule | null, state: RouterState): RiverRouter | null {
   if (!wasm) return null;
-  const session = getRunSession();
+  const session = getRunSession()?.runId ?? null;
   const launchHour = getActiveLaunchHour();
   if (state.router && state.session === session && state.launchHour === launchHour) return state.router;
   state.router?.dispose();
-  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour, {
-    forecast: { ...DEFAULT_FORECAST_INPUTS, weather: getActiveWeather() },
-  });
+  state.router = createRiverRouter(wasm, getRoutingReach(), launchHour, { forecast: runRoutingForecast() });
   state.session = session;
   state.launchHour = launchHour;
   return state.router;
+}
+
+/**
+ * The forecast the run's router spins up on: the day's melt inputs and the
+ * weather at launch (script step 0). Later steps arrive per step (setWeather).
+ */
+function runRoutingForecast(): RoutingForecast {
+  const { temperature, snowpackIndex, weatherScript } = getActiveConditions();
+  return { ...DEFAULT_FORECAST_INPUTS, temperature, snowpackIndex, weather: launchWeatherOf(weatherScript) };
+}
+
+/**
+ * The river weather this step routes: the WeatherDirector's, as a fresh value
+ * for the worker message, with the segment it sits over resolved to its reach.
+ */
+function routerWeatherNow(): RouterWeather {
+  const weather = getActiveWeather();
+  const over = getDirectorOverSegment();
+  const overChainIndex =
+    over === null ? null : routingChainIndex(getRoutingReach(), getRunSession()?.mapId ?? ACTIVE_MAP_ID, over);
+  return { type: weather.type, intensity: weather.intensity, overChainIndex };
 }
 
 /** The player's position on the routed chain, or null off it. */
@@ -232,7 +291,7 @@ function routedInflow(router: RiverRouter | null): { edgeEta: number; inflow: Sw
 export interface WorkerRouterState {
   /** Proxy the router was sent to; a different one (never, today) re-sends. */
   proxy: SimWorkerProxy | null;
-  session: unknown;
+  session: number | null;
   launchHour: number;
   reach: RoutingReach | null;
 }
@@ -244,7 +303,7 @@ export interface WorkerRouterState {
  * return the chain index the frame's SCROLL / STEP carry. No native call here.
  */
 function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number | null {
-  const session = getRunSession();
+  const session = getRunSession()?.runId ?? null;
   const launchHour = getActiveLaunchHour();
   if (state.proxy !== grid.proxy || state.session !== session || state.launchHour !== launchHour || !state.reach) {
     const reach = getRoutingReach();
@@ -252,7 +311,7 @@ function syncWorkerRouter(grid: WorkerSweSim, state: WorkerRouterState): number 
       type: 'ROUTER',
       reach,
       launchHour,
-      forecast: { ...DEFAULT_FORECAST_INPUTS, weather: getActiveWeather() },
+      forecast: runRoutingForecast(),
       H: SWE_MEAN_DEPTH,
       g: GRAVITY,
     });
@@ -272,6 +331,18 @@ export interface SweHostState {
   /** Where the live grid's window sits on the world's cell lattice; null until the first frame after a (re)build. */
   window: SweWindow | null;
   stepAccumulator: number;
+  /**
+   * Seconds of solver steps this run (the sum of step dts): the clock authored
+   * surge fronts and the squall front move on, so a replay stepped alike puts
+   * them in the same cells on the same step.
+   */
+  simTime: number;
+  /** The run (`runId`) `simTime` and `surge` count for; a new run restarts both. */
+  simRun: number | null;
+  /** The director's squall front, if one is crossing the window. */
+  surge: WeatherSurgeState;
+  /** The field as the erosion integrator reads it (#487 E); reused every step. */
+  erosion: ErosionFieldView | null;
   uploadedVersion: number;
   /** Bed refresh bookkeeping: re-rasterize only when the window slides a cell or the treadmill changes. */
   bed: BedState;
@@ -286,6 +357,10 @@ export function createSweHostState(): SweHostState {
     flowTexture: null,
     window: null,
     stepAccumulator: 0,
+    simTime: 0,
+    simRun: null,
+    surge: createWeatherSurgeState(),
+    erosion: null,
     uploadedVersion: -1,
     bed: { valid: false, revision: -1, originX: 0, originZ: 0 },
     router: { router: null, session: null, launchHour: Number.NaN },
@@ -296,6 +371,7 @@ export function createSweHostState(): SweHostState {
 /** A freshly installed grid starts on a new window, an empty bed and no upload. */
 export function resetSweHostForGrid(state: SweHostState): void {
   state.stepAccumulator = 0;
+  resetWeatherSurge(state.surge);
   state.uploadedVersion = -1;
   state.bed = { valid: false, revision: -1, originX: 0, originZ: 0 };
   state.window = null;
@@ -307,6 +383,7 @@ export function disposeSweHostRouters(state: SweHostState): void {
   state.router = { router: null, session: null, launchHour: Number.NaN };
   state.workerRouter.proxy?.post({ type: 'DISPOSE_ROUTER' });
   state.workerRouter = { proxy: null, session: null, launchHour: Number.NaN, reach: null };
+  setSweChecksumGrid(null);
 }
 
 /**
@@ -369,12 +446,25 @@ export function sweHostFrame(
 
     // Step-rate budget: accumulate render deltas and take one SWE step per
     // budgeted interval, so a 30Hz preset costs half a 60Hz preset's steps.
+    // The epsilon keeps a fixed 1/60 s clock (scripted / replay frames) on
+    // exactly one step per 60 Hz interval: float sums of 1/60 can land a hair
+    // short of it and skip a step, which a replay would then carry forever.
     const interval = sweStepInterval(budget);
     state.stepAccumulator += dt;
-    if (state.stepAccumulator >= interval) {
+    if (state.stepAccumulator >= interval - SWE_STEP_EPSILON) {
       const stepDt = Math.min(state.stepAccumulator, 0.05);
       state.stepAccumulator = 0;
+      // The director's weather for this step, then the advance (the worker does the same).
+      const weather = routerWeatherNow();
+      router?.setWeather(weather);
       router?.advance(stepDt);
+      const run = getRunSession()?.runId ?? null;
+      if (state.simRun !== run) {
+        state.simRun = run;
+        state.simTime = 0;
+        resetWeatherSurge(state.surge);
+      }
+      state.simTime += stepDt;
 
       applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
@@ -405,7 +495,17 @@ export function sweHostFrame(
         (kind, cx, cz, radius, strength, dtEvent) => {
           eventCalls.push({ kind, cx, cz, radius, strength, dt: dtEvent });
         },
+        state.simTime,
       );
+      // A squall the director strengthens over (or above) the player's reach sends one front.
+      const squall = stepWeatherSurge(
+        state.surge,
+        weather,
+        playerChainIndex(getRoutingReach()),
+        { originX, originZ, width: grid.width, height: grid.height, dx: grid.dx, depth: SWE_MEAN_DEPTH },
+        stepDt,
+      );
+      if (squall) eventCalls.push(squall);
 
       // Bed sampled from the canyon floor by refreshBed() above (#374
       // Phase 2). Uncovered cells read as dry land, not open water.
@@ -420,9 +520,13 @@ export function sweHostFrame(
         // hull reads it back through sampleSWEFlow like any other η.
         edgeEta: routed?.edgeEta,
       };
-      if (remote) remote.stepRouted(stepInput, { chainIndex });
+      if (remote) remote.stepRouted(stepInput, { chainIndex, weather });
       else grid.step(stepInput);
+      // The river works its bed (#487 E). On this thread the field just
+      // stepped; a worker's lands a message later, below.
+      if (!remote) erodeUnder(state, grid, originX, originZ, stepDt);
     }
+    if (remote && grid.fieldVersion !== state.uploadedVersion) erodeUnder(state, grid, originX, originZ, sweStepInterval(budget));
     // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
     if (grid.fieldVersion !== state.uploadedVersion) {
       state.uploadedVersion = grid.fieldVersion;
@@ -435,5 +539,6 @@ export function sweHostFrame(
     }
   }
 
+  setSweChecksumGrid(budget.enabled ? grid : null);
   return { originX, originZ, sweEnabled: Boolean(budget.enabled && grid) };
 }

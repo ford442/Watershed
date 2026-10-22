@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense } from 'react';
 import { PointerLockControls } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import EnhancedSky from '../components/EnhancedSky';
@@ -23,16 +23,21 @@ import SettingsLookSync from '../ui/SettingsLookSync';
 import { isCleanTestMode } from '../utils/cleanTestMode';
 import { useInnerExperience } from './hooks/useInnerExperience';
 import WeatherSystem from '../components/WeatherSystem';
-import { getActiveWeather } from '../systems/journey/runSession';
+import { getActiveConditions } from '../systems/journey/runSession';
+import { weatherScriptHasWeather } from '../systems/weather/weatherScript';
+import { WeatherDirectorTick } from '../systems/weather/WeatherDirectorTick';
+import { SkyClockTick } from '../systems/sky/SkyClockTick';
 import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
+import { isTouchInputMode } from '../input/touchMode';
 import { isScriptedRunLive } from '../input/scriptedRun';
 
 // #485 C: step-time instrumentation for the DebugPanel and `pnpm profile:physics`
 // (which runs with ?cleanTest=1, never ?debug=1) — not part of play, so not in the entry.
 const PhysicsPerfMonitor = lazy(() => import('../debug/PhysicsPerfMonitor'));
 
-// Map sources behind a URL flag: `?level=` (LevelLoader) and `?reach=` (ReachManager + the Reach
+// Map sources behind a URL flag: `?level=` (LevelLoader — a player's river from the StartMenu
+// takes the same path) and `?reach=` (ReachManager + the Reach
 // streamer, reactive audio and manifest normalizer). The campaign default mounts neither, so
 // their code loads only for the session that asks. Suspense stays local: the vehicle, water and
 // HUD keep running while the chunk lands.
@@ -64,12 +69,9 @@ export default function InnerExperience({
   });
   const { config: lodConfig, quality: lodQuality } = useLOD();
 
-  // Fixed at launch with the hour (#464); primitives keep the prop stable across renders.
-  const activeWeather = getActiveWeather();
-  const runWeather = useMemo(
-    () => ({ type: activeWeather.type, intensity: activeWeather.intensity }),
-    [activeWeather.type, activeWeather.intensity],
-  );
+  // The day's conditions are fixed at launch with the hour; the director steps the weather script.
+  const conditions = getActiveConditions();
+  const scriptHasWeather = weatherScriptHasWeather(conditions.weatherScript);
   const isTightCanyon = isTightCanyonSegment(state.currentSegmentIndex);
   const waterfallFxIntensity = waterfallFxIntensityForSegment(state.currentSegmentIndex);
 
@@ -78,6 +80,11 @@ export default function InnerExperience({
       {state.noPointerLock && <HeadlessSkySphere />}
 
       {debug.isStageEnabled('visualization') && <EnhancedSky />}
+
+      {/* The one weather owner: steps the run's script and writes the store's weather. */}
+      <WeatherDirectorTick />
+      {/* The run's time of day: advances the sky clock and places the sun for every reader below. */}
+      <SkyClockTick />
 
       <SceneLighting
         biome={state.biome}
@@ -102,7 +109,7 @@ export default function InnerExperience({
           )}
           {/* Ticks the input hub at priority −100, ahead of the vehicle step. */}
           <InputHubTick isRunLive={() => isScriptedRunLive(state.vehicleRef.current)} />
-          {!state.noPointerLock && (
+          {!state.noPointerLock && !isTouchInputMode() && (
             <>
               <PointerLockControls makeDefault onLock={() => {}} {...({ lockOnClick: true } as object)} />
               <SettingsLookSync />
@@ -135,8 +142,8 @@ export default function InnerExperience({
           <GhostReplayer />
 
           <FlowForecast
-            temperature={8}
-            snowpackIndex={0.65}
+            temperature={conditions.temperature}
+            snowpackIndex={conditions.snowpackIndex}
             damReleaseSchedule={DAM_RELEASE_SCHEDULE}
             startHour={state.launchHour}
             onForecastChange={state.setForecastSamples}
@@ -146,6 +153,20 @@ export default function InnerExperience({
               <Suspense fallback={null}>
                 <LevelLoader
                   levelUrl={state.levelUrl}
+                  onLoad={state.handleLevelLoad}
+                  onError={state.handleLevelError}
+                  showLoader={false}
+                  showError={false}
+                  raftRef={state.vehicleRef}
+                  onBiomeChange={state.handleBiomeChange}
+                />
+              </Suspense>
+            ) : state.userRiver ? (
+              <Suspense fallback={null}>
+                <LevelLoader
+                  key={state.userRiver.hash}
+                  levelData={state.userRiver.level}
+                  levelId={`river-${state.userRiver.hash}`}
                   onLoad={state.handleLevelLoad}
                   onError={state.handleLevelError}
                   showLoader={false}
@@ -181,11 +202,9 @@ export default function InnerExperience({
                 />
                 {/* Speed wind for default (non-Reach) maps — Reach path gets it via ReactiveAudio. */}
                 <SpeedWindAudio targetRef={state.vehicleRef} />
-                {/* Launch weather on the campaign maps (#464). Clear mounts nothing,
-                    so a clear run's lighting and fog are untouched. */}
-                {runWeather.type !== 'clear' && (
-                  <WeatherSystem targetRef={state.vehicleRef} weather={runWeather} />
-                )}
+                {/* The run's weather on the campaign maps (#464). An all-clear script
+                    mounts nothing, so a clear run's lighting and fog are untouched. */}
+                {scriptHasWeather && <WeatherSystem targetRef={state.vehicleRef} />}
               </>
             ))}
         </Physics>
@@ -213,7 +232,7 @@ export default function InnerExperience({
         onLoopMap={state.handleLoopCurrentMap}
         onContinueJourney={state.canContinueDefaultMap ? state.handleContinueJourney : undefined}
         onReturnToMenu={state.handleReturnToMenu}
-        mapLabel={state.activeDefaultMap.label}
+        mapLabel={state.userRiver?.label ?? state.activeDefaultMap.label}
         continueLabel={state.continueLabel}
         isFinalMap={state.isFinalMap}
         ghostBestScore={state.ghostBestScore}

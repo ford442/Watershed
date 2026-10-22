@@ -30,6 +30,7 @@ import {
   type PostTuning,
 } from './postProcessing/postFrameParams';
 import { getLoadedNodePost } from './postProcessing/nodePostLoader';
+import { getComfort } from '../systems/settings/comfortRuntime';
 import { smaaPassModule, ssaoPassModule } from './postProcessing/composerPassModules';
 import type { NodePostPipeline, NodePostStructure } from './postProcessing/nodePostPipeline';
 import { gameEvents } from '../systems/events/GameEvents';
@@ -588,6 +589,7 @@ export function PostProcessingPipeline({
       },
       tuning,
       smoothed.current,
+      getComfort(),
     );
 
     driver.apply(params);

@@ -19,6 +19,7 @@ const KIND_LABELS: Record<HydroEventKind, string> = {
   vortex: 'Drain vortex',
   braid: 'Gravel braid',
   roughness: 'Slack water',
+  surge: 'Surge front',
 };
 
 /** What each kind does to the river, one clause, for the HUD subtitle. */
@@ -27,6 +28,7 @@ const KIND_EFFECTS: Record<HydroEventKind, string> = {
   vortex: 'swirl pulls to the drain',
   braid: 'channel splits, pushes wide',
   roughness: 'current damped, slow line',
+  surge: 'a wall of water runs down the reach',
 };
 
 export interface HydroHudRow {

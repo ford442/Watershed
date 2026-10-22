@@ -10,8 +10,9 @@
  *
  *   0 moveX    −1..1   strafe (A/D)
  *   1 moveY    −1..1   forward/back (W/S); right-click-forward lands here
- *   2 lookDX   px      reserved — always 0 in Phase A (look stays on PointerLockControls)
- *   3 lookDY   px      reserved — always 0 in Phase A
+ *   2 lookDX   px      mouse-equivalent pixels this frame (gamepad right stick, touch drag);
+ *                      0 for the mouse itself — PointerLockControls owns that
+ *   3 lookDY   px      as lookDX
  *   4 paddleL  0..1    Q
  *   5 paddleR  0..1    E
  *   6 buttons  integer bitfield stored in a float32 slot (≤ 24 bits, exact)
@@ -51,7 +52,7 @@ export const INPUT_FRAME_FLOATS = 8;
 /** Fixed sim step the hub is keyed to (1/60 s). */
 export const INPUT_FIXED_DT_MS = 1000 / 60;
 
-export type InputSourceId = 'none' | 'keyboard-mouse' | 'scripted';
+export type InputSourceId = 'none' | 'keyboard-mouse' | 'scripted' | 'gamepad' | 'touch';
 
 export interface InputFrame {
   moveX: number;

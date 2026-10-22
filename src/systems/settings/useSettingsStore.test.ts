@@ -5,7 +5,7 @@ import {
   migrateSettings,
   createSafeStorage,
 } from './useSettingsStore';
-import { DEFAULT_BINDINGS } from './settingsDerive';
+import { DEFAULT_BINDINGS, DEFAULT_PAD_BINDINGS } from './settingsDerive';
 
 const reset = () =>
   useSettingsStore.setState({
@@ -16,6 +16,18 @@ const reset = () =>
     invertY: DEFAULT_SETTINGS.invertY,
     quality: DEFAULT_SETTINGS.quality,
     bindings: { ...DEFAULT_BINDINGS },
+    padBindings: { ...DEFAULT_PAD_BINDINGS },
+    fov: DEFAULT_SETTINGS.fov,
+    fovKick: DEFAULT_SETTINGS.fovKick,
+    cameraShake: DEFAULT_SETTINGS.cameraShake,
+    speedEffects: DEFAULT_SETTINGS.speedEffects,
+    vignetteStrength: DEFAULT_SETTINGS.vignetteStrength,
+    reducedMotion: DEFAULT_SETTINGS.reducedMotion,
+    leftHanded: DEFAULT_SETTINGS.leftHanded,
+    hapticsEnabled: DEFAULT_SETTINGS.hapticsEnabled,
+    hapticsStrength: DEFAULT_SETTINGS.hapticsStrength,
+    gamepadDeadzone: DEFAULT_SETTINGS.gamepadDeadzone,
+    gamepadCurve: DEFAULT_SETTINGS.gamepadCurve,
     _hasHydrated: false,
   });
 
@@ -165,5 +177,138 @@ describe('createSafeStorage — degrades to memory on throwing setItem', () => {
     // Value is retrievable from the in-memory fallback even though the backend failed.
     expect(storage.getItem('k')).toBe('v');
     throwingSetItem.mockRestore();
+  });
+});
+
+describe('v2 comfort / haptics / gamepad / touch fields (#486 D)', () => {
+  it('start at documented values', () => {
+    const s = useSettingsStore.getState();
+    expect(s.fov).toBe(75);
+    expect(s.fovKick).toBe(1);
+    expect(s.cameraShake).toBe(1);
+    expect(s.speedEffects).toBe(true);
+    expect(s.vignetteStrength).toBe(1);
+    expect(s.reducedMotion).toBe('system');
+    expect(s.leftHanded).toBe(false);
+    expect(s.hapticsEnabled).toBe(true);
+    expect(s.hapticsStrength).toBe(1);
+    expect(s.gamepadDeadzone).toBe(0.15);
+    expect(s.gamepadCurve).toBe(1);
+    expect(s.padBindings).toEqual(DEFAULT_PAD_BINDINGS);
+  });
+
+  it('setters clamp to their ranges', () => {
+    const st = useSettingsStore.getState();
+    st.setFov(10);
+    expect(useSettingsStore.getState().fov).toBe(70);
+    st.setFov(999);
+    expect(useSettingsStore.getState().fov).toBe(110);
+    st.setCameraShake(-1);
+    expect(useSettingsStore.getState().cameraShake).toBe(0);
+    st.setGamepadDeadzone(9);
+    expect(useSettingsStore.getState().gamepadDeadzone).toBe(0.5);
+    st.setGamepadCurve(0);
+    expect(useSettingsStore.getState().gamepadCurve).toBe(1);
+    st.setHapticsStrength(5);
+    expect(useSettingsStore.getState().hapticsStrength).toBe(1);
+  });
+
+  it('a gamepad bind goes in its own table and leaves the keyboard binding alone', () => {
+    useSettingsStore.getState().bindAction('jump', { kind: 'gamepad-button', code: 'Button1' });
+    const s = useSettingsStore.getState();
+    expect(s.padBindings.jump).toEqual({ kind: 'gamepad-button', code: 'Button1' });
+    expect(s.bindings.jump).toEqual(DEFAULT_BINDINGS.jump);
+  });
+
+  it('a pad bind onto a taken button swaps, so no pad input is double-bound', () => {
+    // Jump is A (Button0), Dodge is X (Button2): put Jump on X.
+    useSettingsStore.getState().bindAction('jump', { kind: 'gamepad-button', code: 'Button2' });
+    const s = useSettingsStore.getState();
+    expect(s.padBindings.jump.code).toBe('Button2');
+    expect(s.padBindings.dodge.code).toBe('Button0');
+  });
+
+  it('unbindPadAction restores the default pad binding', () => {
+    useSettingsStore.getState().bindAction('jump', { kind: 'gamepad-button', code: 'Button1' });
+    useSettingsStore.getState().unbindPadAction('jump');
+    expect(useSettingsStore.getState().padBindings.jump).toEqual(DEFAULT_PAD_BINDINGS.jump);
+  });
+});
+
+describe('migration v1 → v2', () => {
+  it('a v1 blob (no comfort fields, no pad table) migrates to defaults and keeps what it had', () => {
+    const v1 = {
+      masterVolume: 0.5,
+      mouseSensitivity: 1.5,
+      invertY: true,
+      quality: 'low',
+      bindings: { forward: { kind: 'key', code: 'KeyI' } },
+    };
+    const m = migrateSettings(v1, 1);
+    expect(m.masterVolume).toBe(0.5);
+    expect(m.invertY).toBe(true);
+    expect(m.quality).toBe('low');
+    expect(m.bindings.forward).toEqual({ kind: 'key', code: 'KeyI' });
+    expect(m.fov).toBe(75);
+    expect(m.reducedMotion).toBe('system');
+    expect(m.hapticsEnabled).toBe(true);
+    expect(m.padBindings).toEqual(DEFAULT_PAD_BINDINGS);
+  });
+
+  it('keeps persisted comfort values, clamps bad ones, and ignores junk types', () => {
+    const m = migrateSettings(
+      { fov: 120, fovKick: 0.5, cameraShake: 'lots', speedEffects: false, reducedMotion: 'on', leftHanded: true, gamepadCurve: 2.5, hapticsEnabled: 'yes' },
+      2,
+    );
+    expect(m.fov).toBe(110);
+    expect(m.fovKick).toBe(0.5);
+    expect(m.cameraShake).toBe(1);
+    expect(m.speedEffects).toBe(false);
+    expect(m.reducedMotion).toBe('on');
+    expect(m.leftHanded).toBe(true);
+    expect(m.gamepadCurve).toBe(2.5);
+    expect(m.hapticsEnabled).toBe(true);
+  });
+
+  it('the keyboard table never holds a gamepad kind and the pad table never a key', () => {
+    const m = migrateSettings(
+      {
+        bindings: { jump: { kind: 'gamepad-button', code: 'Button0' } },
+        padBindings: { jump: { kind: 'key', code: 'KeyZ' }, dodge: { kind: 'gamepad-button', code: 'Button7' } },
+      },
+      2,
+    );
+    expect(m.bindings.jump).toEqual(DEFAULT_BINDINGS.jump);
+    expect(m.padBindings.jump).toEqual(DEFAULT_PAD_BINDINGS.jump);
+    expect(m.padBindings.dodge).toEqual({ kind: 'gamepad-button', code: 'Button7' });
+  });
+
+  it('persists under the same key with the version bumped and rehydrates a v1 blob', async () => {
+    const { rehydrateSettings, SETTINGS_VERSION } = await import('./useSettingsStore');
+    expect(SETTINGS_VERSION).toBe(2);
+    window.localStorage.setItem(
+      'watershed-settings',
+      JSON.stringify({ state: { masterVolume: 0.2, quality: 'med' }, version: 1 }),
+    );
+    rehydrateSettings();
+    await Promise.resolve();
+    const s = useSettingsStore.getState();
+    expect(s.masterVolume).toBe(0.2);
+    expect(s.quality).toBe('med');
+    expect(s.fov).toBe(75);
+    window.localStorage.removeItem('watershed-settings');
+  });
+
+  it('persists the new fields (partialize) without the hydration flag', () => {
+    useSettingsStore.getState().setFov(95);
+    useSettingsStore.getState().setLeftHanded(true);
+    const raw = window.localStorage.getItem('watershed-settings');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw as string);
+    expect(parsed.version).toBe(2);
+    expect(parsed.state.fov).toBe(95);
+    expect(parsed.state.leftHanded).toBe(true);
+    expect(parsed.state._hasHydrated).toBeUndefined();
+    window.localStorage.removeItem('watershed-settings');
   });
 });

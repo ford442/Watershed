@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { Html } from '@react-three/drei';
 import GameHUD from '../components/GameHUD';
 import ForecastHUD from '../components/ForecastHUD';
@@ -10,6 +10,7 @@ import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowFore
 import { useGameStore } from '../systems/GameState';
 import { getRunMap } from '../systems/journey/runSession';
 import { parseHydroEvents } from '../systems/water/hydroEvents';
+import { getActiveUserRiver, subscribeUserRiver } from '../systems/map/userRiverSession';
 
 /**
  * Pin drei's <Html> to the top-left of the canvas.
@@ -91,13 +92,15 @@ export default function ExperienceUI({
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   // Authored hydro events for the active map — the HUD contrasts the run's
   // launch hour against the other scouting hour (#397).
+  // A player's river is the run map too (userRiverSession.ts): its events, not the backing map's.
+  const userRiver = useSyncExternalStore(subscribeUserRiver, getActiveUserRiver, () => null);
   const hydroEvents = useMemo(() => {
     try {
       return parseHydroEvents(getRunMap().levelData.hydroEvents);
     } catch {
       return [];
     }
-  }, [mapLabel]);
+  }, [mapLabel, userRiver]);
   const lastSplitDelta = useGameStore((s) => s.lastSplitDelta);
 
   if (!enabled) return null;

@@ -186,9 +186,9 @@ rebind. Both blocks now carry an `eslint-disable`/`eslint-enable` pair naming
 
 ## The ratchet
 
-`.github/workflows/build.yml` runs `pnpm lint --max-warnings 152` (280 when it
+`.github/workflows/build.yml` runs `pnpm lint --max-warnings 150` (280 when it
 was introduced — 296 minus the 16 warnings the #415 annotations suppress —
-then 249, and 152 after #503). Errors still fail the build,
+then 249, and 150 after #503). Errors still fail the build,
 and so does any *new* warning; the existing backlog stays non-blocking.
 
 Lower the number whenever the count drops, never raise it. It covers every

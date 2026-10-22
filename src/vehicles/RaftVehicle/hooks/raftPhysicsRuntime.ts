@@ -10,9 +10,12 @@ import type { PlayerControls } from '../../../hooks/usePlayerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
 import type { ParticlePool } from '../../../components/particlePool';
 import { tickRunSurvival } from '../../../systems/journey/runSession';
+import { getComfort } from '../../../systems/settings/comfortRuntime';
+import { raftTargetFov } from '../../../systems/settings/comfort';
 import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 import { clamp01 } from '../../../math/scalar';
 import { createRng } from '../../../math/random';
+import { getVehicleWaterLevel } from '../../../systems/water/vehicleWaterDatum';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0x6e0183eb);
@@ -34,6 +37,9 @@ function bodyQuaternion(body: RapierBody): THREE.Quaternion {
   return _quat.set(r.x, r.y, r.z, r.w);
 }
 
+/** A hull more than this fraction under the surface is floating (survival `inWater`). */
+export const FLOATING_SUBMERGED_RATIO = 0.1;
+
 export type RaftImpulse = [number, number, number];
 
 export interface RaftPhysicsRuntimeDeps {
@@ -50,11 +56,24 @@ export interface RaftPhysicsRuntimeDeps {
   controls: { getControls: () => PlayerControls };
   stepWorkerProxy: (body: RapierBody, delta: number, impulses?: RaftImpulse[]) => void;
   currentFov: { current: number };
+  /**
+   * The staged water level over the raft — the datum the hull's buoyancy reads
+   * (vehicleWaterDatum.ts); null where no water covers it. Injectable for tests.
+   */
+  sampleWaterLevel?: () => number | null;
 }
 
 export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
+const sampleWaterLevel = deps.sampleWaterLevel ?? getVehicleWaterLevel;
+
+/**
+ * Fraction of the hull below the staged surface — the same level the water
+ * force reads, so a lowered stage grounds the hull and this check together.
+ * No water under the raft (off the sheet, before the first force frame) is 0.
+ */
 const calculateSubmergedRatio = (raftY: number): number => {
-  const waterLevel = WATER_PHYSICS.LEVEL;
+  const waterLevel = sampleWaterLevel();
+  if (waterLevel === null) return 0;
   const raftHalfHeight = WATER_PHYSICS.RAFT_HEIGHT / 2;
   const raftBottom = raftY - raftHalfHeight;
   const raftTop = raftY + raftHalfHeight;
@@ -275,10 +294,31 @@ const applyBrake = (body: RapierBody, delta: number) => {
 };
 
 /**
+ * Stroke strength per paddle, 0..1. A keyboard key reports a full 1; a gamepad
+ * trigger reports how far it is pulled (`paddleLeftAxis` / `paddleRightAxis`,
+ * #486 B), so a half-pull is a half-strength stroke. Both paddles (or W) average
+ * the two; W alone is a full stroke.
+ */
+const paddleStrokeScales = (c: {
+  paddleLeft: boolean;
+  paddleRight: boolean;
+  paddleLeftAxis?: number;
+  paddleRightAxis?: number;
+}) => {
+  const strokeLeft = c.paddleLeft ? Math.max(0.35, Math.min(1, c.paddleLeftAxis ?? 1)) : 0;
+  const strokeRight = c.paddleRight ? Math.max(0.35, Math.min(1, c.paddleRightAxis ?? 1)) : 0;
+  const strokeBoth =
+    c.paddleLeft && c.paddleRight ? (strokeLeft + strokeRight) / 2 : c.paddleLeft ? strokeLeft : c.paddleRight ? strokeRight : 1;
+  return { strokeLeft, strokeRight, strokeBoth };
+};
+
+/**
  * Apply paddle forces based on Q/E input with stamina-gated power
  */
 const applyPaddleForces = (body: RapierBody, delta: number) => {
-  const { paddleLeft, paddleRight, forward } = deps.controls.getControls();
+  const controls = deps.controls.getControls();
+  const { paddleLeft, paddleRight, forward } = controls;
+  const { strokeLeft, strokeRight, strokeBoth } = paddleStrokeScales(controls);
 
   deps.paddleState.current.leftPaddle = paddleLeft;
   deps.paddleState.current.rightPaddle = paddleRight;
@@ -292,7 +332,7 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
 
   // Both paddles or W key = straight forward
   if ((paddleLeft && paddleRight) || forward) {
-    const power = consumeStamina() * stunMultiplier;
+    const power = consumeStamina() * strokeBoth * stunMultiplier;
     if (power <= 0) return;
 
     body.applyImpulse({
@@ -314,7 +354,7 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
 
   // Left paddle (Q) - apply force at left attachment point, rotate left
   if (paddleLeft) {
-    const power = consumeStamina() * stunMultiplier;
+    const power = consumeStamina() * strokeLeft * stunMultiplier;
     if (power <= 0) return;
 
     // Forward thrust component
@@ -347,7 +387,7 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
 
   // Right paddle (E) - apply force at right attachment point, rotate right
   if (paddleRight) {
-    const power = consumeStamina() * stunMultiplier;
+    const power = consumeStamina() * strokeRight * stunMultiplier;
     if (power <= 0) return;
 
     body.applyImpulse({
@@ -469,7 +509,9 @@ const resetRaft = (body: RapierBody) => {
   playRaftTipSound();
 
   const safePos = deps.tippingState.current.lastSafePosition.clone();
-  safePos.y = Math.max(safePos.y, WATER_PHYSICS.LEVEL + TIPPING.RESET_HEIGHT);
+  // Clear of the surface the raft was last floating on, never an absolute y.
+  const waterLevel = sampleWaterLevel();
+  if (waterLevel !== null) safePos.y = Math.max(safePos.y, waterLevel + TIPPING.RESET_HEIGHT);
 
   body.setTranslation(safePos, true);
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -498,9 +540,14 @@ const updateCameraFromBody = (body: RapierBody) => {
   deps.camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
   deps.camera.lookAt(pos.x, pos.y, pos.z);
 
-  const targetFov = Math.min(
-    CAMERA.FOV_MAX,
-    CAMERA.FOV_BASE + (speed / CAMERA.FOV_SPEED_REFERENCE) * CAMERA.FOV_SPEED_SCALE
+  // Base FOV and kick strength are the player's comfort settings (#486 D); the
+  // authored headroom (FOV_MAX − FOV_BASE) still caps the kick.
+  const targetFov = raftTargetFov(
+    speed,
+    CAMERA.FOV_SPEED_REFERENCE,
+    CAMERA.FOV_SPEED_SCALE,
+    CAMERA.FOV_MAX - CAMERA.FOV_BASE,
+    getComfort(),
   );
   deps.currentFov.current += (targetFov - deps.currentFov.current) * CAMERA.FOV_LERP;
   if ('fov' in deps.camera) {
@@ -512,7 +559,9 @@ const updateCameraFromBody = (body: RapierBody) => {
 };
 
 const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
-  const { paddleLeft, paddleRight, forward } = deps.controls.getControls();
+  const controls = deps.controls.getControls();
+  const { paddleLeft, paddleRight, forward } = controls;
+  const { strokeLeft, strokeRight, strokeBoth } = paddleStrokeScales(controls);
   deps.paddleState.current.leftPaddle = paddleLeft;
   deps.paddleState.current.rightPaddle = paddleRight;
 
@@ -523,7 +572,7 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
   const impulses: RaftImpulse[] = [];
 
   if ((paddleLeft && paddleRight) || forward) {
-    const power = consumeStamina();
+    const power = consumeStamina() * strokeBoth;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * power * delta,
@@ -532,7 +581,7 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
       ]);
     }
   } else if (paddleLeft) {
-    const power = consumeStamina();
+    const power = consumeStamina() * strokeLeft;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
@@ -546,7 +595,7 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
       ]);
     }
   } else if (paddleRight) {
-    const power = consumeStamina();
+    const power = consumeStamina() * strokeRight;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
@@ -565,8 +614,17 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
   updateCameraFromBody(body);
 };
 
+/** Refresh the buoyancy state from the staged datum; returns the submerged ratio. */
+const updateBuoyancy = (raftY: number): number => {
+  const submergedRatio = calculateSubmergedRatio(raftY);
+  deps.buoyancyState.current.submergedRatio = submergedRatio;
+  deps.buoyancyState.current.isFloating = submergedRatio > FLOATING_SUBMERGED_RATIO;
+  return submergedRatio;
+};
+
   return {
     calculateSubmergedRatio,
+    updateBuoyancy,
     applyTurbulence,
     applyTippingForce,
     dampenRotation,

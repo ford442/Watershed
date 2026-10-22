@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../systems/GameState';
+import { useMenuFocus } from '../hooks/useMenuFocus';
 import { getActiveMapId } from '../utils/runContext';
 import { getRivalGhost, setRivalGhost, clearRivalGhost } from '../systems/persistence/PersistenceSystem';
 import { importGhostFromFile } from '../systems/ghost/ghostExport';
@@ -76,6 +77,16 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
     setRivalRefusal(null);
   };
 
+  // Arrow keys / gamepad d-pad walk the buttons; pad Start or B resumes (B backs
+  // out of the restart confirmation first).
+  const cardRef = useRef<HTMLDivElement>(null);
+  useMenuFocus(cardRef, {
+    onBack: () => (confirmRestart ? setConfirmRestart(false) : onResume()),
+    onStart: () => {
+      if (!confirmRestart) onResume();
+    },
+  });
+
   // Focus resume button when pause opens
   useEffect(() => {
     if (!confirmRestart) {
@@ -104,7 +115,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
 
   return (
     <div className="pause-menu-overlay">
-      <div className="pause-menu-card">
+      <div className="pause-menu-card" ref={cardRef}>
         <h1 className="pause-menu-title">PAUSED</h1>
 
         {!confirmRestart && (

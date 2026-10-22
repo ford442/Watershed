@@ -14,8 +14,11 @@ import { useGameStore } from '../GameState';
 import { getRunBest } from '../persistence/PersistenceSystem';
 import { getActiveRunKey } from '../../utils/runContext';
 import { gameEvents } from '../events/GameEvents';
+import { currentSweChecksum } from '../water/sweChecksum';
 
 let splits: RunSplitEntry[] = [];
+/** SWE state checksum at each split (null where the field was off) — a replay check, never persisted. */
+let splitChecksums: (string | null)[] = [];
 let recordedSegments = new Set<number>();
 let nextDeltaId = 0;
 
@@ -31,6 +34,7 @@ export function recordSplit(segmentIndex: number, speed: number): RunSplitEntry 
     speed,
   };
   splits.push(entry);
+  splitChecksums.push(currentSweChecksum());
   publishSplitDelta(entry);
   return entry;
 }
@@ -54,8 +58,14 @@ export function getRecordedSplits(): RunSplitEntry[] {
   return [...splits];
 }
 
+/** SWE checksums taken at each recorded split, aligned with getRecordedSplits(). */
+export function getRecordedSplitChecksums(): (string | null)[] {
+  return [...splitChecksums];
+}
+
 export function resetSplitRecording(): void {
   splits = [];
+  splitChecksums = [];
   recordedSegments = new Set();
 }
 

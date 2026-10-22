@@ -284,8 +284,11 @@ HUD shows `LOADOUT <shortLabel>` (top-left) plus WET / EXPOSURE bars (bottom-lef
   track by construction (and tested against the generated geometry), but the
   exact `t` / `lateral` / `yMin` values have not been felt in-engine.
 - FlowForecast mid-run cache restock synergy.
-- Raft-specific envelope (the raft uses the same lifecycle check, with the
-  runner's `POSITION_SANE` margins).
+- ~~Raft-specific envelope~~ — done: the lifecycle check gives a raft
+  `resolveRaftEnvelope` (`segmentFrames.ts`), a floor `RAFT_ENVELOPE.depthBelowSurface`
+  under the staged surface it floats on (`vehicleWaterDatum.ts`, the same datum the
+  hull force and the raft's `isFloating` read), never tighter than the segment's.
+  There is still no lateral bound for either vehicle.
 
 ## Related
 

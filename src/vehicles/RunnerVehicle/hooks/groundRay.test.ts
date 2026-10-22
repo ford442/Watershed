@@ -14,6 +14,8 @@ import {
   computeGroundHitPoint,
   updateUngroundedHysteresis,
   resolvePlayerGroundRay,
+  hasTerrainBelow,
+  TERRAIN_READY_RAY_DISTANCE,
   isTerrainGroundHit as isTerrainGroundHitFromModule,
 } from './runnerGroundRay';
 
@@ -96,5 +98,19 @@ describe('runner ground ray helpers', () => {
       -6 + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET - 1.25,
       5,
     );
+  });
+
+  it('finds terrain for the boot warm-up past the grounded reach (meander spawn ~6 m over its floor)', () => {
+    const castAt = (floorDrop: number) => ({
+      castRay: (_ray: unknown, maxDist: number) => (floorDrop <= maxDist ? { timeOfImpact: floorDrop } : null),
+    });
+    const rapier = { Ray: class { constructor(public origin: unknown, public dir: unknown) {} } };
+    const pos = { x: 0, y: -6, z: -10 };
+    // Floor 7 m under the ray origin: not grounded, but there is canyon below.
+    expect(isTerrainGroundHit(7)).toBe(false);
+    expect(hasTerrainBelow(castAt(7) as never, rapier as never, null, pos)).toBe(true);
+    expect(hasTerrainBelow(castAt(TERRAIN_READY_RAY_DISTANCE + 1) as never, rapier as never, null, pos)).toBe(false);
+    // A self-hit at the origin is not terrain.
+    expect(hasTerrainBelow(castAt(0) as never, rapier as never, null, pos)).toBe(false);
   });
 });

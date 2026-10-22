@@ -39,6 +39,15 @@ describe('chooseSweSimBackend', () => {
     });
   });
 
+  it('steps a scripted or replay run on the main thread, whatever the device and worker', () => {
+    for (const search of ['?input=script:/run.json', '?replay=./run.wsghost']) {
+      expect(chooseSweSimBackend({ nativeWebgpuGate: true, device: device(), workerAvailable: true, search })).toEqual({
+        backend: 'wasm-main',
+        reason: 'scripted-run',
+      });
+    }
+  });
+
   it('never moves the WGSL twin into the worker — it needs the renderer’s device', () => {
     expect(
       chooseSweSimBackend({ nativeWebgpuGate: true, device: device(), workerAvailable: true, search: '?simWorker=1' }),

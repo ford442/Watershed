@@ -24,6 +24,10 @@ import { buildForecastSamples, samplesToForecastByIndex } from '../systems/map/f
 import { DAM_RELEASE_SCHEDULE } from '../experience/constants';
 import { POSITION_SANE } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { getMapDefinition, mapRegistryIds, type MapRegistryId } from './registry';
+import { EROSION_MAX_DEPTH } from '../terrain/erosion';
+import { buildTerrainTile, packChannelProfile, TerrainProfile } from '../terrain/terrainTile';
+import { getTrackBiomeProfile } from '../configs/TrackBiomes';
+import type { ChannelProfileSample } from '../components/TrackSegment/types';
 
 const SCOUT_HOUR = 6;
 const DAM_HOUR = 14;
@@ -38,6 +42,46 @@ const HEADROOM = 20;
 const SPAWN_RISE = 1.5;
 /** Float slack: a margin authored exactly at the minimum must pass. */
 const EPS = 1e-6;
+/** A body standing on the floor sits at least this far above it (runner capsule). */
+const BODY_CLEARANCE = 0.5;
+
+/**
+ * The deepest a hull floor can sit below its path (m, negative): the deepest
+ * pool TrackSegment authors (slot floorDepth 1.4 plus the largest floor wave),
+ * on both cross-section families.
+ */
+function deepestHullFloor(): number {
+  let deepest = 0;
+  for (const slot of [false, true]) {
+    const biome = getTrackBiomeProfile(slot ? 'slotCanyon' : 'canyonSummer');
+    const channel: ChannelProfileSample[] = [0, 1].map((t) => ({
+      t,
+      worldArc: t,
+      leftHalfWidth: biome.waterWidth / 2,
+      rightHalfWidth: biome.waterWidth / 2,
+      corridorHalfWidth: Math.max(3.2, biome.waterWidth * 0.35),
+      floorDepth: 1.4,
+      floorWave: 0.26,
+      riffleStrength: -1,
+      gravelBarSide: 1,
+      undercutSide: -1,
+      flowScale: 1,
+    }));
+    const tile = buildTerrainTile({
+      pathLength: 100,
+      canyonWidth: biome.canyonWidth,
+      waterWidth: biome.waterWidth,
+      segmentsX: 40,
+      segmentsZ: 25,
+      profile: slot ? TerrainProfile.SLOT : TerrainProfile.OPEN,
+      rockNoise: false,
+      tube: null,
+      channel: packChannelProfile(channel),
+    })!;
+    deepest = Math.min(deepest, ...tile.h);
+  }
+  return deepest;
+}
 
 /** The set-piece classes #436 requires a zone on (plus delta's beach). */
 const REQUIRED_ZONES: Record<MapRegistryId, number[]> = {
@@ -112,6 +156,8 @@ function isDropSegment(seg: LevelSegment): boolean {
   return seg.type === 'waterfall' || Boolean((seg as { openFloor?: boolean }).openFloor);
 }
 
+const DEEPEST_FLOOR = deepestHullFloor();
+
 describe('authored safeZones cover the #436 set-pieces', () => {
   it.each(mapRegistryIds())('%s', (mapId) => {
     const authored = authoredSegments(mapId).map((seg) => seg.index);
@@ -156,6 +202,11 @@ describe.each(mapRegistryIds())('%s safeZones against the generated path', (mapI
 
         const floor = isDropSegment(seg) ? DROP_FLOOR_MARGIN : FLOOR_MARGIN;
         expect(envelope.yMin + floor, `${mapId} seg ${index} floor margin`).toBeLessThanOrEqual(frame.pathYMin + EPS);
+        // #487 E: a body on the most eroded floor (the deepest pool, dug the
+        // full EROSION_MAX_DEPTH) is still inside the envelope — scour can
+        // never wipe out a player who is standing still.
+        const erodedFloor = frame.pathYMin + DEEPEST_FLOOR - EROSION_MAX_DEPTH + BODY_CLEARANCE;
+        expect(erodedFloor, `${mapId} seg ${index} eroded floor`).toBeGreaterThan(envelope.yMin);
         expect(frame.pathYMax + HEADROOM, `${mapId} seg ${index} headroom`).toBeLessThanOrEqual(envelope.yMax + EPS);
 
         // respawnAt: a generated segment at or upstream of this one…

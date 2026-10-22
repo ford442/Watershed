@@ -18,6 +18,7 @@
  *   VISUAL_MAX_DIFF_RATIO  Max mismatched pixel ratio (default 0.05)
  *   VISUAL_THRESHOLD       pixelmatch threshold 0–1 (default 0.15)
  *   VISUAL_BOOT_RETRIES    Boot attempts per topdown shot (default 3)
+ *   VISUAL_ONLY            Comma-separated shot labels to run (e.g. 10_touch_layout)
  *   PUPPETEER_EXECUTABLE_PATH  Optional Chrome binary override
  *
  * SwiftShader notes (F-1 / F-8):
@@ -142,6 +143,18 @@ const SHOTS = [
   // (`hasBridge` + `openFloor`); `?hour=` picks the launch hour for this page
   // load only, so the dawn backwater (05–07) and the flood braid (13–15) are
   // two shots of the same geometry with different amounts of deck on it.
+  // #486 C: the touch layout. 390×844 with a coarse pointer emulated (touch +
+  // mobile via CDP, `?input=touch` as the belt to that brace). The shot proves
+  // the layer mounts, the left thumb moves the runner, and freezes the layout.
+  {
+    label: '10_touch_layout',
+    mode: 'touch',
+    required: false,
+    query: 'cleanTest=1&renderer=webgl&screenshot=1&input=touch',
+    touchViewport: { width: 390, height: 844 },
+    // A 390×844 frame is a fifth the pixels of the 1280×720 shots.
+    minBytes: 12_000,
+  },
   {
     label: '06_lumber_trestle_dawn',
     mode: 'topdown',
@@ -181,6 +194,43 @@ const SHOTS = [
     segment: 16,
     settleMs: 2_500,
   },
+  // The sun moves: the launch hour is the sky clock's start, so a 06:00 and a
+  // 14:00 launch of the same reach light it from different places (low east
+  // dawn vs high south-west afternoon). Baselined per hour on two maps, each
+  // on its start segment: the teleport is then a no-op, so no OOB wipeout
+  // overlay can land in the frame.
+  {
+    label: '11_glacial_hour06',
+    mode: 'topdown',
+    required: false,
+    query: 'map=glacial&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 0,
+    settleMs: 2_500,
+  },
+  {
+    label: '12_glacial_hour14',
+    mode: 'topdown',
+    required: false,
+    query: 'map=glacial&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 0,
+    settleMs: 2_500,
+  },
+  {
+    label: '13_meander_hour06',
+    mode: 'topdown',
+    required: false,
+    query: 'map=meander&hour=6&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 2,
+    settleMs: 2_500,
+  },
+  {
+    label: '14_meander_hour14',
+    mode: 'topdown',
+    required: false,
+    query: 'map=meander&hour=14&cleanTest=1&renderer=webgl&screenshot=1&no-pointer-lock=1',
+    segment: 2,
+    settleMs: 2_500,
+  },
 ];
 
 /**
@@ -218,6 +268,20 @@ const CONTRASTS = [
     b: '09_glacial_open_channel',
     minRatio: 0.0005,
     why: 'the ice-tube wall profile must not draw the same open U-channel as the melt-out',
+  },
+  {
+    label: 'glacial_sun_hours',
+    a: '11_glacial_hour06',
+    b: '12_glacial_hour14',
+    minRatio: 0.0005,
+    why: 'a 06:00 and a 14:00 launch must not be lit by the same sun',
+  },
+  {
+    label: 'meander_sun_hours',
+    a: '13_meander_hour06',
+    b: '14_meander_hour14',
+    minRatio: 0.0005,
+    why: 'a 06:00 and a 14:00 launch must not be lit by the same sun',
   },
 ];
 
@@ -457,6 +521,128 @@ async function attemptTopdown(shot) {
   }
 }
 
+/** Dispatch one touch via CDP — what a thumb does, without puppeteer's version-specific touchscreen API. */
+async function cdpTouch(client, type, x, y, id = 1) {
+  await client.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x, y, id }],
+  });
+}
+
+async function attemptTouch(shot) {
+  const pageErrors = [];
+  const browser = await launchBrowser();
+  try {
+    const page = await browser.newPage();
+    const { width, height } = shot.touchViewport;
+    await page.setViewport({ width, height, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    page.on('pageerror', (e) => pageErrors.push(e.message || String(e)));
+    const client = await page.createCDPSession();
+
+    await page.goto(`${BASE_URL}/?${shotQuery(shot)}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.waitForSelector('.start-menu-start-btn', { timeout: 45_000 });
+    await page.waitForFunction(
+      () => {
+        const btn = document.querySelector('.start-menu-start-btn');
+        return !!btn && !btn.disabled;
+      },
+      { timeout: 60_000 },
+    );
+    const coarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
+    console.log(`  (pointer: coarse) = ${coarse}`);
+    // A tap, not a mouse click: the start button must work with no pointer lock.
+    await page.evaluate(() => document.querySelector('.start-menu-start-btn').click());
+
+    await page.waitForSelector('[data-testid="touch-controls"]', { timeout: 60_000 });
+    const layout = await page.evaluate(() => {
+      const r = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        const b = el.getBoundingClientRect();
+        return { x: b.x, y: b.y, w: b.width, h: b.height };
+      };
+      return {
+        layer: r('[data-testid="touch-controls"]'),
+        jump: r('[data-touch="jump"]'),
+        pause: r('[data-touch="pause"]'),
+        touchAction: getComputedStyle(document.querySelector('canvas')).touchAction,
+        lockElement: !!document.pointerLockElement,
+      };
+    });
+    const inView = (b) => b && b.x >= 0 && b.y >= 0 && b.x + b.w <= width + 1 && b.y + b.h <= height + 1;
+    if (!layout.layer || !inView(layout.jump) || !inView(layout.pause)) {
+      return { ok: false, reason: `touch layout not on screen: ${JSON.stringify(layout)}`, pageErrors };
+    }
+    if (layout.touchAction !== 'none') {
+      return { ok: false, reason: `canvas touch-action is "${layout.touchAction}", expected none`, pageErrors };
+    }
+
+    // The vehicle body arrives a few seconds after the click on SwiftShader.
+    await page.waitForFunction(
+      () => !!window.__watershedScreenshot?.getScriptedTelemetry?.().pos,
+      { timeout: 60_000, polling: 250 },
+    );
+    const before = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().pos);
+
+    // Left thumb: plant on the left half and pull down (backward), then hold.
+    // The runner spawns facing upstream with no mouse look, so "forward" would
+    // push against the current and net ~0 m; backward goes with the flow.
+    const sx = Math.round(width * 0.25);
+    const sy = Math.round(height * 0.6);
+    await cdpTouch(client, 'touchStart', sx, sy);
+    await cdpTouch(client, 'touchMove', sx, sy + 70);
+    // The hub must see the thumb: device 'touch', stick pulled back. This is the
+    // gate. SwiftShader runs a handful of sim frames per wall minute, so how far
+    // the runner has travelled by now says more about the rasteriser than the
+    // stick (the unit tests cover stick -> frame -> controls); distance is logged.
+    // A plain sleep-and-look loop: waitForFunction's polling queues behind the
+    // multi-second frames and trips the protocol timeout on SwiftShader.
+    let seen = false;
+    for (let attempt = 0; attempt < 20 && !seen; attempt += 1) {
+      await sleep(3_000);
+      const i = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().input);
+      seen = i.source === 'touch' && i.moveY < -0.5;
+    }
+    const input = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().input);
+    await sleep(shot.settleMs ?? 4_000);
+    const after = await page.evaluate(() => window.__watershedScreenshot.getScriptedTelemetry().pos);
+    const knob = await page.evaluate(() => {
+      const base = document.querySelector('.touch-stick-base');
+      return base ? getComputedStyle(base).opacity : null;
+    });
+    const moved = seen;
+    const outPath = path.join(OUT_DIR, `${shotLabel(shot)}.png`);
+    const capture = await capturePng(page, outPath);
+    await cdpTouch(client, 'touchEnd', sx, sy + 70);
+
+    if (!moved) {
+      return {
+        ok: false,
+        reason: `the hub never saw the touch stick (last input ${JSON.stringify(input)})`,
+        pageErrors,
+        softSkip: true,
+      };
+    }
+    console.log(
+      `  hub saw touch ${JSON.stringify(input)}; runner moved ${Math.hypot(after.x - before.x, after.z - before.z).toFixed(2)} m; stick base opacity ${knob}`,
+    );
+    return {
+      ok: capture.bytes >= (shot.minBytes ?? MIN_GOOD_BYTES),
+      reason: capture.bytes >= (shot.minBytes ?? MIN_GOOD_BYTES) ? 'ok' : 'too-small',
+      outPath,
+      capture,
+      pageErrors,
+      softSkip: capture.bytes < (shot.minBytes ?? MIN_GOOD_BYTES),
+    };
+  } catch (err) {
+    const msg = String(err.message || err);
+    const softSkip = SOFT_PAGE_ERROR.test(msg) || /Waiting failed|timed out|not clickable/i.test(msg);
+    return { ok: false, reason: msg, pageErrors, softSkip };
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
 /** Successful captures by shot label ({ path, bytes }), for the CONTRASTS pass. */
 const capturedPaths = new Map();
 
@@ -554,7 +740,12 @@ async function captureShot(shot, report) {
   const attempts = shot.mode === 'prestart' ? 2 : BOOT_RETRIES;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     console.log(`  boot attempt ${attempt}/${attempts}`);
-    last = shot.mode === 'prestart' ? await attemptPrestart(shot) : await attemptTopdown(shot);
+    last =
+      shot.mode === 'prestart'
+        ? await attemptPrestart(shot)
+        : shot.mode === 'touch'
+          ? await attemptTouch(shot)
+          : await attemptTopdown(shot);
     if (last.ok) break;
     console.log(`  boot failed: ${last.reason}${last.softSkip ? ' [soft]' : ''}`);
     await sleep(400);
@@ -692,8 +883,10 @@ async function run() {
   console.log(`Mode: ${UPDATE_BASELINES ? 'UPDATE baselines' : 'compare'}`);
 
   let allOk = true;
-  const nativeOnce = await checkNativeFetchedOnce(report);
-  for (const shot of SHOTS) {
+  const only = (process.env.VISUAL_ONLY ?? '').split(',').map((l) => l.trim()).filter(Boolean);
+  if (only.length) report.nativeFetch = { status: 'skipped-by-filter' };
+  const nativeOnce = only.length ? true : await checkNativeFetchedOnce(report);
+  for (const shot of SHOTS.filter((sh) => only.length === 0 || only.includes(sh.label))) {
     const ok = await captureShot(shot, report);
     if (!ok) allOk = false;
   }

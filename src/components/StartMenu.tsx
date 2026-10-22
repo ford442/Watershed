@@ -1,7 +1,9 @@
 // src/components/StartMenu.tsx
 // Pre-game title screen with map select, start, and settings
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useMenuFocus } from '../hooks/useMenuFocus';
+import { useInputStore } from '../input/InputHub';
 import {
   formatDuration,
   getDefaultJourneyStack,
@@ -10,7 +12,9 @@ import {
   type MapMenuEntry,
 } from '../maps/campaign';
 import type { MapRegistryId } from '../maps/registry';
-import { MAP_REGISTRY } from '../maps/registry';
+import { MAP_REGISTRY, allowedVehiclesForMap } from '../maps/registry';
+import type { VehicleType } from '../experience/types';
+import { setVehicleChoice } from '../utils/runContext';
 import { getMapSurvivalMetadata, mapHasSurvivalFeatures } from '../maps/survivalMetadata';
 import {
   getBestScoreForMap,
@@ -29,7 +33,14 @@ import CachePlacementPanel from './CachePlacementPanel';
 import LoadoutPicker from './LoadoutPicker';
 import { DEFAULT_MAX_CACHE_PLACEMENTS } from '../systems/survival/portageCache';
 import { DEFAULT_LOADOUT_ID, type LoadoutId } from '../systems/survival';
-import type { JourneyMode } from '../systems/journey/runSession';
+import type { JourneyMode, RunConditions } from '../systems/journey/runSession';
+import { lazyComponent } from '../utils/lazyComponent';
+import type { UserRiver } from '../systems/map/userRiverSession';
+
+// Today's River pulls in the day generator; it loads after the menu paints.
+const TodaysRiverChunk = lazyComponent(() => import('./TodaysRiverCard'));
+// Player rivers carry the level validator; same deal.
+const UserRiverChunk = lazyComponent(() => import('./UserRiverPanel'));
 
 interface StartMenuProps {
   onStart: (
@@ -39,6 +50,12 @@ interface StartMenuProps {
       placedCacheIds: string[];
       loadoutId: LoadoutId;
       journeyMode: 'single' | 'journey';
+      /** The picked vehicle; null = "River decides" (the map's own preference). */
+      vehicle?: VehicleType | null;
+      /** The day's conditions (Today's River); absent = the picked hour and weather. */
+      conditions?: Partial<RunConditions>;
+      /** A player's river to run over `mapId` (Your Rivers); absent = the campaign map. */
+      userRiver?: UserRiver;
     },
   ) => void;
   selectedMapId: MapRegistryId;
@@ -48,6 +65,12 @@ interface StartMenuProps {
   /** False while the boot loader is still warming WebGL / preloading assets. */
   bootReady?: boolean;
 }
+
+const VEHICLE_OPTIONS: ReadonlyArray<{ id: VehicleType | null; label: string }> = [
+  { id: null, label: 'River decides' },
+  { id: 'runner', label: 'Runner' },
+  { id: 'raft', label: 'Raft' },
+];
 
 const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
   beginner: 'Beginner',
@@ -65,6 +88,7 @@ const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
  * - Start button (engages pointer lock)
  * - Settings panel toggle (graphics quality)
  * - Keyboard shortcut: Enter to start
+ * - Arrow keys / gamepad d-pad move focus (useMenuFocus); pad Start begins the run
  */
 export const StartMenu: React.FC<StartMenuProps> = ({
   onStart,
@@ -82,8 +106,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [launchWeather, setLaunchWeatherLocal] = useState<WeatherType>(() => getLaunchWeather().type);
   const [placedCacheIds, setPlacedCacheIds] = useState<string[]>([]);
   const [loadoutId, setLoadoutId] = useState<LoadoutId>(DEFAULT_LOADOUT_ID);
+  const [vehiclePick, setVehiclePick] = useState<VehicleType | null>(null);
 
   const effectiveMapId = playMode === 'journey' ? journeyStack[0] ?? 'glacial' : selectedMapId;
+  const allowedVehicles = allowedVehiclesForMap(effectiveMapId);
+  // A pick the map does not allow falls back to "River decides".
+  const vehicle = vehiclePick && allowedVehicles.includes(vehiclePick) ? vehiclePick : null;
 
   const survivalMeta = useMemo(
     () => getMapSurvivalMetadata(effectiveMapId),
@@ -91,6 +119,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   );
   const maxCachePlacements = survivalMeta.maxCachePlacements ?? DEFAULT_MAX_CACHE_PLACEMENTS;
   const showSurvival = mapHasSurvivalFeatures(effectiveMapId);
+
+  // Published as it changes, so a start that bypasses this card (Enter, the
+  // Daily River) still runs the picked vehicle.
+  useEffect(() => {
+    setVehicleChoice(effectiveMapId, vehicle);
+  }, [effectiveMapId, vehicle]);
 
   const handleLaunchHourChange = (hour: number) => {
     setLaunchHourLocal(hour);
@@ -121,11 +155,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     placedCacheIds,
     loadoutId,
     journeyMode: playMode,
+    vehicle,
   };
+
+  // Arrow keys and the gamepad d-pad walk the menu; Start (pad) starts the run.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useMenuFocus(cardRef, {
+    onStart: () => {
+      if (bootReady) onStart(effectiveMapId, startOptions);
+    },
+  });
+  const usingGamepad = useInputStore((s) => s.activeSourceId === 'gamepad');
 
   return (
     <div className="start-menu-overlay">
-      <div className="start-menu-card start-menu-card--wide">
+      <div className="start-menu-card start-menu-card--wide" ref={cardRef}>
         <div className="start-menu-title-group">
           <h1 className="start-menu-title">WATERSHED</h1>
           <p className="start-menu-tagline">
@@ -145,6 +189,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {(
           <div className="start-menu-buttons">
+            <Suspense fallback={null}>
+              <TodaysRiverChunk.Component
+                bootReady={bootReady}
+                onStart={(daily) =>
+                  onStart(daily.mapId, {
+                    launchHour: daily.launchHour,
+                    placedCacheIds: [],
+                    loadoutId,
+                    journeyMode: 'single',
+                    conditions: daily.conditions,
+                  })
+                }
+              />
+            </Suspense>
+
             <div className="start-menu-mode-select" role="radiogroup" aria-label="Play mode">
               <div className="start-menu-map-select-label">Play Mode</div>
               <div className="start-menu-mode-row">
@@ -232,6 +291,30 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
             )}
 
+            <div className="start-menu-mode-select" role="radiogroup" aria-label="Vehicle">
+              <div className="start-menu-map-select-label">Vehicle</div>
+              {allowedVehicles.length > 1 ? (
+                <div className="start-menu-mode-row">
+                  {VEHICLE_OPTIONS.map((option) => (
+                    <button
+                      key={option.id ?? 'river'}
+                      type="button"
+                      role="radio"
+                      aria-checked={vehicle === option.id}
+                      className={`start-menu-mode-option ${vehicle === option.id ? 'active' : ''}`}
+                      onClick={() => setVehiclePick(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="start-menu-map-hint">
+                  {MAP_REGISTRY[effectiveMapId].label} is a {allowedVehicles[0] === 'raft' ? 'raft' : 'runner'} river.
+                </p>
+              )}
+            </div>
+
             <LaunchHourPicker
               value={launchHour}
               onChange={handleLaunchHourChange}
@@ -270,6 +353,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               {bootReady && <span className="start-menu-keyhint">ENTER</span>}
             </button>
 
+            <Suspense fallback={null}>
+              <UserRiverChunk.Component
+                bootReady={bootReady}
+                onPlay={(userRiver) =>
+                  onStart(selectedMapId, {
+                    ...startOptions,
+                    journeyMode: 'single',
+                    // A river allows either vehicle, whatever the backing map forces.
+                    vehicle: vehiclePick,
+                    userRiver,
+                  })
+                }
+              />
+            </Suspense>
+
             <button
               className="start-menu-settings-btn"
               onClick={onOpenOptions}
@@ -297,6 +395,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <span className="start-menu-hint-key">Esc</span>
             <span className="start-menu-hint-action">Pause</span>
           </div>
+          {usingGamepad && (
+            <div className="start-menu-hint-row">
+              <span className="start-menu-hint-key">D-pad · A · Start</span>
+              <span className="start-menu-hint-action">Navigate · Select · Start run</span>
+            </div>
+          )}
           <div className="start-menu-hint-row">
             <span className="start-menu-hint-key">F3</span>
             <span className="start-menu-hint-action">Movement readout</span>

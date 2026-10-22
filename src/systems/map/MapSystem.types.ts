@@ -151,7 +151,7 @@ export interface LevelSpawns {
 
 export interface HydroEventConfig {
   id: string;
-  kind: 'inflowPulse' | 'vortex' | 'braid' | 'roughness';
+  kind: 'inflowPulse' | 'vortex' | 'braid' | 'roughness' | 'surge';
   segmentIndex: number;
   hours?: number[];
   centerT?: number;

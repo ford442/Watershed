@@ -127,12 +127,14 @@ describe('forces.cpp', () => {
 });
 
 describe('routing.cpp', () => {
-  it('route / steady / travel time reject null planes and bad chain lengths', () => {
+  it('route / lateral route / steady / travel time reject null planes and bad chain lengths', () => {
     const plane = canary(64);
     const low = lowMemory();
     wasm.routeReach(plane.ptr, plane.ptr, plane.ptr, 4, 1, 1, 0, plane.ptr);
     wasm.routeReach(plane.ptr, plane.ptr, plane.ptr, -2, 1, 1, plane.ptr, plane.ptr);
     wasm.routeReach(plane.ptr, plane.ptr, plane.ptr, ROUTING_MAX_SEGMENTS + 1, 1, 1, plane.ptr, plane.ptr);
+    wasm.routeReachLateral(plane.ptr, plane.ptr, plane.ptr, 4, 1, plane.ptr, 1, 0, plane.ptr);
+    wasm.routeReachLateral(plane.ptr, plane.ptr, plane.ptr, -2, 1, plane.ptr, 1, plane.ptr, plane.ptr);
     wasm.routeReachSteady(plane.ptr, 0, plane.ptr, 4, 1, plane.ptr, plane.ptr);
     wasm.routeReachSteady(plane.ptr, plane.ptr, plane.ptr, ROUTING_MAX_SEGMENTS + 1, 1, plane.ptr, plane.ptr);
     wasm.routeReachTravelTime(plane.ptr, plane.ptr, plane.ptr, 4, 1, 0);

@@ -7,15 +7,15 @@
   z-index: 40;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: clamp(6px, 1.4vw, 12px);
   max-width: min(560px, calc(100vw - 1.5rem));
-  padding: 10px 12px;
+  padding: clamp(6px, 1.2vw, 10px) clamp(8px, 1.4vw, 12px);
   background: rgba(127, 29, 29, 0.92);
   color: #fecaca;
   border: 1px solid rgba(248, 113, 113, 0.55);
   border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
+  font-size: clamp(9px, 1.5vw, 11px);
   line-height: 1.4;
   pointer-events: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -28,7 +28,7 @@
 .wasm-init-banner__body strong {
   display: block;
   margin-bottom: 4px;
-  font-size: 12px;
+  font-size: clamp(10px, 1.6vw, 12px);
   color: #fee2e2;
 }
 
@@ -87,7 +87,7 @@
 }
 
 .stamina-bar__track {
-  width: 120px;
+  width: clamp(72px, 14vw, 120px);
   height: 4px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
@@ -154,7 +154,7 @@
 }
 
 .survival-bar__track {
-  width: 120px;
+  width: clamp(72px, 14vw, 120px);
   height: 3px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;

@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiome } from '../../systems/biome/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
 import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { commitTimedFinish } from '../../systems/ghost/runFinish';
-import { getRecordedSplits } from '../../systems/ghost/SplitRecorder';
-import { getGhostElapsedMs } from '../../systems/ghost/GhostRecorder';
+import { getRecordedSplitChecksums, getRecordedSplits } from '../../systems/ghost/SplitRecorder';
+import { getCurrentGhostPayload, getGhostElapsedMs } from '../../systems/ghost/GhostRecorder';
+import { exportGhostToJson } from '../../systems/ghost/ghostExport';
+import { currentRunFairness } from '../../systems/ghost/raceFairness';
 import { inputHub } from '../../input/InputHub';
-import { getScriptedSimTimeSec, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
+import { getScriptedSimTimeSec, isScriptedInputMode, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
+import { flushErosion, setErosionStore } from '../../systems/water/erosionField';
 import { resolveActiveEnvelope } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
@@ -30,32 +33,45 @@ import {
   setLastMapId,
 } from '../../systems/persistence/PersistenceSystem';
 import { hydrateStoreForRun } from '../../systems/persistence/persistenceBootstrap';
-import { getActiveRunKey } from '../../utils/runContext';
+import { getActiveRunKey, getProceduralBaseSeed } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 import { buildForecastSamples } from '../../systems/map/flowForecast';
+import type { LevelData } from '../../systems/map/MapSystem';
 import {
   initRunSession,
   getActiveLaunchHour,
-  getActiveWeather,
+  getActiveConditions,
+  getRunMap,
   getRunSession,
   isJourneyMode,
   advanceRunSessionMap,
   saveJourneyCheckpoint,
 } from '../../systems/journey/runSession';
-import { getLaunchHour } from '../../systems/persistence/PersistenceSystem';
+import { getLaunchHour, loadErosionPlane, saveErosionPlane } from '../../systems/persistence/PersistenceSystem';
 import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
+import { getActiveUserRiver, subscribeUserRiver, userRiverMapDefinition } from '../../systems/map/userRiverSession';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
 
-const DEFAULT_FORECAST_OPTIONS = {
-  ...DEFAULT_FORECAST_INPUTS,
-  horizonHours: 24,
-} as const;
-
+/** The run's 24 h forecast: the day's melt inputs (the run's conditions) from the launch hour. */
 function buildDefaultForecastSamples(launchHour: number): FlowForecastSample[] {
+  const { temperature, snowpackIndex } = getActiveConditions();
   return buildForecastSamples({
-    ...DEFAULT_FORECAST_OPTIONS,
+    ...DEFAULT_FORECAST_INPUTS,
+    temperature,
+    snowpackIndex,
+    horizonHours: 24,
     startHour: launchHour,
   });
+}
+
+/**
+ * The biome cross-fade a segment authors (`effects.transitionDuration`, ms) in
+ * seconds, or undefined for the palette's own duration.
+ */
+function authoredBiomeTransitionSeconds(levelData: LevelData, segmentIndex: number | undefined): number | undefined {
+  if (segmentIndex === undefined) return undefined;
+  const ms = levelData.segments.find((seg) => seg.index === segmentIndex)?.effects?.transitionDuration;
+  return typeof ms === 'number' && ms >= 0 ? ms / 1000 : undefined;
 }
 
 function forecastSamplesEqual(
@@ -126,6 +142,9 @@ export function useExperienceWorld({
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState<Error | string | null>(null);
   const [reachRetryKey, setReachRetryKey] = useState(0);
+  // A player's river (StartMenu "Load river…" / the editor's Play) plays
+  // through LevelLoader like `?level=`, with the run's map resolving to it.
+  const userRiver = useSyncExternalStore(subscribeUserRiver, getActiveUserRiver, () => null);
   const [defaultMapRunKey, setDefaultMapRunKey] = useState(0);
   const [activeDefaultMapId, setActiveDefaultMapId] = useState<MapRegistryId>(() =>
     resolveInitialMapId(controlledMapId),
@@ -154,6 +173,20 @@ export function useExperienceWorld({
     setForecastSamples(buildDefaultForecastSamples(launchHour));
   }, [launchHour]);
 
+  // The river remembers its bed (#487 E): segments load the plane earlier runs
+  // eroded and save theirs as they leave. A scripted / replay run starts on the
+  // built floor and writes nothing, so two runs of one script meet one river.
+  useEffect(() => {
+    if (isScriptedInputMode()) return undefined;
+    setErosionStore({ load: loadErosionPlane, save: saveErosionPlane });
+    window.addEventListener('pagehide', flushErosion);
+    return () => {
+      window.removeEventListener('pagehide', flushErosion);
+      flushErosion();
+      setErosionStore(null);
+    };
+  }, []);
+
   // Keep local map state in sync when App / StartMenu changes selection.
   useEffect(() => {
     if (!controlledMapId || controlledMapId === activeDefaultMapId) return;
@@ -171,7 +204,7 @@ export function useExperienceWorld({
     setRespawnSegmentIndex(targetMap.startIndex);
     snapBiomeContext(targetMap.initialBiome);
     useGameStore.setState({ currentBiome: targetMap.initialBiome });
-    if (!levelUrl && !reachId) {
+    if (!levelUrl && !reachId && !userRiver) {
       setDefaultMapRunKey((key) => key + 1);
     }
   }, [
@@ -179,13 +212,24 @@ export function useExperienceWorld({
     controlledMapId,
     levelUrl,
     reachId,
+    userRiver,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
     snapBiomeContext,
   ]);
 
+  // A player's river starts at its own first segment, in its own biome.
   useEffect(() => {
-    if (levelUrl || reachId) return;
+    if (!userRiver) return;
+    const riverMap = userRiverMapDefinition(userRiver, activeDefaultMapId);
+    setCurrentSegmentIndex(riverMap.startIndex);
+    setRespawnSegmentIndex(riverMap.startIndex);
+    snapBiomeContext(riverMap.initialBiome);
+    useGameStore.setState({ currentBiome: riverMap.initialBiome });
+  }, [userRiver, activeDefaultMapId, setCurrentSegmentIndex, setRespawnSegmentIndex, snapBiomeContext]);
+
+  useEffect(() => {
+    if (levelUrl || reachId || userRiver) return;
     if (seamlessHandoffRef.current) return;
 
     // Only snap spawn/biome on hard map loads (TrackManager remount key), not
@@ -204,6 +248,7 @@ export function useExperienceWorld({
     defaultMapRunKey,
     levelUrl,
     reachId,
+    userRiver,
     snapBiomeContext,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
@@ -258,7 +303,8 @@ export function useExperienceWorld({
   // can render isJourneyComplete=true and read a stale getRunBest().
   useEffect(() => {
     if (!isJourneyComplete) return;
-    markMapCompleted(activeDefaultMapId);
+    // A player's river finishes without unlocking the campaign map behind it.
+    if (!getActiveUserRiver()) markMapCompleted(activeDefaultMapId);
     commitJourneyScore();
   }, [isJourneyComplete, activeDefaultMapId]);
 
@@ -276,21 +322,11 @@ export function useExperienceWorld({
     [debug, setBiomeContext],
   );
 
+  // Biome only: the weather (glacial snow included) is the WeatherDirector's.
   const handleBiomeChange = useCallback(
     (newBiome: string, segmentIndex?: number) => {
       const biomeId = normalizeBiomeId(newBiome);
-      const isTransitionSegment = segmentIndex === 15 || segmentIndex === 17;
-      const duration = isTransitionSegment ? 2.0 : undefined;
-      setBiomeContext(biomeId, duration);
-
-      // A launch weather (#464) outranks the glacial biome's ambient snow.
-      const runWeather = getActiveWeather();
-      const isGlacial = biomeId === 'glacialMelt' || biomeId === 'glacier';
-      useGameStore.getState().setWeather(
-        runWeather.type !== 'clear'
-          ? { type: runWeather.type, intensity: runWeather.intensity, transition: 1, rippleStrength: 0 }
-          : { type: isGlacial ? 'snow' : 'clear', intensity: isGlacial ? 0.65 : 0, transition: 1, rippleStrength: 0 },
-      );
+      setBiomeContext(biomeId, authoredBiomeTransitionSeconds(getRunMap().levelData, segmentIndex));
     },
     [setBiomeContext],
   );
@@ -386,6 +422,24 @@ export function useExperienceWorld({
       stepScripted: (n: number) => stepScripted(n),
       isScriptedReady: () => inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current),
       getSplits: () => getRecordedSplits(),
+      getSplitChecksums: () => getRecordedSplitChecksums(),
+      getGhostFile: () => {
+        const payload = getCurrentGhostPayload();
+        if (!payload) return null;
+        const mapId = getRunMap().id;
+        return exportGhostToJson(
+          mapId,
+          getGhostElapsedMs(),
+          payload,
+          getRecordedSplits(),
+          currentRunFairness(mapId as MapRegistryId),
+          {
+            seed: getProceduralBaseSeed(),
+            vehicle: useGameStore.getState().vehicleType,
+            conditions: getActiveConditions(),
+          },
+        );
+      },
       getScriptedTelemetry: () => {
         const body = vehicleRef.current;
         const t = body?.translation();
@@ -402,6 +456,10 @@ export function useExperienceWorld({
           ghostElapsedMs: getGhostElapsedMs(),
           hubTickMeanMs: stats.meanMs,
           hubTicks: stats.ticks,
+          input: (() => {
+            const f = inputHub.readFrame();
+            return { source: f.source, moveX: f.moveX, moveY: f.moveY, lookDX: f.lookDX, lookDY: f.lookDY, buttons: f.buttons, frameIdx: f.frameIdx };
+          })(),
         };
       },
     };
@@ -436,6 +494,8 @@ export function useExperienceWorld({
         initRunSession({
           mapId: targetMapId,
           launchHour: runHour,
+          // The day's weather and melt carry over a loop / restart; the script starts again.
+          conditions: getRunSession()?.conditions,
           placedCacheIds: getRunSession()?.placedCacheIds ?? [],
           loadoutId: getRunSession()?.loadoutId,
           journeyMode: getRunSession()?.journeyMode,
@@ -616,6 +676,7 @@ export function useExperienceWorld({
 
   return {
     levelUrl,
+    userRiver,
     levelLoadError,
     isLoadingLevel,
     forecastSamples,

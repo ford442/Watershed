@@ -10,6 +10,8 @@
 import { GHOST_CODEC_VERSION, type RunSplitEntry } from './ghostCodec';
 import { fairnessFromGhostFile, judgeGhostFairness, type GhostHydroFairness } from './hydroFairness';
 import type { QualityPreset } from '../GameState';
+import type { RunConditions } from '../journey/runSession';
+import { isRunConditionsShape } from '../persistence/PersistenceSystem';
 
 export const WSGHOST_MIME = 'application/json';
 export const WSGHOST_EXTENSION = '.wsghost';
@@ -33,6 +35,19 @@ export interface WsGhostFile {
   hydroEventHash?: string;
   /** Graphics quality the run used (codecVersion >= 3). */
   qualityPreset?: QualityPreset;
+  /** Procedural base seed of the run (`?seed=`); absent = the default. `?replay=` plays on it. */
+  seed?: number;
+  /** Vehicle of the run; a replay holds the recorded camera only for the runner. */
+  vehicle?: 'runner' | 'raft';
+  /** The run's day: weather script, melt inputs, Daily River date (`?replay=` restores it). */
+  conditions?: RunConditions;
+}
+
+/** What a ghost needs, beyond its river's fairness, to be replayed on the same river. */
+export interface GhostRunMeta {
+  seed?: number;
+  vehicle?: 'runner' | 'raft';
+  conditions?: RunConditions;
 }
 
 export type GhostImportResult =
@@ -49,6 +64,7 @@ export function exportGhostToJson(
   ghostData: string,
   splits?: RunSplitEntry[],
   fairness?: GhostHydroFairness,
+  run?: GhostRunMeta,
 ): string {
   const file: WsGhostFile = {
     codecVersion: GHOST_CODEC_VERSION,
@@ -60,6 +76,9 @@ export function exportGhostToJson(
     ...(fairness?.launchHour !== undefined ? { launchHour: fairness.launchHour } : {}),
     ...(fairness?.hydroEventHash ? { hydroEventHash: fairness.hydroEventHash } : {}),
     ...(fairness?.qualityPreset ? { qualityPreset: fairness.qualityPreset } : {}),
+    ...(run?.seed !== undefined ? { seed: Math.floor(run.seed) } : {}),
+    ...(run?.vehicle ? { vehicle: run.vehicle } : {}),
+    ...(run?.conditions ? { conditions: run.conditions } : {}),
   };
   return JSON.stringify(file, null, 2);
 }
@@ -75,10 +94,11 @@ export function downloadGhostFile(
   splits?: RunSplitEntry[],
   filename?: string,
   fairness?: GhostHydroFairness,
+  run?: GhostRunMeta,
 ): void {
   if (typeof document === 'undefined') return;
 
-  const json = exportGhostToJson(mapId, timeMs, ghostData, splits, fairness);
+  const json = exportGhostToJson(mapId, timeMs, ghostData, splits, fairness, run);
   const blob = new Blob([json], { type: WSGHOST_MIME });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -161,6 +181,10 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
   ) {
     return false;
   }
+  if (v.seed !== undefined && !Number.isInteger(v.seed)) return false;
+  if (v.vehicle !== undefined && v.vehicle !== 'runner' && v.vehicle !== 'raft') return false;
+  // The same check the save applies: an imported rival is stored as it came.
+  if (v.conditions !== undefined && !isRunConditionsShape(v.conditions)) return false;
   return true;
 }
 

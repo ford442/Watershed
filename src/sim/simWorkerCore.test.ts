@@ -99,7 +99,7 @@ describe('simWorkerCore routing (Phase B)', () => {
     expect(wasm.stepShallowWaterInflow).toHaveBeenCalled();
     const freed = wasm.freeGrid.mock.calls.length;
     c.handle({ type: 'DISPOSE_ROUTER' });
-    expect(wasm.freeGrid.mock.calls.length - freed).toBe(6); // the router's six heap arrays
+    expect(wasm.freeGrid.mock.calls.length - freed).toBe(7); // the router's seven heap arrays (lateral since ABI 14)
   });
 });
 

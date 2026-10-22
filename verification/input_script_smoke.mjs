@@ -16,6 +16,13 @@
  * The fixture is served from verification/fixtures/ by request interception,
  * so it never ships in build/.
  *
+ * Two fixtures ship: `meander_run.json` (digital keyboard shape: moveY 1) and
+ * `meander_run_gamepad.json` (#486 B — the shape a gamepad produces: analog
+ * stick values 0.74–0.9 with wobble under the 0.5 digital threshold, RB held
+ * for sprint, a six-frame jump tap on the A button). `pnpm test:input-smoke:gamepad` runs the
+ * second; both must reach segment 3 and be deterministic. The gamepad source
+ * itself (dead zone, curve, bindings) is covered by GamepadSource.test.ts.
+ *
  * Usage:
  *   pnpm build && pnpm preview --host 127.0.0.1 --port 4173
  *   WATERSHED_URL=http://127.0.0.1:4173 pnpm test:input-smoke
