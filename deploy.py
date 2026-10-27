@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-project_deploy_template.py
+deploy.py — upload Watershed's build/ to storage.noahcohn.com (Contabo).
 
-Copy this file into your project as `deploy.py` (or deploy_contabo.py).
-Customize the constants at the top for your project.
+Usually run by `python3 build_and_patch.py` (pnpm build:full, then this);
+`pnpm verify:deploy` checks the live URLs afterwards.
 
 Usage:
-  1. Build your project:  npm run build   (or python build, etc.)
-  2. python deploy.py
+  python3 deploy.py               # zip build/ and upload it
+  python3 deploy.py --dry-run     # package and report, no upload
+  python3 deploy.py --manifest    # TSV of what would ship (verify_deploy.mjs)
 
-This script contacts https://storage.noahcohn.com (your Contabo storage manager)
-to upload your entire build as a single zip archive.  The server extracts it and
-pushes all files over one persistent SFTP connection — much faster than uploading
-files individually.
-
-Actual FTP/SFTP credentials never leave the VPS.
+The storage manager receives the whole build as one zip archive, extracts it
+and pushes the files over one persistent SFTP connection. The FTP/SFTP
+credentials never leave the VPS; this script needs only DEPLOY_TOKEN.
 
 Requirements:
   pip install requests
@@ -68,13 +66,14 @@ DIRECTORY_INDEX_NAME_RE = re.compile(
 # BUILD_ID, watershed_native.*, textures, sounds, …) always upload.
 HASHED_ASSET_RE = re.compile(r"^assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$")
 
-# INVARIANT: glue + wasm (+ pthread worker if present) are one emcc output.
-# Mixing 3.1.x glue with 6.x wasm throws at __embind_register_value_object_field.
-# Never size-check these independently.
+# INVARIANT: glue + wasm (+ the pthread worker, when a --threads build ships
+# one) are one emcc output: a glue/wasm mix from two builds fails the
+# provenance stamp check at load. Never size-check these independently.
+# build.sh names the worker `.worker.mjs` (ES module output).
 NATIVE_PAIR = (
     "watershed_native.js",
     "watershed_native.wasm",
-    "watershed_native.worker.js",
+    "watershed_native.worker.mjs",
 )
 
 
@@ -300,9 +299,7 @@ def build_zip(
     ]
     native_uploading = [name for name in local_native if name in planned_names]
     native_skipped = [name for name in local_native if name not in planned_names]
-    # INVARIANT: glue + wasm (+ pthread worker if present) are one emcc output.
-    # Mixing 3.1.x glue with 6.x wasm throws at __embind_register_value_object_field.
-    # Never size-check these independently.
+    # INVARIANT (see NATIVE_PAIR): one emcc output ships whole or not at all.
     if native_uploading and native_skipped:
         _log(
             f"  ! native pair incomplete ({', '.join(native_uploading)} would upload, "
