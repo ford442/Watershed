@@ -31,7 +31,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
@@ -39,6 +39,11 @@ jobs:
 
       - name: Typecheck (typed surface)
         run: pnpm typecheck
+
+      # Vitest only strips types, so a test's mocks and fixtures were never
+      # checked (#518 E: 47 errors, some of them wrong mock types).
+      - name: Typecheck tests
+        run: pnpm typecheck:test
 
       # `pnpm lint` exits non-zero on errors only; the warnings are a tracked
       # backlog (see eslint.config.js). `--max-warnings` turns that backlog into
@@ -48,7 +53,7 @@ jobs:
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
       - name: Lint
-        run: pnpm lint --max-warnings 150
+        run: pnpm lint --max-warnings 149
 
   build-without-emscripten:
     name: Build without Emscripten
@@ -66,7 +71,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Confirm Emscripten is absent
@@ -107,12 +112,19 @@ jobs:
       - name: Run test suite
         run: pnpm test
 
-  # Headless WebGL visual smoke (SwiftShader). Allow-failure while baselines
-  # and SwiftShader flakiness settle; promote to required after ~1 week of green runs.
+      # Wall-time and heap budgets (*.perf.test.ts): their own step, so a
+      # behaviour failure and a slow runner never read the same. The perf
+      # project retries a missed budget twice before failing.
+      - name: Perf budgets
+        run: pnpm test:perf
+
+  # Headless WebGL visual smoke (SwiftShader). Required: a best-effort shot's
+  # pixel diff is informational (SwiftShader in-run frames vary), but the
+  # harness fails on the required start-menu shot, a missing baseline, a
+  # native module fetched twice, or hard page errors (#518 C).
   visual-smoke:
     name: Visual smoke (WebGL)
     runs-on: ubuntu-latest
-    continue-on-error: true
     env:
       CI: true
       WATERSHED_URL: http://127.0.0.1:4173
@@ -126,7 +138,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Confirm Emscripten is absent
@@ -165,11 +177,79 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
+      - name: Upload visual-smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-smoke-output
+          path: |
+            verification/output/visual-smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop Vite preview
+        if: always()
+        run: |
+          if [ -f /tmp/vite-preview.pid ]; then
+            kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
+          fi
+
+  # The determinism gates (#518 C), required. They used to ride in the soft
+  # visual-smoke job, so none of them had ever blocked a merge. Gameplay runs
+  # on sim time (eslint "sim time" rule), so these must give the same splits
+  # on any runner under any load.
+  determinism:
+    name: Determinism smoke
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Puppeteer
+        run: pnpm exec puppeteer browsers install chrome
+
+      - name: Build production bundle (no Emscripten required)
+        run: pnpm build
+
+      - name: Start Vite preview
+        run: |
+          pnpm exec vite preview --host 127.0.0.1 --port 4173 &
+          echo $! > /tmp/vite-preview.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+              echo "preview ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "preview failed to start"
+          exit 1
+
       # #486 A: a scripted meander run stepped headlessly at a fixed 1/60 s
       # (frameloop="never"); gates on the segment-3 split and on two runs
-      # producing identical split times. Shares the preview + Chrome above.
-      - name: Scripted input smoke
+      # producing identical split times.
+      - name: Scripted input smoke (keyboard)
         run: pnpm test:input-smoke
+        timeout-minutes: 15
+
+      # #486 B: the same run, gamepad-shaped (analog stick, RB sprint).
+      - name: Scripted input smoke (gamepad)
+        run: pnpm test:input-smoke:gamepad
         timeout-minutes: 15
 
       # #464 A: record that run as a .wsghost, then `?replay=` it twice in
@@ -185,16 +265,6 @@ jobs:
       - name: WGSL SWE twin parity
         run: pnpm test:wgsl
         timeout-minutes: 10
-
-      - name: Upload visual-smoke artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-smoke-output
-          path: |
-            verification/output/visual-smoke/
-          if-no-files-found: warn
-          retention-days: 14
 
       - name: Stop Vite preview
         if: always()
@@ -221,7 +291,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Set up Emscripten
@@ -304,7 +374,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Set up Emscripten (latest)
@@ -346,7 +416,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install clang 18 + clang-tidy 18

@@ -141,8 +141,10 @@ Repo also has `public/` (textures, WASM, levels), `emscripten/` (optional native
 ```bash
 pnpm install
 pnpm dev          # Vite on :3000 (alias: pnpm start)
-pnpm test         # vitest run (one-shot)
+pnpm test         # vitest run --project unit (one-shot; behaviour only)
+pnpm test:perf    # wall-time / heap budgets (*.perf.test.ts)
 pnpm typecheck    # tsc -p tsconfig.typecheck.json --noEmit
+pnpm typecheck:test  # tsc -p tsconfig.test.json --noEmit (tests, mocks, src/testing)
 pnpm build        # vite → build/ (ships the committed WASM pair)
 ```
 

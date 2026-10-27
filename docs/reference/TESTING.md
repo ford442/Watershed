@@ -161,12 +161,16 @@ pnpm typecheck
 
 **CI:** The Build workflow (`.github/workflows/build.yml`) runs a dedicated hard-fail **Typecheck** job (`pnpm typecheck`) on every `pull_request` and `push` to `main`. It is **not** `continue-on-error` and is separate from build/test so a red `tsc` shows up as its own check. Mark the GitHub check name **Typecheck** as a required status check on `main` so merges cannot skip it (repo currently has no branch protection — enable that in GitHub settings if unset).
 
+**Tests are typechecked too** (#518 E): `pnpm typecheck:test` runs `tsc -p tsconfig.test.json --noEmit` over all of `src/` with `vitest/globals`, as its own step in the **Typecheck** job. The production `tsconfig.json` excludes test files, mocks and `src/testing/` and does not load `vitest/globals`, so `describe` / `vi` cannot leak into shipped code.
+
+**Sim time lint** (#518 B): under `src/systems/`, `src/vehicles/`, `src/physics/`, `src/sim/` and `src/components/Obstacles/`, ESLint bans `setTimeout`, `setInterval`, `requestAnimationFrame`, `performance.now` and `Date.now`. Gameplay counts sim seconds from the frame delta; wall-clock reads that are not sim state go through `src/utils/wallClock.ts` (`wallClockEpochMs` for metadata stamps, `telemetryNowMs` for latency readouts). The file allowlist (storage, audio, adaptive-LOD telemetry, the WASM loader, the parity page) is in `eslint.config.js`, each entry with its reason.
+
 Registry/menu drift (e.g. adding a `MAP_REGISTRY` key without extending `MapRegistryId`) is covered by `src/maps/registry.contract.ts` (compile-time) and `src/maps/registry.contract.test.ts` (runtime). `src/maps/registry.test.ts` is a lighter second opinion.
 
 ### Unit Tests
 ```bash
-pnpm test
-# or: npx vitest run
+pnpm test          # the `unit` Vitest project: behaviour only, no wall-time budgets
+pnpm test:perf     # the `perf` project: *.perf.test.ts wall-time / heap budgets, retried twice
 pnpm test:native   # host C++ smoke: cmake -S emscripten -B emscripten/build-host
 pnpm test:wasm:parity   # native vs TS fixtures; needs pnpm build:wasm (CI Emscripten job)
 ```
@@ -449,10 +453,15 @@ The harness opens Chromium with SwiftShader, hits `?cleanTest=1&renderer=webgl&s
 | `01_spawn_topdown` | `no-pointer-lock` + teleport −3 | Best-effort (skipped on F-8) |
 | `02_waterfall_topdown` | teleport 14 | Best-effort |
 | `03_slot_topdown` | teleport 21 | Best-effort |
+| `04`/`05` delta, `10` touch, `11`–`14` sun hours | see `verification/baselines/visual-smoke/README.md` | Best-effort |
 
-Captured PNGs are compared to `verification/baselines/visual-smoke/` via **pixelmatch** (default max diff ratio **5%**, threshold **0.15**). On failure (or always when configured), CI uploads `verification/output/visual-smoke/` (actuals + `*.diff.png` + `report.json`).
+Captured PNGs are compared to `verification/baselines/visual-smoke/` via **pixelmatch** (default max diff ratio **5%**, threshold **0.15**). CI always uploads `verification/output/visual-smoke/` (actuals + `*.diff.png` + `report.json`).
 
-The job is **`continue-on-error: true`** for the first week while SwiftShader flakiness is measured; promote to a required check once runs are stable.
+The job is **required** (#518 C). A best-effort shot over threshold is informational (listed in the summary and `report.json`), because SwiftShader in-run frames vary. The harness fails on: the required start-menu shot (structural or over threshold), a shot that captured with **no baseline** (a new shot lands with its PNG), the native module fetched twice, or hard page errors on a required shot.
+
+### CI determinism smoke (`determinism` job, required)
+
+The scripted keyboard and gamepad input smokes, the replay smoke and the WGSL twin parity run in their own required job (they used to ride in the soft visual-smoke job and had never blocked a merge). Gameplay runs on sim time, so two runs of one script, or two replays of one ghost, give identical splits on any runner under any load: locally, `INPUT_SMOKE_RUNS=5 pnpm test:input-smoke` and `REPLAY_SMOKE_REPLAYS=5 pnpm test:replay-smoke` agree with a CPU hog running alongside.
 
 #### One-command baseline refresh
 
