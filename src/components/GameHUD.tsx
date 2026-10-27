@@ -453,18 +453,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {native.status === 'failed' && !native.dismissed && (
         <div className="wasm-init-banner" role="status" data-testid="wasm-init-banner">
           <div className="wasm-init-banner__body">
-            <strong>
-              {native.mismatched
-                ? 'Native WASM provenance mismatch — stale deploy'
-                : native.timedOut
-                  ? 'Native WASM init timed out'
-                  : native.trapFunction
-                    ? `Native WASM trapped in ${native.trapFunction}`
-                    : native.exhausted
-                      ? 'Native WASM heap exhausted'
-                      : 'Native WASM failed to init'}
-            </strong>
-            <pre>{native.error}</pre>
+            {debugMode ? (
+              <>
+                <strong>
+                  {native.mismatched
+                    ? 'Native WASM provenance mismatch — stale deploy'
+                    : native.timedOut
+                      ? 'Native WASM init timed out'
+                      : native.trapFunction
+                        ? `Native WASM trapped in ${native.trapFunction}`
+                        : native.exhausted
+                          ? 'Native WASM heap exhausted'
+                          : 'Native WASM failed to init'}
+                </strong>
+                <pre>{native.error}</pre>
+              </>
+            ) : (
+              <span>Running in compatibility mode — some water effects may look simpler.</span>
+            )}
           </div>
           <button
             type="button"
