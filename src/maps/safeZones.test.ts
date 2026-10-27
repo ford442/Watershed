@@ -170,7 +170,7 @@ describe('authored safeZones cover the #436 set-pieces', () => {
 describe.each(mapRegistryIds())('%s safeZones against the generated path', (mapId) => {
   const segments = authoredSegments(mapId);
   const throughIndex = Math.max(-Infinity, ...segments.map((seg) => seg.index));
-  const walks = segments.length
+  const walks: Record<number, SegmentFrame[]> | null = segments.length
     ? { [SCOUT_HOUR]: walkMap(mapId, SCOUT_HOUR, throughIndex), [DAM_HOUR]: walkMap(mapId, DAM_HOUR, throughIndex) }
     : null;
 

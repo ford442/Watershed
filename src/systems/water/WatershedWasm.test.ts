@@ -324,6 +324,9 @@ function buildMockModule(): WatershedNativeModule {
     routeReachSteady() {},
     routeReachTravelTime() {},
     routedEdgeState: () => ({ eta: 0, speed: 0 }),
+    // 0 vertices = the ABI's "invalid input" answer; terrain tiles are not exercised here.
+    buildTerrainTile: () => 0,
+    buildWallShell: () => 0,
     reduceF32Grid() {},
     histogramF32() {},
     lumaHistogramU8() {},

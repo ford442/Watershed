@@ -52,7 +52,7 @@ function runtimeFor(tipping: TippingState) {
       getControls: () => ({
         forward: false, backward: false, leftward: false, rightward: false, jump: false,
         sprint: false, brake: false, dodge: false, paddleLeft: false, paddleRight: false,
-        isPointerLocked: true,
+        paddleLeftAxis: 0, paddleRightAxis: 0, isPointerLocked: true,
       }),
     },
     stepWorkerProxy: () => {},

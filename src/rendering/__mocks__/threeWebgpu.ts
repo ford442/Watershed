@@ -19,6 +19,18 @@ function recordNodeSlot(material: THREE.Material, slot: string, value: unknown):
   material.userData.__nodeSlots = slots;
 }
 
+/**
+ * What every stub node getter returns. At runtime it is `undefined`, exactly as
+ * on a plain three material (which has no node slots, so `Material.setValues`
+ * skips such keys); the declared type is the `null` that three's node-library
+ * augmentation of MeshBasicMaterial / MeshStandardMaterial allows, so the
+ * accessors below keep the base class's property types.
+ */
+const UNSET_NODE = undefined as unknown as null;
+
+type BasicNodeSlot<K extends 'colorNode' | 'positionNode' | 'opacityNode'> = THREE.MeshBasicMaterial[K];
+type StandardNodeSlot<K extends 'colorNode' | 'positionNode' | 'roughnessNode'> = THREE.MeshStandardMaterial[K];
+
 export class MeshBasicNodeMaterial extends THREE.MeshBasicMaterial {
   lights = true;
   private _nodeProps: Record<string, unknown> = {};
@@ -28,28 +40,28 @@ export class MeshBasicNodeMaterial extends THREE.MeshBasicMaterial {
     (this as any).type = 'MeshBasicNodeMaterial';
   }
 
-  set colorNode(value: unknown) {
+  set colorNode(value: BasicNodeSlot<'colorNode'>) {
     this._nodeProps.colorNode = value;
     recordNodeSlot(this, 'colorNode', value);
   }
-  get colorNode() {
-    return undefined;
+  get colorNode(): BasicNodeSlot<'colorNode'> {
+    return UNSET_NODE;
   }
 
-  set positionNode(value: unknown) {
+  set positionNode(value: BasicNodeSlot<'positionNode'>) {
     this._nodeProps.positionNode = value;
     recordNodeSlot(this, 'positionNode', value);
   }
-  get positionNode() {
-    return undefined;
+  get positionNode(): BasicNodeSlot<'positionNode'> {
+    return UNSET_NODE;
   }
 
-  set opacityNode(value: unknown) {
+  set opacityNode(value: BasicNodeSlot<'opacityNode'>) {
     this._nodeProps.opacityNode = value;
     recordNodeSlot(this, 'opacityNode', value);
   }
-  get opacityNode() {
-    return undefined;
+  get opacityNode(): BasicNodeSlot<'opacityNode'> {
+    return UNSET_NODE;
   }
 }
 
@@ -84,27 +96,27 @@ export class MeshStandardNodeMaterial extends THREE.MeshStandardMaterial {
 
   // Absorb TSL node graph assignments from createRiverNodeMaterial() so the
   // Jest WebGLRenderer stub compiles this as a plain MeshStandardMaterial.
-  set colorNode(value: unknown) {
+  set colorNode(value: StandardNodeSlot<'colorNode'>) {
     this._nodeProps.colorNode = value;
     recordNodeSlot(this, 'colorNode', value);
   }
-  get colorNode() {
-    return undefined;
+  get colorNode(): StandardNodeSlot<'colorNode'> {
+    return UNSET_NODE;
   }
 
-  set roughnessNode(value: unknown) {
+  set roughnessNode(value: StandardNodeSlot<'roughnessNode'>) {
     this._nodeProps.roughnessNode = value;
   }
-  get roughnessNode() {
-    return undefined;
+  get roughnessNode(): StandardNodeSlot<'roughnessNode'> {
+    return UNSET_NODE;
   }
 
-  set positionNode(value: unknown) {
+  set positionNode(value: StandardNodeSlot<'positionNode'>) {
     this._nodeProps.positionNode = value;
     recordNodeSlot(this, 'positionNode', value);
   }
-  get positionNode() {
-    return undefined;
+  get positionNode(): StandardNodeSlot<'positionNode'> {
+    return UNSET_NODE;
   }
 }
 

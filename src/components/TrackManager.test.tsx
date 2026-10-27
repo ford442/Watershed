@@ -23,6 +23,7 @@ describe('TrackManager.tsx surface', () => {
       isInitialized: () => true,
       getLastEnteredSegment: () => 0,
       appendSegmentForHarness: () => false,
+      handoffToMap: () => false,
     };
     expect(ref.isInitialized()).toBe(true);
   });

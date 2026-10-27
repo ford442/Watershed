@@ -1,4 +1,8 @@
 /**
+ * Perf project (`pnpm test:perf`): wall-time and heap budgets run apart from
+ * the correctness suite, with retries, because a loaded box fails them without
+ * anything being wrong.
+ *
  * The input budget (#486): hub + keyboard/mouse + gamepad + touch must cost
  * < 0.15 ms per frame and allocate nothing per frame. Timing in jsdom is a
  * ceiling check with generous headroom (the measured mean is in microseconds);

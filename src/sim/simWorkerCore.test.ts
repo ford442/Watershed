@@ -5,12 +5,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createSimWorkerCore } from './simWorkerCore';
-import type { SimWorkerResponse } from './simWorkerProtocol';
+import type { SimStepPayload, SimWorkerResponse } from './simWorkerProtocol';
+
+type Native = WatershedNativeModule;
 
 function stubModule() {
   const heap = new Float32Array(1 << 14);
   let next = 16;
-  return {
+  const mocks = {
+    freeGrid: vi.fn<Native['freeGrid']>(),
+    reserveShallowWaterScratch: vi.fn<Native['reserveShallowWaterScratch']>(),
+    stepShallowWater: vi.fn<Native['stepShallowWater']>(),
+    stepShallowWaterInflow: vi.fn<Native['stepShallowWaterInflow']>(),
+    applySWEEvent: vi.fn<Native['applySWEEvent']>(),
+    scrollShallowWater: vi.fn<Native['scrollShallowWater']>(),
+    routeReachSteady: vi.fn<Native['routeReachSteady']>(),
+    routeReach: vi.fn<Native['routeReach']>(),
+    routeReachTravelTime: vi.fn<Native['routeReachTravelTime']>(),
+    routedEdgeState: vi.fn<Native['routedEdgeState']>(() => ({ eta: 0.07, speed: 0.5 })),
+  };
+  const stub = {
     HEAPF32: heap,
     getVersion: () => 12,
     allocateGrid: (count: number) => {
@@ -18,17 +32,11 @@ function stubModule() {
       next += count;
       return ptr;
     },
-    freeGrid: vi.fn(),
-    reserveShallowWaterScratch: vi.fn(),
-    stepShallowWater: vi.fn(),
-    stepShallowWaterInflow: vi.fn(),
-    applySWEEvent: vi.fn(),
-    scrollShallowWater: vi.fn(),
-    routeReachSteady: vi.fn(),
-    routeReach: vi.fn(),
-    routeReachTravelTime: vi.fn(),
-    routedEdgeState: vi.fn(() => ({ eta: 0.07, speed: 0.5 })),
-  } as unknown as WatershedNativeModule & Record<string, ReturnType<typeof vi.fn>>;
+    ...mocks,
+  } satisfies Partial<Native>;
+  // Partial stand-in: only the entry points simWorkerCore reaches exist; the
+  // recorded ones keep their Mock surface (.mock / .mockImplementation).
+  return stub as unknown as Native & typeof mocks;
 }
 
 const REACH = {
@@ -39,7 +47,7 @@ const REACH = {
   widths: Float32Array.of(20, 20),
 } as never;
 const FORECAST = { temperature: 8, snowpackIndex: 0.65, damReleaseSchedule: [] };
-const STEP = { dt: 1 / 60, g: 9.80665, H: 1, originX: 0, originZ: 0, events: [] };
+const STEP: SimStepPayload = { dt: 1 / 60, g: 9.80665, H: 1, originX: 0, originZ: 0, events: [] };
 
 function core() {
   const wasm = stubModule();
