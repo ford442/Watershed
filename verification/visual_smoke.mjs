@@ -922,6 +922,9 @@ async function run() {
   report.requiredDiffFailures = report.comparisons
     .filter((c) => requiredLabels.has(c.label) && (c.status === 'diff-fail' || c.status === 'size-mismatch'))
     .map((c) => c.label);
+  report.requiredHardPageErrors = report.captures
+    .filter((c) => c.required && (c.hardPageErrors ?? 0) > 0)
+    .map((c) => c.label);
   report.informationalDiffFailures = report.comparisons
     .filter((c) => !requiredLabels.has(c.label) && (c.status === 'diff-fail' || c.status === 'size-mismatch'))
     .map((c) => c.label);
@@ -929,7 +932,8 @@ async function run() {
     report.requiredPassed &&
     nativeOnce &&
     report.missingBaselines.length === 0 &&
-    report.requiredDiffFailures.length === 0;
+    report.requiredDiffFailures.length === 0 &&
+    report.requiredHardPageErrors.length === 0;
 
   const reportPath = path.join(OUT_DIR, 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
@@ -939,6 +943,7 @@ async function run() {
   console.log(`Required passed: ${report.requiredPassed}`);
   console.log(`Missing baselines: ${report.missingBaselines.join(', ') || 'none'}`);
   console.log(`Required over threshold: ${report.requiredDiffFailures.join(', ') || 'none'}`);
+  console.log(`Required with hard page errors: ${report.requiredHardPageErrors.join(', ') || 'none'}`);
   console.log(`Best-effort over threshold (informational): ${report.informationalDiffFailures.join(', ') || 'none'}`);
   console.log(`Native fetched once: ${report.nativeFetch.status}`);
   console.log(`Hard page errors: ${hard.length}`);

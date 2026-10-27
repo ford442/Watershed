@@ -119,9 +119,9 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   const [view, setView] = useState<BiomeView>(() => settledView(getBiomePalette(initialBiome)));
   const [timeOfDay, setTimeOfDay] = useState(() => (enableTimeOfDay ? getSkyPhase().timeOfDay : FIXED_TIME_OF_DAY));
 
-  // The live view, mirrored for the stable callbacks below.
+  // The live view, mirrored for the stable callbacks below. Every setView is
+  // paired with a ref write ahead of it, so render never writes the ref.
   const viewRef = useRef(view);
-  viewRef.current = view;
   const clockRef = useRef<BiomeTransitionClock>({
     from: view.currentBiome,
     to: view.targetBiome,
