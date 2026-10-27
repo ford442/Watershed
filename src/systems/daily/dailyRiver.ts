@@ -9,6 +9,7 @@
  *
  * Pure: no React, no persistence, no wall clock beyond the `Date` passed in.
  */
+import { wallClockEpochMs } from '../../utils/wallClock';
 import { listMapsForMenu } from '../../maps/campaign';
 import { getMapDefinition, type MapRegistryId } from '../../maps/registry';
 import { fnv1a32 } from '../../math/hash';
@@ -43,7 +44,7 @@ const PATTERN_WEIGHTS: ReadonlyArray<[DailyWeatherPattern, number]> = [
 ];
 
 /** `YYYY-MM-DD` of `now` in UTC — the day's key everywhere (seed, persistence, fairness). */
-export function dailyDateKey(now: Date | number = Date.now()): string {
+export function dailyDateKey(now: Date | number = wallClockEpochMs()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 

@@ -9,7 +9,7 @@
  *   fraction (0 = sunrise, 0.5 = noon, 1 = sunset; outside [0, 1] at night)
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../../configs/BiomePalettes';
@@ -54,6 +54,61 @@ interface BiomeProviderProps {
 const FIXED_TIME_OF_DAY = 0.25;
 
 /**
+ * Transition progress commits to React state in steps of 1 / N: consumers
+ * re-render N times per cross-fade, not once per frame. Per-frame readers
+ * (lighting, fog) read the committed palette.
+ */
+export const BIOME_TRANSITION_STEPS = 48;
+
+interface BiomeView {
+  currentBiome: BiomePalette;
+  targetBiome: BiomePalette;
+  transitionProgress: number;
+  isTransitioning: boolean;
+}
+
+interface BiomeTransitionClock {
+  from: BiomePalette;
+  to: BiomePalette;
+  /** Sim seconds into the cross-fade (advanced by the frame delta). */
+  elapsedSec: number;
+  durationSec: number;
+  active: boolean;
+  /** Last committed step, 0..BIOME_TRANSITION_STEPS. */
+  step: number;
+}
+
+function settledView(palette: BiomePalette): BiomeView {
+  return { currentBiome: palette, targetBiome: palette, transitionProgress: 1, isTransitioning: false };
+}
+
+/**
+ * Advance a cross-fade by `deltaSec` of sim time. Returns the view to commit
+ * when the progress crossed into a new step, else null. Pure on the clock
+ * object (mutated in place), so it is unit-testable without a Canvas.
+ */
+export function advanceBiomeTransition(clock: BiomeTransitionClock, deltaSec: number): BiomeView | null {
+  if (!clock.active) return null;
+  clock.elapsedSec += Math.max(0, deltaSec);
+  const progress = clock.durationSec > 0 ? Math.min(1, clock.elapsedSec / clock.durationSec) : 1;
+  const step = progress >= 1 ? BIOME_TRANSITION_STEPS : Math.floor(progress * BIOME_TRANSITION_STEPS);
+  if (step === clock.step) return null;
+  clock.step = step;
+  if (step >= BIOME_TRANSITION_STEPS) {
+    clock.active = false;
+    clock.from = clock.to;
+    return settledView(clock.to);
+  }
+  const stepProgress = step / BIOME_TRANSITION_STEPS;
+  return {
+    currentBiome: lerpBiomePalettes(clock.from, clock.to, stepProgress),
+    targetBiome: clock.to,
+    transitionProgress: stepProgress,
+    isTransitioning: true,
+  };
+}
+
+/**
  * BiomeProvider - Context provider for biome management
  */
 export const BiomeProvider: React.FC<BiomeProviderProps> = ({
@@ -61,92 +116,84 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   initialBiome = DEFAULT_BIOME_ID,
   enableTimeOfDay = false,
 }) => {
-  const [currentBiome, setCurrentBiomeState] = useState(() => getBiomePalette(initialBiome));
-  const [targetBiome, setTargetBiome] = useState(() => getBiomePalette(initialBiome));
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [transitionProgress, setTransitionProgress] = useState(1);
+  const [view, setView] = useState<BiomeView>(() => settledView(getBiomePalette(initialBiome)));
   const [timeOfDay, setTimeOfDay] = useState(() => (enableTimeOfDay ? getSkyPhase().timeOfDay : FIXED_TIME_OF_DAY));
-  
-  const transitionStartTime = useRef(0);
-  const previousBiome = useRef(currentBiome);
+
+  // The live view, mirrored for the stable callbacks below.
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const clockRef = useRef<BiomeTransitionClock>({
+    from: view.currentBiome,
+    to: view.targetBiome,
+    elapsedSec: 0,
+    durationSec: 0,
+    active: false,
+    step: BIOME_TRANSITION_STEPS,
+  });
 
   // Sync initial biome id to Zustand store so all consumers start in agreement.
   useEffect(() => {
     useGameStore.setState({ currentBiome: getBiomePalette(initialBiome).id });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  
+
   // Start biome transition.
   // BiomeProvider is the single source of truth for biome state; after updating
   // the internal transition target we immediately mirror the canonical palette id
-  // to the Zustand store so HUD / lighting consumers stay in sync.
+  // to the Zustand store so HUD / lighting / survival consumers stay in sync.
+  // The cross-fade itself runs on the frame delta (sim time) in useFrame below.
   const setBiome = useCallback((biomeId: BiomeId, durationOverride?: number) => {
     const newTarget = getBiomePalette(biomeId);
-    if (newTarget.id === targetBiome.id) return;
-    
-    previousBiome.current = currentBiome;
-    setTargetBiome(newTarget);
-    setIsTransitioning(true);
-    setTransitionProgress(0);
-    transitionStartTime.current = performance.now();
+    const clock = clockRef.current;
+    if (newTarget.id === clock.to.id) return;
+
+    // Cross-fade from wherever the last committed step left the palette.
+    clock.from = viewRef.current.currentBiome;
+    clock.to = newTarget;
+    clock.elapsedSec = 0;
+    clock.durationSec = durationOverride ?? newTarget.transitionDuration;
+    clock.active = true;
+    clock.step = 0;
+    const next: BiomeView = {
+      currentBiome: clock.from,
+      targetBiome: newTarget,
+      transitionProgress: 0,
+      isTransitioning: true,
+    };
+    viewRef.current = next;
+    setView(next);
 
     // Mirror canonical biome id to Zustand store (single point of write).
     useGameStore.setState({ currentBiome: newTarget.id });
-    
-    // Store duration override on the target for the transition effect to read
-    if (durationOverride !== undefined) {
-      (newTarget as any).__durationOverride = durationOverride;
-    }
-  }, [currentBiome, targetBiome]);
+  }, []);
 
   const snapBiome = useCallback((biomeId: BiomeId) => {
     const palette = getBiomePalette(biomeId);
-    previousBiome.current = palette;
-    setCurrentBiomeState(palette);
-    setTargetBiome(palette);
-    setIsTransitioning(false);
-    setTransitionProgress(1);
-    delete (palette as any).__durationOverride;
+    const clock = clockRef.current;
+    clock.from = palette;
+    clock.to = palette;
+    clock.elapsedSec = 0;
+    clock.durationSec = 0;
+    clock.active = false;
+    clock.step = BIOME_TRANSITION_STEPS;
+    const next = settledView(palette);
+    viewRef.current = next;
+    setView(next);
     useGameStore.setState({ currentBiome: palette.id });
     gameEvents.emit('biome-change', {
       biome: palette.id,
       segmentIndex: useGameStore.getState().currentSegmentIndex,
     });
   }, []);
-  
-  // Update transition progress
-  useEffect(() => {
-    if (!isTransitioning) return;
-    
-    const durationOverride = (targetBiome as any).__durationOverride;
-    const duration = (durationOverride !== undefined ? durationOverride : targetBiome.transitionDuration) * 1000;
-    
-    const updateTransition = () => {
-      const elapsed = performance.now() - transitionStartTime.current;
-      const progress = Math.min(1, elapsed / duration);
-      
-      setTransitionProgress(progress);
-      
-      // Interpolate current biome
-      const interpolated = lerpBiomePalettes(
-        previousBiome.current,
-        targetBiome,
-        progress
-      );
-      setCurrentBiomeState(interpolated);
-      
-      if (progress < 1) {
-        requestAnimationFrame(updateTransition);
-      } else {
-        setIsTransitioning(false);
-        previousBiome.current = targetBiome;
-      }
-    };
-    
-    const raf = requestAnimationFrame(updateTransition);
-    return () => cancelAnimationFrame(raf);
-  }, [isTransitioning, targetBiome]);
-  
+
+  // Advance the cross-fade on sim time: one state commit per progress step.
+  useFrame((_, delta) => {
+    const next = advanceBiomeTransition(clockRef.current, delta);
+    if (!next) return;
+    viewRef.current = next;
+    setView(next);
+  });
+
   // Time of day: the sky clock's coarse phase (~every 5 game minutes), so the
   // context re-renders its consumers rarely; per-frame readers use getSkyClock().
   useEffect(() => {
@@ -157,20 +204,13 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     setTimeOfDay(getSkyPhase().timeOfDay);
     return subscribeSkyPhase((phase) => setTimeOfDay(phase.timeOfDay));
   }, [enableTimeOfDay]);
-  
-  return (
-    <BiomeContext.Provider value={{
-      currentBiome,
-      targetBiome,
-      transitionProgress,
-      isTransitioning,
-      timeOfDay,
-      setBiome,
-      snapBiome,
-    }}>
-      {children}
-    </BiomeContext.Provider>
+
+  const value = useMemo<BiomeContextType>(
+    () => ({ ...view, timeOfDay, setBiome, snapBiome }),
+    [view, timeOfDay, setBiome, snapBiome],
   );
+
+  return <BiomeContext.Provider value={value}>{children}</BiomeContext.Provider>;
 };
 
 /**

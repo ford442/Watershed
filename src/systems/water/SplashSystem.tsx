@@ -42,6 +42,12 @@ import { WATER_LEVEL } from '../../constants/game';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0xdb562dbf);
+/**
+ * The foam gate's own stream: it decides SWE disturbances (gameplay), so its
+ * draws must not depend on how many visual particles the LOD density spawned
+ * from `random` — adaptive LOD follows frame time, i.e. wall time.
+ */
+const foamRandom = createRng(0x5f0a3e71);
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;
@@ -357,10 +363,15 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       cruiseCooldownRef.current = CRUISE_COOLDOWN;
     }
 
-    if (events.foamEligible && random() < 0.1 * speed) {
-      spawnFoam(new THREE.Vector3(playerPos.x, waterLevel, playerPos.z));
-      if (random() < 0.15) {
-        injectSWEDisturbance(playerPos.x, playerPos.z, 0.9, 0.08);
+    if (events.foamEligible) {
+      // Two draws every eligible frame, whatever happens, so the stream stays aligned.
+      const foamRoll = foamRandom();
+      const disturbRoll = foamRandom();
+      if (foamRoll < 0.1 * speed) {
+        spawnFoam(new THREE.Vector3(playerPos.x, waterLevel, playerPos.z));
+        if (disturbRoll < 0.15) {
+          injectSWEDisturbance(playerPos.x, playerPos.z, 0.9, 0.08);
+        }
       }
     }
 

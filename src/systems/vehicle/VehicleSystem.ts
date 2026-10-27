@@ -153,8 +153,10 @@ export abstract class BaseVehicle {
   
   // Collision & Material tracking
   protected currentMaterial: SurfaceMaterial = SurfaceMaterial.ROCK;
-  protected lastCollisionTime: number = 0;
-  protected collisionCooldown: number = 0.1; // Minimum time between collision events
+  protected lastCollisionTime: number = Number.NEGATIVE_INFINITY;
+  protected collisionCooldown: number = 0.1; // Minimum sim seconds between collision events
+  /** Sim seconds this vehicle has been stepped (advanceClock), the collision cooldown's clock. */
+  protected simTimeSec: number = 0;
   protected collisionCallbacks: CollisionCallback[] = [];
   protected highImpactThreshold: number = 5; // Impact force for particle effects
   
@@ -200,6 +202,11 @@ export abstract class BaseVehicle {
     Object.assign(this.input, input);
   }
   
+  /** Advance the vehicle's sim clock; call once per sim frame with its delta. */
+  advanceClock(delta: number): void {
+    if (Number.isFinite(delta) && delta > 0) this.simTimeSec += delta;
+  }
+
   /** Main update loop - called every frame */
   update(delta: number): void {
     if (!this.body) return;
@@ -296,9 +303,9 @@ export abstract class BaseVehicle {
     contactPoint: THREE.Vector3,
     relativeVelocity: THREE.Vector3
   ): void {
-    const now = Date.now() / 1000;
-    
-    // Rate limiting to prevent event spam
+    const now = this.simTimeSec;
+
+    // Rate limiting to prevent event spam (sim time: see advanceClock)
     if (now - this.lastCollisionTime < this.collisionCooldown) {
       return;
     }
@@ -423,24 +430,14 @@ export class RaftVehicle extends BaseVehicle {
     };
   }
   
+  /**
+   * A/D steering only. The current and the turbulence are the water force's
+   * (waterForceAuthority.ts: the raft applies no water force of its own, #467);
+   * the old auto-flow and wall-clock turbulence impulses here doubled them.
+   */
   protected applyPhysics(delta: number): void {
     if (!this.body) return;
-    
-    // Stronger auto-flow for raft (water current)
-    this.body.applyImpulse(
-      { x: 0, y: 0, z: -this.config.flowResponsiveness * delta },
-      true
-    );
-    
-    // Add turbulence
-    const time = performance.now() * 0.001;
-    const turbulence = Math.sin(time) * 0.3;
-    this.body.applyImpulse({
-      x: turbulence * 0.5 * delta,
-      y: turbulence * 0.2 * delta,
-      z: turbulence * delta
-    }, true);
-    
+
     // Raft steering (responsive lateral movement for canyon navigation)
     const steerSpeed = this.config.baseSpeed * 0.4;
     

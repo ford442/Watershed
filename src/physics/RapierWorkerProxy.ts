@@ -1,3 +1,4 @@
+import { telemetryNowMs } from '../utils/wallClock';
 import {
   DEFAULT_RAFT_WORKER_INIT,
   RapierWorkerCommand,
@@ -21,7 +22,7 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
-const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+const now = telemetryNowMs;
 
 export class RapierWorkerProxy {
   private worker: RapierWorkerLike;

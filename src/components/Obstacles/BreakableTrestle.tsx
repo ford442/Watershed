@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { RigidBody, useRapier, type RapierRigidBody } from '@react-three/rapier';
 import { getAudioManager } from '../../systems/audio/AudioSystem';
 import {
@@ -66,6 +67,9 @@ function PlankBody({
   const { rapier } = useRapier();
   const bodyRef = useRef<RapierRigidBody>(null);
   const [broken, setBroken] = useState(false);
+  // Sim seconds since the plank broke (useFrame delta), null while intact:
+  // culling the debris removes a collider, so it never runs on a wall timer.
+  const debrisAgeRef = useRef<number | null>(null);
 
   // The intact deck is static ground for the raft's Rapier worker (#465 C2).
   const buildWorkerDeck = useCallback(
@@ -98,6 +102,7 @@ function PlankBody({
       // something you can actually run across.
       if (speed < breakSpeed) return;
 
+      debrisAgeRef.current = 0;
       setBroken(true);
 
       // Send it the way the player was going, plus a little tumble.
@@ -130,11 +135,14 @@ function PlankBody({
 
   // Cull the debris once it has fallen out of play, so a run that smashes the
   // whole deck does not leave twelve dynamic bodies in the solver.
-  useEffect(() => {
-    if (!broken) return;
-    const timer = window.setTimeout(() => onBroken(placement.index), DEBRIS_LIFETIME_S * 1000);
-    return () => window.clearTimeout(timer);
-  }, [broken, onBroken, placement.index]);
+  useFrame((_, delta) => {
+    if (debrisAgeRef.current === null) return;
+    debrisAgeRef.current += delta;
+    if (debrisAgeRef.current >= DEBRIS_LIFETIME_S) {
+      debrisAgeRef.current = null;
+      onBroken(placement.index);
+    }
+  });
 
   return (
     <RigidBody

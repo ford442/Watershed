@@ -5,6 +5,7 @@
  * Not Steam Workshop. No accounts. Validates with assertLevelData / ajv.
  */
 
+import { wallClockEpochMs } from '../../utils/wallClock';
 import { assertLevelData } from '../../maps/assertLevelData';
 import type { LevelData } from './MapSystem';
 
@@ -40,7 +41,7 @@ export function parseAndValidateUserLevel(raw: unknown, label = 'user-level'): L
 
 export function saveUserLevel(id: string, raw: unknown): StoredUserLevel {
   const level = parseAndValidateUserLevel(raw, id);
-  const entry: StoredUserLevel = { id, savedAt: Date.now(), level };
+  const entry: StoredUserLevel = { id, savedAt: wallClockEpochMs(), level };
   const next = readAll().filter((item) => item.id !== id);
   next.push(entry);
   writeAll(next);

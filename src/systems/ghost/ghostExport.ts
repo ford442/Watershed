@@ -7,6 +7,7 @@
  * a different launch hour or hydro event set (#438 E1).
  */
 
+import { wallClockEpochMs } from '../../utils/wallClock';
 import { GHOST_CODEC_VERSION, type RunSplitEntry } from './ghostCodec';
 import { fairnessFromGhostFile, judgeGhostFairness, type GhostHydroFairness } from './hydroFairness';
 import type { QualityPreset } from '../GameState';
@@ -71,7 +72,7 @@ export function exportGhostToJson(
     mapId,
     timeMs,
     ghostData,
-    exportedAt: Date.now(),
+    exportedAt: wallClockEpochMs(),
     ...(splits && splits.length > 0 ? { splits } : {}),
     ...(fairness?.launchHour !== undefined ? { launchHour: fairness.launchHour } : {}),
     ...(fairness?.hydroEventHash ? { hydroEventHash: fairness.hydroEventHash } : {}),

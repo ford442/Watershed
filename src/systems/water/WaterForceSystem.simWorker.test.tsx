@@ -96,6 +96,7 @@ import { clearFloatingWaterBodies, registerFloatingWaterBody } from './WaterForc
 import { SimWorkerProxy, getSimWorkerProxy } from '../../sim/createSimWorkerProxy';
 import { createSimWorkerCore } from '../../sim/simWorkerCore';
 import { WaterForceSystem } from './WaterForceSystem';
+import { useGameStore } from '../GameState';
 
 /** Heap-backed stand-in for the native module. `step` raises η at one cell. */
 function stubModule(stepMarker: number) {
@@ -210,6 +211,7 @@ function uploadedHeight(): Float32Array {
 
 afterEach(() => {
   vi.clearAllMocks();
+  useGameStore.setState({ currentBiome: 'canyonSummer' });
   clearFloatingWaterBodies();
   resetPhysicsWorkerRegistry();
 });
@@ -352,8 +354,15 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(hull.current.applyImpulse).not.toHaveBeenCalled();
     // No debris and the hull is the Rapier worker's: nothing to batch here.
     expect(inWorker.computeWaterForcesBatch).not.toHaveBeenCalled();
-    expect(getPhysicsWorkerTickParams()).toMatchObject({ simFlow: true, flowSpeed: 1.2, flowDirX: 0, flowDirZ: -1 });
+    // The flow cap is the target biome's palette value (canyonSummer 1.0), read per frame.
+    expect(getPhysicsWorkerTickParams()).toMatchObject({ simFlow: true, flowSpeed: 1.0, flowDirX: 0, flowDirZ: -1 });
     expect(main.calculateWaterForce).not.toHaveBeenCalled();
+
+    // A biome change moves the cap on the next frame: the target's value, not a cross-fade.
+    useGameStore.setState({ currentBiome: 'glacier' });
+    frame();
+    pump();
+    expect(getPhysicsWorkerTickParams()).toMatchObject({ flowSpeed: 1.4 });
     unmount();
   });
 

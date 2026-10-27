@@ -80,7 +80,10 @@ export function updateRunnerPhysics({
 
     const pos = body.translation();
     const vel = body.linvel();
-    const now = performance.now();
+    // Debug overlay clock: sim ms, so the contact / impulse windows age with the sim.
+    if (Number.isFinite(dt) && dt > 0) debugState.current.simMs += dt * 1000;
+    vehicle.current.advanceClock(dt);
+    const now = debugState.current.simMs;
 
     const dtOk = Number.isFinite(dt) && dt > 0 && dt < 0.5;
     const posOk = isFiniteVec3(pos);

@@ -37,10 +37,12 @@ import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import { setSWEActiveBudget, updateSWEHeightFieldSnapshot, clearSWEHeightField } from './SWEHeightField';
 import { sweBudgetForQuality } from './sweQuality';
 import { clearSWEBedSnapshot } from './sweBedDebug';
-import { useQualityPreset } from '../GameState';
+import { useGameStore, useQualityPreset } from '../GameState';
+import { getBiomePalette } from '../../configs/BiomePalettes';
 import {
   collectWaterForceBodies,
   registerVehicleWaterBody,
+  setSweReadiness,
   setWaterForceSystemActive,
 } from './WaterForceRegistry';
 import { isPhysicsWorkerActive, setSWEStatus } from '../../physics/physicsWorkerRegistry';
@@ -61,6 +63,12 @@ import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 interface WaterForceSystemProps {
   vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
   vehicleType?: VehicleType;
+  /**
+   * Flow cap override. Unset: the target biome's palette flowSpeed, read per
+   * frame from the store (set synchronously by BiomeProvider.setBiome), never
+   * the cross-fading palette — the current pushing the hull must not depend
+   * on how far a wall-clock-or-render-paced lerp has got. Per-segment split: #521.
+   */
   flowSpeed?: number;
   waterLevel?: number;
   turbulenceStrength?: number;
@@ -73,7 +81,7 @@ export { MAX_STAGE_OFFSET, stagedWaterLevel };
 export function WaterForceSystem({
   vehicleRef,
   vehicleType = 'runner',
-  flowSpeed = 1.2,
+  flowSpeed,
   waterLevel = WATER_LEVEL,
   turbulenceStrength = 0.1,
   turbulenceFrequency = 2.4,
@@ -107,6 +115,7 @@ export function WaterForceSystem({
       .catch((error) => {
         if (!mountedRef.current) return;
         statusRef.current = 'fallback';
+        setSweReadiness('off');
         console.error('[WaterForceSystem] native init failed; using TypeScript fallbacks', error);
         bindChoreWasm(null);
         updateSWEHeightFieldSnapshot({ enabled: false, texture: null });
@@ -121,6 +130,7 @@ export function WaterForceSystem({
 
   useEffect(() => {
     setWaterForceSystemActive(true);
+    setSweReadiness('pending');
     mountedRef.current = true;
     const host = hostRef.current;
     let cancelled = false;
@@ -162,6 +172,7 @@ export function WaterForceSystem({
       simProxyRef.current = null;
       workerVehicleFlowRef.current = null;
       setWaterForceSystemActive(false);
+      setSweReadiness('pending');
       registerVehicleWaterBody(null);
       clearSWEHeightField();
       clearSWEBedSnapshot();
@@ -184,6 +195,9 @@ export function WaterForceSystem({
     if (!budget.enabled || !canStep) {
       updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
+      // No budget, or no stepper and none coming (the module failed): settled.
+      // No stepper *yet* (the main module is still loading) stays pending.
+      if (!budget.enabled || statusRef.current === 'fallback') setSweReadiness('off');
       return;
     }
 
@@ -219,6 +233,7 @@ export function WaterForceSystem({
       host.grid = null;
       updateSWEHeightFieldSnapshot({ enabled: false, texture: null, flowTexture: null });
       setSWEStatus(false, null);
+      setSweReadiness('off');
     };
 
     const install = (next: SweSim) => {
@@ -228,6 +243,7 @@ export function WaterForceSystem({
       host.flowTexture = flowTexture;
       resetSweHostForGrid(host);
       setSWEStatus(true, `${budget.width}x${budget.height} ${next.backend}`);
+      setSweReadiness('ready');
       console.info(
         `[SWE] backend=${next.backend} (${resolveSweSimBackendDecision().reason}) grid=${budget.width}x${budget.height}`,
       );
@@ -327,7 +343,8 @@ export function WaterForceSystem({
     // force path (main, sim worker, Rapier worker), more drag where the config
     // is built here. Identity for any other weather.
     const hull = weatherHullScale(getActiveWeather());
-    const hullFlowSpeed = flowSpeed * hull.flowCapScale;
+    const baseFlowSpeed = flowSpeed ?? getBiomePalette(useGameStore.getState().currentBiome).flowSpeed;
+    const hullFlowSpeed = baseFlowSpeed * hull.flowCapScale;
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
 
     // The field: window, scroll, bed, step, upload (sweHost.ts).

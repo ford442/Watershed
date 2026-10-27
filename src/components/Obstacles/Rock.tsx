@@ -208,8 +208,14 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
 
   // Module-scoped phase table keyed by segment + pillar index (survives re-renders).
   const phaseTableRef = useRef<Map<string, PillarPhase>>(new Map());
-  const crackStartRef = useRef(0);
-  const shatterTimerRef = useRef<number | null>(null);
+  // The crack in progress, timed in sim seconds by useFrame (never a wall-clock
+  // timer: the shatter removes the collider, so its frame is gameplay).
+  const crackRef = useRef<{
+    elapsedSec: number;
+    impactPoint: THREE.Vector3;
+    speed: number;
+    impactDir: THREE.Vector3;
+  } | null>(null);
   const [phase, setPhase] = useState<PillarPhase>(() => {
     const key = `${segmentId}:${pillarIndex}`;
     return phaseTableRef.current.get(key) ?? 'intact';
@@ -285,33 +291,26 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
         impactDir.normalize();
       }
 
-      crackStartRef.current = performance.now() / 1000;
+      crackRef.current = { elapsedSec: 0, impactPoint, speed, impactDir };
       setPillarPhase('cracking');
-
-      if (shatterTimerRef.current !== null) {
-        window.clearTimeout(shatterTimerRef.current);
-      }
-      shatterTimerRef.current = window.setTimeout(() => {
-        shatterTimerRef.current = null;
-        if (phaseTableRef.current.get(phaseKey) === 'cracking') {
-          shatter(impactPoint, speed, impactDir);
-        }
-      }, PILLAR_CRACK_DURATION_S * 1000);
     },
-    [phase, phaseKey, rapier.RigidBodyType.Dynamic, setPillarPhase, shatter],
+    [phase, rapier.RigidBodyType.Dynamic, setPillarPhase],
   );
 
-  useEffect(() => {
-    return () => {
-      if (shatterTimerRef.current !== null) {
-        window.clearTimeout(shatterTimerRef.current);
+  useFrame((_, delta) => {
+    const crack = crackRef.current;
+    if (crack) {
+      crack.elapsedSec += delta;
+      if (crack.elapsedSec >= PILLAR_CRACK_DURATION_S) {
+        crackRef.current = null;
+        if (phaseTableRef.current.get(phaseKey) === 'cracking') {
+          shatter(crack.impactPoint, crack.speed, crack.impactDir);
+        }
+        return;
       }
-    };
-  }, []);
-
-  useFrame(() => {
-    if (phase !== 'cracking' || !meshRef.current) return;
-    const elapsed = performance.now() / 1000 - crackStartRef.current;
+    }
+    if (phase !== 'cracking' || !meshRef.current || !crack) return;
+    const elapsed = crack.elapsedSec;
     const wobble = 1 + Math.sin(elapsed * 80) * 0.015 * Math.min(1, elapsed / PILLAR_CRACK_DURATION_S);
     meshRef.current.scale.set(
       transform.scale.x * wobble,

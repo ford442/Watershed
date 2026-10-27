@@ -7,6 +7,7 @@
  * step (waterForceAuthority.ts pickHullForce). Tick order: physicsWorkerWaterForces.ts.
  */
 
+import { telemetryNowMs } from '../utils/wallClock';
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   DEFAULT_RAFT_WORKER_INIT,
@@ -197,7 +198,7 @@ const respond = (response: RapierWorkerResponse) => {
 let commandQueue: Promise<void> = Promise.resolve();
 
 ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
-  const receivedAt = performance.now();
+  const receivedAt = telemetryNowMs();
   const command = event.data;
 
   const run = async () => {
@@ -208,7 +209,7 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
           id: command.id,
           type: 'READY',
           state: serializeState(),
-          latencyMs: performance.now() - receivedAt,
+          latencyMs: telemetryNowMs() - receivedAt,
         });
         return;
       case 'STEP': {
@@ -218,37 +219,37 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
           type: 'STATE',
           state: serializeState(),
           waterForce: diagnostics,
-          latencyMs: performance.now() - receivedAt,
+          latencyMs: telemetryNowMs() - receivedAt,
         });
         return;
       }
       case 'APPLY_IMPULSE':
         if (!raftBody) throw new Error('Rapier worker has not been initialized');
         raftBody.applyImpulse(vec3(command.impulse), command.wake ?? true);
-        respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
+        respond({ id: command.id, type: 'ACK', latencyMs: telemetryNowMs() - receivedAt });
         return;
       case 'GET_STATE':
         if (!raftBody) throw new Error('Rapier worker has not been initialized');
-        respond({ id: command.id, type: 'STATE', state: serializeState(), latencyMs: performance.now() - receivedAt });
+        respond({ id: command.id, type: 'STATE', state: serializeState(), latencyMs: telemetryNowMs() - receivedAt });
         return;
       case 'ADD_STATIC_COLLIDER': {
         if (!world) throw new Error('Rapier worker has not been initialized');
         const handle = addStaticCollider(command.collider, command.handle);
-        respond({ id: command.id, type: 'ACK', handle, latencyMs: performance.now() - receivedAt });
+        respond({ id: command.id, type: 'ACK', handle, latencyMs: telemetryNowMs() - receivedAt });
         return;
       }
       case 'REMOVE_STATIC_COLLIDER':
         removeStaticCollider(command.handle);
-        respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
+        respond({ id: command.id, type: 'ACK', latencyMs: telemetryNowMs() - receivedAt });
         return;
       case 'CONNECT_SIM':
         hullLink?.close();
         hullLink = createHullLinkClient(command.port as unknown as RapierHullPort);
-        respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
+        respond({ id: command.id, type: 'ACK', latencyMs: telemetryNowMs() - receivedAt });
         return;
       case 'CLEAR_STATIC_COLLIDERS':
         clearStaticColliders();
-        respond({ id: command.id, type: 'ACK', latencyMs: performance.now() - receivedAt });
+        respond({ id: command.id, type: 'ACK', latencyMs: telemetryNowMs() - receivedAt });
         return;
       default:
         throw new Error(`Unknown Rapier worker command: ${(command as RapierWorkerCommand).type}`);
@@ -260,7 +261,7 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
       id: command.id,
       type: 'ERROR',
       error: error instanceof Error ? error.message : String(error),
-      latencyMs: performance.now() - receivedAt,
+      latencyMs: telemetryNowMs() - receivedAt,
     });
   });
 });

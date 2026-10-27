@@ -23,19 +23,39 @@ import { gameEvents } from '../../systems/events/GameEvents';
 export interface ActivePillarFragment {
   id: number;
   spawn: PillarFragmentSpawn;
+  /** Pool sim time (seconds) at enqueue. */
   bornAt: number;
 }
 
 let nextFragmentId = 0;
 
+/**
+ * Sim seconds the pool has stepped (its useFrame delta), the clock fragments
+ * age on. Debris has colliders, so its lifetime is gameplay: never wall time.
+ */
+let poolSimTimeSec = 0;
+
 /** Module-level queue so Rock columns can enqueue debris without React context. */
 const pendingSpawns: ActivePillarFragment[] = [];
 
 export function enqueuePillarFragments(spawns: PillarFragmentSpawn[]): void {
-  const now = performance.now() / 1000;
   for (const spawn of spawns) {
-    pendingSpawns.push({ id: nextFragmentId++, spawn, bornAt: now });
+    pendingSpawns.push({ id: nextFragmentId++, spawn, bornAt: poolSimTimeSec });
   }
+}
+
+/**
+ * Advance the pool clock by `deltaSec` and split `live` into survivors.
+ * Returns null when nothing expired (the caller keeps its array as is).
+ */
+export function agePillarFragments(
+  live: readonly ActivePillarFragment[],
+  deltaSec: number,
+): ActivePillarFragment[] | null {
+  poolSimTimeSec += Math.max(0, deltaSec);
+  const now = poolSimTimeSec;
+  if (!live.some((f) => now - f.bornAt >= PILLAR_FRAGMENT_LIFETIME_S)) return null;
+  return live.filter((f) => now - f.bornAt < PILLAR_FRAGMENT_LIFETIME_S);
 }
 
 interface PillarFragmentPoolProps {
@@ -44,6 +64,9 @@ interface PillarFragmentPoolProps {
 
 export default function PillarFragmentPool({ castShadow = false }: PillarFragmentPoolProps) {
   const [fragments, setFragments] = useState<ActivePillarFragment[]>([]);
+  // The live list as of the last commit plus this frame's changes: read every
+  // frame without a state update, so a quiet frame costs no React work.
+  const liveRef = useRef<ActivePillarFragment[]>([]);
   const bodiesRef = useRef<RapierRigidBody[] | null>(null);
   const impulseAppliedRef = useRef<Set<number>>(new Set());
 
@@ -70,38 +93,35 @@ export default function PillarFragmentPool({ castShadow = false }: PillarFragmen
     [],
   );
 
-  const flushPending = useCallback(() => {
-    if (pendingSpawns.length === 0) return;
-    const batch = pendingSpawns.splice(0, pendingSpawns.length);
-    setFragments((prev) => [...prev, ...batch]);
+  const commit = useCallback((next: ActivePillarFragment[]) => {
+    liveRef.current = next;
+    setFragments(next);
   }, []);
 
   useEffect(() => {
     const onReset = () => {
       pendingSpawns.length = 0;
       impulseAppliedRef.current.clear();
-      setFragments((prev) => {
-        if (prev.length > 0) releasePillarFragmentSlots(prev.length);
-        return [];
-      });
+      if (liveRef.current.length > 0) releasePillarFragmentSlots(liveRef.current.length);
+      commit([]);
       clearPillarFragmentRegistry();
     };
 
     return gameEvents.on('watershed-run-reset', onReset);
-  }, []);
+  }, [commit]);
 
-  useFrame(() => {
-    flushPending();
-
-    const now = performance.now() / 1000;
-    setFragments((prev) => {
-      const survivors = prev.filter((f) => now - f.bornAt < PILLAR_FRAGMENT_LIFETIME_S);
-      const removed = prev.length - survivors.length;
-      if (removed > 0) {
-        releasePillarFragmentSlots(removed);
-      }
-      return survivors.length === prev.length ? prev : survivors;
-    });
+  useFrame((_, delta) => {
+    let next: ActivePillarFragment[] | null = null;
+    if (pendingSpawns.length > 0) {
+      next = [...liveRef.current, ...pendingSpawns.splice(0, pendingSpawns.length)];
+    }
+    const base = next ?? liveRef.current;
+    const survivors = agePillarFragments(base, delta);
+    if (survivors) {
+      releasePillarFragmentSlots(base.length - survivors.length);
+      next = survivors;
+    }
+    if (next) commit(next);
   });
 
   useEffect(() => {

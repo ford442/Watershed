@@ -89,6 +89,8 @@ export function useRunnerPhysicsState() {
     recentImpulses: [] as DebugImpulse[],
     recentContacts: [] as DebugContact[],
     friction: 0.04,
+    /** Sim milliseconds stepped (the debug overlay's contact/impulse clock). */
+    simMs: 0,
   });
   const debugSnapshotRef = useRef<PhysicsDebugSnapshot>({
     position: { x: 0, y: 0, z: 0 },

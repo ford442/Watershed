@@ -29,6 +29,8 @@ const COMBO_LABELS: Record<number, string> = {
   8: 'LEGENDARY',
 };
 
+/** Notification ids: a counter, not a timestamp (two in one ms would collide). */
+let nextNotificationId = 1;
 let highSpeedAccum = 0;
 let belowResetAccum = 0;
 let comboFlashRemaining = 0;
@@ -158,7 +160,7 @@ export function awardFloodSurviveBonus(points: number, segmentState?: string): v
       tier: 'FloodSurvive',
       score: scaled,
       clean: true,
-      id: Date.now(),
+      id: nextNotificationId++,
       label: multiplier > 1 ? `FLOOD SURVIVE x${multiplier.toFixed(2)}` : 'FLOOD SURVIVE',
     },
   });
@@ -178,7 +180,7 @@ export function awardCacheRetrievalBonus(segmentIndex: number): void {
       tier: 'CacheRetrieve',
       score: bonus,
       clean: true,
-      id: Date.now(),
+      id: nextNotificationId++,
       label: 'CACHE RETRIEVED',
     },
   });
@@ -195,7 +197,7 @@ export function applySurvivalPenalty(points: number, label: string): void {
       tier: 'SurvivalPenalty',
       score: -points,
       clean: false,
-      id: Date.now(),
+      id: nextNotificationId++,
       label,
     },
   });
@@ -222,7 +224,7 @@ export function commitJourneyScore(): void {
           tier: 'UprightRun',
           score: uprightBonus,
           clean: true,
-          id: Date.now(),
+          id: nextNotificationId++,
           label: 'UPRIGHT RUN',
         },
       });

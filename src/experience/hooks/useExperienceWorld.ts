@@ -12,6 +12,7 @@ import { currentRunFairness } from '../../systems/ghost/raceFairness';
 import { inputHub } from '../../input/InputHub';
 import { getScriptedSimTimeSec, isScriptedInputMode, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
 import { flushErosion, setErosionStore } from '../../systems/water/erosionField';
+import { getSweReadiness, isSweSettled, isWaterForceSystemActive } from '../../systems/water/WaterForceRegistry';
 import { resolveActiveEnvelope } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
@@ -420,7 +421,17 @@ export function useExperienceWorld({
       getSpawnPoints: () => ({ ...spawnPoints }),
       advanceTreadmill: () => trackManagerRef.current?.appendSegmentForHarness() ?? false,
       stepScripted: (n: number) => stepScripted(n),
-      isScriptedReady: () => inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current),
+      // Also wait for the SWE field to settle (a grid, or a definitive TS
+      // fallback): forces sample a different field before and after, so a run
+      // that went live mid-load would depend on how long the load took.
+      isScriptedReady: () =>
+        inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current) && isSweSettled(),
+      getScriptedReadiness: () => ({
+        scripted: inputHub.hasSource('scripted'),
+        live: isScriptedRunLive(vehicleRef.current),
+        swe: getSweReadiness(),
+        sweActive: isWaterForceSystemActive(),
+      }),
       getSplits: () => getRecordedSplits(),
       getSplitChecksums: () => getRecordedSplitChecksums(),
       getGhostFile: () => {
