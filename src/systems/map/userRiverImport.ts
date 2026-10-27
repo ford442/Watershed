@@ -70,7 +70,9 @@ export function rememberRiver(river: UserRiver): void {
  */
 export function listSavedRivers(): UserRiver[] {
   const rivers: UserRiver[] = [];
-  for (const entry of listUserLevels().slice().sort((a, b) => b.savedAt - a.savedAt)) {
+  // Storage keeps saves newest-last; reversing first makes two saves in the
+  // same millisecond (a savedAt tie the stable sort keeps) list newest first too.
+  for (const entry of listUserLevels().slice().reverse().sort((a, b) => b.savedAt - a.savedAt)) {
     try {
       rivers.push(createUserRiver(entry.id, parseAndValidateUserLevel(entry.level, entry.id)));
     } catch {
