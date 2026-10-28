@@ -52,6 +52,7 @@ import { getLaunchHour, loadErosionPlane, saveErosionPlane } from '../../systems
 import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
 import { getActiveUserRiver, subscribeUserRiver, userRiverMapDefinition } from '../../systems/map/userRiverSession';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
+import { queryFlags } from '../../config/queryFlags';
 
 /** The run's 24 h forecast: the day's melt inputs (the run's conditions) from the launch hour. */
 function buildDefaultForecastSamples(launchHour: number): FlowForecastSample[] {
@@ -379,7 +380,7 @@ export function useExperienceWorld({
   }, [vehicleRef]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.location.search.includes('screenshot=1')) {
+    if (!queryFlags.screenshot) {
       return undefined;
     }
 

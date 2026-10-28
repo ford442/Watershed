@@ -33,6 +33,27 @@ const GAME_EVENT_NAMES = [
     .matchAll(/^\s+'?([\w-]+)'?:/gm),
 ].map((m) => m[1]).concat('weather-update');
 
+const GAME_EVENT_SYNTAX = [
+  {
+    selector: "CallExpression[callee.object.name='window'][callee.property.name='dispatchEvent']",
+    message: 'Emit game events with gameEvents.emit (src/systems/events/GameEvents.ts), not window.dispatchEvent.',
+  },
+  {
+    selector: `CallExpression[callee.property.name=/^(add|remove)EventListener$/][arguments.0.value=/^(${GAME_EVENT_NAMES.join('|')})$/]`,
+    message: 'Listen to game events with gameEvents.on (src/systems/events/GameEvents.ts), not addEventListener.',
+  },
+];
+
+/** `location.search`, `window.location.search`, `globalThis.location.search`, `document.location.search`. */
+const SEARCH_SYNTAX = [
+  "MemberExpression[property.name='search'][object.name='location']",
+  "MemberExpression[property.name='search'][object.type='MemberExpression'][object.property.name='location']",
+].map((selector) => ({
+  selector,
+  message:
+    'Read URL flags from queryFlags (src/config/queryFlags.ts), parsed once at boot. A new flag is a field there, not a new location.search read.',
+}));
+
 export default tseslint.config(
   {
     ignores: [
@@ -116,21 +137,63 @@ export default tseslint.config(
 
   // Game events go through `gameEvents` (src/systems/events/GameEvents.ts), not
   // `window` — typed payloads, one map of who sends what, no orphan events.
+  //
+  // URL flags go through `queryFlags` (src/config/queryFlags.ts, #521 E), parsed
+  // once at boot: `?debug=1` and `?debug=true` are one flag, and nothing
+  // re-parses the query string in a frame path. `location.search` is banned
+  // everywhere else; the readers still on it are listed in the next block.
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/systems/events/GameEvents.ts'],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression[callee.object.name='window'][callee.property.name='dispatchEvent']",
-          message: 'Emit game events with gameEvents.emit (src/systems/events/GameEvents.ts), not window.dispatchEvent.',
-        },
-        {
-          selector: `CallExpression[callee.property.name=/^(add|remove)EventListener$/][arguments.0.value=/^(${GAME_EVENT_NAMES.join('|')})$/]`,
-          message: 'Listen to game events with gameEvents.on (src/systems/events/GameEvents.ts), not addEventListener.',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...GAME_EVENT_SYNTAX, ...SEARCH_SYNTAX],
+    },
+  },
+
+  // Query flags (#521 E): the one module that reads `location.search` for a flag
+  // it owns, and the per-flag helpers that predate it. Each of these takes an
+  // explicit `search` argument (that is how their tests drive them) and defaults
+  // it to the live URL; none is on a frame path (checked when this list was
+  // made). They move to `queryFlags` as they are next touched — a file leaves
+  // this list when it no longer reads `location.search`, and nothing joins it
+  // without a reason: a new flag is a field on `queryFlags`.
+  {
+    files: [
+      // The module itself.
+      'src/config/queryFlags.ts',
+      // Boot constants: parsed once at module load, `new URLSearchParams(location.search)`.
+      'src/App.tsx',
+      'src/terrain/spawnTiming.ts',
+      // Per-flag helpers with a `search` parameter.
+      'src/utils/cleanTestMode.ts',
+      'src/utils/launchHourOverride.ts',
+      'src/utils/launchWeatherOverride.ts',
+      'src/utils/physicsWorkerFlag.ts',
+      'src/utils/qualityOverride.ts',
+      'src/utils/runContext.ts',
+      'src/input/scriptedRun.ts',
+      'src/input/touchMode.ts',
+      'src/maps/campaign.ts',
+      'src/systems/ghost/rivalGhostUrl.ts',
+      'src/systems/water/sweBackend.ts',
+      'src/systems/water/wasmLoader.ts',
+      'src/systems/water/wasmTrapMarker.ts',
+      'src/sim/createSimWorkerProxy.ts',
+      'src/components/GameHUD.tsx',
+      'src/components/MovementReadout.tsx',
+      'src/components/sweDebugFlag.ts',
+      'src/debug/debugStages.ts',
+      'src/experience/hooks/useExperienceWorld.ts',
+      'src/experience/hooks/useInnerExperience.ts',
+      // Rendering is another work stream's (#519); same shape.
+      'src/rendering/gpuChores/support.ts',
+      'src/rendering/gpuLossRecovery.ts',
+      'src/rendering/materialBackend.ts',
+      'src/rendering/rendererConfig.ts',
+    ],
+    ignores: ['src/**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', ...GAME_EVENT_SYNTAX],
     },
   },
 

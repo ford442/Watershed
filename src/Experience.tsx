@@ -18,6 +18,7 @@ import { useSettingsStore } from './systems/settings/useSettingsStore';
 import { bindingsToDreiMap } from './systems/settings/settingsDerive';
 import type { RendererPreference } from './rendering/types';
 import type { ExperienceProps, InnerExperienceProps, VehicleType } from './experience/types';
+import { queryFlags } from './config/queryFlags';
 
 export type { ExperienceProps, InnerExperienceProps, VehicleType, RendererPreference };
 
@@ -38,7 +39,7 @@ export default function Experience({
   onReturnToMenu,
   launchHour,
 }: ExperienceProps) {
-  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const isDebug = queryFlags.debug;
 
   // Rebindable controls: derive drei's KeyboardControls map from the settings
   // store. Changing the reference rebuilds drei's listeners (a brief reset of

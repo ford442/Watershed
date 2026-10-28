@@ -532,6 +532,29 @@ canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
 
 ---
 
+## Query flags (#521 E)
+
+### `src/config/queryFlags.ts`
+
+**Purpose:** Every URL flag the game reads at boot, parsed **once** into a frozen object
+(`queryFlags`): `debug` (`?debug=1` and `?debug=true` are one flag), `noPointerLock`, `screenshot`,
+`safe`, and the raw `map`, `vehicle`, `material`, `renderer`, `input`, `replay`, `simWorker`, `river`,
+`level`, `levelUrl`, `reach`, `reachId`, `seed`. Values are raw strings (null = absent); resolving them
+stays with their owners (`resolveMaterialBackend`, the map registry, …).
+
+**Runs in:** module load (the page's boot). A flag read from a frame path (the runner's
+`RunnerPhysicsStep` used to re-parse the query string every frame) or a module constant is a property
+read.
+
+**Boundaries (Do NOT):**
+- Do NOT read `location.search` for a flag — ESLint bans it (`no-restricted-syntax`, next to the
+  game-event rule in `eslint.config.js`). A new flag is a field on `QueryFlags`.
+- Do NOT add a file to the lint allowlist without a reason. The listed per-flag helpers take an explicit
+  `search` (their tests drive them with strings), default it to the live URL, and move to `queryFlags`
+  as they are next touched.
+
+---
+
 ## The sim core (#521)
 
 ### `src/sim/core/SimCore.ts` + `experience/SimCoreTick.tsx` + `experience/simSystems.ts`

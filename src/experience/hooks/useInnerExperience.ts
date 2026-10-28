@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { queryFlags } from '../../config/queryFlags';
 import { useLOD } from '../../systems/lod/LODManager';
 import { useGameStore } from '../../systems/GameState';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -46,9 +47,7 @@ export function useInnerExperience({
   debug: DebugStageController;
 }) {
   const [vehicleType, setVehicleTypeLocal] = useState<VehicleType>(() => resolveInitialVehicle(mapId));
-  const [noPointerLock] = useState(
-    () => typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock'),
-  );
+  const noPointerLock = queryFlags.noPointerLock;
   // ?wasmWaterTest=1 is a dev harness; production ignores it (#465 C5).
   const [wasmWaterTest] = useState(
     () =>
@@ -63,7 +62,7 @@ export function useInnerExperience({
   const awardedWaterfallSegmentsRef = useRef(new Set<number>());
   const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null || getVehicleOverride() !== null);
 
-  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const isDebug = queryFlags.debug;
   const physicsDebugEnabled =
     !cleanTest && debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
 

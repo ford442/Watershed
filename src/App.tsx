@@ -86,6 +86,7 @@ import { onPauseRequest } from './input/pauseBus';
 import { useInputStore } from './input/InputHub';
 import { isTouchInputMode } from './input/touchMode';
 import { stopHaptics } from './input/haptics';
+import { queryFlags } from './config/queryFlags';
 
 // #485 C: the inspector is `?debug=1` only — a player never pays for its ~700 lines.
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
@@ -354,7 +355,7 @@ function App({ graphicsBoot }: AppProps = {}) {
 
   useEffect(() => {
     debug.runStage('appBootstrap', () => {
-      if (window.location.search.includes('no-pointer-lock')) {
+      if (queryFlags.noPointerLock) {
         setSkipLoader(true);
       }
     });
@@ -469,7 +470,7 @@ function App({ graphicsBoot }: AppProps = {}) {
   const requestPointerLockSafely = useCallback(() => {
     // Touch has no pointer to lock (iOS has no Pointer Lock at all): the start
     // button works on a plain tap.
-    if (window.location.search.includes('no-pointer-lock') || isScriptedInputMode() || isTouchInputMode()) return;
+    if (queryFlags.noPointerLock || isScriptedInputMode() || isTouchInputMode()) return;
     // Canvas may already be locked (e.g. PointerLockControls' own lockOnClick
     // handler beat us to it), or detached/swapped (renderer preference change
     // remounts the Canvas with a new key). Guard both to avoid the
