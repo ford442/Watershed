@@ -12,7 +12,7 @@
  *   4. Physics correctness — reference values derived from the C++ formulas.
  */
 
-import { heapF32, MIN_WASM_ABI_VERSION, PARTICLE_SOA_PLANES, type Vec3, type WatershedNativeModule } from './wasmAbi';
+import { heapF32, MIN_WASM_ABI_VERSION, PARTICLE_SOA_PLANES, type WatershedNativeModule } from './wasmAbi';
 import { getWasm, peekWasm } from './wasmLoader';
 import { buoyancyFallback, calculateBuoyancyAndDragFallback, calculateWaterForceFallback, dragForceFallback } from './waterForceFallback';
 import { createWaterForceBatch, createSWEGrid } from './WatershedWasm';
@@ -30,11 +30,12 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 14+, the plain C ABI with the exports the binding table describes', () => {
+  it('requires ABI 15+, the plain C ABI with the exports the binding table describes', () => {
     // ABI 12 replaced Embind with ws_* C exports (#467); ABI 13 added the
-    // terrain tile (#487), ABI 14 lateral routing inflow and the surge event;
-    // the loader binds every table entry, so the floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(14);
+    // terrain tile (#487), ABI 14 lateral routing inflow and the surge event,
+    // ABI 15 dropped the single-body force exports; the loader binds every
+    // table entry, so the floor must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBe(15);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -166,51 +167,6 @@ function buildMockModule(): WatershedNativeModule {
 
     getVersion:  () => 1,
 
-    calculateBuoyancyAndDrag(raftMass, submergedVolume, waterVelocityX, waterVelocityZ) {
-      return calculateBuoyancyAndDragFallback(
-        raftMass,
-        submergedVolume,
-        waterVelocityX,
-        waterVelocityZ,
-      );
-    },
-
-    calculateWaterForce(
-      posX, posY, posZ,
-      velX, velY, velZ,
-      flowDirX, flowDirZ,
-      flowSpeed,
-      waterLevel,
-      raftMass,
-      raftVolume,
-      dragCoefficient,
-      frontalArea,
-      sideArea,
-      timeSeconds,
-      turbulenceStrength,
-      turbulenceFrequency,
-    ) {
-      return calculateWaterForceFallback(
-        {
-          position: { x: posX, y: posY, z: posZ },
-          velocity: { x: velX, y: velY, z: velZ },
-          flowDirection: { x: flowDirX, z: flowDirZ },
-        },
-        {
-          flowSpeed,
-          waterLevel,
-          raftMass,
-          raftVolume,
-          dragCoefficient,
-          frontalArea,
-          sideArea,
-          timeSeconds,
-          turbulenceStrength,
-          turbulenceFrequency,
-        },
-      );
-    },
-
     computeWaterForcesBatch(
       inputPtr,
       outputPtr,
@@ -230,20 +186,16 @@ function buildMockModule(): WatershedNativeModule {
       const output = new Float32Array(buffer, outputPtr, sampleCount * 8);
       for (let i = 0; i < sampleCount; i += 1) {
         const s = i * 8;
-        const result = this.calculateWaterForce(
-          input[s + 0], input[s + 1], input[s + 2],
-          input[s + 3], input[s + 4], input[s + 5],
-          input[s + 6], input[s + 7],
-          flowSpeed,
-          waterLevel,
-          raftMass,
-          raftVolume,
-          dragCoefficient,
-          frontalArea,
-          sideArea,
-          timeSeconds,
-          turbulenceStrength,
-          turbulenceFrequency,
+        const result = calculateWaterForceFallback(
+          {
+            position: { x: input[s + 0], y: input[s + 1], z: input[s + 2] },
+            velocity: { x: input[s + 3], y: input[s + 4], z: input[s + 5] },
+            flowDirection: { x: input[s + 6], z: input[s + 7] },
+          },
+          {
+            flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient,
+            frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency,
+          },
         );
         output[s + 0] = result.forceX;
         output[s + 1] = result.forceY;
@@ -254,24 +206,6 @@ function buildMockModule(): WatershedNativeModule {
         output[s + 6] = result.turbulence;
         output[s + 7] = result.submergedRatio;
       }
-    },
-
-    computeBuoyancy(v, rho, g) { return rho * v * g; },
-
-    computeDragForce(vx, vy, vz, cd, area, density) {
-      const spd = vx*vx + vy*vy + vz*vz;
-      return spd <= 0 ? 0 : 0.5 * density * spd * cd * area;
-    },
-
-    computeFlowForce(vx, vy, vz, fx, fy, fz, spd, _m, sub, cd, area): Vec3 {
-      const rwx = fx*spd - vx;
-      const rwy = fy*spd - vy;
-      const rwz = fz*spd - vz;
-      const sq  = rwx*rwx + rwy*rwy + rwz*rwz;
-      if (sq <= 0) return { x: 0, y: 0, z: 0 };
-      const mag = Math.sqrt(sq);
-      const f   = 0.5 * 1000 * sq * cd * area * Math.min(1, Math.max(0, sub));
-      return { x: f*rwx/mag, y: f*rwy/mag, z: f*rwz/mag };
     },
 
     stepShallowWater(hPtr, uPtr, wPtr, bPtr, w, h, dt, g, dx, H) {
@@ -461,53 +395,6 @@ describe('createWaterForceBatch', () => {
     const view = new Float32Array(mod.HEAPF32.buffer, batch.inputPtr, 8);
     expect([...view]).toEqual([1, 2, 3, 0, 0, 0, 0, -1]);
     batch.dispose();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. Mock module physics — verify computeFlowForce direction
-// ---------------------------------------------------------------------------
-
-describe('mock computeFlowForce', () => {
-  let mod: WatershedNativeModule;
-
-  beforeEach(() => {
-    mod = buildMockModule();
-  });
-
-  it('returns zero force when object moves with the current', () => {
-    // Object moving exactly at flow speed → relative velocity = 0
-    const force = mod.computeFlowForce(
-      0, 0, -2,   // object vel = (0, 0, -2)
-      0, 0, -1,   // flow dir  = (0, 0, -1) (normalised)
-      2,          // flowSpeed = 2 m/s
-      80, 1.0, 0.47, 1.0
-    );
-    expect(force.x).toBeCloseTo(0, 5);
-    expect(force.y).toBeCloseTo(0, 5);
-    expect(force.z).toBeCloseTo(0, 5);
-  });
-
-  it('returns zero force when submergedRatio = 0', () => {
-    const force = mod.computeFlowForce(
-      0, 0, 0,
-      0, 0, -1,
-      2, 80, 0.0, 0.47, 1.0
-    );
-    expect(force.x).toBeCloseTo(0, 5);
-    expect(force.y).toBeCloseTo(0, 5);
-    expect(force.z).toBeCloseTo(0, 5);
-  });
-
-  it('returns downstream force when object is stationary', () => {
-    // flow in -Z, object stationary → force should push in -Z direction
-    const force = mod.computeFlowForce(
-      0, 0, 0,    // object vel
-      0, 0, -1,   // flow dir
-      2,          // flow speed
-      80, 1.0, 0.47, 1.0
-    );
-    expect(force.z).toBeLessThan(0); // pushed downstream (−Z)
   });
 });
 

@@ -129,24 +129,14 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
     expect(wasm.getVersion()).toBeGreaterThanOrEqual(6);
   });
 
-  it('agrees with the TS fallback on every fixture (single-sample call)', () => {
+  it('agrees with the TS fallback on every fixture (one-sample batch, its own config)', () => {
     for (const fixture of WATER_FORCE_FIXTURES) {
       const { sample, config } = fixture;
-      const native = wasm.calculateWaterForce(
-        sample.position.x, sample.position.y, sample.position.z,
-        sample.velocity.x, sample.velocity.y, sample.velocity.z,
-        sample.flowDirection.x, sample.flowDirection.z,
-        config.flowSpeed,
-        config.waterLevel,
-        config.raftMass,
-        config.raftVolume,
-        config.dragCoefficient,
-        config.frontalArea,
-        config.sideArea,
-        config.timeSeconds,
-        config.turbulenceStrength,
-        config.turbulenceFrequency,
-      );
+      const one = createWaterForceBatch(wasm, 1);
+      one.setSample(0, sample);
+      one.compute(config);
+      const native = one.readResult(0);
+      one.dispose();
       const fallback = calculateWaterForceFallback(sample, config);
       for (const key of RESULT_KEYS) {
         expectClose(native[key], fallback[key], `${fixture.name}.${key}`);
@@ -154,7 +144,7 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
     }
   });
 
-  it('batched results match the single-sample path', () => {
+  it('a many-sample batch under one config matches the fallback per sample', () => {
     // All fixtures sharing one config so a single batch call covers them.
     const config = WATER_FORCE_FIXTURES[0].config;
     const batch = createWaterForceBatch(wasm, WATER_FORCE_FIXTURES.length);

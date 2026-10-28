@@ -41,18 +41,13 @@ try {
 
 // Plain C ABI (#467): every export is Module._ws_<name>. This script stays
 // independent of src/systems/water/wasmAbi.ts on purpose — it is the raw
-// binary's check — so it binds by name here, and reads the three out-pointer
-// results through a scratch block the same way.
-if (typeof raw?._ws_getVersion !== 'function' || typeof raw?._ws_calculateWaterForce !== 'function') {
-  throw new Error('createWatershedNative() resolved without the _ws_* C exports (getVersion / calculateWaterForce)');
+// binary's check — so it binds by name here, and reads the out-pointer result
+// through a scratch block the same way.
+if (typeof raw?._ws_getVersion !== 'function' || typeof raw?._ws_computeWaterForcesBatch !== 'function') {
+  throw new Error('createWatershedNative() resolved without the _ws_* C exports (getVersion / computeWaterForcesBatch)');
 }
 const outPtr = raw._ws_allocateGrid(8);
 const OUT_READERS = {
-  calculateWaterForce: (f, i) => ({
-    forceX: f[i], forceY: f[i + 1], forceZ: f[i + 2], buoyancy: f[i + 3],
-    drag: f[i + 4], flow: f[i + 5], turbulence: f[i + 6], submergedRatio: f[i + 7],
-  }),
-  computeFlowForce: (f, i) => ({ x: f[i], y: f[i + 1], z: f[i + 2] }),
   routedEdgeState: (f, i) => ({ eta: f[i], speed: f[i + 1] }),
 };
 const U32_RESULTS = new Set(['initWaterfallParticles', 'stepWaterfallParticles']);
@@ -72,18 +67,32 @@ const wasm = new Proxy(raw, {
   },
 });
 
-const buoyancy = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
-
-if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
-  throw new Error(`Unexpected calculateBuoyancyAndDrag(): ${buoyancy}`);
+// One body through the batch: host_smoke.cpp's fixture 0 ("raft fully
+// submerged, straight downstream flow"), the same numbers at 1e-3 relative.
+const forceIn = wasm.allocateGrid(8);
+const forceOut = wasm.allocateGrid(8);
+wasm.HEAPF32.set([0, 0.2, -10, 0.2, 0, -1.4, 0, -1], forceIn >> 2);
+wasm.computeWaterForcesBatch(forceIn, forceOut, 1, 4.5, 0.5, 150, 1.2, 0.47, 1.05, 0.7, 12.5, 0, 2.4);
+const force = wasm.HEAPF32.subarray(forceOut >> 2, (forceOut >> 2) + 8);
+for (const [i, want, label] of [[1, 11253.1309, 'forceY'], [3, 11767.98, 'buoyancy'], [7, 1, 'submergedRatio']]) {
+  if (!(Math.abs(force[i] - want) <= Math.max(Math.abs(want) * 1e-3, 1e-4))) {
+    throw new Error(`computeWaterForcesBatch fixture ${label}: expected ${want}, got ${force[i]}`);
+  }
 }
+const buoyancy = force[3];
+wasm.freeGrid(forceIn);
+wasm.freeGrid(forceOut);
 
 const version = wasm.getVersion();
-// ABI 12 is the plain C ABI (#467), 13 adds the terrain tile (#487) and 14
-// lateral routing inflow + the surge event; the TypeScript binding table
-// requires every export, so this floor is what catches a stale committed pair.
-if (!Number.isInteger(version) || version < 14) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 14)`);
+// ABI 12 is the plain C ABI (#467), 13 adds the terrain tile (#487), 14
+// lateral routing inflow + the surge event, and 15 drops the single-body force
+// exports; the TypeScript binding table requires every export, so this floor
+// is what catches a stale committed pair.
+if (!Number.isInteger(version) || version < 15) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 15)`);
+}
+for (const gone of ['calculateBuoyancyAndDrag', 'calculateWaterForce', 'computeBuoyancy', 'computeDragForce', 'computeFlowForce']) {
+  if (typeof raw[`_ws_${gone}`] === 'function') throw new Error(`ABI 15 removed _ws_${gone}, but the binary exports it`);
 }
 
 if (typeof wasm.applySWEEvent !== 'function') {
@@ -119,11 +128,6 @@ if (version >= 7) {
     }
   }
   wasm.freeParticleSoA(ptr);
-}
-
-const archimedes = wasm.computeBuoyancy(1, 1000, 9.80665);
-if (!Number.isFinite(archimedes) || Math.abs(archimedes - 9806.65) > 0.1) {
-  throw new Error(`Unexpected computeBuoyancy(): ${archimedes}`);
 }
 
 if (typeof wasm.reduceF32Grid === 'function') {

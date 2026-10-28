@@ -293,7 +293,7 @@ byte for byte like the pair), and Vite copies it into `build-sourcemaps/` as
 
 ```bash
 node scripts/wasm-symbolicate.mjs '<stack from a field report>'   # rewrites wasm-function[N]
-node scripts/wasm-symbolicate.mjs 37                              # → ws_stepShallowWater
+node scripts/wasm-symbolicate.mjs 39                              # → ws_stepShallowWater
 ```
 
 At runtime `wasmTrap.ts` names the innermost wasm frame (symbol map, else the engine's own
@@ -370,8 +370,10 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 11 | `reserveShallowWaterScratch(width, height)` — pre-size the solver scratch (step, upstream-edge ghosts, scroll temp) so a step never allocates mid-call. Additive; `MIN_WASM_ABI_VERSION` stays 8. Same release: glue built for `web,worker`, emmalloc, `FILESYSTEM=0`, 16 MiB heap (#454). |
 | 12 | **Breaking (#467).** Plain C ABI: Embind and `--bind` are gone; every export is `extern "C" ws_<name>`. `calculateWaterForce` / `computeFlowForce` / `routedEdgeState` take a trailing out-pointer (8 / 3 / 2 floats). The duplicate `calculateBuoyancyAndDrag` C export is gone. `MIN_WASM_ABI_VERSION` moves to 12 — the binding table cannot drive an Embind binary — and every export is required (the exact stamp check already guaranteed it). |
 | 13 | Terrain tiles (#487): `buildTerrainTile`, `buildWallShell`. Additive in shape, but `MIN_WASM_ABI_VERSION` moves to 13 with it — `bindNativeModule` requires every `WASM_ABI` entry, so an ABI 12 binary is rejected at bind anyway. |
+| 14 | Weather on the river: `routeReachLateral` (lateral inflow per segment) and `applySWEEvent` kind 4 (surge front). Additive; `MIN_WASM_ABI_VERSION` moves to 14 for the same bind-every-entry reason. |
+| 15 | **Breaking.** The single-body force exports are gone: `calculateBuoyancyAndDrag`, `calculateWaterForce`, `computeBuoyancy`, `computeDragForce`, `computeFlowForce` had no game caller left — the sim worker and the main thread both go through `computeWaterForcesBatch`, whose per-sample math is forces.cpp's `calculateWaterForce` (still the function the host smoke and the fuzzer drive). `routedEdgeState` is the one out-pointer result left. `MIN_WASM_ABI_VERSION` moves to 15. |
 
-TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 13).
+TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 15).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
 binary cannot be called with the new argument list at all, so the floor moves with
 it and a stale binary is rejected at load. Chore kernels live in
@@ -404,48 +406,29 @@ Add the `.cpp` to `COMPUTE_SOURCES` in `CMakeLists.txt` (the source of truth;
 `WatershedNativeModule` interface in `wasmAbi.ts`, and bump `ws_getVersion()`.
 Never put compile or link flags in a shell script.
 
-### `computeBuoyancy(submergedVolume, waterDensity, gravity): number`
+### `computeWaterForcesBatch(inputPtr, outputPtr, sampleCount, flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient, frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency): void`
 
-Archimedes' principle: **F_b = ρ × V × g**
+The water-force export (single-body forms removed in ABI 15). `sampleCount` bodies
+share one config; each sample is 8 input floats and 8 output floats
+(`WATER_FORCE_INPUT_STRIDE` / `WATER_FORCE_OUTPUT_STRIDE`):
 
-| Param | Unit | Notes |
-|-------|------|-------|
-| `submergedVolume` | m³ | Volume below waterline |
-| `waterDensity` | kg/m³ | Fresh water = 1000 |
-| `gravity` | m/s² | Use 9.80665 |
+| | Floats |
+|---|---|
+| input | `posX posY posZ velX velY velZ flowDirX flowDirZ` |
+| output | `forceX forceY forceZ buoyancy drag flow turbulence submergedRatio` (N; ratio 0–1) |
 
-Returns upward force in **N**.
-
-### `computeDragForce(vx, vy, vz, cd, area, density): number`
-
-Viscous drag: **F_d = ½ · ρ · \|v\|² · C_d · A**
-
-| Param | Unit | Notes |
-|-------|------|-------|
-| `vx, vy, vz` | m/s | Object velocity |
-| `cd` | — | Drag coefficient (raft ≈ 0.47) |
-| `area` | m² | Cross-sectional area |
-| `density` | kg/m³ | Fluid density |
-
-Returns drag magnitude in **N**.
-
-### `computeFlowForce(vx,vy,vz, fx,fy,fz, flowSpeed, mass, submergedRatio, cd, area): Vec3`
-
-Calculates the river-current force on a partially-submerged object using
-relative-velocity drag.  Apply the result as a Rapier impulse:
+Per sample: Archimedes buoyancy **F_b = ρ · V_displaced · g** on the submerged
+fraction, relative-velocity current drag along the flow, velocity drag
+**½ · ρ · \|v\|² · C_d · A**, and turbulence. Apply the result as a Rapier impulse.
+`createWaterForceBatch(wasm, n)` (`WatershedWasm.ts`) owns the two blocks:
 
 ```typescript
-const wasm  = await getWasm();
-const force = wasm.computeFlowForce(
-  vel.x, vel.y, vel.z,   // object velocity (m/s)
-  dir.x, dir.y, dir.z,   // current direction (normalised)
-  2.5,                   // flow speed (m/s)
-  80,                    // raft mass (kg)
-  submergedRatio,        // 0–1
-  0.47,                  // C_d
-  1.5,                   // area m²
-);
-rigidBody.applyImpulse({ x: force.x, y: force.y, z: force.z }, true);
+const batch = createWaterForceBatch(wasm, 1);
+batch.setSample(0, { position: pos, velocity: vel, flowDirection: { x: 0, z: -1 } });
+batch.compute(config);                     // NativeWaterForceConfig
+const force = batch.readResult(0);         // NativeWaterForceResult
+rigidBody.applyImpulse({ x: force.forceX * dt, y: force.forceY * dt, z: force.forceZ * dt }, true);
+batch.dispose();
 ```
 
 ### `stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H): void`
@@ -506,7 +489,7 @@ useFrame((_, delta) => {
     delta, 9.8, grid.dx, 1.0   // H=1 m still-water depth
   );
   // Read grid.h for mesh displacement. Feed grid.u / grid.w through
-  // sampleSWEFlow into calculateWaterForce (dry cells: speed 0).
+  // sampleSWEFlow into the force batch (dry cells: speed 0).
 });
 
 // On unmount:
@@ -666,12 +649,6 @@ import { sampleSWEFlow } from './systems/water/sampleSWEFlow';
 // In a React component or game-init function:
 const wasm = await getWasm();
 
-// Buoyancy calculation
-const upForce = wasm.computeBuoyancy(0.9, 1000, 9.8); // 8820 N
-
-// Drag calculation
-const drag = wasm.computeDragForce(3, 0, 0, 0.47, 1.5, 1000); // ~3157 N
-
 // SWE grid — always pass bPtr (ABI 6). Dry banks are H + η − b ≤ SWE_DRY_DEPTH.
 const grid = createSWEGrid(wasm, 32, 32, 0.5);
 wasm.stepShallowWater(
@@ -687,10 +664,8 @@ const flow = sampleSWEFlow({
   grid: { ...grid, cellSize: grid.dx, originX, originZ },
   enabled: true,
 });
-const force = wasm.calculateWaterForce(
-  pos.x, pos.y, pos.z, vel.x, vel.y, vel.z,
-  flow.dirX, flow.dirZ, flow.speed, /* waterLevel, mass, … */
-);
+batch.setSample(0, { position: pos, velocity: vel, flowDirection: { x: flow.dirX, z: flow.dirZ } });
+const force = batch.compute({ ...config, flowSpeed: flow.speed });  // createWaterForceBatch(wasm, 1)
 
 grid.dispose();
 ```

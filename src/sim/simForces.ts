@@ -10,7 +10,7 @@
  *
  * Wire format — Float64, so a position reaches `sampleSWEFlow` with the bits the
  * caller had (the native input is float32; rounding happens only where the
- * main-thread `calculateWaterForce` rounds too, at the WASM boundary):
+ * main-thread batch rounds too, at the WASM boundary):
  *
  *   sample (FORCE_SAMPLE_STRIDE): px py pz | vx vy vz | flowSpeed flowScale
  *     waterLevel | raftMass raftVolume dragCoefficient frontalArea sideArea |
@@ -26,9 +26,9 @@
  * `computeWaterForcesBatch` takes ONE config per call, but every body has its
  * own SWE-sampled speed and stage, so the worker batches runs of consecutive
  * samples whose configs are equal at float32 (what the ABI sees). Each run is
- * one native call; the per-sample math is `calculateWaterForce` either way
- * (forces.cpp), so the result is bit-identical to one `calculateWaterForce` per
- * body on the main thread. Folding speed/stage into one call for all bodies
+ * one native call; the per-sample math is forces.cpp's `calculateWaterForce`
+ * either way, so the result is bit-identical to a one-body batch per body on
+ * the main thread. Folding speed/stage into one call for all bodies
  * would need a per-sample-config export (an ABI bump) — out of scope here.
  *
  * This module is imported by the Rapier worker and the main thread for the wire

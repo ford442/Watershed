@@ -713,7 +713,7 @@ whose configs are equal at float32 — the ABI takes one config per call, and ea
 own sampled speed and stage; one call for all bodies needs a per-sample-config export (ABI
 bump). Results come back in the request's buffer and are applied at the top of the next frame,
 with the sampling frame's dt, to bodies still registered (`simForceRequests.ts`). Bit-identical
-to a direct `calculateWaterForce` loop over the same field (integration test). The
+to a one-body-batch-per-body loop on the main thread over the same field (integration test). The
 Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, see Physics
 Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
 never pairs the new index frame with the old origin.
@@ -735,7 +735,7 @@ as before. Worker meshes match the main-thread build within 1e-4 (2e-3 for norma
 `terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
 the main thread (`useWorkerStaticCollider`): the main world needs it anyway, and it is ~10 KB.
 
-**Main thread on `wasm-worker`, steady state:** no `calculateWaterForce`, `routeReach*`,
+**Main thread on `wasm-worker`, steady state:** no `computeWaterForcesBatch`, `routeReach*`,
 `routedEdgeState`, `stepShallowWater*`, `applySWEEvent` or `scrollShallowWater` calls
 (`WaterForceSystem.simWorker.test.tsx` spies on every one). Its module still serves gpu-chores
 and particles until Phase C. **Instances per session on WebGL2: two** (main + sim worker).
@@ -938,8 +938,8 @@ import { getWasm } from '../systems/water/WatershedWasm';
 // Call once (e.g., in a useEffect or game-init hook):
 const wasm = await getWasm();
 
-// Then use:
-const upForce = wasm.computeBuoyancy(submergedVolume, 1000, 9.80665);
+// Then use (forces go through the batch; ABI 15 has no single-body export):
+const batch = createWaterForceBatch(wasm, 1);
 ```
 
 `getWasm()` returns a `Promise<WatershedNativeModule>`. Subsequent calls return the

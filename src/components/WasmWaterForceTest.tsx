@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { CuboidCollider, RigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../constants/game';
-import type { NativeWaterForceConfig, NativeWaterForceResult, WatershedNativeModule } from '../systems/water/wasmAbi';
+import type { NativeWaterForceConfig, NativeWaterForceResult } from '../systems/water/wasmAbi';
+import { createWaterForceBatch, type NativeWaterForceBatch } from '../systems/water/WatershedWasm';
 import { getWasm } from '../systems/water/wasmLoader';
 import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 
@@ -22,7 +23,8 @@ const TEST_CONFIG: NativeWaterForceConfig = {
 
 const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
-  const wasmRef = useRef<WatershedNativeModule | null>(null);
+  // One-sample batch: the native force path the game uses (ABI 15 has no single-body export).
+  const batchRef = useRef<NativeWaterForceBatch | null>(null);
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
   const lastForceRef = useRef<NativeWaterForceResult | null>(null);
   const loggedRef = useRef(false);
@@ -35,7 +37,7 @@ const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
     getWasm()
       .then((wasm) => {
         if (cancelled) return;
-        wasmRef.current = wasm;
+        batchRef.current = createWaterForceBatch(wasm, 1);
         statusRef.current = 'ready';
       })
       .catch((error) => {
@@ -46,6 +48,8 @@ const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
 
     return () => {
       cancelled = true;
+      batchRef.current?.dispose();
+      batchRef.current = null;
     };
   }, []);
 
@@ -60,30 +64,16 @@ const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
       timeSeconds: state.clock.elapsedTime,
     };
 
-    const force = wasmRef.current
-      ? wasmRef.current.calculateWaterForce(
-          pos.x, pos.y, pos.z,
-          vel.x, vel.y, vel.z,
-          0, -1,
-          config.flowSpeed,
-          config.waterLevel,
-          config.raftMass,
-          config.raftVolume,
-          config.dragCoefficient,
-          config.frontalArea,
-          config.sideArea,
-          config.timeSeconds,
-          config.turbulenceStrength,
-          config.turbulenceFrequency,
-        )
-      : calculateWaterForceFallback(
-          {
-            position: pos,
-            velocity: vel,
-            flowDirection: { x: 0, z: -1 },
-          },
-          config,
-        );
+    const sample = { position: pos, velocity: vel, flowDirection: { x: 0, z: -1 } };
+    const batch = batchRef.current;
+    let force: NativeWaterForceResult;
+    if (batch) {
+      batch.setSample(0, sample);
+      batch.compute(config);
+      force = batch.readResult(0);
+    } else {
+      force = calculateWaterForceFallback(sample, config);
+    }
 
     lastForceRef.current = force;
     body.applyImpulse({

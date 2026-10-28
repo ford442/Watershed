@@ -67,10 +67,6 @@ struct Vec2 {
     float x = 0.f, z = 0.f;
 };
 
-/** 3-component float vector (returned by computeFlowForce). */
-struct Vec3 {
-    float x = 0.f, y = 0.f, z = 0.f;
-};
 
 // ---------------------------------------------------------------------------
 // Math helpers

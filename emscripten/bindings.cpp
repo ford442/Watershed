@@ -10,9 +10,8 @@
  * Plain C ABI since 12 (#467): no Embind, so no RTTI in this TU, no
  * `new Function` invokers in the glue, and no glue/wasm coupling beyond the
  * import/export names. Only scalars and heap byte offsets cross the boundary.
- * The three results that used to be Embind value objects (WaterForceResult,
- * Vec3, RoutedEdge) are written through an out-pointer into a caller-reserved
- * scratch block instead.
+ * The one struct result (RoutedEdge; WaterForceResult and Vec3 too until ABI
+ * 15) is written through an out-pointer into a caller-reserved scratch block.
  *
  * This is the only translation unit that includes <emscripten/emscripten.h> —
  * every other header (common.h, forces.h, swe.h, chores.h, particles.h,
@@ -69,14 +68,15 @@
 //  14 — weather on the river: routeReachLateral (lateral inflow per segment),
 //       applySWEEvent kind 4 (surge front). Additive; MIN moves to 14 for the
 //       same bind-every-entry reason as 13.
+//  15 — BREAKING: the single-body force exports are gone —
+//       calculateBuoyancyAndDrag, calculateWaterForce, computeBuoyancy,
+//       computeDragForce, computeFlowForce had no game caller left (the sim
+//       worker and the main thread both use computeWaterForcesBatch, whose
+//       per-sample math is calculateWaterForce). MIN moves to 15.
 // ---------------------------------------------------------------------------
-static constexpr int WATERSHED_ABI_VERSION = 14;
+static constexpr int WATERSHED_ABI_VERSION = 15;
 
-// Out-pointer layouts. Mirrored by the readers in wasmAbi.ts.
-static_assert(std::is_standard_layout_v<WaterForceResult> && sizeof(WaterForceResult) == 8 * sizeof(float),
-              "WaterForceResult is written as 8 packed floats");
-static_assert(std::is_standard_layout_v<Vec3> && sizeof(Vec3) == 3 * sizeof(float),
-              "Vec3 is written as 3 packed floats");
+// Out-pointer layout. Mirrored by the reader in wasmAbi.ts.
 static_assert(std::is_standard_layout_v<RoutedEdge> && sizeof(RoutedEdge) == 2 * sizeof(float),
               "RoutedEdge is written as 2 packed floats");
 
@@ -97,28 +97,6 @@ WS_EXPORT int ws_getVersion() noexcept {
 
 // ---- Water forces ---------------------------------------------------------
 
-WS_EXPORT float ws_calculateBuoyancyAndDrag(float raftMass, float submergedVolume,
-                                            float waterVelocityX, float waterVelocityZ) noexcept {
-    return calculateBuoyancyAndDrag(raftMass, submergedVolume, waterVelocityX, waterVelocityZ);
-}
-
-/** Writes WaterForceResult (8 floats, forces.h field order) to `outPtr`. */
-WS_EXPORT void ws_calculateWaterForce(float posX, float posY, float posZ,
-                                      float velX, float velY, float velZ,
-                                      float flowDirX, float flowDirZ,
-                                      float flowSpeed, float waterLevel,
-                                      float raftMass, float raftVolume,
-                                      float dragCoefficient, float frontalArea, float sideArea,
-                                      float timeSeconds,
-                                      float turbulenceStrength, float turbulenceFrequency,
-                                      uintptr_t outPtr) noexcept {
-    writeOut(outPtr, calculateWaterForce(posX, posY, posZ, velX, velY, velZ,
-                                         flowDirX, flowDirZ, flowSpeed, waterLevel,
-                                         raftMass, raftVolume, dragCoefficient,
-                                         frontalArea, sideArea, timeSeconds,
-                                         turbulenceStrength, turbulenceFrequency));
-}
-
 WS_EXPORT void ws_computeWaterForcesBatch(uintptr_t inputPtr, uintptr_t outputPtr, int sampleCount,
                                           float flowSpeed, float waterLevel,
                                           float raftMass, float raftVolume,
@@ -128,24 +106,6 @@ WS_EXPORT void ws_computeWaterForcesBatch(uintptr_t inputPtr, uintptr_t outputPt
     computeWaterForcesBatch(inputPtr, outputPtr, sampleCount, flowSpeed, waterLevel,
                             raftMass, raftVolume, dragCoefficient, frontalArea, sideArea,
                             timeSeconds, turbulenceStrength, turbulenceFrequency);
-}
-
-WS_EXPORT float ws_computeBuoyancy(float submergedVolume, float waterDensity, float gravity) noexcept {
-    return computeBuoyancy(submergedVolume, waterDensity, gravity);
-}
-
-WS_EXPORT float ws_computeDragForce(float vx, float vy, float vz,
-                                    float cd, float area, float density) noexcept {
-    return computeDragForce(vx, vy, vz, cd, area, density);
-}
-
-/** Writes Vec3 (3 floats) to `outPtr`. */
-WS_EXPORT void ws_computeFlowForce(float vx, float vy, float vz,
-                                   float fx, float fy, float fz,
-                                   float flowSpeed, float mass, float submergedRatio,
-                                   float cd, float area, uintptr_t outPtr) noexcept {
-    writeOut(outPtr, computeFlowForce(vx, vy, vz, fx, fy, fz, flowSpeed, mass,
-                                      submergedRatio, cd, area));
 }
 
 // ---- Shallow water --------------------------------------------------------

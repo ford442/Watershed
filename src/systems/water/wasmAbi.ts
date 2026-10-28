@@ -6,8 +6,8 @@
  * is the one table that lists them: `bindNativeModule` binds every entry onto
  * a `WatershedNativeModule`, and the integration tests assert every entry
  * exists in the binary with the declared arity. Scalar exports are bound
- * directly (no cwrap, no wrapper closure). The three results that used to be
- * Embind value objects take a trailing out-pointer; the binding passes a
+ * directly (no cwrap, no wrapper closure). The one struct result
+ * (routedEdgeState) takes a trailing out-pointer; the binding passes a
  * scratch block reserved once per module and reads it back into an object.
  *
  * Changing a signature means: bindings.cpp, this table, the interface below,
@@ -18,7 +18,7 @@
 // Value types
 // ---------------------------------------------------------------------------
 
-/** 3-component float vector returned by computeFlowForce. */
+/** 3-component float vector (a force sample's position / velocity). */
 export interface Vec3 {
   x: number;
   y: number;
@@ -68,15 +68,15 @@ export interface RoutedEdge {
 // ---------------------------------------------------------------------------
 
 /** ABI this table describes — ws_getVersion() in bindings.cpp. */
-export const WASM_ABI_VERSION = 14;
+export const WASM_ABI_VERSION = 15;
 
 /**
  * Minimum ABI accepted. ABI 12 replaced Embind with the C ABI, so nothing
- * older can be bound at all; ABI 13 (#487) added the terrain exports and ABI
- * 14 lateral routing inflow, and bindNativeModule requires every table entry,
- * so the floor is the table's own version.
+ * older can be bound at all; ABI 13 (#487) added the terrain exports, ABI 14
+ * lateral routing inflow, and ABI 15 removed the single-body force exports.
+ * bindNativeModule binds exactly the table, so the floor is its own version.
  */
-export const MIN_WASM_ABI_VERSION = 14;
+export const MIN_WASM_ABI_VERSION = 15;
 
 /** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in common.h. */
 export const WATER_FORCE_INPUT_STRIDE = 8;
@@ -114,31 +114,10 @@ export interface WatershedNativeModule {
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
 
-  /** ABI version (12: plain C ABI; 13: terrain tiles). */
+  /** ABI version (12: plain C ABI; 13: terrain tiles; 15: no single-body force exports). */
   getVersion(): number;
 
   // ---- Water forces ----
-  calculateBuoyancyAndDrag(
-    raftMass: number, submergedVolume: number,
-    waterVelocityX: number, waterVelocityZ: number,
-  ): number;
-
-  calculateWaterForce(
-    posX: number, posY: number, posZ: number,
-    velX: number, velY: number, velZ: number,
-    flowDirX: number, flowDirZ: number,
-    flowSpeed: number,
-    waterLevel: number,
-    raftMass: number,
-    raftVolume: number,
-    dragCoefficient: number,
-    frontalArea: number,
-    sideArea: number,
-    timeSeconds: number,
-    turbulenceStrength: number,
-    turbulenceFrequency: number,
-  ): NativeWaterForceResult;
-
   /**
    * Batch ABI.
    *   input  stride 8: [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
@@ -152,20 +131,6 @@ export interface WatershedNativeModule {
     timeSeconds: number,
     turbulenceStrength: number, turbulenceFrequency: number,
   ): void;
-
-  /** Archimedes buoyancy F_b = ρ · V · g (N). */
-  computeBuoyancy(submergedVolume: number, waterDensity: number, gravity: number): number;
-
-  /** Drag magnitude F_d = ½ · ρ · |v|² · C_d · A (N). */
-  computeDragForce(vx: number, vy: number, vz: number, cd: number, area: number, density: number): number;
-
-  /** River-current force on a partially submerged object (N). */
-  computeFlowForce(
-    vx: number, vy: number, vz: number,
-    fx: number, fy: number, fz: number,
-    flowSpeed: number, mass: number, submergedRatio: number,
-    cd: number, area: number,
-  ): Vec3;
 
   // ---- Shallow water ----
   /** Advance the nonlinear SWE grid one CFL-clamped step. `bPtr` 0 = flat bed. */
@@ -295,23 +260,12 @@ export interface WasmAbiEntry {
   readonly out?: { readonly floats: number; readonly read: OutReader };
 }
 
-const readWaterForce: OutReader = (f, i) => ({
-  forceX: f[i], forceY: f[i + 1], forceZ: f[i + 2],
-  buoyancy: f[i + 3], drag: f[i + 4], flow: f[i + 5],
-  turbulence: f[i + 6], submergedRatio: f[i + 7],
-} satisfies NativeWaterForceResult);
-const readVec3: OutReader = (f, i) => ({ x: f[i], y: f[i + 1], z: f[i + 2] } satisfies Vec3);
 const readRoutedEdge: OutReader = (f, i) => ({ eta: f[i], speed: f[i + 1] } satisfies RoutedEdge);
 
 /** Every export of the module, keyed by its TS name; the C symbol is `ws_<name>`. */
 export const WASM_ABI = {
   getVersion: { arity: 0 },
-  calculateBuoyancyAndDrag: { arity: 4 },
-  calculateWaterForce: { arity: 19, out: { floats: 8, read: readWaterForce } },
   computeWaterForcesBatch: { arity: 13 },
-  computeBuoyancy: { arity: 3 },
-  computeDragForce: { arity: 6 },
-  computeFlowForce: { arity: 12, out: { floats: 3, read: readVec3 } },
   stepShallowWater: { arity: 10 },
   stepShallowWaterInflow: { arity: 11 },
   applySWEEvent: { arity: 16 },
