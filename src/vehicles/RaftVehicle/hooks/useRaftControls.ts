@@ -3,11 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { useGameStore } from '../../../systems/GameState';
-import {
-  MATERIAL_FROM_BIOME,
-  SurfaceMaterial,
-  type RaftVehicle as RaftVehicleClass,
-} from '../../../systems/vehicle/VehicleSystem';
+import type { RaftVehicle as RaftVehicleClass } from '../../../systems/vehicle/VehicleSystem';
+import { getActiveGameplayProfile } from '../../../systems/gameplay/activeGameplayProfile';
 import {
   SHED, COLLISION, BIAS,
   type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
@@ -129,7 +126,7 @@ export function useRaftControls({
     // Survival (wetness / core temp) ticks before stamina so this frame's paddle
     // economy already reflects it. No run session (free play, editor) → null, and
     // the modifiers stay at 1.
-    const survivalMods = runtime.tickRaftSurvival(body, delta);
+    const survivalMods = runtime.tickRaftSurvival();
     runtime.paddleModifiers.cost = survivalMods?.paddleCostMultiplier ?? 1;
     runtime.paddleModifiers.regen = survivalMods?.paddleRegenMultiplier ?? 1;
 
@@ -253,7 +250,7 @@ export function useRaftControls({
     const impactForce = velocityDelta.length() / delta;
 
     if (impactForce > 6 && submergedRatio < 0.8) {
-      const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
+      const material = getActiveGameplayProfile().surface;
       const contactPoint = _contactPoint.set(pos.x, pos.y - 0.3, pos.z);
 
       raftVehicle.current.processCollision(

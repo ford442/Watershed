@@ -393,8 +393,6 @@ export function updateRunnerPhysics({
     // === SPRINT STAMINA (Zustand-backed, no stale closures) ===
     const { isSprinting, movementMul } = tickSprintStamina({
       dt,
-      posY: pos.y,
-      vel,
       sprint,
       jumpState: js,
       sprintLockedRef,

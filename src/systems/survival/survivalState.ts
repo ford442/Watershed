@@ -4,9 +4,9 @@
  * Run-scoped instance lives in runSession; tick from physics, not Zustand.
  */
 
-import type { BiomeId } from '../../configs/biomes';
 import type { LoadoutDefinition } from './loadout';
 import { clamp01 } from '../../math/scalar';
+import { COLD_AMBIENT_TEMP } from '../gameplay/gameplayProfile';
 
 /** Normalized comfort: 1 = warm/optimal, 0 = hypothermic. */
 export interface SurvivalState {
@@ -14,9 +14,20 @@ export interface SurvivalState {
   coreTemp: number;
 }
 
+/**
+ * The climate survival runs in: the active gameplay profile's cold and wind
+ * fields (#521 B; a `GameplayProfile` satisfies it). Not the biome palette.
+ */
+export interface SurvivalClimate {
+  /** Ambient target core temp, 0–1; below `COLD_AMBIENT_TEMP` the exposure penalties apply. */
+  ambientTemp: number;
+  /** Scale on the wind drying (1 = as tuned). */
+  windDry: number;
+}
+
 export interface SurvivalTickInput {
   dt: number;
-  biomeId: BiomeId;
+  climate: SurvivalClimate;
   /** Player feet/body in or very near water. */
   inWater: boolean;
   /** Horizontal speed (m/s) — drives wind drying. */
@@ -47,23 +58,6 @@ export const SURVIVAL_INITIAL: SurvivalState = {
   coreTemp: 1,
 };
 
-/** Ambient target core temp per biome (0–1). */
-const BIOME_AMBIENT_TEMP: Partial<Record<BiomeId, number>> = {
-  glacier: 0.35,
-  glacialMelt: 0.42,
-  canyonSummer: 0.88,
-  canyonAutumn: 0.78,
-  slotCanyon: 0.82,
-  delta: 0.9,
-  alpineSpring: 0.72,
-  cavern: 0.55,
-  midnightMist: 0.5,
-  lumberFlume: 0.7,
-  hydroDam: 0.65,
-};
-
-const DEFAULT_AMBIENT_TEMP = 0.75;
-
 const WETNESS_GAIN_IN_WATER = 0.55;
 const WETNESS_SPRAY_GAIN = 0.12;
 const WETNESS_DRY_BASE = 0.08;
@@ -89,10 +83,6 @@ function sunDryingFactor(launchHour: number): number {
   return 0.35 + (1 - noonDistance) * 0.65;
 }
 
-export function getBiomeAmbientTemp(biomeId: BiomeId): number {
-  return BIOME_AMBIENT_TEMP[biomeId] ?? DEFAULT_AMBIENT_TEMP;
-}
-
 export function createSurvivalState(): SurvivalState {
   return { ...SURVIVAL_INITIAL };
 }
@@ -103,14 +93,14 @@ export function tickSurvivalState(
   loadout: LoadoutDefinition,
 ): SurvivalState {
   const next: SurvivalState = { ...state };
-  const ambient = getBiomeAmbientTemp(input.biomeId);
+  const ambient = input.climate.ambientTemp;
   const insulatedAmbient = clamp01(ambient + loadout.insulation * 0.25);
 
   if (input.inWater) {
     next.wetness = clamp01(next.wetness + WETNESS_GAIN_IN_WATER * input.dt);
   } else if (next.wetness > 0.05) {
     const dryRate =
-      (WETNESS_DRY_BASE + input.windSpeed * WETNESS_WIND_DRY_SCALE) *
+      (WETNESS_DRY_BASE + input.windSpeed * WETNESS_WIND_DRY_SCALE * input.climate.windDry) *
       sunDryingFactor(input.launchHour);
     next.wetness = clamp01(next.wetness - dryRate * input.dt);
   }
@@ -129,9 +119,9 @@ export function tickSurvivalState(
 
 export function computeExposureStress(
   state: SurvivalState,
-  biomeId: BiomeId,
+  climate: SurvivalClimate,
 ): number {
-  const ambient = getBiomeAmbientTemp(biomeId);
+  const ambient = climate.ambientTemp;
   const coldStress = clamp01((0.55 - state.coreTemp) * 1.4);
   const heatStress = clamp01((state.coreTemp - 0.95) * 2);
   const biomeColdBias = ambient < 0.5 ? (0.5 - ambient) * 0.6 : 0;
@@ -140,11 +130,11 @@ export function computeExposureStress(
 
 export function getSurvivalModifiers(
   state: SurvivalState,
-  biomeId: BiomeId,
+  climate: SurvivalClimate,
   loadout: LoadoutDefinition,
 ): SurvivalModifiers {
-  const exposureStress = computeExposureStress(state, biomeId);
-  const isColdBiome = getBiomeAmbientTemp(biomeId) < 0.5;
+  const exposureStress = computeExposureStress(state, climate);
+  const isColdBiome = climate.ambientTemp < COLD_AMBIENT_TEMP;
 
   let staminaDrainMul = loadout.staminaDrainMultiplier;
   let staminaRegenMul = loadout.staminaRegenMultiplier;

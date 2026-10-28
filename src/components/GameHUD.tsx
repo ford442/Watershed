@@ -185,7 +185,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       }
 
       const survival = getActiveSurvivalState();
-      const mods = getActiveSurvivalModifiers(useGameStore.getState().currentBiome);
+      const mods = getActiveSurvivalModifiers();
       const wetFill = wetnessFillRef.current;
       const exposureFill = exposureFillRef.current;
 

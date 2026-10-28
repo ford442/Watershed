@@ -3,7 +3,8 @@ import { useThree } from '@react-three/fiber';
 import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
 import type { RapierBody } from '../physics/rapierTypes';
 import * as THREE from 'three';
-import { RaftVehicle as RaftVehicleClass, SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
+import { RaftVehicle as RaftVehicleClass, SurfaceMaterial } from '../systems/vehicle/VehicleSystem';
+import { subscribeGameplaySurface } from '../systems/gameplay/activeGameplayProfile';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
@@ -168,8 +169,10 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
-      const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.WATER;
-      raftVehicle.current.setSurfaceMaterial(material);
+    });
+    // Contact friction: the gameplay profile's surface (#521 B) on each change.
+    const offSurface = subscribeGameplaySurface((surface) => {
+      raftVehicle.current.setSurfaceMaterial(surface);
     });
 
     const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
@@ -181,6 +184,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     return () => {
       offBiomeChange();
+      offSurface();
       offSegmentSpawn();
       if (workerSession) {
         workerSession.stop();

@@ -31,6 +31,7 @@ import {
   DEFAULT_SEGMENT_PROGRESSION,
 } from './MapSystem.generation';
 import { WATER_LEVEL } from '../../constants/game';
+import { composeGameplayProfile, type GameplayProfile } from '../gameplay/gameplayProfile';
 
 // Re-export types and generation helpers (public API unchanged).
 export type {
@@ -63,6 +64,17 @@ export {
   INITIAL_TREADMILL_POINTS,
   type BuildProceduralSegmentOptions,
 } from './MapSystem.generation';
+
+/**
+ * A segment's gameplay profile (#521 B): its biome's row in
+ * `BIOME_GAMEPLAY_PROFILES` with the config's `gameplay` override laid over it.
+ * The palette's `flowSpeed` is not read: it is the surface's look, not the current.
+ */
+export function resolveGameplayProfile(
+  config: Pick<SegmentProgressionConfig, 'biome' | 'gameplay'>,
+): Readonly<GameplayProfile> {
+  return composeGameplayProfile(config.biome, config.gameplay);
+}
 
 // =============================================================================
 // PROCEDURAL FALLBACK MAP MANAGER
@@ -463,6 +475,7 @@ export class JSONMapManager implements MapManager {
       hasBridge: seg.hasBridge,
       vortex: seg.vortex,
       safeZone: seg.safeZone,
+      gameplay: seg.gameplay,
     };
   }
 }

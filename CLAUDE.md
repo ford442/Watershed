@@ -360,7 +360,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/rendering/sceneLightPool.tsx` | Fixed scene light count — segment content borrows pooled lights so a mount never recompiles every lit program (#487 B) |
 | `src/utils/lazyModule.ts` / `lazyComponent.ts` | Entry-chunk budget tools: a dynamic import with a sync `get()`, and `React.lazy` + `preload()`; `build-budget.json` gates entry and boot JS |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
-| `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via `useBiome()` |
+| `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via the biome store (`useBiomeStore` / `useBiomeId`) |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |
 | `src/vehicles/RaftVehicle/` | Raft buoyancy / paddle |
 | `src/components/PostProcessingPipeline.tsx` | Live post-processing stack |

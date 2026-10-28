@@ -37,8 +37,8 @@ import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import { setSWEActiveBudget, updateSWEHeightFieldSnapshot, clearSWEHeightField } from './SWEHeightField';
 import { sweBudgetForQuality } from './sweQuality';
 import { clearSWEBedSnapshot } from './sweBedDebug';
-import { useGameStore, useQualityPreset } from '../GameState';
-import { getBiomePalette } from '../../configs/BiomePalettes';
+import { useQualityPreset } from '../GameState';
+import { getActiveGameplayProfile } from '../gameplay/activeGameplayProfile';
 import {
   collectWaterForceBodies,
   registerVehicleWaterBody,
@@ -64,10 +64,10 @@ interface WaterForceSystemProps {
   vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
   vehicleType?: VehicleType;
   /**
-   * Flow cap override. Unset: the target biome's palette flowSpeed, read per
-   * frame from the store (set synchronously by BiomeProvider.setBiome), never
-   * the cross-fading palette — the current pushing the hull must not depend
-   * on how far a wall-clock-or-render-paced lerp has got. Per-segment split: #521.
+   * Flow cap override. Unset: the active gameplay profile's `flowCap` (the
+   * segment under the player, blended in sim time by the SimCore
+   * `gameplay-profile` system, #521 B). Never a biome palette: colour grading
+   * does not push the hull.
    */
   flowSpeed?: number;
   waterLevel?: number;
@@ -343,7 +343,7 @@ export function WaterForceSystem({
     // force path (main, sim worker, Rapier worker), more drag where the config
     // is built here. Identity for any other weather.
     const hull = weatherHullScale(getActiveWeather());
-    const baseFlowSpeed = flowSpeed ?? getBiomePalette(useGameStore.getState().currentBiome).flowSpeed;
+    const baseFlowSpeed = flowSpeed ?? getActiveGameplayProfile().flowCap;
     const hullFlowSpeed = baseFlowSpeed * hull.flowCapScale;
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
 

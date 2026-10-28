@@ -4,7 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider, type RapierRigidBody } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import * as THREE from 'three';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
+import { getActiveGameplayProfile, subscribeGameplaySurface } from '../systems/gameplay/activeGameplayProfile';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
@@ -52,15 +52,16 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
   useEffect(() => {
     if (bodyRef.current) {
       vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
-      // Set initial material
-      vehicle.current.setSurfaceMaterial(SurfaceMaterial.ROCK);
+      vehicle.current.setSurfaceMaterial(getActiveGameplayProfile().surface);
     }
-    
-    // Listen for biome changes
+
+    // Footstep timbre follows the biome (audio); contact friction follows the
+    // gameplay profile's surface (#521 B), set above and on each change.
     const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
-      const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.ROCK;
-      vehicle.current.setSurfaceMaterial(material);
+    });
+    const offSurface = subscribeGameplaySurface((surface) => {
+      vehicle.current.setSurfaceMaterial(surface);
     });
 
     const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
@@ -72,6 +73,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
     return () => {
       offBiomeChange();
+      offSurface();
       offSegmentSpawn();
     };
   }, []);

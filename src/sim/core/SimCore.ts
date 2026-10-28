@@ -21,8 +21,8 @@
  * code.
  *
  * Order bands (leave gaps; a new system picks the band, not a number in use):
- *   10 weather · 20 sky clock · 30 chunk/biome · 40 survival · 50 pillars ·
- *   60 gameplay profile (#521 B) · 90 scoring / splits / ghost.
+ *   10 weather · 20 sky clock · 30 chunk/biome · 35 gameplay profile (#521 B) ·
+ *   40 survival · 50 pillars · 90 scoring / splits / ghost.
  */
 
 import { createRng, type Rng } from '../../math/random';

@@ -36,7 +36,7 @@ WaterReflection (LOD high/ultra) ──> WebGLRenderTarget ──> waterReflecti
       <BiomeTransition />
       <InnerExperience>
         {/* visualization */}
-        <EnhancedSky />                         // reads useBiome() — no biome props
+        <EnhancedSky />                         // reads the biome store — no biome props
         <SceneLighting … />
         <WaterReflectionLayer … />              // WaterStack.tsx (outside Physics)
 
@@ -44,7 +44,7 @@ WaterReflection (LOD high/ultra) ──> WebGLRenderTarget ──> waterReflecti
           <VehicleMount … />                    // RunnerVehicle | RaftVehicle
           <WaterPhysicsEffects … />             // WaterStack.tsx
             <WaterForceSystem … />
-            <SplashSystem playerRef={vehicleRef} isRaft={…} flowSpeed={…} />
+            <SplashSystem playerRef={vehicleRef} isRaft={…} />  // palette foam/flow via useBiomeSelector
           <TrackManager | ReachManager | LevelLoader … />
         </Physics>
 
@@ -229,36 +229,38 @@ continuity from the previous segment.
 
 ### `src/systems/biome/BiomeSystem.tsx`
 
-**Purpose:** Manages biome state and interpolates fog, lighting, and material palettes
-across the scene via React context. Provides `BiomeProvider`, `BiomeTransition`,
-`BiomeDetector`, `useBiome`, and `useBiomeMaterials`.
+**Purpose:** The biome's *look* — palette cross-fades, lighting / fog / sky colour, and the run's
+time of day. Visual only since #521 B: nothing here moves the player. The flow cap, surface
+friction, cold and wind drying are the segment's `GameplayProfile` (card below).
 
-**Runs in:** React context provider (`BiomeProvider`) + `useFrame` (`BiomeTransition`) +
-`requestAnimationFrame` loop for transition interpolation.
+**Runs in:** `BiomeProvider` (a per-provider zustand vanilla store + one `useFrame` advancing the
+cross-fade on the frame delta, committing in `BIOME_TRANSITION_STEPS` = 48 steps) and
+`BiomeTransition` (`useFrame`, lights / fog / background from `getState()`).
 
 **Exports:**
-- `useBiome()` — context hook (throws if outside `BiomeProvider`)
-- `BiomeProvider` — context provider (props: `initialBiome`, `enableTimeOfDay`, `timeOfDaySpeed`)
-- `BiomeTransition` — scene component; applies palette to lights/fog every frame
-- `BiomeDetector` — watches camera Z to detect segment biome changes
-- `useBiomeMaterials()` — returns water/canyon/vegetation/effects material configs derived
-  from the current interpolated biome palette
-
-**Consumes:**
-- `BiomePalette`, `getBiomePalette`, `lerpBiomePalettes`, `applyBiomeToLighting`
-  from `src/configs/BiomePalettes`
-- `useFrame`, `useThree` from `@react-three/fiber`
+- `BiomeProvider` (props: `initialBiome`, `enableTimeOfDay`), `BiomeTransition`
+- `useBiomeStore()` — the store, for per-frame readers (`getState()` in `useFrame`; no re-render)
+- `useBiomeSelector(sel)` — a slice; re-renders only when it changes (`Object.is`)
+- `useBiomeId()` / `useBiomeTimeOfDay()` — the two slices most components need (an id changes once
+  or twice per fade; time of day about every 5 game minutes)
+- `useBiomeSetters()` — `{ setBiome, snapBiome }` in their own context, stable for life
+- `createBiomeStore`, `advanceBiomeTransition` (pure; tests)
 
 **Produces:**
-- React context value: `{ currentBiome, targetBiome, transitionProgress, isTransitioning,
-  timeOfDay, setBiome, setTimeOfDay }`
+- Store state `{ currentBiome, targetBiome, transitionProgress, isTransitioning, timeOfDay }`.
+- `GameState.currentBiome` (the committed palette id; HUD, audio, weather ambient) — written only by
+  `setBiome` / `snapBiome`.
 - Per-frame mutations: fog color/near/far, ambient/hemi/sun/fill light colors and intensities,
   scene background color.
-- Consumed by `EnhancedSky` via `useBiome()` (no biome props from `InnerExperience`).
 
 **Boundaries (Do NOT):**
-- Do NOT call `useBiome()` outside a `<BiomeProvider>` — it throws.
-- Do NOT pass biome palette props into `EnhancedSky` — it reads context only.
+- Do NOT read a palette field for gameplay (`flowSpeed` included — it is the water surface's look).
+  Use `getActiveGameplayProfile()`.
+- Do NOT put the biome view back into a context value: both contexts carry identities that never
+  change, so a transition re-renders only selecting components (`BiomeSystem.renders.test.tsx`:
+  ≤ 3 commits for the segment-mesh / post-pipeline reads across a 2 s fade).
+- Do NOT select a cross-fading field (a colour, `transitionProgress`) in a component that can read it
+  per frame from `useBiomeStore().getState()` instead.
 - Do NOT directly mutate `scene.fog` or light colors in other components while
   `BiomeTransition` is mounted — it will overwrite your values every frame.
 - Do NOT introduce a second biome vocabulary — all track, palette, HUD, and map
@@ -268,15 +270,50 @@ across the scene via React context. Provides `BiomeProvider`, `BiomeTransition`,
 - Do NOT write `GameState.currentBiome` outside `setBiome` / `snapBiome` —
   those are the sole store writers for biome id.
 
-**Known Pain:**
-- `BiomeDetector` uses a fixed `segmentLength = 40` approximation; it does not consult
-  actual `NormalizedSegment` bounds.
-
 **Canonical IDs (`BiomeId`):** `canyonSummer`, `canyonAutumn`, `slotCanyon`,
 `glacialMelt`, `glacier`, `delta`, `alpineSpring`, `cavern`, `midnightMist`,
 plus stubs `lumberFlume` / `hydroDam`. Legacy kebab/track aliases
 (`summer`→`canyonSummer`, `creek-autumn`→`canyonAutumn`, `canyon-sunset`→`slotCanyon`,
 …) resolve only via `normalizeBiomeId` at map/reach load.
+
+---
+
+### `src/systems/gameplay/` — `GameplayProfile` (#521 B)
+
+**Purpose:** What a segment does to the player, apart from how it looks. One profile per segment:
+`flowCap` (the current on the hull), `surface` (`SurfaceMaterial` → Rapier contact friction and the
+impact SFX / VFX), `ambientTemp` (survival's cold; `< COLD_AMBIENT_TEMP` = 0.5 turns on the exposure
+penalties) and `windDry` (scale on survival's wind drying).
+
+**Resolved by:** MapSystem — `resolveGameplayProfile(config)` = the biome's row in
+`BIOME_GAMEPLAY_PROFILES` with the segment config's optional `gameplay` override laid over it
+(authored JSON may carry `"gameplay": { … }` per segment; non-finite numbers / unknown surfaces are
+ignored). Stored on `SegmentData.gameplay` when a segment is built. The rows reproduce the old
+readers exactly (palette `flowSpeed`, `MATERIAL_FROM_BIOME`, survival's ambient table), so no biome
+plays differently.
+
+**Committed by:** ChunkManager's sim-time debounce (`detectBiome`, the `chunk-biome` system): the
+segment under the camera commits after `BIOME_DEBOUNCE_SEC` when its biome *or* its profile differs
+(`getCommittedGameplay()`); a biome change still reports through `onBiomeChange` as before, a
+same-biome override commits silently. So the cold and the current change on the step they always
+did.
+
+**Runs in:** SimCore system `gameplay-profile`, order **35** (after `chunk-biome`, before `survival`).
+Target = the treadmill's committed profile when its biome is the store's `GameState.currentBiome`,
+else that biome's row (no treadmill, a reach transition, a respawn snap, a level-file host). The
+active profile can blend to a new target over `blendSec` of sim time (numbers lerp, the surface
+switches at once); the default `GAMEPLAY_PROFILE_BLEND_SEC` is **0** — a step, as before, because a
+blend changes how a run plays across a boundary and the input / replay smokes pin that it does not.
+A run reset snaps.
+
+**Readers:** `getActiveGameplayProfile()` (one mutable object, no allocation) — `WaterForceSystem`
+(flow cap, on every force path), survival (`stepRunSurvival` climate; `getActiveSurvivalModifiers()`
+for the HUD, audio and the runner), and the vehicles' `processCollision` material.
+`subscribeGameplaySurface(fn)` tells the vehicles when to re-set collider friction.
+
+**Boundaries (Do NOT):**
+- Do NOT write the active profile outside the `gameplay-profile` system (`publishActiveGameplayProfile`).
+- Do NOT key gameplay off `BiomePalette` or the biome cross-fade; add a profile field instead.
 
 ---
 
@@ -361,7 +398,7 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
 
 **Consumes:**
 - `ParticlePool`, `VFXParticle`, `FoamParticle`, `MistParticle` from `src/systems/pools/ParticlePool`
-- `useBiomeMaterials` from `BiomeSystem` (foam/water color)
+- `useBiomeSelector` from `BiomeSystem` (palette foam colour + surface flow; visual only)
 - `useLOD` from `LODManager` — `config.maxParticles` (instance cap) and `config.particleDensity`
   (spawn-count scale)
 - `injectSWEDisturbance` from `SWEHeightField`
@@ -369,7 +406,7 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
 
 **Props:**
 - `playerRef` — Rapier rigid body ref (`vehicleRef` from `InnerExperience`)
-- `waterLevel?`, `waterWidth?`, `flowDirection?`, `flowSpeed?` (biome flow from WaterStack)
+- `waterLevel?`, `waterWidth?`, `flowDirection?`, `flowSpeed?` (VFX override; unset = the palette's)
 - `isRaft?` — enables mist crown + bow-wave (`vehicleType === 'raft'`)
 - `maxVelocity?` — default `15`; scales cruise intensity and bow-wave height
 
@@ -528,7 +565,8 @@ n steps whatever the deltas' float residue (`SimCore.test.ts` pins the parity).
 `camera {z, sane}` and `vehicle` (position, velocity, pose quaternion as plain numbers).
 
 **Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
-biome detection and its 0.4 s sim-time debounce) · 40 `survival` (`stepRunSurvival`) · 50 `pillars`
+biome detection and its 0.4 s sim-time debounce, which also commits the segment's `GameplayProfile`)
+· 35 `gameplay-profile` (publishes the active profile) · 40 `survival` (`stepRunSurvival`) · 50 `pillars`
 (crack timers and debris age, `pillarSimClock.ts`) · 90 `score` (score + the ghost's 10 Hz sample
 clock, which splits are read off). The list lives in `experience/simSystems.ts`.
 
@@ -536,8 +574,8 @@ clock, which splits are read off). The list lives in `experience/simSystems.ts`.
 - Do NOT advance gameplay from a `useFrame` delta, a timer or a React effect — register a system.
 - Do NOT call a system's `step` directly; `simCore.step()` is the one entry.
 - Do NOT put a three object, a React ref or a component in `SimContext`.
-- Do NOT call `stepRunSurvival` from anywhere but the `survival` system (`tickRunSurvival`, the
-  vehicles' hook, only reads the modifiers back).
+- Do NOT call `stepRunSurvival` from anywhere but the `survival` system (the runner reads
+  `getActiveSurvivalModifiers()`; the raft's `publishRaftSurvival` only reports its float).
 - Do NOT tick a second SimCore or read `simCore.ctx.rng` from a render path.
 
 **Known Pain:** the sample is taken before the vehicle's own step, so a system sees the body as the

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MOVEMENT, PLAYER_SPAWN, WATER_LEVEL } from '../../../constants/game';
-import { isAutumnLike, isBiomeId, type BiomeId } from '../../../configs/biomes';
+import { isAutumnLike } from '../../../configs/biomes';
 import { useGameStore } from '../../../systems/GameState';
 import { cancelLaunch } from '../../../systems/score/LaunchScoringSession';
 import {
@@ -10,7 +10,7 @@ import {
   type SegmentEnvelope,
   type VerticalBounds,
 } from '../../../systems/map/segmentFrames';
-import { tickRunSurvival } from '../../../systems/journey/runSession';
+import { getActiveSurvivalModifiers } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { playJumpSound, playLandSound, playFootstep } from '../audio';
 import { triggerCameraShake } from '../../../hooks/useCameraShake';
@@ -190,15 +190,11 @@ export function buildCameraRelativeDirs(
 /** Sprint stamina drain/regen + exhaustion lock hysteresis. */
 export function tickSprintStamina({
   dt,
-  posY,
-  vel,
   sprint,
   jumpState,
   sprintLockedRef,
 }: {
   dt: number;
-  posY: number;
-  vel: Vec3;
   sprint: boolean;
   jumpState: { state: string };
   sprintLockedRef: { current: boolean };
@@ -206,16 +202,9 @@ export function tickSprintStamina({
   const storeState = useGameStore.getState();
   let stamina = storeState.sprintStamina;
 
-  const biomeId: BiomeId = isBiomeId(storeState.currentBiome)
-    ? storeState.currentBiome
-    : 'canyonSummer';
-  const horizontalSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-  const survivalMods = tickRunSurvival({
-    dt,
-    biomeId,
-    inWater: posY < WATER_LEVEL + 0.55,
-    windSpeed: horizontalSpeed,
-  });
+  // Integrated by SimCore's survival system (#521 A) in the active gameplay
+  // profile's climate (#521 B); the runner only reads the result.
+  const survivalMods = getActiveSurvivalModifiers();
   const staminaDrainMul = survivalMods?.staminaDrainMultiplier ?? 1;
   const staminaRegenMul = survivalMods?.staminaRegenMultiplier ?? 1;
   const movementMul = survivalMods?.movementMultiplier ?? 1;

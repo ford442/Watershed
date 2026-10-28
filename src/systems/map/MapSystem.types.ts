@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import type { BiomeId } from '../../configs/biomes';
+import type { GameplayProfileOverride } from '../gameplay/gameplayProfile';
 
 // =============================================================================
 // JSON LEVEL FORMAT INTERFACES
@@ -123,6 +124,8 @@ export interface LevelSegment {
    */
   forceVehicle?: 'runner' | 'raft';
   slipperiness?: number;
+  /** Gameplay overrides for this segment (see `SegmentProgressionConfig.gameplay`). */
+  gameplay?: GameplayProfileOverride;
   treeDensity?: number;
   rockDensity?: 'low' | 'medium' | 'high';
   /**
@@ -315,6 +318,12 @@ export interface SegmentProgressionConfig {
    *   collision mesh, so wall and floor impacts feel slippery too.
    */
   slipperiness?: number;
+  /**
+   * Per-segment gameplay overrides (flow cap, surface, cold, wind drying) laid
+   * over the biome's `BIOME_GAMEPLAY_PROFILES` row by `resolveGameplayProfile`
+   * (#521 B). The biome palette is visual only and never feeds these.
+   */
+  gameplay?: GameplayProfileOverride;
 }
 
 /**

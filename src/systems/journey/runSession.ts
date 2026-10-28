@@ -58,6 +58,7 @@ import {
   type SurvivalTickInput,
 } from '../survival';
 import { resetWetnessMuffle, setSfxWetnessMultiplier } from '../audio/wetnessMuffle';
+import { getActiveGameplayProfile } from '../gameplay/activeGameplayProfile';
 
 export type JourneyMode = 'single' | 'journey';
 
@@ -291,11 +292,15 @@ export function getActiveSurvivalState(): SurvivalState | null {
   return activeSession?.survival ?? null;
 }
 
-export function getActiveSurvivalModifiers(biomeId: SurvivalTickInput['biomeId']): SurvivalModifiers | null {
+/**
+ * The run's survival modifiers in the active gameplay profile's climate (the
+ * segment under the player, #521 B); null with no run.
+ */
+export function getActiveSurvivalModifiers(): SurvivalModifiers | null {
   if (!activeSession) return null;
   return getSurvivalModifiers(
     activeSession.survival,
-    biomeId,
+    getActiveGameplayProfile(),
     getLoadoutDefinition(activeSession.loadoutId),
   );
 }
@@ -319,7 +324,7 @@ export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
     survival,
     peakWetness: Math.max(activeSession.peakWetness, survival.wetness),
   };
-  const mods = getSurvivalModifiers(activeSession.survival, input.biomeId, loadout);
+  const mods = getSurvivalModifiers(activeSession.survival, input.climate, loadout);
   // Wetness SFX muffling (#301 leftover): the modifier has been derived here
   // all along; this is the one line that lets the mixer hear it.
   setSfxWetnessMultiplier(mods.sfxWetnessMultiplier);
@@ -335,22 +340,22 @@ export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
 /** What the raft last said about its float (the raft's own state is out of SimCore's reach). */
 let raftInWater = false;
 
-/** The raft's last-published `inWater` (see `tickRunSurvival`). */
+/** The raft's last-published `inWater` (see `publishRaftSurvival`). */
 export function getPublishedRaftInWater(): boolean {
   return raftInWater;
 }
 
 /**
- * The vehicles' survival hook: the modifiers the last sim step produced for
- * `input.biomeId`, null with no run. It no longer integrates (that is
- * `stepRunSurvival`, one SimCore step at a time); the runner and raft keep
- * calling it with their probe, and the raft's `inWater` — the one input only
- * its hull knows — is kept here for the survival system's next step.
- * `dt`, `windSpeed` and the runner's `inWater` are read by the sim instead.
+ * The raft's survival hook: publish whether the hull is actually floating (the
+ * one survival input only the raft knows; the survival system reads it next
+ * step) and get back the modifiers the last sim step left. The runner needs no
+ * hook — its `inWater` is the sim's own height test — and reads
+ * `getActiveSurvivalModifiers()` directly. Neither integrates: that is
+ * `stepRunSurvival`, one SimCore step at a time.
  */
-export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
-  raftInWater = input.inWater;
-  return getActiveSurvivalModifiers(input.biomeId);
+export function publishRaftSurvival(inWater: boolean): SurvivalModifiers | null {
+  raftInWater = inWater;
+  return getActiveSurvivalModifiers();
 }
 
 /** Accumulate upright raft distance for journey-results scoring. */

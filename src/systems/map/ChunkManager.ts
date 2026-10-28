@@ -23,7 +23,9 @@ import {
   MapManager,
   ChunkPool,
   ensureTangentContinuity,
+  resolveGameplayProfile,
 } from './MapSystem';
+import { gameplayProfileForBiome, gameplayProfilesEqual, type GameplayProfile } from '../gameplay/gameplayProfile';
 import type { NormalizedSegment } from '../reach/ReachNormalizer';
 import {
   applyForecastToSegmentParams,
@@ -156,7 +158,16 @@ export class ChunkManager {
   private spawnPoints = new Map<number, THREE.Vector3>();
   private lastEnteredSegment = -1;
   private pendingBiome: string | null = null;
+  /** The pending segment's gameplay profile (debounced with the biome). */
+  private pendingGameplay: Readonly<GameplayProfile> | null = null;
   private pendingBiomeSec = 0;
+  /**
+   * The gameplay profile of the segment the debounce last committed (#521 B):
+   * moves with the biome commit, and on its own across a segment whose
+   * authored `gameplay` override differs. Starts as the default biome's row,
+   * matching `lastReportedBiome`.
+   */
+  private committedGameplay: Readonly<GameplayProfile> = gameplayProfileForBiome('canyonSummer');
   private startIndex: number;
   private proceduralBaseSeed?: number;
   private chunkPool = new ChunkPool();
@@ -427,20 +438,30 @@ export class ChunkManager {
 
     const closestSegment = this.segmentAtZ(activeSegments, cameraZ);
 
-    if (closestSegment && closestSegment.biome !== this.lastReportedBiome) {
+    if (
+      closestSegment &&
+      (closestSegment.biome !== this.lastReportedBiome ||
+        !gameplayProfilesEqual(closestSegment.gameplay, this.committedGameplay))
+    ) {
       const newBiome = closestSegment.biome;
 
-      // Debounce rapid biome toggles: the new biome commits once it has held
-      // for BIOME_DEBOUNCE_SEC of sim time (a toggle back restarts the count).
-      if (this.pendingBiome !== newBiome) {
+      // Debounce rapid toggles: the segment's biome (and its gameplay profile)
+      // commits once it has held for BIOME_DEBOUNCE_SEC of sim time (a toggle
+      // back restarts the count).
+      if (
+        this.pendingBiome !== newBiome ||
+        this.pendingGameplay === null ||
+        !gameplayProfilesEqual(this.pendingGameplay, closestSegment.gameplay)
+      ) {
         this.pendingBiome = newBiome;
+        this.pendingGameplay = closestSegment.gameplay;
         this.pendingBiomeSec = 0;
       }
       this.pendingBiomeSec += Math.max(0, dtSec);
       // ε: 24 × (1/60) sums to a hair under 0.4 in float64.
       if (this.pendingBiomeSec >= BIOME_DEBOUNCE_SEC - 1e-9) {
         this.clearBiomeDebounce();
-        this.reportBiome(newBiome, closestSegment.id);
+        this.commitSegment(closestSegment);
       }
 
       return newBiome;
@@ -510,6 +531,11 @@ export class ChunkManager {
     return this.lastReportedBiome;
   }
 
+  /** The gameplay profile the biome debounce last committed (see `committedGameplay`). */
+  getCommittedGameplay(): Readonly<GameplayProfile> {
+    return this.committedGameplay;
+  }
+
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
@@ -569,6 +595,7 @@ export class ChunkManager {
       ...seg,
       points,
       segmentPath,
+      gameplay: resolveGameplayProfile(seg),
       type: applied.type,
       width: applied.width,
       waterWidth: applied.waterWidth,
@@ -633,7 +660,14 @@ export class ChunkManager {
 
   private clearBiomeDebounce(): void {
     this.pendingBiome = null;
+    this.pendingGameplay = null;
     this.pendingBiomeSec = 0;
+  }
+
+  /** The debounce settled on `segment`: its gameplay profile, and its biome if that changed. */
+  private commitSegment(segment: SegmentData): void {
+    this.committedGameplay = segment.gameplay;
+    if (segment.biome !== this.lastReportedBiome) this.reportBiome(segment.biome, segment.id);
   }
 
   private reportBiome(biome: BiomeId, segmentIndex: number): void {
@@ -648,8 +682,8 @@ export class ChunkManager {
    * leaving `lastReportedBiome` at a default the debounce then has to correct.
    */
   private seedSpawnBiome(spawnSegment: SegmentData | null): void {
-    if (!spawnSegment || spawnSegment.biome === this.lastReportedBiome) return;
-    this.reportBiome(spawnSegment.biome, spawnSegment.id);
+    if (!spawnSegment) return;
+    this.commitSegment(spawnSegment);
   }
 }
 

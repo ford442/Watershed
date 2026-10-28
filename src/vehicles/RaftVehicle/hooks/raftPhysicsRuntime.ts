@@ -9,10 +9,9 @@ import { playPaddleSound, playRaftTipSound } from '../audio';
 import type { PlayerControls } from '../../../hooks/usePlayerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
 import type { ParticlePool } from '../../../components/particlePool';
-import { tickRunSurvival } from '../../../systems/journey/runSession';
+import { publishRaftSurvival } from '../../../systems/journey/runSession';
 import { getComfort } from '../../../systems/settings/comfortRuntime';
 import { raftTargetFov } from '../../../systems/settings/comfort';
-import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 import { clamp01 } from '../../../math/scalar';
 import { createRng } from '../../../math/random';
 import { getVehicleWaterLevel } from '../../../systems/water/vehicleWaterDatum';
@@ -201,19 +200,7 @@ const handleTipping = (body: RapierBody, delta: number): boolean => {
  * run session is active (free-play / editor), in which case stamina behaves
  * exactly as it did before survival existed.
  */
-const tickRaftSurvival = (body: RapierBody, delta: number) => {
-  const vel = body?.linvel?.();
-  const windSpeed = vel ? Math.sqrt(vel.x * vel.x + vel.z * vel.z) : 0;
-  const storeBiome = useGameStore.getState().currentBiome;
-  const biomeId: BiomeId = isBiomeId(storeBiome) ? storeBiome : 'canyonSummer';
-
-  return tickRunSurvival({
-    dt: delta,
-    biomeId,
-    inWater: deps.buoyancyState.current.isFloating === true,
-    windSpeed,
-  });
-};
+const tickRaftSurvival = () => publishRaftSurvival(deps.buoyancyState.current.isFloating === true);
 
 /** Paddle-economy multipliers from the last survival tick (1 = unaffected). */
 const paddleModifiers = { cost: 1, regen: 1 };

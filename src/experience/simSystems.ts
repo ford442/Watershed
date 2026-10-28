@@ -8,6 +8,7 @@
 import type { DebugStageController } from '../debug/debugStages';
 import type { SimSystem } from '../sim/core/SimCore';
 import { createChunkBiomeSimSystem } from '../systems/map/chunkBiomeSystem';
+import { createGameplayProfileSimSystem } from '../systems/gameplay/gameplaySimSystem';
 import { createSurvivalSimSystem } from '../systems/journey/survivalSystem';
 import { createWeatherSimSystem } from '../systems/weather/weatherSimSystem';
 import { createSkySimSystem } from '../systems/sky/skySimSystem';
@@ -19,6 +20,7 @@ export function createSimSystems(debug: DebugStageController): SimSystem[] {
     createWeatherSimSystem(),
     createSkySimSystem(),
     createChunkBiomeSimSystem(),
+    createGameplayProfileSimSystem(),
     createSurvivalSimSystem(),
     createPillarSimSystem(),
     createScoreSimSystem(debug),

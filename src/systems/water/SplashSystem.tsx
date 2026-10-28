@@ -18,7 +18,7 @@ import {
   FoamParticle,
   MistParticle,
 } from '../pools/ParticlePool';
-import { useBiomeMaterials } from '../biome/BiomeSystem';
+import { useBiomeSelector } from '../biome/BiomeSystem';
 import { injectSWEDisturbance } from './SWEHeightField';
 import { useLOD } from '../lod/LODManager';
 import {
@@ -58,6 +58,7 @@ interface SplashSystemProps {
   waterLevel?: number;
   waterWidth?: number;
   flowDirection?: THREE.Vector3;
+  /** Surface-flow override for the VFX; unset = the biome palette's (visual) flowSpeed. */
   flowSpeed?: number;
   isRaft?: boolean;
   maxVelocity?: number;
@@ -106,11 +107,15 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   waterLevel = WATER_LEVEL,
   waterWidth = 12,
   flowDirection = new THREE.Vector3(0, 0, -1),
-  flowSpeed = 1.0,
+  flowSpeed: flowSpeedProp,
   isRaft = false,
   maxVelocity = 15,
 }) => {
-  const { water } = useBiomeMaterials();
+  // Visual only: the palette's foam colour and surface flow (cruise-splash
+  // counts, bow wave, mist). The SWE disturbances never read either.
+  const foamColor = useBiomeSelector((s) => s.currentBiome.foamColor);
+  const paletteFlowSpeed = useBiomeSelector((s) => s.currentBiome.flowSpeed);
+  const flowSpeed = flowSpeedProp ?? paletteFlowSpeed;
   const { config: lodConfig } = useLOD();
   const particleDensity = lodConfig.particleDensity;
   const maxInstances = lodConfig.maxParticles;
@@ -163,11 +168,11 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: water.foamColor,
+        color: foamColor,
         transparent: true,
         opacity: 0.9,
       }),
-    [water.foamColor],
+    [foamColor],
   );
 
   const mistGeometry = useMemo(() => new THREE.PlaneGeometry(0.3, 0.3), []);
@@ -198,11 +203,11 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
         p.maxLife = 0.5 + random() * 0.5;
         p.life = 0;
         p.scale = 0.3 + random() * 0.4;
-        p.color.set(water.foamColor);
+        p.color.set(foamColor);
         p.rotationSpeed = (random() - 0.5) * 10;
       });
     },
-    [water.foamColor, particleDensity],
+    [foamColor, particleDensity],
   );
 
   const spawnCruiseSplash = useCallback(
@@ -231,11 +236,11 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
         p.maxLife = 0.4 + random() * 0.4;
         p.life = 0;
         p.scale = 0.1 + random() * 0.2 + speed * 0.02;
-        p.color.set(water.foamColor);
+        p.color.set(foamColor);
         p.rotationSpeed = (random() - 0.5) * 8;
       });
     },
-    [water.foamColor, waterLevel],
+    [foamColor, waterLevel],
   );
 
   const spawnFoam = useCallback(
@@ -252,10 +257,10 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
         p.maxLife = 2 + random() * 2;
         p.life = 0;
         p.scale = 0.5 + random() * 0.5;
-        p.color.set(water.foamColor);
+        p.color.set(foamColor);
       });
     },
-    [water.foamColor, particleDensity],
+    [foamColor, particleDensity],
   );
 
   const spawnMist = useCallback(

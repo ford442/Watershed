@@ -22,7 +22,8 @@ vi.mock('../lod/LODManager', () => ({
 }));
 
 vi.mock('../biome/BiomeSystem', () => ({
-  useBiomeMaterials: () => ({ water: { foamColor: '#ffffff' } }),
+  useBiomeSelector: (select: (s: { currentBiome: { foamColor: string; flowSpeed: number } }) => unknown) =>
+    select({ currentBiome: { foamColor: '#ffffff', flowSpeed: 1 } }),
 }));
 
 vi.mock('../../rendering/instancing/NonEmptyInstancedMesh', () => ({

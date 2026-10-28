@@ -380,7 +380,7 @@ export default function ReactiveAudio({
 
     // Wetness muffles the water-contact SFX channels (rapids/whoosh/splash) —
     // a soaked player rides lower in the roar. See SurvivalModifiers.sfxWetnessMultiplier.
-    const survivalMods = getActiveSurvivalModifiers(currentBiomeId);
+    const survivalMods = getActiveSurvivalModifiers();
     const wetnessMuffle = survivalMods?.sfxWetnessMultiplier ?? 1;
 
     // Set ambient layer volumes with guards

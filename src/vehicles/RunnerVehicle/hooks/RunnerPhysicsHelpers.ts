@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../../../systems/vehicle/VehicleSystem';
+import { getActiveGameplayProfile } from '../../../systems/gameplay/activeGameplayProfile';
 import { MOVEMENT } from '../../../constants/game';
 import { useGameStore } from '../../../systems/GameState';
 import {
@@ -383,7 +383,7 @@ export function handleDodgeAndCollision({
       if (hasActiveLaunch()) {
         recordLaunchWallContact();
       }
-      const material = MATERIAL_FROM_BIOME[collisionState.current.currentBiome] || SurfaceMaterial.ROCK;
+      const material = getActiveGameplayProfile().surface;
       const contactPoint = _contactPoint.set(pos.x, pos.y - 0.5, pos.z);
 
       vehicle.current.processCollision(

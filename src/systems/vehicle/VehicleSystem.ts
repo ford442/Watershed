@@ -14,48 +14,13 @@ import * as THREE from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { Ray } from '@dimforge/rapier3d-compat';
 import { gameEvents } from '../events/GameEvents';
+import { SurfaceMaterial, MATERIAL_FRICTION } from './surfaceMaterial';
 
 // =============================================================================
 // MATERIAL ENUMS & CONFIGURATION
 // =============================================================================
 
-export enum SurfaceMaterial {
-  MOSS = 'moss',
-  ROCK = 'rock',
-  WOOD = 'wood',
-  CONCRETE = 'concrete',
-  WATER = 'water',
-}
-
-export const MATERIAL_FRICTION: Record<SurfaceMaterial, number> = {
-  [SurfaceMaterial.MOSS]: 0.4,      // Slippery
-  [SurfaceMaterial.WOOD]: 0.4,      // Slippery
-  [SurfaceMaterial.ROCK]: 0.6,      // Medium
-  [SurfaceMaterial.CONCRETE]: 0.8,  // Sticky
-  [SurfaceMaterial.WATER]: 0.1,     // Sliding
-};
-
-export const MATERIAL_FROM_BIOME: Record<string, SurfaceMaterial> = {
-  canyonSummer: SurfaceMaterial.ROCK,
-  canyonAutumn: SurfaceMaterial.MOSS,
-  alpineSpring: SurfaceMaterial.ROCK,
-  slotCanyon: SurfaceMaterial.CONCRETE,
-  glacialMelt: SurfaceMaterial.ROCK,
-  glacier: SurfaceMaterial.ROCK,
-  delta: SurfaceMaterial.MOSS,
-  cavern: SurfaceMaterial.ROCK,
-  midnightMist: SurfaceMaterial.MOSS,
-  lumberFlume: SurfaceMaterial.WOOD,
-  hydroDam: SurfaceMaterial.CONCRETE,
-  // Legacy aliases (map-load / events may still emit briefly)
-  summer: SurfaceMaterial.ROCK,
-  autumn: SurfaceMaterial.MOSS,
-  'creek-summer': SurfaceMaterial.ROCK,
-  'creek-autumn': SurfaceMaterial.MOSS,
-  'alpine-spring': SurfaceMaterial.ROCK,
-  'canyon-sunset': SurfaceMaterial.CONCRETE,
-  'midnight-mist': SurfaceMaterial.MOSS,
-};
+export { SurfaceMaterial, MATERIAL_FRICTION } from './surfaceMaterial';
 
 // =============================================================================
 // COLLISION INTERFACES
