@@ -98,6 +98,28 @@ HUD components, and physics callers.
 
 ---
 
+### `src/config/queryFlags.ts` (#521 E)
+
+**Purpose:** the one reader of the page's query string. `queryFlags()` returns frozen, typed flags
+(`debug`, `map`, `vehicle`, `material`, `renderer`, `input`, `replay`, `simWorker`, `noPointerLock`,
+`screenshot`, `physicsDebug`, `wireframe`, `editor`, `wasmWaterTest`, `river`, `seed`, `spawnProfile`,
+`debugGlobals`), parsed once per distinct string — a running page parses once, and a per-frame reader
+gets the same object back for a string compare. `queryParam(name)` / `queryParams()` serve parsers with
+their own grammar (`?input=script:`, `?weather=`, …; their tests pass an explicit `search`);
+`currentSearch()` is their default. `editQuery(fn)` rewrites the URL in place for the dev toggles that
+survive a reload (`?physicsDebug`, `?wireframe`, `?cleanTest`, `?debugStages`, `?renderer`, `?map`).
+
+**Grammar:** boolean flags take `1` or `true` (`?debug=1` ≡ `?debug=true`); a presence flag
+(`?no-pointer-lock`) is on unless its value is `0` / `false`. `debugGlobals` (`debug || physicsDebug ||
+screenshot`) gates every per-frame debug object a page publishes (`window.__watershedPhysicsDebug`,
+`__watershedWaterForceSystem`).
+
+**Boundaries (Do NOT):**
+- Do NOT read `location.search` anywhere else — ESLint `no-restricted-syntax` rejects it.
+- Do NOT re-read flags per frame where a mount-time read will do (the runner step caches them in its scratch).
+
+---
+
 ### `src/experience/ReachManager.tsx`
 
 **Purpose:** Orchestrates a single Reach lifecycle — streams the manifest, normalizes it

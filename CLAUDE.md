@@ -43,7 +43,11 @@ Single canonical tree (matches `git ls-files src` layout; star-marked paths are 
 
 ```
 src/
-├── App.tsx                      # Canvas, renderer toggle, error boundaries
+├── App.tsx                      # Composition only (#521 C): boot → MenuShell → Experience
+├── boot/                        # useRendererBoot (probe, envelope, crash guard, quality clamps) + RendererBoot (Canvas)
+├── ui/                          # useGamePhase (menu / playing / paused, map pick) + MenuShell (loader, menus, options)
+├── harness/                     # Dev / test only, lazy behind their flags: dev toggles + overlays, ?replay= / ?river= autostart, ?editor=1, the ?screenshot=1 harness API
+├── config/queryFlags.ts         # ★ The only reader of the query string (queryFlags / queryParam / editQuery); ESLint bans location.search elsewhere
 ├── Experience.tsx               # Scene root: LOD/Biome providers, InnerExperience
 ├── index.tsx                    # Entry: Rapier pre-init, global handlers
 ├── style.css                    # UI, loader, overlays
@@ -87,7 +91,8 @@ src/
 │   ├── reach/ReachStreamer.ts   # Reach manifest streaming (ReachManager host: experience/)
 │   ├── events/GameEvents.ts     # The one typed event bus (gameEvents.emit / on) — no window CustomEvents
 │   ├── GameState.ts             # ★ Zustand store — the only root *.ts (no barrel)
-│   ├── biome/BiomeSystem.tsx    # Biome context provider (useBiome)
+│   ├── biome/BiomeSystem.tsx    # Biome look only: per-provider store (useBiomeStore / useBiomeSelector / useBiomeId / useBiomeTimeOfDay) + useBiomeSetters
+│   ├── gameplay/                # ★ GameplayProfile per segment (flow cap, surface, cold, wind) — gameplay never reads a palette (#521 B)
 │   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality (render scale, then preset)
 │   ├── lumber/trestleSpan.ts    # Breakable trestle deck (forecast + hydroEvents)
 │   ├── water/SplashSystem.tsx   # Splash particles + SWE disturbance
@@ -96,7 +101,9 @@ src/
 │   ├── water/sweScroll.ts       # SWE window cell lattice + scroll twin (keeps the moving field world-stable)
 │   ├── water/riverRouter.ts     # Launch-hour discharge routed down the campaign chain → SWE upstream-edge stage
 │   ├── map/routingReach.ts      # Campaign chain as (length, slope, width) per segment for the routing
-│   ├── audio/AudioSystem.ts / audio/wetnessMuffle.ts / water/wasmLoader.ts (+ wasmAbi.ts)
+│   ├── audio/AudioSystem.ts     # AudioManager facade over soundLibrary / sfxVoices / ambientBed / audioMix / acousticRouting / synthBuffers
+│   ├── audio/wetnessMuffle.ts / water/wasmLoader.ts (+ wasmAbi.ts)
+│   ├── vehicle/VehicleSystem.ts # Friction table, impact tracker, raft steer (the old class hierarchy is gone)
 │   └── …
 │
 ├── maps/                        # Authored map JSON + registry.ts
@@ -110,6 +117,7 @@ src/
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
+│   └── core/SimCore.ts          # ★ The one fixed-step gameplay clock + system registry (#521 A); ticked by experience/SimCoreTick
 ├── math/                        # scalar.ts (clamp/lerp/smoothstep), hash.ts (sinHash), random.ts (createRng: the one PRNG)
 ├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — the one canyon-profile source (#487; TS-only since ABI 16)
 ├── terrain/segmentMeshBuild.ts  # Segment meshes as buffers, three-free — built on the sim worker for treadmill appends (#487 B)
