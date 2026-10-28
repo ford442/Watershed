@@ -11,7 +11,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { WatershedNativeModule } from './wasmAbi';
+import { WasmHeapExhaustedError, type WatershedNativeModule } from './wasmAbi';
 import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
 
 const CANARY = 7;
@@ -108,6 +108,14 @@ describe('swe.cpp', () => {
     expect(lowMemory()).toEqual(low);
     expect(wasm.allocateGrid(0)).toBe(0);
     for (const c of [h, u, w]) c.free();
+  });
+
+  it('allocateGrid past WS_MAX_ELEMENTS is heap exhaustion, not a wrapped tiny block', () => {
+    // emmalloc's calloc multiplies in wasm32's 32-bit size_t without a check:
+    // 2^30 floats used to wrap to 0 bytes and come back as a valid pointer.
+    for (const count of [2 ** 30, 2 ** 31 - 1, WS_MAX_ELEMENTS + 1]) {
+      expect(() => wasm.allocateGrid(count)).toThrow(WasmHeapExhaustedError);
+    }
   });
 });
 

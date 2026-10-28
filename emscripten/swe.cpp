@@ -923,8 +923,11 @@ void reserveShallowWaterScratch(int width, int height) {
 // ---------------------------------------------------------------------------
 
 uintptr_t allocateGrid(int count) {
-    if (count <= 0) return 0;
-    void* ptr = std::calloc(static_cast<std::size_t>(count), sizeof(float));
+    // Capped and overflow-checked before calloc (common.h allocBytes): on
+    // wasm32, emmalloc would wrap count * 4 and return a tiny block.
+    const std::size_t bytes = allocBytes<std::size_t>(count, sizeof(float));
+    if (bytes == 0) return 0;
+    void* ptr = std::calloc(bytes, 1);
     return reinterpret_cast<uintptr_t>(ptr);
 }
 

@@ -61,10 +61,14 @@ void euler4(float* px, float* py, float* pz,
 
 }  // namespace
 
+static_assert(static_cast<long long>(PARTICLE_SOA_PLANES) * PARTICLE_MAX_CAPACITY <= WS_MAX_ELEMENTS,
+              "a full-capacity SoA is within allocBytes' cap");
+
 uintptr_t allocateParticleSoA(int capacity) {
     if (!validCapacity(capacity)) return 0;
-    const int count = PARTICLE_SOA_PLANES * capacity;
-    void* ptr = std::calloc(static_cast<std::size_t>(count), sizeof(float));
+    const std::size_t bytes = allocBytes<std::size_t>(PARTICLE_SOA_PLANES * capacity, sizeof(float));
+    if (bytes == 0) return 0;
+    void* ptr = std::calloc(bytes, 1);
     return reinterpret_cast<uintptr_t>(ptr);
 }
 

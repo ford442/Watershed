@@ -25,4 +25,4 @@ function Z(){if(!(0<L)){for(;0<F.length;)F.shift()(b);if(!(0<L||Y||(Y=!0,b.calle
 );
 })();
 export default createWatershedNative;
-export const WATERSHED_WASM_SHA = "c087750fb92d44f3";
+export const WATERSHED_WASM_SHA = "579425ebef168c16";

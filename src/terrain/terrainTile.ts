@@ -14,7 +14,7 @@
  */
 
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
-import { heapF32 } from '../systems/water/wasmAbi';
+import { allocateGrids, heapF32 } from '../systems/water/wasmAbi';
 import type { ChannelProfileSample, ChannelShape } from './types';
 import { clamp01, lerp, smoothstep } from '../math/scalar';
 
@@ -415,8 +415,8 @@ export function buildTerrainTileNative(wasm: TerrainNative, p: TerrainTileParams
   if (n === 0) return null;
   const channelCount = Math.floor(p.channel.length / TERRAIN_CHANNEL_STRIDE);
   const channelFloats = channelCount * TERRAIN_CHANNEL_STRIDE;
-  const channelPtr = channelFloats > 0 ? wasm.allocateGrid(channelFloats) : 0;
-  const outPtr = wasm.allocateGrid(n * TERRAIN_TILE_PLANES);
+  // All or nothing: a throw on the second block must not leak the first.
+  const [channelPtr, outPtr] = allocateGrids(wasm, [channelFloats, n * TERRAIN_TILE_PLANES]);
   try {
     if (channelPtr) heapF32(wasm, channelPtr, channelFloats).set(p.channel.subarray(0, channelFloats));
     const written = wasm.buildTerrainTile(

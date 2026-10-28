@@ -14,6 +14,7 @@
  */
 
 import {
+  allocateGrids,
   heapF32,
   WATER_FORCE_INPUT_STRIDE,
   WATER_FORCE_OUTPUT_STRIDE,
@@ -111,10 +112,7 @@ export function createSWEGrid(
 ): SWEGrid {
   const count = width * height;
 
-  const hPtr = mod.allocateGrid(count);
-  const uPtr = mod.allocateGrid(count);
-  const wPtr = mod.allocateGrid(count);
-  const bPtr = mod.allocateGrid(count);
+  const [hPtr, uPtr, wPtr, bPtr] = allocateGrids(mod, [count, count, count, count]);
   mod.reserveShallowWaterScratch(width, height);
 
   // Views are rebound through heapF32() if Emscripten grows the heap
@@ -144,8 +142,10 @@ export function createWaterForceBatch(
   mod: WatershedNativeModule,
   sampleCount: number,
 ): NativeWaterForceBatch {
-  const inputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_INPUT_STRIDE);
-  const outputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_OUTPUT_STRIDE);
+  const [inputPtr, outputPtr] = allocateGrids(mod, [
+    sampleCount * WATER_FORCE_INPUT_STRIDE,
+    sampleCount * WATER_FORCE_OUTPUT_STRIDE,
+  ]);
   const inCount = sampleCount * WATER_FORCE_INPUT_STRIDE;
   const outCount = sampleCount * WATER_FORCE_OUTPUT_STRIDE;
   let input = heapF32(mod, inputPtr, inCount);

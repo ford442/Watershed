@@ -11,11 +11,13 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
+  allocateGrids,
   arityMismatches,
   bindNativeModule,
   isWasmHeapExhaustedError,
   MIN_WASM_ABI_VERSION,
   WASM_ABI,
+  WasmHeapExhaustedError,
   wasmExportName,
   type RawWatershedModule,
   type WasmAbiFunctionName,
@@ -274,6 +276,23 @@ describe('bindNativeModule guards (#502 A)', () => {
     expect(isWasmHeapExhaustedError(err)).toBe(true);
     expect(String(err)).toMatch(/heap exhausted: allocateGrid\(4096\) returned 0/);
     expect(wasm.allocateGrid(0)).toBe(0);
+  });
+
+  it('allocateGrids frees what it allocated when a later block throws', () => {
+    const freed: number[] = [];
+    let next = 16;
+    const wasm = {
+      allocateGrid: (count: number) => {
+        if (count > 100) throw new WasmHeapExhaustedError(count);
+        const ptr = next;
+        next += count * 4;
+        return ptr;
+      },
+      freeGrid: (ptr: number) => { freed.push(ptr); },
+    };
+    expect(() => allocateGrids(wasm, [4, 0, 8, 1000, 2])).toThrow(WasmHeapExhaustedError);
+    expect(freed).toEqual([16, 32]);
+    expect(allocateGrids(wasm, [4, 0])).toEqual([64, 0]);
   });
 
   it('an export whose arity disagrees with the table is an ABI mismatch at bind (dev builds)', () => {

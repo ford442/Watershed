@@ -1198,6 +1198,14 @@ int main() {
                   && untouched(guard),
               "particles: oversized capacity steps nothing");
         check(allocateGrid(0) == 0 && allocateGrid(-5) == 0, "swe: allocateGrid(<= 0) returns 0");
+        // wasm32 size_t: emmalloc's calloc does not check num * size, so
+        // the cap and the overflow check must hold in a 32-bit size_t too.
+        check(allocBytes<uint32_t>(1 << 30, 4u) == 0, "allocBytes: 2^30 floats are rejected in a 32-bit size_t");
+        check(allocBytes<uint32_t>(WS_MAX_ELEMENTS + 1, 4u) == 0, "allocBytes: past WS_MAX_ELEMENTS is rejected");
+        check(allocBytes<uint32_t>(WS_MAX_ELEMENTS, 1u << 9) == 0, "allocBytes: a product past 2^32 is rejected, not wrapped");
+        check(allocBytes<uint32_t>(128 * 80, 4u) == 128u * 80u * 4u, "allocBytes: an SWE grid is its byte count");
+        check(allocateGrid(1 << 30) == 0 && allocateGrid(WS_MAX_ELEMENTS + 1) == 0,
+              "swe: allocateGrid rejects counts past WS_MAX_ELEMENTS");
     }
 
     if (g_failures != 0) {

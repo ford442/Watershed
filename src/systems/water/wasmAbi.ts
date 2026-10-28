@@ -388,6 +388,25 @@ export class WasmHeapExhaustedError extends Error {
   }
 }
 
+/**
+ * `allocateGrid` for each count, all or nothing: when one allocation throws,
+ * the blocks already allocated are freed before the error propagates, so a
+ * partial failure (the second of two grids) does not leak the first.
+ */
+export function allocateGrids(
+  wasm: Pick<WatershedNativeModule, 'allocateGrid' | 'freeGrid'>,
+  counts: readonly number[],
+): number[] {
+  const ptrs: number[] = [];
+  try {
+    for (const count of counts) ptrs.push(count > 0 ? wasm.allocateGrid(count) : 0);
+  } catch (error) {
+    for (const ptr of ptrs) if (ptr) wasm.freeGrid(ptr);
+    throw error;
+  }
+  return ptrs;
+}
+
 export function isWasmHeapExhaustedError(error: unknown): boolean {
   return error instanceof WasmHeapExhaustedError
     || (error instanceof Error && error.message.includes(HEAP_EXHAUSTED_MARKER));

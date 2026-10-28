@@ -22,7 +22,7 @@ import { weatherFlowRateDelta, type RunWeather } from '../map/weatherInflow';
 import type { RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import type { SweInflow } from './sweScroll';
-import { ROUTING_SUBREACHES, type RoutedEdge, type WatershedNativeModule } from './wasmAbi';
+import { ROUTING_SUBREACHES, allocateGrids, type RoutedEdge, type WatershedNativeModule } from './wasmAbi';
 
 /**
  * Head discharge at `flowRate` 1 (m³/s). It is also the reference discharge
@@ -134,16 +134,10 @@ export function createRiverRouter(
   const spinUpHours = options.spinUpHours ?? ROUTING_SPINUP_HOURS;
   const spinUpDt = options.spinUpDt ?? ROUTING_SPINUP_DT;
 
-  const ptrs = {
-    lengths: wasm.allocateGrid(n),
-    slopes: wasm.allocateGrid(n),
-    widths: wasm.allocateGrid(n),
-    storage: wasm.allocateGrid(n * ROUTING_SUBREACHES),
-    outflow: wasm.allocateGrid(n),
-    lag: wasm.allocateGrid(n),
-    // Discharge joining each segment at its top: the weather over a reach (ABI 14).
-    lateral: wasm.allocateGrid(n),
-  };
+  // `lateral`: discharge joining each segment at its top, the weather over a reach (ABI 14).
+  const [lengths, slopes, widths, storage, outflow, lag, lateral] =
+    allocateGrids(wasm, [n, n, n, n * ROUTING_SUBREACHES, n, n, n]);
+  const ptrs = { lengths, slopes, widths, storage, outflow, lag, lateral };
   // Views are re-derived on each read: memory growth detaches HEAPF32.
   const view = (ptr: number) => wasm.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + n);
   view(ptrs.lengths).set(reach.lengths);

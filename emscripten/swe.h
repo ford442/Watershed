@@ -129,7 +129,11 @@ void reserveShallowWaterScratch(int width, int height);
 /** Depth below which a cell counts as dry (m). Mirrored by host goldens. */
 extern const float SWE_DRY_DEPTH;
 
-/** Allocate `count` zero-initialised floats in the WASM heap; returns a byte offset. */
+/**
+ * Allocate `count` zero-initialised floats in the WASM heap; returns a byte
+ * offset, or 0 for count <= 0, count > WS_MAX_ELEMENTS, or an exhausted heap
+ * (the TS binding turns a 0 for count > 0 into WasmHeapExhaustedError).
+ */
 uintptr_t allocateGrid(int count);
 
 /** Free a pointer previously returned by allocateGrid. */

@@ -231,7 +231,7 @@ Every `ws_*` entry point therefore returns early on bad input; `std::span` views
 
 | TU | Rejected (no write) | Sentinel |
 |----|---------------------|----------|
-| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt` ≤ 0 or NaN (+inf is CFL-clamped), `dx`/`H`/`g` ≤ 0 or non-finite; event: non-finite placement, `strength` or `dt` | early return; a non-finite edge stage or scroll inflow is rest (0); `allocateGrid(≤ 0)` → 0 |
+| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt` ≤ 0 or NaN (+inf is CFL-clamped), `dx`/`H`/`g` ≤ 0 or non-finite; event: non-finite placement, `strength` or `dt` | early return; a non-finite edge stage or scroll inflow is rest (0); `allocateGrid(≤ 0)` and `allocateGrid(> WS_MAX_ELEMENTS)` → 0 |
 | `chores.cpp` | null src / out; count < 0 or > `WS_MAX_ELEMENTS` (4096²); src/blur extents ≤ 0 or > 4096; destination extent > 4096 | early return. Count 0 is a valid empty grid (zeros / an all-zero histogram); a non-positive *destination* extent of `downsampleF32` is 1 (the `cpuMath.ts` contract) |
 | `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | early return |
 | `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` < `ROUTING_MIN_DT` (1 µs), NaN or inf | early return; a non-finite head discharge, length or width takes its floor (`atLeast`: 0, 1 mm, 0.5 m); `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
@@ -248,9 +248,19 @@ same to the routed chain. `sweSim.ts` / `WgslSweSim.ts` also skip the solver for
 `src/systems/water/wasmSentinels.test.ts` asserts it through the committed wasm — a canary
 plane and the first KiB of the heap must be unchanged — in plain `pnpm test`.
 
+Both allocators size their block with `allocBytes<size_t>()` (`common.h`): the count is capped
+at `WS_MAX_ELEMENTS` and multiplied with `__builtin_mul_overflow` before `calloc` sees a byte
+count. emmalloc's `calloc` multiplies in wasm32's 32-bit `size_t` with no overflow check, so
+`allocateGrid(2³⁰)` used to wrap to a zero-byte block that came back as success. The host
+ASan / fuzz builds are LP64 with glibc, whose `calloc` does check, so `host_smoke.cpp` checks
+`allocBytes<uint32_t>` (the wasm32 width) directly and `wasmSentinels.test.ts` asserts
+`allocateGrid(2 ** 30)` throws through the committed binary.
+
 On the TS side, the bound `allocateGrid(count > 0)` throws `WasmHeapExhaustedError`
 (`"heap exhausted"`, banner-classified by `nativeOwner.ts`) instead of handing 0 to a writer,
-and in dev builds `bindNativeModule` rejects an export whose `fn.length` disagrees with the
+`allocateGrids(wasm, counts)` allocates several blocks all or nothing (a throw frees the ones
+already made; the SWE grid, force batches, router and terrain tile use it), and in dev builds
+`bindNativeModule` rejects an export whose `fn.length` disagrees with the
 `WASM_ABI` arity (the release glue wraps each export with its exact C arity).
 
 ### Traps and the symbol map (#502)

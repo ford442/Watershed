@@ -11,6 +11,7 @@ import type { ChannelProfileSample } from '../types';
 import {
   applyTubeProfile,
   buildTerrainTile,
+  buildTerrainTileNative,
   buildWallShellHeights,
   canyonFloorFromShape,
   sampleChannelShape,
@@ -22,6 +23,7 @@ import {
   type TerrainTileParams,
 } from '../terrainTile';
 import { TERRAIN_FIXTURES, WALL_SHELL_FIXTURES } from './terrainFixtures';
+import { WasmHeapExhaustedError } from '../../systems/water/wasmAbi';
 
 function expectClose(actual: number, expected: number, label: string, rel = 1e-5, abs = 1e-4): void {
   const tol = Math.max(Math.abs(expected) * rel, abs);
@@ -165,5 +167,26 @@ describe('terrain tile — one profile for every consumer', () => {
         expectClose(tile.x[i], folded.x, `x[${ix},${iz}]`, 1e-5, 1e-4);
       }
     }
+  });
+});
+
+describe('terrain tile — native backend heap', () => {
+  it('frees the channel block when the output allocation runs out of heap', () => {
+    const freed: number[] = [];
+    let calls = 0;
+    const wasm = {
+      HEAPF32: new Float32Array(1024),
+      allocateGrid: (count: number) => {
+        calls += 1;
+        if (calls === 2) throw new WasmHeapExhaustedError(count);
+        return 64;
+      },
+      freeGrid: (ptr: number) => { freed.push(ptr); },
+      buildTerrainTile: () => 0,
+      buildWallShell: () => 0,
+    };
+    const params = { ...TERRAIN_FIXTURES[0].params, channel: new Float32Array(2 * TERRAIN_CHANNEL_STRIDE).fill(1) };
+    expect(() => buildTerrainTileNative(wasm, params)).toThrow(WasmHeapExhaustedError);
+    expect(freed).toEqual([64]);
   });
 });

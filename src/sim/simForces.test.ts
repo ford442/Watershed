@@ -8,7 +8,7 @@
  * the batch). Bit parity against the real binary: simWorker.integration.test.ts.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, type NativeWaterForceConfig, type WatershedNativeModule } from '../systems/water/wasmAbi';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, WasmHeapExhaustedError, type NativeWaterForceConfig, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { sampleSWEFlow, SWE_STAGE_SPEED_BOOST, stagedWaterLevel, type SWEFlowGrid } from '../systems/water/sampleSWEFlow';
 import {
@@ -172,5 +172,27 @@ describe('computeSimForces', () => {
     expect(readForceResult(out, 4).submergedRatio).toBeGreaterThan(0);
     batch.dispose();
     expect(wasm.freeGrid).toHaveBeenCalledTimes(4); // two reallocations' worth
+  });
+});
+
+describe('createSimForceBatch heap failures', () => {
+  it('a failed grow leaves no freed pointer behind to be freed again', () => {
+    const wasm = stubModule();
+    const batch = createSimForceBatch(wasm, 4);
+    const [oldIn, oldOut] = wasm.allocateGrid.mock.results.map((r) => r.value as number);
+    let calls = 0;
+    wasm.allocateGrid.mockImplementation((count: number) => {
+      calls += 1;
+      if (calls === 2) throw new WasmHeapExhaustedError(count);
+      return 4096;
+    });
+    const n = 16;
+    const samples = new Float64Array(n * FORCE_SAMPLE_STRIDE);
+    const out = new Float64Array(n * FORCE_RESULT_STRIDE);
+    expect(() => computeSimForces(wasm, batch, null, samples, n, out)).toThrow(WasmHeapExhaustedError);
+    batch.dispose();
+    const freed = wasm.freeGrid.mock.calls.map((c) => c[0] as number);
+    // The old pair once (by the grow), the new input once (by allocateGrids' unwind), nothing twice.
+    expect(freed.sort()).toEqual([oldIn, oldOut, 4096].sort());
   });
 });

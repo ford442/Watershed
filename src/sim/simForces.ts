@@ -35,7 +35,7 @@
  * helpers only; the batch half needs a module and runs only in the sim worker.
  */
 import { telemetryNowMs } from '../utils/wallClock';
-import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, allocateGrids, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import {
   SWE_STAGE_SPEED_BOOST,
   sampleSWEFlow,
@@ -172,8 +172,15 @@ function reserve(wasm: WatershedNativeModule, batch: MutableSimForceBatch, count
   const capacity = Math.max(count, batch.capacity * 2, 4);
   if (batch.inputPtr) wasm.freeGrid(batch.inputPtr);
   if (batch.outputPtr) wasm.freeGrid(batch.outputPtr);
-  batch.inputPtr = wasm.allocateGrid(capacity * WATER_FORCE_INPUT_STRIDE);
-  batch.outputPtr = wasm.allocateGrid(capacity * WATER_FORCE_OUTPUT_STRIDE);
+  // Freed above: until both new blocks exist the batch owns nothing, so a
+  // throw cannot leave a freed pointer behind to be freed again.
+  batch.inputPtr = 0;
+  batch.outputPtr = 0;
+  batch.capacity = 0;
+  [batch.inputPtr, batch.outputPtr] = allocateGrids(wasm, [
+    capacity * WATER_FORCE_INPUT_STRIDE,
+    capacity * WATER_FORCE_OUTPUT_STRIDE,
+  ]);
   batch.capacity = capacity;
   batch.configs = new Float64Array(capacity * CONFIG_WIDTH);
   // Views bind below, after any growth these allocations caused.
