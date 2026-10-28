@@ -61,6 +61,8 @@ export default function SpeedWindAudio({
         return;
       }
       voiceRef.current = voice;
+    }).catch((err: unknown) => {
+      console.warn('[SpeedWindAudio] voice setup failed', err);
     });
 
     return () => {

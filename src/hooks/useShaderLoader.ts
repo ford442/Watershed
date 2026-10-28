@@ -123,7 +123,8 @@ export const useShaderLoader = (
       }
     };
 
-    load();
+    // load() reports its own failures (try / catch → error state).
+    void load();
 
     return () => { 
       mounted = false; 
@@ -174,7 +175,8 @@ export const useShaderList = (
       }
     };
 
-    load();
+    // load() reports its own failures (try / catch → error state).
+    void load();
   }, [options?.tag, options?.type, options?.limit]);
 
   return { shaders, loading, error };

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/index.tsx", "src/**/*.test.{ts,tsx}", "src/**/*.perf.test.{ts,tsx}", "src/setupTests.ts"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignoreExportsUsedInFile": true
+}

@@ -260,7 +260,7 @@ export function useExperienceWorld({
   ]);
 
   useEffect(() => {
-    debug.runStage('dataProcessing', () => {
+    void debug.runStage('dataProcessing', () => {
       const params = queryParams();
       const levelParam = params.get('level');
       const levelUrlParam = params.get('levelUrl');
@@ -312,7 +312,7 @@ export function useExperienceWorld({
 
   const handleLevelLoad = useCallback(
     (levelState: { biome?: { baseType?: string } } | null) => {
-      debug.runStage('dataProcessing', () => {
+      void debug.runStage('dataProcessing', () => {
         setLoadedLevelState(levelState);
         setIsLoadingLevel(false);
 

@@ -137,7 +137,9 @@ export function createSoundLibrary(context: AudioContext | null, unlockGate: Aud
       console.warn(`[AudioManager] Unknown sound: ${name}`);
       failed.add(name);
     },
-    preloadWhenIdle: () => whenIdle(() => preload()),
+    preloadWhenIdle: () => whenIdle(() => {
+      void preload();
+    }),
     status() {
       const soundNames = Object.keys(SOUND_DEFS);
       return {

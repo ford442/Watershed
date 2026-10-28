@@ -489,7 +489,11 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
             />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => navigator.clipboard?.writeText(exportJson)}
+                onClick={() => {
+                  navigator.clipboard?.writeText(exportJson).catch((err: unknown) => {
+                    console.warn('[LevelEditor] copy to clipboard failed', err);
+                  });
+                }}
                 style={toolbarButtonStyle}
               >
                 Copy to Clipboard

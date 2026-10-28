@@ -106,7 +106,7 @@ export function useExperienceLifecycle({
   }, []);
 
   useEffect(() => {
-    debug.runStage('audio', () => {
+    void debug.runStage('audio', () => {
       initAudio(camera);
     });
   }, [camera, debug]);

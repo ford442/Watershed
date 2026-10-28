@@ -70,7 +70,7 @@ function App({ graphicsBoot }: AppProps = {}) {
       ) : (
         <>
           <SettingsSync />
-          <RendererBoot boot={boot} onCreated={() => debug.runStage('visualization', () => undefined)}>
+          <RendererBoot boot={boot} onCreated={() => { void debug.runStage('visualization', () => undefined); }}>
             <Experience
               debug={debug}
               physicsDebug={dev.physicsDebug}

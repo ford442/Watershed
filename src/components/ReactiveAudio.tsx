@@ -226,7 +226,9 @@ export default function ReactiveAudio({
       setAudioReady(true);
     };
 
-    setup();
+    setup().catch((err: unknown) => {
+      console.warn('[ReactiveAudio] setup failed', err);
+    });
 
     return () => {
       cancelled = true;

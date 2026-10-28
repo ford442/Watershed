@@ -125,7 +125,8 @@ export default function ReachManager({
       }
     };
 
-    load();
+    // load() reports its own failures (try / catch → setError).
+    void load();
 
     return () => {
       cancelled = true;

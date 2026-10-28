@@ -45,6 +45,8 @@ export default tseslint.config(
       'verification/output/**',
       'coverage/**',
       'docs/**',
+      // Local agent / editor worktrees (git-ignored checkouts of this repo).
+      '.claude/**',
     ],
   },
 
@@ -111,6 +113,24 @@ export default tseslint.config(
       // `require` shows up in vi.mock factories, where ESM imports are hoisted
       // out from under the mock.
       '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+
+  // Type-aware rules (#521 F), on the app sources only: a promise nobody
+  // awaits or catches (the async loaders, the worker proxies, the audio
+  // unlock) fails silently in a game loop, and an async function handed to a
+  // void callback (an event handler, useEffect) drops its rejection.
+  // `projectService` reads tsconfig.json; tests are outside it and outside this block.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/**/__tests__/**', 'src/**/__mocks__/**', 'src/testing/**', 'src/setupTests.ts'],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
     },
   },
 

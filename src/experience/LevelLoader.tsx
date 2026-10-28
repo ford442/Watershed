@@ -89,14 +89,16 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
     };
 
     if (levelData || levelUrl) {
-      load();
+      load().catch((err: unknown) => {
+        onError?.(err instanceof Error ? err.message : String(err));
+      });
     }
   }, [levelData, levelUrl, levelId, loadAttempted, loadFromJSON, loadFromURL, normalizedState, error, onLoad, onError]);
 
   // Handle retry
   const handleRetry = useCallback(() => {
     setLoadAttempted(false);
-    reloadCurrent();
+    void reloadCurrent();
   }, [reloadCurrent]);
 
   // Handle dismiss

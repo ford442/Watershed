@@ -57,7 +57,8 @@ export function createAmbientBed(
       }
 
       // Load and fade in new track
-      library.load(trackName).then(buffer => {
+      // load() resolves null on failure; it never rejects.
+      void library.load(trackName).then(buffer => {
         if (!buffer || request !== ambientRequest) return;
 
         const track = new THREE.Audio(listener) as THREE.Audio<AudioNode>;

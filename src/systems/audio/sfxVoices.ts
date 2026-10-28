@@ -86,7 +86,7 @@ export function createSfxVoices(
     if (!buffer) {
       // Try to load on-demand. Only retry on success — a missing file would
       // otherwise bounce between load and play forever.
-      library.load(name).then((loaded) => {
+      void library.load(name).then((loaded) => {
         if (loaded) play(name, volume, pitch, position);
       });
       return null;

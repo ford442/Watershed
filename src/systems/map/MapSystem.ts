@@ -82,9 +82,10 @@ export function resolveGameplayProfile(
 // Not a placeholder: this is the real procedural generator that both the
 // standalone (map-less) treadmill and the authored-map fallback path
 // (`fallbackManager` below and in the authored-map manager) fall back to
-// once the authored segment sequence runs out.
+// once the authored segment sequence runs out. Module-private (#521 F): only
+// the two managers below construct it; nothing outside imports it.
 
-export class DefaultMapManager implements MapManager {
+class DefaultMapManager implements MapManager {
   chunks: BaseMapChunk[] = [];
   currentChunkIndex = 0;
   private config: MapConfig;
@@ -185,7 +186,7 @@ export { LEGACY_BIOME_ALIASES as JSON_BIOME_NAME_MAP, normalizeBiomeId } from '.
 /**
  * Loads and parses JSON level files into MapSystem-compatible format
  */
-export class JSONLevelLoader {
+class JSONLevelLoader {
   /**
    * Fetch and parse a level from URL
    */

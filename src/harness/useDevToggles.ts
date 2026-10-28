@@ -30,7 +30,7 @@ export function useDevToggles(debug: DebugStageController) {
   });
 
   useEffect(() => {
-    debug.runStage('appBootstrap', () => {
+    void debug.runStage('appBootstrap', () => {
       if (queryFlags().noPointerLock) {
         setSkipLoader(true);
       }
