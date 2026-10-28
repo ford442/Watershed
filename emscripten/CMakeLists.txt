@@ -87,27 +87,25 @@ if(EMSCRIPTEN)
     else()
         # Every TU, bindings.cpp included, is -fno-rtti / -fno-exceptions:
         # the C ABI (#467) has no Embind typeid to match, so nothing needs RTTI.
-        # FP contract (#404): the WASM Release build keeps -ffast-math while the
-        # host build below uses -ffp-contract=off. The two are deliberately not
-        # identical — the shipped binary wants the vectoriser, the host smoke
-        # wants reproducible goldens. This is safe only as long as the goldens
-        # agree across both: emscripten/host_smoke.cpp (host) and the SWE /
-        # applySWEEvent blocks in emscripten/smoke_test.mjs (wasm) assert the
-        # same well-balanced and source-term results, the latter against the TS
-        # twin within 1e-5. If those ever diverge, drop -ffast-math here (or at
-        # least add -ffp-contract=off on the HLL TU in swe.cpp) rather than
-        # loosening the tolerance.
-        # -fno-finite-math-only (#454): -ffast-math implies finite-math-only,
-        # which lets clang fold every std::isfinite() to true — including the
-        # NaN guards in chores.cpp that keep NaN out of the HUD histogram /
-        # reduce chores. Keep the rest of fast-math (reassociation for the
-        # vectoriser) but let isfinite / isnan mean what they say.
+        # FP model: IEEE, the same as the host build below. No -ffast-math —
+        # reassociation and approximate functions made the shipped binary
+        # compute different SWE and routing bits from the host goldens, and
+        # replays / ghosts need one set of numbers. emscripten/native_digest.h
+        # pins host == wasm bit for bit (host_smoke.cpp, and
+        # nativeDigest.integration.test.ts on the shipped pair); a flag that
+        # breaks it is the wrong flag, not a tolerance to loosen. The hot SWE
+        # kernels are hand-vectorised in simdf32.h, so the vectoriser loses
+        # little. -ffp-contract=off is explicit, as on the host (wasm32 has no
+        # scalar FMA today, but relaxed-SIMD would add one). -fno-math-errno
+        # stays: emscripten's libm never sets errno, and without it clang
+        # keeps a libcall around sqrt; the result is the same correctly
+        # rounded sqrt either way.
         # -flto: six small TUs; lets calculateWaterForce etc. inline across
         # forces.cpp / bindings.cpp. Also passed at link (below).
         set(EM_COMPILE_FLAGS
             -O3
-            -ffast-math
-            -fno-finite-math-only
+            -ffp-contract=off
+            -fno-math-errno
             -flto
             -funroll-loops
             # SIMD: the SWE stepper (incl. the HLL faces, #467), Euler in

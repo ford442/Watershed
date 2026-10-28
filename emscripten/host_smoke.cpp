@@ -20,6 +20,7 @@
 
 #include "chores.h"
 #include "forces.h"
+#include "native_digest.h"
 #include "swe.h"
 #include "particles.h"
 #include "routing.h"
@@ -850,8 +851,9 @@ int main() {
             }
             check(early < 0.01f, "routed edge: stage flat before the lag");
             check(late > 0.5f * high.eta, "routed edge: stage raised after the lag");
-            // Goldens, mirrored in smoke_test.mjs against the -ffast-math WASM
-            // build (same chain, same numbers, same 1e-4 relative tolerance).
+            // Goldens, mirrored in smoke_test.mjs against the WASM build (same
+            // chain, same numbers, same 1e-4 relative tolerance). Bitwise
+            // host == wasm is native_digest.h's job; these are physics.
             checkClose(lagFar, 264.890015f, 1e-4f, "routing golden: far-segment lag (s)");
             checkClose(riseAtLag, 0.999229f, 1e-4f, "routing golden: release fraction at 1.25 x lag");
             checkClose(high.eta, 0.197293f, 1e-4f, "routing golden: edge stage for +35% discharge");
@@ -1206,6 +1208,37 @@ int main() {
         check(allocBytes<uint32_t>(128 * 80, 4u) == 128u * 80u * 4u, "allocBytes: an SWE grid is its byte count");
         check(allocateGrid(1 << 30) == 0 && allocateGrid(WS_MAX_ELEMENTS + 1) == 0,
               "swe: allocateGrid rejects counts past WS_MAX_ELEMENTS");
+    }
+
+    // ------------------------------------------------------------------
+    // Bit-exact digests (native_digest.h): the same numbers gate the shipped
+    // wasm in nativeDigest.integration.test.ts, so host == wasm bit for bit.
+    // ------------------------------------------------------------------
+    {
+        const uint32_t swe = native_digest::sweDigest();
+        const uint32_t routing = native_digest::routingDigest();
+        const uint32_t terrain = native_digest::terrainDigest();
+        if (std::getenv("WATERSHED_PRINT_DIGESTS") != nullptr) {
+            std::printf("inline constexpr uint32_t kSweDigest = 0x%08xu;\n", swe);
+            std::printf("inline constexpr uint32_t kRoutingDigest = 0x%08xu;\n", routing);
+            std::printf("inline constexpr uint32_t kTerrainDigest = 0x%08xu;\n", terrain);
+        }
+        const auto digest = [](uint32_t got, uint32_t want, const char* what) {
+            if (got != want) {
+                std::fprintf(stderr, "FAIL  %s digest: 0x%08x, native_digest.h says 0x%08x\n", what, got, want);
+                ++g_failures;
+            }
+        };
+        // Routing (powf / expf) and terrain (sin / pow) go through the host
+        // libm: the digests are glibc's, which agrees with the wasm's musl on
+        // these scenarios. Elsewhere (macOS libm) only SWE is libm-free.
+        digest(swe, native_digest::kSweDigest, "swe");
+#if defined(__GLIBC__)
+        digest(routing, native_digest::kRoutingDigest, "routing");
+        digest(terrain, native_digest::kTerrainDigest, "terrain");
+#else
+        std::printf("note: routing / terrain digests are checked on glibc hosts only\n");
+#endif
     }
 
     if (g_failures != 0) {

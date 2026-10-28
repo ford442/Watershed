@@ -33,7 +33,7 @@
  *
  * Arithmetic is double internally and rounds once into the float planes, so
  * the TS mirror (src/terrain/terrainTile.ts, float64) agrees to ~1 ulp and the
- * host build and the -ffast-math WASM build agree with each other.
+ * host and WASM builds agree bit for bit (native_digest.h).
  *
  * Host-clean; bindings.cpp exports the C ABI (ws_buildTerrainTile / ws_buildWallShell).
  */

@@ -152,7 +152,7 @@ cd emscripten
 | Flag | Why |
 |------|-----|
 | `ENVIRONMENT='web,worker'` (both variants) | The sim worker loads the same glue (`src/sim/workerWasm.ts`, #455); the Rapier worker no longer does (Phase B — its raft force comes from the sim worker). `smoke_test.mjs` fails if the glue hard-codes the worker flag. |
-| `-ffast-math -fno-finite-math-only` | Keep reassociation for the vectoriser, but stop clang folding `std::isfinite` to `true` — the `chores.cpp` NaN guards depend on it (`gpuChores/watershedHost.integration.test.ts`). |
+| IEEE FP: `-ffp-contract=off -fno-math-errno`, no `-ffast-math` | The shipped binary computes the host build's numbers bit for bit (`native_digest.h`; see *One set of numbers* below). Fast-math's reassociation changed SWE and routing bits, and its finite-math-only folded the `chores.cpp` / sentinel `std::isfinite` guards to `true` (`gpuChores/watershedHost.integration.test.ts` still drives them). |
 | `-flto` (compile + link) | Cross-TU inlining across the five compute TUs and `bindings.cpp`. |
 | `--closure 1` | Minifies the glue (~5 KB with the C ABI). `_ws_*`, `HEAP*`, `createWatershedNative` are exports and survive. |
 | `INCOMING_MODULE_JS_API=wasmBinary,locateFile` | The options `wasmLoader.ts` passes. Named explicitly: emcc 4.x+ dropped `wasmBinary` from the default, and a glue that ignores it fetches the wasm a second time. |
@@ -161,6 +161,24 @@ cd emscripten
 
 `--threads` builds into `emscripten/build-threads/out/` and never writes `public/` or the
 artifact stamp: the single-thread pair is the only thing that ships.
+
+### One set of numbers
+
+Replays and ghosts (#505) re-run the sim and compare, so every backend has to compute the same
+river. The contract, and how each part is held:
+
+| Pair | Budget | Gate |
+|------|--------|------|
+| shipped WASM vs host build (SWE, routing, terrain) | **0 ulp** (bit for bit) | `emscripten/native_digest.h`: FNV-1a over every output float's bits for one scenario per kernel. `host_smoke.cpp` checks the host build (gcc, clang and the ASan build all agree); `nativeDigest.integration.test.ts` replays the same calls through the committed pair in `pnpm test`, and against CI's pinned rebuild in `pnpm test:wasm`. |
+| TS terrain mirror (`terrainTile.ts`) vs WASM | **0 ulp** in V8 (Node / Chrome) | `terrainParity.test.ts` (`pnpm test:wasm`) requires equal floats on the fixtures and 200 random tiles. Both compute in float64 and round once, and V8's `Math.sin` / `Math.pow` and musl are both fdlibm. Another engine's libm may differ by ≤ 1 ulp per call in float64, which rounds away in the float plane except at a `floor()` (the wall-shell shelf): treat any difference there as a bug report against that engine, not a tolerance. |
+| WGSL SWE twin (`swe.wgsl`) vs WASM | **1e-5 absolute** per field after each scenario | `pnpm test:wgsl`. WGSL only guarantees `+ − ×` correctly rounded (division is 2.5 ulp, `sqrt` is derived), so it cannot be bitwise. Measured on SwiftShader: 25 of 29 scenarios bit-identical, worst 9.5e-7 (hull samples, ~8 ulp at unit scale). |
+| TS water-force fallback vs WASM | 1e-3 relative (`waterForceParity.test.ts`) | Gameplay fallback only, never replayed against the WASM. |
+
+Release dropped `-ffast-math` for this. Measured on the dev box (`pnpm profile:swe`, Node,
+median of five 3000-step medians): 128×80 0.141 → 0.138 ms, 48×32 0.0214 → 0.0212 ms, 32×24
+0.0112 → 0.0115 ms — inside run-to-run noise, since the SWE kernels are hand-vectorised in
+`simdf32.h`. The terrain tile (double-precision `sin` / `pow`, not vectorised) is the cost: a
+40×96 tile 0.35 → 0.45 ms on the sim worker, ~0.1 ms per appended segment, off the main thread.
 
 ### Host (clangd / smoke, no Emscripten)
 
@@ -560,7 +578,7 @@ in while waves leaving the window still leave. Supercritical inflow takes both i
 outside; supercritical outflow is transmissive; a dry column is transmissive. Lateral and
 downstream edges stay transmissive, so the window does not reflect. The ghost is written as
 the interior plus the jump in the incoming invariant, so `edgeEta = 0` over still water is
-**exactly** the interior state, even under the WASM build's `-ffast-math` — lake-at-rest holds at
+**exactly** the interior state, whatever the compiler reassociates — lake-at-rest holds at
 the reference discharge. The ghost's wave speed joins the CFL max.
 
 - **Runtime.** `riverRouter.ts` owns the heap arrays and the clock: head discharge =
@@ -573,9 +591,9 @@ the reference discharge. The ghost's wave speed joins the CFL max.
   transmissive, as before.
 - **Additive.** `stepShallowWater` / `applySWEEvent` / `scrollShallowWater` keep their
   signatures, so `MIN_WASM_ABI_VERSION` stayed **8** at the time (since ABI 12 every export is required).
-- **FP contract (#404).** The routing goldens hold across the host (`-ffp-contract=off`) and the
-  `-ffast-math` WASM build at 1e-4 relative, so `routing.cpp` needs no pinned FP flags. If they
-  ever diverge, pin `-ffp-contract=off` on `routing.cpp` only.
+- **FP contract (#404).** Host and WASM both build IEEE with `-ffp-contract=off`; the routing
+  scenario in `native_digest.h` is bit-identical across them (the 1e-4 goldens in
+  `host_smoke.cpp` §8 / `smoke_test.mjs` stay as physics checks).
 - **WGSL.** `swe.wgsl` carries the same ghost (`upstreamGhost`), switched by the `edgeActive` /
   `edgeEta` params; the routing itself stays in C++ (the WGSL session still loads the WASM module
   for forces and routing).
@@ -609,8 +627,9 @@ grid is three's `PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ)` a
   the mirror on the main thread, `buildTerrainTileNative` / `buildWallShellHeightsNative` in the
   sim worker, which builds every segment the treadmill appends ahead (`BUILD_TILE`, #487 Phase B;
   see SYSTEMS.md, Sim Worker).
-- **FP.** Both backends compute in double and round once into the float planes, so the host
-  (`-ffp-contract=off`), the `-ffast-math` WASM build and the float64 mirror agree to ~1 ulp.
+- **FP.** Both backends compute in double and round once into the float planes. The host and the
+  WASM build are bit-identical (`native_digest.h`); the float64 mirror differs only where the
+  libm (`Math.sin` / `Math.pow` vs musl) does, within the ulp budget below.
 - **Pinned by:** `host_smoke.cpp` §9 (three golden segments — summer meander, slot canyon on the
   collision grid, glacial ice tube — plus the overhang, uv / bank invariants and the input
   guards), `smoke_test.mjs` (same goldens against the WASM build), `terrainTile.test.ts`
@@ -737,9 +756,9 @@ at test time.
   Each lane evaluates the scalar expression in the same order, and `f32x4_max/min` are
   `std::max/min` on every backend (wasm `pmax/pmin`, SSE `_mm_max_ps(b, a)`), so on the
   host the vector step is **bit-identical** to the scalar one — `swe_goldens.h` did not
-  move. The `-ffast-math` WASM build reassociates differently, so WASM-vs-WASM drift
-  across the change is ~1e-5 after hundreds of chaotic steps; the WGSL twin stays within
-  its 1e-5 parity gate (`pnpm test:wgsl`). A NaN in one lane no longer poisons the WASM
+  move. (The WASM build was `-ffast-math` then and reassociated differently, ~1e-5 of
+  WASM-vs-WASM drift after hundreds of chaotic steps; it is IEEE now and matches the
+  host bit for bit.) The WGSL twin stays within its 1e-5 parity gate (`pnpm test:wgsl`). A NaN in one lane no longer poisons the WASM
   CFL max (`wasm_f32x4_max` propagated it; `pmax` ignores it, like SSE).
 - **Measured** (`pnpm profile:swe`, median of 1000 steps, release build, Node on the
   8-core dev box): 64×40 0.178 → **0.057 ms (3.1×)**; 128×80 ~0.235 ms. Every enabled

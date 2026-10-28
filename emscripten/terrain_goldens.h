@@ -6,7 +6,7 @@
  * collision grid) and a glacial ice tube (tube fold, overhang). The same
  * fixtures and the same golden sums are mirrored in
  * src/terrain/__tests__/terrainFixtures.ts (TS mirror, `pnpm test`) and
- * emscripten/smoke_test.mjs (the -ffast-math WASM build). Regenerate all three
+ * emscripten/smoke_test.mjs (the WASM build). Regenerate all three
  * together, deliberately.
  */
 

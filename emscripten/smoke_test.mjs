@@ -482,9 +482,9 @@ if (version >= 9) {
 }
 
 // --- ABI 10: channel routing + the routed upstream edge ---------------------
-// Same 20-segment chain and goldens as host_smoke.cpp §8. The host build uses
-// -ffp-contract=off, this binary -ffast-math: the 1e-4 relative tolerance is
-// the #404 rule. If they ever diverge, pin -ffp-contract=off on routing.cpp.
+// Same 20-segment chain and goldens as host_smoke.cpp §8, at the #404 1e-4
+// relative tolerance. Both builds are IEEE -ffp-contract=off now; bit-for-bit
+// host == wasm is nativeDigest.integration.test.ts (native_digest.h).
 if (version >= 10) {
   for (const name of ['routeReach', 'routeReachSteady', 'routeReachTravelTime', 'routedEdgeState', 'stepShallowWaterInflow']) {
     if (typeof wasm[name] !== 'function') throw new Error(`ABI 10 must export ${name}`);
@@ -614,7 +614,7 @@ if (version >= 11) {
 
 // --- ABI 13: terrain tiles (#487) ---------------------------------------------
 // Same fixtures and goldens as emscripten/terrain_goldens.h (host) and
-// src/terrain/__tests__/terrainFixtures.ts (TS mirror), here against the -ffast-math build.
+// src/terrain/__tests__/terrainFixtures.ts (TS mirror), here against the WASM build.
 {
   const STRIDE = 9;
   const PLANES = 7;

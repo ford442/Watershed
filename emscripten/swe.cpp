@@ -389,7 +389,7 @@ GhostCell upstreamGhost(float dI, float hI, float qzI, float qxI, float edgeEta,
         // with jump ΔR = R+_ext − R+_in the ghost is the interior plus
         //   v = v_in + ΔR/2,   c = c_in + ΔR/4.
         // ΔR == 0 (reference stage over still water) reproduces the interior
-        // exactly, whatever the compiler reassociates (-ffast-math WASM build).
+        // exactly, whatever the compiler reassociates.
         const float dR4 = 0.25f * ((vExt + 2.f * cExt) - (vI + 2.f * cI));
         const float cG = cI + dR4;
         if (cG <= 0.f) return GhostCell{};

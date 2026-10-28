@@ -1,11 +1,11 @@
 /**
  * watershedHost.integration.test.ts — the chore NaN guards survive the REAL binary.
  *
- * chores.cpp skips non-finite samples with std::isfinite. Under plain -ffast-math
+ * chores.cpp skips non-finite samples with std::isfinite. Under -ffast-math
  * (which implies -ffinite-math-only) clang folds those guards to `true`, so a NaN
- * poisons the mean and an Inf lands in a histogram bin (#454). CMakeLists.txt adds
- * -fno-finite-math-only; this drives the compiled module through the host the HUD
- * uses and fails if the guards ever get optimised away again.
+ * poisons the mean and an Inf lands in a histogram bin (#454). The Release build
+ * is IEEE now (no -ffast-math); this drives the compiled module through the host
+ * the HUD uses and fails if the guards ever get optimised away again.
  *
  * Gated like the other integration tests (`pnpm test:wasm`): needs public/*.wasm.
  */

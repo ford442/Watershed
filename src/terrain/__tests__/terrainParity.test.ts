@@ -3,8 +3,11 @@
  *
  * The tile will be built in the sim worker from WASM (#487 B) and by the
  * mirror on a no-WASM boot, so the canyon a player rides must not depend on
- * which one ran. Every plane of every vertex must agree within 1e-5
- * (relative, absolute floor 1e-5): both compute in float64 and round once.
+ * which one ran. Every plane of every vertex must be the same float, bit for
+ * bit: both compute in float64 and round once, the wasm is IEEE (no
+ * -ffast-math), and V8's Math.sin / Math.pow and the wasm's musl libm are both
+ * fdlibm, so the mirror has no ulp budget to spend in Node / Chrome (WASM.md,
+ * "One set of numbers"). +0 and -0 count as equal; NaN never appears.
  *
  * Opt-in like waterForceParity.test.ts: `pnpm test:wasm` (WATERSHED_WASM_INTEGRATION=1).
  */
@@ -35,7 +38,6 @@ import type { SimWorkerResponse } from '../../sim/simWorkerProtocol';
 const runNative = process.env.WATERSHED_WASM_INTEGRATION === '1' && nativePairOnDisk();
 const describeNative = runNative ? describe : describe.skip;
 
-const PARITY_EPS = 1e-5;
 const PLANE_NAMES = ['x', 'h', 'bank', 'slopeX', 'slopeZ', 'uvU', 'uvV'];
 
 /** Deterministic LCG so a failure names a reproducible case. */
@@ -83,12 +85,12 @@ function randomParams(seed: number): TerrainTileParams {
   };
 }
 
-/** Worst plane mismatch, or null when every value is within PARITY_EPS. */
+/** First plane value the backends disagree on, or null when every float is equal. */
 function firstMismatch(native: Float32Array, mirror: Float32Array, n: number): string | null {
   for (let i = 0; i < native.length; i += 1) {
     const a = native[i];
     const b = mirror[i];
-    if (!(Math.abs(a - b) <= PARITY_EPS * Math.max(1, Math.abs(b)))) {
+    if (a !== b) {
       return `${PLANE_NAMES[Math.floor(i / n)] ?? 'wall'}[${i % n}]: native ${a}, mirror ${b}`;
     }
   }
@@ -147,7 +149,7 @@ describeNative('terrain parity — native C++ vs TS mirror', () => {
 
 /**
  * #487 B: a treadmill segment's meshes built in the sim worker (WASM tile) vs
- * on the main thread (TS mirror). The tile agrees to 1e-5; positions add the
+ * on the main thread (TS mirror). The tile is bit-identical; positions add the
  * path point (float32 world coordinates) and normals are re-derived from them,
  * so those carry a looser bound.
  */
