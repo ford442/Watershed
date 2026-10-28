@@ -5,12 +5,14 @@
  * - Maintain a fixed-size object pool of track segments
  * - Generate new segments ahead of the player (Catmull-Rom splines)
  * - Recycle old segments behind the player
- * - Detect biome transitions based on closest active segment
+ * - Detect biome transitions based on closest active segment (`detectBiome`,
+ *   stepped by the SimCore `chunk-biome` system — see chunkBiomeSystem.ts)
  * - Track spawn points for segment-index-aware respawn
  *
  * ARCHITECTURE:
  * - Pure TypeScript class, no React dependencies
  * - TrackManager.tsx creates an instance and calls update() inside useFrame
+ *   (pool: generate / enter / recycle); SimCore calls detectBiome() each sim step
  * - All NaN guards and tangent-continuity fixes from TrackManager are preserved
  */
 
@@ -123,6 +125,21 @@ function zSpanOf(segment: SegmentData): ZSpan {
 }
 
 // =============================================================================
+// THE LIVE MANAGER (read by the SimCore chunk-biome system)
+// =============================================================================
+
+let liveManager: ChunkManager | null = null;
+
+/** The initialized manager of the mounted treadmill, or null (menu, tests, between runs). */
+export function getLiveChunkManager(): ChunkManager | null {
+  return liveManager;
+}
+
+function setLiveChunkManager(manager: ChunkManager | null): void {
+  liveManager = manager;
+}
+
+// =============================================================================
 // CHUNK MANAGER CLASS
 // =============================================================================
 
@@ -194,6 +211,7 @@ export class ChunkManager {
     this.pool = pool;
     this.activeOrder = activeOrder;
     this.initialized = true;
+    setLiveChunkManager(this);
     this.seedSpawnBiome(pool[0]?.segment ?? null);
 
     // One batched spawn update — avoids N Zustand/React flushes during cold boot.
@@ -221,6 +239,7 @@ export class ChunkManager {
 
   dispose(): void {
     this.clearBiomeDebounce();
+    if (liveManager === this) setLiveChunkManager(null);
     this.initialized = false;
     this.activeOrder = [];
     this.pool = [];
@@ -328,13 +347,18 @@ export class ChunkManager {
   // Per-frame update
   // ---------------------------------------------------------------------------
 
-  update(cameraZ: number, dt = 0): { poolChanged: boolean; biomeChanged?: string; segmentEntered?: number } {
+  /**
+   * Pool upkeep for the camera at `cameraZ`: generate ahead, report segment
+   * entry. Biome detection is not here any more — it is a sim system
+   * (`detectBiome`, stepped by SimCore). `_dt` is the old call shape
+   * (TrackManager still passes its frame delta); it is not read.
+   */
+  update(cameraZ: number, _dt = 0): { poolChanged: boolean; segmentEntered?: number } {
     if (!this.initialized) {
       return { poolChanged: false };
     }
 
     let poolChanged = false;
-    let biomeChanged: string | undefined;
     let segmentEntered: number | undefined;
 
     const pool = this.pool;
@@ -382,7 +406,25 @@ export class ChunkManager {
       // because the slot will be reused in the generation block above.
     }
 
-    // ---- Biome change detection ----
+    if (poolChanged) {
+      this.callbacks.onPoolChange?.();
+    }
+
+    return { poolChanged, segmentEntered };
+  }
+
+  /**
+   * Biome change detection for the camera at `cameraZ`, advanced by `dtSec` of
+   * sim time (the SimCore `chunk-biome` system calls this once per fixed step).
+   * Returns the biome that is pending or just committed, if it differs from the
+   * last reported one.
+   */
+  detectBiome(cameraZ: number, dtSec: number): string | undefined {
+    if (!this.initialized) return undefined;
+
+    const activeSegments = this.getActiveSegments();
+    if (activeSegments.length === 0) return undefined;
+
     const closestSegment = this.segmentAtZ(activeSegments, cameraZ);
 
     if (closestSegment && closestSegment.biome !== this.lastReportedBiome) {
@@ -394,23 +436,18 @@ export class ChunkManager {
         this.pendingBiome = newBiome;
         this.pendingBiomeSec = 0;
       }
-      this.pendingBiomeSec += Math.max(0, dt);
+      this.pendingBiomeSec += Math.max(0, dtSec);
       // ε: 24 × (1/60) sums to a hair under 0.4 in float64.
       if (this.pendingBiomeSec >= BIOME_DEBOUNCE_SEC - 1e-9) {
         this.clearBiomeDebounce();
         this.reportBiome(newBiome, closestSegment.id);
       }
 
-      biomeChanged = newBiome;
-    } else {
-      this.clearBiomeDebounce();
+      return newBiome;
     }
 
-    if (poolChanged) {
-      this.callbacks.onPoolChange?.();
-    }
-
-    return { poolChanged, biomeChanged, segmentEntered };
+    this.clearBiomeDebounce();
+    return undefined;
   }
 
   // ---------------------------------------------------------------------------

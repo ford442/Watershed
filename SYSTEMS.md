@@ -502,6 +502,50 @@ canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
 
 ---
 
+## The sim core (#521)
+
+### `src/sim/core/SimCore.ts` + `experience/SimCoreTick.tsx` + `experience/simSystems.ts`
+
+**Purpose:** The one fixed-step gameplay clock. A plain module (no React, no three objects in its
+state): a 1/60 s accumulator and an ordered registry of systems `{ id, order, step(ctx, dt) }`.
+Gameplay that used to be advanced by an assorted `useFrame`, a React effect or a component's own
+delta is a registered system, so a real frame, a replay and a headless run execute the same code.
+
+**Runs in:** `SimCoreTick` — one `useFrame` at priority **−90**: after `InputHubTick` (−100) has
+produced this frame's `InputFrame`, before `SkyClockTick` (−85, sun placement only) and every
+default-priority subscriber (vehicles, Rapier, TrackManager). It samples the camera, the vehicle
+body, the segment frame and the paused flag into `simCore.ctx`, then `simCore.advance(frameDelta)`.
+
+**The step:** `advance(delta)` turns a frame delta into 0..`SIM_MAX_SUBSTEPS` (5) calls of `step()`;
+a backlog past the clamp is dropped, not owed. `step()` is the only place a system runs, with
+`dt = SIM_DT` (1/60) — never the frame delta. `stepScripted(n)` (input/scriptedRun.ts) holds the core
+in *scripted mode* while it advances n R3F frames: one `advance()` is exactly one step, so n frames are
+n steps whatever the deltas' float residue (`SimCore.test.ts` pins the parity).
+
+**`SimContext`:** `rng` (the one `createRng`, seed `SIM_RNG_SEED`; a stable function reseeded on every
+`watershed-run-reset`, so a restart draws what the first run drew — the splash foam gate reads it),
+`time` (sim seconds), `stepIndex`, `input` (the hub's frame), `segment` / `segmentIndex`, `paused`,
+`camera {z, sane}` and `vehicle` (position, velocity, pose quaternion as plain numbers).
+
+**Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
+biome detection and its 0.4 s sim-time debounce) · 40 `survival` (`stepRunSurvival`) · 50 `pillars`
+(crack timers and debris age, `pillarSimClock.ts`) · 90 `score` (score + the ghost's 10 Hz sample
+clock, which splits are read off). The list lives in `experience/simSystems.ts`.
+
+**Boundaries (Do NOT):**
+- Do NOT advance gameplay from a `useFrame` delta, a timer or a React effect — register a system.
+- Do NOT call a system's `step` directly; `simCore.step()` is the one entry.
+- Do NOT put a three object, a React ref or a component in `SimContext`.
+- Do NOT call `stepRunSurvival` from anywhere but the `survival` system (`tickRunSurvival`, the
+  vehicles' hook, only reads the modifiers back).
+- Do NOT tick a second SimCore or read `simCore.ctx.rng` from a render path.
+
+**Known Pain:** the sample is taken before the vehicle's own step, so a system sees the body as the
+last step left it (what the vehicle reads at the top of its step). The vehicles themselves are still
+priority-0 `useFrame`s; moving them into the registry is the later picture in #521.
+
+---
+
 ## The Living River (#464)
 
 One run is one river on one day: a launch hour, a weather script and the day's melt inputs
@@ -517,8 +561,9 @@ below; weather over a reach (lateral inflow, the squall front) under the upstrea
 (`weatherScript.ts`: `[{ atReachFraction, weather, intensity, rampSeconds, overSegment? }]`)
 against how far down the map the player is (`reachFraction.ts`), ramping between steps.
 
-**Runs in:** `WeatherDirectorTick` — `useFrame` priority −90, on the frame's sim delta while
-unpaused. Module state mutated in place; a step allocates nothing.
+**Runs in:** SimCore's `weather-director` system (order 10, `weatherSimSystem.ts`), on the fixed sim
+step while unpaused. `WeatherDirectorTick` only keeps the director's ambient weather in step with the
+biome. Module state mutated in place; a step allocates nothing.
 
 **Produces:**
 - *River weather* (`getDirectorRiverWeather`, `getDirectorOverSegment`) — script only: the
@@ -543,8 +588,8 @@ unpaused. Module state mutated in place; a step allocates nothing.
 year); `sunPosition(hour, latitude, dayOfYear)` is NOAA's approximation (~60 lines, no
 dependency). World frame: +X east, +Y up, −Z north.
 
-**Runs in:** `SkyClockTick` — `useFrame` priority −85, sim delta, unpaused only. Reset per
-run by `runSession`.
+**Runs in:** SimCore's `sky-clock` system (order 20, `skySimSystem.ts`), fixed step, unpaused only;
+`SkyClockTick` (`useFrame` −85) places the sun refs. Reset per run by `runSession`.
 
 **Produces:** `getSkyClock()` per frame — the sun vector and factors (`daylight`, `night`,
 `golden`, `elevation01`) that `SceneLighting`, `EnhancedSky` (turbidity / horizon), fog, water

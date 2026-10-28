@@ -8,7 +8,7 @@ import {
   initRunSession,
   recordUprightDistance,
   resetRunSessionForTests,
-  tickRunSurvival,
+  stepRunSurvival,
 } from './runSession';
 
 describe('runSession journey results', () => {
@@ -19,7 +19,7 @@ describe('runSession journey results', () => {
   it('tracks peak wetness and upright distance for results UI', () => {
     initRunSession({ mapId: 'delta', launchHour: 17 });
 
-    tickRunSurvival({
+    stepRunSurvival({
       dt: 2,
       biomeId: 'delta',
       inWater: true,

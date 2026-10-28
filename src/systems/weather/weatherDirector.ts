@@ -195,7 +195,7 @@ export function getWeatherDirector(): Readonly<WeatherDirectorState> {
   return director;
 }
 
-/** Advance the run's director (WeatherDirectorTick, once per sim frame). */
+/** Advance the run's director (the SimCore `weather-director` system, once per sim step). */
 export function tickWeatherDirector(reachFraction: number, dtSec: number): void {
   stepWeatherDirector(director, reachFraction, dtSec);
 }

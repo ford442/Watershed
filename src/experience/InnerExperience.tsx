@@ -27,6 +27,7 @@ import { getActiveConditions } from '../systems/journey/runSession';
 import { weatherScriptHasWeather } from '../systems/weather/weatherScript';
 import { WeatherDirectorTick } from '../systems/weather/WeatherDirectorTick';
 import { SkyClockTick } from '../systems/sky/SkyClockTick';
+import { SimCoreTick } from './SimCoreTick';
 import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
 import { isTouchInputMode } from '../input/touchMode';
@@ -81,9 +82,11 @@ export default function InnerExperience({
 
       {debug.isStageEnabled('visualization') && <EnhancedSky />}
 
-      {/* The one weather owner: steps the run's script and writes the store's weather. */}
+      {/* The fixed-step gameplay clock (−90): weather, sky clock, biome detection, survival, pillars, scoring. */}
+      <SimCoreTick debug={debug} vehicleRef={state.vehicleRef} />
+      {/* Keeps the weather director's ambient in step with the biome (SimCore steps the director). */}
       <WeatherDirectorTick />
-      {/* The run's time of day: advances the sky clock and places the sun for every reader below. */}
+      {/* Places the sun for the sky clock SimCore advances, for every reader below. */}
       <SkyClockTick />
 
       <SceneLighting
