@@ -1,30 +1,51 @@
 /**
- * terrainTile — one canyon source (#487 Phase A), TypeScript mirror.
+ * terrainTile — one canyon source (#487): a segment's floor as a tile of planes.
  *
- * `emscripten/terrain.cpp` is the canonical builder: path length, widths, the
- * channel profile and the tube profile in; SoA planes (folded x, floor height,
- * bank mask, slopes, flow-aligned uv) out, at the grid the caller asks for.
- * This module is the same function in TypeScript — the formulas the canyon
- * builders used to evaluate inline — so a session without the WASM module
- * builds the same tile, and `terrainParity.test.ts` pins the two together.
+ * Path length, widths, the channel profile and the tube profile in; SoA planes
+ * out, at whatever grid the caller asks for. The visual floor, the Rapier hull
+ * and the SWE bed all read this tile (the hull and bed at a coarser grid or
+ * without rock noise); none re-derives the formula. The main thread and the
+ * sim worker (BUILD_TILE) run this same module, so they build the same floats.
+ * (A C++ twin, emscripten/terrain.cpp, ran in the worker from ABI 13 to 15. It
+ * saved ~0.4 ms per segment off the main thread and cost three-way parity
+ * upkeep, so it was retired at ABI 16 — WASM.md, "Terrain tiles".)
  *
- * Grid and plane conventions are documented once, in `emscripten/terrain.h`.
- * Both backends compute in float64 and round once into the Float32 planes;
- * the channel profile crosses as float32 (`packChannelProfile`) on both.
+ * Grid convention — three's PlaneGeometry(canyonWidth, pathLength, segmentsX,
+ * segmentsZ) after rotateX(−π/2), so the builders keep their index buffers:
+ *
+ *     vertex i = iz * (segmentsX + 1) + ix
+ *     x = ix · canyonWidth / segmentsX − canyonWidth / 2      (local, across)
+ *     z = iz · pathLength / segmentsZ − pathLength / 2        (local, along)
+ *     t = iz / segmentsZ                                      (path parameter)
+ *
+ * Planes (TERRAIN_TILE_PLANES floats per vertex, plane-major — TerrainPlane):
+ *   X       local x after the tube fold (== grid x on open-sky segments)
+ *   H       local floor height above the path point (the builders' `yHeight`)
+ *   BANK    1 where the vertex is outside the wetted channel (|x| ≥ bank half-width), else 0
+ *   SLOPE_X ∂H/∂x on the unfolded grid (central differences, one-sided at the edges)
+ *   SLOPE_Z ∂H/∂z, same stencil
+ *   UV_U    across-channel coordinate in [0, 1] (ix / segmentsX)
+ *   UV_V    metres downstream from the segment start (t · pathLength)
+ *
+ * The channel profile crosses as float32 (`packChannelProfile`),
+ * TERRAIN_CHANNEL_STRIDE floats per sample in ChannelProfileSample's field
+ * order minus t / worldArc (the samples are evenly spaced in t):
+ *   [leftHalfWidth, rightHalfWidth, corridorHalfWidth, floorDepth, floorWave,
+ *    riffleStrength, gravelBarSide (±1), undercutSide (±1), flowScale]
+ *
+ * Arithmetic is float64 and rounds once into the Float32 planes.
  */
 
-import type { WatershedNativeModule } from '../systems/water/wasmAbi';
-import { heapF32 } from '../systems/water/wasmAbi';
 import type { ChannelProfileSample, ChannelShape } from './types';
 import { clamp01, lerp, smoothstep } from '../math/scalar';
 
-/** Floats per packed channel sample — TERRAIN_CHANNEL_STRIDE in terrain.h. */
+/** Floats per packed channel sample. */
 export const TERRAIN_CHANNEL_STRIDE = 9;
 
-/** Planes per tile — TERRAIN_TILE_PLANES in terrain.h. */
+/** Planes per tile. */
 export const TERRAIN_TILE_PLANES = 7;
 
-/** Plane order — TerrainPlane in terrain.h. */
+/** Plane order (see the header). */
 export const TerrainPlane = {
   X: 0,
   H: 1,
@@ -35,7 +56,7 @@ export const TerrainPlane = {
   UV_V: 6,
 } as const;
 
-/** Cross-section family — TerrainProfile in terrain.h. */
+/** Cross-section family. */
 export const TerrainProfile = {
   OPEN: 0,
   SLOT: 1,
@@ -43,15 +64,21 @@ export const TerrainProfile = {
 export type TerrainProfileId = (typeof TerrainProfile)[keyof typeof TerrainProfile];
 
 /**
- * TERRAIN_SLOT_FLOOR_LIFT in terrain.h (#487 C): the slot profile is lowered by
+ * #487 C: the slot profile is lowered by
  * its in-channel constant so its thalweg sits at the same datum as every other
  * biome, at or below the water sheet. Floor and wall shell move together.
  */
 export const TERRAIN_SLOT_FLOOR_LIFT = 22.0 * 0.18;
 
-/** TERRAIN_MAX_SEGMENTS / TERRAIN_MAX_VERTICES in terrain.h. */
+/** Largest grid a builder accepts: more segments per axis, or more vertices, is rejected (null). */
 export const TERRAIN_MAX_SEGMENTS = 4096;
 export const TERRAIN_MAX_VERTICES = 1 << 20;
+/**
+ * Shortest path / narrowest canyon or shell width a builder accepts (m). A
+ * denormal width passes `> 0` and then overflows the slope planes (dh / cellX)
+ * to inf when they are rounded to float.
+ */
+export const TERRAIN_MIN_EXTENT = 1e-3;
 
 /**
  * Tube cross-section (`plan.md` §1: "produce inward-curving walls … to form a
@@ -123,7 +150,7 @@ export function terrainVertexCount(segmentsX: number, segmentsZ: number): number
   return count > TERRAIN_MAX_VERTICES ? 0 : count;
 }
 
-/** Channel profile → the packed float32 layout both backends read (terrain.h). */
+/** Channel profile → the packed float32 layout the tile reads (see the header). */
 export function packChannelProfile(samples: readonly ChannelProfileSample[]): Float32Array {
   const out = new Float32Array(samples.length * TERRAIN_CHANNEL_STRIDE);
   samples.forEach((s, i) => {
@@ -309,14 +336,14 @@ function viewTile(segmentsX: number, segmentsZ: number, planes: Float32Array): T
 }
 
 function validTileParams(p: TerrainTileParams): boolean {
-  return Number.isFinite(p.pathLength) && p.pathLength > 0
-    && Number.isFinite(p.canyonWidth) && p.canyonWidth > 0
+  return Number.isFinite(p.pathLength) && p.pathLength >= TERRAIN_MIN_EXTENT
+    && Number.isFinite(p.canyonWidth) && p.canyonWidth >= TERRAIN_MIN_EXTENT
     && Number.isFinite(p.waterWidth)
     && (!p.tube || (Number.isFinite(p.tube.curl) && Number.isFinite(p.tube.ceilingHeight)))
     && terrainVertexCount(p.segmentsX, p.segmentsZ) > 0;
 }
 
-/** The TS mirror of `buildTerrainTile` (terrain.cpp). Null on invalid input. */
+/** The segment's floor tile. Null on invalid input. */
 export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
   if (!validTileParams(p)) return null;
   const { segmentsX, segmentsZ, pathLength, canyonWidth } = p;
@@ -347,7 +374,7 @@ export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
     }
   }
 
-  // Slopes from the rounded H plane, as terrain.cpp does.
+  // Slopes from the rounded H plane, so every consumer differences the same floats.
   const h = tile.h;
   for (let iz = 0; iz <= segmentsZ; iz += 1) {
     const z0 = Math.max(0, iz - 1);
@@ -363,10 +390,10 @@ export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
   return tile;
 }
 
-/** The TS mirror of `buildWallShell` (terrain.cpp): wall height above the path point. */
+/** Outer wall-shell heights above the path point, one per grid vertex. */
 export function buildWallShellHeights(p: WallShellParams): Float32Array | null {
-  if (!Number.isFinite(p.pathLength) || p.pathLength <= 0) return null;
-  if (!Number.isFinite(p.shellWidth) || p.shellWidth <= 0 || !Number.isFinite(p.wallHeight)) return null;
+  if (!Number.isFinite(p.pathLength) || !(p.pathLength >= TERRAIN_MIN_EXTENT)) return null;
+  if (!Number.isFinite(p.shellWidth) || !(p.shellWidth >= TERRAIN_MIN_EXTENT) || !Number.isFinite(p.wallHeight)) return null;
   const n = terrainVertexCount(p.segmentsX, p.segmentsZ);
   if (n === 0) return null;
 
@@ -396,53 +423,4 @@ export function buildWallShellHeights(p: WallShellParams): Float32Array | null {
     }
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Native backend (ws_buildTerrainTile / ws_buildWallShell, ABI 13)
-// ---------------------------------------------------------------------------
-
-type TerrainNative = Pick<WatershedNativeModule, 'HEAPF32' | 'allocateGrid' | 'freeGrid' | 'buildTerrainTile' | 'buildWallShell'>;
-
-/**
- * Build a tile in the WASM heap and copy it out. Same result shape as the
- * mirror; null when the native builder rejects the parameters.
- */
-export function buildTerrainTileNative(wasm: TerrainNative, p: TerrainTileParams): TerrainTile | null {
-  const n = terrainVertexCount(p.segmentsX, p.segmentsZ);
-  if (n === 0) return null;
-  const channelCount = Math.floor(p.channel.length / TERRAIN_CHANNEL_STRIDE);
-  const channelFloats = channelCount * TERRAIN_CHANNEL_STRIDE;
-  const channelPtr = channelFloats > 0 ? wasm.allocateGrid(channelFloats) : 0;
-  const outPtr = wasm.allocateGrid(n * TERRAIN_TILE_PLANES);
-  try {
-    if (channelPtr) heapF32(wasm, channelPtr, channelFloats).set(p.channel.subarray(0, channelFloats));
-    const written = wasm.buildTerrainTile(
-      p.pathLength, p.canyonWidth, p.waterWidth,
-      p.segmentsX, p.segmentsZ, p.profile,
-      p.rockNoise ? 1 : 0,
-      p.tube ? 1 : 0, p.tube?.curl ?? 0, p.tube?.ceilingHeight ?? 0,
-      channelPtr, channelCount, outPtr,
-    );
-    if (written !== n) return null;
-    return viewTile(p.segmentsX, p.segmentsZ, heapF32(wasm, outPtr, n * TERRAIN_TILE_PLANES).slice());
-  } finally {
-    wasm.freeGrid(outPtr);
-    if (channelPtr) wasm.freeGrid(channelPtr);
-  }
-}
-
-/** Native wall shell heights; null when the native builder rejects the parameters. */
-export function buildWallShellHeightsNative(wasm: TerrainNative, p: WallShellParams): Float32Array | null {
-  const n = terrainVertexCount(p.segmentsX, p.segmentsZ);
-  if (n === 0) return null;
-  const outPtr = wasm.allocateGrid(n);
-  try {
-    const written = wasm.buildWallShell(
-      p.pathLength, p.shellWidth, p.segmentsX, p.segmentsZ, p.profile, p.wallHeight, p.segmentId, outPtr,
-    );
-    return written === n ? heapF32(wasm, outPtr, n).slice() : null;
-  } finally {
-    wasm.freeGrid(outPtr);
-  }
 }

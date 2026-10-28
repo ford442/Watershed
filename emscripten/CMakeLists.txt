@@ -15,7 +15,6 @@ set(COMPUTE_SOURCES
     chores.cpp
     particles.cpp
     routing.cpp
-    terrain.cpp
 )
 
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
@@ -84,30 +83,36 @@ if(EMSCRIPTEN)
         target_compile_options(watershed_compute PRIVATE ${EM_COMPILE_FLAGS} -fno-exceptions -fno-rtti)
         target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS} -fno-exceptions -fno-rtti)
         target_compile_definitions(watershed_native PRIVATE WATERSHED_TRAP_TEST=1)
+        # libc++ hardening: every std::span / std::vector index and every
+        # subspan is bounds-checked in the wasm32 build, the one the host
+        # _GLIBCXX_ASSERTIONS builds stand in for. emcc 3.1.56 ships libc++ 17,
+        # whose all-checks mode is _LIBCPP_ENABLE_DEBUG_MODE; from libc++ 18 it
+        # is -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE (switch
+        # at the next emcc pin bump). A failed check is a named abort.
+        target_compile_definitions(watershed_compute PRIVATE _LIBCPP_ENABLE_DEBUG_MODE=1)
+        target_compile_definitions(watershed_native PRIVATE _LIBCPP_ENABLE_DEBUG_MODE=1)
     else()
         # Every TU, bindings.cpp included, is -fno-rtti / -fno-exceptions:
         # the C ABI (#467) has no Embind typeid to match, so nothing needs RTTI.
-        # FP contract (#404): the WASM Release build keeps -ffast-math while the
-        # host build below uses -ffp-contract=off. The two are deliberately not
-        # identical — the shipped binary wants the vectoriser, the host smoke
-        # wants reproducible goldens. This is safe only as long as the goldens
-        # agree across both: emscripten/host_smoke.cpp (host) and the SWE /
-        # applySWEEvent blocks in emscripten/smoke_test.mjs (wasm) assert the
-        # same well-balanced and source-term results, the latter against the TS
-        # twin within 1e-5. If those ever diverge, drop -ffast-math here (or at
-        # least add -ffp-contract=off on the HLL TU in swe.cpp) rather than
-        # loosening the tolerance.
-        # -fno-finite-math-only (#454): -ffast-math implies finite-math-only,
-        # which lets clang fold every std::isfinite() to true — including the
-        # NaN guards in chores.cpp that keep NaN out of the HUD histogram /
-        # reduce chores. Keep the rest of fast-math (reassociation for the
-        # vectoriser) but let isfinite / isnan mean what they say.
-        # -flto: six small TUs; lets calculateWaterForce etc. inline across
+        # FP model: IEEE, the same as the host build below. No -ffast-math —
+        # reassociation and approximate functions made the shipped binary
+        # compute different SWE and routing bits from the host goldens, and
+        # replays / ghosts need one set of numbers. emscripten/native_digest.h
+        # pins host == wasm bit for bit (host_smoke.cpp, and
+        # nativeDigest.integration.test.ts on the shipped pair); a flag that
+        # breaks it is the wrong flag, not a tolerance to loosen. The hot SWE
+        # kernels are hand-vectorised in simdf32.h, so the vectoriser loses
+        # little. -ffp-contract=off is explicit, as on the host (wasm32 has no
+        # scalar FMA today, but relaxed-SIMD would add one). -fno-math-errno
+        # stays: emscripten's libm never sets errno, and without it clang
+        # keeps a libcall around sqrt; the result is the same correctly
+        # rounded sqrt either way.
+        # -flto: five small TUs; lets calculateWaterForce etc. inline across
         # forces.cpp / bindings.cpp. Also passed at link (below).
         set(EM_COMPILE_FLAGS
             -O3
-            -ffast-math
-            -fno-finite-math-only
+            -ffp-contract=off
+            -fno-math-errno
             -flto
             -funroll-loops
             # SIMD: the SWE stepper (incl. the HLL faces, #467), Euler in
@@ -132,14 +137,20 @@ if(EMSCRIPTEN)
         target_compile_options(watershed_native PRIVATE -pthread)
     endif()
 
-    # 16 MB (#454): the module heap-allocates about 1 MB at most (largest SWE
-    # budget is 128x80 cells x 4 planes plus ~0.5 MB of solver scratch, particle
-    # SoA, chore scratch), and
-    # reserveShallowWaterScratch() sizes the solver scratch up front, so the heap
-    # does not grow mid-step. Growth stays enabled as a safety valve; callers
-    # still rebind views through heapF32() (#415).
+    # Fixed 16 MB heap, no growth. The live data is ~1 MB at most: the
+    # largest SWE budget (128x80 cells x 4 planes, 160 KiB) plus its solver
+    # and scroll scratch (~0.5 MB, sized up front by
+    # reserveShallowWaterScratch), particle SoAs (36 B per particle), the
+    # routing chain and chore scratch; plus 64 KiB of stack and the static
+    # data.
+    # 16 MB is >10x that. Growth was the only reason every TS heap view had
+    # to be rebound (#415): it replaced the ArrayBuffer and silently detached
+    # views made before it. With a fixed heap a view made at bind or
+    # allocation time stays valid for the module's life.
+    # ABORTING_MALLOC defaults to 1 without growth (a failed malloc aborts the
+    # module); 0 keeps malloc returning NULL, which the TS binding turns into
+    # WasmHeapExhaustedError — the over-budget signal.
     math(EXPR INITIAL_MEMORY_BYTES "16 * 1024 * 1024")
-    math(EXPR MAXIMUM_MEMORY_BYTES "256 * 1024 * 1024")
 
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         # -flto at link matches the compile flag above; --closure 1 minifies
@@ -160,14 +171,22 @@ if(EMSCRIPTEN)
 
     # No FILESYSTEM: nothing touches files. emmalloc: a handful of long-lived
     # grid / SoA blocks, so the small allocator beats dlmalloc on size.
+    # DYNAMIC_EXECUTION=0: the glue may not eval / new Function — the CSP
+    # claim (script-src 'self' 'wasm-unsafe-eval', WASM.md) checked at link
+    # time. SUPPORT_LONGJMP=0: no setjmp, so no longjmp runtime can be linked.
+    # Both are byte-for-byte no-ops on today's pair; they make a future need
+    # for either a link error instead of a silent change. (SUPPORT_ERRNO=0 is
+    # deprecated and a no-op in emcc 3.1.56: its setErrNo library is gone.)
     target_link_options(watershed_native PRIVATE
         "SHELL:${EM_OPT_FLAGS}"
         "SHELL:-s WASM_BIGINT=1"
         "SHELL:-s FILESYSTEM=0"
+        "SHELL:-s DYNAMIC_EXECUTION=0"
+        "SHELL:-s SUPPORT_LONGJMP=0"
         "SHELL:-s MALLOC=emmalloc"
-        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+        "SHELL:-s ALLOW_MEMORY_GROWTH=0"
+        "SHELL:-s ABORTING_MALLOC=0"
         "SHELL:-s INITIAL_MEMORY=${INITIAL_MEMORY_BYTES}"
-        "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY_BYTES}"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=HEAPF32,HEAP32,HEAPU8"
         # The Module options wasmLoader.ts passes (#467). Named explicitly: emcc
         # 4.x+ dropped wasmBinary from the default list, so without this a newer
@@ -203,7 +222,7 @@ else()
     # checks for that trust:
     #   WATERSHED_SANITIZE=ON  host smoke under ASan + UBSan (pnpm test:native:sanitize)
     #   WATERSHED_FUZZ=ON      libFuzzer targets over every entry-point family —
-    #                          swe, chores, forces (+ routing, particles), terrain
+    #                          swe, chores, forces (+ particles), routing
     #                          (clang; pnpm test:native:fuzz). Implies the sanitizers.
     option(WATERSHED_SANITIZE "Host build with -fsanitize=address,undefined" OFF)
     option(WATERSHED_FUZZ "Build the libFuzzer targets (clang only)" OFF)
@@ -221,7 +240,7 @@ else()
         endif()
         target_compile_options(watershed_compute PRIVATE -fsanitize=fuzzer-no-link)
         # One target per entry-point family (#502); pnpm test:native:fuzz runs each.
-        foreach(fuzz_target swe chores forces terrain)
+        foreach(fuzz_target swe chores forces routing)
             add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
             target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
             target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE

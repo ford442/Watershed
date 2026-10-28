@@ -27,8 +27,8 @@ let current: SWEBedSnapshot | null = null;
 const listeners = new Set<Listener>();
 
 export function publishSWEBedSnapshot(snapshot: Omit<SWEBedSnapshot, 'bed'> & { bed: Float32Array }): void {
-  // Copy: `bed` is a live view into the WASM heap, which a later grow would
-  // detach out from under the overlay.
+  // Copy: `bed` is a live view into the WASM heap, which the next scroll
+  // rewrites under the overlay.
   current = { ...snapshot, bed: Float32Array.from(snapshot.bed) };
   for (const listener of listeners) listener(current);
 }

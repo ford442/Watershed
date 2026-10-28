@@ -2,11 +2,11 @@
  * segmentMeshBuild — a treadmill segment's meshes as plain buffers (#487 Phase B).
  *
  * The canyon floor, its collision hull, the outer wall shell and the water
- * sheet, built from the segment's terrain tile into typed arrays. No three.js:
- * the sim worker runs this on its WASM tile (BUILD_TILE) and posts the arrays
- * back as transferables, and the main thread runs the same code on the TS
- * mirror (boot / restart pools, no sim worker) and wraps the result in
- * BufferGeometry (`geometryBuilders.ts`). The few three.js pieces the builders
+ * sheet, built from the segment's terrain tile (terrainTile.ts, the one
+ * canyon-profile source) into typed arrays. No three.js: the sim worker runs
+ * this for every treadmill append (BUILD_TILE) and posts the arrays back as
+ * transferables, and the main thread runs the same code (boot / restart pools,
+ * no sim worker) and wraps the result in BufferGeometry (`geometryBuilders.ts`). The few three.js pieces the builders
  * need are exact ports in `meshMath.ts`, so the output is bit-identical to the
  * three-built geometry this replaced.
  *
@@ -24,9 +24,7 @@ import {
   sampleChannelShape,
   TerrainProfile,
   type TerrainTile,
-  type TerrainTileParams,
   type TubeProfile,
-  type WallShellParams,
 } from './terrainTile';
 import {
   CatmullRomPath,
@@ -68,21 +66,7 @@ export interface GeometryBuildContext {
    * segments, which is every biome that is not glacial melt or a hydro pipe.
    */
   tubeProfile?: TubeProfile | null;
-  /** Who builds the tile planes: the TS mirror by default, the WASM module in the sim worker. */
-  terrain?: TerrainBuilders;
 }
-
-/** The tile builders, TS mirror or native (`buildTerrainTileNative` / `buildWallShellHeightsNative`). */
-export interface TerrainBuilders {
-  tile(params: TerrainTileParams): TerrainTile | null;
-  wallShell(params: WallShellParams): Float32Array | null;
-}
-
-/** The TS mirror (terrainTile.ts). */
-export const MIRROR_TERRAIN: TerrainBuilders = {
-  tile: buildTerrainTile,
-  wallShell: buildWallShellHeights,
-};
 
 /** One mesh's arrays: what a BufferGeometry holds. */
 export interface GeometryBuffers {
@@ -139,7 +123,7 @@ export function buildCanyonTile(
   kind: 'visual' | 'collision'
 ): TerrainTile | null {
   const { segmentsX, segmentsZ } = canyonSubdivisionCounts(pathLength, kind);
-  return (ctx.terrain ?? MIRROR_TERRAIN).tile({
+  return buildTerrainTile({
     pathLength,
     canyonWidth: ctx.canyonWidth,
     waterWidth: ctx.waterWidth,
@@ -409,7 +393,7 @@ export function buildWallShellBuffers(ctx: GeometryBuildContext): GeometryBuffer
   const shellWidth = isSlotCanyon ? canyonWidth * 0.92 : canyonWidth * 1.5;
   const segmentsX = 24;
   const segmentsZ = Math.max(2, Math.floor(len / 2));
-  const shellHeights = (ctx.terrain ?? MIRROR_TERRAIN).wallShell({
+  const shellHeights = buildWallShellHeights({
     pathLength: len,
     shellWidth,
     segmentsX,
@@ -444,7 +428,7 @@ export function buildWallShellBuffers(ctx: GeometryBuildContext): GeometryBuffer
     const xLocal = positions[i * 3];
     const zLocal = positions[i * 3 + 2];
 
-    // Wall height above the path point: emscripten/terrain.cpp buildWallShell (#487).
+    // Wall height above the path point: terrainTile.ts buildWallShellHeights (#487).
     const localY = shellHeights[i];
     const strataWarp =
       Math.sin(zLocal * 0.14 + xLocal * 0.06 + segmentId * 0.17) * (isSlotCanyon ? 1.6 : 1.1) +
@@ -671,7 +655,7 @@ export function segmentMeshSpec(ctx: GeometryBuildContext): SegmentMeshSpec {
   };
 }
 
-export function contextFromSpec(spec: SegmentMeshSpec, terrain?: TerrainBuilders): GeometryBuildContext {
+export function contextFromSpec(spec: SegmentMeshSpec): GeometryBuildContext {
   return {
     segmentPath: curveFromSpec(spec.path),
     segmentId: spec.segmentId,
@@ -683,6 +667,5 @@ export function contextFromSpec(spec: SegmentMeshSpec, terrain?: TerrainBuilders
     isGlacier: spec.isGlacier,
     biomeProfile: spec.biomeProfile,
     tubeProfile: spec.tubeProfile,
-    terrain,
   };
 }

@@ -12,7 +12,7 @@
  *   4. Physics correctness — reference values derived from the C++ formulas.
  */
 
-import { heapF32, MIN_WASM_ABI_VERSION, PARTICLE_SOA_PLANES, type Vec3, type WatershedNativeModule } from './wasmAbi';
+import { heapF32, MIN_WASM_ABI_VERSION, PARTICLE_SOA_PLANES, type WatershedNativeModule } from './wasmAbi';
 import { getWasm, peekWasm } from './wasmLoader';
 import { buoyancyFallback, calculateBuoyancyAndDragFallback, calculateWaterForceFallback, dragForceFallback } from './waterForceFallback';
 import { createWaterForceBatch, createSWEGrid } from './WatershedWasm';
@@ -30,11 +30,12 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 14+, the plain C ABI with the exports the binding table describes', () => {
+  it('requires ABI 16+, the plain C ABI with the exports the binding table describes', () => {
     // ABI 12 replaced Embind with ws_* C exports (#467); ABI 13 added the
-    // terrain tile (#487), ABI 14 lateral routing inflow and the surge event;
+    // terrain tile (#487), ABI 14 lateral routing inflow and the surge event,
+    // ABI 15 dropped the single-body force exports and ABI 16 the terrain tile;
     // the loader binds every table entry, so the floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(14);
+    expect(MIN_WASM_ABI_VERSION).toBe(16);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -166,51 +167,6 @@ function buildMockModule(): WatershedNativeModule {
 
     getVersion:  () => 1,
 
-    calculateBuoyancyAndDrag(raftMass, submergedVolume, waterVelocityX, waterVelocityZ) {
-      return calculateBuoyancyAndDragFallback(
-        raftMass,
-        submergedVolume,
-        waterVelocityX,
-        waterVelocityZ,
-      );
-    },
-
-    calculateWaterForce(
-      posX, posY, posZ,
-      velX, velY, velZ,
-      flowDirX, flowDirZ,
-      flowSpeed,
-      waterLevel,
-      raftMass,
-      raftVolume,
-      dragCoefficient,
-      frontalArea,
-      sideArea,
-      timeSeconds,
-      turbulenceStrength,
-      turbulenceFrequency,
-    ) {
-      return calculateWaterForceFallback(
-        {
-          position: { x: posX, y: posY, z: posZ },
-          velocity: { x: velX, y: velY, z: velZ },
-          flowDirection: { x: flowDirX, z: flowDirZ },
-        },
-        {
-          flowSpeed,
-          waterLevel,
-          raftMass,
-          raftVolume,
-          dragCoefficient,
-          frontalArea,
-          sideArea,
-          timeSeconds,
-          turbulenceStrength,
-          turbulenceFrequency,
-        },
-      );
-    },
-
     computeWaterForcesBatch(
       inputPtr,
       outputPtr,
@@ -230,20 +186,16 @@ function buildMockModule(): WatershedNativeModule {
       const output = new Float32Array(buffer, outputPtr, sampleCount * 8);
       for (let i = 0; i < sampleCount; i += 1) {
         const s = i * 8;
-        const result = this.calculateWaterForce(
-          input[s + 0], input[s + 1], input[s + 2],
-          input[s + 3], input[s + 4], input[s + 5],
-          input[s + 6], input[s + 7],
-          flowSpeed,
-          waterLevel,
-          raftMass,
-          raftVolume,
-          dragCoefficient,
-          frontalArea,
-          sideArea,
-          timeSeconds,
-          turbulenceStrength,
-          turbulenceFrequency,
+        const result = calculateWaterForceFallback(
+          {
+            position: { x: input[s + 0], y: input[s + 1], z: input[s + 2] },
+            velocity: { x: input[s + 3], y: input[s + 4], z: input[s + 5] },
+            flowDirection: { x: input[s + 6], z: input[s + 7] },
+          },
+          {
+            flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient,
+            frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency,
+          },
         );
         output[s + 0] = result.forceX;
         output[s + 1] = result.forceY;
@@ -254,24 +206,6 @@ function buildMockModule(): WatershedNativeModule {
         output[s + 6] = result.turbulence;
         output[s + 7] = result.submergedRatio;
       }
-    },
-
-    computeBuoyancy(v, rho, g) { return rho * v * g; },
-
-    computeDragForce(vx, vy, vz, cd, area, density) {
-      const spd = vx*vx + vy*vy + vz*vz;
-      return spd <= 0 ? 0 : 0.5 * density * spd * cd * area;
-    },
-
-    computeFlowForce(vx, vy, vz, fx, fy, fz, spd, _m, sub, cd, area): Vec3 {
-      const rwx = fx*spd - vx;
-      const rwy = fy*spd - vy;
-      const rwz = fz*spd - vz;
-      const sq  = rwx*rwx + rwy*rwy + rwz*rwz;
-      if (sq <= 0) return { x: 0, y: 0, z: 0 };
-      const mag = Math.sqrt(sq);
-      const f   = 0.5 * 1000 * sq * cd * area * Math.min(1, Math.max(0, sub));
-      return { x: f*rwx/mag, y: f*rwy/mag, z: f*rwz/mag };
     },
 
     stepShallowWater(hPtr, uPtr, wPtr, bPtr, w, h, dt, g, dx, H) {
@@ -324,9 +258,6 @@ function buildMockModule(): WatershedNativeModule {
     routeReachSteady() {},
     routeReachTravelTime() {},
     routedEdgeState: () => ({ eta: 0, speed: 0 }),
-    // 0 vertices = the ABI's "invalid input" answer; terrain tiles are not exercised here.
-    buildTerrainTile: () => 0,
-    buildWallShell: () => 0,
     reduceF32Grid() {},
     histogramF32() {},
     lumaHistogramU8() {},
@@ -428,104 +359,39 @@ describe('createSWEGrid', () => {
     grid.dispose();
   });
 
-  it('rebinds SWE views after HEAPF32 is swapped for a fresh buffer', () => {
+  it('views the heap at each plane pointer, once', () => {
     const grid = createSWEGrid(mod, 4, 4, 0.5);
-    grid.h[0] = 1.25;
-    const stale = grid.h;
-    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
-    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
-    mod.HEAPF32 = new Float32Array(grown);
-    mod.HEAP32 = new Int32Array(grown);
-    mod.HEAPU8 = new Uint8Array(grown);
-    expect(stale.buffer === mod.HEAPF32.buffer).toBe(false);
     grid.h[3] = 9.5;
-    const live = new Float32Array(mod.HEAPF32.buffer, grid.hPtr, 16);
-    expect(live[3]).toBe(9.5);
+    expect(new Float32Array(mod.HEAPF32.buffer, grid.hPtr, 16)[3]).toBe(9.5);
+    expect(grid.h).toBe(grid.h);
+    expect(grid.b.byteOffset).toBe(grid.bPtr);
     grid.dispose();
   });
 });
 
 describe('heapF32', () => {
-  it('rebuilds when the previous view is detached (byteLength === 0)', () => {
-    const buf = new ArrayBuffer(64);
-    const mod = { HEAPF32: new Float32Array(buf) };
-    const live = heapF32(mod, 0, 4);
-    live[0] = 3.5;
-    const detached = new Float32Array(new ArrayBuffer(0));
-    expect(detached.byteLength).toBe(0);
-    const refreshed = heapF32(mod, 0, 4, detached);
-    expect(refreshed.byteLength).toBe(16);
-    expect(refreshed[0]).toBe(3.5);
-    expect(heapF32(mod, 0, 4, refreshed)).toBe(refreshed);
+  it('views count floats of the heap at a byte offset', () => {
+    const mod = { HEAPF32: new Float32Array(new ArrayBuffer(64)) };
+    mod.HEAPF32[3] = 3.5;
+    const view = heapF32(mod, 12, 4);
+    expect(view.buffer).toBe(mod.HEAPF32.buffer);
+    expect(view.length).toBe(4);
+    expect(view[0]).toBe(3.5);
   });
 });
 
-describe('createWaterForceBatch memory growth', () => {
-  it('setSample still writes after HEAPF32 is replaced', () => {
+describe('createWaterForceBatch', () => {
+  it('setSample writes the input stride at inputPtr', () => {
     const mod = buildMockModule();
     const batch = createWaterForceBatch(mod, 1);
-    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
-    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
-    mod.HEAPF32 = new Float32Array(grown);
-    mod.HEAP32 = new Int32Array(grown);
-    mod.HEAPU8 = new Uint8Array(grown);
     batch.setSample(0, {
       position: { x: 1, y: 2, z: 3 },
       velocity: { x: 0, y: 0, z: 0 },
       flowDirection: { x: 0, z: -1 },
     });
     const view = new Float32Array(mod.HEAPF32.buffer, batch.inputPtr, 8);
-    expect(view[0]).toBe(1);
-    expect(view[1]).toBe(2);
-    expect(view[2]).toBe(3);
+    expect([...view]).toEqual([1, 2, 3, 0, 0, 0, 0, -1]);
     batch.dispose();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. Mock module physics — verify computeFlowForce direction
-// ---------------------------------------------------------------------------
-
-describe('mock computeFlowForce', () => {
-  let mod: WatershedNativeModule;
-
-  beforeEach(() => {
-    mod = buildMockModule();
-  });
-
-  it('returns zero force when object moves with the current', () => {
-    // Object moving exactly at flow speed → relative velocity = 0
-    const force = mod.computeFlowForce(
-      0, 0, -2,   // object vel = (0, 0, -2)
-      0, 0, -1,   // flow dir  = (0, 0, -1) (normalised)
-      2,          // flowSpeed = 2 m/s
-      80, 1.0, 0.47, 1.0
-    );
-    expect(force.x).toBeCloseTo(0, 5);
-    expect(force.y).toBeCloseTo(0, 5);
-    expect(force.z).toBeCloseTo(0, 5);
-  });
-
-  it('returns zero force when submergedRatio = 0', () => {
-    const force = mod.computeFlowForce(
-      0, 0, 0,
-      0, 0, -1,
-      2, 80, 0.0, 0.47, 1.0
-    );
-    expect(force.x).toBeCloseTo(0, 5);
-    expect(force.y).toBeCloseTo(0, 5);
-    expect(force.z).toBeCloseTo(0, 5);
-  });
-
-  it('returns downstream force when object is stationary', () => {
-    // flow in -Z, object stationary → force should push in -Z direction
-    const force = mod.computeFlowForce(
-      0, 0, 0,    // object vel
-      0, 0, -1,   // flow dir
-      2,          // flow speed
-      80, 1.0, 0.47, 1.0
-    );
-    expect(force.z).toBeLessThan(0); // pushed downstream (−Z)
   });
 });
 

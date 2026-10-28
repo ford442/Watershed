@@ -10,7 +10,7 @@
  *
  * Wire format — Float64, so a position reaches `sampleSWEFlow` with the bits the
  * caller had (the native input is float32; rounding happens only where the
- * main-thread `calculateWaterForce` rounds too, at the WASM boundary):
+ * main-thread batch rounds too, at the WASM boundary):
  *
  *   sample (FORCE_SAMPLE_STRIDE): px py pz | vx vy vz | flowSpeed flowScale
  *     waterLevel | raftMass raftVolume dragCoefficient frontalArea sideArea |
@@ -26,16 +26,16 @@
  * `computeWaterForcesBatch` takes ONE config per call, but every body has its
  * own SWE-sampled speed and stage, so the worker batches runs of consecutive
  * samples whose configs are equal at float32 (what the ABI sees). Each run is
- * one native call; the per-sample math is `calculateWaterForce` either way
- * (forces.cpp), so the result is bit-identical to one `calculateWaterForce` per
- * body on the main thread. Folding speed/stage into one call for all bodies
+ * one native call; the per-sample math is forces.cpp's `calculateWaterForce`
+ * either way, so the result is bit-identical to a one-body batch per body on
+ * the main thread. Folding speed/stage into one call for all bodies
  * would need a per-sample-config export (an ABI bump) — out of scope here.
  *
  * This module is imported by the Rapier worker and the main thread for the wire
  * helpers only; the batch half needs a module and runs only in the sim worker.
  */
 import { telemetryNowMs } from '../utils/wallClock';
-import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, allocateGrids, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import {
   SWE_STAGE_SPEED_BOOST,
   sampleSWEFlow,
@@ -172,19 +172,20 @@ function reserve(wasm: WatershedNativeModule, batch: MutableSimForceBatch, count
   const capacity = Math.max(count, batch.capacity * 2, 4);
   if (batch.inputPtr) wasm.freeGrid(batch.inputPtr);
   if (batch.outputPtr) wasm.freeGrid(batch.outputPtr);
-  batch.inputPtr = wasm.allocateGrid(capacity * WATER_FORCE_INPUT_STRIDE);
-  batch.outputPtr = wasm.allocateGrid(capacity * WATER_FORCE_OUTPUT_STRIDE);
+  // Freed above: until both new blocks exist the batch owns nothing, so a
+  // throw cannot leave a freed pointer behind to be freed again.
+  batch.inputPtr = 0;
+  batch.outputPtr = 0;
+  batch.capacity = 0;
+  [batch.inputPtr, batch.outputPtr] = allocateGrids(wasm, [
+    capacity * WATER_FORCE_INPUT_STRIDE,
+    capacity * WATER_FORCE_OUTPUT_STRIDE,
+  ]);
   batch.capacity = capacity;
   batch.configs = new Float64Array(capacity * CONFIG_WIDTH);
-  // Views bind below, after any growth these allocations caused.
-  batch.input = new Float32Array(0);
-  batch.output = new Float32Array(0);
-}
-
-/** Rebind the heap views: Emscripten memory growth detaches the old ones. */
-function bindViews(wasm: WatershedNativeModule, batch: MutableSimForceBatch): void {
-  batch.input = heapF32(wasm, batch.inputPtr, batch.capacity * WATER_FORCE_INPUT_STRIDE, batch.input);
-  batch.output = heapF32(wasm, batch.outputPtr, batch.capacity * WATER_FORCE_OUTPUT_STRIDE, batch.output);
+  // The heap is fixed-size: views made with the blocks last as long as they do.
+  batch.input = heapF32(wasm, batch.inputPtr, capacity * WATER_FORCE_INPUT_STRIDE);
+  batch.output = heapF32(wasm, batch.outputPtr, capacity * WATER_FORCE_OUTPUT_STRIDE);
 }
 
 function sameAtFloat32(configs: Float64Array, a: number, b: number): boolean {
@@ -219,7 +220,6 @@ export function computeSimForces(
   if (batch.disposed || count <= 0) return { calls: 0, computeMicros: 0 };
   const t0 = now();
   reserve(wasm, batch, count);
-  bindViews(wasm, batch);
   const { input, configs } = batch;
 
   for (let i = 0; i < count; i += 1) {
@@ -280,9 +280,6 @@ export function computeSimForces(
     start = i;
   }
 
-  // The call cannot grow the heap, but rebind anyway: reads must never go
-  // through a detached view (they return 0s without throwing).
-  bindViews(wasm, batch);
   const { output } = batch;
   for (let i = 0; i < count; i += 1) {
     const o = i * WATER_FORCE_OUTPUT_STRIDE;

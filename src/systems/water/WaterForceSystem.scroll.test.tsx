@@ -90,9 +90,6 @@ function stubModule() {
         );
       },
     ),
-    calculateWaterForce: vi.fn(() => ({
-      forceX: 0, forceY: 0, forceZ: 0, buoyancy: 0, drag: 0, flow: 0, turbulence: 0, submergedRatio: 0,
-    })),
   };
   return { mod: mod as unknown as WatershedNativeModule & typeof mod, view, ptrs };
 }

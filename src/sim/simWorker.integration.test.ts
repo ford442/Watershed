@@ -14,8 +14,8 @@
  * over a real MessageChannel as the Rapier worker sends it). Both must equal
  * what the main thread computes on its own stepper's field — the router via
  * createRiverRouter on the main module, forces via sampleSWEFlow +
- * computeWaterForcesBatch and via calculateWaterForce (the wasm-main loop) —
- * bit for bit.
+ * computeWaterForcesBatch (the wasm-main loop; ABI 15 has no single-body
+ * export) — bit for bit.
  *
  * One module per session: splash / waterfall integrate and the heightfield
  * chores run on the worker's module too, and must match the main-thread
@@ -24,8 +24,6 @@
  * Gated like the other integration tests (`pnpm test:wasm`).
  */
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { NativeWaterForceConfig, NativeWaterForceResult, WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createWaterForceBatch } from '../systems/water/WatershedWasm';
@@ -56,10 +54,9 @@ import { createSplashIntegrator, createWaterfallIntegrator } from '../systems/po
 import { ParticlePool, VFXParticle } from '../systems/pools/ParticlePool';
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { heightfieldThumbSize, summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
-import { loadNativeFromDisk } from '../testing/nativeFromDisk';
+import { loadNativeFromDisk, NATIVE_WASM_PATH } from '../testing/nativeFromDisk';
 
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const wasmPath = NATIVE_WASM_PATH;
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 
@@ -295,12 +292,12 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
       return { h: sim.h, u: sim.u, w: sim.w, b: sim.b, width, height, cellSize: dx, originX, originZ };
     }
 
-    /** The main-thread references: one computeWaterForcesBatch per body, and calculateWaterForce. */
+    /** The main-thread reference: one computeWaterForcesBatch per body. */
     function mainThreadForces(
       wasm: WatershedNativeModule,
       grid: SWEFlowGrid,
       body: ReturnType<typeof bodiesAt>[number],
-    ): { batched: NativeWaterForceResult; single: NativeWaterForceResult; flow: ReturnType<typeof sampleSWEFlow> } {
+    ): { batched: NativeWaterForceResult; flow: ReturnType<typeof sampleSWEFlow> } {
       const flow = sampleSWEFlow({
         worldX: body.position.x,
         worldZ: body.position.z,
@@ -324,14 +321,7 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
       batch.compute(config);
       const batched = batch.readResult(0);
       batch.dispose();
-      const single = wasm.calculateWaterForce(
-        body.position.x, body.position.y, body.position.z,
-        body.velocity.x, body.velocity.y, body.velocity.z,
-        flow.dirX, flow.dirZ,
-        config.flowSpeed, config.waterLevel, config.raftMass, config.raftVolume, config.dragCoefficient,
-        config.frontalArea, config.sideArea, config.timeSeconds, config.turbulenceStrength, config.turbulenceFrequency,
-      );
-      return { batched, single, flow };
+      return { batched, flow };
     }
 
     function expectSameForce(got: NativeWaterForceResult, want: NativeWaterForceResult, label: string) {
@@ -429,7 +419,6 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
           const want = mainThreadForces(wasmMain, grid, body);
           const got = readForceResult(result.results, i);
           expectSameForce(got, want.batched, `frame ${frame} body ${i} vs batch`);
-          expectSameForce(got, want.single, `frame ${frame} body ${i} vs calculateWaterForce`);
           expect(readForceFlow(result.results, i)).toEqual(want.flow);
           if (want.flow.source === 'swe' && want.flow.wet) sweSamples += 1;
           forceChecks += 1;
@@ -500,7 +489,7 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
       });
       expect(want.flow.source).toBe('swe');
       const { source: _s, computeMicros: _c, sampledFlow, ...force } = got!;
-      expectSameForce(force, want.single, 'hull');
+      expectSameForce(force, want.batched, 'hull');
       expect(sampledFlow).toEqual(want.flow);
 
       client.close();
@@ -621,7 +610,7 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
 
       const { width: tw, height: th } = heightfieldThumbSize(width, height);
       const want = summarizeHeightfield(
-        createNativeChoreHost(() => wasmMain), () => main.h, width, height, tw, th, true,
+        createNativeChoreHost(() => wasmMain), main.h, width, height, tw, th, true,
       );
       const pending = proxy.requestChores(viaWorker.gridId, tw, th);
       pump();

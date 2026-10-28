@@ -713,7 +713,7 @@ whose configs are equal at float32 — the ABI takes one config per call, and ea
 own sampled speed and stage; one call for all bodies needs a per-sample-config export (ABI
 bump). Results come back in the request's buffer and are applied at the top of the next frame,
 with the sampling frame's dt, to bodies still registered (`simForceRequests.ts`). Bit-identical
-to a direct `calculateWaterForce` loop over the same field (integration test). The
+to a one-body-batch-per-body loop on the main thread over the same field (integration test). The
 Rapier worker's hull arrives over its `MessagePort` (`HULL` → `HULL_FORCE`, see Physics
 Worker); the worker tracks the window origin (`ORIGIN`, and on every `SCROLL`) so a hull lookup
 never pairs the new index frame with the old origin.
@@ -722,20 +722,19 @@ never pairs the new index frame with the old origin.
 appends ahead of the camera (`SegmentData.buildAhead`, set by `ChunkManager.appendSegment`) asks
 the live sim worker for its meshes: `BUILD_TILE {seq, spec}` carries the build context as
 structured-clone data (`SegmentMeshSpec` — the path as its control points), the worker runs the
-canyon / collision / wall / water builders on its WASM terrain tile (`buildTerrainTileNative`)
-and answers `TILE {seq, meshes}` with every attribute array transferred; `useGeometries` wraps
+canyon / collision / wall / water builders on the same TypeScript terrain tile as the main
+thread (`terrainTile.ts`; the C++ tile was retired at ABI 16) and answers `TILE {seq, meshes}` with every attribute array transferred; `useGeometries` wraps
 them in `BufferGeometry` and `TrackSegment` mounts when they land (nothing renders in that slot
 until then — the segment is ~150 m ahead). The builders are three-free (`segmentMeshBuild.ts`,
 with exact ports of the curve / colour / plane / normals math in `meshMath.ts`, pinned against
 three by `meshMath.test.ts`), so the worker chunk carries no three.js and the main thread runs
 the very same code; `geometryBuilders.ts` only wraps their buffers. The boot and
 restart pools (the ground under the player), sessions without a live sim worker, and a `TILE`
-without meshes (the build threw) or a dead worker all build on the main thread on the TS mirror,
-as before. Worker meshes match the main-thread build within 1e-4 (2e-3 for normals;
-`terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
+without meshes (the build threw) or a dead worker all build on the main thread, as before.
+Worker meshes equal the main-thread build, every float and index (`terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
 the main thread (`useWorkerStaticCollider`): the main world needs it anyway, and it is ~10 KB.
 
-**Main thread on `wasm-worker`, steady state:** no `calculateWaterForce`, `routeReach*`,
+**Main thread on `wasm-worker`, steady state:** no `computeWaterForcesBatch`, `routeReach*`,
 `routedEdgeState`, `stepShallowWater*`, `applySWEEvent` or `scrollShallowWater` calls
 (`WaterForceSystem.simWorker.test.tsx` spies on every one). Its module still serves gpu-chores
 and particles until Phase C. **Instances per session on WebGL2: two** (main + sim worker).
@@ -938,8 +937,8 @@ import { getWasm } from '../systems/water/WatershedWasm';
 // Call once (e.g., in a useEffect or game-init hook):
 const wasm = await getWasm();
 
-// Then use:
-const upForce = wasm.computeBuoyancy(submergedVolume, 1000, 9.80665);
+// Then use (forces go through the batch; ABI 15 has no single-body export):
+const batch = createWaterForceBatch(wasm, 1);
 ```
 
 `getWasm()` returns a `Promise<WatershedNativeModule>`. Subsequent calls return the
@@ -1003,5 +1002,5 @@ IDE integration, but `build.sh` is the canonical route used by `pnpm build:wasm`
 
 **Emscripten settings of note:**
 - `MODULARIZE=1` + `EXPORT_NAME='createWatershedNative'` — module factory pattern
-- `ALLOW_MEMORY_GROWTH=1` — heap grows beyond initial 64 MB as needed
+- `ALLOW_MEMORY_GROWTH=0` — one fixed 16 MiB heap; heap views are made once (see WASM.md, Linear memory budget)
 - `EXPORT_ES6=1` — ES module output compatible with Vite

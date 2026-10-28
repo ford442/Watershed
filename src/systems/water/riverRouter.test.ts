@@ -66,6 +66,18 @@ describe('RiverRouter.setWeather', () => {
     router.dispose();
   });
 
+  it('routes nothing for a NaN, infinite or non-positive dt', () => {
+    const { wasm, inflows } = recordingModule();
+    const router = createRiverRouter(wasm, REACH, 10, { spinUpHours: 0 })!;
+    inflows.length = 0;
+    for (const dt of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) router.advance(dt);
+    expect(inflows).toEqual([]);
+    router.advance(1);
+    expect(inflows).toHaveLength(1);
+    expect(Number.isFinite(inflows[0])).toBe(true);
+    router.dispose();
+  });
+
   it('does not let a later setWeather mutate the caller forecast', () => {
     const { wasm } = recordingModule();
     const weather = { type: 'rain' as const, intensity: 0.7 };

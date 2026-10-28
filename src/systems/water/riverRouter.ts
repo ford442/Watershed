@@ -22,7 +22,7 @@ import { weatherFlowRateDelta, type RunWeather } from '../map/weatherInflow';
 import type { RoutingReach } from '../map/routingReach';
 import { DEFAULT_FORECAST_INPUTS } from '../../constants/forecast';
 import type { SweInflow } from './sweScroll';
-import { ROUTING_SUBREACHES, type RoutedEdge, type WatershedNativeModule } from './wasmAbi';
+import { ROUTING_SUBREACHES, allocateGrids, heapF32, type RoutedEdge, type WatershedNativeModule } from './wasmAbi';
 
 /**
  * Head discharge at `flowRate` 1 (m³/s). It is also the reference discharge
@@ -134,21 +134,18 @@ export function createRiverRouter(
   const spinUpHours = options.spinUpHours ?? ROUTING_SPINUP_HOURS;
   const spinUpDt = options.spinUpDt ?? ROUTING_SPINUP_DT;
 
-  const ptrs = {
-    lengths: wasm.allocateGrid(n),
-    slopes: wasm.allocateGrid(n),
-    widths: wasm.allocateGrid(n),
-    storage: wasm.allocateGrid(n * ROUTING_SUBREACHES),
-    outflow: wasm.allocateGrid(n),
-    lag: wasm.allocateGrid(n),
-    // Discharge joining each segment at its top: the weather over a reach (ABI 14).
-    lateral: wasm.allocateGrid(n),
-  };
-  // Views are re-derived on each read: memory growth detaches HEAPF32.
-  const view = (ptr: number) => wasm.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + n);
+  // `lateral`: discharge joining each segment at its top, the weather over a reach (ABI 14).
+  const [lengths, slopes, widths, storage, outflow, lag, lateral] =
+    allocateGrids(wasm, [n, n, n, n * ROUTING_SUBREACHES, n, n, n]);
+  const ptrs = { lengths, slopes, widths, storage, outflow, lag, lateral };
+  // Made once: the heap is fixed-size, so these stay valid until dispose.
+  const view = (ptr: number) => heapF32(wasm, ptr, n);
   view(ptrs.lengths).set(reach.lengths);
   view(ptrs.slopes).set(reach.slopes);
   view(ptrs.widths).set(reach.widths);
+  const lateralView = view(ptrs.lateral);
+  const outflowView = view(ptrs.outflow);
+  const lagView = view(ptrs.lag);
 
   const route = (inflowQ: number, dt: number) =>
     wasm.routeReach(ptrs.lengths, ptrs.slopes, ptrs.widths, n, inflowQ, dt, ptrs.storage, ptrs.outflow);
@@ -176,7 +173,7 @@ export function createRiverRouter(
   let disposed = false;
   const clampK = (k: number) => Math.max(0, Math.min(n - 1, Math.trunc(k)));
   const clearLateral = () => {
-    if (lateralAt >= 0) view(ptrs.lateral)[lateralAt] = 0;
+    if (lateralAt >= 0) lateralView[lateralAt] = 0;
     lateralAt = -1;
     lateralQ = 0;
   };
@@ -189,7 +186,7 @@ export function createRiverRouter(
       return elapsed;
     },
     advance(dt) {
-      if (disposed || !(dt > 0)) return;
+      if (disposed || !(dt > 0) || !Number.isFinite(dt)) return;
       const hour = launchHour + (elapsed + 0.5 * dt) / 3600;
       if (liveOver !== null && routeLateral) {
         // Rain over reach k: the head carries the day's own hydrograph and the
@@ -199,7 +196,7 @@ export function createRiverRouter(
         clearLateral();
         lateralAt = clampK(liveOver);
         lateralQ = weatherFlowRateDelta(hour, live.weather) * ROUTING_NOMINAL_DISCHARGE;
-        view(ptrs.lateral)[lateralAt] = lateralQ;
+        lateralView[lateralAt] = lateralQ;
         routeLateral(ptrs.lengths, ptrs.slopes, ptrs.widths, n, headQ, ptrs.lateral, dt, ptrs.storage, ptrs.outflow);
       } else {
         headQ = headDischargeAtHour(hour, live);
@@ -211,7 +208,7 @@ export function createRiverRouter(
     dischargeInto(k) {
       if (disposed) return ROUTING_NOMINAL_DISCHARGE;
       const kk = clampK(k);
-      const above = kk === 0 ? headQ : view(ptrs.outflow)[kk - 1];
+      const above = kk === 0 ? headQ : outflowView[kk - 1];
       return kk === lateralAt ? above + lateralQ : above;
     },
     edgeState(k, H, g) {
@@ -219,7 +216,7 @@ export function createRiverRouter(
       return wasm.routedEdgeState(this.dischargeInto(k), ROUTING_NOMINAL_DISCHARGE, H, g);
     },
     lag(k) {
-      return disposed ? 0 : view(ptrs.lag)[clampK(k)];
+      return disposed ? 0 : lagView[clampK(k)];
     },
     setWeather(weather) {
       if (!weather) {

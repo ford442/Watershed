@@ -1,6 +1,4 @@
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import glacial from '../../maps/glacial_source.json';
 import hydro from '../../maps/hydro_dam.json';
@@ -38,7 +36,7 @@ import { sampleSWEFlow } from './sampleSWEFlow';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
 import { buildForecastSamples, FLOW_FORECAST_STATES } from '../map/flowForecast';
 import { DAM_RELEASE_SCHEDULE } from '../../experience/constants';
-import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
+import { loadNativeFromDisk, NATIVE_WASM_PATH } from '../../testing/nativeFromDisk';
 
 const SCOUT_HOUR = 6;
 const DAM_HOUR = 14;
@@ -233,8 +231,7 @@ describe('hydroContrast event appliers (#435)', () => {
 // window's boundary, not only through an authored disk. Needs the compiled
 // binary, so it runs under `pnpm test:wasm` (WATERSHED_WASM_INTEGRATION=1).
 // -----------------------------------------------------------------------------
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const wasmPath = NATIVE_WASM_PATH;
 const describeNative =
   process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath) ? describe : describe.skip;
 

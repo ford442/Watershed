@@ -11,7 +11,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { WatershedNativeModule } from './wasmAbi';
+import { WasmHeapExhaustedError, type WatershedNativeModule } from './wasmAbi';
 import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
 
 const CANARY = 7;
@@ -109,6 +109,82 @@ describe('swe.cpp', () => {
     expect(wasm.allocateGrid(0)).toBe(0);
     for (const c of [h, u, w]) c.free();
   });
+
+  it('the heap is fixed: a block bigger than it is heap exhaustion, and HEAPF32 never moves', () => {
+    // ALLOW_MEMORY_GROWTH=0 with ABORTING_MALLOC=0: malloc returns NULL (the
+    // module does not abort), and the views bound at load stay the heap.
+    const buffer = wasm.HEAPF32.buffer;
+    expect(buffer.byteLength).toBe(16 * 1024 * 1024);
+    expect(() => wasm.allocateGrid(WS_MAX_ELEMENTS)).toThrow(WasmHeapExhaustedError);
+    expect(() => wasm.allocateGrid(8 * 1024 * 1024)).toThrow(WasmHeapExhaustedError);
+    expect(wasm.HEAPF32.buffer).toBe(buffer);
+    expect(wasm.HEAPF32.buffer.byteLength).toBe(16 * 1024 * 1024);
+    // The module still works afterwards.
+    const ok = wasm.allocateGrid(1024);
+    expect(ok).toBeGreaterThan(0);
+    wasm.freeGrid(ok);
+  });
+
+  it('allocateGrid past WS_MAX_ELEMENTS is heap exhaustion, not a wrapped tiny block', () => {
+    // emmalloc's calloc multiplies in wasm32's 32-bit size_t without a check:
+    // 2^30 floats used to wrap to 0 bytes and come back as a valid pointer.
+    for (const count of [2 ** 30, 2 ** 31 - 1, WS_MAX_ELEMENTS + 1]) {
+      expect(() => wasm.allocateGrid(count)).toThrow(WasmHeapExhaustedError);
+    }
+  });
+});
+
+describe('non-finite scalars', () => {
+  // `dt <= 0` is false for NaN, and std::max(x, 0) returns a NaN x: before
+  // these guards one NaN dt made every SWE cell NaN for the session, and one
+  // NaN head discharge did the same to the routed chain.
+  it('a NaN / inf dt, g, dx or H leaves the SWE field finite and unchanged', () => {
+    const n = 8 * 8;
+    const h = canary(n);
+    const u = canary(n);
+    const w = canary(n);
+    h.view().fill(0.05);
+    u.view().fill(0.5);
+    w.view().fill(-0.25);
+    const before = [...h.view()];
+    for (const dt of [Number.NaN, -Number.NaN]) {
+      wasm.stepShallowWater(h.ptr, u.ptr, w.ptr, 0, 8, 8, dt, 9.8, 0.5, 1);
+      wasm.stepShallowWaterInflow(h.ptr, u.ptr, w.ptr, 0, 8, 8, dt, 9.8, 0.5, 1, 0.2);
+    }
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      wasm.stepShallowWater(h.ptr, u.ptr, w.ptr, 0, 8, 8, 0.01, bad, 0.5, 1);
+      wasm.stepShallowWater(h.ptr, u.ptr, w.ptr, 0, 8, 8, 0.01, 9.8, bad, 1);
+      wasm.stepShallowWater(h.ptr, u.ptr, w.ptr, 0, 8, 8, 0.01, 9.8, 0.5, bad);
+      wasm.applySWEEvent(h.ptr, u.ptr, w.ptr, 0, 8, 8, 0.5, 0, 0, 1, 0, 2, 2, 1, Number.POSITIVE_INFINITY, 0.1);
+    }
+    expect([...h.view()]).toEqual(before);
+    wasm.scrollShallowWater(h.ptr, u.ptr, w.ptr, 0, 8, 8, 1, -2, Number.NaN, Number.POSITIVE_INFINITY, Number.NaN);
+    wasm.stepShallowWater(h.ptr, u.ptr, w.ptr, 0, 8, 8, Number.POSITIVE_INFINITY, 9.8, 0.5, 1);
+    for (const c of [h, u, w]) expect(c.view().every(Number.isFinite)).toBe(true);
+    for (const c of [h, u, w]) c.free();
+  });
+
+  it('a NaN / inf head discharge, dt or length leaves the routed chain finite', () => {
+    const nSeg = 3;
+    const lengths = canary(nSeg);
+    const slopes = canary(nSeg);
+    const widths = canary(nSeg);
+    const storage = canary(nSeg * 4);
+    const outflow = canary(nSeg);
+    lengths.view().fill(100);
+    slopes.view().fill(0.01);
+    widths.view().fill(12);
+    wasm.routeReachSteady(lengths.ptr, slopes.ptr, widths.ptr, nSeg, 5, storage.ptr, outflow.ptr);
+    wasm.routeReach(lengths.ptr, slopes.ptr, widths.ptr, nSeg, Number.NaN, 1, storage.ptr, outflow.ptr);
+    wasm.routeReach(lengths.ptr, slopes.ptr, widths.ptr, nSeg, Number.POSITIVE_INFINITY, 1, storage.ptr, outflow.ptr);
+    wasm.routeReach(lengths.ptr, slopes.ptr, widths.ptr, nSeg, 5, Number.NaN, storage.ptr, outflow.ptr);
+    wasm.routeReach(lengths.ptr, slopes.ptr, widths.ptr, nSeg, 5, 1e-40, storage.ptr, outflow.ptr);
+    lengths.view()[1] = Number.NaN;
+    wasm.routeReach(lengths.ptr, slopes.ptr, widths.ptr, nSeg, 5, 1, storage.ptr, outflow.ptr);
+    expect(storage.view().every(Number.isFinite)).toBe(true);
+    expect(outflow.view().every(Number.isFinite)).toBe(true);
+    for (const c of [lengths, slopes, widths, storage, outflow]) c.free();
+  });
 });
 
 describe('forces.cpp', () => {
@@ -161,23 +237,5 @@ describe('particles.cpp', () => {
     expect(soa.untouched()).toBe(true);
     expect(lowMemory()).toEqual(low);
     soa.free();
-  });
-});
-
-describe('terrain.cpp', () => {
-  it('tile / wall shell return 0 and write nothing for null outputs and bad grids', () => {
-    const out = canary(7 * 9);
-    const low = lowMemory();
-    expect(wasm.buildTerrainTile(10, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0)).toBe(0);
-    expect(wasm.buildTerrainTile(10, 30, 10, 0, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(0);
-    expect(wasm.buildTerrainTile(10, 30, 10, -2, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(0);
-    expect(wasm.buildTerrainTile(10, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 3, out.ptr)).toBe(0);
-    expect(wasm.buildTerrainTile(Number.NaN, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(0);
-    expect(wasm.buildWallShell(10, 30, 2, 2, 0, 20, 1, 0)).toBe(0);
-    expect(wasm.buildWallShell(10, 30, 2, -1, 0, 20, 1, out.ptr)).toBe(0);
-    expect(out.untouched()).toBe(true);
-    expect(lowMemory()).toEqual(low);
-    expect(wasm.buildTerrainTile(10, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(9);
-    out.free();
   });
 });

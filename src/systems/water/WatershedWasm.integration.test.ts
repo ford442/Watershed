@@ -11,9 +11,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { NATIVE_IS_SHIPPED, NATIVE_WASM_PATH } from '../../testing/nativeFromDisk';
+
 const rootDir = dirname(fileURLToPath(import.meta.url));
-const publicDir = resolve(rootDir, '../../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const wasmPath = NATIVE_WASM_PATH;
 const smokeScript = resolve(rootDir, '../../../emscripten/smoke_test.mjs');
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 
@@ -28,7 +29,8 @@ describeIntegration('WatershedWasm — real binary integration', () => {
     expect(output).toContain('watershed_native smoke ok');
   });
 
-  it('keeps the WASM artifact under the CI size budget', () => {
+  // The shipped pair only: a Debug build (WATERSHED_NATIVE_DIR) is -O0 -g3.
+  it.runIf(NATIVE_IS_SHIPPED)('keeps the WASM artifact under the CI size budget', () => {
     const wasmBytes = readFileSync(wasmPath).length;
     const maxBytes = Number(process.env.WATERSHED_WASM_MAX_BYTES ?? 131072);
     expect(wasmBytes).toBeGreaterThan(1024);

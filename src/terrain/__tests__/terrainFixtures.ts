@@ -1,9 +1,8 @@
 /**
- * Terrain tile fixtures (#487) — the TS copy of `emscripten/terrain_goldens.h`.
- *
- * The same three segments and the same golden sums are asserted by the host
- * smoke (C++), `emscripten/smoke_test.mjs` (the WASM build) and
- * `terrainTile.test.ts` (the TS mirror). Change all three together.
+ * Terrain tile fixtures (#487): three segments, one per cross-section family,
+ * and their golden plane sums / probes, asserted by `terrainTile.test.ts`.
+ * The numbers came from the C++ tile's host build (retired at ABI 16), which
+ * the TS tile matched bit for bit. Regenerate deliberately.
  */
 
 import {

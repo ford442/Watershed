@@ -389,7 +389,7 @@ GhostCell upstreamGhost(float dI, float hI, float qzI, float qxI, float edgeEta,
         // with jump ΔR = R+_ext − R+_in the ghost is the interior plus
         //   v = v_in + ΔR/2,   c = c_in + ΔR/4.
         // ΔR == 0 (reference stage over still water) reproduces the interior
-        // exactly, whatever the compiler reassociates (-ffast-math WASM build).
+        // exactly, whatever the compiler reassociates.
         const float dR4 = 0.25f * ((vExt + 2.f * cExt) - (vI + 2.f * cI));
         const float cG = cI + dR4;
         if (cG <= 0.f) return GhostCell{};
@@ -528,10 +528,17 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
                           int width, int height,
                           float dt, float g, float dx, float H,
                           bool edgeInflow, float edgeEta) {
-    if (width <= 0 || height <= 0 || dx <= 0.f || H <= 0.f) return;
+    if (width <= 0 || height <= 0) return;
     if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return;
     if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
-    if (dt <= 0.f || g <= 0.f) return;
+    // Written as !(x > 0) so NaN fails them too: `dt <= 0.f` is false for a
+    // NaN dt, which then went through std::min into dtdx and wrote NaN into
+    // every cell for good. dt may be +inf (the CFL clamp bounds it); g, dx and
+    // H scale the fluxes and must be finite.
+    if (!(dt > 0.f)) return;
+    if (!(g > 0.f) || !std::isfinite(g)) return;
+    if (!(dx > 0.f) || !std::isfinite(dx)) return;
+    if (!(H > 0.f) || !std::isfinite(H)) return;
 
     Scratch& s = g_scratch;
     s.resize(width, height);
@@ -748,6 +755,8 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
     // A non-finite placement has no cells; before #467 it wrote NaN everywhere.
     if (!std::isfinite(originX) || !std::isfinite(originZ) || !std::isfinite(dx)
         || !std::isfinite(cx) || !std::isfinite(cz) || !std::isfinite(radius)) return;
+    // std::max(0.f, x) below drops a NaN but keeps +inf, which then lands in h.
+    if (!std::isfinite(strength) || !std::isfinite(dt)) return;
     const std::span<float> h = heapPlane(hPtr, width, height);
     const std::span<float> u = heapPlane(uPtr, width, height);
     const std::span<float> w = heapPlane(wPtr, width, height);
@@ -756,7 +765,7 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
     const float r2 = r * r;
     const float mag = std::max(0.f, strength);
     const float step = std::max(0.f, dt);
-    const float still = H > 0.f ? H : 1.2f;
+    const float still = H > 0.f && std::isfinite(H) ? H : 1.2f;
 
     // Only the event's bounding box can be inside the radius (#467): the scan
     // used to visit every cell for every event. One cell of margin each way
@@ -884,6 +893,10 @@ void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_
     shiftX = std::clamp(shiftX, -width, width);
     shiftZ = std::clamp(shiftZ, -height, height);
     if (shiftX == 0 && shiftZ == 0) return;
+    // Entering cells are filled with these for good: a non-finite one is rest.
+    if (!std::isfinite(inflowEta)) inflowEta = 0.f;
+    if (!std::isfinite(inflowU)) inflowU = 0.f;
+    if (!std::isfinite(inflowW)) inflowW = 0.f;
 
     g_scrollTmp.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
     const std::span<float> tmp{g_scrollTmp};
@@ -910,8 +923,11 @@ void reserveShallowWaterScratch(int width, int height) {
 // ---------------------------------------------------------------------------
 
 uintptr_t allocateGrid(int count) {
-    if (count <= 0) return 0;
-    void* ptr = std::calloc(static_cast<std::size_t>(count), sizeof(float));
+    // Capped and overflow-checked before calloc (common.h allocBytes): on
+    // wasm32, emmalloc would wrap count * 4 and return a tiny block.
+    const std::size_t bytes = allocBytes<std::size_t>(count, sizeof(float));
+    if (bytes == 0) return 0;
+    void* ptr = std::calloc(bytes, 1);
     return reinterpret_cast<uintptr_t>(ptr);
 }
 

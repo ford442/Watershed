@@ -11,11 +11,13 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
+  allocateGrids,
   arityMismatches,
   bindNativeModule,
   isWasmHeapExhaustedError,
   MIN_WASM_ABI_VERSION,
   WASM_ABI,
+  WasmHeapExhaustedError,
   wasmExportName,
   type RawWatershedModule,
   type WasmAbiFunctionName,
@@ -109,11 +111,15 @@ describe('loadWatershedNative', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe(URLS.wasm);
     expect(wasm.getVersion()).toBeGreaterThanOrEqual(MIN_WASM_ABI_VERSION);
-    expect(wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3)).toBeGreaterThan(0);
     expect(wasm.routedEdgeState(40, 40, 1, 9.80665)).toEqual({ eta: 0, speed: 0 });
-    const flow = wasm.computeFlowForce(0, 0, 0, 0, 0, -1, 2, 80, 1, 0.47, 1.5);
-    expect(flow.z).toBeLessThan(0);
-    expect(flow.x).toBe(0);
+    // A stationary submerged raft in a −Z current is pushed downstream.
+    const io = wasm.allocateGrid(16);
+    wasm.HEAPF32.set([0, 0.45, -10, 0, 0, 0, 0, -1], io >> 2);
+    wasm.computeWaterForcesBatch(io, io + 32, 1, 2, 0.5, 80, 1, 0.47, 1.5, 0.7, 0, 0, 2.4);
+    const out = wasm.HEAPF32.subarray((io >> 2) + 8, (io >> 2) + 16);
+    expect(out[2]).toBeLessThan(0);
+    expect(out[0]).toBe(0);
+    wasm.freeGrid(io);
   });
 
   it('every raw export has the arity the table declares', async () => {
@@ -169,7 +175,7 @@ describe('loadWatershedNative', () => {
     stubFetch(wasmBytes);
     quietConsole();
 
-    await expect(loadWatershedNative(URLS, 10_000)).rejects.toThrow(/ABI mismatch: missing _ws_calculateBuoyancyAndDrag/);
+    await expect(loadWatershedNative(URLS, 10_000)).rejects.toThrow(/ABI mismatch: missing _ws_computeWaterForcesBatch/);
   });
 
   it('times out with a greppable error when the factory never settles', async () => {
@@ -274,6 +280,23 @@ describe('bindNativeModule guards (#502 A)', () => {
     expect(isWasmHeapExhaustedError(err)).toBe(true);
     expect(String(err)).toMatch(/heap exhausted: allocateGrid\(4096\) returned 0/);
     expect(wasm.allocateGrid(0)).toBe(0);
+  });
+
+  it('allocateGrids frees what it allocated when a later block throws', () => {
+    const freed: number[] = [];
+    let next = 16;
+    const wasm = {
+      allocateGrid: (count: number) => {
+        if (count > 100) throw new WasmHeapExhaustedError(count);
+        const ptr = next;
+        next += count * 4;
+        return ptr;
+      },
+      freeGrid: (ptr: number) => { freed.push(ptr); },
+    };
+    expect(() => allocateGrids(wasm, [4, 0, 8, 1000, 2])).toThrow(WasmHeapExhaustedError);
+    expect(freed).toEqual([16, 32]);
+    expect(allocateGrids(wasm, [4, 0])).toEqual([64, 0]);
   });
 
   it('an export whose arity disagrees with the table is an ABI mismatch at bind (dev builds)', () => {

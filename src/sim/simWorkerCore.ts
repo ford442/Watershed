@@ -39,12 +39,10 @@ import {
 } from './simWorkerProtocol';
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
-import { buildTerrainTileNative, buildWallShellHeightsNative } from '../terrain/terrainTile';
 import {
   buildSegmentMeshBuffers,
   contextFromSpec,
   segmentMeshTransferables,
-  type TerrainBuilders,
 } from '../terrain/segmentMeshBuild';
 
 /** Particle SoA plane order (emscripten/particles.h). */
@@ -96,11 +94,6 @@ export function createSimWorkerCore(
   let physicsPort: PhysicsPort | null = null;
   const particles = new Map<number, ParticleSlot>();
   const choreHost = createNativeChoreHost(() => wasm);
-  // The segment builders on this module's terrain tile (emscripten/terrain.cpp).
-  const terrain: TerrainBuilders = {
-    tile: (params) => buildTerrainTileNative(wasm, params),
-    wallShell: (params) => buildWallShellHeightsNative(wasm, params),
-  };
 
   const live =(id: number): SweSim | null => (sim && id === gridId ? sim : null);
 
@@ -210,7 +203,7 @@ export function createSimWorkerCore(
     particles.delete(poolId);
   };
 
-  /** View of SoA plane `index` (first `count` floats); re-derived per call — growth detaches HEAPF32. */
+  /** View of SoA plane `index`, its first `count` floats. */
   const particlePlane = (slot: ParticleSlot, index: number, count: number) => {
     const start = (slot.ptr >> 2) + index * slot.cap;
     return wasm.HEAPF32.subarray(start, start + count);
@@ -258,7 +251,7 @@ export function createSimWorkerCore(
   const buildTile = (command: Extract<SimWorkerCommand, { type: 'BUILD_TILE' }>) => {
     const t0 = now();
     try {
-      const meshes = buildSegmentMeshBuffers(contextFromSpec(command.spec, terrain));
+      const meshes = buildSegmentMeshBuffers(contextFromSpec(command.spec));
       post(
         { type: 'TILE', seq: command.seq, meshes, buildMicros: Math.round((now() - t0) * 1000) },
         segmentMeshTransferables(meshes),
@@ -418,7 +411,7 @@ export function createSimWorkerCore(
           }
           // grid.h is a view on this module's heap: the host reads it in place.
           const summary = summarizeHeightfield(
-            choreHost, () => grid.h, grid.width, grid.height,
+            choreHost, grid.h, grid.width, grid.height,
             command.thumbWidth, command.thumbHeight, true,
           );
           post(

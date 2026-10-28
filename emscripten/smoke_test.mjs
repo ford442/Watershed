@@ -3,7 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const publicDir = resolve(scriptDir, '../public');
+// The pair under test: public/ unless WATERSHED_NATIVE_DIR (repo-relative)
+// names another, e.g. the Debug build in emscripten/build-debug/out.
+const publicDir = resolve(scriptDir, '..', process.env.WATERSHED_NATIVE_DIR ?? 'public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
 const jsPath = pathToFileURL(resolve(publicDir, 'watershed_native.js')).href;
 const wasmBinary = readFileSync(wasmPath);
@@ -39,18 +41,13 @@ try {
 
 // Plain C ABI (#467): every export is Module._ws_<name>. This script stays
 // independent of src/systems/water/wasmAbi.ts on purpose — it is the raw
-// binary's check — so it binds by name here, and reads the three out-pointer
-// results through a scratch block the same way.
-if (typeof raw?._ws_getVersion !== 'function' || typeof raw?._ws_calculateWaterForce !== 'function') {
-  throw new Error('createWatershedNative() resolved without the _ws_* C exports (getVersion / calculateWaterForce)');
+// binary's check — so it binds by name here, and reads the out-pointer result
+// through a scratch block the same way.
+if (typeof raw?._ws_getVersion !== 'function' || typeof raw?._ws_computeWaterForcesBatch !== 'function') {
+  throw new Error('createWatershedNative() resolved without the _ws_* C exports (getVersion / computeWaterForcesBatch)');
 }
 const outPtr = raw._ws_allocateGrid(8);
 const OUT_READERS = {
-  calculateWaterForce: (f, i) => ({
-    forceX: f[i], forceY: f[i + 1], forceZ: f[i + 2], buoyancy: f[i + 3],
-    drag: f[i + 4], flow: f[i + 5], turbulence: f[i + 6], submergedRatio: f[i + 7],
-  }),
-  computeFlowForce: (f, i) => ({ x: f[i], y: f[i + 1], z: f[i + 2] }),
   routedEdgeState: (f, i) => ({ eta: f[i], speed: f[i + 1] }),
 };
 const U32_RESULTS = new Set(['initWaterfallParticles', 'stepWaterfallParticles']);
@@ -70,18 +67,33 @@ const wasm = new Proxy(raw, {
   },
 });
 
-const buoyancy = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
-
-if (!Number.isFinite(buoyancy) || buoyancy <= 0) {
-  throw new Error(`Unexpected calculateBuoyancyAndDrag(): ${buoyancy}`);
+// One body through the batch: host_smoke.cpp's fixture 0 ("raft fully
+// submerged, straight downstream flow"), the same numbers at 1e-3 relative.
+const forceIn = wasm.allocateGrid(8);
+const forceOut = wasm.allocateGrid(8);
+wasm.HEAPF32.set([0, 0.2, -10, 0.2, 0, -1.4, 0, -1], forceIn >> 2);
+wasm.computeWaterForcesBatch(forceIn, forceOut, 1, 4.5, 0.5, 150, 1.2, 0.47, 1.05, 0.7, 12.5, 0, 2.4);
+const force = wasm.HEAPF32.subarray(forceOut >> 2, (forceOut >> 2) + 8);
+for (const [i, want, label] of [[1, 11253.1309, 'forceY'], [3, 11767.98, 'buoyancy'], [7, 1, 'submergedRatio']]) {
+  if (!(Math.abs(force[i] - want) <= Math.max(Math.abs(want) * 1e-3, 1e-4))) {
+    throw new Error(`computeWaterForcesBatch fixture ${label}: expected ${want}, got ${force[i]}`);
+  }
 }
+const buoyancy = force[3];
+wasm.freeGrid(forceIn);
+wasm.freeGrid(forceOut);
 
 const version = wasm.getVersion();
-// ABI 12 is the plain C ABI (#467), 13 adds the terrain tile (#487) and 14
-// lateral routing inflow + the surge event; the TypeScript binding table
-// requires every export, so this floor is what catches a stale committed pair.
-if (!Number.isInteger(version) || version < 14) {
-  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 14)`);
+// ABI 12 is the plain C ABI (#467), 13 adds the terrain tile (#487), 14
+// lateral routing inflow + the surge event, 15 drops the single-body force
+// exports and 16 the terrain tile (TS-only since); the TypeScript binding
+// table requires every export, so this floor is what catches a stale pair.
+if (!Number.isInteger(version) || version < 16) {
+  throw new Error(`Unexpected getVersion(): ${version} (need ABI >= 16)`);
+}
+for (const gone of ['calculateBuoyancyAndDrag', 'calculateWaterForce', 'computeBuoyancy', 'computeDragForce', 'computeFlowForce',
+  'buildTerrainTile', 'buildWallShell']) {
+  if (typeof raw[`_ws_${gone}`] === 'function') throw new Error(`_ws_${gone} was removed (ABI 15 / 16), but the binary exports it`);
 }
 
 if (typeof wasm.applySWEEvent !== 'function') {
@@ -117,11 +129,6 @@ if (version >= 7) {
     }
   }
   wasm.freeParticleSoA(ptr);
-}
-
-const archimedes = wasm.computeBuoyancy(1, 1000, 9.80665);
-if (!Number.isFinite(archimedes) || Math.abs(archimedes - 9806.65) > 0.1) {
-  throw new Error(`Unexpected computeBuoyancy(): ${archimedes}`);
 }
 
 if (typeof wasm.reduceF32Grid === 'function') {
@@ -482,9 +489,9 @@ if (version >= 9) {
 }
 
 // --- ABI 10: channel routing + the routed upstream edge ---------------------
-// Same 20-segment chain and goldens as host_smoke.cpp §8. The host build uses
-// -ffp-contract=off, this binary -ffast-math: the 1e-4 relative tolerance is
-// the #404 rule. If they ever diverge, pin -ffp-contract=off on routing.cpp.
+// Same 20-segment chain and goldens as host_smoke.cpp §8, at the #404 1e-4
+// relative tolerance. Both builds are IEEE -ffp-contract=off now; bit-for-bit
+// host == wasm is nativeDigest.integration.test.ts (native_digest.h).
 if (version >= 10) {
   for (const name of ['routeReach', 'routeReachSteady', 'routeReachTravelTime', 'routedEdgeState', 'stepShallowWaterInflow']) {
     if (typeof wasm[name] !== 'function') throw new Error(`ABI 10 must export ${name}`);
@@ -610,88 +617,6 @@ if (version >= 11) {
     throw new Error(`heap grew during step/scroll after reserve: ${before} -> ${heapBytes()} B`);
   }
   for (const p of planes) wasm.freeGrid(p);
-}
-
-// --- ABI 13: terrain tiles (#487) ---------------------------------------------
-// Same fixtures and goldens as emscripten/terrain_goldens.h (host) and
-// src/terrain/__tests__/terrainFixtures.ts (TS mirror), here against the -ffast-math build.
-{
-  const STRIDE = 9;
-  const PLANES = 7;
-  const fixtures = [
-    {
-      name: 'summer meander', args: [96, 35, 14, 40, 96, 0, 1, 0, 0, 0],
-      channel: [
-        7.4, 6.6, 4.9, 0.55, 0.06, -0.4, 1, -1, 0.95,
-        7.9, 6.2, 4.9, 0.20, -0.10, 0.3, 1, -1, 1.05,
-        6.8, 7.3, 4.9, -0.10, 0.12, 0.8, -1, 1, 1.14,
-        6.1, 7.8, 4.9, 0.75, 0.02, -0.7, -1, 1, 0.92,
-        7.0, 7.0, 4.9, 0.40, -0.05, -0.1, 1, -1, 0.99,
-      ],
-      golden: { absX: 35647.5, h: 19824.7554, bank: 2423, probes: [[1988, 0.214000002], [1998, 2.5464499], [2008, 24.8384438]] },
-    },
-    {
-      name: 'slot canyon (collision grid)', args: [110, 24, 8, 10, 27, 1, 0, 0, 0, 0],
-      channel: [
-        4.6, 3.9, 3.2, 1.10, 0.08, -0.6, 1, -1, 0.93,
-        4.1, 4.4, 3.2, 0.30, -0.12, 0.5, -1, 1, 1.09,
-        3.9, 4.8, 3.2, 1.40, 0.15, -1.0, -1, 1, 0.88,
-        4.4, 4.0, 3.2, -0.20, 0.00, 0.9, 1, -1, 1.16,
-      ],
-      golden: { absX: 2016.00003, h: 7131.92271, bank: 223, probes: [[148, -1.05444443], [151, 28.1923027], [153, 51.628479]] },
-    },
-    {
-      name: 'glacial ice tube', args: [90, 25, 10, 40, 90, 0, 1, 1, 0.88, 9.5],
-      channel: [
-        5.2, 4.8, 3.5, 0.60, 0.04, -0.5, 1, -1, 0.94,
-        4.6, 5.4, 3.5, 0.10, -0.08, 0.6, -1, 1, 1.11,
-        5.0, 5.0, 3.5, 0.35, 0.10, 0.0, 1, -1, 1.00,
-      ],
-      golden: { absX: 17952.578, h: 18642.1421, bank: 2276, probes: [[1865, -0.105999999], [1848, 9.47856712], [1883, 9.68077946]] },
-    },
-  ];
-  const close = (actual, expected, what) => {
-    const tol = Math.max(Math.abs(expected) * 1e-5, 1e-4);
-    if (!(Math.abs(actual - expected) <= tol)) throw new Error(`terrain golden ${what}: expected ${expected}, got ${actual}`);
-  };
-  for (const fx of fixtures) {
-    const [, , , sx, sz] = fx.args;
-    const n = (sx + 1) * (sz + 1);
-    const count = fx.channel.length / STRIDE;
-    const chPtr = wasm.allocateGrid(fx.channel.length);
-    const outPtr = wasm.allocateGrid(n * PLANES);
-    new Float32Array(wasm.HEAPF32.buffer, chPtr, fx.channel.length).set(fx.channel);
-    const written = wasm.buildTerrainTile(...fx.args, chPtr, count, outPtr);
-    if (written !== n) throw new Error(`buildTerrainTile(${fx.name}) returned ${written}, want ${n}`);
-    const planes = new Float32Array(wasm.HEAPF32.buffer, outPtr, n * PLANES);
-    let absX = 0;
-    let h = 0;
-    let bank = 0;
-    for (let i = 0; i < n; i += 1) {
-      absX += Math.abs(planes[i]);
-      h += planes[n + i];
-      bank += planes[2 * n + i];
-    }
-    close(absX, fx.golden.absX, `${fx.name} sum |X|`);
-    close(h, fx.golden.h, `${fx.name} sum H`);
-    close(bank, fx.golden.bank, `${fx.name} sum bank`);
-    for (const [i, want] of fx.golden.probes) close(planes[n + i], want, `${fx.name} H[${i}]`);
-    wasm.freeGrid(outPtr);
-    wasm.freeGrid(chPtr);
-  }
-  // A degenerate path is rejected rather than written.
-  const guardPtr = wasm.allocateGrid(PLANES * 4);
-  if (wasm.buildTerrainTile(0, 30, 10, 1, 1, 0, 0, 0, 0, 0, 0, 0, guardPtr) !== 0) {
-    throw new Error('buildTerrainTile accepted a zero-length path');
-  }
-  wasm.freeGrid(guardPtr);
-
-  const shellPtr = wasm.allocateGrid(25 * 49);
-  if (wasm.buildWallShell(96, 52.5, 24, 48, 0, 0, 7, shellPtr) !== 25 * 49) throw new Error('buildWallShell failed');
-  const shell = new Float32Array(wasm.HEAPF32.buffer, shellPtr, 25 * 49);
-  close(shell.reduce((a, v) => a + v, 0), 23614.6625, 'summer shell sum');
-  close(shell[612], 15.238183, 'summer shell probe');
-  wasm.freeGrid(shellPtr);
 }
 
 // --- ABI 14: lateral routing inflow + the surge event (#464 D) ---------------

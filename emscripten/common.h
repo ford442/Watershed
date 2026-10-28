@@ -38,6 +38,26 @@ static constexpr int SWE_MAX_GRID_EXTENT = 4096;
 /** Largest element count a flat (count-addressed) entry point accepts: one full-extent grid. */
 static constexpr int WS_MAX_ELEMENTS = SWE_MAX_GRID_EXTENT * SWE_MAX_GRID_EXTENT;
 
+/**
+ * `count` elements of `elemSize` bytes, as a byte count in SizeT; 0 when count
+ * is outside [1, WS_MAX_ELEMENTS] or the product overflows SizeT.
+ *
+ * emmalloc's calloc multiplies num * size in wasm32's 32-bit size_t with no
+ * overflow check, so allocateGrid(2^30) wrapped to a tiny block that came
+ * back as success. The allocators size their block here and pass calloc a
+ * byte count. SizeT is a parameter so host_smoke can check the wasm32 width
+ * (uint32_t) on an LP64 host, where glibc's own calloc check hides the wrap.
+ */
+template <typename SizeT>
+constexpr SizeT allocBytes(int count, SizeT elemSize) noexcept {
+    if (count <= 0 || count > WS_MAX_ELEMENTS) return 0;
+    SizeT bytes = 0;
+    if (__builtin_mul_overflow(static_cast<SizeT>(count), elemSize, &bytes)) return 0;
+    return bytes;
+}
+static_assert(allocBytes<std::uint32_t>(WS_MAX_ELEMENTS, 4) == 4u * WS_MAX_ELEMENTS,
+              "the largest accepted float grid fits a wasm32 size_t");
+
 // ---------------------------------------------------------------------------
 // Value types
 // ---------------------------------------------------------------------------
@@ -47,10 +67,6 @@ struct Vec2 {
     float x = 0.f, z = 0.f;
 };
 
-/** 3-component float vector (returned by computeFlowForce). */
-struct Vec3 {
-    float x = 0.f, y = 0.f, z = 0.f;
-};
 
 // ---------------------------------------------------------------------------
 // Math helpers

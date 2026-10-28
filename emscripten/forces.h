@@ -27,24 +27,6 @@ float computeBuoyancy(float submergedVolume,
                       float waterDensity,
                       float gravity) noexcept;
 
-/** Drag magnitude: F_d = ½ · ρ · |v|² · C_d · A (N). */
-float computeDragForce(float vx, float vy, float vz,
-                       float cd, float area, float density) noexcept;
-
-/** Browser smoke-test helper — combines upward buoyancy and current drag. */
-float calculateBuoyancyAndDrag(float raftMass,
-                               float submergedVolume,
-                               float waterVelocityX,
-                               float waterVelocityZ) noexcept;
-
-/** River-current force on a partially submerged object, along relative velocity. */
-Vec3 computeFlowForce(float vx, float vy, float vz,
-                      float fx, float fy, float fz,
-                      float flowSpeed,
-                      float mass,
-                      float submergedRatio,
-                      float cd, float area) noexcept;
-
 /** Full water-force solve for a single body (buoyancy + flow + drag + turbulence). */
 WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
                                      float velX, float velY, float velZ,

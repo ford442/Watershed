@@ -11,14 +11,11 @@
  * watershed_native and asserts native ≈ TS within a float epsilon.
  */
 
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { NativeWaterForceResult, WatershedNativeModule } from '../../systems/water/wasmAbi';
 import { calculateWaterForceFallback } from '../../systems/water/waterForceFallback';
 import { createWaterForceBatch } from '../../systems/water/WatershedWasm';
 import { WATER_FORCE_FIXTURES } from './waterForceFixtures';
-import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
+import { loadNativeFromDisk, nativePairOnDisk } from '../../testing/nativeFromDisk';
 
 /** Committed TS-fallback results, rounded to 4dp. Regenerate deliberately. */
 const EXPECTED: NativeWaterForceResult[] = [
@@ -116,11 +113,7 @@ describe('water-force fixtures — TypeScript fallback', () => {
 // opt-in via WATERSHED_WASM_INTEGRATION=1. Load from disk (file:// + instantiateWasm)
 // the same way emscripten/smoke_test.mjs does — getWasm() uses the Vite public URL
 // which jsdom cannot import.
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
-const gluePath = resolve(publicDir, 'watershed_native.js');
-const runNative =
-  process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath) && existsSync(gluePath);
+const runNative = process.env.WATERSHED_WASM_INTEGRATION === '1' && nativePairOnDisk();
 const describeNative = runNative ? describe : describe.skip;
 
 
@@ -136,24 +129,14 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
     expect(wasm.getVersion()).toBeGreaterThanOrEqual(6);
   });
 
-  it('agrees with the TS fallback on every fixture (single-sample call)', () => {
+  it('agrees with the TS fallback on every fixture (one-sample batch, its own config)', () => {
     for (const fixture of WATER_FORCE_FIXTURES) {
       const { sample, config } = fixture;
-      const native = wasm.calculateWaterForce(
-        sample.position.x, sample.position.y, sample.position.z,
-        sample.velocity.x, sample.velocity.y, sample.velocity.z,
-        sample.flowDirection.x, sample.flowDirection.z,
-        config.flowSpeed,
-        config.waterLevel,
-        config.raftMass,
-        config.raftVolume,
-        config.dragCoefficient,
-        config.frontalArea,
-        config.sideArea,
-        config.timeSeconds,
-        config.turbulenceStrength,
-        config.turbulenceFrequency,
-      );
+      const one = createWaterForceBatch(wasm, 1);
+      one.setSample(0, sample);
+      one.compute(config);
+      const native = one.readResult(0);
+      one.dispose();
       const fallback = calculateWaterForceFallback(sample, config);
       for (const key of RESULT_KEYS) {
         expectClose(native[key], fallback[key], `${fixture.name}.${key}`);
@@ -161,7 +144,7 @@ describeNative('water-force parity — native C++ vs TypeScript', () => {
     }
   });
 
-  it('batched results match the single-sample path', () => {
+  it('a many-sample batch under one config matches the fallback per sample', () => {
     // All fixtures sharing one config so a single batch call covers them.
     const config = WATER_FORCE_FIXTURES[0].config;
     const batch = createWaterForceBatch(wasm, WATER_FORCE_FIXTURES.length);

@@ -5,9 +5,9 @@ Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_W
 Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `swe.h`
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
 `chores.cpp` (optional gpu-chores; not SWE), `particles.cpp` (waterfall / splash SoA),
-`routing.cpp` (channel routing), `terrain.cpp` (terrain tiles, #487),
-and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 13,
-`MIN_WASM_ABI_VERSION` = 13).
+`routing.cpp` (channel routing),
+and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 16,
+`MIN_WASM_ABI_VERSION` = 16). The terrain tile (#487) is TypeScript-only since ABI 16.
 It builds to:
 
 - `public/watershed_native.js`
@@ -38,11 +38,17 @@ import { getWasm } from '../systems/water/wasmLoader';
 import { createWaterForceBatch } from '../systems/water/WatershedWasm';
 
 const wasm = await getWasm();
-const smoke = wasm.calculateBuoyancyAndDrag(150, 0.4, 0, -3);
-console.info('[Watershed WASM]', smoke);
+const batch = createWaterForceBatch(wasm, 1);
+batch.setSample(0, { position, velocity, flowDirection: { x: 0, z: -1 } });
+batch.compute(config);
+const force = batch.readResult(0);
+batch.dispose();
 ```
 
-`GameHUD` runs that hello-world call on load. Success shows `WASM READY` plus the native value. Native-init throw banners the error and shows `WASM FAILED` — it does not substitute the TypeScript smoke number.
+`computeWaterForcesBatch` is the only force export since ABI 15 (the single-body
+`calculateWaterForce` / `calculateBuoyancyAndDrag` / `computeBuoyancy` /
+`computeDragForce` / `computeFlowForce` exports had no game caller). `GameHUD` banners a
+native-init failure as `WASM FAILED` — it does not substitute a TypeScript number.
 
 For a visible force scene, run the app with:
 
@@ -50,22 +56,11 @@ For a visible force scene, run the app with:
 ?wasmWaterTest=1&no-pointer-lock=1
 ```
 
-This replaces the normal player vehicle with `WasmWaterForceTest`, a simple Rapier raft that receives `calculateWaterForce(...)` impulses every frame. The browser exposes the latest sample at `window.__watershedWasmWaterTest`.
+This replaces the normal player vehicle with `WasmWaterForceTest`, a simple Rapier raft that receives one-sample `computeWaterForcesBatch` impulses every frame. The browser exposes the latest sample at `window.__watershedWasmWaterTest`.
 
 ## C++ Interface
 
-Scalar smoke test:
-
-```cpp
-extern "C" float calculateBuoyancyAndDrag(
-  float raftMass,
-  float submergedVolume,
-  float waterVelocityX,
-  float waterVelocityZ
-);
-```
-
-Single raft force sample:
+Single raft force sample (forces.cpp, internal since ABI 15 — the batch calls it per sample):
 
 ```cpp
 WaterForceResult calculateWaterForce(

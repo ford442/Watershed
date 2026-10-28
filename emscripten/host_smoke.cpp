@@ -9,8 +9,7 @@
  * Also channel routing (routing.cpp): a step release reaches a downstream
  * segment only after the routed lag, volume is conserved, and the routed
  * upstream edge (stepShallowWaterInflow) keeps lake-at-rest at the reference
- * discharge. And the terrain tile (terrain.cpp, #487): the three golden
- * segments' plane sums, the tube overhang, and the input guards.
+ * discharge. And the bit-exact digests of native_digest.h.
  * Host only (no Emscripten headers).
  *
  *   cmake -S emscripten -B emscripten/build-host
@@ -20,11 +19,10 @@
 
 #include "chores.h"
 #include "forces.h"
+#include "native_digest.h"
 #include "swe.h"
 #include "particles.h"
 #include "routing.h"
-#include "terrain.h"
-#include "terrain_goldens.h"
 
 #include <cmath>
 #include <cstdio>
@@ -850,8 +848,9 @@ int main() {
             }
             check(early < 0.01f, "routed edge: stage flat before the lag");
             check(late > 0.5f * high.eta, "routed edge: stage raised after the lag");
-            // Goldens, mirrored in smoke_test.mjs against the -ffast-math WASM
-            // build (same chain, same numbers, same 1e-4 relative tolerance).
+            // Goldens, mirrored in smoke_test.mjs against the WASM build (same
+            // chain, same numbers, same 1e-4 relative tolerance). Bitwise
+            // host == wasm is native_digest.h's job; these are physics.
             checkClose(lagFar, 264.890015f, 1e-4f, "routing golden: far-segment lag (s)");
             checkClose(riseAtLag, 0.999229f, 1e-4f, "routing golden: release fraction at 1.25 x lag");
             checkClose(high.eta, 0.197293f, 1e-4f, "routing golden: edge stage for +35% discharge");
@@ -934,127 +933,72 @@ int main() {
     }
 
 
-    // 9. Terrain tile (terrain.cpp, ABI 13, #487). Goldens are mirrored in
-    //    src/terrain/__tests__/terrainFixtures.ts and emscripten/smoke_test.mjs.
+    // ------------------------------------------------------------------
+    // Non-finite scalars: a NaN slips past `x <= 0` and `std::max(x, lo)`
+    // (which returns its first operand), so before these guards one NaN dt
+    // turned the whole SWE field into NaN and one NaN head discharge poisoned
+    // the routed chain, both for the rest of the session.
+    // ------------------------------------------------------------------
     {
-        using namespace terrain_goldens;
-        const bool print = std::getenv("WATERSHED_PRINT_TERRAIN_GOLDENS") != nullptr;
-        for (int f = 0; f < kFixtureCount; ++f) {
-            const Fixture& fx = kFixtures[f];
-            const Golden& g = kGoldens[f];
-            TileParams params;
-            params.pathLength = fx.pathLength;
-            params.canyonWidth = fx.canyonWidth;
-            params.waterWidth = fx.waterWidth;
-            params.segmentsX = fx.segmentsX;
-            params.segmentsZ = fx.segmentsZ;
-            params.profile = fx.profile;
-            params.rockNoise = fx.rockNoise;
-            params.hasTube = fx.hasTube;
-            params.tubeCurl = fx.tubeCurl;
-            params.tubeCeiling = fx.tubeCeiling;
-            params.channel = std::span<const float>(fx.channel, static_cast<size_t>(fx.channelCount) * TERRAIN_CHANNEL_STRIDE);
-            const int n = terrainVertexCount(fx.segmentsX, fx.segmentsZ);
-            std::vector<float> planes(static_cast<size_t>(n) * TERRAIN_TILE_PLANES, -999.f);
-            TerrainTile tile{planes};
-            check(buildTerrainTile(params, tile) == n, "terrain: buildTerrainTile returns the vertex count");
-            const auto at = [&](int k, int i) { return planes[static_cast<size_t>(k) * n + i]; };
-            double sums[TERRAIN_TILE_PLANES] = {};
-            double absX = 0.0;
-            double absSlopeX = 0.0;
-            bool finite = true;
-            for (int k = 0; k < TERRAIN_TILE_PLANES; ++k) {
-                for (int i = 0; i < n; ++i) {
-                    finite = finite && std::isfinite(at(k, i));
-                    sums[k] += at(k, i);
-                }
-            }
-            for (int i = 0; i < n; ++i) {
-                absX += std::abs(at(TERRAIN_PLANE_X, i));
-                absSlopeX += std::abs(at(TERRAIN_PLANE_SLOPE_X, i));
-            }
-            check(finite, "terrain: every plane is finite");
-            if (print) {
-                std::printf("    {%.9g, %.9g, %.9g, %.9g, %.9g, %.9g, {%d, %d, %d}, {%.9g, %.9g, %.9g}},  // %s\n",
-                            absX, sums[TERRAIN_PLANE_H], sums[TERRAIN_PLANE_BANK],
-                            sums[TERRAIN_PLANE_SLOPE_X], sums[TERRAIN_PLANE_SLOPE_Z], absSlopeX,
-                            g.probe[0], g.probe[1], g.probe[2],
-                            at(TERRAIN_PLANE_H, g.probe[0]), at(TERRAIN_PLANE_H, g.probe[1]),
-                            at(TERRAIN_PLANE_H, g.probe[2]), fx.name);
-                continue;
-            }
-            const auto close = [&](double actual, double expected, const char* what) {
-                const double tol = std::max(std::abs(expected) * 1e-5, 1e-4);
-                if (!(std::abs(actual - expected) <= tol)) {
-                    std::fprintf(stderr, "FAIL  terrain golden %s / %s: expected %.9g, got %.9g\n",
-                                 fx.name, what, expected, actual);
-                    ++g_failures;
-                }
-            };
-            close(absX, g.sumAbsX, "sum |X|");
-            close(sums[TERRAIN_PLANE_H], g.sumH, "sum H");
-            close(sums[TERRAIN_PLANE_BANK], g.sumBank, "sum bank");
-            close(sums[TERRAIN_PLANE_SLOPE_X], g.sumSlopeX, "sum slopeX");
-            close(sums[TERRAIN_PLANE_SLOPE_Z], g.sumSlopeZ, "sum slopeZ");
-            close(absSlopeX, g.sumAbsSlopeX, "sum |slopeX|");
-            for (int p = 0; p < 3; ++p) close(at(TERRAIN_PLANE_H, g.probe[p]), g.probeH[p], "probe H");
+        constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+        constexpr float kInf = std::numeric_limits<float>::infinity();
+        const auto P = [](auto& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        const auto finite = [](const std::vector<float>& v) {
+            return std::all_of(v.begin(), v.end(), [](float x) { return std::isfinite(x); });
+        };
 
-            // Structural: uv spans the tile, the centre column is wet, the outer columns are bank.
-            const int cols = fx.segmentsX + 1;
-            const int midRow = (fx.segmentsZ / 2) * cols;
-            check(at(TERRAIN_PLANE_UV_U, 0) == 0.f && at(TERRAIN_PLANE_UV_U, cols - 1) == 1.f, "terrain: uvU spans 0..1");
-            checkClose(at(TERRAIN_PLANE_UV_V, n - 1), static_cast<float>(fx.pathLength), 1e-6f, "terrain: uvV ends at the path length");
-            check(at(TERRAIN_PLANE_BANK, midRow + cols / 2) == 0.f, "terrain: the thalweg is in the channel");
-            check(at(TERRAIN_PLANE_BANK, midRow) == 1.f && at(TERRAIN_PLANE_BANK, midRow + cols - 1) == 1.f,
-                  "terrain: the canyon edges are bank");
-            if (fx.hasTube) {
-                // The fold pulls the outer column inboard of a column further in: the overhang.
-                const float outer = std::abs(at(TERRAIN_PLANE_X, midRow));
-                const float inner = std::abs(at(TERRAIN_PLANE_X, midRow + 2));
-                check(outer < inner, "terrain: the ice tube overhangs (outer wall inboard of its springing)");
-                checkClose(at(TERRAIN_PLANE_H, midRow), static_cast<float>(fx.tubeCeiling), 1e-5f,
-                           "terrain: the tube crown lands on the authored ceiling");
-            } else {
-                check(at(TERRAIN_PLANE_X, 0) == static_cast<float>(-fx.canyonWidth / 2), "terrain: open canyon x is the grid x");
-            }
-        }
+        constexpr int kW = 12;
+        constexpr int kZ = 10;
+        const std::size_t cells = static_cast<std::size_t>(kW) * kZ;
+        std::vector<float> h(cells), u(cells, 0.5f), w(cells, -0.25f), b(cells, 0.1f);
+        for (std::size_t i = 0; i < cells; ++i) h[i] = 0.05f * std::sin(0.7f * static_cast<float>(i));
+        const std::vector<float> h0 = h;
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, kNaN, kG, kDx, kH);
+        stepShallowWaterInflow(P(h), P(u), P(w), P(b), kW, kZ, kNaN, kG, kDx, kH, 0.1f);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kNaN, kDx, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kNaN, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kNaN);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kInf, kDx, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kInf, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kInf);
+        check(h == h0, "swe: a NaN / inf dt, g, dx or H steps nothing");
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, kInf, kG, kDx, kH);
+        check(finite(h) && finite(u) && finite(w) && h != h0, "swe: dt = +inf is clamped to the CFL step");
+        applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f);
+        applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, kInf);
+        applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kInf, 0, 4.f, 4.f, 2.f, 1.f, 0.016f);
+        scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 2, -3, kNaN, kInf, -kInf);
+        check(finite(h) && finite(u) && finite(w) && finite(b), "swe: NaN / inf event and inflow scalars stay out of the field");
 
-        // Guards: nothing is written for a degenerate path or a short buffer.
-        std::vector<float> small(TERRAIN_TILE_PLANES * 4, 7.f);
-        TerrainTile smallTile{small};
-        TileParams bad;
-        bad.pathLength = 0.0;
-        bad.canyonWidth = 30.0;
-        bad.segmentsX = 1;
-        bad.segmentsZ = 1;
-        check(buildTerrainTile(bad, smallTile) == 0, "terrain: zero path length is rejected");
-        bad.pathLength = std::numeric_limits<double>::quiet_NaN();
-        check(buildTerrainTile(bad, smallTile) == 0, "terrain: NaN path length is rejected");
-        bad.pathLength = 10.0;
-        bad.segmentsX = 2;
-        check(buildTerrainTile(bad, smallTile) == 0, "terrain: a short output buffer is rejected");
-        bad.segmentsX = TERRAIN_MAX_SEGMENTS + 1;
-        check(terrainVertexCount(bad.segmentsX, 1) == 0, "terrain: oversized grids are rejected");
-        check(std::all_of(small.begin(), small.end(), [](float v) { return v == 7.f; }),
-              "terrain: rejected calls write nothing");
+        constexpr int kSegs = 3;
+        std::vector<float> L(kSegs, 100.f), S(kSegs, 0.01f), B(kSegs, 12.f), lateral(kSegs, 0.f);
+        std::vector<float> storage(static_cast<std::size_t>(kSegs) * ROUTING_SUBREACHES), outflow(kSegs), lag(kSegs);
+        routeReachSteady(P(L), P(S), P(B), kSegs, 5.f, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, kNaN, 1.f, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, kInf, 1.f, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, 5.f, kInf, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, 5.f, 1e-40f, P(storage), P(outflow));
+        L[1] = kNaN;
+        B[2] = kNaN;
+        routeReachLateral(P(L), P(S), P(B), kSegs, 5.f, P(lateral), 1.f, P(storage), P(outflow));
+        routeReachTravelTime(P(L), P(S), P(B), kSegs, kNaN, P(lag));
+        routeReachSteady(P(L), P(S), P(B), kSegs, kNaN, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, 5.f, 1.f, P(storage), P(outflow));
+        check(finite(storage) && finite(outflow) && finite(lag), "routing: NaN / inf head discharge, dt, length or width stays finite");
+        const RoutedEdge inf = routedEdgeState(6.f, 5.f, kInf, kG);
+        check(inf.eta == 0.f && inf.speed == 0.f, "routedEdgeState: an infinite H is rest");
 
-        for (const WallFixture& wf : kWallFixtures) {
-            const int n = terrainVertexCount(wf.params.segmentsX, wf.params.segmentsZ);
-            std::vector<float> shell(static_cast<size_t>(n));
-            check(buildWallShell(wf.params, shell) == n, "terrain: buildWallShell returns the vertex count");
-            double sum = 0.0;
-            for (float v : shell) sum += v;
-            if (print) {
-                std::printf("    wall %s: sum %.9g probe[%d] %.9g\n", wf.name, sum, wf.probe, shell[wf.probe]);
-                continue;
-            }
-            const double tol = std::max(std::abs(wf.sum) * 1e-5, 1e-4);
-            if (!(std::abs(sum - wf.sum) <= tol) || !(std::abs(shell[wf.probe] - wf.probeY) <= 1e-4)) {
-                std::fprintf(stderr, "FAIL  wall golden %s: sum %.9g (want %.9g), probe %.9g (want %.9g)\n",
-                             wf.name, sum, wf.sum, shell[wf.probe], wf.probeY);
-                ++g_failures;
-            }
-        }
+        const uintptr_t soa = allocateParticleSoA(8);
+        const std::span<const float> planes(reinterpret_cast<const float*>(soa), 8 * PARTICLE_SOA_PLANES);
+        uint32_t seed = initWaterfallParticles(soa, 8, 8, kNaN, 10.f, 1.f, 0.5f, 7u);
+        seed = initWaterfallParticles(soa, 8, 8, 4.f, 10.f, 1.f, 0.5f, seed);
+        seed = stepWaterfallParticles(soa, 8, 8, kNaN, 4.f, 10.f, 1.f, seed);
+        seed = stepWaterfallParticles(soa, 8, 8, 0.016f, kInf, 10.f, 1.f, seed);
+        stepSplashParticles(soa, 8, 8, kNaN, -9.8f, 0.98f);
+        stepSplashParticles(soa, 8, 8, 0.016f, kNaN, 0.98f);
+        check(std::all_of(planes.begin(), planes.end(), [](float x) { return std::isfinite(x); }),
+              "particles: NaN / inf scalars never reach the SoA");
+        freeParticleSoA(soa);
     }
 
     // ------------------------------------------------------------------
@@ -1130,6 +1074,42 @@ int main() {
                   && untouched(guard),
               "particles: oversized capacity steps nothing");
         check(allocateGrid(0) == 0 && allocateGrid(-5) == 0, "swe: allocateGrid(<= 0) returns 0");
+        // wasm32 size_t: emmalloc's calloc does not check num * size, so
+        // the cap and the overflow check must hold in a 32-bit size_t too.
+        check(allocBytes<uint32_t>(1 << 30, 4u) == 0, "allocBytes: 2^30 floats are rejected in a 32-bit size_t");
+        check(allocBytes<uint32_t>(WS_MAX_ELEMENTS + 1, 4u) == 0, "allocBytes: past WS_MAX_ELEMENTS is rejected");
+        check(allocBytes<uint32_t>(WS_MAX_ELEMENTS, 1u << 9) == 0, "allocBytes: a product past 2^32 is rejected, not wrapped");
+        check(allocBytes<uint32_t>(128 * 80, 4u) == 128u * 80u * 4u, "allocBytes: an SWE grid is its byte count");
+        check(allocateGrid(1 << 30) == 0 && allocateGrid(WS_MAX_ELEMENTS + 1) == 0,
+              "swe: allocateGrid rejects counts past WS_MAX_ELEMENTS");
+    }
+
+    // ------------------------------------------------------------------
+    // Bit-exact digests (native_digest.h): the same numbers gate the shipped
+    // wasm in nativeDigest.integration.test.ts, so host == wasm bit for bit.
+    // ------------------------------------------------------------------
+    {
+        const uint32_t swe = native_digest::sweDigest();
+        const uint32_t routing = native_digest::routingDigest();
+        if (std::getenv("WATERSHED_PRINT_DIGESTS") != nullptr) {
+            std::printf("inline constexpr uint32_t kSweDigest = 0x%08xu;\n", swe);
+            std::printf("inline constexpr uint32_t kRoutingDigest = 0x%08xu;\n", routing);
+        }
+        const auto digest = [](uint32_t got, uint32_t want, const char* what) {
+            if (got != want) {
+                std::fprintf(stderr, "FAIL  %s digest: 0x%08x, native_digest.h says 0x%08x\n", what, got, want);
+                ++g_failures;
+            }
+        };
+        // Routing (powf / expf) goes through the host libm: the digest is
+        // glibc's, which agrees with the wasm's musl on this scenario.
+        // Elsewhere (macOS libm) only SWE is libm-free.
+        digest(swe, native_digest::kSweDigest, "swe");
+#if defined(__GLIBC__)
+        digest(routing, native_digest::kRoutingDigest, "routing");
+#else
+        std::printf("note: the routing digest is checked on glibc hosts only\n");
+#endif
     }
 
     if (g_failures != 0) {

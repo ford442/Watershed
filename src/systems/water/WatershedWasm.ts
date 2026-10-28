@@ -4,7 +4,7 @@
  * The module itself is loaded by wasmLoader.ts (`getWasm()` on the main
  * thread, `getWorkerWasm()` in the sim worker) and bound by wasmAbi.ts. This
  * file owns the allocations game code holds on to: the SWE grid and the
- * water-force batch, both live Float32Array views that survive heap growth.
+ * water-force batch, both Float32Array views made once over the fixed-size heap.
  *
  *   const wasm = await getWasm();
  *   const grid = createSWEGrid(wasm, 32, 32, 0.5);
@@ -14,6 +14,7 @@
  */
 
 import {
+  allocateGrids,
   heapF32,
   WATER_FORCE_INPUT_STRIDE,
   WATER_FORCE_OUTPUT_STRIDE,
@@ -111,26 +112,17 @@ export function createSWEGrid(
 ): SWEGrid {
   const count = width * height;
 
-  const hPtr = mod.allocateGrid(count);
-  const uPtr = mod.allocateGrid(count);
-  const wPtr = mod.allocateGrid(count);
-  const bPtr = mod.allocateGrid(count);
+  const [hPtr, uPtr, wPtr, bPtr] = allocateGrids(mod, [count, count, count, count]);
   mod.reserveShallowWaterScratch(width, height);
-
-  // Views are rebound through heapF32() if Emscripten grows the heap
-  // (ALLOW_MEMORY_GROWTH replaces the ArrayBuffer and detaches these).
-  let h = heapF32(mod, hPtr, count);
-  let u = heapF32(mod, uPtr, count);
-  let w = heapF32(mod, wPtr, count);
-  let b = heapF32(mod, bPtr, count);
 
   return {
     width, height, dx,
     hPtr, uPtr, wPtr, bPtr,
-    get h() { h = heapF32(mod, hPtr, count, h); return h; },
-    get u() { u = heapF32(mod, uPtr, count, u); return u; },
-    get w() { w = heapF32(mod, wPtr, count, w); return w; },
-    get b() { b = heapF32(mod, bPtr, count, b); return b; },
+    // The heap is fixed-size, so these views stay valid until dispose().
+    h: heapF32(mod, hPtr, count),
+    u: heapF32(mod, uPtr, count),
+    w: heapF32(mod, wPtr, count),
+    b: heapF32(mod, bPtr, count),
     dispose() {
       mod.freeGrid(hPtr);
       mod.freeGrid(uPtr);
@@ -144,29 +136,25 @@ export function createWaterForceBatch(
   mod: WatershedNativeModule,
   sampleCount: number,
 ): NativeWaterForceBatch {
-  const inputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_INPUT_STRIDE);
-  const outputPtr = mod.allocateGrid(sampleCount * WATER_FORCE_OUTPUT_STRIDE);
+  const [inputPtr, outputPtr] = allocateGrids(mod, [
+    sampleCount * WATER_FORCE_INPUT_STRIDE,
+    sampleCount * WATER_FORCE_OUTPUT_STRIDE,
+  ]);
   const inCount = sampleCount * WATER_FORCE_INPUT_STRIDE;
   const outCount = sampleCount * WATER_FORCE_OUTPUT_STRIDE;
-  let input = heapF32(mod, inputPtr, inCount);
-  let output = heapF32(mod, outputPtr, outCount);
-
-  function refresh(): void {
-    input = heapF32(mod, inputPtr, inCount, input);
-    output = heapF32(mod, outputPtr, outCount, output);
-  }
+  const input = heapF32(mod, inputPtr, inCount);
+  const output = heapF32(mod, outputPtr, outCount);
 
   return {
     sampleCount,
     inputPtr,
     outputPtr,
-    get input() { refresh(); return input; },
-    get output() { refresh(); return output; },
+    input,
+    output,
     setSample(index, sample) {
       if (index < 0 || index >= sampleCount) {
         throw new RangeError(`Water force sample ${index} out of range`);
       }
-      refresh();
       const offset = index * WATER_FORCE_INPUT_STRIDE;
       input[offset + 0] = sample.position.x;
       input[offset + 1] = sample.position.y;
@@ -178,7 +166,6 @@ export function createWaterForceBatch(
       input[offset + 7] = sample.flowDirection.z;
     },
     compute(config) {
-      refresh();
       mod.computeWaterForcesBatch(
         inputPtr,
         outputPtr,
@@ -200,7 +187,6 @@ export function createWaterForceBatch(
       if (index < 0 || index >= sampleCount) {
         throw new RangeError(`Water force result ${index} out of range`);
       }
-      refresh();
       const offset = index * WATER_FORCE_OUTPUT_STRIDE;
       return {
         forceX: output[offset + 0],

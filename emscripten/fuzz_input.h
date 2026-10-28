@@ -29,6 +29,26 @@ struct Input {
     }
     int pick(int lo, int hi) { return lo + static_cast<int>(u32() % static_cast<uint32_t>(hi - lo + 1)); }
     bool coin() { return (u32() & 1u) != 0; }
+    /**
+     * A scalar a careless caller sends: NaN, ±inf, a denormal, ±0. The
+     * guards are `x <= 0` / `std::max(x, lo)` shaped, which NaN walks through,
+     * and uniform draws never land on any of these.
+     */
+    float special() {
+        static constexpr float kSpecial[] = {
+            __builtin_nanf(""), -__builtin_nanf(""), __builtin_inff(), -__builtin_inff(),
+            1e-40f, -1e-40f, 1.4e-45f, 0.f, -0.f,
+        };
+        return kSpecial[u32() % (sizeof kSpecial / sizeof kSpecial[0])];
+    }
+    /** `v` three times in four, otherwise special(). */
+    float orSpecial(float v) { return u32() % 4u == 0 ? special() : v; }
+    /** range(lo, hi), one draw in four special(). */
+    float scalar(float lo, float hi) {
+        const float v = range(lo, hi);
+        return orSpecial(v);
+    }
+    double specialDouble() { return static_cast<double>(special()); }
     /** Any float bit pattern, NaN / ±inf / denormals included. */
     float raw() {
         const uint32_t bits = u32();

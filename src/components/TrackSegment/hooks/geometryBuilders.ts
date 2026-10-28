@@ -13,8 +13,8 @@ import {
   type GeometryBuildContext,
 } from '../../../terrain/segmentMeshBuild';
 
-// The profile lives in src/terrain/terrainTile.ts (the TS mirror of
-// emscripten/terrain.cpp, #487) and the mesh builders in
+// The profile lives in src/terrain/terrainTile.ts (#487; the one canyon
+// profile since the C++ tile was retired) and the mesh builders in
 // src/terrain/segmentMeshBuild.ts (three-free, shared with the sim worker);
 // these names stay importable from here.
 export { applyTubeProfile, type TubeProfile } from '../../../terrain/terrainTile';
@@ -23,9 +23,7 @@ export {
   canyonSubdivisionCounts,
   CANYON_COLLISION_SUBDIVISION_DIVISOR,
   CANYON_VISUAL_SEGMENTS_X,
-  MIRROR_TERRAIN,
   type GeometryBuildContext,
-  type TerrainBuilders,
 } from '../../../terrain/segmentMeshBuild';
 
 /** Glacial melt: a near-closed ice tube with a slot of sky at the crown. */
