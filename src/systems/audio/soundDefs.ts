@@ -128,3 +128,28 @@ export const PRELOAD_SOUNDS: readonly string[] = [
   'rapids_roar',
   'splash',
 ];
+
+/** Material-specific collision sound (AudioManager.getCollisionSound). */
+export function collisionSoundFor(material: string): string {
+  const map: Record<string, string> = {
+    'rock': 'collide_rock',
+    'moss': 'collide_moss',
+    'wood': 'collide_wood',
+    'concrete': 'collide_concrete',
+    'water': 'collide_water',
+  };
+  return map[material] || 'collide_rock';
+}
+
+/**
+ * Footstep sound for a surface material (AudioManager.getFootstepSound):
+ * `step_<material>` when the library has one, else `step_rock`. (The old
+ * `\`step_${material}\` || 'step_rock'` never fell back — a template string is
+ * never empty — so concrete, water or an unknown biome material asked for a
+ * sound that does not exist.)
+ */
+export function footstepSoundFor(material: string, isWet: boolean): string {
+  if (isWet) return 'step_wet';
+  const key = `step_${material}`;
+  return key in SOUND_DEFS ? key : 'step_rock';
+}

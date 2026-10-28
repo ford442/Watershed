@@ -508,6 +508,25 @@ resolution; unmounted for `low` / `medium` (no extra scene render).
 The audio bus owner: one `THREE.AudioListener` on the camera, one-shots, ambient beds,
 canyon acoustics. Singleton via `initAudio(camera)` / `getAudioManager()`.
 
+`AudioManager` is a facade (#521 C4): it keeps the listener and the unlock gate and hands
+the rest to per-voice closures in `src/systems/audio/` (import only the facade from outside
+it):
+- `audioMix.ts` — master (listener gain) / music / SFX / mute channels, the effective SFX
+  gain, and the reactive layer volumes.
+- `soundLibrary.ts` — buffer registry: one fetch + decode per file, remembered failures,
+  post-unlock idle preload.
+- `sfxVoices.ts` — one-shot SFX (spatial, per-category caps, active-voice registry) and
+  the thunder clap; scaled by `getEffectiveSfxGain()` (SFX channel × wetness muffle).
+- `ambientBed.ts` — the looping ambient track and its wall-clock crossfade.
+- `acousticRouting.ts` — wall state, routed layers, the canyon-send + wetness-muffle
+  filter chain, cached synthetic IRs (and `AcousticStem`).
+- `synthBuffers.ts` — the cached speed-wind loop and thunder clap buffers.
+- `soundDefs.ts` also holds the name lookups behind the static `getCollisionSound` /
+  `getFootstepSound`.
+
+`ambientBed.ts`, `sfxVoices.ts` and `soundLibrary.ts` are on the ESLint sim-time allowlist
+(fades, voice ages and idle preload are presentation); the facade reads no clock.
+
 **Consumes:**
 - `SOUND_DEFS` (`src/systems/audio/soundDefs.ts`) — name → `public/sounds/` file; `aliasOf`
   entries share a payload *and* its decoded buffer (one fetch per file).

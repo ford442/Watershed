@@ -165,8 +165,11 @@ export default tseslint.config(
       'src/**/__mocks__/**',
       // Storage: debounced localStorage writes (I/O pacing, not sim state).
       'src/systems/persistence/**',
-      // Audio: fades and idle preload scheduling are presentation.
-      'src/systems/audio/AudioSystem.ts',
+      // Audio: fades and idle preload scheduling are presentation. (AudioSystem.ts
+      // itself is the facade now and reads no clock.)
+      'src/systems/audio/ambientBed.ts',
+      'src/systems/audio/sfxVoices.ts',
+      'src/systems/audio/soundLibrary.ts',
       // Render-quality telemetry: frame-time sampling for adaptive LOD, which
       // is off on a scripted / replay page (LODManager: isScriptedInputMode).
       'src/systems/lod/LODManager.tsx',
