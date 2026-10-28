@@ -9,6 +9,7 @@ import { useShaderLoader } from '../hooks/useShaderLoader';
 import { DEFAULT_BIOME_ID, getWaterProfile, type BiomeId } from '../configs/biomes';
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
+import { WATER_SURFACE_LAYER } from '../rendering/renderLayers';
 import { SWE_DRY_DEPTH } from '../systems/water/sampleSWEFlow';
 import { getSkyClock } from '../systems/sky/skyClock';
 import {
@@ -24,6 +25,10 @@ import {
 
 /** Guard flag: FlowingWater samples planar reflectionTexture (XOR with unmounted pass). */
 export const FLOWING_WATER_SAMPLES_REFLECTION = true;
+
+/** Water meshes render on WATER_SURFACE_LAYER only — the reflection camera leaves it out. */
+const WATER_SURFACE_LAYERS = new THREE.Layers();
+WATER_SURFACE_LAYERS.set(WATER_SURFACE_LAYER);
 
 export interface FlowingWaterProps {
   geometry: THREE.BufferGeometry;
@@ -77,6 +82,10 @@ export default function FlowingWater({
   // Which material implementation to build (#256 path A). Resolved once — the
   // Canvas is remounted when the debug toggle changes it.
   const materialBackend = useMemo(() => resolveMaterialBackend().backend, []);
+  // Water renders on its own layer (renderLayers.ts); the main camera sees it.
+  useEffect(() => {
+    camera.layers.enable(WATER_SURFACE_LAYER);
+  }, [camera]);
 
   const water = getWaterProfile(biome);
   const effectiveWaterColor = baseColor || water.waterColor;
@@ -452,6 +461,8 @@ export default function FlowingWater({
       // Planar reflection from WaterReflection RT (strength 0 = disabled / unmounted)
       if (reflectionStrength > 0.001) {
         vec2 reflectionUv = vReflectionUv.xy / max(vReflectionUv.w, 0.0001) * 0.5 + 0.5;
+        // The mirror camera's image is flipped left/right (rendering/planarMirror.ts).
+        reflectionUv.x = 1.0 - reflectionUv.x;
         reflectionUv += normalN.xz * 0.015;
         vec3 reflection = texture2D(reflectionTexture, clamp(reflectionUv, 0.001, 0.999)).rgb;
         col = mix(col, reflection, fresnel * reflectionStrength * (1.0 - foam * 0.55));
@@ -660,12 +671,14 @@ export default function FlowingWater({
         material={material}
         position={[0, -waterSurfaceOffset, 0]}
         userData={{ isWaterSurface: true }}
+        layers={WATER_SURFACE_LAYERS}
       />
       {shaderLoading && effectiveShaderId && (
         <mesh
           geometry={geometry}
           position={[0, -waterSurfaceOffset, 0]}
           userData={{ isWaterSurface: true }}
+          layers={WATER_SURFACE_LAYERS}
         >
           <meshBasicMaterial color="#1a6b8a" transparent opacity={0.35} side={THREE.DoubleSide} />
         </mesh>

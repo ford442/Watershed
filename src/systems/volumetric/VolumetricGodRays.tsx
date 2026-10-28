@@ -8,6 +8,12 @@ export const GOD_RAYS_VERTEX_SHADER = `
   }
 `;
 
+/**
+ * Composites in place: outputs scene + rays, drawn with NoBlending. The pass
+ * writes into the composer's *other* ping-pong target, which still holds an
+ * older image — an additive draw there kept that stale frame and discarded the
+ * one in tDiffuse. Same result as the node path's `color + godRays()`.
+ */
 export const GOD_RAYS_FRAGMENT_SHADER = `
   uniform sampler2D tDiffuse;
   uniform sampler2D tDepth;
@@ -34,10 +40,11 @@ export const GOD_RAYS_FRAGMENT_SHADER = `
   
   void main() {
     vec2 uv = vUv;
+    vec4 base = texture2D(tDiffuse, uv);
     vec2 delta = sunScreenPosition - uv;
     float dist = length(delta);
     if (dist < 0.0005) {
-      gl_FragColor = vec4(0.0);
+      gl_FragColor = base;
       return;
     }
     vec2 direction = normalize(delta);
@@ -71,7 +78,7 @@ export const GOD_RAYS_FRAGMENT_SHADER = `
     float sunFade = smoothstep(1.0, 0.15, dist);
     vec3 rayColor = sunColor * illumination * intensity * sunFade;
     
-    gl_FragColor = vec4(rayColor, illumination * intensity);
+    gl_FragColor = vec4(base.rgb + rayColor, base.a);
   }
 `;
 

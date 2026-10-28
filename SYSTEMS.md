@@ -404,10 +404,12 @@ Former parallel water-interaction component was removed. Contact VFX lives solel
 
 ### `src/components/WaterReflection.tsx`
 
-**Purpose:** Planar reflection pass — renders the full scene from a camera mirrored below
-the water plane into an offscreen `WebGLRenderTarget`, clipped to geometry above
-`waterLevel`. Publishes the RT texture via `waterReflectionStore` for `FlowingWater` to
-sample under Fresnel.
+**Purpose:** Planar reflection pass — renders the scene from a camera mirrored through the
+*local water datum* (the sheet under the camera, `sampleWaterSheetY`) into an offscreen
+`WebGLRenderTarget`, clipped to geometry above it by the mirror camera's oblique near plane
+(`src/rendering/planarMirror.ts` — works on both renderers; the node `Renderer` has no
+`clippingPlanes`). Publishes the RT texture via `waterReflectionStore` for `FlowingWater` to
+sample under Fresnel at `u' = 1 − u` (the mirror camera's image is flipped left↔right).
 
 **Runs in:** React component inside R3F `<Canvas>` + `useFrame` (returns `null` — no DOM
 or mesh output).
@@ -419,28 +421,35 @@ or mesh output).
 **Consumes:**
 - `useThree()` — `scene`, `camera`, `gl`
 - `useFrame` from `@react-three/fiber`
-- `THREE.WebGLRenderTarget`, `THREE.PerspectiveCamera`, clip planes
+- `THREE.WebGLRenderTarget`, `THREE.PerspectiveCamera`, `updateMirrorCamera` /
+  `frustumReachesBelow` (`planarMirror.ts`), `sampleWaterSheetY` (`bathymetrySampler.ts`)
 - `useWaterReflectionStore` (`src/systems/water/waterReflectionStore.ts`) — publish/clear texture
 - Parent gate: `lodConfig.enableReflections` from `useLOD()` (`true` only for `high` /
   `ultra` presets in `LODManager.tsx`) and `debug.isStageEnabled('worldSystems')` in
   `InnerExperience.tsx` / `WaterStack.tsx`
 
 **Props** (driven by LOD budgets from `WaterReflectionLayer`):
-- `waterLevel?` — default `0.5`; clip plane and mirror plane Y
-- `resolution?` — RT width/height (`high`: 512, `ultra`: 1024)
+- `waterLevel?` — default `0.5`; the sheet's height above the centreline path (the
+  `sampleWaterSheetY` offset) — **not** an absolute Y
+- `resolution?` — long-edge cap; the RT is otherwise half the drawing buffer, same aspect
+  (`high`: 512, `ultra`: 1024)
 - `updateInterval?` — render every N frames (`high`: 3, `ultra`: 2)
 - `reflectionStrength?` — Fresnel mix weight published to the store (`high`: 0.45, `ultra`: 0.6)
 
 **Produces:**
-- Populated `WebGLRenderTarget` held in `renderTargetRef` (RGBA, no depth)
-- Store publish: `setTexture(rt.texture)` + `setStrength(reflectionStrength)` on mount;
-  `clear()` on unmount so disabled LOD never leaves a stale sampler
+- Populated `WebGLRenderTarget` held in `renderTargetRef` (RGBA + depth buffer)
+- Store publish: `setTexture(rt.texture)` on mount; `setStrength(reflectionStrength)` while
+  the reflection renders and `0` while it is skipped; `clear()` on unmount so disabled LOD
+  never leaves a stale sampler
 - Live consumer: `FlowingWater.tsx` samples `reflectionTexture` under Fresnel
   (`FLOWING_WATER_SAMPLES_REFLECTION === true`)
 
-**Update Cadence:** Throttled — `useFrame` skips unless `frameCount % updateInterval === 0`.
-Water meshes tagged `userData.isWaterSurface` are hidden during the reflection render to
-avoid feedback.
+**Update Cadence:** Throttled — `useFrame` skips unless `frameCount % updateInterval === 0`,
+and skips the render (strength 0) while the camera is below the datum or no frustum corner
+reaches below it. Water meshes live on `WATER_SURFACE_LAYER` (`src/rendering/renderLayers.ts`;
+FlowingWater enables it on the main camera); the mirror camera's layer mask leaves it out,
+so no per-frame traversal. Shadow maps are not re-rendered for the mirror view, and the
+render loop allocates nothing.
 
 **Render Footprint:** High when mounted — one full `gl.render(scene, reflectCam)` into the
 RT per tick, plus GL state save/restore. Cost scales with scene complexity and RT

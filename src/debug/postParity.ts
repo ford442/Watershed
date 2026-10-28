@@ -9,8 +9,11 @@
  * presented (tone-mapped, sRGB-encoded) pixels. Driven by
  * `verification/post_parity.mjs` through `verification/post_parity.html`.
  *
- * SSAO and god rays stay off: GTAO and SSAOPass are different algorithms, and
- * the point here is the grade (one tone-map + one sRGB encode at the end).
+ * SSAO stays off: GTAO and SSAOPass are different algorithms, and the point
+ * here is the grade (one tone-map + one sRGB encode at the end). God rays run
+ * in one scenario: the node port is line-for-line, and the GLSL pass once
+ * discarded the scene under its rays (it blended onto the stale ping-pong
+ * target), which no per-pass test could see.
  */
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
@@ -33,6 +36,7 @@ export interface ParityScenario {
   chromatic: boolean;
   vignette: boolean;
   saturation: number;
+  godRays?: boolean;
 }
 
 export const PARITY_SCENARIOS: ParityScenario[] = [
@@ -42,6 +46,8 @@ export const PARITY_SCENARIOS: ParityScenario[] = [
   // SMAA moves the node path's output transform inside the graph (#466 Phase C):
   // the grade must not change with it.
   { name: 'grade+smaa', aa: 'smaa', bloom: true, chromatic: false, vignette: true, saturation: 0 },
+  // Rays only add light: the scene underneath must survive (verification/post_parity.mjs).
+  { name: 'god rays', godRays: true, bloom: false, chromatic: false, vignette: true, saturation: 0 },
 ];
 
 export interface ParityResult {
@@ -55,6 +61,9 @@ export interface ParityResult {
   /** Mean |Δluma| between horizontal neighbours, per driver — edge AA lowers it. */
   glslEdge: number;
   nodeEdge: number;
+  /** PNG data URLs of the presented frames (`POST_PARITY_SHOTS` writes them out). */
+  glslPng: string;
+  nodePng: string;
 }
 
 function buildScene(): { scene: THREE.Scene; camera: THREE.PerspectiveCamera } {
@@ -109,11 +118,12 @@ function paramsFor(s: ParityScenario): PostFrameParams {
       darkness: linearVignetteDarkness(DEFAULT_POST_TUNING.vignetteDarkness),
     },
     godRays: {
-      allowed: false,
-      enabled: false,
-      sunScreenPosition: new THREE.Vector2(0.5, 0.2),
+      allowed: s.godRays === true,
+      enabled: s.godRays === true,
+      // Top-left origin, on the glow sphere — the bright source the rays march toward.
+      sunScreenPosition: new THREE.Vector2(0.72, 0.3),
       sunColor: new THREE.Color('#fff4e0'),
-      intensity: 0,
+      intensity: s.godRays ? 0.6 : 0,
       samples: 16,
       decay: 0.95,
       exposure: 0.18,
@@ -207,6 +217,7 @@ export async function runPostParity(): Promise<ParityResult[]> {
     await settle();
     driver.render();
     const glslStats = frameStats(glsl.domElement);
+    const glslPng = readback.toDataURL('image/png');
 
     const outputPass = driver.composer.passes.find((p) => (p as { isOutputPass?: boolean }).isOutputPass);
     if (outputPass) outputPass.enabled = false;
@@ -217,7 +228,7 @@ export async function runPostParity(): Promise<ParityResult[]> {
     const pipeline = createNodePostPipeline(node, scene, camera, {
       bloom: scenario.bloom,
       ssao: false,
-      godRays: false,
+      godRays: scenario.godRays === true,
       chromatic: scenario.chromatic,
       aa: scenario.aa ?? 'none',
     });
@@ -226,6 +237,7 @@ export async function runPostParity(): Promise<ParityResult[]> {
     await settle();
     pipeline.render();
     const nodeStats = frameStats(node.domElement);
+    const nodePng = readback.toDataURL('image/png');
     pipeline.dispose();
 
     results.push({
@@ -236,6 +248,8 @@ export async function runPostParity(): Promise<ParityResult[]> {
       relativeDelta: Math.abs(glslStats.luma - nodeStats.luma) / Math.max(nodeStats.luma, 1e-6),
       glslEdge: glslStats.edge,
       nodeEdge: nodeStats.edge,
+      glslPng,
+      nodePng,
     });
   }
 

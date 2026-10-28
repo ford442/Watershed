@@ -1,4 +1,4 @@
-export { createGameRenderer } from './createRenderer';
+export { createGameRenderer, MaterialBackendFallbackError } from './createRenderer';
 export { SHARED_CONTEXT_ATTRIBUTES, GL_CONTEXT_NAME } from './contextAttributes';
 export {
   negotiateBootGraphics,

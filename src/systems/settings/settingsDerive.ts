@@ -293,6 +293,21 @@ export function qualityToEffects(quality: SettingsQuality): EffectPresence {
   }
 }
 
+/**
+ * Effect presence for the renderer's *effective* quality — the adaptive LOD's,
+ * which can sit below the settings preset under load. Ultra runs High's set.
+ */
+export function effectsForLODQuality(quality: QualityPreset): EffectPresence {
+  switch (quality) {
+    case 'low':
+      return qualityToEffects('low');
+    case 'medium':
+      return qualityToEffects('med');
+    default:
+      return qualityToEffects('high');
+  }
+}
+
 /** Map the settings-panel quality onto the renderer's LOD QualityPreset. */
 export function settingsQualityToLOD(quality: SettingsQuality): QualityPreset {
   switch (quality) {

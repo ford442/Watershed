@@ -98,12 +98,55 @@ describe('createComposerDriver', () => {
     driver.apply(frame('none'));
     await ssaoPassModule.load();
     driver.apply(frame('none'));
-    expect(names().slice(0, 2)).toEqual(['RenderPass', 'SSAOPass']);
+    expect(names().slice(0, 2)).toEqual(['SceneRenderPass', 'SSAOPass']);
 
     const off = frame('none');
     driver.apply({ ...off, ssao: { ...off.ssao, enabled: false } });
     const ssao = (driver.composer.passes as Array<{ enabled: boolean; constructor: { name: string } }>)[1];
     expect(ssao.enabled).toBe(false);
+  });
+
+  it('god rays write scene + rays opaque, never blend onto the stale ping-pong target', () => {
+    const { composer } = build();
+    const godRays = (composer.passes as Array<{ constructor: { name: string }; material?: THREE.ShaderMaterial }>)
+      .find((pass) => pass.constructor.name === 'GodRaysPass');
+    expect(godRays?.material?.blending).toBe(THREE.NoBlending);
+    expect(godRays?.material?.transparent).toBe(false);
+    expect(godRays?.material?.fragmentShader).toMatch(/gl_FragColor = vec4\(base\.rgb \+ rayColor, base\.a\)/);
+  });
+
+  it('renders shadow maps once per frame: in the scene pass, not again in SSAO', () => {
+    const driver = build();
+    const scenePass = driver.composer.passes[0] as unknown as {
+      render: (r: THREE.WebGLRenderer, w: unknown, rb: unknown, d: number, m: boolean) => void;
+    };
+    const autoUpdateAtDraw: boolean[] = [];
+    const renderer = {
+      autoClear: true,
+      autoClearColor: true,
+      autoClearDepth: true,
+      autoClearStencil: true,
+      shadowMap: { autoUpdate: true },
+      setRenderTarget: () => {},
+      clear: () => {},
+      render: () => autoUpdateAtDraw.push(renderer.shadowMap.autoUpdate),
+    };
+    scenePass.render(renderer as unknown as THREE.WebGLRenderer, null, null, 0, false);
+    expect(autoUpdateAtDraw).toEqual([true]);
+    // Every later scene render in this frame (SSAO's normal pass) skips the shadow update.
+    expect(renderer.shadowMap.autoUpdate).toBe(false);
+  });
+
+  it('restores shadow auto-update after the chain, even when a pass throws', () => {
+    const gl = { ...stubRenderer(), shadowMap: { autoUpdate: true } } as unknown as THREE.WebGLRenderer;
+    const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 500);
+    const driver = createComposerDriver(gl, new THREE.Scene(), camera, 1280, 720, DEFAULT_POST_TUNING);
+    driver.composer.render = () => {
+      gl.shadowMap.autoUpdate = false;
+      throw new Error('pass failed');
+    };
+    expect(() => driver.render()).toThrow('pass failed');
+    expect(gl.shadowMap.autoUpdate).toBe(true);
   });
 
   it('samples a 24-bit depth texture', () => {

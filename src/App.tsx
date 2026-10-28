@@ -19,6 +19,7 @@ import {
   beginBootAttempt,
   BootHealthSentinel,
   createGameRenderer,
+  MaterialBackendFallbackError,
   canvasDprRange,
   deriveRendererContextOptions,
   isSoftwareRendererAllowed,
@@ -38,7 +39,7 @@ import GraphicsUnsupported from './components/GraphicsUnsupported';
 import SafeGraphicsBadge from './components/SafeGraphicsBadge';
 import {
   persistMaterialBackend,
-  resolveMaterialBackend,
+  requestedMaterialBackend,
   type MaterialBackend,
 } from './rendering/materialBackend';
 import { attachGpuLossHandlers, isGpuLossDebugEnabled, simulateGpuLoss } from './rendering/gpuLossRecovery';
@@ -207,8 +208,9 @@ function App({ graphicsBoot }: AppProps = {}) {
   );
   // #256 path A: which material implementation the scene builds. Changing it
   // remounts the Canvas, because the renderer class itself depends on it.
+  // The renderer *request* — not a material host (see requestedMaterialBackend).
   const [materialBackend, setMaterialBackend] = useState<MaterialBackend>(
-    () => resolveMaterialBackend().backend
+    () => requestedMaterialBackend().backend
   );
   const qualityPreset = useQualityPreset();
   const renderScale = useRenderScale();
@@ -672,6 +674,14 @@ function App({ graphicsBoot }: AppProps = {}) {
                   }
                 );
               } catch (error) {
+                // Not a GPU failure: TSL hosts were built before the node
+                // renderer gave up. The session is pinned to glsl; changing
+                // the backend changes the Canvas key, so the remount comes up
+                // GLSL end to end.
+                if (error instanceof MaterialBackendFallbackError) {
+                  setMaterialBackend('glsl');
+                  throw error;
+                }
                 recordBootFailure('renderer-throw');
                 throw error;
               }

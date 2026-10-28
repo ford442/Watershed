@@ -547,11 +547,9 @@ function buildColorNode(
   const reflectionTexture = nd(u.reflectionTexture);
   const reflectionStrength = nd(u.reflectionStrength);
   const clipPos = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(worldPos, float(1)));
-  const reflectionUv = clipPos.xy
-    .div(max(clipPos.w, float(0.0001)))
-    .mul(0.5)
-    .add(0.5)
-    .add(normalN.xz.mul(0.015));
+  const screenUv = clipPos.xy.div(max(clipPos.w, float(0.0001))).mul(0.5).add(0.5);
+  // The mirror camera's image is flipped left/right (rendering/planarMirror.ts).
+  const reflectionUv = vec2(float(1).sub(screenUv.x), screenUv.y).add(normalN.xz.mul(0.015));
   const reflection = reflectionTexture.sample(
     clamp(reflectionUv, vec2(0.001, 0.001), vec2(0.999, 0.999)),
   ).rgb;
