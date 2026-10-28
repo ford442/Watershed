@@ -26,22 +26,19 @@ export function heightfieldThumbSize(width: number, height: number): { width: nu
   };
 }
 
-/**
- * `values` is read afresh for each step: a host allocation can grow the WASM
- * memory, which detaches a heap view captured before it.
- */
+/** `values` may be a view on the WASM heap: the heap is fixed-size, so it stays valid. */
 export function summarizeHeightfield(
   host: CpuChoreHost,
-  values: () => Float32Array,
+  values: Float32Array,
   width: number,
   height: number,
   thumbWidth: number,
   thumbHeight: number,
   useWasm: boolean,
 ): HeightfieldSummary {
-  const reduce = host.reduceF32(values(), useWasm);
-  const hist = host.histogramF32(values(), reduce.min, reduce.max, useWasm);
-  const down = host.downsampleF32(values(), width, height, thumbWidth, thumbHeight, useWasm);
+  const reduce = host.reduceF32(values, useWasm);
+  const hist = host.histogramF32(values, reduce.min, reduce.max, useWasm);
+  const down = host.downsampleF32(values, width, height, thumbWidth, thumbHeight, useWasm);
   const blurred = host.blurSeparableF32(down.values, down.width, down.height, useWasm);
   return {
     min: reduce.min,

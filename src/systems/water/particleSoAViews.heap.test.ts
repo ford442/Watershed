@@ -7,10 +7,9 @@ import {
 import { PARTICLE_SOA_PLANES, type WatershedNativeModule } from './wasmAbi';
 
 /**
- * Mirrors sim/simForces.test.ts (heap growth): proves the
- * splash/mist and waterfall particle-SoA views (#415/#419 remainder) rebind
- * after ALLOW_MEMORY_GROWTH replaces HEAPF32.buffer, and are otherwise reused
- * rather than reallocated every frame.
+ * The splash/mist and waterfall particle-SoA views (#415/#419): made once per
+ * allocation over the fixed-size heap (ALLOW_MEMORY_GROWTH=0) and reused every
+ * frame, each at its plane's offset.
  */
 function mockMod(byteLength = 1024 * 1024): WatershedNativeModule {
   const buffer = new ArrayBuffer(byteLength);
@@ -23,7 +22,7 @@ function mockMod(byteLength = 1024 * 1024): WatershedNativeModule {
 }
 
 describe('SplashSystem particle-SoA views', () => {
-  it('reuses the same views across frames when the heap has not grown', () => {
+  it('reuses the same views across frames', () => {
     const mod = mockMod();
     const cap = 16;
     const slot: SplashWasmSlot = { mod, ptr: 4, cap, views: {} };
@@ -41,32 +40,22 @@ describe('SplashSystem particle-SoA views', () => {
     expect(second.maxLife).toBe(first.maxLife);
   });
 
-  it('rebinds every view after HEAPF32.buffer grows', () => {
+  it('lays the eight planes out cap floats apart from ptr', () => {
     const mod = mockMod();
     const cap = 16;
     const slot: SplashWasmSlot = { mod, ptr: 4, cap, views: {} };
-
-    const before = bindSplashViews(slot);
-    const stalePx = before.px; // snapshot the reference — `before` itself is `slot.views`, mutated in place
-    stalePx[0] = 1.5;
-
-    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
-    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
-    mod.HEAPF32 = new Float32Array(grown);
-    mod.HEAP32 = new Int32Array(grown);
-    mod.HEAPU8 = new Uint8Array(grown);
-
-    expect(stalePx.buffer === mod.HEAPF32.buffer).toBe(false); // stale view, old buffer
-
-    const after = bindSplashViews(slot);
-    expect(after.px).not.toBe(stalePx);
-    expect(after.px.buffer).toBe(mod.HEAPF32.buffer);
-    expect(after.px[0]).toBe(1.5); // data survived the copy into the grown buffer
+    const views = bindSplashViews(slot);
+    const order = [views.px, views.py, views.pz, views.vx, views.vy, views.vz, views.life, views.maxLife];
+    order.forEach((view, plane) => {
+      expect(view.buffer).toBe(mod.HEAPF32.buffer);
+      expect(view.byteOffset).toBe(4 + plane * cap * 4);
+      expect(view.length).toBe(cap);
+    });
   });
 });
 
 describe('WaterfallParticles particle-SoA views', () => {
-  it('reuses the same views across frames when the heap has not grown', () => {
+  it('reuses the same views across frames', () => {
     const mod = mockMod();
     const capacity = 32;
     const base = 4;
@@ -81,29 +70,12 @@ describe('WaterfallParticles particle-SoA views', () => {
     expect(second.scale).toBe(first.scale);
   });
 
-  it('rebinds every view after HEAPF32.buffer grows, at the PARTICLE_SOA_PLANES scale offset', () => {
+  it('puts scale on the last of the PARTICLE_SOA_PLANES planes', () => {
     const mod = mockMod();
     const capacity = 32;
     const base = 4;
-    const views: WaterfallSoAViews = {};
-
-    const before = bindWaterfallViews(mod, base, capacity, views);
-    const staleScale = before.scale; // snapshot — `before` is `views`, mutated in place
-    staleScale[0] = 0.75;
-
-    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 8192);
-    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
-    mod.HEAPF32 = new Float32Array(grown);
-    mod.HEAP32 = new Int32Array(grown);
-    mod.HEAPU8 = new Uint8Array(grown);
-
-    expect(staleScale.buffer === mod.HEAPF32.buffer).toBe(false); // stale view, old buffer
-
-    const after = bindWaterfallViews(mod, base, capacity, views);
-    expect(after.scale).not.toBe(staleScale);
-    expect(after.scale.buffer).toBe(mod.HEAPF32.buffer);
-    expect(after.scale[0]).toBe(0.75);
-    // scale is plane 8 (last of the 9 SoA planes) — matches PARTICLE_SOA_PLANES.
-    expect(after.scale.byteOffset).toBe(base + (PARTICLE_SOA_PLANES - 1) * capacity * 4);
+    const views = bindWaterfallViews(mod, base, capacity, {});
+    expect(views.scale.buffer).toBe(mod.HEAPF32.buffer);
+    expect(views.scale.byteOffset).toBe(base + (PARTICLE_SOA_PLANES - 1) * capacity * 4);
   });
 });

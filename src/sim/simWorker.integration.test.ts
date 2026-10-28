@@ -621,7 +621,7 @@ describeIntegration('sim worker (wasm-worker) vs main-thread stepper (wasm-main)
 
       const { width: tw, height: th } = heightfieldThumbSize(width, height);
       const want = summarizeHeightfield(
-        createNativeChoreHost(() => wasmMain), () => main.h, width, height, tw, th, true,
+        createNativeChoreHost(() => wasmMain), main.h, width, height, tw, th, true,
       );
       const pending = proxy.requestChores(viaWorker.gridId, tw, th);
       pump();

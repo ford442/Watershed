@@ -26,7 +26,7 @@
     "build:full": "pnpm build:wasm && vite build",
     "build:analyze": "ANALYZE=1 vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit && node scripts/check-typecheck-surface.mjs && node scripts/check-systems-layout.mjs && node scripts/check-dependency-direction.mjs && node scripts/check-glsl-hosts.mjs && node scripts/check-orphans.mjs",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit && node scripts/check-typecheck-surface.mjs && node scripts/check-systems-layout.mjs && node scripts/check-dependency-direction.mjs && node scripts/check-glsl-hosts.mjs && node scripts/check-fixed-heap.mjs && node scripts/check-orphans.mjs",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -183,15 +183,9 @@ function reserve(wasm: WatershedNativeModule, batch: MutableSimForceBatch, count
   ]);
   batch.capacity = capacity;
   batch.configs = new Float64Array(capacity * CONFIG_WIDTH);
-  // Views bind below, after any growth these allocations caused.
-  batch.input = new Float32Array(0);
-  batch.output = new Float32Array(0);
-}
-
-/** Rebind the heap views: Emscripten memory growth detaches the old ones. */
-function bindViews(wasm: WatershedNativeModule, batch: MutableSimForceBatch): void {
-  batch.input = heapF32(wasm, batch.inputPtr, batch.capacity * WATER_FORCE_INPUT_STRIDE, batch.input);
-  batch.output = heapF32(wasm, batch.outputPtr, batch.capacity * WATER_FORCE_OUTPUT_STRIDE, batch.output);
+  // The heap is fixed-size: views made with the blocks last as long as they do.
+  batch.input = heapF32(wasm, batch.inputPtr, capacity * WATER_FORCE_INPUT_STRIDE);
+  batch.output = heapF32(wasm, batch.outputPtr, capacity * WATER_FORCE_OUTPUT_STRIDE);
 }
 
 function sameAtFloat32(configs: Float64Array, a: number, b: number): boolean {
@@ -226,7 +220,6 @@ export function computeSimForces(
   if (batch.disposed || count <= 0) return { calls: 0, computeMicros: 0 };
   const t0 = now();
   reserve(wasm, batch, count);
-  bindViews(wasm, batch);
   const { input, configs } = batch;
 
   for (let i = 0; i < count; i += 1) {
@@ -287,9 +280,6 @@ export function computeSimForces(
     start = i;
   }
 
-  // The call cannot grow the heap, but rebind anyway: reads must never go
-  // through a detached view (they return 0s without throwing).
-  bindViews(wasm, batch);
   const { output } = batch;
   for (let i = 0; i < count; i += 1) {
     const o = i * WATER_FORCE_OUTPUT_STRIDE;

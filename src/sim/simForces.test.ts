@@ -4,8 +4,8 @@
  * The stub's `computeWaterForcesBatch` is the TS twin of forces.cpp reading and
  * writing the stub heap, so these pin the wiring: which config reaches which
  * sample, runs of equal configs share one native call, and the heap views
- * survive memory growth (the old physicsWorkerWaterForces.heap test, moved with
- * the batch). Bit parity against the real binary: simWorker.integration.test.ts.
+ * follow the batch's blocks when it grows (the old
+ * physicsWorkerWaterForces.heap test, moved with the batch). Bit parity against the real binary: simWorker.integration.test.ts.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, WasmHeapExhaustedError, type NativeWaterForceConfig, type WatershedNativeModule } from '../systems/water/wasmAbi';
@@ -21,8 +21,8 @@ import {
   writeForceSample,
 } from './simForces';
 
-function stubModule(opts: { growOnAllocate?: boolean } = {}) {
-  let buffer = new ArrayBuffer(1 << 16);
+function stubModule() {
+  const buffer = new ArrayBuffer(1 << 16);
   let next = 64;
   const mod = {
     HEAPF32: new Float32Array(buffer),
@@ -30,13 +30,6 @@ function stubModule(opts: { growOnAllocate?: boolean } = {}) {
     allocateGrid: vi.fn((count: number) => {
       const ptr = next;
       next += count * 4;
-      if (opts.growOnAllocate) {
-        // Emscripten growth: a new, larger buffer; old views detach.
-        const grown = new ArrayBuffer(buffer.byteLength + 4096);
-        new Uint8Array(grown).set(new Uint8Array(buffer));
-        buffer = grown;
-        mod.HEAPF32 = new Float32Array(grown);
-      }
       return ptr;
     }),
     freeGrid: vi.fn(),
@@ -156,14 +149,14 @@ describe('computeSimForces', () => {
     expect(readForceFlow(out, 2).source).toBe('fallback');
   });
 
-  it('packs into the live heap after memory growth (views rebind)', () => {
-    const wasm = stubModule({ growOnAllocate: true });
+  it('packs into the new blocks after a capacity grow', () => {
+    const wasm = stubModule();
     const batch = createSimForceBatch(wasm);
     const n = 5;
     const samples = new Float64Array(n * FORCE_SAMPLE_STRIDE);
     for (let i = 0; i < n; i += 1) writeForceSample(samples, i, BODIES[i % BODIES.length], config(), 2.5, 1);
     const out = new Float64Array(n * FORCE_RESULT_STRIDE);
-    // Capacity 4 → 5 reallocates, which grows (detaches) the heap mid-call.
+    // Capacity 4 → 5 reallocates mid-call: the views must follow the new blocks.
     computeSimForces(wasm, batch, null, samples, n, out);
     expect(batch.capacity).toBeGreaterThanOrEqual(n);
     const live = new Float32Array(wasm.HEAPF32.buffer, batch.inputPtr, n * WATER_FORCE_INPUT_STRIDE);

@@ -428,56 +428,38 @@ describe('createSWEGrid', () => {
     grid.dispose();
   });
 
-  it('rebinds SWE views after HEAPF32 is swapped for a fresh buffer', () => {
+  it('views the heap at each plane pointer, once', () => {
     const grid = createSWEGrid(mod, 4, 4, 0.5);
-    grid.h[0] = 1.25;
-    const stale = grid.h;
-    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
-    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
-    mod.HEAPF32 = new Float32Array(grown);
-    mod.HEAP32 = new Int32Array(grown);
-    mod.HEAPU8 = new Uint8Array(grown);
-    expect(stale.buffer === mod.HEAPF32.buffer).toBe(false);
     grid.h[3] = 9.5;
-    const live = new Float32Array(mod.HEAPF32.buffer, grid.hPtr, 16);
-    expect(live[3]).toBe(9.5);
+    expect(new Float32Array(mod.HEAPF32.buffer, grid.hPtr, 16)[3]).toBe(9.5);
+    expect(grid.h).toBe(grid.h);
+    expect(grid.b.byteOffset).toBe(grid.bPtr);
     grid.dispose();
   });
 });
 
 describe('heapF32', () => {
-  it('rebuilds when the previous view is detached (byteLength === 0)', () => {
-    const buf = new ArrayBuffer(64);
-    const mod = { HEAPF32: new Float32Array(buf) };
-    const live = heapF32(mod, 0, 4);
-    live[0] = 3.5;
-    const detached = new Float32Array(new ArrayBuffer(0));
-    expect(detached.byteLength).toBe(0);
-    const refreshed = heapF32(mod, 0, 4, detached);
-    expect(refreshed.byteLength).toBe(16);
-    expect(refreshed[0]).toBe(3.5);
-    expect(heapF32(mod, 0, 4, refreshed)).toBe(refreshed);
+  it('views count floats of the heap at a byte offset', () => {
+    const mod = { HEAPF32: new Float32Array(new ArrayBuffer(64)) };
+    mod.HEAPF32[3] = 3.5;
+    const view = heapF32(mod, 12, 4);
+    expect(view.buffer).toBe(mod.HEAPF32.buffer);
+    expect(view.length).toBe(4);
+    expect(view[0]).toBe(3.5);
   });
 });
 
-describe('createWaterForceBatch memory growth', () => {
-  it('setSample still writes after HEAPF32 is replaced', () => {
+describe('createWaterForceBatch', () => {
+  it('setSample writes the input stride at inputPtr', () => {
     const mod = buildMockModule();
     const batch = createWaterForceBatch(mod, 1);
-    const grown = new ArrayBuffer(mod.HEAPF32.buffer.byteLength + 4096);
-    new Uint8Array(grown).set(new Uint8Array(mod.HEAPF32.buffer));
-    mod.HEAPF32 = new Float32Array(grown);
-    mod.HEAP32 = new Int32Array(grown);
-    mod.HEAPU8 = new Uint8Array(grown);
     batch.setSample(0, {
       position: { x: 1, y: 2, z: 3 },
       velocity: { x: 0, y: 0, z: 0 },
       flowDirection: { x: 0, z: -1 },
     });
     const view = new Float32Array(mod.HEAPF32.buffer, batch.inputPtr, 8);
-    expect(view[0]).toBe(1);
-    expect(view[1]).toBe(2);
-    expect(view[2]).toBe(3);
+    expect([...view]).toEqual([1, 2, 3, 0, 0, 0, 0, -1]);
     batch.dispose();
   });
 });

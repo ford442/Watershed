@@ -110,6 +110,21 @@ describe('swe.cpp', () => {
     for (const c of [h, u, w]) c.free();
   });
 
+  it('the heap is fixed: a block bigger than it is heap exhaustion, and HEAPF32 never moves', () => {
+    // ALLOW_MEMORY_GROWTH=0 with ABORTING_MALLOC=0: malloc returns NULL (the
+    // module does not abort), and the views bound at load stay the heap.
+    const buffer = wasm.HEAPF32.buffer;
+    expect(buffer.byteLength).toBe(16 * 1024 * 1024);
+    expect(() => wasm.allocateGrid(WS_MAX_ELEMENTS)).toThrow(WasmHeapExhaustedError);
+    expect(() => wasm.allocateGrid(8 * 1024 * 1024)).toThrow(WasmHeapExhaustedError);
+    expect(wasm.HEAPF32.buffer).toBe(buffer);
+    expect(wasm.HEAPF32.buffer.byteLength).toBe(16 * 1024 * 1024);
+    // The module still works afterwards.
+    const ok = wasm.allocateGrid(1024);
+    expect(ok).toBeGreaterThan(0);
+    wasm.freeGrid(ok);
+  });
+
   it('allocateGrid past WS_MAX_ELEMENTS is heap exhaustion, not a wrapped tiny block', () => {
     // emmalloc's calloc multiplies in wasm32's 32-bit size_t without a check:
     // 2^30 floats used to wrap to 0 bytes and come back as a valid pointer.

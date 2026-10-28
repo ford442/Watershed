@@ -1003,5 +1003,5 @@ IDE integration, but `build.sh` is the canonical route used by `pnpm build:wasm`
 
 **Emscripten settings of note:**
 - `MODULARIZE=1` + `EXPORT_NAME='createWatershedNative'` — module factory pattern
-- `ALLOW_MEMORY_GROWTH=1` — heap grows beyond initial 64 MB as needed
+- `ALLOW_MEMORY_GROWTH=0` — one fixed 16 MiB heap; heap views are made once (see WASM.md, Linear memory budget)
 - `EXPORT_ES6=1` — ES module output compatible with Vite

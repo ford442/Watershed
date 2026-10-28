@@ -37,21 +37,20 @@ export interface SplashWasmSlot {
 }
 
 /**
- * Rebind (or reuse) the eight `Float32Array` views over a splash/mist SoA
- * allocation via `heapF32()` (#415/#419 remainder): a grown `HEAPF32.buffer`
- * forces a rebuild, but an unchanged heap reuses the same views instead of
- * allocating eight typed arrays every frame.
+ * The eight `Float32Array` views over a splash/mist SoA allocation. The heap
+ * is fixed-size, so they are made once, on the first call, and reused every
+ * frame after.
  */
 export function bindSplashViews(slot: SplashWasmSlot): Required<SplashSoAViews> {
   const { mod, ptr, cap, views } = slot;
-  views.px = heapF32(mod, ptr, cap, views.px);
-  views.py = heapF32(mod, ptr + cap * 4, cap, views.py);
-  views.pz = heapF32(mod, ptr + cap * 8, cap, views.pz);
-  views.vx = heapF32(mod, ptr + cap * 12, cap, views.vx);
-  views.vy = heapF32(mod, ptr + cap * 16, cap, views.vy);
-  views.vz = heapF32(mod, ptr + cap * 20, cap, views.vz);
-  views.life = heapF32(mod, ptr + cap * 24, cap, views.life);
-  views.maxLife = heapF32(mod, ptr + cap * 28, cap, views.maxLife);
+  views.px ??= heapF32(mod, ptr, cap);
+  views.py ??= heapF32(mod, ptr + cap * 4, cap);
+  views.pz ??= heapF32(mod, ptr + cap * 8, cap);
+  views.vx ??= heapF32(mod, ptr + cap * 12, cap);
+  views.vy ??= heapF32(mod, ptr + cap * 16, cap);
+  views.vz ??= heapF32(mod, ptr + cap * 20, cap);
+  views.life ??= heapF32(mod, ptr + cap * 24, cap);
+  views.maxLife ??= heapF32(mod, ptr + cap * 28, cap);
   return views as Required<SplashSoAViews>;
 }
 
@@ -64,9 +63,9 @@ export interface WaterfallSoAViews {
 }
 
 /**
- * Rebind (or reuse) the four waterfall views via `heapF32()`. Callers must
- * reset `views` to `{}` whenever `base` changes, since heapF32 only detects a
- * *grown* buffer, not a different pointer into the same one.
+ * The four waterfall views, made on the first call and reused after (the
+ * heap is fixed-size). `views` belongs to one allocation: start from `{}`
+ * for a new `base`.
  */
 export function bindWaterfallViews(
   mod: WatershedNativeModule,
@@ -74,10 +73,10 @@ export function bindWaterfallViews(
   capacity: number,
   views: WaterfallSoAViews,
 ): Required<WaterfallSoAViews> {
-  views.px = heapF32(mod, base, capacity, views.px);
-  views.py = heapF32(mod, base + capacity * 4, capacity, views.py);
-  views.pz = heapF32(mod, base + capacity * 8, capacity, views.pz);
-  views.scale = heapF32(mod, base + 8 * capacity * 4, capacity, views.scale);
+  views.px ??= heapF32(mod, base, capacity);
+  views.py ??= heapF32(mod, base + capacity * 4, capacity);
+  views.pz ??= heapF32(mod, base + capacity * 8, capacity);
+  views.scale ??= heapF32(mod, base + 8 * capacity * 4, capacity);
   return views as Required<WaterfallSoAViews>;
 }
 
@@ -119,8 +118,6 @@ function createMainSplashIntegrator(mod: WatershedNativeModule, cap: number): Sp
     integrate(particles, dt, gravityY, damp, jsUpdate, release) {
       const n = Math.min(particles.length, cap);
       if (n > 0 && slot.ptr) {
-        // heapF32() rebinds only when ALLOW_MEMORY_GROWTH replaced the
-        // ArrayBuffer (#415); an unchanged heap reuses the cached views.
         const { px, py, pz, vx, vy, vz, life, maxLife } = bindSplashViews(slot);
         for (let i = 0; i < n; i += 1) {
           const p = particles[i];

@@ -169,18 +169,19 @@ vars, which has nothing to do with allocation.
 
 ## The `SplashSystem.tsx` / #415 conflict
 
-16 of `SplashSystem.tsx`'s 21 R3F warnings are the eight `Float32Array` WASM
-heap views re-derived inside the frame callback, in two blocks (splash and
-mist). Those are **the fix for #415, not garbage.** The native module ships
-`ALLOW_MEMORY_GROWTH=1`; a growth replaces the underlying `ArrayBuffer` and
-silently detaches every view made over the old one — `byteLength` goes to 0,
-reads return nothing, writes go nowhere. Re-deriving them per frame is what
-keeps them bound to the live heap.
+*Historical.* 16 of `SplashSystem.tsx`'s 21 R3F warnings were the eight
+`Float32Array` WASM heap views re-derived inside the frame callback, in two
+blocks (splash and mist) — the fix for #415 while the module shipped
+`ALLOW_MEMORY_GROWTH=1`, where a growth replaced the `ArrayBuffer` and
+silently detached every view made over the old one. The heap is fixed-size
+now (`ALLOW_MEMORY_GROWTH=0`): the views are made once per allocation
+(`systems/pools/nativeParticles.ts`) and none of this applies.
 
 `no-new-in-loop` is a bare `CallExpression[callee.name=useFrame] NewExpression`
-selector and cannot tell a wasteful `new THREE.Vector3()` from a mandatory heap
-rebind. Both blocks now carry an `eslint-disable`/`eslint-enable` pair naming
-#415. **Do not hoist them.**
+selector and could not tell a wasteful `new THREE.Vector3()` from the heap
+rebind that growth needed then; both blocks carried an
+`eslint-disable`/`eslint-enable` pair naming #415 until the views moved out of
+the frame callback.
 
 ---
 

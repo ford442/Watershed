@@ -130,14 +130,20 @@ if(EMSCRIPTEN)
         target_compile_options(watershed_native PRIVATE -pthread)
     endif()
 
-    # 16 MB (#454): the module heap-allocates about 1 MB at most (largest SWE
-    # budget is 128x80 cells x 4 planes plus ~0.5 MB of solver scratch, particle
-    # SoA, chore scratch), and
-    # reserveShallowWaterScratch() sizes the solver scratch up front, so the heap
-    # does not grow mid-step. Growth stays enabled as a safety valve; callers
-    # still rebind views through heapF32() (#415).
+    # Fixed 16 MB heap, no growth. The live data is ~1 MB at most: the
+    # largest SWE budget (128x80 cells x 4 planes, 160 KiB) plus its solver
+    # and scroll scratch (~0.5 MB, sized up front by
+    # reserveShallowWaterScratch), particle SoAs (36 B per particle), the
+    # routing chain, one terrain tile in flight (a 40x96 visual tile is
+    # 109 KiB) and chore scratch; plus 64 KiB of stack and the static data.
+    # 16 MB is >10x that. Growth was the only reason every TS heap view had
+    # to be rebound (#415): it replaced the ArrayBuffer and silently detached
+    # views made before it. With a fixed heap a view made at bind or
+    # allocation time stays valid for the module's life.
+    # ABORTING_MALLOC defaults to 1 without growth (a failed malloc aborts the
+    # module); 0 keeps malloc returning NULL, which the TS binding turns into
+    # WasmHeapExhaustedError — the over-budget signal.
     math(EXPR INITIAL_MEMORY_BYTES "16 * 1024 * 1024")
-    math(EXPR MAXIMUM_MEMORY_BYTES "256 * 1024 * 1024")
 
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         # -flto at link matches the compile flag above; --closure 1 minifies
@@ -163,9 +169,9 @@ if(EMSCRIPTEN)
         "SHELL:-s WASM_BIGINT=1"
         "SHELL:-s FILESYSTEM=0"
         "SHELL:-s MALLOC=emmalloc"
-        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+        "SHELL:-s ALLOW_MEMORY_GROWTH=0"
+        "SHELL:-s ABORTING_MALLOC=0"
         "SHELL:-s INITIAL_MEMORY=${INITIAL_MEMORY_BYTES}"
-        "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY_BYTES}"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=HEAPF32,HEAP32,HEAPU8"
         # The Module options wasmLoader.ts passes (#467). Named explicitly: emcc
         # 4.x+ dropped wasmBinary from the default list, so without this a newer

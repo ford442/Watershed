@@ -210,7 +210,7 @@ export function createSimWorkerCore(
     particles.delete(poolId);
   };
 
-  /** View of SoA plane `index` (first `count` floats); re-derived per call — growth detaches HEAPF32. */
+  /** View of SoA plane `index`, its first `count` floats. */
   const particlePlane = (slot: ParticleSlot, index: number, count: number) => {
     const start = (slot.ptr >> 2) + index * slot.cap;
     return wasm.HEAPF32.subarray(start, start + count);
@@ -418,7 +418,7 @@ export function createSimWorkerCore(
           }
           // grid.h is a view on this module's heap: the host reads it in place.
           const summary = summarizeHeightfield(
-            choreHost, () => grid.h, grid.width, grid.height,
+            choreHost, grid.h, grid.width, grid.height,
             command.thumbWidth, command.thumbHeight, true,
           );
           post(

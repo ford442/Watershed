@@ -89,20 +89,12 @@ export const PARTICLE_SOA_PLANES = 9;
 export const ROUTING_SUBREACHES = 4;
 
 /**
- * Typed view into WASM linear memory that survives ALLOW_MEMORY_GROWTH.
- * Growth replaces the ArrayBuffer; prior views detach (byteLength === 0)
- * and reads/writes go nowhere with no throw. Reuse `prev` when it still
- * aliases the live heap; otherwise rebuild.
+ * `count` floats of WASM linear memory at byte offset `ptr`. The heap is a
+ * fixed size (ALLOW_MEMORY_GROWTH=0, emscripten/CMakeLists.txt), so its
+ * ArrayBuffer never changes: make the view once, when the block is
+ * allocated, and keep it for the block's life.
  */
-export function heapF32(
-  mod: { HEAPF32: Float32Array },
-  ptr: number,
-  count: number,
-  prev?: Float32Array,
-): Float32Array {
-  if (prev && prev.byteLength !== 0 && prev.buffer === mod.HEAPF32.buffer) {
-    return prev;
-  }
+export function heapF32(mod: { HEAPF32: Float32Array }, ptr: number, count: number): Float32Array {
   return new Float32Array(mod.HEAPF32.buffer, ptr, count);
 }
 
@@ -117,7 +109,7 @@ export function heapF32(
  * emscripten/swe.h and WASM.md.
  */
 export interface WatershedNativeModule {
-  // Emscripten typed heap views (the glue replaces them on memory growth)
+  // Emscripten typed heap views: one fixed-size heap, so bound once
   HEAPF32: Float32Array;
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
@@ -469,13 +461,14 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
   };
   const outPtr = allocateGrid(outFloats);
   const outAt = outPtr >>> 2;
+  const heap = raw.HEAPF32;
 
-  const bound: Record<string, unknown> = {};
-  Object.defineProperties(bound, {
-    HEAPF32: { get: () => raw.HEAPF32, enumerable: true },
-    HEAP32: { get: () => raw.HEAP32, enumerable: true },
-    HEAPU8: { get: () => raw.HEAPU8, enumerable: true },
-  });
+  // The heap cannot grow, so the glue's views are final: bind them as values.
+  const bound: Record<string, unknown> = {
+    HEAPF32: raw.HEAPF32,
+    HEAP32: raw.HEAP32,
+    HEAPU8: raw.HEAPU8,
+  };
 
   for (const name of Object.keys(WASM_ABI) as WasmAbiFunctionName[]) {
     const entry: WasmAbiEntry = WASM_ABI[name];
@@ -486,7 +479,7 @@ export function bindNativeModule(raw: RawWatershedModule): WatershedNativeModule
     } else if (out) {
       bound[name] = (...args: number[]) => {
         call(...args, outPtr);
-        return out.read(raw.HEAPF32, outAt);
+        return out.read(heap, outAt);
       };
     } else if (entry.returns === 'u32') {
       bound[name] = (...args: number[]) => call(...args) >>> 0;
