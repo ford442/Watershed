@@ -135,7 +135,7 @@ export function attachMenuFocus(
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     const active = document.activeElement;
     if (!active || !container.contains(active)) return;
-    let handled = false;
+    let handled: boolean;
     switch (e.key) {
       case 'ArrowUp':
         handled = applyMenuAction(container, 'up');

@@ -134,9 +134,10 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
   }, []);
 
   // Detect pointer lock loss as pause trigger
+  const { isStageEnabled, setStageFailure, setStageLoading, setStageSuccess } = debug;
   useEffect(() => {
-    if (!debug.isStageEnabled('uiOverlay')) return;
-    debug.setStageLoading('uiOverlay');
+    if (!isStageEnabled('uiOverlay')) return;
+    setStageLoading('uiOverlay');
     try {
       const handlePointerLockChange = () => {
         try {
@@ -158,17 +159,17 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
             return prev;
           });
         } catch (error) {
-          debug.setStageFailure('uiOverlay', error);
+          setStageFailure('uiOverlay', error);
         }
       };
 
       document.addEventListener('pointerlockchange', handlePointerLockChange);
-      debug.setStageSuccess('uiOverlay');
+      setStageSuccess('uiOverlay');
       return () => document.removeEventListener('pointerlockchange', handlePointerLockChange);
     } catch (error) {
-      debug.setStageFailure('uiOverlay', error);
+      setStageFailure('uiOverlay', error);
     }
-  }, [debug.isStageEnabled, debug.setStageFailure, debug.setStageLoading, debug.setStageSuccess]);
+  }, [isStageEnabled, setStageFailure, setStageLoading, setStageSuccess]);
 
   const requestPointerLockSafely = useCallback(() => {
     // Touch has no pointer to lock (iOS has no Pointer Lock at all): the start

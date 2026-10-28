@@ -29,9 +29,6 @@ const SEGMENT_TYPES = ['normal', 'waterfall', 'pond', 'splash', 'rapids'];
 // Difficulty mapping
 const DIFFICULTY_TYPES = ['beginner', 'intermediate', 'expert', 'custom'];
 
-// Transition type mapping
-const TRANSITION_TYPES = ['waterfall', 'slotCanyon', 'splash'];
-
 // Shader category mapping
 const SHADER_CATEGORIES = ['generative', 'reactive', 'transition', 'filter'];
 
@@ -74,7 +71,7 @@ export function validateReach(reachData: any): ValidationResult {
  * Semantic validation beyond JSON schema
  */
 function validateSemantics(reachData: any, errors: ValidationError[], warnings: ValidationError[]): void {
-  const { reachId, metadata, world, segments, spawns, requiredAssets, transition } = reachData;
+  const { metadata, world, segments, spawns, requiredAssets, transition } = reachData;
 
   // Validate waypoints
   if (world?.track?.waypoints) {
@@ -398,7 +395,7 @@ function validateReachPerformanceBudget(reachData: any, errors: ValidationError[
 
   for (const seg of segments) {
     if (seg.decorations) {
-      for (const [type, count] of Object.entries(seg.decorations)) {
+      for (const [, count] of Object.entries(seg.decorations)) {
         if (typeof count === 'number') {
           totalDecorations += count;
         }

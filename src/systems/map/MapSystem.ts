@@ -220,9 +220,6 @@ class JSONLevelLoader {
       new THREE.Vector3(wp[0], wp[1], wp[2])
     );
 
-    // Create the main curve from waypoints
-    const mainCurve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.5);
-
     return {
       metadata: data.metadata,
       world: {
@@ -524,11 +521,6 @@ export class ProceduralMapManager implements MapManager {
       : null;
     this.continuationStartIndex = continuation?.startIndex ?? 0;
     this.fallbackManager = new DefaultMapManager(config, fallbackProgression);
-
-    if (levelData) {
-      const total = levelData.world.track.totalSegments;
-      const segCount = levelData.segments.length;
-    }
   }
 
   /** Authored segment count of the primary map (0 when procedural-only). */

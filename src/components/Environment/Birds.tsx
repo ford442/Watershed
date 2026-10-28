@@ -62,8 +62,6 @@ interface HawkState {
   scale: number;
 }
 
-type BirdState = SongbirdState | HawkState;
-
 const createWingGeometry = (side: number, config: WingGeometryConfig): THREE.BufferGeometry => {
   const { span, chord, sweep, tipDrop } = config;
   const geo = new THREE.BufferGeometry();

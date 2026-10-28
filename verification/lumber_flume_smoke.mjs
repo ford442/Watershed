@@ -75,7 +75,7 @@ async function bootOnce() {
           get: () => c,
         });
         document.dispatchEvent(new Event('pointerlockchange'));
-      } catch (_) {}
+      } catch {}
     });
 
     await page.waitForFunction(() => !!window.__watershedScreenshot, { timeout: 20000 });

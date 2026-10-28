@@ -494,12 +494,6 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     chunkManagerRef.current.initializePool();
     setPoolVersion((v) => v + 1);
 
-    // Expose a runtime debug object so the browser console can confirm which
-    // map is active and that the JSON binding is live.
-    if (typeof window !== 'undefined') {
-      const mm = mapManagerRef.current as ProceduralMapManager;
-    }
-
     // Flush any synthesizeSegmentEnter calls that arrived before the
     // rockMaterial-gated initialization completed (e.g. screenshot teleport).
     const pending = pendingSynthesizesRef.current;

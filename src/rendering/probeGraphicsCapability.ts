@@ -163,7 +163,7 @@ function attemptContext(
   };
 
   canvas.addEventListener('webglcontextcreationerror', onCreationError);
-  let context: WebGL2RenderingContext | null = null;
+  let context: WebGL2RenderingContext | null;
   try {
     context = canvas.getContext(GL_CONTEXT_NAME, attributes) as WebGL2RenderingContext | null;
   } catch (error) {

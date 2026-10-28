@@ -243,7 +243,7 @@ export function TrackSegmentMeshes({
     // Pond draw distance culling (Goal 3)
     const vegetationGroupRef = useRef<THREE.Group>(null);
     const rimVegetationGroupRef = useRef<THREE.Group>(null);
-    const { camera, scene } = useThree();
+    const { camera } = useThree();
     const segmentCenterRef = useRef(new THREE.Vector3());
 
     // Compute segment center from geometry for draw-distance culling

@@ -93,14 +93,14 @@ export function readGpuComputeDiagnostics(
   device: GPUDevice | null,
 ): GpuComputeDiagnostics | null {
   if (!device) return null;
-  let info: Partial<GPUAdapterInfo> = {};
+  let info: Partial<GPUAdapterInfo>;
   try {
     info = (device as GPUDevice & { adapterInfo?: GPUAdapterInfo }).adapterInfo ?? {};
   } catch {
     info = {};
   }
 
-  let features: string[] = [];
+  let features: string[];
   try {
     features = [...device.features];
   } catch {

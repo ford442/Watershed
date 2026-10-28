@@ -39,6 +39,9 @@ interface ReactiveAudioProps {
   reachSegments?: NormalizedSegment[];
 }
 
+/** Player position for the positional-transition fade, rewritten each frame (#521 F). */
+const _playerPos = new THREE.Vector3();
+
 function resolveAudioBuffer(
   reachId: string | undefined,
   assetId: string,
@@ -433,7 +436,7 @@ export default function ReactiveAudio({
 
     // Positional transition volume based on distance
     if (posTransitionRef.current) {
-      const playerPos = new THREE.Vector3().copy(body.translation());
+      const playerPos = _playerPos.copy(body.translation());
       const distance = playerPos.distanceTo(posTransitionRef.current.position);
       const fade =
         1 -

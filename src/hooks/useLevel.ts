@@ -230,7 +230,6 @@ export function useLevel(): UseLevelReturn {
 
     // Ensure we have at least 2 initial segments
     while (initialSegments.length < 2 && data.world.track.totalSegments >= 2) {
-      const lastSeg = initialSegments[initialSegments.length - 1];
       const nextIdx = initialSegments.length;
       
       const tStart = nextIdx / data.world.track.totalSegments;

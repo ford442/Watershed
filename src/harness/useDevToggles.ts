@@ -29,13 +29,14 @@ export function useDevToggles(debug: DebugStageController) {
     return queryFlags().wireframe;
   });
 
+  const { runStage } = debug;
   useEffect(() => {
-    void debug.runStage('appBootstrap', () => {
+    void runStage('appBootstrap', () => {
       if (queryFlags().noPointerLock) {
         setSkipLoader(true);
       }
     });
-  }, [debug.runStage]);
+  }, [runStage]);
 
   useEffect(() => {
     editQuery((params) => {

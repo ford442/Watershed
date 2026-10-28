@@ -73,10 +73,10 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
       // --- warnings: a real backlog, not a style opinion --------------------
       // R3F's allocation rules are the right rules — `new`/`.clone()` inside a
-      // useFrame body is a per-frame GC hazard in a 60 FPS game. There are ~110
-      // pre-existing sites, and each needs a hoisted scratch object rather than
-      // a mechanical rewrite, so they land as warnings: visible, counted, not
-      // gating. Promoting them to `error` is its own PR, with the fixes in it.
+      // useFrame body is a per-frame GC hazard in a 60 FPS game. The ~110 sites
+      // that predated the rule are gone (hoisted scratch objects, #521 D / F),
+      // and the sim directories make them errors (below). Elsewhere they stay
+      // warnings, held at zero by CI's `--max-warnings` ratchet.
       ...Object.fromEntries(
         Object.keys(r3f.configs.recommended.rules).map((rule) => [rule, 'warn']),
       ),

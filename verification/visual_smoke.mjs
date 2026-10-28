@@ -892,13 +892,11 @@ async function run() {
   console.log(`Baselines: ${BASELINE_DIR}`);
   console.log(`Mode: ${UPDATE_BASELINES ? 'UPDATE baselines' : 'compare'}`);
 
-  let allOk = true;
   const only = (process.env.VISUAL_ONLY ?? '').split(',').map((l) => l.trim()).filter(Boolean);
   if (only.length) report.nativeFetch = { status: 'skipped-by-filter' };
   const nativeOnce = only.length ? true : await checkNativeFetchedOnce(report);
   for (const shot of SHOTS.filter((sh) => only.length === 0 || only.includes(sh.label))) {
-    const ok = await captureShot(shot, report);
-    if (!ok) allOk = false;
+    await captureShot(shot, report);
   }
 
   if (!UPDATE_BASELINES) {
