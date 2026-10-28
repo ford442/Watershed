@@ -352,7 +352,9 @@ export async function createWgslSweSim(
     },
     step(input: SweStepInput) {
       if (disposed) return;
-      const chunks = prepareUniforms(input);
+      // A non-finite dt would reach `min(params.dt, …)` in swe.wgsl and write
+      // NaN everywhere (swe.cpp rejects it the same way): dt 0 moves nothing.
+      const chunks = prepareUniforms(Number.isFinite(input.dt) ? input : { ...input, dt: 0 });
       const main = uniformSet(0);
 
       const encoder = device.createCommandEncoder({ label: 'swe:step' });

@@ -203,7 +203,7 @@ else()
     # checks for that trust:
     #   WATERSHED_SANITIZE=ON  host smoke under ASan + UBSan (pnpm test:native:sanitize)
     #   WATERSHED_FUZZ=ON      libFuzzer targets over every entry-point family —
-    #                          swe, chores, forces (+ routing, particles), terrain
+    #                          swe, chores, forces (+ particles), routing, terrain
     #                          (clang; pnpm test:native:fuzz). Implies the sanitizers.
     option(WATERSHED_SANITIZE "Host build with -fsanitize=address,undefined" OFF)
     option(WATERSHED_FUZZ "Build the libFuzzer targets (clang only)" OFF)
@@ -221,7 +221,7 @@ else()
         endif()
         target_compile_options(watershed_compute PRIVATE -fsanitize=fuzzer-no-link)
         # One target per entry-point family (#502); pnpm test:native:fuzz runs each.
-        foreach(fuzz_target swe chores forces terrain)
+        foreach(fuzz_target swe chores forces routing terrain)
             add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
             target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
             target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE

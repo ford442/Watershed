@@ -1058,6 +1058,74 @@ int main() {
     }
 
     // ------------------------------------------------------------------
+    // Non-finite scalars: a NaN slips past `x <= 0` and `std::max(x, lo)`
+    // (which returns its first operand), so before these guards one NaN dt
+    // turned the whole SWE field into NaN and one NaN head discharge poisoned
+    // the routed chain, both for the rest of the session.
+    // ------------------------------------------------------------------
+    {
+        constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
+        constexpr float kInf = std::numeric_limits<float>::infinity();
+        const auto P = [](auto& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        const auto finite = [](const std::vector<float>& v) {
+            return std::all_of(v.begin(), v.end(), [](float x) { return std::isfinite(x); });
+        };
+
+        constexpr int kW = 12;
+        constexpr int kZ = 10;
+        const std::size_t cells = static_cast<std::size_t>(kW) * kZ;
+        std::vector<float> h(cells), u(cells, 0.5f), w(cells, -0.25f), b(cells, 0.1f);
+        for (std::size_t i = 0; i < cells; ++i) h[i] = 0.05f * std::sin(0.7f * static_cast<float>(i));
+        const std::vector<float> h0 = h;
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, kNaN, kG, kDx, kH);
+        stepShallowWaterInflow(P(h), P(u), P(w), P(b), kW, kZ, kNaN, kG, kDx, kH, 0.1f);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kNaN, kDx, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kNaN, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kNaN);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kInf, kDx, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kInf, kH);
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kInf);
+        check(h == h0, "swe: a NaN / inf dt, g, dx or H steps nothing");
+        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, kInf, kG, kDx, kH);
+        check(finite(h) && finite(u) && finite(w) && h != h0, "swe: dt = +inf is clamped to the CFL step");
+        applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f);
+        applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, kInf);
+        applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kInf, 0, 4.f, 4.f, 2.f, 1.f, 0.016f);
+        scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 2, -3, kNaN, kInf, -kInf);
+        check(finite(h) && finite(u) && finite(w) && finite(b), "swe: NaN / inf event and inflow scalars stay out of the field");
+
+        constexpr int kSegs = 3;
+        std::vector<float> L(kSegs, 100.f), S(kSegs, 0.01f), B(kSegs, 12.f), lateral(kSegs, 0.f);
+        std::vector<float> storage(static_cast<std::size_t>(kSegs) * ROUTING_SUBREACHES), outflow(kSegs), lag(kSegs);
+        routeReachSteady(P(L), P(S), P(B), kSegs, 5.f, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, kNaN, 1.f, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, kInf, 1.f, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, 5.f, kInf, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, 5.f, 1e-40f, P(storage), P(outflow));
+        L[1] = kNaN;
+        B[2] = kNaN;
+        routeReachLateral(P(L), P(S), P(B), kSegs, 5.f, P(lateral), 1.f, P(storage), P(outflow));
+        routeReachTravelTime(P(L), P(S), P(B), kSegs, kNaN, P(lag));
+        routeReachSteady(P(L), P(S), P(B), kSegs, kNaN, P(storage), P(outflow));
+        routeReach(P(L), P(S), P(B), kSegs, 5.f, 1.f, P(storage), P(outflow));
+        check(finite(storage) && finite(outflow) && finite(lag), "routing: NaN / inf head discharge, dt, length or width stays finite");
+        const RoutedEdge inf = routedEdgeState(6.f, 5.f, kInf, kG);
+        check(inf.eta == 0.f && inf.speed == 0.f, "routedEdgeState: an infinite H is rest");
+
+        const uintptr_t soa = allocateParticleSoA(8);
+        const std::span<const float> planes(reinterpret_cast<const float*>(soa), 8 * PARTICLE_SOA_PLANES);
+        uint32_t seed = initWaterfallParticles(soa, 8, 8, kNaN, 10.f, 1.f, 0.5f, 7u);
+        seed = initWaterfallParticles(soa, 8, 8, 4.f, 10.f, 1.f, 0.5f, seed);
+        seed = stepWaterfallParticles(soa, 8, 8, kNaN, 4.f, 10.f, 1.f, seed);
+        seed = stepWaterfallParticles(soa, 8, 8, 0.016f, kInf, 10.f, 1.f, seed);
+        stepSplashParticles(soa, 8, 8, kNaN, -9.8f, 0.98f);
+        stepSplashParticles(soa, 8, 8, 0.016f, kNaN, 0.98f);
+        check(std::all_of(planes.begin(), planes.end(), [](float x) { return std::isfinite(x); }),
+              "particles: NaN / inf scalars never reach the SoA");
+        freeParticleSoA(soa);
+    }
+
+    // ------------------------------------------------------------------
     // Untrusted-input sentinels (#502): every entry point that takes a heap
     // pointer or a JS extent returns early, writing nothing, on a null pointer
     // or an out-of-range count / extent. Each rejected call below would write

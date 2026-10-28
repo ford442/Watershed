@@ -131,9 +131,13 @@ export function createWasmSweSim(
       fieldVersion += 1;
     },
     step({ dt, g, H, originX, originZ, events, edgeEta }) {
-      if (edgeEta !== undefined) {
+      // A NaN dt slips past `dt <= 0` checks and writes NaN into every cell
+      // for good. swe.cpp rejects it too; this keeps it off the boundary.
+      // Only the solver step is skipped: events carry their own dt.
+      const solve = Number.isFinite(dt);
+      if (solve && edgeEta !== undefined) {
         wasm.stepShallowWaterInflow(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H, edgeEta);
-      } else {
+      } else if (solve) {
         wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);
       }
       for (const e of events) {

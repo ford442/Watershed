@@ -52,6 +52,8 @@ export const TERRAIN_SLOT_FLOOR_LIFT = 22.0 * 0.18;
 /** TERRAIN_MAX_SEGMENTS / TERRAIN_MAX_VERTICES in terrain.h. */
 export const TERRAIN_MAX_SEGMENTS = 4096;
 export const TERRAIN_MAX_VERTICES = 1 << 20;
+/** TERRAIN_MIN_EXTENT in terrain.h: shortest path / narrowest width a builder accepts (m). */
+export const TERRAIN_MIN_EXTENT = 1e-3;
 
 /**
  * Tube cross-section (`plan.md` §1: "produce inward-curving walls … to form a
@@ -309,8 +311,8 @@ function viewTile(segmentsX: number, segmentsZ: number, planes: Float32Array): T
 }
 
 function validTileParams(p: TerrainTileParams): boolean {
-  return Number.isFinite(p.pathLength) && p.pathLength > 0
-    && Number.isFinite(p.canyonWidth) && p.canyonWidth > 0
+  return Number.isFinite(p.pathLength) && p.pathLength >= TERRAIN_MIN_EXTENT
+    && Number.isFinite(p.canyonWidth) && p.canyonWidth >= TERRAIN_MIN_EXTENT
     && Number.isFinite(p.waterWidth)
     && (!p.tube || (Number.isFinite(p.tube.curl) && Number.isFinite(p.tube.ceilingHeight)))
     && terrainVertexCount(p.segmentsX, p.segmentsZ) > 0;
@@ -365,8 +367,8 @@ export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
 
 /** The TS mirror of `buildWallShell` (terrain.cpp): wall height above the path point. */
 export function buildWallShellHeights(p: WallShellParams): Float32Array | null {
-  if (!Number.isFinite(p.pathLength) || p.pathLength <= 0) return null;
-  if (!Number.isFinite(p.shellWidth) || p.shellWidth <= 0 || !Number.isFinite(p.wallHeight)) return null;
+  if (!Number.isFinite(p.pathLength) || !(p.pathLength >= TERRAIN_MIN_EXTENT)) return null;
+  if (!Number.isFinite(p.shellWidth) || !(p.shellWidth >= TERRAIN_MIN_EXTENT) || !Number.isFinite(p.wallHeight)) return null;
   const n = terrainVertexCount(p.segmentsX, p.segmentsZ);
   if (n === 0) return null;
 

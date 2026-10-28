@@ -76,6 +76,8 @@ uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
                                 float width, float height, float depthZ,
                                 float fanSpreadRad, uint32_t seed) {
     if (base == 0 || !validCapacity(capacity)) return seed;
+    if (!std::isfinite(width) || !std::isfinite(height) || !std::isfinite(depthZ)
+        || !std::isfinite(fanSpreadRad)) return seed;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
@@ -115,7 +117,11 @@ uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
 uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
                                 float dt, float width, float height, float depthZ,
                                 uint32_t seed) {
-    if (base == 0 || !validCapacity(capacity) || dt <= 0.f) return seed;
+    if (base == 0 || !validCapacity(capacity)) return seed;
+    // !(dt > 0) also rejects NaN; a non-finite scalar would be integrated into
+    // every live particle (and respawned into new ones) for good.
+    if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(width) || !std::isfinite(height)
+        || !std::isfinite(depthZ)) return seed;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
@@ -141,7 +147,8 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
 
 void stepSplashParticles(uintptr_t base, int capacity, int count,
                          float dt, float gravityY, float damp) {
-    if (base == 0 || !validCapacity(capacity) || count <= 0 || dt <= 0.f) return;
+    if (base == 0 || !validCapacity(capacity) || count <= 0) return;
+    if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(gravityY) || !std::isfinite(damp)) return;
     if (count > capacity) count = capacity;
 
     const std::span<float> px = plane(base, PARTICLE_PX, capacity);

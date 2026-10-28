@@ -105,6 +105,10 @@ describe('terrain tile — planes', () => {
     expect(buildTerrainTile({ ...base, segmentsX: 0 })).toBeNull();
     expect(buildTerrainTile({ ...base, segmentsZ: 5000 })).toBeNull();
     expect(buildWallShellHeights({ ...WALL_SHELL_FIXTURES[0].params, shellWidth: -1 })).toBeNull();
+    // A denormal extent passes `> 0` and overflowed the slope planes to inf (terrain.h TERRAIN_MIN_EXTENT).
+    expect(buildTerrainTile({ ...base, canyonWidth: 1e-40 })).toBeNull();
+    expect(buildTerrainTile({ ...base, pathLength: 1e-40 })).toBeNull();
+    expect(buildWallShellHeights({ ...WALL_SHELL_FIXTURES[0].params, shellWidth: 1e-40 })).toBeNull();
   });
 });
 

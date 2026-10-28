@@ -189,7 +189,7 @@ export function createRiverRouter(
       return elapsed;
     },
     advance(dt) {
-      if (disposed || !(dt > 0)) return;
+      if (disposed || !(dt > 0) || !Number.isFinite(dt)) return;
       const hour = launchHour + (elapsed + 0.5 * dt) / 3600;
       if (liveOver !== null && routeLateral) {
         // Rain over reach k: the head carries the day's own hydrograph and the

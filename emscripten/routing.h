@@ -54,6 +54,12 @@ static constexpr float ROUTING_MIN_SLOPE = 0.002f;
 static constexpr float ROUTING_MAX_SLOPE = 0.25f;
 /** Discharge floor for the reservoir time constant, so an empty reach has a finite K. */
 static constexpr float ROUTING_MIN_DISCHARGE = 1e-3f;
+/**
+ * Shortest step routeReach[Lateral] takes (s); anything shorter, NaN or inf is
+ * a no-op. The outflow is a volume over dt, so a denormal dt overflowed it to
+ * inf; a frame is ~1e-2 s and nothing routes in a microsecond.
+ */
+static constexpr float ROUTING_MIN_DT = 1e-6f;
 /** Stage → discharge rating exponent (Manning, wide channel: y ∝ Q^0.6). */
 static constexpr float ROUTING_RATING_EXPONENT = 0.6f;
 

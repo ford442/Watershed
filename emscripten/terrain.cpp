@@ -102,8 +102,8 @@ Folded applyTubeProfile(double xLocal, double yHeight, double corridorHalfWidth,
 }
 
 bool validTile(const TileParams& p) {
-    return std::isfinite(p.pathLength) && p.pathLength > 0.0
-        && std::isfinite(p.canyonWidth) && p.canyonWidth > 0.0
+    return std::isfinite(p.pathLength) && p.pathLength >= TERRAIN_MIN_EXTENT
+        && std::isfinite(p.canyonWidth) && p.canyonWidth >= TERRAIN_MIN_EXTENT
         && std::isfinite(p.waterWidth)
         && (!p.hasTube || (std::isfinite(p.tubeCurl) && std::isfinite(p.tubeCeiling)))
         && terrainVertexCount(p.segmentsX, p.segmentsZ) > 0;
@@ -217,8 +217,8 @@ int buildTerrainTile(const TileParams& p, TerrainTile& out) {
 }
 
 int buildWallShell(const WallShellParams& p, std::span<float> out) {
-    if (!std::isfinite(p.pathLength) || p.pathLength <= 0.0) return 0;
-    if (!std::isfinite(p.shellWidth) || p.shellWidth <= 0.0 || !std::isfinite(p.wallHeight)) return 0;
+    if (!std::isfinite(p.pathLength) || !(p.pathLength >= TERRAIN_MIN_EXTENT)) return 0;
+    if (!std::isfinite(p.shellWidth) || !(p.shellWidth >= TERRAIN_MIN_EXTENT) || !std::isfinite(p.wallHeight)) return 0;
     const int n = terrainVertexCount(p.segmentsX, p.segmentsZ);
     if (n == 0 || out.size() < static_cast<size_t>(n)) return 0;
 

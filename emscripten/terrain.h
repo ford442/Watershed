@@ -84,6 +84,12 @@ static constexpr double TERRAIN_SLOT_FLOOR_LIFT = 22.0 * 0.18;
 static constexpr int TERRAIN_MAX_SEGMENTS = 4096;
 /** Upper bound on vertices per tile (≈ 7 planes × 4 B × 1 Mi = 28 MiB). */
 static constexpr int TERRAIN_MAX_VERTICES = 1 << 20;
+/**
+ * Smallest path length / canyon width / shell width a builder accepts (m).
+ * A denormal width passes `> 0` and then overflows the slope planes
+ * (dh / cellX) to inf when they are rounded to float. Mirrored in terrainTile.ts.
+ */
+static constexpr double TERRAIN_MIN_EXTENT = 1e-3;
 
 /** Inputs for one floor tile. Spans are views into caller-owned memory. */
 struct TileParams {

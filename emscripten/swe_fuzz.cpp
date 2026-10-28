@@ -7,7 +7,9 @@
  * exactly width * height, finite fields in a physical range, random extents
  * (ragged widths included), beds, events and shifts — under ASan + UBSan, so
  * an out-of-bounds index or an overflow in the vector / remainder paths is a
- * crash, and a non-finite field from finite input is reported too.
+ * crash, and a non-finite field is reported too. Scalars (dt, g, dx, H, the
+ * edge stage, event and inflow values) are a NaN, ±inf, denormal or ±0 one
+ * draw in four (fuzz::Input::special): no scalar may poison a finite field.
  *
  *   pnpm test:native:fuzz              # 60 s, as CI runs it
  *   emscripten/build-fuzz/watershed_swe_fuzz -max_total_time=600
@@ -32,7 +34,7 @@ using fuzz::ptr;
 void requireFinite(const std::vector<float>& v, const char* name, int step) {
     for (std::size_t i = 0; i < v.size(); ++i) {
         if (!std::isfinite(v[i])) {
-            std::fprintf(stderr, "non-finite %s[%zu] = %g after op %d from finite input\n", name, i, v[i], step);
+            std::fprintf(stderr, "non-finite %s[%zu] = %g after op %d from a finite field\n", name, i, v[i], step);
             std::abort();
         }
     }
@@ -75,22 +77,24 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         switch (in.u32() % 4u) {
             case 0:
                 stepShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height,
-                                 in.range(1e-4f, 0.1f), 9.80665f, dx, H);
+                                 in.scalar(1e-4f, 0.1f), in.orSpecial(9.80665f), in.orSpecial(dx),
+                                 in.orSpecial(H));
                 break;
             case 1:
                 stepShallowWaterInflow(ptr(h), ptr(u), ptr(w), bPtr, width, height,
-                                       in.range(1e-4f, 0.1f), 9.80665f, dx, H, in.range(-0.9f * H, 2.f * H));
+                                       in.scalar(1e-4f, 0.1f), in.orSpecial(9.80665f), in.orSpecial(dx),
+                                       in.orSpecial(H), in.scalar(-0.9f * H, 2.f * H));
                 break;
             case 2:
-                applySWEEvent(ptr(h), ptr(u), ptr(w), bPtr, width, height, dx,
-                              in.range(-50.f, 50.f), in.range(-50.f, 50.f), H, in.pick(0, 4),
-                              in.range(-60.f, 60.f), in.range(-60.f, 60.f), in.range(0.f, 20.f),
-                              in.range(0.f, 3.f), in.range(0.f, 0.1f));
+                applySWEEvent(ptr(h), ptr(u), ptr(w), bPtr, width, height, in.orSpecial(dx),
+                              in.scalar(-50.f, 50.f), in.scalar(-50.f, 50.f), in.orSpecial(H), in.pick(0, 4),
+                              in.scalar(-60.f, 60.f), in.scalar(-60.f, 60.f), in.scalar(0.f, 20.f),
+                              in.scalar(0.f, 3.f), in.scalar(0.f, 0.1f));
                 break;
             default:
                 scrollShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height,
                                    in.pick(-2 * width, 2 * width), in.pick(-2 * height, 2 * height),
-                                   in.range(-H, H), in.range(-2.f, 2.f), in.range(-2.f, 2.f));
+                                   in.scalar(-H, H), in.scalar(-2.f, 2.f), in.scalar(-2.f, 2.f));
                 break;
         }
         requireFinite(h, "h", op);

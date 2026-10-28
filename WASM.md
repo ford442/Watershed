@@ -48,7 +48,8 @@ emscripten/
 ├── fuzz_input.h      # Byte reader shared by the libFuzzer targets (host only)
 ├── swe_fuzz.cpp      # libFuzzer: step / inflow step / event / scroll
 ├── chores_fuzz.cpp   # libFuzzer: reduce / histograms / downsample / blur (#502)
-├── forces_fuzz.cpp   # libFuzzer: forces (single + batch), routing, particle SoA (#502)
+├── forces_fuzz.cpp   # libFuzzer: forces (single + batch), particle SoA (#502)
+├── routing_fuzz.cpp  # libFuzzer: routing, special scalars (NaN / ±inf / denormals)
 ├── terrain_fuzz.cpp  # libFuzzer: terrain tile + wall shell (#502)
 ├── watershed_native.symbols # `N:name` symbol map of the committed wasm (build.sh; never in public/)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake); enforces the emcc pin
@@ -230,12 +231,18 @@ Every `ws_*` entry point therefore returns early on bad input; `std::span` views
 
 | TU | Rejected (no write) | Sentinel |
 |----|---------------------|----------|
-| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); `dx`/`H`/`dt`/`g` ≤ 0 (step) | early return; `allocateGrid(≤ 0)` → 0 |
+| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt` ≤ 0 or NaN (+inf is CFL-clamped), `dx`/`H`/`g` ≤ 0 or non-finite; event: non-finite placement, `strength` or `dt` | early return; a non-finite edge stage or scroll inflow is rest (0); `allocateGrid(≤ 0)` → 0 |
 | `chores.cpp` | null src / out; count < 0 or > `WS_MAX_ELEMENTS` (4096²); src/blur extents ≤ 0 or > 4096; destination extent > 4096 | early return. Count 0 is a valid empty grid (zeros / an all-zero histogram); a non-positive *destination* extent of `downsampleF32` is 1 (the `cpuMath.ts` contract) |
 | `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | early return |
-| `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` ≤ 0 | early return; `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
-| `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 | alloc → 0; init/step waterfall → `seed` unchanged; splash: early return |
-| `terrain.cpp` | null output; segments ≤ 0 or > `TERRAIN_MAX_SEGMENTS`; non-finite shape; short output | returns 0, writes nothing |
+| `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` < `ROUTING_MIN_DT` (1 µs), NaN or inf | early return; a non-finite head discharge, length or width takes its floor (`atLeast`: 0, 1 mm, 0.5 m); `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
+| `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 or non-finite; any non-finite shape / gravity / damping scalar | alloc → 0; init/step waterfall → `seed` unchanged; splash: early return |
+| `terrain.cpp` | null output; segments ≤ 0 or > `TERRAIN_MAX_SEGMENTS`; non-finite shape; path / canyon / shell extent < `TERRAIN_MIN_EXTENT` (1 mm); short output | returns 0, writes nothing |
+
+Scalar guards are written `!(x > 0)` or go through `std::isfinite`: `x <= 0` is false for NaN,
+and `std::max(x, lo)` returns its first operand when that is NaN, so a NaN `dt` used to reach
+the CFL clamp and write NaN into every cell for the session, and a NaN head discharge did the
+same to the routed chain. `sweSim.ts` / `WgslSweSim.ts` also skip the solver for a non-finite
+`dt`, and `riverRouter.ts` advances nothing on one.
 
 `host_smoke.cpp` asserts each row on the host (ASan in `test:native:sanitize`);
 `src/systems/water/wasmSentinels.test.ts` asserts it through the committed wasm — a canary
@@ -279,10 +286,13 @@ different sizes no longer reallocates on every alternation.
 
 ### Fuzzing (#467, #502)
 
-`pnpm test:native:fuzz` (`scripts/native-fuzz.sh`) builds and runs four libFuzzer targets
-under ASan + UBSan, `FUZZ_SECONDS` (60) each: `swe`, `chores`, `forces` (forces + routing +
-particles) and `terrain`. They feed any float bit pattern and out-of-range or null
-arguments, and check that rejected calls write nothing. `FUZZ_TARGETS="chores terrain"`
+`pnpm test:native:fuzz` (`scripts/native-fuzz.sh`) builds and runs five libFuzzer targets
+under ASan + UBSan, `FUZZ_SECONDS` (60) each: `swe`, `chores`, `forces` (forces +
+particles), `routing` and `terrain`. They feed any float bit pattern and out-of-range or
+null arguments, and check that rejected calls write nothing. Scalars are also drawn from
+`fuzz::Input::special()` (NaN, ±inf, denormals, ±0) one time in four; with only those and
+physical values, the SWE field, the routed chain, the particle SoA and an accepted terrain
+tile must stay finite. `FUZZ_TARGETS="chores terrain"`
 runs a subset. Needs clang with compiler-rt (`libclang-rt-18-dev` on Ubuntu).
 `pnpm lint:native` runs clang-tidy over every TU, `bindings.cpp` and the fuzz targets
 included (a host fallback for `EMSCRIPTEN_KEEPALIVE` keeps `bindings.cpp` parseable without
