@@ -316,14 +316,24 @@ function classifyPageErrors(errors) {
   return { hard, soft };
 }
 
+// Cold Chrome on a shared runner can miss puppeteer's 30 s WS-endpoint default (CI run 351).
 async function launchBrowser() {
-  return puppeteer.launch({
-    headless: 'new',
-    ignoreDefaultArgs: true,
-    executablePath: resolveChromePath(),
-    protocolTimeout: 60_000,
-    args: CHROME_ARGS,
-  });
+  const launch = (dumpio) =>
+    puppeteer.launch({
+      headless: 'new',
+      ignoreDefaultArgs: true,
+      executablePath: resolveChromePath(),
+      protocolTimeout: 60_000,
+      timeout: 120_000,
+      dumpio,
+      args: CHROME_ARGS,
+    });
+  try {
+    return await launch(false);
+  } catch (err) {
+    console.warn(`[visual-smoke] Chrome launch failed (${err.message}); retrying once with dumpio`);
+    return launch(true);
+  }
 }
 
 async function capturePng(page, outPath) {
