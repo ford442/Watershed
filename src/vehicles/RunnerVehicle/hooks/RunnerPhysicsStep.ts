@@ -50,6 +50,7 @@ import { gameEvents } from '../../../systems/events/GameEvents';
 import { bodyUserData as userDataOf, type RapierBody, type RapierNamespace, type RapierWorld } from '../../../physics/rapierTypes';
 import type { PlayerControls } from '../../../hooks/usePlayerControls';
 import type { RunnerPhysicsState } from './useRunnerPhysics';
+import { queryFlags } from '../../../config/queryFlags';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -76,7 +77,7 @@ export function updateRunnerPhysics({
     prevFrame, collisionState, fovRef, debugState, debugSnapshotRef
   } = vehicleState;
 
-  const noPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
+  const noPointerLock = queryFlags().noPointerLock;
 
     const pos = body.translation();
     const vel = body.linvel();

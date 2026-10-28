@@ -9,11 +9,12 @@
 
 import { importGhostFromJson } from './ghostExport';
 import { setRivalGhost } from '../persistence/PersistenceSystem';
+import { queryParam } from '../../config/queryFlags';
 
 /** Reads `?ghost=` from the URL; same-origin only (rejects absolute cross-origin URLs). */
 function parseSameOriginGhostUrl(): string | null {
   if (typeof window === 'undefined') return null;
-  const raw = new URLSearchParams(window.location.search).get('ghost');
+  const raw = queryParam('ghost');
   if (!raw) return null;
 
   try {

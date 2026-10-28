@@ -116,9 +116,15 @@ export default tseslint.config(
 
   // Game events go through `gameEvents` (src/systems/events/GameEvents.ts), not
   // `window` — typed payloads, one map of who sends what, no orphan events.
+  // The query string goes through src/config/queryFlags.ts (#521 E): one parse,
+  // one grammar for boolean flags (`1` | `true`), one writer.
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/systems/events/GameEvents.ts'],
+    ignores: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'src/systems/events/GameEvents.ts',
+      'src/config/queryFlags.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -129,6 +135,10 @@ export default tseslint.config(
         {
           selector: `CallExpression[callee.property.name=/^(add|remove)EventListener$/][arguments.0.value=/^(${GAME_EVENT_NAMES.join('|')})$/]`,
           message: 'Listen to game events with gameEvents.on (src/systems/events/GameEvents.ts), not addEventListener.',
+        },
+        {
+          selector: "MemberExpression[property.name='search'][object.name='location'], MemberExpression[property.name='search'][object.property.name='location']",
+          message: 'Read the query string through src/config/queryFlags.ts (queryFlags / queryParam / currentSearch).',
         },
       ],
     },

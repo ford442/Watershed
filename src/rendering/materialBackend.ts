@@ -14,6 +14,7 @@
  * Default stays `glsl`. Production is unchanged unless the flag is set.
  */
 
+import { currentSearch } from '../config/queryFlags';
 export type MaterialBackend = 'glsl' | 'tsl';
 
 export type MaterialBackendReason =
@@ -30,7 +31,7 @@ export interface MaterialBackendDecision {
 }
 
 export interface MaterialBackendEnvironment {
-  /** Query string (with or without a leading '?'). Defaults to window.location.search. */
+  /** Query string (with or without a leading '?'). Defaults to the page's (`currentSearch()`). */
   search?: string;
   /** Stored preference from the debug toggle. Defaults to localStorage. */
   stored?: MaterialBackend | null;
@@ -60,7 +61,7 @@ export function isMaterialBackend(value: unknown): value is MaterialBackend {
 /** Explicit `?material=` override, or null when absent/unrecognised. */
 export function parseMaterialBackendParam(search?: string): MaterialBackend | null {
   const raw =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+    search ?? (currentSearch());
   const value = new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get('material');
   return isMaterialBackend(value) ? value : null;
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore, type GameStore } from '../systems/GameState';
+import { queryFlags } from '../config/queryFlags';
 
 /**
  * Movement verification readout — F3 toggles it, `?debug=1` opens it at boot.
@@ -45,9 +46,7 @@ const KEY_CHIPS: ReadonlyArray<{ label: string; codes: readonly string[] }> = [
 ];
 
 export function isMovementDebugQuery(): boolean {
-  if (typeof window === 'undefined') return false;
-  const raw = new URLSearchParams(window.location.search).get('debug');
-  return raw === '1' || raw === 'true';
+  return queryFlags().debug;
 }
 
 /**

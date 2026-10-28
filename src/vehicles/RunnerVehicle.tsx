@@ -10,8 +10,9 @@ import { PLAYER_SPAWN } from '../constants/game';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
+import { queryFlags } from '../config/queryFlags';
 
-const isNoPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
+const isNoPointerLock = queryFlags().noPointerLock;
 
 function HeadlessPlayerMarker({ bodyRef }: { bodyRef: React.RefObject<RapierRigidBody | null> }) {
   const meshRef = useRef<THREE.Mesh>(null);

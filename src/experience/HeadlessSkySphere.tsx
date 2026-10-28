@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { BackSide, Mesh } from 'three';
+import { queryFlags } from '../config/queryFlags';
 
 /** Minimal sky fill for headless / screenshot harness (`?no-pointer-lock`). */
 export default function HeadlessSkySphere() {
@@ -8,7 +9,7 @@ export default function HeadlessSkySphere() {
   const meshRef = useRef<Mesh>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock')) {
+    if (queryFlags().noPointerLock) {
       scene.fog = null;
     }
   }, [scene]);

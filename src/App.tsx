@@ -86,6 +86,7 @@ import { onPauseRequest } from './input/pauseBus';
 import { useInputStore } from './input/InputHub';
 import { isTouchInputMode } from './input/touchMode';
 import { stopHaptics } from './input/haptics';
+import { editQuery, queryFlags } from './config/queryFlags';
 
 // #485 C: the inspector is `?debug=1` only — a player never pays for its ~700 lines.
 const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
@@ -93,13 +94,11 @@ const DebugPanel = React.lazy(() => import('./components/DebugPanel'));
 // ---------------------------------------------------------------------------
 // Editor mode — ?editor=1 in dev only
 // ---------------------------------------------------------------------------
-// NOTE: URLSearchParams is evaluated at module load time (static), so
-// isEditorMode is a constant for the lifetime of the page.
-const urlParams = new URLSearchParams(window.location.search);
+// Evaluated at module load, so isEditorMode is a constant for the page's life.
 const isEditorMode =
   typeof import.meta !== 'undefined' &&
   (import.meta as any).env?.DEV === true &&
-  urlParams.get('editor') === '1';
+  queryFlags().editor;
 
 /** Game phase determines which overlays are visible */
 type GamePhase = 'menu' | 'playing' | 'paused';
@@ -196,9 +195,7 @@ function App({ graphicsBoot }: AppProps = {}) {
   const [cleanTest, setCleanTestActive] = useState(() => isCleanTestMode());
   const [physicsDebug, setPhysicsDebug] = useState(() => {
     if (isCleanTestMode()) return false;
-    const params = new URLSearchParams(window.location.search);
-    const raw = params.get('physicsDebug');
-    return raw === '1' || raw === 'true';
+    return queryFlags().physicsDebug;
   });
   // #374 Phase 2: false-color view of the sampled SWE bed. URL-only, no
   // DebugPanel toggle — it is a simulation inspector, not a play setting.
@@ -287,9 +284,7 @@ function App({ graphicsBoot }: AppProps = {}) {
 
   const [wireframeDebug, setWireframeDebug] = useState(() => {
     if (isCleanTestMode()) return false;
-    const params = new URLSearchParams(window.location.search);
-    const raw = params.get('wireframe');
-    return raw === '1' || raw === 'true';
+    return queryFlags().wireframe;
   });
 
   // Dynamic import for editor — keeps LevelEditor out of the production bundle.
@@ -354,32 +349,24 @@ function App({ graphicsBoot }: AppProps = {}) {
 
   useEffect(() => {
     debug.runStage('appBootstrap', () => {
-      if (window.location.search.includes('no-pointer-lock')) {
+      if (queryFlags().noPointerLock) {
         setSkipLoader(true);
       }
     });
   }, [debug.runStage]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (physicsDebug) {
-      params.set('physicsDebug', '1');
-    } else {
-      params.delete('physicsDebug');
-    }
-    const next = params.toString();
-    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+    editQuery((params) => {
+      if (physicsDebug) params.set('physicsDebug', '1');
+      else params.delete('physicsDebug');
+    });
   }, [physicsDebug]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (wireframeDebug) {
-      params.set('wireframe', '1');
-    } else {
-      params.delete('wireframe');
-    }
-    const next = params.toString();
-    window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+    editQuery((params) => {
+      if (wireframeDebug) params.set('wireframe', '1');
+      else params.delete('wireframe');
+    });
   }, [wireframeDebug]);
 
   const handleRendererPreferenceChange = useCallback((next: RendererPreference) => {
@@ -469,7 +456,7 @@ function App({ graphicsBoot }: AppProps = {}) {
   const requestPointerLockSafely = useCallback(() => {
     // Touch has no pointer to lock (iOS has no Pointer Lock at all): the start
     // button works on a plain tap.
-    if (window.location.search.includes('no-pointer-lock') || isScriptedInputMode() || isTouchInputMode()) return;
+    if (queryFlags().noPointerLock || isScriptedInputMode() || isTouchInputMode()) return;
     // Canvas may already be locked (e.g. PointerLockControls' own lockOnClick
     // handler beat us to it), or detached/swapped (renderer preference change
     // remounts the Canvas with a new key). Guard both to avoid the
@@ -590,7 +577,7 @@ function App({ graphicsBoot }: AppProps = {}) {
   // the player's to edit). A missing or broken one leaves the menu up.
   const riverStartedRef = useRef(false);
   useEffect(() => {
-    const riverId = new URLSearchParams(window.location.search).get('river');
+    const riverId = queryFlags().river;
     if (!riverId || !bootReady || riverStartedRef.current || getReplayGhostUrl()) return;
     riverStartedRef.current = true;
     void import('./systems/map/userRiverImport').then(({ loadSavedRiver }) => {

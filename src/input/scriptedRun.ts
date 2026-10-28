@@ -21,6 +21,7 @@ import type { RootState } from '@react-three/fiber';
 import { INPUT_FIXED_DT_MS } from './InputFrame';
 import { isGhostRecording } from '../systems/ghost/GhostRecorder';
 import { simCore } from '../sim/core/SimCore';
+import { currentSearch } from '../config/queryFlags';
 
 const SCRIPT_PREFIX = 'script:';
 
@@ -32,7 +33,7 @@ const SCRIPT_PREFIX = 'script:';
 const ACCUMULATOR_BIAS_SEC = 1e-6;
 
 /** `?input=script:<url>` → `<url>`, else null. */
-export function getInputScriptUrl(search: string = typeof window !== 'undefined' ? window.location.search : ''): string | null {
+export function getInputScriptUrl(search: string = currentSearch()): string | null {
   const value = new URLSearchParams(search).get('input');
   if (!value || !value.startsWith(SCRIPT_PREFIX)) return null;
   const url = value.slice(SCRIPT_PREFIX.length);
@@ -44,7 +45,7 @@ export function getInputScriptUrl(search: string = typeof window !== 'undefined'
  * (like `?ghost=`): a replay plays a run's recorded inputs, so it must come
  * from where the game is served.
  */
-export function getReplayGhostUrl(search: string = typeof window !== 'undefined' ? window.location.search : ''): string | null {
+export function getReplayGhostUrl(search: string = currentSearch()): string | null {
   const value = new URLSearchParams(search).get('replay');
   if (!value) return null;
   if (typeof window === 'undefined') return value;
