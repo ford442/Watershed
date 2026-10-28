@@ -96,6 +96,13 @@ const POOL_SIZE = GENERATION.POOL_SIZE;
 const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
 const GENERATION_THRESHOLD = GENERATION.THRESHOLD;
 const RECYCLE_MARGIN = GENERATION.RECYCLE_MARGIN;
+/**
+ * Sim seconds a new biome must stay under the camera before it commits.
+ * Counted from `update(dt)`, never a wall-clock timer: the commit moment
+ * feeds survival (cold biomes) and the water flow cap, so it must land on the
+ * same frame on every run of a script or replay.
+ */
+export const BIOME_DEBOUNCE_SEC = 0.4;
 
 /**
  * Centreline z span per segment curve. A segment's curve is built once and
@@ -131,8 +138,8 @@ export class ChunkManager {
   private lastReportedBiome = 'canyonSummer';
   private spawnPoints = new Map<number, THREE.Vector3>();
   private lastEnteredSegment = -1;
-  private biomeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingBiome: string | null = null;
+  private pendingBiomeSec = 0;
   private startIndex: number;
   private proceduralBaseSeed?: number;
   private chunkPool = new ChunkPool();
@@ -187,6 +194,7 @@ export class ChunkManager {
     this.pool = pool;
     this.activeOrder = activeOrder;
     this.initialized = true;
+    this.seedSpawnBiome(pool[0]?.segment ?? null);
 
     // One batched spawn update — avoids N Zustand/React flushes during cold boot.
     if (Object.keys(spawnBatch).length > 0) {
@@ -320,7 +328,7 @@ export class ChunkManager {
   // Per-frame update
   // ---------------------------------------------------------------------------
 
-  update(cameraZ: number): { poolChanged: boolean; biomeChanged?: string; segmentEntered?: number } {
+  update(cameraZ: number, dt = 0): { poolChanged: boolean; biomeChanged?: string; segmentEntered?: number } {
     if (!this.initialized) {
       return { poolChanged: false };
     }
@@ -379,23 +387,23 @@ export class ChunkManager {
 
     if (closestSegment && closestSegment.biome !== this.lastReportedBiome) {
       const newBiome = closestSegment.biome;
-      const segmentIndex = closestSegment.id;
 
-      // Debounce rapid biome toggles: wait 400ms before committing
-      if (this.biomeDebounceTimer) {
-        clearTimeout(this.biomeDebounceTimer);
+      // Debounce rapid biome toggles: the new biome commits once it has held
+      // for BIOME_DEBOUNCE_SEC of sim time (a toggle back restarts the count).
+      if (this.pendingBiome !== newBiome) {
+        this.pendingBiome = newBiome;
+        this.pendingBiomeSec = 0;
       }
-      this.pendingBiome = newBiome;
-      this.biomeDebounceTimer = setTimeout(() => {
-        if (this.pendingBiome === newBiome) {
-          this.lastReportedBiome = newBiome;
-          this.callbacks.onBiomeChange?.(newBiome, segmentIndex);
-          gameEvents.emit('biome-change', { biome: newBiome, segmentIndex });
-        }
-        this.pendingBiome = null;
-      }, 400);
+      this.pendingBiomeSec += Math.max(0, dt);
+      // ε: 24 × (1/60) sums to a hair under 0.4 in float64.
+      if (this.pendingBiomeSec >= BIOME_DEBOUNCE_SEC - 1e-9) {
+        this.clearBiomeDebounce();
+        this.reportBiome(newBiome, closestSegment.id);
+      }
 
       biomeChanged = newBiome;
+    } else {
+      this.clearBiomeDebounce();
     }
 
     if (poolChanged) {
@@ -587,11 +595,24 @@ export class ChunkManager {
   }
 
   private clearBiomeDebounce(): void {
-    if (this.biomeDebounceTimer) {
-      clearTimeout(this.biomeDebounceTimer);
-      this.biomeDebounceTimer = null;
-    }
     this.pendingBiome = null;
+    this.pendingBiomeSec = 0;
+  }
+
+  private reportBiome(biome: BiomeId, segmentIndex: number): void {
+    this.lastReportedBiome = biome;
+    this.callbacks.onBiomeChange?.(biome, segmentIndex);
+    gameEvents.emit('biome-change', { biome, segmentIndex });
+  }
+
+  /**
+   * The run starts in the spawn segment's biome: report it once at pool init
+   * (a map that opens in a glacier prelude is cold from frame 1), rather than
+   * leaving `lastReportedBiome` at a default the debounce then has to correct.
+   */
+  private seedSpawnBiome(spawnSegment: SegmentData | null): void {
+    if (!spawnSegment || spawnSegment.biome === this.lastReportedBiome) return;
+    this.reportBiome(spawnSegment.biome, spawnSegment.id);
   }
 }
 

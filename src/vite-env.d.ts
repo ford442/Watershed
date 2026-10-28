@@ -18,6 +18,8 @@ interface Window {
     stepScripted: (n: number) => number;
     /** True once the scripted source is loaded and the run is live. */
     isScriptedReady: () => boolean;
+    /** isScriptedReady's parts, for a harness to say which one never arrived. */
+    getScriptedReadiness: () => { scripted: boolean; live: boolean; swe: 'pending' | 'ready' | 'off'; sweActive: boolean };
     /** Checkpoint splits recorded so far this run (SplitRecorder). */
     getSplits: () => Array<{ segmentIndex: number; tMs: number; speed: number }>;
     /** SWE state checksum at each split, aligned with getSplits() (null where SWE was off). */

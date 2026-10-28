@@ -79,14 +79,20 @@ export function isWasmProvenanceMismatchError(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /**
+ * A Node-side env override (Vitest, the WASM integration suite); always
+ * undefined in a browser, which has no `process`.
+ */
+function nodeEnv(name: string): string | undefined {
+  const value = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
  * Resolve the WASM init deadline (ms). Precedence: env override, then ?wasmInitTimeout=,
  * then WASM_INIT_TIMEOUT_MS. Invalid values fall back to the default.
  */
 export function resolveWasmInitTimeoutMs(search?: string): number {
-  const envRaw =
-    typeof process !== 'undefined' && typeof process.env.WATERSHED_WASM_INIT_TIMEOUT_MS === 'string'
-      ? process.env.WATERSHED_WASM_INIT_TIMEOUT_MS
-      : undefined;
+  const envRaw = nodeEnv('WATERSHED_WASM_INIT_TIMEOUT_MS');
   if (envRaw != null && envRaw !== '') {
     const parsed = Number(envRaw);
     if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
@@ -160,10 +166,7 @@ function withArtifactStamp(url: string): string {
 export function resolvePublicAsset(path: string): string {
   const rawBase = getAssetBaseUrl();
   const baseWithSlash = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
-  const envBase =
-    typeof process !== 'undefined' && typeof process.env.WATERSHED_WASM_BASE === 'string'
-      ? process.env.WATERSHED_WASM_BASE
-      : undefined;
+  const envBase = nodeEnv('WATERSHED_WASM_BASE');
   const runtimeHref =
     typeof window !== 'undefined'
       ? window.location.href

@@ -134,6 +134,68 @@ export default tseslint.config(
     },
   },
 
+  // Sim time (#518 B). Gameplay runs on the frame delta / R3F's clock, never the
+  // wall clock: a scripted run, a replay or a ghost must give the same splits
+  // on a laptop, on CI and on a box under load. The input smoke used to find
+  // these a week after the merge; this rule finds them at the keyboard.
+  // Wall-clock reads that are not sim state go through src/utils/wallClock.ts
+  // (metadata stamps, telemetry). The allowlist below is the rest, each with
+  // its reason; adding to it needs one too.
+  {
+    files: [
+      'src/systems/**/*.{ts,tsx}',
+      'src/vehicles/**/*.{ts,tsx}',
+      'src/physics/**/*.{ts,tsx}',
+      'src/sim/**/*.{ts,tsx}',
+      'src/components/Obstacles/**/*.{ts,tsx}',
+    ],
+    ignores: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'src/**/__tests__/**',
+      'src/**/__mocks__/**',
+      // Storage: debounced localStorage writes (I/O pacing, not sim state).
+      'src/systems/persistence/**',
+      // Audio: fades and idle preload scheduling are presentation.
+      'src/systems/audio/AudioSystem.ts',
+      // Render-quality telemetry: frame-time sampling for adaptive LOD, which
+      // is off on a scripted / replay page (LODManager: isScriptedInputMode).
+      'src/systems/lod/LODManager.tsx',
+      // Loader: the native-module init timeout.
+      'src/systems/water/wasmLoader.ts',
+      // Diagnostic: the dev-only WGSL ↔ WASM parity page waits on GPU readback.
+      'src/systems/water/sweParity.ts',
+    ],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...['setTimeout', 'setInterval', 'requestAnimationFrame'].map((name) => ({
+          name,
+          message: `${name} paces gameplay by wall time. Count sim seconds from the frame delta (useFrame / update(dt)) instead.`,
+        })),
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...['window', 'globalThis', 'self'].flatMap((object) =>
+          ['setTimeout', 'setInterval', 'requestAnimationFrame'].map((property) => ({
+            object,
+            property,
+            message: `${object}.${property} paces gameplay by wall time. Count sim seconds from the frame delta instead.`,
+          })),
+        ),
+        {
+          object: 'performance',
+          property: 'now',
+          message: 'Sim code runs on sim time (frame delta / R3F clock). Telemetry: telemetryNowMs() from src/utils/wallClock.ts.',
+        },
+        {
+          object: 'Date',
+          property: 'now',
+          message: 'Sim code runs on sim time (frame delta / R3F clock). Metadata stamps: wallClockEpochMs() from src/utils/wallClock.ts.',
+        },
+      ],
+    },
+  },
+
   // Vitest globals (`describe`/`it`/`expect`/`vi`) — `globals: true` in the
   // vitest config, so there are no imports for the linter to see.
   {

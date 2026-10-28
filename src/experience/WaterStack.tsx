@@ -51,7 +51,6 @@ export function WaterPhysicsEffects({
         <WaterForceSystem
           vehicleRef={vehicleRef}
           vehicleType={vehicleType}
-          flowSpeed={flowSpeed}
           waterLevel={WATER_LEVEL}
         />
       )}

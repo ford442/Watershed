@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { BANK_CONFIG, JUMP_CONFIG } from '../constants';
 import { useGameStore } from '../../../systems/GameState';
+import type { RunnerJumpData } from './useRunnerPhysics';
 import {
   buildSegmentFrame,
   clearSegmentFrames,
@@ -129,11 +130,12 @@ describe('runnerAirControl helpers', () => {
 
   it('tickJumpStateMachine leaves ground and applies jump impulse', () => {
     const impulses: Array<{ tag: string; impulse: { x: number; y: number; z: number } }> = [];
-    const js = {
+    const js: RunnerJumpData = {
       state: 'grounded',
       hasDoubleJumped: false,
       airTime: 0,
       commitTimer: 0,
+      recoveryTimer: 0,
       timeSinceGrounded: 0,
       verticalVelocityOnLeave: 0,
       lastGroundY: 0,

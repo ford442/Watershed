@@ -1,7 +1,11 @@
 import type { Mock } from 'vitest';
 import * as THREE from 'three';
 
-import { createGameRenderer, nativeWebGPURendererParameters } from './createRenderer';
+import {
+  createGameRenderer,
+  nativeWebGPURendererParameters,
+  type GameRenderer,
+} from './createRenderer';
 import {
   CAPTURE_ENVELOPE,
   DEGRADED_ENVELOPE,
@@ -13,7 +17,7 @@ import {
   deriveRendererContextOptions,
   toContextAttributes,
 } from './deriveRendererContextOptions';
-import { createRiverMaterial } from '../utils/RiverShader';
+import { createRiverMaterial, type RiverShaderProgram } from '../utils/RiverShader';
 import { createCanyonMaterial } from '../materials/CanyonMaterial';
 import { createRiverNodeMaterial } from '../materials/RiverNodeMaterial';
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
@@ -275,8 +279,31 @@ function createMockWebGLContext(canvas: HTMLCanvasElement): WebGLRenderingContex
 
 let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
 
+/** canvas.getContext through its catch-all overload — what the context doubles implement. */
+type LooseGetContext = (
+  this: HTMLCanvasElement,
+  contextId: string,
+  options?: unknown
+) => RenderingContext | GPUCanvasContext | null;
+
+/**
+ * Brand flags three sets on every renderer at runtime (and the node renderer's
+ * backend) — @types/three does not declare them on WebGLRenderer.
+ */
+interface RendererBrand {
+  isWebGLRenderer?: boolean;
+  isWebGPURenderer?: boolean;
+  backend?: { isWebGPUBackend?: boolean };
+}
+function brandOf(renderer: GameRenderer): RendererBrand {
+  return renderer as RendererBrand;
+}
+
 beforeAll(() => {
   originalGetContext = HTMLCanvasElement.prototype.getContext;
+  // The real getContext is overloaded per context id; the double serves any id,
+  // so it is written against the catch-all `(string, options)` overload.
+  const passThrough = originalGetContext as LooseGetContext;
   HTMLCanvasElement.prototype.getContext = function (
     this: HTMLCanvasElement,
     type: string,
@@ -285,8 +312,8 @@ beforeAll(() => {
     if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
       return createMockWebGLContext(this) as unknown as RenderingContext;
     }
-    return originalGetContext.call(this, type, options);
-  };
+    return passThrough.call(this, type, options);
+  } as typeof HTMLCanvasElement.prototype.getContext;
 });
 
 afterAll(() => {
@@ -302,15 +329,15 @@ describe('createGameRenderer', () => {
 
   it('returns WebGLRenderer when preference is webgl', async () => {
     const renderer = await createGameRenderer(canvasProps, { preference: 'webgl' });
-    expect(renderer.isWebGLRenderer).toBe(true);
-    expect(renderer.isWebGPURenderer).toBeFalsy();
+    expect(brandOf(renderer).isWebGLRenderer).toBe(true);
+    expect(brandOf(renderer).isWebGPURenderer).toBeFalsy();
     renderer.dispose();
   });
 
   it('falls back to WebGLRenderer when preference is webgpu (legacy materials)', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const renderer = await createGameRenderer(canvasProps, { preference: 'webgpu' });
-    expect(renderer.isWebGLRenderer).toBe(true);
+    expect(brandOf(renderer).isWebGLRenderer).toBe(true);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('Legacy GLSL materials are incompatible with WebGPURenderer')
     );
@@ -330,7 +357,7 @@ describe('createGameRenderer', () => {
     expect(renderer.shadowMap.enabled).toBe(true);
     expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
     expect(getRendererShadowMapSize(renderer)).toBe(2048);
-    expect(renderer.logarithmicDepthBuffer).toBeFalsy();
+    expect(renderer.capabilities.logarithmicDepthBuffer).toBe(false);
     renderer.dispose();
   });
 
@@ -339,12 +366,12 @@ describe('createGameRenderer', () => {
     const canvas = document.createElement('canvas');
     const spy = vi
       .spyOn(canvas, 'getContext')
-      .mockImplementation((type: string, options?: unknown) => {
+      .mockImplementation(((type: string, options?: unknown) => {
         if (typeof options === 'object' && options !== null) {
           requested.push(options as Record<string, unknown>);
         }
         return createMockWebGLContext(canvas) as unknown as RenderingContext;
-      });
+      }) as typeof canvas.getContext);
 
     const contextOptions = deriveRendererContextOptions('high');
     const renderer = await createGameRenderer({ canvas }, {
@@ -373,12 +400,12 @@ describe('createGameRenderer', () => {
     const canvas = document.createElement('canvas');
     const spy = vi
       .spyOn(canvas, 'getContext')
-      .mockImplementation((type: string, options?: unknown) => {
+      .mockImplementation(((type: string, options?: unknown) => {
         if (typeof options === 'object' && options !== null) {
           seen.push(options as Record<string, unknown>);
         }
         return createMockWebGLContext(canvas) as unknown as RenderingContext;
-      });
+      }) as typeof canvas.getContext);
 
     // Both envelopes that relax the caveat check: the degraded player machine
     // the probe landed on, and the capture harness that pins its own.
@@ -408,12 +435,12 @@ describe('createGameRenderer', () => {
     const canvas = document.createElement('canvas');
     const spy = vi
       .spyOn(canvas, 'getContext')
-      .mockImplementation((type: string, options?: unknown) => {
+      .mockImplementation(((type: string, options?: unknown) => {
         if (typeof options === 'object' && options !== null) {
           seen.push(options as Record<string, unknown>);
         }
         return createMockWebGLContext(canvas) as unknown as RenderingContext;
-      });
+      }) as typeof canvas.getContext);
 
     const renderer = await createGameRenderer({ canvas }, {
       preference: 'webgl',
@@ -442,12 +469,12 @@ describe('createGameRenderer', () => {
     const canvas = document.createElement('canvas');
     const spy = vi
       .spyOn(canvas, 'getContext')
-      .mockImplementation((type: string, options?: unknown) => {
+      .mockImplementation(((type: string, options?: unknown) => {
         if (typeof options === 'object' && options !== null) {
           seen.push(options as Record<string, unknown>);
         }
         return createMockWebGLContext(canvas) as unknown as RenderingContext;
-      });
+      }) as typeof canvas.getContext);
 
     const renderer = await createGameRenderer(
       { canvas, preserveDrawingBuffer: true },
@@ -521,7 +548,9 @@ describe('createGameRenderer legacy material pipeline guard', () => {
       fragmentShader:
         '#include <map_fragment>\n#include <color_fragment>\n#include <roughnessmap_fragment>\nvoid main() {}',
     };
-    expect(() => riverMaterial.onBeforeCompile?.(mockShader as any)).not.toThrow();
+    // The installed handler takes a RiverShaderProgram and ignores the renderer.
+    const onBeforeCompile = riverMaterial.onBeforeCompile as (shader: RiverShaderProgram) => void;
+    expect(() => onBeforeCompile(mockShader)).not.toThrow();
 
     return { riverMaterial, canyonMaterial, riverNodeMaterial };
   }
@@ -533,8 +562,8 @@ describe('createGameRenderer legacy material pipeline guard', () => {
         { preference }
       );
 
-      expect(renderer.isWebGLRenderer).toBe(true);
-      expect((renderer as any).isWebGPURenderer).toBeFalsy();
+      expect(brandOf(renderer).isWebGLRenderer).toBe(true);
+      expect(brandOf(renderer).isWebGPURenderer).toBeFalsy();
 
       renderer.dispose();
     });
@@ -579,8 +608,8 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
       { preference: 'webgl' }
     );
 
-    expect(renderer.isWebGLRenderer).toBe(true);
-    expect((renderer as any).isWebGPURenderer).toBeFalsy();
+    expect(brandOf(renderer).isWebGLRenderer).toBe(true);
+    expect(brandOf(renderer).isWebGPURenderer).toBeFalsy();
     renderer.dispose();
   });
 
@@ -590,7 +619,7 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
       { preference: 'webgl', materialBackend: 'glsl' }
     );
 
-    expect((renderer as any).isWebGPURenderer).toBeFalsy();
+    expect(brandOf(renderer).isWebGPURenderer).toBeFalsy();
     renderer.dispose();
   });
 
@@ -600,9 +629,9 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
       { preference: 'webgl', materialBackend: 'tsl' }
     );
 
-    expect((renderer as any).isWebGPURenderer).toBe(true);
+    expect(brandOf(renderer).isWebGPURenderer).toBe(true);
     // forceWebGL: WebGL2 on the wire, node materials above it.
-    expect((renderer as any).backend?.isWebGPUBackend).toBe(false);
+    expect(brandOf(renderer).backend?.isWebGPUBackend).toBe(false);
     renderer.dispose();
   });
 
@@ -612,9 +641,9 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
       { preference: 'webgpu', materialBackend: 'tsl' }
     );
 
-    expect((renderer as any).isWebGPURenderer).toBe(true);
+    expect(brandOf(renderer).isWebGPURenderer).toBe(true);
     // forceWebGL: false — the renderer, not the gate, now picks the backend.
-    expect((renderer as any).backend?.isWebGPUBackend).toBe(true);
+    expect(brandOf(renderer).backend?.isWebGPUBackend).toBe(true);
     renderer.dispose();
   });
 
@@ -627,8 +656,8 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
         { preference: 'webgpu', materialBackend: 'tsl' }
       );
 
-      expect((renderer as any).isWebGPURenderer).toBe(true);
-      expect((renderer as any).backend?.isWebGPUBackend).toBe(false);
+      expect(brandOf(renderer).isWebGPURenderer).toBe(true);
+      expect(brandOf(renderer).backend?.isWebGPUBackend).toBe(false);
       renderer.dispose();
     } finally {
       spy.mockRestore();
@@ -653,7 +682,7 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
     );
 
     // Not the WebGLRenderer fallback, which would apply the same options.
-    expect((renderer as any).isWebGPURenderer).toBe(true);
+    expect(brandOf(renderer).isWebGPURenderer).toBe(true);
     expect(contextOptions.outputColorSpace).toBeDefined();
     expect(renderer.outputColorSpace).toBe(contextOptions.outputColorSpace);
     expect(renderer.toneMapping).toBe(contextOptions.toneMapping);
@@ -685,7 +714,7 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
 
     expect(water.backend).toBe('tsl');
     expect(water.material.type).toBe('MeshBasicNodeMaterial');
-    expect((renderer as any).isWebGPURenderer).toBe(true);
+    expect(brandOf(renderer).isWebGPURenderer).toBe(true);
 
     // NOTE: node materials cannot be *compiled* in jsdom — the test double for
     // WebGPURenderer is a classic WebGLRenderer, which has no node pipeline (the
@@ -739,7 +768,7 @@ describe('node renderer honors the boot graphics contract', () => {
         contextOptions: deriveRendererContextOptions('high', { envelope }),
       });
 
-      expect((renderer as any).isWebGPURenderer).toBe(true);
+      expect(brandOf(renderer).isWebGPURenderer).toBe(true);
       expect(calls).toHaveLength(1);
       expect(calls[0].type).toBe('webgl2');
       expect(calls[0].options).toEqual(rendererContextAttributesFor(envelope));
@@ -842,7 +871,7 @@ describe('node renderer honors the boot graphics contract', () => {
       contextOptions: deriveRendererContextOptions('high'),
     });
 
-    expect((renderer as any).isWebGPURenderer).toBeFalsy();
+    expect(brandOf(renderer).isWebGPURenderer).toBeFalsy();
     // One context on this canvas, ever: the classic fallback was handed it.
     expect(calls).toHaveLength(1);
     expect(renderer.getContext()).toBe(spy.mock.results[0].value);
@@ -863,7 +892,7 @@ describe('node renderer honors the boot graphics contract', () => {
       contextOptions: deriveRendererContextOptions('high', { envelope: HARDWARE_ENVELOPE }),
     });
 
-    expect((renderer as any).backend?.isWebGPUBackend).toBe(true);
+    expect(brandOf(renderer).backend?.isWebGPUBackend).toBe(true);
     expect(await lastNodeParameters()).toEqual({
       canvas,
       alpha: true,

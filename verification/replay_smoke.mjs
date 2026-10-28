@@ -147,7 +147,10 @@ async function runOnce(label, query, { clickStart, ghostJson }) {
     await page.waitForFunction(() => !!window.__watershedScreenshot?.stepScripted, { timeout: 120_000 });
     const readyDeadline = Date.now() + 120_000;
     while (!(await page.evaluate(() => window.__watershedScreenshot.isScriptedReady()))) {
-      if (Date.now() > readyDeadline) throw new Error('run never went live (ghost / script load, vehicle mount)');
+      if (Date.now() > readyDeadline) {
+        const parts = await page.evaluate(() => window.__watershedScreenshot.getScriptedReadiness?.() ?? null);
+        throw new Error(`run never went live (ghost / script load, vehicle mount) — readiness ${JSON.stringify(parts)}`);
+      }
       await sleep(250);
     }
 

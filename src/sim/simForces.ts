@@ -34,6 +34,7 @@
  * This module is imported by the Rapier worker and the main thread for the wire
  * helpers only; the batch half needs a module and runs only in the sim worker.
  */
+import { telemetryNowMs } from '../utils/wallClock';
 import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import {
   SWE_STAGE_SPEED_BOOST,
@@ -212,7 +213,7 @@ export function computeSimForces(
   samples: Float64Array,
   count: number,
   out: Float64Array,
-  now: () => number = () => performance.now(),
+  now: () => number = telemetryNowMs,
 ): SimForceStats {
   const batch = handle as MutableSimForceBatch;
   if (batch.disposed || count <= 0) return { calls: 0, computeMicros: 0 };

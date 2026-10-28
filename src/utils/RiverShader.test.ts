@@ -5,7 +5,7 @@ import {
   mossNormalFactor,
   worldNormalFromLocal,
 } from '../materials/tsl/riverConstants';
-import { extendRiverMaterial, updateRiverMaterial } from './RiverShader';
+import { extendRiverMaterial, updateRiverMaterial, type RiverShaderProgram } from './RiverShader';
 
 describe('riverConstants', () => {
   test('mossNormalFactor peaks on upward-facing normals', () => {
@@ -66,7 +66,11 @@ describe('extendRiverMaterial', () => {
         uWeatherWetness: { value: 0 },
       },
     };
-    material.onBeforeCompile(shader);
+    // The handler extendRiverMaterial installs takes a RiverShaderProgram and no
+    // renderer; drive it with a uniforms-only stub (narrower than three's
+    // WebGLProgramParametersWithUniforms + WebGLRenderer signature).
+    const onBeforeCompile = material.onBeforeCompile as (shader: Pick<RiverShaderProgram, 'uniforms'>) => void;
+    onBeforeCompile(shader);
     material.userData.shader = shader;
 
     updateRiverMaterial(material, 1.5, { waterLevel: 12, weatherWetness: 0.4 });

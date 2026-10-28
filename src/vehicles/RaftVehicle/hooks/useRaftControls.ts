@@ -124,6 +124,7 @@ export function useRaftControls({
     }
 
     timeRef.current += delta;
+    raftVehicle.current.advanceClock(delta);
 
     // Survival (wetness / core temp) ticks before stamina so this frame's paddle
     // economy already reflects it. No run session (free play, editor) → null, and

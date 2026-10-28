@@ -9,6 +9,7 @@
  * runs on one thread and the Rapier worker computes no force at all.
  */
 
+import { telemetryNowMs } from '../utils/wallClock';
 import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
 import { readWaterForceDiagnostics, toNativeWaterForceConfig, DISABLED_WATER_FORCE, type PhysicsWorkerWaterTickConfig } from './physicsWorkerWaterForces';
 import type { WaterForceDiagnostics } from './physicsWorkerRegistry';
@@ -18,10 +19,8 @@ export interface HullMirrorState {
   velocity: { x: number; y: number; z: number };
 }
 
-/** High-resolution clock, degrading to Date.now where performance is absent. */
-function now(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now();
-}
+/** Compute-time telemetry clock (never fed back into the force). */
+const now = telemetryNowMs;
 
 /** calculateWaterForceFallback on the tick params, as WaterForceDiagnostics ('fallback'). */
 export function computeHullMirrorForce(

@@ -911,7 +911,29 @@ async function run() {
   // SwiftShader in-run frame is mostly sky and HUD, so two set-piece captures
   // can be near-identical without the set-piece being missing. The mechanics
   // are gated by unit tests; this is the eyes-on check for a real GPU.
-  report.passed = report.requiredPassed && nativeOnce;
+  //
+  // Pixel gates (#518 C): a best-effort shot's diff is informational, but a
+  // shot that captured and has no baseline fails (a new shot lands with its
+  // PNG), and so does a required shot over threshold.
+  const requiredLabels = new Set(SHOTS.filter((sh) => sh.required).map(shotLabel));
+  report.missingBaselines = report.comparisons
+    .filter((c) => c.status === 'missing-baseline')
+    .map((c) => c.label);
+  report.requiredDiffFailures = report.comparisons
+    .filter((c) => requiredLabels.has(c.label) && (c.status === 'diff-fail' || c.status === 'size-mismatch'))
+    .map((c) => c.label);
+  report.requiredHardPageErrors = report.captures
+    .filter((c) => c.required && (c.hardPageErrors ?? 0) > 0)
+    .map((c) => c.label);
+  report.informationalDiffFailures = report.comparisons
+    .filter((c) => !requiredLabels.has(c.label) && (c.status === 'diff-fail' || c.status === 'size-mismatch'))
+    .map((c) => c.label);
+  report.passed =
+    report.requiredPassed &&
+    nativeOnce &&
+    report.missingBaselines.length === 0 &&
+    report.requiredDiffFailures.length === 0 &&
+    report.requiredHardPageErrors.length === 0;
 
   const reportPath = path.join(OUT_DIR, 'report.json');
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
@@ -919,6 +941,10 @@ async function run() {
   console.log('\n── visual-smoke summary ──');
   console.log(`Captures: ${report.captures.length}`);
   console.log(`Required passed: ${report.requiredPassed}`);
+  console.log(`Missing baselines: ${report.missingBaselines.join(', ') || 'none'}`);
+  console.log(`Required over threshold: ${report.requiredDiffFailures.join(', ') || 'none'}`);
+  console.log(`Required with hard page errors: ${report.requiredHardPageErrors.join(', ') || 'none'}`);
+  console.log(`Best-effort over threshold (informational): ${report.informationalDiffFailures.join(', ') || 'none'}`);
   console.log(`Native fetched once: ${report.nativeFetch.status}`);
   console.log(`Hard page errors: ${hard.length}`);
   console.log(`Soft F-8 errors: ${soft.length}`);

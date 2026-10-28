@@ -5,6 +5,7 @@
  * StartMenu choices, then read by forecast / scoring / physics systems.
  */
 
+import { wallClockEpochMs } from '../../utils/wallClock';
 import { ACTIVE_MAP_ID, getMapDefinition, type MapDefinition, type MapRegistryId } from '../../maps/registry';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
 import { buildCampaignStack } from '../../maps/campaign';
@@ -449,7 +450,7 @@ export function advanceRunSessionMap(
     segmentIndex,
     score,
     survival: { ...previousSurvival },
-    savedAtMs: Date.now(),
+    savedAtMs: wallClockEpochMs(),
   };
 
   activeSession = {
@@ -480,7 +481,7 @@ export function saveJourneyCheckpoint(options: {
     segmentIndex: options.segmentIndex,
     score: options.score,
     survival: { ...activeSession.survival },
-    savedAtMs: Date.now(),
+    savedAtMs: wallClockEpochMs(),
   };
   activeSession = {
     ...activeSession,

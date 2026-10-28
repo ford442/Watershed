@@ -1,0 +1,9 @@
+{
+  "//": "Tests, mocks and test helpers, typechecked in CI (pnpm typecheck:test). Vitest only strips types, so nothing else catches a wrong mock type. The production config (tsconfig.json) never sees vitest/globals.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "vitest/globals"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}

@@ -32,6 +32,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<RapierRigidBody>(null);
   const raftMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
   const { camera } = useThree();
+  // R3F's clock: the fixed sim clock under `frameloop="never"` (scripted / replay).
+  const getR3fState = useThree((state) => state.get);
   // Default-on: the worker runs unless the browser can't host it, the player
   // turned it off, or ?physicsWorker=0 is set. Read once per mount — switching
   // mid-session would strand the Rapier body between two authorities.
@@ -86,7 +88,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     const tickParams = getPhysicsWorkerTickParams();
     const waterForceConfig = buildRaftWorkerWaterForceConfig(
       tickParams,
-      performance.now() / 1000,
+      getR3fState().clock.elapsedTime,
       true,
     );
     // The TS mirror for the state this step starts from (the body mirrors the

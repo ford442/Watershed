@@ -6,14 +6,14 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PALETTE_ONLY_BIOMES, TRACK_BIOMES } from './TrackBiomes';
-import { BIOME_HUD_LABELS, LEGACY_BIOME_ALIASES, normalizeBiomeId } from './biomes';
+import { BIOME_HUD_LABELS, LEGACY_BIOME_ALIASES, normalizeBiomeId, type BiomeId } from './biomes';
 import { MAP_REGISTRY, mapRegistryIds } from '../maps/registry';
 import { BiomeSelector } from '../components/LevelEditor/BiomeSelector';
 import levelSchema from '../formats/level.schema.json';
 import reachSchema from '../formats/reach.schema.json';
 
-function shippedBiomes(): Set<string> {
-  const biomes = new Set<string>();
+function shippedBiomes(): Set<BiomeId> {
+  const biomes = new Set<BiomeId>();
   for (const id of mapRegistryIds()) {
     for (const segment of MAP_REGISTRY[id].levelData.segments) {
       if (segment.biomeOverride) biomes.add(normalizeBiomeId(segment.biomeOverride));

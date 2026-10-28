@@ -14,6 +14,7 @@
  *   for the Rapier worker's hull over its MessagePort (HULL), both sampled on
  *   the live grid at the origin the main thread last placed it at.
  */
+import { telemetryNowMs } from '../utils/wallClock';
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createWasmSweSim, type SweSim } from '../systems/water/sweSim';
 import { SWE_REST_INFLOW, type SweInflow } from '../systems/water/sweScroll';
@@ -74,7 +75,7 @@ interface RouterState {
 export function createSimWorkerCore(
   wasm: WatershedNativeModule,
   post: (response: SimWorkerResponse, transfer?: Transferable[]) => void,
-  now: () => number = () => performance.now(),
+  now: () => number = telemetryNowMs,
 ): SimWorkerCore {
   let sim: SweSim | null = null;
   let gridId = -1;

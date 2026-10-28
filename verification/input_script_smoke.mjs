@@ -145,7 +145,10 @@ async function runOnce(runIdx) {
     // costs wall time only: nothing physics-side moves until the run is live.
     const readyDeadline = Date.now() + 120_000;
     while (!(await page.evaluate(() => window.__watershedScreenshot.isScriptedReady()))) {
-      if (Date.now() > readyDeadline) throw new Error('scripted run never went live (script load / vehicle mount)');
+      if (Date.now() > readyDeadline) {
+        const parts = await page.evaluate(() => window.__watershedScreenshot.getScriptedReadiness?.() ?? null);
+        throw new Error(`scripted run never went live (script load / vehicle mount) — readiness ${JSON.stringify(parts)}`);
+      }
       await sleep(250);
     }
     const bootMs = Date.now() - wallStart;
