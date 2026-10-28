@@ -6,7 +6,7 @@
  *   ui/       useGamePhase + MenuShell — menu / playing / paused and the
  *             overlays that show it
  *   harness/  dev and test switches (`?debug`, `?cleanTest`, `?replay`,
- *             `?river`, `?editor`, …) — their overlays fetched behind the flags
+ *             `?river`, `?editor`, `?screenshot`, …) — their code fetched behind the flags
  *
  * Every hook runs before the unsupported-tier and editor branches, so their
  * effects (persistence, settings rehydration, the boot clamps) run on every
