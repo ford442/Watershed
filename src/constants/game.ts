@@ -5,12 +5,6 @@ export const WALL_WATERLINE_Y = 13;
 // SCIENTIFIC PHYSICS CONSTANTS (from Wolfram Alpha)
 // =============================================================================
 
-/** Fresh water density at typical temperatures (kg/m³) */
-export const WATER_DENSITY = 1000;
-
-/** Human body density - humans barely sink (kg/m³) */
-export const HUMAN_DENSITY = 1038;
-
 /** Gravitational acceleration (m/s²) */
 export const GRAVITY = 9.80665;
 

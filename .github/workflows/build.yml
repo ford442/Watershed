@@ -52,10 +52,10 @@ jobs:
       # committed baseline — lower it whenever the count drops, never raise it.
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
-      # 138 → 20 in #521 F: what is left is react-hooks/exhaustive-deps where
-      # the fix would change when a memo / effect re-runs, and src/vehicles/.
+      # 138 → 19 in #521 F: what is left is react-hooks/exhaustive-deps where
+      # the fix would change when a memo / effect re-runs.
       - name: Lint
-        run: pnpm lint --max-warnings 20
+        run: pnpm lint --max-warnings 19
 
   build-without-emscripten:
     name: Build without Emscripten

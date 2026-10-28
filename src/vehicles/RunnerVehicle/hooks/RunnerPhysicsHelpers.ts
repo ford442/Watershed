@@ -105,15 +105,10 @@ type SlopeArgs = {
   pos?: Vec3Like;
 };
 
-/** The surface pitch under the runner (degrees, ±60), also written to `slopeState.current.sampledAngle`. */
-export function calculateSlopeAngle(args: SlopeArgs): number {
-  sampleSlope(args);
-  return args.slopeState.current.sampledAngle;
-}
-
 /**
- * `calculateSlopeAngle` without the return: the per-step caller reads
- * `sampledAngle`. A double returned from (or passed into) a call V8 does not
+ * The surface pitch under the runner (degrees, ±60) into
+ * `slopeState.current.sampledAngle`, with the bank angle and ground normal. No
+ * return value on purpose: a double returned from (or passed into) a call V8 does not
  * inline is boxed into a fresh heap number, so the step's hot path keeps its
  * numbers in fields (#521 D).
  */

@@ -132,21 +132,3 @@ export function createRunnerStepScratch(): RunnerStepScratch {
 export function resetImpulseTally(scratch: RunnerStepScratch): void {
   for (let i = 0; i < RUNNER_IMPULSE_TAGS.length; i += 1) scratch.impulseUsed[RUNNER_IMPULSE_TAGS[i]] = false;
 }
-
-/** Apply + tally `(x, y, z)` under `tag` through the scratch impulse (no literal). */
-export function applyImpulseXYZ(scratch: RunnerStepScratch, tag: RunnerImpulseTag, x: number, y: number, z: number): void {
-  const impulse = scratch.impulse;
-  impulse.x = x;
-  impulse.y = y;
-  impulse.z = z;
-  scratch.applyImpulse(tag, impulse);
-}
-
-/** `body.setLinvel` (warm, finite) through the scratch vector. */
-export function setLinvelXYZ(scratch: RunnerStepScratch, x: number, y: number, z: number): void {
-  const v = scratch.impulse;
-  v.x = x;
-  v.y = y;
-  v.z = z;
-  scratch.setLinvelSafe(v);
-}

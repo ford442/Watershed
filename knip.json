@@ -6,7 +6,9 @@
     "src/debug/postParity.ts",
     "src/systems/water/sweParity.ts"
   ],
-  "project": ["src/**/*.{ts,tsx}"],
+  "project": [
+    "src/**/*.{ts,tsx}"
+  ],
   "ignoreExportsUsedInFile": true,
   "rules": {
     "duplicates": "off"
@@ -16,13 +18,12 @@
     "emscripten/build-host/watershed_host_smoke",
     "emscripten/build-host-asan/watershed_host_smoke"
   ],
-  "ignoreDependencies": ["@breezystack/lamejs"],
+  "ignoreDependencies": [
+    "@breezystack/lamejs"
+  ],
   "ignoreIssues": {
-    "src/materials/**/*NodeMaterial*.ts": ["exports"],
-    "src/vehicles/RaftVehicle/audio.ts": ["exports"],
-    "src/vehicles/RaftVehicle/constants.ts": ["exports"],
-    "src/vehicles/RunnerVehicle/hooks/RunnerPhysicsHelpers.ts": ["exports"],
-    "src/vehicles/RunnerVehicle/hooks/runnerStepScratch.ts": ["exports"],
-    "src/vehicles/utils/shelfLaunch.ts": ["exports"]
+    "src/materials/**/*NodeMaterial*.ts": [
+      "exports"
+    ]
   }
 }

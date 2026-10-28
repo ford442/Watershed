@@ -187,9 +187,9 @@ the frame callback.
 
 ## The ratchet
 
-`.github/workflows/build.yml` runs `pnpm lint --max-warnings 20` (280 when it
+`.github/workflows/build.yml` runs `pnpm lint --max-warnings 19` (280 when it
 was introduced — 296 minus the 16 warnings the #415 annotations suppress —
-then 249, 150 after #503, 138, and 20 after #521 F, which left no R3F
+then 249, 150 after #503, 138, and 19 after #521 F, which left no R3F
 allocation warning anywhere). Errors still fail the build,
 and so does any *new* warning; the existing backlog stays non-blocking.
 
