@@ -9,18 +9,15 @@
  * mirrors rely on) move the field identically.
  */
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { SWE_BUDGETS } from './sweQuality';
 import { advanceSweWindow, scrollField, type SweWindow } from './sweScroll';
 import { createWasmSweSim } from './sweSim';
 import type { WatershedNativeModule } from './wasmAbi';
 import { createSWEGrid } from './WatershedWasm';
-import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
+import { loadNativeFromDisk, NATIVE_WASM_PATH } from '../../testing/nativeFromDisk';
 
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const wasmPath = NATIVE_WASM_PATH;
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 

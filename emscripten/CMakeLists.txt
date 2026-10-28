@@ -84,6 +84,14 @@ if(EMSCRIPTEN)
         target_compile_options(watershed_compute PRIVATE ${EM_COMPILE_FLAGS} -fno-exceptions -fno-rtti)
         target_compile_options(watershed_native PRIVATE ${EM_COMPILE_FLAGS} -fno-exceptions -fno-rtti)
         target_compile_definitions(watershed_native PRIVATE WATERSHED_TRAP_TEST=1)
+        # libc++ hardening: every std::span / std::vector index and every
+        # subspan is bounds-checked in the wasm32 build, the one the host
+        # _GLIBCXX_ASSERTIONS builds stand in for. emcc 3.1.56 ships libc++ 17,
+        # whose all-checks mode is _LIBCPP_ENABLE_DEBUG_MODE; from libc++ 18 it
+        # is -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE (switch
+        # at the next emcc pin bump). A failed check is a named abort.
+        target_compile_definitions(watershed_compute PRIVATE _LIBCPP_ENABLE_DEBUG_MODE=1)
+        target_compile_definitions(watershed_native PRIVATE _LIBCPP_ENABLE_DEBUG_MODE=1)
     else()
         # Every TU, bindings.cpp included, is -fno-rtti / -fno-exceptions:
         # the C ABI (#467) has no Embind typeid to match, so nothing needs RTTI.
@@ -164,10 +172,18 @@ if(EMSCRIPTEN)
 
     # No FILESYSTEM: nothing touches files. emmalloc: a handful of long-lived
     # grid / SoA blocks, so the small allocator beats dlmalloc on size.
+    # DYNAMIC_EXECUTION=0: the glue may not eval / new Function — the CSP
+    # claim (script-src 'self' 'wasm-unsafe-eval', WASM.md) checked at link
+    # time. SUPPORT_LONGJMP=0: no setjmp, so no longjmp runtime can be linked.
+    # Both are byte-for-byte no-ops on today's pair; they make a future need
+    # for either a link error instead of a silent change. (SUPPORT_ERRNO=0 is
+    # deprecated and a no-op in emcc 3.1.56: its setErrNo library is gone.)
     target_link_options(watershed_native PRIVATE
         "SHELL:${EM_OPT_FLAGS}"
         "SHELL:-s WASM_BIGINT=1"
         "SHELL:-s FILESYSTEM=0"
+        "SHELL:-s DYNAMIC_EXECUTION=0"
+        "SHELL:-s SUPPORT_LONGJMP=0"
         "SHELL:-s MALLOC=emmalloc"
         "SHELL:-s ALLOW_MEMORY_GROWTH=0"
         "SHELL:-s ABORTING_MALLOC=0"

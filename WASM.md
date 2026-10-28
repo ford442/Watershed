@@ -198,7 +198,9 @@ Both CMake configures set `CMAKE_EXPORT_COMPILE_COMMANDS ON`:
 | Host (`emscripten/build-host`) | `emscripten/build-host/compile_commands.json` (copied to `emscripten/compile_commands.json`) | clangd via repo-root `.clangd` |
 | WASM (`emscripten/build`) | `emscripten/build/compile_commands.json` (`em++`) | not for editing on machines without emsdk |
 
-After clone, `pnpm test:native` configures + builds the host tree (`emscripten/build-host`), which generates clangd's `compile_commands.json` there. Do not commit generated compile databases, and do not symlink them to the repo root — `emscripten/build-host` is the single source of truth for clangd. Host smoke pins buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping + bump golden).
+After clone, `pnpm test:native` configures + builds the host tree (`emscripten/build-host`), which generates clangd's `compile_commands.json` there and refreshes the `emscripten/compile_commands.json` copy (`pnpm lint:native` refreshes it too, without building). Do not commit generated compile databases, and do not symlink them to the repo root — `emscripten/build-host` is the single source of truth for clangd.
+
+The repo-root `.clangd` reads that host database for every file under `emscripten/`, then adds `--target=wasm32-unknown-emscripten -msimd128 -mbulk-memory` and the pinned emsdk's sysroot for the TUs that ship in the wasm. The editor therefore sees the `wasm_simd128` branch of `simdf32.h` (the shipped one, not the host's SSE2 branch) and wasm32's 32-bit `size_t`. Host-only sources (`host_smoke.cpp`, `*_fuzz.cpp`, `fuzz_input.h`, `*_goldens.h`, `native_digest.h`) keep the host flags. The sysroot is `./emsdk`, where `bash scripts/emsdk-pinned.sh` installs it; without it, clangd cannot find the C++ headers for the shipped TUs. Host smoke pins buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping + bump golden).
 
 ### Linear memory budget
 
@@ -307,7 +309,15 @@ the shipped pair, the table or the version). With a Debug pair in `public/` (not
 | Variant | Flags |
 |---------|-------|
 | Release | `-s STACK_SIZE=64KB` (the emcc 3.1.56 default, named), `-s STRICT=1` (+ `--no-entry`: STRICT stops assuming a `main`), `--emit-symbol-map` |
-| Debug | `-s STACK_SIZE=256KB -s STACK_OVERFLOW_CHECK=2`, `-fno-exceptions -fno-rtti` at compile as in Release, `--emit-symbol-map`, `ENVIRONMENT='web,worker,node'` (so vitest can load it), `WATERSHED_TRAP_TEST` |
+| Debug | `-s STACK_SIZE=256KB -s STACK_OVERFLOW_CHECK=2`, `-fno-exceptions -fno-rtti` at compile as in Release, `--emit-symbol-map`, `ENVIRONMENT='web,worker,node'` (so vitest can load it), `WATERSHED_TRAP_TEST`, libc++ hardening (`_LIBCPP_ENABLE_DEBUG_MODE=1`: every `std::span` / `std::vector` index and subspan checked; emcc 3.1.56 ships libc++ 17, so this is the pre-18 spelling of `_LIBCPP_HARDENING_MODE_EXTENSIVE` — switch at the next pin bump) |
+| Both | `-s DYNAMIC_EXECUTION=0` (the glue may not `eval` / `new Function`: the CSP claim, enforced at link), `-s SUPPORT_LONGJMP=0`. Both are byte-for-byte no-ops on today's pair; they turn a future need for either into a link error. (`SUPPORT_ERRNO` is deprecated and a no-op in 3.1.56.) |
+
+CI's `wasm-debug` job builds the Debug pair aside and runs `smoke_test.mjs`, `pnpm test:wasm`,
+`pnpm test:wasm:parity`, `wasmSentinels.test.ts` and `wasmTrap.test.ts` against it, with
+`WATERSHED_NATIVE_DIR=emscripten/build-debug/out` (read by `src/testing/nativeFromDisk.ts` and
+`smoke_test.mjs`; default `public/`). That is bounds checking in real wasm32 — 32-bit `size_t`,
+SAFE_HEAP on every load and store — which the LP64 host sanitizer builds cannot give. Locally:
+`pnpm build:wasm:debug && WATERSHED_NATIVE_DIR=emscripten/build-debug/out pnpm test:wasm`.
 
 The SWE solver scratch (`swe.cpp` `Scratch`) only grows, so a session stepping two grids of
 different sizes no longer reallocates on every alternation.

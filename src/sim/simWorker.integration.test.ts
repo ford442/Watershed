@@ -24,8 +24,6 @@
  * Gated like the other integration tests (`pnpm test:wasm`).
  */
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { NativeWaterForceConfig, NativeWaterForceResult, WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createWaterForceBatch } from '../systems/water/WatershedWasm';
@@ -56,10 +54,9 @@ import { createSplashIntegrator, createWaterfallIntegrator } from '../systems/po
 import { ParticlePool, VFXParticle } from '../systems/pools/ParticlePool';
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { heightfieldThumbSize, summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
-import { loadNativeFromDisk } from '../testing/nativeFromDisk';
+import { loadNativeFromDisk, NATIVE_WASM_PATH } from '../testing/nativeFromDisk';
 
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const wasmPath = NATIVE_WASM_PATH;
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 

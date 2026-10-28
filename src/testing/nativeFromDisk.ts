@@ -12,9 +12,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { bindNativeModule, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import type { WatershedGlueModule } from '../systems/water/wasmLoader';
 
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
-export const NATIVE_WASM_PATH = resolve(publicDir, 'watershed_native.wasm');
-export const NATIVE_GLUE_PATH = resolve(publicDir, 'watershed_native.js');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+/**
+ * Directory of the pair under test: public/ (the shipped pair) unless
+ * WATERSHED_NATIVE_DIR names another, relative to the repo root — CI's
+ * Debug-wasm job points it at emscripten/build-debug/out.
+ */
+export const NATIVE_DIR = resolve(repoRoot, process.env.WATERSHED_NATIVE_DIR ?? 'public');
+/** True when the pair under test is the shipped one in public/. */
+export const NATIVE_IS_SHIPPED = NATIVE_DIR === resolve(repoRoot, 'public');
+export const NATIVE_WASM_PATH = resolve(NATIVE_DIR, 'watershed_native.wasm');
+export const NATIVE_GLUE_PATH = resolve(NATIVE_DIR, 'watershed_native.js');
 
 /** True when the pair exists on disk (it is committed, so normally always). */
 export function nativePairOnDisk(): boolean {

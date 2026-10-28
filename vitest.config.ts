@@ -16,6 +16,14 @@ export default mergeConfig(
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/setupTests.ts'],
+      server: {
+        deps: {
+          // The emscripten glue loads as Node loads it, untransformed: Vite's
+          // web transform rewrites its `new URL('./', import.meta.url)` to an
+          // http:// URL, which the Debug glue (built for node too) rejects.
+          external: [/watershed_native\.js$/],
+        },
+      },
       alias: {
         'three/webgpu': threeWebgpuMock,
         'three/tsl': threeWebgpuMock,

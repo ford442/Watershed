@@ -11,14 +11,11 @@
  * watershed_native and asserts native ≈ TS within a float epsilon.
  */
 
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { NativeWaterForceResult, WatershedNativeModule } from '../../systems/water/wasmAbi';
 import { calculateWaterForceFallback } from '../../systems/water/waterForceFallback';
 import { createWaterForceBatch } from '../../systems/water/WatershedWasm';
 import { WATER_FORCE_FIXTURES } from './waterForceFixtures';
-import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
+import { loadNativeFromDisk, nativePairOnDisk } from '../../testing/nativeFromDisk';
 
 /** Committed TS-fallback results, rounded to 4dp. Regenerate deliberately. */
 const EXPECTED: NativeWaterForceResult[] = [
@@ -116,11 +113,7 @@ describe('water-force fixtures — TypeScript fallback', () => {
 // opt-in via WATERSHED_WASM_INTEGRATION=1. Load from disk (file:// + instantiateWasm)
 // the same way emscripten/smoke_test.mjs does — getWasm() uses the Vite public URL
 // which jsdom cannot import.
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
-const gluePath = resolve(publicDir, 'watershed_native.js');
-const runNative =
-  process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath) && existsSync(gluePath);
+const runNative = process.env.WATERSHED_WASM_INTEGRATION === '1' && nativePairOnDisk();
 const describeNative = runNative ? describe : describe.skip;
 
 

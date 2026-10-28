@@ -10,12 +10,10 @@
  * Gated like the other integration tests (`pnpm test:wasm`): needs public/*.wasm.
  */
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
 import { bindChoreWasm, createWatershedCpuHost, resetChoreWasmBinding } from './watershedHost';
-import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
+import { loadNativeFromDisk, NATIVE_WASM_PATH } from '../../testing/nativeFromDisk';
 
 const loaded = vi.hoisted(() => ({ mod: null as WatershedNativeModule | null }));
 
@@ -25,8 +23,7 @@ vi.mock('../../systems/water/wasmLoader', async (importOriginal) => ({
   getWasm: () => (loaded.mod ? Promise.resolve(loaded.mod) : Promise.reject(new Error('not loaded'))),
 }));
 
-const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
-const wasmPath = resolve(publicDir, 'watershed_native.wasm');
+const wasmPath = NATIVE_WASM_PATH;
 const runIntegration = process.env.WATERSHED_WASM_INTEGRATION === '1' && existsSync(wasmPath);
 const describeIntegration = runIntegration ? describe : describe.skip;
 

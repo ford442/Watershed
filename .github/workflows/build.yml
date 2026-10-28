@@ -352,6 +352,60 @@ jobs:
             emscripten/watershed_native.symbols \
             src/systems/water/wasmArtifactStamp.ts
 
+  # The Debug wasm (SAFE_HEAP, ASSERTIONS=2, STACK_OVERFLOW_CHECK=2, libc++
+  # debug-mode hardening) under the same integration suites as the shipped
+  # pair: bounds are checked in real wasm32, where size_t is 32 bits and an
+  # out-of-range span index is an abort instead of a silent read. The host
+  # ASan / fuzz builds are LP64 and cannot see that. Built aside
+  # (emscripten/build-debug/out); nothing here writes public/.
+  wasm-debug:
+    name: Debug WASM (SAFE_HEAP + libc++ hardening) integration
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_WASM_INTEGRATION: "1"
+      WATERSHED_NATIVE_DIR: emscripten/build-debug/out
+      PUPPETEER_SKIP_DOWNLOAD: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.56
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile the Debug wasm
+        run: pnpm build:wasm:debug
+
+      - name: Shipped pair untouched
+        run: |
+          test -f emscripten/build-debug/out/watershed_native.wasm
+          git diff --exit-code -- \
+            public/watershed_native.js \
+            public/watershed_native.wasm \
+            emscripten/watershed_native.symbols \
+            src/systems/water/wasmArtifactStamp.ts
+
+      - name: Integration suites against the Debug wasm
+        run: |
+          node emscripten/smoke_test.mjs
+          pnpm test:wasm
+          pnpm test:wasm:parity
+          pnpm exec vitest run --project unit src/systems/water/wasmSentinels.test.ts src/systems/water/wasmTrap.test.ts
+
   # #467: the plain C ABI should not depend on the emcc version. Build the same
   # sources with the current emsdk (aside — WATERSHED_ALLOW_EMCC_MISMATCH never
   # touches public/) and diff the _ws_* export list and arities against the
@@ -396,7 +450,7 @@ jobs:
 
   # #467 / #502: the C ABI trusts JS for every heap pointer and width * height.
   # Host build of the compute TUs under ASan + UBSan, 60 s of libFuzzer per
-  # entry-point family (swe, chores, forces + routing + particles, terrain),
+  # entry-point family (swe, chores, forces + particles, routing, terrain),
   # and clang-tidy bugprone/performance over every TU, bindings.cpp included.
   native-sanitizers:
     name: Native sanitizers, fuzz, tidy

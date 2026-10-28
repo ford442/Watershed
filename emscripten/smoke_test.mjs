@@ -3,7 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const publicDir = resolve(scriptDir, '../public');
+// The pair under test: public/ unless WATERSHED_NATIVE_DIR (repo-relative)
+// names another, e.g. the Debug build in emscripten/build-debug/out.
+const publicDir = resolve(scriptDir, '..', process.env.WATERSHED_NATIVE_DIR ?? 'public');
 const wasmPath = resolve(publicDir, 'watershed_native.wasm');
 const jsPath = pathToFileURL(resolve(publicDir, 'watershed_native.js')).href;
 const wasmBinary = readFileSync(wasmPath);

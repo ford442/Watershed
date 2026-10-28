@@ -47,7 +47,7 @@
     "test:post-parity": "node verification/post_parity.mjs",
     "test:native": "cmake -S emscripten -B emscripten/build-host && cmake --build emscripten/build-host && emscripten/build-host/watershed_host_smoke",
     "test:native:sanitize": "cmake -S emscripten -B emscripten/build-host-asan -DWATERSHED_SANITIZE=ON && cmake --build emscripten/build-host-asan && emscripten/build-host-asan/watershed_host_smoke",
-    "lint:native": "cmake -S emscripten -B emscripten/build-host >/dev/null && ${CLANG_TIDY:-clang-tidy} -p emscripten/build-host --quiet emscripten/swe.cpp emscripten/forces.cpp emscripten/chores.cpp emscripten/particles.cpp emscripten/routing.cpp emscripten/terrain.cpp emscripten/bindings.cpp emscripten/swe_fuzz.cpp emscripten/chores_fuzz.cpp emscripten/forces_fuzz.cpp emscripten/routing_fuzz.cpp emscripten/terrain_fuzz.cpp",
+    "lint:native": "cmake -S emscripten -B emscripten/build-host >/dev/null && cmake --build emscripten/build-host --target sync_compile_commands >/dev/null && ${CLANG_TIDY:-clang-tidy} -p emscripten/build-host --quiet emscripten/swe.cpp emscripten/forces.cpp emscripten/chores.cpp emscripten/particles.cpp emscripten/routing.cpp emscripten/terrain.cpp emscripten/bindings.cpp emscripten/swe_fuzz.cpp emscripten/chores_fuzz.cpp emscripten/forces_fuzz.cpp emscripten/routing_fuzz.cpp emscripten/terrain_fuzz.cpp",
     "test:native:fuzz": "bash scripts/native-fuzz.sh",
     "test:visual-smoke:tsl": "VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
     "test:visual-smoke:tsl:update": "UPDATE_BASELINES=1 VISUAL_EXTRA_QUERY=material=tsl node verification/visual_smoke.mjs",
