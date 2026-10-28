@@ -3,6 +3,7 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import { useThree } from '@react-three/fiber';
 import { useShaderLoader } from '../hooks/useShaderLoader';
+import { WATER_SURFACE_LAYER } from '../rendering/renderLayers';
 
 const shaderMaterialMock = vi.hoisted(() =>
   vi.fn((params: any) => ({ uniforms: params.uniforms, userData: {} } as any)),
@@ -37,6 +38,7 @@ describe('FlowingWater', () => {
     (useThree as Mock).mockReturnValue({
       camera: {
         position: new THREE.Vector3(),
+        layers: new THREE.Layers(),
       },
     });
     (useShaderLoader as Mock).mockReturnValue({
@@ -129,5 +131,15 @@ describe('FlowingWater', () => {
     expect(uniforms.reflectionStrength.value).toBe(0);
     expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).toContain('reflectionTexture');
     expect(shaderMaterialMock.mock.calls[0][0].vertexShader).toContain('vReflectionUv');
+    // The mirror camera's image is flipped left/right (rendering/planarMirror.ts).
+    expect(shaderMaterialMock.mock.calls[0][0].fragmentShader).toContain('reflectionUv.x = 1.0 - reflectionUv.x;');
+  });
+
+  test('puts the water on its own layer, which the main camera keeps rendering', () => {
+    const camera = { position: new THREE.Vector3(), layers: new THREE.Layers() };
+    (useThree as Mock).mockReturnValue({ camera });
+    render(<FlowingWater geometry={new THREE.BufferGeometry()} />);
+    expect(camera.layers.isEnabled(WATER_SURFACE_LAYER)).toBe(true);
+    expect(camera.layers.isEnabled(0)).toBe(true);
   });
 });

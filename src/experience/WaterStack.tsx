@@ -1,6 +1,6 @@
-import type { RefObject } from 'react';
+import { Suspense, type RefObject } from 'react';
 import { WATER_LEVEL } from '../constants/game';
-import WaterReflection from '../components/WaterReflection';
+import { lazyComponent } from '../utils/lazyComponent';
 import { SplashSystem } from '../systems/water/SplashSystem';
 import WaterForceSystem from '../systems/water/WaterForceSystem';
 import { useLOD } from '../systems/lod/LODManager';
@@ -11,19 +11,24 @@ interface WaterReflectionLayerProps {
   enableReflections: boolean;
 }
 
+// High / Ultra only, so its code (and the mirror math) stays out of the entry
+// chunk; fetched on the first mount under a preset that reflects.
+const WaterReflectionChunk = lazyComponent(() => import('../components/WaterReflection'));
+
 /** Planar water reflection pass — mounted outside the Rapier physics world. */
 export function WaterReflectionLayer({ enabled, enableReflections }: WaterReflectionLayerProps) {
   const { config } = useLOD();
-
   if (!enabled || !enableReflections || !config.enableReflections) return null;
 
   return (
-    <WaterReflection
-      waterLevel={WATER_LEVEL}
-      resolution={config.reflectionResolution}
-      updateInterval={config.reflectionUpdateInterval}
-      reflectionStrength={config.reflectionStrength}
-    />
+    <Suspense fallback={null}>
+      <WaterReflectionChunk.Component
+        waterLevel={WATER_LEVEL}
+        resolution={config.reflectionResolution}
+        updateInterval={config.reflectionUpdateInterval}
+        reflectionStrength={config.reflectionStrength}
+      />
+    </Suspense>
   );
 }
 

@@ -1,6 +1,10 @@
 import {
+  hasSceneResolvedTsl,
   isMaterialBackend,
   parseMaterialBackendParam,
+  pinSessionMaterialBackend,
+  requestedMaterialBackend,
+  resetSessionMaterialBackend,
   resolveMaterialBackend,
   type MaterialBackendEnvironment,
 } from './materialBackend';
@@ -78,5 +82,26 @@ describe('isMaterialBackend', () => {
     expect(isMaterialBackend('tsl')).toBe(true);
     expect(isMaterialBackend('webgpu')).toBe(false);
     expect(isMaterialBackend(null)).toBe(false);
+  });
+});
+
+describe('session pin (renderer fallback)', () => {
+  afterEach(() => resetSessionMaterialBackend());
+
+  it('wins over ?material=tsl and a stored preference once the renderer fell back', () => {
+    pinSessionMaterialBackend({ backend: 'glsl', reason: 'renderer-fallback' });
+    const env = capable({ search: '?material=tsl', stored: 'tsl' });
+    expect(resolveMaterialBackend(env)).toEqual({ backend: 'glsl', reason: 'renderer-fallback' });
+    expect(requestedMaterialBackend(env)).toEqual({ backend: 'glsl', reason: 'renderer-fallback' });
+  });
+
+  it('records a host resolving tsl from the live URL / storage, but not the renderer request', () => {
+    requestedMaterialBackend({ stored: 'tsl', nodeRendererSupported: true });
+    expect(hasSceneResolvedTsl()).toBe(false);
+    // Injected query strings are pure lookups (tests, tools), not hosts.
+    resolveMaterialBackend(capable({ search: '?material=tsl' }));
+    expect(hasSceneResolvedTsl()).toBe(false);
+    resolveMaterialBackend({ stored: 'tsl', nodeRendererSupported: true });
+    expect(hasSceneResolvedTsl()).toBe(true);
   });
 });

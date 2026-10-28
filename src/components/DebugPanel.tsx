@@ -11,7 +11,7 @@ import { PHYSICS_WORKER_REASON_LABELS } from '../utils/physicsWorkerFlag';
 import type { RendererPreference } from '../rendering/types';
 import {
   MATERIAL_BACKEND_REASON_LABELS,
-  resolveMaterialBackend,
+  requestedMaterialBackend,
   type MaterialBackend,
 } from '../rendering/materialBackend';
 import { getGpuChoreStats, subscribeGpuChoreStats } from '../rendering/gpuChores';
@@ -254,6 +254,9 @@ export function DebugPanel({
   // Subscribe to live perf metrics from PerfCheckpointMonitor (inside Canvas)
   const metrics = useSyncExternalStore(subscribePerfMetrics, getPerfMetrics);
   const rendererDiagnostics = useSyncExternalStore(subscribeRendererDiagnostics, getRendererDiagnostics);
+  // Re-read on every diagnostics change: a renderer fallback pins the session
+  // to glsl just before it publishes `materialBackend: 'glsl'`.
+  const requestedBackend = requestedMaterialBackend();
   const physicsWorker = useSyncExternalStore(
     subscribePhysicsWorkerStatus,
     getPhysicsWorkerStatus,
@@ -422,10 +425,10 @@ export function DebugPanel({
       <MetricRow
         label="Active backend"
         value={rendererDiagnostics.materialBackend}
-        t={rendererDiagnostics.materialBackend === materialBackend ? 'ok' : 'warn'}
+        t={rendererDiagnostics.materialBackend === requestedBackend.backend ? 'ok' : 'warn'}
         hint={
-          rendererDiagnostics.materialBackend === materialBackend
-            ? MATERIAL_BACKEND_REASON_LABELS[resolveMaterialBackend().reason]
+          rendererDiagnostics.materialBackend === requestedBackend.backend
+            ? MATERIAL_BACKEND_REASON_LABELS[requestedBackend.reason]
             : 'requested TSL but the node renderer or material could not be built'
         }
       />

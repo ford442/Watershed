@@ -14,6 +14,7 @@
  * Env:
  *   PUPPETEER_EXECUTABLE_PATH  Chrome/Chromium binary override
  *   POST_PARITY_EPSILON        relative mean-luma tolerance (default 0.02)
+ *   POST_PARITY_SHOTS          directory to write each scenario's glsl/node frame as PNG
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,6 +24,7 @@ import { createServer } from 'vite';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const EPSILON = Number(process.env.POST_PARITY_EPSILON ?? 0.02);
+const SHOTS_DIR = process.env.POST_PARITY_SHOTS;
 
 const CHROME_ARGS = [
   '--no-sandbox',
@@ -77,6 +79,16 @@ try {
     console.error(`Post parity could not run:\n${report.error}`);
   } else {
     const pct = (v) => `${(v * 100).toFixed(2)}%`;
+    if (SHOTS_DIR) {
+      fs.mkdirSync(SHOTS_DIR, { recursive: true });
+      for (const r of report.results) {
+        const slug = r.scenario.replace(/[^a-z0-9]+/gi, '_');
+        for (const [driver, dataUrl] of [['glsl', r.glslPng], ['node', r.nodePng]]) {
+          fs.writeFileSync(path.join(SHOTS_DIR, `${slug}.${driver}.png`), Buffer.from(dataUrl.split(',')[1], 'base64'));
+        }
+      }
+      console.log(`Frames written to ${SHOTS_DIR}`);
+    }
     for (const r of report.results) {
       const ok = r.relativeDelta < EPSILON;
       console.log(
@@ -86,6 +98,16 @@ try {
       );
     }
     const failed = report.results.filter((r) => !(r.relativeDelta < EPSILON));
+    // God rays add light on top of the frame; a darker image means the pass
+    // dropped the scene underneath (the GLSL pass did, blending onto the
+    // composer's stale ping-pong target).
+    const grade = report.results.find((r) => r.scenario === 'grade');
+    const rays = report.results.find((r) => r.scenario === 'god rays');
+    if (grade && rays) {
+      const kept = rays.glslLuma >= grade.glslLuma * (1 - EPSILON) && rays.nodeLuma >= grade.nodeLuma * (1 - EPSILON);
+      console.log(`${kept ? '✓' : '✗'} scene under god rays: glsl ${grade.glslLuma.toFixed(4)} → ${rays.glslLuma.toFixed(4)}, node ${grade.nodeLuma.toFixed(4)} → ${rays.nodeLuma.toFixed(4)}`);
+      if (!kept) failed.push(rays);
+    }
     console.log(failed.length === 0
       ? `Post parity ok (${report.results.length} scenarios, Δ mean luma < ${pct(EPSILON)})`
       : `Post parity FAILED: ${failed.length} of ${report.results.length}`);

@@ -16,8 +16,7 @@ import { useBiome } from '../systems/biome/BiomeSystem';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { GOD_RAYS_SHADER } from '../systems/volumetric/VolumetricGodRays';
 import { useGameStore } from '../systems/GameState';
-import { useSettingsStore } from '../systems/settings/useSettingsStore';
-import { qualityToEffects } from '../systems/settings/settingsDerive';
+import { effectsForLODQuality } from '../systems/settings/settingsDerive';
 import type { VehicleRigidBodyRef } from '../experience/types';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
@@ -151,8 +150,9 @@ class GodRaysPass extends Pass {
       uniforms: THREE.UniformsUtils.clone(GOD_RAYS_SHADER.uniforms),
       vertexShader: GOD_RAYS_SHADER.vertexShader,
       fragmentShader: GOD_RAYS_SHADER.fragmentShader,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
+      // The shader outputs scene + rays itself; blending onto writeBuffer would
+      // add the rays to whatever stale image that target still holds.
+      blending: THREE.NoBlending,
       depthWrite: false,
       depthTest: false,
     });
@@ -177,6 +177,26 @@ class GodRaysPass extends Pass {
   dispose() {
     this.material.dispose();
     this.fsQuad.dispose();
+  }
+}
+
+/**
+ * The scene pass, and the frame's one shadow-map update. Later passes that
+ * re-render the scene (SSAOPass's normal pass) would otherwise re-render every
+ * shadow map — soft PCF at 2048/4096 on High/Ultra — for an override material
+ * that never samples them. The composer driver's `render()` restores
+ * `autoUpdate` once the chain is done.
+ */
+class SceneRenderPass extends RenderPass {
+  render(
+    renderer: THREE.WebGLRenderer,
+    writeBuffer: THREE.WebGLRenderTarget,
+    readBuffer: THREE.WebGLRenderTarget,
+    deltaTime: number,
+    maskActive: boolean,
+  ) {
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    renderer.shadowMap.autoUpdate = false;
   }
 }
 
@@ -247,7 +267,7 @@ export function createComposerDriver(
   // sample it at canyon distances, where 16 bits band (#466 Phase C).
   composer.renderTarget1.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
   composer.renderTarget2.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
-  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new SceneRenderPass(scene, camera));
 
   const resolution = new THREE.Vector2(width, height);
 
@@ -376,7 +396,13 @@ export function createComposerDriver(
       setTargetSamples(p.aa === 'msaa4' ? 4 : 0);
     },
     render() {
-      composer.render();
+      const shadowMap = gl.shadowMap;
+      const shadowAutoUpdate = shadowMap.autoUpdate;
+      try {
+        composer.render();
+      } finally {
+        shadowMap.autoUpdate = shadowAutoUpdate;
+      }
     },
     setSize(w, h, pixelRatio) {
       composer.setSize(w, h);
@@ -467,8 +493,10 @@ export function PostProcessingPipeline({
   const { config } = useLOD();
   const { timeOfDay, currentBiome } = useBiome();
   const { sunWorldPosition } = useSunPosition();
-  const settingsQuality = useSettingsStore((s) => (s._hasHydrated ? s.quality : 'high'));
-  const effectPresence = useMemo(() => qualityToEffects(settingsQuality), [settingsQuality]);
+  // From the *effective* quality (the adaptive LOD's, passed in as `quality`),
+  // like the AA tier — not the settings preset. An adaptive High → Medium drop
+  // under load must shed SSAO (a full extra scene render) too.
+  const effectPresence = useMemo(() => effectsForLODQuality(quality), [quality]);
 
   const tuning: PostTuning = useMemo(
     () => ({

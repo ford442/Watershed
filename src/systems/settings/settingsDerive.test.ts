@@ -4,6 +4,7 @@ import {
   bindingsToDreiMap,
   bindingsToMouseMap,
   findConflict,
+  effectsForLODQuality,
   isReservedKeyCapture,
   qualityToEffects,
   settingsQualityToLOD,
@@ -121,6 +122,16 @@ describe('qualityToEffects', () => {
 
   it('high enables everything', () => {
     expect(qualityToEffects('high')).toMatchObject({ godRays: true, ssao: true });
+  });
+});
+
+describe('effectsForLODQuality', () => {
+  it('sheds SSAO when the adaptive LOD drops High → Medium, whatever the settings preset says', () => {
+    expect(effectsForLODQuality('high').ssao).toBe(true);
+    expect(effectsForLODQuality('medium').ssao).toBe(false);
+    expect(effectsForLODQuality('medium').godRays).toBe(true);
+    expect(effectsForLODQuality('low')).toEqual(qualityToEffects('low'));
+    expect(effectsForLODQuality('ultra')).toEqual(qualityToEffects('high'));
   });
 });
 

@@ -8,6 +8,13 @@ import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 import { WATER_LEVEL } from '../../constants/game';
 import { useGameStore } from '../../systems/GameState';
 
+const POND_FOG_COLOR = new THREE.Color('#c8d8d0');
+const POND_NIGHT_COLOR = new THREE.Color('#7e8fb0');
+const POND_SUNSET_COLOR = new THREE.Color('#f0c79a');
+const POND_STORM_COLOR = new THREE.Color('#5a6066');
+// Frame scratch: the fog colour is rebuilt in place every frame.
+const _baseFogColor = new THREE.Color();
+
 export interface PondFogProps {
   segmentCenter: THREE.Vector3;
   waterLevel?: number;
@@ -62,13 +69,13 @@ export default function PondFog({ segmentCenter, waterLevel = WATER_LEVEL }: Pon
     const stormBlend = weatherType === 'storm' ? 1 : weatherType === 'overcast' ? 0.4 : 0;
 
     const { night: nightFactor, golden: sunsetBlend } = getSkyClock().factors;
-    const baseFogColor = new THREE.Color('#c8d8d0');
+    const baseFogColor = _baseFogColor.copy(POND_FOG_COLOR);
     if (nightFactor > sunsetBlend) {
-      baseFogColor.lerp(new THREE.Color('#7e8fb0'), nightFactor * 0.5);
+      baseFogColor.lerp(POND_NIGHT_COLOR, nightFactor * 0.5);
     } else {
-      baseFogColor.lerp(new THREE.Color('#f0c79a'), sunsetBlend * 0.45);
+      baseFogColor.lerp(POND_SUNSET_COLOR, sunsetBlend * 0.45);
     }
-    baseFogColor.lerp(new THREE.Color('#5a6066'), stormBlend * 0.6);
+    baseFogColor.lerp(POND_STORM_COLOR, stormBlend * 0.6);
 
     if (shouldBeActive && !isActiveRef.current) {
       isActiveRef.current = true;

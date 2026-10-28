@@ -21,7 +21,8 @@ export type MaterialBackendReason =
   | 'query-glsl'
   | 'stored-tsl'
   | 'default-glsl'
-  | 'unsupported';
+  | 'unsupported'
+  | 'renderer-fallback';
 
 export interface MaterialBackendDecision {
   backend: MaterialBackend;
@@ -47,6 +48,7 @@ export const MATERIAL_BACKEND_REASON_LABELS: Record<MaterialBackendReason, strin
   'stored-tsl': 'enabled in debug panel',
   'default-glsl': 'default (legacy GLSL)',
   unsupported: 'no node-capable renderer available',
+  'renderer-fallback': 'node renderer failed to start — GLSL fallback for this session',
 };
 
 const STORAGE_KEY = 'watershed.material.backend';
@@ -91,15 +93,77 @@ export function detectNodeRendererSupport(): boolean {
   return typeof WebGL2RenderingContext !== 'undefined';
 }
 
+// ── Session override ────────────────────────────────────────────────────────
+//
+// `createGameRenderer` falls back to THREE.WebGLRenderer when the node renderer
+// cannot start (init() throws, bridging throws, no context) — after
+// `loadNodeMaterials()` may already have resolved. Every material host resolves
+// its backend from the URL / storage, which still say `tsl`, and finds the node
+// modules loaded: NodeMaterials on a WebGLRenderer. The fallback therefore pins
+// the session to glsl here, *before* any host resolves, and every later
+// resolution (this Canvas and any remount) reads the pin first.
+
+let sessionOverride: MaterialBackendDecision | null = null;
+let sceneResolvedTsl = false;
+
+/** Pin this session's backend. Called by the renderer factory's GLSL fallback. */
+export function pinSessionMaterialBackend(decision: MaterialBackendDecision): void {
+  sessionOverride = decision;
+}
+
+/** The pinned decision, or null when the session follows URL / storage. */
+export function getSessionMaterialBackend(): MaterialBackendDecision | null {
+  return sessionOverride;
+}
+
 /**
- * Resolve the material backend, and why. Pure — every input can be injected.
+ * True once a scene host resolved `tsl` (a production `resolveMaterialBackend()`
+ * call with nothing injected). A renderer fallback after that point cannot fix
+ * the materials already built; it must remount instead.
+ */
+export function hasSceneResolvedTsl(): boolean {
+  return sceneResolvedTsl;
+}
+
+/** Test seam: forget the pin and the host bookkeeping. */
+export function resetSessionMaterialBackend(): void {
+  sessionOverride = null;
+  sceneResolvedTsl = false;
+}
+
+/**
+ * Resolve the material backend, and why. Every input can be injected.
  *
- * Precedence: `?material=` > stored debug preference > default glsl. Capability
- * gating collapses any tsl decision back to glsl.
+ * Precedence: session pin (renderer fallback) > `?material=` > stored debug
+ * preference > default glsl. Capability gating collapses any tsl decision back
+ * to glsl.
+ *
+ * This is the *material host* entry point: a call with no injected query
+ * string that lands on tsl is recorded (`hasSceneResolvedTsl`). Callers that
+ * only want to know what was requested — the renderer request, the debug
+ * panel — use `requestedMaterialBackend`.
  */
 export function resolveMaterialBackend(
   env: MaterialBackendEnvironment = {},
 ): MaterialBackendDecision {
+  if (sessionOverride) return sessionOverride;
+  const decision = decideMaterialBackend(env);
+  if (decision.backend === 'tsl' && env.search === undefined) sceneResolvedTsl = true;
+  return decision;
+}
+
+/**
+ * What the session asks for — the same decision as `resolveMaterialBackend`
+ * without counting as a material host. App's renderer request and the debug
+ * panel read this.
+ */
+export function requestedMaterialBackend(
+  env: MaterialBackendEnvironment = {},
+): MaterialBackendDecision {
+  return sessionOverride ?? decideMaterialBackend(env);
+}
+
+function decideMaterialBackend(env: MaterialBackendEnvironment): MaterialBackendDecision {
   const supported = env.nodeRendererSupported ?? detectNodeRendererSupport();
   const query = parseMaterialBackendParam(env.search);
 

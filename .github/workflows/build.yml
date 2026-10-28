@@ -53,7 +53,7 @@ jobs:
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
       - name: Lint
-        run: pnpm lint --max-warnings 149
+        run: pnpm lint --max-warnings 138
 
   build-without-emscripten:
     name: Build without Emscripten

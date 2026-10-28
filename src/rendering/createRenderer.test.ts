@@ -3,9 +3,15 @@ import * as THREE from 'three';
 
 import {
   createGameRenderer,
+  MaterialBackendFallbackError,
   nativeWebGPURendererParameters,
   type GameRenderer,
 } from './createRenderer';
+import {
+  getSessionMaterialBackend,
+  resetSessionMaterialBackend,
+  resolveMaterialBackend,
+} from './materialBackend';
 import {
   CAPTURE_ENVELOPE,
   DEGRADED_ENVELOPE,
@@ -37,6 +43,11 @@ beforeEach(() => {
   // Vitest may reset mock implementations between tests. Re-apply the CSP
   // probe mock before every test.
   (isDataUrlConnectAllowed as Mock).mockResolvedValue(true);
+});
+
+// A fallback pins the session to glsl; one test's fallback must not leak.
+afterEach(() => {
+  resetSessionMaterialBackend();
 });
 
 // ---------------------------------------------------------------------------
@@ -882,6 +893,60 @@ describe('node renderer honors the boot graphics contract', () => {
     spy.mockRestore();
     warnSpy.mockRestore();
     renderer.dispose();
+  });
+
+  async function failNodeInitOnce() {
+    const { WebGPURenderer } = (await import('three/webgpu')) as unknown as {
+      WebGPURenderer: { prototype: { init(): Promise<void> } };
+    };
+    return vi.spyOn(WebGPURenderer.prototype, 'init').mockRejectedValueOnce(new Error('init failed'));
+  }
+
+  it('pins the session to glsl when the node renderer fails, so every host builds GLSL', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const initSpy = await failNodeInitOnce();
+
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl', contextOptions: deriveRendererContextOptions('high') }
+    );
+
+    expect(brandOf(renderer).isWebGPURenderer).toBeFalsy();
+    expect(getSessionMaterialBackend()).toEqual({ backend: 'glsl', reason: 'renderer-fallback' });
+    // The hosts' own resolution: URL / storage still say tsl, the pin wins.
+    expect(resolveMaterialBackend({ search: '?material=tsl', nodeRendererSupported: true }).backend).toBe('glsl');
+    expect(getRendererDiagnostics().materialBackend).toBe('glsl');
+
+    // A remount in the same session does not retry the node renderer.
+    const remount = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl' }
+    );
+    expect(brandOf(remount).isWebGPURenderer).toBeFalsy();
+    expect(initSpy).toHaveBeenCalledTimes(1);
+
+    initSpy.mockRestore();
+    warnSpy.mockRestore();
+    renderer.dispose();
+    remount.dispose();
+  });
+
+  it('throws for a remount when a host already resolved tsl before the fallback', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const initSpy = await failNodeInitOnce();
+    // A material host, resolving from the live URL / storage (nothing injected but the stored flag).
+    expect(resolveMaterialBackend({ stored: 'tsl', nodeRendererSupported: true }).backend).toBe('tsl');
+
+    await expect(
+      createGameRenderer(
+        { canvas: document.createElement('canvas') },
+        { preference: 'webgl', materialBackend: 'tsl' }
+      )
+    ).rejects.toBeInstanceOf(MaterialBackendFallbackError);
+    expect(getSessionMaterialBackend()?.backend).toBe('glsl');
+
+    initSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it('configures native WebGPU explicitly: premultiplied alpha, adapter power preference', async () => {

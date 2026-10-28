@@ -7,7 +7,12 @@ import {
   toContextAttributes,
   type RendererContextOptions,
 } from './deriveRendererContextOptions';
-import type { MaterialBackend } from './materialBackend';
+import {
+  getSessionMaterialBackend,
+  hasSceneResolvedTsl,
+  pinSessionMaterialBackend,
+  type MaterialBackend,
+} from './materialBackend';
 import { updateRendererDiagnostics } from './rendererState';
 import { loadNodeMaterials } from '../materials/nodeMaterials';
 import { loadNodePost } from '../components/postProcessing/nodePostLoader';
@@ -35,6 +40,19 @@ export interface GameRendererOptions {
  * when TSL materials are active.
  */
 export type GameRenderer = THREE.WebGLRenderer;
+
+/**
+ * The node renderer failed after a material host had already resolved `tsl`:
+ * those NodeMaterials cannot run on the WebGLRenderer the fallback would hand
+ * back. The session is pinned to glsl by the time this is thrown, so the
+ * caller remounts the Canvas and the next attempt comes up GLSL throughout.
+ */
+export class MaterialBackendFallbackError extends Error {
+  constructor() {
+    super('[Renderer] Node renderer failed after TSL materials were built — remount with GLSL.');
+    this.name = 'MaterialBackendFallbackError';
+  }
+}
 
 /**
  * Creates the Three.js renderer for the game Canvas.
@@ -69,8 +87,10 @@ export async function createGameRenderer(
     antialias = true,
     powerPreference = 'high-performance',
     contextOptions,
-    materialBackend = 'glsl',
   } = options;
+  // A session already pinned to glsl by an earlier fallback does not retry the
+  // node renderer on a remount (context loss, epoch bump).
+  const materialBackend = getSessionMaterialBackend()?.backend ?? options.materialBackend ?? 'glsl';
 
   // Quality-derived context attributes (alpha/depth/stencil/caveat/…) when the
   // caller passed a contract; otherwise just the two legacy knobs. These are
@@ -109,7 +129,12 @@ export async function createGameRenderer(
       console.warn(
         '[Renderer] Node-capable renderer unavailable — falling back to WebGLRenderer with GLSL materials.'
       );
+      // Pin before any host resolves: every material host re-reads the backend
+      // from the URL / storage (still `tsl`) and would find the node modules
+      // loaded — NodeMaterials on a WebGLRenderer.
+      pinSessionMaterialBackend({ backend: 'glsl', reason: 'renderer-fallback' });
       updateRendererDiagnostics({ materialBackend: 'glsl' });
+      if (hasSceneResolvedTsl()) throw new MaterialBackendFallbackError();
       return createWebGLRenderer(context);
     };
 
