@@ -294,27 +294,7 @@ export function calculateSlopeMultiplier(angle: number): number {
   return 1.0;
 }
 
-export function handleDodgeAndCollision({
-  dodgeState,
-  dodgeJustPressed,
-  isGrounded,
-  camera,
-  leftward,
-  rightward,
-  backward,
-  dt,
-  body,
-  pos,
-  vel,
-  prevFrame,
-  vehicle,
-  collisionState,
-  debugState,
-  now,
-  applyImpulseWithDebugTracking,
-  rapier,
-  world,
-}: {
+export interface DodgeAndCollisionArgs {
   dodgeState: RunnerPhysicsState['dodgeState'];
   dodgeJustPressed: boolean;
   isGrounded: boolean;
@@ -334,125 +314,156 @@ export function handleDodgeAndCollision({
   applyImpulseWithDebugTracking: (tag: string, impulse: Vec3Like) => void;
   rapier: Pick<RapierNamespace, 'Ray'>;
   world: RapierWorldQueries;
-}) {
-    // === DODGE STATE MACHINE (Goal 2) ===
-    const ds = dodgeState.current;
-    switch (ds.state) {
-      case 'ready': {
-        if (dodgeJustPressed && isGrounded) {
-          ds.state = 'dodging';
-          ds.timer = MOVEMENT.DODGE_DURATION;
-          ds.nearMissAwarded = false;
+}
 
-          // Determine dodge direction from input
-          const forwardDir = camera.getWorldDirection(_forwardDir);
-          forwardDir.y = 0;
-          forwardDir.normalize();
-          const rightDir = _rightDir.crossVectors(forwardDir, camera.up).normalize();
+type DodgeData = RunnerPhysicsState['dodgeState']['current'];
 
-          ds.direction.set(0, 0, 0);
-          if (leftward) {
-            ds.direction.sub(rightDir);
-          } else if (rightward) {
-            ds.direction.add(rightDir);
-          } else if (backward) {
-            ds.direction.sub(forwardDir);
-          } else {
-            ds.direction.add(forwardDir);
-          }
-          if (ds.direction.lengthSq() < 0.001) {
-            ds.direction.copy(rightDir); // Default dodge right
-          }
-          ds.direction.normalize();
+/** The dodge state machine, then impact detection (the order is the behaviour). */
+export function handleDodgeAndCollision(args: DodgeAndCollisionArgs) {
+  tickDodgeStateMachine(args);
+  detectRunnerImpact(args);
+}
 
-          // Apply dodge impulse
-          applyImpulseWithDebugTracking('dodge', {
-            x: ds.direction.x * MOVEMENT.DODGE_FORCE,
-            y: 2.0, // Slight upward lift
-            z: ds.direction.z * MOVEMENT.DODGE_FORCE
-          });
-
-          // I-frames: temporarily disable collision with obstacles (not ground)
-          // We achieve this by applying a collision group mask if supported
-          // Rapier has no simple collision-group toggle on a RigidBody ref, so
-          // other systems read this flag. Set in place: the object also holds
-          // the physics step's boot latches.
-          bodyUserData(body).isDodging = true;
-
-          playDodgeSound();
-          triggerCameraShake(0.3, 0.15);
-
-          useGameStore.getState().setIsDodging(true);
-        }
-        break;
+/** === DODGE STATE MACHINE (Goal 2) === */
+function tickDodgeStateMachine(args: DodgeAndCollisionArgs): void {
+  const ds = args.dodgeState.current;
+  switch (ds.state) {
+    case 'ready': {
+      if (args.dodgeJustPressed && args.isGrounded) {
+        startDodge(args, ds);
       }
-
-      case 'dodging': {
-        const dodgeSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        if (!ds.nearMissAwarded && dodgeSpeed >= NEAR_MISS_SPEED_THRESHOLD) {
-          const sideDir = _sideDir.set(-ds.direction.z, 0, ds.direction.x);
-          if (sideDir.lengthSq() > 0.001) {
-            sideDir.normalize();
-            const checkSide = (sign: number) => {
-              const ray = scratchRay(rapier, pos.x, pos.y + 0.6, pos.z, sideDir.x * sign, 0, sideDir.z * sign);
-              const hit = world.castRay(ray, NEAR_MISS_RAY_LENGTH, true);
-              const toi = getRayTimeOfImpact(hit);
-              hit?.free?.();
-              return toi !== null && toi >= NEAR_MISS_TOI_MIN && toi <= NEAR_MISS_TOI_MAX;
-            };
-
-            if (checkSide(1) || checkSide(-1)) {
-              ds.nearMissAwarded = true;
-              gameEvents.emit('player-near-miss', { speed: dodgeSpeed });
-            }
-          }
-        }
-
-        ds.timer -= dt;
-        if (ds.timer <= 0) {
-          ds.state = 'cooldown';
-          ds.timer = MOVEMENT.DODGE_COOLDOWN;
-          bodyUserData(body).isDodging = false;
-          useGameStore.getState().setIsDodging(false);
-        }
-        break;
-      }
-
-      case 'cooldown': {
-        ds.timer -= dt;
-        if (ds.timer <= 0) {
-          ds.state = 'ready';
-        }
-        break;
-      }
+      break;
     }
 
-    // === COLLISION DETECTION ===
-    // Check for sudden velocity changes indicating collision
-    const prevVelocity = prevFrame.current.velocity;
-    const velocityDelta = _velocityDelta.set(vel.x - prevVelocity.x, vel.y - prevVelocity.y, vel.z - prevVelocity.z);
-    const impactForce = velocityDelta.length() / dt;
-
-    // Detect high-impact collision (skip if dodging with i-frames)
-    const isDodging = ds.state === 'dodging' && ds.timer > (MOVEMENT.DODGE_DURATION - MOVEMENT.DODGE_I_FRAMES);
-    if (impactForce > 8 && !isGrounded && !isDodging) {
-      if (hasActiveLaunch()) {
-        recordLaunchWallContact();
-      }
-      const material = getActiveGameplayProfile().surface;
-      const contactPoint = _contactPoint.set(pos.x, pos.y - 0.5, pos.z);
-
-      vehicle.processCollision(material, impactForce, contactPoint);
-
-      // Add visual particles for high impact
-      if (vehicle.isHighImpact(impactForce)) {
-        emitCollisionBurst(collisionState.current.particles, material, contactPoint, Math.min(1, impactForce / 20));
-        debugState.current.recentContacts.push({
-          at: now,
-          point: { x: contactPoint.x, y: contactPoint.y, z: contactPoint.z },
-        });
-      }
+    case 'dodging': {
+      tickDodging(args, ds);
+      break;
     }
 
+    case 'cooldown': {
+      ds.timer -= args.dt;
+      if (ds.timer <= 0) {
+        ds.state = 'ready';
+      }
+      break;
+    }
+  }
+}
 
+/** 'ready' → 'dodging': pick the direction from input, impulse, i-frames, feedback. */
+function startDodge(args: DodgeAndCollisionArgs, ds: DodgeData): void {
+  const { camera, leftward, rightward, backward, body, applyImpulseWithDebugTracking } = args;
+  ds.state = 'dodging';
+  ds.timer = MOVEMENT.DODGE_DURATION;
+  ds.nearMissAwarded = false;
+
+  // Determine dodge direction from input
+  const forwardDir = camera.getWorldDirection(_forwardDir);
+  forwardDir.y = 0;
+  forwardDir.normalize();
+  const rightDir = _rightDir.crossVectors(forwardDir, camera.up).normalize();
+
+  ds.direction.set(0, 0, 0);
+  if (leftward) {
+    ds.direction.sub(rightDir);
+  } else if (rightward) {
+    ds.direction.add(rightDir);
+  } else if (backward) {
+    ds.direction.sub(forwardDir);
+  } else {
+    ds.direction.add(forwardDir);
+  }
+  if (ds.direction.lengthSq() < 0.001) {
+    ds.direction.copy(rightDir); // Default dodge right
+  }
+  ds.direction.normalize();
+
+  // Apply dodge impulse
+  applyImpulseWithDebugTracking('dodge', {
+    x: ds.direction.x * MOVEMENT.DODGE_FORCE,
+    y: 2.0, // Slight upward lift
+    z: ds.direction.z * MOVEMENT.DODGE_FORCE
+  });
+
+  // I-frames: temporarily disable collision with obstacles (not ground)
+  // We achieve this by applying a collision group mask if supported
+  // Rapier has no simple collision-group toggle on a RigidBody ref, so
+  // other systems read this flag. Set in place: the object also holds
+  // the physics step's boot latches.
+  bodyUserData(body).isDodging = true;
+
+  playDodgeSound();
+  triggerCameraShake(0.3, 0.15);
+
+  useGameStore.getState().setIsDodging(true);
+}
+
+/** A near-miss ray to one side of the dodge (`sign` ±1): a wall inside the near-miss band. */
+function nearMissSide(
+  rapier: Pick<RapierNamespace, 'Ray'>,
+  world: RapierWorldQueries,
+  pos: Vec3Like,
+  sideDir: THREE.Vector3,
+  sign: number,
+): boolean {
+  const ray = scratchRay(rapier, pos.x, pos.y + 0.6, pos.z, sideDir.x * sign, 0, sideDir.z * sign);
+  const hit = world.castRay(ray, NEAR_MISS_RAY_LENGTH, true);
+  const toi = getRayTimeOfImpact(hit);
+  hit?.free?.();
+  return toi !== null && toi >= NEAR_MISS_TOI_MIN && toi <= NEAR_MISS_TOI_MAX;
+}
+
+/** 'dodging': the near-miss award, then the dodge timer into cooldown. */
+function tickDodging(args: DodgeAndCollisionArgs, ds: DodgeData): void {
+  const { vel, pos, rapier, world, dt, body } = args;
+  const dodgeSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+  if (!ds.nearMissAwarded && dodgeSpeed >= NEAR_MISS_SPEED_THRESHOLD) {
+    const sideDir = _sideDir.set(-ds.direction.z, 0, ds.direction.x);
+    if (sideDir.lengthSq() > 0.001) {
+      sideDir.normalize();
+      if (nearMissSide(rapier, world, pos, sideDir, 1) || nearMissSide(rapier, world, pos, sideDir, -1)) {
+        ds.nearMissAwarded = true;
+        gameEvents.emit('player-near-miss', { speed: dodgeSpeed });
+      }
+    }
+  }
+
+  ds.timer -= dt;
+  if (ds.timer <= 0) {
+    ds.state = 'cooldown';
+    ds.timer = MOVEMENT.DODGE_COOLDOWN;
+    bodyUserData(body).isDodging = false;
+    useGameStore.getState().setIsDodging(false);
+  }
+}
+
+/** === COLLISION DETECTION === a sudden velocity change while airborne is an impact. */
+function detectRunnerImpact(args: DodgeAndCollisionArgs): void {
+  const { dodgeState, isGrounded, dt, pos, vel, prevFrame, vehicle, collisionState, debugState, now } = args;
+  const ds = dodgeState.current;
+  // Check for sudden velocity changes indicating collision
+  const prevVelocity = prevFrame.current.velocity;
+  const velocityDelta = _velocityDelta.set(vel.x - prevVelocity.x, vel.y - prevVelocity.y, vel.z - prevVelocity.z);
+  const impactForce = velocityDelta.length() / dt;
+
+  // Detect high-impact collision (skip if dodging with i-frames)
+  const isDodging = ds.state === 'dodging' && ds.timer > (MOVEMENT.DODGE_DURATION - MOVEMENT.DODGE_I_FRAMES);
+  if (impactForce > 8 && !isGrounded && !isDodging) {
+    if (hasActiveLaunch()) {
+      recordLaunchWallContact();
+    }
+    const material = getActiveGameplayProfile().surface;
+    const contactPoint = _contactPoint.set(pos.x, pos.y - 0.5, pos.z);
+
+    vehicle.processCollision(material, impactForce, contactPoint);
+
+    // Add visual particles for high impact
+    if (vehicle.isHighImpact(impactForce)) {
+      emitCollisionBurst(collisionState.current.particles, material, contactPoint, Math.min(1, impactForce / 20));
+      debugState.current.recentContacts.push({
+        at: now,
+        point: { x: contactPoint.x, y: contactPoint.y, z: contactPoint.z },
+      });
+    }
+  }
 }

@@ -406,6 +406,16 @@ function applyTerrainResponse(f: StepFrame): void {
 
 /** Controls: sprint, the jump machine, dodge + impact detection, footsteps, then the movement impulses. */
 function applyInput(f: StepFrame): void {
+  const input = tickInputMachines(f);
+  applyMovementInput(f, input);
+}
+
+/**
+ * Sprint stamina, the jump machine, dodge + impact detection and footsteps,
+ * then this step's input latched into `prevFrame`. Returns the controls read.
+ * The sprint result stays in `s.sprint` for the movement stage.
+ */
+function tickInputMachines(f: StepFrame): PlayerControls {
   const { args, s, dt, vel, pos, isGrounded } = f;
   const { body, camera, controls, vehicleState, world, rapier } = args;
   const { slopeState, jumpState, dodgeState, prevFrame, jumpForwardDirRef } = vehicleState;
@@ -419,7 +429,7 @@ function applyInput(f: StepFrame): void {
   const js = jumpState.current;
   const input = controls.getControls();
   f.controls = input;
-  const { jump, leftward, rightward, dodge, sprint, forward, backward } = input;
+  const { jump, leftward, rightward, dodge, sprint, backward } = input;
   const jumpJustPressed = jump && !prevFrame.current.jumpPressed;
   const dodgeJustPressed = dodge && !prevFrame.current.dodgePressed;
 
@@ -429,7 +439,7 @@ function applyInput(f: StepFrame): void {
   sp.sprint = sprint;
   sp.jumpState = js;
   sp.sprintLockedRef = vehicleState.sprintLockedRef;
-  const { isSprinting, movementMul } = tickSprintStamina(sp, s.sprint);
+  tickSprintStamina(sp, s.sprint);
 
   const ja = jumpArgs;
   ja.js = js;
@@ -484,8 +494,18 @@ function applyInput(f: StepFrame): void {
   prevFrame.current.jumpPressed = jump;
   prevFrame.current.dodgePressed = dodge;
   prevFrame.current.velocity.set(vel.x, vel.y, vel.z);
+  return input;
+}
 
-  // === MOVEMENT INPUT ===
+/** === MOVEMENT INPUT === flow, then forward / backward / strafe impulses. */
+function applyMovementInput(f: StepFrame, input: PlayerControls): void {
+  const { args, s, dt } = f;
+  const { camera, vehicleState } = args;
+  const { slopeState, jumpState, dodgeState } = vehicleState;
+  const js = jumpState.current;
+  const { leftward, rightward, forward, backward } = input;
+  const { isSprinting, movementMul } = s.sprint;
+
   const { forwardDir, rightDir } = s;
   buildCameraRelativeDirsInto(camera, f.cameraWarm, forwardDir, rightDir);
 
@@ -519,13 +539,13 @@ function applyInput(f: StepFrame): void {
   // Strafe with commit/recovery restrictions
   if (computeStrafeEligibility(js.state, js.commitTimer, dodgeState.current.state)) {
     if (leftward) {
-        im.x = rightDir.x * -speed * 0.8 * dt;
+      im.x = rightDir.x * -speed * 0.8 * dt;
       im.y = 0;
       im.z = rightDir.z * -speed * 0.8 * dt;
       s.applyImpulse('leftwardInput', im);
     }
     if (rightward) {
-        im.x = rightDir.x * speed * 0.8 * dt;
+      im.x = rightDir.x * speed * 0.8 * dt;
       im.y = 0;
       im.z = rightDir.z * speed * 0.8 * dt;
       s.applyImpulse('rightwardInput', im);

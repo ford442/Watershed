@@ -269,21 +269,7 @@ export function tickSprintStamina(
   return out;
 }
 
-/** Jump / coyote / double-jump / landing state machine (mutates js in place). */
-export function tickJumpStateMachine({
-  js,
-  dt,
-  isGrounded,
-  jump,
-  jumpJustPressed,
-  vel,
-  pos,
-  sinSlope,
-  jumpForwardDir,
-  slopeState,
-  applyImpulseWithDebugTracking,
-  setLinvelSafe,
-}: {
+export interface JumpStateMachineArgs {
   js: RunnerJumpData;
   dt: number;
   isGrounded: boolean;
@@ -296,7 +282,11 @@ export function tickJumpStateMachine({
   slopeState: { current: { currentMultiplier: number; lastGroundNormal: { x: number; z: number }; bankAngle: number } };
   applyImpulseWithDebugTracking: (tag: string, impulse: Vec3) => void;
   setLinvelSafe: (nextVel: Vec3) => void;
-}) {
+}
+
+/** Jump / coyote / double-jump / landing state machine (mutates js in place). */
+export function tickJumpStateMachine(args: JumpStateMachineArgs) {
+  const { js, dt, isGrounded } = args;
   if (isGrounded) {
     js.timeSinceGrounded = 0;
   } else {
@@ -305,104 +295,12 @@ export function tickJumpStateMachine({
 
   switch (js.state) {
     case 'grounded': {
-      if (!isGrounded) {
-        js.state = 'airborne';
-        js.hasDoubleJumped = false;
-        js.airTime = 0;
-        js.verticalVelocityOnLeave = vel.y;
-        js.lastGroundY = pos.y;
-      } else if (jumpJustPressed) {
-        const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
-        const gn = slopeState.current.lastGroundNormal;
-        applyImpulseWithDebugTracking(
-          'jump',
-          computeJumpImpulse({
-            jumpForce,
-            sinSlope,
-            jumpForwardDir,
-            groundNormal: gn,
-            bankAngle: slopeState.current.bankAngle,
-          }),
-        );
-
-        js.state = 'airborne';
-        js.hasDoubleJumped = false;
-        js.airTime = 0;
-        js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
-        js.verticalVelocityOnLeave = jumpForce;
-        js.jumpReleased = false;
-
-        playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
-      }
+      tickJumpGrounded(args);
       break;
     }
 
     case 'airborne': {
-      js.airTime += dt;
-
-      if (js.commitTimer > 0) {
-        js.commitTimer -= dt;
-      }
-
-      if (!jump && !js.jumpReleased && vel.y > 0) {
-        js.jumpReleased = true;
-        setLinvelSafe({
-          x: vel.x,
-          y: vel.y * MOVEMENT.JUMP_CUT_MULTIPLIER,
-          z: vel.z,
-        });
-      }
-
-      if (
-        jumpJustPressed &&
-        js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME &&
-        js.airTime < 0.15 &&
-        !js.hasDoubleJumped
-      ) {
-        const jumpForce = JUMP_CONFIG.FORCE * 0.9;
-        const gn = slopeState.current.lastGroundNormal;
-        applyImpulseWithDebugTracking(
-          'coyoteJump',
-          computeJumpImpulse({
-            jumpForce,
-            sinSlope,
-            jumpForwardDir,
-            groundNormal: gn,
-            bankAngle: slopeState.current.bankAngle,
-          }),
-        );
-        js.hasDoubleJumped = false;
-        js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
-        js.jumpReleased = false;
-        playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
-        js.airTime = 0;
-        js.timeSinceGrounded = 999;
-      }
-
-      if (jumpJustPressed && !js.hasDoubleJumped && js.airTime > 0.05) {
-        const doubleJumpForce = JUMP_CONFIG.DOUBLE_JUMP_FORCE;
-        const newVelY = Math.max(vel.y * 0.3, 0) + doubleJumpForce;
-        setLinvelSafe({ x: vel.x, y: newVelY, z: vel.z });
-
-        js.hasDoubleJumped = true;
-        js.jumpReleased = false;
-        playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z), true);
-      }
-
-      if (isGrounded && js.airTime > 0.05) {
-        js.state = 'landing';
-
-        const impactVel = Math.abs(vel.y);
-        playLandSound(impactVel);
-
-        if (impactVel > JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) {
-          const shakeIntensity = Math.min(
-            1.0,
-            (impactVel - JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) / 10,
-          );
-          triggerCameraShake(shakeIntensity);
-        }
-      }
+      tickJumpAirborne(args);
       break;
     }
 
@@ -423,6 +321,113 @@ export function tickJumpStateMachine({
         }
       }
       break;
+    }
+  }
+}
+
+/** 'grounded': walking off an edge goes airborne; a jump press launches. */
+function tickJumpGrounded(args: JumpStateMachineArgs): void {
+  const { js, isGrounded, jumpJustPressed, vel, pos, sinSlope, jumpForwardDir, slopeState, applyImpulseWithDebugTracking } = args;
+  if (!isGrounded) {
+    js.state = 'airborne';
+    js.hasDoubleJumped = false;
+    js.airTime = 0;
+    js.verticalVelocityOnLeave = vel.y;
+    js.lastGroundY = pos.y;
+  } else if (jumpJustPressed) {
+    const jumpForce = JUMP_CONFIG.FORCE * Math.max(0.8, slopeState.current.currentMultiplier);
+    const gn = slopeState.current.lastGroundNormal;
+    applyImpulseWithDebugTracking(
+      'jump',
+      computeJumpImpulse({
+        jumpForce,
+        sinSlope,
+        jumpForwardDir,
+        groundNormal: gn,
+        bankAngle: slopeState.current.bankAngle,
+      }),
+    );
+
+    js.state = 'airborne';
+    js.hasDoubleJumped = false;
+    js.airTime = 0;
+    js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
+    js.verticalVelocityOnLeave = jumpForce;
+    js.jumpReleased = false;
+
+    playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+  }
+}
+
+/** 'airborne': jump cut, coyote jump, double jump, then landing — in that order. */
+function tickJumpAirborne(args: JumpStateMachineArgs): void {
+  const {
+    js, dt, isGrounded, jump, jumpJustPressed, vel, sinSlope, jumpForwardDir, slopeState,
+    applyImpulseWithDebugTracking, setLinvelSafe,
+  } = args;
+  js.airTime += dt;
+
+  if (js.commitTimer > 0) {
+    js.commitTimer -= dt;
+  }
+
+  if (!jump && !js.jumpReleased && vel.y > 0) {
+    js.jumpReleased = true;
+    setLinvelSafe({
+      x: vel.x,
+      y: vel.y * MOVEMENT.JUMP_CUT_MULTIPLIER,
+      z: vel.z,
+    });
+  }
+
+  if (
+    jumpJustPressed &&
+    js.timeSinceGrounded <= MOVEMENT.COYOTE_TIME &&
+    js.airTime < 0.15 &&
+    !js.hasDoubleJumped
+  ) {
+    const jumpForce = JUMP_CONFIG.FORCE * 0.9;
+    const gn = slopeState.current.lastGroundNormal;
+    applyImpulseWithDebugTracking(
+      'coyoteJump',
+      computeJumpImpulse({
+        jumpForce,
+        sinSlope,
+        jumpForwardDir,
+        groundNormal: gn,
+        bankAngle: slopeState.current.bankAngle,
+      }),
+    );
+    js.hasDoubleJumped = false;
+    js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
+    js.jumpReleased = false;
+    playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+    js.airTime = 0;
+    js.timeSinceGrounded = 999;
+  }
+
+  if (jumpJustPressed && !js.hasDoubleJumped && js.airTime > 0.05) {
+    const doubleJumpForce = JUMP_CONFIG.DOUBLE_JUMP_FORCE;
+    const newVelY = Math.max(vel.y * 0.3, 0) + doubleJumpForce;
+    setLinvelSafe({ x: vel.x, y: newVelY, z: vel.z });
+
+    js.hasDoubleJumped = true;
+    js.jumpReleased = false;
+    playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z), true);
+  }
+
+  if (isGrounded && js.airTime > 0.05) {
+    js.state = 'landing';
+
+    const impactVel = Math.abs(vel.y);
+    playLandSound(impactVel);
+
+    if (impactVel > JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) {
+      const shakeIntensity = Math.min(
+        1.0,
+        (impactVel - JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) / 10,
+      );
+      triggerCameraShake(shakeIntensity);
     }
   }
 }

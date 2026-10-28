@@ -23,20 +23,169 @@ import { startRaftWorkerSession, type RaftWorkerSession } from './RaftVehicle/ra
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import { WATER_PHYSICS } from '../constants/waterPhysics';
-import { useRaftPhysicsState } from './RaftVehicle/hooks/useRaftPhysicsState';
+import { useRaftPhysicsState, type RaftCollisionState } from './RaftVehicle/hooks/useRaftPhysicsState';
+import type { TippingState } from './RaftVehicle/constants';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
 
-const RaftVehicle = forwardRef((props, forwardedRef) => {
-  const bodyRef = useRef<RapierRigidBody>(null);
-  const raftMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const { camera } = useThree();
-  // R3F's clock: the fixed sim clock under `frameloop="never"` (scripted / replay).
-  const getR3fState = useThree((state) => state.get);
-  // Default-on: the worker runs unless the browser can't host it, the player
-  // turned it off, or ?physicsWorker=0 is set. Read once per mount — switching
-  // mid-session would strand the Rapier body between two authorities.
+/** Mirror the worker's post-step raft state onto the main-thread body. */
+function syncBodyFromWorkerState(body: RapierBody | null, workerState: WorkerRaftState | null) {
+  if (!body || !workerState) return;
+  const [px, py, pz] = workerState.position;
+  const [rx, ry, rz, rw] = workerState.rotation;
+  const [vx, vy, vz] = workerState.velocity;
+  const [avx, avy, avz] = workerState.angularVelocity;
+  body.setTranslation({ x: px, y: py, z: pz }, true);
+  body.setRotation({ x: rx, y: ry, z: rz, w: rw }, true);
+  body.setLinvel({ x: vx, y: vy, z: vz }, true);
+  body.setAngvel({ x: avx, y: avy, z: avz }, true);
+}
+
+/** The refs the worker step reads (one raft's; the component builds it per render). */
+interface RaftWorkerStepRefs {
+  bodyRef: { current: RapierBody | null };
+  workerProxyRef: { current: RapierWorkerProxy | null };
+  workerReadyRef: { current: boolean };
+  workerStepPendingRef: { current: boolean };
+  getR3fState: () => { clock: { elapsedTime: number } };
+}
+
+/** Post one physics step to the Rapier worker (one in flight at a time). */
+function stepRaftWorker(refs: RaftWorkerStepRefs, body: RapierBody, delta: number, impulses: Vec3Tuple[]) {
+  const proxy = refs.workerProxyRef.current;
+  if (!proxy || !refs.workerReadyRef.current || refs.workerStepPendingRef.current) return;
+
+  refs.workerStepPendingRef.current = true;
+  const tickParams = getPhysicsWorkerTickParams();
+  const waterForceConfig = buildRaftWorkerWaterForceConfig(
+    tickParams,
+    refs.getR3fState().clock.elapsedTime,
+    true,
+  );
+  // The TS mirror for the state this step starts from (the body mirrors the
+  // worker's last post-step state). The worker applies it only when the hull
+  // link has no fresh sim-worker force (#467).
+  const waterForce = {
+    ...waterForceConfig,
+    mirror: computeHullMirrorForce(
+      { position: body.translation(), velocity: body.linvel() },
+      waterForceConfig,
+    ),
+  };
+
+  proxy.step(delta, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
+    if (workerState) syncBodyFromWorkerState(refs.bodyRef.current, workerState);
+    if (diagnostics) {
+      setPhysicsWorkerDiagnostics(diagnostics);
+      if (typeof window !== 'undefined' && import.meta.env.DEV) {
+        window.__watershedPhysicsWorker = {
+          simLinked: proxy.isSimLinked,
+          waterForce: diagnostics,
+          tickOrder: [
+            'take-sim-hull-force (or the main thread\'s TS mirror force)',
+            'apply-impulses',
+            'rapier-step',
+            'post-hull-to-sim',
+            'post-snapshot',
+          ],
+        };
+      }
+    }
+  }).catch((error) => {
+    // A step in flight when the session stops rejects with "disposed".
+    if (refs.workerProxyRef.current === proxy) console.warn('[RaftVehicle] Rapier worker step failed', error);
+  }).finally(() => {
+    refs.workerStepPendingRef.current = false;
+  });
+}
+
+/** What the mount effect wires: the body, the worker refs, and the shelf / biome listeners' targets. */
+interface RaftSessionMount {
+  bodyRef: { current: RapierBody | null };
+  useWorkerPhysics: boolean;
+  workerProxyRef: { current: RapierWorkerProxy | null };
+  workerReadyRef: { current: boolean };
+  workerStepPendingRef: { current: boolean };
+  tippingState: { current: TippingState };
+  collisionState: { current: RaftCollisionState };
+  shelfSpawnPointRef: { current: { x: number; y: number; z: number } | null };
+  shelfTriggerRef: { current: ReturnType<typeof computeShelfTrigger> };
+}
+
+/**
+ * Mount: place the raft at spawn, start the worker session (when enabled) and
+ * the biome / shelf listeners. Returns the unmount cleanup.
+ */
+function mountRaftSession(m: RaftSessionMount): () => void {
+  let workerSession: RaftWorkerSession<RapierWorkerProxy> | null = null;
+  if (m.bodyRef.current) {
+    const [sx, sy, sz] = PLAYER_SPAWN.position;
+    m.bodyRef.current.setTranslation({ x: sx, y: sy, z: sz }, true);
+    // The main-thread body owns the raft until the worker session is ready:
+    // the worker world is the streamed level, so it waits for the track (#465 C2).
+    m.bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
+    if (m.useWorkerPhysics) {
+      workerSession = startRaftWorkerSession({
+        createProxy: createRapierWorkerProxy,
+        raft: {
+          halfExtents: [WATER_PHYSICS.RAFT_WIDTH * 0.5, WATER_PHYSICS.RAFT_HEIGHT * 0.5, WATER_PHYSICS.RAFT_LENGTH * 0.5],
+          mass: WATER_PHYSICS.RAFT_MASS,
+          linearDamping: 2,
+          angularDamping: 2.5,
+        },
+        getRaftPosition: () => {
+          const t = m.bodyRef.current?.translation?.();
+          return t ? [t.x, t.y, t.z] : [...PLAYER_SPAWN.position];
+        },
+        linkSim: linkPhysicsToSim,
+        onReady: (proxy, workerState) => {
+          m.workerProxyRef.current = proxy;
+          m.workerReadyRef.current = true;
+          setPhysicsWorkerActive(true);
+          syncBodyFromWorkerState(m.bodyRef.current, workerState);
+        },
+        onFallback: (error) => {
+          console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
+          m.workerReadyRef.current = false;
+          setPhysicsWorkerActive(false);
+        },
+      });
+    }
+    m.tippingState.current.lastSafePosition.copy(m.bodyRef.current.translation());
+  }
+
+  const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
+    m.collisionState.current.currentBiome = biome;
+  });
+
+  const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
+    if (segmentIndex === 14) {
+      m.shelfSpawnPointRef.current = spawnPoint;
+      m.shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
+    }
+  });
+
+  return () => {
+    offBiomeChange();
+    offSegmentSpawn();
+    if (workerSession) {
+      workerSession.stop();
+      if (m.workerProxyRef.current === workerSession.proxy) m.workerProxyRef.current = null;
+    }
+    m.workerReadyRef.current = false;
+    m.workerStepPendingRef.current = false;
+    setPhysicsWorkerActive(false);
+    setPhysicsWorkerDiagnostics(null);
+  };
+}
+
+/**
+ * Default-on: the worker runs unless the browser can't host it, the player
+ * turned it off, or ?physicsWorker=0 is set. Read once per mount — switching
+ * mid-session would strand the Rapier body between two authorities.
+ */
+function useRaftWorkerDecision(): boolean {
   const physicsWorkerPreference = useSettingsStore((s) => s.physicsWorker);
   const workerDecision = React.useMemo(
     () => resolvePhysicsWorker({ preference: physicsWorkerPreference }),
@@ -47,6 +196,17 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   useEffect(() => {
     setPhysicsWorkerDecision(workerDecision.enabled, workerDecision.reason);
   }, [workerDecision]);
+
+  return useWorkerPhysics;
+}
+
+const RaftVehicle = forwardRef((props, forwardedRef) => {
+  const bodyRef = useRef<RapierRigidBody>(null);
+  const raftMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const { camera } = useThree();
+  // R3F's clock: the fixed sim clock under `frameloop="never"` (scripted / replay).
+  const getR3fState = useThree((state) => state.get);
+  const useWorkerPhysics = useRaftWorkerDecision();
 
   const controls = usePlayerControls();
   // Impact events and their sim clock; built once (a `useRef(new …)` argument runs every render).
@@ -69,128 +229,16 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
   React.useImperativeHandle(forwardedRef, () => bodyRef.current as RapierRigidBody);
 
-  const syncBodyFromWorkerState = (body: RapierBody | null, workerState: WorkerRaftState | null) => {
-    if (!body || !workerState) return;
-    const [px, py, pz] = workerState.position;
-    const [rx, ry, rz, rw] = workerState.rotation;
-    const [vx, vy, vz] = workerState.velocity;
-    const [avx, avy, avz] = workerState.angularVelocity;
-    body.setTranslation({ x: px, y: py, z: pz }, true);
-    body.setRotation({ x: rx, y: ry, z: rz, w: rw }, true);
-    body.setLinvel({ x: vx, y: vy, z: vz }, true);
-    body.setAngvel({ x: avx, y: avy, z: avz }, true);
+  const workerStepRefs: RaftWorkerStepRefs = {
+    bodyRef, workerProxyRef, workerReadyRef, workerStepPendingRef, getR3fState,
   };
+  const stepWorkerProxy = (body: RapierBody, delta: number, impulses: Vec3Tuple[] = []) =>
+    stepRaftWorker(workerStepRefs, body, delta, impulses);
 
-  const stepWorkerProxy = (body: RapierBody, delta: number, impulses: Vec3Tuple[] = []) => {
-    const proxy = workerProxyRef.current;
-    if (!proxy || !workerReadyRef.current || workerStepPendingRef.current) return;
-
-    workerStepPendingRef.current = true;
-    const tickParams = getPhysicsWorkerTickParams();
-    const waterForceConfig = buildRaftWorkerWaterForceConfig(
-      tickParams,
-      getR3fState().clock.elapsedTime,
-      true,
-    );
-    // The TS mirror for the state this step starts from (the body mirrors the
-    // worker's last post-step state). The worker applies it only when the hull
-    // link has no fresh sim-worker force (#467).
-    const waterForce = {
-      ...waterForceConfig,
-      mirror: computeHullMirrorForce(
-        { position: body.translation(), velocity: body.linvel() },
-        waterForceConfig,
-      ),
-    };
-
-    proxy.step(delta, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
-      if (workerState) syncBodyFromWorkerState(bodyRef.current, workerState);
-      if (diagnostics) {
-        setPhysicsWorkerDiagnostics(diagnostics);
-        if (typeof window !== 'undefined' && import.meta.env.DEV) {
-          window.__watershedPhysicsWorker = {
-            simLinked: proxy.isSimLinked,
-            waterForce: diagnostics,
-            tickOrder: [
-              'take-sim-hull-force (or the main thread\'s TS mirror force)',
-              'apply-impulses',
-              'rapier-step',
-              'post-hull-to-sim',
-              'post-snapshot',
-            ],
-          };
-        }
-      }
-    }).catch((error) => {
-      // A step in flight when the session stops rejects with "disposed".
-      if (workerProxyRef.current === proxy) console.warn('[RaftVehicle] Rapier worker step failed', error);
-    }).finally(() => {
-      workerStepPendingRef.current = false;
-    });
-  };
-
-  useEffect(() => {
-    let workerSession: RaftWorkerSession<RapierWorkerProxy> | null = null;
-    if (bodyRef.current) {
-      const [sx, sy, sz] = PLAYER_SPAWN.position;
-      bodyRef.current.setTranslation({ x: sx, y: sy, z: sz }, true);
-      // The main-thread body owns the raft until the worker session is ready:
-      // the worker world is the streamed level, so it waits for the track (#465 C2).
-      bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
-      if (useWorkerPhysics) {
-        workerSession = startRaftWorkerSession({
-          createProxy: createRapierWorkerProxy,
-          raft: {
-            halfExtents: [WATER_PHYSICS.RAFT_WIDTH * 0.5, WATER_PHYSICS.RAFT_HEIGHT * 0.5, WATER_PHYSICS.RAFT_LENGTH * 0.5],
-            mass: WATER_PHYSICS.RAFT_MASS,
-            linearDamping: 2,
-            angularDamping: 2.5,
-          },
-          getRaftPosition: () => {
-            const t = bodyRef.current?.translation?.();
-            return t ? [t.x, t.y, t.z] : [...PLAYER_SPAWN.position];
-          },
-          linkSim: linkPhysicsToSim,
-          onReady: (proxy, workerState) => {
-            workerProxyRef.current = proxy;
-            workerReadyRef.current = true;
-            setPhysicsWorkerActive(true);
-            syncBodyFromWorkerState(bodyRef.current, workerState);
-          },
-          onFallback: (error) => {
-            console.warn('[RaftVehicle] Rapier worker init failed; using main-thread physics', error);
-            workerReadyRef.current = false;
-            setPhysicsWorkerActive(false);
-          },
-        });
-      }
-      tippingState.current.lastSafePosition.copy(bodyRef.current.translation());
-    }
-
-    const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
-      collisionState.current.currentBiome = biome;
-    });
-
-    const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
-      if (segmentIndex === 14) {
-        shelfSpawnPointRef.current = spawnPoint;
-        shelfTriggerRef.current = computeShelfTrigger(spawnPoint);
-      }
-    });
-
-    return () => {
-      offBiomeChange();
-      offSegmentSpawn();
-      if (workerSession) {
-        workerSession.stop();
-        if (workerProxyRef.current === workerSession.proxy) workerProxyRef.current = null;
-      }
-      workerReadyRef.current = false;
-      workerStepPendingRef.current = false;
-      setPhysicsWorkerActive(false);
-      setPhysicsWorkerDiagnostics(null);
-    };
-  }, [useWorkerPhysics]);
+  useEffect(() => mountRaftSession({
+    bodyRef, useWorkerPhysics, workerProxyRef, workerReadyRef, workerStepPendingRef,
+    tippingState, collisionState, shelfSpawnPointRef, shelfTriggerRef,
+  }), [useWorkerPhysics]);
 
   useRaftControls({
     bodyRef,
