@@ -565,5 +565,3 @@ export function updateCanyonMaterial(
     material.uniforms.highWaterIntensity.value = Math.max(0.0, options.highWaterIntensity);
   }
 }
-
-export default createCanyonMaterial;

@@ -578,5 +578,3 @@ function getErrorField(error: any): string {
 
   return path || 'root';
 }
-
-export default validateReach;

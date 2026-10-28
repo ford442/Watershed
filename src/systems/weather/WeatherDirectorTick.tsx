@@ -22,5 +22,3 @@ export function WeatherDirectorTick(): null {
 
   return null;
 }
-
-export default WeatherDirectorTick;

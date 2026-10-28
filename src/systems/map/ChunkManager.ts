@@ -690,5 +690,3 @@ export class ChunkManager {
     this.commitSegment(spawnSegment);
   }
 }
-
-export default ChunkManager;

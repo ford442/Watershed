@@ -302,8 +302,3 @@ export function initAudio(camera: THREE.Camera): AudioManager {
 export function getAudioManager(): AudioManager | null {
   return audioManager;
 }
-
-export function disposeAudio(): void {
-  audioManager?.dispose();
-  audioManager = null;
-}

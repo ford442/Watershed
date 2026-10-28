@@ -55,11 +55,9 @@ export type {
 export {
   buildProceduralSegment,
   calculateSegmentSpawns,
-  calculateSpawns,
   DEFAULT_MAP_CONFIG,
   DEFAULT_SEGMENT_PROGRESSION,
   ensureTangentContinuity,
-  generateRiverPath,
   generateSegmentPath,
   INITIAL_TREADMILL_POINTS,
   type BuildProceduralSegmentOptions,

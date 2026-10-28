@@ -207,5 +207,3 @@ export function normalizeReachManifest(
 
   return normalized;
 }
-
-export default normalizeReachManifest;

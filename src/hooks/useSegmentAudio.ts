@@ -122,5 +122,3 @@ export function useSegmentAudio(currentSegmentIndex: number) {
     });
   });
 }
-
-export default useSegmentAudio;

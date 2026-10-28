@@ -27,11 +27,3 @@ export const NIGHT_MODE: NightModeConfig = {
   toggleKey: 'n',
   bioLuminescence: 0.0,
 };
-
-/** Fog distances */
-export const FOG = {
-  day: { near: 20, far: 150 },
-  night: { near: 10, far: 100 },
-};
-
-export default NIGHT_MODE;

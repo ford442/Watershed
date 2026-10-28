@@ -2,7 +2,6 @@ import type { RendererPreference } from './types';
 import { currentSearch, editQuery } from '../config/queryFlags';
 
 const STORAGE_KEY = 'watershed.renderer.preference';
-const VALID: RendererPreference[] = ['webgl', 'webgpu'];
 // NOTE: 'webgpu' is accepted as a preference but currently results in a WebGL2
 // fallback. The live renderer is WebGL-only; see docs/reference/RENDERER_CONTRACT.md.
 
@@ -23,10 +22,6 @@ export function parseRendererPreference(search = currentSearch()): RendererPrefe
   // fallback to WebGL2 today; it exists only for the future #256 path A migration.
   // See docs/reference/RENDERER_CONTRACT.md.
   return 'webgl';
-}
-
-export function isRendererPreference(value: string): value is RendererPreference {
-  return (VALID as string[]).includes(value);
 }
 
 export function syncRendererPreferenceToUrl(preference: RendererPreference): void {

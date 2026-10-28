@@ -62,5 +62,3 @@ export const WATER_FLOW_CONFIG = {
   /** FlowMap bounds padding (multiplier on computed bounds) */
   boundsPadding: 1.05,
 } as const;
-
-export type WaterFlowConfig = typeof WATER_FLOW_CONFIG;

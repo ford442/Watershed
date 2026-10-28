@@ -562,6 +562,3 @@ function createDefaultLevel(): any {
     },
   };
 }
-
-export default LevelEditor;
-

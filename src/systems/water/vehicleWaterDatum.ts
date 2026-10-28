@@ -10,12 +10,10 @@
  */
 
 let level: number | null = null;
-let frame = 0;
 
 /** Written once per force frame by applyWaterForces. */
 export function publishVehicleWaterLevel(y: number | null): void {
   level = y !== null && Number.isFinite(y) ? y : null;
-  frame += 1;
 }
 
 /** The staged water level over the vehicle as of the last force frame. */
@@ -23,12 +21,6 @@ export function getVehicleWaterLevel(): number | null {
   return level;
 }
 
-/** Bumps per publish — lets a test tell "not published" from "published null". */
-export function getVehicleWaterLevelFrame(): number {
-  return frame;
-}
-
 export function resetVehicleWaterLevelForTests(): void {
   level = null;
-  frame = 0;
 }

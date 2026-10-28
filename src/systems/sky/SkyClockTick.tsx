@@ -24,5 +24,3 @@ export function SkyClockTick(): null {
 
   return null;
 }
-
-export default SkyClockTick;

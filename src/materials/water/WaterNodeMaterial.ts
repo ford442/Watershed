@@ -674,6 +674,3 @@ export function isWaterNodeMaterial(material: unknown): material is WaterNodeMat
     (material as { userData?: { materialBackend?: string } }).userData?.materialBackend === 'tsl'
   );
 }
-
-/** Minimum float epsilon under which two backend outputs are considered equal. */
-export const WATER_PARITY_EPSILON = 1e-3;

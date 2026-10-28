@@ -242,5 +242,3 @@ export const PathVisualizer: React.FC<PathVisualizerProps> = ({
     </group>
   );
 };
-
-export default PathVisualizer;

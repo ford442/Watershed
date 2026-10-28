@@ -536,5 +536,3 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     </group>
   );
 };
-
-export default SplashSystem;

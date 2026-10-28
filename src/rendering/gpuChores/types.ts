@@ -27,8 +27,6 @@ export const CHORE_BACKEND_ORDER: readonly ChoreBackend[] = ['webgpu', 'wasm', '
 
 export const HISTOGRAM_BINS = 256;
 
-export type ChoreOp = 'grid-reduce' | 'luma-histogram' | 'downsample-2d' | 'separable-blur';
-
 export interface GridReduceJob {
   op: 'grid-reduce';
   /** CPU height / scalar field. Required by the wasm/ts lanes. */

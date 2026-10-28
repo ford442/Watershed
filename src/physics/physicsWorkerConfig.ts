@@ -1,7 +1,5 @@
-import { WATER_LEVEL } from '../constants/game';
 import { WATER_PHYSICS } from '../constants/waterPhysics';
 import type { PhysicsWorkerTickParams } from './physicsWorkerRegistry';
-import type { PhysicsWorkerWaterTickConfig } from './physicsWorkerWaterForces';
 import type { WaterForceTickConfig } from './rapierWorkerProtocol';
 
 export function buildRaftWorkerWaterForceConfig(
@@ -25,21 +23,4 @@ export function buildRaftWorkerWaterForceConfig(
     flowDirZ: params.flowDirZ,
     simFlow: params.simFlow ?? false,
   };
-}
-
-export function defaultPhysicsWorkerTickParams(): PhysicsWorkerTickParams {
-  return {
-    flowSpeed: 1.2,
-    waterLevel: WATER_LEVEL,
-    turbulenceStrength: 0.1,
-    turbulenceFrequency: 2.4,
-    flowDirX: 0,
-    flowDirZ: -1,
-  };
-}
-
-export function toPhysicsWorkerWaterTickConfig(
-  config: WaterForceTickConfig,
-): PhysicsWorkerWaterTickConfig {
-  return { ...config };
 }

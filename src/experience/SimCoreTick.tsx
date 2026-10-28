@@ -111,5 +111,3 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
 
   return null;
 }
-
-export default SimCoreTick;

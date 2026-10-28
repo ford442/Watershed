@@ -607,5 +607,3 @@ export const ReachStreamer = {
     return manifest;
   },
 };
-
-export default ReachStreamer;

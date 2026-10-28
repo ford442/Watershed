@@ -106,5 +106,3 @@ export const AUDIO_CONFIG = {
     crossfadeSpeed: 1.8,
   },
 } as const;
-
-export type AudioConfig = typeof AUDIO_CONFIG;

@@ -52,10 +52,6 @@ export interface HydroHudBoard {
   contrastLine: string | null;
 }
 
-export function labelHydroKind(kind: HydroEventKind): string {
-  return KIND_LABELS[kind];
-}
-
 /**
  * Build the HUD board for `launchHour`, contrasted against the other of the
  * two authored scouting hours (06:00 / 14:00).

@@ -9,11 +9,6 @@ export const MAX_LIVE_PILLAR_FRAGMENTS = 30;
 
 let liveFragmentCount = 0;
 
-/** How many fragment slots are currently in use. */
-export function getLivePillarFragmentCount(): number {
-  return liveFragmentCount;
-}
-
 /**
  * Try to reserve fragment slots. Returns the number actually granted
  * (may be less than requested when the global cap is reached).

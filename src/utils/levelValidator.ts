@@ -579,5 +579,3 @@ export function validateDecorationCount(type: string, count: number): { valid: b
 
   return { valid: true };
 }
-
-export default validateLevel;

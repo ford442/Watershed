@@ -175,5 +175,3 @@ export class RapierWorkerProxy {
     });
   }
 }
-
-export default RapierWorkerProxy;

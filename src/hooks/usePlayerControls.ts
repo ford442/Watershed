@@ -155,5 +155,3 @@ export function usePlayerControls(camera?: THREE.Camera): PlayerControlVectors &
     getControls,
   };
 }
-
-export default usePlayerControls;

@@ -11,12 +11,6 @@ export const WATER_DENSITY = 1000;
 /** Human body density - humans barely sink (kg/m³) */
 export const HUMAN_DENSITY = 1038;
 
-/** Air density at sea level, 15°C (kg/m³) */
-export const AIR_DENSITY = 1.226;
-
-/** Water dynamic viscosity at 25°C (Pa·s) */
-export const WATER_VISCOSITY = 8.9e-4;
-
 /** Gravitational acceleration (m/s²) */
 export const GRAVITY = 9.80665;
 
@@ -35,8 +29,6 @@ export const GENERATION = {
 
 export const REACH_API_BASE = '/api/reaches';
 
-export const TRANSITION_SEGMENT_TYPES = ['waterfall', 'splash'] as const;
-
 export const PHYSICS = {
     GRAVITY: -20,
     RIVER_FLOW_FORCE: 14,
@@ -45,22 +37,6 @@ export const PHYSICS = {
     RAFT_BUOYANCY: 2940,
     // Drag coefficient: ~0.47 for turbulent flow around blunt body
     RAFT_DRAG: 0.47,
-} as const;
-
-export const PLAYER = {
-    /**
-     * @deprecated  Movement speed is controlled by VEHICLE_TUNING.baseSpeed in
-     *              src/constants/vehicleTuning.ts.  This value is not read by
-     *              RunnerVehicle and is retained only for reference.
-     */
-    SPEED: 5,
-    /**
-     * @deprecated  Jump force is controlled by VEHICLE_TUNING.jumpForce in
-     *              src/constants/vehicleTuning.ts.  This value is not read by
-     *              RunnerVehicle and is retained only for reference.
-     */
-    JUMP_FORCE: 5,
-    CAMERA_HEIGHT: 0.8,
 } as const;
 
 export const RAFT = {

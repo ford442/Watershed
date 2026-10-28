@@ -627,5 +627,3 @@ export function PostProcessingPipeline({
 
   return null;
 }
-
-export default PostProcessingPipeline;

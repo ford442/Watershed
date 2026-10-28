@@ -184,8 +184,3 @@ function decideMaterialBackend(env: MaterialBackendEnvironment): MaterialBackend
 
   return { backend: 'glsl', reason: 'default-glsl' };
 }
-
-/** Convenience boolean for call sites that don't need the reason. */
-export function isTslBackend(env: MaterialBackendEnvironment = {}): boolean {
-  return resolveMaterialBackend(env).backend === 'tsl';
-}

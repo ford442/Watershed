@@ -454,5 +454,3 @@ export function rehydrateSettings(): void {
     useSettingsStore.getState().setHasHydrated(true);
   }
 }
-
-export default useSettingsStore;

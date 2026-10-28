@@ -14,17 +14,6 @@ export interface ShaderLoadResult {
   error: string | null;
 }
 
-export interface ShaderMetadata {
-  id: string;
-  name: string;
-  description?: string;
-  type: 'vertex' | 'fragment' | 'compute';
-  tags?: string[];
-  stars?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
 // Simple in-memory cache for shader code
 const shaderCache = new Map<string, { code: string; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -133,90 +122,3 @@ export const useShaderLoader = (
 
   return result;
 };
-
-/**
- * Hook to fetch shader metadata (for browsing/selection UI)
- */
-export const useShaderList = (
-  options?: {
-    tag?: string;
-    type?: 'vertex' | 'fragment' | 'compute';
-    limit?: number;
-  }
-) => {
-  const [shaders, setShaders] = useState<ShaderMetadata[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const params = new URLSearchParams();
-        if (options?.tag) params.append('tag', options.tag);
-        if (options?.type) params.append('type', options.type);
-        if (options?.limit) params.append('limit', options.limit.toString());
-
-        const res = await fetch(`${API_BASE_URL}/api/shaders?${params}`, {
-          headers: { 'Accept': 'application/json' },
-        });
-
-        if (!res.ok) throw new Error(`Failed to fetch shaders (${res.status})`);
-
-        const data = await res.json();
-        setShaders(data.shaders || []);
-      } catch (err: any) {
-        console.warn('[useShaderList] Failed to load shader list:', err.message);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // load() reports its own failures (try / catch → error state).
-    void load();
-  }, [options?.tag, options?.type, options?.limit]);
-
-  return { shaders, loading, error };
-};
-
-/**
- * Utility to preload a shader into the cache
- */
-export const preloadShader = async (shaderId: string): Promise<string | null> => {
-  // Check cache first
-  const cached = shaderCache.get(shaderId);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.code;
-  }
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/shaders/${shaderId}/code`);
-    if (!res.ok) return null;
-    
-    const data = await res.json();
-    const code = data.code;
-    
-    shaderCache.set(shaderId, {
-      code,
-      timestamp: Date.now(),
-    });
-    
-    return code;
-  } catch (err) {
-    console.warn(`[preloadShader] Failed to preload ${shaderId}:`, err);
-    return null;
-  }
-};
-
-/**
- * Clear the shader cache
- */
-export const clearShaderCache = (): void => {
-  shaderCache.clear();
-  console.log('[useShaderLoader] Shader cache cleared');
-};
-
-export default useShaderLoader;

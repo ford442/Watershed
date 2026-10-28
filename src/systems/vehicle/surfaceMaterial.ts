@@ -15,6 +15,11 @@ export enum SurfaceMaterial {
   WATER = 'water',
 }
 
+/**
+ * Contact friction per surface. Not applied today (64ef786: Rapier bodies have
+ * no per-biome friction hook); kept as the table a vehicle wiring would read.
+ * @public
+ */
 export const MATERIAL_FRICTION: Record<SurfaceMaterial, number> = {
   [SurfaceMaterial.MOSS]: 0.4,      // Slippery
   [SurfaceMaterial.WOOD]: 0.4,      // Slippery

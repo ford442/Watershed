@@ -20,13 +20,6 @@ import { createRng } from '../../math/random';
 // =============================================================================
 export type FloatingObjectType = 'log' | 'tire' | 'boat' | 'debris';
 
-export interface FloatingObjectConfig {
-  type: FloatingObjectType;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-}
-
 // =============================================================================
 // GEOMETRY & MATERIAL
 // =============================================================================

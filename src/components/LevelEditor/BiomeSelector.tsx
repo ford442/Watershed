@@ -359,5 +359,3 @@ export const BiomeSelector: React.FC<BiomeSelectorProps> = ({
     </div>
   );
 };
-
-export default BiomeSelector;

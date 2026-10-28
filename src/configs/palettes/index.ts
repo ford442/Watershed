@@ -192,5 +192,3 @@ export function applyBiomeToLighting(palette: BiomePalette, lights: {
   lights.fill.color.copy(_fillScratch);
   lights.fill.intensity = palette.fillIntensity * (1 - overcastBlend * 0.3) * (0.5 + 0.5 * sunElevation);
 }
-
-export default BiomePalettes;

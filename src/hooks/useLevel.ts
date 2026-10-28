@@ -530,5 +530,3 @@ export function useLevel(): UseLevelReturn {
     clearCache,
   };
 }
-
-export default useLevel;

@@ -268,20 +268,10 @@ export function getActiveWeather(): RunWeather {
   return activeSession ? getDirectorRiverWeather() : getLaunchWeather();
 }
 
-/** The run's weather script (a one-step script before any run). */
-export function getActiveWeatherScript(): WeatherScript {
-  return activeSession?.conditions.weatherScript ?? constantWeatherScript(getLaunchWeather());
-}
-
 /** The run's conditions, or the defaults with the persisted launch weather before any run. */
 export function getActiveConditions(): RunConditions {
   if (activeSession) return activeSession.conditions;
   return { ...DEFAULT_RUN_CONDITIONS, weatherScript: constantWeatherScript(getLaunchWeather()) };
-}
-
-/** Restart the run's weather from the top of its script (journey loop / map restart). */
-export function restartRunWeather(): void {
-  if (activeSession) resetWeatherDirector(activeSession.conditions.weatherScript);
 }
 
 export function getActiveLoadoutId(): LoadoutId {
@@ -552,13 +542,6 @@ export function saveJourneyCheckpoint(options: {
   };
   setLastMapId(checkpoint.mapId);
   return checkpoint;
-}
-
-export function notePeakAirTime(seconds: number): void {
-  if (!activeSession || !Number.isFinite(seconds)) return;
-  if (seconds > activeSession.peakAirTime) {
-    activeSession = { ...activeSession, peakAirTime: seconds };
-  }
 }
 
 export function resetRunSessionForTests(): void {

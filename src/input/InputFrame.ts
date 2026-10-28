@@ -101,21 +101,6 @@ export function clearInputFrame(frame: InputFrame): void {
   frame.frameIdx = 0;
 }
 
-export function copyInputFrame(from: Readonly<InputFrame>, into: InputFrame): InputFrame {
-  into.moveX = from.moveX;
-  into.moveY = from.moveY;
-  into.lookDX = from.lookDX;
-  into.lookDY = from.lookDY;
-  into.paddleL = from.paddleL;
-  into.paddleR = from.paddleR;
-  into.buttons = from.buttons;
-  into.dtMs = from.dtMs;
-  into.tMs = from.tMs;
-  into.frameIdx = from.frameIdx;
-  into.source = from.source;
-  return into;
-}
-
 export function hasButton(frame: Readonly<InputFrame>, bit: InputButtonBit): boolean {
   return (frame.buttons & bit) !== 0;
 }

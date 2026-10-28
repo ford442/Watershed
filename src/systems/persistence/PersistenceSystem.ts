@@ -628,14 +628,6 @@ export function saveErosionPlane(key: string, plane: Float32Array, now: number =
   schedulePersist();
 }
 
-/** Forget every saved bed. */
-export function clearErosionPlanes(): void {
-  touchCache((data) => {
-    delete data.erosion;
-  });
-  flushPersistence();
-}
-
 /** Test helper — reset module cache between unit tests. */
 export function resetPersistenceForTests(): void {
   cache = null;
