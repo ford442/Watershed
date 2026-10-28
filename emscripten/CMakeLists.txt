@@ -15,7 +15,6 @@ set(COMPUTE_SOURCES
     chores.cpp
     particles.cpp
     routing.cpp
-    terrain.cpp
 )
 
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
@@ -108,7 +107,7 @@ if(EMSCRIPTEN)
         # stays: emscripten's libm never sets errno, and without it clang
         # keeps a libcall around sqrt; the result is the same correctly
         # rounded sqrt either way.
-        # -flto: six small TUs; lets calculateWaterForce etc. inline across
+        # -flto: five small TUs; lets calculateWaterForce etc. inline across
         # forces.cpp / bindings.cpp. Also passed at link (below).
         set(EM_COMPILE_FLAGS
             -O3
@@ -142,8 +141,8 @@ if(EMSCRIPTEN)
     # largest SWE budget (128x80 cells x 4 planes, 160 KiB) plus its solver
     # and scroll scratch (~0.5 MB, sized up front by
     # reserveShallowWaterScratch), particle SoAs (36 B per particle), the
-    # routing chain, one terrain tile in flight (a 40x96 visual tile is
-    # 109 KiB) and chore scratch; plus 64 KiB of stack and the static data.
+    # routing chain and chore scratch; plus 64 KiB of stack and the static
+    # data.
     # 16 MB is >10x that. Growth was the only reason every TS heap view had
     # to be rebound (#415): it replaced the ArrayBuffer and silently detached
     # views made before it. With a fixed heap a view made at bind or
@@ -223,7 +222,7 @@ else()
     # checks for that trust:
     #   WATERSHED_SANITIZE=ON  host smoke under ASan + UBSan (pnpm test:native:sanitize)
     #   WATERSHED_FUZZ=ON      libFuzzer targets over every entry-point family —
-    #                          swe, chores, forces (+ particles), routing, terrain
+    #                          swe, chores, forces (+ particles), routing
     #                          (clang; pnpm test:native:fuzz). Implies the sanitizers.
     option(WATERSHED_SANITIZE "Host build with -fsanitize=address,undefined" OFF)
     option(WATERSHED_FUZZ "Build the libFuzzer targets (clang only)" OFF)
@@ -241,7 +240,7 @@ else()
         endif()
         target_compile_options(watershed_compute PRIVATE -fsanitize=fuzzer-no-link)
         # One target per entry-point family (#502); pnpm test:native:fuzz runs each.
-        foreach(fuzz_target swe chores forces routing terrain)
+        foreach(fuzz_target swe chores forces routing)
             add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
             target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
             target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE

@@ -21,8 +21,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { ROUTING_SUBREACHES, type WatershedNativeModule } from './wasmAbi';
 import { loadNativeFromDisk } from '../../testing/nativeFromDisk';
-import { TERRAIN_FIXTURES, WALL_SHELL_FIXTURES } from '../../terrain/__tests__/terrainFixtures';
-import { TERRAIN_CHANNEL_STRIDE, TERRAIN_TILE_PLANES, terrainVertexCount } from '../../terrain/terrainTile';
 
 const HEADER = readFileSync(resolve(__dirname, '../../../emscripten/native_digest.h'), 'utf8');
 
@@ -152,38 +150,10 @@ function routingDigest(): number {
   return f.h;
 }
 
-function terrainDigest(): number {
-  const f = new Fnv();
-  for (const { params: p } of TERRAIN_FIXTURES) {
-    const n = terrainVertexCount(p.segmentsX, p.segmentsZ);
-    const channelCount = Math.floor(p.channel.length / TERRAIN_CHANNEL_STRIDE);
-    const channel = block(channelCount * TERRAIN_CHANNEL_STRIDE);
-    channel.view().set(p.channel);
-    const out = block(n * TERRAIN_TILE_PLANES);
-    f.word(wasm.buildTerrainTile(
-      p.pathLength, p.canyonWidth, p.waterWidth, p.segmentsX, p.segmentsZ, p.profile,
-      p.rockNoise ? 1 : 0, p.tube ? 1 : 0, p.tube?.curl ?? 0, p.tube?.ceilingHeight ?? 0,
-      channel.ptr, channelCount, out.ptr,
-    ));
-    f.floats(out.view());
-    out.free();
-    channel.free();
-  }
-  for (const { params: p } of WALL_SHELL_FIXTURES) {
-    const n = terrainVertexCount(p.segmentsX, p.segmentsZ);
-    const out = block(n);
-    f.word(wasm.buildWallShell(p.pathLength, p.shellWidth, p.segmentsX, p.segmentsZ, p.profile, p.wallHeight, p.segmentId, out.ptr));
-    f.floats(out.view());
-    out.free();
-  }
-  return f.h;
-}
-
 describe('shipped wasm == host build, bit for bit (native_digest.h)', () => {
   it.each([
     ['SWE step / inflow step / events / scroll', 'kSweDigest', sweDigest],
     ['routing: steady, routed + lateral steps, travel time, edge state', 'kRoutingDigest', routingDigest],
-    ['terrain: every fixture tile and wall shell', 'kTerrainDigest', terrainDigest],
   ] as const)('%s', (_label, name, digest) => {
     expect(hex(digest())).toBe(hex(expected(name)));
   });

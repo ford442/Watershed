@@ -5,9 +5,9 @@ Architecture decision: see [ADR_WASM_RAPIER_WATER_FORCES.md](./ADR_WASM_RAPIER_W
 Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `swe.h`
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
 `chores.cpp` (optional gpu-chores; not SWE), `particles.cpp` (waterfall / splash SoA),
-`routing.cpp` (channel routing), `terrain.cpp` (terrain tiles, #487),
-and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 13,
-`MIN_WASM_ABI_VERSION` = 13).
+`routing.cpp` (channel routing),
+and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 16,
+`MIN_WASM_ABI_VERSION` = 16). The terrain tile (#487) is TypeScript-only since ABI 16.
 It builds to:
 
 - `public/watershed_native.js`

@@ -239,21 +239,3 @@ describe('particles.cpp', () => {
     soa.free();
   });
 });
-
-describe('terrain.cpp', () => {
-  it('tile / wall shell return 0 and write nothing for null outputs and bad grids', () => {
-    const out = canary(7 * 9);
-    const low = lowMemory();
-    expect(wasm.buildTerrainTile(10, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0)).toBe(0);
-    expect(wasm.buildTerrainTile(10, 30, 10, 0, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(0);
-    expect(wasm.buildTerrainTile(10, 30, 10, -2, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(0);
-    expect(wasm.buildTerrainTile(10, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 3, out.ptr)).toBe(0);
-    expect(wasm.buildTerrainTile(Number.NaN, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(0);
-    expect(wasm.buildWallShell(10, 30, 2, 2, 0, 20, 1, 0)).toBe(0);
-    expect(wasm.buildWallShell(10, 30, 2, -1, 0, 20, 1, out.ptr)).toBe(0);
-    expect(out.untouched()).toBe(true);
-    expect(lowMemory()).toEqual(low);
-    expect(wasm.buildTerrainTile(10, 30, 10, 2, 2, 0, 0, 0, 0, 0, 0, 0, out.ptr)).toBe(9);
-    out.free();
-  });
-});

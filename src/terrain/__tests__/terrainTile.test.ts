@@ -1,9 +1,9 @@
 /**
- * Terrain tile — TS mirror goldens and invariants (#487 Phase A).
+ * Terrain tile — goldens and invariants (#487 Phase A).
  *
- * The goldens are the host C++ build's (emscripten/terrain_goldens.h); the
- * same numbers gate the WASM build in emscripten/smoke_test.mjs. Native vs
- * mirror plane-by-plane parity is terrainParity.test.ts (`pnpm test:wasm`).
+ * The goldens in terrainFixtures.ts came from the retired C++ tile's host
+ * build (emscripten/terrain_goldens.h, ABI 13–15), which this module matched
+ * bit for bit; they now pin terrainTile.ts on its own.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,6 @@ import type { ChannelProfileSample } from '../types';
 import {
   applyTubeProfile,
   buildTerrainTile,
-  buildTerrainTileNative,
   buildWallShellHeights,
   canyonFloorFromShape,
   sampleChannelShape,
@@ -23,7 +22,6 @@ import {
   type TerrainTileParams,
 } from '../terrainTile';
 import { TERRAIN_FIXTURES, WALL_SHELL_FIXTURES } from './terrainFixtures';
-import { WasmHeapExhaustedError } from '../../systems/water/wasmAbi';
 
 function expectClose(actual: number, expected: number, label: string, rel = 1e-5, abs = 1e-4): void {
   const tol = Math.max(Math.abs(expected) * rel, abs);
@@ -32,7 +30,7 @@ function expectClose(actual: number, expected: number, label: string, rel = 1e-5
 
 const sum = (a: Float32Array, f: (v: number) => number = (v) => v): number => a.reduce((s, v) => s + f(v), 0);
 
-describe('terrain tile — TS mirror matches the C++ goldens', () => {
+describe('terrain tile — the goldens', () => {
   for (const { name, params, golden } of TERRAIN_FIXTURES) {
     it(name, () => {
       const tile = buildTerrainTile(params);
@@ -107,7 +105,7 @@ describe('terrain tile — planes', () => {
     expect(buildTerrainTile({ ...base, segmentsX: 0 })).toBeNull();
     expect(buildTerrainTile({ ...base, segmentsZ: 5000 })).toBeNull();
     expect(buildWallShellHeights({ ...WALL_SHELL_FIXTURES[0].params, shellWidth: -1 })).toBeNull();
-    // A denormal extent passes `> 0` and overflowed the slope planes to inf (terrain.h TERRAIN_MIN_EXTENT).
+    // A denormal extent passes `> 0` and overflowed the slope planes to inf (TERRAIN_MIN_EXTENT).
     expect(buildTerrainTile({ ...base, canyonWidth: 1e-40 })).toBeNull();
     expect(buildTerrainTile({ ...base, pathLength: 1e-40 })).toBeNull();
     expect(buildWallShellHeights({ ...WALL_SHELL_FIXTURES[0].params, shellWidth: 1e-40 })).toBeNull();
@@ -132,7 +130,7 @@ describe('terrain tile — one profile for every consumer', () => {
     };
   });
 
-  it('packs channel samples in the terrain.h field order', () => {
+  it('packs channel samples in the documented field order', () => {
     const packed = packChannelProfile(samples);
     expect(packed.length).toBe(samples.length * TERRAIN_CHANNEL_STRIDE);
     expect(packed[TERRAIN_CHANNEL_STRIDE + 6]).toBe(samples[1].gravelBarSide);
@@ -167,26 +165,5 @@ describe('terrain tile — one profile for every consumer', () => {
         expectClose(tile.x[i], folded.x, `x[${ix},${iz}]`, 1e-5, 1e-4);
       }
     }
-  });
-});
-
-describe('terrain tile — native backend heap', () => {
-  it('frees the channel block when the output allocation runs out of heap', () => {
-    const freed: number[] = [];
-    let calls = 0;
-    const wasm = {
-      HEAPF32: new Float32Array(1024),
-      allocateGrid: (count: number) => {
-        calls += 1;
-        if (calls === 2) throw new WasmHeapExhaustedError(count);
-        return 64;
-      },
-      freeGrid: (ptr: number) => { freed.push(ptr); },
-      buildTerrainTile: () => 0,
-      buildWallShell: () => 0,
-    };
-    const params = { ...TERRAIN_FIXTURES[0].params, channel: new Float32Array(2 * TERRAIN_CHANNEL_STRIDE).fill(1) };
-    expect(() => buildTerrainTileNative(wasm, params)).toThrow(WasmHeapExhaustedError);
-    expect(freed).toEqual([64]);
   });
 });

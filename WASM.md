@@ -40,9 +40,6 @@ emscripten/
 ├── particles.cpp     # Euler + chute recycle / age
 ├── routing.h         # Channel routing along the campaign chain — host-clean
 ├── routing.cpp       # Kinematic-storage routing + edge-stage rating (ABI 10)
-├── terrain.h         # Terrain tile planes + grid convention (#487) — host-clean
-├── terrain.cpp       # Canyon floor / tube fold / wall shell as planes (ABI 13)
-├── terrain_goldens.h # Terrain fixtures + goldens for host_smoke.cpp
 ├── bindings.cpp      # The C ABI: extern "C" ws_* exports + ws_getVersion(); the only Emscripten include
 ├── host_smoke.cpp    # Host assert runner (no Emscripten headers), sentinels included
 ├── fuzz_input.h      # Byte reader shared by the libFuzzer targets (host only)
@@ -50,7 +47,6 @@ emscripten/
 ├── chores_fuzz.cpp   # libFuzzer: reduce / histograms / downsample / blur (#502)
 ├── forces_fuzz.cpp   # libFuzzer: forces (single + batch), particle SoA (#502)
 ├── routing_fuzz.cpp  # libFuzzer: routing, special scalars (NaN / ±inf / denormals)
-├── terrain_fuzz.cpp  # libFuzzer: terrain tile + wall shell (#502)
 ├── watershed_native.symbols # `N:name` symbol map of the committed wasm (build.sh; never in public/)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake); enforces the emcc pin
 ├── EMCC_VERSION      # The pinned emcc (3.1.56) — read by build.sh and scripts/emsdk-pinned.sh
@@ -169,20 +165,21 @@ river. The contract, and how each part is held:
 
 | Pair | Budget | Gate |
 |------|--------|------|
-| shipped WASM vs host build (SWE, routing, terrain) | **0 ulp** (bit for bit) | `emscripten/native_digest.h`: FNV-1a over every output float's bits for one scenario per kernel. `host_smoke.cpp` checks the host build (gcc, clang and the ASan build all agree); `nativeDigest.integration.test.ts` replays the same calls through the committed pair in `pnpm test`, and against CI's pinned rebuild in `pnpm test:wasm`. |
-| TS terrain mirror (`terrainTile.ts`) vs WASM | **0 ulp** in V8 (Node / Chrome) | `terrainParity.test.ts` (`pnpm test:wasm`) requires equal floats on the fixtures and 200 random tiles. Both compute in float64 and round once, and V8's `Math.sin` / `Math.pow` and musl are both fdlibm. Another engine's libm may differ by ≤ 1 ulp per call in float64, which rounds away in the float plane except at a `floor()` (the wall-shell shelf): treat any difference there as a bug report against that engine, not a tolerance. |
+| shipped WASM vs host build (SWE, routing) | **0 ulp** (bit for bit) | `emscripten/native_digest.h`: FNV-1a over every output float's bits for one scenario per kernel. `host_smoke.cpp` checks the host build (gcc, clang and the ASan build all agree); `nativeDigest.integration.test.ts` replays the same calls through the committed pair in `pnpm test`, and against CI's pinned rebuild in `pnpm test:wasm`. |
+| terrain: sim worker vs main thread | **0 ulp** (one TypeScript module since ABI 16) | `terrainParity.test.ts` (`pnpm test:wasm`): a worker `BUILD_TILE` equals the main-thread build, every float and index. Before the C++ tile was retired, the TS tile was measured bit-identical to it on the fixtures and 200 random tiles (V8's `Math.sin` / `Math.pow` and musl are both fdlibm). Another JS engine's libm may differ by ≤ 1 ulp per call in float64, which rounds away in the float plane except at a `floor()` (the wall-shell shelf): a browser could build a slightly different wall than Node, but both threads of one session always build the same canyon. |
 | WGSL SWE twin (`swe.wgsl`) vs WASM | **1e-5 absolute** per field after each scenario | `pnpm test:wgsl`. WGSL only guarantees `+ − ×` correctly rounded (division is 2.5 ulp, `sqrt` is derived), so it cannot be bitwise. Measured on SwiftShader: 25 of 29 scenarios bit-identical, worst 9.5e-7 (hull samples, ~8 ulp at unit scale). |
 | TS water-force fallback vs WASM | 1e-3 relative (`waterForceParity.test.ts`) | Gameplay fallback only, never replayed against the WASM. |
 
 Release dropped `-ffast-math` for this. Measured on the dev box (`pnpm profile:swe`, Node,
 median of five 3000-step medians): 128×80 0.141 → 0.138 ms, 48×32 0.0214 → 0.0212 ms, 32×24
 0.0112 → 0.0115 ms — inside run-to-run noise, since the SWE kernels are hand-vectorised in
-`simdf32.h`. The terrain tile (double-precision `sin` / `pow`, not vectorised) is the cost: a
-40×96 tile 0.35 → 0.45 ms on the sim worker, ~0.1 ms per appended segment, off the main thread.
+`simdf32.h`. (The C++ terrain tile, double-precision `sin` / `pow` and not vectorised, was the
+one kernel it cost: a 40×96 tile 0.35 → 0.45 ms on the sim worker. The tile is TypeScript-only
+since ABI 16 — see *Terrain tiles*.)
 
 ### Host (clangd / smoke, no Emscripten)
 
-Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`, `terrain.cpp`) compile with a plain host compiler (C++20). `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs.
+Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`) compile with a plain host compiler (C++20). `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs.
 
 ```bash
 cmake -S emscripten -B emscripten/build-host
@@ -206,7 +203,7 @@ The repo-root `.clangd` reads that host database for every file under `emscripte
 
 | Flag | Value | Rationale |
 |------|-------|-----------|
-| `INITIAL_MEMORY` | 16 MiB | The whole heap. Live data is ~1 MB at most: the largest SWE budget (128×80 × 4 planes, 160 KiB) and its solver / scroll scratch (~0.5 MB, sized up front by `reserveShallowWaterScratch`, ABI 11), particle SoAs (36 B per particle), the routing chain, one terrain tile in flight (a 40×96 visual tile is 109 KiB) and chore scratch, plus 64 KiB of stack — 16 MiB is >10× that. `smoke_test.mjs` asserts the heap byte length is unchanged across step / inflow step / scroll at 128×80. |
+| `INITIAL_MEMORY` | 16 MiB | The whole heap. Live data is ~1 MB at most: the largest SWE budget (128×80 × 4 planes, 160 KiB) and its solver / scroll scratch (~0.5 MB, sized up front by `reserveShallowWaterScratch`, ABI 11), particle SoAs (36 B per particle), the routing chain and chore scratch, plus 64 KiB of stack — 16 MiB is >10× that. `smoke_test.mjs` asserts the heap byte length is unchanged across step / inflow step / scroll at 128×80. |
 | `ALLOW_MEMORY_GROWTH` | **0** | The heap never grows, so its `ArrayBuffer` is never replaced and a typed view made at bind or allocation time stays valid for the module's life. Growth was the only cause of the detached-view bug class (#415): every view made before a growth silently went to `byteLength === 0`, and eight modules rebound theirs on every read. `bindNativeModule` binds `HEAPF32` / `HEAP32` / `HEAPU8` once; `heapF32(mod, ptr, count)` makes a view and takes no previous one. `scripts/check-fixed-heap.mjs` (`pnpm typecheck`) fails on growth flags in `CMakeLists.txt` or rebinding idioms in `src/`. |
 | `ABORTING_MALLOC` | 0 | Without growth emcc defaults this to 1 (a failed `malloc` aborts the module). 0 keeps `malloc` returning NULL, so running out is the bound `allocateGrid`'s `WasmHeapExhaustedError`, which `nativeOwner.ts` classifies for the HUD. `wasmSentinels.test.ts` allocates past the heap through the committed binary and checks the error, an unchanged `HEAPF32.buffer`, and a working module after. |
 
@@ -256,7 +253,6 @@ Every `ws_*` entry point therefore returns early on bad input; `std::span` views
 | `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | early return |
 | `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` < `ROUTING_MIN_DT` (1 µs), NaN or inf | early return; a non-finite head discharge, length or width takes its floor (`atLeast`: 0, 1 mm, 0.5 m); `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
 | `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 or non-finite; any non-finite shape / gravity / damping scalar | alloc → 0; init/step waterfall → `seed` unchanged; splash: early return |
-| `terrain.cpp` | null output; segments ≤ 0 or > `TERRAIN_MAX_SEGMENTS`; non-finite shape; path / canyon / shell extent < `TERRAIN_MIN_EXTENT` (1 mm); short output | returns 0, writes nothing |
 
 Scalar guards are written `!(x > 0)` or go through `std::isfinite`: `x <= 0` is false for NaN,
 and `std::max(x, lo)` returns its first operand when that is NaN, so a NaN `dt` used to reach
@@ -279,7 +275,7 @@ ASan / fuzz builds are LP64 with glibc, whose `calloc` does check, so `host_smok
 On the TS side, the bound `allocateGrid(count > 0)` throws `WasmHeapExhaustedError`
 (`"heap exhausted"`, banner-classified by `nativeOwner.ts`) instead of handing 0 to a writer,
 `allocateGrids(wasm, counts)` allocates several blocks all or nothing (a throw frees the ones
-already made; the SWE grid, force batches, router and terrain tile use it), and in dev builds
+already made; the SWE grid, force batches and router use it), and in dev builds
 `bindNativeModule` rejects an export whose `fn.length` disagrees with the
 `WASM_ABI` arity (the release glue wraps each export with its exact C arity).
 
@@ -293,7 +289,7 @@ byte for byte like the pair), and Vite copies it into `build-sourcemaps/` as
 
 ```bash
 node scripts/wasm-symbolicate.mjs '<stack from a field report>'   # rewrites wasm-function[N]
-node scripts/wasm-symbolicate.mjs 39                              # → ws_stepShallowWater
+node scripts/wasm-symbolicate.mjs 30                              # → ws_stepShallowWater
 ```
 
 At runtime `wasmTrap.ts` names the innermost wasm frame (symbol map, else the engine's own
@@ -324,13 +320,13 @@ different sizes no longer reallocates on every alternation.
 
 ### Fuzzing (#467, #502)
 
-`pnpm test:native:fuzz` (`scripts/native-fuzz.sh`) builds and runs five libFuzzer targets
+`pnpm test:native:fuzz` (`scripts/native-fuzz.sh`) builds and runs four libFuzzer targets
 under ASan + UBSan, `FUZZ_SECONDS` (60) each: `swe`, `chores`, `forces` (forces +
-particles), `routing` and `terrain`. They feed any float bit pattern and out-of-range or
+particles) and `routing`. They feed any float bit pattern and out-of-range or
 null arguments, and check that rejected calls write nothing. Scalars are also drawn from
 `fuzz::Input::special()` (NaN, ±inf, denormals, ±0) one time in four; with only those and
-physical values, the SWE field, the routed chain, the particle SoA and an accepted terrain
-tile must stay finite. `FUZZ_TARGETS="chores terrain"`
+physical values, the SWE field, the routed chain and the particle SoA must stay finite.
+`FUZZ_TARGETS="chores routing"`
 runs a subset. Needs clang with compiler-rt (`libclang-rt-18-dev` on Ubuntu).
 `pnpm lint:native` runs clang-tidy over every TU, `bindings.cpp` and the fuzz targets
 included (a host fallback for `EMSCRIPTEN_KEEPALIVE` keeps `bindings.cpp` parseable without
@@ -372,8 +368,9 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 13 | Terrain tiles (#487): `buildTerrainTile`, `buildWallShell`. Additive in shape, but `MIN_WASM_ABI_VERSION` moves to 13 with it — `bindNativeModule` requires every `WASM_ABI` entry, so an ABI 12 binary is rejected at bind anyway. |
 | 14 | Weather on the river: `routeReachLateral` (lateral inflow per segment) and `applySWEEvent` kind 4 (surge front). Additive; `MIN_WASM_ABI_VERSION` moves to 14 for the same bind-every-entry reason. |
 | 15 | **Breaking.** The single-body force exports are gone: `calculateBuoyancyAndDrag`, `calculateWaterForce`, `computeBuoyancy`, `computeDragForce`, `computeFlowForce` had no game caller left — the sim worker and the main thread both go through `computeWaterForcesBatch`, whose per-sample math is forces.cpp's `calculateWaterForce` (still the function the host smoke and the fuzzer drive). `routedEdgeState` is the one out-pointer result left. `MIN_WASM_ABI_VERSION` moves to 15. |
+| 16 | **Breaking.** `buildTerrainTile` / `buildWallShell` are gone with `terrain.cpp`: the sim worker builds the tile with the same TypeScript as the main thread (`terrainTile.ts`; see *Terrain tiles*). `MIN_WASM_ABI_VERSION` moves to 16. |
 
-TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 15).
+TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 16).
 Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
 binary cannot be called with the new argument list at all, so the floor moves with
 it and a stale binary is rejected at load. Chore kernels live in
@@ -597,38 +594,45 @@ the reference discharge. The ghost's wave speed joins the CFL max.
   chain map, the release lag to the hydro basin, spin-up covering the chain), and
   `pnpm test:wgsl` (edge scenarios + the hydro edge contrast, WGSL vs WASM at 1e-5).
 
-### Terrain tiles  (ABI 13, #487)
+### Terrain tiles  (ABI 13–15, retired at 16; #487)
 
 The canyon floor used to be an analytic U-profile that TypeScript evaluated three times (visual
-floor, Rapier hull, SWE bed). **`terrain.cpp`** is that profile as one pure function over a grid —
-the floor height, the channel-shape sampler, `applyTubeProfile` and the wall-shell
-height, ported unchanged (#487 C then lowered the slot profile by `TERRAIN_SLOT_FLOOR_LIFT`
-onto the shared water datum). Grid and plane conventions are documented once, in `terrain.h`; the
-grid is three's `PlaneGeometry(canyonWidth, pathLength, segmentsX, segmentsZ)` after
-`rotateX(−π/2)`, so the builders keep their index buffers.
+floor, Rapier hull, SWE bed). #487 made it one pure function over a grid: the floor height, the
+channel-shape sampler, `applyTubeProfile` and the wall-shell height, as SoA planes. From ABI 13
+to 15 that function existed twice — `terrain.cpp` (exported as `buildTerrainTile` /
+`buildWallShell`, used by the sim worker) and `src/terrain/terrainTile.ts` (the main thread, and
+any session without the module) — held together by C++ goldens, a TS copy of them, a terrain
+fuzzer and a native-vs-mirror parity test.
 
-| Export | |
-|---|---|
-| `buildTerrainTile(pathLength, canyonWidth, waterWidth, segmentsX, segmentsZ, profile, rockNoise, hasTube, tubeCurl, tubeCeiling, channelPtr, channelCount, outPtr) → int` | Fills 7 plane-major planes of `(segmentsX+1)(segmentsZ+1)` floats at `outPtr`: folded **x**, floor **h**, **bank** mask, **slopeX**, **slopeZ**, **uvU** (across, 0–1), **uvV** (metres downstream). `channelPtr` holds `channelCount` packed samples (9 floats: left/right/corridor half-widths, floorDepth, floorWave, riffle, gravelBarSide, undercutSide, flowScale), or 0 for the default channel. `profile` 0 = open, 1 = slot. Returns the vertex count, or 0 (nothing written) on non-finite / out-of-range input. Lengths are `double` on the wire. |
-| `buildWallShell(pathLength, shellWidth, segmentsX, segmentsZ, profile, wallHeight, segmentId, outPtr) → int` | One plane: outer wall height above the path point. |
+**ABI 16 keeps only `terrainTile.ts`.** Measured before the decision (Node, median of 60 builds
+of the three golden segments through `buildSegmentMeshBuffers`):
 
-- **Mirror.** `src/terrain/terrainTile.ts` is the same function in TS (and owns the per-point
-  `applyTubeProfile` that `geometryBuilders.ts` re-exports; the tile is the only evaluation of
-  the floor profile — the SWE bed reads the hull tile, #487 C). The
-  canyon, collision and wall-shell builders (`src/terrain/segmentMeshBuild.ts`, three-free) take
-  their tile from `GeometryBuildContext.terrain`:
-  the mirror on the main thread, `buildTerrainTileNative` / `buildWallShellHeightsNative` in the
-  sim worker, which builds every segment the treadmill appends ahead (`BUILD_TILE`, #487 Phase B;
-  see SYSTEMS.md, Sim Worker).
-- **FP.** Both backends compute in double and round once into the float planes. The host and the
-  WASM build are bit-identical (`native_digest.h`); the float64 mirror differs only where the
-  libm (`Math.sin` / `Math.pow` vs musl) does, within the ulp budget below.
-- **Pinned by:** `host_smoke.cpp` §9 (three golden segments — summer meander, slot canyon on the
-  collision grid, glacial ice tube — plus the overhang, uv / bank invariants and the input
-  guards), `smoke_test.mjs` (same goldens against the WASM build), `terrainTile.test.ts`
-  (the mirror against the same goldens; tile == per-point profile) and `terrainParity.test.ts`
-  (`pnpm test:wasm`: every plane, golden fixtures + 200 random segments, native vs mirror within
-  1e-5).
+| | summer meander | slot canyon | ice tube |
+|---|---|---|---|
+| sim-worker segment build, native tile | 2.35–2.48 ms | 2.01–2.31 ms | 1.84–1.89 ms |
+| … of which the tile (incl. heap copy) | 0.55–0.60 ms | 0.62–0.66 ms | 0.63 ms |
+| … of which the TS mesh build | 1.80–1.88 ms | 1.39–1.66 ms | 1.21–1.26 ms |
+| same build on the TS tile | 2.37–2.66 ms | 2.43–2.52 ms | 2.22–2.28 ms |
+
+and `pnpm profile:spawn` (Medium, SwiftShader): a treadmill segment costs the main thread
+`segment-build` ≈ 0.1 ms, because the worker already builds its meshes; the ~100 ms
+`segment-mount` is rasterisation, Rapier and decorations, not geometry. So the C++ tile saved
+~0.4 ms per appended segment, on a worker, about once every five seconds of riding. Moving the
+whole mesh build into C++ (the other option) could save ~1 ms more on that worker and nothing on
+the main thread — and the no-WASM boot must still build terrain, so C++ end to end would leave two
+full builders rather than one. One TypeScript source is the only option that ends with one
+canyon geometry.
+
+- **One module, two threads.** `segmentMeshBuild.ts` (three-free) builds the canyon, collision,
+  wall-shell and water meshes and the SWE bed grid from `buildTerrainTile` /
+  `buildWallShellHeights`; the main thread runs it for the boot / restart pools and sessions
+  without a sim worker, the worker for every treadmill append (`BUILD_TILE`, see SYSTEMS.md, Sim
+  Worker). Grid and plane conventions are documented in `terrainTile.ts`.
+- **Pinned by:** `terrainTile.test.ts` (the three golden segments — summer meander, slot canyon
+  on the collision grid, glacial ice tube — whose sums the C++ host build produced and the TS
+  tile matched bit for bit; the overhang, uv / bank invariants and the input guards, including
+  `TERRAIN_MIN_EXTENT`) and `terrainParity.test.ts` (`pnpm test:wasm`: a worker `BUILD_TILE`
+  equals the main-thread build, every float and index).
 
 ### `allocateGrid(count): number` / `freeGrid(ptr): void`
 

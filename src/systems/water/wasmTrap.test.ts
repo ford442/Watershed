@@ -88,7 +88,7 @@ describe('committed symbol map', () => {
     // -flto folds identical bodies (ws_freeParticleSoA is ws_freeGrid's free),
     // so not every export keeps its own index — but the kernels do.
     for (const name of ['getVersion', 'stepShallowWater', 'applySWEEvent', 'scrollShallowWater', 'routeReach',
-      'buildTerrainTile', 'reduceF32Grid', 'blurSeparableF32', 'stepSplashParticles'] as WasmAbiFunctionName[]) {
+      'reduceF32Grid', 'blurSeparableF32', 'stepSplashParticles'] as WasmAbiFunctionName[]) {
       expect(names.has(wasmExportName(name).slice(1)), name).toBe(true);
     }
     // The shipped binary has no trap hook.

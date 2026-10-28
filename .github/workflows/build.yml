@@ -450,7 +450,7 @@ jobs:
 
   # #467 / #502: the C ABI trusts JS for every heap pointer and width * height.
   # Host build of the compute TUs under ASan + UBSan, 60 s of libFuzzer per
-  # entry-point family (swe, chores, forces + particles, routing, terrain),
+  # entry-point family (swe, chores, forces + particles, routing),
   # and clang-tidy bugprone/performance over every TU, bindings.cpp included.
   native-sanitizers:
     name: Native sanitizers, fuzz, tidy

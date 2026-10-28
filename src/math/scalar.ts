@@ -2,8 +2,8 @@
  * scalar.ts — the scalar helpers every system needs, defined once (#503 A).
  *
  * Pure, three-free and worker-safe (the terrain mirror and the sim worker
- * import these). Argument order follows `THREE.MathUtils` and the C++ twin in
- * `emscripten/terrain.cpp`, so a call reads the same in all three places:
+ * import these). Argument order follows `THREE.MathUtils`, so a call reads the
+ * same as the three.js code it replaced:
  * `smoothstep(x, min, max)` — NOT GLSL's `smoothstep(edge0, edge1, x)`.
  */
 

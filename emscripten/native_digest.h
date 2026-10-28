@@ -1,5 +1,5 @@
 /**
- * native_digest.h — bit-exact digests of the SWE, routing and terrain kernels.
+ * native_digest.h — bit-exact digests of the SWE and routing kernels.
  *
  * One scenario per kernel, built only from values that are exact in float32
  * and in a JS double (integers scaled by powers of two), so the host build and
@@ -7,9 +7,9 @@
  * hashed bit for bit (FNV-1a over each float's 32 bits), so a digest match
  * means the outputs are equal, not merely close.
  *
- *   host:  host_smoke.cpp checks k*Digest below (routing and terrain on glibc
- *          hosts only: they call the host libm, and these are glibc's numbers,
- *          equal to the wasm's musl here). WATERSHED_PRINT_DIGESTS=1
+ *   host:  host_smoke.cpp checks k*Digest below (routing on glibc hosts
+ *          only: it calls the host libm's powf / expf, and these are glibc's
+ *          numbers, equal to the wasm's musl here). WATERSHED_PRINT_DIGESTS=1
  *          watershed_host_smoke prints fresh ones.
  *   wasm:  src/systems/water/nativeDigest.integration.test.ts (`pnpm test:wasm`)
  *          replays the same calls through the shipped pair and reads the
@@ -24,8 +24,6 @@
 
 #include "routing.h"
 #include "swe.h"
-#include "terrain.h"
-#include "terrain_goldens.h"
 
 #include <cstdint>
 #include <cstring>
@@ -33,10 +31,9 @@
 
 namespace native_digest {
 
-// Expected digests. The TS driver parses these three lines; keep the format.
+// Expected digests. The TS driver parses these lines; keep the format.
 inline constexpr uint32_t kSweDigest = 0xb6bca6d3u;
 inline constexpr uint32_t kRoutingDigest = 0x1538e102u;
-inline constexpr uint32_t kTerrainDigest = 0x1e257ac8u;
 
 struct Fnv {
     uint32_t h = 0x811c9dc5u;
@@ -142,38 +139,6 @@ inline uint32_t routingDigest() {
         const RoutedEdge e = routedEdgeState(q, 40.f, 1.f, 9.80665f);
         f.add(e.eta);
         f.add(e.speed);
-    }
-    return f.h;
-}
-
-/** Every terrain_goldens fixture tile and wall shell, plane by plane. */
-inline uint32_t terrainDigest() {
-    using namespace terrain_goldens;
-    Fnv f;
-    for (const Fixture& fx : kFixtures) {
-        TileParams p;
-        p.pathLength = fx.pathLength;
-        p.canyonWidth = fx.canyonWidth;
-        p.waterWidth = fx.waterWidth;
-        p.segmentsX = fx.segmentsX;
-        p.segmentsZ = fx.segmentsZ;
-        p.profile = fx.profile;
-        p.rockNoise = fx.rockNoise;
-        p.hasTube = fx.hasTube;
-        p.tubeCurl = fx.tubeCurl;
-        p.tubeCeiling = fx.tubeCeiling;
-        p.channel = std::span<const float>(fx.channel, static_cast<size_t>(fx.channelCount) * TERRAIN_CHANNEL_STRIDE);
-        const int n = terrainVertexCount(fx.segmentsX, fx.segmentsZ);
-        std::vector<float> planes(static_cast<size_t>(n) * TERRAIN_TILE_PLANES);
-        TerrainTile tile{planes};
-        f.add(static_cast<uint32_t>(buildTerrainTile(p, tile)));
-        f.add(planes);
-    }
-    for (const WallFixture& wf : kWallFixtures) {
-        const int n = terrainVertexCount(wf.params.segmentsX, wf.params.segmentsZ);
-        std::vector<float> shell(static_cast<size_t>(n));
-        f.add(static_cast<uint32_t>(buildWallShell(wf.params, shell)));
-        f.add(shell);
     }
     return f.h;
 }

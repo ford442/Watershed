@@ -30,12 +30,12 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 15+, the plain C ABI with the exports the binding table describes', () => {
+  it('requires ABI 16+, the plain C ABI with the exports the binding table describes', () => {
     // ABI 12 replaced Embind with ws_* C exports (#467); ABI 13 added the
     // terrain tile (#487), ABI 14 lateral routing inflow and the surge event,
-    // ABI 15 dropped the single-body force exports; the loader binds every
-    // table entry, so the floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(15);
+    // ABI 15 dropped the single-body force exports and ABI 16 the terrain tile;
+    // the loader binds every table entry, so the floor must not drift back down.
+    expect(MIN_WASM_ABI_VERSION).toBe(16);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -258,9 +258,6 @@ function buildMockModule(): WatershedNativeModule {
     routeReachSteady() {},
     routeReachTravelTime() {},
     routedEdgeState: () => ({ eta: 0, speed: 0 }),
-    // 0 vertices = the ABI's "invalid input" answer; terrain tiles are not exercised here.
-    buildTerrainTile: () => 0,
-    buildWallShell: () => 0,
     reduceF32Grid() {},
     histogramF32() {},
     lumaHistogramU8() {},

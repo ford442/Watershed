@@ -722,17 +722,16 @@ never pairs the new index frame with the old origin.
 appends ahead of the camera (`SegmentData.buildAhead`, set by `ChunkManager.appendSegment`) asks
 the live sim worker for its meshes: `BUILD_TILE {seq, spec}` carries the build context as
 structured-clone data (`SegmentMeshSpec` — the path as its control points), the worker runs the
-canyon / collision / wall / water builders on its WASM terrain tile (`buildTerrainTileNative`)
-and answers `TILE {seq, meshes}` with every attribute array transferred; `useGeometries` wraps
+canyon / collision / wall / water builders on the same TypeScript terrain tile as the main
+thread (`terrainTile.ts`; the C++ tile was retired at ABI 16) and answers `TILE {seq, meshes}` with every attribute array transferred; `useGeometries` wraps
 them in `BufferGeometry` and `TrackSegment` mounts when they land (nothing renders in that slot
 until then — the segment is ~150 m ahead). The builders are three-free (`segmentMeshBuild.ts`,
 with exact ports of the curve / colour / plane / normals math in `meshMath.ts`, pinned against
 three by `meshMath.test.ts`), so the worker chunk carries no three.js and the main thread runs
 the very same code; `geometryBuilders.ts` only wraps their buffers. The boot and
 restart pools (the ground under the player), sessions without a live sim worker, and a `TILE`
-without meshes (the build threw) or a dead worker all build on the main thread on the TS mirror,
-as before. Worker meshes match the main-thread build within 1e-4 (2e-3 for normals;
-`terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
+without meshes (the build threw) or a dead worker all build on the main thread, as before.
+Worker meshes equal the main-thread build, every float and index (`terrainParity.test.ts`). The collision buffer still reaches the raft's Rapier worker through
 the main thread (`useWorkerStaticCollider`): the main world needs it anyway, and it is ~10 KB.
 
 **Main thread on `wasm-worker`, steady state:** no `computeWaterForcesBatch`, `routeReach*`,

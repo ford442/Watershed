@@ -39,12 +39,10 @@ import {
 } from './simWorkerProtocol';
 import { createNativeChoreHost } from '../rendering/gpuChores/watershedHost';
 import { summarizeHeightfield } from '../rendering/gpuChores/heightfieldSummary';
-import { buildTerrainTileNative, buildWallShellHeightsNative } from '../terrain/terrainTile';
 import {
   buildSegmentMeshBuffers,
   contextFromSpec,
   segmentMeshTransferables,
-  type TerrainBuilders,
 } from '../terrain/segmentMeshBuild';
 
 /** Particle SoA plane order (emscripten/particles.h). */
@@ -96,11 +94,6 @@ export function createSimWorkerCore(
   let physicsPort: PhysicsPort | null = null;
   const particles = new Map<number, ParticleSlot>();
   const choreHost = createNativeChoreHost(() => wasm);
-  // The segment builders on this module's terrain tile (emscripten/terrain.cpp).
-  const terrain: TerrainBuilders = {
-    tile: (params) => buildTerrainTileNative(wasm, params),
-    wallShell: (params) => buildWallShellHeightsNative(wasm, params),
-  };
 
   const live =(id: number): SweSim | null => (sim && id === gridId ? sim : null);
 
@@ -258,7 +251,7 @@ export function createSimWorkerCore(
   const buildTile = (command: Extract<SimWorkerCommand, { type: 'BUILD_TILE' }>) => {
     const t0 = now();
     try {
-      const meshes = buildSegmentMeshBuffers(contextFromSpec(command.spec, terrain));
+      const meshes = buildSegmentMeshBuffers(contextFromSpec(command.spec));
       post(
         { type: 'TILE', seq: command.seq, meshes, buildMicros: Math.round((now() - t0) * 1000) },
         segmentMeshTransferables(meshes),
