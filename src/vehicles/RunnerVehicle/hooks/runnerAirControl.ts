@@ -7,6 +7,7 @@ import {
   getSegmentFrames,
   resolveRaftEnvelope,
   resolveSegmentEnvelope,
+  resolveSegmentEnvelopeInto,
   type SegmentEnvelope,
   type VerticalBounds,
 } from '../../../systems/map/segmentFrames';
@@ -20,6 +21,9 @@ import type { RapierBody } from '../../../physics/rapierTypes';
 import type { RunnerJumpData } from './useRunnerPhysics';
 
 type Vec3 = { x: number; y: number; z: number };
+
+/** Camera-follow target, reused every step. */
+const _cameraTarget = new THREE.Vector3();
 
 /**
  * Global sanity bounds. `yMin`/`yMax` are **margins** below / above the active
@@ -38,6 +42,10 @@ export const POSITION_SANE = { yMin: -80, yMax: 250, xzMax: 6000, speedMax: 100 
 export const resolveActiveEnvelope = (pos: { z: number }): SegmentEnvelope =>
   resolveSegmentEnvelope(getSegmentFrames(), pos, POSITION_SANE);
 
+/** `resolveActiveEnvelope` into `out` (no allocation; the per-step readers). */
+export const resolveActiveEnvelopeInto = (out: SegmentEnvelope, pos: { z: number }): SegmentEnvelope =>
+  resolveSegmentEnvelopeInto(out, getSegmentFrames(), pos, POSITION_SANE);
+
 /**
  * The raft's envelope at `pos`: depth below the staged surface it floats on
  * (`resolveRaftEnvelope`), the runner margins' ceiling.
@@ -49,12 +57,19 @@ export const resolveActiveRaftEnvelope = (pos: { z: number }, waterLevel: number
  * Merge a resolved (world-space) vertical envelope onto the global bounds.
  * Only the vertical (y) axis is ever per-segment; xz/speed stay global.
  */
-export const getEffectivePositionBounds = (envelope?: VerticalBounds | null) => ({
-  yMin: envelope?.yMin ?? POSITION_SANE.yMin,
-  yMax: envelope?.yMax ?? POSITION_SANE.yMax,
-  xzMax: POSITION_SANE.xzMax,
-  speedMax: POSITION_SANE.speedMax,
-});
+export const getEffectivePositionBounds = (envelope?: VerticalBounds | null) =>
+  getEffectivePositionBoundsInto({ yMin: 0, yMax: 0, xzMax: 0, speedMax: 0 }, envelope);
+
+export type PositionBounds = { yMin: number; yMax: number; xzMax: number; speedMax: number };
+
+/** `getEffectivePositionBounds` into `out` (no allocation). */
+export function getEffectivePositionBoundsInto(out: PositionBounds, envelope?: VerticalBounds | null): PositionBounds {
+  out.yMin = envelope?.yMin ?? POSITION_SANE.yMin;
+  out.yMax = envelope?.yMax ?? POSITION_SANE.yMax;
+  out.xzMax = POSITION_SANE.xzMax;
+  out.speedMax = POSITION_SANE.speedMax;
+  return out;
+}
 
 /**
  * The one OOB wipeout path, shared by the runner physics step and the
@@ -175,30 +190,50 @@ export function buildCameraRelativeDirs(
   cameraWarm: boolean,
 ): { forwardDir: THREE.Vector3; rightDir: THREE.Vector3 } {
   const forwardDir = new THREE.Vector3();
-  getHorizontalCameraForward(camera, cameraWarm, forwardDir);
-
   const rightDir = new THREE.Vector3();
+  buildCameraRelativeDirsInto(camera, cameraWarm, forwardDir, rightDir);
+  return { forwardDir, rightDir };
+}
+
+/** `buildCameraRelativeDirs` into caller-owned vectors (no allocation). */
+export function buildCameraRelativeDirsInto(
+  camera: THREE.Camera,
+  cameraWarm: boolean,
+  forwardDir: THREE.Vector3,
+  rightDir: THREE.Vector3,
+): void {
+  getHorizontalCameraForward(camera, cameraWarm, forwardDir);
   rightDir.crossVectors(forwardDir, camera.up);
   if (rightDir.lengthSq() > 0.001) {
     rightDir.normalize();
   } else {
     rightDir.set(1, 0, 0);
   }
-  return { forwardDir, rightDir };
 }
 
-/** Sprint stamina drain/regen + exhaustion lock hysteresis. */
-export function tickSprintStamina({
-  dt,
-  sprint,
-  jumpState,
-  sprintLockedRef,
-}: {
-  dt: number;
-  sprint: boolean;
-  jumpState: { state: string };
-  sprintLockedRef: { current: boolean };
-}): { isSprinting: boolean; movementMul: number } {
+export interface SprintResult {
+  isSprinting: boolean;
+  movementMul: number;
+}
+
+/**
+ * Sprint stamina drain/regen + exhaustion lock hysteresis. Writes `out` when
+ * given (the runner step's scratch), else returns a fresh result.
+ */
+export function tickSprintStamina(
+  {
+    dt,
+    sprint,
+    jumpState,
+    sprintLockedRef,
+  }: {
+    dt: number;
+    sprint: boolean;
+    jumpState: { state: string };
+    sprintLockedRef: { current: boolean };
+  },
+  out: SprintResult = { isSprinting: false, movementMul: 1 },
+): SprintResult {
   const storeState = useGameStore.getState();
   let stamina = storeState.sprintStamina;
 
@@ -225,9 +260,13 @@ export function tickSprintStamina({
   } else {
     stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_GROUNDED * staminaRegenMul * dt);
   }
-  storeState.setSprintStamina(stamina);
+  // A write only on change: a store set builds a new state object, and full
+  // stamina while running is the steady state.
+  if (stamina !== storeState.sprintStamina) storeState.setSprintStamina(stamina);
 
-  return { isSprinting, movementMul };
+  out.isSprinting = isSprinting;
+  out.movementMul = movementMul;
+  return out;
 }
 
 /** Jump / coyote / double-jump / landing state machine (mutates js in place). */
@@ -451,8 +490,7 @@ export function applyRunnerCameraFollow({
     camera.position.set(pos.x, pos.y + 40, pos.z);
     camera.lookAt(pos.x, pos.y, pos.z);
   } else {
-    const targetPos = new THREE.Vector3(pos.x, pos.y + 1.65, pos.z);
-    camera.position.lerp(targetPos, 0.12);
+    camera.position.lerp(_cameraTarget.set(pos.x, pos.y + 1.65, pos.z), 0.12);
   }
 
   if (
@@ -469,22 +507,27 @@ export function updateRunnerFovKick({
   camera,
   vel,
   dt,
-  fovRef,
+  fovState,
   currentSegmentIndex,
 }: {
   camera: THREE.PerspectiveCamera;
   vel: Vec3;
   dt: number;
-  fovRef: { current: number };
+  /**
+   * The smoothed FOV. Its own shape on purpose: a `{ current }` ref shares one
+   * hidden class with every ref in the app, so a double stored in it is boxed
+   * (a fresh heap number every step).
+   */
+  fovState: { fov: number };
   currentSegmentIndex: number;
 }) {
   const isWaterfallSeg = currentSegmentIndex === 14 || currentSegmentIndex === 29;
   const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   // Base FOV and the kick's strength are the player's comfort settings (#486 D).
   const targetFov = runnerTargetFov(hSpeed, isWaterfallSeg, getComfort());
-  fovRef.current += (targetFov - fovRef.current) * (1 - Math.exp(-dt * 5));
-  if (Math.abs(camera.fov - fovRef.current) > 0.05) {
-    camera.fov = fovRef.current;
+  fovState.fov += (targetFov - fovState.fov) * (1 - Math.exp(-dt * 5));
+  if (Math.abs(camera.fov - fovState.fov) > 0.05) {
+    camera.fov = fovState.fov;
     camera.updateProjectionMatrix();
   }
 }

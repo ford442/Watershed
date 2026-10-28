@@ -25,11 +25,15 @@ import { simCore, type SimVehicleProbe } from '../sim/core/SimCore';
 import { gameEvents } from '../systems/events/GameEvents';
 import { useGameStore } from '../systems/GameState';
 import { findSegmentFrameAtZ, getSegmentFrames } from '../systems/map/segmentFrames';
-import { POSITION_SANE, resolveActiveEnvelope } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
+import { POSITION_SANE, resolveActiveEnvelopeInto } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
+import type { SegmentEnvelope } from '../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from './types';
 import { createSimSystems } from './simSystems';
 
 export const SIM_CORE_PRIORITY = -90;
+
+/** The camera's envelope, rewritten each frame (no per-frame object). */
+const cameraEnvelope: SegmentEnvelope = { yMin: 0, yMax: 0, segmentIndex: null, authored: false };
 
 export interface SimCoreTickProps {
   debug: DebugStageController;
@@ -89,7 +93,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
     // the active segment's vertical envelope.
     const { x, y, z } = state.camera.position;
     const finite = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
-    const envelope = finite ? resolveActiveEnvelope(state.camera.position) : null;
+    const envelope = finite ? resolveActiveEnvelopeInto(cameraEnvelope, state.camera.position) : null;
     ctx.camera.z = z;
     ctx.camera.sane =
       finite &&

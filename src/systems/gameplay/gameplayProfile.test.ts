@@ -14,7 +14,6 @@ import {
 import {
   getActiveGameplayProfile,
   resetActiveGameplayProfileForTests,
-  subscribeGameplaySurface,
 } from './activeGameplayProfile';
 
 const live = vi.hoisted(() => ({
@@ -155,17 +154,6 @@ describe('gameplay-profile sim system', () => {
     c.reset();
     c.step();
     expect(getActiveGameplayProfile()).toEqual(BIOME_GAMEPLAY_PROFILES.delta);
-  });
-
-  it('tells surface listeners about a change of surface only', () => {
-    const heard: SurfaceMaterial[] = [];
-    subscribeGameplaySurface((s) => heard.push(s));
-    commit('canyonSummer');
-    steps(core, 10);
-    expect(heard).toEqual([]);
-    commit('canyonAutumn');
-    steps(core, 5);
-    expect(heard).toEqual([SurfaceMaterial.MOSS]);
   });
 
   it('allocates no profile per step (the active profile is one object)', () => {

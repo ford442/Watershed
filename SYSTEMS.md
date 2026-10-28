@@ -281,8 +281,9 @@ plus stubs `lumberFlume` / `hydroDam`. Legacy kebab/track aliases
 ### `src/systems/gameplay/` — `GameplayProfile` (#521 B)
 
 **Purpose:** What a segment does to the player, apart from how it looks. One profile per segment:
-`flowCap` (the current on the hull), `surface` (`SurfaceMaterial` → Rapier contact friction and the
-impact SFX / VFX), `ambientTemp` (survival's cold; `< COLD_AMBIENT_TEMP` = 0.5 turns on the exposure
+`flowCap` (the current on the hull), `surface` (`SurfaceMaterial` → the impact sound and burst; the
+old per-biome friction write never reached a collider, see `systems/vehicle/VehicleSystem.ts`),
+`ambientTemp` (survival's cold; `< COLD_AMBIENT_TEMP` = 0.5 turns on the exposure
 penalties) and `windDry` (scale on survival's wind drying).
 
 **Resolved by:** MapSystem — `resolveGameplayProfile(config)` = the biome's row in
@@ -309,7 +310,6 @@ A run reset snaps.
 **Readers:** `getActiveGameplayProfile()` (one mutable object, no allocation) — `WaterForceSystem`
 (flow cap, on every force path), survival (`stepRunSurvival` climate; `getActiveSurvivalModifiers()`
 for the HUD, audio and the runner), and the vehicles' `processCollision` material.
-`subscribeGameplaySurface(fn)` tells the vehicles when to re-set collider friction.
 
 **Boundaries (Do NOT):**
 - Do NOT write the active profile outside the `gameplay-profile` system (`publishActiveGameplayProfile`).

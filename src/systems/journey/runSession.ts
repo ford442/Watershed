@@ -292,17 +292,46 @@ export function getActiveSurvivalState(): SurvivalState | null {
   return activeSession?.survival ?? null;
 }
 
+/** Reused by getActiveSurvivalModifiers: the runner reads it every step (#521 D). */
+const activeModifiers: SurvivalModifiers = {
+  staminaDrainMultiplier: 1,
+  staminaRegenMultiplier: 1,
+  movementMultiplier: 1,
+  exposureStress: 0,
+  sfxWetnessMultiplier: 1,
+  paddleCostMultiplier: 1,
+  paddleRegenMultiplier: 1,
+};
+
+/** What `activeModifiers` was computed from (an object field, so the double is not boxed). */
+const activeModifiersKey: { survival: SurvivalState | null; ambientTemp: number; loadoutId: string } = {
+  survival: null,
+  ambientTemp: -1,
+  loadoutId: '',
+};
+
 /**
  * The run's survival modifiers in the active gameplay profile's climate (the
- * segment under the player, #521 B); null with no run.
+ * segment under the player, #521 B); null with no run. One shared object,
+ * recomputed on each call: read the fields, do not keep it.
  */
 export function getActiveSurvivalModifiers(): SurvivalModifiers | null {
   if (!activeSession) return null;
-  return getSurvivalModifiers(
-    activeSession.survival,
-    getActiveGameplayProfile(),
-    getLoadoutDefinition(activeSession.loadoutId),
-  );
+  const climate = getActiveGameplayProfile();
+  const key = activeModifiersKey;
+  // Recompute only when an input changed: the survival state is replaced on
+  // every sim step, so this runs once a step however many readers ask.
+  if (
+    key.survival !== activeSession.survival ||
+    key.ambientTemp !== climate.ambientTemp ||
+    key.loadoutId !== activeSession.loadoutId
+  ) {
+    key.survival = activeSession.survival;
+    key.ambientTemp = climate.ambientTemp;
+    key.loadoutId = activeSession.loadoutId;
+    getSurvivalModifiers(activeSession.survival, climate, getLoadoutDefinition(activeSession.loadoutId), activeModifiers);
+  }
+  return activeModifiers;
 }
 
 /**

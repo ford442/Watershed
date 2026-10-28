@@ -41,6 +41,9 @@ import { createRng } from '../../math/random';
 import { simCore } from '../../sim/core/SimCore';
 import { WATER_LEVEL } from '../../constants/game';
 
+/** Spawn origin handed to the pools (they copy it): reused, not a vector per spawn (#521 D). */
+const _spawnAt = new THREE.Vector3();
+
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0xdb562dbf);
 /**
@@ -352,19 +355,19 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     );
 
     if (events.entrySplash) {
-      const entryPos = new THREE.Vector3(playerPos.x, waterLevel, playerPos.z);
+      const entryPos = _spawnAt.set(playerPos.x, waterLevel, playerPos.z);
       spawnSplashArc(entryPos, 1.0);
       injectSWEDisturbance(playerPos.x, playerPos.z, 2.2, 0.55);
       pulse('impact', 0.45); // gamepad: a splash entry is a soft thump
     } else if (events.exitSplash) {
-      const exitPos = new THREE.Vector3(playerPos.x, waterLevel, playerPos.z);
+      const exitPos = _spawnAt.set(playerPos.x, waterLevel, playerPos.z);
       spawnSplashArc(exitPos, 0.5);
       injectSWEDisturbance(playerPos.x, playerPos.z, 1.4, 0.28);
     }
 
     if (events.cruiseCount > 0) {
       spawnCruiseSplash(
-        new THREE.Vector3(playerPos.x, waterLevel, playerPos.z),
+        _spawnAt.set(playerPos.x, waterLevel, playerPos.z),
         vel,
         speed,
         events.cruiseCount,
@@ -377,7 +380,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       const foamRoll = foamRandom();
       const disturbRoll = foamRandom();
       if (foamRoll < 0.1 * speed) {
-        spawnFoam(new THREE.Vector3(playerPos.x, waterLevel, playerPos.z));
+        spawnFoam(_spawnAt.set(playerPos.x, waterLevel, playerPos.z));
         if (disturbRoll < 0.15) {
           injectSWEDisturbance(playerPos.x, playerPos.z, 0.9, 0.08);
         }
@@ -395,7 +398,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
       );
       if (mistCount > 0) {
         spawnMist(
-          new THREE.Vector3(playerPos.x, playerPos.y, playerPos.z),
+          _spawnAt.set(playerPos.x, playerPos.y, playerPos.z),
           mistCount,
         );
       }

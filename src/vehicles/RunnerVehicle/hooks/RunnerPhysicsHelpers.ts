@@ -26,14 +26,13 @@ import {
   type RapierWorldQueries,
   type Vec3Like,
 } from '../../../physics/rapierTypes';
-import type { RunnerVehicle as RunnerVehicleClass } from '../../../systems/vehicle/VehicleSystem';
+import type { CollisionTracker } from '../../../systems/vehicle/VehicleSystem';
 import type { RunnerPhysicsState } from './useRunnerPhysics';
 
 // Per-step scratch (#503 B): these helpers run inside useFrame every physics
 // step, where `new` is invisible to @react-three/no-new-in-loop.
 const _velocityDelta = new THREE.Vector3();
 const _contactPoint = new THREE.Vector3();
-const _relativeVelocity = new THREE.Vector3();
 const _forwardDir = new THREE.Vector3();
 const _rightDir = new THREE.Vector3();
 const _sideDir = new THREE.Vector3();
@@ -63,6 +62,15 @@ export function scratchRay(
   return ray;
 }
 
+/** The scratch ray straight down from `pos` + the capsule-top clearance (no double arguments). */
+export function scratchDownRay(rapier: Pick<RapierNamespace, 'Ray'>, pos: Vec3Like): RapierRay {
+  const ray = scratchRay(rapier, 0, 0, 0, 0, -1, 0);
+  ray.origin.x = pos.x;
+  ray.origin.y = pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET;
+  ray.origin.z = pos.z;
+  return ray;
+}
+
 export function getRayTimeOfImpact(hit: RapierRayHit | null | undefined): number | null {
   if (!hit) return null;
   const toi = typeof hit.timeOfImpact === 'function' ? hit.timeOfImpact() : hit.timeOfImpact;
@@ -88,27 +96,47 @@ export function isTerrainGroundHit(toi: number | null): boolean {
   return toi !== null && toi >= GROUND_RAY_MIN_TOI && toi <= RAYCAST_DISTANCE;
 }
 
-export function calculateSlopeAngle({
-  body,
-  world,
-  rapier,
-  slopeState,
-}: {
+type SlopeArgs = {
   body: RapierBody;
   world: RapierWorldQueries;
   rapier: Pick<RapierNamespace, 'Ray'>;
   slopeState: RunnerPhysicsState['slopeState'];
-}): number {
-  if (!body || !world) return 0;
+  /** The body's translation this step, when the caller already has it. */
+  pos?: Vec3Like;
+};
 
-  const pos = body.translation();
+/** The surface pitch under the runner (degrees, ±60), also written to `slopeState.current.sampledAngle`. */
+export function calculateSlopeAngle(args: SlopeArgs): number {
+  sampleSlope(args);
+  return args.slopeState.current.sampledAngle;
+}
+
+/**
+ * `calculateSlopeAngle` without the return: the per-step caller reads
+ * `sampledAngle`. A double returned from (or passed into) a call V8 does not
+ * inline is boxed into a fresh heap number, so the step's hot path keeps its
+ * numbers in fields (#521 D).
+ */
+export function sampleSlope({
+  body,
+  world,
+  rapier,
+  slopeState,
+  pos: posArg,
+}: SlopeArgs): void {
+  const slope = slopeState.current;
+  if (!body || !world) {
+    slope.sampledAngle = 0;
+    return;
+  }
+  const pos = posArg ?? body.translation();
 
   // Primary path: use castRayAndGetNormal to obtain the true trimesh face normal.
   // This gives accurate per-triangle surface orientation on the canyon walls and U-banks,
   // which the height-gradient fallback cannot capture for near-vertical faces.
   // Note: castRayAndGetNormal exists in rapier3d-compat 0.19+ but @react-three/rapier's
   // TypeScript types may not declare it, hence the optional member on RapierWorldQueries.
-  const centerNormalRay = scratchRay(rapier, pos.x, pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET, pos.z, 0, -1, 0);
+  const centerNormalRay = scratchDownRay(rapier, pos);
   const normalHit = world.castRayAndGetNormal
     ? world.castRayAndGetNormal(
         centerNormalRay,
@@ -126,7 +154,10 @@ export function calculateSlopeAngle({
     const n: Vec3Like = normalHit.normal ?? (normalHit as unknown as Vec3Like);
     const nLen = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
     if (nLen > 0.001) {
-      slopeState.current.lastGroundNormal.set(n.x / nLen, n.y / nLen, n.z / nLen);
+      const ln = slope.lastGroundNormal;
+      ln.x = n.x / nLen;
+      ln.y = n.y / nLen;
+      ln.z = n.z / nLen;
     }
     normalHit.free?.();
 
@@ -138,30 +169,54 @@ export function calculateSlopeAngle({
     // Pitch angle: forward/back slope; keep existing sign convention (negative = downhill forward)
     const pitchAngleRad = Math.atan2(-gn.z, gn.y);
     const angleDeg = (pitchAngleRad * 180) / Math.PI;
-    return Math.max(-60, Math.min(60, angleDeg));
+    slope.sampledAngle = Math.max(-60, Math.min(60, angleDeg));
+    return;
   }
 
-  // Fallback: five-point height-gradient sampling when castRayAndGetNormal unavailable
-  const rayLength = RAYCAST_DISTANCE;
-  const castRay = (offsetX: number, offsetZ: number): number | null => {
-    const originY = pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET;
-    const ray = scratchRay(rapier, pos.x + offsetX, originY, pos.z + offsetZ, 0, -1, 0);
-    const hit = world.castRay(ray, rayLength, true, undefined, undefined, undefined, body);
-    const toi = getRayTimeOfImpact(hit);
-    if (hit && typeof hit.free === 'function') hit.free();
-    if (!isTerrainGroundHit(toi)) return null;
-    return originY - toi!;
-  };
+  // Fallback: five-point height-gradient sampling when castRayAndGetNormal unavailable.
+  // A separate function: a closure over this frame's locals here would make
+  // V8 allocate a context object on every call, fallback or not.
+  sampleSlopeFromHeights(slope, body, world, rapier, pos);
+}
 
+/** Ground height at `pos` + (offsetX, offsetZ), or null off the terrain. */
+function groundHeightAt(
+  world: RapierWorldQueries,
+  rapier: Pick<RapierNamespace, 'Ray'>,
+  body: RapierBody,
+  pos: Vec3Like,
+  offsetX: number,
+  offsetZ: number,
+): number | null {
+  const originY = pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET;
+  const ray = scratchRay(rapier, pos.x + offsetX, originY, pos.z + offsetZ, 0, -1, 0);
+  const hit = world.castRay(ray, RAYCAST_DISTANCE, true, undefined, undefined, undefined, body);
+  const toi = getRayTimeOfImpact(hit);
+  if (hit && typeof hit.free === 'function') hit.free();
+  if (!isTerrainGroundHit(toi)) return null;
+  return originY - toi!;
+}
+
+/** The height-gradient slope / bank / normal, for a world without castRayAndGetNormal. */
+function sampleSlopeFromHeights(
+  slope: RunnerPhysicsState['slopeState']['current'],
+  body: RapierBody,
+  world: RapierWorldQueries,
+  rapier: Pick<RapierNamespace, 'Ray'>,
+  pos: Vec3Like,
+): void {
   const sampleDist = 0.5;
-  const hCenter = castRay(0, 0);
-  const hForward = castRay(0, -sampleDist);
-  const hBack = castRay(0, sampleDist);
+  const hCenter = groundHeightAt(world, rapier, body, pos, 0, 0);
+  const hForward = groundHeightAt(world, rapier, body, pos, 0, -sampleDist);
+  const hBack = groundHeightAt(world, rapier, body, pos, 0, sampleDist);
 
-  if (hCenter === null) return 0;
+  if (hCenter === null) {
+    slope.sampledAngle = 0;
+    return;
+  }
 
-  const hLeft = castRay(-sampleDist, 0);
-  const hRight = castRay(sampleDist, 0);
+  const hLeft = groundHeightAt(world, rapier, body, pos, -sampleDist, 0);
+  const hRight = groundHeightAt(world, rapier, body, pos, sampleDist, 0);
 
   let slopeZ = 0;
   let samples = 0;
@@ -175,7 +230,10 @@ export function calculateSlopeAngle({
     samples++;
   }
 
-  if (samples === 0) return 0;
+  if (samples === 0) {
+    slope.sampledAngle = 0;
+    return;
+  }
 
   slopeZ /= samples;
 
@@ -186,21 +244,19 @@ export function calculateSlopeAngle({
   if (samplesX > 0) slopeX /= samplesX;
 
   // Store bank angle from height gradient
-  slopeState.current.bankAngle = (Math.atan(slopeX) * 180) / Math.PI;
+  slope.bankAngle = (Math.atan(slopeX) * 180) / Math.PI;
 
   const nx = -slopeX;
   const ny = 1.0;
   const nz = -slopeZ;
   const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
   if (nLen > 0.001) {
-    slopeState.current.lastGroundNormal.set(nx / nLen, ny / nLen, nz / nLen);
+    slope.lastGroundNormal.set(nx / nLen, ny / nLen, nz / nLen);
   }
 
   const angleRad = Math.atan(slopeZ);
-  let angleDeg = (angleRad * 180) / Math.PI;
-  angleDeg = Math.max(-60, Math.min(60, angleDeg));
-
-  return angleDeg;
+  const angleDeg = (angleRad * 180) / Math.PI;
+  slope.sampledAngle = Math.max(-60, Math.min(60, angleDeg));
 }
 
 export function calculateSlopeMultiplier(angle: number): number {
@@ -271,7 +327,7 @@ export function handleDodgeAndCollision({
   pos: Vec3Like;
   vel: Vec3Like;
   prevFrame: RunnerPhysicsState['prevFrame'];
-  vehicle: { current: RunnerVehicleClass };
+  vehicle: CollisionTracker;
   collisionState: RunnerPhysicsState['collisionState'];
   debugState: RunnerPhysicsState['debugState'];
   now: number;
@@ -386,15 +442,10 @@ export function handleDodgeAndCollision({
       const material = getActiveGameplayProfile().surface;
       const contactPoint = _contactPoint.set(pos.x, pos.y - 0.5, pos.z);
 
-      vehicle.current.processCollision(
-        material,
-        impactForce,
-        contactPoint,
-        _relativeVelocity.set(vel.x, vel.y, vel.z),
-      );
+      vehicle.processCollision(material, impactForce, contactPoint);
 
       // Add visual particles for high impact
-      if (vehicle.current.isHighImpact(impactForce)) {
+      if (vehicle.isHighImpact(impactForce)) {
         emitCollisionBurst(collisionState.current.particles, material, contactPoint, Math.min(1, impactForce / 20));
         debugState.current.recentContacts.push({
           at: now,

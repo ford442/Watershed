@@ -443,6 +443,9 @@ export const FrustumCulling: React.FC<FrustumCullingProps> = ({
   return null;
 };
 
+/** LODObject's distance target, reused every frame (#521 D). */
+const _lodTarget = new THREE.Vector3();
+
 /**
  * LODObject - Component that applies LOD based on distance
  */
@@ -463,7 +466,7 @@ export const LODObject: React.FC<LODObjectProps> = ({
   const [level, setLevel] = useState(0);
   
   useFrame(() => {
-    const dist = camera.position.distanceTo(new THREE.Vector3(...position));
+    const dist = camera.position.distanceTo(_lodTarget.set(position[0], position[1], position[2]));
     
     if (dist < 30) setLevel(0);
     else if (dist < 80) setLevel(1);

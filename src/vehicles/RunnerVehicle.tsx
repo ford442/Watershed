@@ -4,7 +4,6 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider, type RapierRigidBody } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import * as THREE from 'three';
-import { getActiveGameplayProfile, subscribeGameplaySurface } from '../systems/gameplay/activeGameplayProfile';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
@@ -41,7 +40,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
   const playerUserData = useMemo(() => ({ isPlayer: true }), []);
 
   const state = useRunnerPhysicsState();
-  const { vehicle, collisionState } = state;
+  const { collisionState } = state;
 
   // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
   const shelfSpawnPointRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -52,17 +51,13 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
   useEffect(() => {
     if (bodyRef.current) {
-      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
-      vehicle.current.setSurfaceMaterial(getActiveGameplayProfile().surface);
+      const [x, y, z] = PLAYER_SPAWN.position;
+      bodyRef.current.setTranslation({ x, y, z }, true);
     }
 
-    // Footstep timbre follows the biome (audio); contact friction follows the
-    // gameplay profile's surface (#521 B), set above and on each change.
+    // Footstep timbre follows the biome (audio).
     const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
-    });
-    const offSurface = subscribeGameplaySurface((surface) => {
-      vehicle.current.setSurfaceMaterial(surface);
     });
 
     const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
@@ -74,7 +69,6 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
     return () => {
       offBiomeChange();
-      offSurface();
       offSegmentSpawn();
     };
   }, []);

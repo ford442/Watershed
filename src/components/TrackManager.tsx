@@ -34,7 +34,9 @@ import {
   clearSegmentFrames,
   publishSegmentFrames,
 } from '../systems/map/segmentFrames';
-import { POSITION_SANE, resolveActiveEnvelope } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
+import { POSITION_SANE, resolveActiveEnvelopeInto } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
+import type { SegmentEnvelope } from '../systems/map/segmentFrames';
+
 import { createObstaclePool } from '../systems/pools/ObstaclePool';
 import { useGameStore } from '../systems/GameState';
 import { samplesToForecastByIndex } from '../systems/map/flowForecast';
@@ -42,6 +44,9 @@ import VortexForceSystem from '../systems/water/VortexForceSystem';
 import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
 import type { BiomeId } from '../configs/biomes';
 import { gameEvents } from '../systems/events/GameEvents';
+
+/** The camera's envelope, rewritten each frame (no per-frame object, #521 D). */
+const cameraEnvelope: SegmentEnvelope = { yMin: 0, yMax: 0, segmentIndex: null, authored: false };
 
 export interface TrackManagerRef {
   synthesizeSegmentEnter: (index: number) => void;
@@ -538,7 +543,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     // descends far below any fixed y, and an absolute `y >= -80` gate froze the
     // treadmill a few segments into every map.
     const cameraFinite = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
-    const envelope = cameraFinite ? resolveActiveEnvelope(camera.position) : null;
+    const envelope = cameraFinite ? resolveActiveEnvelopeInto(cameraEnvelope, camera.position) : null;
     const cameraSane =
       cameraFinite &&
       envelope !== null &&

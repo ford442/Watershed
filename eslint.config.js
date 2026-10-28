@@ -176,6 +176,10 @@ export default tseslint.config(
       'src/systems/water/sweParity.ts',
     ],
     rules: {
+      // Zero steady-state allocation on the sim / frame path (#521 D): a `new`
+      // or `.clone()` inside useFrame is an error here, not a warning.
+      '@react-three/no-new-in-loop': 'error',
+      '@react-three/no-clone-in-loop': 'error',
       'no-restricted-globals': [
         'error',
         ...['setTimeout', 'setInterval', 'requestAnimationFrame'].map((name) => ({

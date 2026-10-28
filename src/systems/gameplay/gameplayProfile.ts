@@ -13,7 +13,7 @@
  * The rows reproduce what each field used to be read from, so no biome plays
  * differently:
  *   - `flowCap`     the palette's `flowSpeed` (WaterForceSystem's flow cap)
- *   - `surface`     `MATERIAL_FROM_BIOME` (contact friction + impact SFX/VFX)
+ *   - `surface`     `MATERIAL_FROM_BIOME` (the impact sound and burst)
  *   - `ambientTemp` survival's `BIOME_AMBIENT_TEMP` (the cold)
  *   - `windDry`     1 (survival's wind drying, unscaled)
  */
@@ -24,7 +24,11 @@ import { SurfaceMaterial } from '../vehicle/surfaceMaterial';
 export interface GameplayProfile {
   /** Scale of the water current pushing the hull (WaterForceSystem's flow cap). */
   flowCap: number;
-  /** Ground contact: Rapier friction (`MATERIAL_FRICTION`) and the impact SFX / VFX. */
+  /**
+   * The ground's material: which impact sound and burst a hit plays. (Not Rapier
+   * friction: the runner sets its own contact friction each step, and the old
+   * per-biome friction write never reached a collider — VehicleSystem.ts.)
+   */
   surface: SurfaceMaterial;
   /** Ambient core temperature the player drifts toward, 0–1; below 0.5 is a cold segment. */
   ambientTemp: number;

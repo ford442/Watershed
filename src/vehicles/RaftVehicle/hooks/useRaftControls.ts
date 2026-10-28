@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { useGameStore } from '../../../systems/GameState';
-import type { RaftVehicle as RaftVehicleClass } from '../../../systems/vehicle/VehicleSystem';
+import { applyRaftSteer, type CollisionTracker } from '../../../systems/vehicle/VehicleSystem';
 import { getActiveGameplayProfile } from '../../../systems/gameplay/activeGameplayProfile';
 import {
   SHED, COLLISION, BIAS,
@@ -37,12 +37,11 @@ const _quat = new THREE.Quaternion();
 const _forward = new THREE.Vector3();
 const _velocityDelta = new THREE.Vector3();
 const _contactPoint = new THREE.Vector3();
-const _relativeVelocity = new THREE.Vector3();
 const _bounce = new THREE.Vector3();
 
 export interface UseRaftControlsParams {
   bodyRef: { current: RapierBody | null };
-  raftVehicle: { current: RaftVehicleClass };
+  raftVehicle: CollisionTracker;
   camera: THREE.Camera;
   controls: { getControls: () => PlayerControls };
   workerProxyRef: { current: RapierWorkerProxy | null };
@@ -121,7 +120,7 @@ export function useRaftControls({
     }
 
     timeRef.current += delta;
-    raftVehicle.current.advanceClock(delta);
+    raftVehicle.advanceClock(delta);
 
     // Survival (wetness / core temp) ticks before stamina so this frame's paddle
     // economy already reflects it. No run session (free play, editor) → null, and
@@ -194,10 +193,7 @@ export function useRaftControls({
 
     if (!paddleLeft && !paddleRight && !forward) {
       if (leftward || rightward) {
-        raftVehicle.current.setInput({
-          moveX: rightward ? 1 : leftward ? -1 : 0,
-        });
-        raftVehicle.current.update(delta);
+        applyRaftSteer(body, rightward ? 1 : leftward ? -1 : 0, delta);
       }
     }
 
@@ -253,12 +249,7 @@ export function useRaftControls({
       const material = getActiveGameplayProfile().surface;
       const contactPoint = _contactPoint.set(pos.x, pos.y - 0.3, pos.z);
 
-      raftVehicle.current.processCollision(
-        material,
-        impactForce,
-        contactPoint,
-        _relativeVelocity.set(vel.x, vel.y, vel.z),
-      );
+      raftVehicle.processCollision(material, impactForce, contactPoint);
 
       const forceFactor = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE);
       const dxAbs = Math.abs(velocityDelta.x);
@@ -299,7 +290,7 @@ export function useRaftControls({
         runtime.spawnContactBurst(contactPoint, impactForce);
       }
 
-      if (raftVehicle.current.isHighImpact(impactForce)) {
+      if (raftVehicle.isHighImpact(impactForce)) {
         emitCollisionBurst(collisionState.current.particles, material, contactPoint, forceFactor);
       }
     }

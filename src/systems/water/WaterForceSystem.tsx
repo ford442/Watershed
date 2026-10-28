@@ -38,6 +38,7 @@ import { setSWEActiveBudget, updateSWEHeightFieldSnapshot, clearSWEHeightField }
 import { sweBudgetForQuality } from './sweQuality';
 import { clearSWEBedSnapshot } from './sweBedDebug';
 import { useQualityPreset } from '../GameState';
+import { queryFlags } from '../../config/queryFlags';
 import { getActiveGameplayProfile } from '../gameplay/activeGameplayProfile';
 import {
   collectWaterForceBodies,
@@ -98,6 +99,7 @@ export function WaterForceSystem({
   const workerVehicleFlowRef = useRef<SWEFlowSample | null>(null);
   const [wasmReady, setWasmReady] = useState(false);
   const mountedRef = useRef(false);
+  const [debugGlobals] = useState(() => queryFlags().debugGlobals);
 
   // The main-thread module — loaded only when this session's stepper is on
   // this thread (`wasm-main`: `?simWorker=0`, no Worker, a failed worker
@@ -377,7 +379,9 @@ export function WaterForceSystem({
     });
     const requests = simProxy && !simProxy.failed ? forceRequestsRef.current : null;
 
-    if (typeof window !== 'undefined') {
+    // The debug overlay's readout: a fresh object each frame, so only on a
+    // debug / harness page (#521 D).
+    if (debugGlobals && typeof window !== 'undefined') {
       (window as any).__watershedWaterForceSystem = {
         status: statusRef.current,
         origin: originRef.current,

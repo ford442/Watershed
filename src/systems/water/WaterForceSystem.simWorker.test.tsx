@@ -238,6 +238,15 @@ function debris() {
   };
 }
 
+// The component publishes its readout (window.__watershedWaterForceSystem),
+// which these tests observe, only on a debug / harness page (#521 D).
+beforeAll(() => {
+  window.history.replaceState(null, '', '/?debug=1');
+});
+afterAll(() => {
+  window.history.replaceState(null, '', '/');
+});
+
 describe('WaterForceSystem on the wasm-worker backend', () => {
   it('never steps the field on the main thread, and uploads the worker frame', async () => {
     const main = stubModule(1);

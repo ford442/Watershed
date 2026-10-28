@@ -128,10 +128,12 @@ export function computeExposureStress(
   return clamp01(coldStress + heatStress + biomeColdBias + state.wetness * 0.15);
 }
 
+/** Fills `out` when given (a per-step reader's reused object), else returns a fresh one. */
 export function getSurvivalModifiers(
   state: SurvivalState,
   climate: SurvivalClimate,
   loadout: LoadoutDefinition,
+  out?: SurvivalModifiers,
 ): SurvivalModifiers {
   const exposureStress = computeExposureStress(state, climate);
   const isColdBiome = climate.ambientTemp < COLD_AMBIENT_TEMP;
@@ -160,13 +162,23 @@ export function getSurvivalModifiers(
     loadout.staminaRegenMultiplier *
     clamp01(1 - state.wetness * PADDLE_REGEN_WETNESS - exposureStress * PADDLE_REGEN_EXPOSURE);
 
-  return {
-    staminaDrainMultiplier: staminaDrainMul,
-    staminaRegenMultiplier: staminaRegenMul,
-    movementMultiplier: movementMul,
-    exposureStress,
-    sfxWetnessMultiplier,
-    paddleCostMultiplier,
-    paddleRegenMultiplier,
-  };
+  if (!out) {
+    return {
+      staminaDrainMultiplier: staminaDrainMul,
+      staminaRegenMultiplier: staminaRegenMul,
+      movementMultiplier: movementMul,
+      exposureStress,
+      sfxWetnessMultiplier,
+      paddleCostMultiplier,
+      paddleRegenMultiplier,
+    };
+  }
+  out.staminaDrainMultiplier = staminaDrainMul;
+  out.staminaRegenMultiplier = staminaRegenMul;
+  out.movementMultiplier = movementMul;
+  out.exposureStress = exposureStress;
+  out.sfxWetnessMultiplier = sfxWetnessMultiplier;
+  out.paddleCostMultiplier = paddleCostMultiplier;
+  out.paddleRegenMultiplier = paddleRegenMultiplier;
+  return out;
 }

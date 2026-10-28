@@ -231,3 +231,52 @@ app-code allocation is not a measurable share of frame time under this
 harness. The hoisting landed for correctness (the particles render from
 `useFrame` now, not when something else re-renders the vehicle) and for the
 lint ratchet, not for a measured speed-up.
+
+## #521 D — the runner step, measured in isolation (2026-10-28)
+
+The page-level harness above cannot see the runner step's own garbage under
+three.js's. `src/vehicles/RunnerVehicle/hooks/runnerStep.alloc.perf.test.ts`
+(`pnpm test:perf`) measures it directly: a stub Rapier whose reads return the
+same objects, a live run, terrain warm, grounded, running forward at full
+stamina, no debug page. It collects (`v8.setFlagsFromString('--expose-gc')`),
+steps 5,000 times and reads the heap; a scavenge inside the window fails the
+test.
+
+| | B/step |
+|---|---|
+| Before (the 575-line `updateRunnerPhysics`) | ~3,000 |
+| After | **≤ 17** (budget: < 24) |
+
+What went, in order of size:
+
+- A `Map`, two closures and ~10 argument / impulse literals per step → the
+  runner's reused `RunnerStepScratch` (`runnerStepScratch.ts`): one impulse
+  tally, one scratch vector, argument objects rewritten field by field.
+- The debug snapshot (~8 literals, two `filter`/`slice` copies) → built only
+  when `queryFlags().debugGlobals` (`?debug`, `?physicsDebug`, `?screenshot`);
+  the impulse / contact windows are pruned in place.
+- `getConfig()` (a spread per step), `getSurvivalModifiers` (a fresh object
+  per read; now one shared object, recomputed when its inputs change), the
+  zustand stamina write at full stamina, the camera-follow `Vector3`, the
+  query-string parse per step (`queryFlags`, read once per mount).
+- V8 number boxing: a closure in `calculateSlopeAngle`'s fallback forced a
+  context object on every call; doubles passed into non-inlined calls
+  (`scratchRay(x, y, z, …)`, `setBodyFriction(f)`, `advanceClock(dt)`) and a
+  double kept in a `{ current }` ref (that hidden class is shared by every ref
+  in the app, so the field is tagged and each write boxes) — moved into
+  fields of objects with their own shape (`fovState`, the frame's `friction` /
+  `damping`, the collision tracker's `clock`).
+
+The ≤ 17 B left is one boxed number whose site moves with V8's inlining
+choices for this call tree (`--no-turbo-inlining` puts ~145 B back); no object
+is built per step. Real Rapier allocates for `translation()`, `linvel()` and
+each ray hit inside its WASM binding; that is outside this code.
+
+Also on the frame path: `ChunkManager.update` / `detectBiome` refill reused
+arrays and read cached z spans instead of `map().filter()` and two
+`getPoint()` vectors; `WaterForceSystem` publishes
+`window.__watershedWaterForceSystem` only on a debug page; `SimCoreTick`,
+`TrackManager` and the lifecycle OOB check resolve the envelope into a reused
+object; `SplashSystem` spawns from one scratch vector. ESLint now makes
+`@react-three/no-new-in-loop` / `no-clone-in-loop` **errors** in `src/sim`,
+`src/systems`, `src/vehicles`, `src/physics` and `src/components/Obstacles`.

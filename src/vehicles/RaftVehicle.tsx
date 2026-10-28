@@ -1,10 +1,9 @@
-import React, { useRef, useEffect, forwardRef } from 'react';
+import React, { useRef, useEffect, useState, forwardRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
 import type { RapierBody } from '../physics/rapierTypes';
 import * as THREE from 'three';
-import { RaftVehicle as RaftVehicleClass, SurfaceMaterial } from '../systems/vehicle/VehicleSystem';
-import { subscribeGameplaySurface } from '../systems/gameplay/activeGameplayProfile';
+import { createCollisionTracker } from '../systems/vehicle/VehicleSystem';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { createRapierWorkerProxy } from '../physics/createRapierWorkerProxy';
@@ -50,7 +49,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   }, [workerDecision]);
 
   const controls = usePlayerControls();
-  const raftVehicle = useRef(new RaftVehicleClass());
+  // Impact events and their sim clock; built once (a `useRef(new …)` argument runs every render).
+  const [raftVehicle] = useState(createCollisionTracker);
 
   const workerProxyRef = useRef<RapierWorkerProxy | null>(null);
   const workerReadyRef = useRef(false);
@@ -132,8 +132,8 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   useEffect(() => {
     let workerSession: RaftWorkerSession<RapierWorkerProxy> | null = null;
     if (bodyRef.current) {
-      raftVehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
-      raftVehicle.current.setSurfaceMaterial(SurfaceMaterial.WATER);
+      const [sx, sy, sz] = PLAYER_SPAWN.position;
+      bodyRef.current.setTranslation({ x: sx, y: sy, z: sz }, true);
       // The main-thread body owns the raft until the worker session is ready:
       // the worker world is the streamed level, so it waits for the track (#465 C2).
       bodyRef.current.applyImpulse({ x: 0, y: 2, z: 0 }, true);
@@ -170,10 +170,6 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
     });
-    // Contact friction: the gameplay profile's surface (#521 B) on each change.
-    const offSurface = subscribeGameplaySurface((surface) => {
-      raftVehicle.current.setSurfaceMaterial(surface);
-    });
 
     const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {
       if (segmentIndex === 14) {
@@ -184,7 +180,6 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
 
     return () => {
       offBiomeChange();
-      offSurface();
       offSegmentSpawn();
       if (workerSession) {
         workerSession.stop();

@@ -37,7 +37,7 @@ export default mergeConfig(
             // budgets (a loaded 8-core box timed out 24 tests at the 5 s default).
             name: 'unit',
             // ./emsdk is the repo-local pinned toolchain (scripts/emsdk-pinned.sh); its own tests are not ours.
-            exclude: [...configDefaults.exclude, 'emsdk/**', PERF_TESTS],
+            exclude: [...configDefaults.exclude, 'emsdk/**', '.claude/**', PERF_TESTS],
             testTimeout: 30_000,
             hookTimeout: 30_000,
           },

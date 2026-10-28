@@ -56,6 +56,13 @@ export interface QueryFlags {
   readonly seed: string | null;
   /** `?spawnProfile=1` — segment-mount timing marks. */
   readonly spawnProfile: boolean;
+  /**
+   * Publish the per-step debug snapshots (`window.__watershed*`, the physics
+   * overlay's body snapshot): `?debug`, `?physicsDebug` or a `?screenshot`
+   * harness (the visual / diag scripts read them). Off for a player, so the
+   * frame path builds none of it.
+   */
+  readonly debugGlobals: boolean;
 }
 
 /** `1` / `true` (case-sensitive, as every flag has always been). */
@@ -102,8 +109,11 @@ export function queryParam(name: string, search?: string): string | null {
 /** Pure: the flags of a query string (with or without the leading `?`). */
 export function parseQueryFlags(search: string): QueryFlags {
   const p = new URLSearchParams(normalise(search));
+  const debug = isOnValue(p.get('debug'));
+  const physicsDebug = isOnValue(p.get('physicsDebug'));
+  const screenshot = p.get('screenshot') === '1';
   return Object.freeze({
-    debug: isOnValue(p.get('debug')),
+    debug,
     map: p.get('map'),
     vehicle: p.get('vehicle'),
     material: p.get('material'),
@@ -112,14 +122,15 @@ export function parseQueryFlags(search: string): QueryFlags {
     replay: p.get('replay'),
     simWorker: p.get('simWorker'),
     noPointerLock: presence(p, 'no-pointer-lock'),
-    screenshot: p.get('screenshot') === '1',
-    physicsDebug: isOnValue(p.get('physicsDebug')),
+    screenshot,
+    physicsDebug,
     wireframe: isOnValue(p.get('wireframe')),
     editor: p.get('editor') === '1',
     wasmWaterTest: p.get('wasmWaterTest') === '1',
     river: p.get('river'),
     seed: p.get('seed'),
     spawnProfile: p.get('spawnProfile') === '1',
+    debugGlobals: debug || physicsDebug || screenshot,
   });
 }
 
