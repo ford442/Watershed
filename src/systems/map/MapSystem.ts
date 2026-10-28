@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { normalizeBiomeId } from '../../configs/biomes';
 import type {
   BaseMapChunk,
+  GameplayProfile,
   LevelData,
   LevelSegment,
   MapConfig,
@@ -31,6 +32,7 @@ import {
   DEFAULT_SEGMENT_PROGRESSION,
 } from './MapSystem.generation';
 import { WATER_LEVEL } from '../../constants/game';
+import { resolveGameplayProfile } from './gameplayProfileTable';
 
 // Re-export types and generation helpers (public API unchanged).
 export type {
@@ -46,10 +48,13 @@ export type {
   MapManager,
   SafeZoneConfig,
   SegmentProgressionConfig,
+  GameplayProfile,
   SegmentRange,
   SpawnData,
   VortexConfig,
 } from './MapSystem.types';
+
+export { resolveGameplayProfile } from './gameplayProfileTable';
 
 export {
   buildProceduralSegment,
@@ -63,6 +68,15 @@ export {
   INITIAL_TREADMILL_POINTS,
   type BuildProceduralSegmentOptions,
 } from './MapSystem.generation';
+
+/**
+ * The gameplay profile of segment `index` on `manager`'s map (#521 B): its
+ * biome's row, with the segment's authored slipperiness folded into the grip.
+ */
+export function resolveSegmentGameplayProfile(manager: MapManager, index: number): GameplayProfile {
+  const config = manager.getChunkConfig(index);
+  return resolveGameplayProfile(config.biome, config.slipperiness);
+}
 
 // =============================================================================
 // PROCEDURAL FALLBACK MAP MANAGER

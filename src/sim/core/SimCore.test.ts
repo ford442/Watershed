@@ -116,6 +116,27 @@ describe('SimCore registry', () => {
     expect(() => core.register(recorder('x', 2, []))).not.toThrow();
   });
 
+  it('attaches on register and tears down on unregister', () => {
+    const core = new SimCore();
+    const log: string[] = [];
+    const off = core.register({
+      id: 'listener',
+      order: 1,
+      step: () => {},
+      attach: () => {
+        log.push('attach');
+        return () => log.push('detach');
+      },
+    });
+    expect(log).toEqual(['attach']);
+    off();
+    off();
+    expect(log).toEqual(['attach', 'detach']);
+    core.register({ id: 'again', order: 1, step: () => {}, attach: () => void log.push('no-teardown') });
+    core.unregister('again');
+    expect(log).toEqual(['attach', 'detach', 'no-teardown']);
+  });
+
   it('calls each system\'s reset on a run reset, in order', () => {
     const core = new SimCore();
     const log: string[] = [];

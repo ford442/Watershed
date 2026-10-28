@@ -34,6 +34,7 @@ vi.mock('@react-three/fiber', () => ({
 
 vi.mock('../../systems/biome/BiomeSystem', () => ({
   useBiome: () => ({ currentBiome: 'canyonSummer', transitionProgress: 1, setBiome: () => {}, snapBiome: () => {} }),
+  useBiomeActions: () => ({ setBiome: () => {}, snapBiome: () => {} }),
   useBiomeMaterials: () => ({}),
 }));
 

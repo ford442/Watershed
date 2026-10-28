@@ -96,6 +96,9 @@ import { clearFloatingWaterBodies, registerFloatingWaterBody } from './WaterForc
 import { SimWorkerProxy, getSimWorkerProxy } from '../../sim/createSimWorkerProxy';
 import { createSimWorkerCore } from '../../sim/simWorkerCore';
 import { WaterForceSystem } from './WaterForceSystem';
+import { getBiomePalette } from '../../configs/BiomePalettes';
+import { resetGameplayProfileForTests, setGameplayProfileTarget } from '../map/gameplayProfile';
+import { resolveGameplayProfile } from '../map/gameplayProfileTable';
 import { useGameStore } from '../GameState';
 
 /** Heap-backed stand-in for the native module. `step` raises η at one cell. */
@@ -209,6 +212,7 @@ function uploadedHeight(): Float32Array {
 afterEach(() => {
   vi.clearAllMocks();
   useGameStore.setState({ currentBiome: 'canyonSummer' });
+  resetGameplayProfileForTests();
   clearFloatingWaterBodies();
   resetPhysicsWorkerRegistry();
 });
@@ -350,11 +354,21 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(hull.current.applyImpulse).not.toHaveBeenCalled();
     // No debris and the hull is the Rapier worker's: nothing to batch here.
     expect(inWorker.computeWaterForcesBatch).not.toHaveBeenCalled();
-    // The flow cap is the target biome's palette value (canyonSummer 1.0), read per frame.
+    // The flow cap is the live GameplayProfile's (canyonSummer 1.0), read per frame.
     expect(getPhysicsWorkerTickParams()).toMatchObject({ simFlow: true, flowSpeed: 1.0, flowDirX: 0, flowDirZ: -1 });
 
-    // A biome change moves the cap on the next frame: the target's value, not a cross-fade.
+    // The biome's *look* moving — the store's biome id, or the palette itself — does not move the water (#521 B).
     useGameStore.setState({ currentBiome: 'glacier' });
+    const summer = getBiomePalette('canyonSummer');
+    const summerFlow = summer.flowSpeed;
+    summer.flowSpeed = 9;
+    frame();
+    pump();
+    expect(getPhysicsWorkerTickParams()).toMatchObject({ flowSpeed: 1.0 });
+    summer.flowSpeed = summerFlow;
+
+    // The segment's profile does, on the next frame: the committed biome's row.
+    setGameplayProfileTarget(resolveGameplayProfile('glacier'));
     frame();
     pump();
     expect(getPhysicsWorkerTickParams()).toMatchObject({ flowSpeed: 1.4 });

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useBiomeMaterials } from '../../systems/biome/BiomeSystem';
 import { useLOD } from '../../systems/lod/LODManager';
 import { useGameStore } from '../../systems/GameState';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -83,7 +82,6 @@ export function useInnerExperience({
   );
 
   const { quality } = useLOD();
-  const biomeMaterials = useBiomeMaterials();
 
   useEffect(() => {
     setVehicleTypeStore(vehicleType);
@@ -152,7 +150,6 @@ export function useInnerExperience({
     isWipeout,
     isJourneyComplete,
     quality,
-    biomeMaterials,
     ...world,
   };
 }

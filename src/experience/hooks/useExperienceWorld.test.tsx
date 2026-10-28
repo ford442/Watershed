@@ -19,7 +19,7 @@ vi.mock('@react-three/fiber', () => ({
 // function per render would recreate resetDefaultMapRun and hide the bug.
 vi.mock('../../systems/biome/BiomeSystem', () => {
   const biome = { currentBiome: 'canyonSummer', setBiome: () => {}, snapBiome: () => {} };
-  return { useBiome: () => biome };
+  return { useBiome: () => biome, useBiomeActions: () => biome };
 });
 
 import { useExperienceWorld } from './useExperienceWorld';

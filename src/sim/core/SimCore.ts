@@ -89,6 +89,12 @@ export interface SimSystem {
   step(ctx: SimContext, dt: number): void;
   /** Run reset (a new run on this page): drop whatever the last run left in the system. */
   reset?(ctx: SimContext): void;
+  /**
+   * Called when the system is registered; returns its teardown, called when it
+   * is unregistered. For a system that listens (an event, a store) rather than
+   * only stepping.
+   */
+  attach?(ctx: SimContext): (() => void) | void;
 }
 
 function createVehicleProbe(): SimVehicleProbe {
@@ -112,6 +118,7 @@ function createVehicleProbe(): SimVehicleProbe {
 export class SimCore {
   readonly ctx: SimContext;
   private systems: SimSystem[] = [];
+  private detach = new Map<string, () => void>();
   private accumulator = 0;
   private scripted = false;
   private seed = SIM_RNG_SEED;
@@ -141,12 +148,18 @@ export class SimCore {
     let at = this.systems.length;
     while (at > 0 && this.systems[at - 1].order > system.order) at -= 1;
     this.systems.splice(at, 0, system);
+    const teardown = system.attach?.(this.ctx);
+    if (teardown) this.detach.set(system.id, teardown);
     return () => this.unregister(system.id);
   }
 
   unregister(id: string): void {
     const at = this.systems.findIndex((s) => s.id === id);
-    if (at >= 0) this.systems.splice(at, 1);
+    if (at < 0) return;
+    this.systems.splice(at, 1);
+    const teardown = this.detach.get(id);
+    this.detach.delete(id);
+    teardown?.();
   }
 
   /** Registered ids in the order they step. */
@@ -208,6 +221,7 @@ export class SimCore {
 
   /** Back to a just-constructed core (tests). Registered systems are dropped. */
   resetForTests(): void {
+    for (const id of [...this.detach.keys()]) this.unregister(id);
     this.systems = [];
     this.scripted = false;
     this.reset(SIM_RNG_SEED);

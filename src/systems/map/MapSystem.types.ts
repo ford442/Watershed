@@ -245,6 +245,38 @@ export interface MapConfig {
 }
 
 // =============================================================================
+// GAMEPLAY PROFILE (#521 B)
+// =============================================================================
+
+/**
+ * What a stretch of river does to the player, apart from how it looks.
+ *
+ * Resolved per segment by MapSystem (`resolveGameplayProfile`) and blended in
+ * sim time by SimCore's `gameplay-profile` system. A biome *palette* is purely
+ * visual: retuning its `flowSpeed` recolours nothing here and pushes nobody.
+ */
+export interface GameplayProfile {
+  /**
+   * The flow cap handed to every water-force path (main thread, sim worker,
+   * Rapier worker), in the unit the palettes' `flowSpeed` always used
+   * (1.0 = the summer meander's current).
+   */
+  flowCap: number;
+  /** Surface grip multiplier: 1 = normal, 0 = frictionless ice (`1 − slipperiness`). */
+  friction: number;
+  /** Cold stress 0–1 (`1 −` the biome's ambient core temperature). 0 = none. */
+  cold: number;
+  /** Ambient wind, m/s. 0 = still air. */
+  wind: number;
+  /**
+   * Sim seconds to blend from the previous segment's profile into this one.
+   * 0 steps at once — what the pinned flow cap always did, and the value every
+   * authored map carries until one chooses a gentler boundary.
+   */
+  blendSec: number;
+}
+
+// =============================================================================
 // SEGMENT PROGRESSION CONFIG
 // =============================================================================
 

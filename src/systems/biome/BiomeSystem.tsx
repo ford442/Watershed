@@ -1,15 +1,39 @@
 /**
- * BiomeSystem - Manages biome transitions and environmental storytelling
- * 
+ * BiomeSystem - the biome's *look*: palette cross-fades and environmental storytelling.
+ *
+ * Visual only (#521 B). Nothing here pushes the player: the flow cap, grip and
+ * cold are the segment's `GameplayProfile` (systems/map/gameplayProfile.ts).
+ *
  * Handles:
  * - Biome state management
  * - Smooth color/parameter interpolation between biomes
  * - Integration with lighting, fog, water, and materials
  * - Time of day: the run's sky clock (systems/sky/skyClock.ts), as the daylight
  *   fraction (0 = sunrise, 0.5 = noon, 1 = sunset; outside [0, 1] at night)
+ *
+ * Who reads what, so a cross-fade costs React nothing it does not need:
+ * - the **store** (`useBiomeStore()`): the cross-fading palette, committed once
+ *   per progress step. Per-frame readers `getView()` inside their own
+ *   `useFrame`, or `subscribe` for a transient callback. No re-render.
+ * - the **memoised context** (`useBiome()`): changes only when something a
+ *   render can see changes — the target biome, transitioning vs settled, the
+ *   coarse time of day. `currentBiome` on it is one stable object kept live
+ *   (updated in place each step), so a `useFrame` closure over it always reads
+ *   the current palette. A 2 s cross-fade re-renders its consumers twice.
+ * - the **setters** (`useBiomeActions()`): their own context, never changes.
+ * - `useBiomeView()` / `useBiomeMaterials()`: opt in to a re-render per step.
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+} from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../../configs/BiomePalettes';
@@ -18,11 +42,13 @@ import { useGameStore } from '../GameState';
 import { gameEvents } from '../events/GameEvents';
 import { getSkyClock, getSkyPhase, subscribeSkyPhase } from '../sky/skyClock';
 
-// Context for biome state
+// What a render can see (changes rarely — see the header).
 type BiomeContextType = {
+  /** One stable palette object, updated in place every committed step. */
   currentBiome: BiomePalette;
   targetBiome: BiomePalette;
-  transitionProgress: number;
+  /** Live: reads the store at access time, so reading it never needs a re-render. */
+  readonly transitionProgress: number;
   isTransitioning: boolean;
   /** Daylight fraction: 0 = sunrise, 0.5 = solar noon, 1 = sunset; below 0 / above 1 at night. */
   timeOfDay: number;
@@ -31,12 +57,88 @@ type BiomeContextType = {
   snapBiome: (biomeId: BiomeId) => void;
 };
 
+type BiomeActions = Pick<BiomeContextType, 'setBiome' | 'snapBiome'>;
+
+/** The cross-fade as of the last committed step. */
+export interface BiomeView {
+  currentBiome: BiomePalette;
+  targetBiome: BiomePalette;
+  transitionProgress: number;
+  isTransitioning: boolean;
+}
+
+/**
+ * The transient side of the biome: the last committed view and a subscribe for
+ * per-frame readers. Created once per BiomeProvider.
+ */
+export interface BiomeStore {
+  getView(): BiomeView;
+  /** The stable palette object `useBiome().currentBiome` returns, current as of `getView()`. */
+  getLivePalette(): BiomePalette;
+  /** Called after every commit (a progress step, a start, a settle, a snap). Returns the unsubscribe. */
+  subscribe(listener: () => void): () => void;
+}
+
+interface BiomeStoreInternal extends BiomeStore {
+  commit(view: BiomeView, options?: { start?: boolean }): void;
+}
+
+function settledView(palette: BiomePalette): BiomeView {
+  return { currentBiome: palette, targetBiome: palette, transitionProgress: 1, isTransitioning: false };
+}
+
+function createBiomeStore(initial: BiomeView): BiomeStoreInternal {
+  let view = initial;
+  // A private copy: the palette tables are shared config and must never be mutated.
+  const live: BiomePalette = { ...initial.currentBiome };
+  const listeners = new Set<() => void>();
+  return {
+    getView: () => view,
+    getLivePalette: () => live,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    commit(next, options) {
+      view = next;
+      Object.assign(live, next.currentBiome);
+      // A fade reads as the target biome from its first frame (the palette lerp's own id).
+      if (options?.start) live.id = next.targetBiome.id;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
 const BiomeContext = createContext<BiomeContextType | null>(null);
+const BiomeActionsContext = createContext<BiomeActions | null>(null);
+const BiomeStoreContext = createContext<BiomeStore | null>(null);
 
 export const useBiome = () => {
   const context = useContext(BiomeContext);
   if (!context) throw new Error('useBiome must be used within BiomeProvider');
   return context;
+};
+
+/** The setters (`setBiome`, `snapBiome`) — a context that never changes, so using it never re-renders. */
+export const useBiomeActions = (): BiomeActions => {
+  const context = useContext(BiomeActionsContext);
+  if (!context) throw new Error('useBiomeActions must be used within BiomeProvider');
+  return context;
+};
+
+/** The transient store, for `useFrame` / `subscribe` readers. Never changes. */
+export const useBiomeStore = (): BiomeStore => {
+  const store = useContext(BiomeStoreContext);
+  if (!store) throw new Error('useBiomeStore must be used within BiomeProvider');
+  return store;
+};
+
+/** The cross-fade, re-rendering the caller once per committed step. Prefer the store for per-frame work. */
+export const useBiomeView = (): BiomeView => {
+  const store = useBiomeStore();
+  return useSyncExternalStore(store.subscribe, store.getView, store.getView);
 };
 
 // Props for the provider
@@ -54,18 +156,11 @@ interface BiomeProviderProps {
 const FIXED_TIME_OF_DAY = 0.25;
 
 /**
- * Transition progress commits to React state in steps of 1 / N: consumers
- * re-render N times per cross-fade, not once per frame. Per-frame readers
- * (lighting, fog) read the committed palette.
+ * Transition progress commits to the biome store in steps of 1 / N, not once
+ * per frame; only `useBiomeView` / `useBiomeMaterials` callers re-render per
+ * step. Per-frame readers (lighting, fog) read the committed palette.
  */
 export const BIOME_TRANSITION_STEPS = 48;
-
-interface BiomeView {
-  currentBiome: BiomePalette;
-  targetBiome: BiomePalette;
-  transitionProgress: number;
-  isTransitioning: boolean;
-}
 
 interface BiomeTransitionClock {
   from: BiomePalette;
@@ -76,10 +171,6 @@ interface BiomeTransitionClock {
   active: boolean;
   /** Last committed step, 0..BIOME_TRANSITION_STEPS. */
   step: number;
-}
-
-function settledView(palette: BiomePalette): BiomeView {
-  return { currentBiome: palette, targetBiome: palette, transitionProgress: 1, isTransitioning: false };
 }
 
 /**
@@ -116,15 +207,18 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   initialBiome = DEFAULT_BIOME_ID,
   enableTimeOfDay = false,
 }) => {
-  const [view, setView] = useState<BiomeView>(() => settledView(getBiomePalette(initialBiome)));
+  const [store] = useState(() => createBiomeStore(settledView(getBiomePalette(initialBiome))));
+  // What a render can see of the cross-fade: the target and whether it is still running.
+  // Per-step progress is committed to the store only.
+  const [phase, setPhase] = useState(() => {
+    const view = store.getView();
+    return { targetBiome: view.targetBiome, isTransitioning: view.isTransitioning };
+  });
   const [timeOfDay, setTimeOfDay] = useState(() => (enableTimeOfDay ? getSkyPhase().timeOfDay : FIXED_TIME_OF_DAY));
 
-  // The live view, mirrored for the stable callbacks below. Every setView is
-  // paired with a ref write ahead of it, so render never writes the ref.
-  const viewRef = useRef(view);
   const clockRef = useRef<BiomeTransitionClock>({
-    from: view.currentBiome,
-    to: view.targetBiome,
+    from: store.getView().currentBiome,
+    to: store.getView().targetBiome,
     elapsedSec: 0,
     durationSec: 0,
     active: false,
@@ -138,34 +232,38 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   }, []);
 
   // Start biome transition.
-  // BiomeProvider is the single source of truth for biome state; after updating
-  // the internal transition target we immediately mirror the canonical palette id
-  // to the Zustand store so HUD / lighting / survival consumers stay in sync.
-  // The cross-fade itself runs on the frame delta (sim time) in useFrame below.
+  // BiomeProvider is the single source of truth for the biome's *look*; after
+  // updating the internal transition target we immediately mirror the canonical
+  // palette id to the Zustand store so HUD / lighting / survival consumers stay
+  // in sync. (The water's flow cap is not among them: that is the segment's
+  // GameplayProfile.) The cross-fade itself runs on the frame delta (sim time)
+  // in useFrame below.
   const setBiome = useCallback((biomeId: BiomeId, durationOverride?: number) => {
     const newTarget = getBiomePalette(biomeId);
     const clock = clockRef.current;
     if (newTarget.id === clock.to.id) return;
 
     // Cross-fade from wherever the last committed step left the palette.
-    clock.from = viewRef.current.currentBiome;
+    clock.from = { ...store.getLivePalette() };
     clock.to = newTarget;
     clock.elapsedSec = 0;
     clock.durationSec = durationOverride ?? newTarget.transitionDuration;
     clock.active = true;
     clock.step = 0;
-    const next: BiomeView = {
-      currentBiome: clock.from,
-      targetBiome: newTarget,
-      transitionProgress: 0,
-      isTransitioning: true,
-    };
-    viewRef.current = next;
-    setView(next);
+    store.commit(
+      {
+        currentBiome: clock.from,
+        targetBiome: newTarget,
+        transitionProgress: 0,
+        isTransitioning: true,
+      },
+      { start: true },
+    );
+    setPhase({ targetBiome: newTarget, isTransitioning: true });
 
     // Mirror canonical biome id to Zustand store (single point of write).
     useGameStore.setState({ currentBiome: newTarget.id });
-  }, []);
+  }, [store]);
 
   const snapBiome = useCallback((biomeId: BiomeId) => {
     const palette = getBiomePalette(biomeId);
@@ -176,22 +274,22 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     clock.durationSec = 0;
     clock.active = false;
     clock.step = BIOME_TRANSITION_STEPS;
-    const next = settledView(palette);
-    viewRef.current = next;
-    setView(next);
+    store.commit(settledView(palette));
+    setPhase({ targetBiome: palette, isTransitioning: false });
     useGameStore.setState({ currentBiome: palette.id });
     gameEvents.emit('biome-change', {
       biome: palette.id,
       segmentIndex: useGameStore.getState().currentSegmentIndex,
     });
-  }, []);
+  }, [store]);
 
-  // Advance the cross-fade on sim time: one state commit per progress step.
+  // Advance the cross-fade on sim time: one store commit per progress step,
+  // one React update when it settles.
   useFrame((_, delta) => {
     const next = advanceBiomeTransition(clockRef.current, delta);
     if (!next) return;
-    viewRef.current = next;
-    setView(next);
+    store.commit(next);
+    if (!next.isTransitioning) setPhase({ targetBiome: next.targetBiome, isTransitioning: false });
   });
 
   // Time of day: the sky clock's coarse phase (~every 5 game minutes), so the
@@ -205,19 +303,37 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
     return subscribeSkyPhase((phase) => setTimeOfDay(phase.timeOfDay));
   }, [enableTimeOfDay]);
 
+  const actions = useMemo<BiomeActions>(() => ({ setBiome, snapBiome }), [setBiome, snapBiome]);
+
   const value = useMemo<BiomeContextType>(
-    () => ({ ...view, timeOfDay, setBiome, snapBiome }),
-    [view, timeOfDay, setBiome, snapBiome],
+    () => ({
+      currentBiome: store.getLivePalette(),
+      targetBiome: phase.targetBiome,
+      get transitionProgress() {
+        return store.getView().transitionProgress;
+      },
+      isTransitioning: phase.isTransitioning,
+      timeOfDay,
+      setBiome,
+      snapBiome,
+    }),
+    [store, phase, timeOfDay, setBiome, snapBiome],
   );
 
-  return <BiomeContext.Provider value={value}>{children}</BiomeContext.Provider>;
+  return (
+    <BiomeStoreContext.Provider value={store}>
+      <BiomeActionsContext.Provider value={actions}>
+        <BiomeContext.Provider value={value}>{children}</BiomeContext.Provider>
+      </BiomeActionsContext.Provider>
+    </BiomeStoreContext.Provider>
+  );
 };
 
 /**
  * BiomeTransition - Component that applies biome to scene elements
  */
 export const BiomeTransition: React.FC = () => {
-  const { currentBiome } = useBiome();
+  const biomeStore = useBiomeStore();
   const { scene } = useThree();
   const weatherType = useGameStore((s) => s.weather.type);
 
@@ -247,6 +363,8 @@ export const BiomeTransition: React.FC = () => {
   useFrame(() => {
     const { ambient, hemi, sun, fill } = lightsRef.current;
     if (!ambient || !hemi || !sun || !fill) return;
+    // Transient read: the cross-fade's current palette, with no re-render.
+    const { currentBiome } = biomeStore.getView();
 
     // Sun elevation (0 = horizon/below, 1 = well up) drives the warm/cool
     // colour-temperature shift and intensity falloff.
@@ -293,7 +411,7 @@ export const BiomeDetector: React.FC<BiomeDetectorProps> = ({
   segmentBiomes = {},
 }) => {
   const { camera } = useThree();
-  const { setBiome } = useBiome();
+  const { setBiome } = useBiomeActions();
   const lastBiomeRef = useRef<string>('');
   
   useFrame(() => {
@@ -315,10 +433,11 @@ export const BiomeDetector: React.FC<BiomeDetectorProps> = ({
 };
 
 /**
- * UseBiomeMaterials hook - Get material configurations from current biome
+ * UseBiomeMaterials hook - Get material configurations from the cross-fading biome
+ * (re-renders its caller once per committed step; the water *force* does not read it)
  */
 export function useBiomeMaterials() {
-  const { currentBiome } = useBiome();
+  const { currentBiome } = useBiomeView();
   
   return {
     water: {

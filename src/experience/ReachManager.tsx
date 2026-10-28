@@ -23,7 +23,7 @@ import { prefetchNextReach, resolveNextReachId } from '../systems/journey/journe
 import { saveJourneyCheckpoint } from '../systems/journey/runSession';
 import { setReachAmbientWeather } from '../systems/weather/WeatherDirectorTick';
 import { useGameStore } from '../systems/GameState';
-import { useBiome } from '../systems/biome/BiomeSystem';
+import { useBiomeActions } from '../systems/biome/BiomeSystem';
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */
@@ -61,7 +61,7 @@ export default function ReachManager({
   const [activeReachId, setActiveReachId] = useState<string | undefined>(reachId);
   const transitionHandledRef = useRef(false);
   const handoffInProgressRef = useRef(false);
-  const { setBiome } = useBiome();
+  const { setBiome } = useBiomeActions();
 
   // Notify parent of loading / error state changes
   useEffect(() => {

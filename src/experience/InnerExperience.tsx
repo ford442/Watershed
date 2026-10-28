@@ -132,7 +132,6 @@ export default function InnerExperience({
             vehicleRef={state.vehicleRef}
             vehicleType={state.vehicleType}
             enabled={debug.isStageEnabled('worldSystems')}
-            flowSpeed={state.biomeMaterials.water.flowSpeed}
             wasmWaterTest={state.wasmWaterTest}
           />
 

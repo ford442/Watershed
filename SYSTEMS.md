@@ -229,54 +229,83 @@ continuity from the previous segment.
 
 ### `src/systems/biome/BiomeSystem.tsx`
 
-**Purpose:** Manages biome state and interpolates fog, lighting, and material palettes
-across the scene via React context. Provides `BiomeProvider`, `BiomeTransition`,
-`BiomeDetector`, `useBiome`, and `useBiomeMaterials`.
+**Purpose:** The biome's *look* (#521 B): interpolates fog, lighting, and material palettes across the
+scene. Visual only — the flow cap, grip and cold under the player are the segment's `GameplayProfile`
+(below), so recolouring a biome never changes the water. Provides `BiomeProvider`, `BiomeTransition`,
+`BiomeDetector`, `useBiome`, `useBiomeActions`, `useBiomeStore`, `useBiomeView`, `useBiomeMaterials`.
 
-**Runs in:** React context provider (`BiomeProvider`) + `useFrame` (`BiomeTransition`) +
-`requestAnimationFrame` loop for transition interpolation.
+**Runs in:** React context provider (`BiomeProvider`) + `useFrame` (`BiomeTransition` applies the palette;
+the provider advances the cross-fade on the frame's sim delta, `advanceBiomeTransition`).
 
-**Exports:**
-- `useBiome()` — context hook (throws if outside `BiomeProvider`)
-- `BiomeProvider` — context provider (props: `initialBiome`, `enableTimeOfDay`, `timeOfDaySpeed`)
-- `BiomeTransition` — scene component; applies palette to lights/fog every frame
-- `BiomeDetector` — watches camera Z to detect segment biome changes
-- `useBiomeMaterials()` — returns water/canyon/vegetation/effects material configs derived
-  from the current interpolated biome palette
-
-**Consumes:**
-- `BiomePalette`, `getBiomePalette`, `lerpBiomePalettes`, `applyBiomeToLighting`
-  from `src/configs/BiomePalettes`
-- `useFrame`, `useThree` from `@react-three/fiber`
+**Who reads what (so a 2 s cross-fade costs React two renders, not 48):**
+- `useBiomeStore()` — the transient store: `getView()` / `getLivePalette()` / `subscribe()`. The cross-fading
+  palette is committed to it once per progress step (`BIOME_TRANSITION_STEPS` = 48) and on start / settle /
+  snap. Per-frame readers read it inside their own `useFrame`; nothing re-renders.
+- `useBiome()` — the memoised context, for the rare re-render: `{ currentBiome, targetBiome,
+  transitionProgress, isTransitioning, timeOfDay, setBiome, snapBiome }`. The value changes only when the
+  target, transitioning-vs-settled or the coarse time of day changes. `currentBiome` is **one stable
+  object updated in place** each step (a private copy — the palette tables are never mutated), so a
+  `useFrame` closure over it always reads the current palette; `transitionProgress` is a live getter.
+  `TrackSegmentMeshes` and `PostProcessingPipeline` read this and re-render ≤ 3 times across a fade
+  (`BiomeSystem.renders.test.tsx`, which also pins what those two files destructure).
+- `useBiomeActions()` — `{ setBiome, snapBiome }` in their own context; never re-renders. Scene-root hooks
+  (`useInnerExperience`, `useExperienceWorld`, `ReachManager`) use this.
+- `useBiomeView()` / `useBiomeMaterials()` — opt in to a re-render per committed step (`SplashSystem`'s
+  foam colour and visual flow).
 
 **Produces:**
-- React context value: `{ currentBiome, targetBiome, transitionProgress, isTransitioning,
-  timeOfDay, setBiome, setTimeOfDay }`
-- Per-frame mutations: fog color/near/far, ambient/hemi/sun/fill light colors and intensities,
-  scene background color.
-- Consumed by `EnhancedSky` via `useBiome()` (no biome props from `InnerExperience`).
+- Per-frame mutations (`BiomeTransition`): fog color/near/far, ambient/hemi/sun/fill light colors and
+  intensities, scene background color.
+- `GameState.currentBiome` — mirrored by `setBiome` / `snapBiome` (the sole writers of the biome id).
 
 **Boundaries (Do NOT):**
-- Do NOT call `useBiome()` outside a `<BiomeProvider>` — it throws.
+- Do NOT call `useBiome()` / `useBiomeActions()` outside a `<BiomeProvider>` — they throw.
+- Do NOT read a palette (`flowSpeed` or anything else) for a gameplay force, hit, cap or timer — read the
+  `GameplayProfile`. The palette is for colour, fog, light and surface shaders.
+- Do NOT subscribe a scene-root or per-segment component to `useBiomeView()` / `useBiomeMaterials()`.
+- Do NOT mutate `currentBiome` from a consumer; it is shared and updated by the store.
 - Do NOT pass biome palette props into `EnhancedSky` — it reads context only.
-- Do NOT directly mutate `scene.fog` or light colors in other components while
-  `BiomeTransition` is mounted — it will overwrite your values every frame.
-- Do NOT introduce a second biome vocabulary — all track, palette, HUD, and map
-  fields use the single `BiomeId` union from `src/configs/biomes.ts`.
+- Do NOT directly mutate `scene.fog` or light colors in other components while `BiomeTransition` is
+  mounted — it will overwrite your values every frame.
+- Do NOT introduce a second biome vocabulary — all track, palette, HUD, and map fields use the single
+  `BiomeId` union from `src/configs/biomes.ts`.
 - Do NOT call `normalizeBiomeId` on hot paths — it is a map-load adapter only.
-  `ChunkManager` / `TrackManager` emit canonical IDs after load.
-- Do NOT write `GameState.currentBiome` outside `setBiome` / `snapBiome` —
-  those are the sole store writers for biome id.
+- Do NOT write `GameState.currentBiome` outside `setBiome` / `snapBiome`.
 
 **Known Pain:**
 - `BiomeDetector` uses a fixed `segmentLength = 40` approximation; it does not consult
   actual `NormalizedSegment` bounds.
+- `currentBiome.id` on the context reads as the *target* id from the fade's first frame (the palette lerp's
+  own id); a render that needs the id the fade started from reads `getView().currentBiome` at the start.
 
 **Canonical IDs (`BiomeId`):** `canyonSummer`, `canyonAutumn`, `slotCanyon`,
 `glacialMelt`, `glacier`, `delta`, `alpineSpring`, `cavern`, `midnightMist`,
 plus stubs `lumberFlume` / `hydroDam`. Legacy kebab/track aliases
 (`summer`→`canyonSummer`, `creek-autumn`→`canyonAutumn`, `canyon-sunset`→`slotCanyon`,
 …) resolve only via `normalizeBiomeId` at map/reach load.
+
+---
+
+### `src/systems/map/gameplayProfile.ts` + `gameplayProfileTable.ts` (GameplayProfile, #521 B)
+
+**Purpose:** What a stretch of river *does* to the player, apart from how it looks: `{ flowCap, friction,
+cold, wind, blendSec }`. Resolved per segment by MapSystem (`resolveGameplayProfile(biome, slipperiness)`,
+`resolveSegmentGameplayProfile(manager, index)`) from a gameplay table that started as a copy of the
+palettes' `flowSpeed` (so no authored map's water moved) and is now independent of them.
+
+**Runs in:** SimCore's `gameplay-profile` system (order 60, `createGameplayProfileSimSystem`). The live
+profile (`getGameplayProfile()`, one stable object mutated in place) changes when ChunkManager commits a
+biome (`biome-change`, after its 0.4 s sim-time debounce — the moment the pinned cap used to change) and,
+for a profile with `blendSec > 0`, eases from the old profile on the sim step. Every table row has
+`blendSec: 0` (a step), so nothing blends until a map asks.
+
+**Consumers:** `WaterForceSystem` reads `flowCap` per frame for every force path (main thread, sim worker,
+Rapier worker) — replacing the pin to the target palette's `flowSpeed`. `friction`, `cold` and `wind` are
+resolved and blended but not read yet (surface friction and survival's ambient still use their own
+tables; wiring them is the next consumer's job).
+
+**Boundaries (Do NOT):** read a palette for gameplay; write the live profile from a render path; blend on
+wall time.
 
 ---
 
@@ -361,7 +390,8 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
 
 **Consumes:**
 - `ParticlePool`, `VFXParticle`, `FoamParticle`, `MistParticle` from `src/systems/pools/ParticlePool`
-- `useBiomeMaterials` from `BiomeSystem` (foam/water color)
+- `useBiomeMaterials` from `BiomeSystem` (foam/water color, and the visual `flowSpeed` unless a prop pins one)
+- `simCore.ctx.rng` — the foam gate's stream (reseeded on every run reset)
 - `useLOD` from `LODManager` — `config.maxParticles` (instance cap) and `config.particleDensity`
   (spawn-count scale)
 - `injectSWEDisturbance` from `SWEHeightField`
@@ -369,7 +399,7 @@ Mounted inside Rapier `<Physics>` by `WaterPhysicsEffects` in `src/experience/Wa
 
 **Props:**
 - `playerRef` — Rapier rigid body ref (`vehicleRef` from `InnerExperience`)
-- `waterLevel?`, `waterWidth?`, `flowDirection?`, `flowSpeed?` (biome flow from WaterStack)
+- `waterLevel?`, `waterWidth?`, `flowDirection?`, `flowSpeed?` (visual only; unset = the cross-fading palette's)
 - `isRaft?` — enables mist crown + bow-wave (`vehicleType === 'raft'`)
 - `maxVelocity?` — default `15`; scales cruise intensity and bow-wave height
 
@@ -529,7 +559,7 @@ n steps whatever the deltas' float residue (`SimCore.test.ts` pins the parity).
 
 **Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
 biome detection and its 0.4 s sim-time debounce) · 40 `survival` (`stepRunSurvival`) · 50 `pillars`
-(crack timers and debris age, `pillarSimClock.ts`) · 90 `score` (score + the ghost's 10 Hz sample
+(crack timers and debris age, `pillarSimClock.ts`) · 60 `gameplay-profile` (below) · 90 `score` (score + the ghost's 10 Hz sample
 clock, which splits are read off). The list lives in `experience/simSystems.ts`.
 
 **Boundaries (Do NOT):**

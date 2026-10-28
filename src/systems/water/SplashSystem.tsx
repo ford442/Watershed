@@ -106,11 +106,14 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
   waterLevel = WATER_LEVEL,
   waterWidth = 12,
   flowDirection = new THREE.Vector3(0, 0, -1),
-  flowSpeed = 1.0,
+  flowSpeed: flowSpeedProp,
   isRaft = false,
   maxVelocity = 15,
 }) => {
   const { water } = useBiomeMaterials();
+  // Visual only (wave height, particle drift, cruise/mist counts): the cross-fading palette's surface
+  // flow, unless a caller pins one. The water *force* is the segment's GameplayProfile.
+  const flowSpeed = flowSpeedProp ?? water.flowSpeed;
   const { config: lodConfig } = useLOD();
   const particleDensity = lodConfig.particleDensity;
   const maxInstances = lodConfig.maxParticles;
