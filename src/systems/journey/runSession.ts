@@ -227,6 +227,7 @@ export function initRunSession(options: {
     lastCheckpoint: null,
   };
   awardedCacheSegments = new Set();
+  raftInWater = false;
   resetWeatherDirector(conditions.weatherScript);
   // The sun starts at the launch hour over the start map and runs on sim time.
   resetSkyClock(launchHour, getMapAtmosphere(startMapId));
@@ -299,7 +300,13 @@ export function getActiveSurvivalModifiers(biomeId: SurvivalTickInput['biomeId']
   );
 }
 
-export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
+/**
+ * Integrate the run's survival by one sim step (wetness, core temperature, peak
+ * exposure, the SFX muffle) and return the modifiers it now implies; null with
+ * no run. Called once per fixed step by SimCore's `survival` system
+ * (survivalSystem.ts) — nothing else may integrate it, or time runs twice.
+ */
+export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
   if (!activeSession) return null;
   const loadout = getLoadoutDefinition(activeSession.loadoutId);
   const survival = tickSurvivalState(
@@ -323,6 +330,27 @@ export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
     };
   }
   return mods;
+}
+
+/** What the raft last said about its float (the raft's own state is out of SimCore's reach). */
+let raftInWater = false;
+
+/** The raft's last-published `inWater` (see `tickRunSurvival`). */
+export function getPublishedRaftInWater(): boolean {
+  return raftInWater;
+}
+
+/**
+ * The vehicles' survival hook: the modifiers the last sim step produced for
+ * `input.biomeId`, null with no run. It no longer integrates (that is
+ * `stepRunSurvival`, one SimCore step at a time); the runner and raft keep
+ * calling it with their probe, and the raft's `inWater` — the one input only
+ * its hull knows — is kept here for the survival system's next step.
+ * `dt`, `windSpeed` and the runner's `inWater` are read by the sim instead.
+ */
+export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
+  raftInWater = input.inWater;
+  return getActiveSurvivalModifiers(input.biomeId);
 }
 
 /** Accumulate upright raft distance for journey-results scoring. */
@@ -501,6 +529,7 @@ export function notePeakAirTime(seconds: number): void {
 
 export function resetRunSessionForTests(): void {
   activeSession = null;
+  raftInWater = false;
   awardedCacheSegments = new Set();
   resetWetnessMuffle();
   resetWeatherDirectorForTests();

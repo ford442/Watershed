@@ -10,7 +10,7 @@ import {
   initRunSession,
   resetRunSessionForTests,
   saveJourneyCheckpoint,
-  tickRunSurvival,
+  stepRunSurvival,
 } from './runSession';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 
@@ -39,7 +39,7 @@ describe('runSession journey mode', () => {
 
   it('preserves survival wetness/exposure across advanceRunSessionMap', () => {
     initRunSession({ mapId: 'hydro', journeyMode: 'journey', launchHour: 10 });
-    tickRunSurvival({
+    stepRunSurvival({
       dt: 2,
       biomeId: 'hydroDam',
       inWater: true,
