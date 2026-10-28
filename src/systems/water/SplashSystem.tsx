@@ -38,16 +38,20 @@ import { createSplashIntegrator, type SplashIntegrator } from '../pools/nativePa
 import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { pulse } from '../../input/haptics';
 import { createRng } from '../../math/random';
+import { simCore } from '../../sim/core/SimCore';
 import { WATER_LEVEL } from '../../constants/game';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0xdb562dbf);
 /**
- * The foam gate's own stream: it decides SWE disturbances (gameplay), so its
- * draws must not depend on how many visual particles the LOD density spawned
- * from `random` — adaptive LOD follows frame time, i.e. wall time.
+ * The foam gate draws from the run's stream (`simCore.ctx.rng`, #521 A): it
+ * decides SWE disturbances (gameplay), so its draws must not depend on how many
+ * visual particles the LOD density spawned from `random` — adaptive LOD follows
+ * frame time, i.e. wall time. The stream is reseeded on every run reset, so a
+ * restart disturbs the field exactly as the first run did (this module's own
+ * stream used to run on across restarts).
  */
-const foamRandom = createRng(0x5f0a3e71);
+const foamRandom = simCore.ctx.rng;
 
 interface SplashSystemProps {
   playerRef: React.RefObject<any>;

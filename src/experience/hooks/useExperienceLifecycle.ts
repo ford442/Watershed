@@ -5,7 +5,6 @@ import { useSegmentAudio } from '../../hooks/useSegmentAudio';
 import { useCanyonAcoustics } from '../../hooks/useCanyonAcoustics';
 import { initAudio, getAudioManager } from '../../systems/audio/AudioSystem';
 import {
-  tickScoreSystem,
   awardDodgeBonus,
   awardWaterfallBonus,
   awardFloodSurviveBonus,
@@ -21,7 +20,6 @@ import {
   triggerOutOfBoundsWipeout,
 } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { getVehicleWaterLevel } from '../../systems/water/vehicleWaterDatum';
-import { tickGhostRecording } from '../../systems/ghost/GhostRecorder';
 import { isElevatedRisk } from '../../systems/map/flowForecast';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
 import {
@@ -314,7 +312,6 @@ export function useExperienceLifecycle({
         if (velOk) {
           const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
           playerVelocityRef.current = speed;
-          tickScoreSystem(delta, speed);
 
           const downstream = posOk ? Math.abs(pos.z) : 0;
           const meters = Math.floor(downstream * 0.5);
@@ -324,32 +321,6 @@ export function useExperienceLifecycle({
             useGameStore.getState().currentSegmentIndex,
           );
           setDistance(meters);
-
-          const game = useGameStore.getState();
-          if (!game.isPaused && !game.isWipeout && posOk) {
-            let qx = camera.quaternion.x;
-            let qy = camera.quaternion.y;
-            let qz = camera.quaternion.z;
-            let qw = camera.quaternion.w;
-
-            if (game.vehicleType === 'raft' && vehicleRef.current?.rotation) {
-              const rot = vehicleRef.current.rotation();
-              qx = rot.x;
-              qy = rot.y;
-              qz = rot.z;
-              qw = rot.w;
-            }
-
-            tickGhostRecording(delta, {
-              px: pos.x,
-              py: pos.y,
-              pz: pos.z,
-              qx,
-              qy,
-              qz,
-              qw,
-            });
-          }
         }
 
         if (posOk && !isWipeout) {
