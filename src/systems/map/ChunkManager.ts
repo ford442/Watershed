@@ -23,7 +23,9 @@ import {
   MapManager,
   ChunkPool,
   ensureTangentContinuity,
+  resolveGameplayProfile,
 } from './MapSystem';
+import { gameplayProfileForBiome, gameplayProfilesEqual, type GameplayProfile } from '../gameplay/gameplayProfile';
 import type { NormalizedSegment } from '../reach/ReachNormalizer';
 import {
   applyForecastToSegmentParams,
@@ -97,7 +99,6 @@ export interface ChunkManagerStats {
 const POOL_SIZE = GENERATION.POOL_SIZE;
 const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
 const GENERATION_THRESHOLD = GENERATION.THRESHOLD;
-const RECYCLE_MARGIN = GENERATION.RECYCLE_MARGIN;
 /**
  * Sim seconds a new biome must stay under the camera before it commits.
  * Counted from `update(dt)`, never a wall-clock timer: the commit moment
@@ -156,11 +157,28 @@ export class ChunkManager {
   private spawnPoints = new Map<number, THREE.Vector3>();
   private lastEnteredSegment = -1;
   private pendingBiome: string | null = null;
+  /** The pending segment's gameplay profile (debounced with the biome). */
+  private pendingGameplay: Readonly<GameplayProfile> | null = null;
   private pendingBiomeSec = 0;
+  /**
+   * The gameplay profile of the segment the debounce last committed (#521 B):
+   * moves with the biome commit, and on its own across a segment whose
+   * authored `gameplay` override differs. Starts as the default biome's row,
+   * matching `lastReportedBiome`.
+   */
+  private committedGameplay: Readonly<GameplayProfile> = gameplayProfileForBiome('canyonSummer');
   private startIndex: number;
   private proceduralBaseSeed?: number;
   private chunkPool = new ChunkPool();
   private readonly spanScratch: ZSpan[] = [];
+  /** Active segments, refilled in place by the per-frame / per-step paths (#521 D). */
+  private readonly updateScratch: SegmentData[] = [];
+  private readonly queryScratch: SegmentData[] = [];
+  /** `update()`'s result, rewritten each call (read at once by TrackManager). */
+  private readonly updateResult: { poolChanged: boolean; segmentEntered?: number } = {
+    poolChanged: false,
+    segmentEntered: undefined,
+  };
 
   constructor(options: ChunkManagerOptions) {
     this.mapManager = options.mapManager;
@@ -354,29 +372,21 @@ export class ChunkManager {
    * (TrackManager still passes its frame delta); it is not read.
    */
   update(cameraZ: number, _dt = 0): { poolChanged: boolean; segmentEntered?: number } {
-    if (!this.initialized) {
-      return { poolChanged: false };
-    }
+    const result = this.updateResult;
+    result.poolChanged = false;
+    result.segmentEntered = undefined;
+    if (!this.initialized) return result;
 
     let poolChanged = false;
     let segmentEntered: number | undefined;
 
-    const pool = this.pool;
-    const activeOrder = this.activeOrder;
-
-    // Build active segments list for threshold checks
-    const activeSegments = activeOrder
-      .map((slotIndex) => pool[slotIndex]?.segment)
-      .filter((s): s is SegmentData => s !== null);
-
-    if (activeSegments.length === 0) {
-      return { poolChanged: false };
-    }
-
-    const newestEndPoint = activeSegments[activeSegments.length - 1].segmentPath.getPoint(1);
+    // Active segments for the threshold checks (a reused list, no per-frame array).
+    const activeSegments = this.collectActive(this.updateScratch);
+    if (activeSegments.length === 0) return result;
 
     // ---- Generation threshold: create new segment ahead ----
-    if (cameraZ - newestEndPoint.z < GENERATION_THRESHOLD) {
+    // The newest segment's end z (its cached span: no curve evaluation per frame).
+    if (cameraZ - zSpanOf(activeSegments[activeSegments.length - 1]).zEnd < GENERATION_THRESHOLD) {
       poolChanged = this.appendSegment(activeSegments);
     }
 
@@ -387,7 +397,7 @@ export class ChunkManager {
     // only a few metres of z) are replayed in order.
     const occupied = this.findSegmentAtZ(cameraZ);
     if (occupied && occupied.id > this.lastEnteredSegment) {
-      const first = Math.max(this.lastEnteredSegment + 1, this.getActiveSegments()[0]?.id ?? occupied.id);
+      const first = Math.max(this.lastEnteredSegment + 1, this.collectActive(this.queryScratch)[0]?.id ?? occupied.id);
       for (let id = first; id <= occupied.id; id += 1) {
         this.lastEnteredSegment = id;
         segmentEntered = id;
@@ -395,22 +405,16 @@ export class ChunkManager {
       }
     }
 
-    // ---- Recycling check (oldest segment) ----
-    const oldestSegment = activeSegments[0];
-    if (
-      oldestSegment &&
-      cameraZ > oldestSegment.segmentPath.getPoint(1).z + RECYCLE_MARGIN
-    ) {
-      // The oldest segment is safely behind the player and remains eligible
-      // for recycling on the next append — no explicit action needed here
-      // because the slot will be reused in the generation block above.
-    }
+    // Recycling needs no check here: the oldest slot is reused by the next
+    // append (generation block above) once it is behind the player.
 
     if (poolChanged) {
       this.callbacks.onPoolChange?.();
     }
 
-    return { poolChanged, segmentEntered };
+    result.poolChanged = poolChanged;
+    result.segmentEntered = segmentEntered;
+    return result;
   }
 
   /**
@@ -422,25 +426,35 @@ export class ChunkManager {
   detectBiome(cameraZ: number, dtSec: number): string | undefined {
     if (!this.initialized) return undefined;
 
-    const activeSegments = this.getActiveSegments();
+    const activeSegments = this.collectActive(this.queryScratch);
     if (activeSegments.length === 0) return undefined;
 
     const closestSegment = this.segmentAtZ(activeSegments, cameraZ);
 
-    if (closestSegment && closestSegment.biome !== this.lastReportedBiome) {
+    if (
+      closestSegment &&
+      (closestSegment.biome !== this.lastReportedBiome ||
+        !gameplayProfilesEqual(closestSegment.gameplay, this.committedGameplay))
+    ) {
       const newBiome = closestSegment.biome;
 
-      // Debounce rapid biome toggles: the new biome commits once it has held
-      // for BIOME_DEBOUNCE_SEC of sim time (a toggle back restarts the count).
-      if (this.pendingBiome !== newBiome) {
+      // Debounce rapid toggles: the segment's biome (and its gameplay profile)
+      // commits once it has held for BIOME_DEBOUNCE_SEC of sim time (a toggle
+      // back restarts the count).
+      if (
+        this.pendingBiome !== newBiome ||
+        this.pendingGameplay === null ||
+        !gameplayProfilesEqual(this.pendingGameplay, closestSegment.gameplay)
+      ) {
         this.pendingBiome = newBiome;
+        this.pendingGameplay = closestSegment.gameplay;
         this.pendingBiomeSec = 0;
       }
       this.pendingBiomeSec += Math.max(0, dtSec);
       // ε: 24 × (1/60) sums to a hair under 0.4 in float64.
       if (this.pendingBiomeSec >= BIOME_DEBOUNCE_SEC - 1e-9) {
         this.clearBiomeDebounce();
-        this.reportBiome(newBiome, closestSegment.id);
+        this.commitSegment(closestSegment);
       }
 
       return newBiome;
@@ -456,13 +470,13 @@ export class ChunkManager {
 
   /** Active segment whose centreline z span contains `z` (downstream is −z). */
   findSegmentAtZ(z: number): SegmentData | null {
-    const segment = this.segmentAtZ(this.getActiveSegments(), z);
+    const segment = this.segmentAtZ(this.collectActive(this.queryScratch), z);
     return segment && spanContainsZ(zSpanOf(segment), z) ? segment : null;
   }
 
   /** Id of the active segment at `z` — containing it, else nearest by z; -1 with none active. */
   segmentIndexAtZ(z: number): number {
-    return this.segmentAtZ(this.getActiveSegments(), z)?.id ?? -1;
+    return this.segmentAtZ(this.collectActive(this.queryScratch), z)?.id ?? -1;
   }
 
   /** `indexOfSpanAtZ` over `segments`' cached spans; no curve evaluation, no allocation. */
@@ -472,6 +486,17 @@ export class ChunkManager {
     for (let i = 0; i < segments.length; i += 1) spans[i] = zSpanOf(segments[i]);
     const index = indexOfSpanAtZ(spans, z);
     return index < 0 ? null : segments[index];
+  }
+
+  /** The active segments, oldest first, into `out` (cleared first). */
+  private collectActive(out: SegmentData[]): SegmentData[] {
+    out.length = 0;
+    const { activeOrder, pool } = this;
+    for (let i = 0; i < activeOrder.length; i += 1) {
+      const segment = pool[activeOrder[i]]?.segment;
+      if (segment !== null && segment !== undefined) out.push(segment);
+    }
+    return out;
   }
 
   getActiveSegments(): SegmentData[] {
@@ -508,6 +533,11 @@ export class ChunkManager {
 
   getCurrentBiome(): string {
     return this.lastReportedBiome;
+  }
+
+  /** The gameplay profile the biome debounce last committed (see `committedGameplay`). */
+  getCommittedGameplay(): Readonly<GameplayProfile> {
+    return this.committedGameplay;
   }
 
   // ---------------------------------------------------------------------------
@@ -569,6 +599,7 @@ export class ChunkManager {
       ...seg,
       points,
       segmentPath,
+      gameplay: resolveGameplayProfile(seg),
       type: applied.type,
       width: applied.width,
       waterWidth: applied.waterWidth,
@@ -633,7 +664,14 @@ export class ChunkManager {
 
   private clearBiomeDebounce(): void {
     this.pendingBiome = null;
+    this.pendingGameplay = null;
     this.pendingBiomeSec = 0;
+  }
+
+  /** The debounce settled on `segment`: its gameplay profile, and its biome if that changed. */
+  private commitSegment(segment: SegmentData): void {
+    this.committedGameplay = segment.gameplay;
+    if (segment.biome !== this.lastReportedBiome) this.reportBiome(segment.biome, segment.id);
   }
 
   private reportBiome(biome: BiomeId, segmentIndex: number): void {
@@ -648,9 +686,7 @@ export class ChunkManager {
    * leaving `lastReportedBiome` at a default the debounce then has to correct.
    */
   private seedSpawnBiome(spawnSegment: SegmentData | null): void {
-    if (!spawnSegment || spawnSegment.biome === this.lastReportedBiome) return;
-    this.reportBiome(spawnSegment.biome, spawnSegment.id);
+    if (!spawnSegment) return;
+    this.commitSegment(spawnSegment);
   }
 }
-
-export default ChunkManager;

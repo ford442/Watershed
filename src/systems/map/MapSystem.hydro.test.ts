@@ -20,7 +20,8 @@ import {
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { validateLevel } from '../../utils/levelValidator';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../vehicle/VehicleSystem';
+import { SurfaceMaterial } from '../vehicle/surfaceMaterial';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 import {
   DELTA_RAPIDS_CONTINUED_START_INDEX,
 } from '../../maps/meander_to_waterfall';
@@ -141,7 +142,7 @@ describe('hydroDam biome profile + palette', () => {
   });
 
   it('maps surface friction to concrete', () => {
-    expect(MATERIAL_FROM_BIOME.hydroDam).toBe(SurfaceMaterial.CONCRETE);
+    expect(gameplayProfileForBiome('hydroDam').surface).toBe(SurfaceMaterial.CONCRETE);
   });
 });
 

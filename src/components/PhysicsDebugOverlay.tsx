@@ -3,6 +3,26 @@ import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
+// Per-frame scratch for the gizmo pass (#521 F). Every value is rewritten before
+// it is read each frame and nothing keeps a reference past the call (ArrowHelper
+// copies the direction, setFromPoints copies the points), so overlays can share it.
+const _vehiclePos = new THREE.Vector3();
+const _velDir = new THREE.Vector3();
+const _angDir = new THREE.Vector3();
+const _normalDir = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _offset = new THREE.Vector3();
+const _normalOrigin = new THREE.Vector3();
+const _sampledVec = new THREE.Vector3();
+const _fallbackVec = new THREE.Vector3();
+const _rayOrigin = new THREE.Vector3();
+const _rayTarget = new THREE.Vector3();
+const _impulseStart = new THREE.Vector3();
+const _impulseEnd = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+const DOWN = new THREE.Vector3(0, -1, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+
 interface PhysicsDebugOverlayProps {
   enabled: boolean;
   vehicleRef: React.MutableRefObject<any>;
@@ -163,39 +183,39 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
     const ang = snapshot.angularVelocity;
     const groundNormal = snapshot.groundNormal;
 
-    const vehiclePos = new THREE.Vector3(pos.x, pos.y, pos.z);
-    const velDir = new THREE.Vector3(vel.x, vel.y, vel.z);
-    const angDir = new THREE.Vector3(ang.x, ang.y, ang.z);
-    const normalDir = new THREE.Vector3(groundNormal.x, groundNormal.y, groundNormal.z).normalize();
+    const vehiclePos = _vehiclePos.set(pos.x, pos.y, pos.z);
+    const velDir = _velDir.set(vel.x, vel.y, vel.z);
+    const angDir = _angDir.set(ang.x, ang.y, ang.z);
+    const normalDir = _normalDir.set(groundNormal.x, groundNormal.y, groundNormal.z).normalize();
 
     if (velocityArrowRef.current) {
       const velLen = Math.max(velDir.length(), 0.001);
       velocityArrowRef.current.position.copy(vehiclePos);
-      velocityArrowRef.current.setDirection(velLen > 0.001 ? velDir.clone().normalize() : new THREE.Vector3(0, 1, 0));
+      velocityArrowRef.current.setDirection(velLen > 0.001 ? _dir.copy(velDir).normalize() : UP);
       velocityArrowRef.current.setLength(Math.min(4.5, velLen * 0.18 + 0.2), 0.25, 0.14);
     }
 
     if (angularArrowRef.current) {
       const angLen = Math.max(angDir.length(), 0.001);
-      angularArrowRef.current.position.copy(vehiclePos).add(new THREE.Vector3(0.35, 0.1, 0));
-      angularArrowRef.current.setDirection(angLen > 0.001 ? angDir.clone().normalize() : new THREE.Vector3(1, 0, 0));
+      angularArrowRef.current.position.copy(vehiclePos).add(_offset.set(0.35, 0.1, 0));
+      angularArrowRef.current.setDirection(angLen > 0.001 ? _dir.copy(angDir).normalize() : X_AXIS);
       angularArrowRef.current.setLength(Math.min(2.0, angLen * 0.25 + 0.15), 0.18, 0.1);
     }
 
     if (normalArrowRef.current) {
       const normalOrigin = snapshot.groundRay.hitPoint
-        ? new THREE.Vector3(snapshot.groundRay.hitPoint.x, snapshot.groundRay.hitPoint.y, snapshot.groundRay.hitPoint.z)
-        : vehiclePos.clone().add(new THREE.Vector3(0, -0.5, 0));
+        ? _normalOrigin.set(snapshot.groundRay.hitPoint.x, snapshot.groundRay.hitPoint.y, snapshot.groundRay.hitPoint.z)
+        : _normalOrigin.copy(vehiclePos).add(_offset.set(0, -0.5, 0));
       normalArrowRef.current.position.copy(normalOrigin);
-      normalArrowRef.current.setDirection(normalDir.lengthSq() > 0 ? normalDir : new THREE.Vector3(0, 1, 0));
+      normalArrowRef.current.setDirection(normalDir.lengthSq() > 0 ? normalDir : UP);
       normalArrowRef.current.setLength(1.5, 0.18, 0.1);
     }
 
     if (gravityArrowRef.current) {
       const gravityMag = Math.abs(snapshot.extraGravity);
       gravityArrowRef.current.visible = gravityMag > 0.01;
-      gravityArrowRef.current.position.copy(vehiclePos).add(new THREE.Vector3(-0.35, 0.1, 0));
-      gravityArrowRef.current.setDirection(new THREE.Vector3(0, -1, 0));
+      gravityArrowRef.current.position.copy(vehiclePos).add(_offset.set(-0.35, 0.1, 0));
+      gravityArrowRef.current.setDirection(DOWN);
       gravityArrowRef.current.setLength(Math.min(2.2, gravityMag * 0.08 + 0.15), 0.18, 0.1);
     }
 
@@ -209,40 +229,40 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
     const sampledDir = waterForce?.sampledDir ?? [0, -1];
     const fallbackDir = waterForce?.fallbackDir ?? [0, -1];
     const sampledSpeed = waterForce?.sampledSpeed ?? 0;
-    const sampledVec = new THREE.Vector3(sampledDir[0], 0, sampledDir[1]);
+    const sampledVec = _sampledVec.set(sampledDir[0], 0, sampledDir[1]);
     if (sampledVec.lengthSq() < 1e-8) sampledVec.set(0, 0, -1);
     sampledVec.normalize();
-    const fallbackVec = new THREE.Vector3(fallbackDir[0], 0, fallbackDir[1]);
+    const fallbackVec = _fallbackVec.set(fallbackDir[0], 0, fallbackDir[1]);
     if (fallbackVec.lengthSq() < 1e-8) fallbackVec.set(0, 0, -1);
     fallbackVec.normalize();
 
     if (sampledFlowArrowRef.current) {
       sampledFlowArrowRef.current.visible = true;
-      sampledFlowArrowRef.current.position.copy(vehiclePos).add(new THREE.Vector3(0, 0.35, 0));
+      sampledFlowArrowRef.current.position.copy(vehiclePos).add(_offset.set(0, 0.35, 0));
       sampledFlowArrowRef.current.setDirection(sampledVec);
       sampledFlowArrowRef.current.setLength(Math.min(3.2, sampledSpeed * 0.45 + 0.6), 0.22, 0.12);
     }
     if (fallbackFlowArrowRef.current) {
       fallbackFlowArrowRef.current.visible = true;
-      fallbackFlowArrowRef.current.position.copy(vehiclePos).add(new THREE.Vector3(0, 0.2, 0));
+      fallbackFlowArrowRef.current.position.copy(vehiclePos).add(_offset.set(0, 0.2, 0));
       fallbackFlowArrowRef.current.setDirection(fallbackVec);
       fallbackFlowArrowRef.current.setLength(1.4, 0.16, 0.08);
     }
 
     if (rayLineRef.current) {
-      const origin = new THREE.Vector3(snapshot.groundRay.origin.x, snapshot.groundRay.origin.y, snapshot.groundRay.origin.z);
+      const origin = _rayOrigin.set(snapshot.groundRay.origin.x, snapshot.groundRay.origin.y, snapshot.groundRay.origin.z);
       const target = snapshot.groundRay.hitPoint
-        ? new THREE.Vector3(snapshot.groundRay.hitPoint.x, snapshot.groundRay.hitPoint.y, snapshot.groundRay.hitPoint.z)
-        : origin.clone().add(new THREE.Vector3(0, -5, 0));
+        ? _rayTarget.set(snapshot.groundRay.hitPoint.x, snapshot.groundRay.hitPoint.y, snapshot.groundRay.hitPoint.z)
+        : _rayTarget.copy(origin).add(_offset.set(0, -5, 0));
       rayLineRef.current.geometry.setFromPoints([origin, target]);
     }
 
     if (impulseLineRef.current) {
       const recent = snapshot.recentImpulses[snapshot.recentImpulses.length - 1];
-      const start = vehiclePos.clone();
+      const start = _impulseStart.copy(vehiclePos);
       const end = recent
-        ? start.clone().add(new THREE.Vector3(recent.impulse.x, recent.impulse.y, recent.impulse.z).multiplyScalar(0.5))
-        : start.clone();
+        ? _impulseEnd.copy(start).add(_offset.set(recent.impulse.x, recent.impulse.y, recent.impulse.z).multiplyScalar(0.5))
+        : _impulseEnd.copy(start);
       impulseLineRef.current.visible = !!recent;
       impulseLineRef.current.geometry.setFromPoints([start, end]);
     }

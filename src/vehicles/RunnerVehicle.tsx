@@ -4,14 +4,14 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CapsuleCollider, type RapierRigidBody } from '@react-three/rapier';
 import { usePlayerControls } from '../hooks/usePlayerControls';
 import * as THREE from 'three';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../systems/vehicle/VehicleSystem';
 import { ParticlePoolMesh } from '../components/CollisionParticles';
 import { PLAYER_SPAWN } from '../constants/game';
 import { useRunnerPhysicsState } from './RunnerVehicle/hooks/useRunnerPhysics';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
+import { queryFlags } from '../config/queryFlags';
 
-const isNoPointerLock = typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock');
+const isNoPointerLock = queryFlags().noPointerLock;
 
 function HeadlessPlayerMarker({ bodyRef }: { bodyRef: React.RefObject<RapierRigidBody | null> }) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -40,7 +40,7 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
   const playerUserData = useMemo(() => ({ isPlayer: true }), []);
 
   const state = useRunnerPhysicsState();
-  const { vehicle, collisionState } = state;
+  const { collisionState } = state;
 
   // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
   const shelfSpawnPointRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -51,16 +51,13 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
 
   useEffect(() => {
     if (bodyRef.current) {
-      vehicle.current.initialize(bodyRef.current, new THREE.Vector3(...PLAYER_SPAWN.position));
-      // Set initial material
-      vehicle.current.setSurfaceMaterial(SurfaceMaterial.ROCK);
+      const [x, y, z] = PLAYER_SPAWN.position;
+      bodyRef.current.setTranslation({ x, y, z }, true);
     }
-    
-    // Listen for biome changes
+
+    // Footstep timbre follows the biome (audio).
     const offBiomeChange = gameEvents.on('biome-change', ({ biome }) => {
       collisionState.current.currentBiome = biome;
-      const material = MATERIAL_FROM_BIOME[biome] || SurfaceMaterial.ROCK;
-      vehicle.current.setSurfaceMaterial(material);
     });
 
     const offSegmentSpawn = gameEvents.on('segment-spawn', ({ segmentIndex, spawnPoint }) => {

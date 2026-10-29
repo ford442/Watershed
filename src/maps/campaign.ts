@@ -14,6 +14,7 @@ import {
   type MapDefinition,
   type MapRegistryId,
 } from './registry';
+import { currentSearch, editQuery } from '../config/queryFlags';
 
 export type MapDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 
@@ -66,18 +67,14 @@ export function resolveMapId(options: {
 export function parseUrlMapId(search?: string): MapRegistryId | null {
   const raw =
     search ??
-    (typeof window !== 'undefined' ? window.location.search : '');
+    (currentSearch());
   const value = new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get('map');
   return resolveMapRegistryId(value);
 }
 
 /** Write `?map=` into the current URL without reloading (no-op off-window). */
 export function syncMapUrl(mapId: MapRegistryId): void {
-  if (typeof window === 'undefined') return;
-  const params = new URLSearchParams(window.location.search);
-  params.set('map', mapId);
-  const next = params.toString();
-  window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  editQuery((params) => params.set('map', mapId));
 }
 
 /**

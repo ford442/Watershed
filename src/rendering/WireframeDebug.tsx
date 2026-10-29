@@ -41,14 +41,15 @@ export default function WireframeDebug({ enabled }: WireframeDebugProps) {
 
   useEffect(() => {
     const touched = new Set<THREE.Material>();
+    const snapshotByMaterial = snapshots.current; // one WeakMap for the component's life
 
     scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
 
       forEachMaterial(mesh.material, (mat) => {
-        if (!snapshots.current.has(mat)) {
-          snapshots.current.set(mat, snapshotMaterial(mat));
+        if (!snapshotByMaterial.has(mat)) {
+          snapshotByMaterial.set(mat, snapshotMaterial(mat));
         }
         applyWireframe(mat, enabled);
         touched.add(mat);
@@ -58,7 +59,7 @@ export default function WireframeDebug({ enabled }: WireframeDebugProps) {
     return () => {
       if (!enabled) return;
       touched.forEach((mat) => {
-        const original = snapshots.current.get(mat);
+        const original = snapshotByMaterial.get(mat);
         if (original) applyWireframe(mat, original.wireframe);
       });
     };

@@ -10,6 +10,7 @@ import {
   resetRunSessionForTests,
   stepRunSurvival,
 } from './runSession';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 describe('runSession journey results', () => {
   beforeEach(() => {
@@ -21,7 +22,7 @@ describe('runSession journey results', () => {
 
     stepRunSurvival({
       dt: 2,
-      biomeId: 'delta',
+      climate: gameplayProfileForBiome('delta'),
       inWater: true,
       windSpeed: 2,
     });

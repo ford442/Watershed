@@ -18,7 +18,8 @@ import {
 import { getTrackBiomeProfile } from '../../configs/TrackBiomes';
 import { getBiomePalette } from '../../configs/BiomePalettes';
 import { validateLevel } from '../../utils/levelValidator';
-import { SurfaceMaterial, MATERIAL_FROM_BIOME } from '../vehicle/VehicleSystem';
+import { SurfaceMaterial } from '../vehicle/surfaceMaterial';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 import { parseHydroEvents } from '../water/hydroEvents';
 import { resolveTrestleSpan } from '../lumber/trestleSpan';
 
@@ -139,7 +140,7 @@ describe('lumberFlume biome profile + palette', () => {
   });
 
   it('maps surface friction to wood', () => {
-    expect(MATERIAL_FROM_BIOME.lumberFlume).toBe(SurfaceMaterial.WOOD);
+    expect(gameplayProfileForBiome('lumberFlume').surface).toBe(SurfaceMaterial.WOOD);
   });
 });
 

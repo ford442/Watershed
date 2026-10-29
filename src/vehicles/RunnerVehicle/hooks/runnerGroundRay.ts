@@ -1,12 +1,16 @@
 import {
   GROUND_RAY_MIN_TOI,
   JUMP_CONFIG,
+  RAYCAST_DISTANCE,
   RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET,
 } from '../constants';
 import {
   castPlayerGroundRay,
+  getRayTimeOfImpact,
   isTerrainGroundHit,
+  scratchDownRay,
 } from './RunnerPhysicsHelpers';
+import type { RapierRayHit } from '../../../physics/rapierTypes';
 
 export { castPlayerGroundRay, isTerrainGroundHit };
 
@@ -80,6 +84,59 @@ export function resolvePlayerGroundRay(
     hitPoint,
     rawGrounded: isTerrainGroundHit(toi),
   };
+}
+
+/** The ground ray's result, reused across steps (`resolvePlayerGroundRayInto`). */
+export interface GroundRayResult {
+  hit: RapierRayHit | null;
+  toi: number | null;
+  origin: Vec3;
+  /** Points at `hitPointStore` on a hit, else null. */
+  hitPoint: Vec3 | null;
+  hitPointStore: Vec3;
+  rawGrounded: boolean;
+}
+
+export function createGroundRayResult(): GroundRayResult {
+  return {
+    hit: null,
+    toi: null,
+    origin: { x: 0, y: 0, z: 0 },
+    hitPoint: null,
+    hitPointStore: { x: 0, y: 0, z: 0 },
+    rawGrounded: false,
+  };
+}
+
+/** `resolvePlayerGroundRay` into `out`: the same cast and numbers, no allocation of ours. */
+export function resolvePlayerGroundRayInto(
+  out: GroundRayResult,
+  world: Parameters<typeof castPlayerGroundRay>[0],
+  rapier: Parameters<typeof castPlayerGroundRay>[1],
+  body: Parameters<typeof castPlayerGroundRay>[2],
+  pos: Vec3,
+): GroundRayResult {
+  const origin = out.origin;
+  origin.x = pos.x;
+  origin.y = pos.y + RUNNER_GROUND_RAY_ORIGIN_Y_OFFSET;
+  origin.z = pos.z;
+  const ray = scratchDownRay(rapier, pos);
+  const hit = body
+    ? world.castRay(ray, RAYCAST_DISTANCE, true, undefined, undefined, undefined, body)
+    : world.castRay(ray, RAYCAST_DISTANCE, true);
+  const toi = getRayTimeOfImpact(hit);
+  out.hit = hit;
+  out.toi = toi;
+  if (toi === null) {
+    out.hitPoint = null;
+  } else {
+    out.hitPointStore.x = origin.x;
+    out.hitPointStore.y = origin.y - toi;
+    out.hitPointStore.z = origin.z;
+    out.hitPoint = out.hitPointStore;
+  }
+  out.rawGrounded = isTerrainGroundHit(toi);
+  return out;
 }
 
 /** True when the runner has canyon somewhere below it, within TERRAIN_READY_RAY_DISTANCE. */

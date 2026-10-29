@@ -6,6 +6,27 @@ import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createWaterfallSheetMaterial } from '../../materials/vfx/createVfxMaterials';
 import { materialUniformBag } from '../../materials/dual/materialUniformBag';
 
+interface SheetColors {
+  waterColor: THREE.Color;
+  deepColor: THREE.Color;
+  foamColor: THREE.Color;
+}
+
+function makeSheetMaterial(
+  flowSpeed: number,
+  sheetColors: SheetColors,
+  layerSpeed: number,
+  opacity: number,
+  offset: number,
+) {
+  return createWaterfallSheetMaterial(resolveMaterialBackend().backend, {
+    flowSpeed: flowSpeed * layerSpeed,
+    baseOpacity: opacity,
+    layerOffset: offset,
+    ...sheetColors,
+  });
+}
+
 export default function WaterfallSheet({
   width = 10,
   height = 20,
@@ -38,7 +59,7 @@ export default function WaterfallSheet({
     return geo;
   }, [width, height, fanAngle]);
 
-  const sheetColors = useMemo(
+  const sheetColors = useMemo<SheetColors>(
     () => ({
       waterColor: new THREE.Color('#8fd8ff'),
       deepColor: new THREE.Color('#dff7ff'),
@@ -47,16 +68,11 @@ export default function WaterfallSheet({
     [],
   );
 
-  const makeMaterial = (layerSpeed: number, opacity: number, offset: number) =>
-    createWaterfallSheetMaterial(resolveMaterialBackend().backend, {
-      flowSpeed: flowSpeed * layerSpeed,
-      baseOpacity: opacity,
-      layerOffset: offset,
-      ...sheetColors,
-    });
-
-  const coreMaterial = useMemo(() => makeMaterial(1.0, 0.72, 0.0), [flowSpeed, sheetColors]);
-  const overlayMaterial = useMemo(() => makeMaterial(1.45, 0.34, 1.7), [flowSpeed, sheetColors]);
+  const coreMaterial = useMemo(() => makeSheetMaterial(flowSpeed, sheetColors, 1.0, 0.72, 0.0), [flowSpeed, sheetColors]);
+  const overlayMaterial = useMemo(
+    () => makeSheetMaterial(flowSpeed, sheetColors, 1.45, 0.34, 1.7),
+    [flowSpeed, sheetColors],
+  );
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;

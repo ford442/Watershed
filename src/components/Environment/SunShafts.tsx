@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useBiome } from '../../systems/biome/BiomeSystem';
+import { useBiomeTimeOfDay } from '../../systems/biome/BiomeSystem';
 import { SUN_DISTANCE, useSunPosition } from '../../systems/lighting/SunPositionSystem';
 
 import type { BiomeDecorationTransform, WeatherAwareDecorationProps } from './types';
@@ -86,7 +86,7 @@ export default function SunShafts({
   const dustRef = useRef<THREE.InstancedMesh>(null);
   const motesRef = useRef<THREE.Points>(null);
   const { camera } = useThree();
-  const { timeOfDay } = useBiome();
+  const timeOfDay = useBiomeTimeOfDay();
   const { sunDirection } = useSunPosition();
   const prevCamPosRef = useRef(new THREE.Vector3());
   const initialTimeOfDay = useRef(timeOfDay);

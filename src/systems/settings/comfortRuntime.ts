@@ -57,10 +57,3 @@ export function getOsReducedMotion(): boolean {
   start();
   return osReduced;
 }
-
-/** Tests only: pretend the OS flag changed. */
-export function setOsReducedMotionForTest(value: boolean): void {
-  start();
-  osReduced = value;
-  recompute();
-}

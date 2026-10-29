@@ -35,12 +35,3 @@ export const playRaftTipSound = () => {
   if (!audioManager) return;
   audioManager.playSound('raft_tip', 0.9, 0.85);
 };
-
-export const updateWaterRushingSound = (speed: number) => {
-  initAudio();
-  if (!audioManager) return;
-
-  // Simple dynamic volume based on raft speed
-  const targetVolume = Math.min(0.8, Math.max(0, (speed - 5) / 20));
-  // Could implement crossfading or parameter updating if AudioManager supports it
-};

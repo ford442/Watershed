@@ -20,17 +20,12 @@ import { createRng } from '../../math/random';
 // =============================================================================
 export type FloatingObjectType = 'log' | 'tire' | 'boat' | 'debris';
 
-export interface FloatingObjectConfig {
-  type: FloatingObjectType;
-  position: THREE.Vector3;
-  rotation: THREE.Euler;
-  scale: THREE.Vector3;
-}
-
 // =============================================================================
 // GEOMETRY & MATERIAL
 // =============================================================================
 const geometry = new THREE.BoxGeometry(1, 1, 1);
+/** Per-body centering vector, rewritten before each read (#521 F). */
+const _toCenter = new THREE.Vector3();
 const material = new THREE.MeshStandardMaterial({
   color: '#8B7355',
   roughness: 0.8,
@@ -58,7 +53,6 @@ interface FloatingObjectManagerProps {
 export default function FloatingObjectManager({
   path,
   waterWidth = 12,
-  flowSpeed = 1.0,
   waterLevel = WATER_LEVEL,
   count = 6,
   segmentId = 0,
@@ -79,7 +73,6 @@ export default function FloatingObjectManager({
     }> = [];
 
     const rng = createRng(segmentId * 7919);
-    const pathLen = path.getLength();
 
     for (let i = 0; i < count; i++) {
       const t = rng();
@@ -146,13 +139,16 @@ export default function FloatingObjectManager({
   const handleToApiRef = useRef<Map<number, any>>(new Map());
 
   useEffect(() => {
+    // Both refs hold the one Set / Map for the component's life.
+    const registeredHandles = registeredHandlesRef.current;
+    const handleToApi = handleToApiRef.current;
     return () => {
-      registeredHandlesRef.current.forEach((handle) => {
+      registeredHandles.forEach((handle) => {
         unregisterFloatingPlatform(handle);
         unregisterFloatingWaterBody(handle);
       });
-      registeredHandlesRef.current.clear();
-      handleToApiRef.current.clear();
+      registeredHandles.clear();
+      handleToApi.clear();
     };
   }, [instances]);
 
@@ -211,7 +207,7 @@ export default function FloatingObjectManager({
         const tNearest = Math.max(0, Math.min(1, i / instances.length));
         const pathPoint = path.getPointAt(tNearest);
 
-        const toCenter = new THREE.Vector3(
+        const toCenter = _toCenter.set(
           pathPoint.x - pos.x,
           0,
           pathPoint.z - pos.z

@@ -165,7 +165,7 @@ export function createGpuTimer(renderer: unknown): GpuTimer {
       ? createTimestampTimer(node)
       : NULL_TIMER;
   }
-  let ctx: unknown = null;
+  let ctx: unknown;
   try {
     ctx = (renderer as WebGLRendererLike | null)?.getContext?.() ?? null;
   } catch {

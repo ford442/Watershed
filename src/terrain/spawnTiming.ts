@@ -1,3 +1,4 @@
+import { queryFlags } from '../config/queryFlags';
 /**
  * spawnTiming — user-timing measures around a treadmill segment's mount (#487 Phase B).
  *
@@ -25,10 +26,9 @@ export interface SpawnTimingDetail {
 }
 
 const enabled =
-  typeof location !== 'undefined' &&
   typeof performance !== 'undefined' &&
   typeof performance.measure === 'function' &&
-  new URLSearchParams(location.search).get('spawnProfile') === '1';
+  queryFlags().spawnProfile;
 
 /**
  * True on a `?spawnProfile=1` page. LODManager then holds the preset it booted

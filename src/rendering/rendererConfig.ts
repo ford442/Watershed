@@ -1,11 +1,11 @@
 import type { RendererPreference } from './types';
+import { currentSearch, editQuery } from '../config/queryFlags';
 
 const STORAGE_KEY = 'watershed.renderer.preference';
-const VALID: RendererPreference[] = ['webgl', 'webgpu'];
 // NOTE: 'webgpu' is accepted as a preference but currently results in a WebGL2
 // fallback. The live renderer is WebGL-only; see docs/reference/RENDERER_CONTRACT.md.
 
-export function parseRendererPreference(search = window.location.search): RendererPreference {
+export function parseRendererPreference(search = currentSearch()): RendererPreference {
   const raw = new URLSearchParams(search).get('renderer');
   if (raw === 'webgl' || raw === 'webgpu') return raw;
 
@@ -24,16 +24,8 @@ export function parseRendererPreference(search = window.location.search): Render
   return 'webgl';
 }
 
-export function isRendererPreference(value: string): value is RendererPreference {
-  return (VALID as string[]).includes(value);
-}
-
 export function syncRendererPreferenceToUrl(preference: RendererPreference): void {
-  if (typeof window === 'undefined') return;
-  const params = new URLSearchParams(window.location.search);
-  params.set('renderer', preference);
-  const next = params.toString();
-  window.history.replaceState({}, '', `${window.location.pathname}?${next}`);
+  editQuery((params) => params.set('renderer', preference));
 }
 
 export function persistRendererPreference(preference: RendererPreference): void {
@@ -52,7 +44,7 @@ export function persistRendererPreference(preference: RendererPreference): void 
  */
 export function isVisualCaptureMode(search?: string): boolean {
   const raw =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+    search ?? (currentSearch());
   const params = new URLSearchParams(raw);
   return params.get('screenshot') === '1' || params.get('capture') === '1';
 }
@@ -68,7 +60,7 @@ export function isVisualCaptureMode(search?: string): boolean {
  */
 export function isSoftwareRendererAllowed(search?: string): boolean {
   const raw =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+    search ?? (currentSearch());
   if (isVisualCaptureMode(raw)) return true;
   const params = new URLSearchParams(raw);
   return params.get('softwareGl') === '1';

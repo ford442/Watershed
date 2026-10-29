@@ -15,6 +15,7 @@ import MenuFocusScope from './MenuFocusScope';
 import { lazyComponent } from '../utils/lazyComponent';
 import { whenIdle } from '../utils/whenIdle';
 import { BIOME_HUD_LABELS } from '../configs/biomes';
+import { queryFlags } from '../config/queryFlags';
 
 // The end-of-run summary only mounts on a wipeout / finish; the HUD preloads it at idle.
 const RunResultsChunk = lazyComponent(() => import('./RunResultsPanel'));
@@ -53,9 +54,7 @@ interface GameHUDProps {
 }
 
 function isDebugQuery(): boolean {
-  if (typeof window === 'undefined') return false;
-  const raw = new URLSearchParams(window.location.search).get('debug');
-  return raw === '1' || raw === 'true';
+  return queryFlags().debug;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -185,7 +184,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       }
 
       const survival = getActiveSurvivalState();
-      const mods = getActiveSurvivalModifiers(useGameStore.getState().currentBiome);
+      const mods = getActiveSurvivalModifiers();
       const wetFill = wetnessFillRef.current;
       const exposureFill = exposureFillRef.current;
 

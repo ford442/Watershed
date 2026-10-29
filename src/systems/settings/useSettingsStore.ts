@@ -303,7 +303,7 @@ const VOLUME_KEY: Record<VolumeChannel, keyof SettingsState> = {
 
 export const useSettingsStore = create<SettingsStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...DEFAULT_SETTINGS,
       bindings: { ...DEFAULT_BINDINGS },
       padBindings: { ...DEFAULT_PAD_BINDINGS },
@@ -454,5 +454,3 @@ export function rehydrateSettings(): void {
     useSettingsStore.getState().setHasHydrated(true);
   }
 }
-
-export default useSettingsStore;

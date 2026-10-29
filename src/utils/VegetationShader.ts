@@ -116,5 +116,3 @@ export function updateVegetationMaterial(
         shader.uniforms.uWindStrength.value = (base.windStrength ?? 0.06) * intensity;
     }
 }
-
-export default extendVegetationMaterial;

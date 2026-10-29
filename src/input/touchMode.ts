@@ -9,10 +9,11 @@
  * a touch device.
  */
 
+import { currentSearch, queryFlags } from '../config/queryFlags';
 const TOUCH_FLAG = 'touch';
 
 /** `?input=touch` — force the touch layout (desktop testing). */
-export function isTouchInputForced(search: string = typeof window !== 'undefined' ? window.location.search : ''): boolean {
+export function isTouchInputForced(search: string = currentSearch()): boolean {
   return new URLSearchParams(search).get('input') === TOUCH_FLAG;
 }
 
@@ -28,7 +29,7 @@ let cachedTouchMode: boolean | null = null;
 export function isTouchInputMode(): boolean {
   if (cachedTouchMode !== null) return cachedTouchMode;
   if (typeof window === 'undefined') return false;
-  const scripted = new URLSearchParams(window.location.search).get('input')?.startsWith('script:') ?? false;
+  const scripted = queryFlags().input?.startsWith('script:') ?? false;
   cachedTouchMode = !scripted && (isTouchInputForced() || hasCoarsePointer());
   return cachedTouchMode;
 }

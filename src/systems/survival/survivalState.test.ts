@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { getLoadoutDefinition } from './loadout';
 import {
   createSurvivalState,
-  getBiomeAmbientTemp,
   getSurvivalModifiers,
   tickSurvivalState,
 } from './survivalState';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 describe('survivalState transitions', () => {
   it('ramps wetness while in water and dries in sun', () => {
@@ -16,7 +16,7 @@ describe('survivalState transitions', () => {
       state,
       {
         dt: 1,
-        biomeId: 'canyonSummer',
+        climate: gameplayProfileForBiome('canyonSummer'),
         inWater: true,
         windSpeed: 0,
         launchHour: 12,
@@ -29,7 +29,7 @@ describe('survivalState transitions', () => {
       state,
       {
         dt: 4,
-        biomeId: 'canyonSummer',
+        climate: gameplayProfileForBiome('canyonSummer'),
         inWater: false,
         windSpeed: 18,
         launchHour: 12,
@@ -51,7 +51,7 @@ describe('survivalState transitions', () => {
         lightState,
         {
           dt: 0.5,
-          biomeId: 'glacier',
+          climate: gameplayProfileForBiome('glacier'),
           inWater: false,
           windSpeed: 4,
           launchHour: 6,
@@ -62,7 +62,7 @@ describe('survivalState transitions', () => {
         expeditionState,
         {
           dt: 0.5,
-          biomeId: 'glacier',
+          climate: gameplayProfileForBiome('glacier'),
           inWater: false,
           windSpeed: 4,
           launchHour: 6,
@@ -72,19 +72,19 @@ describe('survivalState transitions', () => {
     }
 
     expect(lightState.coreTemp).toBeLessThan(expeditionState.coreTemp);
-    expect(getBiomeAmbientTemp('glacier')).toBeLessThan(getBiomeAmbientTemp('canyonSummer'));
+    expect(gameplayProfileForBiome('glacier').ambientTemp).toBeLessThan(gameplayProfileForBiome('canyonSummer').ambientTemp);
   });
 
   it('applies cold biome stamina penalties and wetness regen loss', () => {
     const loadout = getLoadoutDefinition('balanced');
     const dry = getSurvivalModifiers(
       { wetness: 0, coreTemp: 0.9 },
-      'canyonSummer',
+      gameplayProfileForBiome('canyonSummer'),
       loadout,
     );
     const coldWet = getSurvivalModifiers(
       { wetness: 0.8, coreTemp: 0.35 },
-      'glacier',
+      gameplayProfileForBiome('glacier'),
       loadout,
     );
 

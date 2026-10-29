@@ -11,7 +11,6 @@
 import type { QualityPreset } from '../GameState';
 import type { HydroEvent } from '../water/hydroEvents';
 import { hashHydroEvents, eventsActiveAtHour } from '../water/hydroEvents';
-import type { RunSplitEntry } from './ghostCodec';
 import { weatherFairnessKey, type RunWeather } from '../map/weatherInflow';
 
 export interface GhostHydroFairness {
@@ -160,17 +159,4 @@ export function fairnessFromGhostFile(file: {
     hydroEventHash: file.hydroEventHash,
     qualityPreset: file.qualityPreset,
   };
-}
-
-export function eventLabelForSegment(
-  splits: readonly RunSplitEntry[],
-  events: readonly HydroEvent[] | undefined,
-  hour: number,
-): string | null {
-  const active = eventsActiveAtHour(events, hour);
-  for (const split of splits) {
-    const hit = active.find((event) => event.segmentIndex === split.segmentIndex);
-    if (hit) return hit.id;
-  }
-  return null;
 }

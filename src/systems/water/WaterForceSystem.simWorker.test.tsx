@@ -97,6 +97,8 @@ import { SimWorkerProxy, getSimWorkerProxy } from '../../sim/createSimWorkerProx
 import { createSimWorkerCore } from '../../sim/simWorkerCore';
 import { WaterForceSystem } from './WaterForceSystem';
 import { useGameStore } from '../GameState';
+import { publishActiveGameplayProfile, resetActiveGameplayProfileForTests } from '../gameplay/activeGameplayProfile';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 /** Heap-backed stand-in for the native module. `step` raises η at one cell. */
 function stubModule(stepMarker: number) {
@@ -209,6 +211,7 @@ function uploadedHeight(): Float32Array {
 afterEach(() => {
   vi.clearAllMocks();
   useGameStore.setState({ currentBiome: 'canyonSummer' });
+  resetActiveGameplayProfileForTests();
   clearFloatingWaterBodies();
   resetPhysicsWorkerRegistry();
 });
@@ -234,6 +237,15 @@ function debris() {
     applyImpulse: vi.fn(),
   };
 }
+
+// The component publishes its readout (window.__watershedWaterForceSystem),
+// which these tests observe, only on a debug / harness page (#521 D).
+beforeAll(() => {
+  window.history.replaceState(null, '', '/?debug=1');
+});
+afterAll(() => {
+  window.history.replaceState(null, '', '/');
+});
 
 describe('WaterForceSystem on the wasm-worker backend', () => {
   it('never steps the field on the main thread, and uploads the worker frame', async () => {
@@ -350,11 +362,11 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(hull.current.applyImpulse).not.toHaveBeenCalled();
     // No debris and the hull is the Rapier worker's: nothing to batch here.
     expect(inWorker.computeWaterForcesBatch).not.toHaveBeenCalled();
-    // The flow cap is the target biome's palette value (canyonSummer 1.0), read per frame.
+    // The flow cap is the active gameplay profile's (canyonSummer 1.0), read per frame.
     expect(getPhysicsWorkerTickParams()).toMatchObject({ simFlow: true, flowSpeed: 1.0, flowDirX: 0, flowDirZ: -1 });
 
-    // A biome change moves the cap on the next frame: the target's value, not a cross-fade.
-    useGameStore.setState({ currentBiome: 'glacier' });
+    // A profile change (published by the SimCore gameplay-profile system) moves the cap on the next frame.
+    publishActiveGameplayProfile(gameplayProfileForBiome('glacier'));
     frame();
     pump();
     expect(getPhysicsWorkerTickParams()).toMatchObject({ flowSpeed: 1.4 });

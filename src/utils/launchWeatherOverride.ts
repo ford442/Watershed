@@ -5,6 +5,7 @@
  */
 import type { WeatherType } from '../constants/weather';
 import { DEFAULT_WEATHER_INTENSITY, type RunWeather } from '../systems/map/weatherInflow';
+import { currentSearch } from '../config/queryFlags';
 
 const WEATHER_PARAM = 'weather';
 export const RUN_WEATHER_TYPES: readonly WeatherType[] = ['clear', 'rain', 'fog', 'storm', 'snow'];
@@ -28,7 +29,7 @@ export function parseRunWeather(raw: string | null | undefined): RunWeather | nu
 
 /** Parse a weather override from a query string; null when absent or malformed. */
 export function parseLaunchWeatherOverride(search?: string): RunWeather | null {
-  const raw = search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const raw = search ?? (currentSearch());
   if (!raw) return null;
   try {
     return parseRunWeather(new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get(WEATHER_PARAM));

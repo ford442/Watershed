@@ -1,0 +1,29 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/**/*.test.{ts,tsx}",
+    "src/**/*.perf.test.{ts,tsx}",
+    "src/debug/postParity.ts",
+    "src/systems/water/sweParity.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "rules": {
+    "duplicates": "off"
+  },
+  "ignoreBinaries": [
+    "cmake",
+    "emscripten/build-host/watershed_host_smoke",
+    "emscripten/build-host-asan/watershed_host_smoke"
+  ],
+  "ignoreDependencies": [
+    "@breezystack/lamejs"
+  ],
+  "ignoreIssues": {
+    "src/materials/**/*NodeMaterial*.ts": [
+      "exports"
+    ]
+  }
+}

@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
-import { useBiome } from '../systems/biome/BiomeSystem';
+import { useBiomeId, useBiomeStore } from '../systems/biome/BiomeSystem';
 import { SUN_DISTANCE, useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { getSkyClock } from '../systems/sky/skyClock';
 import { BiomePalettes } from '../configs/BiomePalettes';
@@ -199,7 +199,15 @@ const _moonDir = new THREE.Vector3();
 
 export default function EnhancedSky() {
     const { scene } = useThree();
-    const { currentBiome, transitionProgress } = useBiome();
+    // The palette id re-renders (sky profile, clouds); the cross-fading colours
+    // are read per frame from the store, never as React state.
+    const biomeStore = useBiomeStore();
+    const biomeId = useBiomeId();
+    // The fog's constructor args, once: every frame after writes it from fogStateRef.
+    const [initialFog] = useState(() => {
+        const { fogColor, fogNear, fogFar } = biomeStore.getState().currentBiome;
+        return [fogColor, fogNear, fogFar] as [string, number, number];
+    });
     const { sunDirection } = useSunPosition();
     const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
     const isSlotCanyon = currentSegmentIndex >= 20 && currentSegmentIndex <= 22;
@@ -225,11 +233,11 @@ export default function EnhancedSky() {
     });
 
     const skyProfile = useMemo(
-        () => getSkyProfile(currentBiome.id, isSlotCanyon),
-        [currentBiome.id, isSlotCanyon]
+        () => getSkyProfile(biomeId, isSlotCanyon),
+        [biomeId, isSlotCanyon]
     );
 
-    const cloudOpacity = isSlotCanyon ? 0.3 : currentBiome.id === 'delta' ? 0.5 : 0.42;
+    const cloudOpacity = isSlotCanyon ? 0.3 : biomeId === 'delta' ? 0.5 : 0.42;
     // The sun at mount (the drei Sky's first uniform); every frame after comes from the sky clock.
     const initialSunPosition = useMemo((): [number, number, number] => {
         const { sun } = getSkyClock();
@@ -330,6 +338,7 @@ export default function EnhancedSky() {
     const overcastBlend = (weatherType === 'overcast' || weatherType === 'storm') ? 1 : weatherType === 'fog' ? 0.5 : 0;
 
     useFrame((state, delta) => {
+        const { currentBiome, transitionProgress } = biomeStore.getState();
         const step = Math.min(1.0, delta * (0.9 + transitionProgress * 0.2));
         const { sun, factors } = getSkyClock();
         const { night, golden, elevation01 } = factors;
@@ -490,7 +499,7 @@ export default function EnhancedSky() {
                 <primitive object={cloudMatFar} attach="material" />
             </mesh>
 
-            <fog ref={fogObjRef} attach="fog" args={[currentBiome.fogColor, currentBiome.fogNear, currentBiome.fogFar]} />
+            <fog ref={fogObjRef} attach="fog" args={initialFog} />
         </group>
     );
 }

@@ -16,6 +16,7 @@
  * itself never becomes ready.
  */
 
+import { currentSearch } from '../config/queryFlags';
 /** Player-facing preference stored in the settings panel. */
 export type PhysicsWorkerPreference = 'auto' | 'on' | 'off';
 
@@ -34,7 +35,7 @@ export interface PhysicsWorkerDecision {
 }
 
 export interface PhysicsWorkerEnvironment {
-  /** Query string (with or without a leading '?'). Defaults to window.location.search. */
+  /** Query string (with or without a leading '?'). Defaults to the page's (`currentSearch()`). */
   search?: string;
   /** Override capability detection (tests). */
   hasWorker?: boolean;
@@ -56,7 +57,7 @@ export const PHYSICS_WORKER_REASON_LABELS: Record<PhysicsWorkerReason, string> =
 
 function readParams(search?: string): URLSearchParams {
   const raw =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+    search ?? (currentSearch());
   return new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`);
 }
 

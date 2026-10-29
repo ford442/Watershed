@@ -471,5 +471,3 @@ export function useLevelEditor(): UseLevelEditorReturn {
     setWorldBiome,
   };
 }
-
-export default useLevelEditor;

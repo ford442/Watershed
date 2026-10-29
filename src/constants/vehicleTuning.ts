@@ -198,5 +198,3 @@ export const VEHICLE_TUNING = {
     fragmentImpulse: 18.0,
   },
 } as const;
-
-export type VehicleTuningConfig = typeof VEHICLE_TUNING;

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useBiomeMaterials } from '../../systems/biome/BiomeSystem';
 import { useLOD } from '../../systems/lod/LODManager';
 import { useGameStore } from '../../systems/GameState';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -10,10 +9,10 @@ import { useExperienceWorld } from './useExperienceWorld';
 import { getMapDefinition, isMapRegistryId } from '../../maps/registry';
 import { gameEvents } from '../../systems/events/GameEvents';
 import { getVehicleChoice, getVehicleOverride, subscribeVehicleChoice } from '../../utils/runContext';
+import { queryFlags } from '../../config/queryFlags';
 
 function readVehicleTypeFromUrl(): VehicleType | null {
-  if (typeof window === 'undefined') return null;
-  const raw = new URLSearchParams(window.location.search).get('vehicle');
+  const raw = queryFlags().vehicle;
   if (raw === 'raft' || raw === 'runner') return raw;
   return null;
 }
@@ -47,16 +46,9 @@ export function useInnerExperience({
   debug: DebugStageController;
 }) {
   const [vehicleType, setVehicleTypeLocal] = useState<VehicleType>(() => resolveInitialVehicle(mapId));
-  const [noPointerLock] = useState(
-    () => typeof window !== 'undefined' && window.location.search.includes('no-pointer-lock'),
-  );
+  const [noPointerLock] = useState(() => queryFlags().noPointerLock);
   // ?wasmWaterTest=1 is a dev harness; production ignores it (#465 C5).
-  const [wasmWaterTest] = useState(
-    () =>
-      import.meta.env.DEV &&
-      typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('wasmWaterTest') === '1',
-  );
+  const [wasmWaterTest] = useState(() => import.meta.env.DEV && queryFlags().wasmWaterTest);
 
   const vehicleRef = useRef<VehicleRigidBodyRef | null>(null);
   const trackManagerRef = useRef<TrackManagerRef | null>(null);
@@ -64,7 +56,7 @@ export function useInnerExperience({
   const awardedWaterfallSegmentsRef = useRef(new Set<number>());
   const urlVehicleOverrideRef = useRef(readVehicleTypeFromUrl() !== null || getVehicleOverride() !== null);
 
-  const isDebug = typeof window !== 'undefined' && window.location.search.includes('debug=true');
+  const isDebug = queryFlags().debug;
   const physicsDebugEnabled =
     !cleanTest && debug.debugEnabled && physicsDebug && debug.isStageEnabled('physicsDebug');
 
@@ -83,7 +75,6 @@ export function useInnerExperience({
   );
 
   const { quality } = useLOD();
-  const biomeMaterials = useBiomeMaterials();
 
   useEffect(() => {
     setVehicleTypeStore(vehicleType);
@@ -152,7 +143,6 @@ export function useInnerExperience({
     isWipeout,
     isJourneyComplete,
     quality,
-    biomeMaterials,
     ...world,
   };
 }

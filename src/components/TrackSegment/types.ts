@@ -20,12 +20,6 @@ export type FlowerVariantId = 'bloom' | 'spike' | 'daisy' | 'bell';
 // (#503 E): terrain/ must not import components/.
 export type { ChannelProfileSample, ChannelShape };
 
-/** Narrower shape used by water-surface geometry (subset of ChannelShape). */
-export type WaterChannelShape = Pick<
-  ChannelShape,
-  'leftHalfWidth' | 'rightHalfWidth' | 'corridorHalfWidth'
->;
-
 /** Base transform bag shared by most decoration instances. */
 export interface PlacementTransform {
   position: THREE.Vector3;

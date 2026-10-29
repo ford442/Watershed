@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { commitTimedFinish, getLastFinishSummary, resetRunFinishForTests } from './runFinish';
+import { commitTimedFinish, resetRunFinishForTests } from './runFinish';
 import { recordSplit, resetSplitRecording } from './SplitRecorder';
 import { startGhostRecording, resetGhostRecording, tickGhostRecording, GHOST_SAMPLE_INTERVAL } from './GhostRecorder';
 import { buildRunKey, getRunBest, resetPersistenceForTests, updatePBGhost } from '../persistence/PersistenceSystem';

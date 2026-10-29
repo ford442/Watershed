@@ -77,10 +77,6 @@ export function setSWEActiveBudget(budget: SWEBudget): void {
   }
 }
 
-export function getSWEActiveBudget(): SWEBudget {
-  return activeBudget;
-}
-
 /** Queue a Gaussian bump at world XZ (consumed on the next SWE step). */
 export function injectSWEDisturbance(
   worldX: number,

@@ -13,6 +13,7 @@ import {
   stepRunSurvival,
 } from './runSession';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 describe('runSession journey mode', () => {
   beforeEach(() => {
@@ -41,7 +42,7 @@ describe('runSession journey mode', () => {
     initRunSession({ mapId: 'hydro', journeyMode: 'journey', launchHour: 10 });
     stepRunSurvival({
       dt: 2,
-      biomeId: 'hydroDam',
+      climate: gameplayProfileForBiome('hydroDam'),
       inWater: true,
       windSpeed: 1,
     });

@@ -5,12 +5,13 @@
  * when ?screenshot=1 / ?capture=1 is present.
  */
 
+import { currentSearch, editQuery } from '../config/queryFlags';
 const CLEAN_TEST_KEYS = ['cleanTest', 'clean-test', 'cleantest'] as const;
 const AUTO_CLEAN_KEYS = ['screenshot', 'capture'] as const;
 
 export function isCleanTestMode(search?: string): boolean {
   if (typeof window === 'undefined' && search === undefined) return false;
-  const params = new URLSearchParams(search ?? window.location.search);
+  const params = new URLSearchParams(search ?? currentSearch());
   if (AUTO_CLEAN_KEYS.some((key) => params.get(key) === '1')) return true;
   return CLEAN_TEST_KEYS.some((key) => {
     const raw = params.get(key);
@@ -19,16 +20,14 @@ export function isCleanTestMode(search?: string): boolean {
 }
 
 export function setCleanTestMode(enabled: boolean): void {
-  if (typeof window === 'undefined') return;
-  const params = new URLSearchParams(window.location.search);
-  if (enabled) {
-    params.set('cleanTest', '1');
-    CLEAN_TEST_KEYS.forEach((key) => {
-      if (key !== 'cleanTest') params.delete(key);
-    });
-  } else {
-    CLEAN_TEST_KEYS.forEach((key) => params.delete(key));
-  }
-  const next = params.toString();
-  window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  editQuery((params) => {
+    if (enabled) {
+      params.set('cleanTest', '1');
+      CLEAN_TEST_KEYS.forEach((key) => {
+        if (key !== 'cleanTest') params.delete(key);
+      });
+    } else {
+      CLEAN_TEST_KEYS.forEach((key) => params.delete(key));
+    }
+  });
 }

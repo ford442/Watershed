@@ -109,7 +109,7 @@ describe('ReactiveAudio', () => {
     expect(sourceFile).toContain(
       "import { getActiveSurvivalModifiers } from '../systems/journey/runSession'"
     );
-    expect(sourceFile).toContain('const survivalMods = getActiveSurvivalModifiers(currentBiomeId)');
+    expect(sourceFile).toContain('const survivalMods = getActiveSurvivalModifiers()');
     expect(sourceFile).toContain('const wetnessMuffle = survivalMods?.sfxWetnessMultiplier ?? 1');
 
     // Reaches the rapids loop, the whoosh loop, and the splash one-shot.

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { queryFlags, queryParam, editQuery } from '../config/queryFlags';
 
 export const DEBUG_STAGES = {
   appBootstrap: { label: 'App Bootstrap', category: 'core', defaultEnabled: true },
@@ -40,16 +41,11 @@ const STAGE_STORAGE_KEY = 'watershed.debug.stages';
 
 /** `?debug=1` (or `true`). The only switch for debug hotkeys and the inspector (#486). */
 export const parseDebugEnabled = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('debug');
-  return raw === '1' || raw === 'true';
+  return queryFlags().debug;
 };
 
 const parseUrlStageOverrides = (): Partial<Record<DebugStageId, boolean>> => {
-  if (typeof window === 'undefined') return {};
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('debugStages');
+  const raw = queryParam('debugStages');
   if (!raw) return {};
   const enabledSet = new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
   const entries = Object.keys(DEBUG_STAGES).map((key) => [key, enabledSet.has(key)]);
@@ -118,10 +114,8 @@ export function useDebugStages(): DebugStageController {
     try {
       window.localStorage.setItem(STAGE_STORAGE_KEY, JSON.stringify(stages));
       if (debugEnabled) {
-        const params = new URLSearchParams(window.location.search);
         const enabled = (Object.keys(stages) as DebugStageId[]).filter((id) => stages[id]);
-        params.set('debugStages', enabled.join(','));
-        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        editQuery((params) => params.set('debugStages', enabled.join(',')));
       }
     } catch (error) {
       console.warn('[DebugStage] Failed to persist stage preferences:', error);

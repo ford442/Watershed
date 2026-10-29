@@ -15,7 +15,7 @@ import {
 } from '../../systems/score/ScoreSystem';
 import { useGameStore, batchFrameUpdate } from '../../systems/GameState';
 import {
-  resolveActiveEnvelope,
+  resolveActiveEnvelopeInto,
   resolveActiveRaftEnvelope,
   triggerOutOfBoundsWipeout,
 } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
@@ -32,6 +32,10 @@ import { resolveRespawnSegment } from '../../systems/survival';
 import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';
 import { gameEvents, type SegmentEnterDetail } from '../../systems/events/GameEvents';
+import type { SegmentEnvelope } from '../../systems/map/segmentFrames';
+
+/** The vehicle's runner envelope, rewritten each frame (no per-frame object, #521 D). */
+const lifecycleEnvelope: SegmentEnvelope = { yMin: 0, yMax: 0, segmentIndex: null, authored: false };
 
 interface UseExperienceLifecycleOptions {
   debug: DebugStageController;
@@ -102,7 +106,7 @@ export function useExperienceLifecycle({
   }, []);
 
   useEffect(() => {
-    debug.runStage('audio', () => {
+    void debug.runStage('audio', () => {
       initAudio(camera);
     });
   }, [camera, debug]);
@@ -330,7 +334,7 @@ export function useExperienceLifecycle({
           const envelope =
             useGameStore.getState().vehicleType === 'raft'
               ? resolveActiveRaftEnvelope(pos, getVehicleWaterLevel())
-              : resolveActiveEnvelope(pos);
+              : resolveActiveEnvelopeInto(lifecycleEnvelope, pos);
           if (pos.y < envelope.yMin || pos.y > envelope.yMax) {
             triggerOutOfBoundsWipeout(envelope);
           }

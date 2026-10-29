@@ -99,7 +99,6 @@ export function normalizeReachManifest(
       : forecastStateOrOptions;
 
   const baseBiome = normalizeBiomeId(manifest.world?.biome?.baseType || 'creek-summer');
-  const baseBiomeProfile = getTrackBiomeProfile(baseBiome);
 
   const waypoints = manifest.world.track.waypoints.map(
     (p: number[]) => new THREE.Vector3(p[0], p[1], p[2])
@@ -207,5 +206,3 @@ export function normalizeReachManifest(
 
   return normalized;
 }
-
-export default normalizeReachManifest;

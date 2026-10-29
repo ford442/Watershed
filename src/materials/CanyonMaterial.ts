@@ -476,7 +476,6 @@ export function createCanyonMaterial(
     mossCoverage = 0.85,
     highWaterMark = 0.15,
     highWaterIntensity = 0.35,
-    strata = {},
   } = options;
 
   const biomeAdapt = BIOME_ADAPTATIONS[biome] || BIOME_ADAPTATIONS.summer;
@@ -565,5 +564,3 @@ export function updateCanyonMaterial(
     material.uniforms.highWaterIntensity.value = Math.max(0.0, options.highWaterIntensity);
   }
 }
-
-export default createCanyonMaterial;

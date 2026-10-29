@@ -6,7 +6,7 @@ import {
   getActiveSurvivalState,
   initRunSession,
   resetRunSessionForTests,
-  tickRunSurvival,
+  publishRaftSurvival,
 } from './runSession';
 import { createSurvivalSimSystem, RUNNER_IN_WATER_MARGIN } from './survivalSystem';
 
@@ -56,23 +56,21 @@ describe('survival sim system', () => {
     expect(getActiveSurvivalState()).toBeNull();
   });
 
-  it('the raft\'s float, published through tickRunSurvival, is its inWater', () => {
+  it('the raft\'s float, published through publishRaftSurvival, is its inWater', () => {
     const core = setup();
     core.ctx.vehicle.isRaft = true;
     core.ctx.vehicle.y = WATER_LEVEL - 5; // a height test would say "in water"
-    tickRunSurvival({ dt: 0.5, biomeId: 'canyonSummer', inWater: false, windSpeed: 0 });
+    publishRaftSurvival(false);
     for (let i = 0; i < 30; i += 1) core.step();
     expect(getActiveSurvivalState()!.wetness).toBe(0);
-    tickRunSurvival({ dt: 0.5, biomeId: 'canyonSummer', inWater: true, windSpeed: 0 });
+    publishRaftSurvival(true);
     for (let i = 0; i < 30; i += 1) core.step();
     expect(getActiveSurvivalState()!.wetness).toBeGreaterThan(0.2);
   });
 
-  it('tickRunSurvival no longer integrates: the vehicles\' calls cannot run time twice', () => {
-    for (let i = 0; i < 100; i += 1) {
-      tickRunSurvival({ dt: 1, biomeId: 'canyonSummer', inWater: true, windSpeed: 0 });
-    }
+  it('publishRaftSurvival does not integrate: the raft\'s calls cannot run time twice', () => {
+    for (let i = 0; i < 100; i += 1) publishRaftSurvival(true);
     expect(getActiveSurvivalState()!.wetness).toBe(0);
-    expect(tickRunSurvival({ dt: 1, biomeId: 'canyonSummer', inWater: true, windSpeed: 0 })).not.toBeNull();
+    expect(publishRaftSurvival(true)).not.toBeNull();
   });
 });

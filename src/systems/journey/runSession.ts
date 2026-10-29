@@ -58,6 +58,7 @@ import {
   type SurvivalTickInput,
 } from '../survival';
 import { resetWetnessMuffle, setSfxWetnessMultiplier } from '../audio/wetnessMuffle';
+import { getActiveGameplayProfile } from '../gameplay/activeGameplayProfile';
 
 export type JourneyMode = 'single' | 'journey';
 
@@ -267,20 +268,10 @@ export function getActiveWeather(): RunWeather {
   return activeSession ? getDirectorRiverWeather() : getLaunchWeather();
 }
 
-/** The run's weather script (a one-step script before any run). */
-export function getActiveWeatherScript(): WeatherScript {
-  return activeSession?.conditions.weatherScript ?? constantWeatherScript(getLaunchWeather());
-}
-
 /** The run's conditions, or the defaults with the persisted launch weather before any run. */
 export function getActiveConditions(): RunConditions {
   if (activeSession) return activeSession.conditions;
   return { ...DEFAULT_RUN_CONDITIONS, weatherScript: constantWeatherScript(getLaunchWeather()) };
-}
-
-/** Restart the run's weather from the top of its script (journey loop / map restart). */
-export function restartRunWeather(): void {
-  if (activeSession) resetWeatherDirector(activeSession.conditions.weatherScript);
 }
 
 export function getActiveLoadoutId(): LoadoutId {
@@ -291,13 +282,46 @@ export function getActiveSurvivalState(): SurvivalState | null {
   return activeSession?.survival ?? null;
 }
 
-export function getActiveSurvivalModifiers(biomeId: SurvivalTickInput['biomeId']): SurvivalModifiers | null {
+/** Reused by getActiveSurvivalModifiers: the runner reads it every step (#521 D). */
+const activeModifiers: SurvivalModifiers = {
+  staminaDrainMultiplier: 1,
+  staminaRegenMultiplier: 1,
+  movementMultiplier: 1,
+  exposureStress: 0,
+  sfxWetnessMultiplier: 1,
+  paddleCostMultiplier: 1,
+  paddleRegenMultiplier: 1,
+};
+
+/** What `activeModifiers` was computed from (an object field, so the double is not boxed). */
+const activeModifiersKey: { survival: SurvivalState | null; ambientTemp: number; loadoutId: string } = {
+  survival: null,
+  ambientTemp: -1,
+  loadoutId: '',
+};
+
+/**
+ * The run's survival modifiers in the active gameplay profile's climate (the
+ * segment under the player, #521 B); null with no run. One shared object,
+ * recomputed on each call: read the fields, do not keep it.
+ */
+export function getActiveSurvivalModifiers(): SurvivalModifiers | null {
   if (!activeSession) return null;
-  return getSurvivalModifiers(
-    activeSession.survival,
-    biomeId,
-    getLoadoutDefinition(activeSession.loadoutId),
-  );
+  const climate = getActiveGameplayProfile();
+  const key = activeModifiersKey;
+  // Recompute only when an input changed: the survival state is replaced on
+  // every sim step, so this runs once a step however many readers ask.
+  if (
+    key.survival !== activeSession.survival ||
+    key.ambientTemp !== climate.ambientTemp ||
+    key.loadoutId !== activeSession.loadoutId
+  ) {
+    key.survival = activeSession.survival;
+    key.ambientTemp = climate.ambientTemp;
+    key.loadoutId = activeSession.loadoutId;
+    getSurvivalModifiers(activeSession.survival, climate, getLoadoutDefinition(activeSession.loadoutId), activeModifiers);
+  }
+  return activeModifiers;
 }
 
 /**
@@ -319,7 +343,7 @@ export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
     survival,
     peakWetness: Math.max(activeSession.peakWetness, survival.wetness),
   };
-  const mods = getSurvivalModifiers(activeSession.survival, input.biomeId, loadout);
+  const mods = getSurvivalModifiers(activeSession.survival, input.climate, loadout);
   // Wetness SFX muffling (#301 leftover): the modifier has been derived here
   // all along; this is the one line that lets the mixer hear it.
   setSfxWetnessMultiplier(mods.sfxWetnessMultiplier);
@@ -335,22 +359,22 @@ export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
 /** What the raft last said about its float (the raft's own state is out of SimCore's reach). */
 let raftInWater = false;
 
-/** The raft's last-published `inWater` (see `tickRunSurvival`). */
+/** The raft's last-published `inWater` (see `publishRaftSurvival`). */
 export function getPublishedRaftInWater(): boolean {
   return raftInWater;
 }
 
 /**
- * The vehicles' survival hook: the modifiers the last sim step produced for
- * `input.biomeId`, null with no run. It no longer integrates (that is
- * `stepRunSurvival`, one SimCore step at a time); the runner and raft keep
- * calling it with their probe, and the raft's `inWater` — the one input only
- * its hull knows — is kept here for the survival system's next step.
- * `dt`, `windSpeed` and the runner's `inWater` are read by the sim instead.
+ * The raft's survival hook: publish whether the hull is actually floating (the
+ * one survival input only the raft knows; the survival system reads it next
+ * step) and get back the modifiers the last sim step left. The runner needs no
+ * hook — its `inWater` is the sim's own height test — and reads
+ * `getActiveSurvivalModifiers()` directly. Neither integrates: that is
+ * `stepRunSurvival`, one SimCore step at a time.
  */
-export function tickRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): SurvivalModifiers | null {
-  raftInWater = input.inWater;
-  return getActiveSurvivalModifiers(input.biomeId);
+export function publishRaftSurvival(inWater: boolean): SurvivalModifiers | null {
+  raftInWater = inWater;
+  return getActiveSurvivalModifiers();
 }
 
 /** Accumulate upright raft distance for journey-results scoring. */
@@ -518,13 +542,6 @@ export function saveJourneyCheckpoint(options: {
   };
   setLastMapId(checkpoint.mapId);
   return checkpoint;
-}
-
-export function notePeakAirTime(seconds: number): void {
-  if (!activeSession || !Number.isFinite(seconds)) return;
-  if (seconds > activeSession.peakAirTime) {
-    activeSession = { ...activeSession, peakAirTime: seconds };
-  }
 }
 
 export function resetRunSessionForTests(): void {

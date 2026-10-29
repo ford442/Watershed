@@ -7,7 +7,6 @@
 
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
 import { Line, Html } from '@react-three/drei';
 import { EditorSegmentConfig } from '../../hooks/useLevelEditor';
 
@@ -242,5 +241,3 @@ export const PathVisualizer: React.FC<PathVisualizerProps> = ({
     </group>
   );
 };
-
-export default PathVisualizer;

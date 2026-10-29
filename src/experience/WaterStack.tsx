@@ -36,7 +36,6 @@ interface WaterPhysicsEffectsProps {
   vehicleRef: RefObject<VehicleRigidBodyRef | null>;
   vehicleType: VehicleType;
   enabled: boolean;
-  flowSpeed: number;
   wasmWaterTest?: boolean;
 }
 
@@ -45,7 +44,6 @@ export function WaterPhysicsEffects({
   vehicleRef,
   vehicleType,
   enabled,
-  flowSpeed,
   wasmWaterTest = false,
 }: WaterPhysicsEffectsProps) {
   if (!enabled) return null;
@@ -63,7 +61,6 @@ export function WaterPhysicsEffects({
         playerRef={vehicleRef}
         waterLevel={WATER_LEVEL}
         waterWidth={12}
-        flowSpeed={flowSpeed}
         isRaft={vehicleType === 'raft'}
         maxVelocity={15}
       />
@@ -83,7 +80,6 @@ export default function WaterStack(props: WaterReflectionLayerProps & WaterPhysi
         vehicleRef={props.vehicleRef}
         vehicleType={props.vehicleType}
         enabled={props.enabled}
-        flowSpeed={props.flowSpeed}
       />
     </>
   );

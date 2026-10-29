@@ -14,9 +14,6 @@ import { getRunMap } from '../../systems/journey/runSession';
 import { JSONMapManager } from '../../systems/map/MapSystem';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
 
-/** Minimum downstream speed (m/s) required to trigger the launch shelf. */
-export const SHELF_LAUNCH_SPEED_THRESHOLD = VEHICLE_TUNING.shelfLaunch.speedThreshold;
-
 export interface Vec3 {
   x: number;
   y: number;
@@ -71,10 +68,6 @@ function add(a: Vec3, b: Vec3): Vec3 {
 
 function scale(v: Vec3, s: number): Vec3 {
   return { x: v.x * s, y: v.y * s, z: v.z * s };
-}
-
-function sub(a: Vec3, b: Vec3): Vec3 {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
 }
 
 function normalize(v: Vec3): Vec3 {
@@ -151,10 +144,14 @@ export function computeShelfTrigger(
 export function isInsideShelfTrigger(pos: Vec3, trigger: ShelfTrigger | null): boolean {
   if (!trigger || !isFiniteVec3(pos)) return false;
 
-  const local = sub(pos, trigger.center);
-  const lx = Math.abs(dot(local, trigger.xAxis));
-  const ly = Math.abs(dot(local, trigger.yAxis));
-  const lz = Math.abs(dot(local, trigger.zAxis));
+  // Inline sub + dot: this runs every runner step once segment 14 has spawned.
+  const dx = pos.x - trigger.center.x;
+  const dy = pos.y - trigger.center.y;
+  const dz = pos.z - trigger.center.z;
+  const { xAxis, yAxis, zAxis } = trigger;
+  const lx = Math.abs(dx * xAxis.x + dy * xAxis.y + dz * xAxis.z);
+  const ly = Math.abs(dx * yAxis.x + dy * yAxis.y + dz * yAxis.z);
+  const lz = Math.abs(dx * zAxis.x + dy * zAxis.y + dz * zAxis.z);
 
   return (
     lx <= trigger.halfWidth &&

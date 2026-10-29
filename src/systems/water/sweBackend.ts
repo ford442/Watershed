@@ -24,6 +24,7 @@
 import { canEnableNativeWebgpu } from '../../rendering/nativeWebgpuGate';
 import { getSessionGpuDevice } from '../../rendering/gpuChores/device';
 import { isScriptedInputMode } from '../../input/scriptedRun';
+import { currentSearch } from '../../config/queryFlags';
 
 export type SweSimBackend = 'wasm-worker' | 'wasm-main' | 'wgsl';
 
@@ -94,7 +95,7 @@ export function resolveSweSimBackendDecision(): SweBackendDecision {
     resolved = chooseSweSimBackend({
       nativeWebgpuGate: canEnableNativeWebgpu(),
       device: getSessionGpuDevice(),
-      search: typeof window !== 'undefined' ? window.location.search : '',
+      search: currentSearch(),
       workerAvailable: typeof Worker === 'function',
     });
   }

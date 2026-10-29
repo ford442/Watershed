@@ -38,11 +38,6 @@ export const AIR_TIME_THRESHOLDS = {
 /** Minimum horizontal (XZ) displacement from launch point to count as a real leap. */
 export const MIN_GAP_HORIZONTAL = 6.0;
 
-/** @deprecated Use CLEAN_LAUNCH_SCORE_MULTIPLIER — kept for legacy test imports. */
-export const CLEAN_LAUNCH_BONUS = Math.round(
-  LAUNCH_BASE_POINTS_PER_SEC * AIR_TIME_THRESHOLDS.MIN_REWARD * (CLEAN_LAUNCH_SCORE_MULTIPLIER - 1),
-);
-
 /** Reference tier scores at threshold air-times (for tests / HUD copy). */
 export const TIER_SCORES: Record<Exclude<AirTier, 'None'>, number> = {
   Nice: Math.round(LAUNCH_BASE_POINTS_PER_SEC * AIR_TIME_THRESHOLDS.MIN_REWARD),

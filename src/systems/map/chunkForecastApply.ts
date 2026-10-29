@@ -14,7 +14,9 @@ import {
   type SpawnData,
   type SegmentProgressionConfig,
   type VortexConfig,
+  resolveGameplayProfile,
 } from './MapSystem';
+import type { GameplayProfile } from '../gameplay/gameplayProfile';
 import {
   applyForecastToSegmentParams,
   resolveForecastState,
@@ -36,6 +38,8 @@ export interface SegmentData {
   rockDensity: string;
   segmentState: string;
   wallProfile: TrackBiomeProfile;
+  /** What the segment does to the player (flow cap, surface, cold, wind) — MapSystem-resolved (#521 B). */
+  gameplay: Readonly<GameplayProfile>;
   forwardMomentum?: number;
   meanderStrength?: number;
   verticalBias?: number;
@@ -108,6 +112,7 @@ export function baseChunkToSegmentData(
     rockDensity: applied.rockDensity,
     segmentState: applied.segmentState,
     wallProfile: biomeProfile,
+    gameplay: resolveGameplayProfile(progression),
     forwardMomentum: progression.forwardMomentum,
     meanderStrength: progression.meanderStrength,
     verticalBias: progression.verticalBias,

@@ -160,7 +160,11 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               ref={rivalFileInputRef}
               type="file"
               accept=".wsghost,application/json"
-              onChange={handleRivalFileChange}
+              onChange={(e) => {
+                handleRivalFileChange(e).catch((err: unknown) => {
+                  console.warn('[PauseMenu] rival ghost import failed', err);
+                });
+              }}
               style={{ display: 'none' }}
             />
             <button
