@@ -120,7 +120,7 @@
       "effects": { "particleCount": 400, "cameraShake": 0.5 },
       "decorations": {
         "rocks": [
-          { "localX": -13, "localZ": -35, "scale": 4.0, "rotation": 0, "rockType": "slab" }
+          { "localX": -13, "localZ": -35, "scale": 4.0, "rotation": 0, "rockType": "slab", "snap": false }
         ]
       },
       "launchShelf": {

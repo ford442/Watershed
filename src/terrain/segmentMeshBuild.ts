@@ -39,6 +39,7 @@ import {
   type Vec3,
 } from './meshMath';
 import { clamp, smoothstep } from '../math/scalar';
+import type { SegmentPlacementInput } from './placement';
 
 /** What the builders need of a path — THREE.CatmullRomCurve3 and meshMath's CatmullRomPath both are one. */
 export interface SegmentPath {
@@ -66,6 +67,8 @@ export interface GeometryBuildContext {
    * segments, which is every biome that is not glacial melt or a hydro pipe.
    */
   tubeProfile?: TubeProfile | null;
+  /** What placement reads beyond the geometry (#487 D); the meshes ignore it. */
+  placement?: SegmentPlacementInput | null;
 }
 
 /** One mesh's arrays: what a BufferGeometry holds. */

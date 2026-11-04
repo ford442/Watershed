@@ -18,6 +18,7 @@ import { peekSimWorkerProxy } from '../../../sim/createSimWorkerProxy';
 import type { SimTileResult } from '../../../sim/simWorkerProtocol';
 import { buildSegmentMeshBuffers, CANYON_VISUAL_SEGMENTS_X, segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
 import { erodeSegmentMeshes } from '../../../terrain/erosion';
+import { buildSegmentPlacements } from '../../../terrain/placement';
 import {
   getSegmentErosion,
   getSegmentErosionVersion,
@@ -46,6 +47,7 @@ export function useGeometries({
   waterWidth,
   biome,
   buildAhead = false,
+  placementInput = null,
 }: UseGeometriesParams): TrackSegmentGeometries {
   // `glacialMelt` is the campaign's glacial map; the old literal check for
   // 'glacier' alone never matched it, so the source biome got canyon rock
@@ -70,6 +72,7 @@ export function useGeometries({
       isGlacier,
       biomeProfile,
       tubeProfile,
+      placement: placementInput,
     };
   }, [
     active,
@@ -83,6 +86,7 @@ export function useGeometries({
     isGlacier,
     biomeProfile,
     tubeProfile,
+    placementInput,
   ]);
 
   // #487 B: a segment the treadmill appends ~150 m ahead is built on the sim
@@ -117,6 +121,13 @@ export function useGeometries({
     [buildCtx, awaitingWorker, workerMeshes, pathLength, biomeProfile.wallHeight],
   );
   const builtMeshes = workerMeshes ?? mainMeshes;
+
+  // #487 D: the segment's props, built once the meshes are (the main thread
+  // waits on the worker's tile like the meshes do).
+  const placements = useMemo(
+    () => (!buildCtx?.placement || awaitingWorker ? null : buildSegmentPlacements(buildCtx, buildCtx.placement)),
+    [buildCtx, awaitingWorker],
+  );
 
   // #487 E: the floor the river has worked. The hull grid as built registers
   // its erosion plane (loaded from the save for this map segment); the SWE
@@ -173,6 +184,7 @@ export function useGeometries({
 
   return {
     source,
+    placements,
     canyonGeometry,
     collisionGeometry,
     wallShellGeometry,

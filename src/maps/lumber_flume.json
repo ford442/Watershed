@@ -204,7 +204,7 @@
       "decorations": {
         "trees": 2,
         "rocks": [
-          { "localX": -10, "localZ": -28, "scale": 3.2, "rotation": 0.1, "rockType": "slab" }
+          { "localX": -10, "localZ": -28, "scale": 3.2, "rotation": 0.1, "rockType": "slab", "snap": false }
         ],
         "driftwood": 8
       },

@@ -4,7 +4,7 @@ import type { BiomeId } from '../../configs/biomes';
 import type { TrackBiomeProfile, TreeSpeciesId } from '../../configs/TrackBiomes';
 import type { FlowForecastState } from '../../constants/game';
 import type { DecorationPlacement } from '../../systems/map/MapSystem';
-import type { Rng } from '../../math/random';
+import type { SegmentPlacementInput } from '../../terrain/placement';
 import type { ChannelProfileSample, ChannelShape } from '../../terrain/types';
 
 /** Segment kind used by TrackSegment geometry and placement. */
@@ -99,11 +99,6 @@ export interface PlacementData {
   iceSheets: PlacementTransform[];
 }
 
-/** Mutable placement lists passed into populateZSteps / populateSide. */
-export type PlacementLists = {
-  [K in keyof PlacementData]: PlacementData[K];
-};
-
 export interface PlungeImpactPlacement {
   position: THREE.Vector3;
   intensity: number;
@@ -113,6 +108,8 @@ export interface PlungeImpactPlacement {
 export interface TrackSegmentGeometries {
   /** Where the meshes were built: here, or on the sim worker (#487 B). */
   source: 'main' | 'worker';
+  /** The segment's packed placements (`terrain/placement.ts`); null until built. */
+  placements: ArrayBuffer | null;
   canyonGeometry: THREE.BufferGeometry | null;
   /** Low-poly U-profile for Rapier trimesh; visual mesh stays collider-free. */
   collisionGeometry: THREE.BufferGeometry | null;
@@ -162,8 +159,8 @@ export interface UseGeometriesParams {
   channelProfile: readonly ChannelProfileSample[];
   biomeProfile: TrackBiomeProfile;
   isSlotCanyon: boolean;
-  /** Reserved for future geometry/placement coupling; currently unused. */
-  placementData?: PlacementData;
+  /** What placement reads beyond the geometry; the placements ride with the meshes (#487 D). */
+  placementInput?: SegmentPlacementInput | null;
   canyonWidth: number;
   waterWidth: number;
   biome: BiomeId | string;
@@ -175,74 +172,6 @@ export interface UseGeometriesParams {
 export type PlacementBiomeProfile = TrackBiomeProfile & {
   treeDensity?: number;
 };
-
-export interface UsePlacementDataParams {
-  active: boolean;
-  segmentPath: THREE.CatmullRomCurve3 | null | undefined;
-  segmentId: number;
-  type: SegmentKind | string;
-  pathLength: number;
-  waterWidth: number;
-  canyonWidth: number;
-  biome: BiomeId | string;
-  config?: TrackSegmentConfig | null;
-  channelProfile: readonly ChannelProfileSample[];
-  bankStartOverride?: number;
-  flowSpeed: number;
-  biomeProfile: PlacementBiomeProfile;
-}
-
-/** Shared mutable placement context for populateZSteps / populateSide. */
-export interface PopulatePlacementArgs extends PlacementLists {
-  zSteps: number;
-  geoLength: number;
-  segmentPath: THREE.CatmullRomCurve3;
-  channelShapeFn: (t: number) => ChannelShape;
-  bankStart: number;
-  canyonWidth: number;
-  waterWidth: number;
-  biome: BiomeId | string;
-  segmentId: number;
-  /** The segment's placement stream (`createRng(segmentId)`), drawn in placement order. */
-  rng: Rng;
-  type: SegmentKind | string;
-  config?: TrackSegmentConfig | null;
-  flowSpeed: number;
-  isSlotCanyon: boolean;
-  biomeProfile: PlacementBiomeProfile;
-}
-
-export interface PopulateSideArgs extends PlacementLists {
-  side: number;
-  t: number;
-  zLocal: number;
-  geoLength: number;
-  segmentPath: THREE.CatmullRomCurve3;
-  channelShape: ChannelShape;
-  bankStart: number;
-  canyonWidth: number;
-  waterWidth: number;
-  waterLevel: number;
-  biome: BiomeId | string;
-  segmentId: number;
-  /** The segment's placement stream (`createRng(segmentId)`), drawn in placement order. */
-  rng: Rng;
-  type: SegmentKind | string;
-  config?: TrackSegmentConfig | null;
-  flowSpeed: number;
-  isSlotCanyon: boolean;
-  biomeProfile: PlacementBiomeProfile;
-  pathPoint: THREE.Vector3;
-  tangent: THREE.Vector3;
-  binormal: THREE.Vector3;
-  up: THREE.Vector3;
-  lodQuality: string;
-  particleCount: number;
-  curvatureStrength: number;
-  insideSide: number;
-  tNext: number;
-  tangentNext: THREE.Vector3;
-}
 
 export type SegmentState = FlowForecastState | string;
 
