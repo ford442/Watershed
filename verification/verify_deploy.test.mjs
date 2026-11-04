@@ -6,6 +6,7 @@ import {
   HASHED_ASSET_RE,
   REVALIDATED_RE,
   checkCacheControl,
+  bundleDeclaresStamp,
   checkDirectoryDocuments,
   checkHtaccess,
   checkHtaccessCachePolicy,
@@ -14,6 +15,7 @@ import {
   checkPreviewConfig,
   decodeHtml,
   isLocalUrl,
+  nativePairStamp,
   parseAssetRefs,
   parseBuildIdMeta,
   parseContentType,
@@ -274,5 +276,26 @@ describe('preview / live isolation parity (#502 E)', () => {
     expect(checkPreviewConfig(text)).toEqual([]);
     const isolated = "  preview: {\n    port: 4173,\n    headers: { 'Cross-Origin-Embedder-Policy': 'require-corp' },\n  },\n";
     expect(checkPreviewConfig(isolated)).toHaveLength(1);
+  });
+});
+
+describe('WASM provenance stamp (the #469 provenance-mismatch)', () => {
+  const root = path.resolve(here, '..');
+  const glue = fs.readFileSync(path.join(root, 'public', 'watershed_native.js'));
+  const wasm = fs.readFileSync(path.join(root, 'public', 'watershed_native.wasm'));
+  const declared = fs
+    .readFileSync(path.join(root, 'src', 'systems', 'water', 'wasmArtifactStamp.ts'), 'utf8')
+    .match(/WASM_ARTIFACT_STAMP = '([^']+)'/)?.[1];
+
+  it('the committed pair hashes to the stamp the bundle is compiled against', () => {
+    expect(nativePairStamp(glue, wasm)).toBe(declared);
+  });
+
+  it('matches only a bundle that embeds the served pair stamp', () => {
+    const stamp = nativePairStamp(glue, wasm);
+    expect(bundleDeclaresStamp(`x={stamp:"${stamp}"}`, stamp)).toBe(true);
+    expect(bundleDeclaresStamp(`const S='${stamp}';`, stamp)).toBe(true);
+    // 2026-10-07 live bundle: stamped 48807a27dda538ad, served pair hashes to e2d26214c2863608.
+    expect(bundleDeclaresStamp('x={stamp:"48807a27dda538ad"}', stamp)).toBe(false);
   });
 });
