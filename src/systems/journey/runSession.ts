@@ -47,6 +47,7 @@ import { getMapAtmosphere } from '../../maps/atmosphere';
 import { getActiveUserRiver, userRiverMapDefinition } from '../map/userRiverSession';
 import { resetSkyClock, resetSkyClockForTests, setSkyAtmosphere } from '../sky/skyClock';
 import {
+  applySurvivalShock,
   createSurvivalState,
   getLoadoutDefinition,
   getSurvivalModifiers,
@@ -354,6 +355,22 @@ export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
     };
   }
   return mods;
+}
+
+/**
+ * A hazard reached the player (#522): soak and chill the run's survival state
+ * once. Called from SimCore's `hazards` system, between survival steps, so the
+ * next `stepRunSurvival` integrates from the shocked state. No-op with no run.
+ */
+export function shockRunSurvival(shock: { wetness?: number; chill?: number }): SurvivalState | null {
+  if (!activeSession) return null;
+  const survival = applySurvivalShock(activeSession.survival, shock);
+  activeSession = {
+    ...activeSession,
+    survival,
+    peakWetness: Math.max(activeSession.peakWetness, survival.wetness),
+  };
+  return survival;
 }
 
 /** What the raft last said about its float (the raft's own state is out of SimCore's reach). */

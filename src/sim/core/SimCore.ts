@@ -22,12 +22,13 @@
  *
  * Order bands (leave gaps; a new system picks the band, not a number in use):
  *   10 weather · 20 sky clock · 30 chunk/biome · 35 gameplay profile (#521 B) ·
- *   40 survival · 50 pillars · 90 scoring / splits / ghost.
+ *   40 survival · 45 hazards (#522) · 50 pillars · 90 scoring / splits / ghost.
  */
 
 import { createRng, type Rng } from '../../math/random';
 import { createInputFrame, type InputFrame } from '../../input/InputFrame';
 import type { SegmentFrame } from '../../systems/map/segmentFrames';
+import type { HydroEvent } from '../../systems/water/hydroEvents';
 
 /** The fixed sim step, seconds. Matches `INPUT_FIXED_DT_MS`. */
 export const SIM_DT = 1 / 60;
@@ -65,6 +66,20 @@ export interface SimVehicleProbe {
   qw: number;
 }
 
+/**
+ * What the sim reads of the water (#522 A): the run's launch hour, the map's
+ * authored hydro events, and the live SWE stage. Hazards trigger off it, so a
+ * set-piece and the field it rides on agree on the hour and the stage.
+ */
+export interface SimWaterProbe {
+  /** The run's launch hour, 0–23 (fixed for the run). */
+  launchHour: number;
+  /** The run map's `hydroEvents[]`, parsed (the same list the SWE host applies). */
+  hydroEvents: readonly HydroEvent[];
+  /** SWE stage η (m) at world (x, z); null outside the field's window or with no field. */
+  stageAt(x: number, z: number): number | null;
+}
+
 export interface SimContext {
   /** The run's stream (reseeded on every run reset). Stable identity; draws are deterministic. */
   readonly rng: Rng;
@@ -81,6 +96,7 @@ export interface SimContext {
   paused: boolean;
   camera: { z: number; sane: boolean };
   vehicle: SimVehicleProbe;
+  water: SimWaterProbe;
 }
 
 export interface SimSystem {
@@ -89,6 +105,12 @@ export interface SimSystem {
   step(ctx: SimContext, dt: number): void;
   /** Run reset (a new run on this page): drop whatever the last run left in the system. */
   reset?(ctx: SimContext): void;
+}
+
+const noStage = (): number | null => null;
+
+function createWaterProbe(): SimWaterProbe {
+  return { launchHour: 0, hydroEvents: [], stageAt: noStage };
 }
 
 function createVehicleProbe(): SimVehicleProbe {
@@ -129,6 +151,7 @@ export class SimCore {
       paused: false,
       camera: { z: 0, sane: false },
       vehicle: createVehicleProbe(),
+      water: createWaterProbe(),
     };
   }
 
@@ -217,6 +240,7 @@ export class SimCore {
     this.ctx.camera.z = 0;
     this.ctx.camera.sane = false;
     Object.assign(this.ctx.vehicle, createVehicleProbe());
+    Object.assign(this.ctx.water, createWaterProbe());
   }
 }
 

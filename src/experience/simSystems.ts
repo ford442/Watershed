@@ -13,6 +13,7 @@ import { createSurvivalSimSystem } from '../systems/journey/survivalSystem';
 import { createWeatherSimSystem } from '../systems/weather/weatherSimSystem';
 import { createSkySimSystem } from '../systems/sky/skySimSystem';
 import { createPillarSimSystem } from '../components/Obstacles/pillarSimSystem';
+import { createHazardSimSystem } from '../systems/hazards/hazardSimSystem';
 import { createScoreSimSystem } from './scoreSimSystem';
 
 export function createSimSystems(debug: DebugStageController): SimSystem[] {
@@ -22,6 +23,7 @@ export function createSimSystems(debug: DebugStageController): SimSystem[] {
     createChunkBiomeSimSystem(),
     createGameplayProfileSimSystem(),
     createSurvivalSimSystem(),
+    createHazardSimSystem(),
     createPillarSimSystem(),
     createScoreSimSystem(debug),
   ];

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getLoadoutDefinition } from './loadout';
 import {
+  applySurvivalShock,
   createSurvivalState,
   getSurvivalModifiers,
   tickSurvivalState,
@@ -92,5 +93,22 @@ describe('survivalState transitions', () => {
     expect(coldWet.staminaRegenMultiplier).toBeLessThan(dry.staminaRegenMultiplier);
     expect(coldWet.exposureStress).toBeGreaterThan(0.2);
     expect(coldWet.sfxWetnessMultiplier).toBeLessThan(1);
+  });
+});
+
+describe('applySurvivalShock (#522 hazards)', () => {
+  it('soaks and chills once, clamped to 0–1, never drying or warming', () => {
+    expect(applySurvivalShock({ wetness: 0.2, coreTemp: 0.9 }, { wetness: 0.3, chill: 0.1 })).toEqual({
+      wetness: 0.5,
+      coreTemp: expect.closeTo(0.8, 6),
+    });
+    expect(applySurvivalShock({ wetness: 0.9, coreTemp: 0.05 }, { wetness: 0.5, chill: 0.5 })).toEqual({
+      wetness: 1,
+      coreTemp: 0,
+    });
+    expect(applySurvivalShock({ wetness: 0.4, coreTemp: 0.5 }, { wetness: -1, chill: -1 })).toEqual({
+      wetness: 0.4,
+      coreTemp: 0.5,
+    });
   });
 });

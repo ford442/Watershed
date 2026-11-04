@@ -49,6 +49,7 @@ describe('useScreenshotApi (#521 C2)', () => {
       [
         'advanceTreadmill',
         'getGhostFile',
+        'getHazardLog',
         'getScriptedReadiness',
         'getScriptedTelemetry',
         'getSpawnPoints',

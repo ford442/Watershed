@@ -92,6 +92,7 @@ src/
 │   ├── events/GameEvents.ts     # The one typed event bus (gameEvents.emit / on) — no window CustomEvents
 │   ├── GameState.ts             # ★ Zustand store — the only root *.ts (no barrel)
 │   ├── biome/BiomeSystem.tsx    # Biome look only: per-provider store (useBiomeStore / useBiomeSelector / useBiomeId / useBiomeTimeOfDay) + useBiomeSetters
+│   ├── hazards/                 # Map set-piece hazards (#522): hazards[] → dormant/armed/telegraph/active/spent on SimCore, reads ctx.water
 │   ├── gameplay/                # ★ GameplayProfile per segment (flow cap, surface, cold, wind) — gameplay never reads a palette (#521 B)
 │   ├── lod/LODManager.tsx       # LOD budgets + adaptive quality (render scale, then preset)
 │   ├── lumber/trestleSpan.ts    # Breakable trestle deck (forecast + hydroEvents)

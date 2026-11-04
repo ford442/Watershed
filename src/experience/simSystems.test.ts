@@ -9,7 +9,7 @@ const debug = {
 } as unknown as DebugStageController;
 
 describe('the registered sim systems', () => {
-  it('step in the documented order: weather, sky, chunk/biome, gameplay profile, survival, pillars, score', () => {
+  it('step in the documented order: weather, sky, chunk/biome, gameplay profile, survival, hazards, pillars, score', () => {
     const core = new SimCore();
     for (const system of createSimSystems(debug)) core.register(system);
     expect(core.getSystemIds()).toEqual([
@@ -18,6 +18,7 @@ describe('the registered sim systems', () => {
       'chunk-biome',
       'gameplay-profile',
       'survival',
+      'hazards',
       'pillars',
       'score',
     ]);

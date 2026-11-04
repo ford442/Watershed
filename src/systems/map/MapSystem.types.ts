@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import type { BiomeId } from '../../configs/biomes';
 import type { GameplayProfileOverride } from '../gameplay/gameplayProfile';
+import type { HazardConfig } from '../hazards/hazardTypes';
 
 // =============================================================================
 // JSON LEVEL FORMAT INTERFACES
@@ -169,6 +170,8 @@ export interface LevelData {
   segments: LevelSegment[];
   spawns: LevelSpawns;
   hydroEvents?: HydroEventConfig[];
+  /** Set-piece hazards that read the water (#522; systems/hazards/hazardTypes.ts). */
+  hazards?: HazardConfig[];
   decorationPools?: Record<string, string[]>;
 }
 

@@ -803,6 +803,58 @@
         }
       }
     },
+    "hazards": {
+      "type": "array",
+      "description": "Set-piece hazards that read the simulated water (#522). Each runs dormant -> armed -> telegraph -> active -> spent on the sim clock: it arms when it is live at the launch hour (hours, or the hours of the hydroEvent it follows) and the player is within armDistance, fires on its trigger, warns for telegraphSeconds (at least 1.5 s), then is dangerous for activeSeconds. Reaching the player applies its consequence to the survival layer.",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "segmentIndex", "trigger"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "kind": { "type": "string", "enum": ["logJam", "iceBridge", "damRelease", "flashFlood"] },
+          "segmentIndex": { "type": "integer", "minimum": 0, "maximum": 49 },
+          "centerT": { "type": "number", "minimum": 0, "maximum": 1 },
+          "lateralOffset": { "type": "number", "minimum": -40, "maximum": 40 },
+          "radius": { "type": "number", "exclusiveMinimum": 0, "maximum": 80 },
+          "hours": {
+            "type": "array",
+            "maxItems": 24,
+            "items": { "type": "integer", "minimum": 0, "maximum": 23 }
+          },
+          "hydroEventId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "A hydroEvents[] id: the hazard is live exactly when that event is live at the launch hour."
+          },
+          "armDistance": { "type": "number", "exclusiveMinimum": 0, "maximum": 600 },
+          "trigger": {
+            "description": "What fires an armed hazard: proximity (player within distance m), stage (SWE stage at the anchor reaches above m, optionally gated on distance, which is also the fallback with no SWE field), or delay (seconds after arming). Each type needs its number (proximity: distance, stage: above, delay: seconds); parseHazards drops one without it and registry.contract.test.ts fails an authored map that has one.",
+            "type": "object",
+            "required": ["type"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "type": "string", "enum": ["proximity", "stage", "delay"] },
+              "distance": { "type": "number", "exclusiveMinimum": 0, "maximum": 300 },
+              "above": { "type": "number", "minimum": -5, "maximum": 10 },
+              "seconds": { "type": "number", "minimum": 0, "maximum": 600 }
+            }
+          },
+          "telegraphSeconds": { "type": "number", "minimum": 1.5, "maximum": 30 },
+          "activeSeconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 120 },
+          "consequence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "wetness": { "type": "number", "minimum": 0, "maximum": 1 },
+              "chill": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
     "decorationPools": {
       "type": "object",
       "description": "Optional custom decoration overrides",

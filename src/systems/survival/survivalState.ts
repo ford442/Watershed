@@ -117,6 +117,21 @@ export function tickSurvivalState(
   return next;
 }
 
+/**
+ * A one-off hit to the survival state — a hazard reaching the player (#522):
+ * `wetness` added, `chill` taken off the core temperature. A failure that the
+ * run carries (slower stamina, colder hands), not an instant reset.
+ */
+export function applySurvivalShock(
+  state: SurvivalState,
+  shock: { wetness?: number; chill?: number },
+): SurvivalState {
+  return {
+    wetness: clamp01(state.wetness + Math.max(0, shock.wetness ?? 0)),
+    coreTemp: clamp01(state.coreTemp - Math.max(0, shock.chill ?? 0)),
+  };
+}
+
 export function computeExposureStress(
   state: SurvivalState,
   climate: SurvivalClimate,
