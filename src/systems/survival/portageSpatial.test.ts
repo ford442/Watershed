@@ -33,6 +33,7 @@ import {
   getSurvivalModifiers,
   tickSurvivalState,
 } from '../survival';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 const SPATIAL_CACHE: CacheSlotDefinition = {
   id: 'ridge',
@@ -306,7 +307,7 @@ describe('glacial loadout decides the core-temp tick', () => {
       for (let i = 0; i < 40; i += 1) {
         state = tickSurvivalState(
           state,
-          { dt: 0.5, biomeId: 'glacialMelt', inWater: i % 3 === 0, windSpeed: 6, launchHour: 6 },
+          { dt: 0.5, climate: gameplayProfileForBiome('glacialMelt'), inWater: i % 3 === 0, windSpeed: 6, launchHour: 6 },
           getLoadoutDefinition(loadoutId),
         );
       }
@@ -320,7 +321,7 @@ describe('raft paddle survival coupling', () => {
   const loadout = getLoadoutDefinition('balanced');
 
   it('sits at the loadout baseline when dry and thermally neutral', () => {
-    const mods = getSurvivalModifiers({ wetness: 0, coreTemp: 0.9 }, 'canyonSummer', loadout);
+    const mods = getSurvivalModifiers({ wetness: 0, coreTemp: 0.9 }, gameplayProfileForBiome('canyonSummer'), loadout);
     expect(mods.paddleCostMultiplier).toBeCloseTo(loadout.staminaDrainMultiplier, 5);
     expect(mods.paddleRegenMultiplier).toBeCloseTo(loadout.staminaRegenMultiplier, 5);
   });
@@ -329,29 +330,29 @@ describe('raft paddle survival coupling', () => {
     // A fresh state is coreTemp 1, which computeExposureStress reads as a touch
     // of heat stress (pre-existing Track A behavior, visible on the HUD bar).
     // The paddle economy should barely notice it.
-    const mods = getSurvivalModifiers(createSurvivalState(), 'canyonSummer', loadout);
+    const mods = getSurvivalModifiers(createSurvivalState(), gameplayProfileForBiome('canyonSummer'), loadout);
     expect(mods.paddleCostMultiplier / loadout.staminaDrainMultiplier).toBeLessThan(1.05);
     expect(mods.paddleRegenMultiplier / loadout.staminaRegenMultiplier).toBeGreaterThan(0.95);
   });
 
   it('makes strokes cost more and refill slower when soaked', () => {
-    const dry = getSurvivalModifiers({ wetness: 0, coreTemp: 1 }, 'canyonSummer', loadout);
-    const soaked = getSurvivalModifiers({ wetness: 1, coreTemp: 1 }, 'canyonSummer', loadout);
+    const dry = getSurvivalModifiers({ wetness: 0, coreTemp: 1 }, gameplayProfileForBiome('canyonSummer'), loadout);
+    const soaked = getSurvivalModifiers({ wetness: 1, coreTemp: 1 }, gameplayProfileForBiome('canyonSummer'), loadout);
 
     expect(soaked.paddleCostMultiplier).toBeGreaterThan(dry.paddleCostMultiplier);
     expect(soaked.paddleRegenMultiplier).toBeLessThan(dry.paddleRegenMultiplier);
   });
 
   it('compounds wetness with cold exposure on a glacier reach', () => {
-    const warm = getSurvivalModifiers({ wetness: 0.8, coreTemp: 1 }, 'canyonSummer', loadout);
-    const frozen = getSurvivalModifiers({ wetness: 0.8, coreTemp: 0.2 }, 'glacier', loadout);
+    const warm = getSurvivalModifiers({ wetness: 0.8, coreTemp: 1 }, gameplayProfileForBiome('canyonSummer'), loadout);
+    const frozen = getSurvivalModifiers({ wetness: 0.8, coreTemp: 0.2 }, gameplayProfileForBiome('glacier'), loadout);
 
     expect(frozen.paddleCostMultiplier).toBeGreaterThan(warm.paddleCostMultiplier);
     expect(frozen.paddleRegenMultiplier).toBeLessThan(warm.paddleRegenMultiplier);
   });
 
   it('keeps the modifiers inside playable bounds at worst case', () => {
-    const worst = getSurvivalModifiers({ wetness: 1, coreTemp: 0 }, 'glacier', loadout);
+    const worst = getSurvivalModifiers({ wetness: 1, coreTemp: 0 }, gameplayProfileForBiome('glacier'), loadout);
     // Never free, never punishing enough to make a rapid unwinnable.
     expect(worst.paddleCostMultiplier).toBeGreaterThan(1);
     expect(worst.paddleCostMultiplier).toBeLessThan(2);
@@ -362,8 +363,8 @@ describe('raft paddle survival coupling', () => {
   it('reflects the loadout baseline in both paddle modifiers', () => {
     const expedition = getLoadoutDefinition('expedition');
     const state = { wetness: 0.5, coreTemp: 0.5 };
-    const balancedMods = getSurvivalModifiers(state, 'glacier', loadout);
-    const expeditionMods = getSurvivalModifiers(state, 'glacier', expedition);
+    const balancedMods = getSurvivalModifiers(state, gameplayProfileForBiome('glacier'), loadout);
+    const expeditionMods = getSurvivalModifiers(state, gameplayProfileForBiome('glacier'), expedition);
 
     expect(expeditionMods.paddleCostMultiplier / balancedMods.paddleCostMultiplier).toBeCloseTo(
       expedition.staminaDrainMultiplier / loadout.staminaDrainMultiplier,

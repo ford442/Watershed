@@ -6,7 +6,7 @@
  *
  * These used to be bound for every player (gated only on clean-test), so a tap
  * on F mid-run showed collider wireframes. The hook binds nothing unless
- * `enabled` — App passes `debug.debugEnabled && !cleanTest`, and `debugEnabled`
+ * `enabled` — DevOverlays passes `debug.debugEnabled && !cleanTest`, and `debugEnabled`
  * is the `?debug=1` query. The DebugPanel carries the same toggles for the
  * mouse. The key handling is `debugHotkeysImpl.ts`, fetched only when enabled,
  * so a player's build carries none of it.

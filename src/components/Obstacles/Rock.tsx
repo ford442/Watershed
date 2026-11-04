@@ -16,6 +16,7 @@ import {
 } from './pillarCrumble';
 import { gameEvents } from '../../systems/events/GameEvents';
 import { enqueuePillarFragments } from './PillarFragmentPool';
+import { beginPillarCrack, cancelPillarCrack, type PillarCrack } from './pillarSimClock';
 import { tryAcquirePillarFragmentSlots } from '../../systems/pools/PillarFragmentRegistry';
 import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import {
@@ -208,14 +209,10 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
 
   // Module-scoped phase table keyed by segment + pillar index (survives re-renders).
   const phaseTableRef = useRef<Map<string, PillarPhase>>(new Map());
-  // The crack in progress, timed in sim seconds by useFrame (never a wall-clock
-  // timer: the shatter removes the collider, so its frame is gameplay).
-  const crackRef = useRef<{
-    elapsedSec: number;
-    impactPoint: THREE.Vector3;
-    speed: number;
-    impactDir: THREE.Vector3;
-  } | null>(null);
+  // The crack in progress, timed in sim seconds by SimCore's `pillars` system
+  // (pillarSimClock.ts; never a wall-clock timer: the shatter removes the
+  // collider, so its frame is gameplay).
+  const crackRef = useRef<PillarCrack | null>(null);
   const [phase, setPhase] = useState<PillarPhase>(() => {
     const key = `${segmentId}:${pillarIndex}`;
     return phaseTableRef.current.get(key) ?? 'intact';
@@ -271,6 +268,10 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
     [pillarIndex, segmentId, setPillarPhase, transform.position, transform.scale],
   );
 
+  // The latest `shatter`, for the sim system's completion callback.
+  const shatterRef = useRef(shatter);
+  shatterRef.current = shatter;
+
   const handleCollisionEnter = useCallback(
     ({ other, manifold }: { other: { rigidBody?: RapierRigidBody | null }; manifold: { solverContactPoint: (i: number) => { x: number; y: number; z: number } } }) => {
       const otherBody = other.rigidBody;
@@ -291,24 +292,23 @@ function CrumblingColumn({ transform, geometry, material, castShadow }: Crumblin
         impactDir.normalize();
       }
 
-      crackRef.current = { elapsedSec: 0, impactPoint, speed, impactDir };
-      setPillarPhase('cracking');
-    },
-    [phase, rapier.RigidBodyType.Dynamic, setPillarPhase],
-  );
-
-  useFrame((_, delta) => {
-    const crack = crackRef.current;
-    if (crack) {
-      crack.elapsedSec += delta;
-      if (crack.elapsedSec >= PILLAR_CRACK_DURATION_S) {
+      crackRef.current = beginPillarCrack(phaseKey, () => {
         crackRef.current = null;
         if (phaseTableRef.current.get(phaseKey) === 'cracking') {
-          shatter(crack.impactPoint, crack.speed, crack.impactDir);
+          shatterRef.current(impactPoint, speed, impactDir);
         }
-        return;
-      }
-    }
+      });
+      setPillarPhase('cracking');
+    },
+    [phase, phaseKey, rapier.RigidBodyType.Dynamic, setPillarPhase],
+  );
+
+  // A pillar that leaves the scene mid-crack never shatters.
+  useEffect(() => () => cancelPillarCrack(phaseKey), [phaseKey]);
+
+  // The crack's clock is the sim's; this only shakes the mesh to it.
+  useFrame(() => {
+    const crack = crackRef.current;
     if (phase !== 'cracking' || !meshRef.current || !crack) return;
     const elapsed = crack.elapsedSec;
     const wobble = 1 + Math.sin(elapsed * 80) * 0.015 * Math.min(1, elapsed / PILLAR_CRACK_DURATION_S);

@@ -21,7 +21,7 @@ import { effectiveVortexStrength } from '../../physics/vortexForces';
 import { useSlotCanyonFill } from '../../rendering/sceneLightPool';
 
 import { useLOD } from '../../systems/lod/LODManager';
-import { useBiome } from '../../systems/biome/BiomeSystem';
+import { useBiomeTimeOfDay } from '../../systems/biome/BiomeSystem';
 import { useSunPosition } from '../../systems/lighting/SunPositionSystem';
 import { getTrackBiomeProfile, isGlacialBiome } from '../../configs/TrackBiomes';
 import { isAutumnLike, isSummerLike } from '../../configs/biomes';
@@ -88,7 +88,7 @@ export function TrackSegmentMeshes({
     config,
 }: TrackSegmentMeshesProps) {
     const { quality: lodQuality } = useLOD();
-    const { timeOfDay } = useBiome();
+    const timeOfDay = useBiomeTimeOfDay();
     const { sunDirection, sunWorldPosition } = useSunPosition();
     const waterSurfaceOffset = (segmentState === 'downhill' || verticalBias <= -1.2) ? 0.6 : 0;
     const waterfallFanAngle = (type === 'waterfall' && (particleCount || 0) >= 500) ? 60 : 0;
@@ -243,7 +243,7 @@ export function TrackSegmentMeshes({
     // Pond draw distance culling (Goal 3)
     const vegetationGroupRef = useRef<THREE.Group>(null);
     const rimVegetationGroupRef = useRef<THREE.Group>(null);
-    const { camera, scene } = useThree();
+    const { camera } = useThree();
     const segmentCenterRef = useRef(new THREE.Vector3());
 
     // Compute segment center from geometry for draw-distance culling

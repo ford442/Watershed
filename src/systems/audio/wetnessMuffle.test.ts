@@ -10,6 +10,7 @@ import {
   wetnessMuffleParams,
 } from './wetnessMuffle';
 import { createSurvivalState, getLoadoutDefinition, getSurvivalModifiers } from '../survival';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 describe('wetnessMuffleParams', () => {
   it('is transparent when dry', () => {
@@ -48,7 +49,7 @@ describe('wetness muffle bus', () => {
 
   it('round-trips the survival modifier the tick derives', () => {
     const loadout = getLoadoutDefinition('balanced');
-    const soaked = getSurvivalModifiers({ ...createSurvivalState(), wetness: 1 }, 'canyonSummer', loadout);
+    const soaked = getSurvivalModifiers({ ...createSurvivalState(), wetness: 1 }, gameplayProfileForBiome('canyonSummer'), loadout);
 
     setSfxWetnessMultiplier(soaked.sfxWetnessMultiplier);
 

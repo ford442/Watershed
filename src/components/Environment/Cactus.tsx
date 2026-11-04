@@ -1,14 +1,17 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instance } from '@react-three/drei';
-import type { BiomeDecorationProps } from './types';
+import type { BiomeDecorationProps, PlacementTransform } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
 import { sinHash } from '../../math/hash';
 
 const hash = (n: number): number => sinHash(n * 12.9898);
 
+/** Stable stand-in for absent transforms, so the instance memo is not rebuilt every render. */
+const NO_TRANSFORMS: PlacementTransform[] = [];
+
 export default function Cactus({ transforms }: BiomeDecorationProps) {
-  const safeTransforms = Array.isArray(transforms) ? transforms : [];
+  const safeTransforms = Array.isArray(transforms) ? transforms : NO_TRANSFORMS;
 
   const barrelGeometry = useMemo(() => {
     const geo = new THREE.CylinderGeometry(0.18, 0.22, 0.7, 10);

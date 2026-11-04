@@ -15,7 +15,6 @@ import {
   fract,
   floor,
   mix,
-  mul,
 } from 'three/tsl';
 import type { Vec2Node } from './nodeTypes';
 

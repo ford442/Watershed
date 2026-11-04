@@ -10,11 +10,18 @@
  *
  * Timestamps are sim time (`frame × dt`), never wall time, so two runs of one
  * script feed every subscriber the same deltas.
+ *
+ * The gameplay systems are not stepped here: `<SimCoreTick />` (a useFrame at
+ * −90) feeds each frame's delta to SimCore, and for the length of a stepped run
+ * the core is in scripted mode, where one frame is exactly one fixed step —
+ * the same `simCore.step()` a real frame's accumulator calls.
  */
 
 import type { RootState } from '@react-three/fiber';
 import { INPUT_FIXED_DT_MS } from './InputFrame';
 import { isGhostRecording } from '../systems/ghost/GhostRecorder';
+import { simCore } from '../sim/core/SimCore';
+import { currentSearch } from '../config/queryFlags';
 
 const SCRIPT_PREFIX = 'script:';
 
@@ -26,7 +33,7 @@ const SCRIPT_PREFIX = 'script:';
 const ACCUMULATOR_BIAS_SEC = 1e-6;
 
 /** `?input=script:<url>` → `<url>`, else null. */
-export function getInputScriptUrl(search: string = typeof window !== 'undefined' ? window.location.search : ''): string | null {
+export function getInputScriptUrl(search: string = currentSearch()): string | null {
   const value = new URLSearchParams(search).get('input');
   if (!value || !value.startsWith(SCRIPT_PREFIX)) return null;
   const url = value.slice(SCRIPT_PREFIX.length);
@@ -38,7 +45,7 @@ export function getInputScriptUrl(search: string = typeof window !== 'undefined'
  * (like `?ghost=`): a replay plays a run's recorded inputs, so it must come
  * from where the game is served.
  */
-export function getReplayGhostUrl(search: string = typeof window !== 'undefined' ? window.location.search : ''): string | null {
+export function getReplayGhostUrl(search: string = currentSearch()): string | null {
   const value = new URLSearchParams(search).get('replay');
   if (!value) return null;
   if (typeof window === 'undefined') return value;
@@ -91,6 +98,8 @@ export function stepRootFrames(getState: () => RootState, n: number): number {
   const render = gl.render;
   const skipRender = () => undefined;
   const dtSec = INPUT_FIXED_DT_MS / 1000;
+  const wasScripted = simCore.isScripted();
+  simCore.setScripted(true);
   try {
     for (let i = 0; i < n; i += 1) {
       gl.render = i === n - 1 ? render : skipRender;
@@ -98,6 +107,7 @@ export function stepRootFrames(getState: () => RootState, n: number): number {
       state.advance(simTimeSec + ACCUMULATOR_BIAS_SEC);
     }
   } finally {
+    simCore.setScripted(wasScripted);
     if (ownRender) gl.render = render;
     else delete (gl as Partial<typeof gl>).render;
   }

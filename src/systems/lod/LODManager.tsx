@@ -9,8 +9,7 @@
  */
 
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
-import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { useGameStore } from '../GameState';
 import {
@@ -387,95 +386,6 @@ export const LODProvider: React.FC<LODProviderProps> = ({
     }}>
       {children}
     </LODContext.Provider>
-  );
-};
-
-/**
- * FrustumCulling - Culls objects outside camera view
- */
-interface FrustumCullingProps {
-  objects: THREE.Object3D[];
-  cullDistance?: number;
-  onCulledChange?: (count: number) => void;
-}
-
-export const FrustumCulling: React.FC<FrustumCullingProps> = ({
-  objects,
-  cullDistance = 150,
-  onCulledChange,
-}) => {
-  const { camera } = useThree();
-  const frustumRef = useRef(new THREE.Frustum());
-  const projMatrixRef = useRef(new THREE.Matrix4());
-  
-  useFrame(() => {
-    // Update frustum
-    projMatrixRef.current.multiplyMatrices(
-      camera.projectionMatrix,
-      camera.matrixWorldInverse
-    );
-    frustumRef.current.setFromProjectionMatrix(projMatrixRef.current);
-    
-    const cameraPos = camera.position;
-    let culledCount = 0;
-    
-    objects.forEach(obj => {
-      if (!obj) return;
-      
-      // Distance check
-      const dist = obj.position.distanceTo(cameraPos);
-      if (dist > cullDistance) {
-        obj.visible = false;
-        culledCount++;
-        return;
-      }
-      
-      // Frustum check
-      const inFrustum = frustumRef.current.intersectsObject(obj);
-      obj.visible = inFrustum;
-      
-      if (!inFrustum) culledCount++;
-    });
-    
-    onCulledChange?.(culledCount);
-  });
-  
-  return null;
-};
-
-/**
- * LODObject - Component that applies LOD based on distance
- */
-interface LODObjectProps {
-  lod0: React.ReactNode; // Close (< 30m)
-  lod1: React.ReactNode; // Medium (30-80m)
-  lod2: React.ReactNode; // Far (> 80m)
-  position: [number, number, number];
-}
-
-export const LODObject: React.FC<LODObjectProps> = ({
-  lod0,
-  lod1,
-  lod2,
-  position,
-}) => {
-  const { camera } = useThree();
-  const [level, setLevel] = useState(0);
-  
-  useFrame(() => {
-    const dist = camera.position.distanceTo(new THREE.Vector3(...position));
-    
-    if (dist < 30) setLevel(0);
-    else if (dist < 80) setLevel(1);
-    else setLevel(2);
-  });
-  
-  return (
-    <group position={position}>
-      {level === 0 && lod0}
-      {level === 1 && lod1}
-      {level === 2 && lod2}
-    </group>
   );
 };
 

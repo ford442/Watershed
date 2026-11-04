@@ -267,36 +267,3 @@ export class MistParticle extends VFXParticle {
     return true;
   }
 }
-
-/**
- * Global particle manager singleton
- */
-class ParticleManager {
-  private pools = new Map<string, ParticlePool<VFXParticle>>();
-
-  createPool(name: string, factory: () => VFXParticle, initialSize = 500) {
-    const pool = new ParticlePool(factory, initialSize);
-    this.pools.set(name, pool);
-    return pool;
-  }
-
-  getPool(name: string): ParticlePool<VFXParticle> | undefined {
-    return this.pools.get(name);
-  }
-
-  getAllStats() {
-    const stats: Record<string, ReturnType<ParticlePool<VFXParticle>['getStats']>> = {};
-    this.pools.forEach((pool, name) => {
-      stats[name] = pool.getStats();
-    });
-    return stats;
-  }
-
-  clearAll() {
-    this.pools.forEach(pool => pool.clear());
-  }
-}
-
-export const particleManager = new ParticleManager();
-
-export default ParticlePool;

@@ -60,56 +60,9 @@ export const DEFAULT_SEGMENT_PROGRESSION: SegmentProgressionConfig = {
 // =============================================================================
 
 /**
- * Generate a smooth river path with controlled meandering
- * SWARM: Override this in biome-specific generators for different path styles
- */
-export function generateRiverPath(
-  startPoint: THREE.Vector3,
-  startDirection: THREE.Vector3,
-  config: MapConfig,
-  seed: number,
-  meanderStrength: number = 1.0
-): THREE.Vector3[] {
-  const rng = createRng(seed);
-  const points: THREE.Vector3[] = [startPoint.clone()];
-
-  const currentPos = startPoint.clone();
-  const direction = startDirection.clone().normalize();
-
-  // Generate 4 control points for Catmull-Rom curve
-  for (let i = 0; i < 3; i++) {
-    // Meandering based on sine waves + randomness
-    const meanderPhase = seed + i * 0.5;
-    const turnFactor = Math.sin(meanderPhase) * meanderStrength * 0.3;
-
-    // Add random variation
-    direction.x += turnFactor + (rng() - 0.5) * 0.2;
-    direction.y += (rng() * 0.2 - 0.1); // Slight elevation changes
-
-    // Clamp upward slope
-    if (direction.y > -0.1) direction.y = -0.1;
-
-    // Ensure forward progress
-    if (direction.z > -0.3) direction.z = -0.3;
-
-    direction.normalize();
-
-    // Step forward
-    const stepDistance = config.chunkLength * (0.8 + rng() * 0.4);
-    const step = direction.clone().multiplyScalar(stepDistance);
-    currentPos.add(step);
-
-    points.push(currentPos.clone());
-  }
-
-  return points;
-}
-
-/**
  * Generate a river path for a single treadmill segment.
  *
- * This is the ChunkManager-compatible variant of `generateRiverPath`:
- * it uses the segment's authored progression (meanderStrength, verticalBias,
+ * It uses the segment's authored progression (meanderStrength, verticalBias,
  * type) and a configurable step distance to produce 4 Catmull-Rom control
  * points that connect end-to-end with the previous segment.
  */
@@ -164,82 +117,6 @@ export function generateSegmentPath(
   }
 
   return points;
-}
-
-/**
- * Calculate spawn positions along a river path
- * SWARM: Add new object types here
- */
-export function calculateSpawns(
-  curve: THREE.CatmullRomCurve3,
-  chunkIndex: number,
-  config: MapConfig,
-  seed: number,
-  density: { trees: number; rocks: number; collectibles: number }
-): SpawnData[] {
-  const rng = createRng(seed + chunkIndex * 1000);
-  const spawns: SpawnData[] = [];
-
-  const pathLength = curve.getLength();
-  const steps = Math.floor(pathLength / 2); // Sample every 2 meters
-
-  for (let i = 0; i < steps; i++) {
-    const t = i / steps;
-    const point = curve.getPoint(t);
-    const tangent = curve.getTangent(t).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
-    // Spawn on both sides
-    for (const side of [-1, 1]) {
-      const bankStart = config.waterWidth / 2;
-
-      // Trees
-      if (rng() < density.trees / steps) {
-        const dist = bankStart + 4 + rng() * 8;
-        const offset = binormal.clone().multiplyScalar(side * dist);
-        const pos = point.clone().add(offset);
-
-        // Height based on distance from center (bank slope)
-        const normalizedDist = Math.abs(side * dist) / (config.canyonWidth * 0.45);
-        const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-        pos.y += height - 0.5;
-
-        spawns.push({
-          type: 'tree',
-          position: pos,
-          rotation: new THREE.Euler(0, rng() * Math.PI * 2, 0),
-          scale: new THREE.Vector3(1.5, 1.5, 1.5).multiplyScalar(1 + rng() * 0.5),
-          meta: { variant: rngInt(rng, 0, 3) }
-        });
-      }
-
-      // Rocks (obstacles)
-      if (rng() < density.rocks / steps) {
-        const dist = bankStart + 1 + rng() * 4;
-        const offset = binormal.clone().multiplyScalar(side * dist);
-        const pos = point.clone().add(offset);
-
-        const normalizedDist = Math.abs(side * dist) / (config.canyonWidth * 0.45);
-        const height = Math.pow(Math.max(0, normalizedDist), 2.5) * 12;
-        pos.y += height;
-
-        spawns.push({
-          type: 'rock',
-          position: pos,
-          rotation: new THREE.Euler(
-            rng() * Math.PI,
-            rng() * Math.PI,
-            rng() * Math.PI
-          ),
-          scale: new THREE.Vector3(1, 1, 1).multiplyScalar(0.8 + rng() * 0.8),
-          meta: { collider: true }
-        });
-      }
-    }
-  }
-
-  return spawns;
 }
 
 /**

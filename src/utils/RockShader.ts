@@ -17,12 +17,6 @@ export interface RockShaderOptions {
   rimColor?: string;
 }
 
-type ShaderCompileTarget = THREE.Material & {
-  userData: Record<string, unknown>;
-  onBeforeCompile?: (shader: THREE.WebGLProgramParametersWithUniforms, renderer?: THREE.WebGLRenderer) => void;
-  needsUpdate: boolean;
-};
-
 function injectShaderChunk(source: string, marker: string, replacement: string, label: string): string {
     if (!source.includes(marker)) {
         throw new Error(`RockShader: Missing shader marker "${marker}" in ${label}`);

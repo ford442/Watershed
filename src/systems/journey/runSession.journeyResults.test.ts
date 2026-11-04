@@ -8,8 +8,9 @@ import {
   initRunSession,
   recordUprightDistance,
   resetRunSessionForTests,
-  tickRunSurvival,
+  stepRunSurvival,
 } from './runSession';
+import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
 
 describe('runSession journey results', () => {
   beforeEach(() => {
@@ -19,9 +20,9 @@ describe('runSession journey results', () => {
   it('tracks peak wetness and upright distance for results UI', () => {
     initRunSession({ mapId: 'delta', launchHour: 17 });
 
-    tickRunSurvival({
+    stepRunSurvival({
       dt: 2,
-      biomeId: 'delta',
+      climate: gameplayProfileForBiome('delta'),
       inWater: true,
       windSpeed: 2,
     });

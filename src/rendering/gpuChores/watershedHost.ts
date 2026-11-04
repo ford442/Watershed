@@ -30,10 +30,6 @@ export function bindChoreWasm(mod: WatershedNativeModule | null): void {
   boundWasm = hasChoreExports(mod) ? mod : null;
 }
 
-export function getBoundChoreWasm(): WatershedNativeModule | null {
-  return boundWasm;
-}
-
 function withHeap<T>(
   wasm: WatershedNativeModule,
   values: Float32Array,

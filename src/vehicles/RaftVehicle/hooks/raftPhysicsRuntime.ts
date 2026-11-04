@@ -9,10 +9,9 @@ import { playPaddleSound, playRaftTipSound } from '../audio';
 import type { PlayerControls } from '../../../hooks/usePlayerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
 import type { ParticlePool } from '../../../components/particlePool';
-import { tickRunSurvival } from '../../../systems/journey/runSession';
+import { publishRaftSurvival } from '../../../systems/journey/runSession';
 import { getComfort } from '../../../systems/settings/comfortRuntime';
 import { raftTargetFov } from '../../../systems/settings/comfort';
-import { isBiomeId, type BiomeId } from '../../../configs/biomes';
 import { clamp01 } from '../../../math/scalar';
 import { createRng } from '../../../math/random';
 import { getVehicleWaterLevel } from '../../../systems/water/vehicleWaterDatum';
@@ -63,16 +62,24 @@ export interface RaftPhysicsRuntimeDeps {
   sampleWaterLevel?: () => number | null;
 }
 
-export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
-const sampleWaterLevel = deps.sampleWaterLevel ?? getVehicleWaterLevel;
+/**
+ * One raft's runtime state, shared by the step functions below: the injected
+ * deps, the water datum it samples, and the survival paddle multipliers.
+ */
+interface RaftRuntimeCtx {
+  deps: RaftPhysicsRuntimeDeps;
+  sampleWaterLevel: () => number | null;
+  /** Paddle-economy multipliers from the last survival tick (1 = unaffected). */
+  paddleModifiers: { cost: number; regen: number };
+}
 
 /**
  * Fraction of the hull below the staged surface — the same level the water
  * force reads, so a lowered stage grounds the hull and this check together.
  * No water under the raft (off the sheet, before the first force frame) is 0.
  */
-const calculateSubmergedRatio = (raftY: number): number => {
-  const waterLevel = sampleWaterLevel();
+function calculateSubmergedRatio(rt: RaftRuntimeCtx, raftY: number): number {
+  const waterLevel = rt.sampleWaterLevel();
   if (waterLevel === null) return 0;
   const raftHalfHeight = WATER_PHYSICS.RAFT_HEIGHT / 2;
   const raftBottom = raftY - raftHalfHeight;
@@ -83,10 +90,10 @@ const calculateSubmergedRatio = (raftY: number): number => {
 
   const submergedHeight = waterLevel - raftBottom;
   return clamp01(submergedHeight / WATER_PHYSICS.RAFT_HEIGHT);
-};
+}
 
-const applyTurbulence = (body: RapierBody, time: number, delta: number) => {
-  if (!deps.buoyancyState.current.isFloating) return;
+function applyTurbulence(rt: RaftRuntimeCtx, body: RapierBody, time: number, delta: number) {
+  if (!rt.deps.buoyancyState.current.isFloating) return;
 
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
@@ -107,9 +114,9 @@ const applyTurbulence = (body: RapierBody, time: number, delta: number) => {
   euler.z += rollWobble * delta * 2;
 
   body.setRotation(_quat.setFromEuler(euler), true);
-};
+}
 
-const applyTippingForce = (body: RapierBody, submergedRatio: number, delta: number) => {
+function applyTippingForce(body: RapierBody, submergedRatio: number, delta: number) {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   const calm = useGameStore.getState().currentBiome === 'delta';
@@ -131,9 +138,9 @@ const applyTippingForce = (body: RapierBody, submergedRatio: number, delta: numb
     y: 0,
     z: -vel.x * tipMagnitude * delta * 0.15
   }, true);
-};
+}
 
-const dampenRotation = (body: RapierBody, delta: number) => {
+function dampenRotation(body: RapierBody, delta: number) {
   const angVel = body.angvel();
   const damping = Math.pow(WATER_PHYSICS.ROTATION_DAMPING, delta * 60);
 
@@ -142,16 +149,16 @@ const dampenRotation = (body: RapierBody, delta: number) => {
     y: angVel.y * damping,
     z: angVel.z * damping
   }, true);
-};
+}
 
 /**
  * Handle tipping mechanics - righting torque and danger detection
  */
-const handleTipping = (body: RapierBody, delta: number): boolean => {
+function handleTipping(rt: RaftRuntimeCtx, body: RapierBody, delta: number): boolean {
   const euler = _euler.setFromQuaternion(bodyQuaternion(body));
 
-  deps.tippingState.current.rollAngle = euler.z;
-  deps.tippingState.current.pitchAngle = euler.x;
+  rt.deps.tippingState.current.rollAngle = euler.z;
+  rt.deps.tippingState.current.pitchAngle = euler.x;
 
   const absRoll = Math.abs(euler.z);
   const absPitch = Math.abs(euler.x);
@@ -171,24 +178,24 @@ const handleTipping = (body: RapierBody, delta: number): boolean => {
 
   // Danger zone at 70°
   if (maxTilt > TIPPING.DANGER_THRESHOLD) {
-    deps.tippingState.current.dangerTime += delta;
+    rt.deps.tippingState.current.dangerTime += delta;
 
-    if (deps.tippingState.current.dangerTime > TIPPING.DANGER_TIME) {
-      deps.tippingState.current.isTipped = true;
+    if (rt.deps.tippingState.current.dangerTime > TIPPING.DANGER_TIME) {
+      rt.deps.tippingState.current.isTipped = true;
       return true;
     }
   } else {
-    deps.tippingState.current.dangerTime = Math.max(0, deps.tippingState.current.dangerTime - delta * 2);
+    rt.deps.tippingState.current.dangerTime = Math.max(0, rt.deps.tippingState.current.dangerTime - delta * 2);
 
     // Update last safe position when stable
     if (maxTilt < TIPPING.RIGHTING_THRESHOLD * 0.5) {
       const t = body.translation();
-      deps.tippingState.current.lastSafePosition.set(t.x, t.y, t.z);
+      rt.deps.tippingState.current.lastSafePosition.set(t.x, t.y, t.z);
     }
   }
 
   return false;
-};
+}
 
 /**
  * Survival coupling for the raft (Track A v2).
@@ -201,28 +208,15 @@ const handleTipping = (body: RapierBody, delta: number): boolean => {
  * run session is active (free-play / editor), in which case stamina behaves
  * exactly as it did before survival existed.
  */
-const tickRaftSurvival = (body: RapierBody, delta: number) => {
-  const vel = body?.linvel?.();
-  const windSpeed = vel ? Math.sqrt(vel.x * vel.x + vel.z * vel.z) : 0;
-  const storeBiome = useGameStore.getState().currentBiome;
-  const biomeId: BiomeId = isBiomeId(storeBiome) ? storeBiome : 'canyonSummer';
-
-  return tickRunSurvival({
-    dt: delta,
-    biomeId,
-    inWater: deps.buoyancyState.current.isFloating === true,
-    windSpeed,
-  });
-};
-
-/** Paddle-economy multipliers from the last survival tick (1 = unaffected). */
-const paddleModifiers = { cost: 1, regen: 1 };
+function tickRaftSurvival(rt: RaftRuntimeCtx) {
+  return publishRaftSurvival(rt.deps.buoyancyState.current.isFloating === true);
+}
 
 /**
  * Update stamina state each frame (regen, exhaustion tracking)
  */
-const updateStamina = (delta: number) => {
-  const st = deps.staminaState.current;
+function updateStamina(rt: RaftRuntimeCtx, delta: number) {
+  const st = rt.deps.staminaState.current;
 
   // Regen delay countdown
   if (st.regenDelay > 0) {
@@ -234,7 +228,7 @@ const updateStamina = (delta: number) => {
   if (st.current < STAMINA.MAX) {
     st.current = Math.min(
       STAMINA.MAX,
-      st.current + STAMINA.REGEN_RATE * paddleModifiers.regen * delta,
+      st.current + STAMINA.REGEN_RATE * rt.paddleModifiers.regen * delta,
     );
   }
 
@@ -242,13 +236,13 @@ const updateStamina = (delta: number) => {
   if (st.isExhausted && st.current > STAMINA.EXHAUSTED_THRESHOLD * STAMINA.EXHAUSTED_RECOVERY_MULTIPLIER) {
     st.isExhausted = false;
   }
-};
+}
 
 /**
  * Consume stamina for a paddle stroke; returns effective power multiplier (0-1)
  */
-const consumeStamina = (): number => {
-  const st = deps.staminaState.current;
+function consumeStamina(rt: RaftRuntimeCtx): number {
+  const st = rt.deps.staminaState.current;
 
   if (st.isExhausted || st.current < STAMINA.EXHAUSTED_THRESHOLD) {
     st.isExhausted = true;
@@ -256,7 +250,7 @@ const consumeStamina = (): number => {
   }
 
   // Cold, stiff hands and a soaked jacket make each stroke cost more.
-  st.current = Math.max(0, st.current - STAMINA.COST * paddleModifiers.cost);
+  st.current = Math.max(0, st.current - STAMINA.COST * rt.paddleModifiers.cost);
   st.regenDelay = STAMINA.REGEN_DELAY;
 
   if (st.current < STAMINA.EXHAUSTED_THRESHOLD) {
@@ -266,12 +260,12 @@ const consumeStamina = (): number => {
   // Power scales with remaining stamina (power curve makes it forgiving)
   const ratio = st.current / STAMINA.MAX;
   return Math.pow(ratio, STAMINA.POWER_CURVE);
-};
+}
 
 /**
  * Apply brake forces (broadside drag) when S/backward is held
  */
-const applyBrake = (body: RapierBody, delta: number) => {
+function applyBrake(body: RapierBody, delta: number) {
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
   if (speed < 0.1) return;
@@ -291,7 +285,7 @@ const applyBrake = (body: RapierBody, delta: number) => {
     y: angVel.y * Math.max(0, 1 - BRAKE.ANGULAR_DRAG * delta),
     z: angVel.z * Math.max(0, 1 - BRAKE.ANGULAR_DRAG * delta),
   }, true);
-};
+}
 
 /**
  * Stroke strength per paddle, 0..1. A keyboard key reports a full 1; a gamepad
@@ -299,32 +293,32 @@ const applyBrake = (body: RapierBody, delta: number) => {
  * #486 B), so a half-pull is a half-strength stroke. Both paddles (or W) average
  * the two; W alone is a full stroke.
  */
-const paddleStrokeScales = (c: {
+function paddleStrokeScales(c: {
   paddleLeft: boolean;
   paddleRight: boolean;
   paddleLeftAxis?: number;
   paddleRightAxis?: number;
-}) => {
+}) {
   const strokeLeft = c.paddleLeft ? Math.max(0.35, Math.min(1, c.paddleLeftAxis ?? 1)) : 0;
   const strokeRight = c.paddleRight ? Math.max(0.35, Math.min(1, c.paddleRightAxis ?? 1)) : 0;
   const strokeBoth =
     c.paddleLeft && c.paddleRight ? (strokeLeft + strokeRight) / 2 : c.paddleLeft ? strokeLeft : c.paddleRight ? strokeRight : 1;
   return { strokeLeft, strokeRight, strokeBoth };
-};
+}
 
 /**
  * Apply paddle forces based on Q/E input with stamina-gated power
  */
-const applyPaddleForces = (body: RapierBody, delta: number) => {
-  const controls = deps.controls.getControls();
+function applyPaddleForces(rt: RaftRuntimeCtx, body: RapierBody, delta: number) {
+  const controls = rt.deps.controls.getControls();
   const { paddleLeft, paddleRight, forward } = controls;
   const { strokeLeft, strokeRight, strokeBoth } = paddleStrokeScales(controls);
 
-  deps.paddleState.current.leftPaddle = paddleLeft;
-  deps.paddleState.current.rightPaddle = paddleRight;
+  rt.deps.paddleState.current.leftPaddle = paddleLeft;
+  rt.deps.paddleState.current.rightPaddle = paddleRight;
 
   // If stunned, reduce input effectiveness
-  const stunMultiplier = deps.stunState.current.active ? COLLISION.STUN_EFFECTIVENESS : 1.0;
+  const stunMultiplier = rt.deps.stunState.current.active ? COLLISION.STUN_EFFECTIVENESS : 1.0;
 
   const rot = bodyQuaternion(body);
   const forwardDir = _forward.set(0, 0, -1).applyQuaternion(rot);
@@ -332,7 +326,7 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
 
   // Both paddles or W key = straight forward
   if ((paddleLeft && paddleRight) || forward) {
-    const power = consumeStamina() * strokeBoth * stunMultiplier;
+    const power = consumeStamina(rt) * strokeBoth * stunMultiplier;
     if (power <= 0) return;
 
     body.applyImpulse({
@@ -342,19 +336,19 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
     }, true);
 
     // Arm forward bias to retain momentum after this stroke
-    deps.forwardBiasTimer.current = BIAS.DURATION;
+    rt.deps.forwardBiasTimer.current = BIAS.DURATION;
 
     // Spawn foam on both sides
     if (random() > 0.7) {
-      spawnFoamParticle(body, 'left');
-      spawnFoamParticle(body, 'right');
+      spawnFoamParticle(rt, body, 'left');
+      spawnFoamParticle(rt, body, 'right');
     }
     return;
   }
 
   // Left paddle (Q) - apply force at left attachment point, rotate left
   if (paddleLeft) {
-    const power = consumeStamina() * strokeLeft * stunMultiplier;
+    const power = consumeStamina(rt) * strokeLeft * stunMultiplier;
     if (power <= 0) return;
 
     // Forward thrust component
@@ -379,15 +373,15 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
     }, true);
 
     if (random() > 0.6) {
-      spawnFoamParticle(body, 'left');
+      spawnFoamParticle(rt, body, 'left');
       playPaddleSound('left');
     }
-    deps.forwardBiasTimer.current = BIAS.DURATION;
+    rt.deps.forwardBiasTimer.current = BIAS.DURATION;
   }
 
   // Right paddle (E) - apply force at right attachment point, rotate right
   if (paddleRight) {
-    const power = consumeStamina() * strokeRight * stunMultiplier;
+    const power = consumeStamina(rt) * strokeRight * stunMultiplier;
     if (power <= 0) return;
 
     body.applyImpulse({
@@ -409,23 +403,23 @@ const applyPaddleForces = (body: RapierBody, delta: number) => {
     }, true);
 
     if (random() > 0.6) {
-      spawnFoamParticle(body, 'right');
+      spawnFoamParticle(rt, body, 'right');
       playPaddleSound('right');
     }
-    deps.forwardBiasTimer.current = BIAS.DURATION;
+    rt.deps.forwardBiasTimer.current = BIAS.DURATION;
   }
-};
+}
 
 /**
  * Spawn a foam particle for paddle visual feedback
  */
-const spawnFoamParticle = (body: RapierBody, side: 'left' | 'right') => {
+function spawnFoamParticle(rt: RaftRuntimeCtx, body: RapierBody, side: 'left' | 'right') {
   const pos = body.translation();
   const offset = _offset
     .set(side === 'left' ? -1.2 : 1.2, -0.2, side === 'left' ? 0.5 : -0.5)
     .applyQuaternion(bodyQuaternion(body));
 
-  deps.foamParticles.spawn({
+  rt.deps.foamParticles.spawn({
     x: pos.x + offset.x,
     y: pos.y + offset.y,
     z: pos.z + offset.z,
@@ -435,7 +429,7 @@ const spawnFoamParticle = (body: RapierBody, side: 'left' | 'right') => {
     life: PADDLE.FOAM_LIFETIME,
     size: 0.15 + random() * 0.1,
   });
-};
+}
 
 /** Linear RGB of the shed spray (#e0f0ff). */
 const SHED_COLOR = new THREE.Color('#e0f0ff');
@@ -446,7 +440,7 @@ const SHED_GRAVITY = -1.5;
  * Goal 2: Spawn a water-shedding particle trailing the raft
  * Particle size and spread scale with current speed for velocity-reactive VFX
  */
-const spawnShedParticle = (body: RapierBody) => {
+function spawnShedParticle(rt: RaftRuntimeCtx, body: RapierBody) {
   const pos = body.translation();
   const rot = bodyQuaternion(body);
   const bodyVel = body.linvel();
@@ -466,7 +460,7 @@ const spawnShedParticle = (body: RapierBody) => {
     0.5 + random() * (0.5 + speedFactor * 0.5),
   ).applyQuaternion(rot);
 
-  deps.shedParticles.spawn({
+  rt.deps.shedParticles.spawn({
     x: px, y: py, z: pz,
     vx: vel.x, vy: vel.y, vz: vel.z,
     life: SHED.LIFETIME,
@@ -474,20 +468,20 @@ const spawnShedParticle = (body: RapierBody) => {
     gravity: SHED_GRAVITY,
     r: SHED_COLOR.r, g: SHED_COLOR.g, b: SHED_COLOR.b,
   });
-};
+}
 
 /**
  * Spawn a burst of shed particles at a wall contact point.
  * Gives the "shedding water on hard impact" feel without a full particle system.
  */
-const spawnContactBurst = (contactPoint: Vec3Like, impactForce: number) => {
+function spawnContactBurst(rt: RaftRuntimeCtx, contactPoint: Vec3Like, impactForce: number) {
   const forceFactor = Math.min(1, impactForce / COLLISION.IMPACT_FORCE_SCALE);
   const count = Math.floor(COLLISION.CONTACT_BURST_COUNT * forceFactor) + 4;
 
   for (let i = 0; i < count; i++) {
     const angle = random() * Math.PI * 2;
     const speed = 1.5 + random() * 3.0 * forceFactor;
-    deps.shedParticles.spawn({
+    rt.deps.shedParticles.spawn({
       x: contactPoint.x + (random() - 0.5) * 0.4,
       y: contactPoint.y + 0.1,
       z: contactPoint.z + (random() - 0.5) * 0.4,
@@ -500,17 +494,17 @@ const spawnContactBurst = (contactPoint: Vec3Like, impactForce: number) => {
       r: SHED_COLOR.r, g: SHED_COLOR.g, b: SHED_COLOR.b,
     });
   }
-};
+}
 
 /**
  * Reset raft to safe position after tipping
  */
-const resetRaft = (body: RapierBody) => {
+function resetRaft(rt: RaftRuntimeCtx, body: RapierBody) {
   playRaftTipSound();
 
-  const safePos = deps.tippingState.current.lastSafePosition.clone();
+  const safePos = rt.deps.tippingState.current.lastSafePosition.clone();
   // Clear of the surface the raft was last floating on, never an absolute y.
-  const waterLevel = sampleWaterLevel();
+  const waterLevel = rt.sampleWaterLevel();
   if (waterLevel !== null) safePos.y = Math.max(safePos.y, waterLevel + TIPPING.RESET_HEIGHT);
 
   body.setTranslation(safePos, true);
@@ -518,11 +512,11 @@ const resetRaft = (body: RapierBody) => {
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   body.setRotation(IDENTITY_ROTATION, true);
 
-  deps.tippingState.current.dangerTime = 0;
-  deps.tippingState.current.isTipped = false;
-};
+  rt.deps.tippingState.current.dangerTime = 0;
+  rt.deps.tippingState.current.isTipped = false;
+}
 
-const updateCameraFromBody = (body: RapierBody) => {
+function updateCameraFromBody(rt: RaftRuntimeCtx, body: RapierBody) {
   const pos = body.translation();
   const vel = body.linvel();
   const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
@@ -537,8 +531,8 @@ const updateCameraFromBody = (body: RapierBody) => {
     pos.y + CAMERA.BASE_OFFSET_Y,
     pos.z + CAMERA.BASE_OFFSET_Z + velLagZ
   );
-  deps.camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
-  deps.camera.lookAt(pos.x, pos.y, pos.z);
+  rt.deps.camera.position.lerp(targetPos, CAMERA.LERP_SPEED);
+  rt.deps.camera.lookAt(pos.x, pos.y, pos.z);
 
   // Base FOV and kick strength are the player's comfort settings (#486 D); the
   // authored headroom (FOV_MAX − FOV_BASE) still caps the kick.
@@ -549,21 +543,21 @@ const updateCameraFromBody = (body: RapierBody) => {
     CAMERA.FOV_MAX - CAMERA.FOV_BASE,
     getComfort(),
   );
-  deps.currentFov.current += (targetFov - deps.currentFov.current) * CAMERA.FOV_LERP;
-  if ('fov' in deps.camera) {
-    (deps.camera as THREE.PerspectiveCamera).fov = deps.currentFov.current;
-    (deps.camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+  rt.deps.currentFov.current += (targetFov - rt.deps.currentFov.current) * CAMERA.FOV_LERP;
+  if ('fov' in rt.deps.camera) {
+    (rt.deps.camera as THREE.PerspectiveCamera).fov = rt.deps.currentFov.current;
+    (rt.deps.camera as THREE.PerspectiveCamera).updateProjectionMatrix();
   }
 
   return { pos, vel, speed };
-};
+}
 
-const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
-  const controls = deps.controls.getControls();
+function updateWorkerPhysicsFrame(rt: RaftRuntimeCtx, body: RapierBody, delta: number) {
+  const controls = rt.deps.controls.getControls();
   const { paddleLeft, paddleRight, forward } = controls;
   const { strokeLeft, strokeRight, strokeBoth } = paddleStrokeScales(controls);
-  deps.paddleState.current.leftPaddle = paddleLeft;
-  deps.paddleState.current.rightPaddle = paddleRight;
+  rt.deps.paddleState.current.leftPaddle = paddleLeft;
+  rt.deps.paddleState.current.rightPaddle = paddleRight;
 
   const rot = bodyQuaternion(body);
   const forwardDir = _forward.set(0, 0, -1).applyQuaternion(rot);
@@ -572,7 +566,7 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
   const impulses: RaftImpulse[] = [];
 
   if ((paddleLeft && paddleRight) || forward) {
-    const power = consumeStamina() * strokeBoth;
+    const power = consumeStamina(rt) * strokeBoth;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * power * delta,
@@ -581,7 +575,7 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
       ]);
     }
   } else if (paddleLeft) {
-    const power = consumeStamina() * strokeLeft;
+    const power = consumeStamina(rt) * strokeLeft;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
@@ -595,7 +589,7 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
       ]);
     }
   } else if (paddleRight) {
-    const power = consumeStamina() * strokeRight;
+    const power = consumeStamina(rt) * strokeRight;
     if (power > 0) {
       impulses.push([
         forwardDir.x * PADDLE.THRUST_FORCE * 0.7 * power * delta,
@@ -610,36 +604,48 @@ const updateWorkerPhysicsFrame = (body: RapierBody, delta: number) => {
     }
   }
 
-  deps.stepWorkerProxy(body, delta, impulses);
-  updateCameraFromBody(body);
-};
+  rt.deps.stepWorkerProxy(body, delta, impulses);
+  updateCameraFromBody(rt, body);
+}
 
 /** Refresh the buoyancy state from the staged datum; returns the submerged ratio. */
-const updateBuoyancy = (raftY: number): number => {
-  const submergedRatio = calculateSubmergedRatio(raftY);
-  deps.buoyancyState.current.submergedRatio = submergedRatio;
-  deps.buoyancyState.current.isFloating = submergedRatio > FLOATING_SUBMERGED_RATIO;
+function updateBuoyancy(rt: RaftRuntimeCtx, raftY: number): number {
+  const submergedRatio = calculateSubmergedRatio(rt, raftY);
+  rt.deps.buoyancyState.current.submergedRatio = submergedRatio;
+  rt.deps.buoyancyState.current.isFloating = submergedRatio > FLOATING_SUBMERGED_RATIO;
   return submergedRatio;
-};
+}
 
+/**
+ * The raft's physics runtime: the module's step functions bound to one raft's
+ * deps. Built once per raft (useRaftControls), never per frame.
+ */
+export function createRaftPhysicsRuntime(deps: RaftPhysicsRuntimeDeps) {
+  const rt: RaftRuntimeCtx = {
+    deps,
+    sampleWaterLevel: deps.sampleWaterLevel ?? getVehicleWaterLevel,
+    paddleModifiers: { cost: 1, regen: 1 },
+  };
   return {
-    calculateSubmergedRatio,
-    updateBuoyancy,
-    applyTurbulence,
+    calculateSubmergedRatio: (raftY: number) => calculateSubmergedRatio(rt, raftY),
+    updateBuoyancy: (raftY: number) => updateBuoyancy(rt, raftY),
+    applyTurbulence: (body: RapierBody, time: number, delta: number) => applyTurbulence(rt, body, time, delta),
     applyTippingForce,
     dampenRotation,
-    handleTipping,
-    tickRaftSurvival,
-    paddleModifiers,
-    updateStamina,
-    consumeStamina,
+    handleTipping: (body: RapierBody, delta: number) => handleTipping(rt, body, delta),
+    tickRaftSurvival: () => tickRaftSurvival(rt),
+    paddleModifiers: rt.paddleModifiers,
+    updateStamina: (delta: number) => updateStamina(rt, delta),
+    consumeStamina: () => consumeStamina(rt),
     applyBrake,
-    applyPaddleForces,
-    spawnFoamParticle,
-    spawnShedParticle,
-    spawnContactBurst,
-    resetRaft,
-    updateCameraFromBody,
-    updateWorkerPhysicsFrame,
+    applyPaddleForces: (body: RapierBody, delta: number) => applyPaddleForces(rt, body, delta),
+    spawnFoamParticle: (body: RapierBody, side: 'left' | 'right') => spawnFoamParticle(rt, body, side),
+    spawnShedParticle: (body: RapierBody) => spawnShedParticle(rt, body),
+    spawnContactBurst: (contactPoint: Vec3Like, impactForce: number) => spawnContactBurst(rt, contactPoint, impactForce),
+    resetRaft: (body: RapierBody) => resetRaft(rt, body),
+    updateCameraFromBody: (body: RapierBody) => updateCameraFromBody(rt, body),
+    updateWorkerPhysicsFrame: (body: RapierBody, delta: number) => updateWorkerPhysicsFrame(rt, body, delta),
   };
 }
+
+export type RaftPhysicsRuntime = ReturnType<typeof createRaftPhysicsRuntime>;

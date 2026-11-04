@@ -81,9 +81,8 @@ const buildWing = (
 export default function Dragonflies({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const trailRef = useRef<THREE.InstancedMesh>(null);
-  const stateRef = useRef<unknown[]>([]);
 
-  const { geometry, animatedCount } = useMemo(() => {
+  const { geometry } = useMemo(() => {
     // Body: tapered segmented cylinder + head sphere + small tail tip
     const bodyGeo = new THREE.CylinderGeometry(0.022, 0.012, 0.5, 6);
     bodyGeo.rotateX(Math.PI / 2);

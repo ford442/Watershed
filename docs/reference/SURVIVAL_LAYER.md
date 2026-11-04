@@ -29,7 +29,8 @@ State lives in **pure TS modules** (`src/systems/survival/`) and **runSession** 
 | `portageCache.ts` | Cache/portage state machine + waypoint geometry |
 | `surfaceFriction.ts` | `slipperiness` → Rapier contact friction |
 | `components/Survival/SurvivalMarkers.tsx` | World markers + proximity interaction |
-| `runSession.ts` | Run-scoped survival instance + `tickRunSurvival()` |
+| `runSession.ts` | Run-scoped survival instance; `stepRunSurvival()` (the SimCore `survival` system only), `getActiveSurvivalModifiers()`, `publishRaftSurvival()` |
+| `gameplay/gameplayProfile.ts` | The segment's climate: `ambientTemp` (cold) and `windDry` (#521 B) |
 
 ## State transitions
 
@@ -46,7 +47,7 @@ Rates (see `survivalState.ts`):
 - **Gain in water:** `WETNESS_GAIN_IN_WATER` per second while `pos.y < WATER_LEVEL + 0.55`.
 - **Dry:** base rate × sun factor (launch hour) × wind (horizontal speed).
 - **Gameplay:** wetness reduces sprint stamina regen; high wetness muffles SFX.
-  `tickRunSurvival` pushes `sfxWetnessMultiplier` onto
+  `stepRunSurvival` pushes `sfxWetnessMultiplier` onto
   [`systems/audio/wetnessMuffle.ts`](../../src/systems/audio/wetnessMuffle.ts), which
   AudioManager reads as a gain (`getEffectiveSfxGain`) and a lowpass on the one-shot
   filter chain. Dry is always the fallback — a run with no survival tick is never ducked.
@@ -54,10 +55,10 @@ Rates (see `survivalState.ts`):
 ### Core temperature
 
 ```
-ambient(biome) + insulation(loadout) - wetnessColdDrag ──lerp──► coreTemp (0–1)
+ambient(GameplayProfile.ambientTemp) + insulation(loadout) - wetnessColdDrag ──lerp──► coreTemp (0–1)
 ```
 
-- **Cold biomes** (`glacier`, `glacialMelt`): low ambient → core temp drops unless expedition kit.
+- **Cold segments** (`ambientTemp < 0.5`; by default `glacier`, `glacialMelt`): low ambient → core temp drops unless expedition kit. The ambient is the committed segment's `GameplayProfile` (biome row + authored `gameplay` override) — never the biome palette.
 - **Exposure stress** (0–1): derived from core temp, biome cold bias, and wetness.
 
 ## Spatial portage & caches
@@ -145,7 +146,7 @@ monotonic downward: it can only ever make a surface slicker.
 
 ## Gameplay modifiers (runner)
 
-Applied in `RunnerPhysicsStep.ts` via `tickRunSurvival()`:
+Integrated by the SimCore `survival` system; read in `RunnerPhysicsStep.ts` via `getActiveSurvivalModifiers()`:
 
 | Modifier | Cold biome effect | Wetness effect |
 |----------|-------------------|----------------|
@@ -157,8 +158,8 @@ Applied in `RunnerPhysicsStep.ts` via `tickRunSurvival()`:
 ## Gameplay modifiers (raft) — v2
 
 The raft has no sprint, so wetness and exposure land on the paddle economy instead.
-`raftPhysicsRuntime` ticks survival each frame (`inWater` = the raft is actually
-floating) and applies:
+`raftPhysicsRuntime` reports its float each frame through `publishRaftSurvival` (`inWater` = the
+raft is actually floating; the `survival` system integrates it next step) and applies:
 
 | Modifier | Effect | Bound at worst case |
 |----------|--------|---------------------|

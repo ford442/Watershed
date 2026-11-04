@@ -32,7 +32,6 @@ import {
 } from 'three/tsl';
 import { fbm4 } from './tsl/noise';
 import type { FloatUniform, Vec3Node } from './tsl/nodeTypes';
-import { isAutumnLike } from '../configs/biomes';
 
 const GEOLOGICAL_LAYERS = {
   bedrock: '#3d3530',
@@ -300,15 +299,4 @@ export function updateCanyonNodeMaterial(
   if (options.highWaterIntensity !== undefined) {
     refs.highWaterIntensity.value = Math.max(0, options.highWaterIntensity);
   }
-}
-
-export function createFallbackCanyonMaterial(options: { biome?: string } = {}) {
-  const { biome = 'canyonSummer' } = options;
-  const baseColor = isAutumnLike(biome) ? '#9c7850' : '#888880';
-  return new THREE.MeshStandardMaterial({
-    color: baseColor,
-    roughness: 0.8,
-    metalness: 0.1,
-    side: THREE.DoubleSide,
-  });
 }

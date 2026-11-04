@@ -21,6 +21,9 @@ const TEST_CONFIG: NativeWaterForceConfig = {
   turbulenceFrequency: 2.4,
 };
 
+/** Chase-camera target, rewritten each frame (#521 F). */
+const _cameraTarget = new THREE.Vector3();
+
 const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
   const bodyRef = useRef<any>(null);
   // One-sample batch: the native force path the game uses (ABI 15 has no single-body export).
@@ -82,7 +85,7 @@ const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
       z: force.forceZ * delta * 0.001,
     }, true);
 
-    camera.position.lerp(new THREE.Vector3(pos.x + 4, pos.y + 4, pos.z + 8), 0.06);
+    camera.position.lerp(_cameraTarget.set(pos.x + 4, pos.y + 4, pos.z + 8), 0.06);
     camera.lookAt(pos.x, pos.y, pos.z - 4);
 
     if (typeof window !== 'undefined') {

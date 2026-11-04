@@ -34,6 +34,3 @@ export const DELTA_RAPIDS_FALLBACK_PROGRESSION: SegmentRange[] = [];
 
 /** @deprecated Prefer DELTA_RAPIDS_START_INDEX — kept for hydro continuation imports. */
 export const DELTA_RAPIDS_CONTINUED_START_INDEX = DELTA_RAPIDS_START_INDEX;
-
-/** @deprecated Prefer DELTA_RAPIDS_FALLBACK_PROGRESSION. */
-export const DELTA_RAPIDS_CONTINUED_PROGRESSION = DELTA_RAPIDS_FALLBACK_PROGRESSION;

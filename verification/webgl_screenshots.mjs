@@ -197,14 +197,6 @@ async function run() {
       await sleep(1000);
       const diag = await page.evaluate(() => {
         const dbg = window.__watershedPhysicsDebug;
-        const cam = window.__r3f?.camera ?? window.__r3f_camera;
-        const getCam = () => {
-          const canvas = document.querySelector('canvas');
-          // Try to reach R3F root state through known internals
-          const fiber = canvas?.__r3f;
-          return fiber?.camera;
-        };
-        const c = cam || getCam();
         return {
           segment: dbg?.currentSegmentIndex,
           pos: dbg?.position,

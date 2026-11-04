@@ -4,7 +4,8 @@
  *   hour = launchHour + elapsedSimSeconds × timeSpeedup / 3600
  *
  * One clock per run (reset by runSession.initRunSession), advanced by
- * SkyClockTick on the frame's sim delta while the game is unpaused, so a
+ * the SimCore `sky-clock` system (skySimSystem.ts) on the fixed sim step while
+ * the game is unpaused (SkyClockTick only places the sun), so a
  * scripted replay sees the same sun on the same frame. The sun itself comes
  * from sunPosition() for the map's latitude and day (maps/atmosphere.ts).
  *
@@ -152,7 +153,7 @@ export function setSkyAtmosphere(atmosphere: MapAtmosphere): void {
   publishPhase();
 }
 
-/** Advance by `dtSec` sim seconds (SkyClockTick, once per unpaused frame). */
+/** Advance by `dtSec` sim seconds (the SimCore `sky-clock` system, once per unpaused step). */
 export function tickSkyClock(dtSec: number): void {
   if (!(dtSec > 0) || !Number.isFinite(dtSec)) return;
   clock.elapsedSimSec += dtSec;

@@ -39,6 +39,9 @@ interface ReactiveAudioProps {
   reachSegments?: NormalizedSegment[];
 }
 
+/** Player position for the positional-transition fade, rewritten each frame (#521 F). */
+const _playerPos = new THREE.Vector3();
+
 function resolveAudioBuffer(
   reachId: string | undefined,
   assetId: string,
@@ -226,7 +229,9 @@ export default function ReactiveAudio({
       setAudioReady(true);
     };
 
-    setup();
+    setup().catch((err: unknown) => {
+      console.warn('[ReactiveAudio] setup failed', err);
+    });
 
     return () => {
       cancelled = true;
@@ -380,7 +385,7 @@ export default function ReactiveAudio({
 
     // Wetness muffles the water-contact SFX channels (rapids/whoosh/splash) —
     // a soaked player rides lower in the roar. See SurvivalModifiers.sfxWetnessMultiplier.
-    const survivalMods = getActiveSurvivalModifiers(currentBiomeId);
+    const survivalMods = getActiveSurvivalModifiers();
     const wetnessMuffle = survivalMods?.sfxWetnessMultiplier ?? 1;
 
     // Set ambient layer volumes with guards
@@ -431,7 +436,7 @@ export default function ReactiveAudio({
 
     // Positional transition volume based on distance
     if (posTransitionRef.current) {
-      const playerPos = new THREE.Vector3().copy(body.translation());
+      const playerPos = _playerPos.copy(body.translation());
       const distance = playerPos.distanceTo(posTransitionRef.current.position);
       const fade =
         1 -

@@ -53,5 +53,3 @@ export function useCanyonAcoustics(): void {
     };
   }, []);
 }
-
-export default useCanyonAcoustics;

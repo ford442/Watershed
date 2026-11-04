@@ -311,39 +311,9 @@ export const useGameStore = create<GameStore>((set) => ({
 // SELECTOR HOOKS (convenience)
 // =============================================================================
 
-/** Subscribe only to score */
-export function useScore() {
-  return useGameStore((s) => s.score);
-}
-
-/** Subscribe only to multiplier */
-export function useMultiplier() {
-  return useGameStore((s) => s.multiplier);
-}
-
-/** Subscribe only to combo label */
-export function useComboLabel() {
-  return useGameStore((s) => s.comboLabel);
-}
-
 /** Subscribe only to biome — useful for biome badge */
 export function usePlayerBiome() {
   return useGameStore((s) => s.currentBiome);
-}
-
-/** Subscribe only to pause state */
-export function useGamePaused() {
-  return useGameStore((s) => s.isPaused);
-}
-
-/** Subscribe only to wipeout state */
-export function useGameWipeout() {
-  return useGameStore((s) => s.isWipeout);
-}
-
-/** Subscribe only to settings */
-export function useGameSettings() {
-  return useGameStore((s) => s.settings);
 }
 
 /** Subscribe only to quality preset */
@@ -358,18 +328,6 @@ export function getQualityPresetNow(): QualityPreset {
 /** Subscribe only to the adaptive render scale (#419 phase C). */
 export function useRenderScale(): number {
   return useGameStore((s) => s.renderScale);
-}
-
-export function getRenderScaleNow(): number {
-  return useGameStore.getState().renderScale;
-}
-
-/**
- * Subscribe to the current gravity multiplier.
- * Useful for camera-shake intensity scaling, VFX, and particle behaviour.
- */
-export function useGravityMultiplier(): number {
-  return useGameStore((s) => s.waterfallGravityMultiplier);
 }
 
 // =============================================================================
@@ -408,5 +366,3 @@ export function batchFrameUpdate(
     });
   }
 }
-
-export default useGameStore;

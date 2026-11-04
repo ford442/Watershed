@@ -45,6 +45,8 @@ export default tseslint.config(
       'verification/output/**',
       'coverage/**',
       'docs/**',
+      // Local agent / editor worktrees (git-ignored checkouts of this repo).
+      '.claude/**',
     ],
   },
 
@@ -71,10 +73,10 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
       // --- warnings: a real backlog, not a style opinion --------------------
       // R3F's allocation rules are the right rules — `new`/`.clone()` inside a
-      // useFrame body is a per-frame GC hazard in a 60 FPS game. There are ~110
-      // pre-existing sites, and each needs a hoisted scratch object rather than
-      // a mechanical rewrite, so they land as warnings: visible, counted, not
-      // gating. Promoting them to `error` is its own PR, with the fixes in it.
+      // useFrame body is a per-frame GC hazard in a 60 FPS game. The ~110 sites
+      // that predated the rule are gone (hoisted scratch objects, #521 D / F),
+      // and the sim directories make them errors (below). Elsewhere they stay
+      // warnings, held at zero by CI's `--max-warnings` ratchet.
       ...Object.fromEntries(
         Object.keys(r3f.configs.recommended.rules).map((rule) => [rule, 'warn']),
       ),
@@ -114,11 +116,35 @@ export default tseslint.config(
     },
   },
 
-  // Game events go through `gameEvents` (src/systems/events/GameEvents.ts), not
-  // `window` — typed payloads, one map of who sends what, no orphan events.
+  // Type-aware rules (#521 F), on the app sources only: a promise nobody
+  // awaits or catches (the async loaders, the worker proxies, the audio
+  // unlock) fails silently in a game loop, and an async function handed to a
+  // void callback (an event handler, useEffect) drops its rejection.
+  // `projectService` reads tsconfig.json; tests are outside it and outside this block.
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/systems/events/GameEvents.ts'],
+    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/**/__tests__/**', 'src/**/__mocks__/**', 'src/testing/**', 'src/setupTests.ts'],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+    },
+  },
+
+  // Game events go through `gameEvents` (src/systems/events/GameEvents.ts), not
+  // `window` — typed payloads, one map of who sends what, no orphan events.
+  // The query string goes through src/config/queryFlags.ts (#521 E): one parse,
+  // one grammar for boolean flags (`1` | `true`), one writer.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'src/systems/events/GameEvents.ts',
+      'src/config/queryFlags.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -129,6 +155,10 @@ export default tseslint.config(
         {
           selector: `CallExpression[callee.property.name=/^(add|remove)EventListener$/][arguments.0.value=/^(${GAME_EVENT_NAMES.join('|')})$/]`,
           message: 'Listen to game events with gameEvents.on (src/systems/events/GameEvents.ts), not addEventListener.',
+        },
+        {
+          selector: "MemberExpression[property.name='search'][object.name='location'], MemberExpression[property.name='search'][object.property.name='location']",
+          message: 'Read the query string through src/config/queryFlags.ts (queryFlags / queryParam / currentSearch).',
         },
       ],
     },
@@ -155,8 +185,11 @@ export default tseslint.config(
       'src/**/__mocks__/**',
       // Storage: debounced localStorage writes (I/O pacing, not sim state).
       'src/systems/persistence/**',
-      // Audio: fades and idle preload scheduling are presentation.
-      'src/systems/audio/AudioSystem.ts',
+      // Audio: fades and idle preload scheduling are presentation. (AudioSystem.ts
+      // itself is the facade now and reads no clock.)
+      'src/systems/audio/ambientBed.ts',
+      'src/systems/audio/sfxVoices.ts',
+      'src/systems/audio/soundLibrary.ts',
       // Render-quality telemetry: frame-time sampling for adaptive LOD, which
       // is off on a scripted / replay page (LODManager: isScriptedInputMode).
       'src/systems/lod/LODManager.tsx',
@@ -166,6 +199,10 @@ export default tseslint.config(
       'src/systems/water/sweParity.ts',
     ],
     rules: {
+      // Zero steady-state allocation on the sim / frame path (#521 D): a `new`
+      // or `.clone()` inside useFrame is an error here, not a warning.
+      '@react-three/no-new-in-loop': 'error',
+      '@react-three/no-clone-in-loop': 'error',
       'no-restricted-globals': [
         'error',
         ...['setTimeout', 'setInterval', 'requestAnimationFrame'].map((name) => ({

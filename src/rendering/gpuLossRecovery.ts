@@ -16,6 +16,7 @@
  * were never removed).
  */
 
+import { currentSearch } from '../config/queryFlags';
 export type GpuLossKind = 'context-lost' | 'device-lost';
 
 export interface GpuLossCallbacks {
@@ -104,7 +105,7 @@ export function simulateGpuLoss(renderer: unknown): GpuLossKind | null {
   return 'context-lost';
 }
 
-export function isGpuLossDebugEnabled(search: string = typeof window !== 'undefined' ? window.location.search : ''): boolean {
+export function isGpuLossDebugEnabled(search: string = currentSearch()): boolean {
   const value = new URLSearchParams(search).get('debugGpuLoss');
   return value === '1' || value === 'true';
 }

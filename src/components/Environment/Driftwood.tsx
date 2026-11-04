@@ -8,7 +8,6 @@ import {
   updateRiverSurfaceMaterial,
 } from '../../materials/river/createRiverSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
-import type { PlacementTransform } from '../TrackSegment/types';
 import type { BiomeDecorationProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
 

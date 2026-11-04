@@ -8,11 +8,11 @@ import { DEFAULT_MAP_CONFIG } from '../systems/map/MapSystem';
 import { buildRunKey, getLastMapId } from '../systems/persistence/PersistenceSystem';
 import { getRunSession } from '../systems/journey/runSession';
 import { getActiveUserRiver, userRiverRunKeyId } from '../systems/map/userRiverSession';
+import { queryFlags } from '../config/queryFlags';
 
 /** Parse `?seed=` from the URL; returns null when absent or invalid. */
 export function parseUrlSeed(): number | null {
-  if (typeof window === 'undefined') return null;
-  const raw = new URLSearchParams(window.location.search).get('seed');
+  const raw = queryFlags().seed;
   if (!raw) return null;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : null;

@@ -55,5 +55,3 @@ export const useNightMode = (): NightModeState => {
 
   return { isNight, toggle, setIsNight };
 };
-
-export default useNightMode;

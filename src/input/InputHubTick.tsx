@@ -203,5 +203,3 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): Reac
 
   return <InputLookApply />;
 }
-
-export default InputHubTick;

@@ -4,15 +4,18 @@ import { Instance } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { createVegetationSurfaceMaterial, updateVegetationSurfaceMaterial } from '../../materials/foliage/createFoliageSurfaceMaterial';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
-import type { BiomeDecorationProps } from './types';
+import type { BiomeDecorationProps, PlacementTransform } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
 import { sinHash } from '../../math/hash';
 
 const hash = (n: number): number => sinHash(n * 9.173);
 
+/** Stable stand-in for absent transforms, so the instance memo is not rebuilt every render. */
+const NO_TRANSFORMS: PlacementTransform[] = [];
+
 export default function CanyonGrass({ transforms }: BiomeDecorationProps) {
   const grassRef = useRef<THREE.InstancedMesh>(null);
-  const safeTransforms = Array.isArray(transforms) ? transforms : [];
+  const safeTransforms = Array.isArray(transforms) ? transforms : NO_TRANSFORMS;
 
   const geometry = useMemo(() => {
     const geo = new THREE.PlaneGeometry(0.08, 0.65, 1, 3);

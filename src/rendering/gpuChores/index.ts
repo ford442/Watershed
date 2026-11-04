@@ -12,7 +12,6 @@ export type {
   ChoreBackendImpl,
   ChoreFailure,
   ChoreJob,
-  ChoreOp,
   ChoreOutput,
   ChorePreference,
   ChoreResult,

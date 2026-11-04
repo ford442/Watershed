@@ -6,13 +6,8 @@
  * continuation wiring (no TrackManager edits).
  */
 
-import type { SegmentRange } from '../systems/map/MapSystem';
-
 /** First segment index of the glacial source map. */
 export const GLACIAL_SOURCE_START_INDEX = 0;
-
-/** Segment count of the authored glacial prelude before meander handoff. */
-export const GLACIAL_SOURCE_SEGMENT_COUNT = 18;
 
 /**
  * Procedural fallback once glacial prelude + meander authored segments are exhausted.

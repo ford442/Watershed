@@ -30,3 +30,6 @@ verification/output/
 
 .aider*
 build-analyze/
+
+# Local agent worktrees (Claude Code)
+.claude/worktrees/

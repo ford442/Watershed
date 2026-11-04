@@ -19,11 +19,11 @@ export {
 export {
   type SurvivalState,
   type SurvivalTickInput,
+  type SurvivalClimate,
   type SurvivalModifiers,
   SURVIVAL_INITIAL,
   createSurvivalState,
   tickSurvivalState,
-  getBiomeAmbientTemp,
   computeExposureStress,
   getSurvivalModifiers,
 } from './survivalState';

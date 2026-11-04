@@ -25,6 +25,7 @@ import type {
   SimWorkerLike,
   SimWorkerResponse,
 } from './simWorkerProtocol';
+import { currentSearch } from '../config/queryFlags';
 
 /** Slack over the in-worker WASM deadline for the worker script itself to load. */
 const HANDSHAKE_SLACK_MS = 2000;
@@ -294,7 +295,7 @@ export function getSimWorkerProxy(factory: SimWorkerFactory = defaultFactory): P
   if (!proxyPromise) {
     proxyPromise = (async () => {
       const proxy = new SimWorkerProxy(factory());
-      const search = typeof location !== 'undefined' ? location.search : undefined;
+      const search = currentSearch();
       const wasmTimeoutMs = resolveWasmInitTimeoutMs(search);
       try {
         await proxy.ready(

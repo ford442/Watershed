@@ -1,486 +1,108 @@
 /**
- * VehicleSystem.ts - Base vehicle abstraction for Watershed
- * 
- * RESPONSIBILITIES:
- * - Define common vehicle interface (runner, raft, future vehicles)
- * - Handle vehicle switching
- * - Coordinate with physics and input systems
- * - Surface material detection and collision feedback
- * 
- * SWARM: Extend BaseVehicle for new vehicle types (skis, kayak, etc.)
+ * VehicleSystem.ts — what is left of the vehicle class layer (#521 F): the
+ * surface / friction table, the impact tracker both vehicles share, and the
+ * raft's A/D steer.
+ *
+ * The old `BaseVehicle` / `RunnerVehicle` / `RaftVehicle` hierarchy is gone.
+ * Its `update()` ran only for the raft's steer, `onCollision` had no
+ * subscribers, `getConfig()` was read for one number (the runner's contact
+ * friction), and `setSurfaceMaterial` wrote friction to a `body.colliders`
+ * field Rapier bodies do not have — so per-biome friction was never applied,
+ * and removing it changes nothing in play. The surface still picks the impact
+ * sound and burst (`GameplayProfile.surface`).
  */
 
-import * as THREE from 'three';
-import type { RapierRigidBody } from '@react-three/rapier';
-import { Ray } from '@dimforge/rapier3d-compat';
+import type * as THREE from 'three';
 import { gameEvents } from '../events/GameEvents';
+import type { SurfaceMaterial } from './surfaceMaterial';
 
-// =============================================================================
-// MATERIAL ENUMS & CONFIGURATION
-// =============================================================================
+export { SurfaceMaterial, MATERIAL_FRICTION } from './surfaceMaterial';
 
-export enum SurfaceMaterial {
-  MOSS = 'moss',
-  ROCK = 'rock',
-  WOOD = 'wood',
-  CONCRETE = 'concrete',
-  WATER = 'water',
-}
+/** The runner capsule's contact friction off a slide or a bank (was RunnerVehicle's config). */
+export const RUNNER_CONTACT_FRICTION = 0.04;
 
-export const MATERIAL_FRICTION: Record<SurfaceMaterial, number> = {
-  [SurfaceMaterial.MOSS]: 0.4,      // Slippery
-  [SurfaceMaterial.WOOD]: 0.4,      // Slippery
-  [SurfaceMaterial.ROCK]: 0.6,      // Medium
-  [SurfaceMaterial.CONCRETE]: 0.8,  // Sticky
-  [SurfaceMaterial.WATER]: 0.1,     // Sliding
-};
+/** Impacts closer together than this (sim seconds) make one event. */
+export const COLLISION_COOLDOWN_SEC = 0.1;
 
-export const MATERIAL_FROM_BIOME: Record<string, SurfaceMaterial> = {
-  canyonSummer: SurfaceMaterial.ROCK,
-  canyonAutumn: SurfaceMaterial.MOSS,
-  alpineSpring: SurfaceMaterial.ROCK,
-  slotCanyon: SurfaceMaterial.CONCRETE,
-  glacialMelt: SurfaceMaterial.ROCK,
-  glacier: SurfaceMaterial.ROCK,
-  delta: SurfaceMaterial.MOSS,
-  cavern: SurfaceMaterial.ROCK,
-  midnightMist: SurfaceMaterial.MOSS,
-  lumberFlume: SurfaceMaterial.WOOD,
-  hydroDam: SurfaceMaterial.CONCRETE,
-  // Legacy aliases (map-load / events may still emit briefly)
-  summer: SurfaceMaterial.ROCK,
-  autumn: SurfaceMaterial.MOSS,
-  'creek-summer': SurfaceMaterial.ROCK,
-  'creek-autumn': SurfaceMaterial.MOSS,
-  'alpine-spring': SurfaceMaterial.ROCK,
-  'canyon-sunset': SurfaceMaterial.CONCRETE,
-  'midnight-mist': SurfaceMaterial.MOSS,
-};
+/** Impact force above which an impact throws a particle burst. */
+export const HIGH_IMPACT_FORCE = 5;
 
-// =============================================================================
-// COLLISION INTERFACES
-// =============================================================================
-
-export interface CollisionEvent {
-  /** Material of surface hit */
-  material: SurfaceMaterial;
-  /** Impact force magnitude */
-  force: number;
-  /** Contact point in world space */
-  point: THREE.Vector3;
-  /** Relative velocity at contact */
-  velocity: THREE.Vector3;
-  /** Timestamp */
-  timestamp: number;
-  /** Is this a high-impact collision */
-  isHighImpact: boolean;
-}
-
-export type CollisionCallback = (event: CollisionEvent) => void;
-
-// =============================================================================
-// CORE INTERFACES
-// =============================================================================
-
-export interface VehicleState {
-  /** Current world position */
-  position: THREE.Vector3;
-  /** Current velocity */
-  velocity: THREE.Vector3;
-  /** Is vehicle on ground/water */
-  isGrounded: boolean;
-  /** Current speed magnitude */
-  speed: number;
-  /** Distance traveled this run */
-  distance: number;
-  /** Current flow speed multiplier */
-  flowMultiplier: number;
-}
-
-export interface VehicleInput {
-  /** Forward/backward input (-1 to 1) */
-  moveY: number;
-  /** Left/right input (-1 to 1) */
-  moveX: number;
-  /** Jump/trick input */
-  jump: boolean;
-  /** Sprint/boost input */
-  sprint: boolean;
-  /** Brake input */
-  brake: boolean;
-  /** Dodge/dash input */
-  dodge: boolean;
-}
-
-export interface VehicleConfig {
-  /** Vehicle mass (kg) */
-  mass: number;
-  /** Linear damping (air/water resistance) */
-  linearDamping: number;
-  /** Angular damping (rotational resistance) */
-  angularDamping: number;
-  /** Friction coefficient */
-  friction: number;
-  /** Restitution (bounciness) */
-  restitution: number;
-  /** Base movement speed */
-  baseSpeed: number;
-  /** Sprint speed multiplier */
-  sprintMultiplier: number;
-  /** Jump impulse strength */
-  jumpForce: number;
-  /** Water flow responsiveness (0-1) */
-  flowResponsiveness: number;
-}
-
-// =============================================================================
-// BASE VEHICLE ABSTRACT CLASS
-// =============================================================================
-
-export abstract class BaseVehicle {
-  /** Physics body reference */
-  protected body: RapierRigidBody | null = null;
-  /** Current vehicle state */
-  protected state: VehicleState;
-  /** Vehicle configuration */
-  protected config: VehicleConfig;
-  /** Input state */
-  protected input: VehicleInput;
-  /** Distance tracking */
-  protected lastPosition: THREE.Vector3;
-  /** Ground check raycast */
-  protected isGrounded: boolean = false;
-  
-  // Collision & Material tracking
-  protected currentMaterial: SurfaceMaterial = SurfaceMaterial.ROCK;
-  protected lastCollisionTime: number = Number.NEGATIVE_INFINITY;
-  protected collisionCooldown: number = 0.1; // Minimum sim seconds between collision events
-  /** Sim seconds this vehicle has been stepped (advanceClock), the collision cooldown's clock. */
-  protected simTimeSec: number = 0;
-  protected collisionCallbacks: CollisionCallback[] = [];
-  protected highImpactThreshold: number = 5; // Impact force for particle effects
-  
-  constructor(config: Partial<VehicleConfig> = {}) {
-    this.config = this.getDefaultConfig();
-    Object.assign(this.config, config);
-    
-    this.state = {
-      position: new THREE.Vector3(),
-      velocity: new THREE.Vector3(),
-      isGrounded: false,
-      speed: 0,
-      distance: 0,
-      flowMultiplier: 1.0,
-    };
-    
-    this.input = {
-      moveY: 0,
-      moveX: 0,
-      jump: false,
-      sprint: false,
-      brake: false,
-      dodge: false,
-    };
-    
-    this.lastPosition = new THREE.Vector3();
-  }
-  
-  /** Get default configuration - override in subclasses */
-  protected abstract getDefaultConfig(): VehicleConfig;
-  
-  /** Initialize with physics body */
-  initialize(body: RapierRigidBody, startPosition?: THREE.Vector3): void {
-    this.body = body;
-    if (startPosition) {
-      this.body.setTranslation(startPosition, true);
-      this.lastPosition.copy(startPosition);
-    }
-  }
-  
-  /** Update input state */
-  setInput(input: Partial<VehicleInput>): void {
-    Object.assign(this.input, input);
-  }
-  
-  /** Advance the vehicle's sim clock; call once per sim frame with its delta. */
-  advanceClock(delta: number): void {
-    if (Number.isFinite(delta) && delta > 0) this.simTimeSec += delta;
-  }
-
-  /** Main update loop - called every frame */
-  update(delta: number): void {
-    if (!this.body) return;
-    
-    // Update state from physics
-    const pos = this.body.translation();
-    const vel = this.body.linvel();
-    
-    this.state.position.set(pos.x, pos.y, pos.z);
-    this.state.velocity.set(vel.x, vel.y, vel.z);
-    this.state.speed = this.state.velocity.length();
-    
-    // Track distance
-    const moved = this.state.position.distanceTo(this.lastPosition);
-    this.state.distance += moved;
-    this.lastPosition.copy(this.state.position);
-    
-    // Ground check
-    this.checkGrounded();
-    
-    // Apply vehicle-specific physics
-    this.applyPhysics(delta);
-    
-    // Update state
-    this.state.isGrounded = this.isGrounded;
-  }
-  
-  /** Ground check using raycast */
-  protected checkGrounded(): void {
-    if (!this.body) {
-      this.isGrounded = false;
-      return;
-    }
-    
-    const pos = this.body.translation();
-    
-    // Raycast down from body
-    const rayOrigin = { x: pos.x, y: pos.y + 0.2, z: pos.z };
-    const rayDir = { x: 0, y: -1, z: 0 };
-    
-    // Access Rapier world through body
-    const world = (this.body as any).getWorld?.();
-    if (world) {
-      const ray = new Ray(rayOrigin, rayDir);
-      const hit = world.castRay(ray, 1.5, true);
-      this.isGrounded = !!hit;
-    } else {
-      // Fallback: check height above water
-      this.isGrounded = pos.y < 2.0;
-    }
-  }
-  
-  /** Apply vehicle-specific physics - override in subclasses */
-  protected abstract applyPhysics(delta: number): void;
-  
-  /** Get current state (immutable) */
-  getState(): Readonly<VehicleState> {
-    return { ...this.state };
-  }
-  
-  /** Get configuration */
-  getConfig(): Readonly<VehicleConfig> {
-    return { ...this.config };
-  }
-  
-  // =============================================================================
-  // COLLISION & MATERIAL HANDLING
-  // =============================================================================
-  
-  /** Register a collision event callback */
-  onCollision(callback: CollisionCallback): () => void {
-    this.collisionCallbacks.push(callback);
-    return () => {
-      const idx = this.collisionCallbacks.indexOf(callback);
-      if (idx >= 0) this.collisionCallbacks.splice(idx, 1);
-    };
-  }
-  
-  /** Emit collision event to all registered callbacks */
-  protected emitCollision(event: CollisionEvent): void {
-    // Call registered callbacks
-    this.collisionCallbacks.forEach(cb => {
-      try { cb(event); } catch (e) { console.error('Collision callback error:', e); }
-    });
-  }
-  
-  /** 
-   * Process a collision with surface
-   * Call this from vehicle components when collision detected
-   */
-  processCollision(
-    material: SurfaceMaterial,
-    impactForce: number,
-    contactPoint: THREE.Vector3,
-    relativeVelocity: THREE.Vector3
-  ): void {
-    const now = this.simTimeSec;
-
-    // Rate limiting to prevent event spam (sim time: see advanceClock)
-    if (now - this.lastCollisionTime < this.collisionCooldown) {
-      return;
-    }
-    this.lastCollisionTime = now;
-    
-    // Update current material
-    this.currentMaterial = material;
-    
-    // Create collision event
-    const event: CollisionEvent = {
-      material,
-      force: impactForce,
-      point: contactPoint.clone(),
-      velocity: relativeVelocity.clone(),
-      timestamp: now,
-      isHighImpact: this.isHighImpact(impactForce),
-    };
-    
-    this.emitCollision(event);
-    
-    // F1: collision sound (useExperienceLifecycle plays collide_<material>)
-    gameEvents.emit('collision-sound', { material, force: impactForce, point: event.point });
-  }
-  
+/**
+ * Rate-limited impact events for one vehicle, on the vehicle's own sim clock
+ * (`advanceClock` once per step with its delta — never wall time).
+ */
+export interface CollisionTracker {
+  advanceClock(delta: number): void;
+  /** `advanceClock(step.dt)`, reading the delta from a field (no boxed argument on the runner's hot path). */
+  advanceClockBy(step: { readonly dt: number }): void;
+  /** Report an impact; emits `collision-sound` unless one fired within the cooldown. */
+  processCollision(material: SurfaceMaterial, impactForce: number, contactPoint: THREE.Vector3): void;
   /** True when an impact is hard enough for the particle burst. */
-  isHighImpact(impactForce: number): boolean {
-    return impactForce > this.highImpactThreshold;
-  }
+  isHighImpact(impactForce: number): boolean;
+}
 
-  /** Update friction based on current surface material */
-  updateFrictionForMaterial(material?: SurfaceMaterial): void {
-    if (!this.body) return;
-    
-    const mat = material || this.currentMaterial;
-    const friction = MATERIAL_FRICTION[mat];
-    
-    // Apply friction to body's colliders
-    // Note: This requires access to the Rapier body's colliders
-    const bodyAny = this.body as any;
-    if (bodyAny.colliders) {
-      bodyAny.colliders.forEach((collider: any) => {
-        collider.setFriction(friction);
+export function createCollisionTracker(): CollisionTracker {
+  // Object fields, not closure variables: a double kept in a closure is boxed
+  // afresh on every write, and advanceClock runs every step (#521 D).
+  const clock = { simTimeSec: 0, lastCollisionSec: Number.NEGATIVE_INFINITY };
+  return {
+    advanceClock(delta) {
+      if (Number.isFinite(delta) && delta > 0) clock.simTimeSec += delta;
+    },
+    advanceClockBy(step) {
+      if (Number.isFinite(step.dt) && step.dt > 0) clock.simTimeSec += step.dt;
+    },
+    processCollision(material, impactForce, contactPoint) {
+      if (clock.simTimeSec - clock.lastCollisionSec < COLLISION_COOLDOWN_SEC) return;
+      clock.lastCollisionSec = clock.simTimeSec;
+      // F1: collision sound (useExperienceLifecycle plays collide_<material>).
+      gameEvents.emit('collision-sound', {
+        material,
+        force: impactForce,
+        point: { x: contactPoint.x, y: contactPoint.y, z: contactPoint.z },
       });
-    }
-  }
-  
-  /** Set current surface material and update friction */
-  setSurfaceMaterial(material: SurfaceMaterial): void {
-    this.currentMaterial = material;
-    this.updateFrictionForMaterial(material);
-  }
-  
-  /** Get current surface material */
-  getSurfaceMaterial(): SurfaceMaterial {
-    return this.currentMaterial;
-  }
-  
-  /** Cleanup resources */
-  destroy(): void {
-    this.body = null;
-    this.collisionCallbacks = [];
-  }
+    },
+    isHighImpact(impactForce) {
+      return impactForce > HIGH_IMPACT_FORCE;
+    },
+  };
 }
 
-// =============================================================================
-// RUNNER VEHICLE (Sonic-style downhill)
-// =============================================================================
+/** The raft's A/D steer: lateral impulse, yaw torque, then the downstream speed cap. */
+export const RAFT_STEER = {
+  /** Lateral impulse per second at full input (the old config's baseSpeed 18 × 0.4). */
+  speed: 18 * 0.4,
+  /** Yaw torque impulse per second at full input. */
+  torque: 3,
+  /** |vz| cap, m/s. */
+  maxSpeedZ: 20,
+} as const;
 
-export class RunnerVehicle extends BaseVehicle {
-  protected getDefaultConfig(): VehicleConfig {
-    return {
-      mass: 75,
-      // LINEAR_DAMPING: Simulates air resistance on runner
-      // Scientific basis: Human Cd ≈ 1.0-1.3 (standing), ~0.7 (streamlined)
-      // Air density ρ ≈ 1.225 kg/m³ at sea level
-      // Formula: F_drag = 0.5 * ρ * v² * Cd * A
-      // At 10 m/s: F ≈ 0.5 * 1.225 * 100 * 1.0 * 0.5 ≈ 30 N
-      // This is a game-tuned value for feel rather than strict physics
-      linearDamping: 0.35,
-      angularDamping: 0.9,
-      friction: 0.04,
-      restitution: 0.15,
-      baseSpeed: 32,
-      sprintMultiplier: 1.5,
-      jumpForce: 44.9,
-      flowResponsiveness: 14, // Strong auto-flow
-    };
-  }
-  
-  /**
-   * Unused: the runner's movement is RunnerPhysicsStep, and nothing calls
-   * `update()` on a RunnerVehicle — it only tracks collisions and material.
-   * (The old body pushed camera-relative impulses along a hard-coded −z stub.)
-   */
-  protected applyPhysics(_delta: number): void {}
+interface SteerableBody {
+  applyImpulse(impulse: { x: number; y: number; z: number }, wake: boolean): void;
+  applyTorqueImpulse(torque: { x: number; y: number; z: number }, wake: boolean): void;
+  linvel(): { x: number; y: number; z: number };
+  setLinvel(vel: { x: number; y: number; z: number }, wake: boolean): void;
 }
 
-// =============================================================================
-// RAFT VEHICLE (Log flume style)
-// =============================================================================
+const _steer = { x: 0, y: 0, z: 0 };
 
-export class RaftVehicle extends BaseVehicle {
-  protected getDefaultConfig(): VehicleConfig {
-    return {
-      mass: 150,
-      // LINEAR_DAMPING: Water resistance on raft (much higher than air)
-      // Scientific basis: Water drag is ~800x higher than air drag at same velocity
-      // due to density difference (ρ_water = 1000 kg/m³ vs ρ_air = 1.225 kg/m³)
-      // Raft Cd ≈ 0.9 (bluff body in water)
-      // Formula: F_drag = 0.5 * ρ * v² * Cd * A
-      // At 5 m/s: F ≈ 0.5 * 1000 * 25 * 0.9 * 1.5 ≈ 16,875 N (substantial!)
-      // Game-tuned value: 2.0 (reduced from 2.5 for more responsive arcade feel)
-      // Note: This is higher than runner (0.35) to simulate water vs air resistance
-      linearDamping: 2.0,
-      angularDamping: 2.5,
-      friction: 0.1,
-      restitution: 0.4, // Slightly bouncier for elastic collision response
-      baseSpeed: 18, // Increased for more kinetic feel
-      sprintMultiplier: 1.3, // Paddle boost
-      jumpForce: 0, // Rafts can't jump
-      flowResponsiveness: 5, // Follows flow more closely, stronger current pull
-    };
+/** One step of raft steering (`moveX` −1 left … 1 right). */
+export function applyRaftSteer(body: SteerableBody, moveX: number, delta: number): void {
+  if (moveX !== 0) {
+    _steer.x = moveX * RAFT_STEER.speed * delta;
+    _steer.y = 0;
+    _steer.z = 0;
+    body.applyImpulse(_steer, true);
+    _steer.x = 0;
+    _steer.y = -moveX * RAFT_STEER.torque * delta;
+    body.applyTorqueImpulse(_steer, true);
   }
-  
-  /**
-   * A/D steering only. The current and the turbulence are the water force's
-   * (waterForceAuthority.ts: the raft applies no water force of its own, #467);
-   * the old auto-flow and wall-clock turbulence impulses here doubled them.
-   */
-  protected applyPhysics(delta: number): void {
-    if (!this.body) return;
-
-    // Raft steering (responsive lateral movement for canyon navigation)
-    const steerSpeed = this.config.baseSpeed * 0.4;
-    
-    if (this.input.moveX !== 0) {
-      this.body.applyImpulse({
-        x: this.input.moveX * steerSpeed * delta,
-        y: 0,
-        z: 0
-      }, true);
-      
-      // Add rotation when steering (increased for tighter turns)
-      this.body.applyTorqueImpulse({
-        x: 0,
-        y: -this.input.moveX * 3 * delta,
-        z: 0
-      }, true);
-    }
-    
-    // Cap speed to prevent going supersonic (raised for higher speed gameplay)
-    const vel = this.body.linvel();
-    if (Math.abs(vel.z) > 20) {
-      this.body.setLinvel({
-        x: vel.x,
-        y: vel.y,
-        z: 20 * Math.sign(vel.z)
-      }, true);
-    }
-  }
-}
-
-// =============================================================================
-// VEHICLE FACTORY
-// =============================================================================
-
-export type VehicleType = 'runner' | 'raft';
-
-export function createVehicle(type: VehicleType, config?: Partial<VehicleConfig>): BaseVehicle {
-  switch (type) {
-    case 'runner':
-      return new RunnerVehicle(config);
-    case 'raft':
-      return new RaftVehicle(config);
-    default:
-      throw new Error(`Unknown vehicle type: ${type}`);
+  const vel = body.linvel();
+  if (Math.abs(vel.z) > RAFT_STEER.maxSpeedZ) {
+    _steer.x = vel.x;
+    _steer.y = vel.y;
+    _steer.z = RAFT_STEER.maxSpeedZ * Math.sign(vel.z);
+    body.setLinvel(_steer, true);
   }
 }

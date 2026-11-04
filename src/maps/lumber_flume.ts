@@ -6,8 +6,6 @@
  * `meander_to_waterfall.json` is handled by MapRegistry continuation wiring.
  */
 
-import type { SegmentRange } from '../systems/map/MapSystem';
-
 /** First segment index of the lumber flume map. */
 export const LUMBER_FLUME_START_INDEX = 0;
 
@@ -25,6 +23,3 @@ export const LUMBER_FLUME_LANDING_SEGMENT_INDEX = 11;
  * Reuses the meander post-reach table.
  */
 export { MEANDER_FALLBACK_PROGRESSION as LUMBER_FLUME_FALLBACK_PROGRESSION } from './meander_to_waterfall';
-
-/** Empty typed alias kept for tests that assert a fallback array exists. */
-export const LUMBER_FLUME_STANDALONE_FALLBACK: SegmentRange[] = [];

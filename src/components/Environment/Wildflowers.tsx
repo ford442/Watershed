@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Instance } from '@react-three/drei';
@@ -11,8 +11,7 @@ import type { FlowerPlacement, WildflowersProps } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
 import { sinHash } from '../../math/hash';
 
-const FLOWER_VARIANTS = ['bloom', 'spike', 'daisy', 'bell'] as const;
-type FlowerVariant = typeof FLOWER_VARIANTS[number];
+type FlowerVariant = 'bloom' | 'spike' | 'daisy' | 'bell';
 
 interface FlowerInstance {
   key: string;

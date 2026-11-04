@@ -339,15 +339,6 @@ export function findPortageRouteAt<T extends PortageRouteDefinition>(
   return null;
 }
 
-/** Routes the player still owes on this segment (required or under way). */
-export function pendingPortageRoutes(
-  state: PortageCacheRunState,
-): ReadonlyArray<PortageRouteState> {
-  return state.portageRoutes.filter(
-    (route) => route.status === 'required' || route.status === 'in_progress',
-  );
-}
-
 /** Status of a single route, or null when the segment has no authored route. */
 export function portageRouteStatus(
   state: PortageCacheRunState,
@@ -355,14 +346,5 @@ export function portageRouteStatus(
 ): PortageRouteStatus | null {
   return (
     state.portageRoutes.find((route) => route.segmentIndex === segmentIndex)?.status ?? null
-  );
-}
-
-/** Cache slots that can still be interacted with (drawn as world markers). */
-export function activeCacheSlots(
-  state: PortageCacheRunState,
-): ReadonlyArray<CacheSlotState> {
-  return state.cacheSlots.filter(
-    (slot) => slot.status === 'unplaced' || slot.status === 'placed',
   );
 }

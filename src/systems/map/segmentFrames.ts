@@ -147,24 +147,55 @@ export function resolveSegmentEnvelope(
   pos: { z: number },
   fallback: VerticalBounds,
 ): SegmentEnvelope {
+  const out = resolveSegmentEnvelopeInto(
+    { yMin: 0, yMax: 0, segmentIndex: null, authored: false },
+    frames,
+    pos,
+    fallback,
+  );
+  if (out.respawnAt === undefined) delete out.respawnAt;
+  return out;
+}
+
+/**
+ * `resolveSegmentEnvelope` into `out` (no allocation): the per-step readers
+ * (the runner step, SimCoreTick) reuse one envelope. `out.respawnAt` is
+ * `undefined` when the zone authors none.
+ */
+export function resolveSegmentEnvelopeInto(
+  out: SegmentEnvelope,
+  frames: ReadonlyArray<SegmentFrame>,
+  pos: { z: number },
+  fallback: VerticalBounds,
+): SegmentEnvelope {
   const frame = findSegmentFrameAtZ(frames, pos.z);
   if (!frame) {
-    return { yMin: fallback.yMin, yMax: fallback.yMax, segmentIndex: null, authored: false };
+    out.yMin = fallback.yMin;
+    out.yMax = fallback.yMax;
+    out.segmentIndex = null;
+    out.authored = false;
+    out.respawnAt = undefined;
+    return out;
   }
   const zone = frame.safeZone;
   const margins = zone ?? fallback;
   // The ceiling also clears the upstream neighbour's top: a runner launched off
   // a waterfall lip carries forward momentum and crosses into the next
   // segment's (short) z span while still up at lip height.
-  const upstream = frames.find((candidate) => candidate.index === frame.index - 1);
-  const ceiling = Math.max(frame.pathYMax, upstream?.pathYMax ?? -Infinity);
-  return {
-    yMin: frame.pathYMin + margins.yMin,
-    yMax: ceiling + margins.yMax,
-    segmentIndex: frame.index,
-    authored: Boolean(zone),
-    ...(zone?.respawnAt !== undefined ? { respawnAt: zone.respawnAt } : {}),
-  };
+  let upstreamYMax = -Infinity;
+  for (let i = 0; i < frames.length; i += 1) {
+    if (frames[i].index === frame.index - 1) {
+      upstreamYMax = frames[i].pathYMax;
+      break;
+    }
+  }
+  const ceiling = Math.max(frame.pathYMax, upstreamYMax);
+  out.yMin = frame.pathYMin + margins.yMin;
+  out.yMax = ceiling + margins.yMax;
+  out.segmentIndex = frame.index;
+  out.authored = Boolean(zone);
+  out.respawnAt = zone?.respawnAt;
+  return out;
 }
 
 /**

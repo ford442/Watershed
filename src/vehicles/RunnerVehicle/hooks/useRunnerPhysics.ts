@@ -1,16 +1,17 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import * as THREE from 'three';
 import { JumpState, DodgeState, DebugImpulse, DebugContact, PhysicsDebugSnapshot } from '../constants';
-import { RunnerVehicle as RunnerVehicleClass } from '../../../systems/vehicle/VehicleSystem';
+import { createCollisionTracker, RUNNER_CONTACT_FRICTION } from '../../../systems/vehicle/VehicleSystem';
 import { PHYSICS } from '../../../constants/game';
 import { ParticlePool } from '../../../components/particlePool';
 import { COLLISION_PARTICLE_CAPACITY } from '../../../components/CollisionParticles';
+import { createRunnerStepScratch } from './runnerStepScratch';
 
-export function useRunnerPhysicsState() {
-  const vehicle = useRef(new RunnerVehicleClass());
+/** A ref-shaped holder (the step mutates `.current`, as it did on `useRef`s). */
+const ref = <T,>(current: T): { current: T } => ({ current });
 
-  // Slope detection state
-  const slopeState = useRef({
+function createSlopeState() {
+  return {
     currentAngle: 0,
     targetMultiplier: 1.0,
     currentMultiplier: 1.0,
@@ -18,10 +19,13 @@ export function useRunnerPhysicsState() {
     isGrounded: false,
     /** Lateral bank angle in degrees; positive = leaning left, negative = leaning right */
     bankAngle: 0,
-  });
+    /** This step's sampled surface pitch (sampleSlope); `currentAngle` takes it while grounded. */
+    sampledAngle: 0,
+  };
+}
 
-  // Jump state machine
-  const jumpState = useRef({
+function createJumpState() {
+  return {
     state: 'grounded' as JumpState,
     hasDoubleJumped: false,
     airTime: 0,
@@ -33,66 +37,11 @@ export function useRunnerPhysicsState() {
     timeSinceGrounded: 0,
     // Goal 2: Variable jump height
     jumpReleased: true,
-  });
+  };
+}
 
-  // Grounded hysteresis: counts frames without ground contact before switching to ungrounded
-  const ungroundedFramesRef = useRef(0);
-
-  // Goal 2: Dodge state machine
-  const dodgeState = useRef({
-    state: 'ready' as DodgeState,
-    timer: 0,
-    direction: new THREE.Vector3(1, 0, 0),
-    nearMissAwarded: false,
-  });
-
-  // Goal 2: Platform riding state
-  const platformState = useRef({
-    isOnPlatform: false,
-    platformVelocity: new THREE.Vector3(0, 0, 0),
-  });
-
-  // Track last applied gravity multiplier to avoid redundant world.gravity mutations
-  const appliedGravMultRef = useRef(1.0);
-
-  // Sprint stamina hysteresis: when stamina hits 0, sprint is locked out until RECOVERY_THRESHOLD
-  const sprintLockedRef = useRef(false);
-
-  // Reusable Vector3 for camera forward direction (avoids per-frame heap allocations)
-  const jumpForwardDirRef = useRef(new THREE.Vector3());
-
-  // Footstep tracking
-  const footstepState = useRef({
-    distanceTraveled: 0,
-    lastStepDistance: 0,
-    stepInterval: 2.5, // Units between steps
-  });
-
-  // Previous frame state for transition detection
-  const prevFrame = useRef({
-    wasGrounded: true,
-    jumpPressed: false,
-    dodgePressed: false,
-    velocity: new THREE.Vector3(),
-  });
-
-  // Collision & material state (lazy pool: a useRef initialiser runs every render)
-  const [collisionParticles] = useState(() => new ParticlePool(COLLISION_PARTICLE_CAPACITY));
-  const collisionState = useRef({
-    currentBiome: 'canyonSummer' as string,
-    /** Collision bursts, drawn by ParticlePoolMesh in RunnerVehicle. */
-    particles: collisionParticles,
-  });
-
-  const fovRef = useRef(75);
-  const debugState = useRef({
-    recentImpulses: [] as DebugImpulse[],
-    recentContacts: [] as DebugContact[],
-    friction: 0.04,
-    /** Sim milliseconds stepped (the debug overlay's contact/impulse clock). */
-    simMs: 0,
-  });
-  const debugSnapshotRef = useRef<PhysicsDebugSnapshot>({
+function createDebugSnapshot(): PhysicsDebugSnapshot {
+  return {
     position: { x: 0, y: 0, z: 0 },
     linearVelocity: { x: 0, y: 0, z: 0 },
     angularVelocity: { x: 0, y: 0, z: 0 },
@@ -101,7 +50,7 @@ export function useRunnerPhysicsState() {
     bankAngle: 0,
     isGrounded: false,
     jumpState: 'grounded',
-    friction: 0.04,
+    friction: RUNNER_CONTACT_FRICTION,
     waterfallGravityMultiplier: 1,
     effectiveG: PHYSICS.GRAVITY,
     extraGravity: 0,
@@ -114,26 +63,76 @@ export function useRunnerPhysicsState() {
     groundNormal: { x: 0, y: 0, z: 0 },
     recentImpulses: [],
     recentContacts: [],
-  });
-
-  return {
-    vehicle,
-    slopeState,
-    jumpState,
-    ungroundedFramesRef,
-    dodgeState,
-    platformState,
-    appliedGravMultRef,
-    sprintLockedRef,
-    jumpForwardDirRef,
-    footstepState,
-    prevFrame,
-    collisionState,
-    fovRef,
-    debugState,
-    debugSnapshotRef
   };
 }
 
-export type RunnerPhysicsState = ReturnType<typeof useRunnerPhysicsState>;
+/**
+ * Everything the runner's physics step reads and writes, built once per
+ * mounted runner. Plain holders, not `useRef(new …)` — a `useRef` argument is
+ * evaluated (and its vectors allocated) on every render (#521 D).
+ */
+export function createRunnerPhysicsState() {
+  return {
+    /** Impact events and their sim clock (was the RunnerVehicle class). */
+    vehicle: createCollisionTracker(),
+    slopeState: ref(createSlopeState()),
+    jumpState: ref(createJumpState()),
+    // Grounded hysteresis: counts frames without ground contact before switching to ungrounded
+    ungroundedFramesRef: ref(0),
+    // Goal 2: Dodge state machine
+    dodgeState: ref({
+      state: 'ready' as DodgeState,
+      timer: 0,
+      direction: new THREE.Vector3(1, 0, 0),
+      nearMissAwarded: false,
+    }),
+    // Goal 2: Platform riding state
+    platformState: ref({
+      isOnPlatform: false,
+      platformVelocity: new THREE.Vector3(0, 0, 0),
+    }),
+    // Track last applied gravity multiplier to avoid redundant world.gravity mutations
+    appliedGravMultRef: ref(1.0),
+    // Sprint stamina hysteresis: when stamina hits 0, sprint is locked out until RECOVERY_THRESHOLD
+    sprintLockedRef: ref(false),
+    // Reusable Vector3 for camera forward direction (avoids per-frame heap allocations)
+    jumpForwardDirRef: ref(new THREE.Vector3()),
+    // Footstep tracking
+    footstepState: ref({
+      distanceTraveled: 0,
+      lastStepDistance: 0,
+      stepInterval: 2.5, // Units between steps
+    }),
+    // Previous frame state for transition detection
+    prevFrame: ref({
+      wasGrounded: true,
+      jumpPressed: false,
+      dodgePressed: false,
+      velocity: new THREE.Vector3(),
+    }),
+    collisionState: ref({
+      currentBiome: 'canyonSummer' as string,
+      /** Collision bursts, drawn by ParticlePoolMesh in RunnerVehicle. */
+      particles: new ParticlePool(COLLISION_PARTICLE_CAPACITY),
+    }),
+    fovState: { fov: 75 },
+    debugState: ref({
+      recentImpulses: [] as DebugImpulse[],
+      recentContacts: [] as DebugContact[],
+      friction: RUNNER_CONTACT_FRICTION,
+      /** Sim milliseconds stepped (the debug overlay's contact/impulse clock). */
+      simMs: 0,
+    }),
+    debugSnapshotRef: ref(createDebugSnapshot()),
+    /** The physics step's reused per-step scratch (runnerStepScratch.ts). */
+    stepScratch: createRunnerStepScratch(),
+  };
+}
+
+export function useRunnerPhysicsState() {
+  const [state] = useState(createRunnerPhysicsState);
+  return state;
+}
+
+export type RunnerPhysicsState = ReturnType<typeof createRunnerPhysicsState>;
 export type RunnerJumpData = RunnerPhysicsState['jumpState']['current'];

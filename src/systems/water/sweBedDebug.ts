@@ -39,10 +39,6 @@ export function clearSWEBedSnapshot(): void {
   for (const listener of listeners) listener(null);
 }
 
-export function getSWEBedSnapshot(): SWEBedSnapshot | null {
-  return current;
-}
-
 export function subscribeSWEBedSnapshot(listener: Listener): () => void {
   listeners.add(listener);
   listener(current);

@@ -323,7 +323,7 @@ export default function WeatherSystem({ targetRef }: WeatherSystemProps) {
     // 3. Fog modulation
     // ======================================================================
     const cfg = WEATHER_CONFIG.fog;
-    let targetFogDensity: number = cfg.clearDensity;
+    let targetFogDensity: number;
     const targetFogColor = TARGET_FOG_COLOR.set(cfg.clearColor);
 
     switch (weatherType) {

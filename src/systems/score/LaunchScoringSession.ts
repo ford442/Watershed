@@ -45,10 +45,6 @@ let rewardIdCounter = 0;
 let popupIdCounter = 0;
 let shelfLaunchListenerAttached = false;
 
-export function getLaunchPhysicsStep(): number {
-  return physicsStep;
-}
-
 export function bumpLaunchPhysicsStep(): number {
   physicsStep += 1;
   return physicsStep;

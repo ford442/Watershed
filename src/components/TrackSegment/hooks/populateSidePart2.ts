@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { createRockPayload } from '../utils';
 import { isAutumnLike } from '../../../configs/biomes';
 import type { PopulateSideArgs } from '../types';
 import { applyTubeProfile, resolveTubeProfile } from './geometryBuilders';
@@ -7,14 +6,13 @@ import { applyTubeProfile, resolveTubeProfile } from './geometryBuilders';
 export function populateSidePart2(args: PopulateSideArgs): void {
     const {
         side, zLocal, channelShape, bankStart, canyonWidth, waterWidth, waterLevel,
-        biome, segmentId, type, config, flowSpeed, isSlotCanyon, biomeProfile,
-        rocks, reeds, driftwood, leaves, floatingLeaves, fireflies,
+        biome, type, config, flowSpeed, isSlotCanyon, biomeProfile,
+        reeds, driftwood, leaves, floatingLeaves, fireflies,
         birds, bats, fish, mist, waterLilies, sunShafts,
-        rapids, dragonflies, mushrooms, rockFoam, canyonDust,
+        rapids, dragonflies, mushrooms,
         icicles, iceSheets,
-        pathPoint, tangent, binormal, rng, lodQuality, particleCount,
+        pathPoint, tangent, binormal, rng, lodQuality,
     } = args;
-    const isPond = type === 'pond';
     const bankEdge = side < 0 ? channelShape.leftHalfWidth : channelShape.rightHalfWidth;
     const rockDensity = config?.rockDensity ?? biomeProfile?.rockDensity ?? 'low';
     const isGlacier = biomeProfile?.id === 'glacier' || biomeProfile?.id === 'glacialMelt'

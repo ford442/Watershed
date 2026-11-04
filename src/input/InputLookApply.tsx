@@ -56,5 +56,3 @@ export function InputLookApply(): null {
 
   return null;
 }
-
-export default InputLookApply;

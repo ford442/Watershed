@@ -31,6 +31,7 @@ import {
   DEFAULT_SEGMENT_PROGRESSION,
 } from './MapSystem.generation';
 import { WATER_LEVEL } from '../../constants/game';
+import { composeGameplayProfile, type GameplayProfile } from '../gameplay/gameplayProfile';
 
 // Re-export types and generation helpers (public API unchanged).
 export type {
@@ -54,15 +55,24 @@ export type {
 export {
   buildProceduralSegment,
   calculateSegmentSpawns,
-  calculateSpawns,
   DEFAULT_MAP_CONFIG,
   DEFAULT_SEGMENT_PROGRESSION,
   ensureTangentContinuity,
-  generateRiverPath,
   generateSegmentPath,
   INITIAL_TREADMILL_POINTS,
   type BuildProceduralSegmentOptions,
 } from './MapSystem.generation';
+
+/**
+ * A segment's gameplay profile (#521 B): its biome's row in
+ * `BIOME_GAMEPLAY_PROFILES` with the config's `gameplay` override laid over it.
+ * The palette's `flowSpeed` is not read: it is the surface's look, not the current.
+ */
+export function resolveGameplayProfile(
+  config: Pick<SegmentProgressionConfig, 'biome' | 'gameplay'>,
+): Readonly<GameplayProfile> {
+  return composeGameplayProfile(config.biome, config.gameplay);
+}
 
 // =============================================================================
 // PROCEDURAL FALLBACK MAP MANAGER
@@ -70,9 +80,10 @@ export {
 // Not a placeholder: this is the real procedural generator that both the
 // standalone (map-less) treadmill and the authored-map fallback path
 // (`fallbackManager` below and in the authored-map manager) fall back to
-// once the authored segment sequence runs out.
+// once the authored segment sequence runs out. Module-private (#521 F): only
+// the two managers below construct it; nothing outside imports it.
 
-export class DefaultMapManager implements MapManager {
+class DefaultMapManager implements MapManager {
   chunks: BaseMapChunk[] = [];
   currentChunkIndex = 0;
   private config: MapConfig;
@@ -173,7 +184,7 @@ export { LEGACY_BIOME_ALIASES as JSON_BIOME_NAME_MAP, normalizeBiomeId } from '.
 /**
  * Loads and parses JSON level files into MapSystem-compatible format
  */
-export class JSONLevelLoader {
+class JSONLevelLoader {
   /**
    * Fetch and parse a level from URL
    */
@@ -208,9 +219,6 @@ export class JSONLevelLoader {
     const waypoints = data.world.track.waypoints.map((wp: number[]) =>
       new THREE.Vector3(wp[0], wp[1], wp[2])
     );
-
-    // Create the main curve from waypoints
-    const mainCurve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.5);
 
     return {
       metadata: data.metadata,
@@ -463,6 +471,7 @@ export class JSONMapManager implements MapManager {
       hasBridge: seg.hasBridge,
       vortex: seg.vortex,
       safeZone: seg.safeZone,
+      gameplay: seg.gameplay,
     };
   }
 }
@@ -512,11 +521,6 @@ export class ProceduralMapManager implements MapManager {
       : null;
     this.continuationStartIndex = continuation?.startIndex ?? 0;
     this.fallbackManager = new DefaultMapManager(config, fallbackProgression);
-
-    if (levelData) {
-      const total = levelData.world.track.totalSegments;
-      const segCount = levelData.segments.length;
-    }
   }
 
   /** Authored segment count of the primary map (0 when procedural-only). */

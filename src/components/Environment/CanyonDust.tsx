@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useBiome } from '../../systems/biome/BiomeSystem';
+import { useBiomeId } from '../../systems/biome/BiomeSystem';
 import type { CanyonDustProps } from './types';
 import { resolveMaterialBackend } from '../../rendering/materialBackend';
 import { createCanyonDustMaterial } from '../../materials/vfx/createVfxMaterials';
@@ -25,8 +25,8 @@ export default function CanyonDust({
 }: CanyonDustProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const { camera } = useThree();
-  const { currentBiome } = useBiome();
-  const densityMul = DUST_DENSITY_BY_BIOME[currentBiome.id] ?? 1.0;
+  const biomeId = useBiomeId();
+  const densityMul = DUST_DENSITY_BY_BIOME[biomeId] ?? 1.0;
 
   const poolSize = Math.max(1, count);
   const geometry = useMemo(() => {
@@ -62,7 +62,7 @@ export default function CanyonDust({
       u.playerVelocity.value = playerVelocityRef?.current ?? 0;
       u.densityMul.value = densityMul;
       if (u.colorBase?.value instanceof THREE.Color) {
-        u.colorBase.value.set(currentBiome.id === 'canyonAutumn' ? '#e8c79a' : '#f7e9cf');
+        u.colorBase.value.set(biomeId === 'canyonAutumn' ? '#e8c79a' : '#f7e9cf');
       }
     }
   });

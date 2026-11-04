@@ -27,9 +27,3 @@ export function loadNodePost(): Promise<NodePostModule> {
 export function getLoadedNodePost(): NodePostModule | null {
   return cached;
 }
-
-/** Test seam — drops the cache so a test can assert the not-yet-loaded path. */
-export function resetNodePostCache(): void {
-  cached = null;
-  pending = null;
-}

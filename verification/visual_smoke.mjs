@@ -316,14 +316,24 @@ function classifyPageErrors(errors) {
   return { hard, soft };
 }
 
+// Cold Chrome on a shared runner can miss puppeteer's 30 s WS-endpoint default (CI run 351).
 async function launchBrowser() {
-  return puppeteer.launch({
-    headless: 'new',
-    ignoreDefaultArgs: true,
-    executablePath: resolveChromePath(),
-    protocolTimeout: 60_000,
-    args: CHROME_ARGS,
-  });
+  const launch = (dumpio) =>
+    puppeteer.launch({
+      headless: 'new',
+      ignoreDefaultArgs: true,
+      executablePath: resolveChromePath(),
+      protocolTimeout: 60_000,
+      timeout: 120_000,
+      dumpio,
+      args: CHROME_ARGS,
+    });
+  try {
+    return await launch(false);
+  } catch (err) {
+    console.warn(`[visual-smoke] Chrome launch failed (${err.message}); retrying once with dumpio`);
+    return launch(true);
+  }
 }
 
 async function capturePng(page, outPath) {
@@ -882,13 +892,11 @@ async function run() {
   console.log(`Baselines: ${BASELINE_DIR}`);
   console.log(`Mode: ${UPDATE_BASELINES ? 'UPDATE baselines' : 'compare'}`);
 
-  let allOk = true;
   const only = (process.env.VISUAL_ONLY ?? '').split(',').map((l) => l.trim()).filter(Boolean);
   if (only.length) report.nativeFetch = { status: 'skipped-by-filter' };
   const nativeOnce = only.length ? true : await checkNativeFetchedOnce(report);
   for (const shot of SHOTS.filter((sh) => only.length === 0 || only.includes(sh.label))) {
-    const ok = await captureShot(shot, report);
-    if (!ok) allOk = false;
+    await captureShot(shot, report);
   }
 
   if (!UPDATE_BASELINES) {

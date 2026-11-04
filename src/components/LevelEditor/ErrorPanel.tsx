@@ -252,5 +252,3 @@ export const ErrorPanel: React.FC<ErrorPanelProps> = ({
     </div>
   );
 };
-
-export default ErrorPanel;

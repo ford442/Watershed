@@ -56,5 +56,3 @@ export function useMenuFocus(containerRef: RefObject<HTMLElement | null>, option
     };
   }, [containerRef, enabled, gamepad]);
 }
-
-export default useMenuFocus;

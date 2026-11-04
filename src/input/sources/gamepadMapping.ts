@@ -14,7 +14,6 @@ import {
   SETTINGS_ACTIONS,
   type Binding,
   type Bindings,
-  type SettingsAction,
 } from '../../systems/settings/settingsDerive';
 
 /** The slice of the Gamepad API the source reads (a real `Gamepad` satisfies it). */
@@ -145,10 +144,6 @@ export function parsePadBinding(binding: Binding): { axis: boolean; index: numbe
     return sign !== 0 && Number.isInteger(n) && n >= 0 && n < 16 ? { axis: true, index: n, sign } : null;
   }
   return null;
-}
-
-export function actionIndex(action: SettingsAction): number {
-  return SETTINGS_ACTIONS.indexOf(action);
 }
 
 /** Button value, 0..1 (analog triggers report `value`; digital buttons 0 or 1). */

@@ -410,5 +410,3 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     </div>
   );
 };
-
-export default StartMenu;

@@ -14,7 +14,7 @@ import { useFrame } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import { useRapier } from '@react-three/rapier';
 import * as THREE from 'three';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
 import { getAudioManager, AudioManager } from '../systems/audio/AudioSystem';
 import { WATER_LEVEL } from '../constants/game';
@@ -31,6 +31,10 @@ const tmpRight = new THREE.Vector3();
 const tmpRayOrigin = new THREE.Vector3();
 const tmpRayDir = new THREE.Vector3();
 const tmpBoostDir = new THREE.Vector3();
+/** Short-lived products (an impulse, an offset) read right after they are written (#521 F). */
+const tmpScratch = new THREE.Vector3();
+const tmpFlatVel = new THREE.Vector3();
+const tmpCross = new THREE.Vector3();
 
 interface VehicleTunerProps {
   /** Ref to the vehicle RigidBody */
@@ -41,6 +45,9 @@ interface VehicleTunerProps {
 
 export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerProps) {
   const { world, rapier } = useRapier();
+  // A Rapier Ray only holds its origin / dir objects; castRay reads them at call
+  // time, so one Ray over the scratch vectors serves every wall probe.
+  const wallRay = useMemo(() => new rapier.Ray(tmpRayOrigin, tmpRayDir), [rapier]);
   const [, getKeys] = useKeyboardControls();
 
   const boostState = useRef({
@@ -166,8 +173,8 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
       const turnSign = leftward ? -1 : 1;
 
       // Lateral impulse in the turn direction (simulates reduced side friction)
-      const lateralImpulse = tmpRight
-        .clone()
+      const lateralImpulse = tmpScratch
+        .copy(tmpRight)
         .multiplyScalar(turnSign * speed * driftIntensity * 0.18 * delta);
       body.applyImpulse(
         { x: lateralImpulse.x, y: 0, z: lateralImpulse.z },
@@ -187,8 +194,8 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
       // In rapids, exaggerate lateral velocity retention
       if (inRapids) {
         const lateralVel = tmpRight.dot(tmpVel);
-        const retained = tmpRight
-          .clone()
+        const retained = tmpScratch
+          .copy(tmpRight)
           .multiplyScalar(lateralVel * (1 - VEHICLE_TUNING.driftLateralRetention) * delta * 2);
         body.applyImpulse(
           { x: retained.x, y: 0, z: retained.z },
@@ -209,8 +216,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     for (const side of [-1, 1] as const) {
       tmpRayOrigin.copy(tmpPos).setY(tmpPos.y + VEHICLE_TUNING.wallRayOriginYOffset);
       tmpRayDir.copy(tmpRight).multiplyScalar(side);
-      const ray = new rapier.Ray(tmpRayOrigin, tmpRayDir);
-      const hit = world.castRay(ray, VEHICLE_TUNING.wallRayDistance, true);
+      const hit = world.castRay(wallRay, VEHICLE_TUNING.wallRayDistance, true);
       if (hit) {
         wallContact = { side, distance: hit.timeOfImpact };
         break;
@@ -258,7 +264,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
 
         tmpBoostDir
           .copy(tmpForward)
-          .add(tmpRight.clone().multiplyScalar(wallContact.side * 0.25))
+          .add(tmpScratch.copy(tmpRight).multiplyScalar(wallContact.side * 0.25))
           .normalize();
 
         const boostImpulse = tmpBoostDir.multiplyScalar(
@@ -278,7 +284,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
       const boostDir =
         tmpForward.lengthSq() > 0.001
           ? tmpForward
-          : new THREE.Vector3(0, 0, -1);
+          : tmpScratch.set(0, 0, -1);
       const boostImpulse = boostDir.multiplyScalar(
         VEHICLE_TUNING.boostStrength * delta
       );
@@ -290,10 +296,10 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     // ========================================================================
     if (VEHICLE_TUNING.autoAlignToFlow && inWater && closestSample && speed > 8) {
       const flowDir = closestSample.tangent;
-      const flatVel = new THREE.Vector3(vel.x, 0, vel.z).normalize();
+      const flatVel = tmpFlatVel.set(vel.x, 0, vel.z).normalize();
       const alignment = flatVel.dot(flowDir);
       if (alignment < 0.95) {
-        const cross = new THREE.Vector3().crossVectors(flatVel, flowDir);
+        const cross = tmpCross.crossVectors(flatVel, flowDir);
         const torqueY = cross.y * VEHICLE_TUNING.autoAlignTorque * delta * (speed / 10);
         body.applyTorqueImpulse({ x: 0, y: torqueY, z: 0 }, true);
       }

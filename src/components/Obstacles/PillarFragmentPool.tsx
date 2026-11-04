@@ -19,41 +19,35 @@ import {
 } from './pillarCrumble';
 import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { gameEvents } from '../../systems/events/GameEvents';
+import { getPillarFragmentClock } from './pillarSimClock';
 
 export interface ActivePillarFragment {
   id: number;
   spawn: PillarFragmentSpawn;
-  /** Pool sim time (seconds) at enqueue. */
+  /** Pillar-fragment sim clock (seconds) at enqueue. */
   bornAt: number;
 }
 
 let nextFragmentId = 0;
-
-/**
- * Sim seconds the pool has stepped (its useFrame delta), the clock fragments
- * age on. Debris has colliders, so its lifetime is gameplay: never wall time.
- */
-let poolSimTimeSec = 0;
 
 /** Module-level queue so Rock columns can enqueue debris without React context. */
 const pendingSpawns: ActivePillarFragment[] = [];
 
 export function enqueuePillarFragments(spawns: PillarFragmentSpawn[]): void {
   for (const spawn of spawns) {
-    pendingSpawns.push({ id: nextFragmentId++, spawn, bornAt: poolSimTimeSec });
+    pendingSpawns.push({ id: nextFragmentId++, spawn, bornAt: getPillarFragmentClock() });
   }
 }
 
 /**
- * Advance the pool clock by `deltaSec` and split `live` into survivors.
- * Returns null when nothing expired (the caller keeps its array as is).
+ * Split `live` into survivors at the pool's sim clock (advanced by SimCore's
+ * `pillars` system, pillarSimClock.ts). Returns null when nothing expired (the
+ * caller keeps its array as is).
  */
-export function agePillarFragments(
+export function expirePillarFragments(
   live: readonly ActivePillarFragment[],
-  deltaSec: number,
 ): ActivePillarFragment[] | null {
-  poolSimTimeSec += Math.max(0, deltaSec);
-  const now = poolSimTimeSec;
+  const now = getPillarFragmentClock();
   if (!live.some((f) => now - f.bornAt >= PILLAR_FRAGMENT_LIFETIME_S)) return null;
   return live.filter((f) => now - f.bornAt < PILLAR_FRAGMENT_LIFETIME_S);
 }
@@ -110,13 +104,13 @@ export default function PillarFragmentPool({ castShadow = false }: PillarFragmen
     return gameEvents.on('watershed-run-reset', onReset);
   }, [commit]);
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     let next: ActivePillarFragment[] | null = null;
     if (pendingSpawns.length > 0) {
       next = [...liveRef.current, ...pendingSpawns.splice(0, pendingSpawns.length)];
     }
     const base = next ?? liveRef.current;
-    const survivors = agePillarFragments(base, delta);
+    const survivors = expirePillarFragments(base);
     if (survivors) {
       releasePillarFragmentSlots(base.length - survivors.length);
       next = survivors;

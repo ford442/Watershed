@@ -1,14 +1,17 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Instance } from '@react-three/drei';
-import type { BiomeDecorationProps } from './types';
+import type { BiomeDecorationProps, PlacementTransform } from './types';
 import { NonEmptyInstances } from '../NonEmptyInstances';
 import { sinHash } from '../../math/hash';
 
 const hash = (n: number): number => sinHash(n * 18.233);
 
+/** Stable stand-in for absent transforms, so the instance memo is not rebuilt every render. */
+const NO_TRANSFORMS: PlacementTransform[] = [];
+
 export default function DesertSage({ transforms }: BiomeDecorationProps) {
-  const safeTransforms = Array.isArray(transforms) ? transforms : [];
+  const safeTransforms = Array.isArray(transforms) ? transforms : NO_TRANSFORMS;
 
   const geometry = useMemo(() => {
     const geo = new THREE.IcosahedronGeometry(0.3, 0);

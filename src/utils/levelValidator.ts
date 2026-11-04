@@ -29,23 +29,6 @@ const SEGMENT_TYPES = ['normal', 'waterfall', 'pond', 'splash', 'rapids'];
 // Difficulty mapping
 const DIFFICULTY_TYPES = ['beginner', 'intermediate', 'expert', 'custom'];
 
-// Numeric ranges for validation
-const RANGES = {
-  difficulty: { min: 0, max: 1 },
-  segmentLength: { min: 20, max: 150 },
-  totalSegments: { min: 1, max: 50 },
-  width: { min: 20, max: 120 },
-  wallHeight: { min: 8, max: 30 },
-  meanderStrength: { min: 0, max: 3 },
-  verticalBias: { min: -3, max: 0 },
-  forwardMomentum: { min: 0.1, max: 2 },
-  gravityMultiplier: { min: 0.5, max: 2 },
-  waterFlowIntensity: { min: 0, max: 3 },
-  sunIntensity: { min: 0.5, max: 2 },
-  ambientIntensity: { min: 0.1, max: 1 },
-  flowSpeed: { min: 0, max: 3 },
-};
-
 // Decoration limits
 const DECORATION_LIMITS: Record<string, { min: number; max: number }> = {
   trees: { min: 0, max: 50 },
@@ -454,7 +437,7 @@ function validatePerformanceBudget(levelData: any, errors: ValidationError[], wa
 
   for (const seg of segments) {
     if (seg.decorations) {
-      for (const [type, count] of Object.entries(seg.decorations)) {
+      for (const [, count] of Object.entries(seg.decorations)) {
         if (typeof count === 'number') {
           totalDecorations += count;
         }
@@ -579,5 +562,3 @@ export function validateDecorationCount(type: string, count: number): { valid: b
 
   return { valid: true };
 }
-
-export default validateLevel;

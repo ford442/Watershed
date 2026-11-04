@@ -384,22 +384,3 @@ export function createRockFoamNodeMaterial(init: {
   material.userData.materialBackend = 'tsl';
   return material;
 }
-
-/** Legacy generic stand-in — prefer dedicated creators above. */
-export function createGenericVfxNodeMaterial(
-  params: THREE.ShaderMaterialParameters,
-): MeshBasicNodeMaterial {
-  const src = params.uniforms ?? {};
-  const colorKey =
-    ['colorBase', 'waterColor', 'tintColor', 'foamColor'].find((k) => k in src) ?? null;
-  const baseColor =
-    colorKey && src[colorKey]?.value instanceof THREE.Color
-      ? (src[colorKey].value as THREE.Color).clone()
-      : new THREE.Color('#ffffff');
-  return tintedRadialMaterial(
-    baseColor,
-    typeof src.opacity?.value === 'number' ? src.opacity.value : 1,
-    params.blending ?? THREE.NormalBlending,
-    params.side ?? THREE.FrontSide,
-  );
-}

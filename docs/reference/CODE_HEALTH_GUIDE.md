@@ -350,7 +350,7 @@ src/
 App.tsx
   └─ Experience.tsx          # LODProvider → BiomeProvider → SunPositionProvider
        └─ InnerExperience.tsx
-            ├─ EnhancedSky (useBiome())
+            ├─ EnhancedSky (biome store)
             ├─ WaterStack → SplashSystem + WaterForceSystem
             ├─ VehicleMount → RunnerVehicle | RaftVehicle
             ├─ TrackManager | ReachManager | LevelLoader

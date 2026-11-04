@@ -32,10 +32,10 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera, scene: new THREE.Scene(), gl: {} }),
 }));
 
-vi.mock('../../systems/biome/BiomeSystem', () => ({
-  useBiome: () => ({ currentBiome: 'canyonSummer', transitionProgress: 1, setBiome: () => {}, snapBiome: () => {} }),
-  useBiomeMaterials: () => ({}),
-}));
+vi.mock('../../systems/biome/BiomeSystem', () => {
+  const setters = { setBiome: () => {}, snapBiome: () => {} };
+  return { useBiomeSetters: () => setters };
+});
 
 vi.mock('../../systems/lod/LODManager', () => ({
   useLOD: () => ({ quality: 'high' }),

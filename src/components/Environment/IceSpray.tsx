@@ -14,6 +14,7 @@ const BASE_LIFETIME = 1.0;
 
 const SHARED_GEO = new THREE.PlaneGeometry(0.12, 0.12);
 const ICE_COLOR = new THREE.Color('#c8eeff');
+const WHITE = new THREE.Color('#ffffff');
 
 interface IceParticle {
   pos: THREE.Vector3;
@@ -118,7 +119,7 @@ export default function IceSpray({ origin, intensity = 0.5, active = true }: Ice
 
       if (p) {
         const lifeFrac = p.life / p.maxLife;
-        color.set(ICE_COLOR).lerp(new THREE.Color('#ffffff'), 1 - lifeFrac);
+        color.set(ICE_COLOR).lerp(WHITE, 1 - lifeFrac);
         mesh.setColorAt(i, color);
       }
     }

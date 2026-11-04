@@ -10,7 +10,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import * as THREE from 'three';
 import { OrbitControls, Grid } from '@react-three/drei';
 import { SegmentInspector } from './SegmentInspector';
 import { BiomeSelector } from './BiomeSelector';
@@ -22,7 +21,7 @@ import {
   deriveEditorContextOptions,
   shadowModeToCanvasProp,
 } from '../../rendering';
-import { validateEditorLevel, EditorValidationError } from '../../utils/levelEditorValidator';
+import { validateEditorLevel } from '../../utils/levelEditorValidator';
 
 /**
  * The editor Canvas honours the same renderer contract as the game Canvas
@@ -126,6 +125,9 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
   onExport,
 }) => {
   const hook = useLevelEditor();
+  // The hook returns a fresh object each render; the callbacks below depend on
+  // its members (stable callbacks / state slices), not on the object.
+  const { isLoaded, loadFromJSON, updateSegment, setWorldBiome, worldBiome, segments } = hook;
 
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState(0);
   const [showErrors, setShowErrors] = useState(true);
@@ -135,36 +137,36 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
 
   // Load initial data once
   useEffect(() => {
-    if (initialLevelData && !hook.isLoaded) {
-      hook.loadFromJSON(initialLevelData);
+    if (initialLevelData && !isLoaded) {
+      loadFromJSON(initialLevelData);
     }
-  }, [initialLevelData, hook.isLoaded, hook.loadFromJSON]);
+  }, [initialLevelData, isLoaded, loadFromJSON]);
 
   // Compute validation from current segments
   const validationResult = validateEditorLevel(hook.segments);
 
   // Handle segment update
   const handleSegmentChange = useCallback((updatedSegment: EditorSegmentConfig) => {
-    hook.updateSegment(updatedSegment.id, updatedSegment);
-  }, [hook.updateSegment]);
+    updateSegment(updatedSegment.id, updatedSegment);
+  }, [updateSegment]);
 
   // Handle biome change (world biome)
   const handleBiomeChange = useCallback((biomeId: string) => {
-    hook.setWorldBiome(biomeId);
-  }, [hook.setWorldBiome]);
+    setWorldBiome(biomeId);
+  }, [setWorldBiome]);
 
   // Apply world biome to all segments (re-triggers the update)
   const handleApplyBiomeToAll = useCallback(() => {
-    hook.setWorldBiome(hook.worldBiome);
-  }, [hook.worldBiome, hook.setWorldBiome]);
+    setWorldBiome(worldBiome);
+  }, [worldBiome, setWorldBiome]);
 
   // Apply world biome to current segment
   const handleApplyBiomeToSegment = useCallback(() => {
-    const seg = hook.segments.find(s => s.index === selectedSegmentIndex);
+    const seg = segments.find(s => s.index === selectedSegmentIndex);
     if (seg) {
-      hook.updateSegment(seg.id, { biomeOverride: hook.worldBiome, biome: hook.worldBiome });
+      updateSegment(seg.id, { biomeOverride: worldBiome, biome: worldBiome });
     }
-  }, [hook.segments, hook.worldBiome, hook.updateSegment, selectedSegmentIndex]);
+  }, [segments, worldBiome, updateSegment, selectedSegmentIndex]);
 
   // Navigate to field from error
   const handleNavigateToField = useCallback((field: string) => {
@@ -187,20 +189,20 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
         try {
           const text = await file.text();
           const json = JSON.parse(text);
-          hook.loadFromJSON(json);
+          loadFromJSON(json);
         } catch (err) {
           console.error('[LevelEditor] Failed to parse file:', err);
         }
       }
     };
     input.click();
-  }, [hook.loadFromJSON]);
+  }, [loadFromJSON]);
 
   // Handle new level
   const handleNew = useCallback(() => {
     const template = createDefaultLevel();
-    hook.loadFromJSON(template);
-  }, [hook.loadFromJSON]);
+    loadFromJSON(template);
+  }, [loadFromJSON]);
 
   // Handle export — show modal with JSON string
   const handleExport = useCallback(() => {
@@ -489,7 +491,11 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
             />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => navigator.clipboard?.writeText(exportJson)}
+                onClick={() => {
+                  navigator.clipboard?.writeText(exportJson).catch((err: unknown) => {
+                    console.warn('[LevelEditor] copy to clipboard failed', err);
+                  });
+                }}
                 style={toolbarButtonStyle}
               >
                 Copy to Clipboard
@@ -558,6 +564,3 @@ function createDefaultLevel(): any {
     },
   };
 }
-
-export default LevelEditor;
-

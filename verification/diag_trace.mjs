@@ -14,7 +14,7 @@ const CHROME_ARGS = [
 ];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function run(i) {
+async function run() {
   const browser = await puppeteer.launch({
     headless: 'new', ignoreDefaultArgs: true,
     executablePath: '/usr/bin/google-chrome', args: CHROME_ARGS,
@@ -48,7 +48,7 @@ async function run(i) {
 }
 
 for (let i = 1; i <= 8; i++) {
-  const r = await run(i);
+  const r = await run();
   console.log(`\n=== boot ${i}: ${r.corrupt ? 'CORRUPT' : 'healthy'} ===`);
   if (r.corrupt || i === 8) {
     r.samples.forEach((s, k) => {

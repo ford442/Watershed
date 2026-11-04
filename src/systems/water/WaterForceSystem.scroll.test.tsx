@@ -148,6 +148,15 @@ function texturePeak() {
   };
 }
 
+// The component publishes its readout (window.__watershedWaterForceSystem),
+// which these tests observe, only on a debug / harness page (#521 D).
+beforeAll(() => {
+  window.history.replaceState(null, '', '/?debug=1');
+});
+afterAll(() => {
+  window.history.replaceState(null, '', '/');
+});
+
 describe('WaterForceSystem window scroll', () => {
   beforeEach(() => {
     h.calls.length = 0;

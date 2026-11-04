@@ -12,7 +12,7 @@ import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { HueSaturationShader } from 'three/examples/jsm/shaders/HueSaturationShader.js';
 import * as THREE from 'three';
 import { useLOD } from '../systems/lod/LODManager';
-import { useBiome } from '../systems/biome/BiomeSystem';
+import { useBiomeId, useBiomeTimeOfDay } from '../systems/biome/BiomeSystem';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
 import { GOD_RAYS_SHADER } from '../systems/volumetric/VolumetricGodRays';
 import { useGameStore } from '../systems/GameState';
@@ -491,7 +491,8 @@ export function PostProcessingPipeline({
 }: PostProcessingPipelineProps) {
   const { gl, scene, camera, size } = useThree();
   const { config } = useLOD();
-  const { timeOfDay, currentBiome } = useBiome();
+  const timeOfDay = useBiomeTimeOfDay();
+  const biomeId = useBiomeId();
   const { sunWorldPosition } = useSunPosition();
   // From the *effective* quality (the adaptive LOD's, passed in as `quality`),
   // like the AA tier — not the settings preset. An adaptive High → Medium drop
@@ -600,7 +601,7 @@ export function PostProcessingPipeline({
         velocity,
         waterfallIntensity,
         isTightCanyon,
-        biomeId: currentBiome?.id,
+        biomeId,
         weatherType,
         timeOfDay,
         sunWorldPosition,
@@ -626,5 +627,3 @@ export function PostProcessingPipeline({
 
   return null;
 }
-
-export default PostProcessingPipeline;

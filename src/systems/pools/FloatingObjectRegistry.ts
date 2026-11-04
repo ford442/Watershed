@@ -29,8 +29,3 @@ export function isFloatingPlatform(handle: number | undefined): boolean {
   if (handle === undefined) return false;
   return floatingPlatformHandles.has(handle);
 }
-
-/** Clear all registrations (e.g., on level unload) */
-export function clearFloatingPlatforms(): void {
-  floatingPlatformHandles.clear();
-}

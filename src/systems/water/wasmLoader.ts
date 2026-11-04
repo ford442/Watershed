@@ -33,6 +33,7 @@ import {
 } from './wasmAbi';
 import { WASM_ARTIFACT_STAMP, WASM_BINARY_SHA } from './wasmArtifactStamp';
 import { wantsWasmTrapTest } from './wasmTrapMarker';
+import { currentSearch } from '../../config/queryFlags';
 
 /** Default deadline for watershed_native load + initialisation (ms). */
 export const WASM_INIT_TIMEOUT_MS = 8000;
@@ -99,7 +100,7 @@ export function resolveWasmInitTimeoutMs(search?: string): number {
   }
 
   const raw =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+    search ?? (currentSearch());
   const query = new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get('wasmInitTimeout');
   if (query != null && query !== '') {
     const parsed = Number(query);

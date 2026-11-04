@@ -703,5 +703,3 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
     </div>
   );
 };
-
-export default SegmentInspector;

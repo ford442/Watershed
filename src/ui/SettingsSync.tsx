@@ -58,5 +58,3 @@ export const SettingsSync: React.FC = () => {
 
   return null;
 };
-
-export default SettingsSync;

@@ -39,16 +39,6 @@ export interface PointLightRequest {
 const requests = new Set<PointLightRequest>();
 let slotCanyonSegments = 0;
 
-/** Live requests (tests / the pool). */
-export function pointLightRequests(): ReadonlySet<PointLightRequest> {
-  return requests;
-}
-
-/** Slot segments currently mounted (tests / the pool). */
-export function slotCanyonFillCount(): number {
-  return slotCanyonSegments;
-}
-
 /**
  * Borrow `count` point lights while mounted. Requests start at intensity 0;
  * the caller sets position (world) and intensity in its own useFrame.

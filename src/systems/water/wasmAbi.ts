@@ -67,7 +67,12 @@ export interface RoutedEdge {
 // Constants mirrored from the C++ headers
 // ---------------------------------------------------------------------------
 
-/** ABI this table describes — ws_getVersion() in bindings.cpp. */
+/**
+ * ABI this table describes — ws_getVersion() in bindings.cpp. Nothing reads it
+ * at runtime (the loader checks MIN_WASM_ABI_VERSION); it is the TS half of the
+ * version the header above says to bump together.
+ * @public
+ */
 export const WASM_ABI_VERSION = 16;
 
 /**

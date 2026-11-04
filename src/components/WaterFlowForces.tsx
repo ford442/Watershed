@@ -29,6 +29,10 @@ let sampleScratch = createSegmentFlowSample();
 const tmpForward = new THREE.Vector3();
 const tmpCross = new THREE.Vector3();
 const tmpFlowMapForce = new THREE.Vector3();
+/** The step's three impulse terms, rewritten every frame before they are summed (#521 F). */
+const tmpAlongFlow = new THREE.Vector3();
+const tmpSideSlip = new THREE.Vector3();
+const tmpTurbulence = new THREE.Vector3();
 
 interface WaterFlowForcesProps {
   targetRef: React.RefObject<any>;
@@ -237,7 +241,7 @@ export default function WaterFlowForces({
       * WATER_FLOW_CONFIG.raftDragShedding
       * submergedRatio
       * flowCarry;
-    const alongFlow = closestSample.tangent.clone().multiplyScalar(
+    const alongFlow = tmpAlongFlow.copy(closestSample.tangent).multiplyScalar(
       abiOwnsCurrent ? 0 : impulseStrength * delta * 2.0,
     );
 
@@ -245,8 +249,8 @@ export default function WaterFlowForces({
     // 4. Centering / side-slip force (pull toward river centerline)
     // ========================================================================
     const centeringFactor = (closestDistance / Math.max(closestSample.canyonWidth, 1));
-    const sideSlip = closestSample.lateral
-      .clone()
+    const sideSlip = tmpSideSlip
+      .copy(closestSample.lateral)
       .multiplyScalar(centeringFactor * WATER_FLOW_CONFIG.centeringStrength * delta);
     const pondDrag = !abiOwnsCurrent
       && rawFlowSpeed < WATER_FLOW_CONFIG.raftNeutralFlowSpeed
@@ -265,7 +269,7 @@ export default function WaterFlowForces({
     const turbAmp = WATER_FLOW_CONFIG.turbulenceAmount * Math.min(effectiveFlowSpeed, 3);
     const turbulenceX = Math.sin(time * turbFreq * 2 + translation.z * 0.1) * Math.cos(time * turbFreq * 1.3) * turbAmp;
     const turbulenceZ = Math.cos(time * turbFreq * 1.7 + translation.x * 0.1) * Math.sin(time * turbFreq * 0.9) * turbAmp;
-    const turbulence = new THREE.Vector3(turbulenceX, 0, turbulenceZ).multiplyScalar(delta);
+    const turbulence = tmpTurbulence.set(turbulenceX, 0, turbulenceZ).multiplyScalar(delta);
 
     // ========================================================================
     // 6. Downward pull (keep vehicle seated in water)

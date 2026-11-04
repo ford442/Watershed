@@ -49,9 +49,12 @@ function resolveSpecies(species: string | undefined): TreeSpecies {
   return 'conifer';
 }
 
+/** Stable stand-in for absent transforms, so the instance memo is not rebuilt every render. */
+const NO_TRANSFORMS: TreePlacement[] = [];
+
 export default function Vegetation({ transforms, biome = 'canyonSummer', isRim = false }: VegetationProps) {
   const { variants } = useTreeAssets();
-  const safeTransforms = Array.isArray(transforms) ? transforms : [];
+  const safeTransforms = Array.isArray(transforms) ? transforms : NO_TRANSFORMS;
 
   const instancesBySpecies = useMemo(() => {
     const season = resolvePaletteSeason(biome);

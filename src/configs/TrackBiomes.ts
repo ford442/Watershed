@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import type { FlowForecastState } from '../constants/game';
 import {
   type BiomeId,
@@ -9,9 +8,6 @@ import {
 
 export type { BiomeId } from './biomes';
 export { isAutumnLike, isSummerLike, normalizeBiomeId } from './biomes';
-
-/** @deprecated Use BiomeId — kept as alias during migration. */
-export type TrackBiomeId = BiomeId;
 
 export type TreeSpeciesId = 'conifer' | 'broadleaf' | 'birch' | 'snag';
 
@@ -266,9 +262,3 @@ export { classifyFlow as getForecastedBiomeState } from '../systems/map/flowFore
 
 // Re-export for callers that still import the type via TrackBiomes.
 export type { FlowForecastState };
-
-export function lerpTrackBiomeColor(from: string, to: string, alpha: number): string {
-  const color = new THREE.Color(from);
-  color.lerp(new THREE.Color(to), alpha);
-  return `#${color.getHexString()}`;
-}

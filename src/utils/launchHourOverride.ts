@@ -7,11 +7,12 @@
  * smoke run cannot clobber the player's chosen launch hour.
  */
 
+import { currentSearch } from '../config/queryFlags';
 const HOUR_PARAM = 'hour';
 
 /** Parse an hour override from a query string; null when absent or malformed. */
 export function parseLaunchHourOverride(search?: string): number | null {
-  const raw = search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const raw = search ?? (currentSearch());
   if (!raw) return null;
   let params: URLSearchParams;
   try {

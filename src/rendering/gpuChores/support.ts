@@ -5,6 +5,7 @@
  * Edge failure after the fact. Ported from Chromashift #132 (Tier A).
  */
 
+import { currentSearch } from '../../config/queryFlags';
 export interface GpuComputeSupport {
   available: boolean;
   reason: string | null;
@@ -33,7 +34,7 @@ export function isGpuComputeDisabledByFlag(search?: string): boolean {
   try {
     const raw =
       search ??
-      (typeof window !== 'undefined' ? window.location.search : '');
+      (currentSearch());
     return new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).has(
       NO_GPU_COMPUTE_PARAM,
     );
@@ -92,14 +93,14 @@ export function readGpuComputeDiagnostics(
   device: GPUDevice | null,
 ): GpuComputeDiagnostics | null {
   if (!device) return null;
-  let info: Partial<GPUAdapterInfo> = {};
+  let info: Partial<GPUAdapterInfo>;
   try {
     info = (device as GPUDevice & { adapterInfo?: GPUAdapterInfo }).adapterInfo ?? {};
   } catch {
     info = {};
   }
 
-  let features: string[] = [];
+  let features: string[];
   try {
     features = [...device.features];
   } catch {

@@ -18,8 +18,8 @@ vi.mock('@react-three/fiber', () => ({
 // Stable identities, like BiomeProvider's useCallback'd setters: a fresh
 // function per render would recreate resetDefaultMapRun and hide the bug.
 vi.mock('../../systems/biome/BiomeSystem', () => {
-  const biome = { currentBiome: 'canyonSummer', setBiome: () => {}, snapBiome: () => {} };
-  return { useBiome: () => biome };
+  const setters = { setBiome: () => {}, snapBiome: () => {} };
+  return { useBiomeSetters: () => setters };
 });
 
 import { useExperienceWorld } from './useExperienceWorld';

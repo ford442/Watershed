@@ -27,7 +27,7 @@ Package name: **`watershed`** (`v0.1.0` in `package.json`).
 App.tsx
   └─ Experience.tsx          # LODProvider → BiomeProvider → SunPositionProvider
        └─ InnerExperience.tsx
-            ├─ EnhancedSky (useBiome())
+            ├─ EnhancedSky (biome store)
             ├─ WaterReflectionLayer / WaterPhysicsEffects  # experience/WaterStack.tsx
             │    ├─ WaterForceSystem
             │    └─ SplashSystem
@@ -105,7 +105,7 @@ src/
 │   ├── TrackSegment/            # ★ Canyon geometry + decorations
 │   ├── FlowingWater.jsx         # ★ Water surface GLSL
 │   ├── PostProcessingPipeline.jsx
-│   ├── EnhancedSky.jsx          # useBiome() sky / fog
+│   ├── EnhancedSky.jsx          # biome store sky / fog
 │   ├── WaterReflection.jsx
 │   ├── WaterFlowForces.tsx      # Segment flow samples → raft impulses
 │   ├── Environment/             # 25+ biome decorations

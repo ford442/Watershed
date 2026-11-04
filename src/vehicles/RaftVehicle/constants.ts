@@ -1,11 +1,4 @@
-import { RAFT, WATER_DENSITY, HUMAN_DENSITY } from '../../constants/game';
-
-// Scientific density constants
-export const DENSITY = {
-  WATER: WATER_DENSITY,
-  HUMAN: HUMAN_DENSITY,
-  RAFT: RAFT.MASS / RAFT.VOLUME,
-} as const;
+import { RAFT } from '../../constants/game';
 
 // Tipping mechanics
 export const TIPPING = {

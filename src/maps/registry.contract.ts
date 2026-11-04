@@ -43,16 +43,18 @@ export type Equals<A, B> =
   (<G>() => G extends A ? 1 : 2) extends (<G>() => G extends B ? 1 : 2) ? true : false;
 
 // -----------------------------------------------------------------------------
-// Compile-time contract
+// Compile-time contract — tsc evaluates the aliases where they are declared;
+// they are exported only so no-unused-vars leaves them be. Nothing imports
+// them, hence the knip `@public` tags.
 // -----------------------------------------------------------------------------
 
-/** The canonical list and the `MapRegistryId` union describe the same set. */
+/** The canonical list and the `MapRegistryId` union describe the same set. @public */
 export type CanonicalListMatchesUnion = Assert<Equals<CanonicalMapRegistryId, MapRegistryId>>;
 
-/** Every registry key is a `MapRegistryId`, and every `MapRegistryId` is registered. */
+/** Every registry key is a `MapRegistryId`, and every `MapRegistryId` is registered. @public */
 export type RegistryKeysMatchUnion = Assert<Equals<keyof typeof MAP_REGISTRY, MapRegistryId>>;
 
-/** The canonical list and the actual registry keys describe the same set. */
+/** The canonical list and the actual registry keys describe the same set. @public */
 export type CanonicalListMatchesRegistryKeys = Assert<
   Equals<CanonicalMapRegistryId, keyof typeof MAP_REGISTRY>
 >;

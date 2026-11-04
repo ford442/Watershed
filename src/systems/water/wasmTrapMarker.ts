@@ -5,6 +5,7 @@
  * flag. The stack parser lives in wasmTrap.ts and is loaded on demand.
  */
 
+import { currentSearch } from '../../config/queryFlags';
 /** Marker in a WasmTrapError message; nativeOwner.ts reads the function after it. */
 export const WASM_TRAP_MARKER = 'wasm trap in';
 
@@ -18,6 +19,6 @@ export function trapFunctionOf(error: unknown): string | null {
 
 /** `?wasmTrapTest=1`: call the Debug-only `ws_trapTest` export after bind. */
 export function wantsWasmTrapTest(search?: string): boolean {
-  const raw = search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const raw = search ?? (currentSearch());
   return new URLSearchParams(raw.startsWith('?') ? raw : `?${raw}`).get('wasmTrapTest') === '1';
 }

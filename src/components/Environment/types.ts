@@ -8,8 +8,6 @@ import type {
   PlacementTransform,
   TreePlacement,
 } from '../TrackSegment/types';
-import { extendTreeMaterial } from '../../utils/TreeShader';
-import { extendVegetationMaterial } from '../../utils/VegetationShader';
 
 export type { FlowerPlacement, MistPlacement, PlacementTransform, TreePlacement };
 
@@ -137,38 +135,4 @@ export interface CanyonDecorationsProps {
 export interface PooledObstaclesProps {
   slots: ObstacleSlot[];
   rockMaterial?: THREE.MeshStandardMaterial;
-}
-
-/** Shader hook storage on materials using onBeforeCompile. */
-export interface MaterialShaderUserData {
-  shader?: {
-    uniforms: Record<string, { value: unknown }>;
-  };
-}
-
-export function materialShaderUserData(
-  material: THREE.Material,
-): MaterialShaderUserData {
-  return material.userData as MaterialShaderUserData;
-}
-
-
-/** Bridge MeshStandardMaterial into VegetationShader without `as any`. */
-export type VegetationMaterialInput = NonNullable<
-  Parameters<typeof extendVegetationMaterial>[0]
->;
-
-export function toVegetationMaterial(
-  mat: THREE.MeshStandardMaterial,
-): VegetationMaterialInput {
-  return mat as unknown as VegetationMaterialInput;
-}
-
-/** Bridge MeshStandardMaterial into TreeShader without `as any`. */
-export type TreeMaterialInput = NonNullable<
-  Parameters<typeof extendTreeMaterial>[0]
->;
-
-export function toTreeMaterial(mat: THREE.MeshStandardMaterial): TreeMaterialInput {
-  return mat as unknown as TreeMaterialInput;
 }

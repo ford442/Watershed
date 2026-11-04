@@ -114,5 +114,3 @@ export const WEATHER_CONFIG = {
     stormBoostMultiplier: 0.7,
   },
 } as const;
-
-export type WeatherConfig = typeof WEATHER_CONFIG;

@@ -1,19 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
-import { useBiome } from '../../systems/biome/BiomeSystem';
+import { useBiomeSetters } from '../../systems/biome/BiomeSystem';
 import { normalizeBiomeId } from '../../configs/biomes';
 import { commitJourneyScore, resetScoreSystemState } from '../../systems/score/ScoreSystem';
 import { commitTimedFinish } from '../../systems/ghost/runFinish';
-import { getRecordedSplitChecksums, getRecordedSplits } from '../../systems/ghost/SplitRecorder';
-import { getCurrentGhostPayload, getGhostElapsedMs } from '../../systems/ghost/GhostRecorder';
-import { exportGhostToJson } from '../../systems/ghost/ghostExport';
-import { currentRunFairness } from '../../systems/ghost/raceFairness';
-import { inputHub } from '../../input/InputHub';
-import { getScriptedSimTimeSec, isScriptedInputMode, isScriptedRunLive, stepScripted } from '../../input/scriptedRun';
+import { isScriptedInputMode } from '../../input/scriptedRun';
 import { flushErosion, setErosionStore } from '../../systems/water/erosionField';
-import { getSweReadiness, isSweSettled, isWaterForceSystemActive } from '../../systems/water/WaterForceRegistry';
-import { resolveActiveEnvelope } from '../../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import { useGameStore } from '../../systems/GameState';
 import { resetRunSession } from '../../utils/resetRunSession';
 import type { TrackManagerRef } from '../../components/TrackManager';
@@ -34,7 +27,7 @@ import {
   setLastMapId,
 } from '../../systems/persistence/PersistenceSystem';
 import { hydrateStoreForRun } from '../../systems/persistence/persistenceBootstrap';
-import { getActiveRunKey, getProceduralBaseSeed } from '../../utils/runContext';
+import { getActiveRunKey } from '../../utils/runContext';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
 import { buildForecastSamples } from '../../systems/map/flowForecast';
 import type { LevelData } from '../../systems/map/MapSystem';
@@ -52,6 +45,8 @@ import { getLaunchHour, loadErosionPlane, saveErosionPlane } from '../../systems
 import { kickoffMapHandoff } from '../../systems/journey/journeyHandoff';
 import { getActiveUserRiver, subscribeUserRiver, userRiverMapDefinition } from '../../systems/map/userRiverSession';
 import { planMapHandoff } from '../../systems/journey/journeyContinuity';
+import { queryParams } from '../../config/queryFlags';
+import { useScreenshotApi } from '../../harness/useScreenshotApi';
 
 /** The run's 24 h forecast: the day's melt inputs (the run's conditions) from the launch hour. */
 function buildDefaultForecastSamples(launchHour: number): FlowForecastSample[] {
@@ -121,7 +116,7 @@ export function useExperienceWorld({
   launchHour: controlledLaunchHour,
 }: UseExperienceWorldOptions) {
   const launchHour = controlledLaunchHour ?? getActiveLaunchHour() ?? getLaunchHour();
-  const { setBiome: setBiomeContext, snapBiome: snapBiomeContext } = useBiome();
+  const { setBiome: setBiomeContext, snapBiome: snapBiomeContext } = useBiomeSetters();
 
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
@@ -259,8 +254,8 @@ export function useExperienceWorld({
   ]);
 
   useEffect(() => {
-    debug.runStage('dataProcessing', () => {
-      const params = new URLSearchParams(window.location.search);
+    void debug.runStage('dataProcessing', () => {
+      const params = queryParams();
       const levelParam = params.get('level');
       const levelUrlParam = params.get('levelUrl');
       const reachIdParam = params.get('reachId');
@@ -311,7 +306,7 @@ export function useExperienceWorld({
 
   const handleLevelLoad = useCallback(
     (levelState: { biome?: { baseType?: string } } | null) => {
-      debug.runStage('dataProcessing', () => {
+      void debug.runStage('dataProcessing', () => {
         setLoadedLevelState(levelState);
         setIsLoadingLevel(false);
 
@@ -378,116 +373,16 @@ export function useExperienceWorld({
     vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }, [vehicleRef]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.location.search.includes('screenshot=1')) {
-      return undefined;
-    }
-
-    const api = {
-      teleportToZ: (z: number, y: number = PLAYER_SPAWN.position[1] as number) => {
-        if (!vehicleRef.current) return false;
-        vehicleRef.current.setTranslation({ x: 0, y, z }, true);
-        vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-        vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-        return true;
-      },
-      teleportToSegment: (segmentIndex: number) => {
-        if (!vehicleRef.current) return false;
-
-        const spawn = spawnPoints[segmentIndex];
-        const targetPosition = spawn
-          ? { x: spawn.x, y: spawn.y + 1.5, z: spawn.z }
-          : { x: 0, y: PLAYER_SPAWN.position[1], z: -segmentIndex * 95 };
-
-        const previousIndex = currentSegmentIndex ?? activeDefaultMap.startIndex;
-        const targetIndex = Math.max(0, Math.floor(segmentIndex));
-
-        vehicleRef.current.setTranslation(targetPosition, true);
-        vehicleRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-        vehicleRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-
-        setCurrentSegmentIndex(targetIndex);
-        setRespawnSegmentIndex(targetIndex);
-
-        if (trackManagerRef.current?.synthesizeSegmentEnter) {
-          const startIdx = Math.max(previousIndex + 1, activeDefaultMap.startIndex);
-          for (let i = startIdx; i <= targetIndex; i += 1) {
-            trackManagerRef.current.synthesizeSegmentEnter(i);
-          }
-        }
-
-        return true;
-      },
-      getSpawnPoints: () => ({ ...spawnPoints }),
-      advanceTreadmill: () => trackManagerRef.current?.appendSegmentForHarness() ?? false,
-      stepScripted: (n: number) => stepScripted(n),
-      // Also wait for the SWE field to settle (a grid, or a definitive TS
-      // fallback): forces sample a different field before and after, so a run
-      // that went live mid-load would depend on how long the load took.
-      isScriptedReady: () =>
-        inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current) && isSweSettled(),
-      getScriptedReadiness: () => ({
-        scripted: inputHub.hasSource('scripted'),
-        live: isScriptedRunLive(vehicleRef.current),
-        swe: getSweReadiness(),
-        sweActive: isWaterForceSystemActive(),
-      }),
-      getSplits: () => getRecordedSplits(),
-      getSplitChecksums: () => getRecordedSplitChecksums(),
-      getGhostFile: () => {
-        const payload = getCurrentGhostPayload();
-        if (!payload) return null;
-        const mapId = getRunMap().id;
-        return exportGhostToJson(
-          mapId,
-          getGhostElapsedMs(),
-          payload,
-          getRecordedSplits(),
-          currentRunFairness(mapId as MapRegistryId),
-          {
-            seed: getProceduralBaseSeed(),
-            vehicle: useGameStore.getState().vehicleType,
-            conditions: getActiveConditions(),
-          },
-        );
-      },
-      getScriptedTelemetry: () => {
-        const body = vehicleRef.current;
-        const t = body?.translation();
-        const game = useGameStore.getState();
-        const stats = inputHub.getTickStats();
-        const envelope = t ? resolveActiveEnvelope(t) : null;
-        return {
-          pos: t ? { x: t.x, y: t.y, z: t.z } : null,
-          speed: game.currentSpeed,
-          segmentIndex: game.currentSegmentIndex,
-          isWipeout: game.isWipeout,
-          envelope: envelope ? { segmentIndex: envelope.segmentIndex, yMin: envelope.yMin, yMax: envelope.yMax } : null,
-          simTimeSec: getScriptedSimTimeSec(),
-          ghostElapsedMs: getGhostElapsedMs(),
-          hubTickMeanMs: stats.meanMs,
-          hubTicks: stats.ticks,
-          input: (() => {
-            const f = inputHub.readFrame();
-            return { source: f.source, moveX: f.moveX, moveY: f.moveY, lookDX: f.lookDX, lookDY: f.lookDY, buttons: f.buttons, frameIdx: f.frameIdx };
-          })(),
-        };
-      },
-    };
-
-    window.__watershedScreenshot = api;
-    return () => {
-      delete window.__watershedScreenshot;
-    };
-  }, [
-    activeDefaultMap,
+  // `?screenshot=1` only: the headless harnesses' handle (src/harness/screenshotApi.ts, lazy).
+  useScreenshotApi({
+    vehicleRef,
+    trackManagerRef,
+    spawnPoints,
     currentSegmentIndex,
+    mapStartIndex: activeDefaultMap.startIndex,
     setCurrentSegmentIndex,
     setRespawnSegmentIndex,
-    spawnPoints,
-    trackManagerRef,
-    vehicleRef,
-  ]);
+  });
 
   const resetDefaultMapRun = useCallback(
     (targetMapId: MapRegistryId) => {

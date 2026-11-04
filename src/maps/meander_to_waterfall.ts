@@ -157,9 +157,6 @@ export const MEANDER_FALLBACK_PROGRESSION: SegmentRange[] = [
   },
 ];
 
-/** @deprecated Use MEANDER_FALLBACK_PROGRESSION — kept for parity tests during migration. */
-export const MEANDER_TO_WATERFALL_PROGRESSION = MEANDER_FALLBACK_PROGRESSION;
-
 /** Re-export delta constants so older hydro/meander imports keep resolving. */
 export {
   DELTA_RAPIDS_START_INDEX as DELTA_RAPIDS_CONTINUED_START_INDEX,

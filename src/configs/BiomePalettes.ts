@@ -22,5 +22,3 @@ export {
   lerpBiomePalettes,
   applyBiomeToLighting,
 } from './palettes';
-
-export { default } from './palettes';
