@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import type { ReachManifest, ReachSegment } from './ReachStreamer';
-import { getTrackBiomeProfile, TrackBiomeProfile } from '../../configs/TrackBiomes';
+import { getTrackBiomeProfile, type TrackBiomeProfile } from '../../configs/TrackBiomes';
 import { type BiomeId, normalizeBiomeId } from '../../configs/biomes';
 import { FLOW_FORECAST_STATES } from '../../constants/game';
 import {

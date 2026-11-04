@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { DebugStageController, DEBUG_STAGES, useDebugStages } from './debugStages';
+import { type DebugStageController, DEBUG_STAGES, useDebugStages } from './debugStages';
 import { DebugPanel } from '../components/DebugPanel';
 
 const STORAGE_KEY = 'watershed.debug.stages';

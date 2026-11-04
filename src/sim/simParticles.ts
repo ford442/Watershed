@@ -62,7 +62,7 @@ export function createSimParticleChannel(proxy: SimWorkerProxy, capacity: number
 
   const bufferFor = (bytes: number): ArrayBuffer => {
     for (let i = spare.length - 1; i >= 0; i -= 1) {
-      if (spare[i].byteLength >= bytes) return spare.splice(i, 1)[0];
+      if (spare[i]!.byteLength >= bytes) return spare.splice(i, 1)[0]!;
     }
     return new ArrayBuffer(bytes);
   };

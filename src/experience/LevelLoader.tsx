@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Html } from '@react-three/drei';
-import { useLevel, NormalizedLevelState } from '../hooks/useLevel';
+import { useLevel, type NormalizedLevelState } from '../hooks/useLevel';
 import TrackManager from '../components/TrackManager';
 import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoadStatus';
 import type { VehicleRigidBodyRef } from './types';

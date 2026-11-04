@@ -225,7 +225,7 @@ HUD/minimap helpers (`grid-reduce`, `luma-histogram`, `downsample-2d`, blur) liv
 
 ```bash
 pnpm test
-pnpm typecheck          # tsc + untyped-surface allowlist guard
+pnpm typecheck          # tsc + strict-buffers ratchet + TS-only src/ guard + layout guards + knip
 pnpm build
 pnpm test:visual-smoke   # headless WebGL gate (preview serving build/)
 node scripts/validate-markdown-paths.js
@@ -234,7 +234,7 @@ node scripts/validate-markdown-paths.js
 
 ### Typecheck surface (honest foundation)
 
-`tsconfig.typecheck.json` type-checks all `src/**/*.ts` and `src/**/*.tsx` (tests excluded). Residual untyped `.js` / `.jsx` modules, if any appear, are tracked in `scripts/untyped-allowlist.json`; `pnpm typecheck` runs `scripts/check-typecheck-surface.mjs` to fail CI if the allowlist drifts.
+`tsconfig.typecheck.json` is `tsconfig.json` with nothing added: all `src/**/*.ts` and `src/**/*.tsx`, tests excluded (they have `pnpm typecheck:test`). There is no `allowJs` and no untyped allowlist: `scripts/check-typecheck-surface.mjs` fails on any `.js` / `.jsx` / `.mjs` / `.cjs` under `src/` (the precompiled validators are emitted as `.ts`). `verbatimModuleSyntax` is on — import a type with `import type` / `type X`. `noUncheckedIndexedAccess` is ratcheted per file by `scripts/check-strict-buffers.mjs` (`tsconfig.strict-buffers.json`, opt-in list `scripts/strict-buffers.json`, which only grows; `--write` adds every clean file under the ratcheted directories).
 
 | Status | Module group | Notes |
 |--------|--------------|-------|

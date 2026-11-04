@@ -8,7 +8,7 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Line, Html } from '@react-three/drei';
-import { EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import { type EditorSegmentConfig } from '../../hooks/useLevelEditor';
 
 interface PathVisualizerProps {
   waypoints: [number, number, number][];

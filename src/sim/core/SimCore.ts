@@ -162,7 +162,7 @@ export class SimCore {
     }
     // Stable insert: after every system with an order <= this one's.
     let at = this.systems.length;
-    while (at > 0 && this.systems[at - 1].order > system.order) at -= 1;
+    while (at > 0 && this.systems[at - 1]!.order > system.order) at -= 1;
     this.systems.splice(at, 0, system);
     return () => this.unregister(system.id);
   }
@@ -212,7 +212,7 @@ export class SimCore {
     const { ctx, systems } = this;
     ctx.time += SIM_DT;
     ctx.stepIndex += 1;
-    for (let i = 0; i < systems.length; i += 1) systems[i].step(ctx, SIM_DT);
+    for (let i = 0; i < systems.length; i += 1) systems[i]!.step(ctx, SIM_DT);
   }
 
   /** Start of a run: clock to zero, the stream back to its seed, every system told. */
@@ -222,7 +222,7 @@ export class SimCore {
     this.accumulator = 0;
     this.ctx.time = 0;
     this.ctx.stepIndex = 0;
-    for (let i = 0; i < this.systems.length; i += 1) this.systems[i].reset?.(this.ctx);
+    for (let i = 0; i < this.systems.length; i += 1) this.systems[i]!.reset?.(this.ctx);
   }
 
   getSeed(): number {

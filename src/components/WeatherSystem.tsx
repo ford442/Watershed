@@ -15,7 +15,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../constants/game';
-import { WEATHER_CONFIG, WeatherType } from '../constants/weather';
+import { WEATHER_CONFIG, type WeatherType } from '../constants/weather';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
 import { createWeatherParticleMaterial } from '../materials/weather/createWeatherParticleMaterial';
 import { materialUniformBag } from '../materials/dual/materialUniformBag';

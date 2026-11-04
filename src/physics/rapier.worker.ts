@@ -12,14 +12,14 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import {
   DEFAULT_RAFT_WORKER_INIT,
   RAPIER_WORKER_PROTOCOL_VERSION,
-  RapierWorkerCommand,
-  RapierWorkerInitPayload,
-  RapierWorkerResponse,
-  StaticColliderSpec,
-  Vec3Tuple,
-  WaterForceDiagnostics,
-  WaterForceTickConfig,
-  WorkerRaftState,
+  type RapierWorkerCommand,
+  type RapierWorkerInitPayload,
+  type RapierWorkerResponse,
+  type StaticColliderSpec,
+  type Vec3Tuple,
+  type WaterForceDiagnostics,
+  type WaterForceTickConfig,
+  type WorkerRaftState,
 } from './rapierWorkerProtocol';
 import {
   applyImpulseList,

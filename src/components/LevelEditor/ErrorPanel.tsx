@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { EditorValidationError } from '../../utils/levelEditorValidator';
+import { type EditorValidationError } from '../../utils/levelEditorValidator';
 
 interface ErrorPanelProps {
   errors: EditorValidationError[];

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import * as THREE from 'three';
-import { BuoyancyState, TippingState, PaddleState, StaminaState, StunState, SHED, STAMINA } from '../constants';
+import { type BuoyancyState, type TippingState, type PaddleState, type StaminaState, type StunState, SHED, STAMINA } from '../constants';
 import { ParticlePool } from '../../../components/particlePool';
 import { COLLISION_PARTICLE_CAPACITY } from '../../../components/CollisionParticles';
 

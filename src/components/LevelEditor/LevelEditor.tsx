@@ -15,7 +15,7 @@ import { SegmentInspector } from './SegmentInspector';
 import { BiomeSelector } from './BiomeSelector';
 import { ErrorPanel } from './ErrorPanel';
 import { PathVisualizer } from './PathVisualizer';
-import { useLevelEditor, EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import { useLevelEditor, type EditorSegmentConfig } from '../../hooks/useLevelEditor';
 import {
   createGameRenderer,
   deriveEditorContextOptions,

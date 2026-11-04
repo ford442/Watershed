@@ -23,7 +23,10 @@ export type ValidationResult<T = unknown> =
   | { valid: true; errors: ValidationError[]; warnings: ValidationError[]; data: T }
   | { valid: false; errors: ValidationError[]; warnings: ValidationError[]; data: null };
 
-export function formatValidationErrors(result: ValidationResult): string {
+/** Any report shape — a typed `ValidationResult` or a hand-built one. */
+export type ValidationReport = Pick<ValidationResult, 'errors' | 'warnings'> & { valid: boolean };
+
+export function formatValidationErrors(result: ValidationReport): string {
   if (result.valid) {
     return result.warnings.length > 0
       ? `Valid with ${result.warnings.length} warning(s)`

@@ -86,9 +86,3 @@ export function setDebugTap<K extends keyof DebugTaps>(key: K, value: DebugTaps[
 export function getDebugTap<K extends keyof DebugTaps>(key: K): DebugTaps[K] {
   return taps[key];
 }
-
-/** Test seam: forget every tap and the cached flag. */
-export function resetDebugTapsForTest(): void {
-  for (const key of Object.keys(taps) as Array<keyof DebugTaps>) delete taps[key];
-  enabled = null;
-}

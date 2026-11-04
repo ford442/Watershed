@@ -3,16 +3,16 @@ import { raceWithDeadline, resolveWasmInitTimeoutMs } from '../systems/water/was
 import {
   DEFAULT_RAFT_WORKER_INIT,
   RAPIER_WORKER_PROTOCOL_VERSION,
-  RapierWorkerCommand,
-  RapierWorkerInitPayload,
-  RapierWorkerLike,
-  RapierWorkerResponse,
-  StaticColliderSpec,
+  type RapierWorkerCommand,
+  type RapierWorkerInitPayload,
+  type RapierWorkerLike,
+  type RapierWorkerResponse,
+  type StaticColliderSpec,
   staticColliderTransferables,
-  Vec3Tuple,
-  WaterForceDiagnostics,
-  WaterForceTickConfig,
-  WorkerRaftState,
+  type Vec3Tuple,
+  type WaterForceDiagnostics,
+  type WaterForceTickConfig,
+  type WorkerRaftState,
 } from './rapierWorkerProtocol';
 
 /** A command as callers write it: every RapierWorkerCommand variant, without the id `request` assigns. */

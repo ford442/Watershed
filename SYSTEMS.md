@@ -112,7 +112,11 @@ survive a reload (`?physicsDebug`, `?wireframe`, `?cleanTest`, `?debugStages`, `
 **Grammar:** boolean flags take `1` or `true` (`?debug=1` ≡ `?debug=true`); a presence flag
 (`?no-pointer-lock`) is on unless its value is `0` / `false`. `debugGlobals` (`debug || physicsDebug ||
 screenshot`) gates every per-frame debug object a page publishes (`window.__watershed.physicsDebug`,
-`__watershed.waterForce`).
+`__watershed.waterForce`). Production code never touches `window.__*` (ESLint rejects it outside
+`src/harness/`): it sets a typed tap in `src/debug/debugTaps.ts`, and the lazy `src/harness/debugApi.ts`
+chunk — loaded from `src/index.tsx` only under `debugGlobals` (or `?wasmWaterTest` / `?debugGpuLoss`) —
+publishes the taps as the one `window.__watershed` object. The segment flow multiplier the runner reads
+is gameplay state, not a tap: `src/systems/water/segmentFlow.ts`.
 
 **Boundaries (Do NOT):**
 - Do NOT read `location.search` anywhere else — ESLint `no-restricted-syntax` rejects it.

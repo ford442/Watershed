@@ -19,7 +19,7 @@ import { useStore } from 'zustand';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../../configs/BiomePalettes';
+import { type BiomePalette, getBiomePalette, lerpBiomePalettes, applyBiomeToLighting } from '../../configs/BiomePalettes';
 import { type BiomeId, DEFAULT_BIOME_ID } from '../../configs/biomes';
 import { useGameStore } from '../GameState';
 import { gameEvents } from '../events/GameEvents';

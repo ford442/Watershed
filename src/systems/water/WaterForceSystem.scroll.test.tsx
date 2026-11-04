@@ -235,8 +235,9 @@ describe('WaterForceSystem window scroll', () => {
       expect(peak.eta, `frame ${f} η`).toBeCloseTo(0.4, 5);
       // ...and the window origin is what the component reports and sits on the lattice.
       const reported = getDebugTap('waterForce')?.origin;
-      expect(snap.originX).toBe(reported.x);
-      expect(snap.originZ).toBe(reported.z);
+      expect(reported).toBeTruthy();
+      expect(snap.originX).toBe(reported?.x);
+      expect(snap.originZ).toBe(reported?.z);
       expect(snap.originX / BUDGET.cellSize).toBe(Math.round(snap.originX / BUDGET.cellSize));
     }
     expect(scrolls).toBeGreaterThanOrEqual(10);
