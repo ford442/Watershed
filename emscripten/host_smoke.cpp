@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <span>
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <limits>
 #include <vector>
@@ -98,7 +99,7 @@ int main() {
 
     auto stepFlat = [&](std::vector<float>& h, std::vector<float>& u,
                         std::vector<float>& w, float dt) {
-        stepShallowWater(
+        return stepShallowWater(
             reinterpret_cast<uintptr_t>(h.data()),
             reinterpret_cast<uintptr_t>(u.data()),
             reinterpret_cast<uintptr_t>(w.data()),
@@ -116,25 +117,95 @@ int main() {
     };
 
     // 3a. Uniform flow over a flat bed: fluxes are identical at every face, so
-    //     the only surviving effect is CFL clamping + damping.
+    //     the only surviving effect is CFL sub-stepping + damping. kDt is far
+    //     above 4 CFL steps, so the sub-step cap is hit and the step reports
+    //     the time it did integrate (#533).
     {
         std::vector<float> h(static_cast<std::size_t>(n), 0.f);
         std::vector<float> u(static_cast<std::size_t>(n), 1.f);
         std::vector<float> w(static_cast<std::size_t>(n), 1.f);
 
-        // Mirror the solver's CFL rule so the fixture stays honest if it changes.
-        const float maxWaveSpeed = std::sqrt(2.f) + std::sqrt(kG * kH);
-        const float safeDt = 0.4f * kDx / maxWaveSpeed;
-        check(kDt > safeDt, "fixture dt exceeds CFL so the clamp is exercised");
-        const float expectedDamp = 1.f - safeDt * DAMPING_COEFF;
+        // Mirror the solver's sub-step rule so the fixture stays honest if it changes.
+        float vel = 1.f;
+        float integrated = 0.f;
+        float remaining = kDt;
+        for (int k = 0; k < 4 && remaining > 0.f; ++k) {
+            const float maxWaveSpeed = std::sqrt(2.f * vel * vel) + std::sqrt(kG * kH);
+            const float safeDt = std::min(remaining, 0.4f * kDx / maxWaveSpeed);
+            vel *= std::exp(-safeDt * DAMPING_COEFF);
+            integrated += safeDt;
+            remaining -= safeDt;
+        }
+        check(remaining > 0.f, "fixture dt exceeds 4 CFL steps so the sub-step cap is exercised");
 
-        stepFlat(h, u, w, kDt);
+        const float consumed = stepFlat(h, u, w, kDt);
 
-        checkClose(u[n / 2], expectedDamp, 1e-4f, "uniform flow: u damped only");
-        checkClose(w[n / 2], expectedDamp, 1e-4f, "uniform flow: w damped only");
+        checkClose(consumed, integrated, 1e-5f, "uniform flow: the step returns the 4 sub-steps it integrated");
+        check(consumed < kDt, "uniform flow: a capped step says it integrated less than asked");
+        checkClose(u[n / 2], vel, 1e-5f, "uniform flow: u damped only, exp(-k dt) per sub-step");
+        checkClose(w[n / 2], vel, 1e-5f, "uniform flow: w damped only, exp(-k dt) per sub-step");
         checkClose(h[n / 2], 0.f, 1e-4f, "uniform flow: surface stays flat");
         check(std::abs(u[n / 2]) > 0.5f,
               "CFL clamp must not use unclamped dt (would zero velocities)");
+    }
+
+    // 3a'. Sub-cycling (#533): a dt above the CFL limit but within 4 sub-steps
+    //      is integrated exactly — the return value is dt itself, and the
+    //      result equals stepping the CFL limit by hand, re-lifting between.
+    {
+        const float cflDt = 0.4f * kDx / (std::sqrt(2.f) + std::sqrt(kG * kH));
+        const float dt = 2.5f * cflDt;
+        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> u(static_cast<std::size_t>(n), 1.f);
+        std::vector<float> w(static_cast<std::size_t>(n), 1.f);
+        for (int z = 0; z < kHeight; ++z) h[static_cast<std::size_t>(z * kWidth + kWidth / 2)] = 0.05f;
+        std::vector<float> h2 = h, u2 = u, w2 = w;
+        const float consumed = stepFlat(h, u, w, dt);
+        check(consumed == dt, "sub-cycle: dt within 4 CFL steps is integrated exactly (returns dt)");
+
+        float remaining = dt;
+        float byHand = 0.f;
+        for (int k = 0; k < 4 && remaining > 0.f; ++k) {
+            // Hand back whatever a call did not integrate, as sweHost.ts does.
+            const float got = stepFlat(h2, u2, w2, remaining);
+            byHand += got;
+            remaining -= got;
+        }
+        check(remaining == 0.f, "sub-cycle: a remainder handed back integrates to zero");
+        checkClose(byHand, dt, 1e-6f, "sub-cycle: the pieces sum to dt");
+
+        // The damping is frame-rate exact: N sub-steps of dt/N damp like dt.
+        float prod = 1.f;
+        for (int k = 0; k < 8; ++k) prod *= sweExpNeg(0.125f * DAMPING_COEFF);
+        checkClose(prod, sweExpNeg(DAMPING_COEFF), 1e-6f, "damp: 8 x exp(-k dt/8) == exp(-k dt)");
+    }
+
+    // 3a''. sweExpNeg (#533): in (0, 1] for every x, monotone, and within
+    //       2e-7 of exp(-x) — the old 1 - k dt went negative for a barely-wet
+    //       grid (safeDt ~ 25 s at dx 2, damp -1.5).
+    {
+        bool inRange = true;
+        bool monotone = true;
+        float worst = 0.f;
+        float prev = 1.f;
+        for (int k = 0; k <= 200000; ++k) {
+            const float x = static_cast<float>(k) * 0.0005f;  // [0, 100]
+            const float e = sweExpNeg(x);
+            inRange = inRange && e > 0.f && e <= 1.f;
+            monotone = monotone && e <= prev;
+            prev = e;
+            const double ref = std::exp(-static_cast<double>(std::min(x, 87.f)));
+            worst = std::max(worst, static_cast<float>(std::abs(e - ref) / ref));
+        }
+        check(inRange, "sweExpNeg: always in (0, 1]");
+        check(monotone, "sweExpNeg: non-increasing");
+        check(worst < 2e-7f, "sweExpNeg: within 2e-7 relative of exp(-x)");
+        check(sweExpNeg(0.f) == 1.f && sweExpNeg(-3.f) == 1.f
+                  && sweExpNeg(std::numeric_limits<float>::quiet_NaN()) == 1.f
+                  && sweExpNeg(std::numeric_limits<float>::infinity()) > 0.f,
+              "sweExpNeg: x <= 0 and NaN are 1, +inf is the smallest factor, not 0");
+        // The issue's case: one cell at depth ~1e-4 over dx = 2 → safeDt ≈ 25 s.
+        check(sweExpNeg(25.f * DAMPING_COEFF) > 0.f, "sweExpNeg: a 25 s barely-wet step damps, never flips sign");
     }
 
     // 3b. Lake at rest over a bed bump — the well-balanced property.
@@ -962,13 +1033,47 @@ int main() {
         stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kInf, kH);
         stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kInf);
         check(h == h0, "swe: a NaN / inf dt, g, dx or H steps nothing");
-        stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, kInf, kG, kDx, kH);
-        check(finite(h) && finite(u) && finite(w) && h != h0, "swe: dt = +inf is clamped to the CFL step");
+        // ABI 17: a sub-cycled step cannot integrate +inf, so it is rejected.
+        check(stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, kInf, kG, kDx, kH) == 0.f && h == h0,
+              "swe: dt = +inf is rejected (returns 0, steps nothing)");
+        check(stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kH) == 0.01f && h != h0,
+              "swe: a finite dt within the CFL limit returns itself");
         applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f);
         applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, kInf);
         applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kInf, 0, 4.f, 4.f, 2.f, 1.f, 0.016f);
         scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 2, -3, kNaN, kInf, -kInf);
         check(finite(h) && finite(u) && finite(w) && finite(b), "swe: NaN / inf event and inflow scalars stay out of the field");
+        check(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f) == WS_REJECTED
+                  && applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, 0.016f) == WS_OK
+                  && scrollShallowWater(P(h), P(u), P(w), P(b), SWE_MAX_GRID_EXTENT + 1, kZ, 1, 0, 0.f, 0.f, 0.f) == WS_REJECTED
+                  && scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0, 0, 0.f, 0.f, 0.f) == WS_OK,
+              "swe: applySWEEvent / scrollShallowWater report WS_REJECTED / WS_OK");
+
+        // A NaN (or inf) in one velocity cell (#533): the lift reads it as 0,
+        // so the non-finite count goes to zero instead of growing two cells
+        // per step through d·NaN and the HLL branch.
+        {
+            std::vector<float> hn(cells, 0.f), un(cells, 0.3f), wn(cells, -0.2f), bn(cells, 0.f);
+            un[5 * kW + 6] = kNaN;
+            wn[3 * kW + 2] = kInf;
+            hn[7 * kW + 9] = kNaN;
+            const auto bad = [&]() {
+                std::size_t c = 0;
+                for (std::size_t i = 0; i < cells; ++i) {
+                    c += !std::isfinite(hn[i]) || !std::isfinite(un[i]) || !std::isfinite(wn[i]);
+                }
+                return c;
+            };
+            std::size_t before = bad();
+            bool neverGrew = true;
+            for (int k = 0; k < 20; ++k) {
+                stepShallowWater(P(hn), P(un), P(wn), P(bn), kW, kZ, 0.02f, kG, kDx, kH);
+                const std::size_t now = bad();
+                neverGrew = neverGrew && now <= before;
+                before = now;
+            }
+            check(neverGrew && before == 0, "swe: a NaN / inf u, w or eta cell heals instead of spreading");
+        }
 
         constexpr int kSegs = 3;
         std::vector<float> L(kSegs, 100.f), S(kSegs, 0.01f), B(kSegs, 12.f), lateral(kSegs, 0.f);
@@ -1060,6 +1165,11 @@ int main() {
                                 0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f);
         computeWaterForcesBatch(at(src), at(guard), -1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f);
         check(untouched(guard), "forces: computeWaterForcesBatch rejects negative / oversized counts");
+        check(computeWaterForcesBatch(at(src), at(guard), -1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f)
+                  == WS_REJECTED,
+              "forces: a rejected batch returns WS_REJECTED");
+        check(blurSeparableF32(0, at(guard), 4, 4) == WS_REJECTED && reduceF32Grid(0, 4, at(guard)) == WS_REJECTED,
+              "chores: rejected calls return WS_REJECTED");
 
         std::vector<float> storage(16, 7.f);
         routeReach(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, 1.f, at(storage), at(guard));
@@ -1067,6 +1177,9 @@ int main() {
         routeReachSteady(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(storage), at(guard));
         routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard));
         check(untouched(guard) && untouched(storage), "routing: oversized / negative chains are rejected");
+        check(routeReach(at(src), at(src), at(src), -2, 1.f, 1.f, at(storage), at(guard)) == WS_REJECTED
+                  && routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard)) == WS_REJECTED,
+              "routing: rejected chains return WS_REJECTED");
 
         check(allocateParticleSoA(PARTICLE_MAX_CAPACITY + 1) == 0, "particles: oversized capacity is rejected");
         check(allocateParticleSoA(-1) == 0, "particles: negative capacity is rejected");
@@ -1082,6 +1195,65 @@ int main() {
         check(allocBytes<uint32_t>(128 * 80, 4u) == 128u * 80u * 4u, "allocBytes: an SWE grid is its byte count");
         check(allocateGrid(1 << 30) == 0 && allocateGrid(WS_MAX_ELEMENTS + 1) == 0,
               "swe: allocateGrid rejects counts past WS_MAX_ELEMENTS");
+    }
+
+    // ------------------------------------------------------------------
+    // packSurfaceField (#533): the 4-wide interior groups equal the stencil
+    // written out per cell, bit for bit, at every width that exercises a path
+    // (1, 2, 3: scalar only; 6: one group; 9: a ragged overlapping group).
+    // ------------------------------------------------------------------
+    {
+        constexpr float kHs = 1.f;
+        constexpr float kDxs = 0.75f;
+        bool exact = true;
+        for (const int width : {1, 2, 3, 5, 6, 9, 13}) {
+            for (const int height : {1, 2, 4}) {
+                const std::size_t cells = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+                std::vector<float> h(cells), u(cells), w(cells), b(cells), out(cells * 4, -7.f);
+                uint32_t seed = 0x2545f491u + static_cast<uint32_t>(width * 31 + height);
+                for (std::size_t i = 0; i < cells; ++i) {
+                    h[i] = static_cast<float>(native_digest::xorshift(seed) % 2001u) * 1e-4f - 0.1f;
+                    u[i] = static_cast<float>(native_digest::xorshift(seed) % 2001u) * 1e-3f - 1.f;
+                    w[i] = static_cast<float>(native_digest::xorshift(seed) % 2001u) * 1e-3f - 1.f;
+                    // Every fifth cell is dry (bed above the surface).
+                    b[i] = i % 5 == 0 ? 1.5f : static_cast<float>(native_digest::xorshift(seed) % 501u) * 1e-3f;
+                }
+                const auto P = [](auto& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+                check(packSurfaceField(P(h), P(u), P(w), P(b), width, height, kHs, kDxs, P(out)) == WS_OK,
+                      "packSurfaceField: valid input returns WS_OK");
+                for (int z = 0; z < height; ++z) {
+                    for (int x = 0; x < width; ++x) {
+                        const std::size_t i = static_cast<std::size_t>(z * width + x);
+                        const float depth = std::max(0.f, (kHs + h[i]) - b[i]);
+                        float div = 0.f;
+                        if (depth > SWE_DRY_DEPTH) {
+                            const int xLo = x > 0 ? x - 1 : x;
+                            const int xHi = x < width - 1 ? x + 1 : x;
+                            const int zLo = z > 0 ? z - 1 : z;
+                            const int zHi = z < height - 1 ? z + 1 : z;
+                            const float spanX = static_cast<float>(xHi - xLo) * kDxs;
+                            const float spanZ = static_cast<float>(zHi - zLo) * kDxs;
+                            if (spanX > 0.f) div += (u[static_cast<std::size_t>(z * width + xHi)] - u[static_cast<std::size_t>(z * width + xLo)]) / spanX;
+                            if (spanZ > 0.f) div += (w[static_cast<std::size_t>(zHi * width + x)] - w[static_cast<std::size_t>(zLo * width + x)]) / spanZ;
+                        }
+                        const float want[4] = {u[i], w[i], depth, div};
+                        for (int c = 0; c < 4; ++c) {
+                            exact = exact && std::memcmp(&out[i * 4 + static_cast<std::size_t>(c)], &want[c], sizeof(float)) == 0;
+                        }
+                    }
+                }
+            }
+        }
+        check(exact, "packSurfaceField: SIMD groups == the per-cell stencil, bit for bit");
+        std::vector<float> one(4), guard4(4, 3.f);
+        const auto P = [](auto& v) { return reinterpret_cast<uintptr_t>(v.data()); };
+        check(packSurfaceField(P(one), P(one), P(one), 0, 1, 1, kHs, 0.f, P(guard4)) == WS_REJECTED
+                  && packSurfaceField(P(one), P(one), 0, 0, 1, 1, kHs, kDxs, P(guard4)) == WS_REJECTED
+                  && packSurfaceField(P(one), P(one), P(one), 0, 1, 1, std::numeric_limits<float>::quiet_NaN(), kDxs, P(guard4)) == WS_REJECTED
+                  && guard4 == std::vector<float>(4, 3.f),
+              "packSurfaceField: bad dx / null plane / NaN H is rejected and writes nothing");
+        check(packSurfaceField(P(one), P(one), P(one), 0, 1, 1, kHs, kDxs, P(guard4)) == WS_OK && guard4[2] == kHs,
+              "packSurfaceField: bPtr 0 is a flat bed");
     }
 
     // ------------------------------------------------------------------

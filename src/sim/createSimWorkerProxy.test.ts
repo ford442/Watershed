@@ -9,7 +9,7 @@ import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from './simWo
 type Listener = (event: { data?: SimWorkerResponse; message?: string; preventDefault?: () => void }) => void;
 
 function stubWorker(onPost: (command: SimWorkerCommand, reply: (r: SimWorkerResponse) => void) => void = () => {}) {
-  const listeners = { message: new Set<Listener>(), error: new Set<Listener>() };
+  const listeners = { message: new Set<Listener>(), error: new Set<Listener>(), messageerror: new Set<Listener>() };
   const posted: { command: SimWorkerCommand; transfer: Transferable[] }[] = [];
   const reply = (data: SimWorkerResponse) => {
     queueMicrotask(() => listeners.message.forEach((l) => l({ data })));
@@ -20,11 +20,12 @@ function stubWorker(onPost: (command: SimWorkerCommand, reply: (r: SimWorkerResp
       onPost(command, reply);
     }),
     terminate: vi.fn(),
-    addEventListener: (type: 'message' | 'error', l: Listener) => listeners[type].add(l),
-    removeEventListener: (type: 'message' | 'error', l: Listener) => listeners[type].delete(l),
+    addEventListener: (type: 'message' | 'error' | 'messageerror', l: Listener) => listeners[type].add(l),
+    removeEventListener: (type: 'message' | 'error' | 'messageerror', l: Listener) => listeners[type].delete(l),
   };
   const scriptError = (message: string) => listeners.error.forEach((l) => l({ message, preventDefault: () => {} }));
-  return { worker: worker as unknown as SimWorkerLike & typeof worker, posted, reply, scriptError };
+  const messageError = () => listeners.messageerror.forEach((l) => l({}));
+  return { worker: worker as unknown as SimWorkerLike & typeof worker, posted, reply, scriptError, messageError };
 }
 
 afterEach(() => {
@@ -69,6 +70,15 @@ describe('getSimWorkerProxy', () => {
     await expect(pending).rejects.toThrow('Failed to fetch simWorker.js');
   });
 
+  it('rejects on a message that cannot be deserialized', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stub = stubWorker();
+    const pending = getSimWorkerProxy(() => stub.worker);
+    stub.messageError();
+    await expect(pending).rejects.toThrow('could not be deserialized');
+    expect(stub.worker.terminate).toHaveBeenCalled();
+  });
+
   it('rejects at the deadline when the worker never answers', async () => {
     vi.useFakeTimers();
     const proxy = new SimWorkerProxy(stubWorker().worker);
@@ -86,7 +96,7 @@ describe('SimWorkerProxy frames', () => {
     const buffer = new ArrayBuffer(64);
     stub.reply({
       type: 'FRAME',
-      frame: { gridId: 99, frameIndex: 1, epoch: 0, width: 2, height: 2, computeMicros: 5, backend: 'wasm-worker', inflow: null, bed: true, buffer },
+      frame: { gridId: 99, frameIndex: 1, epoch: 0, width: 2, height: 2, computeMicros: 5, backend: 'wasm-worker', inflow: null, bed: true, shortfall: 0, buffer },
     });
     await Promise.resolve();
     expect(proxy.latestFrame()).toMatchObject({ gridId: 99, frameIndex: 1, computeMicros: 5 });

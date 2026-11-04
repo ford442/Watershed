@@ -55,8 +55,9 @@ function buildIdentityPlugin(identity: string): Plugin {
   };
 }
 
-/** `pnpm dev` with `?isolated=1` (#502 E): COOP/COEP for a threads experiment
- *  (`pnpm build:wasm:threads`) only. The headers ride on the document that
+/** `pnpm dev` with `?isolated=1` (#502 E): COOP/COEP for a local
+ *  SharedArrayBuffer experiment only (the wasm threads variant was retired in
+ *  #533; nothing shipped needs isolation). The headers ride on the document that
  *  asks and on what it loads (its Referer carries the flag) — dedicated workers
  *  included, which must send COEP themselves to load under require-corp.
  *  Default dev, preview and production are not isolated. */
@@ -180,7 +181,15 @@ function rapierWasmAssetPlugin(): Plugin {
 /** `<link rel="preload" as="fetch" crossorigin>` for the Rapier wasm, so the
  *  download starts with the HTML instead of after the entry chunk has run. The
  *  loader's `fetch(url)` is a same-origin CORS-mode request, which is what
- *  `crossorigin` (anonymous) preloads, so the preload is actually consumed. */
+ *  `crossorigin` (anonymous) preloads, so the preload is actually consumed.
+ *
+ *  `watershed_native.wasm` is deliberately NOT preloaded: its consumer is the
+ *  sim worker, and a worker's fetch is not matched against the document's
+ *  preload list, so the preload was a second download of the same bytes —
+ *  which visual_smoke's #467 "fetched once per session" gate catches. Starting
+ *  it from index.html needs the main thread to fetch and transfer the bytes in
+ *  INIT; until then, the stamped URL's immutable cache policy (public/.htaccess)
+ *  is what makes repeat visits free. */
 function rapierWasmPreloadPlugin(): Plugin {
   return {
     name: 'watershed-rapier-wasm-preload',
@@ -201,6 +210,18 @@ function rapierWasmPreloadPlugin(): Plugin {
     },
   };
 }
+
+/** The drei modules gameplay mounts (see `manualChunks`). A drei import outside
+ *  this list goes wherever its importer's chunk is — so a new gameplay use of
+ *  another drei component belongs here, or it lands in the entry. */
+const DREI_GAMEPLAY_MODULES = [
+  'core/Instances', // Instances / Instance (NonEmptyInstances, Environment/*)
+  'web/Html', // LODManager, ExperienceUI, LevelLoader, PhysicsDebugOverlay
+  'core/Progress', // useProgress (Loader, useRendererBoot, ShaderWarmup)
+  'web/KeyboardControls', // KeyboardControls / useKeyboardControls
+  'core/Sky', // EnhancedSky
+  'core/PointerLockControls', // InnerExperience
+].map((m) => `@react-three/drei/${m}.js`);
 
 /** `pnpm build:analyze` (= `ANALYZE=1 vite build`): a treemap + raw module graph of the
  *  production bundle under build-analyze/ (outside build/, so the manifest guard and the
@@ -263,7 +284,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
+          // drei by module, not as a package (#466 audit D): naming the package
+          // put every drei component any chunk imports — and its dependency
+          // closure (three-stdlib controls, stats.js) — on the boot path. The
+          // list is what the game itself mounts; the editor's OrbitControls /
+          // Grid / Line and the debug Stats land in their own lazy chunks.
+          'vendor-three': ['three', '@react-three/fiber', ...DREI_GAMEPLAY_MODULES],
           'vendor-rapier': ['@dimforge/rapier3d-compat', '@react-three/rapier'],
         },
       },

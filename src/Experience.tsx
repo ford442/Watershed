@@ -1,5 +1,5 @@
-import { KeyboardControls, Stats } from '@react-three/drei';
-import { useEffect } from 'react';
+import { KeyboardControls } from '@react-three/drei';
+import { Suspense, useEffect } from 'react';
 import { BiomeProvider, BiomeTransition } from './systems/biome/BiomeSystem';
 import { LODProvider, PerformanceMonitor } from './systems/lod/LODManager';
 import { SunPositionProvider } from './systems/lighting/SunPositionSystem';
@@ -8,6 +8,8 @@ import FrameWorkTimer from './rendering/FrameWorkTimer';
 import RendererDiagnosticsMonitor from './rendering/RendererDiagnosticsMonitor';
 import BootAssetPreloader from './components/BootAssetPreloader';
 import InnerExperience from './experience/InnerExperience';
+import { ShaderWarmup } from './experience/ShaderWarmup';
+import { lazyComponent } from './utils/lazyComponent';
 import { NOOP_DEBUG } from './experience/constants';
 import { initShelfLaunchScoringListener } from './systems/score/LaunchScoringSession';
 import { initSplitRecordingListener } from './systems/ghost/SplitRecorder';
@@ -19,6 +21,9 @@ import { bindingsToDreiMap } from './systems/settings/settingsDerive';
 import type { RendererPreference } from './rendering/types';
 import type { ExperienceProps, InnerExperienceProps, VehicleType } from './experience/types';
 import { queryFlags } from './config/queryFlags';
+
+// `?debug=1` only: stats.js stays out of the boot path.
+const DebugStats = lazyComponent(() => import('./harness/DebugStats')).Component;
 
 export type { ExperienceProps, InnerExperienceProps, VehicleType, RendererPreference };
 
@@ -56,7 +61,11 @@ export default function Experience({
 
   return (
     <>
-      {isDebug && <Stats />}
+      {isDebug && (
+        <Suspense fallback={null}>
+          <DebugStats />
+        </Suspense>
+      )}
       <BootAssetPreloader />
       {/* Always on: the render-scale valve runs on frame work, not rAF time (#466). */}
       <FrameWorkTimer />
@@ -77,6 +86,8 @@ export default function Experience({
                 onReturnToMenu={onReturnToMenu}
                 launchHour={launchHour}
               />
+              {/* Compiles the run's first-second programs while the menu is up (#466 audit B). */}
+              <ShaderWarmup worldEnabled={worldEnabled} />
               <PerformanceMonitor visible={import.meta.env.DEV} />
               <RendererDiagnosticsMonitor preference={rendererPreference} />
               {debug.debugEnabled && <PerfCheckpointMonitor />}

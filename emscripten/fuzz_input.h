@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace fuzz {
@@ -19,8 +20,9 @@ struct Input {
     size_t at = 0;
 
     uint32_t u32() {
+        const std::span<const uint8_t> bytes(data, size);
         uint32_t v = 0;
-        for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(at < size ? data[at++] : 0) << (8 * i);
+        for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(at < size ? bytes[at++] : 0) << (8 * i);
         return v;
     }
     /** Uniform in [lo, hi]. */
@@ -52,7 +54,7 @@ struct Input {
     /** Any float bit pattern, NaN / ±inf / denormals included. */
     float raw() {
         const uint32_t bits = u32();
-        float v;
+        float v = 0.f;
         __builtin_memcpy(&v, &bits, sizeof v);
         return v;
     }

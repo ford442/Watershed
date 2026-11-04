@@ -52,7 +52,6 @@ import { setSweStageWindow } from './sweStageProbe';
 import { useGameStore } from '../GameState';
 import { runHeightfieldChores } from '../../rendering/gpuChores';
 import type { SWEFlowGrid } from './sampleSWEFlow';
-import { packSweSurfaceField } from './sweSurfaceField';
 import { GRAVITY } from '../../constants/game';
 import { applyHydroEventsToGrid, parseHydroEvents } from './hydroEvents';
 import { ACTIVE_MAP_ID } from '../../maps/registry';
@@ -127,6 +126,15 @@ function applyDisturbances(
   }
 }
 
+/**
+ * Point the two DataTextures at the field and flag them for upload (#533).
+ * No copy and no per-cell loop on this thread: the height texture's backing
+ * array IS the sim's `h` (the heap view on wasm-main, the mirror on
+ * wasm-worker / wgsl), and the flow texture's is the RGBA plane `packSurface`
+ * returns — packed by one native call here on wasm-main, by the worker (or the
+ * GPU) before the frame crossed. Both arrays are stable for the sim's life, so
+ * the assignments only take effect on the first upload after a grid install.
+ */
 function uploadHeightTexture(
   grid: SweSim,
   texture: THREE.DataTexture,
@@ -135,11 +143,11 @@ function uploadHeightTexture(
   originZ: number,
   budget: SWEBudget,
 ): void {
-  (texture.image.data as unknown as Float32Array).set(grid.h);
+  if (texture.image.data !== grid.h) texture.image.data = grid.h;
   texture.needsUpdate = true;
-  // Same fieldVersion, same origin: the surface reads (u, w, depth, div) from the CPU
-  // mirror (WASM heap view or the WGSL readback mirror — never the compute buffer).
-  packSweSurfaceField(grid, flowTexture.image.data as unknown as Float32Array, SWE_MEAN_DEPTH);
+  // Same fieldVersion, same origin: (u, w, depth, div) for the field `h` holds.
+  const surface = grid.packSurface(SWE_MEAN_DEPTH);
+  if (flowTexture.image.data !== surface) flowTexture.image.data = surface;
   flowTexture.needsUpdate = true;
   updateSWEHeightFieldSnapshot({
     texture,
@@ -333,9 +341,20 @@ export interface SweHostState {
   window: SweWindow | null;
   stepAccumulator: number;
   /**
-   * Seconds of solver steps this run (the sum of step dts): the clock authored
-   * surge fronts and the squall front move on, so a replay stepped alike puts
-   * them in the same cells on the same step.
+   * Seconds the clocks have already advanced but the field has not yet
+   * integrated (#533): the sub-step cap's shortfall, put back in
+   * `stepAccumulator` so the field integrates it on the next step, and kept
+   * here so the clocks do not advance over it a second time (`takeSweStep`).
+   * 0 after every step, and in practice always: four sub-steps cover the
+   * 0.05 s cap down to a 0.0125 s CFL limit.
+   */
+  fieldDebt: number;
+  /**
+   * Seconds of solver steps this run: the clock authored surge fronts and the
+   * squall front move on, so a replay stepped alike puts them in the same
+   * cells on the same step. Advances by each step's new time only — a
+   * re-queued shortfall (`fieldDebt`) is not counted twice — so it agrees
+   * with the time the field integrated to within the outstanding debt.
    */
   simTime: number;
   /** The run (`runId`) `simTime` and `surge` count for; a new run restarts both. */
@@ -358,6 +377,7 @@ export function createSweHostState(): SweHostState {
     flowTexture: null,
     window: null,
     stepAccumulator: 0,
+    fieldDebt: 0,
     simTime: 0,
     simRun: null,
     surge: createWeatherSurgeState(),
@@ -372,10 +392,68 @@ export function createSweHostState(): SweHostState {
 /** A freshly installed grid starts on a new window, an empty bed and no upload. */
 export function resetSweHostForGrid(state: SweHostState): void {
   state.stepAccumulator = 0;
+  state.fieldDebt = 0;
   resetWeatherSurge(state.surge);
   state.uploadedVersion = -1;
   state.bed = { valid: false, revision: -1, originX: 0, originZ: 0 };
   state.window = null;
+}
+
+/** Longest step the frame loop asks the solver for (s); a hitch beyond it is dropped, not integrated. */
+export const SWE_MAX_STEP_DT = 0.05;
+
+/** The two numbers of `SweHostState` the step clock owns. */
+export interface SweStepClock {
+  stepAccumulator: number;
+  fieldDebt: number;
+}
+
+/**
+ * One frame of the step clock (#533). `owed` is the solver's reported
+ * shortfall (`SweSim.takeShortfall`): it goes back in the accumulator, so the
+ * field integrates it on this or a later step, and into `fieldDebt`, because
+ * the clocks already advanced over it. Returns null when no step is due, else
+ * `stepDt` (what the solver is asked to integrate) and `clockDt` (what simTime,
+ * the router, the hydro events and the surge front advance by: stepDt less the
+ * debt it repays). Debt is repaid first, so a hitch past SWE_MAX_STEP_DT drops
+ * new time, never owed time — `owed` never exceeds a step, which never exceeds
+ * the cap — and the debt is 0 again after every step. Summed over a run, the
+ * clocks therefore equal the time the field integrated plus whatever shortfall
+ * has not been reported yet (a step, on the async backends).
+ */
+export function takeSweStep(
+  clock: SweStepClock,
+  frameDt: number,
+  interval: number,
+  owed: number,
+): { stepDt: number; clockDt: number } | null {
+  if (owed > 0 && Number.isFinite(owed)) {
+    clock.stepAccumulator += owed;
+    clock.fieldDebt += owed;
+  }
+  clock.stepAccumulator += frameDt;
+  if (clock.stepAccumulator < interval - SWE_STEP_EPSILON) return null;
+  const stepDt = Math.min(clock.stepAccumulator, SWE_MAX_STEP_DT);
+  const repaid = Math.min(clock.fieldDebt, stepDt);
+  clock.stepAccumulator = 0;
+  // Nothing is left in the accumulator, so nothing is owed any more.
+  clock.fieldDebt = 0;
+  return { stepDt, clockDt: stepDt - repaid };
+}
+
+let hydroEventsCache: { raw: unknown; parsed: ReturnType<typeof parseHydroEvents> } | null = null;
+
+/**
+ * The run map's hydro events, parsed once per map (#533): this ran
+ * `parseHydroEvents` — allocating and FNV-hashing every id — on every SWE
+ * step. Keyed by the raw list's identity, so a map swap (a new levelData)
+ * re-parses and an unchanged map never does.
+ */
+function runHydroEvents(raw: Parameters<typeof parseHydroEvents>[0]): ReturnType<typeof parseHydroEvents> {
+  if (hydroEventsCache === null || hydroEventsCache.raw !== raw) {
+    hydroEventsCache = { raw, parsed: parseHydroEvents(raw) };
+  }
+  return hydroEventsCache.parsed;
 }
 
 /** Drop the router(s) when the system unmounts. */
@@ -452,26 +530,30 @@ export function sweHostFrame(
     // exactly one step per 60 Hz interval: float sums of 1/60 can land a hair
     // short of it and skip a step, which a replay would then carry forever.
     const interval = sweStepInterval(budget);
-    state.stepAccumulator += dt;
-    if (state.stepAccumulator >= interval - SWE_STEP_EPSILON) {
-      const stepDt = Math.min(state.stepAccumulator, 0.05);
-      state.stepAccumulator = 0;
+    // Time the solver was asked for and did not integrate (the sub-step cap,
+    // #533) goes back in the accumulator; on wasm-main it is known the moment
+    // the step returns, on wasm-worker / wgsl when the frame lands. The clocks
+    // already advanced over it, so it is also debt they must not count again.
+    const due = takeSweStep(state, dt, interval, grid.takeShortfall());
+    if (due) {
+      const { stepDt, clockDt } = due;
       // The director's weather for this step, then the advance (the worker does the same).
       const weather = routerWeatherNow();
       router?.setWeather(weather);
-      router?.advance(stepDt);
+      router?.advance(clockDt);
       const run = getRunSession()?.runId ?? null;
       if (state.simRun !== run) {
         state.simRun = run;
         state.simTime = 0;
+        state.fieldDebt = 0;
         resetWeatherSurge(state.surge);
       }
-      state.simTime += stepDt;
+      state.simTime += clockDt;
 
       applyDisturbances(grid, originX, originZ, consumeSWEDisturbances(), budget);
 
       // Authored hydro events run after the step, through the same backend.
-      const hydroEvents = parseHydroEvents(getRunMap().levelData.hydroEvents);
+      const hydroEvents = runHydroEvents(getRunMap().levelData.hydroEvents);
       const eventCalls: SweEventCall[] = [];
       applyHydroEventsToGrid(
         {
@@ -493,7 +575,7 @@ export function sweHostFrame(
           if (!source) return null;
           return { x: source.centerX, z: source.centerZ };
         },
-        stepDt,
+        clockDt,
         (kind, cx, cz, radius, strength, dtEvent) => {
           eventCalls.push({ kind, cx, cz, radius, strength, dt: dtEvent });
         },
@@ -505,7 +587,7 @@ export function sweHostFrame(
         weather,
         playerChainIndex(getRoutingReach()),
         { originX, originZ, width: grid.width, height: grid.height, dx: grid.dx, depth: SWE_MEAN_DEPTH },
-        stepDt,
+        clockDt,
       );
       if (squall) eventCalls.push(squall);
 
@@ -522,7 +604,8 @@ export function sweHostFrame(
         // hull reads it back through sampleSWEFlow like any other η.
         edgeEta: routed?.edgeEta,
       };
-      if (remote) remote.stepRouted(stepInput, { chainIndex, weather });
+      // The worker's router advances by the same new time the clocks did.
+      if (remote) remote.stepRouted(stepInput, clockDt === stepDt ? { chainIndex, weather } : { chainIndex, weather, advance: clockDt });
       else grid.step(stepInput);
       // The river works its bed (#487 E). On this thread the field just
       // stepped; a worker's lands a message later, below.

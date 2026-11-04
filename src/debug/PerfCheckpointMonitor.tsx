@@ -9,6 +9,7 @@
 import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { updatePerfMetrics } from './perfMetrics';
+import { getFrameRenderInfo } from '../rendering/frameRenderInfo';
 
 const SAMPLE_INTERVAL = 30; // frames between metric snapshots
 
@@ -38,8 +39,9 @@ export default function PerfCheckpointMonitor() {
       })();
 
       updatePerfMetrics({
-        drawCalls: info.render.calls,
-        triangles: info.render.triangles,
+        // Whole-frame totals (every pass), not `info.render` mid-frame.
+        drawCalls: getFrameRenderInfo().calls,
+        triangles: getFrameRenderInfo().triangles,
         geometries: info.memory.geometries,
         textures: info.memory.textures,
         frameTimeMs: Math.round(avgFrameMs * 10) / 10,

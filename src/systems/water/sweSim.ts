@@ -14,13 +14,13 @@
  * GPU by the readback latency (one step at the budgeted rates). `fieldVersion`
  * bumps whenever the mirror changes, which is what upload consumers key on.
  */
-import type { WatershedNativeModule } from './wasmAbi';
+import { heapF32, warnRejected, WS_OK, type WatershedNativeModule } from './wasmAbi';
 import type { SWEGrid } from './WatershedWasm';
 import { createSWEGrid } from './WatershedWasm';
 import type { SweSimBackend } from './sweBackend';
 import { SWE_REST_INFLOW, type SweInflow } from './sweScroll';
 
-/** One `applySWEEvent` call, in world XZ (ABI 8 kinds: 0 inflow … 3 roughness). */
+/** One `applySWEEvent` call, in world XZ (kinds: 0 inflow, 1 vortex, 2 braid, 3 roughness, 4 surge — ABI 14). */
 export interface SweEventCall {
   kind: number;
   cx: number;
@@ -68,7 +68,11 @@ export interface SweSim {
   readonly fieldVersion: number;
   /** Publish a rewritten `b` to the solver. */
   commitBed(): void;
-  /** Add to η at a cell before the next step (splash disturbances). */
+  /**
+   * Add to η at a cell before the next step (splash disturbances). A
+   * non-finite amount or an out-of-range / non-integer index is dropped at
+   * this door (#533): one NaN here used to spread two cells per step.
+   */
   addSurface(index: number, amount: number): void;
   /**
    * Scroll the field through the index frame by whole cells so it stays fixed in
@@ -82,8 +86,30 @@ export interface SweSim {
    * nothing.
    */
   scroll(shiftX: number, shiftZ: number, inflow?: SweInflow): void;
-  /** One CFL-clamped solver step, then `input.events`. */
+  /**
+   * Integrate `input.dt` (≤ 4 CFL sub-steps, swe.h), then `input.events`.
+   * Whatever the sub-step cap left over is reported by `takeShortfall()`.
+   */
   step(input: SweStepInput): void;
+  /**
+   * Simulated time `step()` was asked for but the solver did not integrate
+   * (the sub-step cap, ABI 17), summed since the last call, then reset to 0.
+   * Known at once on wasm-main; on wasm-worker it rides the frame and on wgsl
+   * the readback, so it arrives a step later. sweHost.ts re-queues it, so the
+   * field and the clocks fed by `dt` (simTime, the surge front, hydro events)
+   * integrate the same total time.
+   */
+  takeShortfall(): number;
+  /**
+   * The SWE flow texture's bytes for the field at `fieldVersion` (#533): RGBA
+   * f32 (u, w, depth, div) per cell, the sweSurfaceField.ts layout, depth over
+   * `meanDepth`. A stable array for the sim's life, so the flow DataTexture
+   * uses it as its backing store and the main thread copies nothing per step.
+   * wasm-main packs here (one `packSurfaceField` call into a heap block);
+   * wasm-worker / wgsl return the plane that arrived with the field (packed in
+   * the worker / on the GPU with the step's H), moved with the mirror on scroll.
+   */
+  packSurface(meanDepth: number): Float32Array;
   dispose(): void;
 }
 
@@ -102,6 +128,13 @@ export function createWasmSweSim(
   // η is a free-surface *perturbation* (swe.h ABI): at rest it is 0, not H.
   grid.h.fill(0);
   let fieldVersion = 0;
+  let shortfall = 0;
+  const count = width * height;
+  // The packed flow texture, on the heap next to the grid. The heap is fixed
+  // (ALLOW_MEMORY_GROWTH=0), so the view is made once and is the texture's
+  // backing store for the sim's life.
+  const surfacePtr = wasm.allocateGrid(4 * count);
+  const surface = heapF32(wasm, surfacePtr, 4 * count);
 
   return {
     backend: 'wasm-main',
@@ -117,6 +150,7 @@ export function createWasmSweSim(
       // The solver reads the heap directly; nothing to publish.
     },
     addSurface(index, amount) {
+      if (!Number.isInteger(index) || index < 0 || index >= count || !Number.isFinite(amount)) return;
       grid.h[index] += amount;
     },
     scroll(shiftX, shiftZ, inflow = SWE_REST_INFLOW) {
@@ -134,22 +168,44 @@ export function createWasmSweSim(
       // A NaN dt slips past `dt <= 0` checks and writes NaN into every cell
       // for good. swe.cpp rejects it too; this keeps it off the boundary.
       // Only the solver step is skipped: events carry their own dt.
-      const solve = Number.isFinite(dt);
+      const solve = Number.isFinite(dt) && dt > 0;
+      let integrated = 0;
       if (solve && edgeEta !== undefined) {
-        wasm.stepShallowWaterInflow(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H, edgeEta);
+        integrated = wasm.stepShallowWaterInflow(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H, edgeEta);
       } else if (solve) {
-        wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);
+        integrated = wasm.stepShallowWater(grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, dt, g, dx, H);
+      }
+      // A rejected step (0) integrated nothing either; the caller's dt is
+      // re-queued all the same, and the dev warning names the call.
+      if (solve) {
+        if (integrated === 0) warnRejected('stepShallowWater', `dt=${dt} g=${g} dx=${dx} H=${H}`);
+        shortfall += Math.max(0, dt - integrated);
       }
       for (const e of events) {
-        wasm.applySWEEvent(
+        const status = wasm.applySWEEvent(
           grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
           width, height, dx, originX, originZ, H,
           e.kind, e.cx, e.cz, e.radius, e.strength, e.dt,
         );
+        if (status !== WS_OK) warnRejected('applySWEEvent', `kind=${e.kind}`);
       }
       fieldVersion += 1;
     },
+    takeShortfall() {
+      const owed = shortfall;
+      shortfall = 0;
+      return owed;
+    },
+    packSurface(meanDepth) {
+      const status = wasm.packSurfaceField(
+        grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr, width, height, meanDepth, dx, surfacePtr,
+      );
+      // Rejected (a non-finite meanDepth): the plane keeps its last packing.
+      if (status !== WS_OK) warnRejected('packSurfaceField', `meanDepth=${meanDepth}`);
+      return surface;
+    },
     dispose() {
+      wasm.freeGrid(surfacePtr);
       grid.dispose();
     },
   };

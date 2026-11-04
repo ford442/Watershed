@@ -25,8 +25,10 @@
  * three at upload (flipY), a compressed texture can't be, so the file carries
  * the flip and the two paths sample identical texels at identical UVs.
  *
- * Also copies three's Basis transcoder (examples/jsm/libs/basis) to
- * public/basis/, so KTX2Loader never reaches for a CDN.
+ * The Basis transcoder is not copied: KTX2Loader (r185) resolves it with
+ * `new URL('../libs/basis/…', import.meta.url)`, which Vite emits as a hashed
+ * asset of the installed three — so it can never drift from the loader that
+ * speaks to it, and it is cached immutable like every other hashed asset.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -36,7 +38,6 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicDir = path.join(rootDir, 'public');
 const outDir = path.join(publicDir, 'textures');
-const basisOut = path.join(publicDir, 'basis');
 const ktx = process.env.KTX_BIN || 'ktx';
 
 const ETC1S = ['--encode', 'basis-lz', '--clevel', '4', '--qlevel', '192'];
@@ -74,13 +75,6 @@ function main() {
     const kb = (bytes) => `${(bytes / 1024).toFixed(0)} kB`;
     console.log(`  ${src} (${kb(fs.statSync(input).size)}) → textures/${out} (${kb(fs.statSync(output).size)})`);
   }
-
-  const basisSrc = path.join(rootDir, 'node_modules/three/examples/jsm/libs/basis');
-  fs.mkdirSync(basisOut, { recursive: true });
-  for (const file of ['basis_transcoder.js', 'basis_transcoder.wasm']) {
-    fs.copyFileSync(path.join(basisSrc, file), path.join(basisOut, file));
-  }
-  console.log('  three/examples/jsm/libs/basis → public/basis/');
 }
 
 main();

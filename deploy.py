@@ -66,14 +66,12 @@ DIRECTORY_INDEX_NAME_RE = re.compile(
 # BUILD_ID, watershed_native.*, textures, sounds, …) always upload.
 HASHED_ASSET_RE = re.compile(r"^assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$")
 
-# INVARIANT: glue + wasm (+ the pthread worker, when a --threads build ships
-# one) are one emcc output: a glue/wasm mix from two builds fails the
-# provenance stamp check at load. Never size-check these independently.
-# build.sh names the worker `.worker.mjs` (ES module output).
+# INVARIANT: glue + wasm are one emcc output: a glue/wasm mix from two
+# builds fails the provenance stamp check at load. Never size-check these
+# independently.
 NATIVE_PAIR = (
     "watershed_native.js",
     "watershed_native.wasm",
-    "watershed_native.worker.mjs",
 )
 
 

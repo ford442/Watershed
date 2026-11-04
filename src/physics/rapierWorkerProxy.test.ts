@@ -1,4 +1,6 @@
-import { RapierWorkerProxy } from './RapierWorkerProxy';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RapierWorkerProtocolError, RapierWorkerProxy } from './RapierWorkerProxy';
+import { RAPIER_WORKER_PROTOCOL_VERSION } from './rapierWorkerProtocol';
 import { LoopbackRapierWorker } from './__tests__/loopbackRapierWorker';
 
 describe('RapierWorkerProxy', () => {
@@ -69,5 +71,78 @@ describe('RapierWorkerProxy', () => {
     await proxy.addStaticCollider({ position: [0, 0, 0], halfExtents: [1, 1, 1] });
     expect(worker.transfers.at(-1)).toBeUndefined();
     proxy.dispose();
+  });
+});
+
+describe('RapierWorkerProxy failure modes — boots or fails on time', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('rejects every pending request and terminates on a worker script error (404 / parse)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const worker = new LoopbackRapierWorker();
+    worker.silent = true;
+    const terminate = vi.spyOn(worker, 'terminate');
+    const proxy = new RapierWorkerProxy(worker, { initTimeoutMs: 60_000 });
+    const init = proxy.init();
+    const state = proxy.getState();
+    worker.emitError('Failed to fetch rapier.worker.js');
+
+    await expect(init).rejects.toMatchObject({ name: 'RapierWorkerError', kind: 'script-error' });
+    await expect(state).rejects.toMatchObject({ kind: 'script-error' });
+    expect(proxy.failed?.kind).toBe('script-error');
+    expect(terminate).toHaveBeenCalled();
+    // Dead for good: later requests reject at once, nothing is posted.
+    const posted = worker.transfers.length;
+    await expect(proxy.applyImpulse([0, 0, 1])).rejects.toMatchObject({ kind: 'script-error' });
+    expect(worker.transfers.length).toBe(posted);
+  });
+
+  it('fails on a response that cannot be deserialized', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const worker = new LoopbackRapierWorker();
+    worker.silent = true;
+    const proxy = new RapierWorkerProxy(worker, { initTimeoutMs: 60_000 });
+    const init = proxy.init();
+    worker.emitMessageError();
+    await expect(init).rejects.toMatchObject({ kind: 'message-error' });
+  });
+
+  it('rejects INIT at the deadline when the worker never answers, and stays dead', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.useFakeTimers();
+    const worker = new LoopbackRapierWorker();
+    worker.silent = true;
+    const proxy = new RapierWorkerProxy(worker, { initTimeoutMs: 500 });
+    const init = proxy.init();
+    const assertion = expect(init).rejects.toMatchObject({ kind: 'init-timeout' });
+    await vi.advanceTimersByTimeAsync(500);
+    await assertion;
+    await expect(proxy.getState()).rejects.toMatchObject({ kind: 'init-timeout' });
+  });
+
+  it('rejects INIT with a typed error when the worker chunk speaks another protocol version', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const worker = new LoopbackRapierWorker();
+    worker.protocolVersion = RAPIER_WORKER_PROTOCOL_VERSION + 1;
+    const proxy = new RapierWorkerProxy(worker, { initTimeoutMs: 60_000 });
+    const error = await proxy.init().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RapierWorkerProtocolError);
+    expect(error).toMatchObject({
+      kind: 'protocol-mismatch',
+      expected: RAPIER_WORKER_PROTOCOL_VERSION,
+      actual: RAPIER_WORKER_PROTOCOL_VERSION + 1,
+    });
+    expect(proxy.failed).toBe(error);
+  });
+
+  it('detaches all three listeners on dispose', () => {
+    const worker = new LoopbackRapierWorker();
+    const proxy = new RapierWorkerProxy(worker, { initTimeoutMs: 60_000 });
+    expect(worker.listenerCount).toBe(3);
+    proxy.dispose();
+    expect(worker.listenerCount).toBe(0);
   });
 });

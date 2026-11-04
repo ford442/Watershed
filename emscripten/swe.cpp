@@ -98,7 +98,8 @@ Flux hllFlux(const FaceState& L, const FaceState& R, float g) {
     const float cL  = std::sqrt(g * std::max(L.d, 0.f));
     const float cR  = std::sqrt(g * std::max(R.d, 0.f));
 
-    float sL, sR;
+    float sL = 0.f;
+    float sR = 0.f;
     if (dryL) {
         // Dry bed on the left: the front runs left at unR - 2cR.
         sL = unR - 2.f * cR;
@@ -267,10 +268,10 @@ inline InterfaceFlux4 reconstructedFlux4(f32x4 dL, f32x4 unL, f32x4 utL, f32x4 z
 
 /** Fluxes of one row of faces, SoA. Views into FaceRowStorage. */
 struct FaceRow {
-    float* mass;
-    float* momL;
-    float* momR;
-    float* trans;
+    std::span<float> mass;
+    std::span<float> momL;
+    std::span<float> momR;
+    std::span<float> trans;
 };
 
 struct FaceRowStorage {
@@ -278,14 +279,14 @@ struct FaceRowStorage {
     void resize(int n) {
         for (auto* v : {&mass, &momL, &momR, &trans}) v->assign(static_cast<std::size_t>(n), 0.f);
     }
-    FaceRow row() { return FaceRow{mass.data(), momL.data(), momR.data(), trans.data()}; }
+    FaceRow row() { return FaceRow{mass, momL, momR, trans}; }
 };
 
 /**
  * Reused per-step buffers, so a 60 Hz solver does not allocate (see
- * reserveShallowWaterScratch). thread_local rather than plain static because
- * the optional `--threads` build links pthreads; the solver itself is still
- * driven from one caller.
+ * reserveShallowWaterScratch). A plain static: the module is single-threaded
+ * (the `--threads` variant was retired, WASM.md), and a thread_local would
+ * register a __cxa_thread_atexit destructor for nothing.
  *
  * Flux form (#467): every face's flux is computed once, then each cell
  * gathers F[left] − F[right] per axis. Faces are produced a row at a time —
@@ -333,7 +334,7 @@ struct Scratch {
     }
 };
 
-thread_local Scratch g_scratch;
+Scratch g_scratch;
 
 /** Conserved state of a ghost cell, in z-face axes (normal = z). */
 struct GhostCell {
@@ -379,8 +380,8 @@ GhostCell upstreamGhost(float dI, float hI, float qzI, float qxI, float edgeEta,
 
     if (vI + cI < 0.f) return GhostCell{ dI, qzI, qxI };  // supercritical outflow
 
-    float dG;
-    float vG;
+    float dG = 0.f;
+    float vG = 0.f;
     if (vExt >= cExt) {
         dG = dExt;
         vG = vExt;
@@ -422,18 +423,18 @@ inline float ghostWaveSpeed(const GhostCell& c, float g) {
 namespace {
 
 /** Store one scalar interface flux into the SoA face planes at `at`. */
-inline void storeFace(float* mass, float* momL, float* momR, float* trans, int at, const InterfaceFlux& f) {
-    mass[at] = f.mass;
-    momL[at] = f.momL;
-    momR[at] = f.momR;
-    trans[at] = f.trans;
+inline void storeFace(const FaceRow& out, int at, const InterfaceFlux& f) {
+    out.mass[at] = f.mass;
+    out.momL[at] = f.momL;
+    out.momR[at] = f.momR;
+    out.trans[at] = f.trans;
 }
 
-inline void storeFace4(float* mass, float* momL, float* momR, float* trans, int at, const InterfaceFlux4& f) {
-    f32x4_store(&mass[at], f.mass);
-    f32x4_store(&momL[at], f.momL);
-    f32x4_store(&momR[at], f.momR);
-    f32x4_store(&trans[at], f.trans);
+inline void storeFace4(const FaceRow& out, int at, const InterfaceFlux4& f) {
+    f32x4_store(&out.mass[at], f.mass);
+    f32x4_store(&out.momL[at], f.momL);
+    f32x4_store(&out.momR[at], f.momR);
+    f32x4_store(&out.trans[at], f.trans);
 }
 
 /**
@@ -441,9 +442,10 @@ inline void storeFace4(float* mass, float* momL, float* momR, float* trans, int 
  * column xf; faces 0 and width are transmissive boundaries (ghost = interior),
  * faces 1..width-1 run four at a time.
  */
-void xFaceRow(const float* d, const float* qx, const float* qz, const float* vx, const float* vz,
-              const float* b, int width, int row, const FluxConsts& k, float g, const FaceRow& out) {
-    storeFace(out.mass, out.momL, out.momR, out.trans, 0,
+void xFaceRow(std::span<const float> d, std::span<const float> qx, std::span<const float> qz,
+              std::span<const float> vx, std::span<const float> vz, std::span<const float> b,
+              int width, int row, const FluxConsts& k, float g, const FaceRow& out) {
+    storeFace(out, 0,
               reconstructedFlux(d[row], qx[row], qz[row], b[row],
                                 d[row], qx[row], qz[row], b[row], g));
     // Interior faces 1..width-1. When the count is not a multiple of four the
@@ -452,7 +454,7 @@ void xFaceRow(const float* d, const float* qx, const float* qz, const float* vx,
     const auto group = [&](int xf) {
         const int iL = row + xf - 1;
         const int iR = row + xf;
-        storeFace4(out.mass, out.momL, out.momR, out.trans, xf,
+        storeFace4(out, xf,
                    reconstructedFlux4(f32x4_load(&d[iL]), f32x4_load(&vx[iL]), f32x4_load(&vz[iL]), f32x4_load(&b[iL]),
                                       f32x4_load(&d[iR]), f32x4_load(&vx[iR]), f32x4_load(&vz[iR]), f32x4_load(&b[iR]),
                                       k));
@@ -466,11 +468,11 @@ void xFaceRow(const float* d, const float* qx, const float* qz, const float* vx,
     for (; xf < width; ++xf) {
         const int iL = row + xf - 1;
         const int iR = row + xf;
-        storeFace(out.mass, out.momL, out.momR, out.trans, xf,
+        storeFace(out, xf,
                   reconstructedFlux(d[iL], qx[iL], qz[iL], b[iL], d[iR], qx[iR], qz[iR], b[iR], g));
     }
     const int last = row + width - 1;
-    storeFace(out.mass, out.momL, out.momR, out.trans, width,
+    storeFace(out, width,
               reconstructedFlux(d[last], qx[last], qz[last], b[last],
                                 d[last], qx[last], qz[last], b[last], g));
 }
@@ -481,28 +483,32 @@ void xFaceRow(const float* d, const float* qx, const float* qz, const float* vx,
  * (zf == height) takes the inflow ghost when `edgeInflow`. Normal is z here,
  * so qz / vz are normal and qx / vx transverse.
  */
-void zFaceRow(const Scratch& s, const float* d, const float* vx, const float* vz, const float* b,
+void zFaceRow(const Scratch& s, std::span<const float> d, std::span<const float> vx,
+              std::span<const float> vz, std::span<const float> b,
               int width, int height, bool edgeInflow, int zf, const FluxConsts& k, float g,
               const FaceRow& out) {
-    const int rowL = ((zf == 0) ? 0 : zf - 1) * width;
-    const int rowR = ((zf == height) ? height - 1 : zf) * width;
+    using Row = std::span<const float>;
+    const int rowLeft = ((zf == 0) ? 0 : zf - 1) * width;
+    const int rowRight = ((zf == height) ? height - 1 : zf) * width;
+    const auto rowL = static_cast<std::size_t>(rowLeft);
+    const auto rowR = static_cast<std::size_t>(rowRight);
     const bool ghostR = edgeInflow && zf == height;
-    const float* qx = s.qx.data();
-    const float* qz = s.qz.data();
-    const float* dR  = ghostR ? s.ghostD.data()  : d + rowR;
-    const float* qnR = ghostR ? s.ghostQz.data() : qz + rowR;
-    const float* qtR = ghostR ? s.ghostQx.data() : qx + rowR;
-    const float* unR = ghostR ? s.ghostVz.data() : vz + rowR;
-    const float* utR = ghostR ? s.ghostVx.data() : vx + rowR;
-    const float* bR  = b + rowR;
-    const float* dL  = d + rowL;
-    const float* qnL = qz + rowL;
-    const float* qtL = qx + rowL;
-    const float* unL = vz + rowL;
-    const float* utL = vx + rowL;
-    const float* bL  = b + rowL;
+    const Row qx(s.qx);
+    const Row qz(s.qz);
+    const Row dR  = ghostR ? Row(s.ghostD)  : d.subspan(rowR);
+    const Row qnR = ghostR ? Row(s.ghostQz) : qz.subspan(rowR);
+    const Row qtR = ghostR ? Row(s.ghostQx) : qx.subspan(rowR);
+    const Row unR = ghostR ? Row(s.ghostVz) : vz.subspan(rowR);
+    const Row utR = ghostR ? Row(s.ghostVx) : vx.subspan(rowR);
+    const Row bR  = b.subspan(rowR);
+    const Row dL  = d.subspan(rowL);
+    const Row qnL = qz.subspan(rowL);
+    const Row qtL = qx.subspan(rowL);
+    const Row unL = vz.subspan(rowL);
+    const Row utL = vx.subspan(rowL);
+    const Row bL  = b.subspan(rowL);
     const auto group = [&](int x) {
-        storeFace4(out.mass, out.momL, out.momR, out.trans, x,
+        storeFace4(out, x,
                    reconstructedFlux4(f32x4_load(&dL[x]), f32x4_load(&unL[x]), f32x4_load(&utL[x]), f32x4_load(&bL[x]),
                                       f32x4_load(&dR[x]), f32x4_load(&unR[x]), f32x4_load(&utR[x]), f32x4_load(&bR[x]),
                                       k));
@@ -514,49 +520,46 @@ void zFaceRow(const Scratch& s, const float* d, const float* vx, const float* vz
         x = width;
     }
     for (; x < width; ++x) {
-        storeFace(out.mass, out.momL, out.momR, out.trans, x,
+        storeFace(out, x,
                   reconstructedFlux(dL[x], qnL[x], qtL[x], bL[x], dR[x], qnR[x], qtR[x], bR[x], g));
     }
 }
 
 /**
- * Shared step. `edgeInflow` false keeps every boundary transmissive (the
- * stepShallowWater contract); true replaces the upstream (high-row) ghost with
- * upstreamGhost(edgeEta) — lateral and downstream edges stay transmissive.
+ * u, w, η as the lift reads them: a NaN or ±inf is 0 (#533). Without this a
+ * NaN velocity lifted into qx = d·NaN, took the HLL branch (every comparison
+ * false) and spread two cells per step; only η was purged, by max(0, NaN).
+ * `x − x` is 0 for every finite x and NaN otherwise, so the mask needs no
+ * abs / isfinite intrinsic and is the same on every f32x4 backend.
  */
-void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                          int width, int height,
-                          float dt, float g, float dx, float H,
-                          bool edgeInflow, float edgeEta) {
-    if (width <= 0 || height <= 0) return;
-    if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return;
-    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
-    // Written as !(x > 0) so NaN fails them too: `dt <= 0.f` is false for a
-    // NaN dt, which then went through std::min into dtdx and wrote NaN into
-    // every cell for good. dt may be +inf (the CFL clamp bounds it); g, dx and
-    // H scale the fluxes and must be finite.
-    if (!(dt > 0.f)) return;
-    if (!(g > 0.f) || !std::isfinite(g)) return;
-    if (!(dx > 0.f) || !std::isfinite(dx)) return;
-    if (!(H > 0.f) || !std::isfinite(H)) return;
+inline f32x4 finiteOrZero4(f32x4 v, f32x4 zero) {
+    return f32x4_select(f32x4_le(f32x4_sub(v, v), zero), v, zero);
+}
+inline float finiteOrZero(float v) { return std::isfinite(v) ? v : 0.f; }
 
-    Scratch& s = g_scratch;
-    s.resize(width, height);
+/**
+ * Most CFL sub-steps one stepShallowWater call takes (#533). Four covers the
+ * TS caller's 0.05 s cap down to a 0.0125 s CFL limit (a wave speed of
+ * 24 m/s at dx 0.75); anything left over is returned to the caller.
+ */
+constexpr int kMaxSubsteps = 4;
+
+/**
+ * One CFL-clamped step of at most `dt` (validated by the caller). Returns the
+ * time it integrated: min(dt, C·dx / maxWaveSpeed), or all of `dt` when the
+ * grid is dry (nothing moves, so any dt is exact).
+ */
+float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<float> w,
+               std::span<const float> b, int width, int height,
+               float dt, float g, float dx, float H,
+               bool edgeInflow, float edgeEta) {
     const int N = width * height;
 
-    const std::span<float> h = heapPlane(hPtr, width, height);
-    const std::span<float> u = heapPlane(uPtr, width, height);
-    const std::span<float> w = heapPlane(wPtr, width, height);
-    // A missing bed reads the zero plane: a flat bed, no per-cell branch.
-    const std::span<const float> b = bPtr
-        ? std::span<const float>(heapPlane(bPtr, width, height))
-        : std::span<const float>(s.zeroBed).first(static_cast<std::size_t>(N));
-
-    float* d  = s.d.data();
-    float* qx = s.qx.data();
-    float* qz = s.qz.data();
-    float* vx = s.vx.data();
-    float* vz = s.vz.data();
+    const std::span<float> d(s.d);
+    const std::span<float> qx(s.qx);
+    const std::span<float> qz(s.qz);
+    const std::span<float> vx(s.vx);
+    const std::span<float> vz(s.vz);
 
     // --- Lift (η, u, w) into conserved (d, d·u, d·w), and the CFL max ---
     float maxWaveSpeed = 0.f;
@@ -567,13 +570,13 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
     const f32x4 vG = f32x4_splat(g);
     f32x4 vMaxSpeed = f32x4_splat(0.f);
     for (; i + 4 <= N; i += 4) {
-        const f32x4 vh = f32x4_load(&h[i]);
+        const f32x4 vh = finiteOrZero4(f32x4_load(&h[i]), vZero);
         const f32x4 vb = f32x4_load(&b[i]);
         const f32x4 depth = f32x4_max(vZero, f32x4_sub(f32x4_add(vH, vh), vb));
         f32x4_store(&d[i], depth);
 
-        const f32x4 vu = f32x4_load(&u[i]);
-        const f32x4 vw = f32x4_load(&w[i]);
+        const f32x4 vu = finiteOrZero4(f32x4_load(&u[i]), vZero);
+        const f32x4 vw = finiteOrZero4(f32x4_load(&w[i]), vZero);
         const f32x4 wet = f32x4_gt(depth, vDry);
         const f32x4 mx = f32x4_and(f32x4_mul(depth, vu), wet);
         const f32x4 mz = f32x4_and(f32x4_mul(depth, vw), wet);
@@ -591,7 +594,7 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
     }
     maxWaveSpeed = f32x4_hmax(vMaxSpeed);
     for (; i < N; ++i) {
-        const float depth = std::max(0.f, H + h[i] - b[i]);
+        const float depth = std::max(0.f, H + finiteOrZero(h[i]) - b[i]);
         d[i] = depth;
         if (depth <= SWE_DRY_DEPTH) {
             qx[i] = 0.f;
@@ -599,11 +602,13 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
             vx[i] = 0.f;
             vz[i] = 0.f;
         } else {
-            qx[i] = depth * u[i];
-            qz[i] = depth * w[i];
+            const float ui = finiteOrZero(u[i]);
+            const float wi = finiteOrZero(w[i]);
+            qx[i] = depth * ui;
+            qz[i] = depth * wi;
             vx[i] = qx[i] / depth;
             vz[i] = qz[i] / depth;
-            const float speed = std::sqrt(u[i] * u[i] + w[i] * w[i]) + std::sqrt(g * depth);
+            const float speed = std::sqrt(ui * ui + wi * wi) + std::sqrt(g * depth);
             maxWaveSpeed = std::max(maxWaveSpeed, speed);
         }
     }
@@ -632,7 +637,7 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
             u[k] = 0.f;
             w[k] = 0.f;
         }
-        return;
+        return dt;
     }
 
     // Enforce CFL stability: dt ≤ C · dx / max(|v| + √(g d))
@@ -649,15 +654,17 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
     FaceRow xFaces = s.xFaces.row();
     FaceRow zBelow = s.zFacesA.row();
     FaceRow zAbove = s.zFacesB.row();
-    zFaceRow(s, d, vx, vz, b.data(), width, height, edgeInflow, 0, k, g, zBelow);
+    zFaceRow(s, d, vx, vz, b, width, height, edgeInflow, 0, k, g, zBelow);
 
-    const float damp = 1.f - safeDt * DAMPING_COEFF;
+    // exp(−k·dt) (#533): always in (0, 1], and N sub-steps damp like one step
+    // of their sum. The linear 1 − k·dt went negative past dt = 1/k.
+    const float damp = sweExpNeg(safeDt * DAMPING_COEFF);
     const f32x4 vDtdx = f32x4_splat(dtdx);
     const f32x4 vDamp = f32x4_splat(damp);
     for (int z = 0; z < height; ++z) {
         const int row = z * width;
-        xFaceRow(d, qx, qz, vx, vz, b.data(), width, row, k, g, xFaces);
-        zFaceRow(s, d, vx, vz, b.data(), width, height, edgeInflow, z + 1, k, g, zAbove);
+        xFaceRow(d, qx, qz, vx, vz, b, width, row, k, g, xFaces);
+        zFaceRow(s, d, vx, vz, b, width, height, edgeInflow, z + 1, k, g, zAbove);
 
         // Gather F[left] − F[right] in the operation order of the face-by-face
         // accumulation this replaced (x-face in, x-face out, z-face in, z-face
@@ -667,7 +674,8 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
         // cells it recomputes read only lifted state, so the rewrite is exact).
         const auto cellGroup = [&](int x) {
             const int c = row + x;
-            const auto gather = [&](const float* xin, const float* xout, const float* zin, const float* zout) {
+            const auto gather = [&](std::span<const float> xin, std::span<const float> xout,
+                                    std::span<const float> zin, std::span<const float> zout) {
                 f32x4 acc = f32x4_add(vZero, f32x4_mul(vDtdx, f32x4_load(&xin[x])));
                 acc = f32x4_sub(acc, f32x4_mul(vDtdx, f32x4_load(&xout[x + 1])));
                 acc = f32x4_add(acc, f32x4_mul(vDtdx, f32x4_load(&zin[x])));
@@ -697,7 +705,8 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
         }
         for (; x < width; ++x) {
             const int c = row + x;
-            const auto gather = [&](const float* xin, const float* xout, const float* zin, const float* zout) {
+            const auto gather = [&](std::span<const float> xin, std::span<const float> xout,
+                                    std::span<const float> zin, std::span<const float> zout) {
                 float acc = 0.f + dtdx * xin[x];
                 acc -= dtdx * xout[x + 1];
                 acc += dtdx * zin[x];
@@ -719,21 +728,69 @@ void stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintpt
         }
         std::swap(zBelow, zAbove);
     }
+    return safeDt;
+}
+
+/**
+ * Shared step. `edgeInflow` false keeps every boundary transmissive (the
+ * stepShallowWater contract); true replaces the upstream (high-row) ghost with
+ * upstreamGhost(edgeEta) — lateral and downstream edges stay transmissive.
+ *
+ * Sub-cycles (#533): up to kMaxSubsteps CFL steps, each re-lifted from the
+ * state the previous one wrote back, until `dt` is integrated. Returns the
+ * time integrated — `dt` exactly unless the cap was hit — or 0 when the call
+ * is rejected. Before ABI 17 the step integrated min(dt, CFL) and said
+ * nothing, so the caller's clocks ran ahead of the field.
+ */
+float stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                           int width, int height,
+                           float dt, float g, float dx, float H,
+                           bool edgeInflow, float edgeEta) {
+    if (width <= 0 || height <= 0) return 0.f;
+    if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return 0.f;
+    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return 0.f;
+    // Written as !(x > 0) so NaN fails them too. dt must now be finite: a
+    // sub-cycled step cannot integrate +inf, and returning it would hand the
+    // caller an infinite clock. g, dx and H scale the fluxes.
+    if (!(dt > 0.f) || !std::isfinite(dt)) return 0.f;
+    if (!(g > 0.f) || !std::isfinite(g)) return 0.f;
+    if (!(dx > 0.f) || !std::isfinite(dx)) return 0.f;
+    if (!(H > 0.f) || !std::isfinite(H)) return 0.f;
+
+    Scratch& s = g_scratch;
+    s.resize(width, height);
+    const int N = width * height;
+
+    const std::span<float> h = heapPlane(hPtr, width, height);
+    const std::span<float> u = heapPlane(uPtr, width, height);
+    const std::span<float> w = heapPlane(wPtr, width, height);
+    // A missing bed reads the zero plane: a flat bed, no per-cell branch.
+    const std::span<const float> b = bPtr
+        ? std::span<const float>(heapPlane(bPtr, width, height))
+        : std::span<const float>(s.zeroBed).first(static_cast<std::size_t>(N));
+
+    // `remaining` is exact: each sub-step takes min(remaining, CFL), so the
+    // last one takes all of it and leaves 0 — the call then returns dt itself.
+    float remaining = dt;
+    for (int iter = 0; iter < kMaxSubsteps && remaining > 0.f; ++iter) {
+        remaining -= stepOnce(s, h, u, w, b, width, height, remaining, g, dx, H, edgeInflow, edgeEta);
+    }
+    return remaining > 0.f ? dt - remaining : dt;
 }
 
 }  // namespace
 
-void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                      int width, int height,
-                      float dt, float g, float dx, float H) {
-    stepShallowWaterImpl(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, false, 0.f);
+float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                       int width, int height,
+                       float dt, float g, float dx, float H) {
+    return stepShallowWaterImpl(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, false, 0.f);
 }
 
-void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                            int width, int height,
-                            float dt, float g, float dx, float H, float edgeEta) {
+float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                             int width, int height,
+                             float dt, float g, float dx, float H, float edgeEta) {
     const float eta = std::isfinite(edgeEta) ? edgeEta : 0.f;
-    stepShallowWaterImpl(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, true, eta);
+    return stepShallowWaterImpl(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H, true, eta);
 }
 
 // Kernel tuning — twin of HYDRO_* in src/systems/water/hydroEvents.ts (#397).
@@ -746,17 +803,17 @@ static constexpr float kHydroSurgeRelax = 6.0f;
 static constexpr float kHydroSurgeGravity = 9.80665f;
 static constexpr int kHydroKindSurge = 4;
 
-void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                   int width, int height, float dx, float originX, float originZ, float H,
-                   int kind, float cx, float cz, float radius, float strength, float dt) {
-    if (width <= 0 || height <= 0 || dx <= 0.f) return;
-    if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return;
-    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
+int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                  int width, int height, float dx, float originX, float originZ, float H,
+                  int kind, float cx, float cz, float radius, float strength, float dt) {
+    if (width <= 0 || height <= 0 || dx <= 0.f) return WS_REJECTED;
+    if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return WS_REJECTED;
+    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return WS_REJECTED;
     // A non-finite placement has no cells; before #467 it wrote NaN everywhere.
     if (!std::isfinite(originX) || !std::isfinite(originZ) || !std::isfinite(dx)
-        || !std::isfinite(cx) || !std::isfinite(cz) || !std::isfinite(radius)) return;
+        || !std::isfinite(cx) || !std::isfinite(cz) || !std::isfinite(radius)) return WS_REJECTED;
     // std::max(0.f, x) below drops a NaN but keeps +inf, which then lands in h.
-    if (!std::isfinite(strength) || !std::isfinite(dt)) return;
+    if (!std::isfinite(strength) || !std::isfinite(dt)) return WS_REJECTED;
     const std::span<float> h = heapPlane(hPtr, width, height);
     const std::span<float> u = heapPlane(uPtr, width, height);
     const std::span<float> w = heapPlane(wPtr, width, height);
@@ -779,7 +836,10 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
     };
     // A surge front is a band across the whole window: only its distance in z counts.
     const bool band = kind == kHydroKindSurge;
-    int i0, i1, j0, j1;
+    int i0 = 0;
+    int i1 = -1;
+    int j0 = 0;
+    int j1 = -1;
     cellRange(cx - r, cx + r, originX, width, i0, i1);
     cellRange(cz - r, cz + r, originZ, height, j0, j1);
     if (band) {
@@ -834,12 +894,13 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
             }
         }
     }
+    return WS_OK;
 }
 
 namespace {
 
 /** Reused across calls so a per-frame scroll never allocates after the first. */
-thread_local std::vector<float> g_scrollTmp;
+std::vector<float> g_scrollTmp;
 
 /**
  * dst[x, z] = src[x - shiftX, z - shiftZ], in place via `tmp`.
@@ -882,17 +943,17 @@ void scrollPlane(std::span<float> plane, std::span<float> tmp, int width, int he
 
 }  // namespace
 
-void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
                         int width, int height, int shiftX, int shiftZ,
                         float inflowEta, float inflowU, float inflowW) {
-    if (width <= 0 || height <= 0) return;
-    if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return;
-    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return;
+    if (width <= 0 || height <= 0) return WS_REJECTED;
+    if (width > SWE_MAX_GRID_EXTENT || height > SWE_MAX_GRID_EXTENT) return WS_REJECTED;
+    if (hPtr == 0 || uPtr == 0 || wPtr == 0) return WS_REJECTED;
     // Beyond one full extent every source is out of range anyway; saturating
     // here keeps `x - shift` clear of int overflow for a teleport-sized delta.
     shiftX = std::clamp(shiftX, -width, width);
     shiftZ = std::clamp(shiftZ, -height, height);
-    if (shiftX == 0 && shiftZ == 0) return;
+    if (shiftX == 0 && shiftZ == 0) return WS_OK;
     // Entering cells are filled with these for good: a non-finite one is rest.
     if (!std::isfinite(inflowEta)) inflowEta = 0.f;
     if (!std::isfinite(inflowU)) inflowU = 0.f;
@@ -907,6 +968,7 @@ void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_
     if (bPtr != 0) {
         scrollPlane(heapPlane(bPtr, width, height), tmp, width, height, shiftX, shiftZ, 0.f, true);
     }
+    return WS_OK;
 }
 
 void reserveShallowWaterScratch(int width, int height) {

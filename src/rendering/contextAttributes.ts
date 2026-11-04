@@ -21,14 +21,18 @@
  *   water, weather, VFX) is authored against `true`. Flipping it to `false`
  *   would change how all of them blend. Pinned at the value the content assumes.
  * - `depth: true` — THREE's default; required by every 3D pass and by SSAO.
- * - `stencil: true` — NOT THREE's default (r163+ turns it off). Enabled here for
- *   the post stack's mask/outline passes; costs a stencil attachment.
+ * - `stencil: false` — THREE's default since r163. No pass in either post chain
+ *   uses a stencil (no mask / outline pass exists; the composer targets are
+ *   `stencilBuffer: false`; the node path asks `stencil: false` too), and the
+ *   default framebuffer only receives a fullscreen blit. It used to be pinned
+ *   `true` "for the post stack's mask/outline passes", which cost a stencil
+ *   attachment on the backbuffer for passes that never existed.
  */
 export const SHARED_CONTEXT_ATTRIBUTES = {
   alpha: false,
   premultipliedAlpha: true,
   depth: true,
-  stencil: true,
+  stencil: false,
 } as const;
 
 /**

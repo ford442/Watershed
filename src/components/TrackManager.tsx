@@ -8,7 +8,13 @@ import React, {
 } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
-import { readRockTextures, tagRockColorSpaces } from '../rendering/ktx2Textures';
+import {
+  applyRockSampling,
+  readRockTextures,
+  rendererMaxAnisotropy,
+  rockAnisotropyFor,
+  tagRockColorSpaces,
+} from '../rendering/ktx2Textures';
 import TrackSegment from './TrackSegment';
 import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
@@ -264,6 +270,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   // format, else the JPGs. A session constant per renderer, decided inside
   // the one resource BootAssetPreloader already started (#466 Phase D).
   const gl = useThree((state) => state.gl);
+  const settingsQuality = useGameStore((state) => state.settings.quality);
   const rockTextures = readRockTextures(gl);
   const [colorMap, normalMap, roughnessMap, aoMap, displacementMap] = rockTextures;
 
@@ -296,12 +303,10 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     // Albedo sRGB, data maps linear — on the JPG path too, where an untagged
     // sRGB albedo would be encoded twice by the chain's one sRGB encode (#466).
     tagRockColorSpaces(textures);
-    textures.forEach((texture) => {
-      if (!texture) return;
-      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-      texture.repeat.set(4, 8);
-    });
-  }, [colorMap, normalMap, roughnessMap, aoMap, displacementMap]);
+    // Repeat + tiling + anisotropy on both paths (JPG and KTX2). Follows the
+    // settings preset, not the adaptive one: an anisotropy change re-uploads.
+    applyRockSampling(textures, rockAnisotropyFor(rendererMaxAnisotropy(gl), settingsQuality));
+  }, [colorMap, normalMap, roughnessMap, aoMap, displacementMap, gl, settingsQuality]);
 
   // Rock material
   const rockMaterial = useMemo(() => {

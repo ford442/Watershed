@@ -28,6 +28,10 @@
  *   slopes[nSeg]    bed slope (m/m), clamped here to [ROUTING_MIN_SLOPE, ROUTING_MAX_SLOPE]
  *   widths[nSeg]    wetted width (m)
  *   storage[nSeg * ROUTING_SUBREACHES]   reservoir state (m³), owned by routeReach
+ *
+ * The routeReach* entry points return WS_OK, or WS_REJECTED (nothing written)
+ * for a null plane, nSeg outside [1, ROUTING_MAX_SEGMENTS], or (routeReach /
+ * routeReachLateral) a dt below ROUTING_MIN_DT or not finite.
  *   outflow[nSeg]   mean discharge leaving each segment over the last step (m³/s)
  *   lateral[nSeg]   routeReachLateral only: discharge joining each segment (m³/s)
  *
@@ -41,27 +45,27 @@
 #include <cstdint>
 
 /** Reservoirs per segment. More sharpen the front; 4 keeps a ~100 m segment's lag crisp. */
-static constexpr int ROUTING_SUBREACHES = 4;
+inline constexpr int ROUTING_SUBREACHES = 4;
 /**
  * Largest chain any routing entry point accepts (#502); more is a no-op, so
  * nSeg * ROUTING_SUBREACHES cannot overflow. A campaign chain is ~100 segments.
  */
-static constexpr int ROUTING_MAX_SEGMENTS = 1 << 16;
+inline constexpr int ROUTING_MAX_SEGMENTS = 1 << 16;
 /** Manning roughness of a cobble mountain channel (s/m^(1/3)). */
-static constexpr float ROUTING_MANNING_N = 0.035f;
+inline constexpr float ROUTING_MANNING_N = 0.035f;
 /** Slope clamp: a pond is not flat to the solver, a waterfall is not a free fall. */
-static constexpr float ROUTING_MIN_SLOPE = 0.002f;
-static constexpr float ROUTING_MAX_SLOPE = 0.25f;
+inline constexpr float ROUTING_MIN_SLOPE = 0.002f;
+inline constexpr float ROUTING_MAX_SLOPE = 0.25f;
 /** Discharge floor for the reservoir time constant, so an empty reach has a finite K. */
-static constexpr float ROUTING_MIN_DISCHARGE = 1e-3f;
+inline constexpr float ROUTING_MIN_DISCHARGE = 1e-3f;
 /**
  * Shortest step routeReach[Lateral] takes (s); anything shorter, NaN or inf is
  * a no-op. The outflow is a volume over dt, so a denormal dt overflowed it to
  * inf; a frame is ~1e-2 s and nothing routes in a microsecond.
  */
-static constexpr float ROUTING_MIN_DT = 1e-6f;
+inline constexpr float ROUTING_MIN_DT = 1e-6f;
 /** Stage → discharge rating exponent (Manning, wide channel: y ∝ Q^0.6). */
-static constexpr float ROUTING_RATING_EXPONENT = 0.6f;
+inline constexpr float ROUTING_RATING_EXPONENT = 0.6f;
 
 /** Upstream-edge state handed to the SWE window for one routed discharge. */
 struct RoutedEdge {
@@ -75,16 +79,16 @@ struct RoutedEdge {
 float routingCelerity(float Q, float width, float slope);
 
 /** Fill storage / outflow with the steady state that carries Q through every segment. */
-void routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                      float Q, uintptr_t storagePtr, uintptr_t outflowPtr);
+int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+                     float Q, uintptr_t storagePtr, uintptr_t outflowPtr);
 
 /**
  * Advance the chain by dt seconds with `inflowQ` entering the head segment.
  * Reservoirs are visited upstream → downstream, so a step's outflow feeds the
  * next reservoir as its mean inflow over the same step.
  */
-void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr);
+int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+               float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr);
 
 /**
  * routeReach with lateral inflow (ABI 14): lateral[nSeg] (m³/s, ≥ 0) joins
@@ -96,17 +100,17 @@ void routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, 
  *
  * All-zero lateral is routeReach bit for bit (routeReach calls this with none).
  */
-void routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                       float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
-                       uintptr_t outflowPtr);
+int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+                      float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
+                      uintptr_t outflowPtr);
 
 /**
  * Cumulative kinematic travel time (s) from the chain head to the downstream
  * end of each segment, for a steady discharge Q. lag[k] is the routed delay a
  * change at the head takes to reach segment k's outflow.
  */
-void routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                          float Q, uintptr_t lagPtr);
+int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
+                         float Q, uintptr_t lagPtr);
 
 /**
  * Edge state for a routed discharge, relative to the reference discharge Qref

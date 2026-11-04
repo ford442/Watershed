@@ -154,12 +154,15 @@ export function createSimWorkerCore(
     physicsPort = null;
   };
 
-  const publish = (grid: SweSim, computeMicros: number) => {
+  const publish = (grid: SweSim, computeMicros: number, meanDepth: number) => {
     const buffer = pool.pop() ?? new ArrayBuffer(frameBytes);
     const planes = viewSimFrame(buffer, grid.width * grid.height);
     planes.eta.set(grid.h);
     planes.u.set(grid.u);
     planes.w.set(grid.w);
+    // The flow texture's bytes, packed here from the heap (#533): the main
+    // thread copies them into its mirror and runs no per-cell loop.
+    planes.surface.set(grid.packSurface(meanDepth));
     const bed = bedDirty;
     if (bed) planes.b.set(grid.b);
     bedDirty = false;
@@ -177,6 +180,7 @@ export function createSimWorkerCore(
           backend: 'wasm-worker',
           inflow: lastInflow,
           bed,
+          shortfall: grid.takeShortfall(),
           buffer,
         },
       },
@@ -341,14 +345,14 @@ export function createSimWorkerCore(
           const routed = routedAt(command.route);
           if (command.route) {
             if (command.route.weather !== undefined) routing.router?.setWeather(command.route.weather);
-            routing.router?.advance(command.input.dt);
+            routing.router?.advance(command.route.advance ?? command.input.dt);
           }
           applySurface(grid, command.surface);
           // A braid (kind 2) raises `b` inside the solver; the mirror needs it.
           if (command.input.events.some((e) => e.kind === 2)) bedDirty = true;
           const t0 = now();
           grid.step(command.route ? { ...command.input, edgeEta: routed?.edgeEta } : command.input);
-          publish(grid, Math.round((now() - t0) * 1000));
+          publish(grid, Math.round((now() - t0) * 1000), command.input.H);
           return;
         }
         case 'RETURN_FRAME':

@@ -56,9 +56,17 @@ export interface GraphicsEnvelope {
   failIfMajorPerformanceCaveat: boolean;
 }
 
-/** A real GPU: MSAA on, discrete adapter, caveat check kept on. */
+/**
+ * A real GPU: discrete adapter, caveat check kept on — and **no backbuffer
+ * MSAA**. Every frame is drawn into the post chain's own targets
+ * (`createComposerDriver` / the node `RenderPipeline`), and the default
+ * framebuffer only receives the closing OutputPass / SMAA fullscreen blit, so
+ * a multisampled backbuffer (4× colour + depth + stencil at full DPR, resolved
+ * every frame) bought zero edge AA. Anti-aliasing lives in the post chain's AA
+ * tier (`aaTierFor`: SMAA, or `msaa4` composer targets on Ultra).
+ */
 export const HARDWARE_ENVELOPE: GraphicsEnvelope = {
-  antialias: true,
+  antialias: false,
   powerPreference: 'high-performance',
   failIfMajorPerformanceCaveat: true,
 };
@@ -85,12 +93,13 @@ export const DEGRADED_ENVELOPE: GraphicsEnvelope = {
  * Visual smoke runs headless Chromium on SwiftShader, which *is* a major
  * performance caveat. It is not a degraded player machine — it is a harness that
  * has explicitly opted into software GL and needs deterministic pixels, so it
- * keeps the `hardware` look (antialias on) with the caveat check off, exactly
- * as the pre-negotiation code did. Probing here would flip antialias and move
- * every baseline.
+ * keeps the `hardware` look — the same attributes as `HARDWARE_ENVELOPE` (no
+ * backbuffer MSAA: the post chain owns AA) — with the caveat check off. It is
+ * pinned rather than probed so SwiftShader cannot land on a different envelope
+ * from run to run.
  */
 export const CAPTURE_ENVELOPE: GraphicsEnvelope = {
-  antialias: true,
+  antialias: false,
   powerPreference: 'high-performance',
   failIfMajorPerformanceCaveat: false,
 };

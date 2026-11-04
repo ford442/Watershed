@@ -12,7 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { WATER_TEXTURE_UNIFORM_NAMES, WATER_UNIFORM_NAMES } from './waterUniformSpec';
 
 const root = resolve(__dirname, '../..');
-const glslSource = readFileSync(resolve(root, 'components/FlowingWater.tsx'), 'utf8');
+// The GLSL sources were hoisted out of FlowingWater.tsx into module constants (#466 audit B).
+const glslSource = readFileSync(resolve(root, 'components/flowingWaterGlsl.ts'), 'utf8');
 const tslSource = readFileSync(resolve(root, 'materials/water/WaterNodeMaterial.ts'), 'utf8');
 
 const TUNABLES = [
@@ -26,11 +27,11 @@ const TUNABLES = [
   'SWE_WINDOW_FEATHER_CELLS',
 ];
 
-/** Slice of the GLSL fragment string (`builtinFragmentShader`) out of FlowingWater.tsx. */
+/** Slice of the GLSL fragment string (`WATER_FRAGMENT_GLSL`) out of flowingWaterGlsl.ts. */
 function glslFragment(): string {
-  const start = glslSource.indexOf('const builtinFragmentShader');
-  expect(start, 'builtinFragmentShader not found').toBeGreaterThan(-1);
-  const end = glslSource.indexOf('// Load dynamic shader', start);
+  const start = glslSource.indexOf('export const WATER_FRAGMENT_GLSL');
+  expect(start, 'WATER_FRAGMENT_GLSL not found').toBeGreaterThan(-1);
+  const end = glslSource.indexOf('export function waterGlslDefines', start);
   expect(end).toBeGreaterThan(start);
   return glslSource.slice(start, end);
 }

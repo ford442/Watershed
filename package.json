@@ -40,7 +40,6 @@
     "test:replay-smoke": "node verification/replay_smoke.mjs",
     "test:wasm": "WATERSHED_WASM_INTEGRATION=1 vitest run src/systems/water/WatershedWasm.integration.test.ts src/systems/water/sweScroll.integration.test.ts src/systems/water/hydroContrast.test.ts src/rendering/gpuChores/watershedHost.integration.test.ts src/sim/simWorker.integration.test.ts src/terrain/__tests__/terrainParity.test.ts src/systems/water/nativeDigest.integration.test.ts",
     "build:wasm": "cd emscripten && bash build.sh",
-    "build:wasm:threads": "cd emscripten && bash build.sh --threads",
     "build:wasm:debug": "cd emscripten && bash build.sh --debug",
     "test:wasm:parity": "WATERSHED_WASM_INTEGRATION=1 vitest run src/physics/__tests__/waterForceParity.test.ts",
     "test:wgsl": "node verification/swe_wgsl_parity.mjs",

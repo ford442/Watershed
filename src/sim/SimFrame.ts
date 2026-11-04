@@ -2,7 +2,10 @@
  * SimFrame — what the sim worker publishes after a step (#455).
  *
  * One ArrayBuffer per frame holds the SWE planes the main thread reads, SoA in
- * swe.h order: η | u | w | b, `count = width * height` floats each. The bed
+ * swe.h order: η | u | w | b, `count = width * height` floats each, then the
+ * packed flow texture (#533): `4 * count` floats of RGBA (u, w, depth, div),
+ * `packSurfaceField`'s bytes, so the main thread sets the texture from it
+ * with no per-cell loop. The bed
  * plane is filled only when the worker's bed changed in a way the main thread
  * cannot reproduce (`bed`, #467): an authored braid carved it, or a scroll moved
  * it. A bed the main thread just committed is already in its mirror, and a
@@ -18,11 +21,13 @@
  * detach a published frame.
  */
 
-/** Planes per frame: η, u, w, b. */
+/** Field planes per frame: η, u, w, b. */
 export const SIM_FRAME_PLANES = 4;
+/** Floats per cell of the packed flow-texture plane that follows them (RGBA). */
+export const SIM_FRAME_SURFACE_CHANNELS = 4;
 
 export function simFrameByteLength(count: number): number {
-  return SIM_FRAME_PLANES * count * Float32Array.BYTES_PER_ELEMENT;
+  return (SIM_FRAME_PLANES + SIM_FRAME_SURFACE_CHANNELS) * count * Float32Array.BYTES_PER_ELEMENT;
 }
 
 export interface SimFramePlanes {
@@ -31,6 +36,8 @@ export interface SimFramePlanes {
   u: Float32Array;
   w: Float32Array;
   b: Float32Array;
+  /** Packed flow texture, RGBA per cell (sweSurfaceField.ts layout). */
+  surface: Float32Array;
 }
 
 /** Views of one frame buffer. `buffer` must be `simFrameByteLength(count)` bytes. */
@@ -40,6 +47,7 @@ export function viewSimFrame(buffer: ArrayBuffer, count: number): SimFramePlanes
     u: new Float32Array(buffer, count * 4, count),
     w: new Float32Array(buffer, 2 * count * 4, count),
     b: new Float32Array(buffer, 3 * count * 4, count),
+    surface: new Float32Array(buffer, SIM_FRAME_PLANES * count * 4, SIM_FRAME_SURFACE_CHANNELS * count),
   };
 }
 
@@ -69,6 +77,11 @@ export interface SimFrameHeader {
   inflow: { eta: number; u: number; w: number } | null;
   /** The `b` plane is filled (the worker's bed changed since the last commit). */
   bed: boolean;
+  /**
+   * Seconds this step was asked for but did not integrate (the ≤ 4 sub-step
+   * cap, ABI 17; 0 almost always). The main thread re-queues it (sweHost.ts).
+   */
+  shortfall: number;
 }
 
 export interface SimFrame extends SimFrameHeader {

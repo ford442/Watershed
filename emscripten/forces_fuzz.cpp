@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <span>
 #include <vector>
 
 namespace {
@@ -87,9 +88,9 @@ void fuzzParticles(fuzz::Input& in) {
                             in.scalar(-20.f, 0.f), in.scalar(0.f, 1.f));
     }
     // A NaN / inf scalar is rejected, never integrated into the SoA.
-    const float* soa = reinterpret_cast<const float*>(base);
     const size_t floats = static_cast<size_t>(capacity) * PARTICLE_SOA_PLANES;
-    require(std::all_of(soa, soa + floats, [](float v) { return std::isfinite(v); }),
+    const std::span<const float> soa(reinterpret_cast<const float*>(base), floats);
+    require(std::all_of(soa.begin(), soa.end(), [](float v) { return std::isfinite(v); }),
             "a particle scalar left a non-finite value in the SoA");
     freeParticleSoA(base);
 }

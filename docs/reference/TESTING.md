@@ -37,7 +37,7 @@ Since #502 `vite preview` sends no COOP/COEP, the same as production: the verifi
 `vite.config.ts` gives `preview` isolation headers again, and with
 `--preview-url http://127.0.0.1:4173/` it also fetches the preview and fails when its
 COOP/COEP differ from the live directory URL's. `pnpm dev` is isolated only on request
-(`?isolated=1`, for a `build:wasm:threads` experiment).
+(`?isolated=1`, for a local SharedArrayBuffer experiment; the wasm threads variant was retired in #533).
 Avoid ports on the Fetch spec's blocked list (e.g. 4190); `fetch` and Chrome refuse them.
 
 Unit tests: `npx vitest run verification/verify_deploy.test.mjs` (decoder, document, header and

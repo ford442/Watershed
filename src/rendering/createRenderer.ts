@@ -212,7 +212,11 @@ export interface NativeWebGPURendererParameters {
   canvas?: THREE.WebGLRendererParameters['canvas'];
   /** WebGPUBackend maps this straight to the canvas `alphaMode`. */
   alpha: true;
-  /** Renderer MSAA (`samples`) on its own frame-buffer target — not a canvas flag. */
+  /**
+   * Renderer MSAA (`samples`) on its own frame-buffer target — not a canvas
+   * flag. Derived from the post AA tier, never from the WebGL envelope: see
+   * `nodeRendererAntialias`.
+   */
   antialias: boolean;
   /** No pass in the node post pipeline uses stencil. */
   stencil: false;
@@ -234,6 +238,9 @@ export interface NativeWebGPURendererParameters {
  *   transparent material is authored against (`SHARED_CONTEXT_ATTRIBUTES.
  *   premultipliedAlpha`). `alpha: false` would configure `'opaque'`. The opaque
  *   look comes from the clear alpha instead (`setClearAlpha(1)` after init).
+ * - `antialias` from the post AA tier (`nodeRendererAntialias`), not the
+ *   envelope: on WebGPU it multisamples the renderer's own output target, which
+ *   only ever receives the node RenderPipeline's final fullscreen quad.
  * - `powerPreference` from the envelope; WebGPU has no `'default'`, so that maps
  *   to "unspecified".
  * - No `failIfMajorPerformanceCaveat`: not a WebGPU concept. A missing adapter
@@ -243,7 +250,7 @@ export interface NativeWebGPURendererParameters {
  */
 export function nativeWebGPURendererParameters(
   canvasProps: Pick<THREE.WebGLRendererParameters, 'canvas'>,
-  creation: { antialias?: boolean; powerPreference?: WebGLPowerPreference }
+  creation: { powerPreference?: WebGLPowerPreference }
 ): NativeWebGPURendererParameters {
   const powerPreference =
     creation.powerPreference && creation.powerPreference !== 'default'
@@ -252,12 +259,27 @@ export function nativeWebGPURendererParameters(
   return {
     ...(canvasProps.canvas ? { canvas: canvasProps.canvas } : {}),
     alpha: true,
-    antialias: creation.antialias ?? false,
+    antialias: nodeRendererAntialias(),
     stencil: false,
     ...(powerPreference ? { powerPreference } : {}),
     forceWebGL: false,
     trackTimestamp: true,
   };
+}
+
+/**
+ * Whether the node renderer's own output target should be multisampled.
+ *
+ * The node post chain renders the scene into its own PassNode target and edge
+ * AA is SMAA inside the chain (`nodeStructureFor` maps `msaa4` to `smaa`: GTAO
+ * and the god-ray march sample the scene depth, which a multisampled depth
+ * texture cannot serve on native WebGPU). Every AA tier therefore leaves the
+ * output target single-sampled — MSAA there would only resolve a fullscreen
+ * quad. A function rather than a literal so a future tier that does draw
+ * geometry into the output target has one place to say so.
+ */
+function nodeRendererAntialias(): boolean {
+  return false;
 }
 
 function createCanvasElement(): HTMLCanvasElement {

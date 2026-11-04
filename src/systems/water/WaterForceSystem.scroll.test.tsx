@@ -14,6 +14,7 @@ import { act, render } from '@testing-library/react';
 import * as THREE from 'three';
 import type { WatershedNativeModule } from './wasmAbi';
 import { scrollField } from './sweScroll';
+import { packSurfaceFieldStub } from '../../testing/sweSurfacePack';
 
 const h = vi.hoisted(() => ({
   frame: null as null | ((state: { clock: { elapsedTime: number } }, delta: number) => void),
@@ -77,10 +78,12 @@ function stubModule() {
     },
     freeGrid: () => {},
     reserveShallowWaterScratch: vi.fn(),
-    stepShallowWater: vi.fn(() => {
+    stepShallowWater: vi.fn((..._args: number[]) => {
       h.calls.push('step');
+      return _args[6];
     }),
-    applySWEEvent: vi.fn(),
+    applySWEEvent: vi.fn(() => 1),
+    packSurfaceField: vi.fn(packSurfaceFieldStub(heap)),
     scrollShallowWater: vi.fn(
       (hp: number, up: number, wp: number, bp: number, width: number, height: number, sx: number, sz: number, eta: number, u: number, w: number) => {
         h.calls.push(`scroll(${sx},${sz})`);
@@ -88,6 +91,7 @@ function stubModule() {
           { h: view(hp), u: view(up), w: view(wp), b: bp ? view(bp) : null },
           width, height, sx, sz, { eta, u, w },
         );
+        return 1;
       },
     ),
   };

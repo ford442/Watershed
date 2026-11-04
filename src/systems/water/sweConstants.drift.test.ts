@@ -18,6 +18,7 @@ import {
   HYDRO_SURGE_RELAX,
   HYDRO_VORTEX_SINK,
 } from './hydroEvents';
+import { WGSL_SWE_MAX_SUBSTEPS } from './WgslSweSim';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../..');
@@ -46,6 +47,10 @@ const PAIRS: { cpp: string; file: 'swe.cpp' | 'common.h'; wgsl: string; ts?: num
   { cpp: 'SWE_DRY_DEPTH', file: 'swe.cpp', wgsl: 'DRY_DEPTH', ts: SWE_DRY_DEPTH },
   { cpp: 'kCflNumber', file: 'swe.cpp', wgsl: 'CFL_NUMBER' },
   { cpp: 'DAMPING_COEFF', file: 'common.h', wgsl: 'DAMPING_COEFF' },
+  // sweExpNeg (common.h) ↔ expNeg (swe.wgsl): the damping's Cody–Waite split.
+  { cpp: 'kInvLn2', file: 'common.h', wgsl: 'EXP_INV_LN2' },
+  { cpp: 'kLn2Hi', file: 'common.h', wgsl: 'EXP_LN2_HI' },
+  { cpp: 'kLn2Lo', file: 'common.h', wgsl: 'EXP_LN2_LO' },
   { cpp: 'kHydroInflowDownstream', file: 'swe.cpp', wgsl: 'HYDRO_INFLOW_DOWNSTREAM', ts: HYDRO_INFLOW_DOWNSTREAM },
   { cpp: 'kHydroVortexSink', file: 'swe.cpp', wgsl: 'HYDRO_VORTEX_SINK', ts: HYDRO_VORTEX_SINK },
   { cpp: 'kHydroBraidLateral', file: 'swe.cpp', wgsl: 'HYDRO_BRAID_LATERAL', ts: HYDRO_BRAID_LATERAL },
@@ -60,6 +65,18 @@ describe('SWE solver constants: swe.cpp / common.h vs swe.wgsl', () => {
     // Both sides are f32 literals: compare as the f32 each one compiles to.
     expect(Math.fround(twin), `${wgsl} drifted from ${cpp}`).toBe(Math.fround(native));
     if (ts !== undefined) expect(Math.fround(ts), `TS mirror of ${cpp}`).toBe(Math.fround(native));
+  });
+
+  it('encodes as many CFL sub-steps per step as swe.cpp kMaxSubsteps (WgslSweSim.ts)', () => {
+    const match = /\bconstexpr\s+int\s+kMaxSubsteps\s*=\s*(\d+)\s*;/.exec(sweCpp);
+    if (!match) throw new Error('swe.cpp: no int constant kMaxSubsteps (renamed? update this test)');
+    expect(WGSL_SWE_MAX_SUBSTEPS).toBe(Number(match[1]));
+  });
+
+  it('clamps expNeg at the same argument as sweExpNeg', () => {
+    const native = /x\s*=\s*x\s*<\s*([\d.]+)f\s*\?\s*x\s*:\s*([\d.]+)f\s*;/.exec(commonH);
+    if (!native || native[1] !== native[2]) throw new Error('common.h: sweExpNeg clamp not found (rewritten? update this test)');
+    expect(wgslConstant('EXP_MAX_ARG')).toBe(Number(native[1]));
   });
 
   it('dispatches the hydro event kinds in the same order (0 inflow, 1 vortex, 2 braid, 3 roughness, 4 surge)', () => {

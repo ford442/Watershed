@@ -35,7 +35,7 @@
  * helpers only; the batch half needs a module and runs only in the sim worker.
  */
 import { telemetryNowMs } from '../utils/wallClock';
-import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, allocateGrids, heapF32, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
+import { WATER_FORCE_INPUT_STRIDE, WATER_FORCE_OUTPUT_STRIDE, WS_OK, allocateGrids, heapF32, warnRejected, type NativeWaterForceConfig, type NativeWaterForceResult, type WatershedNativeModule } from '../systems/water/wasmAbi';
 import {
   SWE_STAGE_SPEED_BOOST,
   sampleSWEFlow,
@@ -261,7 +261,7 @@ export function computeSimForces(
   for (let i = 1; i <= count; i += 1) {
     if (i < count && sameAtFloat32(configs, start * CONFIG_WIDTH, i * CONFIG_WIDTH)) continue;
     const c = start * CONFIG_WIDTH;
-    wasm.computeWaterForcesBatch(
+    const status = wasm.computeWaterForcesBatch(
       batch.inputPtr + start * WATER_FORCE_INPUT_STRIDE * 4,
       batch.outputPtr + start * WATER_FORCE_OUTPUT_STRIDE * 4,
       i - start,
@@ -276,6 +276,12 @@ export function computeSimForces(
       configs[c + 8],
       configs[c + 9],
     );
+    if (status !== WS_OK) {
+      // Rejected (#533): the output block still holds the last call's forces.
+      // Zero this run's samples instead of handing those back as fresh.
+      warnRejected('computeWaterForcesBatch', `count=${i - start}`);
+      batch.output.fill(0, start * WATER_FORCE_OUTPUT_STRIDE, i * WATER_FORCE_OUTPUT_STRIDE);
+    }
     calls += 1;
     start = i;
   }

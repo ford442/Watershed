@@ -366,7 +366,7 @@ describe('createGameRenderer', () => {
     expect(renderer.toneMapping).toBe(contextOptions.toneMapping);
     expect(renderer.toneMappingExposure).toBe(contextOptions.toneMappingExposure);
     expect(renderer.shadowMap.enabled).toBe(true);
-    expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap);
     expect(getRendererShadowMapSize(renderer)).toBe(2048);
     expect(renderer.capabilities.logarithmicDepthBuffer).toBe(false);
     renderer.dispose();
@@ -394,9 +394,9 @@ describe('createGameRenderer', () => {
     // THREE r178 builds its own attribute object; these are the entries it
     // forwards from the constructor parameters we pass.
     expect(requested[0]).toMatchObject({
-      antialias: true,
+      antialias: false,
       depth: true,
-      stencil: true,
+      stencil: false,
       premultipliedAlpha: true,
       failIfMajorPerformanceCaveat: true,
       powerPreference: 'high-performance',
@@ -961,7 +961,7 @@ describe('node renderer honors the boot graphics contract', () => {
     expect(await lastNodeParameters()).toEqual({
       canvas,
       alpha: true,
-      antialias: true,
+      antialias: false,
       stencil: false,
       powerPreference: 'high-performance',
       forceWebGL: false,
@@ -1007,6 +1007,18 @@ describe('nativeWebGPURendererParameters', () => {
       toContextAttributes(deriveRendererContextOptions('low', { envelope: DEGRADED_ENVELOPE }))
     );
     expect(params).not.toHaveProperty('powerPreference');
+    expect(params.antialias).toBe(false);
+  });
+
+  it('takes antialias from the post AA tier, not the envelope', () => {
+    // Even an envelope that asks for backbuffer MSAA (the editor's) does not
+    // multisample the node output target: it only receives the final quad.
+    const params = nativeWebGPURendererParameters(
+      {},
+      toContextAttributes(
+        deriveRendererContextOptions('ultra', { envelope: { ...HARDWARE_ENVELOPE, antialias: true } })
+      )
+    );
     expect(params.antialias).toBe(false);
   });
 });

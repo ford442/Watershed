@@ -52,6 +52,12 @@ export interface SimRoute {
    * Absent = keep the weather the router has.
    */
   weather?: RouterWeather | null;
+  /**
+   * STEP only: seconds the router advances — the step's new time, which is
+   * `input.dt` less any re-queued shortfall the main thread's clocks already
+   * counted (#533, sweHost.ts `fieldDebt`). Absent = `input.dt`.
+   */
+  advance?: number;
 }
 
 /** What cells entering on a SCROLL take. */
@@ -226,6 +232,9 @@ export interface SimWorkerLike {
   terminate?(): void;
   addEventListener(type: 'message', listener: (event: MessageEvent<SimWorkerResponse>) => void): void;
   addEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  /** A message that could not be deserialized — fatal, like `'error'`. */
+  addEventListener(type: 'messageerror', listener: (event: MessageEvent) => void): void;
   removeEventListener(type: 'message', listener: (event: MessageEvent<SimWorkerResponse>) => void): void;
   removeEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  removeEventListener(type: 'messageerror', listener: (event: MessageEvent) => void): void;
 }

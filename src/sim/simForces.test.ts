@@ -53,6 +53,7 @@ function stubModule() {
           const o = (outPtr >> 2) + i * WATER_FORCE_OUTPUT_STRIDE;
           heap.set([r.forceX, r.forceY, r.forceZ, r.buoyancy, r.drag, r.flow, r.turbulence, r.submergedRatio], o);
         }
+        return 1;
       },
     ),
   };

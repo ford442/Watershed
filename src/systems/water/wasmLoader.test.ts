@@ -15,7 +15,7 @@ import {
   arityMismatches,
   bindNativeModule,
   isWasmHeapExhaustedError,
-  MIN_WASM_ABI_VERSION,
+  WASM_ABI_VERSION,
   WASM_ABI,
   WasmHeapExhaustedError,
   wasmExportName,
@@ -110,7 +110,7 @@ describe('loadWatershedNative', () => {
     // and never fetched on its own.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe(URLS.wasm);
-    expect(wasm.getVersion()).toBeGreaterThanOrEqual(MIN_WASM_ABI_VERSION);
+    expect(wasm.getVersion()).toBe(WASM_ABI_VERSION);
     expect(wasm.routedEdgeState(40, 40, 1, 9.80665)).toEqual({ eta: 0, speed: 0 });
     // A stationary submerged raft in a −Z current is pushed downstream.
     const io = wasm.allocateGrid(16);
@@ -155,21 +155,24 @@ describe('loadWatershedNative', () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
-  it('rejects a binary below MIN_WASM_ABI_VERSION', async () => {
-    __setGlueImporterForTests(async () => ({
-      default: async () => ({ _ws_getVersion: () => 11 }) as never,
-      WATERSHED_WASM_SHA: WASM_BINARY_SHA,
-    }));
-    stubFetch(wasmBytes);
-    quietConsole();
+  it.each([11, WASM_ABI_VERSION - 1, WASM_ABI_VERSION + 1])(
+    'rejects ABI %i: the version must equal WASM_ABI_VERSION, not clear a floor',
+    async (version) => {
+      __setGlueImporterForTests(async () => ({
+        default: async () => ({ _ws_getVersion: () => version }) as never,
+        WATERSHED_WASM_SHA: WASM_BINARY_SHA,
+      }));
+      stubFetch(wasmBytes);
+      quietConsole();
 
-    await expect(loadWatershedNative(URLS, 10_000))
-      .rejects.toThrow(`ABI 11 is older than required ${MIN_WASM_ABI_VERSION}`);
-  });
+      await expect(loadWatershedNative(URLS, 10_000))
+        .rejects.toThrow(`ABI ${version} does not match required ${WASM_ABI_VERSION}`);
+    },
+  );
 
   it('rejects a binary missing a table export (ABI mismatch, not a crash later)', async () => {
     __setGlueImporterForTests(async () => ({
-      default: async () => ({ _ws_getVersion: () => MIN_WASM_ABI_VERSION }) as never,
+      default: async () => ({ _ws_getVersion: () => WASM_ABI_VERSION }) as never,
       WATERSHED_WASM_SHA: WASM_BINARY_SHA,
     }));
     stubFetch(wasmBytes);
@@ -230,7 +233,7 @@ describe('deadline and retry (#502 C)', () => {
     vi.useRealTimers();
     const wasm = await pending;
     expect(imports).toBe(2);
-    expect(wasm.getVersion()).toBeGreaterThanOrEqual(MIN_WASM_ABI_VERSION);
+    expect(wasm.getVersion()).toBe(WASM_ABI_VERSION);
   });
 
   it('does not retry a deterministic failure (provenance mismatch)', async () => {

@@ -1,6 +1,8 @@
 import { telemetryNowMs } from '../utils/wallClock';
+import { raceWithDeadline, resolveWasmInitTimeoutMs } from '../systems/water/wasmLoader';
 import {
   DEFAULT_RAFT_WORKER_INIT,
+  RAPIER_WORKER_PROTOCOL_VERSION,
   RapierWorkerCommand,
   RapierWorkerInitPayload,
   RapierWorkerLike,
@@ -24,6 +26,46 @@ interface PendingRequest {
 
 const now = telemetryNowMs;
 
+/** Why a Rapier worker session is dead. */
+export type RapierWorkerFailureKind =
+  /** The worker script failed to load, parse, or threw at top level (`'error'`). */
+  | 'script-error'
+  /** A response could not be deserialized (`'messageerror'`). */
+  | 'message-error'
+  /** INIT did not answer within the deadline. */
+  | 'init-timeout'
+  /** The worker chunk speaks a different `RAPIER_WORKER_PROTOCOL_VERSION`. */
+  | 'protocol-mismatch'
+  | 'disposed';
+
+/** Every rejection from a dead proxy. `kind` says which way it died. */
+export class RapierWorkerError extends Error {
+  readonly kind: RapierWorkerFailureKind;
+  constructor(kind: RapierWorkerFailureKind, message: string) {
+    super(message);
+    this.name = 'RapierWorkerError';
+    this.kind = kind;
+  }
+}
+
+/** INIT's wire version check, separate from the class for tests. */
+export class RapierWorkerProtocolError extends RapierWorkerError {
+  readonly expected: number;
+  readonly actual: number;
+  constructor(expected: number, actual: number) {
+    super(
+      'protocol-mismatch',
+      `Rapier worker speaks protocol ${actual}, main thread expects ${expected} (stale worker chunk?)`,
+    );
+    this.name = 'RapierWorkerProtocolError';
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
+/** READY before the field existed: treat as protocol 1. */
+const LEGACY_PROTOCOL_VERSION = 1;
+
 export class RapierWorkerProxy {
   private worker: RapierWorkerLike;
   private nextId = 1;
@@ -33,6 +75,15 @@ export class RapierWorkerProxy {
   private simLinked = false;
   private totalLatencyMs = 0;
   private latencySamples = 0;
+  private failure: RapierWorkerError | null = null;
+  private readonly initTimeoutMs: number;
+  private onError = (event: ErrorEvent) => {
+    event.preventDefault?.();
+    this.fail(new RapierWorkerError('script-error', `Rapier worker script error: ${event.message || 'unknown'}`));
+  };
+  private onMessageError = () => {
+    this.fail(new RapierWorkerError('message-error', 'Rapier worker sent a message that could not be deserialized'));
+  };
   private onMessage = (event: MessageEvent<RapierWorkerResponse>) => {
     const response = event.data;
     const pending = this.pending.get(response.id);
@@ -57,9 +108,21 @@ export class RapierWorkerProxy {
     pending.resolve({ ...response, latencyMs });
   };
 
-  constructor(worker: RapierWorkerLike) {
+  /**
+   * `initTimeoutMs` bounds INIT (the worker's `RAPIER.init()` + world build);
+   * it defaults to the session's WASM init deadline (`?wasmInitTimeout=`).
+   */
+  constructor(worker: RapierWorkerLike, options: { initTimeoutMs?: number } = {}) {
     this.worker = worker;
+    this.initTimeoutMs = options.initTimeoutMs ?? resolveWasmInitTimeoutMs();
     this.worker.addEventListener('message', this.onMessage);
+    this.worker.addEventListener('error', this.onError);
+    this.worker.addEventListener('messageerror', this.onMessageError);
+  }
+
+  /** Non-null once the worker has died; it never recovers and every request rejects with it. */
+  get failed(): RapierWorkerError | null {
+    return this.failure;
   }
 
   get latestState(): WorkerRaftState | null {
@@ -79,11 +142,25 @@ export class RapierWorkerProxy {
     return this.latencySamples > 0 ? this.totalLatencyMs / this.latencySamples : 0;
   }
 
+  /**
+   * Boot the worker world. Rejects — and kills the proxy — when the worker
+   * script fails, INIT misses `initTimeoutMs`, or READY reports a different
+   * protocol version: a raft session falls back instead of waiting forever.
+   */
   init(payload: RapierWorkerInitPayload = DEFAULT_RAFT_WORKER_INIT): Promise<WorkerRaftState> {
-    return this.request({ type: 'INIT', payload }).then((response) => {
-      if (!('state' in response)) throw new Error('INIT did not return raft state');
+    const handshake = this.request({ type: 'INIT', payload }).then((response) => {
+      if (response.type !== 'READY') throw new Error('INIT did not return raft state');
+      const version = response.protocolVersion ?? LEGACY_PROTOCOL_VERSION;
+      if (version !== RAPIER_WORKER_PROTOCOL_VERSION) {
+        throw this.fail(new RapierWorkerProtocolError(RAPIER_WORKER_PROTOCOL_VERSION, version));
+      }
       return response.state;
     });
+    return raceWithDeadline(handshake, this.initTimeoutMs, () =>
+      this.fail(
+        new RapierWorkerError('init-timeout', `Rapier worker did not report READY within ${this.initTimeoutMs}ms`),
+      ),
+    );
   }
 
   step(
@@ -151,10 +228,35 @@ export class RapierWorkerProxy {
   }
 
   dispose(): void {
-    this.worker.removeEventListener('message', this.onMessage);
-    this.pending.forEach((request) => request.reject(new Error('Rapier worker disposed')));
-    this.pending.clear();
+    this.detach();
+    if (!this.failure) this.failure = new RapierWorkerError('disposed', 'Rapier worker disposed');
+    this.rejectPending(this.failure);
     this.worker.terminate?.();
+  }
+
+  /**
+   * Mark the proxy dead (first failure wins), reject everything in flight, and
+   * stop the worker. Returns the error that is now the proxy's failure.
+   */
+  private fail(error: RapierWorkerError): RapierWorkerError {
+    if (this.failure) return this.failure;
+    this.failure = error;
+    console.error('[rapier worker] fatal:', error.message);
+    this.detach();
+    this.rejectPending(error);
+    this.worker.terminate?.();
+    return error;
+  }
+
+  private detach(): void {
+    this.worker.removeEventListener('message', this.onMessage);
+    this.worker.removeEventListener('error', this.onError);
+    this.worker.removeEventListener('messageerror', this.onMessageError);
+  }
+
+  private rejectPending(error: Error): void {
+    this.pending.forEach((request) => request.reject(error));
+    this.pending.clear();
   }
 
   /**
@@ -168,6 +270,7 @@ export class RapierWorkerProxy {
     // through the spread, hence the one assertion.
     const message = { ...command, id } as RapierWorkerCommand;
 
+    if (this.failure) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       this.pending.set(id, { startedAt: now(), resolve, reject });
       if (transfer) this.worker.postMessage(message, transfer);

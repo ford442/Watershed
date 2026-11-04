@@ -85,6 +85,8 @@ export function injectSWEDisturbance(
   amplitude = 0.35,
 ): void {
   if (!activeBudget.enabled) return;
+  // Finite at the door (#533): a NaN amplitude became a NaN η cell.
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldZ) || !Number.isFinite(radius) || !Number.isFinite(amplitude)) return;
   if (pendingDisturbances.length >= MAX_PENDING_DISTURBANCES) return;
   pendingDisturbances.push({ worldX, worldZ, radius, amplitude });
 }

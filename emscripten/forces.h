@@ -46,19 +46,21 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
  * Batch ABI for workers.
  *   input  stride 8: [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
  *   output stride 8: [forceX, forceY, forceZ, buoyancy, drag, flow, turbulence, submergedRatio]
+ * Returns WS_OK, or WS_REJECTED (output untouched) for a null pointer or a
+ * sampleCount outside [1, WATER_FORCE_MAX_SAMPLES].
  */
-void computeWaterForcesBatch(uintptr_t inputPtr,
-                             uintptr_t outputPtr,
-                             int sampleCount,
-                             float flowSpeed,
-                             float waterLevel,
-                             float raftMass,
-                             float raftVolume,
-                             float dragCoefficient,
-                             float frontalArea,
-                             float sideArea,
-                             float timeSeconds,
-                             float turbulenceStrength,
-                             float turbulenceFrequency) noexcept;
+int computeWaterForcesBatch(uintptr_t inputPtr,
+                            uintptr_t outputPtr,
+                            int sampleCount,
+                            float flowSpeed,
+                            float waterLevel,
+                            float raftMass,
+                            float raftVolume,
+                            float dragCoefficient,
+                            float frontalArea,
+                            float sideArea,
+                            float timeSeconds,
+                            float turbulenceStrength,
+                            float turbulenceFrequency) noexcept;
 
 #endif  // WATERSHED_FORCES_H
