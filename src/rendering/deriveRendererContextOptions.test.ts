@@ -3,6 +3,7 @@ import { QUALITY_SETTINGS } from '../systems/lod/LODManager';
 import {
   DEFAULT_TONE_MAPPING_EXPOSURE,
   DESYNCHRONIZED_ENABLED,
+  EDITOR_ENVELOPE,
   EDITOR_QUALITY_PRESET,
   LOGARITHMIC_DEPTH_BUFFER_ENABLED,
   ULTRA_DPR_CEILING,
@@ -12,6 +13,7 @@ import {
   buildCanvasIdentityKey,
   rendererContextCreationKey,
   resolveCanvasDpr,
+  shadowMapTypeFor,
   shadowModeToCanvasProp,
   toContextAttributes,
 } from './deriveRendererContextOptions';
@@ -110,7 +112,8 @@ describe('deriveRendererContextOptions', () => {
 describe('the boot-negotiated envelope owns every creation attribute', () => {
   it.each(ALL_PRESETS)('takes antialias / power / caveat from the envelope on %s', (preset) => {
     expect(deriveRendererContextOptions(preset, { envelope: HARDWARE_ENVELOPE })).toMatchObject({
-      antialias: true,
+      // No backbuffer MSAA on any envelope the game boots with: the post chain owns AA.
+      antialias: false,
       powerPreference: 'high-performance',
       failIfMajorPerformanceCaveat: true,
     });
@@ -125,12 +128,18 @@ describe('the boot-negotiated envelope owns every creation attribute', () => {
     expect(deriveRendererContextOptions('low')).toMatchObject(HARDWARE_ENVELOPE);
   });
 
-  it('lets the capture harness keep antialias with the caveat check off', () => {
-    // Visual smoke runs SwiftShader: the caveat check must be off, but flipping
-    // antialias would move every baseline.
+  it('gives the capture harness the hardware attributes with the caveat check off', () => {
+    // Visual smoke runs SwiftShader: the caveat check must be off; everything
+    // else matches what a real GPU boots with, so baselines show the player's image.
     const opts = deriveRendererContextOptions('high', { envelope: CAPTURE_ENVELOPE });
-    expect(opts.antialias).toBe(true);
+    expect(opts.antialias).toBe(HARDWARE_ENVELOPE.antialias);
     expect(opts.failIfMajorPerformanceCaveat).toBe(false);
+  });
+
+  it('never asks the game backbuffer for MSAA it cannot show', () => {
+    for (const envelope of [HARDWARE_ENVELOPE, DEGRADED_ENVELOPE, CAPTURE_ENVELOPE]) {
+      expect(envelope.antialias).toBe(false);
+    }
   });
 
   it('never lets the preset move a creation attribute', () => {
@@ -165,9 +174,15 @@ describe('shadowModeToCanvasProp', () => {
     expect(shadowModeToCanvasProp('off')).toBe(false);
   });
 
-  it('returns basic and soft for respective modes', () => {
+  it('returns basic, and percentage (PCF) for soft', () => {
     expect(shadowModeToCanvasProp('basic')).toBe('basic');
-    expect(shadowModeToCanvasProp('soft')).toBe('soft');
+    // r185 deprecates PCFSoftShadowMap and rewrites it to PCF on every shadow pass.
+    expect(shadowModeToCanvasProp('soft')).toBe('percentage');
+  });
+
+  it('never asks three for the deprecated PCFSoftShadowMap', () => {
+    expect(shadowMapTypeFor('soft')).toBe(THREE.PCFShadowMap);
+    expect(shadowMapTypeFor('basic')).toBe(THREE.BasicShadowMap);
   });
 });
 
@@ -186,7 +201,7 @@ describe('pinned context attributes', () => {
       alpha: false,
       premultipliedAlpha: true,
       depth: true,
-      stencil: true,
+      stencil: false,
     });
   });
 
@@ -197,11 +212,11 @@ describe('pinned context attributes', () => {
   it('forwards every creation attribute to the renderer constructor', () => {
     const attributes = toContextAttributes(deriveRendererContextOptions('high'));
     expect(attributes).toEqual({
-      antialias: true,
+      antialias: false,
       alpha: false,
       premultipliedAlpha: true,
       depth: true,
-      stencil: true,
+      stencil: false,
       failIfMajorPerformanceCaveat: true,
       powerPreference: 'high-performance',
       logarithmicDepthBuffer: false,
@@ -340,9 +355,13 @@ describe('deriveEditorContextOptions', () => {
     const editor = deriveEditorContextOptions({ devicePixelRatio: 1 });
     const game = deriveRendererContextOptions(EDITOR_QUALITY_PRESET, {
       devicePixelRatio: 1,
-      envelope: CAPTURE_ENVELOPE,
+      envelope: EDITOR_ENVELOPE,
     });
     expect(editor).toEqual(game);
+  });
+
+  it('keeps backbuffer MSAA: the editor has no post chain to do AA for it', () => {
+    expect(deriveEditorContextOptions().antialias).toBe(true);
   });
 
   it('allows software GL so the authoring tool always boots', () => {

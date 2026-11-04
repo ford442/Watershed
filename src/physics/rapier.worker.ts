@@ -11,6 +11,7 @@ import { telemetryNowMs } from '../utils/wallClock';
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   DEFAULT_RAFT_WORKER_INIT,
+  RAPIER_WORKER_PROTOCOL_VERSION,
   RapierWorkerCommand,
   RapierWorkerInitPayload,
   RapierWorkerResponse,
@@ -209,6 +210,7 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
           id: command.id,
           type: 'READY',
           state: serializeState(),
+          protocolVersion: RAPIER_WORKER_PROTOCOL_VERSION,
           latencyMs: telemetryNowMs() - receivedAt,
         });
         return;

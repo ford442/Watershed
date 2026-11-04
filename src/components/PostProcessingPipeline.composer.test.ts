@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { createComposerDriver } from './PostProcessingPipeline';
 import {
+  AA_TIER_HOLD_FRAMES,
   DEFAULT_POST_TUNING,
   computePostFrameParams,
   createPostSmoothedState,
@@ -79,14 +80,31 @@ describe('createComposerDriver', () => {
     expect(smaa.enabled).toBe(true);
     expect(driver.composer.renderTarget1.samples).toBe(0);
 
-    driver.apply(frame('msaa4'));
+    // Tier changes are latched (AA_TIER_HOLD_FRAMES consecutive frames) so a
+    // wobbling valve does not reallocate both targets every few frames.
+    const hold = (aa: PostAaTier) => {
+      for (let i = 0; i < AA_TIER_HOLD_FRAMES; i++) driver.apply(frame(aa));
+    };
+    hold('msaa4');
     expect(smaa.enabled).toBe(false);
     expect(driver.composer.renderTarget1.samples).toBe(4);
     expect(driver.composer.renderTarget2.samples).toBe(4);
 
-    driver.apply(frame('none'));
+    hold('none');
     expect(smaa.enabled).toBe(false);
     expect(driver.composer.renderTarget1.samples).toBe(0);
+  });
+
+  it('does not reallocate the ping-pong targets when the AA tier wobbles for less than the hold', () => {
+    const driver = build();
+    driver.apply(frame('msaa4'));
+    const target = driver.composer.renderTarget1;
+    const dispose = vi.spyOn(target, 'dispose');
+    for (let i = 0; i < 10; i++) {
+      driver.apply(frame(i % 3 === 0 ? 'msaa4' : 'smaa'));
+    }
+    expect(target.samples).toBe(4);
+    expect(dispose).not.toHaveBeenCalled();
   });
 
   it('inserts SSAO right after the scene render once a frame enables it, and not before', async () => {

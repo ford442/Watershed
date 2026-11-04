@@ -33,6 +33,60 @@ export function aaTierFor(quality: PostQualityLevel): PostAaTier {
   return 'smaa';
 }
 
+/**
+ * Frames a changed AA tier must be asked for, consecutively, before the GLSL
+ * composer commits to it (~1.5 s at 60 fps).
+ *
+ * A `msaa4` ↔ `smaa` flip disposes and reallocates both ping-pong targets (each
+ * with a 24-bit depth texture), and the adaptive valve can wobble across the
+ * Ultra ↔ High boundary exactly when frame time is already bad. Holding the
+ * committed tier through a short wobble turns N reallocations into zero.
+ */
+export const AA_TIER_HOLD_FRAMES = 90;
+
+/** Debounces the requested AA tier into the one the composer actually uses. */
+export interface AaTierLatch {
+  /** Feed this frame's requested tier; returns the committed one. */
+  update(requested: PostAaTier): PostAaTier;
+  readonly committed: PostAaTier | null;
+}
+
+/**
+ * Hysteresis on the AA tier: the first request commits at once (nothing is
+ * allocated yet); after that a different tier commits only once it has been
+ * requested `holdFrames` frames in a row. Any frame back on the committed tier
+ * resets the count.
+ */
+export function createAaTierLatch(holdFrames: number = AA_TIER_HOLD_FRAMES): AaTierLatch {
+  let committed: PostAaTier | null = null;
+  let pending: PostAaTier | null = null;
+  let streak = 0;
+  return {
+    get committed() {
+      return committed;
+    },
+    update(requested) {
+      if (committed === null || requested === committed) {
+        committed = requested;
+        pending = null;
+        streak = 0;
+        return committed;
+      }
+      if (requested !== pending) {
+        pending = requested;
+        streak = 0;
+      }
+      streak += 1;
+      if (streak >= holdFrames) {
+        committed = requested;
+        pending = null;
+        streak = 0;
+      }
+      return committed;
+    },
+  };
+}
+
 /** Tunables that arrive as `PostProcessingPipeline` props. */
 export interface PostTuning {
   bloomIntensity: number;

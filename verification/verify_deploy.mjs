@@ -273,6 +273,8 @@ export function isLocalUrl(url) {
 /** Rollup's 8-char content hash before the extension (#485 D). Same expression as
  *  the FilesMatch in public/.htaccess. */
 export const HASHED_ASSET_RE = /-[A-Za-z0-9_-]{8}\.(js|css|wasm)$/;
+/** The emcc pair under its artifact stamp (`withArtifactStamp`): content-derived, so immutable like a hash. */
+export const STAMPED_NATIVE_RE = /(^|\/)watershed_native\.(js|wasm)\?(.*&)?v=[0-9a-f]{16}(&|$)/;
 /** Names that keep their name when their bytes change: must be revalidated. */
 export const REVALIDATED_RE = /^(index\.html|BUILD_ID|watershed_native\..*)$/;
 
@@ -315,6 +317,9 @@ export function checkHtaccessCachePolicy(text) {
   }
   if (!active.some((l) => /^<FilesMatch\s+".*\(js\|css\|wasm\)\$"\s*>$/i.test(l))) {
     failures.push('.htaccess has no FilesMatch for hashed (js|css|wasm) assets');
+  }
+  if (!active.some((l) => /^<If\s+".*watershed_native.*QUERY_STRING.*v=.*"\s*>$/i.test(l))) {
+    failures.push('.htaccess has no <If> giving the stamped watershed_native.*?v= form the immutable policy');
   }
   return failures;
 }
@@ -611,7 +616,11 @@ async function main() {
 
   for (const ref of refs) {
     const abs = joinUrl(args.url, ref);
-    const fromBuild = [...built.keys()].find((k) => abs.endsWith(k) || ref.replace(/^\.\//, '') === k);
+    // A ref may carry a query (the stamped `watershed_native.*?v=<stamp>`);
+    // build/ holds the bare file, so match on the path without it.
+    const absPath = abs.split('?')[0];
+    const refPath = ref.split('?')[0];
+    const fromBuild = [...built.keys()].find((k) => absPath.endsWith(k) || refPath.replace(/^\.\//, '') === k);
     if (!fromBuild) {
       fail(failures, `asset the directory URL names is absent from build/: ${ref}`);
       continue;
@@ -627,7 +636,7 @@ async function main() {
       fail(failures, `asset HTTP ${liveAsset.status}: ${ref}`);
       continue;
     }
-    if (checkCache && HASHED_ASSET_RE.test(fromBuild)) {
+    if (checkCache && (HASHED_ASSET_RE.test(fromBuild) || STAMPED_NATIVE_RE.test(ref))) {
       const cacheFailures = checkCacheControl(fromBuild, liveAsset.cacheControl, 'immutable');
       for (const f of cacheFailures) fail(failures, f);
       if (!cacheFailures.length) ok(`asset ${fromBuild}: Cache-Control ${JSON.stringify(liveAsset.cacheControl)}`);

@@ -4,6 +4,8 @@ import {
   resetWorkerColliderRegistry,
 } from '../../physics/workerColliderRegistry';
 import type { RapierWorkerInitPayload, WorkerRaftState } from '../../physics/rapierWorkerProtocol';
+import { RapierWorkerProxy } from '../../physics/RapierWorkerProxy';
+import { LoopbackRapierWorker } from '../../physics/__tests__/loopbackRapierWorker';
 
 const STATE: WorkerRaftState = {
   position: [0, -6, -12],
@@ -151,5 +153,53 @@ describe('raft worker session (#465 C2/C3)', () => {
     expect(proxy.disposed).toBe(1);
     session.stop();
     expect(proxy.disposed).toBe(1);
+  });
+
+  describe('with the real proxy: the worker chunk never arrives (#466 audit C)', () => {
+    const startReal = (worker: LoopbackRapierWorker, initTimeoutMs: number) => {
+      const onReady = vi.fn();
+      const onFallback = vi.fn();
+      startRaftWorkerSession({
+        createProxy: () => new RapierWorkerProxy(worker, { initTimeoutMs }),
+        raft: { mass: 150 },
+        getRaftPosition: () => [0, -5, -10],
+        linkSim: () => () => {},
+        onReady,
+        onFallback,
+      });
+      return { onReady, onFallback };
+    };
+
+    it('a 404 on the worker chunk reaches onFallback, not a raft that is never ready', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      registerWorkerCollider('seg:0', () => ({ halfExtents: [1, 1, 1], position: [0, -6, 0] }));
+      const worker = new LoopbackRapierWorker();
+      worker.silent = true;
+      const { onReady, onFallback } = startReal(worker, 60_000);
+      await flush();
+      worker.emitError('Failed to load module script: rapier.worker-abc123.js (404)');
+      await flush();
+      expect(onReady).not.toHaveBeenCalled();
+      expect(onFallback).toHaveBeenCalledTimes(1);
+      expect(onFallback.mock.calls[0][0]).toMatchObject({ kind: 'script-error' });
+    });
+
+    it('a worker that never answers INIT falls back at the deadline', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.useFakeTimers();
+      try {
+        registerWorkerCollider('seg:0', () => ({ halfExtents: [1, 1, 1], position: [0, -6, 0] }));
+        const worker = new LoopbackRapierWorker();
+        worker.silent = true;
+        const { onFallback } = startReal(worker, 2_000);
+        await vi.advanceTimersByTimeAsync(1_999);
+        expect(onFallback).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(onFallback).toHaveBeenCalledTimes(1);
+        expect(onFallback.mock.calls[0][0]).toMatchObject({ kind: 'init-timeout' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

@@ -40,7 +40,7 @@ describe('applyRendererContextOptions', () => {
     expect(renderer.outputColorSpace).toBe(THREE.SRGBColorSpace);
     expect(renderer.toneMapping).toBe(THREE.ACESFilmicToneMapping);
     expect(renderer.shadowMap.enabled).toBe(true);
-    expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap);
     expect(getRendererShadowMapSize(renderer)).toBe(2048);
   });
 
@@ -69,7 +69,7 @@ describe('applyRendererQualityUpdate — live quality without a Canvas remount',
     // shadow map type in needsProgramChange, so without this the old program
     // keeps rendering with basic shadows.
     expect(result.shadowConfigChanged).toBe(true);
-    expect(renderer.shadowMap.type).toBe(THREE.PCFSoftShadowMap);
+    expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap);
     expect(renderer.shadowMap.needsUpdate).toBe(true);
     expect(scene.materials.every((m) => m.needsUpdate)).toBe(true);
   });

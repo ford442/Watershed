@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { RendererContextOptions } from './deriveRendererContextOptions';
+import { shadowMapTypeFor, type RendererContextOptions } from './deriveRendererContextOptions';
 
 /**
  * Structural view of what this module configures. WebGPURenderer is not a
@@ -41,10 +41,7 @@ export function applyRendererContextOptions(
     renderer.shadowMap.enabled = false;
   } else {
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type =
-      options.shadowMode === 'soft'
-        ? THREE.PCFSoftShadowMap
-        : THREE.BasicShadowMap;
+    renderer.shadowMap.type = shadowMapTypeFor(options.shadowMode);
   }
 
   // Per-light map sizes are set in SceneLighting from LOD; store the renderer

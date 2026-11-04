@@ -72,7 +72,7 @@ export interface RendererContextOptions {
   premultipliedAlpha: boolean;
   /** Depth buffer — required by every 3D pass and by SSAO. */
   depth: boolean;
-  /** Stencil buffer — reserved for outline / mask passes. */
+  /** Stencil buffer — off: no pass in either post chain uses one. */
   stencil: boolean;
   /** Reject software GL (SwiftShader) unless explicitly opted out. */
   failIfMajorPerformanceCaveat: boolean;
@@ -224,12 +224,27 @@ export function deriveRendererContextOptions(
   }
 }
 
-/** R3F Canvas `shadows` prop value from derived shadow mode. */
+/**
+ * The `THREE.ShadowMapType` a shadow mode means.
+ *
+ * `soft` is `PCFShadowMap`, not `PCFSoftShadowMap`: three r185 deprecates the
+ * latter and `WebGLShadowMap.render` rewrites `renderer.shadowMap.type` to
+ * `PCFShadowMap` (with a warning) on every shadow pass that finds it. Asking
+ * for it anyway meant a warning each time the quality path re-applied it, and
+ * anything compiled outside `render()` (the boot shader warm-up) saw a type the
+ * frame never uses, so its programs never matched. The image is unchanged —
+ * three was already drawing PCF.
+ */
+export function shadowMapTypeFor(mode: Exclude<ShadowMode, 'off'>): THREE.ShadowMapType {
+  return mode === 'soft' ? THREE.PCFShadowMap : THREE.BasicShadowMap;
+}
+
+/** R3F Canvas `shadows` prop value from derived shadow mode (`'percentage'` = PCF, see `shadowMapTypeFor`). */
 export function shadowModeToCanvasProp(
   mode: ShadowMode
-): false | 'basic' | 'soft' {
+): false | 'basic' | 'percentage' {
   if (mode === 'off') return false;
-  return mode;
+  return mode === 'soft' ? 'percentage' : 'basic';
 }
 
 /**
@@ -323,10 +338,19 @@ export function rendererContextCreationKey(
 export const EDITOR_QUALITY_PRESET: QualityPreset = 'high';
 
 /**
+ * Envelope for the Level Editor Canvas: `CAPTURE_ENVELOPE` (caveat check off)
+ * with backbuffer MSAA back on. The game turned the backbuffer's MSAA off
+ * because its post chain owns AA; the editor has no post chain and draws
+ * straight into the default framebuffer, where `antialias` is the only AA it
+ * gets.
+ */
+export const EDITOR_ENVELOPE: GraphicsEnvelope = { ...CAPTURE_ENVELOPE, antialias: true };
+
+/**
  * Renderer contract for the Level Editor and any other non-gameplay Canvas.
  *
  * Same derive function as the game so a change to the contract cannot miss the
- * editor, with one deliberate difference: it pins `CAPTURE_ENVELOPE`, which
+ * editor, with one deliberate difference: it pins `EDITOR_ENVELOPE`, which
  * keeps the caveat check off. The editor is a tool — running it on a machine
  * without a real GPU should be slow, not impossible — and it boots its own
  * Canvas without going through the game's boot negotiation.
@@ -338,7 +362,7 @@ export function deriveEditorContextOptions(
     devicePixelRatio:
       settings.devicePixelRatio ??
       (typeof window !== 'undefined' ? window.devicePixelRatio : 1),
-    envelope: settings.envelope ?? CAPTURE_ENVELOPE,
+    envelope: settings.envelope ?? EDITOR_ENVELOPE,
   });
 }
 

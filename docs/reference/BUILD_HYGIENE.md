@@ -543,12 +543,15 @@ raw / 1,014 kB gzip. The entry is **12 kB larger raw than after B and 32 kB smal
   grep cannot be the test: the app's own `isWebGPURenderer` flag reads contain it.)
 - `node scripts/check-build-manifest.mjs --budget`: prints the chunk table and enforces
   `build-budget.json`. `build.chunkSizeWarningLimit` is read from the same file, so a local build
-  and CI agree. Wasm is counted once by content (the Basis transcoder ships twice, byte-identical:
-  `public/basis/` and a hashed asset — reported, not yet fixed). Rapier's wasm must exist exactly once.
+  and CI agree. Wasm is counted once by content. The Basis transcoder ships once, as KTX2Loader's own hashed
+  asset (the `public/basis/` copy is gone, #466 audit D). Rapier's wasm must exist exactly once.
 - `src/physics/rapierWorkerGraph.test.ts` inspects `build/`: one `.wasm`, byte-equal to the package,
   no Rapier-sized base64 literal in any chunk.
-- `public/.htaccess` cache section: `immutable` for `-<8 hash chars>.(js|css|wasm)`, `no-cache` for
-  `index.html`, `BUILD_ID`, `watershed_native.*`. `verify_deploy.mjs` asserts both on a live URL and
+- `public/.htaccess` cache section: `immutable` for `-<8 hash chars>.(js|css|wasm)` and for the
+  stamped `watershed_native.{js,wasm}?v=<16 hex>` URL the loader fetches (not preloaded: the sim
+  worker's fetch would not consume a document preload, so it would download twice — #467 gate);
+  `no-cache` for `index.html`, `BUILD_ID`, the bare `watershed_native.*` and every other public/
+  passenger (`.ktx2|.jpg|.png|.mp3|.wav|.json`), so nothing falls through to Apache's heuristics. `verify_deploy.mjs` asserts both on a live URL and
   skips them (with a note) on `localhost` / `127.0.0.1`, where `vite preview` does not run `.htaccess`.
 
 **Validators (C).** `levelValidator.ts` / `reachValidator.ts` no longer build an `Ajv` in the browser.

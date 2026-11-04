@@ -4,13 +4,15 @@
  * Uses R3F's global before/after effects rather than useFrame priorities: a
  * positive-priority useFrame would switch off R3F's own render when post is not
  * mounted, and the after-effect runs once every root (and the post chain's
- * manual render) is done. Renders nothing; must live inside <Canvas>.
+ * manual render) is done. It also owns `renderer.info` for the frame
+ * (`frameRenderInfo.ts`). Renders nothing; must live inside <Canvas>.
  */
 import { useEffect } from 'react';
 import { addAfterEffect, addEffect, useThree } from '@react-three/fiber';
 import { createGpuTimer } from './gpuTimer';
 import { attachGpuTimer, beginFrameWork, endFrameWork, getFrameWork } from './frameWork';
 import { updatePerfMetrics } from '../debug/perfMetrics';
+import { attachFrameRenderInfo, type RendererInfoLike } from './frameRenderInfo';
 
 /** Frames between debug-panel pushes (matches PerfCheckpointMonitor). */
 const PUBLISH_INTERVAL = 30;
@@ -20,6 +22,9 @@ export default function FrameWorkTimer() {
 
   useEffect(() => {
     attachGpuTimer(createGpuTimer(gl));
+    // One `info.reset()` per frame instead of one per render(): the post chain
+    // renders 6–9 times a frame and only the last pass used to be counted.
+    const detachRenderInfo = attachFrameRenderInfo(gl.info as unknown as RendererInfoLike);
     let frames = 0;
     let cpuSum = 0;
     // Both global effects receive the same rAF timestamp, so time with now().
@@ -42,6 +47,7 @@ export default function FrameWorkTimer() {
     return () => {
       removeBefore();
       removeAfter();
+      detachRenderInfo();
       attachGpuTimer(null);
     };
   }, [gl]);

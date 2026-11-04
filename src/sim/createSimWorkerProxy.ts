@@ -106,10 +106,15 @@ export class SimWorkerProxy {
     this.fail(event.message || 'sim worker script error');
   };
 
+  private readonly onMessageError = () => {
+    this.fail('sim worker sent a message that could not be deserialized');
+  };
+
   constructor(worker: SimWorkerLike) {
     this.worker = worker;
     worker.addEventListener('message', this.onMessage);
     worker.addEventListener('error', this.onError);
+    worker.addEventListener('messageerror', this.onMessageError);
   }
 
   /**
@@ -250,6 +255,7 @@ export class SimWorkerProxy {
   dispose(): void {
     this.worker.removeEventListener('message', this.onMessage);
     this.worker.removeEventListener('error', this.onError);
+    this.worker.removeEventListener('messageerror', this.onMessageError);
     this.frameListeners.clear();
     this.fatalListeners.clear();
     this.forceListener = null;
