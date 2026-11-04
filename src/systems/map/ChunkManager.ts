@@ -101,7 +101,7 @@ const MAX_ACTIVE_SEGMENTS = GENERATION.MAX_ACTIVE_SEGMENTS;
 const GENERATION_THRESHOLD = GENERATION.THRESHOLD;
 /**
  * Sim seconds a new biome must stay under the camera before it commits.
- * Counted from `update(dt)`, never a wall-clock timer: the commit moment
+ * Counted from `detectBiome(z, dt)` sim steps, never a wall-clock timer: the commit moment
  * feeds survival (cold biomes) and the water flow cap, so it must land on the
  * same frame on every run of a script or replay.
  */
@@ -368,10 +368,9 @@ export class ChunkManager {
   /**
    * Pool upkeep for the camera at `cameraZ`: generate ahead, report segment
    * entry. Biome detection is not here any more — it is a sim system
-   * (`detectBiome`, stepped by SimCore). `_dt` is the old call shape
-   * (TrackManager still passes its frame delta); it is not read.
+   * (`detectBiome`, stepped by SimCore), so upkeep takes no delta.
    */
-  update(cameraZ: number, _dt = 0): { poolChanged: boolean; segmentEntered?: number } {
+  update(cameraZ: number): { poolChanged: boolean; segmentEntered?: number } {
     const result = this.updateResult;
     result.poolChanged = false;
     result.segmentEntered = undefined;

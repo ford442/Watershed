@@ -24,7 +24,7 @@ import { inputHub } from '../input/InputHub';
 import { simCore, type SimVehicleProbe } from '../sim/core/SimCore';
 import { gameEvents } from '../systems/events/GameEvents';
 import { useGameStore } from '../systems/GameState';
-import { findSegmentFrameAtZ, getSegmentFrames } from '../systems/map/segmentFrames';
+import { findSegmentFrameAt, getSegmentFrames } from '../systems/map/segmentFrames';
 import { POSITION_SANE, resolveActiveEnvelopeInto } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import type { SegmentEnvelope } from '../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from './types';
@@ -102,7 +102,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
       y <= envelope.yMax &&
       Math.abs(x) <= POSITION_SANE.xzMax &&
       Math.abs(z) <= POSITION_SANE.xzMax;
-    ctx.segment = findSegmentFrameAtZ(getSegmentFrames(), z);
+    ctx.segment = findSegmentFrameAt(getSegmentFrames(), state.camera.position);
 
     sampleVehicle(ctx.vehicle, vehicleRef.current, store.vehicleType === 'raft', state.camera.quaternion);
 
