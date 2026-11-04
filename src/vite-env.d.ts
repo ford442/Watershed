@@ -2,12 +2,7 @@
 /// <reference types="@webgpu/types" />
 
 interface Window {
-  __watershedCameraDiag?: {
-    uuid: string;
-    pos: { x: number; y: number; z: number };
-    quat: { x: number; y: number; z: number; w: number };
-    matrixWorld: number[];
-  };
+  // Diagnostics: one `window.__watershed` object, declared and installed by src/harness/debugApi.ts.
   __watershedScreenshot?: {
     teleportToZ: (z: number, y?: number) => boolean;
     teleportToSegment: (segmentIndex: number) => boolean;
@@ -69,8 +64,4 @@ interface Window {
   } | null;
   gpuChoreBackend?: string | null;
   gpuChoreReason?: string | null;
-  /** Raft worker water-force diagnostics (dev builds). */
-  __watershedPhysicsWorker?: { simLinked: boolean; waterForce: unknown; tickOrder: string[] };
-  /** The runner's last physics step (PhysicsDebugOverlay, verification harnesses). */
-  __watershedPhysicsDebug?: import('./vehicles/RunnerVehicle/constants').PhysicsDebugSnapshot;
 }

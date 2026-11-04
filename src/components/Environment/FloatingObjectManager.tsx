@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { InstancedRigidBodies } from '@react-three/rapier';
+import { InstancedRigidBodies, type RapierRigidBody } from '@react-three/rapier';
 import {
   registerFloatingPlatform,
   unregisterFloatingPlatform,
@@ -14,6 +14,7 @@ import { WATER_LEVEL } from '../../constants/game';
 import { FLOATING_OBJECT } from '../../constants/game';
 import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { createRng } from '../../math/random';
+import { pathLateral } from '../../utils/segmentSampler';
 
 // =============================================================================
 // TYPES
@@ -57,7 +58,7 @@ export default function FloatingObjectManager({
   count = 6,
   segmentId = 0,
 }: FloatingObjectManagerProps) {
-  const bodiesRef = useRef<(any | null)[]>([]);
+  const bodiesRef = useRef<RapierRigidBody[]>([]);
   const timeRef = useRef(0);
 
   // Generate object instances deterministically
@@ -78,8 +79,7 @@ export default function FloatingObjectManager({
       const t = rng();
       const point = path.getPointAt(t);
       const tangent = path.getTangentAt(t).normalize();
-      const up = new THREE.Vector3(0, 1, 0);
-      const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+      const binormal = pathLateral(tangent, new THREE.Vector3());
 
       // Place in water channel, not on banks
       const lateralRange = waterWidth * 0.35;
@@ -136,7 +136,7 @@ export default function FloatingObjectManager({
 
   // Lazy registration to avoid Rapier WASM borrow panics across segments
   const registeredHandlesRef = useRef<Set<number>>(new Set());
-  const handleToApiRef = useRef<Map<number, any>>(new Map());
+  const handleToApiRef = useRef<Map<number, RapierRigidBody>>(new Map());
 
   useEffect(() => {
     // Both refs hold the one Set / Map for the component's life.
@@ -232,6 +232,7 @@ export default function FloatingObjectManager({
   return (
     <InstancedRigidBodies
       ref={bodiesRef}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each instance carries its prop `type` ('log' | …), which collides with RigidBodyProps.type; renaming it is a behaviour change (#546).
       instances={instances as any}
       type="dynamic"
       colliders="cuboid"

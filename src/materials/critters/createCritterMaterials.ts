@@ -90,7 +90,7 @@ export function createDragonflyBodyMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.critters) {
     try {
-      return nodes.critters.createDragonflyBodyNodeMaterial(source) as unknown as THREE.Material;
+      return nodes.critters.createDragonflyBodyNodeMaterial(source);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -108,7 +108,7 @@ export function createDragonflyWingMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.critters && source instanceof THREE.MeshStandardMaterial) {
     try {
-      return nodes.critters.createDragonflyBodyNodeMaterial(source) as unknown as THREE.Material;
+      return nodes.critters.createDragonflyBodyNodeMaterial(source);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -126,7 +126,7 @@ export function createFishBodyMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.critters) {
     try {
-      return nodes.critters.createFishNodeMaterial(source) as unknown as THREE.Material;
+      return nodes.critters.createFishNodeMaterial(source);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -144,7 +144,7 @@ export function createFishRingMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.critters) {
     try {
-      return nodes.critters.createFishRingNodeMaterial(source) as unknown as THREE.Material;
+      return nodes.critters.createFishRingNodeMaterial(source);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;

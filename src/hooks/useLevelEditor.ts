@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import type { HydroEvent, HydroEventKind } from '../systems/water/hydroEvents';
 import { parseHydroEvents } from '../systems/water/hydroEvents';
 import { saveUserLevel } from '../systems/map/userLevelStore';
+import type { LevelData, LevelSegment } from '../systems/map/MapSystem.types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,7 +80,7 @@ export interface UseLevelEditorReturn {
   addSegment: (overrides?: Partial<EditorSegmentConfig>) => EditorSegmentConfig;
   removeSegment: (id: string) => void;
   /** Accepts meander_to_waterfall.json (LevelData) format */
-  loadFromJSON: (data: any) => void;
+  loadFromJSON: (data: LevelData) => void;
   /** Serialises current state as LevelData-compatible JSON string */
   exportAsJSON: () => string;
   /** Validate + persist the current export in localStorage (workshop, not Steam). */
@@ -109,7 +110,7 @@ function vec3ToTuple(v: THREE.Vector3): [number, number, number] {
   return [v.x, v.y, v.z];
 }
 
-function normalizeDecorations(raw: any): Record<string, number> {
+function normalizeDecorations(raw: LevelSegment['decorations']): Record<string, number> {
   if (!raw) return {};
   const out: Record<string, number> = {};
   for (const [key, value] of Object.entries(raw)) {
@@ -123,7 +124,7 @@ function normalizeDecorations(raw: any): Record<string, number> {
 }
 
 function buildSegmentFromRaw(
-  seg: any,
+  seg: LevelSegment,
   curve: THREE.CatmullRomCurve3,
   totalSegments: number,
   worldBiome: string,
@@ -234,7 +235,7 @@ interface EditorState {
   levelName: string;
   levelWidth: number;
   /** Original JSON kept for round-trip export (metadata, spawns, world) */
-  rawData: any | null;
+  rawData: LevelData | null;
 }
 
 const DEFAULT_STATE: EditorState = {
@@ -256,7 +257,7 @@ export function useLevelEditor(): UseLevelEditorReturn {
 
   // ---- loadFromJSON --------------------------------------------------------
 
-  const loadFromJSON = useCallback((data: any) => {
+  const loadFromJSON = useCallback((data: LevelData) => {
     try {
       const rawWaypoints: number[][] = data.world.track.waypoints;
       const waypoints: [number, number, number][] = rawWaypoints.map(
@@ -271,7 +272,7 @@ export function useLevelEditor(): UseLevelEditorReturn {
       const worldWidth: number = data.world.track.width ?? 35;
 
       const segments: EditorSegmentConfig[] = attachHydroEvents(
-        (data.segments as any[]).map((seg) =>
+        data.segments.map((seg) =>
           buildSegmentFromRaw(seg, curve, totalSegments, worldBiome, worldWidth),
         ),
         data.hydroEvents,

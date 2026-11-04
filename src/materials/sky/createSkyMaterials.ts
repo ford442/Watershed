@@ -24,7 +24,7 @@ export function createCloudMaterial(backend: MaterialBackend, init: CloudUniform
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.sky) {
     try {
-      return tag(nodes.sky.createCloudNodeMaterial(init) as unknown as THREE.Material, 'tsl');
+      return tag(nodes.sky.createCloudNodeMaterial(init), 'tsl');
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -61,7 +61,7 @@ export function createStarMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.sky) {
     try {
-      return tag(nodes.sky.createStarNodeMaterial(init) as unknown as THREE.Material, 'tsl');
+      return tag(nodes.sky.createStarNodeMaterial(init), 'tsl');
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -90,7 +90,7 @@ export function createMoonMaterial(backend: MaterialBackend, phase: number): THR
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.sky) {
     try {
-      return tag(nodes.sky.createMoonNodeMaterial(phase) as unknown as THREE.Material, 'tsl');
+      return tag(nodes.sky.createMoonNodeMaterial(phase), 'tsl');
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -130,7 +130,7 @@ export function createSkyDomeMaterial(backend: MaterialBackend, init: SkyDomeIni
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.sky) {
     try {
-      return tag(nodes.sky.createSkyDomeNodeMaterial(init) as unknown as THREE.Material, 'tsl');
+      return tag(nodes.sky.createSkyDomeNodeMaterial(init), 'tsl');
     } catch (error) {
       if (!warned.current) {
         warned.current = true;

@@ -25,6 +25,7 @@ import { getAudioManager } from '../systems/audio/AudioSystem';
 import { getActiveLaunchHour } from '../systems/journey/runSession';
 import { getActiveMapId } from '../utils/runContext';
 import { createRng } from '../math/random';
+import type { VehicleRigidBodyRef } from '../experience/types';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0x27da25f2);
@@ -40,7 +41,7 @@ const LIGHTNING_MIN_TRANSITION = 0.5;
 const TARGET_FOG_COLOR = new THREE.Color();
 
 interface WeatherSystemProps {
-  targetRef: React.RefObject<any>;
+  targetRef: React.RefObject<VehicleRigidBodyRef | null>;
 }
 
 export default function WeatherSystem({ targetRef }: WeatherSystemProps) {
@@ -224,11 +225,7 @@ export default function WeatherSystem({ targetRef }: WeatherSystemProps) {
     const weatherType = t > 0.1 ? targetType : 'clear';
     currentWeatherRef.current = weatherType;
 
-    const playerPos = targetRef.current
-      ? targetRef.current.translation
-        ? targetRef.current.translation()
-        : targetRef.current.position
-      : { x: 0, y: 0, z: 0 };
+    const playerPos = targetRef.current ? targetRef.current.translation() : { x: 0, y: 0, z: 0 };
 
     // ======================================================================
     // 1. Rain particles

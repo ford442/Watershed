@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const BIOME_WORDS = /SLOT CANYON|CANYON AUTUMN|CANYON SUMMER|GLACIER|DELTA|POND|AUTUMN|SUMMER/i;
 const snap = (page, re) => page.evaluate((reSrc) => {
-  const d = window.__watershedPhysicsDebug ?? {};
+  const d = window.__watershed?.physicsDebug ?? {};
   const txt = document.body.innerText || '';
   const m = txt.match(new RegExp(reSrc, 'i'));
   return {

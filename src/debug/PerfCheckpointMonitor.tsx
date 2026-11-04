@@ -10,6 +10,7 @@ import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { updatePerfMetrics } from './perfMetrics';
 import { getFrameRenderInfo } from '../rendering/frameRenderInfo';
+import { usedJsHeapBytes } from '../utils/heapMemory';
 
 const SAMPLE_INTERVAL = 30; // frames between metric snapshots
 
@@ -31,8 +32,8 @@ export default function PerfCheckpointMonitor() {
       const memMB = (() => {
         try {
           // Chrome-only performance.memory API
-          const mem = (performance as any).memory;
-          return mem ? Math.round(mem.usedJSHeapSize / 1_048_576) : 0;
+          const bytes = usedJsHeapBytes();
+          return bytes !== null ? Math.round(bytes / 1_048_576) : 0;
         } catch {
           return 0;
         }

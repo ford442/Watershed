@@ -71,7 +71,7 @@ export type CanyonMaterial = THREE.ShaderMaterial & {
  * might carry uniforms" and guards at runtime, as it always has.
  */
 export type CanyonUniformCarrier = THREE.Material & {
-  uniforms?: Record<string, { value: any }>;
+  uniforms?: Record<string, { value: unknown }>;
 };
 
 /**

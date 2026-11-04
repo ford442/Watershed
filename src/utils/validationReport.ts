@@ -9,16 +9,19 @@
 export interface ValidationError {
   field: string;
   error: string;
-  value?: any;
+  value?: unknown;
   lineNum?: number;
   suggestion?: string;
 }
 
-export interface ValidationResult {
-  valid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationError[];
-}
+/**
+ * A validator's report. `T` is the shape a pass guarantees: a valid result hands the input
+ * back as `data: T` (narrowed from the `unknown` the loader parsed), an invalid one has
+ * `data: null`, so no caller needs to cast parsed JSON.
+ */
+export type ValidationResult<T = unknown> =
+  | { valid: true; errors: ValidationError[]; warnings: ValidationError[]; data: T }
+  | { valid: false; errors: ValidationError[]; warnings: ValidationError[]; data: null };
 
 export function formatValidationErrors(result: ValidationResult): string {
   if (result.valid) {

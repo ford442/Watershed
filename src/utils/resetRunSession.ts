@@ -6,6 +6,7 @@
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { gameEvents, type RunResetDetail } from '../systems/events/GameEvents';
 import { CLEAR_WEATHER, useGameStore } from '../systems/GameState';
+import { setSegmentFlow } from '../systems/water/segmentFlow';
 
 export type RunSessionResetDetail = RunResetDetail;
 
@@ -13,10 +14,7 @@ export function resetRunSession(detail: RunSessionResetDetail = {}): void {
   if (typeof window === 'undefined') return;
 
   const flowSpeed = detail.flowSpeed ?? 1;
-  if (Number.isFinite(flowSpeed)) {
-    (window as any).__watershedFlowSpeed = flowSpeed;
-    (window as any).__watershedSlipperiness = 0;
-  }
+  if (Number.isFinite(flowSpeed)) setSegmentFlow(flowSpeed, 0);
 
   useGameStore.getState().setWeather(CLEAR_WEATHER);
   gameEvents.emit('water-flow-update', { flowSpeed, turbulence: 0, state: 'Normal' });

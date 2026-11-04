@@ -200,15 +200,15 @@ class JSONLevelLoader {
   /**
    * Parse level data from object (already loaded JSON)
    */
-  static loadFromObject(data: any): LevelData {
+  static loadFromObject(data: unknown): LevelData {
     return this.validateAndNormalize(data);
   }
 
   /**
    * Validate and normalize level data
    */
-  private static validateAndNormalize(data: any): LevelData {
-    if (!data.metadata || !data.world || !data.segments || !data.spawns) {
+  private static validateAndNormalize(data: unknown): LevelData {
+    if (!hasLevelSections(data)) {
       throw new Error('Invalid level data: missing required sections (metadata, world, segments, spawns)');
     }
 
@@ -216,7 +216,7 @@ class JSONLevelLoader {
     const segments = [...data.segments].sort((a: LevelSegment, b: LevelSegment) => a.index - b.index);
 
     // Normalize waypoints to Vector3
-    const waypoints = data.world.track.waypoints.map((wp: number[]) =>
+    const waypoints = data.world.track.waypoints.map((wp) =>
       new THREE.Vector3(wp[0], wp[1], wp[2])
     );
 
@@ -232,7 +232,9 @@ class JSONLevelLoader {
       segments,
       spawns: data.spawns,
       decorationPools: data.decorationPools,
-    } as LevelData;
+      // LevelData types the waypoints as authored (number[][]); this path hands back
+      // Vector3s, which JSONMapManager.loadLevel reads with the matching cast.
+    } as unknown as LevelData;
   }
 }
 
@@ -244,6 +246,13 @@ class JSONLevelLoader {
  * MapManager that loads chunks from JSON level data
  * Replaces inline generation with JSON-driven authoring
  */
+/** The four sections every level has. The full schema check is utils/levelValidator (a lazy chunk). */
+function hasLevelSections(data: unknown): data is LevelData {
+  if (typeof data !== 'object' || data === null) return false;
+  const d = data as Partial<Record<keyof LevelData, unknown>>;
+  return Boolean(d.metadata && d.world && d.segments && d.spawns);
+}
+
 export class JSONMapManager implements MapManager {
   chunks: BaseMapChunk[] = [];
   currentChunkIndex = 0;

@@ -18,6 +18,9 @@ import { getAudioManager } from '../systems/audio/AudioSystem';
 import { isWaterForceSystemActive } from '../systems/water/WaterForceRegistry';
 import { createRng } from '../math/random';
 import { gameEvents } from '../systems/events/GameEvents';
+import type { VehicleRigidBodyRef } from '../experience/types';
+import type { RapierRigidBody } from '@react-three/rapier';
+import type { SegmentData } from '../systems/map/ChunkManager';
 
 /** This module's seeded stream (#503 A): draws are reproducible run to run. */
 const random = createRng(0x28932736);
@@ -35,8 +38,8 @@ const tmpSideSlip = new THREE.Vector3();
 const tmpTurbulence = new THREE.Vector3();
 
 interface WaterFlowForcesProps {
-  targetRef: React.RefObject<any>;
-  segments?: any[];
+  targetRef: React.RefObject<VehicleRigidBodyRef | null>;
+  segments?: readonly SegmentData[];
   reachId?: string;
   flowScale?: number;
   enabled?: boolean;
@@ -54,7 +57,7 @@ function getReachFlowMapUrl(reachId?: string): string | null {
   return `/api/reaches/${reachId}/assets/${asset.url}`;
 }
 
-function computeSegmentBounds(segments: any[]): { min: THREE.Vector3; max: THREE.Vector3 } | null {
+function computeSegmentBounds(segments: readonly SegmentData[]): { min: THREE.Vector3; max: THREE.Vector3 } | null {
   if (!segments?.length) return null;
   const min = new THREE.Vector3(Infinity, Infinity, Infinity);
   const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
@@ -150,7 +153,8 @@ export default function WaterFlowForces({
   useFrame((state, delta) => {
     if (!enabled || !targetRef?.current) return;
 
-    const body = targetRef.current;
+    // The mounted vehicle is a Rapier body; this reads the parts VehicleRigidBodyRef leaves out.
+    const body = targetRef.current as RapierRigidBody;
     const translation = body.translation();
     tmpPoint.set(translation.x, translation.y, translation.z);
 
@@ -158,7 +162,10 @@ export default function WaterFlowForces({
     let closestDistance = Infinity;
 
     for (const segment of segments) {
-      if (!segment?.active) continue;
+      // FIXME(#546): SegmentData has no `active` field, so this guard skips every segment and
+      // the loop below has never run. The `any` it was typed as hid that; kept as-is here so
+      // the input / replay smokes stay identical — enabling it is a gameplay change of its own.
+      if (!('active' in segment) || !segment.active) continue;
       const sample = sampleSegmentFlow(segment, tmpPoint, sampleScratch);
       if (!sample) continue;
 

@@ -572,7 +572,7 @@ callers' maps are already validated by `pnpm test`; skipping or deferring that c
 
 **Dev tools (C).** `DebugPanel` and `PhysicsPerfMonitor` are `React.lazy` chunks, fetched only for `?debug=1`
 (the monitor also for `?cleanTest=1`, which `pnpm profile:physics` uses to read
-`window.__watershedPhysicsPerf`). `LevelEditor` and `WasmWaterForceTest` were already dynamic imports and are
+`window.__watershed.physicsPerf`). `LevelEditor` and `WasmWaterForceTest` were already dynamic imports and are
 absent from production builds. `VehicleTuner` is **not** a dev tool — it is the raft's boost / drift /
 wall-riding physics — so it stays in the entry. `pnpm build:analyze` (`ANALYZE=1 vite build`) writes a
 treemap and raw module graph to `build-analyze/` (git-ignored).

@@ -23,10 +23,11 @@ import { mapCloseGurgle } from '../systems/audio/speedWind';
 import { createSpeedWindVoice, type SpeedWindInput, type SpeedWindVoice } from '../systems/audio/speedWindVoice';
 import { getSfxWetnessMultiplier } from '../systems/audio/wetnessMuffle';
 import { gameEvents } from '../systems/events/GameEvents';
+import type { VehicleRigidBodyRef } from '../experience/types';
 
 interface SpeedWindAudioProps {
   /** Vehicle rigid body ref — same speed source as ReactiveAudio whoosh ducking. */
-  targetRef: React.RefObject<any>;
+  targetRef: React.RefObject<VehicleRigidBodyRef | null>;
   enabled?: boolean;
 }
 

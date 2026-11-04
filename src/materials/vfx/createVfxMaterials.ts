@@ -48,7 +48,7 @@ export function createRainbowMaterial(
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     },
-    () => vfxNodes().createRainbowNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createRainbowNodeMaterial(init),
   );
 }
 
@@ -73,7 +73,7 @@ export function createPondFogMaterial(
       fragmentShader: POND_FOG_FRAGMENT,
     },
     () =>
-      vfxNodes().createPondFogNodeMaterial({ tintColor: init.tintColor }) as unknown as THREE.Material,
+      vfxNodes().createPondFogNodeMaterial({ tintColor: init.tintColor }),
   );
 }
 
@@ -88,7 +88,7 @@ export function createSplashBowWaveMaterial(backend: MaterialBackend): THREE.Mat
       transparent: true,
       side: THREE.DoubleSide,
     },
-    () => vfxNodes().createSplashBowWaveNodeMaterial() as unknown as THREE.Material,
+    () => vfxNodes().createSplashBowWaveNodeMaterial(),
   );
 }
 
@@ -177,7 +177,7 @@ export function createWaterfallSheetMaterial(
         }
       `,
     },
-    () => vfxNodes().createWaterfallSheetNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createWaterfallSheetNodeMaterial(init),
   );
 }
 
@@ -234,7 +234,7 @@ export function createWaterfallPlumeMaterial(
         }
       `,
     },
-    () => vfxNodes().createWaterfallPlumeNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createWaterfallPlumeNodeMaterial(init),
   );
 }
 
@@ -282,7 +282,7 @@ export function createWaterfallFoamMaterial(
         }
       `,
     },
-    () => vfxNodes().createWaterfallFoamNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createWaterfallFoamNodeMaterial(init),
   );
 }
 
@@ -375,7 +375,7 @@ export function createSunShaftMaterial(
         shaftOpacity: init.shaftOpacity,
         colorBase: init.colorBase,
         warmTint: init.warmTint,
-      }) as unknown as THREE.Material,
+      }),
   );
 }
 
@@ -404,7 +404,7 @@ export function createSunShaftMoteMaterial(
       vfxNodes().createSunShaftMoteNodeMaterial({
         colorBase: init.colorBase,
         opacity: init.opacity,
-      }) as unknown as THREE.Material,
+      }),
   );
 }
 
@@ -495,7 +495,7 @@ export function createMistMaterial(
         }
       `,
     },
-    () => vfxNodes().createMistNodeMaterial({ colorBase: init.colorBase }) as unknown as THREE.Material,
+    () => vfxNodes().createMistNodeMaterial({ colorBase: init.colorBase }),
   );
 }
 
@@ -552,7 +552,7 @@ export function createFireflyMaterial(
         }
       `,
     },
-    () => vfxNodes().createFireflyNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createFireflyNodeMaterial(init),
   );
 }
 
@@ -616,7 +616,7 @@ export function createCanyonDustMaterial(
         }
       `,
     },
-    () => vfxNodes().createCanyonDustNodeMaterial({ colorBase: init.colorBase }) as unknown as THREE.Material,
+    () => vfxNodes().createCanyonDustNodeMaterial({ colorBase: init.colorBase }),
   );
 }
 
@@ -670,6 +670,6 @@ export function createRockFoamMaterial(
         }
       `,
     },
-    () => vfxNodes().createRockFoamNodeMaterial(init) as unknown as THREE.Material,
+    () => vfxNodes().createRockFoamNodeMaterial(init),
   );
 }

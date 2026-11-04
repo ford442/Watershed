@@ -27,6 +27,7 @@ import { attachGpuLossHandlers, isGpuLossDebugEnabled, simulateGpuLoss } from '.
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { useGameStore, useQualityPreset, useRenderScale } from '../systems/GameState';
 import { parseQualityOverride } from '../utils/qualityOverride';
+import { setDebugTap } from '../debug/debugTaps';
 
 /**
  * The result of boot-time graphics negotiation, plus the boot-crash verdict.
@@ -203,8 +204,8 @@ export function useRendererBoot(graphicsBoot?: GraphicsBoot): RendererBootState 
       },
     });
     if (isGpuLossDebugEnabled()) {
-      (window as Window & { __watershedLoseGpu?: () => string | null }).__watershedLoseGpu = () =>
-        simulateGpuLoss(gl);
+      // window.__watershed.loseGpu() (harness/debugApi.ts).
+      setDebugTap('loseGpu', () => simulateGpuLoss(gl));
     }
   }, []);
 

@@ -7,7 +7,7 @@
  */
 
 import * as THREE from 'three';
-import { ReachManifest } from './ReachStreamer';
+import type { ReachManifest, ReachSegment } from './ReachStreamer';
 import { getTrackBiomeProfile, TrackBiomeProfile } from '../../configs/TrackBiomes';
 import { type BiomeId, normalizeBiomeId } from '../../configs/biomes';
 import { FLOW_FORECAST_STATES } from '../../constants/game';
@@ -41,7 +41,7 @@ export interface NormalizedSegment {
   /** Pre-forecast params for live re-application in ChunkManager. */
   _forecastBase?: ForecastSegmentParams;
   // Passthrough of original config for TrackSegment extras
-  config: any;
+  config: ReachSegment;
 }
 
 /**
@@ -151,9 +151,10 @@ export function normalizeReachManifest(
       (segConfig.forwardMomentum !== undefined ? segConfig.forwardMomentum : 1);
     const particleCount = segConfig.effects?.particleCount || 0;
     const cameraShake = segConfig.effects?.cameraShake || 0;
+    const authoredTrees = segConfig.decorations?.trees;
     const treeDensity =
-      segConfig.decorations?.trees !== undefined
-        ? segConfig.decorations.trees / 50 // normalize to 0-1 range
+      typeof authoredTrees === 'number'
+        ? authoredTrees / 50 // normalize to 0-1 range
         : wallProfile.vegetationDensity;
     const rockDensity = segConfig.rockDensity || wallProfile.rockDensity;
     const baseType = segConfig.type || 'normal';

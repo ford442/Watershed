@@ -64,6 +64,8 @@ import {
   resetImpulseTally,
   type RunnerStepScratch,
 } from './runnerStepScratch';
+import { setDebugTap } from '../../../debug/debugTaps';
+import { getSegmentFlowSpeed } from '../../../systems/water/segmentFlow';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -655,10 +657,7 @@ function applyWaterForces(f: StepFrame): void {
   if (pos.y < WATER_LEVEL + 1.0) {
     f.damping = VEHICLE_TUNING.linearDampingShallowWater;
     applyBodyDamping(f);
-    const w = window as unknown as { __watershedFlowSpeed?: number };
-    const segFlow = (typeof window !== 'undefined' && Number.isFinite(w.__watershedFlowSpeed))
-      ? (w.__watershedFlowSpeed as number)
-      : 1.0;
+    const segFlow = getSegmentFlowSpeed();
     const currentPush = 0.3 * segFlow * dt;
     const im = s.impulse;
     im.x = s.forwardDir.x * currentPush;
@@ -748,7 +747,7 @@ function writeTelemetry(f: StepFrame): void {
   snapshot.recentContacts = debug.recentContacts;
 
   f.userData.physicsDebug = snapshot;
-  if (typeof window !== 'undefined') window.__watershedPhysicsDebug = snapshot;
+  setDebugTap('physicsDebug', snapshot);
 }
 
 function setVec(out: Vec3, x: number, y: number, z: number): void {
@@ -764,7 +763,7 @@ function publishSnapshotPose(f: StepFrame, px: number, py: number, pz: number, v
   setVec(snapshot.position, px, py, pz);
   setVec(snapshot.linearVelocity, vx, vy, vz);
   snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
-  if (typeof window !== 'undefined') window.__watershedPhysicsDebug = snapshot;
+  setDebugTap('physicsDebug', snapshot);
 }
 
 // The helpers' argument objects, reused: rewritten field by field each step

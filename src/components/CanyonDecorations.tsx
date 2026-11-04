@@ -8,6 +8,7 @@ import { registerWorkerCollider, unregisterWorkerCollider } from '../physics/wor
 import { hullSpecFromGeometry } from '../physics/colliderSpecsFromThree';
 import { createRng } from '../math/random';
 import { WATER_LEVEL } from '../constants/game';
+import { pathLateral } from '../utils/segmentSampler';
 
 type EulerTuple = [number, number, number];
 
@@ -126,7 +127,7 @@ export default function CanyonDecorations({
             if (!isFiniteVec3(point)) continue;
 
             const tangent = riverPath.getTangent(t).normalize();
-            const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+            const right = pathLateral(tangent, new THREE.Vector3());
             if (!isFiniteVec3(tangent) || !isFiniteVec3(right)) continue;
 
             const leftBoulder = createBoulder(-1, point, right, tangent);

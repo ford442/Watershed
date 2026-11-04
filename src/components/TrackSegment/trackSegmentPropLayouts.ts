@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlacementTransform } from './types';
+import { pathLateral } from '../../utils/segmentSampler';
 
 /** Pure layout helpers for TrackSegmentMeshes (#371). */
 
@@ -45,7 +46,7 @@ export function buildIndustrialPositions(opts: {
     ts.map((t) => {
       const p = segmentPath.getPoint(t);
       const tangent = segmentPath.getTangent(t).normalize();
-      const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+      const binormal = pathLateral(tangent, new THREE.Vector3());
       p.addScaledVector(binormal, lateral);
       p.y = waterLevel + yOff;
       return p;
@@ -66,7 +67,7 @@ export function buildVortexCenter(
   const t = THREE.MathUtils.clamp(vortexConfig.centerT ?? 0.55, 0, 1);
   const p = segmentPath.getPoint(t);
   const tangent = segmentPath.getTangent(t).normalize();
-  const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+  const binormal = pathLateral(tangent, new THREE.Vector3());
   p.addScaledVector(binormal, vortexConfig.lateralOffset ?? 0);
   return p;
 }

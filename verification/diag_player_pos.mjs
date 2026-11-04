@@ -37,7 +37,7 @@ await page.evaluate(() => {
 for (let i = 0; i < 6; i++) {
   await sleep(2000);
   const info = await page.evaluate(() => {
-    const dbg = window.__watershedPhysicsDebug;
+    const dbg = window.__watershed?.physicsDebug;
     return dbg
       ? {
           pos: dbg.position,

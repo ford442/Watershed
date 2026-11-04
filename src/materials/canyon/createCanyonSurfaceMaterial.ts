@@ -44,7 +44,7 @@ export function createCanyonSurfaceMaterial(
 
   if (backend === 'tsl' && nodeMaterials) {
     try {
-      return nodeMaterials.canyon.createCanyonNodeMaterial(options) as unknown as THREE.Material;
+      return nodeMaterials.canyon.createCanyonNodeMaterial(options);
     } catch (error) {
       if (!warnedTslFailure) {
         warnedTslFailure = true;

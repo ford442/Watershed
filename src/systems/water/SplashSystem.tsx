@@ -40,6 +40,7 @@ import { pulse } from '../../input/haptics';
 import { createRng } from '../../math/random';
 import { simCore } from '../../sim/core/SimCore';
 import { WATER_LEVEL } from '../../constants/game';
+import type { VehicleRigidBodyRef } from '../../experience/types';
 
 /** Spawn origin handed to the pools (they copy it): reused, not a vector per spawn (#521 D). */
 const _spawnAt = new THREE.Vector3();
@@ -57,7 +58,7 @@ const random = createRng(0xdb562dbf);
 const foamRandom = simCore.ctx.rng;
 
 interface SplashSystemProps {
-  playerRef: React.RefObject<any>;
+  playerRef: React.RefObject<VehicleRigidBodyRef | null>;
   waterLevel?: number;
   waterWidth?: number;
   flowDirection?: THREE.Vector3;
@@ -330,8 +331,7 @@ export const SplashSystem: React.FC<SplashSystemProps> = ({
     cruiseCooldownRef.current = Math.max(0, cruiseCooldownRef.current - delta);
 
     const body = playerRef.current;
-    const playerPos = body.translation ? body.translation() : body.position;
-    if (!playerPos) return;
+    const playerPos = body.translation();
 
     const vel = body.linvel
       ? body.linvel()

@@ -7,6 +7,9 @@ import type { NativeWaterForceConfig, NativeWaterForceResult } from '../systems/
 import { createWaterForceBatch, type NativeWaterForceBatch } from '../systems/water/WatershedWasm';
 import { getWasm } from '../systems/water/wasmLoader';
 import { calculateWaterForceFallback } from '../systems/water/waterForceFallback';
+import { setDebugTap } from '../debug/debugTaps';
+import type { RapierRigidBody } from '@react-three/rapier';
+import type { VehicleRigidBodyRef } from '../experience/types';
 
 const TEST_CONFIG: NativeWaterForceConfig = {
   flowSpeed: 5.2,
@@ -24,8 +27,8 @@ const TEST_CONFIG: NativeWaterForceConfig = {
 /** Chase-camera target, rewritten each frame (#521 F). */
 const _cameraTarget = new THREE.Vector3();
 
-const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
-  const bodyRef = useRef<any>(null);
+const WasmWaterForceTest = forwardRef<VehicleRigidBodyRef>((_props, forwardedRef) => {
+  const bodyRef = useRef<RapierRigidBody | null>(null);
   // One-sample batch: the native force path the game uses (ABI 15 has no single-body export).
   const batchRef = useRef<NativeWaterForceBatch | null>(null);
   const statusRef = useRef<'loading' | 'ready' | 'fallback'>('loading');
@@ -33,7 +36,8 @@ const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
   const loggedRef = useRef(false);
   const { camera } = useThree();
 
-  useImperativeHandle(forwardedRef, () => bodyRef.current);
+  // Read once the body mounts (VehicleMount only reads the handle from frames after that).
+  useImperativeHandle(forwardedRef, () => bodyRef.current!);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,14 +92,12 @@ const WasmWaterForceTest = forwardRef<any>((_props, forwardedRef) => {
     camera.position.lerp(_cameraTarget.set(pos.x + 4, pos.y + 4, pos.z + 8), 0.06);
     camera.lookAt(pos.x, pos.y, pos.z - 4);
 
-    if (typeof window !== 'undefined') {
-      (window as any).__watershedWasmWaterTest = {
-        status: statusRef.current,
-        position: { x: pos.x, y: pos.y, z: pos.z },
-        velocity: { x: vel.x, y: vel.y, z: vel.z },
-        force,
-      };
-    }
+    setDebugTap('wasmWaterTest', {
+      status: statusRef.current,
+      position: { x: pos.x, y: pos.y, z: pos.z },
+      velocity: { x: vel.x, y: vel.y, z: vel.z },
+      force,
+    });
 
     if (!loggedRef.current && statusRef.current === 'ready') {
       loggedRef.current = true;

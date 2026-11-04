@@ -36,6 +36,7 @@ export type {
   AdaptiveQualityStepInput,
   AdaptiveQualityStepResult,
 } from './adaptiveQuality';
+import { usedJsHeapBytes } from '../../utils/heapMemory';
 
 // Quality levels
 type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
@@ -286,11 +287,11 @@ export const LODProvider: React.FC<LODProviderProps> = ({
       }
 
       // Goal 5: Memory warning — JS heap > 300MB (AGENTS.md target)
-      const perf = performance as any;
-      if (perf.memory && perf.memory.usedJSHeapSize > 300 * 1048576) {
+      const heapBytes = usedJsHeapBytes();
+      if (heapBytes !== null && heapBytes > 300 * 1048576) {
         if (!warnedMemory.current) {
           warnedMemory.current = true;
-          const mb = Math.round(perf.memory.usedJSHeapSize / 1048576);
+          const mb = Math.round(heapBytes / 1048576);
           console.warn(
             `[LODManager] High memory usage: ${mb}MB. ` +
             `Target is <300MB. Consider lowering quality or restarting.`
@@ -404,9 +405,8 @@ export const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
   
   useEffect(() => {
     const interval = setInterval(() => {
-      if (performance && (performance as any).memory) {
-        setMemory(Math.round((performance as any).memory.usedJSHeapSize / 1048576));
-      }
+      const heapBytes = usedJsHeapBytes();
+      if (heapBytes !== null) setMemory(Math.round(heapBytes / 1048576));
     }, 1000);
     return () => clearInterval(interval);
   }, []);

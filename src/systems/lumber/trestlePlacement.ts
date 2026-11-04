@@ -8,6 +8,10 @@
 
 import * as THREE from 'three';
 import { TRESTLE_DECK_HEIGHT, type TrestlePlank, type TrestleSpan } from './trestleSpan';
+import { pathLateral } from '../../utils/segmentSampler';
+
+/** Scratch lateral, rewritten per plank (read straight into the plank position). */
+const _binormal = new THREE.Vector3();
 
 export interface TrestlePlankPlacement extends TrestlePlank {
   position: THREE.Vector3;
@@ -43,7 +47,7 @@ export function placeTrestlePlanks(
       continue;
     }
 
-    const binormal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+    const binormal = pathLateral(tangent, _binormal);
     const position = point.clone().addScaledVector(binormal, plank.lateralOffset);
     position.y = waterLevel + TRESTLE_DECK_HEIGHT;
 

@@ -57,6 +57,7 @@ import { getWasm } from './wasmLoader';
 import { getSWEHeightFieldSnapshot } from './SWEHeightField';
 import { SWE_BUDGETS } from './sweQuality';
 import { WaterForceSystem } from './WaterForceSystem';
+import { getDebugTap } from '../../debug/debugTaps';
 
 const BUDGET = SWE_BUDGETS.high; // 48 x 32 at 0.5 m
 const COUNT = BUDGET.width * BUDGET.height;
@@ -152,7 +153,7 @@ function texturePeak() {
   };
 }
 
-// The component publishes its readout (window.__watershedWaterForceSystem),
+// The component publishes its readout (the `waterForce` debug tap),
 // which these tests observe, only on a debug / harness page (#521 D).
 beforeAll(() => {
   window.history.replaceState(null, '', '/?debug=1');
@@ -233,8 +234,7 @@ describe('WaterForceSystem window scroll', () => {
       expect(peak.z, `frame ${f} z`).toBe(bump.z);
       expect(peak.eta, `frame ${f} η`).toBeCloseTo(0.4, 5);
       // ...and the window origin is what the component reports and sits on the lattice.
-      const reported = (window as unknown as { __watershedWaterForceSystem: { origin: { x: number; z: number } } })
-        .__watershedWaterForceSystem.origin;
+      const reported = getDebugTap('waterForce')?.origin;
       expect(snap.originX).toBe(reported.x);
       expect(snap.originZ).toBe(reported.z);
       expect(snap.originX / BUDGET.cellSize).toBe(Math.round(snap.originX / BUDGET.cellSize));

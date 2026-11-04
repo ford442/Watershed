@@ -33,6 +33,7 @@ import type { DebugStageController } from '../../debug/debugStages';
 import type { VehicleRigidBodyRef } from '../types';
 import { gameEvents, type SegmentEnterDetail } from '../../systems/events/GameEvents';
 import type { SegmentEnvelope } from '../../systems/map/segmentFrames';
+import { debugTapsEnabled, setDebugTap } from '../../debug/debugTaps';
 
 /** The vehicle's runner envelope, rewritten each frame (no per-frame object, #521 D). */
 const lifecycleEnvelope: SegmentEnvelope = { yMin: 0, yMax: 0, segmentIndex: null, authored: false };
@@ -129,8 +130,8 @@ export function useExperienceLifecycle({
     if (camera.matrixWorld.elements.some((v) => !Number.isFinite(v))) {
       console.error('[NaNGuard] camera matrixWorld non-finite', camera.matrixWorld.elements);
     }
-    if (typeof window !== 'undefined') {
-      window.__watershedCameraDiag = {
+    if (debugTapsEnabled()) {
+      setDebugTap('cameraDiag', {
         uuid: camera.uuid,
         pos: { x: camPos.x, y: camPos.y, z: camPos.z },
         quat: {
@@ -140,7 +141,7 @@ export function useExperienceLifecycle({
           w: camera.quaternion.w,
         },
         matrixWorld: Array.from(camera.matrixWorld.elements),
-      };
+      });
     }
   });
 
