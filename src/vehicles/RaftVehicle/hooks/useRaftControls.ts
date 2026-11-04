@@ -57,7 +57,8 @@ export interface UseRaftControlsParams {
   foamParticles: ParticlePool;
   shedParticles: ParticlePool;
   collisionState: { current: RaftCollisionState };
-  raftMaterialRef: { current: THREE.MeshStandardMaterial | null };
+  /** The hull material the wet tint drives and its dry colour (authored mesh or primitive). */
+  hullTintRef: { current: { material: THREE.MeshStandardMaterial; dryColor: THREE.Color } | null };
   shelfLaunchFiredRef: { current: boolean };
   shelfTriggerRef: { current: ShelfTrigger | null };
 }
@@ -142,18 +143,14 @@ function applyRaftSteering(
 }
 
 /** Darken the hull with how wet it is (submersion + spray at speed). */
-function tintWetHull(
-  p: UseRaftControlsParams,
-  body: RapierBody,
-  submergedRatio: number,
-  raftBaseColor: { current: THREE.Color },
-): void {
-  if (p.raftMaterialRef.current) {
+function tintWetHull(p: UseRaftControlsParams, body: RapierBody, submergedRatio: number): void {
+  const tint = p.hullTintRef.current;
+  if (tint) {
     const vel = body.linvel();
     const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
     const wetnessLevel = submergedRatio * 0.6 + (speed > 4 ? Math.min(0.25, (speed - 4) * 0.03) : 0);
     const darken = 1.0 - wetnessLevel * 0.35;
-    p.raftMaterialRef.current.color.copy(raftBaseColor.current).multiplyScalar(darken);
+    tint.material.color.copy(tint.dryColor).multiplyScalar(darken);
   }
 }
 
@@ -314,7 +311,6 @@ function stepRaftFrame(
   delta: number,
   timeRef: { current: number },
   shedTimer: { current: number },
-  raftBaseColor: { current: THREE.Color },
 ): void {
   const pos = body.translation();
 
@@ -353,7 +349,7 @@ function stepRaftFrame(
   runtime.applyPaddleForces(body, delta);
   applyForwardBias(p, body, delta);
   applyRaftSteering(p, runtime, body, delta);
-  tintWetHull(p, body, submergedRatio, raftBaseColor);
+  tintWetHull(p, body, submergedRatio);
 
   const { vel, speed } = runtime.updateCameraFromBody(body);
 
@@ -365,7 +361,6 @@ function stepRaftFrame(
 }
 
 export function useRaftControls(params: UseRaftControlsParams) {
-  const raftBaseColor = useRef(new THREE.Color('saddlebrown'));
   const shedTimer = useRef(0);
   const timeRef = useRef(0);
   const currentFov = useRef(75);
@@ -391,6 +386,6 @@ export function useRaftControls(params: UseRaftControlsParams) {
   useFrame((_state, delta) => {
     const runtime = runtimeRef.current;
     if (!runtime || !params.bodyRef.current) return;
-    stepRaftFrame(params, runtime, params.bodyRef.current, delta, timeRef, shedTimer, raftBaseColor);
+    stepRaftFrame(params, runtime, params.bodyRef.current, delta, timeRef, shedTimer);
   });
 }

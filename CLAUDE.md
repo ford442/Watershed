@@ -17,6 +17,8 @@ pnpm typecheck:test  # tsc over the tests too (tsconfig.test.json; tsconfig.json
 pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); no emcc needed — ships the committed WASM pair
 pnpm build:full    # build:wasm, then build — the deploy path (build_and_patch.py); needs the pinned emcc
 pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 3.1.56 (`bash scripts/emsdk-pinned.sh`)
+pnpm build:assets  # assets/src/<pack>/*.glb → public/packs/<pack>/ (meshopt + baked LODs + manifest); `pnpm build` runs it first
+pnpm check:assets  # CI: public/packs/ must be byte-identical to what assets/src/ builds to
 ```
 
 > Requires WebGL 2.0. The build targets `es2022` (`build.target` in `vite.config.ts`; syntax floor Chrome 94). The production renderer is WebGL2 + GLSL. `?material=tsl` opts into the
@@ -119,6 +121,7 @@ src/
 ├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
 │   └── core/SimCore.ts          # ★ The one fixed-step gameplay clock + system registry (#521 A); ticked by experience/SimCoreTick
+├── assets/                      # Authored packs (#536): packManifest (validator), AssetPack (loadPack), AssetRegistry (prop → pack), useAssetInstance
 ├── math/                        # scalar.ts (clamp/lerp/smoothstep), hash.ts (sinHash), random.ts (createRng: the one PRNG)
 ├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — the one canyon-profile source (#487; TS-only since ABI 16)
 ├── terrain/segmentMeshBuild.ts  # Segment meshes as buffers, three-free — built on the sim worker for treadmill appends (#487 B)
@@ -370,6 +373,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/terrain/placement.ts` | All 31 prop categories as a pure function of (tile, frame, layout spec, seed): `sampleTile` heights in the tile datum, seed per map + segment, `snap: false` keeps an authored set-piece's legacy height (#487 D) |
 | `src/rendering/sceneLightPool.tsx` | Fixed scene light count — segment content borrows pooled lights so a mount never recompiles every lit program (#487 B) |
 | `src/utils/lazyModule.ts` / `lazyComponent.ts` | Entry-chunk budget tools: a dynamic import with a sync `get()`, and `React.lazy` + `preload()`; `build-budget.json` gates entry and boot JS |
+| `src/assets/AssetRegistry.ts` / `scripts/build-assets.mjs` | Authored meshes: prop id → pack, primitive fallback until it lands; sources in `assets/src/`, output in `public/packs/` (`docs/reference/ASSET_PACKS.md`) |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |
 | `src/components/EnhancedSky.tsx` | Sky, fog biome transitions via the biome store (`useBiomeStore` / `useBiomeId`) |
 | `src/vehicles/RunnerVehicle/` | Movement, camera, jump (default vehicle) |

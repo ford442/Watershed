@@ -1,4 +1,8 @@
 [
+  "src/assets/AssetPack.ts",
+  "src/assets/AssetRegistry.ts",
+  "src/assets/packManifest.ts",
+  "src/assets/useAssetInstance.ts",
   "src/sim/SimFrame.ts",
   "src/sim/core/SimCore.ts",
   "src/sim/createSimWorkerProxy.ts",

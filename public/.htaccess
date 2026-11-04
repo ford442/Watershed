@@ -53,6 +53,10 @@
 # revalidate (an ETag round trip) instead of falling through to Apache's
 # Last-Modified heuristic, which could pin a stale texture for days. Three's Basis
 # transcoder is a hashed asset now (KTX2Loader's own import.meta.url), not public/basis/.
+#
+# Asset packs (#536): packs/<pack>/manifest.json revalidates like any json; each .glb is
+# fetched as <name>.glb?v=<stamp>, where the stamp is the pack's content hash written by
+# scripts/build-assets.mjs into that manifest — immutable when stamped, no-cache bare.
 <IfModule mod_headers.c>
   <FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css|wasm)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
@@ -60,10 +64,13 @@
   <FilesMatch "^(index\.html|BUILD_ID|watershed_native\..*)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
-  <FilesMatch "\.(ktx2|jpg|png|mp3|wav|json)$">
+  <FilesMatch "\.(ktx2|jpg|png|mp3|wav|json|glb)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   <If "%{REQUEST_URI} =~ m#/watershed_native\.(js|wasm)$# && %{QUERY_STRING} =~ /(^|&)v=[0-9a-f]{16}(&|$)/">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </If>
+  <If "%{REQUEST_URI} =~ m#/packs/[a-z][a-z0-9-]*/[^/]+\.glb$# && %{QUERY_STRING} =~ /(^|&)v=[0-9a-f]{16}(&|$)/">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </If>
 </IfModule>

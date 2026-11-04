@@ -97,6 +97,13 @@ jobs:
       - name: Instantiate committed watershed_native pair
         run: node emscripten/smoke_test.mjs
 
+      # #536 A: the asset twin of the WASM stamp diff. Rebuilds every pack in
+      # assets/src/ in memory (pinned gltf-transform + meshoptimizer) and fails
+      # if public/packs/ is not byte-identical: a source edited without
+      # `pnpm build:assets`, or a hand-edited .glb / manifest.json.
+      - name: Asset packs match their sources
+        run: pnpm check:assets
+
       # `tee` keeps the full vite log for the chunk guard below (#485 A): pipefail
       # makes a failed build still fail this step.
       - name: Build production bundle

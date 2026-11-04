@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, forwardRef } from 'react';
 import { useThree } from '@react-three/fiber';
-import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
+import { CuboidCollider, RigidBody, type RapierRigidBody } from '@react-three/rapier';
 import type { RapierBody } from '../physics/rapierTypes';
 import * as THREE from 'three';
 import { createCollisionTracker } from '../systems/vehicle/VehicleSystem';
@@ -29,6 +29,9 @@ import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
 import { setDebugTap } from '../debug/debugTaps';
+import { useAssetInstance } from '../assets/useAssetInstance';
+import { requestAsset } from '../assets/AssetRegistry';
+import { buildRaftHullPrimitive, RAFT_HULL_COLLIDERS } from './RaftVehicle/raftHull';
 
 /** Mirror the worker's post-step raft state onto the main-thread body. */
 function syncBodyFromWorkerState(body: RapierBody | null, workerState: WorkerRaftState | null) {
@@ -201,9 +204,19 @@ function useRaftWorkerDecision(): boolean {
   return useWorkerPhysics;
 }
 
+/** Start the authored hull's pack load (raftVehicleChunk calls it when this chunk lands). */
+export function prefetchRaftHull(): void {
+  requestAsset('raft.hull.default');
+}
+
 const RaftVehicle = forwardRef((props, forwardedRef) => {
   const bodyRef = useRef<RapierRigidBody>(null);
-  const raftMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  // Authored hull from the `core` pack once it lands; the primitive boxes until then (#536 A.3).
+  const hull = useAssetInstance('raft.hull.default', buildRaftHullPrimitive, { castShadow: true, receiveShadow: true });
+  const hullTintRef = useRef<{ material: THREE.MeshStandardMaterial; dryColor: THREE.Color } | null>(null);
+  useEffect(() => {
+    hullTintRef.current = hull.tintMaterial ? { material: hull.tintMaterial, dryColor: hull.dryColor } : null;
+  }, [hull]);
   const { camera } = useThree();
   // R3F's clock: the fixed sim clock under `frameloop="never"` (scripted / replay).
   const getR3fState = useThree((state) => state.get);
@@ -259,7 +272,7 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     foamParticles,
     shedParticles,
     collisionState,
-    raftMaterialRef,
+    hullTintRef,
     shelfLaunchFiredRef,
     shelfTriggerRef,
   });
@@ -275,21 +288,14 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
         angularDamping={2.5}
         position={PLAYER_SPAWN.position}
         userData={{ isPlayer: true }}
+        colliders={false}
       >
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH, WATER_PHYSICS.RAFT_HEIGHT, WATER_PHYSICS.RAFT_LENGTH]} />
-          <meshStandardMaterial
-            ref={raftMaterialRef}
-            color="saddlebrown"
-            roughness={0.6}
-            metalness={0.1}
-          />
-        </mesh>
-
-        <mesh position={[0, WATER_PHYSICS.RAFT_HEIGHT * 0.5 + 0.1, 0]}>
-          <boxGeometry args={[WATER_PHYSICS.RAFT_WIDTH * 0.8, 0.2, WATER_PHYSICS.RAFT_LENGTH * 0.8]} />
-          <meshStandardMaterial color="#443322" />
-        </mesh>
+        {/* The visual never feeds physics: colliders are explicit (raftHull.ts), so the
+            auto-collider pass is off and swapping primitive → authored moves nothing. */}
+        {RAFT_HULL_COLLIDERS.map((c, i) => (
+          <CuboidCollider key={i} args={[...c.halfExtents]} position={[...c.position]} />
+        ))}
+        <primitive object={hull.object} />
 
         {/* Bounced-light catch from the water surface — gives the hull a
             believable cool wet-rim glow along the waterline. */}

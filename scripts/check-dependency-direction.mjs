@@ -8,6 +8,8 @@
  *   - systems/, physics/ and sim/ hold the game's state and simulation —
  *     no components/ or vehicles/ (a vehicle tunable they read lives in
  *     constants/, a React host they mount lives in experience/);
+ *   - assets/ loads authored packs for any consumer (#536) — a prop's primitive
+ *     fallback is passed in by the vehicle / component that owns it, never imported;
  *   - math/ is a leaf: it imports nothing from src/;
  *   - constants/ imports only constants/ and configs/.
  *
@@ -28,6 +30,7 @@ const RULES = [
   { from: 'systems', banned: ['components', 'vehicles'] },
   { from: 'physics', banned: ['components', 'vehicles', 'experience'] },
   { from: 'sim', banned: ['components', 'vehicles', 'experience'] },
+  { from: 'assets', banned: ['components', 'vehicles', 'experience', 'ui'] },
   { from: 'math', onlyWithin: ['math'] },
   { from: 'constants', onlyWithin: ['constants', 'configs'] },
 ];
