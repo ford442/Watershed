@@ -17,7 +17,7 @@
  *     frame-time numbers here are NOT a proxy for the 60 FPS target on real
  *     hardware. They are reported for the record and for before/after deltas
  *     under an identical harness, nothing more.
- *   - Physics step duration: `window.__watershedPhysicsPerf`, same source as
+ *   - Physics step duration: `window.__watershed?.physicsPerf`, same source as
  *     verification/physics_profile.mjs.
  *
  * Same teleport caveat as physics_profile.mjs: `teleportToSegment` repositions
@@ -221,7 +221,7 @@ async function profileCase(kase) {
 
     const frames = await page.evaluate(() => window.__allocProbe.frames.slice(1));
     const heapAfter = await page.evaluate(() => performance.memory?.usedJSHeapSize ?? null);
-    const physics = await page.evaluate(() => window.__watershedPhysicsPerf ?? null);
+    const physics = await page.evaluate(() => window.__watershed?.physicsPerf ?? null);
     const metrics = await client.send('Performance.getMetrics');
     const metricMap = Object.fromEntries(metrics.metrics.map((m) => [m.name, m.value]));
 

@@ -135,7 +135,7 @@ for (const shot of SHOTS) {
   const outPath = path.join(OUT, shot.file);
   await page.screenshot({ path: outPath, type: 'png' });
   const meta = await page.evaluate(() => {
-    const d = window.__watershedPhysicsDebug || {};
+    const d = window.__watershed?.physicsDebug || {};
     return {
       seg: d.currentSegmentIndex ?? null,
       y: d.position?.y ?? null,

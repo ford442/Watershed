@@ -99,7 +99,7 @@ export function createSimWorkerCore(
   const live =(id: number): SweSim | null => (sim && id === gridId ? sim : null);
 
   const applySurface = (grid: SweSim, surface: SurfaceOps) => {
-    for (let i = 0; i + 1 < surface.length; i += 2) grid.addSurface(surface[i], surface[i + 1]);
+    for (let i = 0; i + 1 < surface.length; i += 2) grid.addSurface(surface[i]!, surface[i + 1]!);
   };
 
   const routedAt = (route: SimRoute | undefined) => {

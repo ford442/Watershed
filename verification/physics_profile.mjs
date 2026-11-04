@@ -5,7 +5,7 @@
  *
  * Boots the app headlessly (same puppeteer/SwiftShader harness as
  * verification/visual_smoke.mjs), starts a run, and reads the
- * `window.__watershedPhysicsPerf` snapshot that PhysicsPerfMonitor writes
+ * `window.__watershed?.physicsPerf` snapshot that PhysicsPerfMonitor writes
  * every 60 physics steps.
  *
  * Caveat: `window.__watershedScreenshot.teleportToSegment(id)` (used to jump
@@ -113,12 +113,12 @@ async function profileCase(kase) {
     // headless SwiftShader render rate varies a lot run to run.
     let gotSnapshot = false;
     for (let i = 0; i < 24; i += 1) {
-      gotSnapshot = await page.evaluate(() => !!window.__watershedPhysicsPerf);
+      gotSnapshot = await page.evaluate(() => !!window.__watershed?.physicsPerf);
       if (gotSnapshot) break;
       await sleep(5_000);
     }
 
-    const snapshot = await page.evaluate(() => window.__watershedPhysicsPerf ?? null);
+    const snapshot = await page.evaluate(() => window.__watershed?.physicsPerf ?? null);
     const bodyText = await page.evaluate(() => document.body.innerText || '');
     const crashed = /Maximum update depth|Application Error/i.test(bodyText);
 

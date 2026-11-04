@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { formatValidationErrors, type ValidationResult } from '../utils/validationReport';
-import { DecorationPlacement } from '../systems/map/MapSystem';
+import type { DecorationPlacement, LevelData, LevelSegment, LevelSpawns } from '../systems/map/MapSystem';
 
 // Level state types
 export type LevelLoadingState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -24,7 +24,7 @@ export interface LevelMetadata {
 }
 
 export interface TrackConfig {
-  waypoints: [number, number, number][];
+  waypoints: number[][];
   segmentLength: number;
   totalSegments: number;
   width: number;
@@ -91,25 +91,13 @@ export interface SegmentConfig {
   };
 }
 
-export interface SpawnConfig {
-  start: {
-    position: [number, number, number];
-    rotation?: [number, number, number];
-    velocity?: [number, number, number];
-  };
-  checkpoints?: Array<{
-    segment: number;
-    position: [number, number, number];
-    radius?: number;
-  }>;
-}
-
 export interface NormalizedLevelState {
   metadata: LevelMetadata;
   track: TrackConfig;
   biome: BiomeConfig;
-  segments: SegmentConfig[];
-  spawns: SpawnConfig;
+  /** As authored (level.schema.json); `initialSegments[].config` is the defaulted view. */
+  segments: LevelSegment[];
+  spawns: LevelSpawns;
   // Runtime data
   curve: THREE.CatmullRomCurve3;
   initialSegments: Array<{
@@ -123,16 +111,17 @@ export interface NormalizedLevelState {
 
 export interface LevelState {
   loadingState: LevelLoadingState;
-  levelData: any | null;
+  /** The document as loaded — `unknown` until it validates (then `normalizedState` holds it). */
+  levelData: unknown;
   normalizedState: NormalizedLevelState | null;
-  validationResult: ValidationResult | null;
+  validationResult: ValidationResult<LevelData> | null;
   error: string | null;
   currentLevelId: string | null;
 }
 
 // Cache for loaded levels
 interface LevelCacheEntry {
-  data: any;
+  data: LevelData;
   normalized: NormalizedLevelState;
   timestamp: number;
 }
@@ -143,14 +132,14 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 export interface UseLevelReturn {
   // State
   loadingState: LevelLoadingState;
-  levelData: any | null;
+  levelData: unknown;
   normalizedState: NormalizedLevelState | null;
-  validationResult: ValidationResult | null;
+  validationResult: ValidationResult<LevelData> | null;
   error: string | null;
   currentLevelId: string | null;
 
   // Actions
-  loadFromJSON: (json: any, levelId?: string) => Promise<boolean>;
+  loadFromJSON: (json: unknown, levelId?: string) => Promise<boolean>;
   loadFromURL: (url: string) => Promise<boolean>;
   loadFromFile: (file: File) => Promise<boolean>;
   clearLevel: () => void;
@@ -194,7 +183,7 @@ export function useLevel(): UseLevelReturn {
   /**
    * Normalize level data into runtime state
    */
-  const normalizeLevelData = useCallback((data: any): NormalizedLevelState => {
+  const normalizeLevelData = useCallback((data: LevelData): NormalizedLevelState => {
     // Create CatmullRom curve from waypoints
     const waypoints = data.world.track.waypoints.map(
       (p: number[]) => new THREE.Vector3(p[0], p[1], p[2])
@@ -207,7 +196,7 @@ export function useLevel(): UseLevelReturn {
     );
 
     // Build initial segments from level data
-    const initialSegments = data.segments.map((seg: any) => {
+    const initialSegments: NormalizedLevelState['initialSegments'] = data.segments.map((seg) => {
       // Calculate points for this segment along the curve
       const tStart = seg.index / data.world.track.totalSegments;
       const tEnd = (seg.index + 1) / data.world.track.totalSegments;
@@ -249,6 +238,7 @@ export function useLevel(): UseLevelReturn {
         points,
         config: {
           index: nextIdx,
+          type: 'normal',
           difficulty: 0.3,
           meanderStrength: 1.2,
           verticalBias: -0.5,
@@ -305,7 +295,7 @@ export function useLevel(): UseLevelReturn {
   /**
    * Load level from JSON object
    */
-  const loadFromJSON = useCallback(async (json: any, levelId?: string): Promise<boolean> => {
+  const loadFromJSON = useCallback(async (json: unknown, levelId?: string): Promise<boolean> => {
     setState(prev => ({ ...prev, loadingState: 'loading', error: null }));
 
     try {
@@ -318,7 +308,7 @@ export function useLevel(): UseLevelReturn {
           loadingState: 'loaded',
           levelData: cached.data,
           normalizedState: cached.normalized,
-          validationResult: { valid: true, errors: [], warnings: [] },
+          validationResult: { valid: true, errors: [], warnings: [], data: cached.data },
           error: null,
           currentLevelId: levelId || cacheKey,
         });
@@ -343,11 +333,11 @@ export function useLevel(): UseLevelReturn {
       }
 
       // Normalize
-      const normalizedState = normalizeLevelData(json);
+      const normalizedState = normalizeLevelData(validationResult.data);
 
       // Cache
       levelCache.set(cacheKey, {
-        data: json,
+        data: validationResult.data,
         normalized: normalizedState,
         timestamp: Date.now(),
       });
@@ -390,7 +380,7 @@ export function useLevel(): UseLevelReturn {
           loadingState: 'loaded',
           levelData: cached.data,
           normalizedState: cached.normalized,
-          validationResult: { valid: true, errors: [], warnings: [] },
+          validationResult: { valid: true, errors: [], warnings: [], data: cached.data },
           error: null,
           currentLevelId: url,
         });

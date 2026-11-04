@@ -9,7 +9,8 @@
 import * as THREE from 'three';
 import type { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { WeatherType } from '../../constants/weather';
-import { formatValidationErrors, type ValidationResult } from '../../utils/validationReport';
+import type { LevelSegment, LevelSpawns, LevelWorld } from '../map/MapSystem.types';
+import { formatValidationErrors } from '../../utils/validationReport';
 import { REACH_API_BASE } from '../../constants/game';
 import { AssetCache, type FlowMapData } from './reachAssetCache';
 
@@ -45,6 +46,11 @@ export interface ReachTransition {
   nextReachId?: string;
 }
 
+/** A reach segment: a level segment plus the runtime gap flag a forecast may set. */
+export interface ReachSegment extends LevelSegment {
+  washedOutGap?: boolean;
+}
+
 export interface ReachManifest {
   reachId: string;
   metadata: {
@@ -56,12 +62,12 @@ export interface ReachManifest {
     version: string;
     tags?: string[];
   };
-  world: any;
-  segments: any[];
-  spawns: any;
+  world: LevelWorld;
+  segments: ReachSegment[];
+  spawns: LevelSpawns;
   requiredAssets: ReachRequiredAssets;
   transition: ReachTransition;
-  decorationPools?: any;
+  decorationPools?: Record<string, string[]>;
   weather?: { type: WeatherType; intensity: number };
 }
 
@@ -109,7 +115,7 @@ audioLoader.crossOrigin = 'anonymous';
 // =============================================================================
 
 function disposeMaterialTextures(material: THREE.Material) {
-  const textureKeys: string[] = [
+  const textureKeys: readonly string[] = [
     'map',
     'lightMap',
     'aoMap',
@@ -137,8 +143,9 @@ function disposeMaterialTextures(material: THREE.Material) {
   ];
 
   for (const key of textureKeys) {
-    const tex = (material as any)[key];
-    if (tex && tex.isTexture) {
+    // Keys absent on this material class read as undefined.
+    const tex: unknown = material[key as keyof THREE.Material];
+    if (tex instanceof THREE.Texture) {
       tex.dispose();
     }
   }
@@ -408,17 +415,17 @@ export const ReachStreamer = {
         throw new Error(`Manifest fetch failed: ${response.status} ${response.statusText}`);
       }
 
-      const rawManifest = await response.json();
+      const rawManifest: unknown = await response.json();
 
       // Validate manifest
       // Loaded on demand: the precompiled schema validator stays out of the entry chunk (#485).
       const { validateReach } = await import('../../utils/reachValidator');
-      const validation: ValidationResult = validateReach(rawManifest);
+      const validation = validateReach(rawManifest);
       if (!validation.valid) {
         throw new Error(`Invalid Reach manifest:\n${formatValidationErrors(validation)}`);
       }
 
-      const manifest = rawManifest as ReachManifest;
+      const manifest = validation.data;
 
       // Parse required assets
       const textures = manifest.requiredAssets?.textures || [];

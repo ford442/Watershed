@@ -43,13 +43,14 @@ function readSample(samples: Float32Array, index: number, out: GhostSample): Gho
   const maxIndex = samples.length / GHOST_FLOATS_PER_SAMPLE - 1;
   const clamped = Math.max(0, Math.min(index, maxIndex));
   const offset = clamped * GHOST_FLOATS_PER_SAMPLE;
-  out.px = samples[offset];
-  out.py = samples[offset + 1];
-  out.pz = samples[offset + 2];
-  out.qx = samples[offset + 3];
-  out.qy = samples[offset + 4];
-  out.qz = samples[offset + 5];
-  out.qw = samples[offset + 6];
+  // In range for any non-empty track (index clamped above); an empty one reads undefined, as it always has.
+  out.px = samples[offset]!;
+  out.py = samples[offset + 1]!;
+  out.pz = samples[offset + 2]!;
+  out.qx = samples[offset + 3]!;
+  out.qy = samples[offset + 4]!;
+  out.qz = samples[offset + 5]!;
+  out.qw = samples[offset + 6]!;
   return out;
 }
 

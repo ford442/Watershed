@@ -39,7 +39,7 @@ async function boot() {
   });
   await page.waitForFunction(() => !!window.__watershedScreenshot, { timeout: 15000 }).catch(() => {});
   await sleep(10000);
-  const y = await page.evaluate(() => window.__watershedPhysicsDebug?.position?.y);
+  const y = await page.evaluate(() => window.__watershed?.physicsDebug?.position?.y);
   const healthy = typeof y === 'number' && Number.isFinite(y) && Math.abs(y) < 100;
   await browser.close();
   return { healthy, y, console_, failed };

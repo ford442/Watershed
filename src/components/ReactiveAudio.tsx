@@ -27,10 +27,11 @@ import { isGlacialBiome } from '../configs/TrackBiomes';
 import SpeedWindAudio from './SpeedWindAudio';
 import type { ReachManifest } from '../systems/reach/ReachStreamer';
 import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
+import type { VehicleRigidBodyRef } from '../experience/types';
 
 interface ReactiveAudioProps {
   /** Vehicle rigid body ref */
-  targetRef: React.RefObject<any>;
+  targetRef: React.RefObject<VehicleRigidBodyRef | null>;
   /** Reach identifier (for AssetCache lookup) */
   reachId?: string;
   /** Reach manifest (for transition segment info) */

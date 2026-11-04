@@ -457,9 +457,10 @@ Materials need textures, geometries need valid paths. Always:
 `pnpm typecheck` gates two layers:
 
 1. **`tsc -p tsconfig.typecheck.json`** — all `.ts` / `.tsx` under `src/` (no `.jsx` exclusion — the whole `src/` tree is typed).
-2. **`scripts/check-typecheck-surface.mjs`** — the untyped allowlist (`scripts/untyped-allowlist.json`) must match every remaining `.js` / `.jsx` file exactly; it is currently empty.
+2. **`scripts/check-strict-buffers.mjs`** — `noUncheckedIndexedAccess` over the files listed in `scripts/strict-buffers.json` (the buffer modules under `src/terrain`, `src/sim`, `src/systems/pools`, `src/systems/ghost`); the list only grows.
+3. **`scripts/check-typecheck-surface.mjs`** — `src/` is TypeScript only (`tsconfig.json` has no `allowJs`); any `.js` / `.jsx` / `.mjs` / `.cjs` there fails the gate.
 
-If a new `.js` / `.jsx` file is ever added under `src/`, either type it as `.ts` / `.tsx` in the same PR or add it to the allowlist deliberately — do not let it merge silently.
+If a new untyped file is ever needed under `src/`, type it as `.ts` / `.tsx` in the same PR (the generated validators are `.ts` with a `// @ts-nocheck` body and a typed export).
 
 Frame-hot hosts and registry load validation are the highest-priority typed surfaces; see `AGENTS.md` for the current inventory table.
 

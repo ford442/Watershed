@@ -8,14 +8,15 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Html } from '@react-three/drei';
-import { useLevel, NormalizedLevelState } from '../hooks/useLevel';
+import { useLevel, type NormalizedLevelState } from '../hooks/useLevel';
 import TrackManager from '../components/TrackManager';
 import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoadStatus';
+import type { VehicleRigidBodyRef } from './types';
 
 // Props interface
 interface LevelLoaderProps {
   /** Level data as JSON object */
-  levelData?: any;
+  levelData?: unknown;
   /** URL to load level from */
   levelUrl?: string;
   /** Cache identity for `levelData` (a river's content hash); without it two levels can share a cache slot. */
@@ -31,7 +32,7 @@ interface LevelLoaderProps {
   /** Children components (will be rendered after level loads) */
   children?: React.ReactNode;
   /** Raft/player reference for TrackManager */
-  raftRef?: React.RefObject<any>;
+  raftRef?: React.RefObject<VehicleRigidBodyRef | null>;
   /** Biome change callback */
   onBiomeChange?: (biome: string) => void;
 }
@@ -56,7 +57,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
   const {
     loadingState,
     normalizedState,
-    levelData: loadedLevelData,
+    validationResult,
     error,
     loadFromJSON,
     loadFromURL,
@@ -136,7 +137,7 @@ const LevelLoader: React.FC<LevelLoaderProps> = ({
         <TrackManager 
           raftRef={raftRef}
           onBiomeChange={onBiomeChange}
-          mapData={loadedLevelData}
+          mapData={validationResult?.valid ? validationResult.data : null}
         />
         {children}
       </>

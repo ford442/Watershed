@@ -15,13 +15,14 @@ import { SegmentInspector } from './SegmentInspector';
 import { BiomeSelector } from './BiomeSelector';
 import { ErrorPanel } from './ErrorPanel';
 import { PathVisualizer } from './PathVisualizer';
-import { useLevelEditor, EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import { useLevelEditor, type EditorSegmentConfig } from '../../hooks/useLevelEditor';
 import {
   createGameRenderer,
   deriveEditorContextOptions,
   shadowModeToCanvasProp,
 } from '../../rendering';
 import { validateEditorLevel } from '../../utils/levelEditorValidator';
+import type { LevelData } from '../../systems/map/MapSystem.types';
 
 /**
  * The editor Canvas honours the same renderer contract as the game Canvas
@@ -34,10 +35,11 @@ import { validateEditorLevel } from '../../utils/levelEditorValidator';
 const EDITOR_CONTEXT_OPTIONS = deriveEditorContextOptions();
 
 interface LevelEditorProps {
-  initialLevelData?: any;
-  onSave?: (levelData: any) => void;
-  onPlay?: (levelData: any) => void;
-  onExport?: (levelData: any) => void;
+  initialLevelData?: LevelData;
+  onSave?: () => void;
+  onPlay?: () => void;
+  /** Receives the exported level JSON text. */
+  onExport?: (json: string) => void;
 }
 
 // Toolbar component
@@ -188,8 +190,10 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
       if (file) {
         try {
           const text = await file.text();
-          const json = JSON.parse(text);
-          loadFromJSON(json);
+          // A draft need not satisfy level.schema.json yet (the error panel says why);
+          // loadFromJSON reads it defensively and logs a document it cannot read.
+          const json: unknown = JSON.parse(text);
+          loadFromJSON(json as LevelData);
         } catch (err) {
           console.error('[LevelEditor] Failed to parse file:', err);
         }
@@ -220,7 +224,7 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
   // App starts as a player river). A draft that does not validate yet says why.
   const handlePlay = useCallback(() => {
     if (onPlay) {
-      onPlay(null);
+      onPlay();
       return;
     }
     let id: string;
@@ -275,7 +279,7 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
     }}>
       {/* Toolbar */}
       <Toolbar
-        onSave={() => onSave?.(null)}
+        onSave={() => onSave?.()}
         onPlay={handlePlay}
         onExport={handleExport}
         onLoadFile={handleLoadFile}
@@ -515,7 +519,7 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
 };
 
 // Create default level template
-function createDefaultLevel(): any {
+function createDefaultLevel(): LevelData {
   return {
     metadata: {
       name: 'Untitled Level',

@@ -7,17 +7,16 @@
 import React, { useEffect, useState } from 'react';
 import meadowToWaterfall from '../maps/meander_to_waterfall.json';
 import { queryFlags } from '../config/queryFlags';
+import type { LevelData } from '../systems/map/MapSystem.types';
 
 // Evaluated at module load, so isEditorMode is a constant for the page's life.
 export const isEditorMode =
-  typeof import.meta !== 'undefined' &&
-  (import.meta as any).env?.DEV === true &&
-  queryFlags().editor;
+  import.meta.env.DEV && queryFlags().editor;
 
 export function EditorHarness() {
   // Dynamic import for editor — keeps LevelEditor out of the production bundle.
   const [EditorComponent, setEditorComponent] =
-    useState<React.ComponentType<{ initialLevelData?: any }> | null>(null);
+    useState<React.ComponentType<{ initialLevelData?: LevelData }> | null>(null);
 
   useEffect(() => {
     import('../components/LevelEditor')      // resolves via index.ts barrel
@@ -25,7 +24,7 @@ export function EditorHarness() {
       .catch((err) => console.error('[App] Failed to load LevelEditor:', err));
   }, []);
 
-  if (EditorComponent) return <EditorComponent initialLevelData={meadowToWaterfall} />;
+  if (EditorComponent) return <EditorComponent initialLevelData={meadowToWaterfall as LevelData} />;
   return (
     <div style={{
       width: '100vw', height: '100vh',

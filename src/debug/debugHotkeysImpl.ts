@@ -10,13 +10,12 @@
  * is the `?debug=1` query. The DebugPanel carries the same toggles for the
  * mouse.
  */
+import { getDebugTap } from './debugTaps';
 
 export interface DebugHotkeyActions {
   togglePhysicsDebug: () => void;
   toggleWireframe: () => void;
 }
-
-type DebugGlobals = { __watershedPhysicsDebug?: unknown; __watershedPhysicsPerf?: unknown };
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -36,7 +35,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
 /** Apply one key event. Exported for the unit test. */
 export function applyDebugHotkey(e: Pick<KeyboardEvent, 'code' | 'repeat' | 'target'>, actions: DebugHotkeyActions): boolean {
   if (e.repeat || isTypingTarget(e.target)) return false;
-  const globals = window as unknown as DebugGlobals;
   switch (e.code) {
     case 'KeyF':
       actions.togglePhysicsDebug();
@@ -45,10 +43,10 @@ export function applyDebugHotkey(e: Pick<KeyboardEvent, 'code' | 'repeat' | 'tar
       actions.toggleWireframe();
       return true;
     case 'KeyP':
-      if (globals.__watershedPhysicsDebug) console.info('[PhysicsDebug] Snapshot', globals.__watershedPhysicsDebug);
+      if (getDebugTap('physicsDebug')) console.info('[PhysicsDebug] Snapshot', getDebugTap('physicsDebug'));
       return true;
     case 'KeyO':
-      if (globals.__watershedPhysicsPerf) console.info('[PhysicsPerf] Snapshot', globals.__watershedPhysicsPerf);
+      if (getDebugTap('physicsPerf')) console.info('[PhysicsPerf] Snapshot', getDebugTap('physicsPerf'));
       return true;
     default:
       return false;

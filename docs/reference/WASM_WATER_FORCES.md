@@ -53,7 +53,7 @@ For a visible force scene, run the app with:
 ?wasmWaterTest=1&no-pointer-lock=1
 ```
 
-This replaces the normal player vehicle with `WasmWaterForceTest`, a simple Rapier raft that receives one-sample `computeWaterForcesBatch` impulses every frame. The browser exposes the latest sample at `window.__watershedWasmWaterTest`.
+This replaces the normal player vehicle with `WasmWaterForceTest`, a simple Rapier raft that receives one-sample `computeWaterForcesBatch` impulses every frame. The browser exposes the latest sample at `window.__watershed.wasmWaterTest`.
 
 ## C++ Interface
 

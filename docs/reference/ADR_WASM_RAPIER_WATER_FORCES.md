@@ -171,7 +171,7 @@ This mounts `WasmWaterForceTest`:
 - Rapier owns the dynamic raft body.
 - Fixed Rapier colliders form canyon walls and a midstream obstacle.
 - C++ `calculateWaterForce(...)` computes the per-frame water impulse.
-- The scene writes the latest state to `window.__watershedWasmWaterTest`.
+- The scene writes the latest state to `window.__watershed.wasmWaterTest`.
 
 The POC is intentionally isolated behind a URL flag and does not replace the normal raft controller.
 
@@ -205,7 +205,7 @@ single-threaded build stays the shipping artefact.
 
 Diagnostics: the DebugPanel (`?debug=1`) shows worker state and why, the active force path
 (`wasm` / `fallback`), the last force-batch cost in µs, and the active SWE grid. Development
-builds also expose `window.__watershedPhysicsWorker`.
+builds also expose `window.__watershed.physicsWorker`.
 
 ### SWE quality budgets
 

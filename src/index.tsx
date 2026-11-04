@@ -1,6 +1,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { queryFlags } from './config/queryFlags';
+import { isGpuLossDebugEnabled } from './rendering/gpuLossRecovery';
+
+// `window.__watershed` (the harness's diagnostics object) is a lazy chunk behind its flags (#535 C).
+if (queryFlags().debugGlobals || queryFlags().wasmWaterTest || isGpuLossDebugEnabled()) {
+  import('./harness/debugApi').then(
+    (m) => m.installDebugApi(),
+    (error: unknown) => console.warn('[index] debug API chunk failed to load', error),
+  );
+}
 
 // Global error handlers to catch silent failures
 window.onerror = (message, source, lineno, colno, error) => {

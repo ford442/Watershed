@@ -4,7 +4,8 @@
     "src/**/*.test.{ts,tsx}",
     "src/**/*.perf.test.{ts,tsx}",
     "src/debug/postParity.ts",
-    "src/systems/water/sweParity.ts"
+    "src/systems/water/sweParity.ts",
+    "scripts/generate-sounds.mjs"
   ],
   "project": [
     "src/**/*.{ts,tsx}"
@@ -17,9 +18,6 @@
     "cmake",
     "emscripten/build-host/watershed_host_smoke",
     "emscripten/build-host-asan/watershed_host_smoke"
-  ],
-  "ignoreDependencies": [
-    "@breezystack/lamejs"
   ],
   "ignoreIssues": {
     "src/materials/**/*NodeMaterial*.ts": [

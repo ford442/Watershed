@@ -2,7 +2,8 @@
  * Level Validator Tests
  */
 
-import { validateLevel, validateDecorationCount, formatValidationErrors, ValidationResult } from './levelValidator';
+import { validateLevel, validateDecorationCount, formatValidationErrors } from './levelValidator';
+import type { ValidationReport } from './validationReport';
 
 // Test helper
 const createValidLevel = () => ({
@@ -245,12 +246,12 @@ describe('Level Validator', () => {
 
   describe('Format Helpers', () => {
     it('should format valid result', () => {
-      const result: ValidationResult = { valid: true, errors: [], warnings: [] };
+      const result: ValidationReport = { valid: true, errors: [], warnings: [] };
       expect(formatValidationErrors(result)).toBe('Valid!');
     });
 
     it('should format result with warnings', () => {
-      const result: ValidationResult = {
+      const result: ValidationReport = {
         valid: true,
         errors: [],
         warnings: [{ field: 'test', error: 'Test warning' }],
@@ -259,7 +260,7 @@ describe('Level Validator', () => {
     });
 
     it('should format result with errors', () => {
-      const result: ValidationResult = {
+      const result: ValidationReport = {
         valid: false,
         errors: [
           { field: 'field1', error: 'Error 1', suggestion: 'Fix 1' },

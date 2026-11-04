@@ -471,7 +471,7 @@ async function attemptTopdown(shot) {
     await page.evaluate(() => document.querySelector('.start-menu-start-btn').click());
 
     await page.waitForFunction(
-      () => !!window.__watershedScreenshot || !!window.__watershedPhysicsDebug,
+      () => !!window.__watershedScreenshot || !!window.__watershed?.physicsDebug,
       { timeout: 20_000 },
     );
 

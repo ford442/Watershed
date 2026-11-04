@@ -95,7 +95,7 @@ export function createWeatherParticleMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.weather) {
     try {
-      return nodes.weather.createWeatherParticleNodeMaterial(init) as unknown as THREE.Material;
+      return nodes.weather.createWeatherParticleNodeMaterial(init);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;

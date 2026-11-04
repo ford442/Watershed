@@ -354,7 +354,7 @@ node verification/webgl_screenshots.mjs              # corrupt boot → Maximum 
 | `HEALTHY` | Start registered, finite Y within ±100, seg at prelude |
 | `REAL_blowup` | Start registered, position populated, but Y huge/NaN/null or seg runaway — real F-8 |
 | `FLAKE_menu_still_up` | Start click did not dismiss menu — harness timing flake |
-| `init_no_physics_step` | Menu gone but `__watershedPhysicsDebug.position` never populated — init stall |
+| `init_no_physics_step` | Menu gone but `__watershed.physicsDebug.position` never populated — init stall |
 
 Run serially (one trial at a time) for the least noisy headless signal. Kill stray Chrome after a
 session: `pkill -f 'google-chrome.*swiftshader'`.

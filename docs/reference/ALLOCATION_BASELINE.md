@@ -29,7 +29,7 @@ ALLOC_SETTLE_MS=45000 ALLOC_SAMPLE_MS=60000 \
   instancing and shader compilation are not counted as per-frame cost.
 - **GC**: `MajorGC` / `MinorGC` complete events from the v8 trace.
 - **Frame time / heap / physics step**: in-page rAF probe,
-  `Performance.getMetrics`, and `window.__watershedPhysicsPerf`.
+  `Performance.getMetrics`, and `window.__watershed.physicsPerf`.
 
 ### Read the frame-time column with care
 
@@ -285,7 +285,7 @@ each ray hit inside its WASM binding; that is outside this code.
 Also on the frame path: `ChunkManager.update` / `detectBiome` refill reused
 arrays and read cached z spans instead of `map().filter()` and two
 `getPoint()` vectors; `WaterForceSystem` publishes
-`window.__watershedWaterForceSystem` only on a debug page; `SimCoreTick`,
+`window.__watershed.waterForce` only on a debug page; `SimCoreTick`,
 `TrackManager` and the lifecycle OOB check resolve the envelope into a reused
 object; `SplashSystem` spawns from one scratch vector. ESLint now makes
 `@react-three/no-new-in-loop` / `no-clone-in-loop` **errors** in `src/sim`,

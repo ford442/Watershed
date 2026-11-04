@@ -13,8 +13,8 @@ import { useFrame } from '@react-three/fiber';
 import TrackManager from '../components/TrackManager';
 import ReactiveAudio from '../components/ReactiveAudio';
 import WeatherSystem from '../components/WeatherSystem';
-import { ReachStreamer, ReachManifest } from '../systems/reach/ReachStreamer';
-import { normalizeReachManifest, NormalizedSegment } from '../systems/reach/ReachNormalizer';
+import { ReachStreamer, type ReachManifest } from '../systems/reach/ReachStreamer';
+import { normalizeReachManifest, type NormalizedSegment } from '../systems/reach/ReachNormalizer';
 import { type BiomeId, normalizeBiomeId } from '../configs/biomes';
 import { samplesToForecastByIndex } from '../systems/map/flowForecast';
 import { FLOW_FORECAST_STATES } from '../constants/game';
@@ -24,10 +24,11 @@ import { saveJourneyCheckpoint } from '../systems/journey/runSession';
 import { setReachAmbientWeather } from '../systems/weather/WeatherDirectorTick';
 import { useGameStore } from '../systems/GameState';
 import { useBiomeSetters } from '../systems/biome/BiomeSystem';
+import type { VehicleRigidBodyRef } from './types';
 
 interface ReachManagerProps {
   /** Player / vehicle rigid body ref */
-  playerRef: React.RefObject<any>;
+  playerRef: React.RefObject<VehicleRigidBodyRef | null>;
   /** Biome change callback */
   onBiomeChange?: (biome: BiomeId) => void;
   /** Forecast samples for water flow override */
@@ -232,10 +233,7 @@ export default function ReachManager({
     if (!manifest || !reachSegments || reachSegments.length === 0) return;
     if (!playerRef.current || handoffInProgressRef.current) return;
 
-    const playerPos = playerRef.current.translation
-      ? playerRef.current.translation()
-      : playerRef.current.position;
-    if (!playerPos) return;
+    const playerPos = playerRef.current.translation();
 
     const transitionIndex = manifest.transition.segmentIndex;
     const transitionSegment = reachSegments[transitionIndex];

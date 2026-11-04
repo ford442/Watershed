@@ -100,6 +100,7 @@ import { WaterForceSystem } from './WaterForceSystem';
 import { useGameStore } from '../GameState';
 import { publishActiveGameplayProfile, resetActiveGameplayProfileForTests } from '../gameplay/activeGameplayProfile';
 import { gameplayProfileForBiome } from '../gameplay/gameplayProfile';
+import { getDebugTap } from '../../debug/debugTaps';
 
 /** Heap-backed stand-in for the native module. `step` raises η at one cell. */
 function stubModule(stepMarker: number) {
@@ -243,7 +244,7 @@ function debris() {
   };
 }
 
-// The component publishes its readout (window.__watershedWaterForceSystem),
+// The component publishes its readout (the `waterForce` debug tap),
 // which these tests observe, only on a debug / harness page (#521 D).
 beforeAll(() => {
   window.history.replaceState(null, '', '/?debug=1');
@@ -305,7 +306,7 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(inWorker.routedEdgeState).toHaveBeenCalled();
     expect(inWorker.stepShallowWaterInflow).toHaveBeenCalled();
     expect(inWorker.computeWaterForcesBatch).toHaveBeenCalled();
-    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('sim-worker');
+    expect(getDebugTap('waterForce')?.forcesIn).toBe('sim-worker');
     unmount();
   });
 
@@ -395,7 +396,7 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     expect(main.stepShallowWater.mock.calls.length + main.stepShallowWaterInflow.mock.calls.length).toBeGreaterThan(0);
     // The main module steps the field and routes the edge; forces are the TS
     // mirror (#467: forces.cpp runs only in the sim worker).
-    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
+    expect(getDebugTap('waterForce')?.forcesIn).toBe('ts-mirror');
     expect(main.routeReachSteady).toHaveBeenCalled();
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
     // The main module loads only once the worker is known to be unavailable.
@@ -421,7 +422,7 @@ describe('WaterForceSystem on the wasm-worker backend', () => {
     frame();
     expect(main.stepShallowWater).not.toHaveBeenCalled();
     // Forces fail open to the TS math on this thread, not to the main module.
-    expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
+    expect(getDebugTap('waterForce')?.forcesIn).toBe('ts-mirror');
     expect(getPhysicsWorkerTickParams().simFlow).toBe(false);
     // The worker's death does not start a second module here either.
     expect(getWasm).not.toHaveBeenCalled();
@@ -442,7 +443,7 @@ describe('WaterForceSystem on the wgsl backend', () => {
 
       expect(getWasm).not.toHaveBeenCalled();
       expect(getSimWorkerProxy).not.toHaveBeenCalled();
-      expect((window as any).__watershedWaterForceSystem.forcesIn).toBe('ts-mirror');
+      expect(getDebugTap('waterForce')?.forcesIn).toBe('ts-mirror');
       expect(info).toHaveBeenCalledWith(expect.stringContaining('no WASM module this session'));
       unmount();
     } finally {

@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { getDebugTap } from '../debug/debugTaps';
+import type { VehicleRigidBodyRef } from '../experience/types';
 
 // Per-frame scratch for the gizmo pass (#521 F). Every value is rewritten before
 // it is read each frame and nothing keeps a reference past the call (ArrowHelper
@@ -25,7 +27,7 @@ const X_AXIS = new THREE.Vector3(1, 0, 0);
 
 interface PhysicsDebugOverlayProps {
   enabled: boolean;
-  vehicleRef: React.MutableRefObject<any>;
+  vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
 }
 
 interface DebugImpulse {
@@ -175,7 +177,7 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
     if (hudRef.current) hudRef.current.style.display = 'block';
 
     const body = vehicleRef.current;
-    const snapshot = (body?.userData?.physicsDebug ?? (window as any).__watershedPhysicsDebug) as PhysicsDebugSnapshot | undefined;
+    const snapshot = (body?.userData as { physicsDebug?: PhysicsDebugSnapshot } | undefined)?.physicsDebug ?? getDebugTap('physicsDebug');
     if (!snapshot || !body) return;
 
     const pos = snapshot.position;
@@ -219,13 +221,7 @@ const PhysicsDebugOverlay = ({ enabled, vehicleRef }: PhysicsDebugOverlayProps) 
       gravityArrowRef.current.setLength(Math.min(2.2, gravityMag * 0.08 + 0.15), 0.18, 0.1);
     }
 
-    const waterForce = (window as any).__watershedWaterForceSystem as {
-      sampledDir?: [number, number];
-      sampledSpeed?: number;
-      fallbackDir?: [number, number];
-      source?: string;
-      wet?: boolean;
-    } | undefined;
+    const waterForce = getDebugTap('waterForce');
     const sampledDir = waterForce?.sampledDir ?? [0, -1];
     const fallbackDir = waterForce?.fallbackDir ?? [0, -1];
     const sampledSpeed = waterForce?.sampledSpeed ?? 0;

@@ -12,7 +12,7 @@ pnpm start         # dev server on port 3000 (Vite)
 pnpm test          # unit tests (Vitest + Testing Library) — behaviour only
 pnpm test:perf     # wall-time / heap budgets (*.perf.test.ts), its own CI step
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
-pnpm typecheck     # tsc --noEmit + the layout/dependency-direction/GLSL/typecheck-surface/orphan guards + knip (unused files / exports / deps)
+pnpm typecheck     # tsc --noEmit + the strict-buffers ratchet + the layout/dependency-direction/GLSL/typecheck-surface/orphan guards + knip (unused files / exports / deps)
 pnpm typecheck:test  # tsc over the tests too (tsconfig.test.json; tsconfig.json has no vitest globals)
 pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); no emcc needed — ships the committed WASM pair
 pnpm build:full    # build:wasm, then build — the deploy path (build_and_patch.py); needs the pinned emcc

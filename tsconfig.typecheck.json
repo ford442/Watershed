@@ -1,17 +1,5 @@
 {
+  "//": "pnpm typecheck's entry. Everything is inherited from tsconfig.json (include, exclude, options); this file exists so the typecheck command and its ratchets have one stable name.",
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "checkJs": false,
-    "noEmit": true
-  },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/__mocks__/**",
-    "node_modules"
-  ]
+  "compilerOptions": {}
 }

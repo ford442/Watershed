@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { GENERATION } from '../../constants/game';
 import type { BiomeId } from '../../configs/biomes';
 import {
-  MapManager,
+  type MapManager,
   ChunkPool,
   ensureTangentContinuity,
   resolveGameplayProfile,

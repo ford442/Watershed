@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
 import { generateValidator, outputPaths, schemaPath, VALIDATORS } from '../../scripts/compile-validators.mjs';
-import levelPrecompiled from './level.validate.js';
-import reachPrecompiled from './reach.validate.js';
+import levelPrecompiled from './level.validate';
+import reachPrecompiled from './reach.validate';
 import { valueAtPointer } from './valueAtPointer';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -97,14 +97,13 @@ describe.each(VALIDATORS)('%s validator', (name) => {
   const reference = new Ajv({ allErrors: true, verbose: true }).compile(schema);
 
   it('checked-in output is what compile-validators.mjs generates from the schema today', () => {
-    const { js, dts } = generateValidator(name);
+    const { ts } = generateValidator(name);
     const out = outputPaths(name);
-    expect(fs.readFileSync(out.js, 'utf8') === js, `${name}.validate.js is stale — run \`pnpm compile:validators\``).toBe(true);
-    expect(fs.readFileSync(out.dts, 'utf8') === dts, `${name}.validate.d.ts is stale — run \`pnpm compile:validators\``).toBe(true);
+    expect(fs.readFileSync(out.ts, 'utf8') === ts, `${name}.validate.ts is stale — run \`pnpm compile:validators\``).toBe(true);
   });
 
   it('has no import, require or ajv reference (self-contained)', () => {
-    const text = fs.readFileSync(outputPaths(name).js, 'utf8');
+    const text = fs.readFileSync(outputPaths(name).ts, 'utf8');
     expect(text).not.toMatch(/\brequire\(/);
     expect(text).not.toMatch(/^\s*import\s/m);
     expect(text).not.toMatch(/from\s+["']ajv/);

@@ -9,9 +9,11 @@ import * as THREE from 'three';
 import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
 // Precompiled from reach.schema.json by scripts/compile-validators.mjs (#485 C): no Ajv in the browser.
-import validateSchema from '../formats/reach.validate.js';
+import validateSchema, { type SchemaValidationError } from '../formats/reach.validate';
 import { valueAtPointer } from '../formats/valueAtPointer';
 
+import type { LevelSegment } from '../systems/map/MapSystem.types';
+import type { AssetRef, ReachManifest, ReachRequiredAssets } from '../systems/reach/ReachStreamer';
 import type { ValidationError, ValidationResult } from './validationReport';
 
 export type { ValidationError, ValidationResult } from './validationReport';
@@ -35,15 +37,20 @@ const SHADER_CATEGORIES = ['generative', 'reactive', 'transition', 'filter'];
 // Flow map format mapping
 const FLOW_MAP_FORMATS = ['png', 'raw', 'json'];
 
+/** Schema-only narrowing: `input` has the `ReachManifest` shape reach.schema.json promises. */
+export function isReachManifest(input: unknown): input is ReachManifest {
+  return validateSchema(input);
+}
+
 /**
- * Main validation function
+ * Main validation function. A valid result carries the manifest back as `data`.
  */
-export function validateReach(reachData: any): ValidationResult {
+export function validateReach(reachData: unknown): ValidationResult<ReachManifest> {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
 
   // 1. Schema validation
-  const schemaValid = validateSchema(reachData);
+  const schemaValid = isReachManifest(reachData);
   if (!schemaValid && validateSchema.errors) {
     for (const err of validateSchema.errors) {
       errors.push({
@@ -60,17 +67,15 @@ export function validateReach(reachData: any): ValidationResult {
     validateSemantics(reachData, errors, warnings);
   }
 
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
+  return schemaValid && errors.length === 0
+    ? { valid: true, errors, warnings, data: reachData }
+    : { valid: false, errors, warnings, data: null };
 }
 
 /**
  * Semantic validation beyond JSON schema
  */
-function validateSemantics(reachData: any, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateSemantics(reachData: ReachManifest, errors: ValidationError[], warnings: ValidationError[]): void {
   const { metadata, world, segments, spawns, requiredAssets, transition } = reachData;
 
   // Validate waypoints
@@ -115,7 +120,7 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
 
   // Validate transition segment index exists
   if (transition?.segmentIndex !== undefined && segments) {
-    const hasTransitionSegment = segments.some((seg: any) => seg.index === transition.segmentIndex);
+    const hasTransitionSegment = segments.some((seg) => seg.index === transition.segmentIndex);
     if (!hasTransitionSegment) {
       errors.push({
         field: 'transition.segmentIndex',
@@ -237,7 +242,7 @@ function validateSemantics(reachData: any, errors: ValidationError[], warnings: 
 
   // Validate requiredAssets have unique IDs
   if (requiredAssets) {
-    const validateUniqueIds = (items: any[] | undefined, category: string) => {
+    const validateUniqueIds = (items: readonly AssetRef[] | undefined, category: string) => {
       if (!items) return;
       const ids = new Set<string>();
       for (let i = 0; i < items.length; i++) {
@@ -388,7 +393,7 @@ function validateWaypoints(waypoints: number[][], errors: ValidationError[], war
 /**
  * Goal 5: Validate performance budget for Reaches
  */
-function validateReachPerformanceBudget(reachData: any, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateReachPerformanceBudget(reachData: ReachManifest, errors: ValidationError[], warnings: ValidationError[]): void {
   const segments = reachData.segments || [];
   let totalDecorations = 0;
   let totalParticles = 0;
@@ -426,7 +431,7 @@ function validateReachPerformanceBudget(reachData: any, errors: ValidationError[
 /**
  * Goal 5: Validate segment type sequence for Reaches
  */
-function validateReachSegmentSequence(segments: any[] | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateReachSegmentSequence(segments: LevelSegment[] | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
   if (!segments) return;
 
   const sorted = [...segments].sort((a, b) => a.index - b.index);
@@ -455,10 +460,10 @@ function validateReachSegmentSequence(segments: any[] | undefined, errors: Valid
 /**
  * Goal 5: Validate required assets have valid URLs/paths
  */
-function validateRequiredAssets(requiredAssets: any, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateRequiredAssets(requiredAssets: ReachRequiredAssets | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
   if (!requiredAssets) return;
 
-  const validateAssetList = (items: any[] | undefined, category: string) => {
+  const validateAssetList = (items: ReadonlyArray<AssetRef & { path?: string }> | undefined, category: string) => {
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -490,7 +495,7 @@ function validateRequiredAssets(requiredAssets: any, errors: ValidationError[], 
 /**
  * Get human-readable suggestion for common schema errors
  */
-function getSuggestionForError(error: any): string | undefined {
+function getSuggestionForError(error: SchemaValidationError): string | undefined {
   const path = error.instancePath || '';
   const message = error.message || '';
 
@@ -559,7 +564,7 @@ function getSuggestionForError(error: any): string | undefined {
   return undefined;
 }
 
-function getErrorField(error: any): string {
+function getErrorField(error: SchemaValidationError): string {
   const path = error.instancePath
     ? error.instancePath
         .replace(/^\//, '')
@@ -568,7 +573,7 @@ function getErrorField(error: any): string {
 
   if (error.keyword === 'required') {
     const missingProp = error.params?.missingProperty;
-    if (missingProp) {
+    if (typeof missingProp === 'string' && missingProp) {
       return path ? `${path}.${missingProp}` : missingProp;
     }
   }

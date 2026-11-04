@@ -2,11 +2,11 @@
  * Pure forecast → SegmentData helpers for ChunkManager.
  * Extracted for #371 host size / testability; behavior unchanged.
  */
-import * as THREE from 'three';
-import { getTrackBiomeProfile, TrackBiomeProfile } from '../../configs/TrackBiomes';
+import type * as THREE from 'three';
+import { getTrackBiomeProfile, type TrackBiomeProfile } from '../../configs/TrackBiomes';
 import type { BiomeId } from '../../configs/biomes';
 import {
-  MapManager,
+  type MapManager,
   buildProceduralSegment,
   INITIAL_TREADMILL_POINTS,
   type BaseMapChunk,

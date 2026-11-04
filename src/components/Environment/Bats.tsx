@@ -5,13 +5,13 @@ import type { BatsProps } from './types';
 import { NonEmptyInstancedMesh } from '../../rendering/instancing/NonEmptyInstancedMesh';
 import { sinHash } from '../../math/hash';
 import { WATER_LEVEL } from '../../constants/game';
+import { pathLateral } from '../../utils/segmentSampler';
 
 const DUMMY = new THREE.Object3D();
 const TEMP_POS = new THREE.Vector3();
 const TEMP_FORWARD = new THREE.Vector3();
 const TEMP_OFFSET = new THREE.Vector3();
 const BASE_FORWARD = new THREE.Vector3(0, 0, 1);
-const TEMP_UP = new THREE.Vector3(0, 1, 0);
 const TEMP_QUAT = new THREE.Quaternion();
 const LEFT_FLAP_QUAT = new THREE.Quaternion();
 const RIGHT_FLAP_QUAT = new THREE.Quaternion();
@@ -90,7 +90,7 @@ const chooseNextPath = (bat: BatPathState, seedBias = 0): void => {
 
   const span = target.clone().sub(bat.current);
   const tangent = span.clone().normalize();
-  const side = new THREE.Vector3().crossVectors(tangent, TEMP_UP).normalize();
+  const side = pathLateral(tangent, new THREE.Vector3());
   const arcHeight = 0.3 + sinHash(seed + 5.2) * 0.9;
   const sideDrift = (sinHash(seed + 6.7) - 0.5) * 1.2;
 

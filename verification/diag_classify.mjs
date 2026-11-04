@@ -43,7 +43,7 @@ async function boot() {
   await page.waitForFunction(() => !!window.__watershedScreenshot, { timeout: 12000 }).catch(() => {});
   await sleep(8000);
   const r = await page.evaluate(() => {
-    const d = window.__watershedPhysicsDebug ?? {};
+    const d = window.__watershed?.physicsDebug ?? {};
     return {
       menuPresent: !!document.querySelector('.start-menu-start-btn'),
       hasPos: d.position != null,

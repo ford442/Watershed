@@ -237,7 +237,7 @@ http://localhost:3000/?screenshot=1
 - **WebGL2** (GLSL, and the node renderer's WebGL2 backend): `webglcontextlost` (with `preventDefault`) and `webglcontextrestored` on the canvas. On loss a minimal "Graphics paused — recovering…" toast appears and `bootCrashGuard` records `context-lost`. On restore the Canvas remounts via an epoch counter in its React `key`.
 - **Native WebGPU** (#466 Phase C): three's `renderer.onDeviceLost`. A lost `GPUDevice` never comes back, so `device-lost` is recorded and the epoch bumps at once; the new renderer requests a new device. three's default handler still runs and logs. three already ignores `reason: 'destroyed'`, which is its own disposal, so an intentional remount can't loop.
 
-Run state is Zustand outside the Canvas, so it survives either remount. **Simulate:** `?debugGpuLoss=1` exposes `window.__watershedLoseGpu()`. On WebGL it calls `WEBGL_lose_context` (restoring after 1 s). On WebGPU it calls `device.destroy()` and then reports the loss through the same hook, because three filters out a `destroyed` loss.
+Run state is Zustand outside the Canvas, so it survives either remount. **Simulate:** `?debugGpuLoss=1` exposes `window.__watershed.loseGpu()`. On WebGL it calls `WEBGL_lose_context` (restoring after 1 s). On WebGPU it calls `device.destroy()` and then reports the loss through the same hook, because three filters out a `destroyed` loss.
 
 ## In-chain anti-aliasing (#466 Phase C)
 

@@ -36,7 +36,7 @@ async function run() {
   for (let t = 0; t < 28; t++) {
     await sleep(250);
     const s = await page.evaluate(() => {
-      const d = window.__watershedPhysicsDebug ?? {};
+      const d = window.__watershed?.physicsDebug ?? {};
       return { y: d.position?.y, z: d.position?.z, vy: d.linearVelocity?.y, seg: d.currentSegmentIndex };
     });
     samples.push(s);

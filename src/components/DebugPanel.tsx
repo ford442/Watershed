@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
-import { DebugStageController, DebugStageId, DebugStageStatus } from '../debug/debugStages';
+import { type DebugStageController, type DebugStageId, type DebugStageStatus } from '../debug/debugStages';
 import { getPerfMetrics, subscribePerfMetrics } from '../debug/perfMetrics';
 import { getPhysicsPerfMetrics, subscribePhysicsPerfMetrics } from '../debug/physicsPerfMetrics';
 import { getRendererDiagnostics, subscribeRendererDiagnostics } from '../rendering/rendererState';

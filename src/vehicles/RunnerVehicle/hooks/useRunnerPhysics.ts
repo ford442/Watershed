@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as THREE from 'three';
-import { JumpState, DodgeState, DebugImpulse, DebugContact, PhysicsDebugSnapshot } from '../constants';
+import { type JumpState, type DodgeState, type DebugImpulse, type DebugContact, type PhysicsDebugSnapshot } from '../constants';
 import { createCollisionTracker, RUNNER_CONTACT_FRICTION } from '../../../systems/vehicle/VehicleSystem';
 import { PHYSICS } from '../../../constants/game';
 import { ParticlePool } from '../../../components/particlePool';

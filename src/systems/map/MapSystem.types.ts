@@ -234,7 +234,7 @@ export interface SpawnData {
   /** Spawn scale */
   scale: THREE.Vector3;
   /** Additional type-specific data */
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 }
 
 export interface MapConfig {

@@ -85,8 +85,8 @@ async function capture(page, label, report) {
   await page.screenshot({ path: outPath, fullPage: false });
   const pixel = await readCanvasPixel(page);
   const state = await page.evaluate(() => ({
-    segment: window.__watershedPhysicsDebug?.currentSegmentIndex ?? -1,
-    position: window.__watershedPhysicsDebug?.position ?? null,
+    segment: window.__watershed?.physicsDebug?.currentSegmentIndex ?? -1,
+    position: window.__watershed?.physicsDebug?.position ?? null,
     inMenu: document.body.innerText.includes('START RUN'),
   }));
   const fileSize = fs.statSync(outPath).size;
@@ -196,16 +196,16 @@ async function run() {
       await page.evaluate((seg) => window.__watershedScreenshot?.teleportToSegment(seg), shot.segment);
       await sleep(1000);
       const diag = await page.evaluate(() => {
-        const dbg = window.__watershedPhysicsDebug;
+        const dbg = window.__watershed?.physicsDebug;
         return {
           segment: dbg?.currentSegmentIndex,
           pos: dbg?.position,
           vel: dbg?.linearVelocity,
           speed: dbg?.speed,
           gravity: window.__watershedGravity,
-          flowSpeed: window.__watershedFlowSpeed,
-          slipperiness: window.__watershedSlipperiness,
-          camDiag: window.__watershedCameraDiag,
+          flowSpeed: window.__watershed?.flowSpeed,
+          slipperiness: window.__watershed?.slipperiness,
+          camDiag: window.__watershed?.cameraDiag,
           audioWrap: window.__watershedAudioWrapInstalled,
         };
       });

@@ -15,6 +15,7 @@ import type {
   SpawnData,
 } from './MapSystem.types';
 import { WATER_LEVEL } from '../../constants/game';
+import { pathLateral } from '../../utils/segmentSampler';
 
 // =============================================================================
 // DEFAULT CONFIGURATION
@@ -162,8 +163,7 @@ export function calculateSegmentSpawns(
     const t = i / steps;
     const point = curve.getPoint(t);
     const tangent = curve.getTangent(t).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+    const binormal = pathLateral(tangent, new THREE.Vector3());
 
     for (const side of [-1, 1]) {
       const bankStart = waterWidth / 2;

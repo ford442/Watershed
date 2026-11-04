@@ -20,6 +20,9 @@ import { getAudioManager, AudioManager } from '../systems/audio/AudioSystem';
 import { WATER_LEVEL } from '../constants/game';
 import { createSegmentFlowSample, sampleSegmentFlow, type SegmentFlowSample } from '../utils/segmentSampler';
 import { gameEvents } from '../systems/events/GameEvents';
+import type { VehicleRigidBodyRef } from '../experience/types';
+import type { RapierRigidBody } from '@react-three/rapier';
+import type { SegmentData } from '../systems/map/ChunkManager';
 
 const tmpPos = new THREE.Vector3();
 /** Two reusable samples (#502 D): the closest so far and the one being taken. */
@@ -38,9 +41,9 @@ const tmpCross = new THREE.Vector3();
 
 interface VehicleTunerProps {
   /** Ref to the vehicle RigidBody */
-  targetRef: React.RefObject<any>;
+  targetRef: React.RefObject<VehicleRigidBodyRef | null>;
   /** Active segments from TrackManager (to sample flowSpeed + type) */
-  segments?: any[];
+  segments?: readonly SegmentData[];
 }
 
 export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerProps) {
@@ -101,7 +104,8 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
 
   useFrame((state, delta) => {
     if (!targetRef?.current || !world) return;
-    const body = targetRef.current;
+    // The mounted vehicle is a Rapier body; this reads the parts VehicleRigidBodyRef leaves out.
+    const body = targetRef.current as RapierRigidBody;
     const pos = body.translation();
     const vel = body.linvel();
     tmpPos.set(pos.x, pos.y, pos.z);
@@ -114,7 +118,10 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     let closestDist = Infinity;
 
     for (const seg of segments) {
-      if (!seg?.active || !seg.segmentPath) continue;
+      // FIXME(#535): SegmentData has no `active` field, so this guard skips every segment and
+      // the loop below has never run. The `any` it was typed as hid that; kept as-is here so
+      // the input / replay smokes stay identical — enabling it is a gameplay change of its own.
+      if (!('active' in seg) || !seg.active || !seg.segmentPath) continue;
       const sample = sampleSegmentFlow(seg, tmpPos, sampleScratch);
       if (sample && sample.distance < closestDist) {
         closestDist = sample.distance;

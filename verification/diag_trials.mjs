@@ -41,7 +41,7 @@ async function trial(i) {
     await sleep(8000);
     const s = await Promise.race([
       page.evaluate(() => {
-        const d = window.__watershedPhysicsDebug ?? {};
+        const d = window.__watershed?.physicsDebug ?? {};
         return { seg: d.currentSegmentIndex, y: d.position?.y };
       }),
       sleep(5000).then(() => ({ seg: 'HANG', y: 'HANG' })),

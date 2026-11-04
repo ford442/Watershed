@@ -24,10 +24,14 @@ import { getAudioManager } from '../audio/AudioSystem';
 import { hydroVortexSegments, parseHydroEvents } from './hydroEvents';
 import { shouldApplyAuthoredVortexImpulse } from '../../physics/waterForceAuthority';
 import { getActiveLaunchHour, getRunMap } from '../journey/runSession';
+import type { VehicleRigidBodyRef } from '../../experience/types';
+import type { RapierRigidBody } from '@react-three/rapier';
+import type { SegmentData } from '../map/ChunkManager';
+import { pathLateral } from '../../utils/segmentSampler';
 
 interface VortexForceSystemProps {
-  targetRef: React.RefObject<any>;
-  segments?: any[];
+  targetRef: React.RefObject<VehicleRigidBodyRef | null>;
+  segments?: readonly SegmentData[];
   enabled?: boolean;
 }
 
@@ -36,13 +40,13 @@ const tmpPoint = new THREE.Vector3();
 const tmpBinormal = new THREE.Vector3();
 const tmpTangent = new THREE.Vector3();
 
-function resolveVortexCenter(segment: any, authored: VortexConfig): THREE.Vector3 | null {
+function resolveVortexCenter(segment: SegmentData, authored: VortexConfig): THREE.Vector3 | null {
   const path = segment?.segmentPath as THREE.CatmullRomCurve3 | undefined;
   if (!path) return null;
   const t = typeof authored.centerT === 'number' ? authored.centerT : 0.55;
   path.getPoint(THREE.MathUtils.clamp(t, 0, 1), tmpPoint);
   path.getTangent(THREE.MathUtils.clamp(t, 0, 1), tmpTangent).normalize();
-  tmpBinormal.set(-tmpTangent.z, 0, tmpTangent.x).normalize();
+  pathLateral(tmpTangent, tmpBinormal);
   const lateral = authored.lateralOffset ?? 0;
   tmpCenter.copy(tmpPoint).addScaledVector(tmpBinormal, lateral);
   // Keep suction near water surface height of the path sample.
@@ -73,7 +77,8 @@ export default function VortexForceSystem({
 
   useFrame((_, delta) => {
     if (!enabled || !targetRef?.current || !segments?.length) return;
-    const body = targetRef.current;
+    // The mounted vehicle is a Rapier body; this reads the parts VehicleRigidBodyRef leaves out.
+    const body = targetRef.current as RapierRigidBody;
     if (typeof body.translation !== 'function') return;
 
     const translation = body.translation();

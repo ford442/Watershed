@@ -65,7 +65,7 @@ export function createSimForceRequests<T>(proxy: SimWorkerProxy): SimForceReques
     acquire(count) {
       const need = count * FORCE_SAMPLE_STRIDE;
       for (let i = 0; i < pool.length; i += 1) {
-        if (pool[i].length >= need) return pool.splice(i, 1)[0];
+        if (pool[i]!.length >= need) return pool.splice(i, 1)[0]!;
       }
       return new Float64Array(Math.max(need, 4 * FORCE_SAMPLE_STRIDE));
     },

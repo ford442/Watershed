@@ -1,50 +1,33 @@
 #!/usr/bin/env node
 /**
- * CI guard: tracks residual untyped `.js` / `.jsx` modules excluded from
- * `tsconfig.typecheck.json`. The allowlist must match disk exactly — shrink it
- * as modules migrate to `.ts` / `.tsx`.
+ * CI guard: `src/` is TypeScript only. The last untyped modules were the two precompiled
+ * validators, which scripts/compile-validators.mjs now emits as `.ts` (#535 A); with them
+ * gone, `allowJs` and the untyped allowlist were deleted. A new `.js` / `.jsx` / `.mjs` /
+ * `.cjs` file under src/ would be invisible to `tsc` (no `allowJs`), so it fails here.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = join(root, 'src');
-const allowlistPath = join(root, 'scripts', 'untyped-allowlist.json');
 
 function walk(dir, acc = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    const stat = statSync(full);
-    if (stat.isDirectory()) {
+    if (statSync(full).isDirectory()) {
       walk(full, acc);
       continue;
     }
-    if (entry.endsWith('.js') || entry.endsWith('.jsx')) {
-      acc.push(relative(srcDir, full).replace(/\\/g, '/'));
-    }
+    if (/\.(js|jsx|mjs|cjs)$/.test(entry)) acc.push(relative(srcDir, full).replace(/\\/g, '/'));
   }
   return acc.sort();
 }
 
-const onDisk = walk(srcDir);
-const allowlist = JSON.parse(readFileSync(allowlistPath, 'utf8'));
-const allowSorted = [...allowlist].sort();
-
-const missingFromAllowlist = onDisk.filter((file) => !allowSorted.includes(file));
-const staleAllowlist = allowSorted.filter((file) => !onDisk.includes(file));
-
-if (missingFromAllowlist.length > 0 || staleAllowlist.length > 0) {
-  console.error('[typecheck-surface] untyped allowlist drift detected.');
-  if (missingFromAllowlist.length > 0) {
-    console.error('  Add to scripts/untyped-allowlist.json (or migrate to TS):');
-    for (const file of missingFromAllowlist) console.error(`    - ${file}`);
-  }
-  if (staleAllowlist.length > 0) {
-    console.error('  Remove from scripts/untyped-allowlist.json (migrated or deleted):');
-    for (const file of staleAllowlist) console.error(`    - ${file}`);
-  }
+const untyped = walk(srcDir);
+if (untyped.length > 0) {
+  console.error('[typecheck-surface] untyped modules under src/ (tsconfig has no allowJs; migrate to TS):');
+  for (const file of untyped) console.error(`    - ${file}`);
   process.exit(1);
 }
-
-console.log(`[typecheck-surface] ${onDisk.length} untyped modules tracked (target: shrink toward 0).`);
+console.log('[typecheck-surface] ok — src/ is TypeScript only.');

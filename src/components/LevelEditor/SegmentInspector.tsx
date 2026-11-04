@@ -235,11 +235,12 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
     setHasChanges(true);
   }, [localSegment]);
 
-  const updateSafeZone = useCallback((key: string, value: number) => {
+  const updateSafeZone = useCallback((key: 'yMin' | 'yMax' | 'respawnAt', value: number) => {
     if (!localSegment) return;
+    // A segment with no safe zone yet starts from the defaults the inputs display.
     setLocalSegment({
       ...localSegment,
-      safeZone: { ...localSegment.safeZone, [key]: value } as any,
+      safeZone: { yMin: -20, yMax: 20, ...localSegment.safeZone, [key]: value },
     });
     setHasChanges(true);
   }, [localSegment]);
@@ -377,7 +378,7 @@ export const SegmentInspector: React.FC<SegmentInspectorProps> = ({
             </label>
             <select
               value={localSegment.type || 'normal'}
-              onChange={(e) => updateField('type', e.target.value as any)}
+              onChange={(e) => updateField('type', e.target.value as EditorSegmentConfig['type'])}
               style={{
                 width: '100%',
                 padding: '6px 10px',

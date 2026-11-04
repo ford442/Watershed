@@ -9,6 +9,8 @@ export interface VehicleRigidBodyRef {
   setTranslation: (pos: { x: number; y: number; z: number }, wake: boolean) => void;
   setLinvel: (vel: { x: number; y: number; z: number }, wake: boolean) => void;
   setAngvel: (vel: { x: number; y: number; z: number }, wake: boolean) => void;
+  /** Rapier's free slot; the runner keeps its physics debug snapshot here. */
+  userData?: unknown;
 }
 
 export type VehicleType = 'runner' | 'raft';

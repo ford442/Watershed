@@ -15,7 +15,7 @@ const RUN = -128;
 
 function toBase64(bytes: Uint8Array): string {
   let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!);
   return btoa(binary);
 }
 
@@ -41,7 +41,8 @@ export function encodeErosionPlane(plane: Float32Array): string {
     }
   };
   for (let i = 0; i < plane.length; i += 1) {
-    const e = Number.isFinite(plane[i]) ? Math.max(-LIMIT, Math.min(LIMIT, plane[i])) : 0;
+    const v = plane[i]!;
+    const e = Number.isFinite(v) ? Math.max(-LIMIT, Math.min(LIMIT, v)) : 0;
     const q = Math.round((e / LIMIT) * 127);
     if (q === 0) {
       zeros += 1;
@@ -61,7 +62,7 @@ export function decodeErosionPlane(text: string, size: number): Float32Array | n
   const plane = new Float32Array(size);
   let at = 0;
   for (let i = 0; i < bytes.length; i += 1) {
-    const q = (bytes[i] << 24) >> 24;
+    const q = (bytes[i]! << 24) >> 24;
     if (q === RUN) {
       const n = bytes[i + 1];
       if (!n) return null;

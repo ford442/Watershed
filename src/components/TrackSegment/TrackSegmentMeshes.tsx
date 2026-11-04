@@ -51,6 +51,7 @@ import { hasFiniteCoordinates, SLOT_CANYON_STRATA } from './utils';
 import type { TrackSegmentMeshesProps } from './types';
 import { getActiveWeather } from '../../systems/journey/runSession';
 import { weatherSlushiness } from '../../systems/map/weatherInflow';
+import { pathLateral } from '../../utils/segmentSampler';
 
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;
@@ -340,7 +341,8 @@ export function TrackSegmentMeshes({
             const tangent = segmentPath.getTangent(t).normalize();
             if (!hasFiniteCoordinates(point)) return null;
 
-            const lateral = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
+            // The bow faces the sunward side of the path lateral (the one sign, #535 B).
+            const lateral = pathLateral(tangent, new THREE.Vector3());
             const toSun = new THREE.Vector3().copy(sunDirection);
             toSun.y = 0;
             if (toSun.lengthSq() > 0.0001) {

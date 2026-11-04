@@ -99,15 +99,16 @@ export const useShaderLoader = (
         });
 
         console.log(`[useShaderLoader] Loaded shader ${shaderId} (${shaderCode.length} chars)`);
-      } catch (err: any) {
-        console.warn(`[useShaderLoader] Falling back for ${shaderId}:`, err.message);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[useShaderLoader] Falling back for ${shaderId}:`, message);
         
         if (!mounted) return;
 
         setResult({
           code: fallbackCode,
           loading: false,
-          error: err.message,
+          error: message,
         });
       }
     };

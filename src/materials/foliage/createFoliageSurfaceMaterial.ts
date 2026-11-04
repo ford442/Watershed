@@ -23,7 +23,7 @@ export function createTreeSurfaceMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.foliage) {
     try {
-      return nodes.foliage.createTreeNodeMaterial(source, options) as unknown as THREE.Material;
+      return nodes.foliage.createTreeNodeMaterial(source, options);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -57,7 +57,7 @@ export function createVegetationSurfaceMaterial(
   const nodes = getLoadedNodeMaterials();
   if (backend === 'tsl' && nodes?.foliage) {
     try {
-      return nodes.foliage.createVegetationNodeMaterial(source, options) as unknown as THREE.Material;
+      return nodes.foliage.createVegetationNodeMaterial(source, options);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;
@@ -94,7 +94,7 @@ export function createRockSurfaceMaterial(
     : null;
   if (backend === 'tsl' && nodes?.foliage && standard) {
     try {
-      return nodes.foliage.createRockNodeMaterial(standard, options) as unknown as THREE.Material;
+      return nodes.foliage.createRockNodeMaterial(standard, options);
     } catch (error) {
       if (!warned.current) {
         warned.current = true;

@@ -9,9 +9,10 @@ import * as THREE from 'three';
 import { BIOME_IDS, LEGACY_BIOME_ALIASES } from '../configs/biomes';
 
 // Precompiled from level.schema.json by scripts/compile-validators.mjs (#485 C): no Ajv in the browser.
-import validateSchema from '../formats/level.validate.js';
+import validateSchema, { type SchemaValidationError } from '../formats/level.validate';
 import { valueAtPointer } from '../formats/valueAtPointer';
 
+import type { LevelData, LevelSegment, LevelSpawns } from '../systems/map/MapSystem.types';
 import type { ValidationError, ValidationResult } from './validationReport';
 
 export type { ValidationError, ValidationResult } from './validationReport';
@@ -54,14 +55,23 @@ const DECORATION_LIMITS: Record<string, { min: number; max: number }> = {
 };
 
 /**
- * Main validation function
+ * Schema-only narrowing: `input` has the `LevelData` shape level.schema.json promises.
+ * The semantic checks in `validateLevel` run on top of this.
  */
-export function validateLevel(levelData: any): ValidationResult {
+export function isLevelData(input: unknown): input is LevelData {
+  return validateSchema(input);
+}
+
+/**
+ * Main validation function. `input` arrives as parsed JSON of unknown shape; a valid
+ * result carries it back as `data: LevelData`.
+ */
+export function validateLevel(levelData: unknown): ValidationResult<LevelData> {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
 
   // 1. Schema validation
-  const schemaValid = validateSchema(levelData);
+  const schemaValid = isLevelData(levelData);
   if (!schemaValid && validateSchema.errors) {
     for (const err of validateSchema.errors) {
       errors.push({
@@ -78,17 +88,15 @@ export function validateLevel(levelData: any): ValidationResult {
     validateSemantics(levelData, errors, warnings);
   }
 
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
+  return schemaValid && errors.length === 0
+    ? { valid: true, errors, warnings, data: levelData }
+    : { valid: false, errors, warnings, data: null };
 }
 
 /**
  * Semantic validation beyond JSON schema
  */
-function validateSemantics(levelData: any, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateSemantics(levelData: LevelData, errors: ValidationError[], warnings: ValidationError[]): void {
   const { metadata, world, segments, spawns } = levelData;
 
   // Validate waypoints
@@ -364,7 +372,7 @@ function validateWaypoints(waypoints: number[][], errors: ValidationError[], war
 /**
  * Get human-readable suggestion for common schema errors
  */
-function getSuggestionForError(error: any): string | undefined {
+function getSuggestionForError(error: SchemaValidationError): string | undefined {
   const path = error.instancePath || '';
   const message = error.message || '';
 
@@ -430,7 +438,7 @@ function getSuggestionForError(error: any): string | undefined {
 /**
  * Goal 5: Validate performance budget (decorations + particles)
  */
-function validatePerformanceBudget(levelData: any, errors: ValidationError[], warnings: ValidationError[]): void {
+function validatePerformanceBudget(levelData: LevelData, errors: ValidationError[], warnings: ValidationError[]): void {
   const segments = levelData.segments || [];
   let totalDecorations = 0;
   let totalParticles = 0;
@@ -469,7 +477,7 @@ function validatePerformanceBudget(levelData: any, errors: ValidationError[], wa
  * Goal 5: Validate segment type sequence
  * Waterfall must be followed by splash, then pond
  */
-function validateSegmentSequence(segments: any[] | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateSegmentSequence(segments: LevelSegment[] | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
   if (!segments) return;
 
   const sorted = [...segments].sort((a, b) => a.index - b.index);
@@ -506,7 +514,7 @@ function validateSegmentSequence(segments: any[] | undefined, errors: Validation
 /**
  * Goal 5: Validate spawn points are above water and within bounds
  */
-function validateSpawnPoints(spawns: any, errors: ValidationError[], warnings: ValidationError[]): void {
+function validateSpawnPoints(spawns: LevelSpawns | undefined, errors: ValidationError[], warnings: ValidationError[]): void {
   if (!spawns?.start?.position) return;
 
   const [x, y, z] = spawns.start.position;
@@ -527,7 +535,7 @@ function validateSpawnPoints(spawns: any, errors: ValidationError[], warnings: V
   }
 }
 
-function getErrorField(error: any): string {
+function getErrorField(error: SchemaValidationError): string {
   const path = error.instancePath
     ? error.instancePath
         .replace(/^\//, '')
@@ -536,7 +544,7 @@ function getErrorField(error: any): string {
 
   if (error.keyword === 'required') {
     const missingProp = error.params?.missingProperty;
-    if (missingProp) {
+    if (typeof missingProp === 'string' && missingProp) {
       return path ? `${path}.${missingProp}` : missingProp;
     }
   }

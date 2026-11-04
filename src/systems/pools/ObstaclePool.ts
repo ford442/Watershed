@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sinHash } from '../../math/hash';
+import { pathLateralOrX } from '../../utils/segmentSampler';
 
 const HIDDEN_POSITION = new THREE.Vector3(0, -1000, 0);
 
@@ -167,9 +168,7 @@ export function buildSegmentObstacleRequests(segment: SegmentObstacleSource): Ob
     const t = THREE.MathUtils.clamp(0.24 + index * 0.24 + sinHash(seed) * 0.08, 0.08, 0.92);
     const point = segment.segmentPath.getPoint(t);
     const tangent = segment.segmentPath.getTangent(t).normalize();
-    const lateral = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0));
-    if (lateral.lengthSq() < 1e-6) lateral.set(1, 0, 0);
-    lateral.normalize();
+    const lateral = pathLateralOrX(tangent, new THREE.Vector3());
 
     const side = sinHash(seed + 3) > 0.5 ? 1 : -1;
     const bankOffset = Math.min(canyonWidth * 0.44, waterWidth * 0.5 + 1.1 + sinHash(seed + 7) * 3.2);

@@ -15,6 +15,7 @@ import { useRef } from 'react';
 import { useBeforePhysicsStep, useAfterPhysicsStep, useRapier } from '@react-three/rapier';
 import { updatePhysicsPerfMetrics } from './physicsPerfMetrics';
 import { getTotalActiveCollisionTriangles } from './physicsColliderRegistry';
+import { setDebugTap } from './debugTaps';
 
 const SAMPLE_INTERVAL = 60; // physics steps between metric snapshots
 
@@ -47,7 +48,7 @@ export default function PhysicsPerfMonitor() {
       };
 
       updatePhysicsPerfMetrics(snapshot);
-      (window as any).__watershedPhysicsPerf = snapshot;
+      setDebugTap('physicsPerf', snapshot);
 
       samples.current = [];
     }

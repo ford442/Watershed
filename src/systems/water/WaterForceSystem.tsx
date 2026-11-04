@@ -46,7 +46,7 @@ import {
   setSweReadiness,
   setWaterForceSystemActive,
 } from './WaterForceRegistry';
-import { isPhysicsWorkerActive, setSWEStatus } from '../../physics/physicsWorkerRegistry';
+import { getPhysicsWorkerDiagnostics, isPhysicsWorkerActive, setSWEStatus } from '../../physics/physicsWorkerRegistry';
 import { bindChoreWasm, bindHeightfieldChoreWorker } from '../../rendering/gpuChores';
 import {
   FALLBACK_FLOW_DIR,
@@ -60,6 +60,7 @@ import { weatherHullScale } from '../map/weatherInflow';
 import { createSweHostState, disposeSweHostRouters, resetSweHostForGrid, sweHostFrame } from './sweHost';
 import { applyWaterForces, type ForceTarget } from './waterForceBridge';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
+import { setDebugTap } from '../../debug/debugTaps';
 
 interface WaterForceSystemProps {
   vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
@@ -381,8 +382,8 @@ export function WaterForceSystem({
 
     // The debug overlay's readout: a fresh object each frame, so only on a
     // debug / harness page (#521 D).
-    if (debugGlobals && typeof window !== 'undefined') {
-      (window as any).__watershedWaterForceSystem = {
+    if (debugGlobals) {
+      setDebugTap('waterForce', {
         status: statusRef.current,
         origin: originRef.current,
         sampleCount: bodies.length,
@@ -397,10 +398,8 @@ export function WaterForceSystem({
         fallbackDir: [FALLBACK_FLOW_DIR.x, FALLBACK_FLOW_DIR.z],
         source: vehicleFlow.source,
         wet: vehicleFlow.wet,
-        workerDiagnostics: workerOwnsVehicleForces
-          ? (window as any).__watershedPhysicsWorker?.waterForce
-          : undefined,
-      };
+        workerDiagnostics: workerOwnsVehicleForces ? getPhysicsWorkerDiagnostics() : undefined,
+      });
     }
   });
 

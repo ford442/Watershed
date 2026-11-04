@@ -50,6 +50,9 @@ import VortexForceSystem from '../systems/water/VortexForceSystem';
 import type { NormalizedSegment } from '../systems/reach/ReachNormalizer';
 import type { BiomeId } from '../configs/biomes';
 import { gameEvents } from '../systems/events/GameEvents';
+import { debugTapsEnabled, setDebugTap } from '../debug/debugTaps';
+import { setSegmentFlow } from '../systems/water/segmentFlow';
+import type { VehicleRigidBodyRef } from '../experience/types';
 
 /** The camera's envelope, rewritten each frame (no per-frame object, #521 D). */
 const cameraEnvelope: SegmentEnvelope = { yMin: 0, yMax: 0, segmentIndex: null, authored: false };
@@ -75,7 +78,7 @@ export interface TrackManagerRef {
 
 export interface TrackManagerProps {
   onBiomeChange?: (biome: BiomeId, segmentIndex?: number) => void;
-  raftRef?: React.RefObject<any>;
+  raftRef?: React.RefObject<VehicleRigidBodyRef | null>;
   forecastSamples?: Array<{ state: string; [key: string]: unknown }>;
   reachSegments?: NormalizedSegment[] | null;
   reachId?: string | null;
@@ -441,8 +444,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
         const segCfg = mapManagerRef.current?.getChunkConfig?.(index);
         const slipperiness =
           (segCfg?.slipperiness ?? 0) + (entered?.slipperinessAdd ?? 0);
-        (window as any).__watershedFlowSpeed = flowSpeed;
-        (window as any).__watershedSlipperiness = slipperiness;
+        setSegmentFlow(flowSpeed, slipperiness);
         gameEvents.emit('segment-enter', {
           segmentIndex: index,
           flowSpeed,
@@ -586,15 +588,15 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    (window as any).__watershedObstaclePool = {
+    if (!debugTapsEnabled()) return;
+    setDebugTap('obstaclePool', {
       size: pooledObstacleSlots.length,
-      active: pooledObstacleSlots.filter((slot: any) => slot.active).length,
-      types: pooledObstacleSlots.reduce((acc: Record<string, number>, slot: any) => {
+      active: pooledObstacleSlots.filter((slot) => slot.active).length,
+      types: pooledObstacleSlots.reduce((acc: Record<string, number>, slot) => {
         if (slot.active) acc[slot.type] = (acc[slot.type] || 0) + 1;
         return acc;
       }, {}),
-    };
+    });
   }, [pooledObstacleSlots]);
 
   return (

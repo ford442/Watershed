@@ -83,7 +83,7 @@ export function createRiverSurfaceMaterial(
       return nodeMaterials.river.copyStandardPropsToRiverMaterial(
         standardSource,
         options,
-      ) as unknown as THREE.Material;
+      );
     } catch (error) {
       if (!warnedTslFailure) {
         warnedTslFailure = true;

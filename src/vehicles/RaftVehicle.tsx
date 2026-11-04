@@ -28,6 +28,7 @@ import type { TippingState } from './RaftVehicle/constants';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
+import { setDebugTap } from '../debug/debugTaps';
 
 /** Mirror the worker's post-step raft state onto the main-thread body. */
 function syncBodyFromWorkerState(body: RapierBody | null, workerState: WorkerRaftState | null) {
@@ -78,8 +79,8 @@ function stepRaftWorker(refs: RaftWorkerStepRefs, body: RapierBody, delta: numbe
     if (workerState) syncBodyFromWorkerState(refs.bodyRef.current, workerState);
     if (diagnostics) {
       setPhysicsWorkerDiagnostics(diagnostics);
-      if (typeof window !== 'undefined' && import.meta.env.DEV) {
-        window.__watershedPhysicsWorker = {
+      if (import.meta.env.DEV) {
+        setDebugTap('physicsWorker', {
           simLinked: proxy.isSimLinked,
           waterForce: diagnostics,
           tickOrder: [
@@ -89,7 +90,7 @@ function stepRaftWorker(refs: RaftWorkerStepRefs, body: RapierBody, delta: numbe
             'post-hull-to-sim',
             'post-snapshot',
           ],
-        };
+        });
       }
     }
   }).catch((error) => {
