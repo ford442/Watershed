@@ -1,6 +1,7 @@
 /** Test-only: no production module imports this. */
 import { vi } from 'vitest';
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
+import { packSurfaceFieldStub } from './sweSurfacePack';
 
 const PLANES = 9;
 
@@ -27,10 +28,11 @@ export function stubNativeModule() {
     getVersion: () => 12,
     allocateGrid: alloc,
     freeGrid: vi.fn(),
-    stepShallowWater: vi.fn(),
-    stepShallowWaterInflow: vi.fn(),
-    applySWEEvent: vi.fn(),
-    scrollShallowWater: vi.fn(),
+    stepShallowWater: vi.fn((...a: number[]) => a[6]),
+    stepShallowWaterInflow: vi.fn((...a: number[]) => a[6]),
+    applySWEEvent: vi.fn(() => 1),
+    scrollShallowWater: vi.fn(() => 1),
+    packSurfaceField: vi.fn(packSurfaceFieldStub(heap)),
     reserveShallowWaterScratch: vi.fn(),
     allocateParticleSoA: vi.fn((cap: number) => alloc(PLANES * cap)),
     freeParticleSoA: vi.fn(),
@@ -65,19 +67,23 @@ export function stubNativeModule() {
       heap[out >> 2] = Math.min(...v);
       heap[(out >> 2) + 1] = Math.max(...v);
       heap[(out >> 2) + 2] = v.reduce((a, b) => a + b, 0) / count;
+      return 1;
     }),
     histogramF32: vi.fn((src: number, _count: number, _lo: number, _hi: number, bins: number) => {
       order.push(`histogram@${src}`);
       heap32[(bins >> 2) + 3] = 42;
+      return 1;
     }),
-    lumaHistogramU8: vi.fn(),
+    lumaHistogramU8: vi.fn(() => 1),
     downsampleF32: vi.fn((src: number, _sw: number, _sh: number, dst: number, dw: number, dh: number) => {
       order.push(`downsample@${src}`);
       heap.fill(2, dst >> 2, (dst >> 2) + dw * dh);
+      return 1;
     }),
     blurSeparableF32: vi.fn((_src: number, dst: number, w: number, h: number) => {
       order.push('blur');
       heap.fill(3, dst >> 2, (dst >> 2) + w * h);
+      return 1;
     }),
   };
   return { mod: mod as unknown as WatershedNativeModule & typeof mod, order };

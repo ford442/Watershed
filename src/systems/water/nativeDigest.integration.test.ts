@@ -111,7 +111,10 @@ function sweDigest(): number {
     }
     if (k === 16) wasm.scrollShallowWater(h.ptr, u.ptr, w.ptr, b.ptr, W, Z, 1, -2, 0.0625, 0.125, -0.25);
   }
+  // ABI 17: one step well past the CFL limit sub-cycles; its return is hashed too.
+  const consumed = wasm.stepShallowWaterInflow(h.ptr, u.ptr, w.ptr, b.ptr, W, Z, 0.375, g, dx, H, 0.15);
   const f = new Fnv();
+  f.float(consumed);
   for (const p of [h, u, w, b]) f.floats(p.view());
   for (const p of [h, u, w, b]) p.free();
   return f.h;

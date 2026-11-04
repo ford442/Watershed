@@ -68,21 +68,35 @@ export interface RoutedEdge {
 // ---------------------------------------------------------------------------
 
 /**
- * ABI this table describes — ws_getVersion() in bindings.cpp. Nothing reads it
- * at runtime (the loader checks MIN_WASM_ABI_VERSION); it is the TS half of the
- * version the header above says to bump together.
- * @public
+ * The ABI this table describes — `WATERSHED_ABI_VERSION` / ws_getVersion() in
+ * bindings.cpp. The loader requires the binary to report exactly this number
+ * (#533): it used to accept any version at or above a floor, and bumps 15, 16
+ * and 17 were all breaking, so a newer foreign or dev binary could bind with
+ * mis-sliced arguments. The SHA stamp already pins the shipped pair; this
+ * closes the same hole for every other binary. wasmAbiVersion.drift.test.ts
+ * reads the C++ constant and compares.
  */
-export const WASM_ABI_VERSION = 16;
+export const WASM_ABI_VERSION = 17;
 
 /**
- * Minimum ABI accepted. ABI 12 replaced Embind with the C ABI, so nothing
- * older can be bound at all; ABI 13 (#487) added the terrain exports, ABI 14
- * lateral routing inflow, ABI 15 removed the single-body force exports and
- * ABI 16 the terrain exports again (the tile is TS-only, terrainTile.ts).
- * bindNativeModule binds exactly the table, so the floor is its own version.
+ * An export's int status (#533), common.h `WS_OK` / `WS_REJECTED`. A rejected
+ * call wrote nothing, so its output buffer still holds the previous result.
  */
-export const MIN_WASM_ABI_VERSION = 16;
+export const WS_OK = 1;
+export const WS_REJECTED = 0;
+
+const warnedRejections = new Set<string>();
+
+/**
+ * A native call returned WS_REJECTED (#533): it wrote nothing. Warns once per
+ * export per session, in dev only; the caller decides what to read instead
+ * (never the untouched output buffer as if it were fresh).
+ */
+export function warnRejected(name: string, detail: string): void {
+  if (!import.meta.env.DEV || warnedRejections.has(name)) return;
+  warnedRejections.add(name);
+  console.warn(`[watershed_native] ${name} rejected its arguments (${detail}); nothing was written`);
+}
 
 /** Batch ABI stride, in floats. Mirrored by WATER_FORCE_*_STRIDE in common.h. */
 export const WATER_FORCE_INPUT_STRIDE = 8;
@@ -120,7 +134,7 @@ export interface WatershedNativeModule {
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
 
-  /** ABI version (12: plain C ABI; 15: no single-body force exports; 16: no terrain tile). */
+  /** ABI version (12: plain C ABI; 16: no terrain tile; 17: sub-cycled step, int statuses). */
   getVersion(): number;
 
   // ---- Water forces ----
@@ -128,6 +142,7 @@ export interface WatershedNativeModule {
    * Batch ABI.
    *   input  stride 8: [posX, posY, posZ, velX, velY, velZ, flowDirX, flowDirZ]
    *   output stride 8: [forceX, forceY, forceZ, buoyancy, drag, flow, turbulence, submergedRatio]
+   * Returns WS_OK, or WS_REJECTED with `output` untouched (count outside [1, 65536]).
    */
   computeWaterForcesBatch(
     inputPtr: number, outputPtr: number, sampleCount: number,
@@ -136,15 +151,19 @@ export interface WatershedNativeModule {
     dragCoefficient: number, frontalArea: number, sideArea: number,
     timeSeconds: number,
     turbulenceStrength: number, turbulenceFrequency: number,
-  ): void;
+  ): number;
 
   // ---- Shallow water ----
-  /** Advance the nonlinear SWE grid one CFL-clamped step. `bPtr` 0 = flat bed. */
+  /**
+   * Advance the nonlinear SWE grid by `dt` in ≤ 4 CFL sub-steps (ABI 17).
+   * Returns the time integrated: `dt` itself unless the sub-step cap was hit,
+   * 0 when rejected (dt, g, dx or H not finite and > 0). `bPtr` 0 = flat bed.
+   */
   stepShallowWater(
     hPtr: number, uPtr: number, wPtr: number, bPtr: number,
     width: number, height: number,
     dt: number, g: number, dx: number, H: number,
-  ): void;
+  ): number;
 
   /** stepShallowWater with the upstream (+Z, last-row) edge held at the routed stage `edgeEta`. */
   stepShallowWaterInflow(
@@ -152,15 +171,18 @@ export interface WatershedNativeModule {
     width: number, height: number,
     dt: number, g: number, dx: number, H: number,
     edgeEta: number,
-  ): void;
+  ): number;
 
-  /** Authored hydro source term (kind 0 inflow, 1 vortex, 2 braid, 3 roughness). */
+  /**
+   * Authored hydro source term: kind 0 inflow, 1 vortex, 2 braid, 3 roughness,
+   * 4 surge (ABI 14: a band across the window). Returns WS_OK / WS_REJECTED.
+   */
   applySWEEvent(
     hPtr: number, uPtr: number, wPtr: number, bPtr: number,
     width: number, height: number,
     dx: number, originX: number, originZ: number, H: number,
     kind: number, cx: number, cz: number, radius: number, strength: number, dt: number,
-  ): void;
+  ): number;
 
   /**
    * Scroll h / u / w / b by whole cells: `dst[x, z] = src[x - shiftX, z - shiftZ]`.
@@ -171,7 +193,7 @@ export interface WatershedNativeModule {
     width: number, height: number,
     shiftX: number, shiftZ: number,
     inflowEta: number, inflowU: number, inflowW: number,
-  ): void;
+  ): number;
 
   /** Pre-size the solver scratch so no step / scroll allocates mid-call. */
   reserveShallowWaterScratch(width: number, height: number): void;
@@ -181,15 +203,15 @@ export interface WatershedNativeModule {
   /** Free a pointer returned by allocateGrid. */
   freeGrid(ptr: number): void;
 
-  // ---- Channel routing (arrays are allocateGrid pointers) ----
+  // ---- Channel routing (arrays are allocateGrid pointers; each returns WS_OK / WS_REJECTED) ----
   routeReachSteady(
     lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
     Q: number, storagePtr: number, outflowPtr: number,
-  ): void;
+  ): number;
   routeReach(
     lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
     inflowQ: number, dt: number, storagePtr: number, outflowPtr: number,
-  ): void;
+  ): number;
   /**
    * routeReach plus `lateralPtr` (nSeg floats, m³/s) joining each segment at
    * its top (ABI 14). 0 = no plane = routeReach.
@@ -197,20 +219,29 @@ export interface WatershedNativeModule {
   routeReachLateral(
     lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
     inflowQ: number, lateralPtr: number, dt: number, storagePtr: number, outflowPtr: number,
-  ): void;
+  ): number;
   routeReachTravelTime(
     lengthsPtr: number, slopesPtr: number, widthsPtr: number, nSeg: number,
     Q: number, lagPtr: number,
-  ): void;
+  ): number;
   /** Routed discharge → edge stage η (m) and inflow speed (m/s). Qref ↦ exactly (0, 0). */
   routedEdgeState(Q: number, Qref: number, H: number, g: number): RoutedEdge;
 
-  // ---- gpu-chores (not SWE) ----
-  reduceF32Grid(srcPtr: number, count: number, out3Ptr: number): void;
-  histogramF32(srcPtr: number, count: number, rangeMin: number, rangeMax: number, binsPtr: number): void;
-  lumaHistogramU8(rgbaPtr: number, pixelCount: number, binsPtr: number): void;
-  downsampleF32(srcPtr: number, srcW: number, srcH: number, dstPtr: number, dstW: number, dstH: number): void;
-  blurSeparableF32(srcPtr: number, dstPtr: number, width: number, height: number): void;
+  // ---- gpu-chores (each returns WS_OK / WS_REJECTED) ----
+  reduceF32Grid(srcPtr: number, count: number, out3Ptr: number): number;
+  histogramF32(srcPtr: number, count: number, rangeMin: number, rangeMax: number, binsPtr: number): number;
+  lumaHistogramU8(rgbaPtr: number, pixelCount: number, binsPtr: number): number;
+  downsampleF32(srcPtr: number, srcW: number, srcH: number, dstPtr: number, dstW: number, dstH: number): number;
+  blurSeparableF32(srcPtr: number, dstPtr: number, width: number, height: number): number;
+  /**
+   * The SWE flow texture's bytes (ABI 17, chores.cpp): RGBA f32 (u, w, depth,
+   * div) per cell into `outRgbaPtr` (4 · width · height floats), the
+   * sweSurfaceField.ts layout. `bPtr` 0 = flat bed. Returns WS_OK / WS_REJECTED.
+   */
+  packSurfaceField(
+    hPtr: number, uPtr: number, wPtr: number, bPtr: number,
+    width: number, height: number, H: number, dx: number, outRgbaPtr: number,
+  ): number;
 
   // ---- Particle SoA ----
   allocateParticleSoA(capacity: number): number;
@@ -227,7 +258,7 @@ export interface WatershedNativeModule {
   stepSplashParticles(
     base: number, capacity: number, count: number,
     dt: number, gravityY: number, damp: number,
-  ): void;
+  ): number;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +302,7 @@ export const WASM_ABI = {
   lumaHistogramU8: { arity: 3 },
   downsampleF32: { arity: 6 },
   blurSeparableF32: { arity: 4 },
+  packSurfaceField: { arity: 9 },
   allocateParticleSoA: { arity: 1 },
   freeParticleSoA: { arity: 1 },
   initWaterfallParticles: { arity: 8, returns: 'u32' },

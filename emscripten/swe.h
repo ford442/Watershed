@@ -12,7 +12,7 @@
 #include <cstdint>
 
 /**
- * Advance the nonlinear shallow-water grid one CFL-clamped time step.
+ * Advance the nonlinear shallow-water grid by `dt`, in CFL-clamped sub-steps.
  *
  * Conservative finite-volume update (HLL flux + Audusse hydrostatic
  * reconstruction) with wetting/drying. Well-balanced: a flat free surface over
@@ -32,14 +32,27 @@
  * @param bPtr   Bed elevation field, or 0 for a flat bed
  * @param width  Grid columns
  * @param height Grid rows
- * @param dt     Desired time step (s) — internally CFL-clamped
+ * Time contract (ABI 17, #533): the step sub-cycles — at most 4 CFL steps
+ * (dt ≤ 0.4·dx / max(|v| + √(g d)) each), each re-lifted from the state the
+ * previous one wrote back — and RETURNS the time it integrated: `dt` exactly
+ * unless the sub-step cap was hit, in which case the caller carries the rest
+ * (sweHost.ts puts it back in its step accumulator). 0 means the call was
+ * rejected and nothing was written: an extent outside [1, SWE_MAX_GRID_EXTENT],
+ * a null plane, or a dt / g / dx / H that is not finite and > 0.
+ *
+ * Velocities are damped by exp(−DAMPING_COEFF·dt) per sub-step (sweExpNeg),
+ * so the factor is in (0, 1] for any dt. A non-finite η, u or w is read as 0
+ * by the lift, so a NaN cell heals instead of spreading.
+ *
+ * @param dt     Time to integrate (s), finite and > 0
  * @param g      Gravity (m/s²)
  * @param dx     Cell size (m)
  * @param H      Still-water depth over a zero bed (m)
+ * @returns      Time integrated (s), in [0, dt]
  */
-void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                      int width, int height,
-                      float dt, float g, float dx, float H);
+float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                       int width, int height,
+                       float dt, float g, float dx, float H);
 
 /**
  * stepShallowWater with the upstream edge driven by routed discharge (ABI 10,
@@ -56,10 +69,12 @@ void stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t 
  * `edgeEta == 0` over a still interior is exactly the rest state, so
  * lake-at-rest holds bit-for-bit. routing.h's routedEdgeState turns a routed
  * discharge into `edgeEta`. Non-finite `edgeEta` is treated as 0.
+ *
+ * Returns the time integrated, as stepShallowWater.
  */
-void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                            int width, int height,
-                            float dt, float g, float dx, float H, float edgeEta);
+float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                             int width, int height,
+                             float dt, float g, float dx, float H, float edgeEta);
 
 /**
  * Authored hydro event source term (ABI 8, additive).
@@ -69,10 +84,13 @@ void stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uint
  *       |z − cz| ≤ radius across the whole window, cx unused — that raises η
  *       toward `strength` metres and gives the water the downstream speed a bore
  *       of that height carries). Applied in world XZ on the player-centred grid.
+ *
+ * Returns WS_OK, or WS_REJECTED (nothing written) for a bad extent, a null
+ * plane, dx ≤ 0, or a non-finite placement / strength / dt.
  */
-void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                   int width, int height, float dx, float originX, float originZ, float H,
-                   int kind, float cx, float cz, float radius, float strength, float dt);
+int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                  int width, int height, float dx, float originX, float originZ, float H,
+                  int kind, float cx, float cz, float radius, float strength, float dt);
 
 /**
  * Scroll the whole field through the grid's index frame by whole cells
@@ -109,10 +127,11 @@ void applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPt
  * absorb (WaterForceSystem quantizes the window origin to the cell lattice).
  *
  * @param bPtr  Bed plane, or 0 to leave the bed alone (flat bed)
+ * @returns     WS_OK (a zero shift included), or WS_REJECTED for a bad extent / null plane
  */
-void scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                        int width, int height, int shiftX, int shiftZ,
-                        float inflowEta, float inflowU, float inflowW);
+int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
+                       int width, int height, int shiftX, int shiftZ,
+                       float inflowEta, float inflowU, float inflowW);
 
 /**
  * Size the solver's reused scratch (step, upstream-edge ghosts, scroll temp)

@@ -3,7 +3,6 @@
 #
 # Usage:
 #   ./build.sh              # single-threaded release build → ../public/ (the shipped pair)
-#   ./build.sh --threads    # multi-threaded build → build-threads/out/ (never shipped)
 #   ./build.sh --debug      # debug build (assertions, SAFE_HEAP, -O0) → build-debug/out/
 #
 # Output of the default build (written to ../public/ so Vite serves them):
@@ -11,9 +10,10 @@
 #   watershed_native.wasm        — WASM binary
 # plus src/systems/water/wasmArtifactStamp.ts.
 #
-# Only the default build ever writes public/ or the stamp. --threads and
-# --debug always build aside: the committed single-thread pair is the only
-# shipped build, and production sends no COOP/COEP (#454, #461).
+# Only the default build ever writes public/ or the stamp. --debug always
+# builds aside: the committed single-thread pair is the only shipped build,
+# and production sends no COOP/COEP (#454, #461). There is no threads
+# variant (retired in #533, WASM.md).
 #
 # Toolchain pin (#467): the shipped pair must come from the emcc named in
 # emscripten/EMCC_VERSION. This script builds with the first emsdk whose emcc
@@ -26,13 +26,11 @@
 
 set -euo pipefail
 
-USE_THREADS=0
 DEBUG_BUILD=0
 
 for arg in "$@"; do
     case "$arg" in
-        --threads) USE_THREADS=1 ;;
-        --debug)   DEBUG_BUILD=1  ;;
+        --debug) DEBUG_BUILD=1 ;;
         *) echo "[build:wasm] unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
@@ -105,21 +103,17 @@ if [ "$EMCC_VER" != "$PINNED_EMCC_VERSION" ]; then
 fi
 
 BUILD_DIR="$SCRIPT_DIR/build"
-if [ "$USE_THREADS" -eq 1 ]; then
-    BUILD_DIR="$SCRIPT_DIR/build-threads"
-elif [ "$DEBUG_BUILD" -eq 1 ]; then
+if [ "$DEBUG_BUILD" -eq 1 ]; then
     BUILD_DIR="$SCRIPT_DIR/build-debug"
 fi
 OUTPUT_DIR="$PUBLIC_DIR"
 SHIPPED=1
-if [ "$USE_THREADS" -eq 1 ] || [ "$DEBUG_BUILD" -eq 1 ] || [ "$EMCC_MISMATCH" -eq 1 ]; then
+if [ "$DEBUG_BUILD" -eq 1 ] || [ "$EMCC_MISMATCH" -eq 1 ]; then
     OUTPUT_DIR="$BUILD_DIR/out"
     SHIPPED=0
 fi
 
-if [ "$USE_THREADS" -eq 1 ]; then
-    echo "Building watershed_native.js (multi-threaded via CMake, emcc $EMCC_VER)..."
-elif [ "$DEBUG_BUILD" -eq 1 ]; then
+if [ "$DEBUG_BUILD" -eq 1 ]; then
     echo "Building watershed_native.js (debug via CMake, emcc $EMCC_VER)..."
 else
     echo "Building watershed_native.js (single-threaded, optimised via CMake, emcc $EMCC_VER)..."
@@ -130,18 +124,12 @@ if [ "$DEBUG_BUILD" -eq 1 ]; then
     CMAKE_BUILD_TYPE=Debug
 fi
 
-THREADS_FLAG=OFF
-if [ "$USE_THREADS" -eq 1 ]; then
-    THREADS_FLAG=ON
-fi
-
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$OUTPUT_DIR"
 
 pushd "$BUILD_DIR" >/dev/null
 emcmake cmake .. \
   -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
-  -DWATERSHED_THREADS="$THREADS_FLAG" \
   -DWATERSHED_OUTPUT_DIR="$OUTPUT_DIR"
 cmake --build . --config "$CMAKE_BUILD_TYPE"
 popd >/dev/null
@@ -198,11 +186,4 @@ EOF
 else
     echo "  Built aside in $OUTPUT_DIR (stamp ${STAMP}, not written)."
     echo "  public/ and wasmArtifactStamp.ts are untouched."
-fi
-
-if [ "$USE_THREADS" -eq 1 ]; then
-    WORKER_JS="$OUTPUT_DIR/watershed_native.worker.mjs"
-    if [ -f "$WORKER_JS" ]; then
-        echo "  → $WORKER_JS (pthread worker shim)"
-    fi
 fi

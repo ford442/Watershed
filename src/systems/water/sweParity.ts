@@ -151,6 +151,17 @@ export async function runSweParitySuite(
     return { x: originX + (idx % sim.width) * dx, z: originZ + Math.floor(idx / sim.width) * dx, eta: best };
   };
 
+  /** Largest |wasm − wgsl| over the packed flow plane (u, w, depth, div), ABI 17. */
+  const surfaceDiff = (pair: Pair, meanDepth: number) =>
+    maxDiff(pair.native.packSurface(meanDepth), pair.gpu.packSurface(meanDepth));
+
+  /** |wasm − wgsl| shortfall since the last take, and the wasm value. */
+  const shortfallDiff = (pair: Pair) => {
+    const native = pair.native.takeShortfall();
+    const gpu = pair.gpu.takeShortfall();
+    return { native, gpu, diff: Math.abs(native - gpu) };
+  };
+
   const record = (name: string, pair: Pair, extra?: { ok: boolean; detail: string }) => {
     const diffs = {
       h: maxDiff(pair.native.h, pair.gpu.h),
@@ -185,6 +196,75 @@ export async function runSweParitySuite(
     const pair = await makePair(32, 24, 0.75, () => ({ u: 1, w: 1 }));
     await stepBoth(pair, 1, { ...base, dt: 1 });
     record('uniform flow, CFL-clamped step', pair);
+    pair.dispose();
+  });
+
+  // ── ABI 17 (#533): sub-cycling, its shortfall, exp damping, the NaN purge,
+  // and the packed flow plane ─────────────────────────────────────────────────
+  await scenario('sub-cycling: capped steps, shortfall counted across pending readbacks', async () => {
+    const pair = await makePair(32, 24, 0.75, (x, z) => ({ u: 1.5, w: -1, h: 0.2 * Math.sin(0.4 * x + 0.3 * z) }));
+    // dt 1 s against a ~0.08 s CFL limit: four sub-steps, most of dt owed.
+    // Three steps back to back, so two land while the first readback is pending.
+    for (let k = 0; k < 3; k += 1) {
+      pair.native.step({ ...base, dt: 1 });
+      pair.gpu.step({ ...base, dt: 1 });
+    }
+    await pair.gpu.flush();
+    const owed = shortfallDiff(pair);
+    const plane = surfaceDiff(pair, base.H);
+    record('sub-cycling: capped steps, shortfall counted across pending readbacks', pair, {
+      ok: owed.diff < SWE_PARITY_TOLERANCE * 3 && owed.native > 2 && plane < SWE_PARITY_TOLERANCE,
+      detail: `shortfall wasm ${owed.native.toFixed(6)} wgsl ${owed.gpu.toFixed(6)}; flow plane ${plane.toExponential(2)}`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('sub-cycling: an uncapped step owes nothing', async () => {
+    const pair = await makePair(32, 24, 0.75, (x) => ({ h: x < 16 ? 0.3 : 0, u: 0.5 }));
+    // ~2 CFL sub-steps per step: fully integrated, so neither backend owes time.
+    await stepBoth(pair, 10, { ...base, dt: 0.15 });
+    const owed = shortfallDiff(pair);
+    const plane = surfaceDiff(pair, base.H);
+    record('sub-cycling: an uncapped step owes nothing', pair, {
+      ok: owed.native < 1e-6 && owed.gpu < 1e-6 && plane < SWE_PARITY_TOLERANCE,
+      detail: `shortfall wasm ${owed.native.toExponential(2)} wgsl ${owed.gpu.toExponential(2)}; flow plane ${plane.toExponential(2)}`,
+    });
+    pair.dispose();
+  });
+
+  await scenario('lift purges NaN / inf velocity and η', async () => {
+    const pair = await makePair(24, 16, 0.5, (x, z) => {
+      if (x === 8 && z === 8) return { u: Number.NaN, w: 0.4 };
+      if (x === 15 && z === 5) return { h: Number.POSITIVE_INFINITY };
+      if (x === 3 && z === 12) return { w: Number.NEGATIVE_INFINITY, h: 0.1 };
+      return { u: 0.3 };
+    });
+    await stepBoth(pair, 5, { ...base, dt: 1 / 60 });
+    const finite = [pair.gpu.h, pair.gpu.u, pair.gpu.w].every((plane) => plane.every(Number.isFinite));
+    record('lift purges NaN / inf velocity and η', pair, { ok: finite, detail: `wgsl field finite ${finite}` });
+    pair.dispose();
+  });
+
+  await scenario('flow plane: wet / dry / bank cells, after events and a scroll', async () => {
+    const width = 24;
+    const height = 16;
+    const H = 1.2;
+    const pair = await makePair(width, height, 0.5, (x, z) => ({
+      b: x < 3 ? 2 : 0.3 * Math.exp(-((x - 12) ** 2) / 12 - ((z - 8) ** 2) / 8),
+      u: 0.2 * Math.sin(z),
+      w: -0.8,
+    }));
+    const events: SweEventCall[] = [{ kind: 1, cx: 6, cz: 4, radius: 2.5, strength: 2, dt: 1 / 60 }];
+    await stepBoth(pair, 8, { ...base, H, dt: 1 / 60, events });
+    const stepped = surfaceDiff(pair, H);
+    // A scroll moves the plane with the mirror; the next readback repacks it.
+    scrollBoth(pair, 2, -3);
+    await pair.gpu.flush();
+    const scrolled = surfaceDiff(pair, H);
+    record('flow plane: wet / dry / bank cells, after events and a scroll', pair, {
+      ok: stepped < SWE_PARITY_TOLERANCE && scrolled < SWE_PARITY_TOLERANCE,
+      detail: `flow plane stepped ${stepped.toExponential(2)}, scrolled ${scrolled.toExponential(2)}`,
+    });
     pair.dispose();
   });
 

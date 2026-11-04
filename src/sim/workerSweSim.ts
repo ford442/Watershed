@@ -8,7 +8,9 @@
  * never be a buffer that gets transferred away. `fieldVersion` bumps when a
  * frame lands (one message hop after `step()`), and on `scroll()`.
  *
- *   step():   queued addSurface ops ride along, applied in order before the step
+ *   step():   queued addSurface ops ride along, applied in order before the step;
+ *             the frame brings the packed flow texture (`packSurface`) and the
+ *             step's shortfall (`takeShortfall`) back with the field
  *   scroll(): same shift applied to the mirror at once (TS twin, bit-exact)
  *   commitBed(): a copy of `b` is transferred; the mirror keeps its own
  *   Frames published before the worker saw the latest scroll or bed commit are
@@ -24,8 +26,8 @@
  * so the worker's force lookups use the frame's origin.
  */
 import type { SweSim, SweStepInput } from '../systems/water/sweSim';
-import { SWE_REST_INFLOW, scrollField, type SweInflow } from '../systems/water/sweScroll';
-import { viewSimFrame } from './SimFrame';
+import { SWE_REST_INFLOW, scrollField, scrollTexels, type SweInflow } from '../systems/water/sweScroll';
+import { SIM_FRAME_SURFACE_CHANNELS, viewSimFrame } from './SimFrame';
 import type { SimWorkerProxy } from './createSimWorkerProxy';
 import type { SimRoute, SimScrollFill } from './simWorkerProtocol';
 
@@ -71,8 +73,11 @@ export function createWorkerSweSim(
   const u = mirror.subarray(count, 2 * count);
   const w = mirror.subarray(2 * count, 3 * count);
   const b = mirror.subarray(3 * count, 4 * count);
+  // The flow texture's bytes as the worker packed them; the DataTexture's backing store.
+  const packed = new Float32Array(SIM_FRAME_SURFACE_CHANNELS * count);
 
   let surface: number[] = [];
+  let shortfall = 0;
   let epoch = 0;
   let fieldVersion = 0;
   let disposed = false;
@@ -95,9 +100,13 @@ export function createWorkerSweSim(
       h.set(planes.eta);
       u.set(planes.u);
       w.set(planes.w);
+      packed.set(planes.surface);
       if (frame.bed) b.set(planes.b);
       fieldVersion += 1;
     }
+    // Counted even for a discarded frame: the worker integrated (or failed to
+    // integrate) that time whichever window the mirror is in now.
+    if (!disposed && Number.isFinite(frame.shortfall) && frame.shortfall > 0) shortfall += frame.shortfall;
     if (!disposed) reportedInflow = frame.inflow;
     proxy.returnFrame(frame.buffer);
   });
@@ -119,7 +128,10 @@ export function createWorkerSweSim(
     proxy.post({ type: 'SCROLL', gridId, surface: takeSurface(), shiftX: sx, shiftZ: sz, fill, origin });
     // The mirror moves at once; the next frame (same epoch) replaces all of it,
     // so the fill here is only what shows until then.
-    if (mirrorFill) scrollField({ h, u, w, b }, width, height, sx, sz, mirrorFill);
+    if (mirrorFill) {
+      scrollField({ h, u, w, b }, width, height, sx, sz, mirrorFill);
+      scrollTexels(packed, width, height, SIM_FRAME_SURFACE_CHANNELS, sx, sz);
+    }
     epoch += 1;
     fieldVersion += 1;
   };
@@ -145,8 +157,17 @@ export function createWorkerSweSim(
       epoch += 1;
     },
     addSurface(index, amount) {
-      if (index < 0 || index >= count) return;
+      // Finite at the door (#533): the worker applies these unchecked.
+      if (!Number.isInteger(index) || index < 0 || index >= count || !Number.isFinite(amount)) return;
       surface.push(index, amount);
+    },
+    takeShortfall() {
+      const owed = shortfall;
+      shortfall = 0;
+      return owed;
+    },
+    packSurface() {
+      return packed;
     },
     scroll(shiftX, shiftZ, inflow = SWE_REST_INFLOW) {
       if (disposed) return;
@@ -193,7 +214,9 @@ export function createWorkerSweSim(
         gridId,
         surface: takeSurface(),
         input: { ...rest, events: input.events.slice() },
-        route: { chainIndex: route.chainIndex },
+        route: route.advance === undefined
+          ? { chainIndex: route.chainIndex }
+          : { chainIndex: route.chainIndex, advance: route.advance },
       });
     },
     dispose() {

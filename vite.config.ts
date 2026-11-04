@@ -55,8 +55,9 @@ function buildIdentityPlugin(identity: string): Plugin {
   };
 }
 
-/** `pnpm dev` with `?isolated=1` (#502 E): COOP/COEP for a threads experiment
- *  (`pnpm build:wasm:threads`) only. The headers ride on the document that
+/** `pnpm dev` with `?isolated=1` (#502 E): COOP/COEP for a local
+ *  SharedArrayBuffer experiment only (the wasm threads variant was retired in
+ *  #533; nothing shipped needs isolation). The headers ride on the document that
  *  asks and on what it loads (its Referer carries the flag) — dedicated workers
  *  included, which must send COEP themselves to load under require-corp.
  *  Default dev, preview and production are not isolated. */

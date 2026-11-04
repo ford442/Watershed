@@ -1,4 +1,5 @@
-// swe.wgsl — WGSL twin of emscripten/swe.cpp (stepShallowWater[Inflow] + applySWEEvent + scrollShallowWater, ABI 10).
+// swe.wgsl — WGSL twin of emscripten/swe.cpp (stepShallowWater[Inflow] + applySWEEvent + scrollShallowWater)
+// and chores.cpp packSurfaceField, ABI 17.
 //
 // Same numerics, not a new water sim: Audusse hydrostatic reconstruction + HLL
 // flux, transmissive boundaries, wetting/drying, CFL clamp, velocity damping.
@@ -8,6 +9,21 @@
 // η (0 at rest), `b` the bed above the channel-floor datum, depth = H + η − b.
 // All fields are f32 SoA, row-major, index = z * width + x.
 //
+// ABI 17 (#533), as in swe.cpp:
+//   - Sub-cycling. One step() is up to kMaxSubsteps CFL sub-steps, each
+//     re-lifted from the state the previous one wrote back, each taking
+//     min(remaining, CFL·dx / maxWaveSpeed) — or all of `remaining` over an
+//     all-dry grid. The host encodes the sub-steps unconditionally (it cannot
+//     see the max without a readback), so the time left lives on the GPU in
+//     `clock.remaining`: `lift` / `update` are complete no-ops once it reaches
+//     0. They must be — an update at dt 0 is not the identity (u = (d·u)/d
+//     round-trips), so "run it anyway with dt 0" would drift from the C++.
+//   - Damping is exp(−dt·DAMPING_COEFF) (`expNeg`, the twin of common.h
+//     sweExpNeg), not 1 − dt·k: multiplicative, so N sub-steps damp like one
+//     step of their sum, and never negative.
+//   - The lift reads η, u, w through `finiteOrZero`: a NaN / ±inf left in the
+//     field reads as 0 instead of spreading two cells per step.
+//
 // The C++ scatters each face flux into both neighbours. Here every cell gathers
 // its own four faces instead (no write races), in the order the C++ loops
 // accumulate them — left x-face, right x-face, lower z-face, upper z-face — so
@@ -15,25 +31,38 @@
 // does in the C++ (SIMD there is only lift / CFL max / damping).
 //
 // Buffers are packed so the kernels need three storage bindings — well inside
-// even compatibility-mode limits:
+// even compatibility-mode limits (4 per stage):
 //   field    [h | u | w | b]           4N f32, the simulation state (read back)
 //   scratch  [d | d·u | d·w | —]       4N f32; before `add_surface` its first N
 //                                       floats carry the splash delta; `scroll`
-//                                       gathers all four field planes into it
-//   maxBits  CFL max wave speed as u32 bits
+//                                       gathers all four field planes into it;
+//                                       `pack_surface` writes the RGBA flow
+//                                       plane into it (read back with the field)
+//   clock    Clock (below)             the sub-step clock and the CFL max
 //
-// Entry points, one dispatch each, in step order:
-//   add_surface  h += scratch[0..N)      (queued splash disturbances)
-//   lift         (η,u,w) → (d, d·u, d·w) scratch + global max wave speed
-//                (plus the inflow ghost's speed on the upstream row when edgeActive)
-//   update       gather fluxes, apply, lower back to (η,u,w), damp
-//   events       authored hydro source terms (applySWEEvent), in authored order
-//   scroll       whole-cell shift of h/u/w/b (scrollShallowWater) — runs between
-//                steps, before the bed refresh; the host copies scratch → field
+// Entry points, one dispatch each. A step is
+//   add_surface  h += scratch[0..N)      (queued splash disturbances; only when queued)
+//   4 × { lift          (η,u,w) → (d, d·u, d·w) scratch + global max wave speed
+//                       (plus the inflow ghost's speed on the upstream row when edgeActive)
+//         update        gather fluxes, apply, lower back to (η,u,w), damp
+//         advance_clock remaining −= this sub-step's dt; max reset for the next lift }
+//   settle_clock  owed += remaining (the sub-step cap's shortfall), remaining = 0
+//   apply_events  authored hydro source terms (applySWEEvent), in authored order
+// and, outside a step,
+//   pack_surface  field → RGBA (u, w, depth, div) into scratch — encoded with the
+//                 readback, so the plane always describes the field read back with it
+//   scroll        whole-cell shift of h/u/w/b (scrollShallowWater) — runs between
+//                 steps, before the bed refresh; the host copies scratch → field
 
 const DRY_DEPTH: f32 = 1e-4;       // SWE_DRY_DEPTH (swe.cpp)
 const CFL_NUMBER: f32 = 0.4;       // kCflNumber
 const DAMPING_COEFF: f32 = 0.1;    // common.h
+// sweExpNeg (common.h): Cody–Waite split of ln 2 — EXP_LN2_HI has 16
+// significant bits, so k · EXP_LN2_HI is exact for the k < 2^8 the clamp allows.
+const EXP_INV_LN2: f32 = 1.44269502;  // kInvLn2
+const EXP_LN2_HI: f32 = 0.693145751953125;  // kLn2Hi
+const EXP_LN2_LO: f32 = 1.42860677e-06;  // kLn2Lo
+const EXP_MAX_ARG: f32 = 87.0;     // exp(−87) ≈ 1.6e-38, still a normal f32
 const HYDRO_INFLOW_DOWNSTREAM: f32 = 0.5;
 const HYDRO_VORTEX_SINK: f32 = 0.35;
 const HYDRO_BRAID_LATERAL: f32 = 0.75;
@@ -46,9 +75,12 @@ struct Params {
   height: u32,
   count: u32,
   eventCount: u32,
+  // The dt step() was asked for — documentation only: the solver integrates
+  // `clock.remaining`, which the host seeds with this value.
   dt: f32,
   g: f32,
   dx: f32,
+  // Still depth; `pack_surface` takes it as packSurfaceField's meanDepth.
   H: f32,
   originX: f32,
   originZ: f32,
@@ -90,7 +122,21 @@ struct EventBlock {
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> field: array<f32>;
 @group(0) @binding(2) var<storage, read_write> scratch: array<f32>;
-@group(0) @binding(3) var<storage, read_write> maxSpeedBits: array<atomic<u32>, 1>;
+// The sub-step clock. The host writes {0, dt} over (maxSpeedBits, remaining)
+// before a step's submit and zeroes `owed` after each readback copy of it.
+struct Clock {
+  // CFL max wave speed of the current sub-step, as u32 bits (see `lift`).
+  maxSpeedBits: atomic<u32>,
+  // Simulated time the current step has still to integrate. Every sub-step
+  // takes min(remaining, CFL) and subtracts it, so the last one leaves exactly 0.
+  remaining: f32,
+  // Shortfall (time asked for, not integrated) summed over every step since
+  // the host last copied this word out — see WgslSweSim.ts `takeShortfall`.
+  owed: f32,
+  _pad: f32,
+};
+
+@group(0) @binding(3) var<storage, read_write> clock: Clock;
 @group(0) @binding(4) var<uniform> events: EventBlock;
 
 // Field / scratch accessors: SoA planes inside one buffer each.
@@ -108,6 +154,51 @@ fn qzAt(i: u32) -> f32 { return scratch[2u * params.count + i]; }
 
 const WORKGROUP: u32 = 64u;
 
+// ── value guards ─────────────────────────────────────────────────────────────
+// finiteOrZero (swe.cpp): a NaN or ±inf reads as 0. Tested on the exponent
+// bits rather than with float compares, because WGSL lets a compiler assume
+// floats are finite and fold `v != v`-style tests away.
+fn finiteOrZero(v: f32) -> f32 {
+  return select(v, 0.0, (bitcast<u32>(v) & 0x7f800000u) == 0x7f800000u);
+}
+
+// std::max(0.f, v) exactly: 0 when v is NaN (C++ returns its first argument
+// when the compare is false). WGSL's max() leaves the NaN case unspecified.
+fn maxZero(v: f32) -> f32 {
+  return select(0.0, v, v > 0.0);
+}
+
+// ── expNeg (sweExpNeg in common.h) ───────────────────────────────────────────
+// exp(−x) from +, −, ×, floor and ldexp only, in the C++ operation order.
+// Always in (0, 1]: x <= 0 is 1, x is clamped to 87.
+fn expNeg(x: f32) -> f32 {
+  if (!(x > 0.0)) { return 1.0; }
+  let xc = min(x, EXP_MAX_ARG);
+  let k = floor(xc * EXP_INV_LN2);
+  let r = (xc - k * EXP_LN2_HI) - k * EXP_LN2_LO;  // ≈ [0, ln 2)
+  // exp(−r), Horner form of the degree-9 Taylor polynomial.
+  var p = 1.0 - r * (1.0 / 9.0);
+  p = 1.0 - r * (1.0 / 8.0) * p;
+  p = 1.0 - r * (1.0 / 7.0) * p;
+  p = 1.0 - r * (1.0 / 6.0) * p;
+  p = 1.0 - r * (1.0 / 5.0) * p;
+  p = 1.0 - r * (1.0 / 4.0) * p;
+  p = 1.0 - r * (1.0 / 3.0) * p;
+  p = 1.0 - r * (1.0 / 2.0) * p;
+  p = 1.0 - r * p;
+  return ldexp(p, -i32(k));
+}
+
+// ── sub-step clock ───────────────────────────────────────────────────────────
+// The time one sub-step integrates (stepOnce's return): min(remaining,
+// CFL·dx / max), or all of `remaining` over an all-dry grid. `update` and
+// `advance_clock` both call this on the same two values, so the time the
+// cells advanced by and the time the clock subtracts are the same float.
+fn subStepDt(remaining: f32, maxWaveSpeed: f32) -> f32 {
+  if (maxWaveSpeed <= 0.0) { return remaining; }
+  return min(remaining, CFL_NUMBER * params.dx / maxWaveSpeed);
+}
+
 // ── add_surface ──────────────────────────────────────────────────────────────
 @compute @workgroup_size(64)
 fn add_surface(@builtin(global_invocation_id) gid: vec3u) {
@@ -124,7 +215,9 @@ struct GhostCell { d: f32, qz: f32, qx: f32, };
 
 fn upstreamGhost(dI: f32, hI: f32, qzI: f32, qxI: f32, edgeEta: f32, g: f32) -> GhostCell {
   let wetI = dI > DRY_DEPTH;
-  let dStill = max(0.0, dI - hI);
+  // hI is the raw field η, as in swe.cpp (the ghost reads h, not the purged
+  // lift); maxZero keeps std::max's NaN answer.
+  let dStill = maxZero(dI - hI);
   let dExt = max(0.0, dStill + edgeEta);
   if (!wetI && dExt <= DRY_DEPTH) { return GhostCell(dI, qzI, qxI); }
 
@@ -171,14 +264,17 @@ var<workgroup> wgMax: array<f32, 64>;
 @compute @workgroup_size(64)
 fn lift(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_index) lid: u32) {
   let i = gid.x;
+  // A sub-step past the end of the step (remaining already 0) writes nothing.
+  // Not an early return: the barriers below must stay in uniform control flow.
+  let stepping = clock.remaining > 0.0;
   var speed = 0.0;
-  if (i < params.count) {
+  if (stepping && i < params.count) {
     let n = params.count;
-    let depth = max(0.0, (params.H + hAt(i)) - bAt(i));
+    let depth = max(0.0, (params.H + finiteOrZero(hAt(i))) - bAt(i));
     scratch[i] = depth;
     if (depth > DRY_DEPTH) {
-      let ui = uAt(i);
-      let wi = wAt(i);
+      let ui = finiteOrZero(uAt(i));
+      let wi = finiteOrZero(wAt(i));
       scratch[n + i] = depth * ui;
       scratch[2u * n + i] = depth * wi;
       speed = sqrt(ui * ui + wi * wi) + sqrt(params.g * depth);
@@ -204,10 +300,10 @@ fn lift(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_ind
     workgroupBarrier();
     stride = stride / 2u;
   }
-  if (lid == 0u) {
+  if (stepping && lid == 0u) {
     // Wave speeds are non-negative, so their IEEE bit patterns order like the
     // values: an integer max is a float max.
-    atomicMax(&maxSpeedBits[0], bitcast<u32>(wgMax[0]));
+    atomicMax(&clock.maxSpeedBits, bitcast<u32>(wgMax[0]));
   }
 }
 
@@ -300,13 +396,19 @@ fn zFace(iL: u32, iR: u32) -> InterfaceFlux {
 @compute @workgroup_size(64)
 fn update(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
-  if (i >= params.count) { return; }
+  // Past the end of the step: leave the field exactly as the last sub-step
+  // wrote it (an update at dt 0 would still round-trip u through d·u / d).
+  let remaining = clock.remaining;
+  if (i >= params.count || !(remaining > 0.0)) { return; }
   let width = params.width;
   let height = params.height;
   let H = params.H;
-  let maxWaveSpeed = bitcast<f32>(atomicLoad(&maxSpeedBits[0]));
+  let maxWaveSpeed = bitcast<f32>(atomicLoad(&clock.maxSpeedBits));
 
   // Everything is dry — nothing to advance, but still write back the clamp.
+  // Reads the lifted scratch only (d), never the raw field: a non-finite η
+  // was purged by the lift. The same holds below, except `b` and the ghost's
+  // η, which swe.cpp also reads raw.
   if (maxWaveSpeed <= 0.0) {
     setH(i, dAt(i) + bAt(i) - H);
     setU(i, 0.0);
@@ -314,7 +416,7 @@ fn update(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  let safeDt = min(params.dt, CFL_NUMBER * params.dx / maxWaveSpeed);
+  let safeDt = subStepDt(remaining, maxWaveSpeed);
   let dtdx = safeDt / params.dx;
 
   let x = i % width;
@@ -364,10 +466,69 @@ fn update(@builtin(global_invocation_id) gid: vec3u) {
     setW(i, 0.0);
     return;
   }
-  let damp = 1.0 - safeDt * DAMPING_COEFF;
+  // exp(−k·dt) (#533): always in (0, 1], and N sub-steps damp like one step
+  // of their sum. The linear 1 − k·dt went negative past dt = 1/k.
+  let damp = expNeg(safeDt * DAMPING_COEFF);
   setH(i, depth + bAt(i) - H);
   setU(i, ((qxAt(i) + accQx) / depth) * damp);
   setW(i, ((qzAt(i) + accQz) / depth) * damp);
+}
+
+// ── advance_clock / settle_clock (one thread) ───────────────────────────────
+// After each sub-step's update: subtract the time it integrated (stepOnce's
+// return, recomputed from the same remaining and max as `update` used) and
+// reset the max for the next sub-step's lift. A no-op past the end of the step.
+@compute @workgroup_size(1)
+fn advance_clock() {
+  let maxWaveSpeed = bitcast<f32>(atomicLoad(&clock.maxSpeedBits));
+  atomicStore(&clock.maxSpeedBits, 0u);
+  let remaining = clock.remaining;
+  if (!(remaining > 0.0)) { return; }
+  clock.remaining = remaining - subStepDt(remaining, maxWaveSpeed);
+}
+
+// After the last sub-step: whatever the sub-step cap left is this step's
+// shortfall. It accumulates in `owed` until the host's next readback copies
+// and zeroes it, so a step that lands while a readback is pending is still
+// counted exactly once.
+@compute @workgroup_size(1)
+fn settle_clock() {
+  clock.owed = clock.owed + max(clock.remaining, 0.0);
+  clock.remaining = 0.0;
+}
+
+// ── pack_surface (packSurfaceField, chores.cpp) ─────────────────────────────
+// RGBA f32 per cell into scratch[4i .. 4i + 4): (u, w, depth, div), depth =
+// max(0, (H + h) − b) with params.H as meanDepth, div = ∂u/∂x + ∂w/∂z by
+// central differences, one-sided (half span) on the border, 0 on a dry cell
+// or along an axis of extent 1. Same operation order as packCell (div from
+// +0, x term then z term). Reads the raw field, as the C++ does.
+@compute @workgroup_size(64)
+fn pack_surface(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= params.count) { return; }
+  let width = params.width;
+  let height = params.height;
+  let x = i % width;
+  let z = i / width;
+  let depth = max(0.0, (params.H + hAt(i)) - bAt(i));
+  var div = 0.0;
+  if (depth > DRY_DEPTH) {
+    let xLo = select(x, x - 1u, x > 0u);
+    let xHi = select(x, x + 1u, x < width - 1u);
+    let zLo = select(z, z - 1u, z > 0u);
+    let zHi = select(z, z + 1u, z < height - 1u);
+    let spanX = f32(xHi - xLo) * params.dx;
+    let spanZ = f32(zHi - zLo) * params.dx;
+    let row = z * width;
+    if (spanX > 0.0) { div = div + (uAt(row + xHi) - uAt(row + xLo)) / spanX; }
+    if (spanZ > 0.0) { div = div + (wAt(zHi * width + x) - wAt(zLo * width + x)) / spanZ; }
+  }
+  let o = 4u * i;
+  scratch[o] = uAt(i);
+  scratch[o + 1u] = wAt(i);
+  scratch[o + 2u] = depth;
+  scratch[o + 3u] = div;
 }
 
 // ── events (applySWEEvent) ───────────────────────────────────────────────────

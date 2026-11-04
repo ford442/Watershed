@@ -16,6 +16,7 @@ import React from 'react';
 import { act, render } from '@testing-library/react';
 import * as THREE from 'three';
 import type { WatershedNativeModule } from './wasmAbi';
+import { packSurfaceFieldStub } from '../../testing/sweSurfacePack';
 import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from '../../sim/simWorkerProtocol';
 
 const h = vi.hoisted(() => ({
@@ -114,20 +115,24 @@ function stubModule(stepMarker: number) {
     },
     freeGrid: () => {},
     reserveShallowWaterScratch: vi.fn(),
-    stepShallowWater: vi.fn((hp: number) => {
+    stepShallowWater: vi.fn((hp: number, ...rest: number[]) => {
       heap[hp >> 2] = stepMarker;
+      return rest[5];
     }),
-    stepShallowWaterInflow: vi.fn((hp: number) => {
+    stepShallowWaterInflow: vi.fn((hp: number, ...rest: number[]) => {
       heap[hp >> 2] = stepMarker;
+      return rest[5];
     }),
-    applySWEEvent: vi.fn(),
-    scrollShallowWater: vi.fn(),
+    applySWEEvent: vi.fn(() => 1),
+    scrollShallowWater: vi.fn(() => 1),
+    packSurfaceField: vi.fn(packSurfaceFieldStub(heap)),
     // A sample at x gets (10 + 100·x, 1000, 0, …): tells the hull and debris apart.
     computeWaterForcesBatch: vi.fn((inPtr: number, outPtr: number, n: number) => {
       for (let i = 0; i < n; i += 1) {
         const x = heap[(inPtr >> 2) + i * 8];
         heap.set([10 + 100 * x, 1000, 0, 0, 0, 0, 0, 1], (outPtr >> 2) + i * 8);
       }
+      return 1;
     }),
     routeReachSteady: vi.fn(),
     routeReach: vi.fn(),

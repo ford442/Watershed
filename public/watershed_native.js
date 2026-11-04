@@ -13,8 +13,8 @@ var R={a:()=>{J("")},b:()=>!1},S=function(){var a={a:R};G++;Q(a,function(b){S=b.
 c._ws_computeWaterForcesBatch=(a,b,d,e,f,h,k,l,m,p,r,D,E)=>(c._ws_computeWaterForcesBatch=S.f)(a,b,d,e,f,h,k,l,m,p,r,D,E);c._ws_stepShallowWater=(a,b,d,e,f,h,k,l,m,p)=>(c._ws_stepShallowWater=S.g)(a,b,d,e,f,h,k,l,m,p);c._ws_stepShallowWaterInflow=(a,b,d,e,f,h,k,l,m,p,r)=>(c._ws_stepShallowWaterInflow=S.h)(a,b,d,e,f,h,k,l,m,p,r);c._ws_applySWEEvent=(a,b,d,e,f,h,k,l,m,p,r,D,E,V,W,X)=>(c._ws_applySWEEvent=S.i)(a,b,d,e,f,h,k,l,m,p,r,D,E,V,W,X);
 c._ws_scrollShallowWater=(a,b,d,e,f,h,k,l,m,p,r)=>(c._ws_scrollShallowWater=S.j)(a,b,d,e,f,h,k,l,m,p,r);c._ws_reserveShallowWaterScratch=(a,b)=>(c._ws_reserveShallowWaterScratch=S.k)(a,b);c._ws_allocateGrid=a=>(c._ws_allocateGrid=S.l)(a);c._ws_freeGrid=a=>(c._ws_freeGrid=S.m)(a);c._ws_routeReach=(a,b,d,e,f,h,k,l)=>(c._ws_routeReach=S.n)(a,b,d,e,f,h,k,l);c._ws_routeReachLateral=(a,b,d,e,f,h,k,l,m)=>(c._ws_routeReachLateral=S.o)(a,b,d,e,f,h,k,l,m);
 c._ws_routeReachSteady=(a,b,d,e,f,h,k)=>(c._ws_routeReachSteady=S.p)(a,b,d,e,f,h,k);c._ws_routeReachTravelTime=(a,b,d,e,f,h)=>(c._ws_routeReachTravelTime=S.q)(a,b,d,e,f,h);c._ws_routedEdgeState=(a,b,d,e,f)=>(c._ws_routedEdgeState=S.r)(a,b,d,e,f);c._ws_reduceF32Grid=(a,b,d)=>(c._ws_reduceF32Grid=S.s)(a,b,d);c._ws_histogramF32=(a,b,d,e,f)=>(c._ws_histogramF32=S.t)(a,b,d,e,f);c._ws_lumaHistogramU8=(a,b,d)=>(c._ws_lumaHistogramU8=S.u)(a,b,d);
-c._ws_downsampleF32=(a,b,d,e,f,h)=>(c._ws_downsampleF32=S.v)(a,b,d,e,f,h);c._ws_blurSeparableF32=(a,b,d,e)=>(c._ws_blurSeparableF32=S.w)(a,b,d,e);c._ws_allocateParticleSoA=a=>(c._ws_allocateParticleSoA=S.x)(a);c._ws_freeParticleSoA=a=>(c._ws_freeParticleSoA=S.y)(a);c._ws_initWaterfallParticles=(a,b,d,e,f,h,k,l)=>(c._ws_initWaterfallParticles=S.z)(a,b,d,e,f,h,k,l);c._ws_stepWaterfallParticles=(a,b,d,e,f,h,k,l)=>(c._ws_stepWaterfallParticles=S.A)(a,b,d,e,f,h,k,l);
-c._ws_stepSplashParticles=(a,b,d,e,f,h)=>(c._ws_stepSplashParticles=S.B)(a,b,d,e,f,h);var T;I=function U(){T||Y();T||(I=U)};function Y(){if(!(0<G)){for(;0<B.length;)B.shift()(c);if(!(0<G||T||(T=!0,c.calledRun=!0,A))){for(;0<C.length;)C.shift()(c);for(g(c);0<F.length;)F.shift()(c)}}}Y();
+c._ws_downsampleF32=(a,b,d,e,f,h)=>(c._ws_downsampleF32=S.v)(a,b,d,e,f,h);c._ws_blurSeparableF32=(a,b,d,e)=>(c._ws_blurSeparableF32=S.w)(a,b,d,e);c._ws_packSurfaceField=(a,b,d,e,f,h,k,l,m)=>(c._ws_packSurfaceField=S.x)(a,b,d,e,f,h,k,l,m);c._ws_allocateParticleSoA=a=>(c._ws_allocateParticleSoA=S.y)(a);c._ws_freeParticleSoA=a=>(c._ws_freeParticleSoA=S.z)(a);c._ws_initWaterfallParticles=(a,b,d,e,f,h,k,l)=>(c._ws_initWaterfallParticles=S.A)(a,b,d,e,f,h,k,l);
+c._ws_stepWaterfallParticles=(a,b,d,e,f,h,k,l)=>(c._ws_stepWaterfallParticles=S.B)(a,b,d,e,f,h,k,l);c._ws_stepSplashParticles=(a,b,d,e,f,h)=>(c._ws_stepSplashParticles=S.C)(a,b,d,e,f,h);var T;I=function U(){T||Y();T||(I=U)};function Y(){if(!(0<G)){for(;0<B.length;)B.shift()(c);if(!(0<G||T||(T=!0,c.calledRun=!0,A))){for(;0<C.length;)C.shift()(c);for(g(c);0<F.length;)F.shift()(c)}}}Y();
 
 
   return moduleArg.ready
@@ -22,4 +22,4 @@ c._ws_stepSplashParticles=(a,b,d,e,f,h)=>(c._ws_stepSplashParticles=S.B)(a,b,d,e
 );
 })();
 export default createWatershedNative;
-export const WATERSHED_WASM_SHA = "a391d29631431b5f";
+export const WATERSHED_WASM_SHA = "191f66957cab62cc";

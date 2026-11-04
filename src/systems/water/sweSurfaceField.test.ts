@@ -1,95 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { WATER_SHADER } from '../../constants/game';
 import { FALLBACK_FLOW_DIR, SWE_DRY_DEPTH } from './sampleSWEFlow';
-import {
-  SWE_FLOW_CHANNELS,
-  packSweSurfaceField,
-  sweFoamWeight,
-  sweStreakAxis,
-  type SweSurfaceGrid,
-} from './sweSurfaceField';
+import { sweFoamWeight, sweStreakAxis } from './sweSurfaceField';
 
 const MEAN = 1;
-
-/** SweSurfaceGrid with writable planes, so tests can author the field in place. */
-type TestGrid = SweSurfaceGrid & { h: Float32Array; u: Float32Array; w: Float32Array; b: Float32Array };
-
-function makeGrid(width = 8, height = 6, dx = 0.5, b = 0): TestGrid {
-  const n = width * height;
-  return {
-    width,
-    height,
-    dx,
-    h: new Float32Array(n),
-    u: new Float32Array(n),
-    w: new Float32Array(n),
-    b: new Float32Array(n).fill(b),
-  };
-}
-
-function texel(out: Float32Array, width: number, gx: number, gz: number) {
-  const o = (gz * width + gx) * SWE_FLOW_CHANNELS;
-  return { u: out[o], w: out[o + 1], depth: out[o + 2], div: out[o + 3] };
-}
-
-describe('packSweSurfaceField', () => {
-  it('packs (u, w, depth) for a known texel', () => {
-    const g = makeGrid();
-    const idx = 2 * g.width + 3;
-    g.u[idx] = 1.25;
-    g.w[idx] = -0.5;
-    g.h[idx] = 0.3;
-    g.b[idx] = 0.2;
-    const out = new Float32Array(g.width * g.height * SWE_FLOW_CHANNELS);
-    packSweSurfaceField(g, out, MEAN);
-    const t = texel(out, g.width, 3, 2);
-    expect(t.u).toBeCloseTo(1.25);
-    expect(t.w).toBeCloseTo(-0.5);
-    expect(t.depth).toBeCloseTo(MEAN + 0.3 - 0.2);
-  });
-
-  it('floors depth at 0 for a bed above the surface (dry bank)', () => {
-    const g = makeGrid(4, 4, 0.5, 3);
-    const out = new Float32Array(4 * 4 * SWE_FLOW_CHANNELS);
-    packSweSurfaceField(g, out, MEAN);
-    expect(texel(out, 4, 1, 1).depth).toBe(0);
-  });
-
-  it('measures positive divergence where the flow spreads, and 0 on a uniform stream', () => {
-    const g = makeGrid(9, 5, 0.5);
-    // u grows with x: du/dx = 1 / s at the interior.
-    for (let gz = 0; gz < g.height; gz += 1) {
-      for (let gx = 0; gx < g.width; gx += 1) g.u[gz * g.width + gx] = gx * 0.5;
-    }
-    const out = new Float32Array(g.width * g.height * SWE_FLOW_CHANNELS);
-    packSweSurfaceField(g, out, MEAN);
-    expect(texel(out, g.width, 4, 2).div).toBeCloseTo(1, 5);
-
-    const uniform = makeGrid(9, 5, 0.5);
-    uniform.w.fill(-1.5);
-    packSweSurfaceField(uniform, out, MEAN);
-    expect(texel(out, 9, 4, 2).div).toBeCloseTo(0, 6);
-  });
-
-  it('forces divergence to 0 on dry cells', () => {
-    const g = makeGrid(9, 5, 0.5, 3);
-    for (let gx = 0; gx < g.width; gx += 1) g.u[2 * g.width + gx] = gx;
-    const out = new Float32Array(g.width * g.height * SWE_FLOW_CHANNELS);
-    packSweSurfaceField(g, out, MEAN);
-    expect(texel(out, g.width, 4, 2).div).toBe(0);
-  });
-
-  it('writes in place: same buffer, no reallocation, repeatable', () => {
-    const g = makeGrid();
-    const out = new Float32Array(g.width * g.height * SWE_FLOW_CHANNELS);
-    const before = out.buffer;
-    packSweSurfaceField(g, out, MEAN);
-    g.u[0] = 2;
-    packSweSurfaceField(g, out, MEAN);
-    expect(out.buffer).toBe(before);
-    expect(out[0]).toBe(2);
-  });
-});
 
 describe('sweStreakAxis', () => {
   const near = (a: number, b: number) => expect(a).toBeCloseTo(b, 6);
