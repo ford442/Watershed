@@ -1,0 +1,461 @@
+/**
+ * flowingWaterGlsl — the GLSL water program's sources, as module constants.
+ *
+ * They used to be `useMemo`s with no live dependencies inside `FlowingWater`;
+ * hoisting them changes nothing about the program and lets the boot shader
+ * warm-up (`rendering/shaderWarmup.ts`) build the *same* program — three keys
+ * a ShaderMaterial program on its source and defines, so a warm-up with
+ * different text would compile a program nobody uses.
+ */
+import { WATER_LEVEL, WATER_SHADER } from '../constants/game';
+import { SWE_DRY_DEPTH } from '../systems/water/sampleSWEFlow';
+
+/** Shared noise helpers (hash / noise / fbm). */
+export const WATER_NOISE_GLSL = `
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p); vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                 mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+    }
+    float fbm3(vec2 p) {
+      float v = 0.0;
+      v += noise(p) * 0.50;
+      p = p * 2.1 + vec2(1.2, 3.4);
+      v += noise(p) * 0.25;
+      p = p * 2.1 + vec2(4.5, 2.1);
+      v += noise(p) * 0.125;
+      return v;
+    }
+    float fbm2(vec2 p) {
+      float v = 0.0;
+      v += noise(p) * 0.60;
+      p = p * 2.2 + vec2(3.1, 1.7);
+      v += noise(p) * 0.30;
+      return v;
+    }
+`;
+
+/** Built-in vertex shader — displacement + analytic normals. GLSL backend only; the TSL backend rebuilds this math as a node graph. */
+export const WATER_VERTEX_GLSL = `
+          #define WATER_LEVEL ${WATER_LEVEL.toFixed(4)}
+          uniform float time;
+          uniform float flowSpeed;
+          uniform float weatherRipple;
+          uniform float cameraHeight;
+          uniform sampler2D flowMap;
+          uniform vec3 vehiclePos;
+          uniform vec3 vehicleVelocity;
+          uniform float isPond;
+          uniform sampler2D sweHeightMap;
+          uniform vec2 sweOrigin;
+          uniform float sweCellSize;
+          uniform vec2 sweGridSize;
+          uniform float sweMeanDepth;
+          uniform float sweDisplacementScale;
+          uniform float sweEnabled;
+
+          varying vec2 vUv;
+          varying vec3 vWorldPos;
+          varying vec3 vNormal;
+          varying vec3 vViewDir;
+          varying float vWave;
+          varying float vCurrent;
+          varying float vCameraProximity;
+          varying vec4 vReflectionUv;
+
+          ${WATER_NOISE_GLSL}
+
+          float getDisplacement(vec2 p, vec2 fb) {
+            float effFlow = flowSpeed;
+            float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
+            // Glassy pond/delta water: flatten the big swells almost completely.
+            scale *= mix(1.0, POND_CALM_MULTIPLIER * 0.5, isPond);
+
+            vec2 d1 = normalize(vec2(fb.x * 0.3, -1.0));
+            float swell1 = sin(dot(p, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
+
+            vec2 d2 = normalize(vec2(fb.x * 0.5 + 0.2, -1.0));
+            float swell2 = sin(dot(p, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
+
+            float detail = fbm3(p * 1.5 + vec2(time * effFlow * 0.2, -time * effFlow * 0.3)) * 0.25;
+
+            // Fine choppiness: extra high-frequency layer that scales with
+            // flow speed so rapids look broken-up while calm water stays smooth.
+            float choppiness = clamp(effFlow - 0.8, 0.0, 2.5);
+            float chop = fbm3(p * 4.0 + vec2(-time * effFlow * 0.6, time * effFlow * 0.45)) * 0.18 * choppiness;
+            chop *= mix(1.0, POND_CALM_MULTIPLIER * 0.3, isPond);
+
+            float ripple = sin(p.x * 8.0 * RIPPLE_SCALE + time * 4.0)
+                         * cos(p.y * 7.5 * RIPPLE_SCALE + time * 3.5)
+                         * weatherRipple * 0.08;
+
+            // Pond/delta: subtle slow concentric ripples instead of choppiness.
+            float pondRipple = sin(length(p - vehiclePos.xz) * 1.4 - time * 1.5) * 0.04 * isPond;
+
+            float waterLevel = WATER_LEVEL;
+            float heightDiff = abs(cameraHeight - waterLevel);
+            float heightProx = 1.0 - smoothstep(0.0, 6.0, heightDiff);
+            float proximityScale = 1.0 + heightProx * 0.35;
+
+            // Velocity-driven turbulence near the player/raft — the surface
+            // churns harder right where the vehicle is moving fast.
+            float distToVehicle = length(p - vehiclePos.xz);
+            float vehicleProx = 1.0 - smoothstep(0.0, 9.0, distToVehicle);
+            float velLen = length(vehicleVelocity);
+            float vehicleTurb = fbm3(p * 3.0 + vec2(time * 1.7, -time * 1.3)) * vehicleProx * clamp(velLen, 0.0, 45.0) * 0.012;
+
+            return (swell1 + swell2 + detail + chop + ripple + pondRipple) * scale * proximityScale + vehicleTurb;
+          }
+
+          float sampleSWEDisplacement(vec2 worldXZ) {
+            if (sweEnabled < 0.5) return 0.0;
+            vec2 gridSpan = sweGridSize * sweCellSize;
+            vec2 local = (worldXZ - sweOrigin) / gridSpan;
+            if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) return 0.0;
+            float h = texture2D(sweHeightMap, local).r;
+            return (h - sweMeanDepth) * sweDisplacementScale;
+          }
+
+          // 1 well inside the SWE window, feathering to 0 over SWE_WINDOW_FEATHER_CELLS at its
+          // border; 0 when SWE is off (low preset) or outside the grid. Every SWE-driven blend
+          // multiplies by this, so far-field / low water is the analytic shader untouched.
+          float sweWindowMask(vec2 worldXZ) {
+            if (sweEnabled < 0.5) return 0.0;
+            vec2 gridSpan = sweGridSize * sweCellSize;
+            vec2 edgeDist = min(worldXZ - sweOrigin, sweOrigin + gridSpan - worldXZ) / sweCellSize;
+            return smoothstep(0.0, SWE_WINDOW_FEATHER_CELLS, min(edgeDist.x, edgeDist.y));
+          }
+
+          void main() {
+            vUv = uv;
+            vec3 pos = position;
+
+            vec4 worldPos4 = modelMatrix * vec4(pos, 1.0);
+            vec3 worldPos = worldPos4.xyz;
+
+            float distToCamera = distance(worldPos, cameraPosition);
+            vCameraProximity = 1.0 - smoothstep(5.0, 25.0, distToCamera);
+
+            vec2 flowBias = vec2(sin(time * 0.1), -1.0);
+            #ifdef USE_FLOWMAP
+              flowBias = texture2D(flowMap, uv * 0.5).rg * 2.0 - 1.0;
+            #endif
+
+            // Inside the SWE window the solver owns the large wave; analytic fbm/sine chop
+            // stays as the fine detail on top, scaled down so the two don't fight.
+            float analyticScale = mix(1.0, SWE_ANALYTIC_SCALE, sweWindowMask(worldPos.xz));
+            float d = getDisplacement(pos.xz, flowBias) * analyticScale;
+            pos.y += sampleSWEDisplacement(worldPos.xz);
+            pos.y += d;
+
+            // 4-sample cross gradient for more accurate normals (reduces faceting in Fresnel)
+            // WGSL migration: identical math, just dpdx/dpdy built-ins can replace this
+            const float h = 0.08;
+            float sweD = sampleSWEDisplacement(worldPos.xz);
+            float dL = getDisplacement(pos.xz - vec2(h, 0.0), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz - vec2(h, 0.0));
+            float dR = getDisplacement(pos.xz + vec2(h, 0.0), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz + vec2(h, 0.0));
+            float dD = getDisplacement(pos.xz - vec2(0.0, h), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz - vec2(0.0, h));
+            float dU = getDisplacement(pos.xz + vec2(0.0, h), flowBias) * analyticScale + sampleSWEDisplacement(worldPos.xz + vec2(0.0, h));
+            float dCenter = d + sweD;
+            // Central-difference tangents give a smoother, analytically correct normal
+            vec3 tangentX = normalize(vec3(2.0 * h, dR - dL, 0.0));
+            vec3 tangentZ = normalize(vec3(0.0, dU - dD, 2.0 * h));
+            vec3 newNormal = normalize(cross(tangentZ, tangentX));
+
+            vNormal = normalMatrix * newNormal;
+            vViewDir = normalize(cameraPosition - worldPos);
+            vWorldPos = worldPos;
+
+            vWave = clamp(dCenter * 2.0 + 0.5, 0.0, 1.0);
+
+            float effFlow = flowSpeed;
+            float scale = DISPLACEMENT_STRENGTH * (0.6 + flowSpeed * 0.4);
+            vec2 d1 = normalize(vec2(flowBias.x * 0.3, -1.0));
+            float s1 = sin(dot(position.xz, d1) * 0.4 + time * effFlow * 0.8) * 0.6;
+            vec2 d2 = normalize(vec2(flowBias.x * 0.5 + 0.2, -1.0));
+            float s2 = sin(dot(position.xz, d2) * 0.55 + time * effFlow * 1.1 + 1.57) * 0.4;
+            vCurrent = clamp((abs(s1) + abs(s2)) * scale, 0.0, 1.0);
+
+            vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+            vReflectionUv = projectionMatrix * mvPos;
+            gl_Position = vReflectionUv;
+          }
+`;
+
+/** Built-in fragment shader with all upgraded features. */
+export const WATER_FRAGMENT_GLSL = `
+    // WGSL migration: uniforms → @group(0) @binding(N) var<uniform> blocks
+    uniform float time;
+    uniform float flowSpeed;
+    uniform vec3 waterColor;
+    uniform vec3 deepColor;
+    uniform vec3 foamColor;
+    uniform vec3 edgeHighlight;
+    uniform float bioLuminescence;
+    uniform float timeOfDay;
+    uniform float weatherRipple;
+    uniform float wetness;
+    uniform float slushiness;
+    uniform vec3 vehiclePos;
+    uniform vec3 vehicleVelocity;
+    uniform sampler2D flowMap;
+    // Canyon god-ray uniforms — WGSL migration: pass via uniform buffer
+    uniform vec3 sunDir;
+    uniform float godRayStrength;
+    // World-space sun/moon position for specular catch-light
+    uniform vec3 sunWorldPos;
+    // 0 = flowing river water, 1 = glassy pond/delta water
+    uniform float isPond;
+    uniform sampler2D reflectionTexture;
+    uniform float reflectionStrength;
+    // Vortex drain swirl (Hydro-Dam chamber)
+    uniform vec3 vortexCenter;
+    uniform float vortexRadius;
+    uniform float vortexIntensity;
+    // Simulated surface field: RGBA = (u, w, depth, div), same grid as sweHeightMap.
+    // sweEnabled is 0 on the low preset, which leaves the analytic shader untouched.
+    uniform sampler2D sweFlowMap;
+    uniform vec2 sweOrigin;
+    uniform float sweCellSize;
+    uniform vec2 sweGridSize;
+    uniform float sweEnabled;
+
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    varying vec3 vViewDir;
+    varying float vWave;
+    varying float vCurrent;
+    varying float vCameraProximity;
+    varying vec4 vReflectionUv;
+
+    ${WATER_NOISE_GLSL}
+
+    float sweWindowMask(vec2 worldXZ) {
+      if (sweEnabled < 0.5) return 0.0;
+      vec2 gridSpan = sweGridSize * sweCellSize;
+      vec2 edgeDist = min(worldXZ - sweOrigin, sweOrigin + gridSpan - worldXZ) / sweCellSize;
+      return smoothstep(0.0, SWE_WINDOW_FEATHER_CELLS, min(edgeDist.x, edgeDist.y));
+    }
+
+    void main() {
+      // WGSL migration: flowBias sample → textureSample(flowMapTex, sampler, vUv*0.5).rg
+      vec2 flowBias = vec2(sin(time * 0.1), -1.0);
+      #ifdef USE_FLOWMAP
+        flowBias = texture2D(flowMap, vUv * 0.5).rg * 2.0 - 1.0;
+      #endif
+
+      // Vortex UV swirl around the drain center (XZ world space)
+      vec2 vortexDelta = vWorldPos.xz - vortexCenter.xz;
+      float vortexDist = length(vortexDelta);
+      float vortexMask = (1.0 - smoothstep(0.0, max(vortexRadius, 0.01), vortexDist)) * vortexIntensity;
+      vec2 vortexTangent = normalize(vec2(-vortexDelta.y, vortexDelta.x) + 0.0001);
+      vec2 vortexUvOffset = vortexTangent * time * flowSpeed * 0.12 * vortexMask;
+
+      // Simulated surface field at this fragment. Cell (i, j) is centred at origin + (i, j) *
+      // cellSize (sampleSWEFlow.ts), hence the half-texel shift; sampled unconditionally
+      // (no texture fetch under divergent control flow) and gated by sweMask.
+      float sweMask = sweWindowMask(vWorldPos.xz);
+      vec2 sweUv = ((vWorldPos.xz - sweOrigin) / sweCellSize + 0.5) / sweGridSize;
+      vec4 sweFlow = texture2D(sweFlowMap, clamp(sweUv, 0.0, 1.0));
+      float sweSpeed = length(sweFlow.xy);
+      float sweWet = step(SWE_DRY_DEPTH, sweFlow.z);
+
+      // Streak axis: simulated velocity once it clears a small threshold in wet water, else the
+      // authored downstream vector (0, -1). blend = 0 reduces streakP to vWorldPos.xz exactly.
+      // Only the axis follows the flow: the scroll sense below is unchanged from the analytic
+      // shader (a sign that varied in space would shear the pattern without bound).
+      float streakBlend = smoothstep(SWE_STREAK_MIN_SPEED, SWE_STREAK_FULL_SPEED, sweSpeed)
+                        * smoothstep(0.0, SWE_WET_BAND, sweFlow.z) * sweMask;
+      vec2 streakDir = mix(vec2(0.0, -1.0), sweFlow.xy / max(sweSpeed, 0.0001), streakBlend);
+      streakDir /= max(length(streakDir), 0.0001);
+      vec2 streakP = vec2(dot(vWorldPos.xz, vec2(-streakDir.y, streakDir.x)),
+                          -dot(vWorldPos.xz, streakDir));
+
+      // Rapids: foam streaks scroll faster proportional to flowSpeed.
+      // At flowSpeed ≥ RAPIDS_FOAM_SPEED_MULT the scroll rate doubles for churning whitewater.
+      float rapidsBoost = max(1.0, flowSpeed / RAPIDS_FOAM_SPEED_MULT);
+      vec2 streakUv = streakP * vec2(0.15, 0.6) * FLOW_INFLUENCE
+                    + vec2(time * flowSpeed * 0.05 * flowBias.x * rapidsBoost,
+                           -time * flowSpeed * 0.15 * rapidsBoost)
+                    + vortexUvOffset;
+      float streakNoise = fbm3(streakUv);
+      // Second streak layer offset in time — adds turbulent overlap at high speed
+      vec2 streakUv2 = streakP * vec2(0.12, 0.5) * FLOW_INFLUENCE
+                     + vec2(-time * flowSpeed * 0.04 * rapidsBoost, -time * flowSpeed * 0.19 * rapidsBoost)
+                     + vortexUvOffset * 0.7;
+      float streakNoise2 = fbm2(streakUv2);
+      float foamStreak = smoothstep(0.45, 0.75, max(streakNoise, streakNoise2 * 0.85)) * FOAM_INTENSITY;
+      // Vortex eye foam ring
+      foamStreak += vortexMask * smoothstep(0.15, 0.55, vortexDist / max(vortexRadius, 0.01)) * 0.45;
+
+      // Sharpened edge foam using EDGE_FOAM_WIDTH and normal test
+      float edgeDist = abs(vUv.x - 0.5);
+      float edgeFoam = smoothstep(EDGE_FOAM_WIDTH, 0.0, edgeDist) * (0.6 + streakNoise * 0.4);
+      float normalSteep = 1.0 - abs(dot(normalize(vNormal), vec3(0.0, 1.0, 0.0)));
+      edgeFoam *= (1.0 + normalSteep * 3.5);
+      // In rapids, edge foam band widens
+      edgeFoam *= (1.0 + (rapidsBoost - 1.0) * 0.5);
+      // Inside the SWE window the bank line is the solver's wet/dry contour; the mesh-edge
+      // mask above stays as the far-field fallback (sweMask = 0 outside / on low).
+      float sweBank = 1.0 - smoothstep(0.0, SWE_WET_BAND, sweFlow.z);
+      float sweBankFoam = sweBank * (0.6 + streakNoise * 0.4) * FOAM_INTENSITY
+                        * (1.0 + (rapidsBoost - 1.0) * 0.5);
+      edgeFoam = mix(edgeFoam, sweBankFoam, sweMask);
+
+      // Standing foam in eddies/slack water: a slow, large-scale spatial mask
+      // (independent of the scrolling streaks) that "sticks" wherever the
+      // current is weak — banks, behind rocks, calm pockets.
+      float eddyMask = fbm3(vWorldPos.xz * 0.09 + vec2(7.3, -2.1));
+      float eddyFoam = smoothstep(0.5, 0.68, eddyMask) * (1.0 - vCurrent) * EDDY_FOAM_INTENSITY;
+
+      // Thin bubble lines: tight scrolling streaks perpendicular to the flow,
+      // brightest where the eddy mask is already foamy.
+      vec2 bubbleUv = vWorldPos.xz * vec2(1.4, 0.35) + vec2(time * flowSpeed * 0.12, -time * flowSpeed * 0.07);
+      float bubbleNoise = fbm2(bubbleUv);
+      float bubbleLines = smoothstep(0.93, 0.985, bubbleNoise) * (0.5 + eddyMask * 0.5);
+
+      // Glassy pond/delta water suppresses all the rough-water foam terms.
+      float pondCalm = mix(1.0, POND_CALM_MULTIPLIER, isPond);
+      foamStreak *= pondCalm;
+      edgeFoam *= mix(1.0, 0.6, isPond);
+      eddyFoam *= pondCalm;
+      bubbleLines *= pondCalm;
+      // Hydraulic-jump foam: positive horizontal divergence of the simulated velocity.
+      float jumpFoam = smoothstep(SWE_JUMP_DIV_LO, SWE_JUMP_DIV_HI, sweFlow.w) * sweWet * sweMask
+                     * SWE_JUMP_FOAM_INTENSITY * (0.6 + streakNoise * 0.4) * FOAM_INTENSITY * pondCalm;
+
+      // Shader-only vehicle wake
+      vec3 toVehicle = vehiclePos - vWorldPos;
+      float velLen = length(vehicleVelocity);
+      vec3 velDir = velLen > 0.001 ? normalize(vehicleVelocity) : vec3(0.0, 0.0, -1.0);
+      float behind = dot(toVehicle, -velDir);
+      float sideways = length(toVehicle + velDir * behind);
+      float wakeMask = smoothstep(WAKE_WIDTH, 0.0, sideways)
+                     * smoothstep(WAKE_LENGTH, 0.0, behind)
+                     * smoothstep(0.0, 1.0, behind);
+      float wakeFoam = wakeMask * (0.4 + streakNoise * 0.3) * FOAM_INTENSITY * pondCalm;
+      // Splashy displacement bump right where the wake foam is thickest —
+      // reads as the surface piling up against the hull/feet.
+      float wakeDisplacement = wakeMask * vWave * 0.15;
+
+      float foam = clamp(foamStreak + edgeFoam + wakeFoam + eddyFoam + bubbleLines + jumpFoam, 0.0, 1.0);
+      // Slush: brighter, denser foam and slightly milky water
+      foam = clamp(foam * (1.0 + slushiness * 0.85), 0.0, 1.0);
+
+      float depthFactor = 1.0 - edgeDist * 2.0;
+      depthFactor = clamp(depthFactor, 0.0, 1.0);
+      float shallow = 1.0 - depthFactor;
+      vec3 baseWater = mix(waterColor, deepColor, depthFactor * (0.45 + vCurrent * 0.18));
+
+      // WGSL migration: dot/pow ops map directly to WGSL built-ins
+      vec3 viewDirN = normalize(vViewDir);
+      vec3 normalN = normalize(vNormal);
+      float fresnel = pow(1.0 - clamp(dot(normalN, viewDirN), 0.0, 1.0), 2.5);
+      fresnel *= (1.0 + wetness * WETNESS_REFLECT_BOOST);
+      // Glassy water reads much more mirror-like — push fresnel toward full reflection.
+      fresnel = mix(fresnel, pow(fresnel, 0.5), isPond);
+
+      // Underwater refraction hint: at acute viewing angles, distort the
+      // riverbed read by warping the caustics/base-water sample with the
+      // surface normal — simulates light bending through the wave surface.
+      float viewAngle = clamp(dot(normalN, viewDirN), 0.0, 1.0);
+      vec2 refractOffset = normalN.xz * (1.0 - viewAngle) * 1.6;
+
+      // Inline caustics: dual-layer scrolling fbm (2 octaves each = 4 total max)
+      vec2 causticsUv1 = vWorldPos.xz * 0.4 + refractOffset + vec2(time * flowSpeed * 0.1, -time * flowSpeed * 0.2);
+      vec2 causticsUv2 = vWorldPos.xz * 0.35 + refractOffset + vec2(-time * flowSpeed * 0.15, time * flowSpeed * 0.1);
+      float causticsVal = (fbm2(causticsUv1) + fbm2(causticsUv2)) * CAUSTICS_BRIGHTNESS;
+      // Caustics read strongest in shallow water near banks/rocks
+      causticsVal *= (0.4 + shallow * 1.6);
+      baseWater += edgeHighlight * causticsVal * 0.18 * depthFactor;
+
+      vec3 col = mix(baseWater, foamColor, foam);
+      // Planar reflection from WaterReflection RT (strength 0 = disabled / unmounted)
+      if (reflectionStrength > 0.001) {
+        vec2 reflectionUv = vReflectionUv.xy / max(vReflectionUv.w, 0.0001) * 0.5 + 0.5;
+        // The mirror camera's image is flipped left/right (rendering/planarMirror.ts).
+        reflectionUv.x = 1.0 - reflectionUv.x;
+        reflectionUv += normalN.xz * 0.015;
+        vec3 reflection = texture2D(reflectionTexture, clamp(reflectionUv, 0.001, 0.999)).rgb;
+        col = mix(col, reflection, fresnel * reflectionStrength * (1.0 - foam * 0.55));
+      }
+      col = mix(col, edgeHighlight, fresnel * 0.22);
+      col += vec3(wakeDisplacement);
+
+      // Sun/moon specular catch-light — tracks the actual light direction so
+      // the glint sweeps across the surface as the sun/moon arcs overhead.
+      vec3 sunDirN = normalize(sunWorldPos - vWorldPos);
+      vec3 reflectDir = reflect(-viewDirN, normalN);
+      float specAngle = max(dot(reflectDir, sunDirN), 0.0);
+      float specShininess = mix(SPECULAR_SHININESS, SPECULAR_SHININESS * 3.0, isPond);
+      float specular = pow(specAngle, specShininess) * (1.0 - foam * 0.6);
+      col += vec3(1.0, 0.96, 0.85) * specular * (0.7 + wetness * 0.3) * mix(1.0, 1.6, isPond);
+
+      // Weather wetness: darken + reflect boost
+      col *= (1.0 - wetness * WETNESS_DARKEN);
+
+      float glint = smoothstep(0.78, 0.98, vWave) * (0.2 + vCurrent * 0.25);
+      glint += streakNoise * (0.05 + vCurrent * 0.12);
+      col += vec3(glint);
+
+      // Bioluminescence glow for glacial at night
+      float bioGlow = bioLuminescence * (1.0 - depthFactor) * (0.6 + sin(time * 3.0) * 0.4);
+      col += vec3(0.3, 0.8, 1.0) * bioGlow * 1.8;
+
+      // Canyon god rays: animated FBM light shafts projected along sunDir onto water surface.
+      // Simulates narrow canyon opening letting in shifting columns of sunlight.
+      // WGSL migration: replace fbm2 calls with textureSample(shaftLUT, shaftSampler, uv)
+      if (godRayStrength > 0.001) {
+        vec2 sunXZ = normalize(sunDir.xz + vec2(0.001));
+        vec2 shaftUv1 = vWorldPos.xz * 0.055 + sunXZ * time * 0.018;
+        vec2 shaftUv2 = vWorldPos.xz * 0.038 - sunXZ * time * 0.012 + vec2(0.63, 1.17);
+        float s1 = smoothstep(0.52, 0.84, fbm2(shaftUv1));
+        float s2 = smoothstep(0.48, 0.80, fbm2(shaftUv2));
+        // Multiply two shifted layers — creates tight discrete beams rather than broad glow
+        float shaftPattern = s1 * s2;
+        // Fade toward water edges so shafts read as coming from canyon top-center
+        float lateralFade = 1.0 - smoothstep(0.0, 10.0, abs(vWorldPos.x));
+        col += vec3(1.0, 0.93, 0.72) * shaftPattern * godRayStrength * lateralFade * (1.0 - foam * 0.65);
+      }
+
+      // Darken at night
+      float nightDim = 1.0 - (timeOfDay * 0.4);
+      col *= nightDim;
+
+      float alpha = 0.7 + vWave * 0.1 + foam * 0.08 + vCurrent * 0.06 + slushiness * 0.06;
+      gl_FragColor = vec4(col, clamp(alpha, 0.62, 0.96));
+    }
+`;
+
+/** The water program's defines. `USE_FLOWMAP` only when a flow map is bound. */
+export function waterGlslDefines(hasFlowMap: boolean): Record<string, string> {
+  return {
+    DISPLACEMENT_STRENGTH: WATER_SHADER.DISPLACEMENT_STRENGTH.toFixed(3),
+    FOAM_INTENSITY: WATER_SHADER.FOAM_INTENSITY.toFixed(3),
+    RIPPLE_SCALE: WATER_SHADER.RIPPLE_SCALE.toFixed(3),
+    FLOW_INFLUENCE: WATER_SHADER.FLOW_INFLUENCE.toFixed(3),
+    CAUSTICS_BRIGHTNESS: WATER_SHADER.CAUSTICS_BRIGHTNESS.toFixed(3),
+    WAKE_WIDTH: WATER_SHADER.WAKE_WIDTH.toFixed(3),
+    WAKE_LENGTH: WATER_SHADER.WAKE_LENGTH.toFixed(3),
+    EDGE_FOAM_WIDTH: WATER_SHADER.EDGE_FOAM_WIDTH.toFixed(3),
+    WETNESS_DARKEN: WATER_SHADER.WETNESS_DARKEN.toFixed(3),
+    WETNESS_REFLECT_BOOST: WATER_SHADER.WETNESS_REFLECT_BOOST.toFixed(3),
+    RAPIDS_FOAM_SPEED_MULT: WATER_SHADER.RAPIDS_FOAM_SPEED_MULT.toFixed(3),
+    SPECULAR_SHININESS: WATER_SHADER.SPECULAR_SHININESS.toFixed(3),
+    EDDY_FOAM_INTENSITY: WATER_SHADER.EDDY_FOAM_INTENSITY.toFixed(3),
+    POND_CALM_MULTIPLIER: WATER_SHADER.POND_CALM_MULTIPLIER.toFixed(3),
+    SWE_DRY_DEPTH: SWE_DRY_DEPTH.toFixed(4),
+    SWE_STREAK_MIN_SPEED: WATER_SHADER.SWE_STREAK_MIN_SPEED.toFixed(3),
+    SWE_STREAK_FULL_SPEED: WATER_SHADER.SWE_STREAK_FULL_SPEED.toFixed(3),
+    SWE_WET_BAND: WATER_SHADER.SWE_WET_BAND.toFixed(3),
+    SWE_JUMP_DIV_LO: WATER_SHADER.SWE_JUMP_DIV_LO.toFixed(3),
+    SWE_JUMP_DIV_HI: WATER_SHADER.SWE_JUMP_DIV_HI.toFixed(3),
+    SWE_JUMP_FOAM_INTENSITY: WATER_SHADER.SWE_JUMP_FOAM_INTENSITY.toFixed(3),
+    SWE_ANALYTIC_SCALE: WATER_SHADER.SWE_ANALYTIC_SCALE.toFixed(3),
+    SWE_WINDOW_FEATHER_CELLS: WATER_SHADER.SWE_WINDOW_FEATHER_CELLS.toFixed(3),
+    ...(hasFlowMap ? { USE_FLOWMAP: '1' } : {}),
+  };
+}

@@ -135,11 +135,21 @@ export type RapierWorkerCommand =
   /** One end of the hull link to the sim worker (src/sim/hullLinkProtocol.ts). Transferred. */
   | { id: number; type: 'CONNECT_SIM'; port: MessagePort };
 
+/**
+ * Wire version of this protocol. Bump on any change to a command or response
+ * shape. The worker stamps it on READY and the proxy rejects INIT on a mismatch
+ * (a stale cached worker chunk next to a fresh main bundle), the way the sim
+ * worker's READY carries its `abi`.
+ */
+export const RAPIER_WORKER_PROTOCOL_VERSION = 2;
+
 export type RapierWorkerResponse =
   | {
       id: number;
       type: 'READY';
       state: WorkerRaftState;
+      /** `RAPIER_WORKER_PROTOCOL_VERSION` of the worker chunk that answered. */
+      protocolVersion: number;
       latencyMs?: number;
     }
   | {
@@ -156,7 +166,13 @@ export interface RapierWorkerLike {
   postMessage(message: RapierWorkerCommand, transfer?: Transferable[]): void;
   terminate?(): void;
   addEventListener(type: 'message', listener: (event: MessageEvent<RapierWorkerResponse>) => void): void;
+  /** Script failed to load / parse, or threw at top level (a 404 on the chunk lands here). */
+  addEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  /** A response that could not be deserialized. */
+  addEventListener(type: 'messageerror', listener: (event: MessageEvent) => void): void;
   removeEventListener(type: 'message', listener: (event: MessageEvent<RapierWorkerResponse>) => void): void;
+  removeEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  removeEventListener(type: 'messageerror', listener: (event: MessageEvent) => void): void;
 }
 
 export const DEFAULT_RAFT_WORKER_INIT: Required<RapierWorkerInitPayload> = {

@@ -43,9 +43,9 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`, in `src/rendering/cont
 | `alpha` | `false` | Opaque game view. THREE r185 (as r168 and r178) always *requests* the GL context with `alpha: true`, so this drives `WebGLBackground` — the drawing buffer is cleared fully opaque instead of letting the page show through. |
 | `premultipliedAlpha` | `true` | Not just compositing: `WebGLState.setBlending` picks premultiplied blend functions from this flag, so every transparent material in the game (splash, water, weather, VFX) is authored against `true`. Flipping it would change how all of them blend. |
 | `depth` | `true` | Required by every 3D pass and by SSAO. THREE default. |
-| `stencil` | `true` | **Not** THREE's default (off since r163). Enabled for the post stack's mask/outline passes. |
+| `stencil` | `false` | THREE's default since r163. Neither post chain has a mask/outline pass, the composer targets are `stencilBuffer: false`, and the node path asks `stencil: false` too; the default framebuffer only receives a fullscreen blit (#466 audit A). |
 | `failIfMajorPerformanceCaveat` | boot-negotiated | Whatever the successful probe attempt asked for, replayed on the real context. `true` on a hardware machine (software GL must not silently boot and read as a shipped GPU), `false` on a degraded one and for the capture harness. Never preset-dependent. |
-| `antialias` / `powerPreference` | boot-negotiated | Frozen for the session by the probe — `true` / `high-performance` on hardware, `false` / `default` in safe mode. |
+| `antialias` / `powerPreference` | boot-negotiated | Frozen for the session by the probe. `antialias` is `false` on every game envelope (hardware, safe mode, capture): every frame is drawn into the post chain's targets and the backbuffer only receives the final blit, so backbuffer MSAA bought no edge AA (#466 audit A). AA lives in the post chain (`aaTierFor`). `powerPreference` is `high-performance` on hardware, `default` in safe mode. Only the Level Editor (no post chain) keeps backbuffer MSAA (`EDITOR_ENVELOPE`). |
 | `logarithmicDepthBuffer` | `false` | See below. |
 | `desynchronized` | not set | THREE r185's `WebGLRenderer` (as r168's and r178's) never forwards it to `getContext`, so setting it would be decoration. It is also the wrong trade here: it can tear and reorders readback, which `?screenshot=1` depends on. |
 
@@ -57,7 +57,7 @@ These do not vary by preset (`SHARED_CONTEXT_ATTRIBUTES`, in `src/rendering/cont
 
 | Tier | How it is reached | Envelope | What the player sees |
 |------|-------------------|----------|----------------------|
-| `hardware` | the strict request succeeded (`failIfMajorPerformanceCaveat: true`, `high-performance`) | antialias on, `high-performance`, caveat check on | Nothing — normal boot |
+| `hardware` | the strict request succeeded (`failIfMajorPerformanceCaveat: true`, `high-performance`) | no backbuffer MSAA (the post chain owns AA), `high-performance`, caveat check on | Nothing — normal boot |
 | `degraded` | that failed; the relaxed request (`failIfMajorPerformanceCaveat: false`, `powerPreference: 'default'`) succeeded | antialias off, `default`, caveat check off | Persistent **Safe Graphics Mode** badge |
 | `unsupported` | neither produced a context | — | Static DOM screen; **no Canvas, no Rapier, no game** |
 
@@ -87,7 +87,7 @@ The visible trade: `low` no longer turns MSAA off, because MSAA cannot be toggle
 
 ### Capture harness
 
-Visual smoke, `?screenshot=1`, `?capture=1`, and `?softwareGl=1` **skip the probe entirely** and pin `CAPTURE_ENVELOPE`: antialias on, `high-performance`, caveat check off — exactly what the pre-negotiation code produced for those runs. Headless Chromium on SwiftShader would otherwise probe as `degraded`, flip antialias, and move every baseline. `isSoftwareRendererAllowed()` is still the single gate.
+Visual smoke, `?screenshot=1`, `?capture=1`, and `?softwareGl=1` **skip the probe entirely** and pin `CAPTURE_ENVELOPE`: the hardware attributes (no backbuffer MSAA since #466 audit A), `high-performance`, caveat check off. Headless Chromium on SwiftShader would otherwise probe as `degraded` and land on a different envelope from run to run. `isSoftwareRendererAllowed()` is still the single gate.
 
 ### `unsupported` renders a screen, not a game
 
@@ -241,7 +241,7 @@ Run state is Zustand outside the Canvas, so it survives either remount. **Simula
 
 ## In-chain anti-aliasing (#466 Phase C)
 
-The canvas's `antialias` is a boot-frozen envelope attribute (#463), and with post on it multisamples only the final fullscreen quad. The scene renders into single-sample composer targets, so edge AA lives in the post chain, keyed off the post quality (`aaTierFor`) and switched live with no remount:
+The canvas's `antialias` is a boot-frozen envelope attribute (#463), and since #466 audit A it is `false`: with post on it would only multisample the final fullscreen quad. The scene renders into single-sample composer targets, so edge AA lives in the post chain, keyed off the post quality (`aaTierFor`) and switched live with no remount:
 
 | Post quality | GLSL (`EffectComposer`) | Node (`RenderPipeline`) |
 |---|---|---|
@@ -251,10 +251,31 @@ The canvas's `antialias` is a boot-frozen envelope attribute (#463), and with po
 
 SMAA runs on display-referred colour, after the output transform. The parity gate has a `grade+smaa` scenario: luma stays within 0.2% across drivers, and edge energy drops on both. The composer depth is now 24-bit (`UnsignedIntType`); 16-bit banded SSAO and god rays at canyon distances. **Per-tier GPU cost has not been measured yet.** It needs a real GPU: read the debug panel's GPU row (#466 Phase B) per tier. That number decides whether #463's envelope should keep requesting context MSAA.
 
+**Tier hysteresis (#466 audit A).** The GLSL composer commits a new AA tier only after it has been asked for `AA_TIER_HOLD_FRAMES` (90) frames in a row (`createAaTierLatch`, `postFrameParams.ts`). A `msaa4` ↔ `smaa` flip disposes both ping-pong targets and their 24-bit depth textures, and the adaptive valve can wobble across the Ultra ↔ High boundary exactly when frame time is already bad.
+
+**Whole-frame `renderer.info`.** three resets `info.render` inside every `render()` while `info.autoReset` is true, and the composer renders 6–9 times a frame, so readers saw the last fullscreen quad. `FrameWorkTimer` now attaches `frameRenderInfo.ts`: `autoReset = false`, one `info.reset()` before any `useFrame`, a snapshot after the frame. The debug panel's calls / triangles read the snapshot. The Level Editor (no `FrameWorkTimer`) keeps three's per-render reset.
+
+**Rock texture anisotropy.** `applyRockSampling` (`ktx2Textures.ts`) sets repeat, the 4×8 tiling and `min(gpuMax, 8)` anisotropy (4 on `low`) on both the JPG and KTX2 paths. It follows the settings preset, not the adaptive one: an anisotropy change re-uploads the texture.
+
+## Shader warm-up (#466 audit B)
+
+While the menu is up, `experience/ShaderWarmup.tsx` compiles the programs the first seconds of a run need (code in the lazy `shaderWarmupRun` chunk):
+
+1. `compileAsync` of one object per material variant (`shaderWarmupRecipes.ts`: canyon floor / wall river extensions, river / rock / tree prop extensions, water with and without the SWE flow map, weather, splash bow wave, standard and basic shapes) against a warm target scene — the live scene's lights, cloned, and the run's linear fog. The menu has no scene fog, and fog is baked into every program that reads it.
+2. One warm frame through a throwaway composer, drawn from a `useFrame` so R3F's own menu render overwrites it before it is presented: the post passes, the shadow pass's depth materials, and the post-target variants of the menu's own objects (cloned).
+
+Both run under a render target (three bakes `NoToneMapping` + linear output into anything drawn into a target, which is every scene draw on the post path) and once per shadow mode the preset can reach in one adaptive step (`warmupShadowModes`: High warms `soft` and `basic`). The warm objects and composers are held for the session — three refcounts programs per material, and dropping the last holder destroys the program. Off under scripted input.
+
+Measured on headless Chromium / SwiftShader, default map, High: the first 3 s after Start compiled **65 programs before, 19–20 after** (58 programs in the compile step, 57 more in the warm frame, ~180 ms in the menu). `?debug=1` logs the leftovers by name or key; they are the long tail of per-prop variants (rock / tree extension instancing variants, a few VFX `ShaderMaterial`s and their shadow-depth twins).
+
+`soft` shadows are `PCFShadowMap` now (`shadowMapTypeFor`): r185 deprecates `PCFSoftShadowMap` and rewrites it to PCF, with a warning, on every shadow pass that finds it — the image was already PCF. Asking for it also meant anything compiled outside `render()` saw a type no frame uses.
+
+`extendRiverMaterial` sets `customProgramCacheKey` from its flags. three's default key is `onBeforeCompile.toString()`, identical for every call, so a floor (no moss / triplanar) and a wall with the same maps shared one program — whichever compiled first.
+
 ## Real `three/webgpu` types, KTX2 rock textures (#466 Phase D)
 
 - **Typecheck.** `pnpm typecheck` resolves `three/webgpu` and `three/tsl` to three's real declarations (`@types/three`). The 266-line double in `src/rendering/__mocks__/threeWebgpu.ts` is now a vitest alias only (`vitest.config.ts`), and `tsconfig.typecheck.json` excludes `__mocks__`. Turning the real types on surfaced 231 errors, all of them typing: undimensioned uniforms, `attribute()` without a type argument, and Fn params typed `ReturnType<typeof vec2>`. They were fixed with the shared aliases in `src/materials/tsl/nodeTypes.ts` (`Vec2Node`, `FloatUniform`, …). No shader changed, and the post parity numbers are identical. A new TSL API you call has to exist in three, not just in the mock.
-- **KTX2.** Rock031 ships as KTX2 too (`public/textures/`, encoded by `scripts/build-textures.mjs` with KTX-Software `ktx` ≥ 4.3; dev-only, outputs committed), with three's Basis transcoder copied to `public/basis/`. `TrackManager` and `BootAssetPreloader` load KTX2 when `shouldUseKtx2(gl)` (`src/rendering/ktx2Textures.ts`) finds a compressed target format, and the JPGs otherwise. Desktop VRAM for the set goes from 28 MB to 7 MB; see `ALLOCATION_BASELINE.md`. Rows are stored bottom-first, so KTX2 (`flipY` false) and JPG (`flipY` true) sample identical texels at identical UVs. A headless check against the JPGs gave mean abs error 1–6/255 unflipped, against 10–24 flipped. Don't encode normals with `--normal-mode`: it repacks to RGB=X, A=Y.
+- **KTX2.** Rock031 ships as KTX2 too (`public/textures/`, encoded by `scripts/build-textures.mjs` with KTX-Software `ktx` ≥ 4.3; dev-only, outputs committed), with three's Basis transcoder taken from KTX2Loader's own `new URL('../libs/basis/…', import.meta.url)` — a hashed asset locked to the installed three (it used to be copied to an unhashed `public/basis/`, which also shipped the 527 kB wasm twice). `TrackManager` and `BootAssetPreloader` load KTX2 when `shouldUseKtx2(gl)` (`src/rendering/ktx2Textures.ts`) finds a compressed target format, and the JPGs otherwise. Desktop VRAM for the set goes from 28 MB to 7 MB; see `ALLOCATION_BASELINE.md`. Rows are stored bottom-first, so KTX2 (`flipY` false) and JPG (`flipY` true) sample identical texels at identical UVs. A headless check against the JPGs gave mean abs error 1–6/255 unflipped, against 10–24 flipped. Don't encode normals with `--normal-mode`: it repacks to RGB=X, A=Y.
 
 ## Material backends (#256 path A)
 
@@ -337,7 +358,7 @@ Emergency PRs #252 and #253 reverted the live `WebGPURenderer` path. That constr
 
 ## Non-gameplay Canvases
 
-The Level Editor Canvas consumes the same contract (`deriveEditorContextOptions()` → `createGameRenderer()`), not a raw `gl={{ antialias: true }}`. It pins the `high` preset — an authoring tool wants the default look, not whatever the player last picked for performance — and pins `CAPTURE_ENVELOPE`, which keeps the caveat check off, because a slow editor beats an editor that will not boot. It does not run boot negotiation; it is not the game. Any future offscreen or debug Canvas should do the same: one derive function, one apply function, so a change to the contract cannot silently skip a surface.
+The Level Editor Canvas consumes the same contract (`deriveEditorContextOptions()` → `createGameRenderer()`), not a raw `gl={{ antialias: true }}`. It pins the `high` preset — an authoring tool wants the default look, not whatever the player last picked for performance — and pins `EDITOR_ENVELOPE` (`CAPTURE_ENVELOPE` with backbuffer MSAA back on — the editor has no post chain, so the context's `antialias` is the only AA it gets), which keeps the caveat check off, because a slow editor beats an editor that will not boot. It does not run boot negotiation; it is not the game. Any future offscreen or debug Canvas should do the same: one derive function, one apply function, so a change to the contract cannot silently skip a surface.
 
 ## Debug UI
 

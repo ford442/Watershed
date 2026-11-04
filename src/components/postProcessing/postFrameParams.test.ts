@@ -6,6 +6,7 @@ import {
   createPostSmoothedState,
   godRaysAllowed,
   aaTierFor,
+  createAaTierLatch,
   linearVignetteDarkness,
   type PostFrameInput,
 } from './postFrameParams';
@@ -57,6 +58,41 @@ describe('aaTierFor', () => {
     expect(aaTierFor('medium')).toBe('smaa');
     expect(aaTierFor('high')).toBe('smaa');
     expect(aaTierFor('ultra')).toBe('msaa4');
+  });
+});
+
+describe('createAaTierLatch', () => {
+  it('commits the first request immediately', () => {
+    const latch = createAaTierLatch(5);
+    expect(latch.committed).toBeNull();
+    expect(latch.update('msaa4')).toBe('msaa4');
+  });
+
+  it('holds the committed tier through a wobble shorter than the hold', () => {
+    const latch = createAaTierLatch(5);
+    latch.update('msaa4');
+    // Ultra ↔ High wobble: never five smaa frames in a row.
+    const seen = ['smaa', 'smaa', 'msaa4', 'smaa', 'smaa', 'smaa', 'msaa4'].map((t) =>
+      latch.update(t as 'smaa' | 'msaa4'),
+    );
+    expect(new Set(seen)).toEqual(new Set(['msaa4']));
+  });
+
+  it('commits a tier once it has been asked for holdFrames frames in a row', () => {
+    const latch = createAaTierLatch(3);
+    latch.update('msaa4');
+    expect(latch.update('smaa')).toBe('msaa4');
+    expect(latch.update('smaa')).toBe('msaa4');
+    expect(latch.update('smaa')).toBe('smaa');
+    expect(latch.committed).toBe('smaa');
+  });
+
+  it('restarts the count when the pending tier changes', () => {
+    const latch = createAaTierLatch(2);
+    latch.update('msaa4');
+    latch.update('smaa');
+    expect(latch.update('none')).toBe('msaa4');
+    expect(latch.update('none')).toBe('none');
   });
 });
 

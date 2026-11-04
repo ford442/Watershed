@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HASHED_ASSET_RE,
   REVALIDATED_RE,
+  STAMPED_NATIVE_RE,
   checkCacheControl,
   bundleDeclaresStamp,
   checkDirectoryDocuments,
@@ -251,6 +252,16 @@ describe('cache policy (#485 D)', () => {
     expect(checkHtaccessCachePolicy(shipped)).toEqual([]);
     expect(checkHtaccessCachePolicy(shipped.replace(/immutable/g, 'public')).join('\n')).toMatch(/immutable/);
     expect(checkHtaccessCachePolicy(shipped.replace(/"no-cache"/g, '"public"')).join('\n')).toMatch(/no-cache/);
+  });
+
+  it('treats the stamped emcc pair (the index.html preload URL) as immutable, the bare name not', () => {
+    expect(STAMPED_NATIVE_RE.test('./watershed_native.wasm?v=da29e1786a1939b6')).toBe(true);
+    expect(STAMPED_NATIVE_RE.test('watershed_native.js?x=1&v=da29e1786a1939b6')).toBe(true);
+    expect(STAMPED_NATIVE_RE.test('./watershed_native.wasm')).toBe(false);
+    expect(STAMPED_NATIVE_RE.test('./watershed_native.wasm?v=unknown')).toBe(false);
+    // Dropping the stamped-form <If> is caught.
+    const withoutIf = shipped.replace(/<If [^\n]*>[\s\S]*?<\/If>/, '');
+    expect(checkHtaccessCachePolicy(withoutIf).join('\n')).toMatch(/stamped/);
   });
 
   it('is skipped against a local preview and enforced elsewhere', () => {

@@ -22,6 +22,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import {
   aaTierFor,
   computePostFrameParams,
+  createAaTierLatch,
   createPostSmoothedState,
   godRaysAllowed,
   type PostFrameParams,
@@ -345,6 +346,10 @@ export function createComposerDriver(
     composer.userData.smaaPass = smaaPass;
   };
 
+  // Hysteresis: a tier flip that only lasts a few frames (the adaptive valve
+  // wobbling on the Ultra ↔ High boundary) must not reallocate both targets.
+  const aaLatch = createAaTierLatch();
+
   /** Multisample both ping-pong targets; three reallocates them on next use. */
   const setTargetSamples = (samples: number) => {
     for (const target of [composer.renderTarget1, composer.renderTarget2]) {
@@ -391,9 +396,10 @@ export function createComposerDriver(
       rainbowPass.uniforms.time.value = p.rainbow.time;
       rainbowPass.uniforms.aspectRatio.value = p.rainbow.aspectRatio;
 
-      if (p.aa === 'smaa') ensureSmaaPass();
-      if (composer.userData.smaaPass) composer.userData.smaaPass.enabled = p.aa === 'smaa';
-      setTargetSamples(p.aa === 'msaa4' ? 4 : 0);
+      const aa = aaLatch.update(p.aa);
+      if (aa === 'smaa') ensureSmaaPass();
+      if (composer.userData.smaaPass) composer.userData.smaaPass.enabled = aa === 'smaa';
+      setTargetSamples(aa === 'msaa4' ? 4 : 0);
     },
     render() {
       const shadowMap = gl.shadowMap;

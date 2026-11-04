@@ -232,6 +232,9 @@ export interface SimWorkerLike {
   terminate?(): void;
   addEventListener(type: 'message', listener: (event: MessageEvent<SimWorkerResponse>) => void): void;
   addEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  /** A message that could not be deserialized — fatal, like `'error'`. */
+  addEventListener(type: 'messageerror', listener: (event: MessageEvent) => void): void;
   removeEventListener(type: 'message', listener: (event: MessageEvent<SimWorkerResponse>) => void): void;
   removeEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  removeEventListener(type: 'messageerror', listener: (event: MessageEvent) => void): void;
 }

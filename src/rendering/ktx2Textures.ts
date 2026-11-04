@@ -16,8 +16,6 @@ import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { TRACK_ROCK_TEXTURE_PATHS, TRACK_ROCK_TEXTURE_PATHS_KTX2 } from '../constants/trackTextures';
 import { lazyModule } from '../utils/lazyModule';
 
-/** Where `build-textures.mjs` copies three's Basis transcoder. Relative like the JPGs. */
-export const BASIS_TRANSCODER_PATH = './basis/';
 
 /** KTX2Loader + zstddec + ktx-parse (~80 kB pre-minify) stay out of the entry chunk: a GPU with
  *  no compressed target never fetches them, and the rest fetch them alongside the textures. */
@@ -113,9 +111,16 @@ export function shouldUseKtx2(renderer: unknown): Promise<boolean> {
   return decision;
 }
 
-/** A loader configured for this renderer. */
+/**
+ * A loader configured for this renderer.
+ *
+ * No `setTranscoderPath`: with the default empty path, three r185's KTX2Loader
+ * fetches its transcoder from `new URL('../libs/basis/basis_transcoder.{js,wasm}',
+ * import.meta.url)`, which Vite emits as content-hashed assets of the installed
+ * three. The old `./basis/` copy was unhashed (heuristically cached), could
+ * drift from the loader across a three bump, and shipped the 527 kB wasm twice.
+ */
 export function configureKtx2Loader(loader: KTX2Loader, renderer: unknown): void {
-  loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
   loader.detectSupport(renderer as DetectableRenderer);
 }
 
@@ -188,5 +193,54 @@ export function tagRockColorSpaces(textures: readonly (THREE.Texture | null | un
     if (texture.colorSpace === colorSpace) return;
     texture.colorSpace = colorSpace;
     texture.needsUpdate = true;
+  });
+}
+
+/** Anisotropy ceiling for the canyon rock set: walls are seen at grazing angles at speed. */
+export const ROCK_ANISOTROPY_MAX = 8;
+/** `low` keeps a cheaper ceiling — anisotropic taps are bandwidth. */
+export const ROCK_ANISOTROPY_LOW = 4;
+
+/** `min(gpuMax, 8)`, `min(gpuMax, 4)` on `low`; 1 when the GPU has no anisotropic filtering. */
+export function rockAnisotropyFor(maxAnisotropy: number, quality: string): number {
+  const ceiling = quality === 'low' ? ROCK_ANISOTROPY_LOW : ROCK_ANISOTROPY_MAX;
+  if (!Number.isFinite(maxAnisotropy) || maxAnisotropy < 1) return 1;
+  return Math.max(1, Math.min(Math.floor(maxAnisotropy), ceiling));
+}
+
+/**
+ * The GPU's anisotropy limit on either renderer: `capabilities.getMaxAnisotropy()`
+ * on WebGLRenderer, `getMaxAnisotropy()` on the node renderer. 1 when neither answers.
+ */
+export function rendererMaxAnisotropy(renderer: unknown): number {
+  try {
+    const r = renderer as {
+      capabilities?: { getMaxAnisotropy?: () => number };
+      getMaxAnisotropy?: () => number;
+    };
+    const value = r?.capabilities?.getMaxAnisotropy?.() ?? r?.getMaxAnisotropy?.();
+    return typeof value === 'number' && Number.isFinite(value) ? value : 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * Sampler state both rock-texture paths share: repeat wrap, the 4×8 tiling,
+ * and anisotropy. three only applies anisotropy on upload, so a change on an
+ * already-uploaded texture flags a re-upload; the tiling alone does not.
+ */
+export function applyRockSampling(
+  textures: readonly (THREE.Texture | null | undefined)[],
+  anisotropy: number,
+): void {
+  textures.forEach((texture) => {
+    if (!texture) return;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 8);
+    if (texture.anisotropy !== anisotropy) {
+      texture.anisotropy = anisotropy;
+      if (texture.version > 0) texture.needsUpdate = true;
+    }
   });
 }

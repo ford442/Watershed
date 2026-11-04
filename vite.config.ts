@@ -178,11 +178,19 @@ function rapierWasmAssetPlugin(): Plugin {
   };
 }
 
-/** `<link rel="preload" as="fetch" crossorigin>` for the Rapier wasm, so the
- *  download starts with the HTML instead of after the entry chunk has run. The
- *  loader's `fetch(url)` is a same-origin CORS-mode request, which is what
- *  `crossorigin` (anonymous) preloads, so the preload is actually consumed. */
-function rapierWasmPreloadPlugin(): Plugin {
+/** `<link rel="preload" as="fetch" crossorigin>` for both wasm binaries, so the
+ *  downloads start with the HTML instead of after the entry chunk has run. Both
+ *  loaders' `fetch(url)` are same-origin CORS-mode requests, which is what
+ *  `crossorigin` (anonymous) preloads, so the preload is actually consumed.
+ *
+ *  `watershed_native.wasm` is named exactly as the loader asks for it — the
+ *  stamped `?v=<WASM_ARTIFACT_STAMP>` form (`withArtifactStamp`), read at config
+ *  time — or the preload would be a second download. Its usual consumer is the
+ *  sim worker, whose fetch is not matched against the document's preload list;
+ *  it hits the HTTP cache instead, which is why public/.htaccess gives the
+ *  stamped URL the immutable policy. `?simWorker=0` loads it on the main thread
+ *  and consumes the preload directly. */
+function rapierWasmPreloadPlugin(nativeStamp: string): Plugin {
   return {
     name: 'watershed-rapier-wasm-preload',
     apply: 'build',
@@ -191,17 +199,31 @@ function rapierWasmPreloadPlugin(): Plugin {
       handler(_html, ctx) {
         const wasm = Object.keys(ctx.bundle ?? {}).find((f) => /^assets\/rapier_wasm3d_bg-[^/]+\.wasm$/.test(f));
         if (!wasm) throw new Error('watershed-rapier-wasm-preload: no rapier_wasm3d_bg-*.wasm in the bundle');
-        return [
-          {
-            tag: 'link',
-            attrs: { rel: 'preload', as: 'fetch', type: 'application/wasm', crossorigin: '', href: `./${wasm}` },
-            injectTo: 'head',
-          },
-        ];
+        const preload = (href: string) => ({
+          tag: 'link',
+          attrs: { rel: 'preload', as: 'fetch', type: 'application/wasm', crossorigin: '', href },
+          injectTo: 'head' as const,
+        });
+        const tags = [preload(`./${wasm}`)];
+        // No stamp (a checkout before build:wasm): no URL the loader will ask for.
+        if (/^[0-9a-f]{16}$/.test(nativeStamp)) tags.push(preload(`./watershed_native.wasm?v=${nativeStamp}`));
+        return tags;
       },
     },
   };
 }
+
+/** The drei modules gameplay mounts (see `manualChunks`). A drei import outside
+ *  this list goes wherever its importer's chunk is — so a new gameplay use of
+ *  another drei component belongs here, or it lands in the entry. */
+const DREI_GAMEPLAY_MODULES = [
+  'core/Instances', // Instances / Instance (NonEmptyInstances, Environment/*)
+  'web/Html', // LODManager, ExperienceUI, LevelLoader, PhysicsDebugOverlay
+  'core/Progress', // useProgress (Loader, useRendererBoot, ShaderWarmup)
+  'web/KeyboardControls', // KeyboardControls / useKeyboardControls
+  'core/Sky', // EnhancedSky
+  'core/PointerLockControls', // InnerExperience
+].map((m) => `@react-three/drei/${m}.js`);
 
 /** `pnpm build:analyze` (= `ANALYZE=1 vite build`): a treemap + raw module graph of the
  *  production bundle under build-analyze/ (outside build/, so the manifest guard and the
@@ -227,7 +249,7 @@ export default defineConfig({
     sourcemapsOutOfBuildPlugin(),
     devIsolationOptInPlugin(),
     rapierWasmAssetPlugin(),
-    rapierWasmPreloadPlugin(),
+    rapierWasmPreloadPlugin(readWasmArtifactStamp()),
     ...analyzePlugins,
   ],
   resolve: {
@@ -264,7 +286,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
+          // drei by module, not as a package (#466 audit D): naming the package
+          // put every drei component any chunk imports — and its dependency
+          // closure (three-stdlib controls, stats.js) — on the boot path. The
+          // list is what the game itself mounts; the editor's OrbitControls /
+          // Grid / Line and the debug Stats land in their own lazy chunks.
+          'vendor-three': ['three', '@react-three/fiber', ...DREI_GAMEPLAY_MODULES],
           'vendor-rapier': ['@dimforge/rapier3d-compat', '@react-three/rapier'],
         },
       },

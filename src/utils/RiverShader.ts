@@ -452,6 +452,15 @@ export function extendRiverMaterial<T extends THREE.Material>(
             }
         };
 
+        // three keys a program on `customProgramCacheKey()`, which defaults to
+        // `onBeforeCompile.toString()` — the same text for every call of this
+        // function. Without the flags in the key, a floor (no moss, no
+        // triplanar) and a wall (both) with the same maps shared ONE program:
+        // whichever compiled first. The flags change the injected GLSL, so they
+        // are the key. (waterLevel / wetnessRange are uniforms.)
+        const riverProgramKey = `river:w${+enableWetness}m${+enableMoss}t${+enableTriplanar}`;
+        material.customProgramCacheKey = () => riverProgramKey;
+
         // Mark material for updates
         material.needsUpdate = true;
 
