@@ -34,7 +34,7 @@ emscripten/
 ├── swe.h             # Shallow-water solver + heap grid declarations — host-clean
 ├── swe.cpp           # Nonlinear HLL stepper; SIMD lift/CFL/damping only
 ├── simdf32.h         # Portable f32x4 (wasm_simd128 / SSE2 / NEON / scalar)
-├── chores.h          # Optional gpu-chores (reduce/hist/downsample/blur) — host-clean
+├── chores.h          # gpu-chores (reduce/hist/downsample/blur) + packSurfaceField — host-clean
 ├── chores.cpp        # Generic grid helpers; not SWE
 ├── particles.h       # SoA waterfall / splash integrate — host-clean
 ├── particles.cpp     # Euler + chute recycle / age
@@ -75,8 +75,8 @@ public/               # COMMITTED build artefacts — the shipped pair
   `static_assert`s their packed float layout.
 - Every TU, `bindings.cpp` included, compiles with `-fno-rtti -fno-exceptions`. There is no
   `--bind` and no RTTI anywhere in the release link.
-- The default CMake target has no `-pthread` / `SHARED_MEMORY`. Threads stay
-  `WATERSHED_THREADS=ON` / `./build.sh --threads` only, and never ship.
+- No target has `-pthread` / `SHARED_MEMORY`: there is one single-thread build
+  (*Threads (retired)*, #533).
 
 ---
 
@@ -104,7 +104,7 @@ pair:
 | emcc ≠ pin | **Exits 1**; `public/` and the stamp are untouched |
 | emcc ≠ pin, `WATERSHED_ALLOW_EMCC_MISMATCH=1` | Builds into `emscripten/build/out/` only — never `public/`, never the stamp |
 | No emcc at all | Exits 1 and points at `scripts/emsdk-pinned.sh` |
-| `--debug` / `--threads` | Always build aside (`build-debug/out/`, `build-threads/out/`) |
+| `--debug` | Always builds aside (`build-debug/out/`) |
 
 Rebuilding unchanged sources at the pin reproduces the committed pair byte for byte (CI
 asserts this with `git diff --exit-code`), so a matching stamp is good evidence the
@@ -118,8 +118,7 @@ CI's informational *WASM exports on current emsdk* job checks that on every PR.
 |---------|-------------|
 | `pnpm build` | Vite only. Ships the **committed** pair; does not run emcc |
 | `pnpm build:full` | `build:wasm` then Vite (the old `pnpm build`) |
-| `pnpm build:wasm` | Single-threaded release build → `public/` (pinned emcc required) |
-| `pnpm build:wasm:threads` | Multi-threaded build → `emscripten/build-threads/out/` (never shipped) |
+| `pnpm build:wasm` | Release build → `public/` (pinned emcc required) |
 | `pnpm build:wasm:debug` | Debug build (assertions, SAFE_HEAP, `-O0 -g3`) → `emscripten/build-debug/out/` |
 
 To debug the debug build in a browser, copy its pair into `public/` locally and do not
@@ -133,11 +132,8 @@ Do not duplicate flags in the shell script.
 ```bash
 cd emscripten
 
-# single-threaded (recommended for first-time setup)
+# release — the shipped pair, into public/
 ./build.sh
-
-# multi-threaded — output goes to emscripten/build-threads/out/, never public/
-./build.sh --threads
 
 # debug — output goes to emscripten/build-debug/out/, never public/
 ./build.sh --debug
@@ -147,7 +143,7 @@ cd emscripten
 
 | Flag | Why |
 |------|-----|
-| `ENVIRONMENT='web,worker'` (both variants) | The sim worker loads the same glue (`src/sim/workerWasm.ts`, #455); the Rapier worker no longer does (Phase B — its raft force comes from the sim worker). `smoke_test.mjs` fails if the glue hard-codes the worker flag. |
+| `ENVIRONMENT='web,worker'` (Release; Debug adds `node`) | The sim worker loads the same glue (`src/sim/workerWasm.ts`, #455); the Rapier worker no longer does (Phase B — its raft force comes from the sim worker). `smoke_test.mjs` fails if the glue hard-codes the worker flag. |
 | IEEE FP: `-ffp-contract=off -fno-math-errno`, no `-ffast-math` | The shipped binary computes the host build's numbers bit for bit (`native_digest.h`; see *One set of numbers* below). Fast-math's reassociation changed SWE and routing bits, and its finite-math-only folded the `chores.cpp` / sentinel `std::isfinite` guards to `true` (`gpuChores/watershedHost.integration.test.ts` still drives them). |
 | `-flto` (compile + link) | Cross-TU inlining across the five compute TUs and `bindings.cpp`. |
 | `--closure 1` | Minifies the glue (~5 KB with the C ABI). `_ws_*`, `HEAP*`, `createWatershedNative` are exports and survive. |
@@ -155,8 +151,8 @@ cd emscripten
 | no `--bind` | The plain C ABI (#467). No Embind invokers, no `new Function`, no RTTI. |
 | `-s FILESYSTEM=0`, `-s MALLOC=emmalloc` | No file I/O; a handful of long-lived blocks, so the small allocator wins on size. |
 
-`--threads` builds into `emscripten/build-threads/out/` and never writes `public/` or the
-artifact stamp: the single-thread pair is the only thing that ships.
+`--debug` builds into `emscripten/build-debug/out/` and never writes `public/` or the
+artifact stamp: the release pair is the only thing that ships.
 
 ### One set of numbers
 
@@ -219,8 +215,9 @@ Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2
    `WATERSHED_WASM_SHA` export (appended by `build.sh`) must name the same wasm. Either
    mismatch rejects with `WasmProvenanceMismatchError` before anything is instantiated.
 3. The same bytes go to the factory as `wasmBinary`, so the bytes hashed are the bytes that run.
-4. `ws_getVersion() >= MIN_WASM_ABI_VERSION` (12), then `bindNativeModule()` binds every
-   `WASM_ABI` entry; a missing export is a `WasmAbiMismatchError`, not a later crash.
+4. `ws_getVersion()` must equal `WASM_ABI_VERSION` (**17**) exactly — there is no floor
+   since #533 — then `bindNativeModule()` binds every `WASM_ABI` entry; a missing export
+   is a `WasmAbiMismatchError`, not a later crash.
 
 The whole sequence is bounded by an 8 s deadline (`WASM_INIT_TIMEOUT_MS`, `?wasmInitTimeout=`).
 The deadline aborts the wasm fetch if it is still in flight, and a timeout or a network
@@ -248,17 +245,29 @@ Every `ws_*` entry point therefore returns early on bad input; `std::span` views
 
 | TU | Rejected (no write) | Sentinel |
 |----|---------------------|----------|
-| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt` ≤ 0 or NaN (+inf is CFL-clamped), `dx`/`H`/`g` ≤ 0 or non-finite; event: non-finite placement, `strength` or `dt` | early return; a non-finite edge stage or scroll inflow is rest (0); `allocateGrid(≤ 0)` and `allocateGrid(> WS_MAX_ELEMENTS)` → 0 |
-| `chores.cpp` | null src / out; count < 0 or > `WS_MAX_ELEMENTS` (4096²); src/blur extents ≤ 0 or > 4096; destination extent > 4096 | early return. Count 0 is a valid empty grid (zeros / an all-zero histogram); a non-positive *destination* extent of `downsampleF32` is 1 (the `cpuMath.ts` contract) |
-| `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | early return |
-| `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` < `ROUTING_MIN_DT` (1 µs), NaN or inf | early return; a non-finite head discharge, length or width takes its floor (`atLeast`: 0, 1 mm, 0.5 m); `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
-| `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 or non-finite; any non-finite shape / gravity / damping scalar | alloc → 0; init/step waterfall → `seed` unchanged; splash: early return |
+| `swe.cpp` | null `h`/`u`/`w`; `width`/`height` ≤ 0 or > `SWE_MAX_GRID_EXTENT` (4096); step: `dt`/`g`/`dx`/`H` not finite and > 0 (+inf `dt` included since ABI 17); event: non-finite placement, `strength` or `dt` | step → 0 s integrated; event / scroll → `WS_REJECTED`; a non-finite edge stage or scroll inflow is rest (0), a non-finite η/u/w is read as 0 by the lift; `allocateGrid(≤ 0)` and `allocateGrid(> WS_MAX_ELEMENTS)` → 0 |
+| `chores.cpp` | null src / out; count < 0 or > `WS_MAX_ELEMENTS` (4096²); src/blur extents ≤ 0 or > 4096; destination extent > 4096; `packSurfaceField`: a bad extent, a null plane, non-finite `H`, `dx` not finite and > 0 | `WS_REJECTED`. Count 0 is a valid empty grid (zeros / an all-zero histogram); a non-positive *destination* extent of `downsampleF32` is 1 (the `cpuMath.ts` contract) |
+| `forces.cpp` | null buffers; count ≤ 0 or > `WATER_FORCE_MAX_SAMPLES` (65536) | `WS_REJECTED` |
+| `routing.cpp` | null planes; `nSeg` ≤ 0 or > `ROUTING_MAX_SEGMENTS` (65536); `dt` < `ROUTING_MIN_DT` (1 µs), NaN or inf | `WS_REJECTED`; a non-finite head discharge, length or width takes its floor (`atLeast`: 0, 1 mm, 0.5 m); `routedEdgeState` → `{0, 0}` on non-finite / non-positive input |
+| `particles.cpp` | null base; capacity ≤ 0 or > `PARTICLE_MAX_CAPACITY` (2²⁰); `dt` ≤ 0 or non-finite; any non-finite shape / gravity / damping scalar | alloc → 0; init/step waterfall → `seed` unchanged; splash: `WS_REJECTED` |
 
 Scalar guards are written `!(x > 0)` or go through `std::isfinite`: `x <= 0` is false for NaN,
 and `std::max(x, lo)` returns its first operand when that is NaN, so a NaN `dt` used to reach
 the CFL clamp and write NaN into every cell for the session, and a NaN head discharge did the
 same to the routed chain. `sweSim.ts` / `WgslSweSim.ts` also skip the solver for a non-finite
 `dt`, and `riverRouter.ts` advances nothing on one.
+
+**Statuses (ABI 17, #533).** Every export that can refuse its arguments says so: an int
+`WS_OK` (1) / `WS_REJECTED` (0) (`common.h`; `wasmAbi.ts` mirrors both and
+`wasmAbiVersion.drift.test.ts` pins them) from `computeWaterForcesBatch`, `applySWEEvent`,
+`scrollShallowWater`, `routeReach` / `routeReachLateral` / `routeReachSteady` /
+`routeReachTravelTime`, the five chores, `packSurfaceField` and `stepSplashParticles`; the
+two steps return the time integrated instead (0 = rejected). Before ABI 17 a rejected call
+was a silent no-op and the caller read its output buffer as if fresh. A rejected call writes
+nothing; the TS caller warns once per export in dev (`warnRejected`, `wasmAbi.ts`) and never
+reads the untouched buffer as fresh: the SWE field and the packed flow plane keep their last
+good state, and the force batch zeroes the rejected samples rather than hand back the previous
+call's forces.
 
 `host_smoke.cpp` asserts each row on the host (ASan in `test:native:sanitize`);
 `src/systems/water/wasmSentinels.test.ts` asserts it through the committed wasm — a canary
@@ -345,11 +354,11 @@ glue exposes exactly the table's exports with the declared arities, and
 
 ### `getVersion(): number`
 
-Returns the module ABI version integer (currently **13**;
-`MIN_WASM_ABI_VERSION` is **13**). Bump in `bindings.cpp` whenever the
-exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
-`>=`, so an *additive* bump never breaks existing callers — but ABI 6 changed
-`stepShallowWater`'s arity, which is why the floor moved with it.
+Returns the module ABI version integer. The loader requires it to equal
+`WASM_ABI_VERSION` (**17**) exactly. Bump `WATERSHED_ABI_VERSION` in `bindings.cpp` and
+`WASM_ABI_VERSION` in `wasmAbi.ts` together whenever the exported surface, an export's
+contract or a batch stride changes; `wasmAbiVersion.drift.test.ts` fails `pnpm test` when the
+two differ, or when this file states another version.
 
 | Version | Change |
 |---------|--------|
@@ -369,11 +378,14 @@ exported surface or a batch stride changes. `WatershedWasm.ts` asserts with
 | 14 | Weather on the river: `routeReachLateral` (lateral inflow per segment) and `applySWEEvent` kind 4 (surge front). Additive; `MIN_WASM_ABI_VERSION` moves to 14 for the same bind-every-entry reason. |
 | 15 | **Breaking.** The single-body force exports are gone: `calculateBuoyancyAndDrag`, `calculateWaterForce`, `computeBuoyancy`, `computeDragForce`, `computeFlowForce` had no game caller left — the sim worker and the main thread both go through `computeWaterForcesBatch`, whose per-sample math is forces.cpp's `calculateWaterForce` (still the function the host smoke and the fuzzer drive). `routedEdgeState` is the one out-pointer result left. `MIN_WASM_ABI_VERSION` moves to 15. |
 | 16 | **Breaking.** `buildTerrainTile` / `buildWallShell` are gone with `terrain.cpp`: the sim worker builds the tile with the same TypeScript as the main thread (`terrainTile.ts`; see *Terrain tiles*). `MIN_WASM_ABI_VERSION` moves to 16. |
+| 17 | **Breaking (#533).** One set of numbers, round two. `stepShallowWater` / `stepShallowWaterInflow` sub-cycle (≤ 4 CFL steps) and return the time integrated as a float (0 = rejected; +inf `dt` is rejected); damping is `exp(−k·dt)`. Every export that can refuse its arguments returns an int status (`WS_OK` 1 / `WS_REJECTED` 0) instead of being a silent no-op: `computeWaterForcesBatch`, `applySWEEvent`, `scrollShallowWater`, the four `routeReach*`, the five chores, `stepSplashParticles`. New: `packSurfaceField` (the SWE flow texture's bytes, `chores.cpp`). The floor is gone: the loader requires an exact version match. |
 
-TypeScript (`wasmLoader.ts`, both owners) asserts `getVersion() >= MIN_WASM_ABI_VERSION` (currently 16).
-Versions 1–5 were additive, so the floor could lag behind. ABI 6 is not: a pre-6
-binary cannot be called with the new argument list at all, so the floor moves with
-it and a stale binary is rejected at load. Chore kernels live in
+TypeScript (`wasmLoader.ts`, both owners) requires `ws_getVersion()` === `WASM_ABI_VERSION` (**17**).
+Through ABI 16 it asserted a floor, `MIN_WASM_ABI_VERSION`, so additive bumps (1–5, 7–11)
+could lag behind it. Since ABI 12 `bindNativeModule` requires every `WASM_ABI` entry, so a
+floor below the current version only admitted binaries the bind rejected anyway — and ABI 17
+changed contracts (the step's return, int statuses) without changing every arity, which a floor
+cannot see. One number, checked for equality, says what the table says. Chore kernels live in
 `emscripten/chores.cpp` and are **not** SWE.
 
 > **`public/watershed_native.{js,wasm}` are committed build artifacts.** Rebuild
@@ -403,9 +415,11 @@ Add the `.cpp` to `COMPUTE_SOURCES` in `CMakeLists.txt` (the source of truth;
 `WatershedNativeModule` interface in `wasmAbi.ts`, and bump `ws_getVersion()`.
 Never put compile or link flags in a shell script.
 
-### `computeWaterForcesBatch(inputPtr, outputPtr, sampleCount, flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient, frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency): void`
+### `computeWaterForcesBatch(inputPtr, outputPtr, sampleCount, flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient, frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency): int`
 
-The water-force export (single-body forms removed in ABI 15). `sampleCount` bodies
+The water-force export (single-body forms removed in ABI 15). Returns `WS_OK`, or
+`WS_REJECTED` with the output untouched (ABI 17); the batch helpers then zero the rejected
+samples, so a stale force is never applied as fresh. `sampleCount` bodies
 share one config; each sample is 8 input floats and 8 output floats
 (`WATER_FORCE_INPUT_STRIDE` / `WATER_FORCE_OUTPUT_STRIDE`):
 
@@ -428,7 +442,7 @@ rigidBody.applyImpulse({ x: force.forceX * dt, y: force.forceY * dt, z: force.fo
 batch.dispose();
 ```
 
-### `stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H): void`
+### `stepShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, dt, g, dx, H): float`
 
 Advances the nonlinear Shallow Water Equations one time step on a Cartesian
 grid. All grid arrays must be WASM heap pointers returned by `allocateGrid()`;
@@ -460,9 +474,22 @@ reflecting — but that only sheds waves from a *fixed* grid. The grid is a play
 window that moves, and `stepShallowWater` does not shift `h` / `u` / `w`; keeping the field
 world-stable is `scrollShallowWater` (ABI 9, below).
 
-The solver internally clamps `dt` to the CFL stability limit
-(`dt ≤ 0.4 · dx / max(|v| + √(g d))`), so it is safe to pass `delta` from
-`useFrame` directly.
+**Time contract (ABI 17, #533).** The call integrates `dt` in up to four CFL sub-steps
+(each `≤ 0.4 · dx / max(|v| + √(g d))`, each re-lifted from the state the previous one wrote
+back) and **returns the time it integrated**: `dt` exactly unless the cap was hit, in which
+case the caller carries the rest (`sweHost.ts` puts it back in its step accumulator). Before
+ABI 17 the step integrated `min(dt, CFL)` and said nothing, so the caller's clocks ran ahead of
+the field. 0 means rejected, nothing written: an extent outside [1, 4096], a null plane, or a
+`dt` / `g` / `dx` / `H` that is not finite and > 0 — `+inf` included, which used to be
+CFL-clamped. Four sub-steps cover the TS caller's 0.05 s cap down to a 0.0125 s CFL limit.
+
+- **Damping** is `exp(−DAMPING_COEFF · dt)` per sub-step (`sweExpNeg`, `common.h`: libm-free,
+  so host and wasm agree bit for bit), always in (0, 1], and N sub-steps damp like one step of
+  their sum. The linear `1 − k·dt` went negative past `dt = 1/k`.
+- **Non-finite state heals.** The lift reads a NaN or ±inf η, u or w as 0. Before, a NaN
+  velocity lifted into `qx = d·NaN`, took the HLL branch (every comparison false) and spread two
+  cells per step.
+- `stepShallowWaterInflow` (ABI 10, below) has the same contract.
 
 Use the `createSWEGrid()` helper to manage allocations:
 
@@ -480,11 +507,12 @@ for (let z = 0; z < grid.height; z++)
 
 // Per-frame in useFrame:
 useFrame((_, delta) => {
-  wasm.stepShallowWater(
+  const integrated = wasm.stepShallowWater(
     grid.hPtr, grid.uPtr, grid.wPtr, grid.bPtr,
     grid.width, grid.height,
     delta, 9.8, grid.dx, 1.0   // H=1 m still-water depth
   );
+  // integrated < delta only past the sub-step cap; 0 = rejected (nothing written).
   // Read grid.h for mesh displacement. Feed grid.u / grid.w through
   // sampleSWEFlow into the force batch (dry cells: speed 0).
 });
@@ -493,7 +521,7 @@ useFrame((_, delta) => {
 grid.dispose();
 ```
 
-### `scrollShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, shiftX, shiftZ, inflowEta, inflowU, inflowW): void`  (ABI 9)
+### `scrollShallowWater(hPtr, uPtr, wPtr, bPtr, width, height, shiftX, shiftZ, inflowEta, inflowU, inflowW): int`  (ABI 9; status since 17)
 
 The live grid is a player-centred **window over the world** (`sweQuality.ts`: 48×32 cells at
 0.5 m on High), and its origin follows the vehicle every frame. `stepShallowWater` is
@@ -533,6 +561,36 @@ window world-stable.
   on a sloped bed and a U-channel, a scrolled window tracking a fixed one), `smoke_test.mjs`
   (real binary vs a JS reference), `sweScroll.integration.test.ts` (TS against the export;
   `pnpm test:wasm`), and `pnpm test:wgsl` (WGSL vs WASM at 1e-5; the pure scroll is bit-exact).
+
+### `applySWEEvent(hPtr, uPtr, wPtr, bPtr, width, height, dx, originX, originZ, H, kind, cx, cz, radius, strength, dt): int`  (ABI 8; status since 17)
+
+An authored hydro event as a source term, in world XZ on the player-centred grid; it visits
+only the event's bounding box. Kinds **0–4**: 0 inflow pulse (raises η), 1 vortex (lowers η
+and swirls), 2 braid (raises `b`), 3 roughness (damps u, w), 4 surge (ABI 14: a stage-step
+front across the whole window, `|z − cz| ≤ radius`, `cx` unused, that raises η toward
+`strength` metres with the downstream speed a bore of that height carries). Returns `WS_OK`, or
+`WS_REJECTED` with nothing written for a bad extent, a null plane, `dx` ≤ 0, or a non-finite
+placement / strength / dt. `swe.wgsl` twins every kind.
+
+### `packSurfaceField(hPtr, uPtr, wPtr, bPtr, width, height, H, dx, outRgbaPtr): int`  (ABI 17, `chores.cpp`)
+
+The bytes of the SWE flow texture (`sweFlowMap`) the water shaders sample: RGBA float32 per
+cell, row-major like `h`, into `4 · width · height` floats that must not alias the inputs.
+
+| Channel | Value |
+|---|---|
+| R | `u` (m/s) |
+| G | `w` (m/s) |
+| B | depth `max(0, (H + h) − b)` (m) |
+| A | div `∂u/∂x + ∂w/∂z` (1/s): central differences, one-sided (half span) on the border, 0 on a dry cell or along an axis of extent 1 |
+
+`bPtr` 0 is a flat bed. Returns `WS_OK`, or `WS_REJECTED` (nothing written). On
+`wasm-worker` the sim worker packs it after each step and ships it as a frame plane
+(`SimFrame.surface`, after η | u | w | b); on `wasm-main` it is packed on the main thread's heap;
+on WebGPU `swe.wgsl`'s `pack_surface` does the same. The main thread only points the texture at
+the bytes: it runs no per-cell loop (the TS packer it replaces ran every step). Every operation
+is a float32 op in a fixed order, so `sweSurfaceField.drift.test.ts` pins the native bytes
+against an fround-exact TypeScript statement of the stencil.
 
 ### Channel routing + the routed upstream edge  (ABI 10)
 
@@ -695,24 +753,17 @@ Fixtures live in `src/physics/__tests__/waterForceFixtures.ts`.
 
 ---
 
-## Threading (pthreads)
+## Threads (retired)
 
-The `--threads` build enables Emscripten's pthread support.  This requires
-the browser to serve the page with:
-
-```
-Cross-Origin-Opener-Policy:   same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
-
-`pnpm dev` sends these headers only on request: open the page with `?isolated=1`
-(`devIsolationOptInPlugin` in `vite.config.ts`, #502 E). `vite preview` never sends them
-(it must look like production for visual smoke), and production does **not** send them, and the threaded pair is never shipped: `./build.sh --threads`
-writes to `emscripten/build-threads/out/` (CI builds it and asserts `public/` is
-untouched). Nothing in the C++ creates a thread today.
-
-> **Note:** The single-threaded build (`pnpm build:wasm`) works without
-> these headers and is the only one that ships.
+The `--threads` variant (`WATERSHED_THREADS`, `pnpm build:wasm:threads`) was removed in #533.
+It had no consumer: nothing outside tests uses `SharedArrayBuffer` or checks
+`crossOriginIsolated`, production sends no COOP/COEP, and the off-main-thread path is the sim
+worker (#455) — a plain `Worker` with its own module instance, which needs neither. Keeping
+the variant buildable cost the single-thread binary too: the `thread_local` solver scratch
+registered `__cxa_thread_atexit` destructors there for nothing. The scratch is plain statics
+now, and the symbol map no longer lists `__cxa_thread_atexit`. `pnpm dev` still sends COOP/COEP
+on request (`?isolated=1`, `devIsolationOptInPlugin` in `vite.config.ts`, #502 E) for a local
+`SharedArrayBuffer` experiment; nothing that ships needs it.
 
 ---
 
@@ -733,8 +784,9 @@ at test time.
 - **Cold load:** The `.wasm` is ~34 KB and the glue ~5 KB (uncompressed), each fetched
   once per session (`wasmLoader.ts`).
 - **No GC pressure:** All simulation memory is in WASM heap (`allocateGrid`).
-- **CFL safety:** `stepShallowWater` clamps `dt` internally — no instability
-  at low frame rates.
+- **CFL safety:** `stepShallowWater` sub-cycles up to four CFL steps and returns the time
+  it integrated (ABI 17) — no instability at low frame rates, and no clock running ahead of
+  the field.
 - **SIMD stepper (#467):** the whole step is 4-wide (`simdf32.h`):
   1. **lift** (depth clamp, dry-mask momentum, cell velocities) and the **CFL max**;
   2. **faces, row by row** — x-faces four adjacent at a time, z-faces a row at a time
@@ -758,7 +810,8 @@ at test time.
 - **Host checks:** `pnpm test:native:sanitize` (host smoke under ASan + UBSan, span
   bounds via `_GLIBCXX_ASSERTIONS`), `pnpm test:native:fuzz` (libFuzzer over
   step / inflow step / events / scroll with random-but-valid grids; clang), and
-  `pnpm lint:native` (clang-tidy `bugprone-*`, `performance-*`). CI runs all three.
+  `pnpm lint:native` (clang-tidy `bugprone-*`, `performance-*`, and
+  `cppcoreguidelines-init-variables` / `-pro-bounds-pointer-arithmetic` / `-macro-usage`). CI runs all three.
 
 ---
 
@@ -772,4 +825,4 @@ at test time.
 | 4 — Bed + force coupling | ✅ Done | Canyon → `b` ([#385](https://github.com/ford442/Watershed/issues/385)); SWE `u,w` → `calculateWaterForce` via `sampleSWEFlow` ([#386](https://github.com/ford442/Watershed/issues/386)) |
 | 5 — Source terms / events | ✅ Done | `hydroEvents[]` + `applySWEEvent` (ABI 8, additive) ([#389](https://github.com/ford442/Watershed/issues/389)) |
 | 6 — SIMD + particles | ✅ Done | SIMD lift/CFL/damping + particle SoA ([#390](https://github.com/ford442/Watershed/issues/390)); the HLL faces went 4-wide in [#467](https://github.com/ford442/Watershed/issues/467) (3.1× at 64×40, Ultra → 128×80) |
-| 7 — pthreads / compute SWE | 🟡 WGSL done, sim worker Phases A–B | **[#435](https://github.com/ford442/Watershed/issues/435)**: `src/systems/water/swe.wgsl` twins `stepShallowWater` + `applySWEEvent` on native-WebGPU boots, one backend per session (`sweBackend.ts`); `pnpm test:wgsl` pins parity at 1e-5. **[#455](https://github.com/ford442/Watershed/issues/455)**: the SWE step moved off the main thread into one plain `Worker` (`src/sim/`, `wasm-worker` backend, default on WebGL2; `?simWorker=0` kill switch) — no pthreads, no SharedArrayBuffer, no COOP/COEP; field bit-identical to the main-thread stepper. Phase B moved the river router and the water forces (hull + debris, `simForces.ts`; the Rapier worker's raft over a `MessageChannel`) into the same worker — two module instances per session (main + sim worker), bit-identical forces. Phases C–D (particles/chores, SAB fast path) follow. No Electron. No default-on COOP-COEP / pthreads. |
+| 7 — pthreads / compute SWE | 🟡 WGSL done, sim worker Phases A–B | **[#435](https://github.com/ford442/Watershed/issues/435)**: `src/systems/water/swe.wgsl` twins `stepShallowWater` + `applySWEEvent` on native-WebGPU boots, one backend per session (`sweBackend.ts`); `pnpm test:wgsl` pins parity at 1e-5. **[#455](https://github.com/ford442/Watershed/issues/455)**: the SWE step moved off the main thread into one plain `Worker` (`src/sim/`, `wasm-worker` backend, default on WebGL2; `?simWorker=0` kill switch) — no pthreads, no SharedArrayBuffer, no COOP/COEP; field bit-identical to the main-thread stepper. Phase B moved the river router and the water forces (hull + debris, `simForces.ts`; the Rapier worker's raft over a `MessageChannel`) into the same worker — two module instances per session (main + sim worker), bit-identical forces. Phases C–D (particles/chores, SAB fast path) follow. No Electron. No default-on COOP-COEP / pthreads; the `--threads` build variant was retired in #533 (*Threads (retired)*). |

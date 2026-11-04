@@ -135,18 +135,21 @@ struct f32x4 {
 
 namespace simdf32_detail {
 inline unsigned bits(float f) {
-    unsigned u;
+    unsigned u = 0;
     std::memcpy(&u, &f, sizeof(u));
     return u;
 }
 inline float from_bits(unsigned u) {
-    float f;
+    float f = 0.f;
     std::memcpy(&f, &u, sizeof(f));
     return f;
 }
 inline float mask(bool b) { return from_bits(b ? 0xffffffffu : 0u); }
 }  // namespace simdf32_detail
 
+// A load / store takes a raw pointer on every backend (the intrinsics do), so
+// four lanes past it are the caller's bound, as with wasm_v128_load.
+// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 inline f32x4 f32x4_load(const float* p) { return {{p[0], p[1], p[2], p[3]}}; }
 inline void f32x4_store(float* p, f32x4 v) {
     p[0] = v.v[0];
@@ -154,8 +157,13 @@ inline void f32x4_store(float* p, f32x4 v) {
     p[2] = v.v[2];
     p[3] = v.v[3];
 }
+// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 inline f32x4 f32x4_splat(float x) { return {{x, x, x, x}}; }
 
+// One body for every lane-wise op of the scalar fallback; a template cannot
+// take the expression, and #undef'd below. (Only parsed on a host with no
+// SSE2 / NEON, so lint:native on x86_64 / arm64 never sees it.)
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define WATERSHED_F32X4_LANEWISE(name, expr)                    \
     inline f32x4 name(f32x4 a, f32x4 b) {                       \
         f32x4 r;                                                \
@@ -196,9 +204,6 @@ inline f32x4 f32x4_select(f32x4 mask, f32x4 a, f32x4 b) {
 }
 
 #endif
-
-/** Kept for existing callers; the same mask f32x4_gt returns. */
-inline f32x4 f32x4_gt_mask(f32x4 a, f32x4 b) { return f32x4_gt(a, b); }
 
 /** Horizontal max with the same NaN rule as f32x4_max (a NaN lane is skipped). */
 inline float f32x4_hmax(f32x4 v) {

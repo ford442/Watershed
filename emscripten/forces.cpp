@@ -102,20 +102,20 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
 }
 
 // Batch ABI for workers — strides documented in common.h.
-void computeWaterForcesBatch(uintptr_t inputPtr,
-                             uintptr_t outputPtr,
-                             int sampleCount,
-                             float flowSpeed,
-                             float waterLevel,
-                             float raftMass,
-                             float raftVolume,
-                             float dragCoefficient,
-                             float frontalArea,
-                             float sideArea,
-                             float timeSeconds,
-                             float turbulenceStrength,
-                             float turbulenceFrequency) noexcept {
-    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0 || sampleCount > WATER_FORCE_MAX_SAMPLES) return;
+int computeWaterForcesBatch(uintptr_t inputPtr,
+                            uintptr_t outputPtr,
+                            int sampleCount,
+                            float flowSpeed,
+                            float waterLevel,
+                            float raftMass,
+                            float raftVolume,
+                            float dragCoefficient,
+                            float frontalArea,
+                            float sideArea,
+                            float timeSeconds,
+                            float turbulenceStrength,
+                            float turbulenceFrequency) noexcept {
+    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0 || sampleCount > WATER_FORCE_MAX_SAMPLES) return WS_REJECTED;
 
     const std::size_t n = static_cast<std::size_t>(sampleCount);
     const std::span<const float> input = heapSpan<const float>(inputPtr, n * WATER_FORCE_INPUT_STRIDE);
@@ -149,4 +149,5 @@ void computeWaterForcesBatch(uintptr_t inputPtr,
         o[6] = r.turbulence;
         o[7] = r.submergedRatio;
     }
+    return WS_OK;
 }

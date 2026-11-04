@@ -42,15 +42,16 @@ float rand01(uint32_t& s) {
     return static_cast<float>(xorshift32(s) >> 8) * (1.f / 16777216.f);
 }
 
-void euler4(float* px, float* py, float* pz,
-            const float* vx, const float* vy, const float* vz,
+// n <= every plane's size (the callers clamp it to capacity).
+void euler4(std::span<float> px, std::span<float> py, std::span<float> pz,
+            std::span<const float> vx, std::span<const float> vy, std::span<const float> vz,
             int n, float dt) {
     const f32x4 vdt = f32x4_splat(dt);
     int i = 0;
     for (; i + 4 <= n; i += 4) {
-        f32x4_store(px + i, f32x4_add(f32x4_load(px + i), f32x4_mul(f32x4_load(&vx[i]), vdt)));
-        f32x4_store(py + i, f32x4_add(f32x4_load(py + i), f32x4_mul(f32x4_load(&vy[i]), vdt)));
-        f32x4_store(pz + i, f32x4_add(f32x4_load(pz + i), f32x4_mul(f32x4_load(&vz[i]), vdt)));
+        f32x4_store(&px[i], f32x4_add(f32x4_load(&px[i]), f32x4_mul(f32x4_load(&vx[i]), vdt)));
+        f32x4_store(&py[i], f32x4_add(f32x4_load(&py[i]), f32x4_mul(f32x4_load(&vy[i]), vdt)));
+        f32x4_store(&pz[i], f32x4_add(f32x4_load(&pz[i]), f32x4_mul(f32x4_load(&vz[i]), vdt)));
     }
     for (; i < n; ++i) {
         px[i] += vx[i] * dt;
@@ -136,7 +137,7 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
     const std::span<const float> vy = plane(base, PARTICLE_VY, capacity);
     const std::span<const float> vz = plane(base, PARTICLE_VZ, capacity);
 
-    euler4(px.data(), py.data(), pz.data(), vx.data(), vy.data(), vz.data(), active, dt);
+    euler4(px, py, pz, vx, vy, vz, active, dt);
 
     uint32_t s = seed ? seed : 0x9e3779b9u;
     for (int i = 0; i < active; ++i) {
@@ -149,10 +150,11 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
     return s;
 }
 
-void stepSplashParticles(uintptr_t base, int capacity, int count,
-                         float dt, float gravityY, float damp) {
-    if (base == 0 || !validCapacity(capacity) || count <= 0) return;
-    if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(gravityY) || !std::isfinite(damp)) return;
+int stepSplashParticles(uintptr_t base, int capacity, int count,
+                        float dt, float gravityY, float damp) {
+    if (base == 0 || !validCapacity(capacity) || count < 0) return WS_REJECTED;
+    if (count == 0) return WS_OK;
+    if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(gravityY) || !std::isfinite(damp)) return WS_REJECTED;
     if (count > capacity) count = capacity;
 
     const std::span<float> px = plane(base, PARTICLE_PX, capacity);
@@ -164,7 +166,7 @@ void stepSplashParticles(uintptr_t base, int capacity, int count,
     const std::span<float> life = plane(base, PARTICLE_LIFE, capacity);
     const std::span<const float> maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
 
-    euler4(px.data(), py.data(), pz.data(), vx.data(), vy.data(), vz.data(), count, dt);
+    euler4(px, py, pz, vx, vy, vz, count, dt);
 
     const f32x4 vdt = f32x4_splat(dt);
     const f32x4 vg = f32x4_splat(gravityY);
@@ -187,4 +189,5 @@ void stepSplashParticles(uintptr_t base, int capacity, int count,
     for (int j = 0; j < count; ++j) {
         if (life[j] >= maxLife[j]) life[j] = -1.f;
     }
+    return WS_OK;
 }

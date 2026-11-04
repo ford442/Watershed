@@ -2,12 +2,13 @@
  * Watershed CPU host for gpu-chores.
  *
  * The only module under gpuChores/ that may import WatershedWasm. Chore
- * kernels stay in emscripten/chores.cpp (optional ABI 5); missing exports
- * make the wasm lane decline. Since MIN_WASM_ABI_VERSION is now 8 any
- * accepted binary already has them, so the decline path is now defensive.
+ * kernels stay in emscripten/chores.cpp (added in ABI 5); missing exports
+ * make the wasm lane decline. The loader requires the exact ABI
+ * (WASM_ABI_VERSION, #533) and binds every export, so any accepted binary
+ * already has them and the decline path is defensive.
  */
 
-import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
+import { warnRejected, WS_OK, type WatershedNativeModule } from '../../systems/water/wasmAbi';
 import {
   blurSeparableF32,
   downsampleF32,
@@ -73,7 +74,11 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
       return withHeap(wasm, values, (ptr) => {
         const outPtr = wasm.allocateGrid(3);
         try {
-          wasm.reduceF32Grid!(ptr, values.length, outPtr);
+          // Rejected (#533): the out block is untouched — use the TS math, not it.
+          if (wasm.reduceF32Grid!(ptr, values.length, outPtr) !== WS_OK) {
+            warnRejected('reduceF32Grid', `count=${values.length}`);
+            return reduceF32(values);
+          }
           const base = outPtr >> 2;
           return {
             kind: 'grid-reduce' as const,
@@ -99,7 +104,10 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
       return withHeap(wasm, values, (ptr) => {
         const binsPtr = wasm.allocateGrid(256);
         try {
-          wasm.histogramF32!(ptr, values.length, lo, hi, binsPtr);
+          if (wasm.histogramF32!(ptr, values.length, lo, hi, binsPtr) !== WS_OK) {
+            warnRejected('histogramF32', `count=${values.length}`);
+            return histogramF32(values, values.length, rangeMin, rangeMax);
+          }
           const bins = new Uint32Array(256);
           const base = binsPtr >> 2;
           for (let i = 0; i < 256; i += 1) {
@@ -124,7 +132,10 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
         wasm.HEAPU8.set(bytes, ptr);
         const binsPtr = wasm.allocateGrid(256);
         try {
-          wasm.lumaHistogramU8!(ptr, pixelCount, binsPtr);
+          if (wasm.lumaHistogramU8!(ptr, pixelCount, binsPtr) !== WS_OK) {
+            warnRejected('lumaHistogramU8', `pixels=${pixelCount}`);
+            return lumaHistogramU8(rgba, pixelCount);
+          }
           const bins = new Uint32Array(256);
           const base = binsPtr >> 2;
           for (let i = 0; i < 256; i += 1) {
@@ -148,7 +159,10 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
         const destCount = destWidth * destHeight;
         const dstPtr = wasm.allocateGrid(destCount);
         try {
-          wasm.downsampleF32!(ptr, width, height, dstPtr, destWidth, destHeight);
+          if (wasm.downsampleF32!(ptr, width, height, dstPtr, destWidth, destHeight) !== WS_OK) {
+            warnRejected('downsampleF32', `${width}x${height}`);
+            return downsampleF32(values, width, height, destWidth, destHeight);
+          }
           const out = new Float32Array(destCount);
           out.set(wasm.HEAPF32.subarray(dstPtr >> 2, (dstPtr >> 2) + destCount));
           return {
@@ -171,7 +185,10 @@ export function createNativeChoreHost(resolve: () => WatershedNativeModule | nul
       return withHeap(wasm, values, (ptr) => {
         const dstPtr = wasm.allocateGrid(values.length);
         try {
-          wasm.blurSeparableF32!(ptr, dstPtr, width, height);
+          if (wasm.blurSeparableF32!(ptr, dstPtr, width, height) !== WS_OK) {
+            warnRejected('blurSeparableF32', `${width}x${height}`);
+            return blurSeparableF32(values, width, height);
+          }
           const out = new Float32Array(values.length);
           out.set(wasm.HEAPF32.subarray(dstPtr >> 2, (dstPtr >> 2) + values.length));
           return { kind: 'separable-blur' as const, values: out, width, height };

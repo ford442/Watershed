@@ -1080,7 +1080,7 @@ HeightmapFlow was deleted (#413) and must not come back.
 **Layout:** `emscripten/common.h` (shared constants/types) + `forces.h`/`forces.cpp` (water force
 math) + `swe.h`/`swe.cpp` (solver + SIMD grid sweeps) + `simdf32.h` + `chores.h`/`chores.cpp` (optional gpu-chores;
 not SWE) + `particles.h`/`particles.cpp` (waterfall / splash SoA) + `routing.h`/`routing.cpp` + `bindings.cpp` (the plain C ABI: `extern "C" ws_*`
-exports, the only Emscripten include; `ws_getVersion()` — **14**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader asserts `getVersion() >= MIN_WASM_ABI_VERSION` (**14** — the C ABI replaced Embind, so nothing older can be bound; every export is required; 14 added `routeReachLateral` and the `surge` event kind). Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
+exports, the only Emscripten include; `ws_getVersion()` — **17**) + `host_smoke.cpp` (host assert runner). TypeScript: `wasmAbi.ts` (the `WASM_ABI` export table and `bindNativeModule`), `wasmLoader.ts` (fetch once, hash once, instantiate — shared by `getWasm()` and the sim worker), `WatershedWasm.ts` (SWE grid / force batch heap helpers), `waterForceFallback.ts` (TS twin of `forces.cpp`). The loader requires `getVersion()` to equal `WASM_ABI_VERSION` (**17**) exactly — no floor since #533: every export is required at bind, and 17 changed contracts (the SWE step sub-cycles and returns the time it integrated; every export that can refuse its arguments returns `WS_OK` / `WS_REJECTED`; new `packSurfaceField`, the flow texture's bytes) — and `wasmAbiVersion.drift.test.ts` holds the TS and C++ numbers and WASM.md to one value. Since #467 the whole `swe.cpp` step is 4-wide (`simdf32.h`): lift + CFL max, a branchless HLL / hydrostatic reconstruction over four adjacent faces, and the per-cell gather with damping fused — bit-identical to the scalar scheme on the host. Every preset's step is held to `SWE_STEP_BUDGET_MS` by `pnpm profile:swe` / `profile:physics`. All compile/link flags live in `CMakeLists.txt`; `build.sh` and `COMPUTE_SOURCES` are the only
 places a new compute translation unit must be registered. Host: `cmake -S emscripten -B emscripten/build-host`.
 
 **Purpose:** Optional C++/WASM acceleration layer for computationally intensive physics:
@@ -1137,13 +1137,13 @@ pnpm build:wasm                # runs emscripten/build.sh
 Output written to `public/` (served as static assets by Vite):
 - `public/watershed_native.js` — Emscripten glue (`_ws_*` C exports; ends with `WATERSHED_WASM_SHA`)
 - `public/watershed_native.wasm` — WASM binary
-- `--threads` builds go to `emscripten/build-threads/out/` (with the `watershed_native.worker.mjs`
-  pthread shim) and never overwrite the shipped `public/` pair or the artifact stamp (#454)
+- There is no threads variant: `--threads` was retired in #533 (no consumer; production sends no
+  COOP/COEP, and the sim worker is the off-main-thread path — WASM.md, *Threads (retired)*)
 
 **Toolchain pin (#467):** `pnpm build` no longer runs `build.sh` (the pair is committed;
 `pnpm build:full` is the old chain). `build.sh` exits 1 when emcc is missing or differs from
 `emscripten/EMCC_VERSION`; `WATERSHED_ALLOW_EMCC_MISMATCH=1` builds aside into
-`emscripten/build/out/`, and `--debug` / `--threads` always build aside, so nothing but a
+`emscripten/build/out/`, and `--debug` always builds aside, so nothing but a
 pinned release build ever writes `public/` or the stamp.
 
 **Pairing:** `public/watershed_native.{js,wasm}` are committed and must be rebuilt
@@ -1156,7 +1156,6 @@ by hash before instantiating it (`WATERSHED_WASM_SHA` vs `WASM_BINARY_SHA`).
 | Flag | Effect |
 |------|--------|
 | _(none)_ | Single-threaded, `-O3`, SIMD |
-| `--threads` | Multi-threaded (pthreads); requires COOP/COEP response headers |
 | `--debug` | `-O0 -g3`, assertions, safe heap → `emscripten/build-debug/out/` |
 
 **Alternative — CMake:** `emscripten/CMakeLists.txt` provides a CMake build path for

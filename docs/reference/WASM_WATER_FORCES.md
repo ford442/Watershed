@@ -6,8 +6,9 @@ Watershed's native module lives in `emscripten/` — `common.h` / `forces.h` / `
 plus `forces.cpp` (water force math), `swe.cpp` (shallow-water solver + heap grids),
 `chores.cpp` (optional gpu-chores; not SWE), `particles.cpp` (waterfall / splash SoA),
 `routing.cpp` (channel routing),
-and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 16,
-`MIN_WASM_ABI_VERSION` = 16). The terrain tile (#487) is TypeScript-only since ABI 16.
+and `bindings.cpp` (the plain C ABI, `extern "C" ws_*`; ABI `getVersion()` = 17, and the
+loader requires exactly that — `WASM_ABI_VERSION`, no floor since #533). The terrain tile
+(#487) is TypeScript-only since ABI 16.
 It builds to:
 
 - `public/watershed_native.js`
@@ -22,12 +23,8 @@ pnpm build:wasm
 `pnpm build` does **not** rebuild them: the pair is committed and CI verifies it
 (`pnpm build:full` runs both).
 
-Threaded WASM remains opt-in because it needs COOP/COEP headers (it builds into
-`emscripten/build-threads/out/` and never ships):
-
-```bash
-pnpm build:wasm:threads
-```
+There is no threaded variant: it was retired in #533 (no consumer, production sends no
+COOP/COEP; the sim worker is the off-main-thread path — `WASM.md`, *Threads (retired)*).
 
 ## TypeScript Import
 

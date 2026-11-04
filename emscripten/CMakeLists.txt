@@ -43,11 +43,12 @@ if(EMSCRIPTEN)
         set(EM_OPT_FLAGS "-O3 -s ASSERTIONS=0 -s STACK_SIZE=64KB")
     endif()
 
-    # Default production path MUST NOT require SharedArrayBuffer.
-    # Threads are a separate opt-in CMake option (build.sh --threads), never default-on.
-    # ENVIRONMENT is 'web,worker' on BOTH variants (#454): the Rapier worker loads
-    # this same glue (src/physics/workerWasm.ts), and so will the sim worker
-    # (#455). A 'web'-only glue hard-codes ENVIRONMENT_IS_WORKER=false and only
+    # The one production path never requires SharedArrayBuffer: there is no
+    # threads variant (retired in #533 — no consumer, production sends no
+    # COOP/COEP; the sim worker, #455, is the off-main-thread path).
+    # ENVIRONMENT is 'web,worker' on BOTH build types (#454): the Rapier worker
+    # loads this same glue (src/physics/workerWasm.ts), and so does the sim
+    # worker (#455). A 'web'-only glue hard-codes ENVIRONMENT_IS_WORKER=false and only
     # happened to work because EXPORT_ES6 resolves the .wasm via import.meta.url.
     # Debug adds 'node' (#502): the Debug binary is never shipped, and with it
     # the ws_trapTest path is tested under vitest against a binary that really
@@ -56,13 +57,6 @@ if(EMSCRIPTEN)
         set(EM_ENVIRONMENT "web,worker,node")
     else()
         set(EM_ENVIRONMENT "web,worker")
-    endif()
-    option(WATERSHED_THREADS "Enable Emscripten pthreads" OFF)
-    if(WATERSHED_THREADS)
-        # -pthread at link replaces the deprecated -s USE_PTHREADS=1 (#467).
-        set(EM_THREAD_FLAGS "-pthread -s PTHREAD_POOL_SIZE=4 -s ENVIRONMENT='${EM_ENVIRONMENT}'")
-    else()
-        set(EM_THREAD_FLAGS "-s ENVIRONMENT='${EM_ENVIRONMENT}'")
     endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -132,11 +126,6 @@ if(EMSCRIPTEN)
         )
     endif()
 
-    if(WATERSHED_THREADS)
-        target_compile_options(watershed_compute PRIVATE -pthread)
-        target_compile_options(watershed_native PRIVATE -pthread)
-    endif()
-
     # Fixed 16 MB heap, no growth. The live data is ~1 MB at most: the
     # largest SWE budget (128x80 cells x 4 planes, 160 KiB) plus its solver
     # and scroll scratch (~0.5 MB, sized up front by
@@ -157,7 +146,7 @@ if(EMSCRIPTEN)
         # the glue (_ws_* / HEAP* / createWatershedNative are exported names
         # and survive it).
         #
-        # --emit-symbol-map (#502, linked below for both variants): a release trap reads `wasm-function[N]` (no
+        # --emit-symbol-map (#502, linked below for both build types): a release trap reads `wasm-function[N]` (no
         # name section ships). The map is `N:name` per line, written next to the
         # glue as watershed_native.js.symbols; build.sh moves it out of public/
         # (emscripten/watershed_native.symbols, committed with the pair) and Vite
@@ -198,10 +187,10 @@ if(EMSCRIPTEN)
         # No --bind (#467): the ws_* exports are EMSCRIPTEN_KEEPALIVE C functions,
         # bound in TS from the wasmAbi.ts table. -fno-rtti at link too.
         "SHELL:-fno-rtti"
-        # Both variants (#502): Debug's own map lets the symbolicate path be
+        # Both build types (#502): Debug's own map lets the symbolicate path be
         # tested against a binary that really traps (ws_trapTest).
         "SHELL:--emit-symbol-map"
-        "SHELL:${EM_THREAD_FLAGS}"
+        "SHELL:-s ENVIRONMENT='${EM_ENVIRONMENT}'"
     )
 
     set(WATERSHED_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/../public" CACHE PATH "Directory for watershed_native.js/.wasm")

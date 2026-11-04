@@ -15,21 +15,21 @@
 #include <cstdint>
 
 /** Number of SoA planes. Mirrored by PARTICLE_SOA_PLANES in TypeScript. */
-static constexpr int PARTICLE_SOA_PLANES = 9;
-static constexpr int PARTICLE_PX = 0;
-static constexpr int PARTICLE_PY = 1;
-static constexpr int PARTICLE_PZ = 2;
-static constexpr int PARTICLE_VX = 3;
-static constexpr int PARTICLE_VY = 4;
-static constexpr int PARTICLE_VZ = 5;
-static constexpr int PARTICLE_LIFE = 6;
-static constexpr int PARTICLE_MAXLIFE = 7;
-static constexpr int PARTICLE_SCALE = 8;
+inline constexpr int PARTICLE_SOA_PLANES = 9;
+inline constexpr int PARTICLE_PX = 0;
+inline constexpr int PARTICLE_PY = 1;
+inline constexpr int PARTICLE_PZ = 2;
+inline constexpr int PARTICLE_VX = 3;
+inline constexpr int PARTICLE_VY = 4;
+inline constexpr int PARTICLE_VZ = 5;
+inline constexpr int PARTICLE_LIFE = 6;
+inline constexpr int PARTICLE_MAXLIFE = 7;
+inline constexpr int PARTICLE_SCALE = 8;
 /**
  * Largest capacity any particle entry point accepts (#502): 9 planes stay
  * addressable as int and inside the heap. Larger is a no-op (alloc returns 0).
  */
-static constexpr int PARTICLE_MAX_CAPACITY = 1 << 20;
+inline constexpr int PARTICLE_MAX_CAPACITY = 1 << 20;
 
 /** Allocate 9 * capacity floats (zeroed). Same allocator as allocateGrid. */
 uintptr_t allocateParticleSoA(int capacity);
@@ -52,8 +52,15 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
 /**
  * Euler + gravity + velocity damp + age for dense slots [0, count).
  * life >= maxLife → life = -1 (caller deactivates).
+ *
+ * `damp` is a per-call factor (v *= damp), not a rate: the caller owns the
+ * frame-rate dependence. The SWE stepper's damping is a rate, applied as
+ * exp(−k·dt) (sweExpNeg, common.h); this one is not.
+ *
+ * Returns WS_OK (count 0 included), or WS_REJECTED for a null base, a bad
+ * capacity, a negative count, or a non-finite / non-positive dt.
  */
-void stepSplashParticles(uintptr_t base, int capacity, int count,
-                         float dt, float gravityY, float damp);
+int stepSplashParticles(uintptr_t base, int capacity, int count,
+                        float dt, float gravityY, float damp);
 
 #endif  // WATERSHED_PARTICLES_H

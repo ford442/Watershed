@@ -256,7 +256,7 @@ one growing translation unit:
 | `emscripten/bindings.cpp` | The plain C ABI (`extern "C" ws_*`, `ws_getVersion()`); the only file including an Emscripten header (#467) |
 | `emscripten/host_smoke.cpp` | Host assert runner |
 
-`getVersion()` was **7** (particle SoA) when this was written, with `MIN_WASM_ABI_VERSION` **6**: unlike the additive 1–5 and 7 bumps, ABI 6 changed `stepShallowWater`'s arity. Today both are **12** — the plain C ABI (#467); see [`WASM.md`](../../WASM.md).
+`getVersion()` was **7** (particle SoA) when this was written, with `MIN_WASM_ABI_VERSION` **6**: unlike the additive 1–5 and 7 bumps, ABI 6 changed `stepShallowWater`'s arity. Since #533 (ABI 17) there is no floor: the loader requires `getVersion()` to equal `WASM_ABI_VERSION` exactly; see [`WASM.md`](../../WASM.md).
 
 Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Since #467 there are exactly two paths (`waterForceAuthority.ts`): forces.cpp in the sim worker (`resolveWaterForceOwner` → `'sim-worker'`; the Rapier worker's raft over the hull link), or the TS mirror on the main thread (`'ts-mirror'`; a Rapier-worker raft receives it with its step and applies it only when the hull link has no fresh force — `pickHullForce`). The main thread never calls forces.cpp, the raft never applies its own force, and the Rapier worker computes none. `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
 

@@ -52,6 +52,12 @@ export interface SimRoute {
    * Absent = keep the weather the router has.
    */
   weather?: RouterWeather | null;
+  /**
+   * STEP only: seconds the router advances — the step's new time, which is
+   * `input.dt` less any re-queued shortfall the main thread's clocks already
+   * counted (#533, sweHost.ts `fieldDebt`). Absent = `input.dt`.
+   */
+  advance?: number;
 }
 
 /** What cells entering on a SCROLL take. */

@@ -1,9 +1,14 @@
 /**
- * sweSurfaceField — packs the SWE state the water surface *reads* (#453).
+ * sweSurfaceField — the SWE state the water surface *reads* (#453).
  *
- * Pure — no React/THREE/WASM. WaterForceSystem uploads the result as the RGBA float
- * `sweFlowMap` on the same `fieldVersion` as the height texture; FlowingWater.tsx (GLSL)
- * and WaterNodeMaterial.ts (TSL) sample it in the fragment stage.
+ * The RGBA float `sweFlowMap` is uploaded on the same `fieldVersion` as the height
+ * texture; FlowingWater.tsx (GLSL) and WaterNodeMaterial.ts (TSL) sample it in the
+ * fragment stage. Since #533 the bytes are packed natively — `packSurfaceField`
+ * (emscripten/chores.cpp), in the sim worker on wasm-worker, on the main thread's
+ * heap on wasm-main, by `pack_surface` (swe.wgsl) on the GPU — and the main thread
+ * only points the texture at them (`SweSim.packSurface`, sweHost.ts). The TS loop
+ * that packed them here every step is gone; sweSurfaceField.drift.test.ts keeps a
+ * float32-exact statement of the stencil and pins the native bytes to it.
  *
  * Texel layout (same row-major grid as `h`, `idx = gz * width + gx`):
  *   R = u      m/s along +X   (solver velocity, not momentum)
@@ -21,52 +26,6 @@ import { FALLBACK_FLOW_DIR, SWE_DRY_DEPTH } from './sampleSWEFlow';
 import { smoothstep } from '../../math/scalar';
 
 export const SWE_FLOW_CHANNELS = 4;
-
-export interface SweSurfaceGrid {
-  h: ArrayLike<number>;
-  u: ArrayLike<number>;
-  w: ArrayLike<number>;
-  b: ArrayLike<number>;
-  width: number;
-  height: number;
-  /** Cell size in metres (`SweSim.dx`). */
-  dx: number;
-}
-
-/**
- * Pack `grid` into `out` (length `4 * width * height`) in place. Allocation-free:
- * the caller owns and reuses `out` (the DataTexture's backing array).
- */
-export function packSweSurfaceField(
-  grid: SweSurfaceGrid,
-  out: Float32Array,
-  meanDepth: number,
-): void {
-  const { width, height, dx, h, u, w, b } = grid;
-  for (let gz = 0; gz < height; gz += 1) {
-    const zLo = gz > 0 ? gz - 1 : gz;
-    const zHi = gz < height - 1 ? gz + 1 : gz;
-    for (let gx = 0; gx < width; gx += 1) {
-      const xLo = gx > 0 ? gx - 1 : gx;
-      const xHi = gx < width - 1 ? gx + 1 : gx;
-      const idx = gz * width + gx;
-      const depth = Math.max(0, meanDepth + h[idx] - b[idx]);
-      let div = 0;
-      if (depth > SWE_DRY_DEPTH) {
-        // Central differences; one-sided (half span) on the grid border.
-        const spanX = (xHi - xLo) * dx;
-        const spanZ = (zHi - zLo) * dx;
-        if (spanX > 0) div += (u[gz * width + xHi] - u[gz * width + xLo]) / spanX;
-        if (spanZ > 0) div += (w[zHi * width + gx] - w[zLo * width + gx]) / spanZ;
-      }
-      const o = idx * SWE_FLOW_CHANNELS;
-      out[o] = u[idx];
-      out[o + 1] = w[idx];
-      out[o + 2] = depth;
-      out[o + 3] = div;
-    }
-  }
-}
 
 export interface SweStreakAxis {
   dirX: number;

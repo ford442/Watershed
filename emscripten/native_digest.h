@@ -32,7 +32,7 @@
 namespace native_digest {
 
 // Expected digests. The TS driver parses these lines; keep the format.
-inline constexpr uint32_t kSweDigest = 0xb6bca6d3u;
+inline constexpr uint32_t kSweDigest = 0x495055dbu;
 inline constexpr uint32_t kRoutingDigest = 0x1538e102u;
 
 struct Fnv {
@@ -65,7 +65,8 @@ inline uintptr_t at(std::vector<T>& v) { return reinterpret_cast<uintptr_t>(v.da
 
 /**
  * 40 x 24 cells over a random bed: 30 steps alternating the routed-edge and
- * plain steppers, every event kind at step 8, a scroll at step 16.
+ * plain steppers, every event kind at step 8, a scroll at step 16, then one
+ * 0.375 s routed step that hits the sub-step cap (its returned dt is hashed).
  */
 inline uint32_t sweDigest() {
     constexpr int W = 40;
@@ -98,7 +99,10 @@ inline uint32_t sweDigest() {
         }
         if (k == 16) scrollShallowWater(at(h), at(u), at(w), at(b), W, Z, 1, -2, 0.0625f, 0.125f, -0.25f);
     }
+    // ABI 17: one step well past the CFL limit sub-cycles; its return is hashed too.
+    const float consumed = stepShallowWaterInflow(at(h), at(u), at(w), at(b), W, Z, 0.375f, kG, kDx, kH, 0.15f);
     Fnv f;
+    f.add(consumed);
     f.add(h);
     f.add(u);
     f.add(w);

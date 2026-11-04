@@ -342,18 +342,6 @@ jobs:
           pnpm test:wasm
           pnpm test:wasm:parity
 
-      - name: Compile threaded WASM variant
-        run: pnpm build:wasm:threads
-
-      - name: Assert threaded WASM artifact is built aside, shipped pair untouched
-        run: |
-          test -f emscripten/build-threads/out/watershed_native.wasm
-          git diff --exit-code -- \
-            public/watershed_native.js \
-            public/watershed_native.wasm \
-            emscripten/watershed_native.symbols \
-            src/systems/water/wasmArtifactStamp.ts
-
   # The Debug wasm (SAFE_HEAP, ASSERTIONS=2, STACK_OVERFLOW_CHECK=2, libc++
   # debug-mode hardening) under the same integration suites as the shipped
   # pair: bounds are checked in real wasm32, where size_t is 32 bits and an

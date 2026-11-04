@@ -159,3 +159,48 @@ export function scrollField(
   if (planes.b) scrollPlane(planes.b, width, height, sx, sz, null);
   return true;
 }
+
+let texelScratch = new Float32Array(0);
+
+/**
+ * Scroll an interleaved `channels`-per-cell plane (the packed flow texture,
+ * `SweSim.packSurface`) by whole cells, in place: `dst[x, z] = src[x − shiftX,
+ * z − shiftZ]`, with cells that enter taking their nearest surviving texel
+ * (the bed's edge rule). Row copies only, no per-cell arithmetic (#533): the
+ * worker / WGSL mirrors move their surface plane with h/u/w/b so it stays in
+ * the new index frame until the next packed plane replaces all of it.
+ */
+export function scrollTexels(
+  plane: Float32Array,
+  width: number,
+  height: number,
+  channels: number,
+  shiftX: number,
+  shiftZ: number,
+): boolean {
+  if (!Number.isFinite(shiftX) || !Number.isFinite(shiftZ)) return false;
+  const sx = Math.max(-width, Math.min(width, Math.trunc(shiftX)));
+  const sz = Math.max(-height, Math.min(height, Math.trunc(shiftZ)));
+  if (sx === 0 && sz === 0) return false;
+  const rowLen = width * channels;
+  const count = height * rowLen;
+  if (texelScratch.length < count) texelScratch = new Float32Array(count);
+  // Destination columns whose source is in range: [x0, x1).
+  const x0 = Math.max(0, Math.min(width, sx));
+  const x1 = Math.max(0, Math.min(width, width + sx));
+  for (let z = 0; z < height; z += 1) {
+    const srcRow = Math.min(Math.max(z - sz, 0), height - 1) * rowLen;
+    const dstRow = z * rowLen;
+    if (x1 > x0) {
+      texelScratch.set(plane.subarray(srcRow + (x0 - sx) * channels, srcRow + (x1 - sx) * channels), dstRow + x0 * channels);
+    }
+    // Edge-extend: columns left of the copied span take the source row's
+    // first texel, columns right of it its last (scrollShallowWater's bed rule).
+    const left = plane.subarray(srcRow, srcRow + channels);
+    for (let x = 0; x < x0; x += 1) texelScratch.set(left, dstRow + x * channels);
+    const right = plane.subarray(srcRow + (width - 1) * channels, srcRow + width * channels);
+    for (let x = Math.max(x1, x0); x < width; x += 1) texelScratch.set(right, dstRow + x * channels);
+  }
+  plane.set(texelScratch.subarray(0, count));
+  return true;
+}

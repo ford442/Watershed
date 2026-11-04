@@ -27,7 +27,7 @@ import { BUILD_IDENTITY, GRAPHICS_BOOT_TOKEN } from '../../buildIdentity';
 import { getAssetBaseUrl } from '../../utils/assetBaseUrl';
 import {
   bindNativeModule,
-  MIN_WASM_ABI_VERSION,
+  WASM_ABI_VERSION,
   type RawWatershedModule,
   type WatershedNativeModule,
 } from './wasmAbi';
@@ -297,13 +297,15 @@ export async function loadWatershedNative(
 
         const getVersion = raw._ws_getVersion;
         const version = typeof getVersion === 'function' ? getVersion() : -1;
-        const abiOk = version >= MIN_WASM_ABI_VERSION;
+        // Equality, not a floor (#533): breaking bumps (15, 16, 17) mean a
+        // newer binary is no more bindable than an older one.
+        const abiOk = version === WASM_ABI_VERSION;
         console.info(
-          `${WASM_LOG_PREFIX} abi=${version} (min=${MIN_WASM_ABI_VERSION}, ${abiOk ? 'ok' : 'rejected'})`,
+          `${WASM_LOG_PREFIX} abi=${version} (want=${WASM_ABI_VERSION}, ${abiOk ? 'ok' : 'rejected'})`,
         );
         if (!abiOk) {
           throw new Error(
-            `watershed_native ABI ${version} is older than required ${MIN_WASM_ABI_VERSION}`,
+            `watershed_native ABI ${version} does not match required ${WASM_ABI_VERSION}`,
           );
         }
         const module = bindNativeModule(raw);

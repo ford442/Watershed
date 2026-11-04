@@ -3,6 +3,7 @@
  * records calls; bit parity against the real binary is the integration test.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { packSurfaceFieldStub } from '../testing/sweSurfacePack';
 import type { WatershedNativeModule } from '../systems/water/wasmAbi';
 import { createSimWorkerCore } from './simWorkerCore';
 import type { SimStepPayload, SimWorkerResponse } from './simWorkerProtocol';
@@ -15,10 +16,11 @@ function stubModule() {
   const mocks = {
     freeGrid: vi.fn<Native['freeGrid']>(),
     reserveShallowWaterScratch: vi.fn<Native['reserveShallowWaterScratch']>(),
-    stepShallowWater: vi.fn<Native['stepShallowWater']>(),
-    stepShallowWaterInflow: vi.fn<Native['stepShallowWaterInflow']>(),
-    applySWEEvent: vi.fn<Native['applySWEEvent']>(),
-    scrollShallowWater: vi.fn<Native['scrollShallowWater']>(),
+    stepShallowWater: vi.fn<Native['stepShallowWater']>((...a) => a[6]),
+    stepShallowWaterInflow: vi.fn<Native['stepShallowWaterInflow']>((...a) => a[6]),
+    applySWEEvent: vi.fn<Native['applySWEEvent']>(() => 1),
+    scrollShallowWater: vi.fn<Native['scrollShallowWater']>(() => 1),
+    packSurfaceField: vi.fn<Native['packSurfaceField']>(packSurfaceFieldStub(heap)),
     routeReachSteady: vi.fn<Native['routeReachSteady']>(),
     routeReach: vi.fn<Native['routeReach']>(),
     routeReachTravelTime: vi.fn<Native['routeReachTravelTime']>(),

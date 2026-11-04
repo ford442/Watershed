@@ -12,7 +12,7 @@
  *   4. Physics correctness — reference values derived from the C++ formulas.
  */
 
-import { heapF32, MIN_WASM_ABI_VERSION, PARTICLE_SOA_PLANES, type WatershedNativeModule } from './wasmAbi';
+import { heapF32, PARTICLE_SOA_PLANES, WASM_ABI_VERSION, type WatershedNativeModule } from './wasmAbi';
 import { getWasm, peekWasm } from './wasmLoader';
 import { buoyancyFallback, calculateBuoyancyAndDragFallback, calculateWaterForceFallback, dragForceFallback } from './waterForceFallback';
 import { createWaterForceBatch, createSWEGrid } from './WatershedWasm';
@@ -30,12 +30,10 @@ describe('WatershedWasm — module exports', () => {
     expect(typeof peekWasm).toBe('function');
   });
 
-  it('requires ABI 16+, the plain C ABI with the exports the binding table describes', () => {
-    // ABI 12 replaced Embind with ws_* C exports (#467); ABI 13 added the
-    // terrain tile (#487), ABI 14 lateral routing inflow and the surge event,
-    // ABI 15 dropped the single-body force exports and ABI 16 the terrain tile;
-    // the loader binds every table entry, so the floor must not drift back down.
-    expect(MIN_WASM_ABI_VERSION).toBe(16);
+  it('describes ABI 17: the sub-cycled step and the int statuses (#533)', () => {
+    // The loader requires exactly this version (no floor since #533);
+    // wasmAbiVersion.drift.test.ts ties it to bindings.cpp.
+    expect(WASM_ABI_VERSION).toBe(17);
   });
 
   it('mirrors C++ PARTICLE_SOA_PLANES (px…scale)', () => {
@@ -206,6 +204,7 @@ function buildMockModule(): WatershedNativeModule {
         output[s + 6] = result.turbulence;
         output[s + 7] = result.submergedRatio;
       }
+      return 1;
     },
 
     stepShallowWater(hPtr, uPtr, wPtr, bPtr, w, h, dt, g, dx, H) {
@@ -221,6 +220,7 @@ function buildMockModule(): WatershedNativeModule {
           w <= 0 || h <= 0) {
         throw new Error('stepShallowWater: invalid arguments');
       }
+      return dt;
     },
 
     allocateGrid(count): number {
@@ -247,22 +247,24 @@ function buildMockModule(): WatershedNativeModule {
     },
     initWaterfallParticles() { return 1; },
     stepWaterfallParticles() { return 1; },
-    stepSplashParticles() { /* heap views only — no C++ numerics in this mock */ },
-    applySWEEvent() { /* source-term kernel not exercised by this mock */ },
+    stepSplashParticles() { return 1; /* heap views only — no C++ numerics in this mock */ },
+    applySWEEvent() { return 1; /* source-term kernel not exercised by this mock */ },
     // Not exercised here; present because the bound module always has them.
-    stepShallowWaterInflow() {},
-    scrollShallowWater() {},
+    // Statuses are WS_OK (1); the step reports the dt it was given (ABI 17).
+    stepShallowWaterInflow: (...a: number[]) => a[6],
+    scrollShallowWater: () => 1,
     reserveShallowWaterScratch() {},
-    routeReach() {},
-    routeReachLateral() {},
-    routeReachSteady() {},
-    routeReachTravelTime() {},
+    routeReach: () => 1,
+    routeReachLateral: () => 1,
+    routeReachSteady: () => 1,
+    routeReachTravelTime: () => 1,
     routedEdgeState: () => ({ eta: 0, speed: 0 }),
-    reduceF32Grid() {},
-    histogramF32() {},
-    lumaHistogramU8() {},
-    downsampleF32() {},
-    blurSeparableF32() {},
+    reduceF32Grid: () => 1,
+    histogramF32: () => 1,
+    lumaHistogramU8: () => 1,
+    downsampleF32: () => 1,
+    blurSeparableF32: () => 1,
+    packSurfaceField: () => 1,
   };
 
   return mod;

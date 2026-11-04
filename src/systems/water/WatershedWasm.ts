@@ -16,6 +16,8 @@
 import {
   allocateGrids,
   heapF32,
+  warnRejected,
+  WS_OK,
   WATER_FORCE_INPUT_STRIDE,
   WATER_FORCE_OUTPUT_STRIDE,
   type NativeWaterForceConfig,
@@ -166,7 +168,7 @@ export function createWaterForceBatch(
       input[offset + 7] = sample.flowDirection.z;
     },
     compute(config) {
-      mod.computeWaterForcesBatch(
+      const status = mod.computeWaterForcesBatch(
         inputPtr,
         outputPtr,
         sampleCount,
@@ -181,6 +183,11 @@ export function createWaterForceBatch(
         config.turbulenceStrength,
         config.turbulenceFrequency,
       );
+      // Rejected (#533): no stale forces from the previous call.
+      if (status !== WS_OK) {
+        warnRejected('computeWaterForcesBatch', `count=${sampleCount}`);
+        output.fill(0);
+      }
       return output;
     },
     readResult(index) {
