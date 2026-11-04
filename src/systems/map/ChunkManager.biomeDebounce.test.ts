@@ -85,7 +85,7 @@ describe('ChunkManager biome debounce (sim time)', () => {
     const chunks = createChunks((biome, index) => changes.push([biome, index]));
     changes.length = 0;
     const z = chunks.getActiveSegments()[1].segmentPath.getPoint(0.5).z;
-    for (let i = 0; i < 60; i += 1) chunks.update(z, DT);
+    for (let i = 0; i < 60; i += 1) chunks.update(z);
     expect(changes).toEqual([]);
     expect(chunks.getCurrentBiome()).toBe('glacier');
   });

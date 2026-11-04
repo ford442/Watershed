@@ -529,7 +529,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   }, [isNight, scene]);
 
   // Per-frame update: delegate generation and recycling to ChunkManager
-  useFrame((_, delta) => {
+  useFrame(() => {
     if (!chunkManagerRef.current?.isInitialized()) return;
 
     const { x, y, z } = camera.position;
@@ -547,7 +547,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       Math.abs(z) <= POSITION_SANE.xzMax;
     if (!cameraSane) return;
 
-    const result = chunkManagerRef.current.update(camera.position.z, delta);
+    const result = chunkManagerRef.current.update(camera.position.z);
 
     if (result.poolChanged) {
       setPoolVersion((v) => v + 1);

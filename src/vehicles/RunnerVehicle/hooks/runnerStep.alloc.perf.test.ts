@@ -7,7 +7,9 @@
  * `linvel()` and a ray hit each allocate in the real WASM binding; that is
  * Rapier's, and outside this code's reach). Steady state: a live run, terrain
  * warm, grounded on a flat floor, running forward with full stamina, no debug
- * page (`queryFlags().debugGlobals` off).
+ * page (`queryFlags().debugGlobals` off) — with no segment frame published
+ * (the envelope's fallback) and under one (its in-game branch). V8 inlines the
+ * envelope lookup differently in the two, and only the first used to box.
  *
  * Method: expose the collector (`v8.setFlagsFromString`), collect, then step
  * N times and read the heap. Young-generation garbage stays in the heap until
@@ -25,6 +27,7 @@ import type { PlayerControls } from '../../../hooks/usePlayerControls';
 import type { QuatLike, RapierBody, RapierRay, RapierRayHit, RapierWorld, Vec3Like } from '../../../physics/rapierTypes';
 import { useGameStore } from '../../../systems/GameState';
 import { initRunSession, resetRunSessionForTests } from '../../../systems/journey/runSession';
+import { buildSegmentFrame, clearSegmentFrames, publishSegmentFrames } from '../../../systems/map/segmentFrames';
 
 // A collector handle without a CLI flag: expose it, then read it off a fresh context.
 v8.setFlagsFromString('--expose-gc');
@@ -95,12 +98,19 @@ describe('runner step allocation (#521 D)', () => {
     initRunSession({ mapId: 'meander', launchHour: 12 });
   });
   afterAll(() => {
+    clearSegmentFrames();
     resetRunSessionForTests();
     useGameStore.getState().resetGameState();
   });
 
-  it('allocates 0 bytes per step at steady state', async () => {
+  // One long, flat segment under the whole run (the body heads down -z).
+  const flat = { getPoint: (t: number) => ({ x: 0, y: -6, z: 50 - t * 50_000 }) };
+  it.each([
+    ['no segment frame', () => clearSegmentFrames()],
+    ['a segment frame', () => publishSegmentFrames([buildSegmentFrame(0, flat)])],
+  ])('allocates 0 bytes per step at steady state (%s)', async (_label, frames) => {
     expect(gc).toBeTypeOf('function');
+    frames();
     const body = new SteadyBody();
     const world = steadyWorld();
     const camera = new THREE.PerspectiveCamera();
@@ -148,11 +158,11 @@ describe('runner step allocation (#521 D)', () => {
     const perStep = grown / N;
     console.info(`[runner-alloc] ${perStep.toFixed(2)} B/step over ${N} steps (${grown} B), ${collections} collections`);
     expect(collections).toBe(0);
-    // No object is built per step. What the heap still shows is at most one
-    // 16-byte boxed number, and only under some of V8's inlining choices for
-    // this call tree (it moves with unrelated edits; --no-turbo-inlining puts
-    // ~145 B back). The step was ~3 KB/step before #521 D; a single
-    // three-number literal per step is ~40 B and fails this.
-    expect(perStep).toBeLessThan(24);
+    // Nothing is allocated per step. The heap still grows by a fixed ~4 KB over
+    // the window (the measurement itself: `memoryUsage`, the loop's own frame),
+    // under 1 B/step at N = 5000; one boxed double per step is 16 B/step and
+    // fails. The step was ~3 KB/step before #521 D. The last per-step box was
+    // the envelope lookup's `pos.z` argument (segmentFrames.ts, indexOfSpanAt).
+    expect(perStep).toBeLessThan(2);
   });
 });

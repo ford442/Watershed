@@ -239,14 +239,16 @@ The page-level harness above cannot see the runner step's own garbage under
 three.js's. `src/vehicles/RunnerVehicle/hooks/runnerStep.alloc.perf.test.ts`
 (`pnpm test:perf`) measures it directly: a stub Rapier whose reads return the
 same objects, a live run, terrain warm, grounded, running forward at full
-stamina, no debug page. It collects (`v8.setFlagsFromString('--expose-gc')`),
+stamina, no debug page — once with no segment frame published and once under
+one (V8 inlines the envelope lookup differently in the two). It collects (`v8.setFlagsFromString('--expose-gc')`),
 steps 5,000 times and reads the heap; a scavenge inside the window fails the
 test.
 
 | | B/step |
 |---|---|
 | Before (the 575-line `updateRunnerPhysics`) | ~3,000 |
-| After | **≤ 17** (budget: < 24) |
+| After (2026-10-28) | ≤ 17 |
+| After the envelope lookup fix (2026-11-04) | **0** (budget: < 2; the window shows a fixed 4,344 B of measurement overhead — 0.87 B/step at N = 5,000, 0.22 at N = 20,000) |
 
 What went, in order of size:
 
@@ -268,9 +270,16 @@ What went, in order of size:
   fields of objects with their own shape (`fovState`, the frame's `friction` /
   `damping`, the collision tracker's `clock`).
 
-The ≤ 17 B left is one boxed number whose site moves with V8's inlining
-choices for this call tree (`--no-turbo-inlining` puts ~145 B back); no object
-is built per step. Real Rapier allocates for `translation()`, `linvel()` and
+The last 16 B was one boxed number: the envelope lookup passed `pos.z` into
+`findSegmentFrameAtZ` / `indexOfSpanAtZ`, and with no frame published V8 did
+not inline that call, so every step boxed the body's z. The lookup now takes
+the position (`findSegmentFrameAt` / `indexOfSpanAt` in `segmentFrames.ts`)
+and reads `z` inside; `SimCoreTick` uses the same form. Found with
+`HeapProfiler.startSampling` at an 8-byte interval (attributes to
+`checkBodySanity`, the non-inlined caller), then bisected. The rule stands for
+the rest of this path: no double crosses a call V8 may not inline — pass the
+object, or keep the number in a field of an object with its own shape. The test measures the
+shipping JIT's inlining, not a worst case. Real Rapier allocates for `translation()`, `linvel()` and
 each ray hit inside its WASM binding; that is outside this code.
 
 Also on the frame path: `ChunkManager.update` / `detectBiome` refill reused

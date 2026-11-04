@@ -82,11 +82,16 @@ export function buildSegmentFrame(
 
 /**
  * The one "which segment is at z" rule (#503 A): the index of the span that
- * contains `z`; otherwise the nearest one by z distance; -1 only when `spans`
- * is empty. ChunkManager (segment entry, biome detection) and the frame
+ * contains `at.z`; otherwise the nearest one by z distance; -1 only when
+ * `spans` is empty. ChunkManager (segment entry, biome detection) and the frame
  * readers below both resolve through it.
+ *
+ * It takes the position, not its z: a non-integer double passed to a call V8
+ * does not inline is boxed into a fresh HeapNumber, and the per-step readers
+ * (runner step, SimCoreTick) would pay one per call (#521 D).
  */
-export function indexOfSpanAtZ(spans: ArrayLike<ZSpan>, z: number): number {
+export function indexOfSpanAt(spans: ArrayLike<ZSpan>, at: { readonly z: number }): number {
+  const z = at.z;
   let nearest = -1;
   let nearestDistance = Infinity;
   for (let i = 0; i < spans.length; i += 1) {
@@ -103,6 +108,15 @@ export function indexOfSpanAtZ(spans: ArrayLike<ZSpan>, z: number): number {
   return nearest;
 }
 
+/** One z, written in place (a double field, so no box per write). */
+const zProbe = { z: 0.5 };
+
+/** `indexOfSpanAt` for a bare z. */
+export function indexOfSpanAtZ(spans: ArrayLike<ZSpan>, z: number): number {
+  zProbe.z = z;
+  return indexOfSpanAt(spans, zProbe);
+}
+
 /** True when `z` lies inside `span` (ends inclusive). */
 export function spanContainsZ(span: ZSpan, z: number): boolean {
   return z <= Math.max(span.zStart, span.zEnd) && z >= Math.min(span.zStart, span.zEnd);
@@ -117,6 +131,15 @@ export function findSegmentFrameAtZ(
   z: number,
 ): SegmentFrame | null {
   const index = indexOfSpanAtZ(frames, z);
+  return index < 0 ? null : frames[index];
+}
+
+/** `findSegmentFrameAtZ` at a position (no boxed z; the per-step readers). */
+export function findSegmentFrameAt(
+  frames: ReadonlyArray<SegmentFrame>,
+  at: { readonly z: number },
+): SegmentFrame | null {
+  const index = indexOfSpanAt(frames, at);
   return index < 0 ? null : frames[index];
 }
 
@@ -168,7 +191,7 @@ export function resolveSegmentEnvelopeInto(
   pos: { z: number },
   fallback: VerticalBounds,
 ): SegmentEnvelope {
-  const frame = findSegmentFrameAtZ(frames, pos.z);
+  const frame = findSegmentFrameAt(frames, pos);
   if (!frame) {
     out.yMin = fallback.yMin;
     out.yMax = fallback.yMax;
