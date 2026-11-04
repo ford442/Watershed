@@ -122,12 +122,20 @@ export function useGeometries({
   );
   const builtMeshes = workerMeshes ?? mainMeshes;
 
-  // #487 D: the segment's props, built once the meshes are (the main thread
-  // waits on the worker's tile like the meshes do).
-  const placements = useMemo(
-    () => (!buildCtx?.placement || awaitingWorker ? null : buildSegmentPlacements(buildCtx, buildCtx.placement)),
-    [buildCtx, awaitingWorker],
+  // #487 D: the props ride with the meshes. The worker's buffer passes the
+  // same `tile.ctx === buildCtx` guard, so a late reply for a slot's previous
+  // occupant is dropped with its meshes. No worker buffer (none asked for, the
+  // build threw, or the meshes were built here): build them here, once the
+  // worker has answered.
+  const workerPlacements = workerMeshes ? tile?.result?.placements ?? null : null;
+  const mainPlacements = useMemo(
+    () =>
+      !buildCtx?.placement || awaitingWorker || workerPlacements
+        ? null
+        : buildSegmentPlacements(buildCtx, buildCtx.placement),
+    [buildCtx, awaitingWorker, workerPlacements],
   );
+  const placements = workerPlacements ?? mainPlacements;
 
   // #487 E: the floor the river has worked. The hull grid as built registers
   // its erosion plane (loaded from the save for this map segment); the SWE

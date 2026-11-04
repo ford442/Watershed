@@ -44,6 +44,7 @@ import {
   contextFromSpec,
   segmentMeshTransferables,
 } from '../terrain/segmentMeshBuild';
+import { buildSegmentPlacements, placementTransferables } from '../terrain/placement';
 
 /** Particle SoA plane order (emscripten/particles.h). */
 const PARTICLE_PLANE_SCALE = 8;
@@ -251,10 +252,21 @@ export function createSimWorkerCore(
   const buildTile = (command: Extract<SimWorkerCommand, { type: 'BUILD_TILE' }>) => {
     const t0 = now();
     try {
-      const meshes = buildSegmentMeshBuffers(contextFromSpec(command.spec));
+      const ctx = contextFromSpec(command.spec);
+      const meshes = buildSegmentMeshBuffers(ctx);
+      // #487 D: the props ride along, built on the same tile inputs. A failed
+      // placement build is not a failed tile: the main thread builds them.
+      let placements: ArrayBuffer | null = null;
+      if (ctx.placement) {
+        try {
+          placements = buildSegmentPlacements(ctx, ctx.placement);
+        } catch {
+          placements = null;
+        }
+      }
       post(
-        { type: 'TILE', seq: command.seq, meshes, buildMicros: Math.round((now() - t0) * 1000) },
-        segmentMeshTransferables(meshes),
+        { type: 'TILE', seq: command.seq, meshes, placements, buildMicros: Math.round((now() - t0) * 1000) },
+        [...segmentMeshTransferables(meshes), ...placementTransferables(placements)],
       );
     } catch (error) {
       // Not fatal: the main thread builds this segment itself.
@@ -262,6 +274,7 @@ export function createSimWorkerCore(
         type: 'TILE',
         seq: command.seq,
         meshes: null,
+        placements: null,
         error: error instanceof Error ? error.message : String(error),
         buildMicros: Math.round((now() - t0) * 1000),
       });

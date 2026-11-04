@@ -24,8 +24,12 @@ import { normalizeBiomeId } from '../../configs/biomes';
 import { resolveTubeProfile } from '../../components/TrackSegment/hooks/geometryBuilders';
 import { buildChannelProfile } from '../../components/TrackSegment/channelProfile';
 import { placementInputFor } from '../../components/TrackSegment/hooks/usePlacementData';
+import { createSimWorkerCore } from '../../sim/simWorkerCore';
+import type { SimWorkerResponse } from '../../sim/simWorkerProtocol';
+import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
 import {
   buildCanyonTile,
+  buildSegmentMeshBuffers,
   contextFromSpec,
   segmentMeshSpec,
   type GeometryBuildContext,
@@ -119,7 +123,7 @@ describe('placement buffer — parity and determinism', () => {
     for (const { ctx, input, segment } of walk) {
       const main = buildSegmentPlacements(ctx, input);
       const spec = structuredClone(segmentMeshSpec(ctx));
-      const worker = buildSegmentPlacements(contextFromSpec(spec), structuredClone(input));
+      const worker = buildSegmentPlacements(contextFromSpec(spec), spec.placement!);
       expect(same(worker, main), `${mapId} seg ${segment.id}`).toBe(true);
       expect(same(buildSegmentPlacements(ctx, input), main), `${mapId} seg ${segment.id} rerun`).toBe(true);
     }
@@ -297,5 +301,41 @@ describe('placement buffer — caps and overrides', () => {
     const snapped = readPlacements(buildSegmentPlacements(ctx, { ...input, rocks: [{ ...slab, snap: true }] }))!;
     const so = categoryRange(snapped, 'rocks').start * PLACEMENT_STRIDE;
     expect(auxAnchor(snapped.records[so + F.AUX])).toBe(PlacementAnchor.GROUND);
+  });
+});
+
+describe('BUILD_TILE carries the placements', () => {
+  it('the worker core builds them with the meshes, transfers the one buffer, and matches the main thread', () => {
+    const { ctx, input } = WALKS.get(MAPS[0])![6];
+    const responses: { response: SimWorkerResponse; transfer?: Transferable[] }[] = [];
+    // BUILD_TILE never touches the native module.
+    const core = createSimWorkerCore({} as WatershedNativeModule, (response, transfer) => responses.push({ response, transfer }));
+    core.handle({ type: 'BUILD_TILE', seq: 9, spec: structuredClone(segmentMeshSpec(ctx)) });
+    core.dispose();
+    const tile = responses.find((r) => r.response.type === 'TILE')!;
+    expect(tile.response.type).toBe('TILE');
+    if (tile.response.type !== 'TILE') return;
+    const placements = tile.response.placements!;
+    expect(placements).toBeInstanceOf(ArrayBuffer);
+    expect(tile.transfer).toContain(placements);
+    expect(same(placements, buildSegmentPlacements(ctx, input))).toBe(true);
+    // Transferred, not cloned: posting it detaches the sender's copy.
+    const posted = structuredClone(placements, { transfer: [placements] });
+    expect(placements.byteLength).toBe(0);
+    expect(posted.byteLength).toBeGreaterThan(0);
+    // The meshes are unchanged by the ride-along.
+    expect(tile.response.meshes?.canyon?.attributes.position.array).toEqual(
+      buildSegmentMeshBuffers(ctx).canyon?.attributes.position.array,
+    );
+  });
+
+  it('a spec without placement input asks for none', () => {
+    const { ctx } = WALKS.get(MAPS[0])![0];
+    const responses: SimWorkerResponse[] = [];
+    const core = createSimWorkerCore({} as WatershedNativeModule, (response) => responses.push(response));
+    core.handle({ type: 'BUILD_TILE', seq: 1, spec: segmentMeshSpec({ ...ctx, placement: null }) });
+    core.dispose();
+    const tile = responses.find((r) => r.type === 'TILE');
+    expect(tile?.type === 'TILE' ? tile.placements : 'missing').toBeNull();
   });
 });

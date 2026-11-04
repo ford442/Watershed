@@ -67,7 +67,10 @@ export interface GeometryBuildContext {
    * segments, which is every biome that is not glacial melt or a hydro pipe.
    */
   tubeProfile?: TubeProfile | null;
-  /** What placement reads beyond the geometry (#487 D); the meshes ignore it. */
+  /**
+   * What placement reads beyond the geometry (#487 D). When set, the worker
+   * builds the segment's placements with its meshes; the meshes ignore it.
+   */
   placement?: SegmentPlacementInput | null;
 }
 
@@ -623,6 +626,8 @@ export interface SegmentMeshSpec {
   isGlacier: boolean;
   biomeProfile: Pick<TrackBiomeProfile, 'id' | 'wallHeight'>;
   tubeProfile: TubeProfile | null;
+  /** Placement input (map id, layout flags, authored overrides); absent or null = no placements wanted. */
+  placement?: SegmentPlacementInput | null;
 }
 
 export function segmentPathSpec(curve: SegmentPath): SegmentPathSpec {
@@ -655,6 +660,7 @@ export function segmentMeshSpec(ctx: GeometryBuildContext): SegmentMeshSpec {
     isGlacier: ctx.isGlacier,
     biomeProfile: { id: ctx.biomeProfile.id, wallHeight: ctx.biomeProfile.wallHeight },
     tubeProfile: ctx.tubeProfile ? { ...ctx.tubeProfile } : null,
+    placement: ctx.placement ?? null,
   };
 }
 
@@ -670,5 +676,6 @@ export function contextFromSpec(spec: SegmentMeshSpec): GeometryBuildContext {
     isGlacier: spec.isGlacier,
     biomeProfile: spec.biomeProfile,
     tubeProfile: spec.tubeProfile,
+    placement: spec.placement ?? null,
   };
 }

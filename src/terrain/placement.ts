@@ -231,12 +231,6 @@ export function categoryRange(view: PlacementView, category: PlacementCategory):
   return { start: view.header[4 + 2 * k], count: view.header[5 + 2 * k] };
 }
 
-/** The records of one category (a subarray, no copy). */
-export function categoryRecords(view: PlacementView, category: PlacementCategory): Float32Array {
-  const { start, count } = categoryRange(view, category);
-  return view.records.subarray(start * PLACEMENT_STRIDE, (start + count) * PLACEMENT_STRIDE);
-}
-
 // ---------------------------------------------------------------------------
 // Frame helpers (three-free ports)
 // ---------------------------------------------------------------------------
