@@ -616,8 +616,8 @@ async function main() {
 
   for (const ref of refs) {
     const abs = joinUrl(args.url, ref);
-    // The wasm preload names the stamped URL (`watershed_native.wasm?v=<stamp>`);
-    // build/ holds the bare file, so match on the path without the query.
+    // A ref may carry a query (the stamped `watershed_native.*?v=<stamp>`);
+    // build/ holds the bare file, so match on the path without it.
     const absPath = abs.split('?')[0];
     const refPath = ref.split('?')[0];
     const fromBuild = [...built.keys()].find((k) => absPath.endsWith(k) || refPath.replace(/^\.\//, '') === k);

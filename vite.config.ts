@@ -178,19 +178,19 @@ function rapierWasmAssetPlugin(): Plugin {
   };
 }
 
-/** `<link rel="preload" as="fetch" crossorigin>` for both wasm binaries, so the
- *  downloads start with the HTML instead of after the entry chunk has run. Both
- *  loaders' `fetch(url)` are same-origin CORS-mode requests, which is what
+/** `<link rel="preload" as="fetch" crossorigin>` for the Rapier wasm, so the
+ *  download starts with the HTML instead of after the entry chunk has run. The
+ *  loader's `fetch(url)` is a same-origin CORS-mode request, which is what
  *  `crossorigin` (anonymous) preloads, so the preload is actually consumed.
  *
- *  `watershed_native.wasm` is named exactly as the loader asks for it — the
- *  stamped `?v=<WASM_ARTIFACT_STAMP>` form (`withArtifactStamp`), read at config
- *  time — or the preload would be a second download. Its usual consumer is the
- *  sim worker, whose fetch is not matched against the document's preload list;
- *  it hits the HTTP cache instead, which is why public/.htaccess gives the
- *  stamped URL the immutable policy. `?simWorker=0` loads it on the main thread
- *  and consumes the preload directly. */
-function rapierWasmPreloadPlugin(nativeStamp: string): Plugin {
+ *  `watershed_native.wasm` is deliberately NOT preloaded: its consumer is the
+ *  sim worker, and a worker's fetch is not matched against the document's
+ *  preload list, so the preload was a second download of the same bytes —
+ *  which visual_smoke's #467 "fetched once per session" gate catches. Starting
+ *  it from index.html needs the main thread to fetch and transfer the bytes in
+ *  INIT; until then, the stamped URL's immutable cache policy (public/.htaccess)
+ *  is what makes repeat visits free. */
+function rapierWasmPreloadPlugin(): Plugin {
   return {
     name: 'watershed-rapier-wasm-preload',
     apply: 'build',
@@ -199,15 +199,13 @@ function rapierWasmPreloadPlugin(nativeStamp: string): Plugin {
       handler(_html, ctx) {
         const wasm = Object.keys(ctx.bundle ?? {}).find((f) => /^assets\/rapier_wasm3d_bg-[^/]+\.wasm$/.test(f));
         if (!wasm) throw new Error('watershed-rapier-wasm-preload: no rapier_wasm3d_bg-*.wasm in the bundle');
-        const preload = (href: string) => ({
-          tag: 'link',
-          attrs: { rel: 'preload', as: 'fetch', type: 'application/wasm', crossorigin: '', href },
-          injectTo: 'head' as const,
-        });
-        const tags = [preload(`./${wasm}`)];
-        // No stamp (a checkout before build:wasm): no URL the loader will ask for.
-        if (/^[0-9a-f]{16}$/.test(nativeStamp)) tags.push(preload(`./watershed_native.wasm?v=${nativeStamp}`));
-        return tags;
+        return [
+          {
+            tag: 'link',
+            attrs: { rel: 'preload', as: 'fetch', type: 'application/wasm', crossorigin: '', href: `./${wasm}` },
+            injectTo: 'head',
+          },
+        ];
       },
     },
   };
@@ -249,7 +247,7 @@ export default defineConfig({
     sourcemapsOutOfBuildPlugin(),
     devIsolationOptInPlugin(),
     rapierWasmAssetPlugin(),
-    rapierWasmPreloadPlugin(readWasmArtifactStamp()),
+    rapierWasmPreloadPlugin(),
     ...analyzePlugins,
   ],
   resolve: {

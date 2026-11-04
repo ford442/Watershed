@@ -548,7 +548,8 @@ raw / 1,014 kB gzip. The entry is **12 kB larger raw than after B and 32 kB smal
 - `src/physics/rapierWorkerGraph.test.ts` inspects `build/`: one `.wasm`, byte-equal to the package,
   no Rapier-sized base64 literal in any chunk.
 - `public/.htaccess` cache section: `immutable` for `-<8 hash chars>.(js|css|wasm)` and for the
-  stamped `watershed_native.{js,wasm}?v=<16 hex>` URL the loader and the `index.html` preload use;
+  stamped `watershed_native.{js,wasm}?v=<16 hex>` URL the loader fetches (not preloaded: the sim
+  worker's fetch would not consume a document preload, so it would download twice — #467 gate);
   `no-cache` for `index.html`, `BUILD_ID`, the bare `watershed_native.*` and every other public/
   passenger (`.ktx2|.jpg|.png|.mp3|.wav|.json`), so nothing falls through to Apache's heuristics. `verify_deploy.mjs` asserts both on a live URL and
   skips them (with a note) on `localhost` / `127.0.0.1`, where `vite preview` does not run `.htaccess`.

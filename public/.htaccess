@@ -43,7 +43,7 @@
 # touches successful responses, so a 404 for a hashed name is never pinned.
 #
 # The emcc pair is fetched as watershed_native.{js,wasm}?v=<stamp> (withArtifactStamp,
-# wasmLoader.ts; the index.html preload names the same URL). The stamp is
+# wasmLoader.ts). The stamp is
 # sha256(glue || wasm)[:16], so the stamped URL is as content-addressed as a hashed
 # name: it gets the immutable policy (the <If> is merged after <FilesMatch>, so it
 # wins). The bare name keeps no-cache.

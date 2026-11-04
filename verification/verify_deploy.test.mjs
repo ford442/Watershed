@@ -254,7 +254,7 @@ describe('cache policy (#485 D)', () => {
     expect(checkHtaccessCachePolicy(shipped.replace(/"no-cache"/g, '"public"')).join('\n')).toMatch(/no-cache/);
   });
 
-  it('treats the stamped emcc pair (the index.html preload URL) as immutable, the bare name not', () => {
+  it('treats the stamped emcc pair (the URL the loader fetches) as immutable, the bare name not', () => {
     expect(STAMPED_NATIVE_RE.test('./watershed_native.wasm?v=da29e1786a1939b6')).toBe(true);
     expect(STAMPED_NATIVE_RE.test('watershed_native.js?x=1&v=da29e1786a1939b6')).toBe(true);
     expect(STAMPED_NATIVE_RE.test('./watershed_native.wasm')).toBe(false);
