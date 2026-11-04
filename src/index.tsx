@@ -4,7 +4,7 @@ import App from './App';
 import { queryFlags } from './config/queryFlags';
 import { isGpuLossDebugEnabled } from './rendering/gpuLossRecovery';
 
-// `window.__watershed` (the harness's diagnostics object) is a lazy chunk behind its flags (#546 C).
+// `window.__watershed` (the harness's diagnostics object) is a lazy chunk behind its flags (#535 C).
 if (queryFlags().debugGlobals || queryFlags().wasmWaterTest || isGpuLossDebugEnabled()) {
   import('./harness/debugApi').then(
     (m) => m.installDebugApi(),

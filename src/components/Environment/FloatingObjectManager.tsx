@@ -232,7 +232,7 @@ export default function FloatingObjectManager({
   return (
     <InstancedRigidBodies
       ref={bodiesRef}
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each instance carries its prop `type` ('log' | …), which collides with RigidBodyProps.type; renaming it is a behaviour change (#546).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each instance carries its prop `type` ('log' | …), which collides with RigidBodyProps.type; renaming it is a behaviour change (#535).
       instances={instances as any}
       type="dynamic"
       colliders="cuboid"

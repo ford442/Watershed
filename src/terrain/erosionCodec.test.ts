@@ -1,4 +1,4 @@
-/** erosionCodec — the save's erosion plane string (#546 D table tests). */
+/** erosionCodec — the save's erosion plane string (#535 D table tests). */
 import { EROSION_K, EROSION_MAX_DEPTH } from './erosion';
 import { decodeErosionPlane, encodeErosionPlane } from './erosionCodec';
 

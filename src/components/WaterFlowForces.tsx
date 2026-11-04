@@ -162,7 +162,7 @@ export default function WaterFlowForces({
     let closestDistance = Infinity;
 
     for (const segment of segments) {
-      // FIXME(#546): SegmentData has no `active` field, so this guard skips every segment and
+      // FIXME(#535): SegmentData has no `active` field, so this guard skips every segment and
       // the loop below has never run. The `any` it was typed as hid that; kept as-is here so
       // the input / replay smokes stay identical — enabling it is a gameplay change of its own.
       if (!('active' in segment) || !segment.active) continue;

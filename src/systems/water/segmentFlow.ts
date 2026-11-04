@@ -1,5 +1,5 @@
 /**
- * segmentFlow — the current segment's flow multiplier and slipperiness (#546 C).
+ * segmentFlow — the current segment's flow multiplier and slipperiness (#535 C).
  *
  * TrackManager sets it on segment enter, a run reset puts it back to the defaults, and the
  * runner's shallow-water push reads it every physics step. It used to travel as

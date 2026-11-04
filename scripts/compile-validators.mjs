@@ -10,7 +10,7 @@
  *   src/formats/level.schema.json -> src/formats/level.validate.ts
  *   src/formats/reach.schema.json -> src/formats/reach.validate.ts
  *
- * The output is TypeScript (#546 A): the ajv body itself is `// @ts-nocheck` (it is
+ * The output is TypeScript (#535 A): the ajv body itself is `// @ts-nocheck` (it is
  * generated, and ajv's standalone code is plain JS), but the exported handle carries a
  * declared `SchemaValidateFunction` type, so callers get a typed import without a
  * sidecar `.d.ts`, `allowJs`, or an entry in an untyped-module allowlist.

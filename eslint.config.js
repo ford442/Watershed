@@ -50,7 +50,7 @@ const OWNED_GLOBALS = [
 ];
 
 /**
- * `window.__*` is the harness's (#546 C): production code leaves diagnostics in
+ * `window.__*` is the harness's (#535 C): production code leaves diagnostics in
  * src/debug/debugTaps.ts and src/harness/debugApi.ts publishes them as the one typed
  * `window.__watershed` object. Matches `window.__x`, `globalThis.__x` and `(window as T).__x`.
  */
@@ -118,7 +118,7 @@ export default tseslint.config(
       'no-useless-assignment': 'warn',
       'no-constant-binary-expression': 'warn',
 
-      // `any` is a warning, so the `--max-warnings` ratchet counts it (#546 A). The
+      // `any` is a warning, so the `--max-warnings` ratchet counts it (#535 A). The
       // places it is load-bearing — Rapier's compat surface, the WASM glue, three's
       // renderer internals — turn it off in the scoped block below; tests turn it off
       // too (mocks and partial fakes).

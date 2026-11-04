@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * CI guard: `src/` is TypeScript only. The last untyped modules were the two precompiled
- * validators, which scripts/compile-validators.mjs now emits as `.ts` (#546 A); with them
+ * validators, which scripts/compile-validators.mjs now emits as `.ts` (#535 A); with them
  * gone, `allowJs` and the untyped allowlist were deleted. A new `.js` / `.jsx` / `.mjs` /
  * `.cjs` file under src/ would be invisible to `tsc` (no `allowJs`), so it fails here.
  */

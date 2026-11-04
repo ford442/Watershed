@@ -52,7 +52,7 @@ jobs:
       # committed baseline — lower it whenever the count drops, never raise it.
       # It covers every rule in the backlog, not just the two R3F ones, and
       # needs no commit-hook infrastructure or per-directory config overrides.
-      # 138 → 19 in #521 F, 19 → 18 in #546 (which also made no-explicit-any a
+      # 138 → 19 in #521 F, 19 → 18 in #535 (which also made no-explicit-any a
       # counted warning outside physics/, rendering/ and the WASM glue, at zero).
       # What is left is react-hooks/exhaustive-deps where
       # the fix would change when a memo / effect re-runs.

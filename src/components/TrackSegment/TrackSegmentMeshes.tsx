@@ -341,7 +341,7 @@ export function TrackSegmentMeshes({
             const tangent = segmentPath.getTangent(t).normalize();
             if (!hasFiniteCoordinates(point)) return null;
 
-            // The bow faces the sunward side of the path lateral (the one sign, #546 B).
+            // The bow faces the sunward side of the path lateral (the one sign, #535 B).
             const lateral = pathLateral(tangent, new THREE.Vector3());
             const toSun = new THREE.Vector3().copy(sunDirection);
             toSun.y = 0;

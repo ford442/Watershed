@@ -556,7 +556,7 @@ raw / 1,014 kB gzip. The entry is **12 kB larger raw than after B and 32 kB smal
 
 **Validators (C).** `levelValidator.ts` / `reachValidator.ts` no longer build an `Ajv` in the browser.
 `scripts/compile-validators.mjs` (`pnpm compile:validators`) turns `level.schema.json` /
-`reach.schema.json` into self-contained `src/formats/*.validate.ts` with `ajv/dist/standalone` (a `// @ts-nocheck` body with a typed `SchemaValidateFunction` export — #546 retired the `.js` + `.d.ts` pair and `allowJs`);
+`reach.schema.json` into self-contained `src/formats/*.validate.ts` with `ajv/dist/standalone` (a `// @ts-nocheck` body with a typed `SchemaValidateFunction` export — #535 retired the `.js` + `.d.ts` pair and `allowJs`);
 `ajv` is a devDependency, and `ajv`, `ajv-formats`, `fast-uri` are gone from `pnpm why -P`. The generated
 code is trimmed of what no caller reads (`verbose`, `schemaPath`, annotation text; the `value` of an error is
 recovered from `instancePath` by `src/formats/valueAtPointer.ts`) and `validators.drift.test.ts` fails if a

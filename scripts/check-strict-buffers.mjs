@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Typecheck guard (#546 D): `noUncheckedIndexedAccess`, ratcheted file by file.
+ * Typecheck guard (#535 D): `noUncheckedIndexedAccess`, ratcheted file by file.
  *
  * The buffer modules shared with the sim worker and the WASM side (src/terrain,
  * src/sim, src/systems/pools, src/systems/ghost) are where an out-of-range typed-array

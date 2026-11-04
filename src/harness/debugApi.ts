@@ -1,5 +1,5 @@
 /**
- * debugApi — the harness's single `window.__watershed` object (#546 C).
+ * debugApi — the harness's single `window.__watershed` object (#535 C).
  *
  * Production code leaves its diagnostics in `src/debug/debugTaps.ts` (module state, no
  * `window`); this lazy chunk, loaded from `src/index.tsx` only when

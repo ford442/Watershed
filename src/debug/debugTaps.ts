@@ -1,5 +1,5 @@
 /**
- * debugTaps — the one place production code leaves diagnostics for a harness (#546 C).
+ * debugTaps — the one place production code leaves diagnostics for a harness (#535 C).
  *
  * Production modules used to write `window.__watershed*` globals directly (eleven of them,
  * mostly untyped `(window as any)` writes). They now set a typed tap here: a plain module

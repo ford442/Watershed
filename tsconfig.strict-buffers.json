@@ -1,5 +1,5 @@
 {
-  "//": "noUncheckedIndexedAccess, ratcheted file by file (#546 D). scripts/check-strict-buffers.mjs runs this over src/ and fails on an error in any file listed in scripts/strict-buffers.json; the list only grows. A global flip is ~1000 errors, concentrated in the typed-array codecs shared with the worker and WASM.",
+  "//": "noUncheckedIndexedAccess, ratcheted file by file (#535 D). scripts/check-strict-buffers.mjs runs this over src/ and fails on an error in any file listed in scripts/strict-buffers.json; the list only grows. A global flip is ~1000 errors, concentrated in the typed-array codecs shared with the worker and WASM.",
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noUncheckedIndexedAccess": true

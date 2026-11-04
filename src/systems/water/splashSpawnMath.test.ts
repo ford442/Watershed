@@ -1,4 +1,4 @@
-/** splashSpawnMath — the splash VFX gates and counts as tables (#546 D). */
+/** splashSpawnMath — the splash VFX gates and counts as tables (#535 D). */
 import {
   CRUISE_BASE_COUNT,
   CRUISE_MAX_COUNT,

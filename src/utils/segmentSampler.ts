@@ -32,7 +32,7 @@ export function createSegmentFlowSample(): SegmentFlowSample {
 }
 
 /**
- * The path lateral (#546 B): the horizontal unit vector to the right of a path tangent,
+ * The path lateral (#535 B): the horizontal unit vector to the right of a path tangent,
  * `tangent × up = (−t.z, 0, t.x)`, normalised. This is the one definition — every
  * placement, prop layout, flow sample and set-piece reads it from here, on one sign.
  * A vertical tangent has no lateral: the result is (0, 0, 0), as `crossVectors(t, up)

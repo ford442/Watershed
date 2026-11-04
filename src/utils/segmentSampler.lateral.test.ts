@@ -1,5 +1,5 @@
 /**
- * The path lateral has one definition (#546 B). These pin its sign and its bits against
+ * The path lateral has one definition (#535 B). These pin its sign and its bits against
  * the `crossVectors(tangent, up).normalize()` form the replaced sites used, and keep new
  * hand-rolled copies out of src/.
  */
