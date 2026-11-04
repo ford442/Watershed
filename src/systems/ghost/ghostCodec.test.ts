@@ -7,6 +7,7 @@ import {
   encodeGhostToBase64,
   GHOST_BYTES_PER_SAMPLE,
   GHOST_CODEC_VERSION,
+  GHOST_PAYLOAD_LAYOUT,
   GHOST_FLOATS_PER_SAMPLE,
   GHOST_POSE_FLOATS,
   readGhostInput,
@@ -88,7 +89,9 @@ describe('ghostCodec', () => {
   });
 
   it('stores the 15-float v4 stride (7 pose + 8 input)', () => {
-    expect(GHOST_CODEC_VERSION).toBe(4);
+    // v5 (#522 A) is a file-level addition: the payload layout stays v4.
+    expect(GHOST_CODEC_VERSION).toBe(5);
+    expect(GHOST_PAYLOAD_LAYOUT).toBe(4);
     expect(GHOST_FLOATS_PER_SAMPLE).toBe(15);
     expect(GHOST_BYTES_PER_SAMPLE).toBe(60);
   });

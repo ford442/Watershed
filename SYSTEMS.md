@@ -603,11 +603,14 @@ n steps whatever the deltas' float residue (`SimCore.test.ts` pins the parity).
 **`SimContext`:** `rng` (the one `createRng`, seed `SIM_RNG_SEED`; a stable function reseeded on every
 `watershed-run-reset`, so a restart draws what the first run drew — the splash foam gate reads it),
 `time` (sim seconds), `stepIndex`, `input` (the hub's frame), `segment` / `segmentIndex`, `paused`,
-`camera {z, sane}` and `vehicle` (position, velocity, pose quaternion as plain numbers).
+`camera {z, sane}`, `vehicle` (position, velocity, pose quaternion as plain numbers) and `water`
+(#522 A: the run's `launchHour`, the map's parsed `hydroEvents`, and `stageAt(x, z)` — the live SWE
+stage η from `sweStageProbe.ts`, null outside the window or at Low quality).
 
 **Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
 biome detection and its 0.4 s sim-time debounce, which also commits the segment's `GameplayProfile`)
-· 35 `gameplay-profile` (publishes the active profile) · 40 `survival` (`stepRunSurvival`) · 50 `pillars`
+· 35 `gameplay-profile` (publishes the active profile) · 40 `survival` (`stepRunSurvival`) · 45 `hazards`
+(the map's `hazards[]`, below) · 50 `pillars`
 (crack timers and debris age, `pillarSimClock.ts`) · 90 `score` (score + the ghost's 10 Hz sample
 clock, which splits are read off). The list lives in `experience/simSystems.ts`.
 
@@ -622,6 +625,41 @@ clock, which splits are read off). The list lives in `experience/simSystems.ts`.
 **Known Pain:** the sample is taken before the vehicle's own step, so a system sees the body as the
 last step left it (what the vehicle reads at the top of its step). The vehicles themselves are still
 priority-0 `useFrame`s; moving them into the registry is the later picture in #521.
+
+---
+
+### `src/systems/hazards/` — set-pieces that read the water (#522 A)
+
+**Purpose:** The skeleton every map hazard shares (log jam, ice bridge, dam-release surge, flash
+flood). A map authors `hazards[]` (`level.schema.json`); each one runs
+`dormant → armed → telegraph → active → spent` on the sim clock (`hazardLifecycle.ts`, a pure step):
+
+- **arms** when it is live at the launch hour — its `hours`, or exactly the hours of the
+  `hydroEventId` it follows, so the water and the set-piece agree — and the player is within
+  `armDistance` (horizontal) of its anchor (segment frame + `centerT` / `lateralOffset`);
+- **fires** on its trigger: `proximity {distance}`, `stage {above, distance?}` (the SWE stage at the
+  anchor; with no field it falls back to `distance`), or `delay {seconds}` after arming;
+- **telegraphs** for `telegraphSeconds`, never under `HAZARD_MIN_TELEGRAPH_SECONDS` (1.5 s — the
+  schema minimum and the parser's clamp);
+- is **active** for `activeSeconds`: the first step the player is within `radius`, its
+  `consequence {wetness, chill}` lands on the survival layer (`shockRunSurvival`) — never a reset;
+- is **spent** for the rest of the run. A run reset puts every hazard back to dormant.
+
+**Runs in:** SimCore's `hazards` system (order 45, `hazardSimSystem.ts`): after survival, before the
+ghost clock; paused steps do not advance it; a hazard whose segment is off the treadmill has no
+anchor and cannot arm.
+
+**Produces:** `hazard-phase` (id, kind, phase, world anchor) and `hazard-hit` on `gameEvents` — the
+hooks for telegraph audio / visuals (#522 B, F) — and the run's hazard log (`hazardLog.ts`: each
+phase and hit on the ghost clock, like a split). The log rides in the `.wsghost` (`hazards[]`,
+codec v5; the sample payload is unchanged, its header still says layout 4) and the replay smoke
+compares it across replays.
+
+**Boundaries (Do NOT):**
+- Do NOT step a hazard from a `useFrame`, a timer or a component: it is sim state.
+- Do NOT reset the player from a hazard; consequences go through the survival layer.
+- Do NOT author a telegraph under 1.5 s, or a `hydroEventId` that is not in the map's
+  `hydroEvents[]` (`registry.contract.test.ts` checks both, plus the segment exists).
 
 ---
 
@@ -707,8 +745,8 @@ conditions. `?replay=` (same-origin) skips the menu, starts that river and feeds
 track to `ScriptedSource` on the fixed 1/60 s scripted clock, holding the recorded look per
 10 Hz window.
 
-**Determinism contract:** two replays of one ghost produce identical split times and
-identical SWE checksums (`checksumSweState`, FNV-1a over h/u/w bits, stored per split).
+**Determinism contract:** two replays of one ghost produce identical split times, identical
+hazard logs (#522 A) and identical SWE checksums (`checksumSweState`, FNV-1a over h/u/w bits, stored per split).
 What makes it hold: a scripted or replay run steps SWE on the main thread
 (`sweBackend` `scripted-run`); the SWE step-rate compare takes a 1e-6 s epsilon; weather, sky,
 surge fronts and erosion refreshes all run on the solver / sim clock; adaptive LOD is off;

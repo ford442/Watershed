@@ -12,6 +12,8 @@
  *
  * Gates (replay vs replay — the determinism contract):
  *   - identical split segments and tMs
+ *   - identical hazard logs (#522 A: every hazard phase change and hit, on the
+ *     ghost clock; empty on a map that authors no hazards)
  *   - identical SWE state checksums at every split (and non-null: the run uses
  *     `quality=medium` so the field is on; a scripted or replay run always
  *     steps it on the main thread, in frame order — sweBackend `scripted-run`)
@@ -156,13 +158,15 @@ async function runOnce(label, query, { clickStart, ghostJson }) {
 
     let splits = [];
     let checksums = [];
+    let hazards = [];
     let telemetry = null;
     for (let s = 1; s <= SIM_SECONDS; s += 1) {
       const stepped = await page.evaluate((n) => window.__watershedScreenshot.stepScripted(n), FRAMES_PER_SECOND);
       if (stepped !== FRAMES_PER_SECOND) throw new Error(`stepScripted advanced ${stepped}/${FRAMES_PER_SECOND} frames`);
-      ({ splits, checksums, telemetry } = await page.evaluate(() => ({
+      ({ splits, checksums, hazards, telemetry } = await page.evaluate(() => ({
         splits: window.__watershedScreenshot.getSplits(),
         checksums: window.__watershedScreenshot.getSplitChecksums(),
+        hazards: window.__watershedScreenshot.getHazardLog?.() ?? [],
         telemetry: window.__watershedScreenshot.getScriptedTelemetry(),
       })));
       if (splits.some((sp) => sp.segmentIndex >= SPLIT_SEGMENT)) break;
@@ -170,9 +174,9 @@ async function runOnce(label, query, { clickStart, ghostJson }) {
     const ghostFile = await page.evaluate(() => window.__watershedScreenshot.getGhostFile());
     console.log(
       `  ${splits.length} splits by sim ${telemetry.simTimeSec.toFixed(1)} s; seg ${telemetry.segmentIndex}; ` +
-        `checksums ${checksums.map((c) => c ?? '—').join(' ')}`,
+        `checksums ${checksums.map((c) => c ?? '—').join(' ')}; ${hazards.length} hazard events`,
     );
-    return { ok: true, splits, checksums, ghostFile, pageErrors };
+    return { ok: true, splits, checksums, hazards, ghostFile, pageErrors };
   } catch (err) {
     return { ok: false, reason: String(err?.message || err), pageErrors };
   } finally {
@@ -225,19 +229,24 @@ async function main() {
   for (let i = 1; i < replays.length; i += 1) {
     if (key(replays[i]) !== key(first)) failures.push(`replay ${i + 1} differs from replay 1 (splits or SWE state)`);
   }
+  const hazardKey = (r) => r.hazards.map((h) => `${h.hazardId}:${h.event}:${h.tMs}`).join(',');
+  for (let i = 1; i < replays.length; i += 1) {
+    if (hazardKey(replays[i]) !== hazardKey(first)) failures.push(`replay ${i + 1} differs from replay 1 (hazard log)`);
+  }
 
   console.log('\n[replay-smoke] recorded run (advisory):');
   for (const line of table(recorded.splits, recorded.checksums)) console.log(`  ${line}`);
   for (const [i, r] of replays.entries()) {
     console.log(`[replay-smoke] replay ${i + 1}:`);
     for (const line of table(r.splits, r.checksums)) console.log(`  ${line}`);
+    for (const h of r.hazards) console.log(`  hazard ${h.hazardId} ${h.event} @ ${h.tMs} ms`);
   }
 
   if (failures.length > 0) {
     for (const f of failures) console.error(`  ✗ ${f}`);
     process.exit(1);
   }
-  console.log('[replay-smoke] ✓ pass — replays agree split for split, SWE state included');
+  console.log('[replay-smoke] ✓ pass — replays agree split for split, SWE state and hazard log included');
 }
 
 main().catch((err) => {

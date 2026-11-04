@@ -48,6 +48,7 @@ import {
 } from './bathymetrySampler';
 import { publishSWEBedSnapshot } from './sweBedDebug';
 import { setSweChecksumGrid } from './sweChecksum';
+import { setSweStageWindow } from './sweStageProbe';
 import { useGameStore } from '../GameState';
 import { runHeightfieldChores } from '../../rendering/gpuChores';
 import type { SWEFlowGrid } from './sampleSWEFlow';
@@ -384,6 +385,7 @@ export function disposeSweHostRouters(state: SweHostState): void {
   state.workerRouter.proxy?.post({ type: 'DISPOSE_ROUTER' });
   state.workerRouter = { proxy: null, session: null, launchHour: Number.NaN, reach: null };
   setSweChecksumGrid(null);
+  setSweStageWindow(null);
 }
 
 /**
@@ -540,5 +542,6 @@ export function sweHostFrame(
   }
 
   setSweChecksumGrid(budget.enabled ? grid : null);
+  setSweStageWindow(budget.enabled ? grid : null, originX, originZ);
   return { originX, originZ, sweEnabled: Boolean(budget.enabled && grid) };
 }

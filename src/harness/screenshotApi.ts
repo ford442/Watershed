@@ -14,6 +14,8 @@ import { PLAYER_SPAWN } from '../constants/game';
 import { getRecordedSplitChecksums, getRecordedSplits } from '../systems/ghost/SplitRecorder';
 import { getCurrentGhostPayload, getGhostElapsedMs } from '../systems/ghost/GhostRecorder';
 import { exportGhostToJson } from '../systems/ghost/ghostExport';
+import { getRecordedHazardLog } from '../systems/hazards/hazardLog';
+import { isHazardRuntimeSettled } from '../systems/hazards/hazardSimSystem';
 import { currentRunFairness } from '../systems/ghost/raceFairness';
 import { inputHub } from '../input/InputHub';
 import { getScriptedSimTimeSec, isScriptedRunLive, stepScripted } from '../input/scriptedRun';
@@ -90,12 +92,18 @@ export function installScreenshotApi({
     // fallback): forces sample a different field before and after, so a run
     // that went live mid-load would depend on how long the load took.
     isScriptedReady: () =>
-      inputHub.hasSource('scripted') && isScriptedRunLive(vehicleRef.current) && isSweSettled(),
+      inputHub.hasSource('scripted') &&
+      isScriptedRunLive(vehicleRef.current) &&
+      isSweSettled() &&
+      // A map's hazards are a lazy chunk (#522 A): frame 0 waits for it, so a
+      // replay never steps a hazard a frame later than the run it replays.
+      isHazardRuntimeSettled(),
     getScriptedReadiness: () => ({
       scripted: inputHub.hasSource('scripted'),
       live: isScriptedRunLive(vehicleRef.current),
       swe: getSweReadiness(),
       sweActive: isWaterForceSystemActive(),
+      hazards: isHazardRuntimeSettled(),
     }),
     getSplits: () => getRecordedSplits(),
     getSplitChecksums: () => getRecordedSplitChecksums(),
@@ -113,9 +121,11 @@ export function installScreenshotApi({
           seed: getProceduralBaseSeed(),
           vehicle: useGameStore.getState().vehicleType,
           conditions: getActiveConditions(),
+          hazards: getRecordedHazardLog(),
         },
       );
     },
+    getHazardLog: () => getRecordedHazardLog(),
     getScriptedTelemetry: () => {
       const body = vehicleRef.current;
       const t = body?.translation();

@@ -19,11 +19,20 @@ interface Window {
     /** True once the scripted source is loaded and the run is live. */
     isScriptedReady: () => boolean;
     /** isScriptedReady's parts, for a harness to say which one never arrived. */
-    getScriptedReadiness: () => { scripted: boolean; live: boolean; swe: 'pending' | 'ready' | 'off'; sweActive: boolean };
+    getScriptedReadiness: () => {
+      scripted: boolean;
+      live: boolean;
+      swe: 'pending' | 'ready' | 'off';
+      sweActive: boolean;
+      /** The run map's hazards can step (none authored, or the lazy runtime has loaded). */
+      hazards: boolean;
+    };
     /** Checkpoint splits recorded so far this run (SplitRecorder). */
     getSplits: () => Array<{ segmentIndex: number; tMs: number; speed: number }>;
     /** SWE state checksum at each split, aligned with getSplits() (null where SWE was off). */
     getSplitChecksums: () => Array<string | null>;
+    /** The run's hazard log so far (hazardLog.ts): each phase change and hit on the ghost clock. */
+    getHazardLog: () => Array<{ hazardId: string; event: string; tMs: number }>;
     /** This run so far as a `.wsghost` JSON string (`?replay=`-able), or null before the first sample. */
     getGhostFile: () => string | null;
     /** Runner pose / speed / segment plus the script and hub clocks. */

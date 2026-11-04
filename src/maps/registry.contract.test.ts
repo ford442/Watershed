@@ -28,6 +28,7 @@ import {
   KNOWN_LEVEL_SCHEMA_DEBT,
   levelErrorSignature,
 } from './levelSchemaDebt';
+import { parseHazards } from '../systems/hazards/parseHazards';
 
 describe('map registry contract — (a) keys are assignable to MapRegistryId', () => {
   it('every Object.keys(MAP_REGISTRY) entry is a MapRegistryId at runtime', () => {
@@ -187,6 +188,28 @@ describe('map registry contract — authored JSON shape drift (ajv)', () => {
       expect(Array.isArray(start), `${label}.spawns.start.position`).toBe(true);
       expect(start).toHaveLength(3);
       for (const axis of start) expect(Number.isFinite(axis)).toBe(true);
+    },
+  );
+
+  // #522 A: what the schema cannot say about `hazards[]` — ids unique, a
+  // followed hydro event real, the anchor on an authored segment. A hazard that
+  // fails one of these would parse and then never arm.
+  it.each(entries.map((entry) => [entry.label, entry.levelData] as const))(
+    '%s authors hazards the runtime can arm',
+    (label, levelData) => {
+      const data = levelData as Record<string, any>;
+      const hazards: any[] = data.hazards ?? [];
+      const ids = hazards.map((h) => h.id);
+      expect(new Set(ids).size, `${label} has duplicate hazard ids`).toBe(ids.length);
+      expect(parseHazards(hazards).length, `${label} has a hazard the parser drops`).toBe(hazards.length);
+      const hydroIds = new Set((data.hydroEvents ?? []).map((e: any) => e.id));
+      const segments = new Set((data.segments ?? []).map((seg: any) => seg.index));
+      for (const hazard of hazards) {
+        if (hazard.hydroEventId !== undefined) {
+          expect(hydroIds.has(hazard.hydroEventId), `${label} hazard ${hazard.id} follows a missing hydroEvent`).toBe(true);
+        }
+        expect(segments.has(hazard.segmentIndex), `${label} hazard ${hazard.id} sits on an unauthored segment`).toBe(true);
+      }
     },
   );
 

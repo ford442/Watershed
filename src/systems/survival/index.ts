@@ -24,6 +24,7 @@ export {
   SURVIVAL_INITIAL,
   createSurvivalState,
   tickSurvivalState,
+  applySurvivalShock,
   computeExposureStress,
   getSurvivalModifiers,
 } from './survivalState';

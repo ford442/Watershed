@@ -350,6 +350,43 @@ interface CheckpointConfig {
 
 ---
 
+## 4b. Hazards (`hazards[]`, #522)
+
+Optional. Set-pieces that read the simulated water. Each hazard runs
+`dormant → armed → telegraph → active → spent` on the sim clock (see `SYSTEMS.md`,
+`src/systems/hazards/`).
+
+```json
+"hazards": [
+  {
+    "id": "dam-release",
+    "kind": "damRelease",
+    "segmentIndex": 6,
+    "centerT": 0.4,
+    "hydroEventId": "dam-surge",
+    "armDistance": 150,
+    "trigger": { "type": "stage", "above": 0.5, "distance": 60 },
+    "telegraphSeconds": 2.5,
+    "activeSeconds": 6,
+    "radius": 10,
+    "consequence": { "wetness": 0.4, "chill": 0.1 }
+  }
+]
+```
+
+| Field | Meaning |
+|-------|---------|
+| `kind` | `logJam`, `iceBridge`, `damRelease`, `flashFlood` |
+| `segmentIndex`, `centerT`, `lateralOffset` | Anchor: path parameter on the segment, metres right of the centreline |
+| `hours` / `hydroEventId` | When it is live. `hydroEventId` follows a `hydroEvents[]` entry's hours exactly |
+| `armDistance` | Horizontal metres from the anchor at which a live hazard arms (default 150) |
+| `trigger` | `proximity {distance}` · `stage {above, distance?}` (SWE stage at the anchor; `distance` is also the fallback with no field) · `delay {seconds}` after arming |
+| `telegraphSeconds` | Warning before it is dangerous — **minimum 1.5 s** (default 2.5) |
+| `activeSeconds`, `radius` | How long it is dangerous, and how close the player must be to be reached |
+| `consequence` | `wetness` added / `chill` taken off core temperature, once per activation — never a reset |
+
+---
+
 ## 5. Complete Example Maps
 
 ### 5.1 Beginner: "Gentle Creek"

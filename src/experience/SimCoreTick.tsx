@@ -25,6 +25,9 @@ import { simCore, type SimVehicleProbe } from '../sim/core/SimCore';
 import { gameEvents } from '../systems/events/GameEvents';
 import { useGameStore } from '../systems/GameState';
 import { findSegmentFrameAt, getSegmentFrames } from '../systems/map/segmentFrames';
+import { getActiveLaunchHour, getRunMap } from '../systems/journey/runSession';
+import { parseHydroEvents, type HydroEvent } from '../systems/water/hydroEvents';
+import { sampleSweStage } from '../systems/water/sweStageProbe';
 import { POSITION_SANE, resolveActiveEnvelopeInto } from '../vehicles/RunnerVehicle/hooks/runnerAirControl';
 import type { SegmentEnvelope } from '../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from './types';
@@ -34,6 +37,18 @@ export const SIM_CORE_PRIORITY = -90;
 
 /** The camera's envelope, rewritten each frame (no per-frame object). */
 const cameraEnvelope: SegmentEnvelope = { yMin: 0, yMax: 0, segmentIndex: null, authored: false };
+
+/** The run map's parsed hydro events, re-parsed only when the authored list changes (a map advance). */
+const hydroCache: { raw: unknown; parsed: readonly HydroEvent[] } = { raw: undefined, parsed: [] };
+
+function runHydroEvents(): readonly HydroEvent[] {
+  const raw = getRunMap().levelData.hydroEvents;
+  if (raw !== hydroCache.raw) {
+    hydroCache.raw = raw;
+    hydroCache.parsed = parseHydroEvents(raw);
+  }
+  return hydroCache.parsed;
+}
 
 export interface SimCoreTickProps {
   debug: DebugStageController;
@@ -75,6 +90,7 @@ function sampleVehicle(
 export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
   useEffect(() => {
     const offs = createSimSystems(debug).map((system) => simCore.register(system));
+    simCore.ctx.water.stageAt = sampleSweStage;
     const offReset = gameEvents.on('watershed-run-reset', () => simCore.reset());
     return () => {
       offReset();
@@ -105,6 +121,8 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
     ctx.segment = findSegmentFrameAt(getSegmentFrames(), state.camera.position);
 
     sampleVehicle(ctx.vehicle, vehicleRef.current, store.vehicleType === 'raft', state.camera.quaternion);
+    ctx.water.launchHour = getActiveLaunchHour();
+    ctx.water.hydroEvents = runHydroEvents();
 
     simCore.advance(delta);
   }, SIM_CORE_PRIORITY);

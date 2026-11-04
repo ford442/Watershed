@@ -12,7 +12,8 @@ import { GHOST_CODEC_VERSION, type RunSplitEntry } from './ghostCodec';
 import { fairnessFromGhostFile, judgeGhostFairness, type GhostHydroFairness } from './hydroFairness';
 import type { QualityPreset } from '../GameState';
 import type { RunConditions } from '../journey/runSession';
-import { isRunConditionsShape } from '../persistence/PersistenceSystem';
+import { isHazardLogShape, isRunConditionsShape } from '../persistence/PersistenceSystem';
+import type { HazardLogEntry } from '../hazards/hazardTypes';
 
 export const WSGHOST_MIME = 'application/json';
 export const WSGHOST_EXTENSION = '.wsghost';
@@ -42,6 +43,8 @@ export interface WsGhostFile {
   vehicle?: 'runner' | 'raft';
   /** The run's day: weather script, melt inputs, Daily River date (`?replay=` restores it). */
   conditions?: RunConditions;
+  /** Each hazard's phase changes and hits on the ghost clock (codecVersion >= 5, #522 A). */
+  hazards?: HazardLogEntry[];
 }
 
 /** What a ghost needs, beyond its river's fairness, to be replayed on the same river. */
@@ -49,6 +52,8 @@ export interface GhostRunMeta {
   seed?: number;
   vehicle?: 'runner' | 'raft';
   conditions?: RunConditions;
+  /** The run's hazard log (hazardLog.ts); an empty log is left out of the file. */
+  hazards?: HazardLogEntry[];
 }
 
 export type GhostImportResult =
@@ -80,6 +85,7 @@ export function exportGhostToJson(
     ...(run?.seed !== undefined ? { seed: Math.floor(run.seed) } : {}),
     ...(run?.vehicle ? { vehicle: run.vehicle } : {}),
     ...(run?.conditions ? { conditions: run.conditions } : {}),
+    ...(run?.hazards && run.hazards.length > 0 ? { hazards: run.hazards } : {}),
   };
   return JSON.stringify(file, null, 2);
 }
@@ -186,6 +192,7 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
   if (v.vehicle !== undefined && v.vehicle !== 'runner' && v.vehicle !== 'raft') return false;
   // The same check the save applies: an imported rival is stored as it came.
   if (v.conditions !== undefined && !isRunConditionsShape(v.conditions)) return false;
+  if (v.hazards !== undefined && !isHazardLogShape(v.hazards)) return false;
   return true;
 }
 

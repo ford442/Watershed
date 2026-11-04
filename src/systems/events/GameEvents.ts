@@ -12,6 +12,7 @@
  * events, and tests reset it with `gameEvents.clear()`.
  */
 import type { SurfaceMaterial } from '../vehicle/VehicleSystem';
+import type { HazardKind, HazardPhase } from '../hazards/hazardTypes';
 
 export interface Vec3Like {
   x: number;
@@ -78,6 +79,25 @@ export interface TrestleBreakDetail {
   washout: number;
 }
 
+/** A hazard entered a lifecycle phase (#522; hazardTypes.ts). Telegraph cues listen for it. */
+export interface HazardPhaseDetail {
+  hazardId: string;
+  kind: HazardKind;
+  segmentIndex: number;
+  phase: HazardPhase;
+  /** Anchor in world space as the step saw it (null when its segment was not live). */
+  anchor: Vec3Like | null;
+}
+
+/** An active hazard reached the player and its consequence was applied (#522). */
+export interface HazardHitDetail {
+  hazardId: string;
+  kind: HazardKind;
+  segmentIndex: number;
+  wetness: number;
+  chill: number;
+}
+
 export interface ShelfLaunchDetail {
   bodyHandle: number;
   launchPos: Vec3Like;
@@ -93,6 +113,8 @@ export interface GameEventMap {
   'camera-shake': CameraShakeDetail;
   /** A vehicle or a breaking prop hit a surface hard enough to be heard. */
   'collision-sound': { material: SurfaceMaterial; force: number; point: Vec3Like };
+  'hazard-hit': HazardHitDetail;
+  'hazard-phase': HazardPhaseDetail;
   'player-near-miss': { speed: number };
   'segment-enter': SegmentEnterDetail;
   'segment-spawn': { segmentIndex: number; spawnPoint: Vec3Like };

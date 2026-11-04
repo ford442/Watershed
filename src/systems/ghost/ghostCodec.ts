@@ -22,6 +22,10 @@
  *   3 — optional launchHour / hydroEventHash / qualityPreset fairness fields.
  *   4 — #486 A: each sample carries the 8-float input track (stride 7 → 15),
  *       behind the v4 header. v1–v3 payloads still decode.
+ *   5 — #522 A: `.wsghost` gains an optional `hazards[]` log (each hazard's
+ *       phase changes and hits on the ghost clock, next to `splits[]`). The
+ *       sample payload is unchanged: its header still says 4
+ *       (GHOST_PAYLOAD_LAYOUT), so a v5 payload and a v4 one are the same bytes.
  */
 
 import {
@@ -33,7 +37,13 @@ import {
   type InputFrame,
 } from '../../input/InputFrame';
 
-export const GHOST_CODEC_VERSION = 4 as const;
+export const GHOST_CODEC_VERSION = 5 as const;
+/**
+ * Version the sample payload's header carries: the layout of the floats, which
+ * a file-level addition (v5's `hazards[]`) does not change. Bump it only with
+ * the stride or the encoding.
+ */
+export const GHOST_PAYLOAD_LAYOUT = 4 as const;
 /** Pose floats per sample (position + quaternion), delta-encoded. */
 export const GHOST_POSE_FLOATS = 7;
 /** Input floats per sample (InputFrame layout), absolute. */
@@ -74,7 +84,7 @@ export interface DecodedGhost {
   /** Absolute samples, GHOST_FLOATS_PER_SAMPLE floats each. */
   samples: Float32Array;
   sampleCount: number;
-  /** Codec the payload was written with: 3 covers every headerless v1–v3 payload. */
+  /** Payload layout it was written with: 3 covers every headerless v1–v3 payload, 4 the v4+ header. */
   codecVersion: 3 | 4;
 }
 
@@ -92,7 +102,7 @@ function isFiniteSample(sample: GhostSample): boolean {
 
 function writeHeader(out: Float32Array): void {
   out[0] = GHOST_V4_MAGIC;
-  out[1] = GHOST_CODEC_VERSION;
+  out[1] = GHOST_PAYLOAD_LAYOUT;
 }
 
 /** Pack absolute samples into a v4 payload (pose delta-encoded, input absolute). */
@@ -172,13 +182,13 @@ function hasV4Header(encoded: Float32Array): boolean {
   return (
     encoded.length >= GHOST_V4_HEADER_FLOATS &&
     encoded[0] === GHOST_V4_MAGIC &&
-    encoded[1] === GHOST_CODEC_VERSION
+    encoded[1] === GHOST_PAYLOAD_LAYOUT
   );
 }
 
 /** Decode a v4 payload, or a headerless v1–v3 one (input slots zero-filled). */
 export function decodeGhost(encoded: Float32Array): DecodedGhost | null {
-  if (encoded.length === 0) return { samples: new Float32Array(0), sampleCount: 0, codecVersion: GHOST_CODEC_VERSION };
+  if (encoded.length === 0) return { samples: new Float32Array(0), sampleCount: 0, codecVersion: GHOST_PAYLOAD_LAYOUT };
 
   const v4 = hasV4Header(encoded);
   const base = v4 ? GHOST_V4_HEADER_FLOATS : 0;

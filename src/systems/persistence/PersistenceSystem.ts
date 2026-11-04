@@ -125,6 +125,22 @@ const isRunSplits = arrayOf(
 
 const unitInterval: Check = (v) => isNumber(v) && v >= 0 && v <= 1;
 
+/** A ghost's hazard log (`.wsghost` v5 `hazards[]`, #522 A). */
+const HAZARD_LOG_EVENTS = ['armed', 'telegraph', 'active', 'spent', 'hit'] as const;
+export const HAZARD_LOG_MAX_ENTRIES = 256;
+const isHazardLogEntries = arrayOf(
+  shape(
+    {
+      hazardId: (v) => nonEmptyString(v) && stringMaxLength(40)(v),
+      event: oneOf(HAZARD_LOG_EVENTS),
+      tMs: numberMin(0),
+    },
+    ['hazardId', 'event', 'tMs'],
+  ),
+);
+export const isHazardLogShape: Check = (v) =>
+  Array.isArray(v) && v.length <= HAZARD_LOG_MAX_ENTRIES && isHazardLogEntries(v);
+
 /** A ghost's day (`RunConditions`): weather script steps, melt inputs, Daily River date. */
 export const isRunConditionsShape = shape(
   {
@@ -189,6 +205,7 @@ const isPersistenceShape = shape(
           seed: isInteger,
           vehicle: oneOf(['runner', 'raft']),
           conditions: isRunConditionsShape,
+          hazards: isHazardLogShape,
         },
         ['codecVersion', 'mapId', 'timeMs', 'ghostData', 'exportedAt'],
       ),

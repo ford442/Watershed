@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { getActiveMapId, getActiveRunKey, getProceduralBaseSeed } from '../utils/runContext';
 import { useGameStore } from '../systems/GameState';
 import { getActiveConditions } from '../systems/journey/runSession';
+import { getRecordedHazardLog } from '../systems/hazards/hazardLog';
 import { getRunBest } from '../systems/persistence/PersistenceSystem';
 import { getRecordedSplits } from '../systems/ghost/SplitRecorder';
 import { getGhostElapsedMs, getCurrentGhostPayload } from '../systems/ghost/GhostRecorder';
@@ -127,6 +128,7 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
         seed: getProceduralBaseSeed(),
         vehicle: useGameStore.getState().vehicleType,
         conditions: getActiveConditions(),
+        hazards: getRecordedHazardLog(),
       },
     );
   };
