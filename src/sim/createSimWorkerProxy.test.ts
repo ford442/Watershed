@@ -164,7 +164,7 @@ describe('SimWorkerProxy.requestTile (#487 B)', () => {
   it('pairs each TILE with its request by seq', async () => {
     const { worker } = stubWorker((c, reply) => {
       if (c.type === 'BUILD_TILE') {
-        reply({ type: 'TILE', seq: c.seq, meshes: null, error: `segment ${c.spec.segmentId}`, buildMicros: c.seq });
+        reply({ type: 'TILE', seq: c.seq, meshes: null, placements: null, error: `segment ${c.spec.segmentId}`, buildMicros: c.seq });
       }
     });
     const proxy = new SimWorkerProxy(worker);

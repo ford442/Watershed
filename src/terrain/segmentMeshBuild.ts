@@ -39,6 +39,7 @@ import {
   type Vec3,
 } from './meshMath';
 import { clamp, smoothstep } from '../math/scalar';
+import type { SegmentPlacementInput } from './placement';
 
 /** What the builders need of a path — THREE.CatmullRomCurve3 and meshMath's CatmullRomPath both are one. */
 export interface SegmentPath {
@@ -66,6 +67,11 @@ export interface GeometryBuildContext {
    * segments, which is every biome that is not glacial melt or a hydro pipe.
    */
   tubeProfile?: TubeProfile | null;
+  /**
+   * What placement reads beyond the geometry (#487 D). When set, the worker
+   * builds the segment's placements with its meshes; the meshes ignore it.
+   */
+  placement?: SegmentPlacementInput | null;
 }
 
 /** One mesh's arrays: what a BufferGeometry holds. */
@@ -620,6 +626,8 @@ export interface SegmentMeshSpec {
   isGlacier: boolean;
   biomeProfile: Pick<TrackBiomeProfile, 'id' | 'wallHeight'>;
   tubeProfile: TubeProfile | null;
+  /** Placement input (map id, layout flags, authored overrides); absent or null = no placements wanted. */
+  placement?: SegmentPlacementInput | null;
 }
 
 export function segmentPathSpec(curve: SegmentPath): SegmentPathSpec {
@@ -652,6 +660,7 @@ export function segmentMeshSpec(ctx: GeometryBuildContext): SegmentMeshSpec {
     isGlacier: ctx.isGlacier,
     biomeProfile: { id: ctx.biomeProfile.id, wallHeight: ctx.biomeProfile.wallHeight },
     tubeProfile: ctx.tubeProfile ? { ...ctx.tubeProfile } : null,
+    placement: ctx.placement ?? null,
   };
 }
 
@@ -667,5 +676,6 @@ export function contextFromSpec(spec: SegmentMeshSpec): GeometryBuildContext {
     isGlacier: spec.isGlacier,
     biomeProfile: spec.biomeProfile,
     tubeProfile: spec.tubeProfile,
+    placement: spec.placement ?? null,
   };
 }

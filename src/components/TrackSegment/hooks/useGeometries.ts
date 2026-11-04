@@ -18,6 +18,7 @@ import { peekSimWorkerProxy } from '../../../sim/createSimWorkerProxy';
 import type { SimTileResult } from '../../../sim/simWorkerProtocol';
 import { buildSegmentMeshBuffers, CANYON_VISUAL_SEGMENTS_X, segmentMeshSpec } from '../../../terrain/segmentMeshBuild';
 import { erodeSegmentMeshes } from '../../../terrain/erosion';
+import { buildSegmentPlacements } from '../../../terrain/placement';
 import {
   getSegmentErosion,
   getSegmentErosionVersion,
@@ -46,6 +47,7 @@ export function useGeometries({
   waterWidth,
   biome,
   buildAhead = false,
+  placementInput = null,
 }: UseGeometriesParams): TrackSegmentGeometries {
   // `glacialMelt` is the campaign's glacial map; the old literal check for
   // 'glacier' alone never matched it, so the source biome got canyon rock
@@ -70,6 +72,7 @@ export function useGeometries({
       isGlacier,
       biomeProfile,
       tubeProfile,
+      placement: placementInput,
     };
   }, [
     active,
@@ -83,6 +86,7 @@ export function useGeometries({
     isGlacier,
     biomeProfile,
     tubeProfile,
+    placementInput,
   ]);
 
   // #487 B: a segment the treadmill appends ~150 m ahead is built on the sim
@@ -117,6 +121,21 @@ export function useGeometries({
     [buildCtx, awaitingWorker, workerMeshes, pathLength, biomeProfile.wallHeight],
   );
   const builtMeshes = workerMeshes ?? mainMeshes;
+
+  // #487 D: the props ride with the meshes. The worker's buffer passes the
+  // same `tile.ctx === buildCtx` guard, so a late reply for a slot's previous
+  // occupant is dropped with its meshes. No worker buffer (none asked for, the
+  // build threw, or the meshes were built here): build them here, once the
+  // worker has answered.
+  const workerPlacements = workerMeshes ? tile?.result?.placements ?? null : null;
+  const mainPlacements = useMemo(
+    () =>
+      !buildCtx?.placement || awaitingWorker || workerPlacements
+        ? null
+        : buildSegmentPlacements(buildCtx, buildCtx.placement),
+    [buildCtx, awaitingWorker, workerPlacements],
+  );
+  const placements = workerPlacements ?? mainPlacements;
 
   // #487 E: the floor the river has worked. The hull grid as built registers
   // its erosion plane (loaded from the save for this map segment); the SWE
@@ -173,6 +192,7 @@ export function useGeometries({
 
   return {
     source,
+    placements,
     canyonGeometry,
     collisionGeometry,
     wallShellGeometry,

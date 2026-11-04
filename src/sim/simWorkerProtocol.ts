@@ -191,6 +191,12 @@ export interface SimTileResult {
   seq: number;
   /** Null when the build threw; the caller builds on the main thread instead. */
   meshes: SegmentMeshBuffers | null;
+  /**
+   * The segment's packed placements (`terrain/placement.ts`, #487 D), built on
+   * the tile the meshes came from; null when the spec asked for none or the
+   * placement build threw (the main thread then builds them itself).
+   */
+  placements: ArrayBuffer | null;
   error?: string;
   buildMicros: number;
 }

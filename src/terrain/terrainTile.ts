@@ -126,8 +126,14 @@ export interface WallShellParams {
   segmentId: number;
 }
 
+/** What a tile is the surface of: the canyon floor (folded, banked) or the outer wall shell (rim). */
+export type TerrainSurface = 'floor' | 'shell';
+
 /** A built tile: `planes` is plane-major, the named fields are views into it. */
 export interface TerrainTile {
+  /** Cross-section family the tile was built for (the band thresholds are per profile). */
+  profile: TerrainProfileId;
+  surface: TerrainSurface;
   segmentsX: number;
   segmentsZ: number;
   vertexCount: number;
@@ -317,10 +323,18 @@ export function applyTubeProfile(
 // Tiles
 // ---------------------------------------------------------------------------
 
-function viewTile(segmentsX: number, segmentsZ: number, planes: Float32Array): TerrainTile {
+function viewTile(
+  segmentsX: number,
+  segmentsZ: number,
+  planes: Float32Array,
+  profile: TerrainProfileId,
+  surface: TerrainSurface,
+): TerrainTile {
   const n = (segmentsX + 1) * (segmentsZ + 1);
   const plane = (k: number) => planes.subarray(k * n, (k + 1) * n);
   return {
+    profile,
+    surface,
     segmentsX,
     segmentsZ,
     vertexCount: n,
@@ -347,7 +361,13 @@ function validTileParams(p: TerrainTileParams): boolean {
 export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
   if (!validTileParams(p)) return null;
   const { segmentsX, segmentsZ, pathLength, canyonWidth } = p;
-  const tile = viewTile(segmentsX, segmentsZ, new Float32Array(TERRAIN_TILE_PLANES * terrainVertexCount(segmentsX, segmentsZ)));
+  const tile = viewTile(
+    segmentsX,
+    segmentsZ,
+    new Float32Array(TERRAIN_TILE_PLANES * terrainVertexCount(segmentsX, segmentsZ)),
+    p.profile,
+    'floor',
+  );
   const slot = p.profile === TerrainProfile.SLOT;
   const cols = segmentsX + 1;
   const cellX = canyonWidth / segmentsX;
@@ -374,8 +394,14 @@ export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
     }
   }
 
-  // Slopes from the rounded H plane, so every consumer differences the same floats.
-  const h = tile.h;
+  fillSlopes(tile, cellX, cellZ);
+  return tile;
+}
+
+/** Slopes from the rounded H plane, so every consumer differences the same floats. */
+function fillSlopes(tile: TerrainTile, cellX: number, cellZ: number): void {
+  const { segmentsX, segmentsZ, h } = tile;
+  const cols = segmentsX + 1;
   for (let iz = 0; iz <= segmentsZ; iz += 1) {
     const z0 = Math.max(0, iz - 1);
     const z1 = Math.min(segmentsZ, iz + 1);
@@ -387,7 +413,6 @@ export function buildTerrainTile(p: TerrainTileParams): TerrainTile | null {
       tile.slopeZ[i] = (h[z1 * cols + ix] - h[z0 * cols + ix]) / ((z1 - z0) * cellZ);
     }
   }
-  return tile;
 }
 
 /** Outer wall-shell heights above the path point, one per grid vertex. */
@@ -423,4 +448,247 @@ export function buildWallShellHeights(p: WallShellParams): Float32Array | null {
     }
   }
   return out;
+}
+
+
+/**
+ * The outer wall shell as a tile (#487 D), so the rim can be sampled like the
+ * floor: X is the grid x (the shell never folds), H the shell heights, BANK 1
+ * everywhere. Same grid and datum as `buildWallShellHeights`.
+ */
+export function buildWallShellTile(p: WallShellParams): TerrainTile | null {
+  const heights = buildWallShellHeights(p);
+  if (!heights) return null;
+  const { segmentsX, segmentsZ, shellWidth, pathLength } = p;
+  const n = heights.length;
+  const tile = viewTile(segmentsX, segmentsZ, new Float32Array(TERRAIN_TILE_PLANES * n), p.profile, 'shell');
+  const cols = segmentsX + 1;
+  const cellX = shellWidth / segmentsX;
+  const cellZ = pathLength / segmentsZ;
+  tile.h.set(heights);
+  tile.bank.fill(1);
+  for (let iz = 0; iz <= segmentsZ; iz += 1) {
+    for (let ix = 0; ix < cols; ix += 1) {
+      const i = iz * cols + ix;
+      tile.x[i] = ix * cellX - shellWidth / 2;
+      tile.uvU[i] = ix / segmentsX;
+      tile.uvV[i] = (iz / segmentsZ) * pathLength;
+    }
+  }
+  fillSlopes(tile, cellX, cellZ);
+  return tile;
+}
+
+// ---------------------------------------------------------------------------
+// The sampler (#487 D): height, normal and band at (s, lateral)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a point of the tile is. `floor` is inside the wetted channel, `bank`
+ * the dry ground beyond it, `wall` dry ground steeper than the profile's wall
+ * slope, `rim` the outermost cell of the floor tile and every point of the
+ * wall shell, `crown` the underside of a tube fold.
+ */
+export const TerrainBand = {
+  FLOOR: 0,
+  BANK: 1,
+  WALL: 2,
+  RIM: 3,
+  CROWN: 4,
+} as const;
+export type TerrainBandId = (typeof TerrainBand)[keyof typeof TerrainBand];
+
+/** Bit per band, for a category's allowed-band mask. */
+export const bandBit = (band: TerrainBandId): number => 1 << band;
+
+/**
+ * |∂H/∂x| above which dry ground reads as wall, per profile. The open canyon
+ * rises at ~55° and stays "bank" up to there (trees on the lower slope); the
+ * slot is sheer almost from the waterline.
+ */
+export const TERRAIN_WALL_SLOPE: Readonly<Record<TerrainProfileId, number>> = {
+  [TerrainProfile.OPEN]: 1.75,
+  [TerrainProfile.SLOT]: 1.2,
+};
+
+/** Which surface a lateral picks where a tube fold makes the tile double-valued. */
+export const TileBranch = {
+  /** The lowest surface at that lateral: the floor, or the wall under a fold. */
+  FLOOR: 0,
+  /** The highest: the fold's underside (band `crown`) where there is one. */
+  CROWN: 1,
+} as const;
+export type TileBranchId = (typeof TileBranch)[keyof typeof TileBranch];
+
+/** Caller-owned sampler output; the sampler writes every field and allocates nothing. */
+export interface TileSample {
+  /** False when the lateral is outside the tile at that row (nothing else is meaningful). */
+  ok: boolean;
+  /** Height above the row's path point, the tile's datum (never world Y). */
+  y: number;
+  /** Unit normal in the tile frame (x across, y up, z along the path, metres). */
+  nx: number;
+  ny: number;
+  nz: number;
+  band: TerrainBandId;
+  /** True when a fold of the same tile lies above this point (floor branch under a tube). */
+  covered: boolean;
+  /** Across-tangent of the sampled cell edge (dx, dh), unnormalised. */
+  ax: number;
+  ay: number;
+  /** Along-tangent per metre of path: (dx/dz, dh/dz) at this lateral. */
+  bx: number;
+  by: number;
+}
+
+export function createTileSample(): TileSample {
+  return { ok: false, y: 0, nx: 0, ny: 1, nz: 0, band: TerrainBand.FLOOR, covered: false, ax: 1, ay: 0, bx: 0, by: 0 };
+}
+
+/** Metres between rows: the UV_V plane is metres downstream. */
+function tileCellZ(tile: TerrainTile): number {
+  const cols = tile.segmentsX + 1;
+  const d = tile.uvV[cols] - tile.uvV[0];
+  return d > 0 ? d : 1;
+}
+
+/**
+ * Height, normal and band of the tile at path parameter `s01` (the row
+ * parameter: row iz sits at s = iz / segmentsZ) and local lateral `lateral`
+ * (the tile's folded x, metres from the row's path point).
+ *
+ * Bilinear over the grid: the two rows bracketing `s01` are blended column by
+ * column, and the blended row is searched for every cell edge whose x spans
+ * `lateral`. Above `curl ≈ 2/3` a tube fold makes x non-monotone, so a lateral
+ * there crosses the surface twice: `TileBranch.FLOOR` (default) returns the
+ * lower crossing and flags `covered`; `TileBranch.CROWN` returns the upper
+ * one with band `crown`. At grid nodes the result is the vertex.
+ */
+export function sampleTile(
+  tile: TerrainTile,
+  s01: number,
+  lateral: number,
+  out: TileSample,
+  branch: TileBranchId = TileBranch.FLOOR,
+): TileSample {
+  const { segmentsX, segmentsZ, x, h, bank } = tile;
+  const cols = segmentsX + 1;
+  const r = clamp01(Number.isFinite(s01) ? s01 : 0) * segmentsZ;
+  const iz0 = Math.min(segmentsZ - 1, Math.floor(r));
+  const fz = r - iz0;
+  const o0 = iz0 * cols;
+  const o1 = o0 + cols;
+
+  out.ok = false;
+  out.covered = false;
+  if (!Number.isFinite(lateral)) return out;
+
+  // Every crossing of `lateral` along the blended row; keep the lowest and the highest.
+  let crossings = 0;
+  let lastIx = -2;
+  let lastA = 0;
+  let loIx = -1;
+  let loA = 0;
+  let loH = Infinity;
+  let hiIx = -1;
+  let hiA = 0;
+  let hiH = -Infinity;
+  let xa = x[o0] + (x[o1] - x[o0]) * fz;
+  let ha = h[o0] + (h[o1] - h[o0]) * fz;
+  for (let ix = 0; ix < segmentsX; ix += 1) {
+    const xb = x[o0 + ix + 1] + (x[o1 + ix + 1] - x[o0 + ix + 1]) * fz;
+    const hb = h[o0 + ix + 1] + (h[o1 + ix + 1] - h[o0 + ix + 1]) * fz;
+    const lo = xa < xb ? xa : xb;
+    const hi = xa < xb ? xb : xa;
+    if (lateral >= lo && lateral <= hi) {
+      const span = xb - xa;
+      const a = span !== 0 ? (lateral - xa) / span : 0;
+      // A node shared by two edges is one crossing, not two.
+      if (!(lastIx === ix - 1 && lastA === 1)) {
+        const hc = ha + (hb - ha) * a;
+        crossings += 1;
+        if (hc < loH) {
+          loH = hc;
+          loIx = ix;
+          loA = a;
+        }
+        if (hc > hiH) {
+          hiH = hc;
+          hiIx = ix;
+          hiA = a;
+        }
+      }
+      lastIx = ix;
+      lastA = a;
+    }
+    xa = xb;
+    ha = hb;
+  }
+  const upper = branch === TileBranch.CROWN && crossings > 1;
+  const bestIx = upper ? hiIx : loIx;
+  const bestA = upper ? hiA : loA;
+  const bestH = upper ? hiH : loH;
+  if (bestIx < 0) return out;
+
+  const i0 = bestIx;
+  const i1 = bestIx + 1;
+  const a = bestA;
+  // Across: the blended cell edge. Along: the column pair's row-to-row change, at `a`.
+  const x0 = x[o0 + i0] + (x[o1 + i0] - x[o0 + i0]) * fz;
+  const x1 = x[o0 + i1] + (x[o1 + i1] - x[o0 + i1]) * fz;
+  const h0 = h[o0 + i0] + (h[o1 + i0] - h[o0 + i0]) * fz;
+  const h1 = h[o0 + i1] + (h[o1 + i1] - h[o0 + i1]) * fz;
+  const cellZ = tileCellZ(tile);
+  const ax = x1 - x0;
+  const ay = h1 - h0;
+  const bx = ((x[o1 + i0] - x[o0 + i0]) * (1 - a) + (x[o1 + i1] - x[o0 + i1]) * a) / cellZ;
+  const by = ((h[o1 + i0] - h[o0 + i0]) * (1 - a) + (h[o1 + i1] - h[o0 + i1]) * a) / cellZ;
+
+  // n = along × across, with along = (bx, by, 1), across = (ax, ay, 0).
+  let nx = -ay;
+  let ny = ax;
+  let nz = bx * ay - by * ax;
+  const len = Math.hypot(nx, ny, nz) || 1;
+  nx /= len;
+  ny /= len;
+  nz /= len;
+  // Floor: up, or toward the channel on a vertical face. Crown: down into the tube.
+  const flip = upper ? ny > 0 : ny < -1e-9 || (Math.abs(ny) <= 1e-9 && nx * lateral > 0);
+  if (flip) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+  }
+
+  let band: TerrainBandId;
+  if (upper) band = TerrainBand.CROWN;
+  else if (tile.surface === 'shell' || i0 === 0 || i1 === segmentsX) band = TerrainBand.RIM;
+  else {
+    const b0 = bank[o0 + i0] + (bank[o1 + i0] - bank[o0 + i0]) * fz;
+    const b1 = bank[o0 + i1] + (bank[o1 + i1] - bank[o0 + i1]) * fz;
+    const wet = b0 + (b1 - b0) * a < 0.5;
+    if (wet) band = TerrainBand.FLOOR;
+    else band = Math.abs(ay) > TERRAIN_WALL_SLOPE[tile.profile] * Math.abs(ax) ? TerrainBand.WALL : TerrainBand.BANK;
+  }
+
+  out.ok = true;
+  out.y = bestH;
+  out.nx = nx;
+  out.ny = ny;
+  out.nz = nz;
+  out.band = band;
+  out.covered = !upper && crossings > 1 && hiH > loH;
+  out.ax = ax;
+  out.ay = ay;
+  out.bx = bx;
+  out.by = by;
+  return out;
+}
+
+const bandScratch = createTileSample();
+
+/** The band at (s01, lateral) on the floor branch; `rim` when the lateral is off the tile. */
+export function sampleBand(tile: TerrainTile, s01: number, lateral: number): TerrainBandId {
+  const s = sampleTile(tile, s01, lateral, bandScratch);
+  return s.ok ? s.band : TerrainBand.RIM;
 }

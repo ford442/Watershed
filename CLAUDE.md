@@ -122,6 +122,7 @@ src/
 ├── math/                        # scalar.ts (clamp/lerp/smoothstep), hash.ts (sinHash), random.ts (createRng: the one PRNG)
 ├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — the one canyon-profile source (#487; TS-only since ABI 16)
 ├── terrain/segmentMeshBuild.ts  # Segment meshes as buffers, three-free — built on the sim worker for treadmill appends (#487 B)
+├── terrain/placement.ts         # Segment props as one packed buffer, heights from sampleTile — rides BUILD_TILE with the meshes (#487 D)
 ├── utils/                       # RiverShader.ts, levelValidator, reachValidator
 └── formats/                     # level.schema.json, reach.schema.json
 ```
@@ -366,6 +367,7 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/systems/water/sweBackend.ts` / `sweSim.ts` | SWE solver per session: C++ WASM in the sim worker (`src/sim/`, #455; `?simWorker=0` → main thread), or `swe.wgsl` (`WgslSweSim.ts`) on native WebGPU (#435) |
 | `src/terrain/terrainTile.ts` | Canyon floor / tube fold / wall shell as planes; the canyon and hull builders read the tile on both threads (#487; the C++ twin was retired at ABI 16 — WASM.md, Terrain tiles) |
 | `src/terrain/segmentMeshBuild.ts` | Canyon / collision / wall / water meshes as typed arrays; the sim worker builds treadmill appends with it (`BUILD_TILE`), `pnpm profile:spawn` measures mounts (#487 B) |
+| `src/terrain/placement.ts` | All 31 prop categories as a pure function of (tile, frame, layout spec, seed): `sampleTile` heights in the tile datum, seed per map + segment, `snap: false` keeps an authored set-piece's legacy height (#487 D) |
 | `src/rendering/sceneLightPool.tsx` | Fixed scene light count — segment content borrows pooled lights so a mount never recompiles every lit program (#487 B) |
 | `src/utils/lazyModule.ts` / `lazyComponent.ts` | Entry-chunk budget tools: a dynamic import with a sync `get()`, and `React.lazy` + `preload()`; `build-budget.json` gates entry and boot JS |
 | `src/utils/RiverShader.ts` | Wetness/moss/caustics injection |

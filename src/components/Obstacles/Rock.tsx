@@ -112,6 +112,49 @@ export interface RockTransform {
   pillarIndex?: number;
   segmentId?: number;
   variant?: string;
+  /**
+   * The instance's rotation as a quaternion, derived once from `rotation`:
+   * both the Rapier body and the instance matrix read this, so the collider
+   * and the mesh can never disagree on phase (#487 D).
+   */
+  quaternion?: [number, number, number, number];
+}
+
+const scratchQuaternion = new THREE.Quaternion();
+const scratchMatrix = new THREE.Matrix4();
+const scratchColor = new THREE.Color();
+
+/** `rotation` → the quaternion tuple both Rapier and the instance matrix read. */
+export function instanceQuaternion(rotation: THREE.Euler): [number, number, number, number] {
+  scratchQuaternion.setFromEuler(rotation);
+  return [scratchQuaternion.x, scratchQuaternion.y, scratchQuaternion.z, scratchQuaternion.w];
+}
+
+/**
+ * Write a group's instance matrices (and colours) from the same quaternion
+ * Rapier is given, then recompute the mesh's bounding sphere: three caches an
+ * InstancedMesh's sphere on its first culling test, and one computed before
+ * these writes (every instance at the origin) culls the rocks wrongly — the
+ * pop under camera motion. `count` follows the list, so a recycled slot with
+ * fewer rocks never draws a stale instance.
+ */
+export function writeRockInstances(mesh: THREE.InstancedMesh, instances: readonly RockTransform[]): void {
+  const capacity = mesh.instanceMatrix.count;
+  instances.forEach((instance, index) => {
+    if (index >= capacity) return;
+    const q = instance.quaternion ?? instanceQuaternion(instance.rotation);
+    scratchQuaternion.set(q[0], q[1], q[2], q[3]);
+    scratchMatrix.compose(instance.position, scratchQuaternion, instance.scale);
+    mesh.setMatrixAt(index, scratchMatrix);
+    if (instance.color) {
+      scratchColor.set(instance.color);
+      mesh.setColorAt(index, scratchColor);
+    }
+  });
+  mesh.count = Math.min(instances.length, capacity);
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.computeBoundingSphere();
 }
 
 export interface RockProps {
@@ -390,7 +433,7 @@ export default function Rock({
       instances.forEach((instance, i) => {
         const variant = variants[i % variants.length];
         if (!byVariant[variant]) byVariant[variant] = [];
-        byVariant[variant].push({ ...instance, variant });
+        byVariant[variant].push({ ...instance, variant, quaternion: instanceQuaternion(instance.rotation) });
       });
     });
     return byVariant;
@@ -437,40 +480,13 @@ export default function Rock({
   }, [collidableGroups, geometryLibrary, workerKeyPrefix]);
 
   useEffect(() => {
-    const matrix = new THREE.Matrix4();
-    const quaternion = new THREE.Quaternion();
-    const color = new THREE.Color();
-
     Object.entries(collidableGroups).forEach(([variant, instances]) => {
       const mesh = collidableRefs.current[variant];
-      if (!mesh) return;
-      instances.forEach((instance, index) => {
-        quaternion.setFromEuler(instance.rotation);
-        matrix.compose(instance.position, quaternion, instance.scale);
-        mesh.setMatrixAt(index, matrix);
-        if (instance.color) {
-          color.set(instance.color);
-          mesh.setColorAt(index, color);
-        }
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      if (mesh) writeRockInstances(mesh, instances);
     });
-
     Object.entries(scatterGroups).forEach(([variant, instances]) => {
       const mesh = scatterRefs.current[variant];
-      if (!mesh) return;
-      instances.forEach((instance, index) => {
-        quaternion.setFromEuler(instance.rotation);
-        matrix.compose(instance.position, quaternion, instance.scale);
-        mesh.setMatrixAt(index, matrix);
-        if (instance.color) {
-          color.set(instance.color);
-          mesh.setColorAt(index, color);
-        }
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      if (mesh) writeRockInstances(mesh, instances);
     });
   }, [collidableGroups, scatterGroups]);
 
@@ -510,7 +526,8 @@ export default function Rock({
             instances={instances.map((instance, index) => ({
               key: instance.key ?? `rigid-${variant}-${index}`,
               position: [instance.position.x, instance.position.y, instance.position.z] as [number, number, number],
-              rotation: [instance.rotation.x, instance.rotation.y, instance.rotation.z] as [number, number, number],
+              // The same quaternion writeRockInstances composes the matrix from.
+              quaternion: instance.quaternion,
               scale: [instance.scale.x, instance.scale.y, instance.scale.z] as [number, number, number],
             }))}
             type="fixed"

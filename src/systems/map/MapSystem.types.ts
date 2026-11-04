@@ -55,6 +55,12 @@ export interface DecorationPlacement {
   scale?: number;
   rotation?: number;
   rockType?: 'boulder' | 'slab' | 'column';
+  /**
+   * Height and normal from the segment's terrain tile (default `true`, #487 D).
+   * `false` keeps the legacy guessed height and binormal frame — for a
+   * set-piece whose collider height is tuned, like the seg-14 launch slab.
+   */
+  snap?: boolean;
 }
 
 /**

@@ -460,6 +460,11 @@
                         "rockType": {
                           "type": "string",
                           "enum": ["boulder", "slab", "column"]
+                        },
+                        "snap": {
+                          "type": "boolean",
+                          "default": true,
+                          "description": "Height and normal from the segment's terrain tile (#487 D). false keeps the legacy guessed height and binormal frame (tuned set-pieces such as launch slabs)."
                         }
                       }
                     }
