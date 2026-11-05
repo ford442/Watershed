@@ -101,3 +101,24 @@ describe('reachValidator — washedOutGap', () => {
     expect(result.errors.some((e) => e.field.includes('washedOutGap'))).toBe(true);
   });
 });
+
+describe('reachValidator — malformed documents', () => {
+  it.each([
+    ['null', null],
+    ['a string', 'not a reach'],
+    ['an array', []],
+    ['an empty object', {}],
+  ])('rejects %s with errors and no data', (_name, doc) => {
+    const result = validateReach(doc);
+    expect(result.valid).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.data).toBeNull();
+  });
+
+  it('names the missing section', () => {
+    const { reachId: _drop, ...rest } = createValidReach();
+    const result = validateReach(rest);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'reachId')).toBe(true);
+  });
+});

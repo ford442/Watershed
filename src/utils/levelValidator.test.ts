@@ -80,6 +80,18 @@ describe('Level Validator', () => {
       expect(result.valid).toBe(false);
     });
 
+    it.each([
+      ['null', null],
+      ['a string', 'not a level'],
+      ['an array', []],
+      ['an empty object', {}],
+    ])('rejects %s with errors and no data', (_name, doc) => {
+      const result = validateLevel(doc);
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.data).toBeNull();
+    });
+
     it('should fail with invalid version format', () => {
       const level = {
         ...createValidLevel(),
