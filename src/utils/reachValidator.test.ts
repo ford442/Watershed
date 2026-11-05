@@ -82,3 +82,22 @@ describe('reachValidator — safeZone', () => {
     expect(fields).toContain('segments[2].safeZone');
   });
 });
+
+describe('reachValidator — washedOutGap', () => {
+  const withGap = (washedOutGap: unknown) => {
+    const reach = createValidReach();
+    reach.segments = reach.segments.map((seg) => (seg.index === 1 ? { ...seg, washedOutGap } : seg));
+    return reach;
+  };
+
+  it('accepts a boolean washedOutGap', () => {
+    expect(validateReach(withGap(true)).valid).toBe(true);
+    expect(validateReach(withGap(false)).valid).toBe(true);
+  });
+
+  it('rejects a non-boolean washedOutGap', () => {
+    const result = validateReach(withGap('yes'));
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field.includes('washedOutGap'))).toBe(true);
+  });
+});

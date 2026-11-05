@@ -406,6 +406,39 @@
             "default": false,
             "description": "Skip floor trimesh collider for gap / air-corridor set-pieces"
           },
+          "gameplay": {
+            "type": "object",
+            "description": "Per-segment GameplayProfile override laid over the biome's row (composeGameplayProfile, systems/gameplay/gameplayProfile.ts)",
+            "properties": {
+              "flowCap": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Scale of the water current pushing the hull (WaterForceSystem's flow cap)"
+              },
+              "surface": {
+                "type": "string",
+                "enum": [
+                  "moss",
+                  "rock",
+                  "wood",
+                  "concrete",
+                  "water"
+                ],
+                "description": "Ground material: which impact sound and burst a hit plays (SurfaceMaterial)"
+              },
+              "ambientTemp": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Ambient core temperature the player drifts toward; below 0.5 is a cold segment"
+              },
+              "windDry": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Scale of survival's wind drying (1 = the speed-driven rate as tuned)"
+              }
+            }
+          },
           "hasBridge": {
             "type": "boolean",
             "default": false,

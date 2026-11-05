@@ -244,6 +244,45 @@ describe('Level Validator', () => {
     });
   });
 
+  describe('Segment gameplay override (schema)', () => {
+    const withGameplay = (gameplay: unknown) => {
+      const level = createValidLevel();
+      return { ...level, segments: level.segments.map((seg, i) => (i === 1 ? { ...seg, gameplay } : seg)) };
+    };
+
+    it('accepts every overridable GameplayProfile field', () => {
+      const result = validateLevel(withGameplay({ flowCap: 1.6, surface: 'wood', ambientTemp: 0.4, windDry: 0.5 }));
+      expect(result.errors).toEqual([]);
+      expect(result.valid).toBe(true);
+    });
+
+    it('accepts a partial override and keeps the authored object as-is', () => {
+      const level = withGameplay({ surface: 'concrete' });
+      const result = validateLevel(level);
+      expect(result.valid).toBe(true);
+      expect(result.data?.segments[1].gameplay).toEqual({ surface: 'concrete' });
+    });
+
+    it('rejects an unknown surface', () => {
+      const result = validateLevel(withGameplay({ surface: 'lava' }));
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.field === 'segments.1.gameplay.surface')).toBe(true);
+    });
+
+    it('rejects an ambientTemp outside 0..1 and a non-object override', () => {
+      expect(validateLevel(withGameplay({ ambientTemp: 1.5 })).valid).toBe(false);
+      expect(validateLevel(withGameplay({ flowCap: -1 })).valid).toBe(false);
+      expect(validateLevel(withGameplay('fast')).valid).toBe(false);
+    });
+
+    it('does not strip keys it does not declare', () => {
+      const level = withGameplay({ flowCap: 1, futureKnob: 3 });
+      const result = validateLevel(level);
+      expect(result.valid).toBe(true);
+      expect(result.data?.segments[1].gameplay).toEqual({ flowCap: 1, futureKnob: 3 });
+    });
+  });
+
   describe('Format Helpers', () => {
     it('should format valid result', () => {
       const result: ValidationReport = { valid: true, errors: [], warnings: [] };
