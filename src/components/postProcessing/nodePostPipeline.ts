@@ -9,7 +9,7 @@
  *         → output transform → SMAA (when the AA tier asks for it)
  *
  * Only ever constructed for a node renderer (`?material=tsl`); the GLSL path
- * keeps JSM `EffectComposer`. Never both in one session — the host picks one.
+ * runs three's `renderer.setEffects` chain. Never both in one session — the host picks one.
  *
  * Cheap effects are always in the graph and go inert via their uniforms (the
  * JSM path's `pass.enabled`). The expensive ones — GTAO, bloom, the god-ray

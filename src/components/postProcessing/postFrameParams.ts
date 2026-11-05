@@ -1,7 +1,7 @@
 /**
  * postFrameParams — per-frame post-processing targets, backend-agnostic.
  *
- * Both post drivers read this: the JSM `EffectComposer` on the GLSL path and
+ * Both post drivers read this: three's `setEffects` chain on the GLSL path and
  * the node `RenderPipeline` on the TSL path (epic #434 B2). Keeping the speed /
  * biome / weather / waterfall mood math in one pure function is what makes
  * "`?material=tsl` renders the same post set as GLSL" checkable in a unit test

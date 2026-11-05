@@ -8,7 +8,7 @@ The `webgpu` renderer preference remains a *deliberate no-op fallback* to `WebGL
 
 Live GLSL-only leftovers: **none** (`maxResidual: 0` since epic #434 B2).
 
-Post-processing (`PostProcessingPipeline.tsx`) picks one stack per renderer: three's JSM `EffectComposer` on `WebGLRenderer`, three's node `RenderPipeline` on `WebGPURenderer` (`src/components/postProcessing/nodePostPipeline.ts`). Not `@react-three/postprocessing` (R3F v9 incompatibility). Water / river / canyon / sky / weather / VFX / foliage / critters go through dual-path hosts. GLSL `onBeforeCompile` still exists behind those hosts for the WebGLRenderer product path.
+Post-processing (`PostProcessingPipeline.tsx`) picks one stack per renderer: three's own HDR output (`renderer.setEffects` with JSM passes, #534 E) on `WebGLRenderer`, three's node `RenderPipeline` on `WebGPURenderer` (`src/components/postProcessing/nodePostPipeline.ts`). Not `@react-three/postprocessing` (R3F v9 incompatibility). Water / river / canyon / sky / weather / VFX / foliage / critters go through dual-path hosts. GLSL `onBeforeCompile` still exists behind those hosts for the WebGLRenderer product path.
 
 These materials are incompatible with `WebGPURenderer`/`NodeMaterial`/`TSL`. Routing them through a WebGPU backend produces crashes such as:
 

@@ -1,6 +1,5 @@
 import { useMemo, useRef, useEffect, type RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
@@ -145,8 +144,12 @@ class GodRaysPass extends Pass {
 
   fsQuad: FullScreenQuad;
 
-  constructor() {
+  /** The scene pass's depth texture this frame (`SceneRenderPass.depthTexture`). */
+  private readonly sceneDepth: () => THREE.Texture | null;
+
+  constructor(sceneDepth: () => THREE.Texture | null) {
     super();
+    this.sceneDepth = sceneDepth;
     this.material = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.clone(GOD_RAYS_SHADER.uniforms),
       vertexShader: GOD_RAYS_SHADER.vertexShader,
@@ -162,7 +165,7 @@ class GodRaysPass extends Pass {
 
   render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
     this.material.uniforms.tDiffuse.value = readBuffer.texture;
-    this.material.uniforms.tDepth.value = readBuffer.depthTexture || readBuffer.texture;
+    this.material.uniforms.tDepth.value = this.sceneDepth() ?? readBuffer.depthTexture ?? readBuffer.texture;
 
     if (this.renderToScreen) {
       renderer.setRenderTarget(null);
@@ -182,13 +185,26 @@ class GodRaysPass extends Pass {
 }
 
 /**
- * The scene pass, and the frame's one shadow-map update. Later passes that
- * re-render the scene (SSAOPass's normal pass) would otherwise re-render every
- * shadow map — soft PCF at 2048/4096 on High/Ultra — for an override material
- * that never samples them. The composer driver's `render()` restores
- * `autoUpdate` once the chain is done.
+ * The scene pass, and the frame's one shadow-map update. It is the first
+ * effect, so three's output skips its own scene render and this pass draws
+ * into the output's scene target (`readBuffer`, three's `WebGLOutput` target A:
+ * HalfFloat colour + 24-bit depth texture).
+ *
+ * - **MSAA lives here, on the one target that needs it.** `samples` is set on
+ *   target A from the latched AA tier before the draw; every later target stays
+ *   single-sampled (#519 B.5). three reallocates the target on its next bind.
+ * - **Shadows once.** Later passes that re-render the scene (SSAOPass's normal
+ *   pass) would otherwise re-render every shadow map for an override material
+ *   that never samples them. The driver's `render()` restores `autoUpdate`.
+ * - **Scene depth for the passes after it.** `depthTexture` is published so god
+ *   rays sample the depth this frame wrote, whichever buffer they read colour from.
  */
 class SceneRenderPass extends RenderPass {
+  /** MSAA sample count for the scene target, from the driver's AA latch. */
+  samples = 0;
+
+  depthTexture: THREE.DepthTexture | null = null;
+
   render(
     renderer: THREE.WebGLRenderer,
     writeBuffer: THREE.WebGLRenderTarget,
@@ -196,8 +212,53 @@ class SceneRenderPass extends RenderPass {
     deltaTime: number,
     maskActive: boolean,
   ) {
+    if (readBuffer.samples !== this.samples) {
+      readBuffer.samples = this.samples;
+      readBuffer.dispose();
+    }
+    this.depthTexture = readBuffer.depthTexture;
     super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
     renderer.shadowMap.autoUpdate = false;
+  }
+}
+
+/**
+ * The display transform (tone map + sRGB), *inside* the chain — only while the
+ * AA tier is SMAA, whose edge detection is tuned for display-referred input.
+ * three's output then has to be the identity: the driver renders with
+ * `toneMapping = NoToneMapping` and a linear `outputColorSpace`, and this pass
+ * puts the real grade back for its own draw. A wrapper, not an `OutputPass` in
+ * the list: three warns on `isOutputPass` in `setEffects`.
+ */
+class DisplayTransformPass extends Pass {
+  private readonly output = new OutputPass();
+
+  grade: { toneMapping: THREE.ToneMapping; outputColorSpace: string } = {
+    toneMapping: THREE.NoToneMapping,
+    outputColorSpace: THREE.LinearSRGBColorSpace,
+  };
+
+  render(
+    renderer: THREE.WebGLRenderer,
+    writeBuffer: THREE.WebGLRenderTarget,
+    readBuffer: THREE.WebGLRenderTarget,
+    deltaTime: number,
+    maskActive: boolean,
+  ) {
+    const toneMapping = renderer.toneMapping;
+    const outputColorSpace = renderer.outputColorSpace;
+    renderer.toneMapping = this.grade.toneMapping;
+    renderer.outputColorSpace = this.grade.outputColorSpace as THREE.ColorSpace;
+    try {
+      this.output.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    } finally {
+      renderer.toneMapping = toneMapping;
+      renderer.outputColorSpace = outputColorSpace;
+    }
+  }
+
+  dispose() {
+    this.output.dispose();
   }
 }
 
@@ -216,23 +277,7 @@ interface PostProcessingPipelineProps {
   chromaticMaxOffset?: number;
 }
 
-interface ComposerPassBundle {
-  /** Built on the first frame whose preset runs SSAO (`ssaoPassModule`); absent before that. */
-  ssaoPass?: SSAOPass;
-  godRaysPass: GodRaysPass;
-  bloomPass: UnrealBloomPass;
-  hueSatPass: ShaderPass;
-  chromaticPass: ShaderPass;
-  vignettePass: ShaderPass;
-  rainbowPass: ShaderPass;
-  outputPass: OutputPass;
-  /** Built on the first frame whose AA tier is SMAA (`smaaPassModule`); absent before that. */
-  smaaPass?: SMAAPass;
-}
-
-type WatershedComposer = EffectComposer & { userData: ComposerPassBundle };
-
-/** A post driver: the JSM composer on WebGLRenderer, or the node pipeline. */
+/** A post driver: three's output effects on WebGLRenderer, or the node pipeline. */
 export interface PostDriver {
   apply(params: PostFrameParams): void;
   render(): void;
@@ -240,18 +285,40 @@ export interface PostDriver {
   dispose(): void;
 }
 
+/** The GLSL driver, with what tests, the parity page and the warm-up read. */
+export interface EffectsDriver extends PostDriver {
+  /** The effect list in chain order, as handed to `renderer.setEffects` (enabled or not). */
+  readonly effects: readonly Pass[];
+  /** Clear this driver's effects from the renderer if they are installed; the driver stays usable. */
+  detach(): void;
+}
+
 function isNodeRenderer(gl: unknown): gl is WebGPURenderer {
   return (gl as { isWebGPURenderer?: boolean } | null)?.isWebGPURenderer === true;
 }
 
 /**
- * GLSL path: JSM EffectComposer. WebGLRenderer only.
+ * Which driver's effects a renderer holds. A renderer has one effect list and
+ * applies it to *every* `render()` to the canvas, so a driver installs its
+ * list when it renders and clears it when it is done — the warm-up's throwaway
+ * drivers (`shaderWarmupRun.ts`) and the live one share one renderer.
+ */
+const installedDriver = new WeakMap<THREE.WebGLRenderer, object>();
+
+/**
+ * GLSL path: three's own HDR output (`outputBufferType: HalfFloatType`,
+ * `renderer.setEffects`, r185 `WebGLOutput`). `createGameRenderer` builds the
+ * renderer that way; a renderer without it logs three's error and draws plain.
  *
- * Every pass works on linear HDR in the composer's half-float targets; the
- * closing OutputPass is the chain's one tone-map (`gl.toneMapping`, exposure)
- * and one sRGB encode (`gl.outputColorSpace`) — the same transform the node
- * RenderPipeline applies via `outputColorTransform` (#466 Phase A). three skips
- * both when rendering into a target, so without it the screen got raw linear.
+ * Every effect works on linear HDR in the output's half-float targets; three
+ * applies the chain's one tone map (`gl.toneMapping`, exposure) and one sRGB
+ * encode (`gl.outputColorSpace`) in its final blit — the same transform the
+ * node RenderPipeline applies via `outputColorTransform` (#466 Phase A). With
+ * SMAA the transform moves into the chain ahead of it (`DisplayTransformPass`).
+ *
+ * The output owns the targets and their size: `renderer.setSize` /
+ * `setPixelRatio` (R3F's setDpr, the render-scale valve) resize them and every
+ * effect once, so `setSize` here is a no-op.
  */
 export function createComposerDriver(
   gl: THREE.WebGLRenderer,
@@ -260,54 +327,51 @@ export function createComposerDriver(
   width: number,
   height: number,
   tuning: PostTuning,
-): PostDriver & { readonly composer: EffectComposer } {
-  const composer = new EffectComposer(gl) as WatershedComposer;
-  composer.renderTarget1.depthBuffer = true;
-  composer.renderTarget2.depthBuffer = true;
-  // 24-bit depth (UnsignedIntType → DEPTH_COMPONENT24): SSAO and god rays
-  // sample it at canyon distances, where 16 bits band (#466 Phase C).
-  composer.renderTarget1.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
-  composer.renderTarget2.depthTexture = new THREE.DepthTexture(width, height, THREE.UnsignedIntType);
-  composer.addPass(new SceneRenderPass(scene, camera));
+): EffectsDriver {
+  const scenePass = new SceneRenderPass(scene, camera);
 
   const resolution = new THREE.Vector2(width, height);
 
   // Volumetric god rays (slot canyons)
-  const godRaysPass = new GodRaysPass();
+  const godRaysPass = new GodRaysPass(() => scenePass.depthTexture);
   godRaysPass.enabled = false;
-  composer.addPass(godRaysPass);
 
   const bloomPass = new UnrealBloomPass(resolution, tuning.bloomIntensity, tuning.bloomRadius, tuning.bloomThreshold);
-  composer.addPass(bloomPass);
 
   // Hue / Saturation (speed-based desaturation)
   const hueSatPass = new ShaderPass(HueSaturationShader);
   hueSatPass.uniforms.hue.value = 0;
   hueSatPass.uniforms.saturation.value = 0;
-  composer.addPass(hueSatPass);
 
   const chromaticPass = new ShaderPass(CHROMATIC_ABERRATION_SHADER);
   chromaticPass.uniforms.amount.value = tuning.chromaticBaseOffset;
-  composer.addPass(chromaticPass);
 
   const vignettePass = new ShaderPass(VignetteShader);
   vignettePass.uniforms.offset.value = tuning.vignetteOffset;
   vignettePass.uniforms.darkness.value = tuning.vignetteDarkness;
-  composer.addPass(vignettePass);
 
   // Rainbow god-ray overlay (waterfall mist prismatic arc)
   const rainbowPass = new ShaderPass(RAINBOW_SHADER);
   rainbowPass.uniforms.intensity.value = 0;
   rainbowPass.uniforms.aspectRatio.value = width / Math.max(1, height);
-  composer.addPass(rainbowPass);
 
-  const outputPass = new OutputPass();
-  composer.addPass(outputPass);
+  const displayPass = new DisplayTransformPass();
+  displayPass.enabled = false;
 
-  composer.userData = {
-    godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass, outputPass,
-  };
+  let ssaoPass: SSAOPass | undefined;
+  let smaaPass: SMAAPass | undefined;
   let disposed = false;
+  const effects: Pass[] = [];
+  let effectsDirty = true;
+  const rebuildEffects = () => {
+    effects.length = 0;
+    effects.push(scenePass);
+    if (ssaoPass) effects.push(ssaoPass);
+    effects.push(godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass);
+    if (smaaPass) effects.push(displayPass, smaaPass);
+    effectsDirty = true;
+  };
+  rebuildEffects();
 
   // Ambient occlusion — contact shadows in canyon crevices (wall/floor joins,
   // rock clusters). Sits right after the scene render so god rays/bloom/vignette
@@ -315,52 +379,41 @@ export function createComposerDriver(
   // effectPresence.ssao, so its code and its render targets only exist once a
   // frame asks for it (the import is kicked off from the pipeline's mount).
   const ensureSsaoPass = () => {
-    if (composer.userData.ssaoPass || disposed) return;
+    if (ssaoPass || disposed) return;
     const mod = ssaoPassModule.get();
     if (!mod) {
       void ssaoPassModule.load().catch(() => {});
       return;
     }
     const { SSAOPass } = mod;
-    const ssaoPass = new SSAOPass(scene, camera, width, height, 24);
+    ssaoPass = new SSAOPass(scene, camera, width, height, 24);
     ssaoPass.kernelRadius = 6;
     ssaoPass.minDistance = 0.0025;
     ssaoPass.maxDistance = 0.25;
     ssaoPass.output = SSAOPass.OUTPUT.Default;
-    composer.insertPass(ssaoPass, 1);
-    composer.userData.ssaoPass = ssaoPass;
+    rebuildEffects();
   };
 
-  // Edge AA, after the output transform: SMAA's edge detection is tuned for
-  // display-referred (sRGB) input. Added disabled-or-enabled on the first frame
-  // whose tier is SMAA; apply() flips `enabled` from then on.
+  // Edge AA, after the display transform: SMAA's edge detection is tuned for
+  // display-referred (sRGB) input. Added on the first frame whose tier is SMAA;
+  // apply() flips `enabled` from then on.
   const ensureSmaaPass = () => {
-    if (composer.userData.smaaPass || disposed) return;
+    if (smaaPass || disposed) return;
     const mod = smaaPassModule.get();
     if (!mod) {
       void smaaPassModule.load().catch(() => {});
       return;
     }
-    const smaaPass = new mod.SMAAPass();
-    composer.addPass(smaaPass);
-    composer.userData.smaaPass = smaaPass;
+    smaaPass = new mod.SMAAPass();
+    rebuildEffects();
   };
 
   // Hysteresis: a tier flip that only lasts a few frames (the adaptive valve
-  // wobbling on the Ultra ↔ High boundary) must not reallocate both targets.
+  // wobbling on the Ultra ↔ High boundary) must not reallocate the scene target.
   const aaLatch = createAaTierLatch();
 
-  /** Multisample both ping-pong targets; three reallocates them on next use. */
-  const setTargetSamples = (samples: number) => {
-    for (const target of [composer.renderTarget1, composer.renderTarget2]) {
-      if (target.samples === samples) continue;
-      target.samples = samples;
-      target.dispose();
-    }
-  };
-
-  return {
-    composer,
+  const driver: EffectsDriver = {
+    effects,
     apply(p) {
       bloomPass.enabled = p.bloom.enabled;
       bloomPass.strength = p.bloom.strength;
@@ -372,7 +425,7 @@ export function createComposerDriver(
       chromaticPass.enabled = p.chromatic.enabled;
       chromaticPass.uniforms.amount.value = p.chromatic.amount;
       if (p.ssao.enabled) ensureSsaoPass();
-      if (composer.userData.ssaoPass) composer.userData.ssaoPass.enabled = p.ssao.enabled;
+      if (ssaoPass) ssaoPass.enabled = p.ssao.enabled;
       hueSatPass.uniforms.saturation.value = p.hueSaturation.saturation;
 
       godRaysPass.enabled = p.godRays.enabled;
@@ -398,32 +451,58 @@ export function createComposerDriver(
 
       const aa = aaLatch.update(p.aa);
       if (aa === 'smaa') ensureSmaaPass();
-      if (composer.userData.smaaPass) composer.userData.smaaPass.enabled = aa === 'smaa';
-      setTargetSamples(aa === 'msaa4' ? 4 : 0);
+      const smaa = aa === 'smaa' && smaaPass !== undefined;
+      if (smaaPass) smaaPass.enabled = smaa;
+      displayPass.enabled = smaa;
+      scenePass.samples = aa === 'msaa4' ? 4 : 0;
     },
     render() {
+      if (disposed) return;
+      if (effectsDirty || installedDriver.get(gl) !== driver) {
+        gl.setEffects(effects);
+        installedDriver.set(gl, driver);
+        effectsDirty = false;
+      }
       const shadowMap = gl.shadowMap;
       const shadowAutoUpdate = shadowMap.autoUpdate;
+      const toneMapping = gl.toneMapping;
+      const outputColorSpace = gl.outputColorSpace;
+      if (displayPass.enabled) {
+        // The chain grades itself (DisplayTransformPass); three's blit must not grade again.
+        displayPass.grade = { toneMapping, outputColorSpace };
+        gl.toneMapping = THREE.NoToneMapping;
+        gl.outputColorSpace = THREE.LinearSRGBColorSpace;
+      }
       try {
-        composer.render();
+        gl.render(scene, camera);
       } finally {
         shadowMap.autoUpdate = shadowAutoUpdate;
+        gl.toneMapping = toneMapping;
+        gl.outputColorSpace = outputColorSpace;
       }
     },
-    setSize(w, h, pixelRatio) {
-      composer.setSize(w, h);
-      composer.setPixelRatio(pixelRatio);
+    setSize() {},
+    detach() {
+      if (installedDriver.get(gl) !== driver) return;
+      gl.setEffects([]);
+      installedDriver.delete(gl);
     },
     dispose() {
-      // EffectComposer.dispose() only frees its own render targets, not each
-      // pass's — SSAOPass owns three full-res render targets of its own.
+      driver.detach();
       disposed = true;
-      composer.userData.ssaoPass?.dispose();
-      outputPass.dispose();
-      composer.userData.smaaPass?.dispose();
-      composer.dispose();
+      // Each pass owns its targets; nothing frees them for us.
+      ssaoPass?.dispose();
+      smaaPass?.dispose();
+      displayPass.dispose();
+      godRaysPass.dispose();
+      bloomPass.dispose();
+      hueSatPass.dispose();
+      chromaticPass.dispose();
+      vignettePass.dispose();
+      rainbowPass.dispose();
     },
   };
+  return driver;
 }
 
 function nodeStructureFor(p: PostFrameParams): NodePostStructure {
@@ -468,7 +547,8 @@ function createNodeDriver(
 /**
  * PostProcessingPipeline — one post stack per renderer, never two.
  *
- * - `THREE.WebGLRenderer` (default GLSL product path): JSM `EffectComposer`.
+ * - `THREE.WebGLRenderer` (default GLSL product path): three's output effects
+ *   (`renderer.setEffects`, HalfFloat output buffer).
  * - Node `WebGPURenderer` (`?material=tsl`, WebGL2 or native WebGPU backend):
  *   three's node `RenderPipeline`, built in `postProcessing/nodePostPipeline.ts`.
  *

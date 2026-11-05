@@ -12,8 +12,8 @@
  *    none (EnhancedSky's `<fog>` attaches to its group; TrackManager sets the
  *    scene's linear `THREE.Fog` at Start), and fog is baked into every program
  *    that reads it, so warming against the menu scene compiled the wrong ones.
- * 2. `renderShaderWarmup` — one frame drawn through a throwaway composer
- *    (`createComposerDriver`, same passes as the run), called from a `useFrame`
+ * 2. `renderShaderWarmup` — one frame drawn through a throwaway effect chain
+ *    (`createComposerDriver`, same passes as the run, detached after the draw), called from a `useFrame`
  *    so R3F's own menu render overwrites the canvas before it is presented.
  *    That is what reaches the programs `compile()` cannot: every post pass
  *    (bloom mips, SSAO and its normal pass, SMAA, the shader passes, OutputPass),
@@ -173,6 +173,9 @@ export function renderShaderWarmup(
         driver.apply(params);
         gl.shadowMap.needsUpdate = true;
         driver.render();
+        // The renderer holds one effect list for every canvas render: the menu's
+        // own frame must not run through this throwaway chain.
+        driver.detach();
       });
     } catch (error) {
       console.warn(`[ShaderWarmup] warm frame (${mode} shadows) failed`, error);

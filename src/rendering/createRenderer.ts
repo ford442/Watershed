@@ -102,6 +102,13 @@ export async function createGameRenderer(
   const webglParameters: THREE.WebGLRendererParameters = {
     ...canvasProps,
     ...contextAttributes,
+    // three's HDR output (r185 `WebGLOutput`): the GLSL post chain is a
+    // `renderer.setEffects` list over this buffer, and three applies the one
+    // tone map + sRGB encode in its final blit (#534 E). With no effects
+    // installed, a canvas render still goes through it (scene → HalfFloat
+    // target → graded blit), so the editor and the no-post fallback grade the
+    // same way. Ignored on the node renderers.
+    outputBufferType: THREE.HalfFloatType,
   };
 
   // `context`: a WebGL2 context already created on this canvas with exactly
