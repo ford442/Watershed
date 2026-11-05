@@ -13,6 +13,7 @@
 - **Why User Idea, not Fix First.** Nothing on `main` is broken. The one red is inside an unmerged PR, it is a budget line, and its session owns it.
 - **Why #534.** #533 is in flight (#543). #535 B.3 (`SweStepper`) and #536 lean on the sim/SWE surface that #543 rewrites. #534 is open, unstarted and mostly disjoint from it, and its D.3 (drei split) is the only phase on the board that earns entry headroom. D.2 (wasm preload in `vite.config.ts`) waits for #543.
 - **Dispatch-B is #535 A + D.4** (typed validators, the TSL dual-factory casts, `no-explicit-any` scoped, six table tests). It touches no file that #534 or #543 touch.
+- **UPDATE 2026-11-05:** overnight, #543 (#533 A–C), #545 (#534 A–D), #546 (#535 A–D, most of Dispatch-B) and #547 (#536 A) merged, and #533–#536 are closed. Noah filed the Dispatch-B draft as **#548**. It was expanded from the Gemini / gpt-oss / Grok reviews and re-cut to the remainder: `useLevel` carries `LevelData`; `gameplay` / `washedOutGap` added to the schemas; dead `JSONLevelLoader` removed; the NaN waypoint cast tested first; four table tests (`notes/issue-548-expanded.md`). On `main` now: entry ceiling 747,000 B, total 3,744,000 B, lint ratchet 18, 38 non-test casts.
 - **Over-report, recorded:** #522 was closed `completed` at 05:47Z today with only Phase A on `main`.
 - **Context gap:** no chat-history tools this session. Sources: the tree, GitHub, and the live URL.
 
