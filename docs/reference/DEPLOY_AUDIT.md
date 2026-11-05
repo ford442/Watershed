@@ -15,6 +15,23 @@ fetches both URLs, `deploy.py` clones UTF-8 **with a BOM** (correct under any la
 repo); `public/.htaccess` only unsets them for this directory — the web build is single-threaded
 and must not require COOP/COEP.
 
+## Owner runbook (the one run that needs `DEPLOY_TOKEN`)
+
+```bash
+export DEPLOY_TOKEN="<token from the VPS env>"        # only steps 1, 3 and 5 use it
+python3 deploy.py --list-remote                        # 1. note the 1438-byte root HTML: the DirectoryIndex shadow
+pnpm deploy:rehearse                                   # 2. build, budget, local verify:deploy, deploy.py --dry-run --offline (no token, localhost only)
+python3 build_and_patch.py                             # 3. build:full + upload; the zip is written hashed assets -> wasm pair -> the rest -> index.html -> BUILD_ID
+pnpm verify:deploy                                     # 4. against the LIVE directory URL; must print "VERDICT: LIVE" (this is the first check of .htaccess, charset and cache headers)
+python3 deploy.py --prune-orphans --dry-run            # 5. lists remote files build/ lacks; deletes nothing (`--yes` is refused: no delete endpoint is known)
+```
+
+Stop at the first non-zero exit; a failed rehearsal (2) means do not run 3. Limits: the rehearsal's local server does
+not run `public/.htaccess`, so only step 4 proves the vhost; and the server's extraction order of the zip is not
+verified from here, so "index.html last" is the order the bundle is written in, not a measured server behaviour.
+
+---
+
 Read-only, full round-trip audit of `pnpm build` → `deploy.py` → `https://test.1ink.us/watershed/`.
 No credential was requested, printed, or committed; `DEPLOY_TOKEN` was unset for the whole audit
 and every finding that depends on it says so explicitly. `deploy.py`, `build_and_patch.py`, and
