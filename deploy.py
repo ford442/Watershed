@@ -9,6 +9,15 @@ Usage:
   python3 deploy.py               # zip build/ and upload it
   python3 deploy.py --dry-run     # package and report, no upload
   python3 deploy.py --manifest    # TSV of what would ship (verify_deploy.mjs)
+  python3 deploy.py --dry-run --offline   # exact upload list + order, no network at all
+  python3 deploy.py --prune-orphans [--dry-run]   # list remote files build/ does not contain
+  python3 deploy.py --prune-orphans --yes         # reserved: deleting is not implemented
+
+Upload order: the bundle's members are written in this order (see UPLOAD_TIERS) so a
+half-finished upload never leaves an index.html naming files that are not there yet.
+Hashed assets and the wasm pair go first; index.html (and its DirectoryIndex clones)
+then BUILD_ID go LAST. DEPLOY_OFFLINE=1 is the same as --offline (verify_deploy.mjs
+spawns `--manifest` and the rehearsal sets it, so neither touches the network).
 
 The storage manager receives the whole build as one zip archive, extracts it
 and pushes the files over one persistent SFTP connection. The FTP/SFTP
@@ -265,6 +274,40 @@ def should_skip(rel_s: str, local_size: int, skip_sizes: Dict[str, int]) -> bool
     return skip_sizes.get(rel_s) == local_size
 
 
+# Upload order. A visitor who loads index.html mid-deploy must find everything it
+# names already in place, so the entry document goes last and BUILD_ID (the "this
+# deploy is complete" stamp verify:deploy compares against) goes after it.
+UPLOAD_TIERS = (
+    "hashed assets",
+    "wasm pair",
+    "other files",
+    "index.html",
+    "DirectoryIndex clones",
+    "BUILD_ID",
+)
+
+
+def upload_rank(rel_s: str, clone: bool = False) -> int:
+    """Position of a bundle member in UPLOAD_TIERS (lower uploads earlier)."""
+    if clone:
+        return 4
+    if rel_s == "BUILD_ID":
+        return 5
+    if rel_s == "index.html":
+        return 3
+    if rel_s in NATIVE_PAIR:
+        return 1
+    if is_hashed_asset(rel_s):
+        return 0
+    return 2
+
+
+def upload_sort_key(rel_s: str, clone: bool = False) -> Tuple[int, int, str]:
+    # Within the wasm pair keep glue before wasm (NATIVE_PAIR order); otherwise by name.
+    pair_pos = NATIVE_PAIR.index(rel_s) if rel_s in NATIVE_PAIR else 0
+    return (upload_rank(rel_s, clone), pair_pos, rel_s)
+
+
 def build_zip(
     build_path: Path,
     skip_sizes=None,
@@ -311,16 +354,28 @@ def build_zip(
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for n, local_size in skipped:
             _log(f"  = {n} ({local_size} bytes, hashed asset unchanged)")
-        for file, rel_s, local_size in planned:
-            zf.write(file, rel_s)
-            _log(f"  + {rel_s} ({local_size} bytes)")
-        for rel_s, payload in sorted(extra_members.items()):
-            zf.writestr(rel_s, payload)
-            _log(f"  + {rel_s} (cloned from index.html as UTF-8 + BOM, {len(payload)} bytes)")
+        # (sort key, name, local file or None, clone payload or None)
+        members = [(upload_sort_key(rel_s), rel_s, file, None) for file, rel_s, _ in planned]
+        members += [
+            (upload_sort_key(rel_s, clone=True), rel_s, None, payload)
+            for rel_s, payload in extra_members.items()
+        ]
+        for _, rel_s, file, payload in sorted(members, key=lambda m: m[0]):
+            if file is not None:
+                zf.write(file, rel_s)
+                _log(f"  + {rel_s} ({file.stat().st_size} bytes)")
+            else:
+                zf.writestr(rel_s, payload)
+                _log(f"  + {rel_s} (cloned from index.html as UTF-8 + BOM, {len(payload)} bytes)")
     return buf.getvalue()
 
 
-def deploy_bundle(build_path: Path, dry_run: bool = False, manifest: bool = False) -> bool:
+def deploy_bundle(
+    build_path: Path,
+    dry_run: bool = False,
+    manifest: bool = False,
+    offline: bool = False,
+) -> bool:
     """Zip the build and upload it as a single bundle (unless dry_run)."""
     target_folder = DEPLOY_FOLDER or PROJECT_NAME
 
@@ -329,13 +384,20 @@ def deploy_bundle(build_path: Path, dry_run: bool = False, manifest: bool = Fals
     if "target_folder" in locals() and target_folder:
         target_folder_for_sizes = target_folder
     target_site_for_sizes = globals().get("DEPLOY_TARGET", "test")
-    _log("Checking remote file sizes...")
-    remote = fetch_remote_sizes(target_folder_for_sizes, target_site_for_sizes)
+    if not offline:
+        _log("Checking remote file sizes...")
+    if offline:
+        _log("  offline: not asking the server for sizes; every file is listed")
+        remote = RemoteSizesResult({}, ok=False, error="offline")
+    else:
+        remote = fetch_remote_sizes(target_folder_for_sizes, target_site_for_sizes)
     skip_sizes = remote.files if remote.ok else {}
 
     extra_members: Dict[str, bytes] = {}
     index_path = build_path / "index.html"
-    if not remote.ok:
+    if not remote.ok and offline:
+        pass
+    elif not remote.ok:
         _log(
             "WARNING: sizes endpoint unreachable "
             f"({remote.error or 'unknown'}). Skip set is empty;\n"
@@ -370,10 +432,12 @@ def deploy_bundle(build_path: Path, dry_run: bool = False, manifest: bool = Fals
                 for name in names:
                     print(f"{name}\t{zf.getinfo(name).file_size}")
                 return True
-            print(f"Dry run: {len(zip_bytes) / 1024:.1f} KB archive, {len(names)} file(s) that WOULD upload:")
-            for name in names:
+            print(f"Dry run: {len(zip_bytes) / 1024:.1f} KB archive, {len(names)} file(s) that WOULD upload, in this order:")
+            clones = set(extra_members)
+            for i, name in enumerate(names, 1):
                 info = zf.getinfo(name)
-                print(f"  {info.file_size:10d}  {name}")
+                tier = UPLOAD_TIERS[upload_rank(name, clone=name in clones)]
+                print(f"  {i:4d}. {info.file_size:10d}  {name}  [{tier}]")
         print(
             f"\nDry run: would POST to {CONTABO_BASE_URL}/api/deploy/{PROJECT_NAME}/bundle "
             f"(target_folder={target_folder!r}). Stopping before network upload."
@@ -415,6 +479,58 @@ def deploy_bundle(build_path: Path, dry_run: bool = False, manifest: bool = Fals
         return False
 
 
+def prune_orphans(build_path: Path, offline: bool, yes: bool, dry_run: bool) -> int:
+    """List remote files that build/ does not contain. Never deletes (see --yes)."""
+    if not DEPLOY_TOKEN:
+        print(
+            "prune-orphans: DEPLOY_TOKEN is not set, so nothing was requested (exit 0).\n"
+            "With the token it would:\n"
+            f"  1. GET {CONTABO_BASE_URL.rstrip('/')}/api/deploy/{PROJECT_NAME}/sizes   (X-Deploy-Token)\n"
+            f"  2. list every remote file that {BUILD_DIR}/ does not contain, largest first\n"
+            "  3. stop there. Deleting needs --yes, and is not implemented (see below).\n"
+            "Owner step:\n"
+            '  export DEPLOY_TOKEN="<token from the VPS env>"\n'
+            "  python3 deploy.py --prune-orphans --dry-run"
+        )
+        return 0
+    if offline:
+        print("prune-orphans: --offline set; nothing to compare against the build (exit 0).")
+        return 0
+    target_folder = DEPLOY_FOLDER or PROJECT_NAME
+    remote = fetch_remote_sizes(target_folder, globals().get("DEPLOY_TARGET", "test"))
+    if not remote.ok:
+        print(
+            f"BLOCKED — needs owner: sizes endpoint unreachable ({remote.error or 'unknown'}).\n"
+            "Do not treat this as an empty remote tree."
+        )
+        return 1
+    if not build_path.is_dir():
+        print(f"ERROR: Build directory '{BUILD_DIR}/' does not exist; every remote file would look orphaned.")
+        return 1
+    build_files = local_build_files(build_path)
+    shadows = set(directory_index_shadows(remote.files, build_files))
+    orphans = sorted(
+        ((rel, size) for rel, size in remote.files.items() if rel not in build_files),
+        key=lambda item: (-item[1], item[0]),
+    )
+    total = sum(size for _, size in orphans)
+    print(f"\n=== Remote files '{BUILD_DIR}/' does not contain: {len(orphans)} ({total} bytes) ===")
+    for rel, size in orphans:
+        tag = "  [DirectoryIndex shadow candidate]" if rel in shadows else ""
+        print(f"  {size:10d}  {rel}{tag}")
+    if not yes:
+        print("\nList only. Nothing deleted (deleting needs --yes).")
+        return 0
+    if dry_run:
+        print("\n--yes with --dry-run: list only. Nothing deleted.")
+        return 0
+    print(
+        "\nREFUSED: --yes would delete, but this repo knows no delete endpoint on the deploy "
+        "service (only /sizes, /bundle, /health). Nothing deleted."
+    )
+    return 2
+
+
 def main():
     parser = argparse.ArgumentParser(description="Deploy build/ to storage.noahcohn.com")
     parser.add_argument(
@@ -432,9 +548,29 @@ def main():
         action="store_true",
         help="Print zip members as path<TAB>size (same skip rules as a real deploy) and exit.",
     )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Never contact the server (also DEPLOY_OFFLINE=1): list the full upload, in upload order.",
+    )
+    parser.add_argument(
+        "--prune-orphans",
+        action="store_true",
+        help="List remote files that build/ does not contain. Without DEPLOY_TOKEN: say what it would ask for, exit 0.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="With --prune-orphans: confirm deletion. Reserved — deleting is not implemented, so this refuses (exit 2).",
+    )
     args = parser.parse_args()
+    offline = args.offline or os.environ.get("DEPLOY_OFFLINE", "") not in ("", "0")
 
     build_path = Path(BUILD_DIR)
+    if args.prune_orphans:
+        sys.exit(prune_orphans(build_path, offline, args.yes, args.dry_run))
+    if args.yes:
+        parser.error("--yes only means something with --prune-orphans")
     if args.list_remote:
         print(f"\n=== Remote listing for '{PROJECT_NAME}' ===\n")
         if not DEPLOY_TOKEN:
@@ -453,6 +589,9 @@ def main():
         sys.exit(1)
 
     if not args.dry_run and not args.manifest:
+        if offline:
+            print("ERROR: --offline / DEPLOY_OFFLINE cannot be combined with a real upload.", file=sys.stderr)
+            sys.exit(1)
         if not DEPLOY_TOKEN:
             print(
                 "ERROR: DEPLOY_TOKEN is not set. Export the deploy token before deploying:\n"
@@ -475,6 +614,7 @@ def main():
         build_path,
         dry_run=args.dry_run,
         manifest=args.manifest,
+        offline=offline,
     )
 
     if args.manifest:
