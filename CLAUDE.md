@@ -266,7 +266,7 @@ The water shader is solid. Two tweaks to match the concept:
 
 ### Step 4 — Post-processing / atmosphere ✅ (mostly)
 Shipped in `PostProcessingPipeline.tsx`, but **not** via `@react-three/postprocessing`: on the GLSL path
-the stack is three's own JSM `EffectComposer`; on `?material=tsl` it is three's node `RenderPipeline`
+the stack is three's own HDR output (`renderer.setEffects` over a HalfFloat output buffer, JSM passes; #534 E); on `?material=tsl` it is three's node `RenderPipeline`
 (`src/components/postProcessing/nodePostPipeline.ts`, same passes, same per-frame params). Neither `@react-three/postprocessing` nor the standalone
 `postprocessing` package is a dependency — both were dead weight (zero imports) and have been removed,
 along with the `vendor-post` `manualChunks` bucket in `vite.config.ts`.

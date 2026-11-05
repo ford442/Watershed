@@ -3,7 +3,8 @@
  *
  * The game can't serve as a headless reference frame (SwiftShader starves it and
  * the run never advances), so this builds a fixed lit scene and renders it with:
- *   - the GLSL `EffectComposer` driver on `THREE.WebGLRenderer`, and
+ *   - the GLSL driver (`renderer.setEffects` over three's HalfFloat output) on
+ *     `THREE.WebGLRenderer`, and
  *   - the node `RenderPipeline` on `WebGPURenderer({ forceWebGL: true })`,
  * with the same frozen `PostFrameParams`, then compares Rec.709 mean luma of the
  * presented (tone-mapped, sRGB-encoded) pixels. Driven by
@@ -53,7 +54,7 @@ export const PARITY_SCENARIOS: ParityScenario[] = [
 export interface ParityResult {
   scenario: string;
   glslLuma: number;
-  /** The GLSL chain with its OutputPass switched off — the pre-#466 image. */
+  /** The GLSL chain with three's grade switched off — the pre-#466 image. */
   glslLinearLuma: number;
   nodeLuma: number;
   /** |glsl − node| / max(node, ε). */
@@ -195,7 +196,13 @@ function makeCanvas(): HTMLCanvasElement {
 export async function runPostParity(): Promise<ParityResult[]> {
   const { scene, camera } = buildScene();
 
-  const glsl = new THREE.WebGLRenderer({ canvas: makeCanvas(), antialias: false, preserveDrawingBuffer: true });
+  const glsl = new THREE.WebGLRenderer({
+    canvas: makeCanvas(),
+    antialias: false,
+    preserveDrawingBuffer: true,
+    // As createGameRenderer builds it: the post chain is `setEffects` over three's HDR output.
+    outputBufferType: THREE.HalfFloatType,
+  });
   glsl.setPixelRatio(1);
   glsl.setSize(PARITY_WIDTH, PARITY_HEIGHT, false);
   applyGrade(glsl);
@@ -219,10 +226,12 @@ export async function runPostParity(): Promise<ParityResult[]> {
     const glslStats = frameStats(glsl.domElement);
     const glslPng = readback.toDataURL('image/png');
 
-    const outputPass = driver.composer.passes.find((p) => (p as { isOutputPass?: boolean }).isOutputPass);
-    if (outputPass) outputPass.enabled = false;
+    // three's final blit with no grade: tone map off, linear output — the pre-#466 image.
+    glsl.toneMapping = THREE.NoToneMapping;
+    glsl.outputColorSpace = THREE.LinearSRGBColorSpace;
     driver.render();
     const glslLinearLuma = frameStats(glsl.domElement).luma;
+    applyGrade(glsl);
     driver.dispose();
 
     const pipeline = createNodePostPipeline(node, scene, camera, {

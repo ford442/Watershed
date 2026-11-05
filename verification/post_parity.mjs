@@ -94,7 +94,7 @@ try {
       console.log(
         `${ok ? '✓' : '✗'} ${r.scenario.padEnd(18)} glsl=${r.glslLuma.toFixed(4)} node=${r.nodeLuma.toFixed(4)} ` +
           `Δ=${pct(r.relativeDelta)}  edge glsl/node=${(r.glslEdge * 1000).toFixed(2)}/${(r.nodeEdge * 1000).toFixed(2)}‰` +
-          `  (glsl without OutputPass=${r.glslLinearLuma.toFixed(4)})`,
+          `  (glsl without the grade=${r.glslLinearLuma.toFixed(4)})`,
       );
     }
     const failed = report.results.filter((r) => !(r.relativeDelta < EPSILON));

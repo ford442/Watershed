@@ -338,6 +338,16 @@ afterAll(() => {
 describe('createGameRenderer', () => {
   const canvasProps = { canvas: document.createElement('canvas') };
 
+  it('builds the GLSL renderer with three\'s HDR output, which the post chain\'s setEffects needs (#534 E)', async () => {
+    const renderer = await createGameRenderer(canvasProps, { preference: 'webgl' });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // r185 logs "setEffects() requires outputBufferType set to HalfFloatType" otherwise.
+    renderer.setEffects([]);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+    renderer.dispose();
+  });
+
   it('returns WebGLRenderer when preference is webgl', async () => {
     const renderer = await createGameRenderer(canvasProps, { preference: 'webgl' });
     expect(brandOf(renderer).isWebGLRenderer).toBe(true);

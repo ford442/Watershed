@@ -13,6 +13,7 @@ vi.mock('@react-three/fiber', () => ({
 
 import { useScreenshotApi } from './useScreenshotApi';
 import type { ScreenshotApiContext } from './screenshotApi';
+import { useGameStore } from '../systems/GameState';
 
 function Probe({ spawnPoints }: { spawnPoints: ScreenshotApiContext['spawnPoints'] }) {
   const vehicleRef = React.useRef(null);
@@ -56,11 +57,17 @@ describe('useScreenshotApi (#521 C2)', () => {
         'getSplitChecksums',
         'getSplits',
         'isScriptedReady',
+        'setQuality',
         'stepScripted',
         'teleportToSegment',
         'teleportToZ',
       ].sort(),
     );
+    // setQuality writes the store's preset, as the adaptive ladder does (quality_drop_trace.mjs).
+    const before = useGameStore.getState().settings.quality;
+    api.setQuality('low');
+    expect(useGameStore.getState().settings.quality).toBe('low');
+    useGameStore.getState().setSettings({ quality: before });
     // No vehicle body yet: teleports report that they did not land.
     expect(api.teleportToSegment(3)).toBe(false);
 
