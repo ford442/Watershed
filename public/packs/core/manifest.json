@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "pack": "core",
+  "stamp": "3b800008d0cacae3",
+  "tools": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "meshoptimizer": "1.3.0"
+  },
+  "assets": {
+    "raft.hull.default": {
+      "file": "raft.hull.default.glb",
+      "bytes": 38840,
+      "sha256": "ccf24aebccd01a3a619d80a70611d93b2340f114176828f664a447679bd541ae",
+      "sourceSha256": "fa5ac8fbec1306eebe4d1a5411224085a7792c55faeab1121b225aeb703a6567",
+      "bounds": {
+        "min": [
+          -1.06,
+          -0.1562,
+          -1.4748
+        ],
+        "max": [
+          1.06,
+          0.255,
+          1.5273
+        ],
+        "center": [
+          0,
+          0.0494,
+          0.0262
+        ],
+        "radius": 1.8491
+      },
+      "lods": [
+        {
+          "distance": 0,
+          "triangles": 2356
+        },
+        {
+          "distance": 14,
+          "triangles": 1060
+        },
+        {
+          "distance": 40,
+          "triangles": 352
+        }
+      ],
+      "textures": false
+    }
+  }
+}

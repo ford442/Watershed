@@ -57,6 +57,11 @@ const EXPECTED_PASSENGERS = [
   'Rock031_1K-JPG_Roughness.jpg',
   'collision.wav',
   'levels/README.md',
+  // Authored asset packs (#536 A; scripts/build-assets.mjs from assets/src/). Each
+  // .glb is fetched as <file>?v=<stamp>, the stamp read from its pack's manifest;
+  // check 5b below holds the manifest and its files to one build.
+  'packs/core/manifest.json',
+  'packs/core/raft.hull.default.glb',
   'levels/autumn-rapids.json',
   'levels/devils-gorge.json',
   'levels/gentle-creek.json',
@@ -168,7 +173,8 @@ const HELP = `check-build-manifest.mjs — assert the unhashed-passenger contrac
                       (#485 A); with --build-log, also that vite emitted no
                       "dynamic import will not move module into another chunk" warning
   --budget            enforce build-budget.json (entry / boot JS / vendor-three / per-chunk /
-                      all-chunks JS ceilings, wasm counted once) and print the chunk table (#485 D)
+                      all-chunks JS ceilings, wasm counted once, per-pack ceilings) and print
+                      the chunk table (#485 D, #536)
   --budget-file <f>   budget to enforce          (default: build-budget.json)
   --build-log <file>  captured \`vite build\` stdout+stderr to scan (used by --chunks)
   -h, --help          this text
@@ -375,6 +381,44 @@ if (!nativeJs || !nativeWasm) {
   );
 }
 
+/* --- 5b. each asset pack's manifest describes the files beside it (#536) --- */
+
+/* The runtime fetches every .glb as <file>?v=<stamp> and rejects bytes whose size or sha256
+ * disagree with the manifest (src/assets/AssetPack.ts). So a deploy where the manifest and
+ * a .glb came from different builds would fail at load: catch it here instead. */
+const packManifests = manifest.filter((e) => /^packs\/[^/]+\/manifest\.json$/.test(e.path));
+for (const pm of packManifests) {
+  const packDir = path.dirname(pm.path);
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(path.join(buildDir, pm.path), 'utf8'));
+  } catch (err) {
+    failures.push(`${pm.path} is not JSON: ${err instanceof Error ? err.message : err}`);
+    continue;
+  }
+  const listed = new Set();
+  for (const [name, entry] of Object.entries(parsed.assets ?? {})) {
+    const rel = `${packDir}/${entry.file}`;
+    listed.add(rel);
+    const built = byPath.get(rel);
+    if (!built) {
+      failures.push(`${pm.path} lists ${name} → ${entry.file}, which is not in ${opts.buildDir}/${packDir}/`);
+      continue;
+    }
+    check(
+      built.size === entry.bytes && built.sha256 === entry.sha256,
+      `${rel} (${built.size} B, ${built.sha256.slice(0, 12)}…) is not the file ${pm.path} describes ` +
+        `(${entry.bytes} B, ${String(entry.sha256).slice(0, 12)}…) — run \`pnpm build:assets\``,
+    );
+  }
+  for (const e of manifest) {
+    if (path.dirname(e.path) === packDir && e.path !== pm.path) {
+      check(listed.has(e.path), `${e.path} is in a pack directory but not in ${pm.path}`);
+    }
+  }
+  notes.push(`pack ${parsed.pack}: stamp ${parsed.stamp}, ${listed.size} asset(s) match the manifest`);
+}
+
 /* --- 6. retired lanes stay retired -------------------------------- */
 
 for (const rel of RETIRED_PATHS) {
@@ -571,6 +615,24 @@ if (opts.budget) {
       if (!target || actual === undefined) continue;
       const over = actual - target;
       process.stdout.write(`${label} target ${kB(target)}: ${over > 0 ? `${kB(over)} still to remove` : 'met'}\n`);
+    }
+
+    /* Asset packs (#536 B.4): never JS, never in the boot closure; each has its own ceiling. */
+    const packBytes = new Map();
+    for (const e of manifest) {
+      const m = /^packs\/([^/]+)\//.exec(e.path);
+      if (m) packBytes.set(m[1], (packBytes.get(m[1]) ?? 0) + e.size);
+    }
+    for (const [pack, bytes] of [...packBytes].sort()) {
+      const limit = budget.packMaxBytes?.[pack];
+      process.stdout.write(
+        `${`pack ${pack} (glb + manifest)`.padEnd(46)}${pad(kB(bytes), 11)}${pad('', 11)}${pad(limit ? kB(limit) : '-', 11)}  ` +
+          `${limit && bytes <= limit ? 'ok' : 'OVER'}\n`,
+      );
+      check(limit !== undefined, `--budget: pack '${pack}' has no ceiling in build-budget.json packMaxBytes`);
+      if (limit !== undefined) {
+        check(bytes <= limit, `--budget: pack '${pack}' is ${bytes} B, over its ${limit} B ceiling (+${bytes - limit} B)`);
+      }
     }
 
     /* ---- the gates ---- */

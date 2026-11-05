@@ -127,12 +127,13 @@ src/
 │
 ├── physics/                     # Rapier worker proxy, collider registry, water-force tick
 ├── maps/                        # Authored JSON + registry.ts
+├── assets/                      # Authored glTF packs: manifest validator, loadPack, AssetRegistry, useAssetInstance (#536)
 ├── configs/ / constants/ / hooks/ / materials/ / rendering/
 ├── utils/                       # RiverShader, validators
 └── formats/                     # level / reach schemas
 ```
 
-Repo also has `public/` (textures, WASM, levels), `emscripten/` (optional native WASM), `docs/`, and build scripts. There is **no** AssemblyScript `assembly/` tree.
+Repo also has `public/` (textures, WASM, levels, `packs/` built from `assets/src/` by `scripts/build-assets.mjs` — see `docs/reference/ASSET_PACKS.md`), `emscripten/` (optional native WASM), `docs/`, and build scripts. There is **no** AssemblyScript `assembly/` tree.
 
 ---
 

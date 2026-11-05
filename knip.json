@@ -5,7 +5,8 @@
     "src/**/*.perf.test.{ts,tsx}",
     "src/debug/postParity.ts",
     "src/systems/water/sweParity.ts",
-    "scripts/generate-sounds.mjs"
+    "scripts/generate-sounds.mjs",
+    "scripts/author/raft-hull.mjs"
   ],
   "project": [
     "src/**/*.{ts,tsx}"

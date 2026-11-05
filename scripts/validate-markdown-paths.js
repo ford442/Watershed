@@ -20,7 +20,8 @@ const DEFAULT_INPUTS = [
 ];
 
 const PATH_PATTERNS = [
-  /src\/[A-Za-z0-9._/-]+/g,
+  // Not `assets/src/…`: authored asset sources (#536) are their own tree, not the app's src/.
+  /(?<!assets\/)src\/[A-Za-z0-9._/-]+/g,
   /docs\/(?:reference|archive)\/[A-Za-z0-9._/-]+/g,
 ];
 

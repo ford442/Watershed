@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const listPath = join(root, 'scripts', 'strict-buffers.json');
-const RATCHETED_DIRS = ['src/terrain', 'src/sim', 'src/systems/pools', 'src/systems/ghost'];
+const RATCHETED_DIRS = ['src/assets', 'src/terrain', 'src/sim', 'src/systems/pools', 'src/systems/ghost'];
 
 const isSource = (rel) =>
   /\.tsx?$/.test(rel) && !/\.(test|spec)\.tsx?$/.test(rel) && !rel.endsWith('.d.ts') &&
