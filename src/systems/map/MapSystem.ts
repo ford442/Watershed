@@ -5,7 +5,7 @@
  * - Define base chunk interface for all biomes
  * - Handle chunk lifecycle (load/update/unload)
  * - Coordinate chunk treadmill based on player position
- * - Load and parse JSON level files
+ * - Serve authored segment configs from parsed JSON levels
  *
  * Types and path/spawn generation live in sibling modules and are re-exported
  * here so existing `from '../map/MapSystem'` imports stay stable.
@@ -18,7 +18,6 @@ import { normalizeBiomeId } from '../../configs/biomes';
 import type {
   BaseMapChunk,
   LevelData,
-  LevelSegment,
   MapConfig,
   MapManager,
   SegmentProgressionConfig,
@@ -178,81 +177,14 @@ class DefaultMapManager implements MapManager {
 export { LEGACY_BIOME_ALIASES as JSON_BIOME_NAME_MAP, normalizeBiomeId } from '../../configs/biomes';
 
 // =============================================================================
-// JSON LEVEL LOADER
-// =============================================================================
-
-/**
- * Loads and parses JSON level files into MapSystem-compatible format
- */
-class JSONLevelLoader {
-  /**
-   * Fetch and parse a level from URL
-   */
-  static async loadFromUrl(url: string): Promise<LevelData> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to load level: ${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
-    return this.validateAndNormalize(data);
-  }
-
-  /**
-   * Parse level data from object (already loaded JSON)
-   */
-  static loadFromObject(data: unknown): LevelData {
-    return this.validateAndNormalize(data);
-  }
-
-  /**
-   * Validate and normalize level data
-   */
-  private static validateAndNormalize(data: unknown): LevelData {
-    if (!hasLevelSections(data)) {
-      throw new Error('Invalid level data: missing required sections (metadata, world, segments, spawns)');
-    }
-
-    // Ensure segments are sorted by index
-    const segments = [...data.segments].sort((a: LevelSegment, b: LevelSegment) => a.index - b.index);
-
-    // Normalize waypoints to Vector3
-    const waypoints = data.world.track.waypoints.map((wp) =>
-      new THREE.Vector3(wp[0], wp[1], wp[2])
-    );
-
-    return {
-      metadata: data.metadata,
-      world: {
-        ...data.world,
-        track: {
-          ...data.world.track,
-          waypoints,
-        },
-      },
-      segments,
-      spawns: data.spawns,
-      decorationPools: data.decorationPools,
-      // LevelData types the waypoints as authored (number[][]); this path hands back
-      // Vector3s, which JSONMapManager.loadLevel reads with the matching cast.
-    } as unknown as LevelData;
-  }
-}
-
-// =============================================================================
 // JSON-DRIVEN MAP MANAGER
 // =============================================================================
 
 /**
- * MapManager that loads chunks from JSON level data
- * Replaces inline generation with JSON-driven authoring
+ * MapManager that serves authored segment configs from parsed level JSON.
+ * Levels arrive already parsed (maps/registry.ts, assertLevelData for player
+ * levels); the schema check is utils/levelValidator, a lazy chunk.
  */
-/** The four sections every level has. The full schema check is utils/levelValidator (a lazy chunk). */
-function hasLevelSections(data: unknown): data is LevelData {
-  if (typeof data !== 'object' || data === null) return false;
-  const d = data as Partial<Record<keyof LevelData, unknown>>;
-  return Boolean(d.metadata && d.world && d.segments && d.spawns);
-}
-
 export class JSONMapManager implements MapManager {
   chunks: BaseMapChunk[] = [];
   currentChunkIndex = 0;
@@ -293,14 +225,6 @@ export class JSONMapManager implements MapManager {
     for (let i = 0; i < initialCount; i++) {
       this.chunks.push(this.generateChunk(i));
     }
-  }
-
-  /**
-   * Load level from URL
-   */
-  async loadFromUrl(url: string): Promise<void> {
-    const levelData = await JSONLevelLoader.loadFromUrl(url);
-    this.loadLevel(levelData);
   }
 
   getChunkAtPosition(position: THREE.Vector3): BaseMapChunk | null {
