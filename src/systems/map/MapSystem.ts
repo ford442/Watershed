@@ -216,8 +216,12 @@ export class JSONMapManager implements MapManager {
     this.currentChunkIndex = 0;
     this.nextChunkId = 0;
 
-    // Create main curve from waypoints
-    const waypoints = levelData.world.track.waypoints as unknown as THREE.Vector3[];
+    // Main curve from the authored [x, y, z] tuples (as useLevel and ReachNormalizer
+    // do). Fed raw, CatmullRomCurve3 reads .x/.y/.z off arrays and every chunk point
+    // came out NaN. Nothing in a run reads these chunks (callers use getChunkConfig).
+    const waypoints = levelData.world.track.waypoints.map(
+      (p) => new THREE.Vector3(p[0], p[1], p[2]),
+    );
     this.mainCurve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.5);
 
     // Generate initial chunks
