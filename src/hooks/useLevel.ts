@@ -60,17 +60,23 @@ export interface BiomeConfig {
   };
 }
 
+/**
+ * A segment's config as level.schema.json authors it: only `index` and `difficulty`
+ * are required, so `type` / `meanderStrength` / `verticalBias` / `forwardMomentum`
+ * are optional here too. Readers default at the read site; the document is never
+ * filled in.
+ */
 export interface SegmentConfig {
   index: number;
   name?: string;
-  type: 'normal' | 'waterfall' | 'pond' | 'splash' | 'rapids';
+  type?: 'normal' | 'waterfall' | 'pond' | 'splash' | 'rapids';
   biomeOverride?: string;
   difficulty: number;
   width?: number;
   lengthMultiplier?: number;
-  meanderStrength: number;
-  verticalBias: number;
-  forwardMomentum: number;
+  meanderStrength?: number;
+  verticalBias?: number;
+  forwardMomentum?: number;
   decorations?: Record<string, number | DecorationPlacement[]>;
   physics?: {
     gravityMultiplier?: number;
@@ -111,8 +117,13 @@ export interface NormalizedLevelState {
 
 export interface LevelState {
   loadingState: LevelLoadingState;
-  /** The document as loaded — `unknown` until it validates (then `normalizedState` holds it). */
-  levelData: unknown;
+  /** The validated level (`validationResult.data`); `null` until a load passes. */
+  levelData: LevelData | null;
+  /**
+   * The last document handed to `loadFromJSON`, valid or not. A failed load keeps the
+   * invalid document here so `reloadCurrent` retries it.
+   */
+  rawDocument: unknown;
   normalizedState: NormalizedLevelState | null;
   validationResult: ValidationResult<LevelData> | null;
   error: string | null;
@@ -132,7 +143,8 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 export interface UseLevelReturn {
   // State
   loadingState: LevelLoadingState;
-  levelData: unknown;
+  levelData: LevelData | null;
+  rawDocument: unknown;
   normalizedState: NormalizedLevelState | null;
   validationResult: ValidationResult<LevelData> | null;
   error: string | null;
@@ -156,6 +168,7 @@ export function useLevel(): UseLevelReturn {
   const [state, setState] = useState<LevelState>({
     loadingState: 'idle',
     levelData: null,
+    rawDocument: null,
     normalizedState: null,
     validationResult: null,
     error: null,
@@ -213,7 +226,7 @@ export function useLevel(): UseLevelReturn {
         type: seg.type || 'normal',
         biome: seg.biomeOverride || data.world.biome.baseType,
         points,
-        config: seg as SegmentConfig,
+        config: seg,
       };
     });
 
@@ -307,6 +320,7 @@ export function useLevel(): UseLevelReturn {
         setState({
           loadingState: 'loaded',
           levelData: cached.data,
+          rawDocument: json,
           normalizedState: cached.normalized,
           validationResult: { valid: true, errors: [], warnings: [], data: cached.data },
           error: null,
@@ -323,7 +337,8 @@ export function useLevel(): UseLevelReturn {
       if (!validationResult.valid) {
         setState({
           loadingState: 'error',
-          levelData: json,
+          levelData: null,
+          rawDocument: json,
           normalizedState: null,
           validationResult,
           error: formatValidationErrors(validationResult),
@@ -344,7 +359,8 @@ export function useLevel(): UseLevelReturn {
 
       setState({
         loadingState: 'loaded',
-        levelData: json,
+        levelData: validationResult.data,
+        rawDocument: json,
         normalizedState,
         validationResult,
         error: null,
@@ -355,7 +371,8 @@ export function useLevel(): UseLevelReturn {
     } catch (err) {
       setState({
         loadingState: 'error',
-        levelData: json,
+        levelData: null,
+        rawDocument: json,
         normalizedState: null,
         validationResult: null,
         error: err instanceof Error ? err.message : 'Unknown error loading level',
@@ -379,6 +396,7 @@ export function useLevel(): UseLevelReturn {
         setState({
           loadingState: 'loaded',
           levelData: cached.data,
+          rawDocument: cached.data,
           normalizedState: cached.normalized,
           validationResult: { valid: true, errors: [], warnings: [], data: cached.data },
           error: null,
@@ -399,6 +417,7 @@ export function useLevel(): UseLevelReturn {
       setState({
         loadingState: 'error',
         levelData: null,
+        rawDocument: null,
         normalizedState: null,
         validationResult: null,
         error: err instanceof Error ? err.message : 'Failed to load level from URL',
@@ -422,6 +441,7 @@ export function useLevel(): UseLevelReturn {
       setState({
         loadingState: 'error',
         levelData: null,
+        rawDocument: null,
         normalizedState: null,
         validationResult: null,
         error: err instanceof Error ? err.message : 'Failed to parse level file',
@@ -438,6 +458,7 @@ export function useLevel(): UseLevelReturn {
     setState({
       loadingState: 'idle',
       levelData: null,
+      rawDocument: null,
       normalizedState: null,
       validationResult: null,
       error: null,
@@ -456,12 +477,13 @@ export function useLevel(): UseLevelReturn {
 
     if (currentUrlRef.current) {
       return loadFromURL(currentUrlRef.current);
-    } else if (state.levelData) {
-      return loadFromJSON(state.levelData, state.currentLevelId || undefined);
+    } else if (state.rawDocument !== null && state.rawDocument !== undefined) {
+      // The raw slot, not `levelData`: after a failed load only the raw document is left.
+      return loadFromJSON(state.rawDocument, state.currentLevelId || undefined);
     }
 
     return false;
-  }, [state.currentLevelId, state.levelData, loadFromURL, loadFromJSON]);
+  }, [state.currentLevelId, state.rawDocument, loadFromURL, loadFromJSON]);
 
   /**
    * Check if current level is valid
@@ -500,6 +522,7 @@ export function useLevel(): UseLevelReturn {
     // State
     loadingState: state.loadingState,
     levelData: state.levelData,
+    rawDocument: state.rawDocument,
     normalizedState: state.normalizedState,
     validationResult: state.validationResult,
     error: state.error,
