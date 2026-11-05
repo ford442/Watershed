@@ -416,6 +416,11 @@
             "default": false,
             "description": "Skip floor trimesh collider for gap / air-corridor set-pieces"
           },
+          "washedOutGap": {
+            "type": "boolean",
+            "default": false,
+            "description": "A WashedOut forecast already forced a gap here (read by ReachNormalizer into the forecast base)"
+          },
           "decorations": {
             "type": "object",
             "properties": {

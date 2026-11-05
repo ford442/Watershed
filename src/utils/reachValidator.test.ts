@@ -82,3 +82,43 @@ describe('reachValidator — safeZone', () => {
     expect(fields).toContain('segments[2].safeZone');
   });
 });
+
+describe('reachValidator — washedOutGap', () => {
+  const withGap = (washedOutGap: unknown) => {
+    const reach = createValidReach();
+    reach.segments = reach.segments.map((seg) => (seg.index === 1 ? { ...seg, washedOutGap } : seg));
+    return reach;
+  };
+
+  it('accepts a boolean washedOutGap', () => {
+    expect(validateReach(withGap(true)).valid).toBe(true);
+    expect(validateReach(withGap(false)).valid).toBe(true);
+  });
+
+  it('rejects a non-boolean washedOutGap', () => {
+    const result = validateReach(withGap('yes'));
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field.includes('washedOutGap'))).toBe(true);
+  });
+});
+
+describe('reachValidator — malformed documents', () => {
+  it.each([
+    ['null', null],
+    ['a string', 'not a reach'],
+    ['an array', []],
+    ['an empty object', {}],
+  ])('rejects %s with errors and no data', (_name, doc) => {
+    const result = validateReach(doc);
+    expect(result.valid).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.data).toBeNull();
+  });
+
+  it('names the missing section', () => {
+    const { reachId: _drop, ...rest } = createValidReach();
+    const result = validateReach(rest);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.field === 'reachId')).toBe(true);
+  });
+});

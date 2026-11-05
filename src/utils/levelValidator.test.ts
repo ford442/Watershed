@@ -80,6 +80,18 @@ describe('Level Validator', () => {
       expect(result.valid).toBe(false);
     });
 
+    it.each([
+      ['null', null],
+      ['a string', 'not a level'],
+      ['an array', []],
+      ['an empty object', {}],
+    ])('rejects %s with errors and no data', (_name, doc) => {
+      const result = validateLevel(doc);
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.data).toBeNull();
+    });
+
     it('should fail with invalid version format', () => {
       const level = {
         ...createValidLevel(),
@@ -241,6 +253,45 @@ describe('Level Validator', () => {
       const errors = validateLevel(level).errors.filter((e) => e.field === 'segments[1].safeZone.respawnAt');
       expect(errors).toHaveLength(1);
       expect(errors[0].error).toMatch(/downstream/);
+    });
+  });
+
+  describe('Segment gameplay override (schema)', () => {
+    const withGameplay = (gameplay: unknown) => {
+      const level = createValidLevel();
+      return { ...level, segments: level.segments.map((seg, i) => (i === 1 ? { ...seg, gameplay } : seg)) };
+    };
+
+    it('accepts every overridable GameplayProfile field', () => {
+      const result = validateLevel(withGameplay({ flowCap: 1.6, surface: 'wood', ambientTemp: 0.4, windDry: 0.5 }));
+      expect(result.errors).toEqual([]);
+      expect(result.valid).toBe(true);
+    });
+
+    it('accepts a partial override and keeps the authored object as-is', () => {
+      const level = withGameplay({ surface: 'concrete' });
+      const result = validateLevel(level);
+      expect(result.valid).toBe(true);
+      expect(result.data?.segments[1].gameplay).toEqual({ surface: 'concrete' });
+    });
+
+    it('rejects an unknown surface', () => {
+      const result = validateLevel(withGameplay({ surface: 'lava' }));
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.field === 'segments.1.gameplay.surface')).toBe(true);
+    });
+
+    it('rejects an ambientTemp outside 0..1 and a non-object override', () => {
+      expect(validateLevel(withGameplay({ ambientTemp: 1.5 })).valid).toBe(false);
+      expect(validateLevel(withGameplay({ flowCap: -1 })).valid).toBe(false);
+      expect(validateLevel(withGameplay('fast')).valid).toBe(false);
+    });
+
+    it('does not strip keys it does not declare', () => {
+      const level = withGameplay({ flowCap: 1, futureKnob: 3 });
+      const result = validateLevel(level);
+      expect(result.valid).toBe(true);
+      expect(result.data?.segments[1].gameplay).toEqual({ flowCap: 1, futureKnob: 3 });
     });
   });
 
