@@ -87,6 +87,7 @@ export function installScreenshotApi({
     },
     getSpawnPoints: () => ({ ...spawnPoints }),
     advanceTreadmill: () => trackManagerRef.current?.appendSegmentForHarness() ?? false,
+    setQuality: (quality) => useGameStore.getState().setSettings({ quality }),
     stepScripted: (n: number) => stepScripted(n),
     // Also wait for the SWE field to settle (a grid, or a definitive TS
     // fallback): forces sample a different field before and after, so a run

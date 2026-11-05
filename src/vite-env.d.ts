@@ -9,6 +9,8 @@ interface Window {
     getSpawnPoints: () => Record<number, { x: number; y: number; z: number }>;
     /** Generate the next treadmill segment now (verification/spawn_profile.mjs). */
     advanceTreadmill: () => boolean;
+    /** Write the settings quality preset, as the adaptive ladder does (verification/quality_drop_trace.mjs). */
+    setQuality: (quality: 'low' | 'medium' | 'high' | 'ultra') => void;
     /** `?input=script:` only: advance n sim frames, render the last (verification/input_script_smoke.mjs). */
     stepScripted: (n: number) => number;
     /** True once the scripted source is loaded and the run is live. */
