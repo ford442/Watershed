@@ -187,13 +187,15 @@ the frame callback.
 
 ## The ratchet
 
-`.github/workflows/build.yml` runs `pnpm lint --max-warnings 19` (280 when it
-was introduced — 296 minus the 16 warnings the #415 annotations suppress —
-then 249, 150 after #503, 138, and 19 after #521 F, which left no R3F
-allocation warning anywhere). Errors still fail the build,
-and so does any *new* warning; the existing backlog stays non-blocking.
+`.github/workflows/build.yml` runs `pnpm lint --max-warnings 0` (280 when the
+ratchet was introduced — 296 minus the 16 warnings the #415 annotations
+suppress — then 249, 150 after #503, 138, 19 after #521 F, which left no R3F
+allocation warning anywhere, 18 after #535, and 0 after #554 E, which
+triaged the last `react-hooks/exhaustive-deps` warnings and removed every
+`eslint-disable` for that rule). Any warning now fails the build.
 
-Lower the number whenever the count drops, never raise it. It covers every
+Never raise it: fix the warning, or scope the rule off in `eslint.config.js`
+with the reason. It covers every
 rule in the backlog rather than just the two R3F ones, and needs no
 commit-hook infrastructure and no per-directory severity overrides in
 `eslint.config.js`.

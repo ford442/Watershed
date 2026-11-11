@@ -190,7 +190,9 @@ export const LODProvider: React.FC<LODProviderProps> = ({
   // visual-smoke shot at a different resolution and move every baseline.
   const [valvePinnedOpen] = useState(() => isVisualCaptureMode());
 
-  const [quality, setQualityState] = useState<QualityLevel>(storeQuality || initialQuality);
+  // The store is the one owner (the menu writes it, so does the adaptive step
+  // below). A local copy mirrored by an effect lagged a render behind it.
+  const quality: QualityLevel = storeQuality || initialQuality;
   const [fps, setFps] = useState(60);
   // A scripted / replay page runs on the fixed sim clock: a preset change driven
   // by wall-clock frame time would resize the SWE grid at a different frame on
@@ -201,15 +203,7 @@ export const LODProvider: React.FC<LODProviderProps> = ({
 
   const config = QUALITY_SETTINGS[quality];
 
-  // Keep local quality in sync with store
-  useEffect(() => {
-    if (storeQuality !== quality) {
-      setQualityState(storeQuality);
-    }
-  }, [storeQuality]);
-
   const setQuality = (q: QualityLevel) => {
-    setQualityState(q);
     storeSetSettings({ quality: q });
   };
 

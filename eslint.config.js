@@ -107,7 +107,7 @@ export default tseslint.config(
       // useFrame body is a per-frame GC hazard in a 60 FPS game. The ~110 sites
       // that predated the rule are gone (hoisted scratch objects, #521 D / F),
       // and the sim directories make them errors (below). Elsewhere they stay
-      // warnings, held at zero by CI's `--max-warnings` ratchet.
+      // warnings, held at zero by CI's `--max-warnings 0` (#554 E).
       ...Object.fromEntries(
         Object.keys(r3f.configs.recommended.rules).map((rule) => [rule, 'warn']),
       ),
@@ -118,7 +118,7 @@ export default tseslint.config(
       'no-useless-assignment': 'warn',
       'no-constant-binary-expression': 'warn',
 
-      // `any` is a warning, so the `--max-warnings` ratchet counts it (#535 A). The
+      // `any` is a warning, so CI's `--max-warnings 0` fails on it (#535 A, #554 E). The
       // places it is load-bearing — Rapier's compat surface, the WASM glue, three's
       // renderer internals — turn it off in the scoped block below; tests turn it off
       // too (mocks and partial fakes).

@@ -44,7 +44,7 @@ import {
   resetWeatherDirectorForTests,
 } from '../weather/weatherDirector';
 import { getMapAtmosphere } from '../../maps/atmosphere';
-import { getActiveUserRiver, userRiverMapDefinition } from '../map/userRiverSession';
+import { getActiveUserRiver, userRiverMapDefinition, type UserRiver } from '../map/userRiverSession';
 import { resetSkyClock, resetSkyClockForTests, setSkyAtmosphere } from '../sky/skyClock';
 import {
   applySurvivalShock,
@@ -247,9 +247,20 @@ export function getRunSession(): RunSessionSnapshot | null {
  * the answer depends on which map the player picked.
  */
 export function getRunMap(): MapDefinition {
-  const mapId = activeSession?.mapId ?? ACTIVE_MAP_ID;
+  return resolveRunMap(getRunMapId(), getActiveUserRiver());
+}
+
+/** The run's (backing) map id: the session's, else the code default. */
+export function getRunMapId(): MapRegistryId {
+  return activeSession?.mapId ?? ACTIVE_MAP_ID;
+}
+
+/**
+ * `getRunMap()` as a pure function of its two inputs, for a React memo that
+ * holds both as values (the id from the session, the river from its store).
+ */
+export function resolveRunMap(mapId: MapRegistryId, river: UserRiver | null): MapDefinition {
   // A player's river, when one is loaded, is the run's map over its backing id.
-  const river = getActiveUserRiver();
   return river ? userRiverMapDefinition(river, mapId) : getMapDefinition(mapId);
 }
 

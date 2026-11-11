@@ -71,7 +71,8 @@ const RunnerVehicle = forwardRef((props, forwardedRef) => {
       offBiomeChange();
       offSegmentSpawn();
     };
-  }, []);
+    // collisionState is created once per mount (useRunnerPhysicsState's lazy state).
+  }, [collisionState]);
 
   useRunnerControls({
     bodyRef, camera, controls, vehicleState: state,

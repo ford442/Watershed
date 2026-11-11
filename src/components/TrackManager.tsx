@@ -105,6 +105,29 @@ interface RenderSlot {
   segment: SegmentData | null;
 }
 
+/**
+ * What the treadmill renders, read from the ChunkManager when its pool changes.
+ * Held as state (not a version counter the memos ignore), so React re-renders
+ * exactly when there is a new snapshot and every reader depends on the value
+ * it reads.
+ */
+interface PoolSnapshot {
+  renderedSlots: RenderSlot[];
+  activeSegments: SegmentData[];
+}
+
+const EMPTY_POOL: PoolSnapshot = { renderedSlots: [], activeSegments: [] };
+
+function snapshotPool(manager: ChunkManager | null): PoolSnapshot {
+  if (!manager?.isInitialized()) return EMPTY_POOL;
+  return {
+    renderedSlots: manager.getRenderedSlots().map((slot) =>
+      cloneForRender(slot.segment, slot.slotIndex, slot.active),
+    ),
+    activeSegments: manager.getActiveSegments(),
+  };
+}
+
 function cloneForRender(segment: SegmentData | null, slotIndex: number, active: boolean): RenderSlot {
   if (!segment) {
     return {
@@ -145,11 +168,12 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     mapProgression ?? resolvedMap.fallbackProgression;
 
   const { camera, scene } = useThree();
-  const [poolVersion, setPoolVersion] = useState(0);
-  const [obstaclePoolVersion, setObstaclePoolVersion] = useState(0);
+  const [pool, setPool] = useState<PoolSnapshot>(EMPTY_POOL);
   const { isNight } = useNightMode();
 
   const chunkManagerRef = useRef<ChunkManager | null>(null);
+  /** Re-read the pool after the ChunkManager changed it (append, reset, treadmill step). */
+  const refreshPool = () => setPool(snapshotPool(chunkManagerRef.current));
   const pendingSynthesizesRef = useRef<number[]>([]);
   const seamlessJourneyRef = useRef(seamlessJourney);
   seamlessJourneyRef.current = seamlessJourney;
@@ -173,7 +197,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     getLastEnteredSegment: () => chunkManagerRef.current?.getLastEnteredSegment?.() ?? -1,
     appendSegmentForHarness: () => {
       const appended = chunkManagerRef.current?.appendForHarness() ?? false;
-      if (appended) setPoolVersion((v) => v + 1);
+      if (appended) refreshPool();
       return appended;
     },
     handoffToMap: ({ nextMapId, plan }) => {
@@ -229,6 +253,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
   );
   const reachSegmentsRef = useRef(reachSegments);
   const obstaclePoolRef = useRef(createObstaclePool(16));
+  const [pooledObstacleSlots, setPooledObstacleSlots] = useState(() => obstaclePoolRef.current.getSnapshot());
 
   // Keep reachSegments ref in sync — soft update on append (seamless handoff),
   // hard reset only when the array identity is a full reload (null → data or shrink).
@@ -255,7 +280,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     journeyHandledRef.current.clear();
     cm.reset(reachSegments);
     cm.initializePool();
-    setPoolVersion((v) => v + 1);
+    refreshPool();
   }, [reachSegments]);
 
   // Weather wetness for the segments' surfaces — a ref, so a 10 Hz weather
@@ -403,7 +428,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       journeyHandledRef.current.clear();
       chunkManagerRef.current.reset(reachSegmentsRef.current);
       chunkManagerRef.current.initializePool();
-      setPoolVersion((v) => v + 1);
+      refreshPool();
     }
   }, [effectiveLevelData, effectiveFallback, resolvedMap.id, resolvedMap.continuation]);
 
@@ -429,7 +454,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     const callbacks = {
       onPoolChange: () => {
         publishFrames();
-        setPoolVersion((v) => v + 1);
+        refreshPool();
       },
       onBiomeChange: (biome: BiomeId, segmentIndex: number) => {
         onBiomeChangeRef.current?.(biome, segmentIndex);
@@ -498,7 +523,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     });
 
     chunkManagerRef.current.initializePool();
-    setPoolVersion((v) => v + 1);
+    refreshPool();
 
     // Flush any synthesizeSegmentEnter calls that arrived before the
     // rockMaterial-gated initialization completed (e.g. screenshot teleport).
@@ -556,35 +581,16 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     const result = chunkManagerRef.current.update(camera.position.z);
 
     if (result.poolChanged) {
-      setPoolVersion((v) => v + 1);
+      refreshPool();
     }
   });
 
-  const renderedSlots = useMemo(() => {
-    if (!chunkManagerRef.current?.isInitialized()) {
-      return [];
-    }
-    return chunkManagerRef.current.getRenderedSlots().map((slot) =>
-      cloneForRender(slot.segment, slot.slotIndex, slot.active)
-    );
-  }, [poolVersion]);
-
-  const activeSegments = useMemo(() => {
-    if (!chunkManagerRef.current?.isInitialized()) {
-      return [];
-    }
-    return chunkManagerRef.current.getActiveSegments();
-  }, [poolVersion]);
+  const { renderedSlots, activeSegments } = pool;
 
   useEffect(() => {
     obstaclePoolRef.current.syncSegments(activeSegments);
-    setObstaclePoolVersion((v) => v + 1);
+    setPooledObstacleSlots(obstaclePoolRef.current.getSnapshot());
   }, [activeSegments]);
-
-  const pooledObstacleSlots = useMemo(
-    () => obstaclePoolRef.current.getSnapshot(),
-    [obstaclePoolVersion]
-  );
 
   useEffect(() => {
     if (!debugTapsEnabled()) return;

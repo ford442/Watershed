@@ -29,7 +29,6 @@ function params(overrides: Partial<UseGeometriesParams> = {}): UseGeometriesPara
   return {
     active: true,
     segmentPath,
-    pathLength: segmentPath.getLength(),
     segmentId: 9,
     type: 'normal',
     channelProfile: [],

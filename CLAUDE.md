@@ -303,7 +303,7 @@ With the above in place:
 ```bash
 pnpm test                         # unit tests (Vitest), behaviour only
 pnpm test:perf                    # wall-time / heap budgets, retried (*.perf.test.ts)
-pnpm lint                         # ESLint — 0 errors is the gate; warnings are a tracked backlog
+pnpm lint                         # ESLint — CI runs it with --max-warnings 0: no errors, no warnings
 pnpm typecheck                    # tsc + repo layout guards + knip
 pnpm typecheck:test               # tsc over test files (tsconfig.test.json)
 pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`); includes the 390×844 touch layout (10_touch_layout)

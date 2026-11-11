@@ -37,7 +37,6 @@ function useDisposeOnReplace(geometry: BufferGeometry | null): void {
 export function useGeometries({
   active,
   segmentPath,
-  pathLength,
   segmentId,
   type,
   channelProfile,
@@ -118,7 +117,9 @@ export function useGeometries({
   // Main-thread build: no worker for this segment, or it answered without meshes.
   const mainMeshes = useMemo(
     () => (!buildCtx || awaitingWorker || workerMeshes ? null : buildSegmentMeshBuffers(buildCtx)),
-    [buildCtx, awaitingWorker, workerMeshes, pathLength, biomeProfile.wallHeight],
+    // buildCtx already carries everything the build reads: the path (its length is
+    // derived from it) and the biome profile object (wall height included).
+    [buildCtx, awaitingWorker, workerMeshes],
   );
   const builtMeshes = workerMeshes ?? mainMeshes;
 

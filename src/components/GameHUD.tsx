@@ -90,12 +90,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const launchPopupRef = useRef<HTMLDivElement>(null);
   const rewardPopupRef = useRef<HTMLDivElement>(null);
   const launchAirTimeRef = useRef<HTMLDivElement>(null);
-  const launchPopupTimerRef = useRef<number | null>(null);
-  const rewardPopupTimerRef = useRef<number | null>(null);
-
   const showTransientPopup = (
     element: HTMLDivElement | null,
-    timerRef: React.MutableRefObject<number | null>,
+    timerRef: { current: number | null },
     text: string,
     className: string,
   ) => {
@@ -115,6 +112,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   };
 
   useEffect(() => {
+    // The popups' pending hide timers. Owned by this effect (not component refs), so
+    // the cleanup clears exactly the timers this subscription started.
+    const launchPopupTimerRef: { current: number | null } = { current: null };
+    const rewardPopupTimerRef: { current: number | null } = { current: null };
     let prevLaunchPopup = useGameStore.getState().launchPopup;
     let prevReward = useGameStore.getState().latestReward;
 

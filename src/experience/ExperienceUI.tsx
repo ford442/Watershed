@@ -8,7 +8,7 @@ import GhostFairnessBanner from '../components/GhostFairnessBanner';
 import { ErrorDisplay, LoadingDisplay } from '../systems/map/LevelLoadStatus';
 import type { FlowForecastSample, DamReleaseEntry } from '../components/FlowForecast';
 import { useGameStore } from '../systems/GameState';
-import { getRunMap } from '../systems/journey/runSession';
+import { getRunMapId, resolveRunMap } from '../systems/journey/runSession';
 import { parseHydroEvents } from '../systems/water/hydroEvents';
 import { getActiveUserRiver, subscribeUserRiver } from '../systems/map/userRiverSession';
 
@@ -94,13 +94,16 @@ export default function ExperienceUI({
   // launch hour against the other scouting hour (#397).
   // A player's river is the run map too (userRiverSession.ts): its events, not the backing map's.
   const userRiver = useSyncExternalStore(subscribeUserRiver, getActiveUserRiver, () => null);
+  // Keyed on the run's map id itself (it used to be keyed on the HUD's `mapLabel`
+  // as a stand-in and read the session inside the memo).
+  const runMapId = getRunMapId();
   const hydroEvents = useMemo(() => {
     try {
-      return parseHydroEvents(getRunMap().levelData.hydroEvents);
+      return parseHydroEvents(resolveRunMap(runMapId, userRiver).levelData.hydroEvents);
     } catch {
       return [];
     }
-  }, [mapLabel, userRiver]);
+  }, [runMapId, userRiver]);
   const lastSplitDelta = useGameStore((s) => s.lastSplitDelta);
 
   if (!enabled) return null;

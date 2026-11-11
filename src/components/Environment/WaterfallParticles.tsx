@@ -77,7 +77,7 @@ export default function WaterfallParticles({
     finalCount = Math.min(absoluteMax, finalCount);
 
     return finalCount;
-  }, [baseCount, particleDensity, playerVelocity, lodConfig, nativeLive]);
+  }, [particleDensity, playerVelocity, lodConfig, nativeLive]);
 
   useEffect(() => {
     targetCountRef.current = calculatedCount;

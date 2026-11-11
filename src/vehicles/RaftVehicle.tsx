@@ -252,7 +252,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
   useEffect(() => mountRaftSession({
     bodyRef, useWorkerPhysics, workerProxyRef, workerReadyRef, workerStepPendingRef,
     tippingState, collisionState, shelfSpawnPointRef, shelfTriggerRef,
-  }), [useWorkerPhysics]);
+    // tippingState / collisionState are refs from useRaftPhysicsState: stable for
+    // the mount, so the session still restarts only on a worker decision change.
+  }), [useWorkerPhysics, tippingState, collisionState]);
 
   useRaftControls({
     bodyRef,

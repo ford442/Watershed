@@ -45,19 +45,16 @@ jobs:
       - name: Typecheck tests
         run: pnpm typecheck:test
 
-      # `pnpm lint` exits non-zero on errors only; the warnings are a tracked
-      # backlog (see eslint.config.js). `--max-warnings` turns that backlog into
-      # a ratchet: errors still fail the build, and so does any NEW warning,
-      # while the existing ones stay non-blocking. The number below is the
-      # committed baseline — lower it whenever the count drops, never raise it.
-      # It covers every rule in the backlog, not just the two R3F ones, and
-      # needs no commit-hook infrastructure or per-directory config overrides.
-      # 138 → 19 in #521 F, 19 → 18 in #535 (which also made no-explicit-any a
-      # counted warning outside physics/, rendering/ and the WASM glue, at zero).
-      # What is left is react-hooks/exhaustive-deps where
-      # the fix would change when a memo / effect re-runs.
+      # `pnpm lint` exits non-zero on errors only, so `--max-warnings 0` makes
+      # every warning-level rule (exhaustive-deps, the R3F allocation rules,
+      # no-explicit-any, …) a gate too. The backlog it used to ratchet is gone:
+      # 138 → 19 in #521 F, 19 → 18 in #535, 18 → 0 in #554 E (each
+      # exhaustive-deps warning became a real dependency, a ref with its reason,
+      # or a snapshot held as state; no eslint-disable for the rule remains).
+      # Do not raise it: fix the warning, or turn the rule off in
+      # eslint.config.js for a scoped block with the reason written there.
       - name: Lint
-        run: pnpm lint --max-warnings 18
+        run: pnpm lint --max-warnings 0
 
   build-without-emscripten:
     name: Build without Emscripten
