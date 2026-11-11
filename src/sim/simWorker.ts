@@ -37,7 +37,7 @@ const boot = async (init: Extract<SimWorkerCommand, { type: 'INIT' }> | undefine
         '[sim worker] native init failed; SWE falls back to the main thread',
         (path) => (path.endsWith('.wasm') ? assets.wasm : assets.glue),
         init.timeoutMs,
-        { trapTest: init.trapTest },
+        { trapTest: init.trapTest, ...(init.wasmBytes ? { wasmBytes: new Uint8Array(init.wasmBytes) } : {}) },
       )
     : null;
   if (!wasm) {

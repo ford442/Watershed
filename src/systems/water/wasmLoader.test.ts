@@ -24,6 +24,7 @@ import {
 } from './wasmAbi';
 import { WASM_ARTIFACT_STAMP, WASM_BINARY_SHA } from './wasmArtifactStamp';
 import {
+  __resetNativeWasmPrefetchForTests,
   __resetWasmLoaderForTests,
   __setGlueImporterForTests,
   getWasm,
@@ -35,6 +36,8 @@ import {
   peekWasmInitError,
   resolveWasmInitTimeoutMs,
   sha256Hex16,
+  startNativeWasmPrefetch,
+  takeNativeWasmBytes,
   WASM_INIT_TIMEOUT_MS,
   WasmInitTimeoutError,
   type WatershedGlueModule,
@@ -72,6 +75,7 @@ function quietConsole(): { error: ReturnType<typeof vi.spyOn> } {
 afterEach(() => {
   __setGlueImporterForTests(null);
   __resetWasmLoaderForTests();
+  __resetNativeWasmPrefetchForTests();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -195,6 +199,53 @@ describe('loadWatershedNative', () => {
     await vi.advanceTimersByTimeAsync(60);
     await settled;
     expect(error).toHaveBeenCalledWith('[Watershed WASM] timed-out(50ms)');
+  });
+});
+
+describe('boot prefetch (#554 B.4)', () => {
+  it('a load handed the bytes does not fetch, and still hashes what it runs', async () => {
+    __setGlueImporterForTests(realGlue);
+    const fetchMock = stubFetch(new Uint8Array([1, 2, 3]));
+    quietConsole();
+
+    const wasm = await loadWatershedNative(URLS, 10_000, { wasmBytes });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(wasm.getVersion()).toBe(WASM_ABI_VERSION);
+  });
+
+  it('handed bytes that do not match WASM_BINARY_SHA are rejected like fetched ones', async () => {
+    __setGlueImporterForTests(realGlue);
+    stubFetch(wasmBytes);
+    const { error } = quietConsole();
+    await expect(loadWatershedNative(URLS, 10_000, { wasmBytes: new Uint8Array([0, 97, 115, 109]) }))
+      .rejects.toSatisfy(isWasmProvenanceMismatchError);
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('fetches the stamped wasm once and hands the bytes to the first taker only', async () => {
+    const fetchMock = stubFetch(wasmBytes);
+    startNativeWasmPrefetch();
+    startNativeWasmPrefetch();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(new RegExp(`watershed_native\\.wasm\\?v=${WASM_ARTIFACT_STAMP}$`));
+
+    const first = await takeNativeWasmBytes(1000);
+    expect(first && new Uint8Array(first)).toEqual(wasmBytes);
+    await expect(takeNativeWasmBytes(1000)).resolves.toBeNull();
+  });
+
+  it('with no prefetch, or a failed one, the taker gets null and fetches by URL itself', async () => {
+    await expect(takeNativeWasmBytes(1000)).resolves.toBeNull();
+    __resetNativeWasmPrefetchForTests();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+    startNativeWasmPrefetch();
+    await expect(takeNativeWasmBytes(1000)).resolves.toBeNull();
+  });
+
+  it('a prefetch that has not landed by the deadline yields null rather than hanging the boot', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    startNativeWasmPrefetch();
+    await expect(takeNativeWasmBytes(20)).resolves.toBeNull();
   });
 });
 

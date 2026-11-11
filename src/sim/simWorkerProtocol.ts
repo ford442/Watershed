@@ -86,6 +86,12 @@ export type SimWorkerCommand =
       timeoutMs: number;
       /** `?wasmTrapTest=1` (wasmTrap.ts): call the Debug-only `ws_trapTest` after bind. */
       trapTest?: boolean;
+      /**
+       * The wasm's bytes, fetched by the page at boot (#554 B.4) and transferred
+       * here, so the worker does not fetch `assets.wasm` a second time. Absent
+       * when the page's prefetch failed or was not there: the worker fetches it.
+       */
+      wasmBytes?: ArrayBuffer;
     }
   | { type: 'CONFIGURE'; gridId: number; width: number; height: number; dx: number }
   | { type: 'COMMIT_BED'; gridId: number; b: Float32Array }

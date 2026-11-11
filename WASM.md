@@ -216,6 +216,17 @@ Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2
 `loadWatershedNative()`:
 
 1. `import(glue)` and `fetch(wasm)` in parallel — each file is requested **once** per session.
+   Since #554 B.4 the wasm fetch is usually already done: `index.html` preloads the stamped
+   URL (`<link rel="preload" as="fetch" crossorigin>`, `nativeWasmPreloadPlugin` in
+   `vite.config.ts`), the entry consumes that preload with one main-thread fetch
+   (`startNativeWasmPrefetch`, `src/index.tsx`), and the first owner takes the bytes
+   (`takeNativeWasmBytes`) — the sim worker gets them **transferred** in `INIT.wasmBytes`, a
+   main-thread owner reads them in place — and passes them as `wasmBytes`, so step 1 skips
+   its fetch. The request now starts with the HTML (parser-initiated, ~70 ms into a local
+   boot) instead of after the worker boots (~1.7 s). No prefetch, a failed one, or one that
+   misses the deadline hands over `null` and the owner fetches by URL as before; a retry
+   always fetches by URL. visual-smoke's native-once gate fails a second request
+   (`fail-refetch`) and a script-initiated one (`fail-late-request`).
 2. `sha256(wasm bytes)[:16]` must equal `WASM_BINARY_SHA`, and the glue's own
    `WATERSHED_WASM_SHA` export (appended by `build.sh`) must name the same wasm. Either
    mismatch rejects with `WasmProvenanceMismatchError` before anything is instantiated.

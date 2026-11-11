@@ -3,6 +3,12 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { queryFlags } from './config/queryFlags';
 import { isGpuLossDebugEnabled } from './rendering/gpuLossRecovery';
+import { startNativeWasmPrefetch } from './systems/water/wasmLoader';
+
+// watershed_native.wasm: index.html preloads it; this one fetch consumes the
+// preload and holds the bytes for whichever owner loads the module — transferred
+// to the sim worker in INIT, so the session downloads it once (#554 B.4).
+startNativeWasmPrefetch();
 
 // `window.__watershed` (the harness's diagnostics object) is a lazy chunk behind its flags (#535 C).
 if (queryFlags().debugGlobals || queryFlags().wasmWaterTest || isGpuLossDebugEnabled()) {

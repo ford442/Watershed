@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SimWorkerProxy, getSimWorkerProxy, resetSimWorkerProxyForTests } from './createSimWorkerProxy';
+import { __resetNativeWasmPrefetchForTests, startNativeWasmPrefetch } from '../systems/water/wasmLoader';
 import type { SimWorkerCommand, SimWorkerLike, SimWorkerResponse } from './simWorkerProtocol';
 
 type Listener = (event: { data?: SimWorkerResponse; message?: string; preventDefault?: () => void }) => void;
@@ -30,6 +31,8 @@ function stubWorker(onPost: (command: SimWorkerCommand, reply: (r: SimWorkerResp
 
 afterEach(() => {
   resetSimWorkerProxyForTests();
+  __resetNativeWasmPrefetchForTests();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -42,6 +45,31 @@ describe('getSimWorkerProxy', () => {
     const proxy = await getSimWorkerProxy(() => worker);
     expect(proxy.abi).toBe(11);
     expect(proxy.failed).toBeNull();
+  });
+
+  it('transfers the page\'s prefetched wasm in INIT, so the worker does not fetch it again (#554 B.4)', async () => {
+    const bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer })));
+    startNativeWasmPrefetch();
+    const stub = stubWorker((c, reply) => {
+      if (c.type === 'INIT') reply({ type: 'READY', abi: 11 });
+    });
+    await getSimWorkerProxy(() => stub.worker);
+    const init = stub.posted[0]!;
+    expect(init.command.type).toBe('INIT');
+    const sent = init.command.type === 'INIT' ? init.command.wasmBytes : undefined;
+    expect(sent && new Uint8Array(sent)).toEqual(bytes);
+    expect(init.transfer).toEqual([sent]);
+  });
+
+  it('sends INIT without bytes when there was no prefetch (the worker fetches)', async () => {
+    const stub = stubWorker((c, reply) => {
+      if (c.type === 'INIT') reply({ type: 'READY', abi: 11 });
+    });
+    await getSimWorkerProxy(() => stub.worker);
+    const init = stub.posted[0]!;
+    expect(init.command.type === 'INIT' && 'wasmBytes' in init.command).toBe(false);
+    expect(init.transfer).toEqual([]);
   });
 
   it('rejects when Worker construction throws, and keeps rejecting (no retry into a second worker)', async () => {

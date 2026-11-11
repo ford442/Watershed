@@ -21,6 +21,14 @@
  * network failure is retried once (`loadWatershedNativeWithRetry`) before the
  * session-wide fallback; a provenance or ABI mismatch is deterministic and is
  * not.
+ *
+ * #554 B.4: the wasm request starts with the HTML. index.html preloads the
+ * stamped URL (vite.config.ts, nativeWasmPreloadPlugin), the entry consumes
+ * that preload with one main-thread fetch (`startNativeWasmPrefetch`), and
+ * whichever owner loads the module first takes those bytes
+ * (`takeNativeWasmBytes`): the sim worker gets them transferred in INIT, a
+ * main-thread owner reads them in place. Step 1 then skips its fetch; the hash
+ * in step 2 still runs, once, on the bytes that run.
  */
 
 import { BUILD_IDENTITY, GRAPHICS_BOOT_TOKEN } from '../../buildIdentity';
@@ -253,6 +261,12 @@ export interface NativeLoadOptions {
    * and reject with the WasmTrapError naming the function it trapped in.
    */
   trapTest?: boolean;
+  /**
+   * The wasm's bytes, already fetched (#554 B.4: the page's prefetch, taken
+   * once). The load skips its own fetch and hashes these instead; a retry
+   * fetches by URL again.
+   */
+  wasmBytes?: Uint8Array;
 }
 
 /**
@@ -274,7 +288,7 @@ export async function loadWatershedNative(
       (async () => {
         const [glue, wasmBytes] = await Promise.all([
           importGlue(urls.glue),
-          fetchBytes(urls.wasm, abort?.signal),
+          options.wasmBytes ?? fetchBytes(urls.wasm, abort?.signal),
         ]);
         const wasmSha = await sha256Hex16(wasmBytes);
         const glueSha = glue.WATERSHED_WASM_SHA ?? 'none';
@@ -354,13 +368,53 @@ export async function loadWatershedNativeWithRetry(
   } catch (error) {
     if (!isRetryableWasmInitError(error)) throw error;
     console.warn(`${WASM_LOG_PREFIX} retrying once after: ${(error as Error).message}`);
-    return loadWatershedNative(urls, timeoutMs, options);
+    // The retry fetches by URL: handed-over bytes are not what a network retry is for.
+    return loadWatershedNative(urls, timeoutMs, { ...options, wasmBytes: undefined });
   }
 }
 
 /** Worst case of loadWatershedNativeWithRetry: two full deadlines. */
 export function retryBudgetMs(timeoutMs: number): number {
   return 2 * timeoutMs;
+}
+
+// ---------------------------------------------------------------------------
+// Boot prefetch (#554 B.4)
+// ---------------------------------------------------------------------------
+
+let prefetch: Promise<ArrayBuffer | null> | null = null;
+let prefetchTaken = false;
+
+/**
+ * Fetch watershed_native.wasm on the main thread, once, at entry. Same URL
+ * and request mode as index.html's `<link rel="preload" as="fetch"
+ * crossorigin>` (the stamped `resolvePublicAsset` URL, a same-origin CORS
+ * fetch), so it consumes that preload instead of downloading again. A failed
+ * fetch resolves to null: the owner then fetches by URL itself, with its retry.
+ */
+export function startNativeWasmPrefetch(): void {
+  if (prefetch || typeof fetch !== 'function') return;
+  prefetch = fetch(resolvePublicAsset('watershed_native.wasm'))
+    .then((response) => (response.ok ? response.arrayBuffer() : null))
+    .catch(() => null);
+}
+
+/**
+ * The prefetched bytes, handed to the first caller only (the sim worker gets
+ * them transferred, which detaches them here). Null when there was no
+ * prefetch, it failed, someone already took it, or it has not landed within
+ * `timeoutMs` — in each case the caller fetches by URL as before.
+ */
+export function takeNativeWasmBytes(timeoutMs: number): Promise<ArrayBuffer | null> {
+  if (!prefetch || prefetchTaken) return Promise.resolve(null);
+  prefetchTaken = true;
+  return raceWithDeadline(prefetch, timeoutMs, () => new WasmInitTimeoutError(timeoutMs)).catch(() => null);
+}
+
+/** Test-only: forget the prefetch. */
+export function __resetNativeWasmPrefetchForTests(): void {
+  prefetch = null;
+  prefetchTaken = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,14 +438,15 @@ export function getWasm(): Promise<WatershedNativeModule> {
   if (_modulePromise) return _modulePromise;
 
   console.info(`${WASM_LOG_PREFIX} build-id=${BUILD_IDENTITY} boot=${GRAPHICS_BOOT_TOKEN}`);
-  _modulePromise = loadWatershedNativeWithRetry(
+  const timeoutMs = resolveWasmInitTimeoutMs();
+  _modulePromise = takeNativeWasmBytes(timeoutMs).then((bytes) => loadWatershedNativeWithRetry(
     {
       glue: resolvePublicAsset('watershed_native.js'),
       wasm: resolvePublicAsset('watershed_native.wasm'),
     },
-    resolveWasmInitTimeoutMs(),
-    { trapTest: wantsWasmTrapTest() },
-  ).then(
+    timeoutMs,
+    { trapTest: wantsWasmTrapTest(), ...(bytes ? { wasmBytes: new Uint8Array(bytes) } : {}) },
+  )).then(
     (loaded) => {
       _loaded = loaded;
       _initError = null;
