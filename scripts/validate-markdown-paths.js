@@ -65,10 +65,26 @@ function collectMarkdownFiles(entry) {
   return results;
 }
 
+/**
+ * Swarm logs that used to sit at the repo root (#554 F). They are history, not
+ * docs: they live under docs/archive/swarm/, and the live board is
+ * docs/reference/BOARD.md. A session that recreates one at the root fails here.
+ */
+const ROOT_LOGS_MOVED = {
+  'weekly_plan.md': 'docs/archive/swarm/weekly_plan.md (history) + docs/reference/BOARD.md (live board)',
+  '.swarm-state.md': 'docs/archive/swarm/swarm-state.md',
+};
+
 const markdownFiles = (inputs.length ? inputs : DEFAULT_INPUTS)
   .flatMap(collectMarkdownFiles);
 
 const failures = [];
+
+for (const [name, home] of Object.entries(ROOT_LOGS_MOVED)) {
+  if (fs.existsSync(path.join(repoRoot, name))) {
+    failures.push(`${name}: swarm log at the repo root — it lives in ${home}`);
+  }
+}
 
 function pathExistsAsModule(candidate) {
   if (fs.existsSync(candidate)) return true;

@@ -17,11 +17,8 @@ import {
 import { getGpuChoreStats, subscribeGpuChoreStats } from '../rendering/gpuChores';
 import { GPU_TIMER_SOURCE_LABELS } from '../rendering/gpuTimer';
 import { useQualityPreset, useRenderScale } from '../systems/GameState';
-import {
-  RENDER_SCALE_MAX,
-  canvasDprRange,
-  deriveRendererContextOptions,
-} from '../rendering';
+import { RENDER_SCALE_MAX } from '../rendering/renderScale';
+import { canvasDprRange, deriveRendererContextOptions } from '../rendering/deriveRendererContextOptions';
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 

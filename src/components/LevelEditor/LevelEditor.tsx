@@ -16,11 +16,11 @@ import { BiomeSelector } from './BiomeSelector';
 import { ErrorPanel } from './ErrorPanel';
 import { PathVisualizer } from './PathVisualizer';
 import { useLevelEditor, type EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import { createGameRenderer } from '../../rendering/createRenderer';
 import {
-  createGameRenderer,
   deriveEditorContextOptions,
   shadowModeToCanvasProp,
-} from '../../rendering';
+} from '../../rendering/deriveRendererContextOptions';
 import { validateEditorLevel } from '../../utils/levelEditorValidator';
 import type { LevelData } from '../../systems/map/MapSystem.types';
 
