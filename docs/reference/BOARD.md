@@ -12,8 +12,8 @@ _Last updated: 2026-11-11._
 
 | Issue | Priority | Theme | Status |
 |---|---|---|---|
-| #554 | P1 | Foundation before the next content round | In flight — A.1, E, F, B.1, D landing; A.2, B.2–B.4, C open (see the PR) |
-| #553 | P2 | Content + delivery (hazards re-cut, packs per biome, Director, installable shell) | Waits on #554 A / B.1 / C |
+| #554 | P1 | Foundation before the next content round | A.1, B.1, B.4, C, D, E, F in one PR; **open: A.2** (VehicleTuner — needs a decision, see the PR), **B.2** (viewport render scale), **B.3** (one shadow type) |
+| #553 | P2 | Content + delivery (hazards re-cut, packs per biome, Director, installable shell) | Its prerequisites from #554 (A.1, B.1, C) are in the PR; raft work should wait for A.2 |
 | #555 | P1 | Rendering: one material language (TSL default) | Open |
 | #556 | P1 | Testing: the campaign without a browser | Open |
 | #557 | P2 | Creator tools: River Workshop | Open |
@@ -29,10 +29,10 @@ folded into a live issue above.
 |---|---|---|
 | #522 | B–F (hazards beyond Phase A) | #553 |
 | #536 | B–E (packs beyond the core hull) | #553 |
-| #533 | D (emsdk 4.x pin bump) | #554 C |
-| #519 | C.2 (one shadow type across the AA band), C.3 (viewport render scale), D (half-float SWE textures) | #554 B.3 / B.2 / B.1 |
-| #534 | D.2 (wasm fetched once by the main thread, transferred in `INIT`) | #554 B.4 |
-| #535 | `VehicleTuner` liveness / home | #554 A.2 |
+| #533 | D (emsdk 4.x pin bump) | #554 C — in the PR (4.0.23) |
+| #519 | C.2 (one shadow type across the AA band), C.3 (viewport render scale), D (half-float SWE textures) | #554 B.3 / B.2 (open) / B.1 (in the PR) |
+| #534 | D.2 (wasm fetched once by the main thread, transferred in `INIT`) | #554 B.4 — in the PR |
+| #535 | `VehicleTuner` liveness / home | #554 A.2 (open) |
 
 ## Ratchets on `main`
 
