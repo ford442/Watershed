@@ -6,14 +6,15 @@
  *   - **Rapier contact friction (this module)** owns *solid contact*: the runner's
  *     feet on the canyon floor, hull scrapes along the walls. It is what makes an
  *     ice chute feel like ice when you touch it.
- *   - **`WaterFlowForces`** owns *water-borne lateral drag*: how hard the current
- *     resists a sideways move while you are floating. It applies its own
- *     `slipperiness` attenuation (lateral drag × (1 − slip × 0.8) plus a downstream
- *     slide bias).
+ *   - **`WaterForceSystem`** (the SWE field, `systems/water/`) owns *water-borne
+ *     drag*: how hard the current pushes or resists a floating body. It does not
+ *     read `slipperiness`. (The segment-spline `WaterFlowForces` that used to
+ *     attenuate lateral drag by it never ran — its guard skipped every segment —
+ *     and was deleted.)
  *
- * They act on disjoint interactions — contact vs fluid — so both may read the same
- * `slipperiness` without stacking. What must NOT happen is a second contact-friction
- * scaler somewhere else, or a fluid-drag term added here.
+ * They act on disjoint interactions — contact vs fluid — so they must not stack.
+ * What must NOT happen is a second contact-friction scaler somewhere else, or a
+ * fluid-drag term added here.
  *
  * Consumed by `TrackSegmentMeshes` for the collision trimesh. Closes the
  * "wire slipperiness into Rapier" TODO in MapSystem.types.ts / LEVEL_DESIGN.md.

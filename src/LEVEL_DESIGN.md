@@ -133,16 +133,11 @@ player with a calm, visually rich recovery (alpine) before the main descent.
 ### Physics: Slipperiness
 
 `slipperiness` (0–1) is published in the `segment-enter` game event (`gameEvents`, `src/systems/events/GameEvents.ts`) as `slipperiness`.
-`WaterFlowForces.tsx` reads it each frame and:
-- Reduces lateral drag by `slipperiness × 80%` — the raft can't fight the current sideways.
-- Adds a `0.18 × flowSpeed × slipperiness` slide bias along the downstream tangent each frame.
-- Net feel: high speed, minimal control, survive-the-chute tension.
-
-`slipperiness` also drives **Rapier contact friction** on the segment's collision mesh
+`slipperiness` drives **Rapier contact friction** on the segment's collision mesh
 (`systems/surfaceFriction.ts` → `TrackSegmentMeshes`), so wall and floor impacts feel
 slippery too: the flood state sets the baseline, then slipperiness interpolates it
-toward `ICE_MIN_FRICTION` (0.04). Water-borne lateral drag (above) and contact friction
-act on disjoint interactions and must not be double-counted — see
+toward `ICE_MIN_FRICTION` (0.04). Water-borne drag is the SWE field's (`WaterForceSystem`)
+and does not read `slipperiness`; it and contact friction act on disjoint interactions and must not be double-counted — see
 [`SURVIVAL_LAYER.md`](../docs/reference/SURVIVAL_LAYER.md#surface-friction-v2).
 
 ### Visual Style

@@ -16,7 +16,6 @@ import {
   tagRockColorSpaces,
 } from '../rendering/ktx2Textures';
 import TrackSegment from './TrackSegment';
-import WaterFlowForces from './WaterFlowForces';
 import VehicleTuner from './VehicleTuner';
 import PooledObstacles from './PooledObstacles';
 import { createRiverSurfaceMaterial } from '../materials/river/createRiverSurfaceMaterial';
@@ -627,7 +626,6 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       <PooledObstacles slots={pooledObstacleSlots} rockMaterial={rockMaterial} />
       {raftRef && (
         <>
-          <WaterFlowForces targetRef={raftRef} segments={activeSegments} reachId={reachId ?? undefined} />
           <VortexForceSystem targetRef={raftRef} segments={activeSegments} />
           <VehicleTuner targetRef={raftRef} segments={activeSegments} />
         </>

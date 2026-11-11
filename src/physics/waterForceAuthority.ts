@@ -16,10 +16,9 @@
  * hull link's force when that is fresh and otherwise the mirror force the main
  * thread computed for the same state and sent with the step (pickHullForce).
  *
- * Authored WaterFlowForces *currents* are gated off while WaterForceSystem is
- * active (SWE u,w drives the forces). Centering / seating / alignment stay
- * separate. Vortex *impulses* remain until a hydroEvent vortex owns that
- * segment's SWE sink.
+ * The segment-spline current model (WaterFlowForces) is gone: SWE u,w is the
+ * raft's one water model. Vortex *impulses* remain until a hydroEvent vortex
+ * owns that segment's SWE sink.
  */
 
 import type { WaterForceDiagnostics } from './rapierWorkerProtocol';
