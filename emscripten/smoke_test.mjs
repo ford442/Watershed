@@ -16,11 +16,12 @@ if (!WebAssembly.validate(wasmBinary)) {
 
 // #454: the Rapier worker (and the #455 sim worker) load this same glue, so it
 // must be built for ENVIRONMENT='web,worker'. A 'web'-only glue hard-codes the
-// worker flag to false; a web,worker glue detects it at runtime (closure keeps
-// the `typeof importScripts` probe but renames the variable, so match that).
+// worker flag to false; a web,worker glue detects it at runtime. Closure renames
+// the variable, so match the probe: emcc 3.x tests `typeof importScripts`,
+// emcc 4.x `globalThis.WorkerGlobalScope` (#554 C).
 const glueSource = readFileSync(resolve(publicDir, 'watershed_native.js'), 'utf8');
 if (/ENVIRONMENT_IS_WORKER\s*=\s*false/.test(glueSource)
-    || !/typeof importScripts/.test(glueSource)) {
+    || !/typeof importScripts|globalThis\.WorkerGlobalScope/.test(glueSource)) {
   throw new Error("watershed_native.js is not built for ENVIRONMENT='web,worker' (worker detection missing)");
 }
 

@@ -1134,7 +1134,7 @@ implementations when the module is unavailable.
 **Primary path — `build.sh`:**
 
 ```bash
-bash scripts/emsdk-pinned.sh   # once: emcc 3.1.56 into ./emsdk
+bash scripts/emsdk-pinned.sh   # once: emcc 4.0.23 into ./emsdk
 pnpm build:wasm                # runs emscripten/build.sh
 ```
 
@@ -1151,7 +1151,7 @@ Output written to `public/` (served as static assets by Vite):
 pinned release build ever writes `public/` or the stamp.
 
 **Pairing:** `public/watershed_native.{js,wasm}` are committed and must be rebuilt
-from pinned emcc **3.1.56** in one `pnpm build:wasm`. CI instantiates that committed
+from pinned emcc **4.0.23** in one `pnpm build:wasm`. CI instantiates that committed
 pair (`createWatershedNative()` / `emscripten/smoke_test.mjs`) and
 `git diff --exit-code`s the artifacts after rebuild. The loader rejects a mixed js+wasm pair
 by hash before instantiating it (`WATERSHED_WASM_SHA` vs `WASM_BINARY_SHA`).

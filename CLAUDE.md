@@ -16,7 +16,7 @@ pnpm typecheck     # tsc --noEmit + the strict-buffers ratchet + the layout/depe
 pnpm typecheck:test  # tsc over the tests too (tsconfig.test.json; tsconfig.json has no vitest globals)
 pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); no emcc needed — ships the committed WASM pair
 pnpm build:full    # build:wasm, then build — the deploy path (build_and_patch.py); needs the pinned emcc
-pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 3.1.56 (`bash scripts/emsdk-pinned.sh`)
+pnpm build:wasm    # rebuild public/watershed_native.* — needs emcc 4.0.23 (`bash scripts/emsdk-pinned.sh`)
 pnpm build:assets  # assets/src/<pack>/*.glb → public/packs/<pack>/ (meshopt + baked LODs + manifest); `pnpm build` runs it first
 pnpm check:assets  # CI: public/packs/ must be byte-identical to what assets/src/ builds to
 ```
