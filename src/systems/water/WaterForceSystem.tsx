@@ -207,23 +207,25 @@ export function WaterForceSystem({
     let cancelled = false;
     let sim: SweSim | null = null;
     let unsubscribeFatal: (() => void) | null = null;
+    // Half floats (#554 B.1): linearly filterable on every WebGL2 GPU, unlike
+    // FloatType, and half the upload. sweHost packs the field into these arrays.
     const texture = new THREE.DataTexture(
-      new Float32Array(budget.width * budget.height),
+      new Uint16Array(budget.width * budget.height),
       budget.width,
       budget.height,
       THREE.RedFormat,
-      THREE.FloatType,
+      THREE.HalfFloatType,
     );
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
     const flowTexture = new THREE.DataTexture(
-      new Float32Array(budget.width * budget.height * SWE_FLOW_CHANNELS),
+      new Uint16Array(budget.width * budget.height * SWE_FLOW_CHANNELS),
       budget.width,
       budget.height,
       THREE.RGBAFormat,
-      THREE.FloatType,
+      THREE.HalfFloatType,
     );
     flowTexture.minFilter = THREE.LinearFilter;
     flowTexture.magFilter = THREE.LinearFilter;

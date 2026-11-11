@@ -209,9 +209,11 @@ async function mount(mainModule: WatershedNativeModule) {
   return unmount;
 }
 
+/** The uploaded height texture, decoded from its half floats (#554 B.1). */
 function uploadedHeight(): Float32Array {
   const snap = getSWEHeightFieldSnapshot();
-  return (snap.texture as THREE.DataTexture).image.data as unknown as Float32Array;
+  const raw = (snap.texture as THREE.DataTexture).image.data as unknown as Uint16Array;
+  return Float32Array.from(raw, (h) => THREE.DataUtils.fromHalfFloat(h));
 }
 
 afterEach(() => {

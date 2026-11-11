@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import type { WatershedNativeModule } from './wasmAbi';
 import type { SweEventCall, SweSim, SweStepInput } from './sweSim';
 import type { SimWorkerProxy } from '../../sim/createSimWorkerProxy';
+import { packHalfFloats } from './halfFloatPack';
 import { isWorkerSweSim, type WorkerSweSim } from '../../sim/workerSweSim';
 import {
   SWE_MEAN_DEPTH,
@@ -127,13 +128,16 @@ function applyDisturbances(
 }
 
 /**
- * Point the two DataTextures at the field and flag them for upload (#533).
- * No copy and no per-cell loop on this thread: the height texture's backing
- * array IS the sim's `h` (the heap view on wasm-main, the mirror on
- * wasm-worker / wgsl), and the flow texture's is the RGBA plane `packSurface`
- * returns — packed by one native call here on wasm-main, by the worker (or the
- * GPU) before the frame crossed. Both arrays are stable for the sim's life, so
- * the assignments only take effect on the first upload after a grid install.
+ * Pack the field into the two half-float DataTextures and flag them for upload
+ * (#533, #554 B.1). The sources are the sim's `h` (the heap view on wasm-main,
+ * the mirror on wasm-worker / wgsl) and the RGBA plane `packSurface` returns —
+ * packed by one native call here on wasm-main, by the worker (or the GPU)
+ * before the frame crossed. Each texture owns one Uint16Array, allocated with
+ * it; this is one table-driven pass per value (packHalfFloats, ~0.1 ms for a
+ * 128 × 80 window) and allocates nothing. Half floats are what makes the
+ * textures linearly filterable on every WebGL2 GPU (RGBA32F needs
+ * OES_texture_float_linear, which most mobile GPUs lack), so the surface
+ * samples η and flow smoothly instead of in cell-sized steps.
  */
 function uploadHeightTexture(
   grid: SweSim,
@@ -143,11 +147,10 @@ function uploadHeightTexture(
   originZ: number,
   budget: SWEBudget,
 ): void {
-  if (texture.image.data !== grid.h) texture.image.data = grid.h;
+  packHalfFloats(grid.h, texture.image.data as Uint16Array);
   texture.needsUpdate = true;
   // Same fieldVersion, same origin: (u, w, depth, div) for the field `h` holds.
-  const surface = grid.packSurface(SWE_MEAN_DEPTH);
-  if (flowTexture.image.data !== surface) flowTexture.image.data = surface;
+  packHalfFloats(grid.packSurface(SWE_MEAN_DEPTH), flowTexture.image.data as Uint16Array);
   flowTexture.needsUpdate = true;
   updateSWEHeightFieldSnapshot({
     texture,

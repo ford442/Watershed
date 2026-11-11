@@ -213,6 +213,16 @@ Computed from dimensions × the GPU format three uploads (all maps 1024², full 
 
 KTX2 also removes the JPG decode, and the full-resolution RGBA staging copy, from segment streaming. Choice and fallback: `src/rendering/ktx2Textures.ts`. Encoder: `scripts/build-textures.mjs`, which needs KTX-Software `ktx` ≥ 4.3 and is dev-only. Re-measure on a real GPU with the Chrome task manager "GPU memory" column if the set grows.
 
+## #554 B.1 — SWE textures as half floats (2026-11-11)
+
+| Path | Before | After |
+|---|---|---|
+| SWE η + surface upload (`sweHost.uploadHeightTexture`) | zero-copy: the textures' `image.data` aliased the sim's `Float32Array`s (`FloatType`, unfilterable without `OES_texture_float_linear`) | one `Uint16Array` per texture, allocated with it in `WaterForceSystem` and reused for the sim's life; `packHalfFloats` (`systems/water/halfFloatPack.ts`) writes them in place on each new `fieldVersion` — **0 bytes per frame** |
+| Cost per upload, 128 × 80 window (51,200 values: η + 4 surface channels) | none on this thread | ~0.12 ms in Node / V8 (the bulk table pass over the source's bits); `THREE.DataUtils.toHalfFloat` per value was ~0.6 ms, which is why it is not used |
+| Bytes handed to `texImage2D` per upload | 204,800 | 102,400 |
+
+The test that pins it: `WaterForceSystem.scroll.test.tsx` asserts the flow texture's `image.data` is the same array across step and no-step frames, and that both textures are `HalfFloatType` + `LinearFilter`.
+
 ## #503 B — hidden allocations hoisted (2026-10-21)
 
 The vehicle physics helpers called from `useFrame` (invisible to
