@@ -91,6 +91,9 @@ jobs:
       - name: Validate documentation paths
         run: node scripts/validate-markdown-paths.js
 
+      - name: Version table matches the lockfile
+        run: node scripts/sync-version-table.mjs --check
+
       - name: Host C++ smoke (no Emscripten)
         run: pnpm test:native
 
