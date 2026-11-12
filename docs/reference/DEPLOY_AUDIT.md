@@ -234,7 +234,7 @@ This reproduces the user-supplied headline exactly: **everything is 2026-08-14 e
   orphan created) — but **`watershed_native.js`, its glue/ABI partner, was not** (still 14-Aug
   bytes). Whatever changed in the wasm binary between 14 and 31 Aug is being driven by 14-Aug-era
   JS glue that has never seen it. This is the `#402`/ABI-mismatch condition the project's own
-  `weekly_plan.md` already flagged; this audit independently reproduces it byte-for-byte rather
+  swarm log (`docs/archive/swarm/weekly_plan.md`) already flagged; this audit independently reproduces it byte-for-byte rather
   than taking that entry's word for it.
 - `dry-run`'s manifest matches the build manifest **only because this run had no valid token**
   (§2). It is not evidence that a real deploy would upload everything — the size-based

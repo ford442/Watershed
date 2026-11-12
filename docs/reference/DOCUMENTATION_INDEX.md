@@ -21,6 +21,7 @@
 
 | Doc | When to read |
 |-----|----------------|
+| [`BOARD.md`](./BOARD.md) | The live board and the unlanded remainder of closed epics (history: `docs/archive/swarm/weekly_plan.md`) |
 | [`TESTING.md`](./TESTING.md) | CI, harnesses, known friction log |
 | [`DEPLOY_AUDIT.md`](./DEPLOY_AUDIT.md) | Live-vs-build provenance; DirectoryIndex shadow; `verify:deploy` |
 | [`BUILD_HYGIENE.md`](./BUILD_HYGIENE.md) | Build determinism; the unhashed-passenger manifest contract; `check-build-manifest.mjs` |

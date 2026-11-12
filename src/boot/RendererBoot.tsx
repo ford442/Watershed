@@ -4,16 +4,12 @@
  */
 import React from 'react';
 import { Canvas } from '@react-three/fiber';
-import {
-  BootHealthSentinel,
-  canvasDprRange,
-  createGameRenderer,
-  isVisualCaptureMode,
-  MaterialBackendFallbackError,
-  recordBootFailure,
-  RendererQualitySync,
-  shadowModeToCanvasProp,
-} from '../rendering';
+import BootHealthSentinel from '../rendering/BootHealthSentinel';
+import RendererQualitySync from '../rendering/RendererQualitySync';
+import { canvasDprRange, shadowModeToCanvasProp } from '../rendering/deriveRendererContextOptions';
+import { createGameRenderer, MaterialBackendFallbackError } from '../rendering/createRenderer';
+import { isVisualCaptureMode } from '../rendering/rendererConfig';
+import { recordBootFailure } from '../rendering/bootCrashGuard';
 import SafeGraphicsBadge from '../components/SafeGraphicsBadge';
 import { isScriptedInputMode } from '../input/scriptedRun';
 import type { RendererBootState } from './useRendererBoot';
