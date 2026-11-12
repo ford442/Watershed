@@ -17,7 +17,19 @@ Committed reference PNGs for `verification/visual_smoke.mjs` (CI job `visual-smo
 **`__material-tsl` twins** (#555 A.1): every row above also has a `<label>__material-tsl.png`,
 captured with `?material=tsl` (`pnpm test:visual-smoke:tsl`, a required CI step since #555 A). The
 gate is the same. The node boot is slower on SwiftShader, so its top-down teleports soft-skip more
-often than the GLSL ones; each TSL baseline was captured from a run where the teleport landed.
+often than the GLSL ones; each TSL baseline was captured from a run where the teleport landed
+(13/14 only with `VISUAL_TELEPORT_TIMEOUT_MS=120000 VISUAL_SCREENSHOT_TIMEOUT_MS=120000`: the first
+frame after the meander teleport takes longer than CI's 15 s screenshot limit, so CI soft-skips them).
+
+**What the TSL set shows (2026-11-12) — record of today's node path, not a look to keep.** Phase B
+of #555 re-blesses these once the node path draws the scene:
+
+- `01_spawn_topdown`, `13_meander_hour06`, `14_meander_hour14` — **no canyon**: fog colour, the runner
+  marker and a few birds. GLSL draws the channel, rocks, trees and planks in the same frames.
+- `11` / `12` glacial hours — the waterline band only; the walls above it are missing on TSL too.
+- `02_waterfall_topdown` / `03_slot_topdown` — the WIPEOUT overlay (the teleport lands off-track),
+  as `03` does on GLSL; `05_delta_beach` — the "Campaign Complete" overlay.
+- `04_delta_open_water` — fog/bloom-heavy, like its GLSL twin.
 
 **Gate** (#518 C): a best-effort shot over threshold is informational. The run fails on the
 required shot (structural or over threshold), on any shot that captured with **no baseline here**
