@@ -11,7 +11,9 @@
  * `import type` edges count: a types module the live code compiles against is
  * not dead.
  *
- * Not checked: *.test.*, *.d.ts, src/testing/**, __mocks__/**, __tests__/**,
+ * Not checked: *.test.*, *.d.ts, src/testing/**, src/sim/headless/** (the Node
+ * campaign harness, #556 B: reached from *.campaign.test.ts only; the dependency
+ * guard keeps app code from importing it), __mocks__/**, __tests__/**,
  * setupTests.ts.
  * Anything else that is deliberately unreachable goes in
  * scripts/orphans-allowlist.json with a reason; stale entries fail too.
@@ -75,7 +77,7 @@ function walk(dir, acc = []) {
     if (name === 'node_modules' || name === '__mocks__' || name === '__tests__' || name.startsWith('.')) continue;
     const p = join(dir, name);
     if (statSync(p).isDirectory()) {
-      if (p === join(srcDir, 'testing')) continue;
+      if (p === join(srcDir, 'testing') || p === join(srcDir, 'sim', 'headless')) continue;
       walk(p, acc);
     } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !name.endsWith('.d.ts')) {
       acc.push(p);

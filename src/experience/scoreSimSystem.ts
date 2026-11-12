@@ -11,14 +11,14 @@
  * The HUD mirror (`batchFrameUpdate`, the distance, the OOB envelope) is not
  * sim: it stays in the lifecycle's frame callback.
  */
-import type { DebugStageController } from '../debug/debugStages';
+import type { SimDebugStages } from './simSystems';
 import type { SimSystem } from '../sim/core/SimCore';
 import { tickGhostRecording } from '../systems/ghost/GhostRecorder';
 import { tickScoreSystem } from '../systems/score/ScoreSystem';
 
 export const SCORE_SIM_ORDER = 90;
 
-export function createScoreSimSystem(debug: DebugStageController): SimSystem {
+export function createScoreSimSystem(debug: SimDebugStages): SimSystem {
   return {
     id: 'score',
     order: SCORE_SIM_ORDER,

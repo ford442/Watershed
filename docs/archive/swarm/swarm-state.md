@@ -1,5 +1,52 @@
 # Swarm state — atomic deploy + build identity (#416)
 
+## #556 B.1 — 2026-11-12 — green, committed
+
+**Objective:** `src/sim/headless/createHeadlessRun.ts`: SimCore + a Rapier world + the shipped WASM field + the router + the chunk treadmill + the page's systems list, with no three scene and no React (#556 B.1). Not stepped yet (that is B.2); this commit is what a run is built of, plus the guards that keep it out of the app.
+
+### What a headless run is built of (and where it stands in for a component)
+| Page | Headless (`src/sim/headless/`) |
+|---|---|
+| `<Physics gravity=[0,-20,0]>` + `RapierSimStep` | `@dimforge/rapier3d-compat` world with the library's defaults; `createRapierWorldSimSystem` steps it (92) |
+| `RunnerVehicle` body / capsule | `createPlayerBody` (dynamic, damping .35 / .9, capsule .4 / .5, friction .04, restitution .15); `createRunnerSimSystem` (95) |
+| `TrackManager` + `ChunkManager` | the same `ChunkManager` / `ProceduralMapManager`, callbacks as TrackManager's (segment entry, journey end, forecast) |
+| `TrackSegment` / `useGeometries` / `TrackSegmentCollisionMeshes` | `segmentWorld.ts`: `buildSegmentMeshBuffers`, fixed trimesh body per hull, `registerSegmentBathymetry`, `registerSegmentErosion`, the pond floor box |
+| `WaterForceSystem` + `SplashSystem` | `headlessWater.ts`: `sweHostFrame` + `applyWaterForces` (their plain modules) and SplashSystem's SWE-disturbance gates |
+| `VehicleTuner` (mounted for the runner too) | `vehicleTunerFrame.ts` (copy: water damping, wall ray, speed cap) |
+| `SimCoreTick`'s sample | `experience/simContextSample.ts`, moved out of SimCoreTick unchanged and shared |
+| watershed_native.wasm | `nativeNode.ts`: `fs` bytes as `wasmBinary` through the browser's own loader (stamp + ABI checked); the glue's `ENVIRONMENT` untouched — no worker-like global was needed |
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/headless/{nativeNode,segmentWorld,headlessWater,vehicleTunerFrame,createHeadlessRun}.ts` (+ `createHeadlessRun.campaign.test.ts`) | new |
+| `src/experience/simContextSample.ts`, `SimCoreTick.tsx` | the sample leaves SimCoreTick (scratch argument object, no per-frame allocation) |
+| `src/experience/simSystems.ts`, `scoreSimSystem.ts` | systems take `SimDebugStages` (`isStageEnabled` / `setStageFailure`), not the whole stage controller |
+| `scripts/check-dependency-direction.mjs` | `src/sim/headless/` is a composition root (may import any layer, exempt from the sim rules) and **nothing but tests may import it** (checked against every edge kind; a component importing it fails) |
+| `scripts/check-orphans.mjs`, `tsconfig.json`, `eslint.config.js` | headless is Node-only: skipped by the orphan walk, excluded from the app tsconfig (typechecked by `tsconfig.test.json`), outside the type-aware lint block. The sim-time ESLint ban already covers `src/sim/**`, headless included |
+| `src/sim/singleNativeInstance.test.ts` | does not scan `src/sim/headless` (it loads the pair through the one loader, as the page's two owners do) |
+| `vitest.config.ts`, `package.json` | `campaign` project (`src/**/*.campaign.test.ts`, environment `node`, no DOM setup) excluded from `unit`; `pnpm test:campaign` |
+| `scripts/strict-buffers.json` | the five headless files opted in (clean under `noUncheckedIndexedAccess`) |
+| `build-budget.json` | entry 757,000 → 758,000 B, boot 2,096,000 → 2,097,000 B: main 756,709 → 757,017 B (+0.3 kB, A.1's sink ~150 B + the shared sample ~170 B); reason in both notes |
+
+### Checks (ruler = base `9bce4a0`)
+| Check | Base | This step |
+|---|---|---|
+| typecheck (guards + knip) / typecheck:test / lint `--max-warnings 0` | green | green |
+| test / test:perf / test:campaign | not run on base / n/a / n/a | 2348 passed + 32 skipped / 4 passed / 5 passed |
+| input-smoke, gamepad, replay-smoke | splits 11400 / 15400 / 19500 / 23500; replay checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` | identical: splits 11400 / 15400 / 19500 / 23500 ms, replay checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` (recording and both replays), all 38 per-second pose / speed lines of the two input smokes equal base's |
+| build: entry / boot JS | 756,709 B / 2,095,873 B | 757,017 B / 2,096,181 B (ceilings raised, see above) |
+
+### Not done / BLOCKED
+- Stepping (`stepHeadless`) and the pin against the browser: B.2.
+- Decorations, pooled obstacles, pillars and their colliders are not mounted headless (a pilot that drives into a rock will not collide); water meshes, particles and audio are not either.
+- `segmentWorld.ts`, `headlessWater.ts` and `vehicleTunerFrame.ts` are **copies of component bodies** (TrackSegment's prop derivation, WaterForceSystem / SplashSystem's frame, VehicleTuner's frame). Components are off limits here; the pin (B.2) is what catches drift. Follow-up: have the components call the extracted functions.
+
+### Next
+B.2: `stepHeadless` and the pin against the browser's splits and SWE checksums.
+
+---
+
 ## #556 A.1 (remainder) — 2026-11-12 — green, committed
 
 **Objective:** #556 Phases A + B ("the campaign without a browser"). The brief was written before PR #565 merged; **A.1–A.3 were already on `main`** (`a6cfb0a` / `08b1671` / `5d3e299`): vehicle cues as `gameEvents`, the runner step as SimCore's `vehicle-runner` system (95) beside `physics-world` (92), `ctx.game` (`SimGameView`), and the dependency guard with its runtime-closure check. This step is the one piece of A.1 still open on the base: `RunnerPhysicsStep` still imported `debug/debugTaps`.

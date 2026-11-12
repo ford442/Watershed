@@ -213,10 +213,18 @@ export default tseslint.config(
   // awaits or catches (the async loaders, the worker proxies, the audio
   // unlock) fails silently in a game loop, and an async function handed to a
   // void callback (an event handler, useEffect) drops its rejection.
-  // `projectService` reads tsconfig.json; tests are outside it and outside this block.
+  // `projectService` reads tsconfig.json; tests are outside it and outside this block, and so is
+  // the Node-only campaign harness (src/sim/headless, typechecked by tsconfig.test.json).
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/**/__tests__/**', 'src/**/__mocks__/**', 'src/testing/**', 'src/setupTests.ts'],
+    ignores: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'src/**/__tests__/**',
+      'src/**/__mocks__/**',
+      'src/testing/**',
+      'src/sim/headless/**',
+      'src/setupTests.ts',
+    ],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
@@ -268,7 +276,9 @@ export default tseslint.config(
   // these a week after the merge; this rule finds them at the keyboard.
   // Wall-clock reads that are not sim state go through src/utils/wallClock.ts
   // (metadata stamps, telemetry). The allowlist below is the rest, each with
-  // its reason; adding to it needs one too.
+  // its reason; adding to it needs one too. `src/sim/**` includes the headless
+  // campaign harness (src/sim/headless, #556 B): a campaign run is as
+  // wall-clock-free as the page's.
   {
     files: [
       'src/systems/**/*.{ts,tsx}',

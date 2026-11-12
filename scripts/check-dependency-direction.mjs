@@ -18,6 +18,13 @@
  * __tests__/ and __mocks__/ are exempt: a test may reach anywhere to stage a
  * scene. Exceptions go in RULES[].allow with a reason, not around the script.
  *
+ * The Node campaign harness (#556 B), src/sim/headless/, is a composition root like
+ * experience/: it builds a run out of the sim, the vehicle step, the treadmill and
+ * the water, so it may import any layer (and the Zustand store the sim's systems
+ * still use) and is exempt from the sim rules below. The reverse is the rule: it
+ * is Node-only (fs, the shipped wasm, Rapier -compat), so no module outside it —
+ * app code, the sim, a component — may import it; only tests and itself.
+ *
  * Headless sim (#556 A). The gameplay step must run in Node with no React app
  * (the headless campaign), so the modules SimCore steps — everything under
  * sim/, every `*SimSystem.ts` and the vehicle steps (`vehicles/<v>/hooks/*Step.ts`)
@@ -49,8 +56,9 @@ const RULES = [
 ];
 
 /** Files the headless-sim rule covers (repo-relative). */
+const HEADLESS_DIR = 'src/sim/headless/';
 const isSimFile = (rel) =>
-  rel.startsWith('src/sim/') ||
+  (rel.startsWith('src/sim/') && !rel.startsWith(HEADLESS_DIR)) ||
   /SimSystem\.ts$/.test(rel) ||
   /^src\/vehicles\/[^/]+\/hooks\/[^/]*Step\.ts$/.test(rel);
 
@@ -137,7 +145,8 @@ for (const file of walk(srcDir)) {
   const rel = relative(root, file).split('\\').join('/');
   if (isExempt(rel)) continue;
   const layer = layerOf(file);
-  const rules = RULES.filter((r) => r.from === layer);
+  // The campaign harness may import any layer (see the header); who imports it is checked below.
+  const rules = rel.startsWith(HEADLESS_DIR) ? [] : RULES.filter((r) => r.from === layer);
   if (rules.length === 0) continue;
   const text = readFileSync(file, 'utf8');
   for (const m of text.matchAll(IMPORT_RE)) {
@@ -155,8 +164,22 @@ for (const file of walk(srcDir)) {
   }
 }
 
-// Headless sim, direct imports.
 const relOf = (abs) => relative(root, abs).split('\\').join('/');
+
+// The Node-only campaign harness is imported by tests alone (any layer, every edge kind).
+for (const file of walk(srcDir)) {
+  const rel = relOf(file);
+  if (isExempt(rel) || rel.startsWith(HEADLESS_DIR)) continue;
+  for (const m of readFileSync(file, 'utf8').matchAll(IMPORT_RE)) {
+    const spec = m[1] ?? m[2];
+    if (!spec.startsWith('.')) continue;
+    if (relOf(resolveRelative(file, spec)).startsWith(HEADLESS_DIR)) {
+      violations.push(`${rel}: '${spec}' (the Node-only campaign harness, src/sim/headless/, is imported by tests alone)`);
+    }
+  }
+}
+
+// Headless sim, direct imports.
 const simDirect = [];
 for (const file of walk(srcDir)) {
   const rel = relOf(file);
