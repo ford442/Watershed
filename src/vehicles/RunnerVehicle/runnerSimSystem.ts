@@ -54,6 +54,7 @@ export function createRunnerSimSystem(binding: RunnerSimBinding): SimSystem {
       fillPlayerControls(ctx.input, false, controls);
       args.delta = dt;
       args.game = ctx.game;
+      args.debug = ctx.debug;
       args.world = binding.world;
       args.body = body;
       args.rapier = binding.rapier;

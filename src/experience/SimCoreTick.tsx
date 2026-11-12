@@ -35,7 +35,7 @@ import { POSITION_SANE, resolveActiveEnvelopeInto } from '../vehicles/RunnerVehi
 import type { SegmentEnvelope } from '../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from './types';
 import { createSimSystems } from './simSystems';
-import { storeSimGame } from './simGameBinding';
+import { storeSimGame, tapSimDebug } from './simGameBinding';
 
 export const SIM_CORE_PRIORITY = -90;
 
@@ -96,6 +96,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
     const offs = createSimSystems(debug).map((system) => simCore.register(system));
     simCore.ctx.water.stageAt = sampleSweStage;
     simCore.ctx.game = storeSimGame;
+    simCore.ctx.debug = tapSimDebug;
     const offReset = gameEvents.on('watershed-run-reset', () => simCore.reset());
     return () => {
       offReset();

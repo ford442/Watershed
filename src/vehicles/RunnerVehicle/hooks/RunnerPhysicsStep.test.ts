@@ -11,6 +11,7 @@ import { JUMP_CONFIG } from '../constants';
 import type { PlayerControls } from '../../../input/playerControls';
 import type { QuatLike, RapierBody, RapierRay, RapierWorld, Vec3Like } from '../../../physics/rapierTypes';
 import { useGameStore } from '../../../systems/GameState';
+import { NO_DEBUG_SINK } from '../../../sim/core/SimCore';
 
 const DYNAMIC = 0;
 const KINEMATIC = 2;
@@ -73,6 +74,7 @@ describe('updateRunnerPhysics state machine', () => {
     updateRunnerPhysics({
       delta: 1 / 60,
       game: { state: () => useGameStore.getState() },
+      debug: NO_DEBUG_SINK,
       world: stubWorld(ground),
       body,
       rapier,

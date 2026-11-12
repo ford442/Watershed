@@ -1,5 +1,37 @@
 # Swarm state — atomic deploy + build identity (#416)
 
+## #556 A.1 (remainder) — 2026-11-12 — green, committed
+
+**Objective:** #556 Phases A + B ("the campaign without a browser"). The brief was written before PR #565 merged; **A.1–A.3 were already on `main`** (`a6cfb0a` / `08b1671` / `5d3e299`): vehicle cues as `gameEvents`, the runner step as SimCore's `vehicle-runner` system (95) beside `physics-world` (92), `ctx.game` (`SimGameView`), and the dependency guard with its runtime-closure check. This step is the one piece of A.1 still open on the base: `RunnerPhysicsStep` still imported `debug/debugTaps`.
+
+### Base / ruler
+Branched from `main` `9bce4a0` (after #560 and #565; `git log origin/main` has "#554 foundation" and "#556 A"). Measured before the first edit (`pnpm build`, `pnpm preview`, three smokes): input and gamepad splits seg 0 11400 / seg 1 15400 / seg 2 19500 / seg 3 23500 ms (speed 18.94 / 19.00 / 19.00 / 19.00), per-second poses (keyboard t=24 s `(0.0, -201.5, -464.2)`, gamepad `(0.0, -188.3, -464.2)`), replay SWE checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` for the recording and both replays. = the brief's numbers.
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/core/SimCore.ts` (+test) | `SimContext.debug: SimDebugSink` (`physicsDebug(snapshot)`), default `NO_DEBUG_SINK`; `resetForTests` restores it |
+| `src/vehicles/RunnerVehicle/hooks/RunnerPhysicsStep.ts` | no `debug/debugTaps` import: the two snapshot publishes go through `args.debug` |
+| `src/vehicles/RunnerVehicle/runnerSimSystem.ts` | passes `ctx.debug` into the step |
+| `src/experience/simGameBinding.ts`, `SimCoreTick.tsx` | `tapSimDebug` binds the sink to `setDebugTap('physicsDebug', …)` in the browser |
+| `RunnerPhysicsStep.test.ts`, `runnerStep.alloc.perf.test.ts` | pass `NO_DEBUG_SINK` |
+
+### Checks (ruler = base)
+| Check | Base | This step |
+|---|---|---|
+| typecheck / typecheck:test / lint (0 warnings) | green | green |
+| test / test:perf | not run on the untouched base | 2348 passed + 32 skipped / 4 passed |
+| input-smoke, gamepad, replay-smoke | splits + poses + checksums above | identical |
+
+### Not done / BLOCKED
+- Raft step stays as is (brief's RAFT RULE; #565 already moved its side effects to `raft-*` cues).
+- 13 non-test files under `src/vehicles`, `src/systems`, `src/sim` mention `useGameStore` (`RunnerVehicle.tsx`, `raftPhysicsRuntime`, `useRaftControls`, `persistenceBootstrap`, `BiomeSystem`, `LODManager`, `SplitRecorder`, `WeatherDirectorTick`, `sweHost`, `ScoreSystem`, `launchRewards`, `GameState` itself, and a comment in `simGame`). The brief said 17, the issue 14: #565 moved the runner step, the weather, sky, profile and score reads onto `ctx.game`. None is in the guard's runtime closure from the SimCore entries; the ones a headless run needs are listed in the B.1 section.
+
+### Next
+B.1 `createHeadlessRun`.
+
+---
+
 ## #534 Phase E — 2026-11-05 — PR open — GLSL post chain on three's `renderer.setEffects`
 
 **Objective:** Replace the GLSL `EffectComposer` with three r185's own HDR output (`outputBufferType: HalfFloatType` + `renderer.setEffects`), keep the #519 carry-overs fixed in the rebuilt chain, and fold in the High → Medium frame-time trace (#534 acceptance 2, #519 C).

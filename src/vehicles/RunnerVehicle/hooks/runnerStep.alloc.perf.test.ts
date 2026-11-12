@@ -27,6 +27,7 @@ import { syncRunnerCamera } from '../runnerCameraSync';
 import type { PlayerControls } from '../../../input/playerControls';
 import type { QuatLike, RapierBody, RapierRay, RapierRayHit, RapierWorld, Vec3Like } from '../../../physics/rapierTypes';
 import { useGameStore } from '../../../systems/GameState';
+import { NO_DEBUG_SINK } from '../../../sim/core/SimCore';
 import { initRunSession, resetRunSessionForTests } from '../../../systems/journey/runSession';
 import { buildSegmentFrame, clearSegmentFrames, publishSegmentFrames } from '../../../systems/map/segmentFrames';
 
@@ -122,6 +123,7 @@ describe('runner step allocation (#521 D)', () => {
     const args = {
       delta: 1 / 60,
       game: { state: () => useGameStore.getState() },
+      debug: NO_DEBUG_SINK,
       world,
       body,
       rapier,
