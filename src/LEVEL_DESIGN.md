@@ -248,7 +248,7 @@ Enhanced raft movement and controls for superior velocity feel and precise canyo
 | Vehicle tuning config | `src/constants/vehicleTuning.ts` | Centralized tunable parameters: baseSpeed 32, flowResponsiveness 14, drift, wall riding, boost |
 | Paddle thrust & steering | `src/systems/vehicle/VehicleSystem.ts` (`RaftVehicle`) | Impulse-based lateral steering, torque on turns, speed cap 20 m/s |
 | Wall riding / wall boost | `src/constants/vehicleTuning.ts` | wallRayDistance 3.5, wallBoostImpulse 9.0, friction-based wall interaction |
-| Drift mechanics | `src/constants/vehicleTuning.ts` | driftFlowScale 0.18, driftTorqueScale 2.0, driftLateralRetention 0.92 |
+| Drift mechanics | `src/constants/vehicleTuning.ts` | driftFlowScale 0.18, driftTorqueScale 2.0 |
 | Camera dynamics | `src/constants/game.ts` | Velocity lag 0.15, lean factor 0.3, FOV speed scale 8 (75→90) |
 | Collision response | `src/constants/game.ts` | Elastic bounce (force 8), spin on impact (force 3), stun 0.3s |
 | Bank angle / slope detection | `src/vehicles/RunnerVehicle.tsx` | castRayAndGetNormal for trimesh normals, BANK_CONFIG for wall assist |
