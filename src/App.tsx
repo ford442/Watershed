@@ -6,9 +6,11 @@
  *   ui/       useGamePhase + MenuShell — menu / playing / paused and the
  *             overlays that show it
  *   harness/  dev and test switches (`?debug`, `?cleanTest`, `?replay`,
- *             `?river`, `?editor`, `?screenshot`, …) — their code fetched behind the flags
+ *             `?river`, `?screenshot`, …) — their code fetched behind the flags
+ *   workshop/ the River Workshop, a lazy chunk MenuShell draws over the menu
+ *             (`?editor=1` opens it at boot)
  *
- * Every hook runs before the unsupported-tier and editor branches, so their
+ * Every hook runs before the unsupported-tier branch, so their
  * effects (persistence, settings rehydration, the boot clamps) run on every
  * page, as they always have.
  */
@@ -26,7 +28,6 @@ import { MenuShell, TouchLayer, preloadOverlays } from './ui/MenuShell';
 import { useGamePhase } from './ui/useGamePhase';
 import { useDevToggles } from './harness/useDevToggles';
 import { useHarnessAutostart } from './harness/useHarnessAutostart';
-import { EditorHarness, isEditorMode } from './harness/EditorHarness';
 import './style.css';
 
 export type { GraphicsBoot } from './boot/useRendererBoot';
@@ -64,13 +65,14 @@ function App({ graphicsBoot }: AppProps = {}) {
 
   return (
     <ErrorBoundary>
-      {/* Editor mode: full-page swap, own Canvas, own lifecycle */}
-      {isEditorMode ? (
-        <EditorHarness />
-      ) : (
-        <>
+      <>
           <SettingsSync />
-          <RendererBoot boot={boot} onCreated={() => { void debug.runStage('visualization', () => undefined); }}>
+          <RendererBoot
+            boot={boot}
+            // The River Workshop covers the menu with its own Canvas: stop drawing the
+            // game's under it — once booted, so BootHealthSentinel has had its frame.
+            idle={game.workshop.open && game.phase === 'menu' && boot.bootReady}
+            onCreated={() => { void debug.runStage('visualization', () => undefined); }}>
             <Experience
               debug={debug}
               physicsDebug={dev.physicsDebug}
@@ -98,8 +100,7 @@ function App({ graphicsBoot }: AppProps = {}) {
               <DevOverlays debug={debug} dev={dev} boot={boot} />
             </React.Suspense>
           )}
-        </>
-      )}
+      </>
     </ErrorBoundary>
   );
 }

@@ -3,13 +3,15 @@
  *
  * The StartMenu's "Load river…" and the editor's "Play" import this on demand:
  * it carries the level validator (ajv-compiled schema), which must never ride
- * the entry chunk (`build-budget.json`). A `.wsriver` is exactly the level JSON
- * the editor exports — no new format — and is checked by the same
- * `assertLevelData` the bundled maps' contract test uses.
+ * the entry chunk (`build-budget.json`). A v1 `.wsriver` is exactly the level
+ * JSON the editor exports; a v2 one wraps the same JSON deflated
+ * (riverShare.ts). Either is checked by the same `assertLevelData` the bundled
+ * maps' contract test uses, as is a river opened from a `#river=` link.
  */
 
 import { listUserLevels, loadUserLevel, parseAndValidateUserLevel, saveUserLevel } from './userLevelStore';
 import { createUserRiver, type UserRiver } from './userRiverSession';
+import { decodeRiverPayload, unwrapRiverDocument } from './riverShare';
 
 /** A river file is a few hundred kB at most; anything larger is not one. */
 export const MAX_RIVER_BYTES = 2 * 1024 * 1024;
@@ -36,14 +38,27 @@ export function parseRiverText(text: string, name = 'river'): UserRiver {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error('That is not a river file (not JSON). Export one from the level editor.');
+    throw new Error('That is not a river file (not JSON). Export one from the River Workshop.');
   }
-  const id = riverIdFromName(name);
+  return riverFromDocument(unwrapRiverDocument(raw), riverIdFromName(name));
+}
+
+function riverFromDocument(raw: unknown, id: string): UserRiver {
   const level = parseAndValidateUserLevel(raw, id);
   if (!Array.isArray(level.segments) || level.segments.length === 0) {
     throw new Error('That river has no segments.');
   }
   return createUserRiver(id, level);
+}
+
+/**
+ * A river from a `#river=` link payload, validated. The id comes from the
+ * river's own name (a link has no file name).
+ */
+export function parseSharedRiver(payload: string): UserRiver {
+  const raw = decodeRiverPayload(payload);
+  const named = raw && typeof raw === 'object' ? (raw as { metadata?: { name?: unknown } }).metadata?.name : undefined;
+  return riverFromDocument(raw, riverIdFromName(typeof named === 'string' && named ? named : 'shared-river'));
 }
 
 /** Read a picked / dropped file as a river. */

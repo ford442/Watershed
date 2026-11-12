@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { isPaletteOnlyBiome } from '../../configs/TrackBiomes';
+import { isPaletteOnlyBiome } from '../configs/TrackBiomes';
 
 // Biome definitions with visual properties
 interface BiomeDefinition {

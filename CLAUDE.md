@@ -48,7 +48,8 @@ src/
 ├── App.tsx                      # Composition only (#521 C): boot → MenuShell → Experience
 ├── boot/                        # useRendererBoot (probe, envelope, crash guard, quality clamps) + RendererBoot (Canvas)
 ├── ui/                          # useGamePhase (menu / playing / paused, map pick) + MenuShell (loader, menus, options)
-├── harness/                     # Dev / test only, lazy behind their flags: dev toggles + overlays, ?replay= / ?river= autostart, ?editor=1, the ?screenshot=1 harness API
+├── harness/                     # Dev / test only, lazy behind their flags: dev toggles + overlays, ?replay= / ?river= autostart, the ?screenshot=1 harness API
+├── workshop/                    # River Workshop (lazy chunk, StartMenu → RIVER WORKSHOP; ?editor=1 opens it at boot): workshopStore (zustand + zundo undo/redo, LevelData as truth), editorSegments, inspector / biome / path / validation panels
 ├── config/queryFlags.ts         # ★ The only reader of the query string (queryFlags / queryParam / editQuery); ESLint bans location.search elsewhere
 ├── Experience.tsx               # Scene root: LOD/Biome providers, InnerExperience
 ├── index.tsx                    # Entry: Rapier pre-init, global handlers
@@ -74,8 +75,7 @@ src/
 │   ├── PostProcessingPipeline.tsx
 │   ├── GameHUD.tsx / PauseMenu.tsx / Loader.tsx
 │   ├── Environment/             # Instanced biome decorations (~34 types, all `.tsx`)
-│   ├── Obstacles/               # Rocks, pillar break VFX, breakable trestle
-│   └── LevelEditor/             # In-game level tools
+│   └── Obstacles/               # Rocks, pillar break VFX, breakable trestle
 │
 ├── input/                       # ★ InputHub (#486): every device → one InputFrame per sim frame
 │   ├── InputHub.ts / InputFrame.ts / InputHubTick.tsx   # merge + tick at useFrame −100
@@ -381,4 +381,6 @@ and no COOP/COEP (the web build is single-threaded). See [`docs/reference/DEPLOY
 | `src/components/PostProcessingPipeline.tsx` | Live post-processing stack |
 | `src/systems/map/MapSystem.ts` | Chunk interfaces, JSON maps, spawn calc |
 | `src/maps/registry.ts` | Active map switch point |
+| `src/workshop/Workshop.tsx` / `workshopStore.ts` | River Workshop (player river editor): one lazy chunk (`workshopMaxBytes`), undo/redo store |
+| `src/systems/map/riverShare.ts` | `#river=` share link + `.wsriver` v2 (deflate) envelope; lazy (fflate) |
 | `src/style.css` | All UI chrome |

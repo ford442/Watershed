@@ -18,10 +18,12 @@ interface RendererBootProps {
   boot: RendererBootState;
   /** Runs first when a renderer comes up (App's `visualization` debug stage). */
   onCreated?: () => void;
+  /** Stop drawing frames (the River Workshop covers the menu with its own Canvas). */
+  idle?: boolean;
   children: React.ReactNode;
 }
 
-export function RendererBoot({ boot, onCreated, children }: RendererBootProps) {
+export function RendererBoot({ boot, onCreated, idle = false, children }: RendererBootProps) {
   const { contextOptions, rendererPreference, materialBackend } = boot;
   return (
     <Canvas
@@ -60,7 +62,7 @@ export function RendererBoot({ boot, onCreated, children }: RendererBootProps) {
       }}
       camera={{ position: [0, 10, -10], fov: 75 }}
       shadows={shadowModeToCanvasProp(contextOptions.shadowMode)}
-      frameloop={isScriptedInputMode() ? 'never' : 'always'}
+      frameloop={idle || isScriptedInputMode() ? 'never' : 'always'}
       onCreated={({ gl }) => {
         onCreated?.();
         boot.attachRenderer(gl);

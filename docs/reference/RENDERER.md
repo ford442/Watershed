@@ -509,7 +509,7 @@ components may mount a light (`sceneLightPool.test.ts` scans `src/`).
 | `src/rendering/nativeWebgpuGate.ts` | Native WebGPU (`forceWebGL: false`) gate — open while no residual GLSL host remains and post is ported |
 | `scripts/glsl-hosts-allowlist.json` | Residual / dual / dormant GLSL construction sites |
 | `src/rendering/rendererConfig.ts` | URL param + localStorage parsing, capture-mode and software-GL gates |
-| `src/components/LevelEditor/LevelEditor.tsx` | Editor Canvas on the shared contract |
+| `src/workshop/Workshop.tsx` | River Workshop Canvas on the shared contract |
 | `src/rendering/rendererState.ts` | Active backend diagnostics |
 | `src/rendering/WireframeDebug.tsx` | Scene wireframe helper |
 | `src/experience/SceneLighting.tsx` | Per-light shadows from quality contract |

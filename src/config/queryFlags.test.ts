@@ -55,4 +55,12 @@ describe('queryFlags (#521 E)', () => {
     editQuery((p) => p.delete('wireframe'));
     expect(queryFlags().wireframe).toBe(false);
   });
+
+  it('editQuery keeps the fragment (a shared #river= link survives the boot map sync)', () => {
+    window.history.replaceState(null, '', '/?map=meander#river=abc');
+    editQuery((p) => p.set('map', 'glacial'));
+    expect(window.location.search).toBe('?map=glacial');
+    expect(window.location.hash).toBe('#river=abc');
+    window.history.replaceState(null, '', '/');
+  });
 });

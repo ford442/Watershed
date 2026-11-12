@@ -12,3 +12,108 @@
 @import './styles/graphics-boot.css';
 @import './styles/settings-panel.css';
 @import './styles/run-results.css';
+
+/* ---- River Workshop (src/workshop/, lazy) ------------------------------- */
+.workshop-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  color: #ddd;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.workshop-toolbar {
+  min-height: 48px;
+  background: #0a0a0a;
+  border-bottom: 1px solid #222;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 6px 16px;
+  gap: 8px;
+}
+.workshop-title { font-size: 16px; font-weight: 700; color: #fff; margin-right: 12px; }
+.workshop-toolbar-sep { width: 1px; height: 24px; background: #333; }
+.workshop-toolbar-status { margin-left: auto; color: #f0b35a; font-size: 12px; max-width: 40ch; }
+.workshop-viewbar {
+  height: 36px;
+  background: #111;
+  border-bottom: 1px solid #222;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+}
+.workshop-viewbar-btn {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.workshop-viewbar-btn.is-active { background: #1a3a5a; color: #fff; }
+.workshop-errors { height: 200px; background: #0a0a0a; border-top: 1px solid #222; overflow: hidden; }
+.workshop-errors-head {
+  height: 32px;
+  background: #111;
+  border-bottom: 1px solid #222;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  justify-content: space-between;
+}
+.workshop-icon-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 18px; line-height: 1; }
+.workshop-start {
+  margin: auto;
+  max-width: 720px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+.workshop-start h2 { margin: 0; color: #fff; }
+.workshop-start p { margin: 0; color: #999; }
+.workshop-start-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.workshop-notice { color: #f0b35a; }
+.workshop-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.workshop-modal-card {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 24px;
+  width: 640px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.workshop-modal-text {
+  flex: 1;
+  background: #0a0a0a;
+  color: #4ade80;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  outline: none;
+  word-break: break-all;
+}
+.user-river-shared { border: 1px solid #3a9a3a; border-radius: 6px; padding: 8px; margin: 6px 0; }

@@ -6,7 +6,7 @@
  * Do NOT import levelValidator.ts here.
  */
 
-import type { EditorSegmentConfig } from '../hooks/useLevelEditor';
+import type { EditorSegmentConfig } from './editorSegments';
 
 // ---------------------------------------------------------------------------
 // Types

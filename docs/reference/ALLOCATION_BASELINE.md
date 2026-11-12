@@ -143,7 +143,7 @@ vars, which has nothing to do with allocation.
 | 27 | `src/components/Environment` |
 | 22 | `src/systems/water` |
 | 19 | `src/components/TrackSegment` |
-| 10 | `src/components/LevelEditor` |
+| 10 | `src/workshop` |
 | 9 | `src/hooks` |
 | 6 | `src/utils` |
 | ≤4 each | `src`, `src/systems/audio`, `verification`, `src/systems/map`, `src/systems/pools`, `src/experience`, `src/materials`, `src/rendering`, `src/systems/lod`, … |

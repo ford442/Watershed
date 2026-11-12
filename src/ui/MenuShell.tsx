@@ -21,6 +21,10 @@ const SettingsPanel = SettingsPanelChunk.Component;
 // Touch devices only (#486 C): everyone else never fetches the on-screen controls.
 const TouchControlsChunk = lazyComponent(() => import('../components/TouchControls'));
 const TouchControls = TouchControlsChunk.Component;
+// The River Workshop (src/workshop/): one lazy chunk, fetched when the player opens it
+// (`workshopMaxBytes` in build-budget.json). Its editor Canvas and drei controls never ride the entry.
+const WorkshopChunk = lazyComponent(() => import('../workshop/Workshop'));
+const Workshop = WorkshopChunk.Component;
 export function preloadOverlays() {
   PauseMenuChunk.preload();
   SettingsPanelChunk.preload();
@@ -58,8 +62,9 @@ interface MenuShellProps {
 }
 
 export function MenuShell({ game, overlaysEnabled, skipLoader, canvasReady, bootReady }: MenuShellProps) {
-  const { phase, settingsOpen, setSettingsOpen, worldEnabled } = game;
+  const { phase, settingsOpen, setSettingsOpen, worldEnabled, workshop } = game;
   if (!overlaysEnabled) return null;
+  const workshopOpen = workshop.open && phase === 'menu';
   return (
     <>
       {/* Asset loading overlay */}
@@ -68,14 +73,22 @@ export function MenuShell({ game, overlaysEnabled, skipLoader, canvasReady, boot
       )}
 
       {/* Goal 4: Start Menu — shown before first run */}
-      {phase === 'menu' && !settingsOpen && (
+      {phase === 'menu' && !settingsOpen && !workshopOpen && (
         <StartMenu
           onStart={game.handleStart}
           selectedMapId={game.selectedMapId}
           onSelectMap={game.handleSelectMap}
           onOpenOptions={() => setSettingsOpen(true)}
+          onOpenWorkshop={game.openWorkshop}
+          onPreloadWorkshop={WorkshopChunk.preload}
           bootReady={bootReady}
         />
+      )}
+      {/* River Workshop — over the idle menu scene, on its own Canvas */}
+      {workshopOpen && (
+        <React.Suspense fallback={<div className="workshop-root"><p className="workshop-start">Loading the River Workshop…</p></div>}>
+          <Workshop seed={workshop.seed} onClose={game.closeWorkshop} onTestRun={game.startTestRun} />
+        </React.Suspense>
       )}
       {/* Goal 4: Pause Menu — shown when pointer lock is lost during play */}
       {phase === 'paused' && !settingsOpen && (

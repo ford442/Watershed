@@ -16,6 +16,7 @@
 import { getMapDefinition, type MapDefinition, type MapRegistryId } from '../../maps/registry';
 import { normalizeBiomeId } from '../../configs/biomes';
 import type { LevelData } from './MapSystem';
+import { canonicalJson } from '../../utils/canonicalJson';
 
 export interface UserRiver {
   /** Saved-level id (the editor's slug) or the file's name. */
@@ -30,11 +31,13 @@ let active: UserRiver | null = null;
 const listeners = new Set<() => void>();
 
 /**
- * FNV-1a over the level's JSON (stable for one parsed file: key order is the
- * file's). Eight hex digits are plenty to tell a friend's rivers apart.
+ * FNV-1a over the level's canonical JSON (sorted keys), so the same river
+ * hashes the same as a file, an editor export or a shared link decoded on
+ * another machine — that is what lets ghosts on a shared river compare fairly.
+ * Eight hex digits are plenty to tell a friend's rivers apart.
  */
 export function hashUserRiverLevel(level: LevelData): string {
-  const text = JSON.stringify(level);
+  const text = canonicalJson(level);
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i += 1) {
     h ^= text.charCodeAt(i);

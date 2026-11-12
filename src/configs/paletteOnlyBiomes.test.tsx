@@ -8,7 +8,7 @@ import { render, screen } from '@testing-library/react';
 import { PALETTE_ONLY_BIOMES, TRACK_BIOMES } from './TrackBiomes';
 import { BIOME_HUD_LABELS, LEGACY_BIOME_ALIASES, normalizeBiomeId, type BiomeId } from './biomes';
 import { MAP_REGISTRY, mapRegistryIds } from '../maps/registry';
-import { BiomeSelector } from '../components/LevelEditor/BiomeSelector';
+import { BiomeSelector } from '../workshop/BiomeSelector';
 import levelSchema from '../formats/level.schema.json';
 import reachSchema from '../formats/reach.schema.json';
 

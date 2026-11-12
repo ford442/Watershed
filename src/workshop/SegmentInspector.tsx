@@ -6,8 +6,8 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type { EditorSegmentConfig } from '../../hooks/useLevelEditor';
-import type { EditorValidationError } from '../../utils/levelEditorValidator';
+import type { EditorSegmentConfig } from './editorSegments';
+import type { EditorValidationError } from './levelEditorValidator';
 
 // Segment type options
 const SEGMENT_TYPES = [
