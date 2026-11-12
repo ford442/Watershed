@@ -172,7 +172,7 @@ const HELP = `check-build-manifest.mjs — assert the unhashed-passenger contrac
   --chunks            assert the GLSL boot's eager chunks carry no three.webgpu node stack
                       (#485 A); with --build-log, also that vite emitted no
                       "dynamic import will not move module into another chunk" warning
-  --budget            enforce build-budget.json (entry / boot JS / vendor-three / per-chunk /
+  --budget            enforce build-budget.json (entry / boot JS / vendor-three / workshop / per-chunk /
                       all-chunks JS ceilings, wasm counted once, per-pack ceilings) and print
                       the chunk table (#485 D, #536)
   --budget-file <f>   budget to enforce          (default: build-budget.json)
@@ -552,9 +552,12 @@ if (opts.budget) {
     const totalJsGzip = jsChunks.reduce((n, c) => n + c.gzip, 0);
     const biggest = jsChunks.reduce((a, c) => (c.size > a.size ? c : a), { size: 0, path: '(none)' });
 
+    /* The River Workshop's lazy chunk (src/workshop/Workshop.tsx): one chunk, its own row. */
+    const isWorkshop = (c) => /^assets\/Workshop-[^/]+\.js$/.test(c.path);
     const limitFor = (c) => {
       if (c.path === entryPath) return budget.entryMaxBytes;
       if (/^assets\/vendor-three-/.test(c.path)) return budget.vendorThreeMaxBytes;
+      if (isWorkshop(c) && budget.workshopMaxBytes) return budget.workshopMaxBytes;
       return budget.chunkMaxBytes;
     };
     const ceilings = jsChunks.map((c) => ({ c, limit: Math.min(limitFor(c), budget.chunkMaxBytes) }));
@@ -581,7 +584,9 @@ if (opts.budget) {
           ? ' [entry]'
           : /^assets\/vendor-three-/.test(c.path)
             ? ' [vendor-three]'
-            : bootPaths.has(c.path)
+            : isWorkshop(c)
+              ? ' [workshop]'
+              : bootPaths.has(c.path)
               ? ' [boot]'
               : '';
       process.stdout.write(
@@ -656,6 +661,24 @@ if (opts.budget) {
       biggest.size <= budget.chunkMaxBytes,
       `--budget: ${biggest.path} is ${biggest.size} B, over the ${budget.chunkMaxBytes} B per-chunk ceiling`,
     );
+    if (budget.workshopMaxBytes) {
+      const workshop = jsChunks.filter(isWorkshop);
+      check(
+        workshop.length === 1,
+        `--budget: expected exactly one assets/Workshop-*.js chunk (the River Workshop is one lazy chunk), found ${workshop.length}`,
+      );
+      for (const c of workshop) {
+        check(
+          !bootPaths.has(c.path),
+          `--budget: ${c.path} is on the boot path; the River Workshop must stay a lazy chunk`,
+        );
+        check(
+          c.size <= budget.workshopMaxBytes,
+          `--budget: ${c.path} is ${c.size} B, over the ${budget.workshopMaxBytes} B workshop ceiling ` +
+            `(+${c.size - budget.workshopMaxBytes} B)`,
+        );
+      }
+    }
     if (budget.bootJsMaxBytes) {
       check(
         bootJs <= budget.bootJsMaxBytes,

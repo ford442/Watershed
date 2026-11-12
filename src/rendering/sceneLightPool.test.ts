@@ -51,7 +51,7 @@ const SESSION_LIGHTS = new Set([
   'rendering/sceneLightPool.tsx',
   'components/EnhancedSky.tsx',
   'vehicles/RaftVehicle.tsx',
-  'components/LevelEditor/LevelEditor.tsx',
+  'workshop/Workshop.tsx',
   // Its own offscreen scene (post-processing parity harness).
   'debug/postParity.ts',
   // Its own offscreen scenes (per-host material parity harness).

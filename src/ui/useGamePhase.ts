@@ -26,6 +26,7 @@ import { useInputStore } from '../input/InputHub';
 import { isTouchInputMode } from '../input/touchMode';
 import { stopHaptics } from '../input/haptics';
 import { queryFlags } from '../config/queryFlags';
+import type { LevelData } from '../systems/map/MapSystem.types';
 
 /** Game phase determines which overlays are visible */
 export type GamePhase = 'menu' | 'playing' | 'paused';
@@ -41,6 +42,13 @@ export interface StartOptions {
 }
 
 export type StartRun = (mapId?: MapRegistryId, options?: StartOptions) => void;
+
+/** The River Workshop over the menu: closed, or open (optionally on a river to load). */
+export interface WorkshopPhase {
+  open: boolean;
+  /** A river to open in it (a shared link); null keeps the Workshop's own draft. */
+  seed: LevelData | null;
+}
 
 const isTypingTarget = (target: EventTarget | null) => {
   const el = target as HTMLElement | null;
@@ -74,6 +82,10 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
     if (resolveInitialVehicle(selectedMapId) === 'raft') prefetchRaftVehicle();
   }, [selectedMapId]);
   const [activeLaunchHour, setActiveLaunchHour] = useState(() => getLaunchHour());
+  // The River Workshop (src/workshop/, lazy): `?editor=1` opens it at boot.
+  const [workshop, setWorkshop] = useState<WorkshopPhase>(() => ({ open: queryFlags().editor, seed: null }));
+  /** True while a Workshop Test run plays: quitting it goes back to the Workshop. */
+  const returnToWorkshopRef = useRef(false);
 
   useEffect(() => {
     // Once, for the boot map. A later pick re-syncs the URL itself (onMapSelect).
@@ -233,22 +245,47 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
     requestPointerLockSafely();
   }, [requestPointerLockSafely]);
 
-  const handleQuit = useCallback(() => {
+  const backToMenu = useCallback(() => {
     setWorldEnabled(false);
     setPhase('menu');
+    if (returnToWorkshopRef.current) {
+      returnToWorkshopRef.current = false;
+      setActiveUserRiver(null);
+      setWorkshop({ open: true, seed: null });
+    }
   }, []);
+
+  const handleQuit = backToMenu;
 
   const handleReturnToMenu = useCallback(() => {
     if (document.pointerLockElement) {
       document.exitPointerLock();
     }
-    setWorldEnabled(false);
-    setPhase('menu');
+    backToMenu();
+  }, [backToMenu]);
+
+  const openWorkshop = useCallback((seed: LevelData | null = null) => {
+    setSettingsOpen(false);
+    setWorkshop({ open: true, seed });
   }, []);
+
+  const closeWorkshop = useCallback(() => {
+    setWorkshop({ open: false, seed: null });
+  }, []);
+
+  /** Workshop "Test run": play the draft as a player river, then come back. */
+  const startTestRun = useCallback(
+    (userRiver: UserRiver) => {
+      returnToWorkshopRef.current = true;
+      setWorkshop({ open: false, seed: null });
+      handleStart(selectedMapId, { journeyMode: 'single', userRiver });
+    },
+    [handleStart, selectedMapId],
+  );
 
   // Enter starts from the menu with the selected map.
   useEffect(() => {
-    if (phase !== 'menu') return;
+    if (phase !== 'menu' || workshop.open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.key === 'Enter') {
@@ -259,7 +296,7 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [bootReady, handleStart, phase, selectedMapId]);
+  }, [bootReady, handleStart, phase, selectedMapId, workshop.open]);
 
   return {
     phase,
@@ -273,6 +310,10 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
     handleResume,
     handleQuit,
     handleReturnToMenu,
+    workshop,
+    openWorkshop,
+    closeWorkshop,
+    startTestRun,
   };
 }
 

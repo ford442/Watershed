@@ -36,6 +36,7 @@ import { DEFAULT_LOADOUT_ID, type LoadoutId } from '../systems/survival';
 import type { JourneyMode, RunConditions } from '../systems/journey/runSession';
 import { lazyComponent } from '../utils/lazyComponent';
 import type { UserRiver } from '../systems/map/userRiverSession';
+import type { LevelData } from '../systems/map/MapSystem.types';
 
 // Today's River pulls in the day generator; it loads after the menu paints.
 const TodaysRiverChunk = lazyComponent(() => import('./TodaysRiverCard'));
@@ -64,6 +65,10 @@ interface StartMenuProps {
   onOpenOptions: () => void;
   /** False while the boot loader is still warming WebGL / preloading assets. */
   bootReady?: boolean;
+  /** Open the River Workshop, optionally on a river (a shared link's "Open in Workshop"). */
+  onOpenWorkshop?: (seed?: LevelData | null) => void;
+  /** Start fetching the Workshop chunk (hover / focus on its button). */
+  onPreloadWorkshop?: () => void;
 }
 
 const VEHICLE_OPTIONS: ReadonlyArray<{ id: VehicleType | null; label: string }> = [
@@ -96,6 +101,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onSelectMap,
   onOpenOptions,
   bootReady = true,
+  onOpenWorkshop,
+  onPreloadWorkshop,
 }) => {
   const completedMaps = useMemo(() => getCompletedMaps(), []);
   const lastMapId = useMemo(() => getLastMapId(), []);
@@ -365,8 +372,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     userRiver,
                   })
                 }
+                onOpenInWorkshop={onOpenWorkshop ? (level) => onOpenWorkshop(level) : undefined}
               />
             </Suspense>
+
+            {onOpenWorkshop && (
+              <button
+                type="button"
+                className="start-menu-settings-btn"
+                onClick={() => onOpenWorkshop(null)}
+                onPointerEnter={onPreloadWorkshop}
+                onFocus={onPreloadWorkshop}
+                aria-label="Open the River Workshop"
+              >
+                RIVER WORKSHOP
+              </button>
+            )}
 
             <button
               className="start-menu-settings-btn"

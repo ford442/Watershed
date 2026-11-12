@@ -318,8 +318,11 @@ export default defineConfig({
           // drei by module, not as a package (#466 audit D): naming the package
           // put every drei component any chunk imports — and its dependency
           // closure (three-stdlib controls, stats.js) — on the boot path. The
-          // list is what the game itself mounts; the editor's OrbitControls /
-          // Grid / Line and the debug Stats land in their own lazy chunks.
+          // list is what the game itself mounts; the River Workshop's Grid and the
+          // debug Stats land in their own lazy chunks. (A drei component that
+          // imports the three-stdlib barrel — OrbitControls, Line, TransformControls —
+          // is filed here with PointerLockControls' barrel: the Workshop uses
+          // three's JSM addons instead, src/workshop/viewportPrimitives.tsx.)
           'vendor-three': ['three', '@react-three/fiber', ...DREI_GAMEPLAY_MODULES],
           'vendor-rapier': ['@dimforge/rapier3d-compat', '@react-three/rapier'],
         },

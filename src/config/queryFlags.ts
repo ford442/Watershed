@@ -46,7 +46,7 @@ export interface QueryFlags {
   readonly physicsDebug: boolean;
   /** `?wireframe=1|true`. */
   readonly wireframe: boolean;
-  /** `?editor=1` (dev builds only open the editor). */
+  /** `?editor=1` — open the River Workshop at boot (any build; the menu opens it too). */
   readonly editor: boolean;
   /** `?wasmWaterTest=1` — the WASM water-force test scene. */
   readonly wasmWaterTest: boolean;
@@ -150,12 +150,24 @@ export function queryFlags(): QueryFlags {
 /**
  * Rewrite the page's query string in place (no navigation, no history entry):
  * `edit` mutates a copy of the current parameters. For dev toggles that should
- * survive a reload.
+ * survive a reload, and the boot's `?map=` sync. The fragment is kept: a
+ * shared river (`#river=`) is read after the boot has synced the query.
  */
 export function editQuery(edit: (params: URLSearchParams) => void): void {
   if (typeof window === 'undefined') return;
   const params = new URLSearchParams(normalise(currentSearch()));
   edit(params);
   const next = params.toString();
-  window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+  window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}${currentHash()}`);
+}
+
+/**
+ * The page's fragment as it is now (`''` off the main thread's window). Read
+ * here too, so the one module that knows the URL stays the one module; its
+ * one grammar today, the shared-river link (`#river=`), is parsed by
+ * `riverShareFragment` in systems/map/riverShare.ts, a lazy chunk.
+ */
+export function currentHash(): string {
+  if (typeof location === 'undefined') return '';
+  return location.hash ?? '';
 }

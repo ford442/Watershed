@@ -7,8 +7,9 @@
 
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { Line, Html } from '@react-three/drei';
-import { type EditorSegmentConfig } from '../../hooks/useLevelEditor';
+import { Html } from '@react-three/drei';
+import { WorkshopLine } from './viewportPrimitives';
+import { type EditorSegmentConfig } from './editorSegments';
 
 interface PathVisualizerProps {
   waypoints: [number, number, number][];
@@ -102,16 +103,15 @@ export const PathVisualizer: React.FC<PathVisualizerProps> = ({
   return (
     <group name="path-visualizer">
       {/* Main path line */}
-      <Line
+      <WorkshopLine
         points={pathPoints}
         color="#4a9eff"
         lineWidth={2}
-        dashed={false}
       />
 
       {/* Difficulty-colored segments */}
       {showDifficultyGradient && difficultySegments.map((seg, i) => (
-        <Line
+        <WorkshopLine
           key={`diff-${i}`}
           points={seg.points}
           color={seg.color}
