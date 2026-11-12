@@ -9,6 +9,9 @@
  *   GameState.settings.quality, which already drives LOD + post-processing LIVE
  *   (LODManager syncs from it) — so effect toggles apply with no renderer churn.
  *
+ * - Language: resolves the `locale` choice (or navigator.languages under 'system')
+ *   and loads that catalog; text re-renders through useT.
+ *
  * All application is gated on `_hasHydrated` to avoid a flash-of-defaults.
  */
 
@@ -17,6 +20,8 @@ import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { settingsQualityToLOD } from '../systems/settings/settingsDerive';
 import { getAudioManager } from '../systems/audio/AudioSystem';
 import { useGameStore } from '../systems/GameState';
+import { setLocale } from '../i18n/i18n';
+import { browserLanguages, resolveLocale } from '../i18n/resolveLocale';
 
 export const SettingsSync: React.FC = () => {
   const hasHydrated = useSettingsStore((s) => s._hasHydrated);
@@ -24,6 +29,7 @@ export const SettingsSync: React.FC = () => {
   const musicVolume = useSettingsStore((s) => s.musicVolume);
   const sfxVolume = useSettingsStore((s) => s.sfxVolume);
   const quality = useSettingsStore((s) => s.quality);
+  const locale = useSettingsStore((s) => s.locale);
 
   // Apply audio channels. The AudioManager is a singleton created when the
   // experience mounts; if it isn't ready yet, retry on rAF until it is, then
@@ -55,6 +61,14 @@ export const SettingsSync: React.FC = () => {
       gs.setSettings({ quality: lodQuality });
     }
   }, [hasHydrated, quality]);
+
+  // Apply the UI language. A failed chunk fetch leaves the current language up.
+  useEffect(() => {
+    if (!hasHydrated) return;
+    setLocale(resolveLocale(locale, browserLanguages())).catch((error: unknown) => {
+      console.warn('[i18n] locale load failed; keeping the current language', error);
+    });
+  }, [hasHydrated, locale]);
 
   return null;
 };

@@ -19,6 +19,12 @@ import {
 import type { UserRiver } from '../systems/map/userRiverSession';
 import type { LevelData } from '../systems/map/MapSystem.types';
 import { riverShareFragment } from '../systems/map/riverShare';
+import { useT } from '../i18n/useT';
+import { registerEnglish } from '../i18n/i18n';
+import { userRivers } from '../i18n/en/lazy/userRivers';
+
+// This chunk's English rides with it, not the entry (#566).
+registerEnglish(userRivers);
 
 interface UserRiverPanelProps {
   bootReady: boolean;
@@ -55,6 +61,7 @@ function errorMessage(err: unknown): string {
 }
 
 export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: UserRiverPanelProps) {
+  const t = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -89,20 +96,20 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
   return (
     <div
       className="start-menu-map-select user-river-panel"
-      aria-label="Your rivers"
+      aria-label={t('menu.rivers.aria')}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
         if (bootReady) void loadFile(e.dataTransfer.files?.[0]);
       }}
     >
-      <div className="start-menu-map-select-label">Your Rivers</div>
+      <div className="start-menu-map-select-label">{t('menu.rivers')}</div>
       {shared?.river && (
-        <div className="user-river-shared" role="group" aria-label="Shared river">
+        <div className="user-river-shared" role="group" aria-label={t('menu.rivers.sharedAria')}>
           <div className="start-menu-map-option-main">
-            <span className="start-menu-map-option-title">Shared with you: {shared.river.label}</span>
+            <span className="start-menu-map-option-title">{t('menu.rivers.shared', { name: shared.river.label })}</span>
             <span className="start-menu-map-option-meta">
-              {shared.river.level.segments.length} segments · {shared.river.hash}
+              {t('menu.rivers.meta', { count: shared.river.level.segments.length, hash: shared.river.hash })}
             </span>
           </div>
           <div className="start-menu-mode-row">
@@ -112,7 +119,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
               disabled={!bootReady}
               onClick={() => play(shared.river)}
             >
-              Play
+              {t('menu.rivers.play')}
             </button>
             {onOpenInWorkshop && (
               <button
@@ -120,7 +127,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
                 className="start-menu-mode-option"
                 onClick={() => onOpenInWorkshop(shared.river.level)}
               >
-                Open in Workshop
+                {t('menu.rivers.openWorkshop')}
               </button>
             )}
           </div>
@@ -128,7 +135,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
       )}
       {shared?.error && (
         <p className="user-river-error" role="alert">
-          The shared river link could not be opened: {shared.error}
+          {t('menu.rivers.sharedError', { error: shared.error })}
         </p>
       )}
       <div className="start-menu-mode-row">
@@ -138,7 +145,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
           disabled={!bootReady}
           onClick={() => fileRef.current?.click()}
         >
-          Load river…
+          {t('menu.rivers.load')}
         </button>
         <button
           type="button"
@@ -146,7 +153,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
           aria-expanded={pasteOpen}
           onClick={() => setPasteOpen((open) => !open)}
         >
-          Paste
+          {t('menu.rivers.paste')}
         </button>
       </div>
       <input
@@ -164,8 +171,8 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
         <div className="user-river-paste">
           <textarea
             className="user-river-paste-text"
-            aria-label="River JSON"
-            placeholder="Paste a river link, or JSON exported from the River Workshop"
+            aria-label={t('menu.rivers.pasteAria')}
+            placeholder={t('menu.rivers.pastePlaceholder')}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             rows={4}
@@ -176,7 +183,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
             disabled={!bootReady || pasteText.trim() === ''}
             onClick={loadPaste}
           >
-            Play pasted river
+            {t('menu.rivers.playPasted')}
           </button>
         </div>
       )}
@@ -196,7 +203,7 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
             <div className="start-menu-map-option-main">
               <span className="start-menu-map-option-title">{river.label}</span>
               <span className="start-menu-map-option-meta">
-                {river.level.segments.length} segments · {river.hash}
+                {t('menu.rivers.meta', { count: river.level.segments.length, hash: river.hash })}
               </span>
             </div>
           </button>
@@ -204,16 +211,16 @@ export default function UserRiverPanel({ bootReady, onPlay, onOpenInWorkshop }: 
             <button
               type="button"
               className="start-menu-mode-option"
-              aria-label={`Edit ${river.label} in the River Workshop`}
+              aria-label={t('menu.rivers.editAria', { name: river.label })}
               onClick={() => onOpenInWorkshop(river.level)}
             >
-              Edit
+              {t('menu.rivers.edit')}
             </button>
           )}
         </div>
       ))}
       <p className="start-menu-map-hint">
-        A .wsriver is a river saved from the River Workshop. Drop one here to run it.
+        {t('menu.rivers.hint')}
       </p>
     </div>
   );

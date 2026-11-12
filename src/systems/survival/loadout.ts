@@ -8,9 +8,10 @@ export type LoadoutId = 'trail-light' | 'balanced' | 'expedition';
 
 export interface LoadoutDefinition {
   id: LoadoutId;
-  label: string;
-  shortLabel: string;
-  description: string;
+  /** Catalog keys (#566): the picker's name and blurb, and the HUD badge. No English lives here. */
+  labelKey: `loadout.${LoadoutId}.label`;
+  shortLabelKey: `loadout.${LoadoutId}.short`;
+  descriptionKey: `loadout.${LoadoutId}.description`;
   /** Multiplier on movement impulse (lower = heavier kit). */
   movementMultiplier: number;
   /** Insulation bonus subtracted from ambient cold stress (0–1 scale). */
@@ -24,9 +25,9 @@ export interface LoadoutDefinition {
 export const LOADOUT_DEFINITIONS: Record<LoadoutId, LoadoutDefinition> = {
   'trail-light': {
     id: 'trail-light',
-    label: 'Trail Light',
-    shortLabel: 'LIGHT',
-    description: 'Minimal kit — fast drying, weak cold protection.',
+    labelKey: 'loadout.trail-light.label',
+    shortLabelKey: 'loadout.trail-light.short',
+    descriptionKey: 'loadout.trail-light.description',
     movementMultiplier: 1.06,
     insulation: 0.05,
     staminaRegenMultiplier: 1.1,
@@ -34,9 +35,9 @@ export const LOADOUT_DEFINITIONS: Record<LoadoutId, LoadoutDefinition> = {
   },
   balanced: {
     id: 'balanced',
-    label: 'Balanced',
-    shortLabel: 'BALANCED',
-    description: 'Standard runner kit for mixed canyon biomes.',
+    labelKey: 'loadout.balanced.label',
+    shortLabelKey: 'loadout.balanced.short',
+    descriptionKey: 'loadout.balanced.description',
     movementMultiplier: 1.0,
     insulation: 0.2,
     staminaRegenMultiplier: 1.0,
@@ -44,9 +45,9 @@ export const LOADOUT_DEFINITIONS: Record<LoadoutId, LoadoutDefinition> = {
   },
   expedition: {
     id: 'expedition',
-    label: 'Expedition',
-    shortLabel: 'EXPED',
-    description: 'Insulated layers — slower but resists glacial cold.',
+    labelKey: 'loadout.expedition.label',
+    shortLabelKey: 'loadout.expedition.short',
+    descriptionKey: 'loadout.expedition.description',
     movementMultiplier: 0.94,
     insulation: 0.45,
     staminaRegenMultiplier: 0.92,

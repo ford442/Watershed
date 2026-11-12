@@ -23,6 +23,7 @@ beforeEach(() => {
     leftHanded: DEFAULT_SETTINGS.leftHanded,
     hapticsEnabled: DEFAULT_SETTINGS.hapticsEnabled,
     gamepadDeadzone: DEFAULT_SETTINGS.gamepadDeadzone,
+    locale: DEFAULT_SETTINGS.locale,
     _hasHydrated: true, // simulate post-hydration
   });
 });
@@ -53,6 +54,20 @@ describe('SettingsPanel', () => {
     const toggle = screen.getByRole('switch', { name: /invert y-axis/i });
     fireEvent.click(toggle);
     expect(useSettingsStore.getState().invertY).toBe(true);
+  });
+
+  it('picks a UI language: the store follows, the choice is checked, names read in their own language', () => {
+    render(<SettingsPanel onClose={() => {}} />);
+    const group = screen.getByRole('radiogroup', { name: 'Language' });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Match browser' })).toHaveAttribute('aria-checked', 'true');
+    const french = screen.getByRole('radio', { name: 'Français' });
+    expect(french).toHaveAttribute('lang', 'fr');
+    fireEvent.click(french);
+    expect(useSettingsStore.getState().locale).toBe('fr');
+    expect(screen.getByRole('radio', { name: 'Français' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: 'Match browser' }));
+    expect(useSettingsStore.getState().locale).toBe('system');
   });
 
   it('changes quality live', () => {

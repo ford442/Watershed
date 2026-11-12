@@ -6,6 +6,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n/useT';
+import { formatSplit } from '../i18n/format';
 
 export interface GhostTimeDeltaProps {
   /** Delta in seconds (current − PB). Positive = slower than PB. */
@@ -16,14 +18,6 @@ export interface GhostTimeDeltaProps {
   className?: string;
 }
 
-function formatDelta(seconds: number): string {
-  const sign = seconds >= 0 ? '+' : '−';
-  // Round to centiseconds before splitting to avoid floating-point 59.999… → 60.00
-  const abs = Math.abs(Math.round(seconds * 100) / 100);
-  const mins = Math.floor(abs / 60);
-  const secs = Math.min(abs % 60, 59.99).toFixed(2).padStart(5, '0');
-  return mins > 0 ? `${sign}${mins}:${secs}` : `${sign}${secs}`;
-}
 
 export const GhostTimeDelta: React.FC<GhostTimeDeltaProps> = ({
   deltaSeconds,
@@ -31,6 +25,7 @@ export const GhostTimeDelta: React.FC<GhostTimeDeltaProps> = ({
   displayDurationMs = 3000,
   className,
 }) => {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,9 +67,9 @@ export const GhostTimeDelta: React.FC<GhostTimeDeltaProps> = ({
         letterSpacing: '0.05em',
       }}
       aria-live="polite"
-      aria-label={`Ghost time delta: ${formatDelta(deltaSeconds)}`}
+      aria-label={t('hud.ghostDelta', { delta: formatSplit(deltaSeconds) })}
     >
-      {formatDelta(deltaSeconds)}
+      {formatSplit(deltaSeconds)}
     </div>
   );
 };

@@ -21,6 +21,24 @@ import type { BiomeId } from '../configs/biomes';
 import { DEFAULT_BIOME_ID } from '../configs/biomes';
 import { RENDER_SCALE_MAX, clampRenderScale } from '../rendering/renderScale';
 import type { WeatherBroadcast } from './weather/weatherBroadcast';
+import type { LaunchLabelKey, TierLabelKey } from './score/scoreLaunch';
+
+/** Combo flash catalog keys (#566: the store carries keys, the HUD translates). */
+export type ComboLabelKey =
+  | 'score.comboFlowState'
+  | 'score.comboOnFire'
+  | 'score.comboUnstoppable'
+  | 'score.comboLegendary';
+
+/** Reward / penalty popup catalog keys. */
+export type RewardLabelKey =
+  | TierLabelKey
+  | 'score.cacheRetrieved'
+  | 'score.uprightRun'
+  | 'score.gearLost'
+  | 'score.portageFailed'
+  | 'score.floodSurvive'
+  | 'score.floodSurviveMultiplier';
 
 // =============================================================================
 // TYPES
@@ -57,7 +75,8 @@ export interface GameState {
   score: number;
   multiplier: number;
   topSpeed: number;
-  comboLabel: string;
+  /** The live combo flash's catalog key, or null. */
+  comboLabelKey: ComboLabelKey | null;
   highScore: number;
   currentSegmentIndex: number;
   isWipeout: boolean;
@@ -85,7 +104,7 @@ export interface GameState {
   /** Show best-run ghost replay during the current run. */
   ghostEnabled: boolean;
   /** Instant tier label popup at shelf launch (not the committed score). */
-  launchPopup: { label: string; id: number } | null;
+  launchPopup: { labelKey: LaunchLabelKey; id: number } | null;
   /** Last checkpoint split's delta vs the PB ghost (seconds; negative = ahead). `id` retriggers the HUD flash even when the value repeats. */
   lastSplitDelta: { deltaSeconds: number; id: number } | null;
   weather: WeatherBroadcast;
@@ -95,7 +114,10 @@ export interface GameState {
     score: number;
     clean: boolean;
     id: number;
-    label: string;
+    /** Catalog key; null for a tier with no label. */
+    labelKey: RewardLabelKey | null;
+    /** The flood-survive multiplier shown in `score.floodSurviveMultiplier`. */
+    labelMultiplier?: number;
   } | null;
 }
 
@@ -108,7 +130,7 @@ export interface GameActions {
   setScore: (score: number) => void;
   setMultiplier: (multiplier: number) => void;
   setTopSpeed: (topSpeed: number) => void;
-  setComboLabel: (comboLabel: string) => void;
+  setComboLabelKey: (comboLabelKey: ComboLabelKey | null) => void;
   setHighScore: (highScore: number) => void;
   setCurrentSegmentIndex: (index: number) => void;
   setIsWipeout: (wipeout: boolean) => void;
@@ -153,7 +175,7 @@ const INITIAL_STATE: GameState = {
   score: 0,
   multiplier: 1,
   topSpeed: 0,
-  comboLabel: '',
+  comboLabelKey: null,
   highScore: 0,
   currentSegmentIndex: 0,
   isWipeout: false,
@@ -199,7 +221,7 @@ export const useGameStore = create<GameStore>((set) => ({
 
   setTopSpeed: (topSpeed) => set({ topSpeed }),
 
-  setComboLabel: (comboLabel) => set({ comboLabel }),
+  setComboLabelKey: (comboLabelKey) => set({ comboLabelKey }),
 
   setHighScore: (highScore) => set({ highScore }),
 

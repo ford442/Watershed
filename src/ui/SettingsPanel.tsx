@@ -32,54 +32,102 @@ import {
   type VolumeChannel,
 } from '../systems/settings/settingsDerive';
 import type { PhysicsWorkerPreference } from '../utils/physicsWorkerFlag';
+import { useT } from '../i18n/useT';
+import type { MessageKey, TFunction } from '../i18n/i18n';
+import { formatFixed, formatNumber, formatPercent } from '../i18n/format';
+import type { LocalePref } from '../i18n/types';
+import { registerEnglish } from '../i18n/i18n';
+import { settingsPanel } from '../i18n/en/lazy/settingsPanel';
+
+// This chunk's English rides with it, not the entry (#566).
+registerEnglish(settingsPanel);
 
 interface SettingsPanelProps {
   /** Called when the player dismisses the panel (returns to the parent menu). */
   onClose: () => void;
 }
 
-const MOUSE_LABELS: Record<string, string> = {
-  Mouse0: 'Left Click',
-  Mouse1: 'Middle Click',
-  Mouse2: 'Right Click',
+const MOUSE_KEYS: Partial<Record<string, 'settings.input.mouseLeft' | 'settings.input.mouseMiddle' | 'settings.input.mouseRight'>> = {
+  Mouse0: 'settings.input.mouseLeft',
+  Mouse1: 'settings.input.mouseMiddle',
+  Mouse2: 'settings.input.mouseRight',
 };
 
-/** Standard-mapping names, so a pad binding reads "A" or "Left Stick ↑" rather than "Button0". */
-const PAD_BUTTON_LABELS: Record<number, string> = {
-  0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'Back', 9: 'Start',
-  10: 'L3', 11: 'R3', 12: 'D-pad ↑', 13: 'D-pad ↓', 14: 'D-pad ←', 15: 'D-pad →',
+/**
+ * Standard-mapping names, so a pad binding reads "A" or "Left Stick ↑" rather than
+ * "Button0". Face / shoulder letters are printed on the pad and stay as they are;
+ * the named ones translate.
+ */
+const PAD_BUTTON_GLYPHS: Record<number, string> = {
+  0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 10: 'L3', 11: 'R3',
 };
-const PAD_AXIS_NAMES: Record<number, [string, string]> = {
-  0: ['Left Stick ←', 'Left Stick →'],
-  1: ['Left Stick ↑', 'Left Stick ↓'],
-  2: ['Right Stick ←', 'Right Stick →'],
-  3: ['Right Stick ↑', 'Right Stick ↓'],
+const PAD_BUTTON_KEYS: Partial<
+  Record<
+    number,
+    | 'settings.input.padBack'
+    | 'settings.input.padStart'
+    | 'settings.input.dpadUp'
+    | 'settings.input.dpadDown'
+    | 'settings.input.dpadLeft'
+    | 'settings.input.dpadRight'
+  >
+> = {
+  8: 'settings.input.padBack',
+  9: 'settings.input.padStart',
+  12: 'settings.input.dpadUp',
+  13: 'settings.input.dpadDown',
+  14: 'settings.input.dpadLeft',
+  15: 'settings.input.dpadRight',
+};
+const PAD_AXES: Record<number, { stick: 'left' | 'right'; arrows: [string, string] }> = {
+  0: { stick: 'left', arrows: ['←', '→'] },
+  1: { stick: 'left', arrows: ['↑', '↓'] },
+  2: { stick: 'right', arrows: ['←', '→'] },
+  3: { stick: 'right', arrows: ['↑', '↓'] },
 };
 
-function bindingLabel(binding: Binding): string {
+function bindingLabel(binding: Binding, t: TFunction): string {
   if (binding.kind === 'gamepad-button') {
     const n = Number(binding.code.slice(6));
-    return PAD_BUTTON_LABELS[n] ?? `Button ${n}`;
+    const key = PAD_BUTTON_KEYS[n];
+    if (key) return t(key);
+    return PAD_BUTTON_GLYPHS[n] ?? t('settings.input.button', { n: String(n) });
   }
   if (binding.kind === 'gamepad-axis') {
     const n = Number(binding.code.slice(4, -1));
     const positive = binding.code.endsWith('+');
-    const names = PAD_AXIS_NAMES[n];
-    return names ? names[positive ? 1 : 0] : `Axis ${n}${positive ? '+' : '−'}`;
+    const axis = PAD_AXES[n];
+    if (!axis) return t('settings.input.axis', { n: String(n), sign: positive ? '+' : '−' });
+    const arrow = axis.arrows[positive ? 1 : 0];
+    return axis.stick === 'left'
+      ? t('settings.input.leftStick', { arrow })
+      : t('settings.input.rightStick', { arrow });
   }
-  if (binding.kind === 'mouse') return MOUSE_LABELS[binding.code] ?? binding.code;
-  // Friendly-ish label from event.code: 'KeyW' → 'W', 'ArrowUp' → 'Arrow Up'.
+  if (binding.kind === 'mouse') {
+    const key = MOUSE_KEYS[binding.code];
+    return key ? t(key) : binding.code;
+  }
+  // Key names follow event.code: 'KeyW' → 'W', 'ArrowUp' → 'Arrow Up'.
   if (binding.code.startsWith('Key')) return binding.code.slice(3);
   if (binding.code.startsWith('Digit')) return binding.code.slice(5);
-  if (binding.code === 'Space') return 'Space';
+  if (binding.code === 'Space') return t('settings.input.space');
   return binding.code.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-const VOLUME_CHANNELS: { channel: VolumeChannel; label: string }[] = [
-  { channel: 'master', label: 'Master' },
-  { channel: 'music', label: 'Music' },
-  { channel: 'sfx', label: 'SFX' },
-];
+const VOLUME_CHANNELS = [
+  { channel: 'master', label: 'settings.audio.master' },
+  { channel: 'music', label: 'settings.audio.music' },
+  { channel: 'sfx', label: 'settings.audio.sfx' },
+] as const satisfies readonly { channel: VolumeChannel; label: MessageKey }[];
+
+const LOCALE_OPTIONS = [
+  ['system', 'locale.system'],
+  ['en', 'locale.en'],
+  ['es', 'locale.es'],
+  ['fr', 'locale.fr'],
+] as const satisfies readonly (readonly [LocalePref, MessageKey])[];
+
+const percent = (v: number) => formatPercent(v);
 
 /** Per-action key/mouse + gamepad capture row. */
 const BindingRow: React.FC<{
@@ -104,23 +152,28 @@ const BindingRow: React.FC<{
   onBeginPadCapture,
   onUnbind,
   onUnbindPad,
-}) => (
+}) => {
+  const t = useT();
+  const actionLabel = t(ACTION_LABELS[action]);
+  const keyLabel = bindingLabel(binding, t);
+  const padLabel = bindingLabel(padBinding, t);
+  return (
   <div className="settings-panel-binding-row">
-    <span className="settings-panel-binding-label">{ACTION_LABELS[action]}</span>
+    <span className="settings-panel-binding-label">{actionLabel}</span>
     <div className="settings-panel-binding-controls">
       <button
         type="button"
         className={`settings-panel-binding-btn ${capturing ? 'capturing' : ''}`}
         onClick={onBeginCapture}
-        aria-label={`Rebind ${ACTION_LABELS[action]} (currently ${bindingLabel(binding)})`}
+        aria-label={t('settings.bind.rebind', { action: actionLabel, binding: keyLabel })}
       >
-        {capturing ? 'Press any key…' : bindingLabel(binding)}
+        {capturing ? t('settings.bind.capturingKey') : keyLabel}
       </button>
       <button
         type="button"
         className="settings-panel-unbind-btn"
         onClick={onUnbind}
-        aria-label={`Reset ${ACTION_LABELS[action]} binding to default`}
+        aria-label={t('settings.bind.reset', { action: actionLabel })}
       >
         ↺
       </button>
@@ -128,15 +181,15 @@ const BindingRow: React.FC<{
         type="button"
         className={`settings-panel-binding-btn settings-panel-binding-btn--pad ${capturingPad ? 'capturing' : ''}`}
         onClick={onBeginPadCapture}
-        aria-label={`Gamepad button for ${ACTION_LABELS[action]} (currently ${bindingLabel(padBinding)})`}
+        aria-label={t('settings.bind.padRebind', { action: actionLabel, binding: padLabel })}
       >
-        {capturingPad ? 'Press a button…' : `🎮 ${bindingLabel(padBinding)}`}
+        {capturingPad ? t('settings.bind.capturingPad') : t('settings.bind.padLabel', { binding: padLabel })}
       </button>
       <button
         type="button"
         className="settings-panel-unbind-btn"
         onClick={onUnbindPad}
-        aria-label={`Restore default gamepad button for ${ACTION_LABELS[action]}`}
+        aria-label={t('settings.bind.padReset', { action: actionLabel })}
       >
         ↺
       </button>
@@ -147,7 +200,8 @@ const BindingRow: React.FC<{
       </span>
     )}
   </div>
-);
+  );
+};
 
 /** A labelled slider row, shared by the Comfort page. */
 const SliderRow: React.FC<{
@@ -184,33 +238,48 @@ const ToggleRow: React.FC<{ id: string; label: string; value: boolean; onChange:
   label,
   value,
   onChange,
-}) => (
-  <div className="settings-panel-row">
-    <label className="settings-panel-label" htmlFor={id}>
-      {label}
-    </label>
-    <button
-      id={id}
-      type="button"
-      className={`settings-panel-toggle ${value ? 'on' : ''}`}
-      onClick={() => onChange(!value)}
-      role="switch"
-      aria-checked={value}
-    >
-      {value ? 'On' : 'Off'}
-    </button>
-  </div>
-);
+}) => {
+  const t = useT();
+  return (
+    <div className="settings-panel-row">
+      <label className="settings-panel-label" htmlFor={id}>
+        {label}
+      </label>
+      <button
+        id={id}
+        type="button"
+        className={`settings-panel-toggle ${value ? 'on' : ''}`}
+        onClick={() => onChange(!value)}
+        role="switch"
+        aria-checked={value}
+      >
+        {value ? t('settings.on') : t('settings.off')}
+      </button>
+    </div>
+  );
+};
 
-const REDUCED_MOTION_LABELS: [ReducedMotionPref, string][] = [
-  ['system', 'System'],
-  ['on', 'On'],
-  ['off', 'Off'],
-];
+const REDUCED_MOTION_LABELS = [
+  ['system', 'settings.system'],
+  ['on', 'settings.on'],
+  ['off', 'settings.off'],
+] as const satisfies readonly (readonly [ReducedMotionPref, MessageKey])[];
+
+const PHYSICS_WORKER_LABELS = [
+  ['auto', 'settings.auto'],
+  ['on', 'settings.on'],
+  ['off', 'settings.off'],
+] as const satisfies readonly (readonly [PhysicsWorkerPreference, MessageKey])[];
+
+const PAGES = [
+  ['general', 'settings.page.general'],
+  ['comfort', 'settings.page.comfort'],
+] as const satisfies readonly (readonly [SettingsPage, MessageKey])[];
 
 type SettingsPage = 'general' | 'comfort';
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
+  const t = useT();
   const hasHydrated = useSettingsStore((s) => s._hasHydrated);
   const masterVolume = useSettingsStore((s) => s.masterVolume);
   const musicVolume = useSettingsStore((s) => s.musicVolume);
@@ -254,6 +323,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const bindAction = useSettingsStore((s) => s.bindAction);
   const unbindAction = useSettingsStore((s) => s.unbindAction);
   const resetToDefaults = useSettingsStore((s) => s.resetToDefaults);
+  const locale = useSettingsStore((s) => s.locale);
+  const setLocale = useSettingsStore((s) => s.setLocale);
 
   const [page, setPage] = useState<SettingsPage>('general');
   const [capturing, setCapturing] = useState<SettingsAction | null>(null);
@@ -348,7 +419,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         return;
       }
       if (isReservedKeyCapture(e)) {
-        setInvalid({ action, msg: 'That key is reserved.' });
+        setInvalid({ action, msg: t('settings.bind.reserved') });
         setCapturing(null);
         return;
       }
@@ -372,27 +443,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
       window.removeEventListener('mousedown', onMouseDown, true);
       window.removeEventListener('contextmenu', onContextMenu, true);
     };
-  }, [capturing, bindAction]);
+  }, [capturing, bindAction, t]);
 
   if (!hasHydrated) {
     return (
-      <div className="settings-panel" role="dialog" aria-label="Settings" aria-busy="true" ref={panelRef}>
-        <p className="settings-panel-loading">Loading settings…</p>
+      <div className="settings-panel" role="dialog" aria-label={t('settings.dialog')} aria-busy="true" ref={panelRef}>
+        <p className="settings-panel-loading">{t('settings.loading')}</p>
       </div>
     );
   }
 
   return (
-    <div className="settings-panel" role="dialog" aria-label="Settings" ref={panelRef}>
-      <h2 className="settings-panel-title">Options</h2>
+    <div className="settings-panel" role="dialog" aria-label={t('settings.dialog')} ref={panelRef}>
+      <h2 className="settings-panel-title">{t('settings.title')}</h2>
 
-      <div className="settings-panel-tabs" role="tablist" aria-label="Options pages">
-        {(
-          [
-            ['general', 'General'],
-            ['comfort', 'Comfort & Devices'],
-          ] as [SettingsPage, string][]
-        ).map(([id, label]) => (
+      <div className="settings-panel-tabs" role="tablist" aria-label={t('settings.pages')}>
+        {PAGES.map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -401,7 +467,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
             className={`settings-panel-tab ${page === id ? 'active' : ''}`}
             onClick={() => setPage(id)}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
       </div>
@@ -409,12 +475,41 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
       {page === 'general' ? (
         <>
 
-      <section className="settings-panel-section" aria-label="Audio">
-        <h3 className="settings-panel-section-title">Audio</h3>
+      <section className="settings-panel-section" aria-label={t('settings.language.section')}>
+        <h3 className="settings-panel-section-title">{t('settings.language.section')}</h3>
+        <div className="settings-panel-row">
+          <span className="settings-panel-label" id="settings-language-label">
+            {t('settings.language.label')}
+          </span>
+          <div
+            className="settings-panel-quality-buttons"
+            role="radiogroup"
+            aria-labelledby="settings-language-label"
+          >
+            {LOCALE_OPTIONS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                lang={value === 'system' ? undefined : value}
+                className={`settings-panel-quality-btn ${locale === value ? 'active' : ''}`}
+                onClick={() => setLocale(value)}
+                aria-checked={locale === value}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="settings-panel-note">{t('settings.language.note')}</p>
+      </section>
+
+      <section className="settings-panel-section" aria-label={t('settings.audio.section')}>
+        <h3 className="settings-panel-section-title">{t('settings.audio.section')}</h3>
         {VOLUME_CHANNELS.map(({ channel, label }) => (
           <div className="settings-panel-row" key={channel}>
             <label className="settings-panel-label" htmlFor={`vol-${channel}`}>
-              {label} Volume
+              {t('settings.audio.volume', { channel: t(label) })}
             </label>
             <input
               id={`vol-${channel}`}
@@ -426,19 +521,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
               onChange={(e) => setVolume(channel, parseFloat(e.target.value))}
               className="settings-panel-slider"
             />
-            <span className="settings-panel-value">
-              {Math.round(volumeByChannel[channel] * 100)}%
-            </span>
+            <span className="settings-panel-value">{percent(volumeByChannel[channel])}</span>
           </div>
         ))}
       </section>
 
-      <section className="settings-panel-section" aria-label="Controls">
-        <h3 className="settings-panel-section-title">Controls</h3>
+      <section className="settings-panel-section" aria-label={t('settings.controls.section')}>
+        <h3 className="settings-panel-section-title">{t('settings.controls.section')}</h3>
 
         <div className="settings-panel-row">
           <label className="settings-panel-label" htmlFor="sensitivity">
-            Mouse Sensitivity
+            {t('settings.controls.sensitivity')}
           </label>
           <input
             id="sensitivity"
@@ -450,12 +543,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
             onChange={(e) => setSensitivity(parseFloat(e.target.value))}
             className="settings-panel-slider"
           />
-          <span className="settings-panel-value">{mouseSensitivity.toFixed(2)}×</span>
+          <span className="settings-panel-value">{t('settings.times', { value: formatFixed(mouseSensitivity, 2) })}</span>
         </div>
 
         <div className="settings-panel-row">
           <label className="settings-panel-label" htmlFor="invert-y">
-            Invert Y-Axis
+            {t('settings.controls.invertY')}
           </label>
           <button
             id="invert-y"
@@ -465,7 +558,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
             role="switch"
             aria-checked={invertY}
           >
-            {invertY ? 'On' : 'Off'}
+            {invertY ? t('settings.on') : t('settings.off')}
           </button>
         </div>
 
@@ -488,10 +581,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         </div>
       </section>
 
-      <section className="settings-panel-section" aria-label="Graphics">
-        <h3 className="settings-panel-section-title">Graphics</h3>
+      <section className="settings-panel-section" aria-label={t('settings.graphics.section')}>
+        <h3 className="settings-panel-section-title">{t('settings.graphics.section')}</h3>
         <div className="settings-panel-row">
-          <label className="settings-panel-label">Quality</label>
+          <label className="settings-panel-label">{t('settings.graphics.quality')}</label>
           <div className="settings-panel-quality-buttons">
             {(Object.keys(QUALITY_LABELS) as SettingsQuality[]).map((q) => (
               <button
@@ -501,29 +594,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                 onClick={() => setQuality(q)}
                 aria-pressed={quality === q}
               >
-                {QUALITY_LABELS[q]}
+                {t(QUALITY_LABELS[q])}
               </button>
             ))}
           </div>
         </div>
-        <p className="settings-panel-note">
-          Effect toggles apply immediately. Resolution changes apply on next map load.
-          Water surface displacement is off on Low.
-        </p>
+        <p className="settings-panel-note">{t('settings.graphics.note')}</p>
       </section>
 
-      <section className="settings-panel-section" aria-label="Physics">
-        <h3 className="settings-panel-section-title">Physics</h3>
+      <section className="settings-panel-section" aria-label={t('settings.physics.section')}>
+        <h3 className="settings-panel-section-title">{t('settings.physics.section')}</h3>
         <div className="settings-panel-row">
-          <label className="settings-panel-label">Physics worker</label>
+          <label className="settings-panel-label">{t('settings.physics.worker')}</label>
           <div className="settings-panel-quality-buttons">
-            {(
-              [
-                ['auto', 'Auto'],
-                ['on', 'On'],
-                ['off', 'Off'],
-              ] as [PhysicsWorkerPreference, string][]
-            ).map(([value, label]) => (
+            {PHYSICS_WORKER_LABELS.map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -531,70 +615,67 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                 onClick={() => setPhysicsWorker(value)}
                 aria-pressed={physicsWorker === value}
               >
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
         </div>
-        <p className="settings-panel-note">
-          Auto runs Rapier and the native water forces in a worker wherever the browser
-          supports it. Turn it off if the raft feels wrong; applies on next map load.
-        </p>
+        <p className="settings-panel-note">{t('settings.physics.note')}</p>
       </section>
 
         </>
       ) : (
         <>
-          <section className="settings-panel-section" aria-label="Comfort">
-            <h3 className="settings-panel-section-title">Comfort</h3>
+          <section className="settings-panel-section" aria-label={t('settings.comfort.section')}>
+            <h3 className="settings-panel-section-title">{t('settings.comfort.section')}</h3>
             <SliderRow
               id="comfort-fov"
-              label="Field of view"
+              label={t('settings.comfort.fov')}
               min={FOV_MIN}
               max={FOV_MAX}
               step={1}
               value={fov}
-              format={(v) => `${Math.round(v)}°`}
+              format={(v) => t('settings.degrees', { value: formatNumber(Math.round(v)) })}
               onChange={setFov}
             />
             <SliderRow
               id="comfort-fov-kick"
-              label="Sprint FOV kick"
+              label={t('settings.comfort.fovKick')}
               min={0}
               max={1}
               step={0.05}
               value={fovKick}
-              format={(v) => `${Math.round(v * 100)}%`}
+              format={percent}
               onChange={setFovKick}
             />
             <SliderRow
               id="comfort-shake"
-              label="Camera shake"
+              label={t('settings.comfort.shake')}
               min={0}
               max={1}
               step={0.05}
               value={cameraShake}
-              format={(v) => `${Math.round(v * 100)}%`}
+              format={percent}
               onChange={setCameraShake}
             />
             <SliderRow
               id="comfort-vignette"
-              label="Vignette"
+              label={t('settings.comfort.vignette')}
               min={0}
               max={1}
               step={0.05}
               value={vignetteStrength}
-              format={(v) => `${Math.round(v * 100)}%`}
+              format={percent}
               onChange={setVignetteStrength}
             />
             <ToggleRow
               id="comfort-speed-effects"
-              label="Speed blur / chromatic aberration"
+              label={t('settings.comfort.speedEffects')}
               value={speedEffects}
               onChange={setSpeedEffects}
             />
             <div className="settings-panel-row">
-              <label className="settings-panel-label">Reduced motion</label>
+              <label className="settings-panel-label">{t('settings.comfort.reducedMotion')}</label>
               <div className="settings-panel-quality-buttons">
                 {REDUCED_MOTION_LABELS.map(([value, label]) => (
                   <button
@@ -604,60 +685,58 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                     onClick={() => setReducedMotion(value)}
                     aria-pressed={reducedMotion === value}
                   >
-                    {label}
+                    {t(label)}
                   </button>
                 ))}
               </div>
             </div>
             <p className="settings-panel-note">
-              Reduced motion switches off camera shake, the sprint FOV kick and speed blur.
-              {' '}System follows your device's setting
-              {resolveReducedMotion(reducedMotion, getOsReducedMotion()) ? ' (currently reducing motion).' : '.'}
+              {t('settings.comfort.reducedNote')}{' '}
+              {resolveReducedMotion(reducedMotion, getOsReducedMotion())
+                ? t('settings.comfort.systemNoteActive')
+                : t('settings.comfort.systemNote')}
             </p>
           </section>
 
-          <section className="settings-panel-section" aria-label="Touch">
-            <h3 className="settings-panel-section-title">Touch</h3>
-            <ToggleRow id="touch-left-handed" label="Left-handed layout" value={leftHanded} onChange={setLeftHanded} />
+          <section className="settings-panel-section" aria-label={t('settings.touch.section')}>
+            <h3 className="settings-panel-section-title">{t('settings.touch.section')}</h3>
+            <ToggleRow id="touch-left-handed" label={t('settings.touch.leftHanded')} value={leftHanded} onChange={setLeftHanded} />
           </section>
 
-          <section className="settings-panel-section" aria-label="Gamepad">
-            <h3 className="settings-panel-section-title">Gamepad</h3>
+          <section className="settings-panel-section" aria-label={t('settings.pad.section')}>
+            <h3 className="settings-panel-section-title">{t('settings.pad.section')}</h3>
             <SliderRow
               id="pad-deadzone"
-              label="Stick dead zone"
+              label={t('settings.pad.deadzone')}
               min={0}
               max={0.5}
               step={0.01}
               value={gamepadDeadzone}
-              format={(v) => `${Math.round(v * 100)}%`}
+              format={percent}
               onChange={setGamepadDeadzone}
             />
             <SliderRow
               id="pad-curve"
-              label="Response curve"
+              label={t('settings.pad.curve')}
               min={1}
               max={3}
               step={0.1}
               value={gamepadCurve}
-              format={(v) => (v <= 1.05 ? 'Linear' : `${v.toFixed(1)}×`)}
+              format={(v) => (v <= 1.05 ? t('settings.pad.linear') : t('settings.times', { value: formatFixed(v, 1) }))}
               onChange={setGamepadCurve}
             />
-            <ToggleRow id="pad-haptics" label="Vibration" value={hapticsEnabled} onChange={setHapticsEnabled} />
+            <ToggleRow id="pad-haptics" label={t('settings.pad.vibration')} value={hapticsEnabled} onChange={setHapticsEnabled} />
             <SliderRow
               id="pad-haptics-strength"
-              label="Vibration strength"
+              label={t('settings.pad.vibrationStrength')}
               min={0}
               max={1}
               step={0.05}
               value={hapticsStrength}
-              format={(v) => `${Math.round(v * 100)}%`}
+              format={percent}
               onChange={setHapticsStrength}
             />
-            <p className="settings-panel-note">
-              Rebind gamepad buttons and sticks on the General page. Triggers are the raft paddles;
-              Start pauses.
-            </p>
+            <p className="settings-panel-note">{t('settings.pad.note')}</p>
           </section>
         </>
       )}
@@ -668,10 +747,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
           className="settings-panel-reset-btn"
           onClick={resetToDefaults}
         >
-          Reset to Defaults
+          {t('settings.reset')}
         </button>
         <button type="button" className="settings-panel-close-btn" onClick={onClose}>
-          Back
+          {t('settings.back')}
         </button>
       </div>
     </div>

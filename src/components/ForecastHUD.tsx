@@ -10,7 +10,10 @@ import {
   type FlowForecastSample,
 } from '../systems/map/flowForecast';
 import { buildHydroHudBoard } from '../systems/water/hydroHud';
-import type { HydroEvent } from '../systems/water/hydroEvents';
+import type { HydroEvent, HydroEventKind } from '../systems/water/hydroEvents';
+import { useT } from '../i18n/useT';
+import type { MessageKey } from '../i18n/i18n';
+import { formatFixed, formatLaunchHour, formatList } from '../i18n/format';
 
 type ForecastHUDProps = {
   samples: FlowForecastSample[];
@@ -21,12 +24,30 @@ type ForecastHUDProps = {
   hydroEvents?: readonly HydroEvent[];
 };
 
-const STATE_LABELS: Record<FlowForecastState, string> = {
-  [FLOW_FORECAST_STATES.NORMAL]: 'Normal',
-  [FLOW_FORECAST_STATES.HIGH_FLOW]: 'High',
-  [FLOW_FORECAST_STATES.FLOODED]: 'Flood',
-  [FLOW_FORECAST_STATES.WASHED_OUT]: 'Washout',
-};
+const STATE_LABELS = {
+  [FLOW_FORECAST_STATES.NORMAL]: 'forecast.stateNormal',
+  [FLOW_FORECAST_STATES.HIGH_FLOW]: 'forecast.stateHigh',
+  [FLOW_FORECAST_STATES.FLOODED]: 'forecast.stateFlood',
+  [FLOW_FORECAST_STATES.WASHED_OUT]: 'forecast.stateWashout',
+} as const satisfies Record<FlowForecastState, MessageKey>;
+
+/** The hydro board's words (hydroHud returns kinds; #566). */
+const HYDRO_KIND_LABELS = {
+  inflowPulse: 'hydro.kindInflowPulse',
+  vortex: 'hydro.kindVortex',
+  braid: 'hydro.kindBraid',
+  roughness: 'hydro.kindRoughness',
+  surge: 'hydro.kindSurge',
+} as const satisfies Record<HydroEventKind, MessageKey>;
+
+/** What each kind does to the river, one clause, for the HUD subtitle. */
+const HYDRO_KIND_EFFECTS = {
+  inflowPulse: 'hydro.effectInflowPulse',
+  vortex: 'hydro.effectVortex',
+  braid: 'hydro.effectBraid',
+  roughness: 'hydro.effectRoughness',
+  surge: 'hydro.effectSurge',
+} as const satisfies Record<HydroEventKind, MessageKey>;
 
 const STATE_COLORS: Record<FlowForecastState, string> = {
   [FLOW_FORECAST_STATES.NORMAL]: '#89d18b',
@@ -42,6 +63,7 @@ export default function ForecastHUD({
   currentSegmentIndex = 0,
   hydroEvents,
 }: ForecastHUDProps) {
+  const t = useT();
   const summary = useMemo(() => {
     if (!samples.length) {
       return {
@@ -77,6 +99,22 @@ export default function ForecastHUD({
     [hydroEvents, launchHour, currentSegmentIndex],
   );
 
+  // What the other scouting hour would have changed, as one line.
+  const contrastLine =
+    hydroBoard.gained.length > 0
+      ? t('hydro.contrast', {
+          hour: formatLaunchHour(hydroBoard.contrastHour),
+          events: formatList(
+            hydroBoard.gained.map((event) =>
+              t('hydro.contrastEvent', {
+                label: t(HYDRO_KIND_LABELS[event.kind]),
+                index: String(event.segmentIndex),
+              }),
+            ),
+          ),
+        })
+      : null;
+
   const nextHazard = riskStrip.find((sample, index) => index > 0 && isElevatedRisk(sample.state));
 
   return (
@@ -103,10 +141,10 @@ export default function ForecastHUD({
         }}
       >
         <div style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>
-          Flow Forecast
+          {t('forecast.title')}
         </div>
         <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
-          Launch H{(launchHour ?? samples[0]?.hour ?? 0).toString().padStart(2, '0')}:00
+          {t('forecast.launch', { hour: formatLaunchHour(launchHour ?? samples[0]?.hour ?? 0) })}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
           <div
@@ -118,16 +156,16 @@ export default function ForecastHUD({
               boxShadow: `0 0 12px ${STATE_COLORS[summary.current]}`,
             }}
           />
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{STATE_LABELS[summary.current]}</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{t(STATE_LABELS[summary.current])}</div>
           <div style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.7 }}>
-            Seg {currentSegmentIndex}
+            {t('forecast.seg', { index: String(currentSegmentIndex) })}
           </div>
         </div>
 
         {/* Next-N segment risk strip */}
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase', opacity: 0.65, marginBottom: 6 }}>
-            Next {riskStrip.length} segments
+            {t('forecast.nextSegments', { count: riskStrip.length })}
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             {riskStrip.map((sample, index) => {
@@ -135,7 +173,11 @@ export default function ForecastHUD({
               return (
                 <div
                   key={`risk-${sample.hour}-${index}`}
-                  title={`Seg ${currentSegmentIndex + index}: ${STATE_LABELS[sample.state]} (${sample.flowRate.toFixed(2)}x)`}
+                  title={t('forecast.segTooltip', {
+                    index: String(currentSegmentIndex + index),
+                    state: t(STATE_LABELS[sample.state]),
+                    flow: formatFixed(sample.flowRate, 2),
+                  })}
                   style={{
                     flex: 1,
                     height: isCurrent ? 18 : 14,
@@ -152,18 +194,23 @@ export default function ForecastHUD({
             })}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, opacity: 0.65 }}>
-            <span>now</span>
+            <span>{t('forecast.now')}</span>
             <span>+{Math.max(0, riskStrip.length - 1)}</span>
           </div>
         </div>
 
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.88 }}>
-          Peak {summary.maxFlow.toFixed(2)}x · {summary.highRiskHours} risky hrs
-          {nextHazard ? ` · hazard in ${riskStrip.indexOf(nextHazard)} seg` : ''}
-          {peakCountdown ? ` · next peak T+${peakCountdown.hoursUntil}h` : ''}
+          {[
+            t('forecast.peak', { flow: formatFixed(summary.maxFlow, 2) }),
+            t('forecast.riskyHours', { count: summary.highRiskHours }),
+            nextHazard ? t('forecast.hazardIn', { count: riskStrip.indexOf(nextHazard) }) : null,
+            peakCountdown ? t('forecast.nextPeak', { hours: peakCountdown.hoursUntil }) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
 
-        {(hydroBoard.rows.length > 0 || hydroBoard.contrastLine) && (
+        {(hydroBoard.rows.length > 0 || contrastLine) && (
           <div
             style={{
               marginTop: 10,
@@ -175,10 +222,10 @@ export default function ForecastHUD({
             }}
           >
             <div style={{ letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 10, opacity: 0.8 }}>
-              Water at H{(hydroBoard.launchHour).toString().padStart(2, '0')}:00
+              {t('forecast.waterAt', { hour: formatLaunchHour(hydroBoard.launchHour) })}
             </div>
             {hydroBoard.rows.length === 0 ? (
-              <div style={{ marginTop: 3, opacity: 0.8 }}>Nothing released — baseline river</div>
+              <div style={{ marginTop: 3, opacity: 0.8 }}>{t('forecast.baseline')}</div>
             ) : (
               hydroBoard.rows.map((row) => (
                 <div
@@ -190,12 +237,18 @@ export default function ForecastHUD({
                   }}
                 >
                   {row.here ? '▶ ' : '· '}
-                  {row.label} <span style={{ opacity: 0.7 }}>seg {row.segmentIndex} — {row.effect}</span>
+                  {t(HYDRO_KIND_LABELS[row.kind])}{' '}
+                  <span style={{ opacity: 0.7 }}>
+                    {t('forecast.rowDetail', {
+                      index: String(row.segmentIndex),
+                      effect: t(HYDRO_KIND_EFFECTS[row.kind]),
+                    })}
+                  </span>
                 </div>
               ))
             )}
-            {hydroBoard.contrastLine && (
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.72 }}>{hydroBoard.contrastLine}</div>
+            {contrastLine && (
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.72 }}>{contrastLine}</div>
             )}
           </div>
         )}
@@ -212,14 +265,17 @@ export default function ForecastHUD({
             }}
           >
             <div style={{ letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 10, opacity: 0.8 }}>
-              Dam release
+              {t('forecast.damRelease')}
             </div>
             <div style={{ marginTop: 2, fontWeight: 600 }}>
               {damCountdown.hoursUntil === 0
-                ? 'Releasing now'
-                : `T−${damCountdown.hoursUntil}h`}{' '}
+                ? t('forecast.releasingNow')
+                : t('forecast.releaseIn', { hours: damCountdown.hoursUntil })}{' '}
               <span style={{ opacity: 0.75, fontWeight: 400 }}>
-                (+{damCountdown.release.toFixed(2)} flow @ H{damCountdown.hour % 24})
+                {t('forecast.releaseDetail', {
+                  release: formatFixed(damCountdown.release, 2),
+                  hour: String(damCountdown.hour % 24),
+                })}
               </span>
             </div>
           </div>

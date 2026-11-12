@@ -269,6 +269,8 @@
 
 .hud-btn--continue {
   background: #fcd34d;
+  /* "Continue to {map}" (journey.continueTo) is upper-cased here, not in JS, so the casing follows <html lang>. */
+  text-transform: uppercase;
 }
 
 .hud-btn--continue:hover {

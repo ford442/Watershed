@@ -12,6 +12,12 @@
  * actually do about it.
  */
 import React from 'react';
+import { useT } from '../i18n/useT';
+
+/** Marks a slot in a translated sentence so a `<code>` element can sit in it. */
+const SLOT = '\u0000';
+/** The browsers' own GPU report pages — addresses, not prose. */
+const GPU_PAGES = ['chrome://gpu', 'about:support'] as const;
 
 export interface GraphicsUnsupportedProps {
   /** `WebGLContextEvent.statusMessage` from the failed probe, if any. */
@@ -28,37 +34,41 @@ export default function GraphicsUnsupported({
   statusMessage,
   attributesRejected,
 }: GraphicsUnsupportedProps) {
+  const t = useT();
+  // The sentence is translated whole; the two URLs drop into its {chrome} / {firefox} slots.
+  const check = t('graphics.unsupported.check', { chrome: `${SLOT}0${SLOT}`, firefox: `${SLOT}1${SLOT}` })
+    .split(SLOT)
+    .map((part, i) =>
+      i % 2 === 0 ? part : <code key={i}>{GPU_PAGES[part === '0' ? 0 : 1]}</code>,
+    );
   return (
     <div className="graphics-unsupported" role="alert" data-testid="graphics-unsupported">
       <div className="graphics-unsupported__panel">
-        <h1 className="graphics-unsupported__title">Watershed needs WebGL 2</h1>
+        <h1 className="graphics-unsupported__title">{t('graphics.unsupported.title')}</h1>
         <p className="graphics-unsupported__lead">
           {attributesRejected
-            ? 'This browser grants a WebGL 2 context, but not with the depth and stencil buffers the renderer needs, so the game cannot start.'
-            : 'This browser could not create a WebGL 2 context, so the game cannot start.'}
+            ? t('graphics.unsupported.attributes')
+            : t('graphics.unsupported.noContext')}
         </p>
         <ul className="graphics-unsupported__actions">
           <li>
-            <strong>Turn on hardware acceleration.</strong> In Chrome: Settings → System →
-            “Use graphics acceleration when available”, then restart the browser.
+            <strong>{t('graphics.unsupported.accel')}</strong> {t('graphics.unsupported.accelHow')}
           </li>
           <li>
-            <strong>Update your graphics driver.</strong> A blocklisted or crashed driver
-            is refused even when the GPU itself is capable.
+            <strong>{t('graphics.unsupported.driver')}</strong> {t('graphics.unsupported.driverWhy')}
           </li>
         </ul>
         {statusMessage ? (
           <p className="graphics-unsupported__status">
-            Browser reported: <code>{statusMessage}</code>
+            {t('graphics.unsupported.reported')} <code>{statusMessage}</code>
           </p>
         ) : (
           <p className="graphics-unsupported__status">
-            The browser gave no reason for the refusal.
+            {t('graphics.unsupported.noReason')}
           </p>
         )}
         <p className="graphics-unsupported__check">
-          You can confirm the browser’s own view at{' '}
-          <code>chrome://gpu</code> (Chromium) or <code>about:support</code> (Firefox).
+          {check}
         </p>
       </div>
     </div>

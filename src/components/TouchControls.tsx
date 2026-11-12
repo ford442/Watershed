@@ -22,11 +22,18 @@ import { TouchSource, type TouchTuning } from '../input/sources/TouchSource';
 import { readViewport, stickRadiusPx } from '../input/handheld';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import { useGameStore } from '../systems/GameState';
+import { useT } from '../i18n/useT';
+import { registerEnglish } from '../i18n/i18n';
+import { touchControls } from '../i18n/en/lazy/touchControls';
+
+// This chunk's English rides with it, not the entry (#566).
+registerEnglish(touchControls);
 
 /** Stick dead zone as a fraction of the radius. */
 const TOUCH_DEADZONE = 0.12;
 
 export const TouchControls: React.FC = () => {
+  const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
@@ -92,24 +99,25 @@ export const TouchControls: React.FC = () => {
         <div ref={knobRef} className="touch-stick-knob" />
       </div>
 
-      <button type="button" className="touch-btn touch-btn--pause" data-touch="pause" aria-label="Pause">
-        <span aria-hidden="true">II</span>
+      <button type="button" className="touch-btn touch-btn--pause" data-touch="pause" aria-label={t('touch.pause')}>
+        {/* eslint-disable-next-line no-restricted-syntax -- a pause glyph (aria-hidden), not a word */}
+        <span aria-hidden="true">{'II'}</span>
       </button>
 
       <div className="touch-actions">
         {isRaft && (
           <>
-            <button type="button" className="touch-btn touch-btn--paddle touch-btn--paddle-l" data-touch="paddleL" aria-label="Paddle left">
-              L
+            <button type="button" className="touch-btn touch-btn--paddle touch-btn--paddle-l" data-touch="paddleL" aria-label={t('touch.paddleLeft')}>
+              {t('touch.paddleLeftShort')}
             </button>
-            <button type="button" className="touch-btn touch-btn--paddle touch-btn--paddle-r" data-touch="paddleR" aria-label="Paddle right">
-              R
+            <button type="button" className="touch-btn touch-btn--paddle touch-btn--paddle-r" data-touch="paddleR" aria-label={t('touch.paddleRight')}>
+              {t('touch.paddleRightShort')}
             </button>
           </>
         )}
         {!isRaft && (
-          <button type="button" className="touch-btn touch-btn--jump" data-touch="jump" aria-label="Jump">
-            JUMP
+          <button type="button" className="touch-btn touch-btn--jump" data-touch="jump" aria-label={t('touch.jump')}>
+            {t('touch.jumpButton')}
           </button>
         )}
       </div>

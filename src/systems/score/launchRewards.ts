@@ -25,9 +25,9 @@ let off: (() => void) | null = null;
 export function initLaunchRewardListener(): void {
   if (off) return;
   const offs = [
-    gameEvents.on('launch-started', ({ label }) => {
+    gameEvents.on('launch-started', ({ labelKey }) => {
       popupIdCounter += 1;
-      useGameStore.setState({ launchPopup: { label, id: popupIdCounter } });
+      useGameStore.setState({ launchPopup: { labelKey, id: popupIdCounter } });
     }),
     gameEvents.on('launch-scored', (result) => {
       const state = useGameStore.getState();
@@ -58,7 +58,7 @@ export function initLaunchRewardListener(): void {
           score: result.score,
           clean: result.clean,
           id: rewardIdCounter,
-          label: tierDisplayLabel(result.tier),
+          labelKey: tierDisplayLabel(result.tier),
         },
       });
     }),

@@ -20,6 +20,8 @@
 import React, { useCallback, useState } from 'react';
 import type { GraphicsCapabilityReason } from '../rendering/probeGraphicsCapability';
 import type { BootFailureReason } from '../rendering/bootCrashGuard';
+import type { MessageKey } from '../i18n/i18n';
+import { useT } from '../i18n/useT';
 
 /** localStorage key for "the player has seen this". */
 export const SAFE_GRAPHICS_ACK_KEY = 'watershed:safe-graphics-ack';
@@ -42,25 +44,22 @@ export function writeSafeGraphicsAck(): void {
   }
 }
 
-const REASON_COPY: Record<GraphicsCapabilityReason, string> = {
-  hardware: 'Full graphics.',
-  caveat:
-    'This browser refused a hardware-accelerated WebGL context, so the game is running with antialiasing off, the default GPU adapter, and Low quality for this session (raise it in Options). Enabling hardware acceleration in your browser settings, or updating your graphics driver, usually restores full quality.',
-  'previous-boot-failed':
-    'The previous start did not get a working WebGL context, so this one began in safe mode at Low quality. Raise it again in Options — one start that draws a frame clears the clamp on its own.',
-  'capture-mode': 'Capture harness — graphics envelope pinned, not probed.',
-  'no-context': 'No WebGL2 context is available.',
-  'attributes-rejected':
-    'This browser grants a WebGL2 context, but not with the depth and stencil buffers the renderer needs.',
-};
+const REASON_COPY = {
+  hardware: 'graphics.reason.hardware',
+  caveat: 'graphics.reason.caveat',
+  'previous-boot-failed': 'graphics.reason.previousBootFailed',
+  'capture-mode': 'graphics.reason.captureMode',
+  'no-context': 'graphics.reason.noContext',
+  'attributes-rejected': 'graphics.reason.attributesRejected',
+} as const satisfies Record<GraphicsCapabilityReason, MessageKey>;
 
 /** What the previous boot actually did, when that is why we are in safe mode. */
-const BOOT_FAILURE_COPY: Record<BootFailureReason, string> = {
-  'no-frame': 'The previous start never drew a frame.',
-  'context-lost': 'The previous start lost its WebGL context.',
-  'device-lost': 'The previous start lost its WebGPU device.',
-  'renderer-throw': 'The previous start could not create a renderer.',
-};
+const BOOT_FAILURE_COPY = {
+  'no-frame': 'graphics.bootFailure.noFrame',
+  'context-lost': 'graphics.bootFailure.contextLost',
+  'device-lost': 'graphics.bootFailure.deviceLost',
+  'renderer-throw': 'graphics.bootFailure.rendererThrow',
+} as const satisfies Record<BootFailureReason, MessageKey>;
 
 export interface SafeGraphicsBadgeProps {
   reason: GraphicsCapabilityReason;
@@ -78,6 +77,7 @@ export default function SafeGraphicsBadge({
   bootFailure,
   initiallyDismissed,
 }: SafeGraphicsBadgeProps) {
+  const t = useT();
   const [dismissed, setDismissed] = useState(
     () => initiallyDismissed ?? readSafeGraphicsAck()
   );
@@ -93,19 +93,19 @@ export default function SafeGraphicsBadge({
   return (
     <div className="safe-graphics-badge" role="status" data-testid="safe-graphics-badge">
       <div className="safe-graphics-badge__body">
-        <strong>Safe Graphics Mode</strong> — reduced quality.{' '}
+        <strong>{t('graphics.safe.title')}</strong> {t('graphics.safe.reduced')}{' '}
         <button
           type="button"
           className="safe-graphics-badge__why"
           aria-expanded={showWhy}
           onClick={() => setShowWhy((open) => !open)}
         >
-          {showWhy ? 'hide' : 'why?'}
+          {showWhy ? t('graphics.safe.hide') : t('graphics.safe.why')}
         </button>
         {showWhy && (
           <p className="safe-graphics-badge__reason">
-            {bootFailure ? `${BOOT_FAILURE_COPY[bootFailure]} ` : ''}
-            {REASON_COPY[reason]}
+            {bootFailure ? `${t(BOOT_FAILURE_COPY[bootFailure])} ` : ''}
+            {t(REASON_COPY[reason])}
             {statusMessage && (
               <>
                 {' '}
@@ -118,10 +118,10 @@ export default function SafeGraphicsBadge({
       <button
         type="button"
         className="safe-graphics-badge__dismiss"
-        aria-label="Dismiss safe graphics notice"
+        aria-label={t('graphics.safe.dismissLabel')}
         onClick={dismiss}
       >
-        Dismiss
+        {t('graphics.safe.dismiss')}
       </button>
     </div>
   );

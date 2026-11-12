@@ -155,10 +155,8 @@ export function useExperienceWorld({
     [activeDefaultMapId],
   );
   const canContinueDefaultMap = journeyDecision.kind === 'continue';
-  const continueLabel =
-    journeyDecision.kind === 'continue'
-      ? `CONTINUE TO ${journeyDecision.nextLabel.toUpperCase()}`
-      : undefined;
+  // The HUD names it in the player's language (ExperienceUI: journey.continueTo).
+  const continueMapId = journeyDecision.kind === 'continue' ? journeyDecision.nextMapId : undefined;
   const isFinalMap = journeyDecision.kind === 'summary';
   // Shown only on the journey-complete overlay, so it is read when the journey
   // completes — after this run's best has been saved — and not before.
@@ -597,7 +595,7 @@ export function useExperienceWorld({
     activeDefaultMapId,
     activeDefaultMap,
     canContinueDefaultMap,
-    continueLabel,
+    continueMapId,
     isFinalMap,
     ghostBestScore,
     /** Journey mode auto-handoffs at boundaries; single-map still seamless on Continue. */

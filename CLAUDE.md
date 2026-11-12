@@ -50,6 +50,7 @@ src/
 ├── ui/                          # useGamePhase (menu / playing / paused, map pick) + MenuShell (loader, menus, options)
 ├── harness/                     # Dev / test only, lazy behind their flags: dev toggles + overlays, ?replay= / ?river= autostart, the ?screenshot=1 harness API
 ├── workshop/                    # River Workshop (lazy chunk, StartMenu → RIVER WORKSHOP; ?editor=1 opens it at boot): workshopStore (zustand + zundo undo/redo, LevelData as truth), editorSegments, inspector / biome / path / validation panels
+├── i18n/                        # ★ t() / useT() over typed catalogs (#566): en/*.ts is the key source (entry), locales/<id>.json lazy; format.ts on Intl. ESLint bans JSX literals in components/ + ui/
 ├── config/queryFlags.ts         # ★ The only reader of the query string (queryFlags / queryParam / editQuery); ESLint bans location.search elsewhere
 ├── Experience.tsx               # Scene root: LOD/Biome providers, InnerExperience
 ├── index.tsx                    # Entry: Rapier pre-init, global handlers

@@ -9,8 +9,9 @@
  *   lives in the store *actions*, not in structure.
  *
  * PERSISTENCE:
- * - Persisted to localStorage under 'watershed-settings' (version 2 — #486 D added
- *   comfort / haptics / gamepad / touch; a v1 file migrates by backfilling defaults).
+ * - Persisted to localStorage under 'watershed-settings' (version 3 — #486 D added
+ *   comfort / haptics / gamepad / touch, #566 the UI language; an older file
+ *   migrates by backfilling defaults).
  * - migrate() MERGES persisted state OVER DEFAULT_SETTINGS so a newly-added
  *   action/setting is backfilled instead of dropped.
  * - skipHydration + an explicit rehydrate() at app root, with a `_hasHydrated`
@@ -34,9 +35,13 @@ import {
 } from './settingsDerive';
 import type { PhysicsWorkerPreference } from '../../utils/physicsWorkerFlag';
 import { FOV_DEFAULT, FOV_MAX, FOV_MIN, type ReducedMotionPref } from './comfort';
+import { isLocaleId, type LocalePref } from '../../i18n/types';
 
-/** Persisted shape version. v2 (#486 D) adds the comfort / haptics / gamepad / touch fields. */
-export const SETTINGS_VERSION = 2;
+/**
+ * Persisted shape version. v2 (#486 D) adds the comfort / haptics / gamepad / touch
+ * fields; v3 (#566) adds `locale`.
+ */
+export const SETTINGS_VERSION = 3;
 import { clamp } from '../../math/scalar';
 
 // ---------------------------------------------------------------------------
@@ -90,6 +95,10 @@ export interface SettingsState {
   /** Response curve exponent: 1 = linear, 2 = quadratic. 1–3. */
   gamepadCurve: number;
 
+  // --- Language (#566) ---
+  /** UI language; 'system' follows navigator.languages. */
+  locale: LocalePref;
+
   /** Flipped true once persisted state has rehydrated (or confirmed absent). */
   _hasHydrated: boolean;
 }
@@ -120,6 +129,7 @@ export interface SettingsActions {
   setHapticsStrength: (value: number) => void;
   setGamepadDeadzone: (value: number) => void;
   setGamepadCurve: (value: number) => void;
+  setLocale: (value: LocalePref) => void;
   resetToDefaults: () => void;
   setHasHydrated: (value: boolean) => void;
 }
@@ -154,6 +164,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
   hapticsStrength: 1,
   gamepadDeadzone: 0.15,
   gamepadCurve: 1,
+  locale: 'system',
   _hasHydrated: false,
 };
 
@@ -286,6 +297,7 @@ export function migrateSettings(
     hapticsStrength: num(p.hapticsStrength, 0, 1, base.hapticsStrength),
     gamepadDeadzone: num(p.gamepadDeadzone, 0, 0.5, base.gamepadDeadzone),
     gamepadCurve: num(p.gamepadCurve, 1, 3, base.gamepadCurve),
+    locale: p.locale === 'system' || isLocaleId(p.locale) ? p.locale : base.locale,
     // Never trust a persisted hydration flag.
     _hasHydrated: false,
   };
@@ -364,6 +376,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setHapticsStrength: (value) => set({ hapticsStrength: clamp(value, 0, 1) }),
       setGamepadDeadzone: (value) => set({ gamepadDeadzone: clamp(value, 0, 0.5) }),
       setGamepadCurve: (value) => set({ gamepadCurve: clamp(value, 1, 3) }),
+      setLocale: (value) => set({ locale: value }),
 
       resetToDefaults: () =>
         set({
@@ -387,6 +400,7 @@ export const useSettingsStore = create<SettingsStore>()(
           hapticsStrength: DEFAULT_SETTINGS.hapticsStrength,
           gamepadDeadzone: DEFAULT_SETTINGS.gamepadDeadzone,
           gamepadCurve: DEFAULT_SETTINGS.gamepadCurve,
+          locale: DEFAULT_SETTINGS.locale,
         }),
 
       setHasHydrated: (value) => set({ _hasHydrated: value }),
@@ -427,6 +441,7 @@ export const useSettingsStore = create<SettingsStore>()(
         hapticsStrength: state.hapticsStrength,
         gamepadDeadzone: state.gamepadDeadzone,
         gamepadCurve: state.gamepadCurve,
+        locale: state.locale,
       }),
       onRehydrateStorage: () => (state) => {
         // Runs after rehydrate() resolves (success or failure).

@@ -84,24 +84,29 @@ export function calculateAirTimeScore(
   return { tier, score, comboDelta, clean };
 }
 
+/** The launch popup's catalog key (#566: systems carry keys, the HUD translates). */
+export type LaunchLabelKey = 'score.launchAir' | 'score.launchGreat' | 'score.launchPerfect';
+/** A committed tier's catalog key. */
+export type TierLabelKey = 'score.tierPerfect' | 'score.tierGreat' | 'score.tierNice';
+
 /** Instant tier label shown at launch (predictive, not the committed score). */
-export function predictLaunchTierLabel(downstreamSpeed: number, speedThreshold: number): string {
-  if (downstreamSpeed < speedThreshold) return 'AIR!';
-  if (downstreamSpeed >= 20) return 'PERFECT?!';
-  if (downstreamSpeed >= 16) return 'GREAT!';
-  return 'AIR!';
+export function predictLaunchTierLabel(downstreamSpeed: number, speedThreshold: number): LaunchLabelKey {
+  if (downstreamSpeed < speedThreshold) return 'score.launchAir';
+  if (downstreamSpeed >= 20) return 'score.launchPerfect';
+  if (downstreamSpeed >= 16) return 'score.launchGreat';
+  return 'score.launchAir';
 }
 
-export function tierDisplayLabel(tier: AirTier): string {
+export function tierDisplayLabel(tier: AirTier): TierLabelKey | null {
   switch (tier) {
     case 'Perfect':
-      return 'PERFECT!';
+      return 'score.tierPerfect';
     case 'Great':
-      return 'GREAT!';
+      return 'score.tierGreat';
     case 'Nice':
-      return 'NICE!';
+      return 'score.tierNice';
     default:
-      return '';
+      return null;
   }
 }
 
