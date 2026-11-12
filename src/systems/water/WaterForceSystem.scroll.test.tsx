@@ -17,7 +17,7 @@ import { scrollField } from './sweScroll';
 import { packSurfaceFieldStub } from '../../testing/sweSurfacePack';
 
 const h = vi.hoisted(() => ({
-  frame: null as null | ((state: { clock: { elapsedTime: number } }, delta: number) => void),
+  frame: null as null | ((state: { clock: { elapsedTime: number }; gl?: unknown }, delta: number) => void),
   calls: [] as string[],
 }));
 
@@ -116,12 +116,15 @@ const STEP = 1 / 30; // one SWE step is due this frame
 const NO_STEP = 0.004; // well under the 60 Hz interval: no step this frame
 
 let clock = 0;
-function frame(delta: number) {
+function frame(delta: number, gl?: unknown) {
   clock += delta;
   act(() => {
-    h.frame!({ clock: { elapsedTime: clock } }, delta);
+    h.frame!({ clock: { elapsedTime: clock }, gl }, delta);
   });
 }
+
+/** A WebGLRenderer-shaped double: which extensions it exposes is all the upload asks. */
+const glWith = (...names: string[]) => ({ extensions: { has: (name: string) => names.includes(name) } });
 
 async function mount() {
   const stub = stubModule();
@@ -276,6 +279,51 @@ describe('WaterForceSystem window scroll', () => {
       expect((s.flowTexture as THREE.DataTexture).image.data).toBe(data);
       expect((s.flowTexture as THREE.DataTexture).version).toBe((s.texture as THREE.DataTexture).version);
     }
+  });
+
+  it('uploads half floats where 32-bit floats cannot be filtered, into one array per texture (#554 B.1)', async () => {
+    const { view, ptrs } = await mount();
+    const mobile = glWith(); // no OES_texture_float_linear
+    const cell = 7 * BUDGET.width + 10;
+    view(ptrs[0])[cell] = 0.4;
+    view(ptrs[1])[cell] = 1.5;
+    view(ptrs[2])[cell] = -0.75;
+    frame(STEP, mobile);
+
+    const snap = getSWEHeightFieldSnapshot();
+    const height = snap.texture as THREE.DataTexture;
+    const flow = snap.flowTexture as THREE.DataTexture;
+    expect(height.type).toBe(THREE.HalfFloatType);
+    expect(flow.type).toBe(THREE.HalfFloatType);
+    expect(height.minFilter).toBe(THREE.LinearFilter);
+    const hData = height.image.data as unknown as Uint16Array;
+    const fData = flow.image.data as unknown as Uint16Array;
+    expect(hData).toBeInstanceOf(Uint16Array);
+    expect(hData).toHaveLength(COUNT);
+    expect(fData).toHaveLength(COUNT * 4);
+    const f16 = THREE.DataUtils.fromHalfFloat;
+    expect(f16(hData[cell])).toBeCloseTo(0.4, 3);
+    expect(f16(fData[cell * 4])).toBeCloseTo(1.5, 3);
+    expect(f16(fData[cell * 4 + 1])).toBeCloseTo(-0.75, 3);
+    // depth = mean 1.0 + η 0.4 − the mocked 0.25 m bed.
+    expect(f16(fData[cell * 4 + 2])).toBeCloseTo(1.15, 2); // f16 spacing near 1 is ~0.001
+
+    // Repacked in place every upload: the same arrays, the new values.
+    view(ptrs[0])[cell] = -0.2;
+    for (let f = 0; f < 4; f += 1) frame(f % 2 === 0 ? STEP : NO_STEP, mobile);
+    const later = getSWEHeightFieldSnapshot();
+    expect((later.texture as THREE.DataTexture).image.data).toBe(hData);
+    expect((later.flowTexture as THREE.DataTexture).image.data).toBe(fData);
+    expect(f16(hData[cell])).toBeCloseTo(-0.2, 3);
+  });
+
+  it('keeps the zero-copy 32-bit path where the renderer filters floats', async () => {
+    const { view, ptrs } = await mount();
+    frame(STEP, glWith('OES_texture_float_linear'));
+    const snap = getSWEHeightFieldSnapshot();
+    expect((snap.texture as THREE.DataTexture).type).toBe(THREE.FloatType);
+    // The texture's array IS the sim's η plane (#533): no copy on this thread.
+    expect(((snap.texture as THREE.DataTexture).image.data as unknown as Float32Array).buffer).toBe(view(ptrs[0]).buffer);
   });
 
   it('restarts the field at rest on a respawn-sized jump instead of smearing it', async () => {

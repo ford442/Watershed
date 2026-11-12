@@ -351,7 +351,7 @@ export function WaterForceSystem({
     const anchor = vehicleBody?.translation?.() ?? bodies[0].translation();
 
     // The field: window, scroll, bed, step, upload (sweHost.ts).
-    const field = sweHostFrame(hostRef.current, budget, wasmRef.current, anchor, dt);
+    const field = sweHostFrame(hostRef.current, budget, wasmRef.current, anchor, dt, state.gl);
     const { originX, originZ } = field;
     originRef.current = { x: originX, z: originZ };
 

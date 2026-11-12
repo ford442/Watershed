@@ -30,6 +30,7 @@ import {
   updateSWEHeightFieldSnapshot,
 } from './SWEHeightField';
 import { sweStepInterval, type SWEBudget } from './sweQuality';
+import { rendererFiltersFloat32 } from '../../rendering/floatFiltering';
 import { SWE_REST_INFLOW, advanceSweWindow, type SweInflow, type SweWindow } from './sweScroll';
 import {
   createRiverRouter,
@@ -127,6 +128,24 @@ function applyDisturbances(
 }
 
 /**
+ * A never-uploaded float texture becomes half-float (#554 B.1): `RGBA16F` filters on
+ * every WebGL2 / WebGPU device, `RGBA32F` only behind `OES_texture_float_linear` /
+ * `float32-filterable` — without them three keeps `LINEAR` on an unfilterable format
+ * and the water samples a field of zeros. The backing array is allocated here, once
+ * per grid install; each upload repacks into it.
+ */
+function adoptHalfFloat(texture: THREE.DataTexture, values: number): void {
+  texture.type = THREE.HalfFloatType;
+  texture.image.data = new Uint16Array(values);
+}
+
+/** f32 → f16 into the texture's own array: no allocation per frame. */
+function packHalfInto(source: ArrayLike<number>, target: Uint16Array): void {
+  const n = Math.min(source.length, target.length);
+  for (let i = 0; i < n; i += 1) target[i] = THREE.DataUtils.toHalfFloat(source[i]);
+}
+
+/**
  * Point the two DataTextures at the field and flag them for upload (#533).
  * No copy and no per-cell loop on this thread: the height texture's backing
  * array IS the sim's `h` (the heap view on wasm-main, the mirror on
@@ -134,6 +153,11 @@ function applyDisturbances(
  * returns — packed by one native call here on wasm-main, by the worker (or the
  * GPU) before the frame crossed. Both arrays are stable for the sim's life, so
  * the assignments only take effect on the first upload after a grid install.
+ *
+ * Where the renderer cannot filter 32-bit floats (`rendererFiltersFloat32` false —
+ * most mobile GPUs) the pair is half-float instead, decided before its first upload,
+ * and each upload is one f16 pack per value on this thread (~0.2 ms for the 128×80
+ * budget's 51,200 values on a desktop core). Elsewhere the zero-copy path is unchanged.
  */
 function uploadHeightTexture(
   grid: SweSim,
@@ -142,12 +166,22 @@ function uploadHeightTexture(
   originX: number,
   originZ: number,
   budget: SWEBudget,
+  renderer: unknown,
 ): void {
-  if (texture.image.data !== grid.h) texture.image.data = grid.h;
-  texture.needsUpdate = true;
   // Same fieldVersion, same origin: (u, w, depth, div) for the field `h` holds.
   const surface = grid.packSurface(SWE_MEAN_DEPTH);
-  if (flowTexture.image.data !== surface) flowTexture.image.data = surface;
+  if (texture.version === 0 && texture.type === THREE.FloatType && rendererFiltersFloat32(renderer) === false) {
+    adoptHalfFloat(texture, grid.h.length);
+    adoptHalfFloat(flowTexture, surface.length);
+  }
+  if (texture.type === THREE.HalfFloatType) {
+    packHalfInto(grid.h, texture.image.data as Uint16Array);
+    packHalfInto(surface, flowTexture.image.data as Uint16Array);
+  } else {
+    if (texture.image.data !== grid.h) texture.image.data = grid.h;
+    if (flowTexture.image.data !== surface) flowTexture.image.data = surface;
+  }
+  texture.needsUpdate = true;
   flowTexture.needsUpdate = true;
   updateSWEHeightFieldSnapshot({
     texture,
@@ -478,6 +512,8 @@ export function sweHostFrame(
   wasm: WatershedNativeModule | null,
   anchor: { x: number; z: number },
   dt: number,
+  /** The frame's renderer: whether the field textures can stay 32-bit float (#554 B.1). */
+  renderer?: unknown,
 ): { originX: number; originZ: number; sweEnabled: boolean } {
   // The window centres on the vehicle but sits on the world's cell lattice,
   // moving only by whole cells: a cell keeps its world position while it
@@ -615,7 +651,7 @@ export function sweHostFrame(
     // WASM bumps fieldVersion inside step(); WGSL when its readback lands.
     if (grid.fieldVersion !== state.uploadedVersion) {
       state.uploadedVersion = grid.fieldVersion;
-      uploadHeightTexture(grid, texture, flowTexture, originX, originZ, budget);
+      uploadHeightTexture(grid, texture, flowTexture, originX, originZ, budget, renderer);
       runHeightfieldChores(grid.h, grid.width, grid.height);
     } else {
       // Grid didn't step, but the player moved — keep the sampling window

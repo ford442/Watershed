@@ -286,7 +286,10 @@ each ray hit inside its WASM binding; that is outside this code.
 Also on the frame path: `ChunkManager.update` / `detectBiome` refill reused
 arrays and read cached z spans instead of `map().filter()` and two
 `getPoint()` vectors; `WaterForceSystem` publishes
-`window.__watershed.waterForce` only on a debug page; `SimCoreTick`,
+`window.__watershed.waterForce` only on a debug page; the SWE textures'
+half-float path (#554 B.1, renderers that cannot filter 32-bit floats)
+allocates its two `Uint16Array`s once per grid install and repacks into them
+on each upload; `SimCoreTick`,
 `TrackManager` and the lifecycle OOB check resolve the envelope into a reused
 object; `SplashSystem` spawns from one scratch vector. ESLint now makes
 `@react-three/no-new-in-loop` / `no-clone-in-loop` **errors** in `src/sim`,
