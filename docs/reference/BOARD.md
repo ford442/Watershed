@@ -14,7 +14,7 @@ _Last updated: 2026-11-12._
 |---|---|---|---|
 | #554 | P1 | Foundation before the next content round | A.1, B.1, B.4, C, D, E, F in one PR; **open: A.2** (VehicleTuner — needs a decision, see the PR), **B.2** (viewport render scale), **B.3** (one shadow type) |
 | #553 | P2 | Content + delivery (hazards re-cut, packs per biome, Director, installable shell) | Its prerequisites from #554 (A.1, B.1, C) are in the PR; raft work should wait for A.2 |
-| #555 | P1 | Rendering: one material language (TSL default) | **A** in a PR (TSL smoke + parity + warm-up report in CI); B–E open. The parity scenes and warm-up report name what B has to fix first: TSL weather / mist / stars / rock albedo, and node pipeline count (731 vs 53 programs in the first 3 s) |
+| #555 | P1 | Rendering: one material language (TSL default) | **A** in a PR (TSL smoke + parity + warm-up report in CI); B–E open. The parity scenes and warm-up report name what B has to fix first: TSL top-downs draw no canyon (glacial spawn, meander), TSL weather / mist / stars / rock albedo, and node pipeline count (731 vs 53 programs in the first 3 s) |
 | #556 | P1 | Testing: the campaign without a browser | Open |
 | #557 | P2 | Creator tools: River Workshop | Open |
 | #558 | P1 | Access: i18n, UI scale, captions, assists | Open |
