@@ -83,7 +83,7 @@ const SAMPLES = STEPS + 1;
  * (tangent length 0 marks a degenerate sample). Built on first use, so the
  * per-frame cost per body is SAMPLES distance tests and no curve evaluation;
  * it used to be 25 `getPoint` calls and 4 `Vector3` allocations per body per
- * frame (VehicleTuner; the deleted WaterFlowForces was the other caller).
+ * frame (the since-removed WaterFlowForces / VehicleTuner flow samplers, #554 A).
  */
 const cache = new WeakMap<THREE.Curve<THREE.Vector3>, Float64Array>();
 const STRIDE = 6;

@@ -633,7 +633,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
       {raftRef && (
         <>
           <VortexForceSystem targetRef={raftRef} segments={activeSegments} />
-          <VehicleTuner targetRef={raftRef} segments={activeSegments} />
+          <VehicleTuner targetRef={raftRef} />
         </>
       )}
     </group>
