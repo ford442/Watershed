@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CacheSlotDefinition } from '../systems/survival/portageCache';
+import { useT } from '../i18n/useT';
 
 type CachePlacementPanelProps = {
   slots: ReadonlyArray<CacheSlotDefinition>;
@@ -14,14 +15,13 @@ export default function CachePlacementPanel({
   maxPlacements,
   onToggle,
 }: CachePlacementPanelProps) {
+  const t = useT();
   if (!slots.length) return null;
 
   return (
     <div className="start-menu-cache-panel">
-      <div className="start-menu-map-select-label">Scout Caches</div>
-      <p className="start-menu-map-hint">
-        Place up to {maxPlacements} cache{maxPlacements === 1 ? '' : 's'} on high ground before launch.
-      </p>
+      <div className="start-menu-map-select-label">{t('menu.caches')}</div>
+      <p className="start-menu-map-hint">{t('menu.caches.hint', { count: maxPlacements })}</p>
       {slots.map((slot) => {
         const selected = selectedIds.includes(slot.id);
         const disabled = !selected && selectedIds.length >= maxPlacements;
@@ -33,9 +33,10 @@ export default function CachePlacementPanel({
             disabled={disabled}
             onClick={() => onToggle(slot.id)}
           >
+            {/* Slot names are authored map content (survivalMetadata), not UI chrome. */}
             <span className="start-menu-cache-option-title">{slot.label}</span>
             <span className="start-menu-cache-option-meta">
-              Seg {slot.segmentIndex} · +{slot.retrievalBonus} on retrieve
+              {t('menu.caches.slotMeta', { segment: slot.segmentIndex, bonus: slot.retrievalBonus })}
             </span>
           </button>
         );

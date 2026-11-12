@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useProgress } from '@react-three/drei';
+import { useT } from '../i18n/useT';
 
 export type GamePhase = 'menu' | 'playing' | 'paused';
 
@@ -13,6 +14,7 @@ const STUCK_TIMEOUT_MS = 20_000;
 const READY_FLASH_MS = 900;
 
 export const Loader = ({ gamePhase, canvasReady, worldEnabled }: LoaderProps) => {
+  const t = useT();
   const { progress, active, item, errors } = useProgress();
   const [stuck, setStuck] = useState(false);
   const [readyFlash, setReadyFlash] = useState(false);
@@ -52,21 +54,23 @@ export const Loader = ({ gamePhase, canvasReady, worldEnabled }: LoaderProps) =>
   const displayProgress = Math.round(progress);
   const isFading = readyFlash || (!active && !booting && !loadingWorld);
 
-  let header = 'SYSTEM INITIALIZATION';
-  let message = `Loading assets… ${displayProgress}%`;
+  // The progress number stays a plain integer: the messages carry the % sign.
+  const progressText = String(displayProgress);
+  let header = t('loader.init');
+  let message = t('loader.assets', { progress: progressText });
 
   if (readyFlash) {
-    header = 'READY TO PLAY';
-    message = 'Choose your map and press START RUN';
+    header = t('loader.ready');
+    message = t('loader.readyHint');
   } else if (!canvasReady) {
-    header = 'STARTING UP';
-    message = 'Initializing graphics engine…';
+    header = t('loader.startup');
+    message = t('loader.startupHint');
   } else if (loadingWorld) {
-    header = 'ENTERING CANYON';
-    message = `Loading world… ${displayProgress}%`;
+    header = t('loader.world');
+    message = t('loader.worldHint', { progress: progressText });
   } else if (stuck) {
-    header = 'STILL LOADING';
-    message = `This is taking longer than expected (${displayProgress}%)`;
+    header = t('loader.stuck');
+    message = t('loader.stuckHint', { progress: progressText });
   }
 
   return (
@@ -80,7 +84,7 @@ export const Loader = ({ gamePhase, canvasReady, worldEnabled }: LoaderProps) =>
           <div
             className="loader-bar"
             role="progressbar"
-            aria-label="Asset loading progress"
+            aria-label={t('loader.progress')}
             aria-valuenow={displayProgress}
             aria-valuemin={0}
             aria-valuemax={100}
@@ -88,10 +92,10 @@ export const Loader = ({ gamePhase, canvasReady, worldEnabled }: LoaderProps) =>
             <div className="loader-bar-fill" style={{ width: `${displayProgress}%` }} />
           </div>
         )}
-        {item && !readyFlash && <div className="loader-item">PROCESSING: {item}</div>}
+        {item && !readyFlash && <div className="loader-item">{t('loader.processing', { item })}</div>}
         {stuck && errors.length > 0 && (
           <div className="loader-item loader-item--warning">
-            Some assets failed to load. You can still try starting the run.
+            {t('loader.failed')}
           </div>
         )}
       </div>

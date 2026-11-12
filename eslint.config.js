@@ -62,6 +62,50 @@ const HARNESS_ONLY_GLOBALS = {
   message: 'window.__* belongs to src/harness/ — set a tap in src/debug/debugTaps.ts; harness/debugApi.ts publishes it as window.__watershed.',
 };
 
+/**
+ * Player-visible text goes through `t()` (#566): JSX text, a string or template
+ * literal in `aria-label` / `title` / `placeholder` / `alt`, and a string literal
+ * in a JSX expression (directly, or as a ternary / `&&` / `??` arm of a child), when it holds a word (two letters in a row). Symbols and
+ * digits alone (`×`, `→`, `°`, `—`) are not words; units go through src/i18n/format.ts.
+ * The rule cannot see strings in constant maps or `.ts` modules: those return keys.
+ */
+const UI_TEXT_ATTRS = 'aria-label|aria-description|title|placeholder|alt';
+const UI_LITERAL_MESSAGE = 'Player-visible text goes through t() / useT() (src/i18n/): add the English to src/i18n/en/*.ts.';
+const UI_LITERALS = [
+  { selector: 'JSXText[value=/[A-Za-z]{2,}/]', message: UI_LITERAL_MESSAGE },
+  {
+    selector: `JSXAttribute[name.name=/^(${UI_TEXT_ATTRS})$/] > Literal[value=/[A-Za-z]{2,}/]`,
+    message: UI_LITERAL_MESSAGE,
+  },
+  {
+    selector: `JSXAttribute[name.name=/^(${UI_TEXT_ATTRS})$/] > JSXExpressionContainer > TemplateLiteral:has(TemplateElement[value.raw=/[A-Za-z]{2,}/])`,
+    message: UI_LITERAL_MESSAGE,
+  },
+  { selector: 'JSXExpressionContainer > Literal[value=/[A-Za-z]{2,}/]', message: UI_LITERAL_MESSAGE },
+  // `{on ? 'On' : 'Off'}` / `{label ?? 'None'}` as an element's child (not an attribute,
+  // so a `className={x ? 'active' : ''}` stays legal).
+  {
+    selector:
+      ':matches(JSXElement, JSXFragment) > JSXExpressionContainer > :matches(ConditionalExpression, LogicalExpression) > Literal[value=/[A-Za-z]{2,}/]',
+    message: UI_LITERAL_MESSAGE,
+  },
+];
+
+/**
+ * Developer overlays stay English (out of scope for #566): debug panels, the F3
+ * readout, the audio / SWE diagnostics, the vehicle tuner and the WASM test rig.
+ */
+const DEV_OVERLAYS = [
+  'src/components/DebugPanel.tsx',
+  'src/components/SWEBedDebugOverlay.tsx',
+  'src/components/AudioDiagnosticsOverlay.tsx',
+  'src/components/MovementReadout.tsx',
+  'src/components/MovementReadoutPanel.tsx',
+  'src/components/PhysicsDebugOverlay.tsx',
+  'src/components/VehicleTuner.tsx',
+  'src/components/WasmWaterForceTest.tsx',
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -204,6 +248,17 @@ export default tseslint.config(
     ignores: ['src/**/*.{test,spec}.{ts,tsx}'],
     rules: {
       'no-restricted-syntax': ['error', ...OWNED_GLOBALS],
+    },
+  },
+
+  // Player-visible text (#566): no English literal in components/ or ui/. This
+  // block repeats the owned-globals entries because a later no-restricted-syntax
+  // replaces an earlier one's list instead of adding to it.
+  {
+    files: ['src/components/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.{test,spec}.{ts,tsx}', 'src/**/__tests__/**', ...DEV_OVERLAYS],
+    rules: {
+      'no-restricted-syntax': ['error', ...OWNED_GLOBALS, HARNESS_ONLY_GLOBALS, ...UI_LITERALS],
     },
   },
 

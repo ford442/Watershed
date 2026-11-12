@@ -185,7 +185,7 @@ describe('LaunchScoringSession', () => {
         tier: 'Nice',
         score: TIER_SCORES.Nice,
         clean: false,
-        label: 'NICE!',
+        labelKey: 'score.tierNice',
       });
       expect(state.score).toBe(TIER_SCORES.Nice);
     });
@@ -422,17 +422,17 @@ describe('LaunchScoringSession', () => {
       const threshold = VEHICLE_TUNING.shelfLaunch.speedThreshold;
 
       startDefaultLaunch({ downstreamSpeed: threshold });
-      expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'AIR!' });
+      expect(useGameStore.getState().launchPopup).toMatchObject({ labelKey: 'score.launchAir' });
 
       resetLaunchScoringSession();
       resetStore();
       startDefaultLaunch({ downstreamSpeed: 16 });
-      expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'GREAT!' });
+      expect(useGameStore.getState().launchPopup).toMatchObject({ labelKey: 'score.launchGreat' });
 
       resetLaunchScoringSession();
       resetStore();
       startDefaultLaunch({ downstreamSpeed: 20 });
-      expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'PERFECT?!' });
+      expect(useGameStore.getState().launchPopup).toMatchObject({ labelKey: 'score.launchPerfect' });
     });
 
     it('sets latestReward with tier and clean flag on qualifying splash landing', () => {
@@ -444,7 +444,7 @@ describe('LaunchScoringSession', () => {
       expect(useGameStore.getState().latestReward).toMatchObject({
         tier: 'Nice',
         clean: true,
-        label: 'NICE!',
+        labelKey: 'score.tierNice',
       });
     });
   });
@@ -458,7 +458,7 @@ describe('LaunchScoringSession', () => {
       });
 
       expect(hasActiveLaunch()).toBe(true);
-      expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'AIR!' });
+      expect(useGameStore.getState().launchPopup).toMatchObject({ labelKey: 'score.launchAir' });
     });
   });
 
@@ -473,7 +473,7 @@ describe('LaunchScoringSession', () => {
       });
 
       expect(hasActiveLaunch()).toBe(true);
-      expect(useGameStore.getState().launchPopup).toMatchObject({ label: 'GREAT!' });
+      expect(useGameStore.getState().launchPopup).toMatchObject({ labelKey: 'score.launchGreat' });
     });
   });
 });

@@ -14,8 +14,13 @@ import MovementReadout from './MovementReadout';
 import MenuFocusScope from './MenuFocusScope';
 import { lazyComponent } from '../utils/lazyComponent';
 import { whenIdle } from '../utils/whenIdle';
-import { BIOME_HUD_LABELS } from '../configs/biomes';
+import type { BiomeId } from '../configs/biomes';
 import { queryFlags } from '../config/queryFlags';
+import { useT } from '../i18n/useT';
+import { getLocale, type PlainKey } from '../i18n/i18n';
+import { formatLaunchHour, formatNumber, formatPercent } from '../i18n/format';
+import type { LoadoutId } from '../systems/survival';
+import { airTimeParts, writeAirTime, type AirTimeWriter } from './hudAirTime';
 
 // The end-of-run summary only mounts on a wipeout / finish; the HUD preloads it at idle.
 const RunResultsChunk = lazyComponent(() => import('./RunResultsPanel'));
@@ -28,15 +33,49 @@ const RunResultsPanel = RunResultsChunk.Component;
  * re-renders, and only when the visible text changes.
  */
 type HudTextSelector = (s: GameStore) => string;
-const selectSpeedText: HudTextSelector = (s) => String(Math.max(0, Math.round(s.currentSpeed)));
-const selectDistanceKmText: HudTextSelector = (s) => (s.distance / 1000).toFixed(2);
-const selectScoreText: HudTextSelector = (s) => Math.floor(s.score).toLocaleString();
-const selectHighScoreText: HudTextSelector = (s) => Math.floor(s.highScore).toLocaleString();
-const selectTopSpeedText: HudTextSelector = (s) => String(Math.round(s.topSpeed));
+
+/**
+ * The readouts' number formats, rebuilt only when the locale changes: the
+ * selectors run on every store write, so they reuse two formatters instead of
+ * `toLocaleString()` (which builds one per call) or the keyed format.ts cache.
+ */
+let readoutLocale = '';
+let intFormat: Intl.NumberFormat | null = null;
+let km2Format: Intl.NumberFormat | null = null;
+function readoutFormats(): { int: Intl.NumberFormat; km2: Intl.NumberFormat } {
+  const locale = getLocale();
+  if (locale !== readoutLocale || !intFormat || !km2Format) {
+    readoutLocale = locale;
+    intFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+    km2Format = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return { int: intFormat, km2: km2Format };
+}
+
+const selectSpeedText: HudTextSelector = (s) => readoutFormats().int.format(Math.max(0, Math.round(s.currentSpeed)));
+const selectDistanceKmText: HudTextSelector = (s) => readoutFormats().km2.format(s.distance / 1000);
+const selectScoreText: HudTextSelector = (s) => readoutFormats().int.format(Math.floor(s.score));
+const selectHighScoreText: HudTextSelector = (s) => readoutFormats().int.format(Math.floor(s.highScore));
+const selectTopSpeedText: HudTextSelector = (s) => readoutFormats().int.format(Math.round(s.topSpeed));
 
 function HudText({ select }: { select: HudTextSelector }) {
+  // Subscribed to the locale so a language change re-runs the selector's format.
+  useT();
   return <>{useGameStore(select)}</>;
 }
+
+/** HUD badge names for the biomes that have one (BIOME_HUD_LABELS' ids). */
+const HUD_BIOME_KEYS: Partial<Record<BiomeId, PlainKey>> = {
+  canyonSummer: 'biome.canyonSummer',
+  canyonAutumn: 'biome.canyonAutumn',
+  delta: 'biome.delta',
+  slotCanyon: 'biome.slotCanyon',
+  glacier: 'biome.glacier',
+  glacialMelt: 'biome.glacialMelt',
+  cavern: 'biome.cavern',
+  lumberFlume: 'biome.lumberFlume',
+  hydroDam: 'biome.hydroDam',
+};
 
 interface GameHUDProps {
   isWipeout?: boolean;
@@ -64,15 +103,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onLoopMap,
   onContinueJourney,
   onReturnToMenu,
-  mapLabel = 'Meander to Waterfall',
+  mapLabel,
   continueLabel,
   isFinalMap = false,
   ghostBestScore = 0,
 }) => {
+  const t = useT();
+  // The latest `t` for the store subscription and the rAF ticks, which outlive renders.
+  const tRef = useRef(t);
   useEffect(() => whenIdle(RunResultsChunk.preload), []);
   const currentBiome = usePlayerBiome();
   const multiplier = useGameStore((s) => s.multiplier);
-  const comboLabel = useGameStore((s) => s.comboLabel);
+  const comboLabelKey = useGameStore((s) => s.comboLabelKey);
   const isNewHighScore = useGameStore((s) => s.score >= s.highScore && s.score > 0);
   const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
   const vehicleType = useGameStore((s) => s.vehicleType);
@@ -90,6 +132,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const launchPopupRef = useRef<HTMLDivElement>(null);
   const rewardPopupRef = useRef<HTMLDivElement>(null);
   const launchAirTimeRef = useRef<HTMLDivElement>(null);
+  // Air-time text split once per locale; the tick only concatenates (hudAirTime.ts).
+  const airWriterRef = useRef<AirTimeWriter | null>(null);
+  // The loadout badge's text per locale, resolved outside the tick.
+  const loadoutTextRef = useRef<{ id: LoadoutId | null; text: string }>({ id: null, text: '' });
+
+  useEffect(() => {
+    tRef.current = t;
+    airWriterRef.current = { parts: airTimeParts(t), bucket: -1 };
+    loadoutTextRef.current = { id: null, text: '' };
+  }, [t]);
   const showTransientPopup = (
     element: HTMLDivElement | null,
     timerRef: { current: number | null },
@@ -125,7 +177,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         showTransientPopup(
           launchPopupRef.current,
           launchPopupTimerRef,
-          popup.label,
+          tRef.current(popup.labelKey),
           'launch-popup',
         );
       }
@@ -133,11 +185,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       const reward = state.latestReward;
       if (reward && reward !== prevReward && reward.score > 0) {
-        const bonus = reward.clean ? ' + CLEAN' : '';
+        const tr = tRef.current;
+        const score = String(reward.score);
         showTransientPopup(
           rewardPopupRef.current,
           rewardPopupTimerRef,
-          `+${reward.score}${bonus}`,
+          reward.clean ? tr('hud.rewardClean', { score }) : tr('hud.reward', { score }),
           'air-reward-popup',
         );
       }
@@ -158,17 +211,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      const airSeconds = getActiveLaunchAirSeconds();
       const el = launchAirTimeRef.current;
-      if (el) {
-        if (airSeconds > 0.05) {
-          el.textContent = `AIR! ${airSeconds.toFixed(1)}s`;
-          el.classList.add('launch-airtime-hud--visible');
-        } else {
-          el.textContent = '';
-          el.classList.remove('launch-airtime-hud--visible');
-        }
-      }
+      const writer = airWriterRef.current;
+      if (el && writer) writeAirTime(el, getActiveLaunchAirSeconds(), writer);
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
@@ -180,8 +225,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const tick = () => {
       const loadoutEl = loadoutLabelRef.current;
       if (loadoutEl) {
-        const loadout = getLoadoutDefinition(getActiveLoadoutId());
-        loadoutEl.textContent = loadout.shortLabel;
+        const id = getActiveLoadoutId();
+        const cached = loadoutTextRef.current;
+        if (cached.id !== id) {
+          // A loadout or locale change: resolve once, write once.
+          cached.id = id;
+          cached.text = tRef.current(getLoadoutDefinition(id).shortLabelKey);
+          loadoutEl.textContent = cached.text;
+        }
       }
 
       const survival = getActiveSurvivalState();
@@ -253,14 +304,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   // Raw native-init errors are for `?debug=1|true`; players get a short notice.
   const debugMode = isDebugQuery();
 
-  const biomeLabel = BIOME_HUD_LABELS[currentBiome] ?? 'CANYON SUMMER';
+  const biomeLabel = t(HUD_BIOME_KEYS[currentBiome] ?? 'biome.canyonSummer');
 
   useEffect(() => {
-    if (!comboLabel) return;
-    setComboFlash(comboLabel);
+    if (!comboLabelKey) return;
+    setComboFlash(tRef.current(comboLabelKey));
     const timeout = window.setTimeout(() => setComboFlash(''), 1200);
     return () => window.clearTimeout(timeout);
-  }, [comboLabel]);
+  }, [comboLabelKey]);
 
   useEffect(() => {
     if (isJourneyComplete) {
@@ -297,14 +348,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <MenuFocusScope className="hud-overlay" onStart={onRespawn}>
         <div className="hud-overlay__card">
           <div className="hud-overlay__title hud-overlay__title--wipeout">
-            WIPEOUT
+            {t('hud.wipeout')}
           </div>
 
           <div className="hud-overlay__score">
-            Score: <span><HudText select={selectScoreText} /></span>
+            {t('hud.scoreLabel')} <span><HudText select={selectScoreText} /></span>
           </div>
           <div className="hud-overlay__line">
-            High Score: <span className="hud-val--good"><HudText select={selectHighScoreText} /></span>
+            {t('hud.highScoreLabel')} <span className="hud-val--good"><HudText select={selectHighScoreText} /></span>
           </div>
 
           <button
@@ -312,7 +363,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             className="hud-btn hud-btn--primary"
             autoFocus
           >
-            RESPAWN
+            {t('hud.respawn')}
           </button>
 
           <React.Suspense fallback={null}>
@@ -320,7 +371,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </React.Suspense>
 
           <p className="hud-overlay__hint">
-            Press SPACE to respawn · Gamepad: A / Start
+            {t('hud.wipeoutHint')}
           </p>
         </div>
       </MenuFocusScope>
@@ -328,7 +379,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   }
 
   if (isJourneyComplete) {
-    const title = isFinalMap ? 'Campaign Complete' : 'Journey Complete';
+    const title = isFinalMap ? t('hud.campaignComplete') : t('hud.journeyComplete');
     const journeyResults = getJourneyResultsSummary();
     return (
       <MenuFocusScope
@@ -341,7 +392,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           <div className="hud-overlay__map">
-            {mapLabel}
+            {mapLabel ?? t('map.meander')}
           </div>
 
           <div className="hud-overlay__score">
@@ -350,43 +401,50 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           <div className="hud-overlay__line">
             {isNewHighScore ? (
-              <span className="hud-overlay__new-best">New High Score!</span>
+              <span className="hud-overlay__new-best">{t('hud.newHighScore')}</span>
             ) : (
               <span>
-                High Score: <span className="hud-val--good"><HudText select={selectHighScoreText} /></span>
+                {t('hud.highScoreLabel')} <span className="hud-val--good"><HudText select={selectHighScoreText} /></span>
               </span>
             )}
           </div>
 
           <div className="hud-overlay__line hud-overlay__line--dim">
-            Top Speed: <span className="hud-val--white"><HudText select={selectTopSpeedText} /> m/s</span>
+            {t('hud.topSpeedLabel')}{' '}
+            <span className="hud-val--white">
+              <HudText select={selectTopSpeedText} /> {t('unit.mps')}
+            </span>
           </div>
 
           {journeyResults && (
             <div className="hud-overlay__stats">
               <div>
-                Launch hour:{' '}
+                {t('hud.statLaunchHour')}{' '}
                 <span className="hud-val--amber">
-                  H{String(journeyResults.launchHour).padStart(2, '0')}:00
+                  {formatLaunchHour(journeyResults.launchHour)}
                 </span>
               </div>
               <div>
-                Peak wetness:{' '}
+                {t('hud.statPeakWetness')}{' '}
                 <span className="hud-val--sky">
-                  {Math.round(journeyResults.peakWetness * 100)}%
+                  {formatPercent(journeyResults.peakWetness)}
                 </span>
               </div>
               <div>
-                Upright distance:{' '}
+                {t('hud.statUprightDistance')}{' '}
                 <span className="hud-val--good">
-                  {Math.round(journeyResults.uprightDistanceMeters)} m
+                  {formatNumber(Math.round(journeyResults.uprightDistanceMeters))} {t('unit.m')}
                 </span>
               </div>
               <div>
-                Caches:{' '}
+                {t('hud.statCaches')}{' '}
                 <span className="hud-val--white">
-                  {journeyResults.cachesRetrieved} recovered
-                  {journeyResults.cachesLost > 0 ? ` / ${journeyResults.cachesLost} lost` : ''}
+                  {journeyResults.cachesLost > 0
+                    ? t('hud.cachesRecoveredLost', {
+                        recovered: journeyResults.cachesRetrieved,
+                        lost: journeyResults.cachesLost,
+                      })
+                    : t('hud.cachesRecovered', { recovered: journeyResults.cachesRetrieved })}
                 </span>
               </div>
             </div>
@@ -394,9 +452,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           {isFinalMap && (
             <div className="hud-overlay__line hud-overlay__line--dim">
-              Ghost Best:{' '}
+              {t('hud.ghostBestLabel')}{' '}
               <span className="hud-val--sky">
-                {ghostBestScore > 0 ? Math.floor(ghostBestScore).toLocaleString() : '—'}
+                {ghostBestScore > 0 ? formatNumber(Math.floor(ghostBestScore)) : '—'}
               </span>
             </div>
           )}
@@ -412,7 +470,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               }}
               className="hud-btn"
             >
-              RETRY MAP
+              {t('hud.retryMap')}
             </button>
 
             {onContinueJourney && (
@@ -422,7 +480,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 }}
                 className="hud-btn hud-btn--continue"
               >
-                {continueLabel ?? 'CONTINUE'}
+                {continueLabel ?? t('hud.continue')}
               </button>
             )}
 
@@ -433,13 +491,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 }}
                 className="hud-btn hud-btn--ghost"
               >
-                MENU
+                {t('hud.menu')}
               </button>
             )}
           </div>
 
           <p className="hud-overlay__hint">
-            Press Enter to {onContinueJourney ? 'continue' : 'retry'} · Gamepad: Start
+            {onContinueJourney ? t('hud.completeHintContinue') : t('hud.completeHintRetry')}
           </p>
         </div>
       </MenuFocusScope>
@@ -455,6 +513,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <div className="wasm-init-banner__body">
             {debugMode ? (
               <>
+                {/* Developer readout under ?debug=1: not translated (#566 out of scope). */}
+                {/* eslint-disable no-restricted-syntax */}
                 <strong>
                   {native.mismatched
                     ? 'Native WASM provenance mismatch — stale deploy'
@@ -466,10 +526,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                           ? 'Native WASM heap exhausted'
                           : 'Native WASM failed to init'}
                 </strong>
+                {/* eslint-enable no-restricted-syntax */}
                 <pre>{native.error}</pre>
               </>
             ) : (
-              <span>Running in compatibility mode — some water effects may look simpler.</span>
+              <span>{t('hud.compatMode')}</span>
             )}
           </div>
           <button
@@ -477,23 +538,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             className="wasm-init-banner__dismiss"
             onClick={() => setNative((prev) => ({ ...prev, dismissed: true }))}
           >
-            Dismiss
+            {t('hud.dismiss')}
           </button>
         </div>
       )}
       <div className="hud-biome">
         <div>{biomeLabel}</div>
         <div className="survival-loadout-badge">
-          LOADOUT <span ref={loadoutLabelRef}>—</span>
+          {t('hud.loadoutBadge')} <span ref={loadoutLabelRef}>—</span>
         </div>
       </div>
 
       <MovementReadout />
 
       <div className="hud-readout" data-testid="hud-readout">
-        <div className="hud-readout__speed"><HudText select={selectSpeedText} /> <span className="hud-readout__unit">m/s</span></div>
-        <div className="hud-readout__distance"><HudText select={selectDistanceKmText} /> <span className="hud-readout__unit">km</span></div>
-        <div className="hud-readout__label">Score</div>
+        <div className="hud-readout__speed"><HudText select={selectSpeedText} /> <span className="hud-readout__unit">{t('unit.mps')}</span></div>
+        <div className="hud-readout__distance"><HudText select={selectDistanceKmText} /> <span className="hud-readout__unit">{t('unit.km')}</span></div>
+        <div className="hud-readout__label">{t('hud.scoreReadout')}</div>
         <div className="hud-readout__score"><HudText select={selectScoreText} /></div>
       </div>
 
@@ -528,14 +589,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div ref={rewardPopupRef} className="air-reward-popup" aria-live="polite" />
 
       <div className="hud-best">
-        Best: <strong><HudText select={selectHighScoreText} /></strong>
-        <span className="hud-best__top">Top <HudText select={selectTopSpeedText} /> m/s</span>
+        {t('hud.bestLabel')} <strong><HudText select={selectHighScoreText} /></strong>
+        <span className="hud-best__top">
+          {t('hud.topLabel')} <HudText select={selectTopSpeedText} /> {t('unit.mps')}
+        </span>
       </div>
 
       <div
         className="hud-native"
         data-testid="wasm-smoke-status"
       >
+        {/* The native-module status row is a developer readout: not translated (#566 out of scope). */}
+        {/* eslint-disable no-restricted-syntax */}
         {native.status === 'none' ? 'WASM OFF' : `WASM ${native.status.toUpperCase()}`}
         {native.status === 'ready' && (
           <span className="hud-native__detail">
@@ -546,12 +611,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         {native.status === 'failed' && native.trapFunction && (
           <span className="ml-2 text-red-300/70">TRAP {native.trapFunction}</span>
         )}
+        {/* eslint-enable no-restricted-syntax */}
       </div>
 
       {vehicleType === 'runner' && (
         <div className="survival-hud-stack">
           <div className="stamina-bar" ref={staminaBarRef}>
-            <div className="stamina-bar__label">SPRINT</div>
+            <div className="stamina-bar__label">{t('hud.sprint')}</div>
             <div className="stamina-bar__track">
               <div className="stamina-fill" ref={staminaFillRef} style={{ width: '100%', backgroundColor: '#f8fafc' }} />
             </div>
@@ -560,13 +626,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {getRunSession() && (
             <>
               <div className="survival-bar">
-                <div className="survival-bar__label">WET</div>
+                <div className="survival-bar__label">{t('hud.wet')}</div>
                 <div className="survival-bar__track">
                   <div className="survival-fill" ref={wetnessFillRef} style={{ width: '0%' }} />
                 </div>
               </div>
               <div className="survival-bar">
-                <div className="survival-bar__label">EXPOSURE</div>
+                <div className="survival-bar__label">{t('hud.exposure')}</div>
                 <div className="survival-bar__track">
                   <div className="survival-fill" ref={exposureFillRef} style={{ width: '0%' }} />
                 </div>

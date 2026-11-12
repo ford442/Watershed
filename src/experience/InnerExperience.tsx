@@ -237,8 +237,8 @@ export default function InnerExperience({
         onLoopMap={state.handleLoopCurrentMap}
         onContinueJourney={state.canContinueDefaultMap ? state.handleContinueJourney : undefined}
         onReturnToMenu={state.handleReturnToMenu}
-        mapLabel={state.userRiver?.label ?? state.activeDefaultMap.label}
-        continueLabel={state.continueLabel}
+        mapId={state.activeDefaultMapId}
+        continueMapId={state.continueMapId}
         isFinalMap={state.isFinalMap}
         ghostBestScore={state.ghostBestScore}
         isLoadingLevel={state.isLoadingLevel}

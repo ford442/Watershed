@@ -11,6 +11,7 @@ import {
 } from '../survival/portageCache';
 import { getRunSession, markCacheBonusAwarded, getJourneyResultsSummary } from '../journey/runSession';
 import { gameEvents } from '../events/GameEvents';
+import type { ComboLabelKey, RewardLabelKey } from '../GameState';
 
 const HIGH_SPEED_THRESHOLD = 15;
 const RESET_SPEED_THRESHOLD = 8;
@@ -22,11 +23,12 @@ const WATERFALL_BONUS = 500;
 /** Score points per upright raft meter at journey end. */
 const UPRIGHT_DISTANCE_SCORE_PER_METER = 2;
 
-const COMBO_LABELS: Record<number, string> = {
-  2: 'FLOW STATE',
-  4: 'ON FIRE',
-  6: 'UNSTOPPABLE',
-  8: 'LEGENDARY',
+/** Combo flash catalog keys (#566: the HUD translates). */
+const COMBO_LABELS: Record<number, ComboLabelKey> = {
+  2: 'score.comboFlowState',
+  4: 'score.comboOnFire',
+  6: 'score.comboUnstoppable',
+  8: 'score.comboLegendary',
 };
 
 /** Notification ids: a counter, not a timestamp (two in one ms would collide). */
@@ -58,7 +60,7 @@ export function resetScoreSystemState(): void {
     score: 0,
     multiplier: 1,
     topSpeed: 0,
-    comboLabel: '',
+    comboLabelKey: null,
     highScore: best.bestScore,
     launchPopup: null,
     latestReward: null,
@@ -80,7 +82,7 @@ export function tickScoreSystem(deltaTime: number, speed: number): void {
   const score = state.score + speed * dt * Math.max(1, state.multiplier);
   let multiplier = state.multiplier;
   const topSpeed = Math.max(state.topSpeed, speed);
-  let comboLabel = state.comboLabel;
+  let comboLabelKey = state.comboLabelKey;
   let highScore = state.highScore;
 
   if (speed >= HIGH_SPEED_THRESHOLD) {
@@ -92,17 +94,17 @@ export function tickScoreSystem(deltaTime: number, speed: number): void {
     );
     if (targetMultiplier !== multiplier) {
       multiplier = targetMultiplier;
-      comboLabel = COMBO_LABELS[targetMultiplier] ?? '';
-      comboFlashRemaining = comboLabel ? 1.2 : 0;
+      comboLabelKey = COMBO_LABELS[targetMultiplier] ?? null;
+      comboFlashRemaining = comboLabelKey ? 1.2 : 0;
     }
   } else if (speed < RESET_SPEED_THRESHOLD) {
     belowResetAccum += dt;
     if (belowResetAccum >= 0.5) {
       highSpeedAccum = 0;
       belowResetAccum = 0;
-      if (multiplier !== 1 || comboLabel) {
+      if (multiplier !== 1 || comboLabelKey) {
         multiplier = 1;
-        comboLabel = '';
+        comboLabelKey = null;
       }
       comboFlashRemaining = 0;
     }
@@ -112,7 +114,7 @@ export function tickScoreSystem(deltaTime: number, speed: number): void {
 
   if (comboFlashRemaining > 0) {
     comboFlashRemaining = Math.max(0, comboFlashRemaining - dt);
-    if (comboFlashRemaining === 0) comboLabel = '';
+    if (comboFlashRemaining === 0) comboLabelKey = null;
   }
 
   if (score > highScore) {
@@ -123,7 +125,7 @@ export function tickScoreSystem(deltaTime: number, speed: number): void {
     score,
     multiplier,
     topSpeed,
-    comboLabel,
+    comboLabelKey,
     highScore,
   });
 }
@@ -161,7 +163,8 @@ export function awardFloodSurviveBonus(points: number, segmentState?: string): v
       score: scaled,
       clean: true,
       id: nextNotificationId++,
-      label: multiplier > 1 ? `FLOOD SURVIVE x${multiplier.toFixed(2)}` : 'FLOOD SURVIVE',
+      labelKey: multiplier > 1 ? 'score.floodSurviveMultiplier' : 'score.floodSurvive',
+      ...(multiplier > 1 ? { labelMultiplier: multiplier } : {}),
     },
   });
 }
@@ -181,12 +184,12 @@ export function awardCacheRetrievalBonus(segmentIndex: number): void {
       score: bonus,
       clean: true,
       id: nextNotificationId++,
-      label: 'CACHE RETRIEVED',
+      labelKey: 'score.cacheRetrieved',
     },
   });
 }
 
-export function applySurvivalPenalty(points: number, label: string): void {
+export function applySurvivalPenalty(points: number, labelKey: RewardLabelKey): void {
   const state = useGameStore.getState();
   if (state.isWipeout) return;
 
@@ -198,18 +201,18 @@ export function applySurvivalPenalty(points: number, label: string): void {
       score: -points,
       clean: false,
       id: nextNotificationId++,
-      label,
+      labelKey,
     },
   });
 }
 
 export function applyCacheLostPenalty(lostCount: number): void {
   if (lostCount <= 0) return;
-  applySurvivalPenalty(lostCount * CACHE_LOST_PENALTY, 'GEAR LOST');
+  applySurvivalPenalty(lostCount * CACHE_LOST_PENALTY, 'score.gearLost');
 }
 
 export function applyPortageFailPenalty(): void {
-  applySurvivalPenalty(PORTAGE_FAIL_PENALTY, 'PORTAGE FAILED');
+  applySurvivalPenalty(PORTAGE_FAIL_PENALTY, 'score.portageFailed');
 }
 
 /** Commit journey-end score to per-run persistence. */
@@ -225,7 +228,7 @@ export function commitJourneyScore(): void {
           score: uprightBonus,
           clean: true,
           id: nextNotificationId++,
-          label: 'UPRIGHT RUN',
+          labelKey: 'score.uprightRun',
         },
       });
     }

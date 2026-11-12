@@ -105,7 +105,7 @@ describe('MAP_REGISTRY — delta entry', () => {
   it('registers delta as terminal campaign finale with raft preference', () => {
     const def = getMapDefinition('delta');
     expect(def.id).toBe('delta');
-    expect(def.label).toBe('River Delta');
+    expect(def.labelKey).toBe('map.delta');
     expect(def.initialBiome).toBe('delta');
     expect(def.preferredVehicle).toBe('raft');
     expect(def.difficulty).toBe('intermediate');

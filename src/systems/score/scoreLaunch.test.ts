@@ -83,13 +83,13 @@ describe('predictLaunchTierLabel', () => {
   const threshold = 12;
 
   it('shows AIR! below the speed gate', () => {
-    expect(predictLaunchTierLabel(8, threshold)).toBe('AIR!');
+    expect(predictLaunchTierLabel(8, threshold)).toBe('score.launchAir');
   });
 
   it('escalates predicted labels with launch speed', () => {
-    expect(predictLaunchTierLabel(12, threshold)).toBe('AIR!');
-    expect(predictLaunchTierLabel(16, threshold)).toBe('GREAT!');
-    expect(predictLaunchTierLabel(20, threshold)).toBe('PERFECT?!');
+    expect(predictLaunchTierLabel(12, threshold)).toBe('score.launchAir');
+    expect(predictLaunchTierLabel(16, threshold)).toBe('score.launchGreat');
+    expect(predictLaunchTierLabel(20, threshold)).toBe('score.launchPerfect');
   });
 });
 

@@ -11,6 +11,9 @@ import { useGameStore } from '../systems/GameState';
 import { getRunMapId, resolveRunMap } from '../systems/journey/runSession';
 import { parseHydroEvents } from '../systems/water/hydroEvents';
 import { getActiveUserRiver, subscribeUserRiver } from '../systems/map/userRiverSession';
+import type { MapRegistryId } from '../maps/registry';
+import { useT } from '../i18n/useT';
+import { mapLabel } from '../i18n/mapLabel';
 
 /**
  * Pin drei's <Html> to the top-left of the canvas.
@@ -49,8 +52,10 @@ interface ExperienceUIProps {
   onLoopMap: () => void;
   onContinueJourney?: () => void;
   onReturnToMenu?: () => void;
-  mapLabel: string;
-  continueLabel?: string;
+  /** The run's campaign map; a player's river shows its own name instead. */
+  mapId: MapRegistryId;
+  /** Where Continue goes, when the journey continues. */
+  continueMapId?: MapRegistryId;
   isFinalMap?: boolean;
   ghostBestScore?: number;
   isLoadingLevel: boolean;
@@ -76,8 +81,8 @@ export default function ExperienceUI({
   onLoopMap,
   onContinueJourney,
   onReturnToMenu,
-  mapLabel,
-  continueLabel,
+  mapId,
+  continueMapId,
   isFinalMap = false,
   ghostBestScore = 0,
   isLoadingLevel,
@@ -89,11 +94,15 @@ export default function ExperienceUI({
   onRetryReach,
   onDismissReachError,
 }: ExperienceUIProps) {
+  const t = useT();
   const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
   // Authored hydro events for the active map — the HUD contrasts the run's
   // launch hour against the other scouting hour (#397).
   // A player's river is the run map too (userRiverSession.ts): its events, not the backing map's.
   const userRiver = useSyncExternalStore(subscribeUserRiver, getActiveUserRiver, () => null);
+  const runLabel = userRiver?.label ?? mapLabel(mapId);
+  // Upper-cased by CSS (.hud-btn--continue), which follows <html lang>.
+  const continueLabel = continueMapId ? t('journey.continueTo', { map: mapLabel(continueMapId) }) : undefined;
   // Keyed on the run's map id itself (it used to be keyed on the HUD's `mapLabel`
   // as a stand-in and read the session inside the memo).
   const runMapId = getRunMapId();
@@ -134,21 +143,21 @@ export default function ExperienceUI({
           onLoopMap={onLoopMap}
           onContinueJourney={onContinueJourney}
           onReturnToMenu={onReturnToMenu}
-          mapLabel={mapLabel}
+          mapLabel={runLabel}
           continueLabel={continueLabel}
           isFinalMap={isFinalMap}
           ghostBestScore={ghostBestScore}
         />
       </div>
 
-      {!cleanTest && !isWipeout && !isJourneyComplete && <GhostFairnessBanner mapLabel={mapLabel} />}
+      {!cleanTest && !isWipeout && !isJourneyComplete && <GhostFairnessBanner mapLabel={runLabel} />}
 
       {!cleanTest && lastSplitDelta && (
         <GhostTimeDelta key={lastSplitDelta.id} deltaSeconds={lastSplitDelta.deltaSeconds} />
       )}
 
-      {isLoadingLevel && <LoadingDisplay message="Loading custom level..." />}
-      {reachLoading && <LoadingDisplay message="Loading Reach..." />}
+      {isLoadingLevel && <LoadingDisplay message={t('experience.loadingLevel')} />}
+      {reachLoading && <LoadingDisplay message={t('experience.loadingReach')} />}
 
       {levelLoadError && (
         <div style={{ pointerEvents: 'auto' }}>
@@ -182,7 +191,7 @@ export default function ExperienceUI({
             pointerEvents: 'auto',
           }}
         >
-          <span>⚠ Reach unavailable — playing procedural track</span>
+          <span>{t('experience.reachUnavailable')}</span>
           <button
             type="button"
             onClick={onRetryReach}
@@ -196,11 +205,12 @@ export default function ExperienceUI({
               fontSize: '12px',
             }}
           >
-            Retry
+            {t('experience.retry')}
           </button>
           <button
             type="button"
             onClick={onDismissReachError}
+            aria-label={t('experience.dismiss')}
             style={{
               background: 'transparent',
               border: 'none',

@@ -14,7 +14,7 @@
  */
 import type { SurfaceMaterial } from '../vehicle/VehicleSystem';
 import type { HazardKind, HazardPhase } from '../hazards/hazardTypes';
-import type { AirTier } from '../score/scoreLaunch';
+import type { AirTier, LaunchLabelKey } from '../score/scoreLaunch';
 
 export interface Vec3Like {
   x: number;
@@ -175,7 +175,8 @@ export interface GameEventMap {
   trestleBreak: TrestleBreakDetail;
   shelfLaunch: ShelfLaunchDetail;
   /** A launch session opened; `label` is the predicted tier (the HUD popup). */
-  'launch-started': { label: string };
+  /** `labelKey`: the predicted tier's catalog key (the HUD translates, #566). */
+  'launch-started': { labelKey: LaunchLabelKey };
   'launch-scored': LaunchScoredDetail;
   'vehicle-jump': VehicleJumpDetail;
   /** Touch-down after air time; `impactSpeed` is |v.y| (m/s). */

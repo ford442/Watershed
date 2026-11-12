@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from '../systems/GameState';
 import { getActiveMapId } from '../utils/runContext';
 import { currentRunFairness, judgeStoredPB, judgeStoredRival } from '../systems/ghost/raceFairness';
-import { formatLaunchHour } from '../systems/ghost/hydroFairness';
+import { formatLaunchHour } from '../i18n/format';
+import { useT } from '../i18n/useT';
 import { gameEvents } from '../systems/events/GameEvents';
 
 const VISIBLE_MS = 6000;
@@ -21,6 +22,7 @@ interface GhostFairnessBannerProps {
 }
 
 export default function GhostFairnessBanner({ mapLabel }: GhostFairnessBannerProps) {
+  const t = useT();
   const isPaused = useGameStore((s) => s.isPaused);
   const ghostEnabled = useGameStore((s) => s.ghostEnabled);
   const [visible, setVisible] = useState(true);
@@ -46,14 +48,14 @@ export default function GhostFairnessBanner({ mapLabel }: GhostFairnessBannerPro
 
   const hour = currentRunFairness(mapId).launchHour ?? 0;
   const notes: string[] = [];
-  if (pb?.kind === 'refused') notes.push(`${pb.message} — ghost hidden`);
-  if (rival?.verdict.kind === 'refused') notes.push(`${rival.verdict.message} — rival hidden`);
+  if (pb?.kind === 'refused') notes.push(t('hud.ghostHidden', { reason: pb.message }));
+  if (rival?.verdict.kind === 'refused') notes.push(t('hud.rivalHidden', { reason: rival.verdict.message }));
   else if (rival?.verdict.kind === 'unverified') notes.push(rival.verdict.message);
 
   return (
     <div className="ghost-fairness-banner" role="status" data-testid="ghost-fairness-banner">
       <div className="ghost-fairness-banner__title">
-        RACING {formatLaunchHour(hour)} {mapLabel.toUpperCase()}
+        {t('hud.ghostRacing', { hour: formatLaunchHour(hour), map: mapLabel.toUpperCase() })}
       </div>
       {notes.map((note) => (
         <div key={note} className="ghost-fairness-banner__note">

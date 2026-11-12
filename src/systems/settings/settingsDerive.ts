@@ -11,6 +11,7 @@
  * - Conflict detection + reserved-input rules for rebinding.
  */
 
+import type { MessageKey } from '../../i18n/i18n';
 import type { QualityPreset } from '../GameState';
 
 // ---------------------------------------------------------------------------
@@ -67,16 +68,17 @@ export const SETTINGS_ACTIONS: SettingsAction[] = [
   'dodge',
 ];
 
-export const ACTION_LABELS: Record<SettingsAction, string> = {
-  forward: 'Forward',
-  backward: 'Backward',
-  leftward: 'Strafe Left',
-  rightward: 'Strafe Right',
-  jump: 'Jump',
-  sprint: 'Sprint',
-  brake: 'Brake / Slide',
-  dodge: 'Dodge',
-};
+/** Each action's name as a catalog key (#566); the Options panel translates it. */
+export const ACTION_LABELS = {
+  forward: 'settings.action.forward',
+  backward: 'settings.action.backward',
+  leftward: 'settings.action.leftward',
+  rightward: 'settings.action.rightward',
+  jump: 'settings.action.jump',
+  sprint: 'settings.action.sprint',
+  brake: 'settings.action.brake',
+  dodge: 'settings.action.dodge',
+} as const satisfies Record<SettingsAction, MessageKey>;
 
 export type Bindings = Record<SettingsAction, Binding>;
 
@@ -321,9 +323,9 @@ export function settingsQualityToLOD(quality: SettingsQuality): QualityPreset {
   }
 }
 
-/** Human labels for the quality buttons. */
-export const QUALITY_LABELS: Record<SettingsQuality, string> = {
-  low: 'Low',
-  med: 'Medium',
-  high: 'High',
-};
+/** The quality buttons' labels as catalog keys (#566). */
+export const QUALITY_LABELS = {
+  low: 'settings.quality.low',
+  med: 'settings.quality.med',
+  high: 'settings.quality.high',
+} as const satisfies Record<SettingsQuality, MessageKey>;

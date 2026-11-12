@@ -9,6 +9,12 @@ import { getRivalGhost, setRivalGhost, clearRivalGhost } from '../systems/persis
 import { importGhostFromFile } from '../systems/ghost/ghostExport';
 import { currentRunFairness, judgeStoredRival } from '../systems/ghost/raceFairness';
 import { formatLaunchHour, shortHydroHash } from '../systems/ghost/hydroFairness';
+import { useT } from '../i18n/useT';
+import { registerEnglish } from '../i18n/i18n';
+import { pauseMenu } from '../i18n/en/lazy/pauseMenu';
+
+// This chunk's English rides with it, not the entry (#566).
+registerEnglish(pauseMenu);
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -29,6 +35,7 @@ interface PauseMenuProps {
  * - Keyboard shortcuts: R for restart, Esc to close settings
  */
 export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQuit, onOpenOptions }) => {
+  const t = useT();
   const [confirmRestart, setConfirmRestart] = useState(false);
   const resumeRef = useRef<HTMLButtonElement>(null);
   const rivalFileInputRef = useRef<HTMLInputElement>(null);
@@ -54,11 +61,11 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
     const result = await importGhostFromFile(file, mapId, fairness);
     if (!result.ok) {
       if ('message' in result) {
-        setRivalRefusal(`Rival refused: ${result.message}`);
-        setRivalStatus('Refused');
+        setRivalRefusal(t('pause.rivalRefused', { reason: result.message }));
+        setRivalStatus(t('pause.rivalStatusRefused'));
       } else {
         setRivalRefusal(null);
-        setRivalStatus(result.reason === 'map_mismatch' ? 'Wrong map' : 'Invalid .wsghost file');
+        setRivalStatus(result.reason === 'map_mismatch' ? t('pause.rivalWrongMap') : t('pause.rivalInvalid'));
       }
       window.setTimeout(() => setRivalStatus(''), 2500);
       return;
@@ -67,7 +74,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
     setRivalGhost(mapId, result.file);
     setRivalLoaded(true);
     setRivalRefusal(null);
-    setRivalStatus('Rival loaded');
+    setRivalStatus(t('pause.rivalLoaded'));
     window.setTimeout(() => setRivalStatus(''), 2000);
   };
 
@@ -113,10 +120,22 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
     return () => window.removeEventListener('keydown', handleKey);
   }, [confirmRestart]);
 
+  const rivalLine = (
+    file: { launchHour?: number; hydroEventHash?: string; qualityPreset?: string },
+    unverified: boolean,
+  ): string => {
+    const hour = file.launchHour !== undefined ? formatLaunchHour(file.launchHour) : t('pause.unknownHour');
+    const hash = shortHydroHash(file.hydroEventHash);
+    const line = file.qualityPreset
+      ? t('pause.rivalLineQuality', { hour, hash, quality: file.qualityPreset })
+      : t('pause.rivalLine', { hour, hash });
+    return unverified ? t('pause.rivalUnverified', { line }) : line;
+  };
+
   return (
     <div className="pause-menu-overlay">
       <div className="pause-menu-card" ref={cardRef}>
-        <h1 className="pause-menu-title">PAUSED</h1>
+        <h1 className="pause-menu-title">{t('pause.title')}</h1>
 
         {!confirmRestart && (
           <div className="pause-menu-buttons">
@@ -124,36 +143,36 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               ref={resumeRef}
               className="pause-menu-resume-btn"
               onClick={onResume}
-              aria-label="Resume Game"
+              aria-label={t('pause.resumeLabel')}
             >
-              RESUME
-              <span className="pause-menu-keyhint">ENTER</span>
+              {t('pause.resume')}
+              <span className="pause-menu-keyhint">{t('pause.keyEnter')}</span>
             </button>
 
             <button
               className="pause-menu-restart-btn"
               onClick={() => setConfirmRestart(true)}
-              aria-label="Restart Game"
+              aria-label={t('pause.restartLabel')}
             >
-              RESTART
-              <span className="pause-menu-keyhint">R</span>
+              {t('pause.restart')}
+              <span className="pause-menu-keyhint">{/* the physical key, not a word */ 'R'}</span>
             </button>
 
             <button
               className="pause-menu-settings-btn"
               onClick={onOpenOptions}
-              aria-label="Open Options"
+              aria-label={t('pause.optionsLabel')}
             >
-              OPTIONS
+              {t('pause.options')}
             </button>
 
             <button
               className={`pause-menu-ghost-btn ${ghostEnabled ? 'active' : ''}`}
               onClick={() => setGhostEnabled(!ghostEnabled)}
               aria-pressed={ghostEnabled}
-              aria-label={ghostEnabled ? 'Hide best-run ghost' : 'Show best-run ghost'}
+              aria-label={ghostEnabled ? t('pause.ghostHide') : t('pause.ghostShow')}
             >
-              GHOST: {ghostEnabled ? 'ON' : 'OFF'}
+              {ghostEnabled ? t('pause.ghostOn') : t('pause.ghostOff')}
             </button>
 
             <input
@@ -172,15 +191,19 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               onClick={() =>
                 rivalLoaded ? handleClearRival() : rivalFileInputRef.current?.click()
               }
-              aria-label={rivalLoaded ? 'Clear rival ghost' : 'Load rival .wsghost'}
+              aria-label={rivalLoaded ? t('pause.rivalClearLabel') : t('pause.rivalLoadLabel')}
             >
-              {rivalStatus || (rivalLoaded ? 'RIVAL: CLEAR' : 'LOAD RIVAL')}
+              {rivalStatus || (rivalLoaded ? t('pause.rivalClear') : t('pause.rivalLoad'))}
             </button>
 
             <div className="pause-menu-fairness" aria-live="polite">
               <div>
-                RACING {formatLaunchHour(fairness.launchHour ?? 0)} {mapId.toUpperCase()} · hydro{' '}
-                {shortHydroHash(fairness.hydroEventHash)} · {fairness.qualityPreset}
+                {t('pause.racing', {
+                  hour: formatLaunchHour(fairness.launchHour ?? 0),
+                  map: mapId.toUpperCase(),
+                  hash: shortHydroHash(fairness.hydroEventHash),
+                  quality: fairness.qualityPreset ?? '',
+                })}
               </div>
               {storedRival && (
                 <div
@@ -189,14 +212,8 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
                   }
                 >
                   {storedRival.verdict.kind === 'refused'
-                    ? `Rival hidden: ${storedRival.verdict.message}`
-                    : `Rival ${
-                        storedRival.file.launchHour !== undefined
-                          ? formatLaunchHour(storedRival.file.launchHour)
-                          : 'H??'
-                      } · hydro ${shortHydroHash(storedRival.file.hydroEventHash)}${
-                        storedRival.file.qualityPreset ? ` · ${storedRival.file.qualityPreset}` : ''
-                      }${storedRival.verdict.kind === 'unverified' ? ' (unverified)' : ''}`}
+                    ? t('pause.rivalHidden', { reason: storedRival.verdict.message })
+                    : rivalLine(storedRival.file, storedRival.verdict.kind === 'unverified')}
                 </div>
               )}
               {rivalRefusal && <div className="pause-menu-fairness--refused">{rivalRefusal}</div>}
@@ -205,9 +222,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
             <button
               className="pause-menu-quit-btn"
               onClick={onQuit}
-              aria-label="Quit to Main Menu"
+              aria-label={t('pause.quitLabel')}
             >
-              QUIT
+              {t('pause.quit')}
             </button>
           </div>
         )}
@@ -218,22 +235,22 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
             role="alertdialog"
             aria-live="assertive"
           >
-            <div className="pause-menu-confirm-text">RESTART RUN?</div>
-            <div className="pause-menu-confirm-sub">Progress will be lost.</div>
+            <div className="pause-menu-confirm-text">{t('pause.confirm')}</div>
+            <div className="pause-menu-confirm-sub">{t('pause.confirmSub')}</div>
             <div className="pause-menu-confirm-buttons">
               <button
                 className="pause-menu-confirm-yes"
                 onClick={onRestart}
-                aria-label="Yes, restart"
+                aria-label={t('pause.yesLabel')}
               >
-                YES
+                {t('pause.yes')}
               </button>
               <button
                 className="pause-menu-confirm-no"
                 onClick={() => setConfirmRestart(false)}
-                aria-label="No, cancel"
+                aria-label={t('pause.noLabel')}
               >
-                NO
+                {t('pause.no')}
               </button>
             </div>
           </div>

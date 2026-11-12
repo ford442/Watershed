@@ -3,6 +3,7 @@ import {
   LOADOUT_LIST,
   type LoadoutId,
 } from '../systems/survival';
+import { useT } from '../i18n/useT';
 
 type LoadoutPickerProps = {
   selectedId: LoadoutId;
@@ -10,12 +11,11 @@ type LoadoutPickerProps = {
 };
 
 export default function LoadoutPicker({ selectedId, onSelect }: LoadoutPickerProps) {
+  const t = useT();
   return (
     <div className="start-menu-loadout-panel">
-      <div className="start-menu-map-select-label">Gear Loadout</div>
-      <p className="start-menu-map-hint">
-        Mass vs insulation — affects cold exposure and sprint recovery.
-      </p>
+      <div className="start-menu-map-select-label">{t('menu.loadout')}</div>
+      <p className="start-menu-map-hint">{t('menu.loadout.hint')}</p>
       {LOADOUT_LIST.map((loadout) => {
         const selected = selectedId === loadout.id;
         return (
@@ -25,8 +25,8 @@ export default function LoadoutPicker({ selectedId, onSelect }: LoadoutPickerPro
             className={`start-menu-loadout-option ${selected ? 'active' : ''}`}
             onClick={() => onSelect(loadout.id)}
           >
-            <span className="start-menu-loadout-option-title">{loadout.label}</span>
-            <span className="start-menu-loadout-option-meta">{loadout.description}</span>
+            <span className="start-menu-loadout-option-title">{t(loadout.labelKey)}</span>
+            <span className="start-menu-loadout-option-meta">{t(loadout.descriptionKey)}</span>
           </button>
         );
       })}

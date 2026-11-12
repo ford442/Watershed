@@ -5,7 +5,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCampaignStack,
-  formatDuration,
   getContinuationTarget,
   getDefaultJourneyStack,
   getJourneyCompletionDecision,
@@ -66,7 +65,6 @@ describe('getJourneyCompletionDecision', () => {
     expect(getJourneyCompletionDecision('glacial')).toEqual({
       kind: 'continue',
       nextMapId: 'lumber',
-      nextLabel: 'Lumber Flume',
     });
     expect(getContinuationTarget('glacial')).toBe('lumber');
   });
@@ -75,7 +73,6 @@ describe('getJourneyCompletionDecision', () => {
     expect(getJourneyCompletionDecision('lumber')).toEqual({
       kind: 'continue',
       nextMapId: 'meander',
-      nextLabel: 'Meander to Waterfall',
     });
   });
 
@@ -83,7 +80,6 @@ describe('getJourneyCompletionDecision', () => {
     expect(getJourneyCompletionDecision('meander')).toEqual({
       kind: 'continue',
       nextMapId: 'hydro',
-      nextLabel: 'Hydro-Dam',
     });
   });
 
@@ -91,7 +87,6 @@ describe('getJourneyCompletionDecision', () => {
     expect(getJourneyCompletionDecision('hydro')).toEqual({
       kind: 'continue',
       nextMapId: 'delta',
-      nextLabel: 'River Delta',
     });
   });
 
@@ -117,7 +112,6 @@ describe('campaign menu helpers', () => {
     expect(maps[0].difficulty).toBe('intermediate');
     expect(maps.find((m) => m.id === 'delta')?.estimatedDurationSec).toBe(360);
     expect(maps.find((m) => m.id === 'delta')?.difficulty).toBe('intermediate');
-    expect(formatDuration(240)).toBe('~4 min');
   });
 
   it('defaults a fresh player (no URL, no last played) to an unlocked map', () => {

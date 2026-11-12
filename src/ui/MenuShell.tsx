@@ -10,6 +10,7 @@ import { preloadEnvironmentExtras } from '../components/Environment/lazyExtras';
 import { isTouchInputMode } from '../input/touchMode';
 import { lazyComponent } from '../utils/lazyComponent';
 import type { GamePhaseState } from './useGamePhase';
+import { useT } from '../i18n/useT';
 
 // Menus and overlays that only mount on a user action or a flag stay out of the entry chunk.
 // `preloadOverlays` (idle, once the app is up) fetches the two a player is likely to open, so
@@ -39,6 +40,7 @@ const reload = () => window.location.reload();
 export function TouchLayer({ game }: { game: GamePhaseState }) {
   const { phase, worldEnabled } = game;
   const touchMode = isTouchInputMode();
+  const t = useT();
   return (
     <>
       {touchMode && phase === 'playing' && worldEnabled && (
@@ -46,7 +48,7 @@ export function TouchLayer({ game }: { game: GamePhaseState }) {
           <TouchControls />
         </React.Suspense>
       )}
-      {touchMode && phase === 'playing' && <div className="landscape-hint" role="note">Rotate to landscape for the best view</div>}
+      {touchMode && phase === 'playing' && <div className="landscape-hint" role="note">{t('shell.rotate')}</div>}
     </>
   );
 }
@@ -63,6 +65,7 @@ interface MenuShellProps {
 
 export function MenuShell({ game, overlaysEnabled, skipLoader, canvasReady, bootReady }: MenuShellProps) {
   const { phase, settingsOpen, setSettingsOpen, worldEnabled, workshop } = game;
+  const t = useT();
   if (!overlaysEnabled) return null;
   const workshopOpen = workshop.open && phase === 'menu';
   return (
@@ -86,7 +89,7 @@ export function MenuShell({ game, overlaysEnabled, skipLoader, canvasReady, boot
       )}
       {/* River Workshop — over the idle menu scene, on its own Canvas */}
       {workshopOpen && (
-        <React.Suspense fallback={<div className="workshop-root"><p className="workshop-start">Loading the River Workshop…</p></div>}>
+        <React.Suspense fallback={<div className="workshop-root"><p className="workshop-start">{t('shell.workshopLoading')}</p></div>}>
           <Workshop seed={workshop.seed} onClose={game.closeWorkshop} onTestRun={game.startTestRun} />
         </React.Suspense>
       )}

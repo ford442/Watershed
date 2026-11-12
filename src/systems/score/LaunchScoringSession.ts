@@ -78,7 +78,7 @@ export function startLaunch(args: {
   };
 
   gameEvents.emit('launch-started', {
-    label: predictLaunchTierLabel(args.downstreamSpeed, VEHICLE_TUNING.shelfLaunch.speedThreshold),
+    labelKey: predictLaunchTierLabel(args.downstreamSpeed, VEHICLE_TUNING.shelfLaunch.speedThreshold),
   });
 }
 

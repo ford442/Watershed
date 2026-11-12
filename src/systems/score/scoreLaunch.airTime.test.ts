@@ -50,7 +50,7 @@ describe('predictLaunchTierLabel', () => {
   const threshold = 12;
 
   it('shows AIR! below the speed gate', () => {
-    expect(predictLaunchTierLabel(8, threshold)).toBe('AIR!');
+    expect(predictLaunchTierLabel(8, threshold)).toBe('score.launchAir');
   });
 });
 

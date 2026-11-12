@@ -39,7 +39,10 @@ export function buildGhostHydroFairness(input: {
   };
 }
 
-/** `H14:00` — the one hour format every fairness string uses. */
+/**
+ * `H14:00` in the verdict messages below. UI code formats hours with
+ * `formatLaunchHour` from src/i18n/format.ts (localised).
+ */
 export function formatLaunchHour(hour: number): string {
   return `H${String(hour).padStart(2, '0')}:00`;
 }
@@ -101,38 +104,55 @@ export function hydroFairnessDiffers(a?: GhostHydroFairness | null, b?: GhostHyd
   return false;
 }
 
-export function describeHydroFairnessMismatch(
+/** One field that differs between two runs' rivers (RunResultsPanel words it, #566). */
+export type HydroFairnessDiff =
+  | { field: 'launch'; self: number; other: number }
+  | { field: 'hydro'; self: string; other: string }
+  | { field: 'quality'; self: QualityPreset; other: QualityPreset };
+
+/**
+ * What differs between `self` and `other`, or null when nothing does. An empty
+ * list means they differ in a way neither side recorded ("a different river").
+ */
+export function hydroFairnessMismatch(
   self: GhostHydroFairness | null | undefined,
   other: GhostHydroFairness | null | undefined,
-  otherLabel: 'PB' | 'rival',
-): string | null {
+): HydroFairnessDiff[] | null {
   if (!hydroFairnessDiffers(self, other)) return null;
-  const bits: string[] = [];
+  const diffs: HydroFairnessDiff[] = [];
   if (
     self?.launchHour !== undefined &&
     other?.launchHour !== undefined &&
     self.launchHour !== other.launchHour
   ) {
-    bits.push(`launch ${formatLaunchHour(self.launchHour)} vs ${otherLabel} ${formatLaunchHour(other.launchHour)}`);
+    diffs.push({ field: 'launch', self: self.launchHour, other: other.launchHour });
   }
   if (self?.hydroEventHash && other?.hydroEventHash && self.hydroEventHash !== other.hydroEventHash) {
-    bits.push(`hydro ${self.hydroEventHash} vs ${otherLabel} ${other.hydroEventHash}`);
+    diffs.push({ field: 'hydro', self: self.hydroEventHash, other: other.hydroEventHash });
   }
   if (self?.qualityPreset && other?.qualityPreset && self.qualityPreset !== other.qualityPreset) {
-    bits.push(`quality ${self.qualityPreset} vs ${otherLabel} ${other.qualityPreset}`);
+    diffs.push({ field: 'quality', self: self.qualityPreset, other: other.qualityPreset });
   }
-  return bits.length > 0 ? bits.join(' · ') : `${otherLabel} ran a different river`;
+  return diffs;
+}
+
+/** The hydro event a lost split is blamed on: data, worded by RunResultsPanel (#566). */
+export interface HydroSplitBlame {
+  eventId: string;
+  kind: HydroEvent['kind'];
+  /** Seconds lost on that segment against the reference. */
+  seconds: number;
 }
 
 /**
  * Blame the largest positive split delta on the hydro event that owns that
  * segment, so results can say the dam pulse cost the time — not the shelf.
  */
-export function describeHydroSplitBlame(
+export function hydroSplitBlame(
   rows: ReadonlyArray<{ segmentIndex: number; deltaMs: number | null }>,
   events: readonly HydroEvent[] | undefined,
   hour: number,
-): string | null {
+): HydroSplitBlame | null {
   const active = eventsActiveAtHour(events, hour);
   if (active.length === 0) return null;
   let worst: { segmentIndex: number; deltaMs: number } | null = null;
@@ -145,8 +165,7 @@ export function describeHydroSplitBlame(
   if (!worst) return null;
   const event = active.find((item) => item.segmentIndex === worst!.segmentIndex);
   if (!event) return null;
-  const seconds = (worst.deltaMs / 1000).toFixed(1);
-  return `you lost ${seconds}s at ${event.id}, not at the shelf`;
+  return { eventId: event.id, kind: event.kind, seconds: worst.deltaMs / 1000 };
 }
 
 export function fairnessFromGhostFile(file: {

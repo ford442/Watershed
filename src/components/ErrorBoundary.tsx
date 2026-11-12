@@ -1,4 +1,5 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
+import { t } from '../i18n/i18n';
 
 interface Props {
   children: ReactNode;
@@ -38,6 +39,8 @@ class ErrorBoundary extends Component<Props, State> {
     });
   }
 
+  // Plain t(), not useT(): this is a class, and it renders once after a crash.
+  // t() is synchronous and falls back to English, so it cannot itself throw here.
   render() {
     if (this.state.hasError) {
       return (
@@ -61,7 +64,7 @@ class ErrorBoundary extends Component<Props, State> {
           }}
         >
           <h1 style={{ color: '#ff6b6b', marginBottom: '20px' }}>
-            ⚠️ Application Error
+            {t('error.title')}
           </h1>
           <div
             style={{
@@ -73,14 +76,14 @@ class ErrorBoundary extends Component<Props, State> {
               overflow: 'auto',
             }}
           >
-            <h2 style={{ color: '#61dafb', marginBottom: '10px' }}>Error:</h2>
+            <h2 style={{ color: '#61dafb', marginBottom: '10px' }}>{t('error.error')}</h2>
             <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {this.state.error?.toString()}
             </pre>
             {this.state.errorInfo && (
               <>
                 <h2 style={{ color: '#61dafb', marginTop: '20px', marginBottom: '10px' }}>
-                  Component Stack:
+                  {t('error.stack')}
                 </h2>
                 <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '12px' }}>
                   {this.state.errorInfo.componentStack}
@@ -102,7 +105,7 @@ class ErrorBoundary extends Component<Props, State> {
               fontWeight: 'bold',
             }}
           >
-            Reload Application
+            {t('error.reload')}
           </button>
         </div>
       );

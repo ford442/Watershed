@@ -6,6 +6,8 @@ import {
   type DamReleaseEntry,
   type FlowForecastSample,
 } from '../systems/map/flowForecast';
+import { useT } from '../i18n/useT';
+import { formatFixed, formatLaunchHour } from '../i18n/format';
 
 const STATE_COLORS: Record<string, string> = {
   [FLOW_FORECAST_STATES.NORMAL]: '#89d18b',
@@ -41,13 +43,18 @@ export default function LaunchHourPicker({
     [damReleaseSchedule, snowpackIndex, temperature],
   );
 
+  const t = useT();
   const selected = samples[value] ?? samples[0];
 
   return (
     <div className="start-menu-launch-hour">
-      <div className="start-menu-map-select-label">Launch Hour</div>
+      <div className="start-menu-map-select-label">{t('menu.launchHour')}</div>
       <div className="start-menu-launch-hour-value">
-        H{value.toString().padStart(2, '0')}:00 · {selected.state} ({selected.flowRate.toFixed(2)}x)
+        {t('menu.launchHour.value', {
+          hour: formatLaunchHour(value),
+          state: t(`flow.${selected.state}`),
+          rate: formatFixed(selected.flowRate, 2),
+        })}
       </div>
       <input
         type="range"
@@ -56,7 +63,7 @@ export default function LaunchHourPicker({
         step={1}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        aria-label="Select launch hour"
+        aria-label={t('menu.launchHour.aria')}
         className="start-menu-launch-hour-slider"
       />
       <div className="start-menu-launch-hour-strip" aria-hidden>
@@ -66,13 +73,13 @@ export default function LaunchHourPicker({
             type="button"
             className={`start-menu-launch-hour-tick ${sample.hour === value ? 'active' : ''}`}
             style={{ background: STATE_COLORS[classifyFlow(sample.flowRate)] }}
-            title={`H${sample.hour}: ${sample.state}`}
+            title={t('menu.launchHour.tick', { hour: String(sample.hour), state: t(`flow.${sample.state}`) })}
             onClick={() => onChange(sample.hour)}
           />
         ))}
       </div>
       <p className="start-menu-map-hint">
-        Launch hour locks flow, width, and hazard level for the entire run.
+        {t('menu.launchHour.hint')}
       </p>
     </div>
   );

@@ -285,7 +285,7 @@ describe('migration v1 → v2', () => {
 
   it('persists under the same key with the version bumped and rehydrates a v1 blob', async () => {
     const { rehydrateSettings, SETTINGS_VERSION } = await import('./useSettingsStore');
-    expect(SETTINGS_VERSION).toBe(2);
+    expect(SETTINGS_VERSION).toBe(3);
     window.localStorage.setItem(
       'watershed-settings',
       JSON.stringify({ state: { masterVolume: 0.2, quality: 'med' }, version: 1 }),
@@ -296,7 +296,15 @@ describe('migration v1 → v2', () => {
     expect(s.masterVolume).toBe(0.2);
     expect(s.quality).toBe('med');
     expect(s.fov).toBe(75);
+    expect(s.locale).toBe('system');
     window.localStorage.removeItem('watershed-settings');
+  });
+
+  it('migrates a v2 blob to v3: locale backfills to system, a stored choice survives, junk is dropped', async () => {
+    const { migrateSettings } = await import('./useSettingsStore');
+    expect(migrateSettings({ masterVolume: 0.5 }, 2).locale).toBe('system');
+    expect(migrateSettings({ locale: 'fr' }, 3).locale).toBe('fr');
+    expect(migrateSettings({ locale: 'klingon' }, 3).locale).toBe('system');
   });
 
   it('persists the new fields (partialize) without the hydration flag', () => {
@@ -305,7 +313,7 @@ describe('migration v1 → v2', () => {
     const raw = window.localStorage.getItem('watershed-settings');
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw as string);
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.state.fov).toBe(95);
     expect(parsed.state.leftHanded).toBe(true);
     expect(parsed.state._hasHydrated).toBeUndefined();

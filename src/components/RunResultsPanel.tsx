@@ -26,13 +26,21 @@ import {
 import { formatRaceTimeMs } from '../systems/ghost/raceTimeFormat';
 import type { RunSplitEntry } from '../systems/ghost/ghostCodec';
 import {
-  describeHydroFairnessMismatch,
-  describeHydroSplitBlame,
   fairnessFromGhostFile,
-  formatLaunchHour,
+  hydroFairnessMismatch,
+  hydroSplitBlame,
   shortHydroHash,
+  type HydroFairnessDiff,
 } from '../systems/ghost/hydroFairness';
 import { currentRunFairness, hydroEventsForMap, judgeStoredRival } from '../systems/ghost/raceFairness';
+import { useT } from '../i18n/useT';
+import type { TFunction } from '../i18n/i18n';
+import { formatFixed, formatLaunchHour } from '../i18n/format';
+import { registerEnglish } from '../i18n/i18n';
+import { runResults } from '../i18n/en/lazy/runResults';
+
+// This chunk's English rides with it, not the entry (#566).
+registerEnglish(runResults);
 
 interface RunResultsPanelProps {
   outcome: 'complete' | 'wipeout';
@@ -64,16 +72,38 @@ function formatSignedMs(deltaMs: number): string {
   return `${sign}${formatRaceTimeMs(Math.abs(deltaMs))}`;
 }
 
-function splitsAsText(mapId: string, timeMs: number, rows: SplitRow[]): string {
+function splitsAsText(t: TFunction, mapId: string, timeMs: number, rows: SplitRow[]): string {
   const lines = [`${mapId} — ${formatRaceTimeMs(timeMs)}`];
   for (const row of rows) {
     const delta = row.deltaMs === null ? '' : `  (${formatSignedMs(row.deltaMs)})`;
-    lines.push(`  SEG ${row.segmentIndex}  ${formatRaceTimeMs(row.tMs)}${delta}`);
+    lines.push(`  ${t('results.seg', { index: String(row.segmentIndex) })}  ${formatRaceTimeMs(row.tMs)}${delta}`);
   }
   return lines.join('\n');
 }
 
+/** One clause per differing field, joined like the rest of the panel's meta lines. */
+function describeMismatch(t: TFunction, diffs: HydroFairnessDiff[], label: string): string {
+  if (diffs.length === 0) return t('results.differentRiver', { label });
+  return diffs
+    .map((diff) => {
+      switch (diff.field) {
+        case 'launch':
+          return t('results.mismatchLaunch', {
+            self: formatLaunchHour(diff.self),
+            other: formatLaunchHour(diff.other),
+            label,
+          });
+        case 'hydro':
+          return t('results.mismatchHydro', { self: diff.self, other: diff.other, label });
+        case 'quality':
+          return t('results.mismatchQuality', { self: diff.self, other: diff.other, label });
+      }
+    })
+    .join(' · ');
+}
+
 export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
+  const t = useT();
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [linkStatus, setLinkStatus] = useState<'idle' | 'copied'>('idle');
 
@@ -101,14 +131,16 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
 
   const rivalFairness = rival ? fairnessFromGhostFile(rival) : null;
   // A refused rival gets the refusal line instead of the softer mismatch note.
+  const mismatch = rivalRefusal ? null : hydroFairnessMismatch(thisFairness, rivalFairness);
   const fairnessNote = rivalRefusal
-    ? `rival refused — ${rivalRefusal}`
-    : describeHydroFairnessMismatch(thisFairness, rivalFairness, 'rival');
-  const hydroBlame = describeHydroSplitBlame(
-    rows,
-    hydroEventsForMap(mapId),
-    thisFairness.launchHour ?? 0,
-  );
+    ? t('results.rivalRefusedNote', { reason: rivalRefusal })
+    : mismatch
+      ? describeMismatch(t, mismatch, t('results.rivalWord'))
+      : null;
+  const blame = hydroSplitBlame(rows, hydroEventsForMap(mapId), thisFairness.launchHour ?? 0);
+  const hydroBlame = blame
+    ? t('results.splitBlame', { seconds: formatFixed(blame.seconds, 1), event: blame.eventId })
+    : null;
 
   if (thisRunSplits.length === 0) return null;
 
@@ -147,7 +179,7 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
 
   const handleCopySplits = () => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
-    const text = splitsAsText(mapId, thisRunTimeMs ?? 0, rows);
+    const text = splitsAsText(t, mapId, thisRunTimeMs ?? 0, rows);
     navigator.clipboard.writeText(text).then(
       () => {
         setCopyStatus('copied');
@@ -162,18 +194,18 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
       <div className="run-results-panel__times">
         <div className="run-results-panel__time-cell">
           <div className="run-results-panel__time-label">
-            {outcome === 'wipeout' ? 'DNF AT' : 'THIS RUN'}
+            {outcome === 'wipeout' ? t('results.dnfAt') : t('results.thisRun')}
           </div>
           <div className="run-results-panel__time-value">
             {thisRunTimeMs !== null
               ? formatRaceTimeMs(thisRunTimeMs)
               : formatRaceTimeMs(getGhostElapsedMs())}
           </div>
-          {isNewPB && <div className="run-results-panel__pb-badge">NEW PB</div>}
+          {isNewPB && <div className="run-results-panel__pb-badge">{t('results.newPb')}</div>}
         </div>
 
         <div className="run-results-panel__time-cell run-results-panel__time-cell--pb">
-          <div className="run-results-panel__time-label">PB</div>
+          <div className="run-results-panel__time-label">{t('results.pb')}</div>
           <div className="run-results-panel__time-value">
             {referenceTimeMs !== undefined ? formatRaceTimeMs(referenceTimeMs) : '—'}
           </div>
@@ -181,15 +213,19 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
 
         {rival && (
           <div className="run-results-panel__time-cell run-results-panel__time-cell--rival">
-            <div className="run-results-panel__time-label">{rivalRefusal ? 'RIVAL (REFUSED)' : 'RIVAL'}</div>
+            <div className="run-results-panel__time-label">{rivalRefusal ? t('results.rivalRefused') : t('results.rival')}</div>
             <div className="run-results-panel__time-value">{formatRaceTimeMs(rival.timeMs)}</div>
           </div>
         )}
       </div>
 
       <div className="run-results-panel__river" data-testid="run-results-river">
-        {formatLaunchHour(thisFairness.launchHour ?? 0)} {mapId.toUpperCase()} · hydro{' '}
-        {shortHydroHash(thisFairness.hydroEventHash)} · {thisFairness.qualityPreset}
+        {t('results.riverLine', {
+          hour: formatLaunchHour(thisFairness.launchHour ?? 0),
+          map: mapId.toUpperCase(),
+          hash: shortHydroHash(thisFairness.hydroEventHash),
+          quality: thisFairness.qualityPreset ?? '',
+        })}
       </div>
 
       {(fairnessNote || hydroBlame) && (
@@ -205,7 +241,9 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
             key={row.segmentIndex}
             className={`run-results-panel__split-row run-results-panel__split-row--${row.tier}`}
           >
-            <span className="run-results-panel__split-seg">SEG {row.segmentIndex}</span>
+            <span className="run-results-panel__split-seg">
+              {t('results.seg', { index: String(row.segmentIndex) })}
+            </span>
             <span className="run-results-panel__split-time">{formatRaceTimeMs(row.tMs)}</span>
             <span className="run-results-panel__split-delta">
               {row.deltaMs === null ? '—' : formatSignedMs(row.deltaMs)}
@@ -214,9 +252,9 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
         ))}
         {outcome === 'wipeout' && (
           <div className="run-results-panel__split-row run-results-panel__split-row--dnf">
-            <span className="run-results-panel__split-seg">DNF</span>
+            <span className="run-results-panel__split-seg">{t('results.dnf')}</span>
             <span className="run-results-panel__split-time run-results-panel__split-time--wide">
-              wipeout after checkpoint {rows[rows.length - 1]?.segmentIndex ?? '—'}
+              {t('results.wipeoutAfter', { index: String(rows[rows.length - 1]?.segmentIndex ?? '—') })}
             </span>
           </div>
         )}
@@ -224,18 +262,18 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
 
       <div className="run-results-panel__actions">
         <button type="button" className="run-results-panel__action-btn" onClick={handleExport}>
-          EXPORT .WSGHOST
+          {t('results.export')}
         </button>
         <button type="button" className="run-results-panel__action-btn" onClick={handleCopySplits}>
-          {copyStatus === 'copied' ? 'COPIED!' : 'COPY SPLITS'}
+          {copyStatus === 'copied' ? t('results.copied') : t('results.copySplits')}
         </button>
         <button
           type="button"
           className="run-results-panel__action-btn"
           onClick={handleCopyLink}
-          title="Link races this ghost at the same hour — host the exported file next to the game"
+          title={t('results.copyLinkTitle')}
         >
-          {linkStatus === 'copied' ? 'LINK COPIED!' : 'COPY LINK'}
+          {linkStatus === 'copied' ? t('results.linkCopied') : t('results.copyLink')}
         </button>
       </div>
     </div>

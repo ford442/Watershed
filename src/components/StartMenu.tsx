@@ -5,14 +5,13 @@ import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useMenuFocus } from '../hooks/useMenuFocus';
 import { useInputStore } from '../input/InputHub';
 import {
-  formatDuration,
   getDefaultJourneyStack,
   isMapUnlocked,
   listMapsForMenu,
   type MapMenuEntry,
 } from '../maps/campaign';
 import type { MapRegistryId } from '../maps/registry';
-import { MAP_REGISTRY, allowedVehiclesForMap } from '../maps/registry';
+import { allowedVehiclesForMap } from '../maps/registry';
 import type { VehicleType } from '../experience/types';
 import { setVehicleChoice } from '../utils/runContext';
 import { getMapSurvivalMetadata, mapHasSurvivalFeatures } from '../maps/survivalMetadata';
@@ -37,6 +36,9 @@ import type { JourneyMode, RunConditions } from '../systems/journey/runSession';
 import { lazyComponent } from '../utils/lazyComponent';
 import type { UserRiver } from '../systems/map/userRiverSession';
 import type { LevelData } from '../systems/map/MapSystem.types';
+import { useT } from '../i18n/useT';
+import { formatMinutes, formatNumber } from '../i18n/format';
+import { mapLabel } from '../i18n/mapLabel';
 
 // Today's River pulls in the day generator; it loads after the menu paints.
 const TodaysRiverChunk = lazyComponent(() => import('./TodaysRiverCard'));
@@ -71,18 +73,14 @@ interface StartMenuProps {
   onPreloadWorkshop?: () => void;
 }
 
-const VEHICLE_OPTIONS: ReadonlyArray<{ id: VehicleType | null; label: string }> = [
-  { id: null, label: 'River decides' },
-  { id: 'runner', label: 'Runner' },
-  { id: 'raft', label: 'Raft' },
-];
+/** Vehicle picks; labels are catalog keys, resolved at render. */
+const VEHICLE_OPTIONS = [
+  { id: null, labelKey: 'menu.vehicle.auto' },
+  { id: 'runner', labelKey: 'menu.vehicle.runner' },
+  { id: 'raft', labelKey: 'menu.vehicle.raft' },
+] as const satisfies ReadonlyArray<{ id: VehicleType | null; labelKey: string }>;
 
-const DIFFICULTY_LABELS: Record<MapMenuEntry['difficulty'], string> = {
-  beginner: 'Beginner',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
-  expert: 'Expert',
-};
+const difficultyKey = (difficulty: MapMenuEntry['difficulty']) => `difficulty.${difficulty}` as const;
 
 /**
  * StartMenu — Title screen that appears before the first run.
@@ -104,6 +102,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onOpenWorkshop,
   onPreloadWorkshop,
 }) => {
+  const t = useT();
   const completedMaps = useMemo(() => getCompletedMaps(), []);
   const lastMapId = useMemo(() => getLastMapId(), []);
   const maps = useMemo(() => listMapsForMenu(), []);
@@ -178,18 +177,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     <div className="start-menu-overlay">
       <div className="start-menu-card start-menu-card--wide" ref={cardRef}>
         <div className="start-menu-title-group">
-          <h1 className="start-menu-title">WATERSHED</h1>
-          <p className="start-menu-tagline">
-            From alpine source to valley delta — shed the water.
-          </p>
+          <h1 className="start-menu-title">{t('menu.title')}</h1>
+          <p className="start-menu-tagline">{t('menu.tagline')}</p>
           {!bootReady && (
             <p className="start-menu-boot-status" role="status" aria-live="polite">
-              Preparing game assets…
+              {t('menu.preparing')}
             </p>
           )}
           {bootReady && (
             <p className="start-menu-boot-status start-menu-boot-status--ready" role="status">
-              Ready — press START RUN or Enter
+              {t('menu.ready')}
             </p>
           )}
         </div>
@@ -211,8 +208,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               />
             </Suspense>
 
-            <div className="start-menu-mode-select" role="radiogroup" aria-label="Play mode">
-              <div className="start-menu-map-select-label">Play Mode</div>
+            <div className="start-menu-mode-select" role="radiogroup" aria-label={t('menu.playMode.aria')}>
+              <div className="start-menu-map-select-label">{t('menu.playMode')}</div>
               <div className="start-menu-mode-row">
                 <button
                   type="button"
@@ -221,7 +218,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   className={`start-menu-mode-option ${playMode === 'single' ? 'active' : ''}`}
                   onClick={() => setPlayMode('single')}
                 >
-                  Single Map
+                  {t('menu.mode.single')}
                 </button>
                 <button
                   type="button"
@@ -230,33 +227,31 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   className={`start-menu-mode-option ${playMode === 'journey' ? 'active' : ''}`}
                   onClick={() => setPlayMode('journey')}
                 >
-                  Journey
+                  {t('menu.mode.journey')}
                 </button>
               </div>
               <p className="start-menu-map-hint">
-                {playMode === 'journey'
-                  ? 'Seamless descent across the unlock graph — survival and score carry at each reach boundary.'
-                  : 'Play one authored map. Continue still hands off without remounting the world.'}
+                {playMode === 'journey' ? t('menu.mode.journeyHint') : t('menu.mode.singleHint')}
               </p>
             </div>
 
             {playMode === 'journey' ? (
-              <div className="start-menu-map-select" aria-label="Journey route">
-                <div className="start-menu-map-select-label">Descent Route</div>
+              <div className="start-menu-map-select" aria-label={t('menu.journeyRoute.aria')}>
+                <div className="start-menu-map-select-label">{t('menu.descentRoute')}</div>
                 <ol className="start-menu-journey-stack">
                   {journeyStack.map((id, i) => (
                     <li key={id} className="start-menu-journey-step">
                       <span className="start-menu-journey-index">{i + 1}</span>
                       <span className="start-menu-journey-label">
-                        {MAP_REGISTRY[id].label}
+                        {mapLabel(id)}
                       </span>
                     </li>
                   ))}
                 </ol>
               </div>
             ) : (
-              <div className="start-menu-map-select" role="listbox" aria-label="Select map">
-                <div className="start-menu-map-select-label">Choose Map</div>
+              <div className="start-menu-map-select" role="listbox" aria-label={t('menu.selectMap.aria')}>
+                <div className="start-menu-map-select-label">{t('menu.chooseMap')}</div>
                 {maps.map((map) => {
                   const unlocked = isMapUnlocked(map.id, completedMaps);
                   const best = getBestScoreForMap(map.id);
@@ -275,17 +270,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       onClick={() => onSelectMap(map.id)}
                     >
                       <div className="start-menu-map-option-main">
-                        <span className="start-menu-map-option-title">{map.label}</span>
+                        <span className="start-menu-map-option-title">{mapLabel(map.id)}</span>
                         <span className="start-menu-map-option-meta">
-                          {DIFFICULTY_LABELS[map.difficulty]} · {formatDuration(map.estimatedDurationSec)}
+                          {t('menu.mapMeta', {
+                            difficulty: t(difficultyKey(map.difficulty)),
+                            duration: formatMinutes(map.estimatedDurationSec),
+                          })}
                         </span>
                       </div>
                       <div className="start-menu-map-option-side">
-                        {isLast && <span className="start-menu-map-badge">Last</span>}
-                        {!unlocked && <span className="start-menu-map-badge muted">Locked</span>}
+                        {isLast && <span className="start-menu-map-badge">{t('menu.badge.last')}</span>}
+                        {!unlocked && <span className="start-menu-map-badge muted">{t('menu.badge.locked')}</span>}
                         {best > 0 && (
                           <span className="start-menu-map-best">
-                            Best {Math.floor(best).toLocaleString()}
+                            {t('menu.best', { score: formatNumber(Math.floor(best)) })}
                           </span>
                         )}
                       </div>
@@ -293,13 +291,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   );
                 })}
                 <p className="start-menu-map-hint">
-                  Soft-lock marks campaign order — every map stays playable.
+                  {t('menu.softLockHint')}
                 </p>
               </div>
             )}
 
-            <div className="start-menu-mode-select" role="radiogroup" aria-label="Vehicle">
-              <div className="start-menu-map-select-label">Vehicle</div>
+            <div className="start-menu-mode-select" role="radiogroup" aria-label={t('menu.vehicle')}>
+              <div className="start-menu-map-select-label">{t('menu.vehicle')}</div>
               {allowedVehicles.length > 1 ? (
                 <div className="start-menu-mode-row">
                   {VEHICLE_OPTIONS.map((option) => (
@@ -311,13 +309,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       className={`start-menu-mode-option ${vehicle === option.id ? 'active' : ''}`}
                       onClick={() => setVehiclePick(option.id)}
                     >
-                      {option.label}
+                      {t(option.labelKey)}
                     </button>
                   ))}
                 </div>
               ) : (
                 <p className="start-menu-map-hint">
-                  {MAP_REGISTRY[effectiveMapId].label} is a {allowedVehicles[0] === 'raft' ? 'raft' : 'runner'} river.
+                  {allowedVehicles[0] === 'raft'
+                    ? t('menu.vehicle.onlyRaft', { map: mapLabel(effectiveMapId) })
+                    : t('menu.vehicle.onlyRunner', { map: mapLabel(effectiveMapId) })}
                 </p>
               )}
             </div>
@@ -348,16 +348,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <button
               className="start-menu-start-btn"
               onClick={() => onStart(effectiveMapId, startOptions)}
-              aria-label={bootReady ? 'Start Game - Click or Press Enter' : 'Preparing game assets'}
+              aria-label={bootReady ? t('menu.start.aria') : t('menu.start.preparingAria')}
               autoFocus
               disabled={!bootReady}
             >
               {bootReady
                 ? playMode === 'journey'
-                  ? 'START JOURNEY'
-                  : 'START RUN'
-                : 'PREPARING…'}
-              {bootReady && <span className="start-menu-keyhint">ENTER</span>}
+                  ? t('menu.start.journey')
+                  : t('menu.start.run')
+                : t('menu.start.preparing')}
+              {bootReady && <span className="start-menu-keyhint">{t('menu.start.keyHint')}</span>}
             </button>
 
             <Suspense fallback={null}>
@@ -383,48 +383,48 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 onClick={() => onOpenWorkshop(null)}
                 onPointerEnter={onPreloadWorkshop}
                 onFocus={onPreloadWorkshop}
-                aria-label="Open the River Workshop"
+                aria-label={t('menu.workshop.aria')}
               >
-                RIVER WORKSHOP
+                {t('menu.workshop')}
               </button>
             )}
 
             <button
               className="start-menu-settings-btn"
               onClick={onOpenOptions}
-              aria-label="Open Options"
+              aria-label={t('menu.options.aria')}
             >
-              OPTIONS
+              {t('menu.options')}
             </button>
           </div>
         )}
 
         <div className="start-menu-controls-hint">
           <div className="start-menu-hint-row">
-            <span className="start-menu-hint-key">WASD / ↑←↓→</span>
-            <span className="start-menu-hint-action">Move</span>
+            <span className="start-menu-hint-key">{t('menu.hint.moveKeys')}</span>
+            <span className="start-menu-hint-action">{t('menu.hint.move')}</span>
           </div>
           <div className="start-menu-hint-row">
-            <span className="start-menu-hint-key">Mouse</span>
-            <span className="start-menu-hint-action">Look</span>
+            <span className="start-menu-hint-key">{t('menu.hint.mouse')}</span>
+            <span className="start-menu-hint-action">{t('menu.hint.look')}</span>
           </div>
           <div className="start-menu-hint-row">
-            <span className="start-menu-hint-key">Space</span>
-            <span className="start-menu-hint-action">Jump</span>
+            <span className="start-menu-hint-key">{t('menu.hint.space')}</span>
+            <span className="start-menu-hint-action">{t('menu.hint.jump')}</span>
           </div>
           <div className="start-menu-hint-row">
-            <span className="start-menu-hint-key">Esc</span>
-            <span className="start-menu-hint-action">Pause</span>
+            <span className="start-menu-hint-key">{t('menu.hint.esc')}</span>
+            <span className="start-menu-hint-action">{t('menu.hint.pause')}</span>
           </div>
           {usingGamepad && (
             <div className="start-menu-hint-row">
-              <span className="start-menu-hint-key">D-pad · A · Start</span>
-              <span className="start-menu-hint-action">Navigate · Select · Start run</span>
+              <span className="start-menu-hint-key">{t('menu.hint.padKeys')}</span>
+              <span className="start-menu-hint-action">{t('menu.hint.padActions')}</span>
             </div>
           )}
           <div className="start-menu-hint-row">
             <span className="start-menu-hint-key">F3</span>
-            <span className="start-menu-hint-action">Movement readout</span>
+            <span className="start-menu-hint-action">{t('menu.hint.readout')}</span>
           </div>
         </div>
       </div>

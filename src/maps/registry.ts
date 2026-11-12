@@ -47,7 +47,13 @@ export interface MapContinuation {
 
 export interface MapDefinition {
   id: string;
+  /** English name, for code that is not player UI (the Workshop, logs). Players see `labelKey`. */
   label: string;
+  /**
+   * Catalog key of the display name (#566); `mapLabel(id)` in src/i18n resolves it.
+   * Absent on a player's river, whose `label` is the player's own text.
+   */
+  labelKey?: `map.${MapRegistryId}`;
   levelData: LevelData;
   fallbackProgression: SegmentRange[];
   startIndex: number;
@@ -97,6 +103,7 @@ const bundledLevel = (raw: unknown): LevelData => raw as LevelData;
 export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   glacial: {
     id: 'glacial',
+    labelKey: 'map.glacial',
     label: 'Glacial Source',
     levelData: bundledLevel(glacialLevel),
     fallbackProgression: GLACIAL_SOURCE_FALLBACK_PROGRESSION,
@@ -114,6 +121,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   },
   lumber: {
     id: 'lumber',
+    labelKey: 'map.lumber',
     label: 'Lumber Flume',
     levelData: bundledLevel(lumberLevel),
     fallbackProgression: LUMBER_FLUME_FALLBACK_PROGRESSION,
@@ -131,6 +139,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   },
   meander: {
     id: 'meander',
+    labelKey: 'map.meander',
     label: 'Meander to Waterfall',
     levelData: bundledLevel(meanderLevel),
     fallbackProgression: MEANDER_FALLBACK_PROGRESSION,
@@ -143,6 +152,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   },
   hydro: {
     id: 'hydro',
+    labelKey: 'map.hydro',
     label: 'Hydro-Dam',
     levelData: bundledLevel(hydroLevel),
     fallbackProgression: HYDRO_DAM_FALLBACK_PROGRESSION,
@@ -160,6 +170,7 @@ export const MAP_REGISTRY: Record<MapRegistryId, MapDefinition> = {
   },
   delta: {
     id: 'delta',
+    labelKey: 'map.delta',
     label: 'River Delta',
     levelData: bundledLevel(deltaLevel),
     fallbackProgression: DELTA_RAPIDS_FALLBACK_PROGRESSION,

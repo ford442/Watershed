@@ -32,8 +32,8 @@ export interface MapMenuEntry {
 export type JourneyCompletionDecision =
   | {
       kind: 'continue';
+      /** The component resolves the display name (`mapLabel`, src/i18n). */
       nextMapId: MapRegistryId;
-      nextLabel: string;
     }
   | {
       kind: 'summary';
@@ -98,7 +98,6 @@ export function getJourneyCompletionDecision(mapId: MapRegistryId): JourneyCompl
   return {
     kind: 'continue',
     nextMapId,
-    nextLabel: MAP_REGISTRY[nextMapId].label,
   };
 }
 
@@ -132,11 +131,6 @@ export function listMapsForMenu(): MapMenuEntry[] {
         nextMapId: getContinuationTarget(id) ?? undefined,
       };
     });
-}
-
-export function formatDuration(seconds: number): string {
-  const mins = Math.max(1, Math.round(seconds / 60));
-  return `~${mins} min`;
 }
 
 /**
