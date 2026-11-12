@@ -22,13 +22,15 @@
  *
  * Order bands (leave gaps; a new system picks the band, not a number in use):
  *   10 weather · 20 sky clock · 30 chunk/biome · 35 gameplay profile (#521 B) ·
- *   40 survival · 45 hazards (#522) · 50 pillars · 90 scoring / splits / ghost.
+ *   40 survival · 45 hazards (#522) · 50 pillars · 90 scoring / splits / ghost ·
+ *   95 the vehicle step (#556 A; registered by the vehicle's host).
  */
 
 import { createRng, type Rng } from '../../math/random';
 import { createInputFrame, type InputFrame } from '../../input/InputFrame';
 import type { SegmentFrame } from '../../systems/map/segmentFrames';
 import type { HydroEvent } from '../../systems/water/hydroEvents';
+import { createPlainSimGame, type SimGamePort } from './simGame';
 
 /** The fixed sim step, seconds. Matches `INPUT_FIXED_DT_MS`. */
 export const SIM_DT = 1 / 60;
@@ -97,6 +99,12 @@ export interface SimContext {
   camera: { z: number; sane: boolean };
   vehicle: SimVehicleProbe;
   water: SimWaterProbe;
+  /**
+   * The run state systems read and write (#556 A): the browser binds the
+   * Zustand store (SimCoreTick), a headless run a plain object. A fresh core
+   * holds a plain one.
+   */
+  game: SimGamePort;
 }
 
 export interface SimSystem {
@@ -152,6 +160,7 @@ export class SimCore {
       camera: { z: 0, sane: false },
       vehicle: createVehicleProbe(),
       water: createWaterProbe(),
+      game: createPlainSimGame(),
     };
   }
 
@@ -241,6 +250,7 @@ export class SimCore {
     this.ctx.camera.sane = false;
     Object.assign(this.ctx.vehicle, createVehicleProbe());
     Object.assign(this.ctx.water, createWaterProbe());
+    this.ctx.game = createPlainSimGame();
   }
 }
 

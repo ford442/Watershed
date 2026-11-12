@@ -4,8 +4,11 @@
  * Null component mounted once inside the Canvas, next to the other ticks. At
  * useFrame priority −90 — after the input hub (−100) has produced this frame's
  * InputFrame, before the sun placement (−85) and every default-priority
- * subscriber (vehicles, Rapier, TrackManager) — it samples what the sim reads
- * of the world into `simCore.ctx`, then feeds the frame's delta to the core.
+ * subscriber (the raft, TrackManager, the runner's camera follow) — it samples
+ * what the sim reads of the world into `simCore.ctx`, binds the run state
+ * (`ctx.game`, the store), then feeds the frame's delta to the core. The
+ * Rapier world and the runner step inside the core (`physics-world`,
+ * `vehicle-runner`; #556 A).
  *
  * Priority −90 used to belong to WeatherDirectorTick; the weather director is
  * now a SimCore system, so the slot is the core's.
@@ -32,6 +35,7 @@ import { POSITION_SANE, resolveActiveEnvelopeInto } from '../vehicles/RunnerVehi
 import type { SegmentEnvelope } from '../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from './types';
 import { createSimSystems } from './simSystems';
+import { storeSimGame } from './simGameBinding';
 
 export const SIM_CORE_PRIORITY = -90;
 
@@ -91,6 +95,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
   useEffect(() => {
     const offs = createSimSystems(debug).map((system) => simCore.register(system));
     simCore.ctx.water.stageAt = sampleSweStage;
+    simCore.ctx.game = storeSimGame;
     const offReset = gameEvents.on('watershed-run-reset', () => simCore.reset());
     return () => {
       offReset();

@@ -595,8 +595,10 @@ delta is a registered system, so a real frame, a replay and a headless run execu
 
 **Runs in:** `SimCoreTick` — one `useFrame` at priority **−90**: after `InputHubTick` (−100) has
 produced this frame's `InputFrame`, before `SkyClockTick` (−85, sun placement only) and every
-default-priority subscriber (vehicles, Rapier, TrackManager). It samples the camera, the vehicle
+default-priority subscriber (the raft, TrackManager, the camera follow). It samples the camera, the vehicle
 body, the segment frame and the paused flag into `simCore.ctx`, then `simCore.advance(frameDelta)`.
+The main-thread Rapier world is stepped *by* the core (`physics-world`, below): `<Physics paused>`
+runs no loop of its own (#556 A).
 
 **The step:** `advance(delta)` turns a frame delta into 0..`SIM_MAX_SUBSTEPS` (5) calls of `step()`;
 a backlog past the clamp is dropped, not owed. `step()` is the only place a system runs, with
@@ -607,16 +609,33 @@ n steps whatever the deltas' float residue (`SimCore.test.ts` pins the parity).
 **`SimContext`:** `rng` (the one `createRng`, seed `SIM_RNG_SEED`; a stable function reseeded on every
 `watershed-run-reset`, so a restart draws what the first run drew — the splash foam gate reads it),
 `time` (sim seconds), `stepIndex`, `input` (the hub's frame), `segment` / `segmentIndex`, `paused`,
-`camera {z, sane}`, `vehicle` (position, velocity, pose quaternion as plain numbers) and `water`
+`camera {z, sane}`, `vehicle` (position, velocity, pose quaternion as plain numbers), `water`
 (#522 A: the run's `launchHour`, the map's parsed `hydroEvents`, and `stageAt(x, z)` — the live SWE
-stage η from `sweStageProbe.ts`, null outside the window or at Low quality).
+stage η from `sweStageProbe.ts`, null outside the window or at Low quality) and `game` (#556 A: the
+run state systems read and write — `ctx.game.state()` is a `SimGameView` (`sim/core/simGame.ts`):
+paused / wipeout, segment, biome, stamina, gravity scale, spawn points, weather, and their setters.
+`SimCoreTick` binds the Zustand store (`experience/simGameBinding.ts`); a headless run binds
+`createPlainSimGame()`; a fresh core holds a plain one, and tests that stage the store build
+theirs with `testing/storeSimCore.ts`).
 
 **Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
 biome detection and its 0.4 s sim-time debounce, which also commits the segment's `GameplayProfile`)
 · 35 `gameplay-profile` (publishes the active profile) · 40 `survival` (`stepRunSurvival`) · 45 `hazards`
 (the map's `hazards[]`, below) · 50 `pillars`
 (crack timers and debris age, `pillarSimClock.ts`) · 90 `score` (score + the ghost's 10 Hz sample
-clock, which splits are read off). The list lives in `experience/simSystems.ts`.
+clock, which splits are read off) · 92 `physics-world` (the Rapier world's step, `useRapier().step(SIM_DT)`:
+before/after-step hooks, collision events and the mesh sync run inside it, as in the library's own loop;
+registered by `experience/RapierSimStep.tsx`) · 95 `vehicle-runner` (the runner's physics step,
+`vehicles/RunnerVehicle/runnerSimSystem.ts`, registered by RunnerVehicle for its mount). The list
+lives in `experience/simSystems.ts`; the world and the vehicle register from inside `<Physics>`.
+
+**The vehicle step (#556 A):** world (92) then runner (95), the order a frame ran them in before, so
+the runner reads the stepped body and its impulses ride the next world step. The step reads the run
+through `args.game` and calls no presentation: sounds, camera shake and collision bursts go out as
+`vehicle-*` cues on `gameEvents` (`runnerCues.ts` / `raftCues.ts` subscribe them in the vehicle's
+host); the camera follow and FOV kick are the host's per-frame `syncRunnerCamera` /
+`updateRunnerFovKick`, gated on the step's `followCamera` flag. Shelf-launch scoring emits
+`launch-started` / `launch-scored`; `systems/score/launchRewards.ts` applies them to the store.
 
 **Boundaries (Do NOT):**
 - Do NOT advance gameplay from a `useFrame` delta, a timer or a React effect — register a system.
@@ -625,10 +644,16 @@ clock, which splits are read off). The list lives in `experience/simSystems.ts`.
 - Do NOT call `stepRunSurvival` from anywhere but the `survival` system (the runner reads
   `getActiveSurvivalModifiers()`; the raft's `publishRaftSurvival` only reports its float).
 - Do NOT tick a second SimCore or read `simCore.ctx.rng` from a render path.
+- Do NOT import React, `GameState`, `hooks/`, `components/` (but a sibling), `ui/`, a `.tsx` or audio
+  playback from `src/sim/`, a `*SimSystem.ts` or a vehicle `hooks/*Step.ts` — read `ctx.game`, emit a cue.
+  `scripts/check-dependency-direction.mjs` checks the direct imports and the runtime import closure
+  from the SimCore entries (`pnpm typecheck`).
 
 **Known Pain:** the sample is taken before the vehicle's own step, so a system sees the body as the
-last step left it (what the vehicle reads at the top of its step). The vehicles themselves are still
-priority-0 `useFrame`s; moving them into the registry is the later picture in #521.
+last step left it (what the vehicle reads at the top of its step). The raft is still a priority-0
+`useFrame` (its step, camera, foam and the worker hull path move in a #556 A follow-up), and so are
+TrackManager's treadmill and the water forces. On a display faster than 60 Hz the world, and the
+meshes `<Physics>` syncs, now move at the sim rate (the library's own loop interpolated them).
 
 ---
 

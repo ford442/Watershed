@@ -9,8 +9,6 @@ import {
   SHED, COLLISION, BIAS,
   type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
 } from '../constants';
-import { playSplashSound } from '../audio';
-import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import {
   tryFireShelfLaunch,
   getShelfDownstreamSpeed,
@@ -27,10 +25,9 @@ import type { RapierWorkerProxy } from '../../../physics/RapierWorkerProxy';
 import { createRaftPhysicsRuntime, type RaftImpulse, type RaftPhysicsRuntime } from './raftPhysicsRuntime';
 import type { RaftCollisionState } from './useRaftPhysicsState';
 import { recordUprightDistance } from '../../../systems/journey/runSession';
-import type { PlayerControls } from '../../../hooks/usePlayerControls';
+import type { PlayerControls } from '../../../input/playerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
 import type { ParticlePool } from '../../../components/particlePool';
-import { emitCollisionBurst } from '../../../components/CollisionParticles';
 
 // Per-step scratch (#503 B).
 const _quat = new THREE.Quaternion();
@@ -174,8 +171,8 @@ function tryRaftShelfLaunch(
     });
     if (launch) {
       body.applyImpulse(launch.impulse, true);
-      triggerCameraShake(0.45, 0.25);
-      playSplashSound(Math.min(1.5, speed));
+      gameEvents.emit('vehicle-shake', { vehicle: 'raft', intensity: 0.45, duration: 0.25 });
+      gameEvents.emit('raft-splash', { intensity: Math.min(1.5, speed) });
       gameEvents.emit('shelfLaunch', {
         bodyHandle: body.handle,
         launchPos: pos,
@@ -267,7 +264,7 @@ function detectRaftImpact(
     }
 
     if (p.raftVehicle.isHighImpact(impactForce)) {
-      emitCollisionBurst(p.collisionState.current.particles, material, contactPoint, forceFactor);
+      gameEvents.emit('vehicle-impact', { vehicle: 'raft', material, point: contactPoint, intensity: forceFactor });
     }
   }
 }

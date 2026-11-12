@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MOVEMENT, PLAYER_SPAWN, WATER_LEVEL } from '../../../constants/game';
 import { isAutumnLike } from '../../../configs/biomes';
-import { useGameStore } from '../../../systems/GameState';
+import type { SimGameView } from '../../../sim/core/simGame';
 import { cancelLaunch } from '../../../systems/score/LaunchScoringSession';
 import {
   getSegmentFrames,
@@ -13,17 +13,13 @@ import {
 } from '../../../systems/map/segmentFrames';
 import { getActiveSurvivalModifiers } from '../../../systems/journey/runSession';
 import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
-import { playJumpSound, playLandSound, playFootstep } from '../audio';
-import { triggerCameraShake } from '../../../hooks/useCameraShake';
-import { getComfort } from '../../../systems/settings/comfortRuntime';
-import { runnerTargetFov } from '../../../systems/settings/comfort';
+import { gameEvents, type VehicleFootstepDetail } from '../../../systems/events/GameEvents';
 import type { RapierBody } from '../../../physics/rapierTypes';
-import type { RunnerJumpData } from './useRunnerPhysics';
+import type { RunnerJumpData } from './runnerPhysicsState';
 
 type Vec3 = { x: number; y: number; z: number };
 
 /** Camera-follow target, reused every step. */
-const _cameraTarget = new THREE.Vector3();
 
 /**
  * Global sanity bounds. `yMin`/`yMax` are **margins** below / above the active
@@ -77,8 +73,7 @@ export function getEffectivePositionBoundsInto(out: PositionBounds, envelope?: V
  * while a wipeout is already in flight. An authored `respawnAt` overrides the
  * checkpoint table's respawn segment.
  */
-export function triggerOutOfBoundsWipeout(envelope: Pick<SegmentEnvelope, 'respawnAt'>): void {
-  const game = useGameStore.getState();
+export function triggerOutOfBoundsWipeout(game: SimGameView, envelope: Pick<SegmentEnvelope, 'respawnAt'>): void {
   if (game.isWipeout) return;
   if (envelope.respawnAt !== undefined) {
     game.setRespawnSegmentIndex(envelope.respawnAt);
@@ -226,16 +221,18 @@ export function tickSprintStamina(
     sprint,
     jumpState,
     sprintLockedRef,
+    game,
   }: {
     dt: number;
     sprint: boolean;
     jumpState: { state: string };
     sprintLockedRef: { current: boolean };
+    /** The run's state: stamina is read and written here (ctx.game, #556 A). */
+    game: SimGameView;
   },
   out: SprintResult = { isSprinting: false, movementMul: 1 },
 ): SprintResult {
-  const storeState = useGameStore.getState();
-  let stamina = storeState.sprintStamina;
+  let stamina = game.sprintStamina;
 
   // Integrated by SimCore's survival system (#521 A) in the active gameplay
   // profile's climate (#521 B); the runner only reads the result.
@@ -262,7 +259,7 @@ export function tickSprintStamina(
   }
   // A write only on change: a store set builds a new state object, and full
   // stamina while running is the steady state.
-  if (stamina !== storeState.sprintStamina) storeState.setSprintStamina(stamina);
+  if (stamina !== game.sprintStamina) game.setSprintStamina(stamina);
 
   out.isSprinting = isSprinting;
   out.movementMul = movementMul;
@@ -355,7 +352,7 @@ function tickJumpGrounded(args: JumpStateMachineArgs): void {
     js.verticalVelocityOnLeave = jumpForce;
     js.jumpReleased = false;
 
-    playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+    gameEvents.emit('vehicle-jump', { speed: Math.sqrt(vel.x * vel.x + vel.z * vel.z), double: false });
   }
 }
 
@@ -401,7 +398,7 @@ function tickJumpAirborne(args: JumpStateMachineArgs): void {
     js.hasDoubleJumped = false;
     js.commitTimer = JUMP_CONFIG.COMMIT_DURATION;
     js.jumpReleased = false;
-    playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+    gameEvents.emit('vehicle-jump', { speed: Math.sqrt(vel.x * vel.x + vel.z * vel.z), double: false });
     js.airTime = 0;
     js.timeSinceGrounded = 999;
   }
@@ -413,26 +410,29 @@ function tickJumpAirborne(args: JumpStateMachineArgs): void {
 
     js.hasDoubleJumped = true;
     js.jumpReleased = false;
-    playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z), true);
+    gameEvents.emit('vehicle-jump', { speed: Math.sqrt(vel.x * vel.x + vel.z * vel.z), double: true });
   }
 
   if (isGrounded && js.airTime > 0.05) {
     js.state = 'landing';
 
     const impactVel = Math.abs(vel.y);
-    playLandSound(impactVel);
+    gameEvents.emit('vehicle-land', { impactSpeed: impactVel });
 
     if (impactVel > JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) {
       const shakeIntensity = Math.min(
         1.0,
         (impactVel - JUMP_CONFIG.HIGH_IMPACT_THRESHOLD) / 10,
       );
-      triggerCameraShake(shakeIntensity);
+      gameEvents.emit('vehicle-shake', { vehicle: 'runner', intensity: shakeIntensity });
     }
   }
 }
 
-/** Grounded footstep distance accumulator + material pick. */
+/** The footstep cue's one payload: a step every ~2.5 m allocates nothing (#521 D). */
+const footstepCue: VehicleFootstepDetail = { material: 'rock', wet: false };
+
+/** Grounded footstep distance accumulator + material pick; the sound is the host's (`vehicle-footstep`). */
 export function tickFootstepAudio({
   isGrounded,
   jumpState,
@@ -466,73 +466,8 @@ export function tickFootstepAudio({
     footstepState.current.stepInterval
   ) {
     footstepState.current.lastStepDistance = footstepState.current.distanceTraveled;
-    const material = isAutumnLike(currentBiome) ? 'moss' : 'rock';
-    const isWet = posY < WATER_LEVEL + 1.0;
-    playFootstep(material, isWet);
-  }
-}
-
-/** First-person camera follow / top-down screenshot mode. */
-export function applyRunnerCameraFollow({
-  camera,
-  pos,
-  posOk,
-  noPointerLock,
-}: {
-  camera: THREE.PerspectiveCamera;
-  pos: Vec3;
-  posOk: boolean;
-  noPointerLock: boolean;
-}) {
-  if (!posOk) return;
-
-  const camPos = camera.position;
-  if (!Number.isFinite(camPos.x) || !Number.isFinite(camPos.y) || !Number.isFinite(camPos.z)) {
-    camPos.set(pos.x, pos.y + 1.65, pos.z);
-  }
-
-  if (noPointerLock) {
-    camera.position.set(pos.x, pos.y + 40, pos.z);
-    camera.lookAt(pos.x, pos.y, pos.z);
-  } else {
-    camera.position.lerp(_cameraTarget.set(pos.x, pos.y + 1.65, pos.z), 0.12);
-  }
-
-  if (
-    !Number.isFinite(camera.position.x) ||
-    !Number.isFinite(camera.position.y) ||
-    !Number.isFinite(camera.position.z)
-  ) {
-    camera.position.set(pos.x, pos.y + 1.65, pos.z);
-  }
-}
-
-/** Speed-based FOV kick with waterfall segment punch. */
-export function updateRunnerFovKick({
-  camera,
-  vel,
-  dt,
-  fovState,
-  currentSegmentIndex,
-}: {
-  camera: THREE.PerspectiveCamera;
-  vel: Vec3;
-  dt: number;
-  /**
-   * The smoothed FOV. Its own shape on purpose: a `{ current }` ref shares one
-   * hidden class with every ref in the app, so a double stored in it is boxed
-   * (a fresh heap number every step).
-   */
-  fovState: { fov: number };
-  currentSegmentIndex: number;
-}) {
-  const isWaterfallSeg = currentSegmentIndex === 14 || currentSegmentIndex === 29;
-  const hSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-  // Base FOV and the kick's strength are the player's comfort settings (#486 D).
-  const targetFov = runnerTargetFov(hSpeed, isWaterfallSeg, getComfort());
-  fovState.fov += (targetFov - fovState.fov) * (1 - Math.exp(-dt * 5));
-  if (Math.abs(camera.fov - fovState.fov) > 0.05) {
-    camera.fov = fovState.fov;
-    camera.updateProjectionMatrix();
+    footstepCue.material = isAutumnLike(currentBiome) ? 'moss' : 'rock';
+    footstepCue.wet = posY < WATER_LEVEL + 1.0;
+    gameEvents.emit('vehicle-footstep', footstepCue);
   }
 }

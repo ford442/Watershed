@@ -12,6 +12,7 @@ import { ShaderWarmup } from './experience/ShaderWarmup';
 import { lazyComponent } from './utils/lazyComponent';
 import { NOOP_DEBUG } from './experience/constants';
 import { initShelfLaunchScoringListener } from './systems/score/LaunchScoringSession';
+import { initLaunchRewardListener } from './systems/score/launchRewards';
 import { initSplitRecordingListener } from './systems/ghost/SplitRecorder';
 import { initRunFinishListener } from './systems/ghost/runFinish';
 import { loadRivalGhostFromUrl } from './systems/ghost/rivalGhostUrl';
@@ -54,6 +55,7 @@ export default function Experience({
 
   useEffect(() => {
     initShelfLaunchScoringListener();
+    initLaunchRewardListener();
     initSplitRecordingListener();
     initRunFinishListener();
     void loadRivalGhostFromUrl(getActiveMapId(mapId ?? null));

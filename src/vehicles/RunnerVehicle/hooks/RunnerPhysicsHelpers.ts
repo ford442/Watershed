@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { getActiveGameplayProfile } from '../../../systems/gameplay/activeGameplayProfile';
 import { MOVEMENT } from '../../../constants/game';
-import { useGameStore } from '../../../systems/GameState';
+import type { SimGameView } from '../../../sim/core/simGame';
 import {
   RAYCAST_DISTANCE,
   GROUND_RAY_MIN_TOI,
@@ -12,10 +12,7 @@ import {
   NEAR_MISS_TOI_MIN,
   NEAR_MISS_TOI_MAX,
 } from '../constants';
-import { playDodgeSound } from '../audio';
-import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import { hasActiveLaunch, recordLaunchWallContact } from '../../../systems/score/LaunchScoringSession';
-import { emitCollisionBurst } from '../../../components/CollisionParticles';
 import { gameEvents } from '../../../systems/events/GameEvents';
 import {
   bodyUserData,
@@ -27,7 +24,7 @@ import {
   type Vec3Like,
 } from '../../../physics/rapierTypes';
 import type { CollisionTracker } from '../../../systems/vehicle/VehicleSystem';
-import type { RunnerPhysicsState } from './useRunnerPhysics';
+import type { RunnerPhysicsState } from './runnerPhysicsState';
 
 // Per-step scratch (#503 B): these helpers run inside useFrame every physics
 // step, where `new` is invisible to @react-three/no-new-in-loop.
@@ -290,6 +287,8 @@ export function calculateSlopeMultiplier(angle: number): number {
 }
 
 export interface DodgeAndCollisionArgs {
+  /** The run's state (ctx.game, #556 A): the dodge latch is written here. */
+  game: SimGameView;
   dodgeState: RunnerPhysicsState['dodgeState'];
   dodgeJustPressed: boolean;
   isGrounded: boolean;
@@ -303,7 +302,6 @@ export interface DodgeAndCollisionArgs {
   vel: Vec3Like;
   prevFrame: RunnerPhysicsState['prevFrame'];
   vehicle: CollisionTracker;
-  collisionState: RunnerPhysicsState['collisionState'];
   debugState: RunnerPhysicsState['debugState'];
   now: number;
   applyImpulseWithDebugTracking: (tag: string, impulse: Vec3Like) => void;
@@ -387,10 +385,10 @@ function startDodge(args: DodgeAndCollisionArgs, ds: DodgeData): void {
   // the physics step's boot latches.
   bodyUserData(body).isDodging = true;
 
-  playDodgeSound();
-  triggerCameraShake(0.3, 0.15);
+  gameEvents.emit('vehicle-dodge', undefined);
+  gameEvents.emit('vehicle-shake', { vehicle: 'runner', intensity: 0.3, duration: 0.15 });
 
-  useGameStore.getState().setIsDodging(true);
+  args.game.setIsDodging(true);
 }
 
 /** A near-miss ray to one side of the dodge (`sign` ±1): a wall inside the near-miss band. */
@@ -428,13 +426,13 @@ function tickDodging(args: DodgeAndCollisionArgs, ds: DodgeData): void {
     ds.state = 'cooldown';
     ds.timer = MOVEMENT.DODGE_COOLDOWN;
     bodyUserData(body).isDodging = false;
-    useGameStore.getState().setIsDodging(false);
+    args.game.setIsDodging(false);
   }
 }
 
 /** === COLLISION DETECTION === a sudden velocity change while airborne is an impact. */
 function detectRunnerImpact(args: DodgeAndCollisionArgs): void {
-  const { dodgeState, isGrounded, dt, pos, vel, prevFrame, vehicle, collisionState, debugState, now } = args;
+  const { dodgeState, isGrounded, dt, pos, vel, prevFrame, vehicle, debugState, now } = args;
   const ds = dodgeState.current;
   // Check for sudden velocity changes indicating collision
   const prevVelocity = prevFrame.current.velocity;
@@ -454,7 +452,12 @@ function detectRunnerImpact(args: DodgeAndCollisionArgs): void {
 
     // Add visual particles for high impact
     if (vehicle.isHighImpact(impactForce)) {
-      emitCollisionBurst(collisionState.current.particles, material, contactPoint, Math.min(1, impactForce / 20));
+      gameEvents.emit('vehicle-impact', {
+        vehicle: 'runner',
+        material,
+        point: contactPoint,
+        intensity: Math.min(1, impactForce / 20),
+      });
       debugState.current.recentContacts.push({
         at: now,
         point: { x: contactPoint.x, y: contactPoint.y, z: contactPoint.z },

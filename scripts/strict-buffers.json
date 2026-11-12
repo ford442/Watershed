@@ -5,6 +5,7 @@
   "src/assets/useAssetInstance.ts",
   "src/sim/SimFrame.ts",
   "src/sim/core/SimCore.ts",
+  "src/sim/core/simGame.ts",
   "src/sim/createSimWorkerProxy.ts",
   "src/sim/hullLinkProtocol.ts",
   "src/sim/linkPhysicsToSim.ts",

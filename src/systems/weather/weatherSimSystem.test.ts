@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SIM_DT, SimCore } from '../../sim/core/SimCore';
+import { SIM_DT, type SimCore } from '../../sim/core/SimCore';
 import { useGameStore } from '../GameState';
 import { normalizeWeatherScript } from './weatherScript';
 import {
@@ -9,6 +9,7 @@ import {
   resetWeatherDirectorForTests,
 } from './weatherDirector';
 import { createWeatherSimSystem } from './weatherSimSystem';
+import { createStoreSimCore } from '../../testing/storeSimCore';
 
 const SHOWER = normalizeWeatherScript([
   { atReachFraction: 0, weather: 'clear' },
@@ -18,7 +19,7 @@ const SHOWER = normalizeWeatherScript([
 describe('weather-director sim system', () => {
   let core: SimCore;
   beforeEach(() => {
-    core = new SimCore();
+    core = createStoreSimCore();
     core.register(createWeatherSimSystem());
     useGameStore.setState({ isPaused: false });
     resetWeatherDirector(SHOWER);
@@ -52,7 +53,7 @@ describe('weather-director sim system', () => {
   it('is deterministic: two cores over one script publish the same weather', () => {
     const run = () => {
       resetWeatherDirector(SHOWER);
-      const c = new SimCore();
+      const c = createStoreSimCore();
       c.register(createWeatherSimSystem());
       for (let i = 0; i < 421; i += 1) c.step();
       return { ...getDirectorRiverWeather() };

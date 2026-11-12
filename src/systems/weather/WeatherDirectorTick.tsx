@@ -8,9 +8,21 @@
  */
 import { useEffect } from 'react';
 import { useGameStore } from '../GameState';
-import { applyAmbientWeatherForBiome } from './weatherSimSystem';
+import type { RunWeather } from '../map/weatherInflow';
+import { biomeAmbientWeather, setWeatherDirectorAmbient } from './weatherDirector';
 
-export { setReachAmbientWeather } from './weatherSimSystem';
+let reachAmbient: RunWeather | null = null;
+
+/** A reach manifest's weather, shown when the run's own weather is clear (null clears it). */
+export function setReachAmbientWeather(weather: RunWeather | null): void {
+  reachAmbient = weather;
+  setWeatherDirectorAmbient(reachAmbient ?? biomeAmbientWeather(useGameStore.getState().currentBiome));
+}
+
+/** The ambient weather for a biome, unless a reach manifest has set its own. */
+function applyAmbientWeatherForBiome(biome: string): void {
+  setWeatherDirectorAmbient(reachAmbient ?? biomeAmbientWeather(biome));
+}
 
 export function WeatherDirectorTick(): null {
   useEffect(() => {

@@ -25,7 +25,7 @@ import type { WeatherType } from '../../constants/weather';
 import { WEATHER_CONFIG } from '../../constants/weather';
 import { clamp01, lerp, smoothstep } from '../../math/scalar';
 import { CLEAR_WEATHER, type RunWeather } from '../map/weatherInflow';
-import type { WeatherBroadcast } from '../GameState';
+import type { WeatherBroadcast } from './weatherBroadcast';
 import { constantWeatherScript, type WeatherScript } from './weatherScript';
 
 /** Intensity of the glacial biomes' ambient snow (visual only). */

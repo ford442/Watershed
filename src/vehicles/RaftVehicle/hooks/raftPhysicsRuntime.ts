@@ -5,8 +5,8 @@ import {
   TIPPING, PADDLE, STAMINA, BRAKE, COLLISION, BIAS, CAMERA, SHED,
   type BuoyancyState, type PaddleState, type StaminaState, type StunState, type TippingState,
 } from '../constants';
-import { playPaddleSound, playRaftTipSound } from '../audio';
-import type { PlayerControls } from '../../../hooks/usePlayerControls';
+import { gameEvents } from '../../../systems/events/GameEvents';
+import type { PlayerControls } from '../../../input/playerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
 import type { ParticlePool } from '../../../components/particlePool';
 import { publishRaftSurvival } from '../../../systems/journey/runSession';
@@ -374,7 +374,7 @@ function applyPaddleForces(rt: RaftRuntimeCtx, body: RapierBody, delta: number) 
 
     if (random() > 0.6) {
       spawnFoamParticle(rt, body, 'left');
-      playPaddleSound('left');
+      gameEvents.emit('raft-paddle', { side: 'left' });
     }
     rt.deps.forwardBiasTimer.current = BIAS.DURATION;
   }
@@ -404,7 +404,7 @@ function applyPaddleForces(rt: RaftRuntimeCtx, body: RapierBody, delta: number) 
 
     if (random() > 0.6) {
       spawnFoamParticle(rt, body, 'right');
-      playPaddleSound('right');
+      gameEvents.emit('raft-paddle', { side: 'right' });
     }
     rt.deps.forwardBiasTimer.current = BIAS.DURATION;
   }
@@ -500,7 +500,7 @@ function spawnContactBurst(rt: RaftRuntimeCtx, contactPoint: Vec3Like, impactFor
  * Reset raft to safe position after tipping
  */
 function resetRaft(rt: RaftRuntimeCtx, body: RapierBody) {
-  playRaftTipSound();
+  gameEvents.emit('raft-tip', undefined);
 
   const safePos = rt.deps.tippingState.current.lastSafePosition.clone();
   // Clear of the surface the raft was last floating on, never an absolute y.

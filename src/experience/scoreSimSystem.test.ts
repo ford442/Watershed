@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DebugStageController } from '../debug/debugStages';
-import { SIM_DT, SimCore } from '../sim/core/SimCore';
+import { SIM_DT } from '../sim/core/SimCore';
 import { useGameStore } from '../systems/GameState';
 import {
   GHOST_SAMPLE_INTERVAL,
@@ -10,13 +10,14 @@ import {
 } from '../systems/ghost/GhostRecorder';
 import { resetScoreSystemState } from '../systems/score/ScoreSystem';
 import { createScoreSimSystem } from './scoreSimSystem';
+import { createStoreSimCore } from '../testing/storeSimCore';
 
 function setup(enabled = true) {
   const debug = {
     isStageEnabled: () => enabled,
     setStageFailure: vi.fn(),
   } as unknown as DebugStageController;
-  const core = new SimCore();
+  const core = createStoreSimCore();
   core.register(createScoreSimSystem(debug));
   const v = core.ctx.vehicle;
   v.valid = true;

@@ -337,7 +337,7 @@ export function useExperienceLifecycle({
               ? resolveActiveRaftEnvelope(pos, getVehicleWaterLevel())
               : resolveActiveEnvelopeInto(lifecycleEnvelope, pos);
           if (pos.y < envelope.yMin || pos.y > envelope.yMax) {
-            triggerOutOfBoundsWipeout(envelope);
+            triggerOutOfBoundsWipeout(useGameStore.getState(), envelope);
           }
         }
       }

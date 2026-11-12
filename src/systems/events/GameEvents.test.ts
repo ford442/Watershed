@@ -15,6 +15,47 @@ describe('gameEvents', () => {
     expect(seen).toEqual([12]);
   });
 
+  it('delivers in subscription order; a listener removed mid-emit still gets this emit, not the next', () => {
+    const seen: string[] = [];
+    let offB = () => {};
+    gameEvents.on('vehicle-land', () => {
+      seen.push('a');
+      offB();
+    });
+    offB = gameEvents.on('vehicle-land', () => seen.push('b'));
+    gameEvents.emit('vehicle-land', { impactSpeed: 1 });
+    gameEvents.emit('vehicle-land', { impactSpeed: 1 });
+    expect(seen).toEqual(['a', 'b', 'a']);
+  });
+
+  it('a throwing listener is reported and the rest still run (as on an EventTarget)', () => {
+    const report = vi.fn();
+    const prev = globalThis.reportError;
+    globalThis.reportError = report;
+    try {
+      const seen: number[] = [];
+      gameEvents.on('vehicle-land', () => {
+        throw new Error('boom');
+      });
+      gameEvents.on('vehicle-land', ({ impactSpeed }) => seen.push(impactSpeed));
+      gameEvents.emit('vehicle-land', { impactSpeed: 4 });
+      expect(seen).toEqual([4]);
+      expect(report).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.reportError = prev;
+    }
+  });
+
+  it('subscribing one handler twice is two listeners, each with its own off()', () => {
+    const seen: number[] = [];
+    const handler = ({ speed }: { speed: number }) => seen.push(speed);
+    const off1 = gameEvents.on('player-near-miss', handler);
+    gameEvents.on('player-near-miss', handler);
+    off1();
+    gameEvents.emit('player-near-miss', { speed: 5 });
+    expect(seen).toEqual([5]);
+  });
+
   it('does not touch window', () => {
     const spy = vi.spyOn(window, 'dispatchEvent');
     gameEvents.emit('camera-rumble', { intensity: 0.3 });

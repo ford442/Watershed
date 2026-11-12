@@ -15,7 +15,7 @@ import {
   tickWeatherDirector,
   weatherBroadcastOf,
 } from './weatherDirector';
-import type { WeatherBroadcast } from '../GameState';
+import type { WeatherBroadcast } from './weatherBroadcast';
 
 const SQUALL = normalizeWeatherScript([
   { atReachFraction: 0, weather: 'clear' },

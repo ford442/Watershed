@@ -22,8 +22,9 @@ import vm from 'node:vm';
 import * as THREE from 'three';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { updateRunnerPhysics } from './RunnerPhysicsStep';
-import { createRunnerPhysicsState } from './useRunnerPhysics';
-import type { PlayerControls } from '../../../hooks/usePlayerControls';
+import { createRunnerPhysicsState } from './runnerPhysicsState';
+import { syncRunnerCamera } from '../runnerCameraSync';
+import type { PlayerControls } from '../../../input/playerControls';
 import type { QuatLike, RapierBody, RapierRay, RapierRayHit, RapierWorld, Vec3Like } from '../../../physics/rapierTypes';
 import { useGameStore } from '../../../systems/GameState';
 import { initRunSession, resetRunSessionForTests } from '../../../systems/journey/runSession';
@@ -120,6 +121,7 @@ describe('runner step allocation (#521 D)', () => {
     const controls = { getControls: () => running };
     const args = {
       delta: 1 / 60,
+      game: { state: () => useGameStore.getState() },
       world,
       body,
       rapier,
@@ -131,6 +133,8 @@ describe('runner step allocation (#521 D)', () => {
     };
     const step = () => {
       updateRunnerPhysics(args);
+      // The host's camera follow, as RunnerVehicle runs it each frame (#556 A).
+      syncRunnerCamera(camera, body, vehicleState);
       body.integrate(1 / 60);
     };
 

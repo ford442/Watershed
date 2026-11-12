@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { BANK_CONFIG, JUMP_CONFIG } from '../constants';
 import { useGameStore } from '../../../systems/GameState';
-import type { RunnerJumpData } from './useRunnerPhysics';
+import type { RunnerJumpData } from './runnerPhysicsState';
 import {
   buildSegmentFrame,
   clearSegmentFrames,
@@ -220,20 +220,20 @@ describe('segment-relative out-of-bounds (safeZone)', () => {
     expect(envelope).toMatchObject({ segmentIndex: 14, authored: true, respawnAt: 13 });
     expect(isPositionSane(fallen, getEffectivePositionBounds(envelope))).toBe(false);
 
-    triggerOutOfBoundsWipeout(envelope);
+    triggerOutOfBoundsWipeout(useGameStore.getState(), envelope);
     expect(useGameStore.getState().isWipeout).toBe(true);
     expect(useGameStore.getState().respawnSegmentIndex).toBe(13);
   });
 
   it('is idempotent while a wipeout is already in flight', () => {
     useGameStore.setState({ isWipeout: true, respawnSegmentIndex: 7 });
-    triggerOutOfBoundsWipeout({ respawnAt: 2 });
+    triggerOutOfBoundsWipeout(useGameStore.getState(), { respawnAt: 2 });
     expect(useGameStore.getState().respawnSegmentIndex).toBe(7);
   });
 
   it('without respawnAt leaves the checkpoint table\'s respawn segment in charge', () => {
     useGameStore.setState({ isWipeout: false, respawnSegmentIndex: 10 });
-    triggerOutOfBoundsWipeout({});
+    triggerOutOfBoundsWipeout(useGameStore.getState(), {});
     expect(useGameStore.getState().isWipeout).toBe(true);
     expect(useGameStore.getState().respawnSegmentIndex).toBe(10);
   });

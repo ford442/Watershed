@@ -26,6 +26,7 @@ import { WATER_PHYSICS } from '../constants/waterPhysics';
 import { useRaftPhysicsState, type RaftCollisionState } from './RaftVehicle/hooks/useRaftPhysicsState';
 import type { TippingState } from './RaftVehicle/constants';
 import { useRaftControls } from './RaftVehicle/hooks/useRaftControls';
+import { subscribeRaftCues } from './RaftVehicle/raftCues';
 import { computeShelfTrigger } from './utils/shelfLaunch';
 import { gameEvents } from '../systems/events/GameEvents';
 import { setDebugTap } from '../debug/debugTaps';
@@ -235,6 +236,9 @@ const RaftVehicle = forwardRef((props, forwardedRef) => {
     buoyancyState, tippingState, paddleState, staminaState, stunState,
     forwardBiasState, foamParticles, shedParticles, collisionState,
   } = physicsState;
+  // Sounds, shake and collision bursts from the step's cues (#556 A).
+  const collisionParticles = collisionState.current.particles;
+  useEffect(() => subscribeRaftCues(collisionParticles), [collisionParticles]);
 
   // Waterfall launch-shelf v2: cache segment-14 spawn point and one-shot flag.
   const shelfSpawnPointRef = useRef<{ x: number; y: number; z: number } | null>(null);

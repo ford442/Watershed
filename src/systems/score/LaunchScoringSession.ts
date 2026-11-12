@@ -2,22 +2,21 @@
  * LaunchScoringSession.ts — Runtime launch-session state for shelf air-time scoring.
  *
  * Air-time accumulates in physics-step time (world.timestep), not render frames.
- * Transient flight state lives in module scope; Zustand receives popups + final reward only.
+ * Transient flight state lives in module scope. The session is sim code — the
+ * vehicle steps call it — so it never touches the store or persistence
+ * (#556 A): it emits `launch-started` (the tier prediction popup) and
+ * `launch-scored` (a valid landing's reward), and `launchRewards.ts` applies
+ * them to the store and the run bests in the browser.
  */
 
-import { useGameStore } from '../GameState';
 import {
   calculateAirTimeScore,
   horizontalDistance,
   MIN_GAP_HORIZONTAL,
   predictLaunchTierLabel,
-  tierDisplayLabel,
   type Vec3,
 } from './scoreLaunch';
 import { VEHICLE_TUNING } from '../../constants/vehicleTuning';
-import { updateRunBest } from '../persistence/PersistenceSystem';
-import { persistGhostRecording } from '../ghost/GhostRecorder';
-import { getActiveRunKey } from '../../utils/runContext';
 import { gameEvents } from '../events/GameEvents';
 
 export type ContactSurface = 'terrain' | 'water' | 'airborne';
@@ -25,7 +24,6 @@ export type ContactSurface = 'terrain' | 'water' | 'airborne';
 const SLAB_ENTITY_ID = 'seg14-shelf';
 const LEFT_GROUND_DEBOUNCE_STEPS = 3;
 const LANDING_DEBOUNCE_STEPS = 2;
-const MAX_MULTIPLIER = 10;
 
 interface ActiveLaunch {
   sessionId: string;
@@ -41,8 +39,6 @@ interface ActiveLaunch {
 
 let activeLaunch: ActiveLaunch | null = null;
 let physicsStep = 0;
-let rewardIdCounter = 0;
-let popupIdCounter = 0;
 let shelfLaunchListenerAttached = false;
 
 export function bumpLaunchPhysicsStep(): number {
@@ -81,13 +77,8 @@ export function startLaunch(args: {
     wallContactDuringFlight: false,
   };
 
-  popupIdCounter += 1;
-  const label = predictLaunchTierLabel(
-    args.downstreamSpeed,
-    VEHICLE_TUNING.shelfLaunch.speedThreshold,
-  );
-  useGameStore.setState({
-    launchPopup: { label, id: popupIdCounter },
+  gameEvents.emit('launch-started', {
+    label: predictLaunchTierLabel(args.downstreamSpeed, VEHICLE_TUNING.shelfLaunch.speedThreshold),
   });
 }
 
@@ -121,36 +112,12 @@ function commitActiveLaunch(landPos: Vec3, landedInSplashWater: boolean): void {
 
   if (result.score <= 0) return;
 
-  const state = useGameStore.getState();
-  if (state.isWipeout) return;
-
-  const multiplier = result.comboDelta > 0
-    ? Math.min(MAX_MULTIPLIER, state.multiplier + result.comboDelta)
-    : state.multiplier;
-
-  const score = state.score + result.score * Math.max(1, state.multiplier);
-  const runKey = getActiveRunKey();
-  let highScore = state.highScore;
-  if (score > highScore) {
-    highScore = Math.floor(score);
-    updateRunBest(runKey, { bestScore: highScore });
-    persistGhostRecording(runKey);
-  }
-
-  updateRunBest(runKey, { bestAirTime: launch.pendingAirTime });
-
-  rewardIdCounter += 1;
-  useGameStore.setState({
-    score,
-    multiplier,
-    highScore,
-    latestReward: {
-      tier: result.tier,
-      score: result.score,
-      clean: result.clean,
-      id: rewardIdCounter,
-      label: tierDisplayLabel(result.tier),
-    },
+  gameEvents.emit('launch-scored', {
+    tier: result.tier,
+    score: result.score,
+    comboDelta: result.comboDelta,
+    clean: result.clean,
+    airTimeSec: launch.pendingAirTime,
   });
 }
 
