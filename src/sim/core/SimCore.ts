@@ -82,6 +82,19 @@ export interface SimWaterProbe {
   stageAt(x: number, z: number): number | null;
 }
 
+/**
+ * Where a system leaves a diagnostic for a harness (#556 A.1). The browser binds
+ * `debugTaps` (SimCoreTick); a headless run and a fresh core hold the no-op, so
+ * the step never imports `debug/` and builds no readout nobody reads.
+ */
+export interface SimDebugSink {
+  /** The runner's last physics step (the snapshot object is reused; keep no copy). */
+  physicsDebug(snapshot: unknown): void;
+}
+
+/** The sink of a run with nobody listening. */
+export const NO_DEBUG_SINK: SimDebugSink = { physicsDebug: () => undefined };
+
 export interface SimContext {
   /** The run's stream (reseeded on every run reset). Stable identity; draws are deterministic. */
   readonly rng: Rng;
@@ -105,6 +118,8 @@ export interface SimContext {
    * holds a plain one.
    */
   game: SimGamePort;
+  /** Diagnostics out (#556 A.1): the browser's debug taps, or nothing. */
+  debug: SimDebugSink;
 }
 
 export interface SimSystem {
@@ -161,6 +176,7 @@ export class SimCore {
       vehicle: createVehicleProbe(),
       water: createWaterProbe(),
       game: createPlainSimGame(),
+      debug: NO_DEBUG_SINK,
     };
   }
 
@@ -251,6 +267,7 @@ export class SimCore {
     Object.assign(this.ctx.vehicle, createVehicleProbe());
     Object.assign(this.ctx.water, createWaterProbe());
     this.ctx.game = createPlainSimGame();
+    this.ctx.debug = NO_DEBUG_SINK;
   }
 }
 

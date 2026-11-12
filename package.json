@@ -36,6 +36,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run --project unit",
     "test:perf": "vitest run --project perf",
+    "test:campaign": "vitest run --project campaign",
     "test:watch": "vitest --project unit",
     "test:visual-smoke": "node verification/visual_smoke.mjs",
     "test:visual-smoke:update": "UPDATE_BASELINES=1 node verification/visual_smoke.mjs",

@@ -1,5 +1,162 @@
 # Swarm state — atomic deploy + build identity (#416)
 
+## #556 B.3 — 2026-11-12 — green, PR open
+
+**Objective:** the `campaign` vitest project + `pnpm test:campaign` (landed with B.1: the tests need it to run at all) and its own CI job, the docs, and the save-state for what comes next.
+
+### Files changed
+| File | Change |
+|---|---|
+| `.github/workflows/build.yml` | job `Headless campaign`: checkout, pnpm, Node 22, `pnpm install --frozen-lockfile`, `pnpm test:campaign` (10 min cap; ~6 s of tests). No browser, no emsdk, no build |
+| `docs/reference/TESTING.md` | "Headless campaign" section: what it is, how the page's side is recorded, what it does not do |
+| `CLAUDE.md` | `pnpm test:campaign` in Quick Start and Testing; `src/sim/headless/` in the directory map |
+| `SYSTEMS.md` | (B.2) the harness paragraph |
+
+### Checks (final tree)
+typecheck (guards + knip), typecheck:test, lint `--max-warnings 0`, `pnpm test`, `pnpm test:perf`, `pnpm test:campaign` green; the build's file list and every chunk size equal B.1's (76 entries; hashes differ build to build by design), and the three browser smokes were re-run on the final build: input and gamepad splits 11400 / 15400 / 19500 / 23500 ms with all 38 per-second pose lines equal to base's, replay checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` for the recording and both replays.
+
+### Not done / BLOCKED
+- **A.2 for the raft** (the brief's RAFT RULE): the raft step stays a `useFrame`; the harness is runner-only.
+- **Phases C–E.** The harness runs a whole map (84 sim seconds of the meander in 4.4 s wall) but only the first 24 s are pinned to anything (the browser stops there).
+- **Components untouched** (off limits), so three things stay as copies in the harness and one stays a bug: TrackSegment's prop derivation (`segmentWorld.ts`), WaterForceSystem's / SplashSystem's frame (`headlessWater.ts`), VehicleTuner's frame (`vehicleTunerFrame.ts`); and the spare-slot bed bug (B.2, item 3). Suggested follow-ups, each small: (1) `TrackManager` renders spare slots with `active={false}` and no `segmentId`; `TrackSegment` / `useGeometries` should skip the bathymetry effect when `!active` (fixes the bug; the pin then fails: flip `pageQuirks.spareSlotsDropBedZero`, re-record); (2) move the three component bodies into plain modules the components call and the harness imports; (3) #554 A.2: VehicleTuner as a SimSystem, then delete `vehicleTunerFrame.ts`.
+- `CLOSURE_ALLOW` in `scripts/check-dependency-direction.mjs` still lists `InputHub -> zustand` (the ghost recorder reads the hub's latch); the issue's "ghost recorder gets the frame through ctx" is C's.
+- 13 files under `src/vehicles`, `src/systems`, `src/sim` still mention `useGameStore` (list in the A.1 section): none is in the guard's runtime closure from the SimCore entries, and the harness binds the same store they read.
+
+### Next — Phase C plan (pilots), not started
+1. `src/sim/headless/pilots/pilot.ts`: a pilot is a `HeadlessInput` (`{ source: InputSource, look() }`, what `stepHeadless` already takes) built over a `HeadlessRun`: it reads `run.body`, `getSegmentFrames()` (`systems/map/segmentFrames.ts`) and the store, and writes `moveX` / `moveY` / buttons per `poll`, plus the camera yaw through `look()` (the runner's movement is camera-relative; the script's `headingYaw` is the hook).
+2. `centreline`: pure pursuit on a lookahead point of the current segment frame's sampled centreline (`FRAME_SAMPLES` = 32 per segment) at a target speed (sprint on `RB` / stamina). `riskyLine`: the same on wall-ride, vortex and `openFloor` tags — needs placement colliders (below). `ghost`: `scriptedHeadlessInput(replayPlanFromFile(file).script)`, which is `replay.ts`'s conversion already.
+3. `runUntil(run, pilot, { maxFrames, until })` in 60-frame batches, stopping on `run.finish` or `isWipeout`. A run with the script alone ends in a wipeout in segment 18 (B.2): that is the first thing a centreline pilot must fix, and the first acceptance test (every map finishable).
+4. Pilots that touch things need them mounted: `terrain/placement.ts` already builds each segment's props as one buffer (`buildSegmentPlacements`); mount the colliders of the categories that have one (rocks, pillars, trestle) in `segmentWorld.ts`, behind an option so the B pin (which touches none) is unchanged.
+5. The raft pilot needs the raft step on SimCore first (A follow-up).
+6. D's `RunReport` reads what is already there: splits + checksums (`SplitRecorder`), stamina / wetness / chill per step (`ctx.game` and `getActiveSurvivalState()`), the hazard log (`getRecordedHazardLog`), flow at the vehicle (`run.water.lastFlow`). Its header must carry the page quirks the run used.
+
+---
+
+## #556 B.2 — 2026-11-12 — green, committed
+
+**Objective:** `stepHeadless(run, frames, input)` = `stepScripted`'s frame without R3F, and the pin that makes a headless run the page's run (#556 B.2).
+
+### The frame (`src/sim/headless/stepHeadless.ts`)
+−100 hub tick + the script's camera look · −90 `sampleSimContext` + one fixed `simCore` step (scripted mode) · priority 0 in the page's mount order: the runner's camera follow, the water (`sweHostFrame` + forces, then the splash disturbances), VehicleTuner's frame, `ChunkManager.update` on the followed camera, the lifecycle's HUD mirror and OOB check. R3F's clock is reproduced: timestamp `simTimeSec + 1e-6`, delta = consecutive timestamps, `elapsedTime` = timestamp (the SWE step's dt and the force turbulence read them). `commitEvery` (default 1) says when React would have committed treadmill mounts / erosion remeshes; the browser smokes step 60 frames per task, so they commit every 60.
+
+### The pin (`headless.campaign.test.ts`, 5 tests, ~4 s) — `===`, no tolerance
+- **The committed ghost** (`verification/fixtures/headless/meander_run.wsghost`, what `pnpm test:replay-smoke` records) replayed headless through `replayPlanFromFile`: splits seg 0..3 at 11400 / 15400 / 19500 / 23500 ms and SWE checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` = the smoke's.
+- **The scripted meander frame by frame** against `verification/fixtures/headless/meander_trace.json` (recorded by the new `verification/headless_trace.mjs`, 150 rows, every 10th frame to 1500): the runner's position, speed, segment, and the water's flow at it (window origin, sampled speed, stage), then splits and checksums. While building the harness the first 700 frames were also compared every frame: positions bit-exact, flow identical.
+- The **600-frame mark** is the 10 s row of that trace. The brief asked for "a 600-frame headless run reproduces the browser replay's SWE checksums and splits exactly"; no split lands inside 600 frames (the first, segment 0, is at 11.4 s = frame 684: the runner starts in the lead-in at segment −3 and the first `segment-enter` is segment 0), so the splits and checksums are pinned over the whole 24 s run and the 600-frame mark by pose + flow.
+- Same numbers with `commitEvery` 1 and 60; a second run in the same process reads the same numbers; and what the run reads without the page quirk below.
+
+### What it took to match (things the page does that are not in the files the brief named)
+1. **`VehicleTuner` shapes the runner.** TrackManager mounts it with `raftRef={vehicleRef}`, so on the page the runner's water damping lerps to `linearDampingWater` (2.2), a wall ray applies friction, a speed cap clamps — every frame, from a component, outside SimCore. Without it the runner is at 32 m/s at t=1 s instead of 22 (`vehicleTunerFrame.ts` is a copy; #554 A.2's decision should be: register it as a SimSystem, then delete the copy).
+2. **The forecast is baked into the pool.** The 24 h forecast from the launch hour floods segments 0..6 at hour 6 (`typeOverride: 'pond'`, wider water, a pond floor box under each): the harness builds the treadmill with it, as TrackManager does.
+3. **A page bug: no SWE bed under segment 0.** The pool renders 10 `TrackSegment` slots for 7 live segments; the 3 spare ones get no `segmentId`, TrackSegment defaults it to 0, and their `useGeometries` effect (no meshes → no bed) runs `unregisterSegmentBathymetry(0)`. Segment 0's hull still collides, but the SWE sees no floor there, on a fresh pool, in every run. Found because the headless checksums matched at segments 2 and 3 and not at 0 and 1; flow at the runner matched for 679 frames and diverged exactly where segment 0 starts; omitting only segment 0's bed reproduced all four checksums. Reproduced on purpose (`pageQuirks.spareSlotsDropBedZero`, default on); the test shows the run without it (`65fcb57e 118b1329 6280ddeb a4da233b`). Fix is in `components/` (off limits here): pass a segment id only for live slots, or skip the effect when `active` is false. The pin fails the day the page is fixed; flip the quirk's default, re-record (`verification/headless_trace.mjs`, `pnpm test:replay-smoke`).
+4. The SWE disturbance order matters (splash after the water frame, as mounted); the first R3F delta is `dt + 1e-6`; the segment-flow module default is 1 on a first run (`resetRunSession` only runs on a restart).
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/headless/stepHeadless.ts`, `headless.campaign.test.ts` | new |
+| `verification/fixtures/headless/{meander_trace.json,meander_run.wsghost}`, `verification/headless_trace.mjs` | the browser's side of the pin and the script that records it |
+| `scripts/strict-buffers.json` | + stepHeadless |
+| `SYSTEMS.md` | "The headless harness" in the sim-core section; the `ctx.game` paragraph says the harness uses the store |
+
+### Checks
+| Check | Result |
+|---|---|
+| typecheck / typecheck:test / lint `--max-warnings 0` | green |
+| test:campaign | 10 passed (5 structure + 5 pin), ~6 s wall |
+| bundle | no app file changed since B.1: the build's 76-entry file list and every size equal B.1's (hashes differ build to build: `BUILD_IDENTITY` carries a timestamp and a random byte); the three smokes re-run on this final build too |
+
+### Measured, for the C plan
+The keyboard script (hold forward, never steer) through the whole meander headless: segment 17 at 80 s of sim time on `x = 0.0`, then out of bounds in segment 18 at 84 s (`isWipeout`, runner at `(352.8, -768, -1375)`; cause not investigated); 84 sim seconds take 4.4 s of wall time. So a script does not finish the map, and a `centreline` pilot is what will.
+
+### Not done / BLOCKED
+- Pin covers the first 24 s of one map (the browser cannot go further in SwiftShader today: #556's premise). The rest of the harness runs (the meander to segment 18 above) but is not pinned against anything.
+- Obstacles / pillars / decorations are not mounted; the raft is not on the harness.
+
+### Next
+B.3: the CI job and the docs.
+
+---
+
+## #556 B.1 — 2026-11-12 — green, committed
+
+**Objective:** `src/sim/headless/createHeadlessRun.ts`: SimCore + a Rapier world + the shipped WASM field + the router + the chunk treadmill + the page's systems list, with no three scene and no React (#556 B.1). Not stepped yet (that is B.2); this commit is what a run is built of, plus the guards that keep it out of the app.
+
+### What a headless run is built of (and where it stands in for a component)
+| Page | Headless (`src/sim/headless/`) |
+|---|---|
+| `<Physics gravity=[0,-20,0]>` + `RapierSimStep` | `@dimforge/rapier3d-compat` world with the library's defaults; `createRapierWorldSimSystem` steps it (92) |
+| `RunnerVehicle` body / capsule | `createPlayerBody` (dynamic, damping .35 / .9, capsule .4 / .5, friction .04, restitution .15); `createRunnerSimSystem` (95) |
+| `TrackManager` + `ChunkManager` | the same `ChunkManager` / `ProceduralMapManager`, callbacks as TrackManager's (segment entry, journey end, forecast) |
+| `TrackSegment` / `useGeometries` / `TrackSegmentCollisionMeshes` | `segmentWorld.ts`: `buildSegmentMeshBuffers`, fixed trimesh body per hull, `registerSegmentBathymetry`, `registerSegmentErosion`, the pond floor box |
+| `WaterForceSystem` + `SplashSystem` | `headlessWater.ts`: `sweHostFrame` + `applyWaterForces` (their plain modules) and SplashSystem's SWE-disturbance gates |
+| `VehicleTuner` (mounted for the runner too) | `vehicleTunerFrame.ts` (copy: water damping, wall ray, speed cap) |
+| `SimCoreTick`'s sample | `experience/simContextSample.ts`, moved out of SimCoreTick unchanged and shared |
+| watershed_native.wasm | `nativeNode.ts`: `fs` bytes as `wasmBinary` through the browser's own loader (stamp + ABI checked); the glue's `ENVIRONMENT` untouched — no worker-like global was needed |
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/headless/{nativeNode,segmentWorld,headlessWater,vehicleTunerFrame,createHeadlessRun}.ts` (+ `createHeadlessRun.campaign.test.ts`) | new |
+| `src/experience/simContextSample.ts`, `SimCoreTick.tsx` | the sample leaves SimCoreTick (scratch argument object, no per-frame allocation) |
+| `src/experience/simSystems.ts`, `scoreSimSystem.ts` | systems take `SimDebugStages` (`isStageEnabled` / `setStageFailure`), not the whole stage controller |
+| `scripts/check-dependency-direction.mjs` | `src/sim/headless/` is a composition root (may import any layer, exempt from the sim rules) and **nothing but tests may import it** (checked against every edge kind; a component importing it fails) |
+| `scripts/check-orphans.mjs`, `tsconfig.json`, `eslint.config.js` | headless is Node-only: skipped by the orphan walk, excluded from the app tsconfig (typechecked by `tsconfig.test.json`), outside the type-aware lint block. The sim-time ESLint ban already covers `src/sim/**`, headless included |
+| `src/sim/singleNativeInstance.test.ts` | does not scan `src/sim/headless` (it loads the pair through the one loader, as the page's two owners do) |
+| `vitest.config.ts`, `package.json` | `campaign` project (`src/**/*.campaign.test.ts`, environment `node`, no DOM setup) excluded from `unit`; `pnpm test:campaign` |
+| `scripts/strict-buffers.json` | the five headless files opted in (clean under `noUncheckedIndexedAccess`) |
+| `build-budget.json` | entry 757,000 → 758,000 B, boot 2,096,000 → 2,097,000 B: main 756,709 → 757,017 B (+0.3 kB, A.1's sink ~150 B + the shared sample ~170 B); reason in both notes |
+
+### Checks (ruler = base `9bce4a0`)
+| Check | Base | This step |
+|---|---|---|
+| typecheck (guards + knip) / typecheck:test / lint `--max-warnings 0` | green | green |
+| test / test:perf / test:campaign | not run on base / n/a / n/a | 2348 passed + 32 skipped / 4 passed / 5 passed |
+| input-smoke, gamepad, replay-smoke | splits 11400 / 15400 / 19500 / 23500; replay checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` | identical: splits 11400 / 15400 / 19500 / 23500 ms, replay checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` (recording and both replays), all 38 per-second pose / speed lines of the two input smokes equal base's |
+| build: entry / boot JS | 756,709 B / 2,095,873 B | 757,017 B / 2,096,181 B (ceilings raised, see above) |
+
+### Not done / BLOCKED
+- Stepping (`stepHeadless`) and the pin against the browser: B.2.
+- Decorations, pooled obstacles, pillars and their colliders are not mounted headless (a pilot that drives into a rock will not collide); water meshes, particles and audio are not either.
+- `segmentWorld.ts`, `headlessWater.ts` and `vehicleTunerFrame.ts` are **copies of component bodies** (TrackSegment's prop derivation, WaterForceSystem / SplashSystem's frame, VehicleTuner's frame). Components are off limits here; the pin (B.2) is what catches drift. Follow-up: have the components call the extracted functions.
+
+### Next
+B.2: `stepHeadless` and the pin against the browser's splits and SWE checksums.
+
+---
+
+## #556 A.1 (remainder) — 2026-11-12 — green, committed
+
+**Objective:** #556 Phases A + B ("the campaign without a browser"). The brief was written before PR #565 merged; **A.1–A.3 were already on `main`** (`a6cfb0a` / `08b1671` / `5d3e299`): vehicle cues as `gameEvents`, the runner step as SimCore's `vehicle-runner` system (95) beside `physics-world` (92), `ctx.game` (`SimGameView`), and the dependency guard with its runtime-closure check. This step is the one piece of A.1 still open on the base: `RunnerPhysicsStep` still imported `debug/debugTaps`.
+
+### Base / ruler
+Branched from `main` `9bce4a0` (after #560 and #565; `git log origin/main` has "#554 foundation" and "#556 A"). Measured before the first edit (`pnpm build`, `pnpm preview`, three smokes): input and gamepad splits seg 0 11400 / seg 1 15400 / seg 2 19500 / seg 3 23500 ms (speed 18.94 / 19.00 / 19.00 / 19.00), per-second poses (keyboard t=24 s `(0.0, -201.5, -464.2)`, gamepad `(0.0, -188.3, -464.2)`), replay SWE checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` for the recording and both replays. = the brief's numbers.
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/core/SimCore.ts` (+test) | `SimContext.debug: SimDebugSink` (`physicsDebug(snapshot)`), default `NO_DEBUG_SINK`; `resetForTests` restores it |
+| `src/vehicles/RunnerVehicle/hooks/RunnerPhysicsStep.ts` | no `debug/debugTaps` import: the two snapshot publishes go through `args.debug` |
+| `src/vehicles/RunnerVehicle/runnerSimSystem.ts` | passes `ctx.debug` into the step |
+| `src/experience/simGameBinding.ts`, `SimCoreTick.tsx` | `tapSimDebug` binds the sink to `setDebugTap('physicsDebug', …)` in the browser |
+| `RunnerPhysicsStep.test.ts`, `runnerStep.alloc.perf.test.ts` | pass `NO_DEBUG_SINK` |
+
+### Checks (ruler = base)
+| Check | Base | This step |
+|---|---|---|
+| typecheck / typecheck:test / lint (0 warnings) | green | green |
+| test / test:perf | not run on the untouched base | 2348 passed + 32 skipped / 4 passed |
+| input-smoke, gamepad, replay-smoke | splits + poses + checksums above | identical |
+
+### Not done / BLOCKED
+- Raft step stays as is (brief's RAFT RULE; #565 already moved its side effects to `raft-*` cues).
+- 13 non-test files under `src/vehicles`, `src/systems`, `src/sim` mention `useGameStore` (`RunnerVehicle.tsx`, `raftPhysicsRuntime`, `useRaftControls`, `persistenceBootstrap`, `BiomeSystem`, `LODManager`, `SplitRecorder`, `WeatherDirectorTick`, `sweHost`, `ScoreSystem`, `launchRewards`, `GameState` itself, and a comment in `simGame`). The brief said 17, the issue 14: #565 moved the runner step, the weather, sky, profile and score reads onto `ctx.game`. None is in the guard's runtime closure from the SimCore entries; the ones a headless run needs are listed in the B.1 section.
+
+### Next
+B.1 `createHeadlessRun`.
+
+---
+
 ## #534 Phase E — 2026-11-05 — PR open — GLSL post chain on three's `renderer.setEffects`
 
 **Objective:** Replace the GLSL `EffectComposer` with three r185's own HDR output (`outputBufferType: HalfFloatType` + `renderer.setEffects`), keep the #519 carry-overs fixed in the rebuilt chain, and fold in the High → Medium frame-time trace (#534 acceptance 2, #519 C).

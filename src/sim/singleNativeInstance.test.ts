@@ -5,6 +5,8 @@
  * lives on the main thread (`wasm-main`). Static, over every non-test module
  * under src/: a regression that re-adds a loader to a particle system, the
  * chores, or the HUD — a second instance per WebGL session — fails here.
+ * Not scanned: src/testing and src/sim/headless, the Node-only harnesses (#556 B),
+ * which are no session: the headless one loads the pair through the same loader.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -18,7 +20,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) {
-      if (name !== '__mocks__' && name !== 'testing') sourceFiles(path, out);
+      if (name !== '__mocks__' && name !== 'testing' && path !== join(srcDir, 'sim', 'headless')) sourceFiles(path, out);
     } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) && !name.endsWith('.d.ts')) {
       out.push(path);
     }

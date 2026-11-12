@@ -11,6 +11,7 @@ pnpm install       # pnpm only — a preinstall guard refuses npm/yarn (pnpm-loc
 pnpm start         # dev server on port 3000 (Vite)
 pnpm test          # unit tests (Vitest + Testing Library) — behaviour only
 pnpm test:perf     # wall-time / heap budgets (*.perf.test.ts), its own CI step
+pnpm test:campaign # whole runs through SimCore in Node, no browser (src/sim/headless, #556 B), its own CI job
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
 pnpm typecheck     # tsc --noEmit + the strict-buffers ratchet + the layout/dependency-direction/GLSL/typecheck-surface/orphan guards + knip (unused files / exports / deps)
 pnpm typecheck:test  # tsc over the tests too (tsconfig.test.json; tsconfig.json has no vitest globals)
@@ -121,7 +122,8 @@ src/
 ├── rendering/                   # createRenderer, gpuChores, WireframeDebug, rendererConfig
 ├── physics/                     # Rapier worker proxy, collider registry (worker world = streamed level)
 ├── sim/                         # Sim worker (#455): SWE step, river router, water forces — proxy, protocol, SimFrame, hull link
-│   └── core/SimCore.ts          # ★ The one fixed-step gameplay clock + system registry (#521 A); ticked by experience/SimCoreTick
+│   ├── core/SimCore.ts          # ★ The one fixed-step gameplay clock + system registry (#521 A); ticked by experience/SimCoreTick
+│   └── headless/                # ★ Node-only campaign harness (#556 B): createHeadlessRun + stepHeadless run SimCore, Rapier, the shipped WASM and the treadmill with no browser; only tests import it
 ├── assets/                      # Authored packs (#536): packManifest (validator), AssetPack (loadPack), AssetRegistry (prop → pack), useAssetInstance
 ├── math/                        # scalar.ts (clamp/lerp/smoothstep), hash.ts (sinHash), random.ts (createRng: the one PRNG)
 ├── terrain/terrainTile.ts       # Canyon floor as a tile of planes — the one canyon-profile source (#487; TS-only since ABI 16)
@@ -304,6 +306,7 @@ With the above in place:
 ```bash
 pnpm test                         # unit tests (Vitest), behaviour only
 pnpm test:perf                    # wall-time / heap budgets, retried (*.perf.test.ts)
+pnpm test:campaign                # headless runs in Node (SimCore + Rapier + the shipped WASM) pinned to the browser's splits / SWE checksums (*.campaign.test.ts)
 pnpm lint                         # ESLint — CI runs it with --max-warnings 0: no errors, no warnings
 pnpm typecheck                    # tsc + repo layout guards + knip
 pnpm typecheck:test               # tsc over test files (tsconfig.test.json)

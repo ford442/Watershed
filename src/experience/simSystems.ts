@@ -16,7 +16,10 @@ import { createPillarSimSystem } from '../components/Obstacles/pillarSimSystem';
 import { createHazardSimSystem } from '../systems/hazards/hazardSimSystem';
 import { createScoreSimSystem } from './scoreSimSystem';
 
-export function createSimSystems(debug: DebugStageController): SimSystem[] {
+/** What the systems ask of the debug stages: whether `stateManagement` runs, and where a failure goes. */
+export type SimDebugStages = Pick<DebugStageController, 'isStageEnabled' | 'setStageFailure'>;
+
+export function createSimSystems(debug: SimDebugStages): SimSystem[] {
   return [
     createWeatherSimSystem(),
     createSkySimSystem(),

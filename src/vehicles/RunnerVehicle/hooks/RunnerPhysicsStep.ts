@@ -49,6 +49,7 @@ import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../../../constants
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { isFloatingPlatform } from '../../../systems/pools/FloatingObjectRegistry';
 import type { SimGamePort } from '../../../sim/core/simGame';
+import type { SimDebugSink } from '../../../sim/core/SimCore';
 import { RUNNER_CONTACT_FRICTION } from '../../../systems/vehicle/VehicleSystem';
 import { SMOOTHING_FACTOR, DEG_TO_RAD, BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import {
@@ -67,7 +68,6 @@ import {
   resetImpulseTally,
   type RunnerStepScratch,
 } from './runnerStepScratch';
-import { setDebugTap } from '../../../debug/debugTaps';
 import { getSegmentFlowSpeed } from '../../../systems/water/segmentFlow';
 
 type Vec3 = { x: number; y: number; z: number };
@@ -76,6 +76,8 @@ export interface RunnerPhysicsStepArgs {
   delta: number;
   /** The run's state (ctx.game): stamina, segment, spawn points, wipeout latch. */
   game: SimGamePort;
+  /** Where the debug snapshot goes (ctx.debug): the browser's taps, or nothing. */
+  debug: SimDebugSink;
   world: RapierWorld;
   body: RapierBody;
   rapier: RapierNamespace;
@@ -735,7 +737,7 @@ function writeTelemetry(f: StepFrame): void {
   snapshot.recentContacts = debug.recentContacts;
 
   f.userData.physicsDebug = snapshot;
-  setDebugTap('physicsDebug', snapshot);
+  f.args.debug.physicsDebug(snapshot);
 }
 
 function setVec(out: Vec3, x: number, y: number, z: number): void {
@@ -751,7 +753,7 @@ function publishSnapshotPose(f: StepFrame, px: number, py: number, pz: number, v
   setVec(snapshot.position, px, py, pz);
   setVec(snapshot.linearVelocity, vx, vy, vz);
   snapshot.currentSegmentIndex = f.args.game.state().currentSegmentIndex;
-  setDebugTap('physicsDebug', snapshot);
+  f.args.debug.physicsDebug(snapshot);
 }
 
 // The helpers' argument objects, reused: rewritten field by field each step

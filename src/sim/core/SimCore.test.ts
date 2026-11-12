@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { SIM_DT, SIM_MAX_SUBSTEPS, SIM_RNG_SEED, SimCore, type SimSystem } from './SimCore';
+import { NO_DEBUG_SINK, SIM_DT, SIM_MAX_SUBSTEPS, SIM_RNG_SEED, SimCore, type SimSystem } from './SimCore';
 import { createRng } from '../../math/random';
 
 function recorder(id: string, order: number, log: string[]): SimSystem {
@@ -145,5 +145,19 @@ describe('SimContext rng', () => {
     const a = createRng(42);
     expect(rng()).toBe(a());
     expect(core.getSeed()).toBe(42);
+  });
+});
+
+describe('SimCore debug sink (#556 A.1)', () => {
+  it('holds the silent sink until a host binds one, and resetForTests restores it', () => {
+    const core = new SimCore();
+    expect(core.ctx.debug).toBe(NO_DEBUG_SINK);
+    const seen: unknown[] = [];
+    core.ctx.debug = { physicsDebug: (snapshot) => void seen.push(snapshot) };
+    core.ctx.debug.physicsDebug({ a: 1 });
+    expect(seen).toEqual([{ a: 1 }]);
+    core.resetForTests();
+    expect(core.ctx.debug).toBe(NO_DEBUG_SINK);
+    expect(() => core.ctx.debug.physicsDebug({})).not.toThrow();
   });
 });
