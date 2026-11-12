@@ -3,9 +3,15 @@
  *
  * Applies real-time physics tuning to the player vehicle rigid body.
  * - Momentum & damping adjustments based on water proximity
- * - Controlled drifting that scales with segment flowSpeed
+ * - Controlled drifting (lateral slide + pivot torque)
  * - Wall friction / wall riding with raycast detection
  * - Boost mechanic with cooldown, audio, and visual event dispatch
+ *
+ * It reads no segment flow (#535 / #554 A): the segment sample it used to take was
+ * guarded on a `SegmentData.active` field that does not exist, so it never ran — drift
+ * always used the neutral flowSpeed 1, and the rapids lateral-retention and
+ * flow auto-align branches were unreachable. Those were removed as dead code
+ * (bit-identical); flow-dependent raft handling belongs in `GameplayProfile`.
  *
  * Designed to operate inside <Physics> with access to the Rapier world.
  */
@@ -18,16 +24,11 @@ import { useRef, useEffect, useMemo } from 'react';
 import { VEHICLE_TUNING } from '../constants/vehicleTuning';
 import { getAudioManager, AudioManager } from '../systems/audio/AudioSystem';
 import { WATER_LEVEL } from '../constants/game';
-import { createSegmentFlowSample, sampleSegmentFlow, type SegmentFlowSample } from '../utils/segmentSampler';
 import { gameEvents } from '../systems/events/GameEvents';
 import type { VehicleRigidBodyRef } from '../experience/types';
 import type { RapierRigidBody } from '@react-three/rapier';
-import type { SegmentData } from '../systems/map/ChunkManager';
 
 const tmpPos = new THREE.Vector3();
-/** Two reusable samples (#502 D): the closest so far and the one being taken. */
-let sampleBest = createSegmentFlowSample();
-let sampleScratch = createSegmentFlowSample();
 const tmpVel = new THREE.Vector3();
 const tmpForward = new THREE.Vector3();
 const tmpRight = new THREE.Vector3();
@@ -36,17 +37,19 @@ const tmpRayDir = new THREE.Vector3();
 const tmpBoostDir = new THREE.Vector3();
 /** Short-lived products (an impulse, an offset) read right after they are written (#521 F). */
 const tmpScratch = new THREE.Vector3();
-const tmpFlatVel = new THREE.Vector3();
-const tmpCross = new THREE.Vector3();
+
+/**
+ * The neutral segment flowSpeed drift scales with. The segment sample that would have
+ * varied it never ran (see the header), so this is the value every run has used.
+ */
+const NEUTRAL_FLOW_SPEED = 1;
 
 interface VehicleTunerProps {
   /** Ref to the vehicle RigidBody */
   targetRef: React.RefObject<VehicleRigidBodyRef | null>;
-  /** Active segments from TrackManager (to sample flowSpeed + type) */
-  segments?: readonly SegmentData[];
 }
 
-export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerProps) {
+export default function VehicleTuner({ targetRef }: VehicleTunerProps) {
   const { world, rapier } = useRapier();
   // A Rapier Ray only holds its origin / dir objects; castRay reads them at call
   // time, so one Ray over the scratch vectors serves every wall probe.
@@ -112,30 +115,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     tmpVel.set(vel.x, vel.y, vel.z);
 
     // ========================================================================
-    // 1. Sample current segment for flow data
-    // ========================================================================
-    let closestSample: SegmentFlowSample | null = null;
-    let closestDist = Infinity;
-
-    for (const seg of segments) {
-      // FIXME(#535): SegmentData has no `active` field, so this guard skips every segment and
-      // the loop below has never run. The `any` it was typed as hid that; kept as-is here so
-      // the input / replay smokes stay identical — enabling it is a gameplay change of its own.
-      if (!('active' in seg) || !seg.active || !seg.segmentPath) continue;
-      const sample = sampleSegmentFlow(seg, tmpPos, sampleScratch);
-      if (sample && sample.distance < closestDist) {
-        closestDist = sample.distance;
-        // Keep the winner; the next segment samples into the other buffer.
-        [sampleBest, sampleScratch] = [sampleScratch, sampleBest];
-        closestSample = sampleBest;
-      }
-    }
-
-    const flowSpeed = closestSample?.flowSpeed ?? 1;
-    const inRapids = flowSpeed > 1.3;
-
-    // ========================================================================
-    // 2. Momentum & Damping (water feel)
+    // 1. Momentum & Damping (water feel)
     // ========================================================================
     const inWater = pos.y < WATER_LEVEL + VEHICLE_TUNING.waterLevelThreshold;
     const targetLinear = inWater
@@ -163,7 +143,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     body.setAngularDamping(appliedAngularDamping);
 
     // ========================================================================
-    // 3. Drifting (lateral slide + pivot torque)
+    // 2. Drifting (lateral slide + pivot torque)
     // ========================================================================
     const speed = Math.sqrt(tmpVel.x * tmpVel.x + tmpVel.z * tmpVel.z);
     const { leftward, rightward } = getKeys();
@@ -171,7 +151,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
 
     if (inWater && speed > VEHICLE_TUNING.driftMinSpeed && turning) {
       const driftIntensity =
-        VEHICLE_TUNING.driftFactor + flowSpeed * VEHICLE_TUNING.driftFlowScale;
+        VEHICLE_TUNING.driftFactor + NEUTRAL_FLOW_SPEED * VEHICLE_TUNING.driftFlowScale;
 
       const rot = body.rotation();
       tmpForward.set(0, 0, -1).applyQuaternion(rot).normalize();
@@ -198,21 +178,10 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
         true
       );
 
-      // In rapids, exaggerate lateral velocity retention
-      if (inRapids) {
-        const lateralVel = tmpRight.dot(tmpVel);
-        const retained = tmpScratch
-          .copy(tmpRight)
-          .multiplyScalar(lateralVel * (1 - VEHICLE_TUNING.driftLateralRetention) * delta * 2);
-        body.applyImpulse(
-          { x: retained.x, y: 0, z: retained.z },
-          true
-        );
-      }
     }
 
     // ========================================================================
-    // 4. Wall Friction / Wall Riding
+    // 3. Wall Friction / Wall Riding
     // ========================================================================
     const rot = body.rotation();
     tmpRight.set(1, 0, 0).applyQuaternion(rot).normalize();
@@ -285,7 +254,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     }
 
     // ========================================================================
-    // 5. Boost Force
+    // 4. Boost Force
     // ========================================================================
     if (boostState.current.active > 0) {
       const boostDir =
@@ -299,21 +268,7 @@ export default function VehicleTuner({ targetRef, segments = [] }: VehicleTunerP
     }
 
     // ========================================================================
-    // 6. Auto-alignment to flow direction (optional, high speed only)
-    // ========================================================================
-    if (VEHICLE_TUNING.autoAlignToFlow && inWater && closestSample && speed > 8) {
-      const flowDir = closestSample.tangent;
-      const flatVel = tmpFlatVel.set(vel.x, 0, vel.z).normalize();
-      const alignment = flatVel.dot(flowDir);
-      if (alignment < 0.95) {
-        const cross = tmpCross.crossVectors(flatVel, flowDir);
-        const torqueY = cross.y * VEHICLE_TUNING.autoAlignTorque * delta * (speed / 10);
-        body.applyTorqueImpulse({ x: 0, y: torqueY, z: 0 }, true);
-      }
-    }
-
-    // ========================================================================
-    // 7. Hard speed cap
+    // 5. Hard speed cap
     // ========================================================================
     const currentSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
     if (currentSpeed > VEHICLE_TUNING.maxSpeedCap) {

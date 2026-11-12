@@ -12,10 +12,9 @@ import type { WeatherType } from '../../constants/weather';
 import type { LevelSegment, LevelSpawns, LevelWorld } from '../map/MapSystem.types';
 import { formatValidationErrors } from '../../utils/validationReport';
 import { REACH_API_BASE } from '../../constants/game';
-import { AssetCache, type FlowMapData } from './reachAssetCache';
+import { AssetCache } from './reachAssetCache';
 
 export { AssetCache };
-export type { FlowMapData };
 
 // =============================================================================
 // Types
@@ -297,30 +296,6 @@ async function preloadShader(reachId: string, url: string): Promise<string> {
   return source;
 }
 
-function extractPngFlowMapData(texture: THREE.Texture): FlowMapData {
-  const image = texture.image as HTMLImageElement;
-  const width = image.width || 256;
-  const height = image.height || 256;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(image, 0, 0);
-  const imageData = ctx.getImageData(0, 0, width, height);
-
-  // Store RG channels as normalized float vectors [-1, 1]
-  const data = new Float32Array(width * height * 2);
-  for (let i = 0; i < width * height; i++) {
-    const r = imageData.data[i * 4] / 255;
-    const g = imageData.data[i * 4 + 1] / 255;
-    data[i * 2] = r * 2 - 1;
-    data[i * 2 + 1] = g * 2 - 1;
-  }
-
-  return { data, width, height };
-}
-
 async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.Texture | THREE.DataTexture> {
   const fullUrl = resolveAssetUrl(reachId, asset.url);
 
@@ -336,12 +311,6 @@ async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.T
         fullUrl,
         (texture) => {
           AssetCache.flowMaps.set(fullUrl, texture);
-          try {
-            const flowData = extractPngFlowMapData(texture);
-            AssetCache.flowMapData.set(fullUrl, flowData);
-          } catch (err) {
-            console.warn(`[ReachStreamer] Failed to extract CPU flowMap data for ${fullUrl}:`, err);
-          }
           resolve(texture);
         },
         undefined,
@@ -373,14 +342,6 @@ async function preloadFlowMap(reachId: string, asset: AssetRef): Promise<THREE.T
     const arrayBuffer = await response.arrayBuffer();
     data = new Float32Array(arrayBuffer);
   }
-
-  // For CPU sampling, extract RG from RGBA DataTexture
-  const cpuData = new Float32Array(width * height * 2);
-  for (let i = 0; i < width * height; i++) {
-    cpuData[i * 2] = data[i * 4];
-    cpuData[i * 2 + 1] = data[i * 4 + 1];
-  }
-  AssetCache.flowMapData.set(fullUrl, { data: cpuData, width, height });
 
   const dataTexture = new THREE.DataTexture(
     data,
@@ -587,7 +548,6 @@ export const ReachStreamer = {
         flow.dispose();
         AssetCache.flowMaps.delete(fullUrl);
       }
-      AssetCache.flowMapData.delete(fullUrl);
     }
 
     // Remove manifest

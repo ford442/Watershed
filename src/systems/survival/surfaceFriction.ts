@@ -6,10 +6,11 @@
  *   - **Rapier contact friction (this module)** owns *solid contact*: the runner's
  *     feet on the canyon floor, hull scrapes along the walls. It is what makes an
  *     ice chute feel like ice when you touch it.
- *   - **`WaterFlowForces`** owns *water-borne lateral drag*: how hard the current
- *     resists a sideways move while you are floating. It applies its own
- *     `slipperiness` attenuation (lateral drag × (1 − slip × 0.8) plus a downstream
- *     slide bias).
+ *   - **The SWE water force** (`WaterForceSystem` → `calculateWaterForce`) owns
+ *     *water-borne drag*: how hard the current resists a sideways move while you are
+ *     floating. It does not read `slipperiness` today. (The segment-spline
+ *     `WaterFlowForces` that once claimed this, with a `slipperiness` attenuation, never
+ *     ran and was deleted in #554 A; a fluid-side ice term belongs in `GameplayProfile`.)
  *
  * They act on disjoint interactions — contact vs fluid — so both may read the same
  * `slipperiness` without stacking. What must NOT happen is a second contact-friction

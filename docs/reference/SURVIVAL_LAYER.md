@@ -133,7 +133,7 @@ mesh, not just water drag. Ownership, which must not be double-counted:
 | System | Owns | Reads slipperiness? |
 |--------|------|---------------------|
 | `surfaceFriction.ts` → `TrackSegmentMeshes` | Solid contact (feet on floor, hull on wall) | Yes |
-| `WaterFlowForces` | Water-borne lateral drag + downstream slide bias | Yes |
+| SWE water force (`WaterForceSystem` → `calculateWaterForce`) | Water-borne drag | No (the segment-spline `WaterFlowForces` that read it never ran; deleted in #554 A) |
 
 They act on disjoint interactions (contact vs fluid), so both may read the same value.
 What must not happen is a second contact-friction scaler elsewhere, or a fluid-drag

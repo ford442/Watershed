@@ -78,14 +78,11 @@ export const VEHICLE_TUNING = {
   /** Base lateral force multiplier during drift (0 = no drift, 1 = very slippery) */
   driftFactor: 0.55,
 
-  /** Additional drift intensity per unit of segment flowSpeed */
+  /** Additional drift intensity per unit of segment flowSpeed (VehicleTuner reads the neutral flowSpeed 1) */
   driftFlowScale: 0.18,
 
   /** Torque assist (yaw) applied while drifting */
   driftTorqueScale: 2.0,
-
-  /** Lateral velocity preserved during drift (higher = more slide) */
-  driftLateralRetention: 0.92,
 
   // ===========================================================================
   // 3. Wall Friction / Wall Riding
@@ -145,12 +142,6 @@ export const VEHICLE_TUNING = {
   // ===========================================================================
   /** Hard linear velocity cap to prevent physics explosions */
   maxSpeedCap: 32.0,
-
-  /** If true, applies a small downstream-alignment force at high speed */
-  autoAlignToFlow: true,
-
-  /** Strength of the auto-alignment torque */
-  autoAlignTorque: 1.2,
 
   // ===========================================================================
   // 6. Waterfall Launch-Shelf (segment 14)

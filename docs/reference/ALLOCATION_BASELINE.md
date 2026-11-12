@@ -155,8 +155,8 @@ vars, which has nothing to do with allocation.
 | 27 | `src/components/PhysicsDebugOverlay.tsx` — debug-gated, not mounted in normal play |
 | 21 | `src/systems/water/SplashSystem.tsx` — 16 of them load-bearing, see below |
 | 14 | `src/vehicles/RaftVehicle/hooks/useRaftControls.ts` |
-| 7 | `src/components/VehicleTuner.tsx` |
-| 6 | `src/components/WaterFlowForces.tsx` |
+| 7 | `src/components/VehicleTuner.tsx` (its segment sampler removed in #554 A) |
+| 6 | `src/components/WaterFlowForces.tsx` (deleted in #554 A — never ran) |
 | 6 | `src/components/WaterReflection.tsx` |
 | 5 | `src/components/WeatherSystem.tsx` |
 | 4 | `FloatingDebris.tsx` (deleted in #465 — had no importer) |

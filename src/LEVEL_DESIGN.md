@@ -133,16 +133,14 @@ player with a calm, visually rich recovery (alpine) before the main descent.
 ### Physics: Slipperiness
 
 `slipperiness` (0–1) is published in the `segment-enter` game event (`gameEvents`, `src/systems/events/GameEvents.ts`) as `slipperiness`.
-`WaterFlowForces.tsx` reads it each frame and:
-- Reduces lateral drag by `slipperiness × 80%` — the raft can't fight the current sideways.
-- Adds a `0.18 × flowSpeed × slipperiness` slide bias along the downstream tangent each frame.
-- Net feel: high speed, minimal control, survive-the-chute tension.
-
-`slipperiness` also drives **Rapier contact friction** on the segment's collision mesh
+Its one live consumer is **Rapier contact friction** on the segment's collision mesh
 (`systems/surfaceFriction.ts` → `TrackSegmentMeshes`), so wall and floor impacts feel
 slippery too: the flood state sets the baseline, then slipperiness interpolates it
-toward `ICE_MIN_FRICTION` (0.04). Water-borne lateral drag (above) and contact friction
-act on disjoint interactions and must not be double-counted — see
+toward `ICE_MIN_FRICTION` (0.04). Water-borne drag is the SWE water force, which does not
+read `slipperiness`; the segment-spline `WaterFlowForces` that documented a lateral-drag
+cut and slide bias here never ran (its guard skipped every segment) and was deleted in
+#554 A. A fluid-side ice term, if wanted, belongs in `GameplayProfile`. Fluid drag and
+contact friction act on disjoint interactions and must not be double-counted — see
 [`SURVIVAL_LAYER.md`](../docs/reference/SURVIVAL_LAYER.md#surface-friction-v2).
 
 ### Visual Style
@@ -253,7 +251,7 @@ Enhanced raft movement and controls for superior velocity feel and precise canyo
 | Vehicle tuning config | `src/constants/vehicleTuning.ts` | Centralized tunable parameters: baseSpeed 32, flowResponsiveness 14, drift, wall riding, boost |
 | Paddle thrust & steering | `src/systems/vehicle/VehicleSystem.ts` (`RaftVehicle`) | Impulse-based lateral steering, torque on turns, speed cap 20 m/s |
 | Wall riding / wall boost | `src/constants/vehicleTuning.ts` | wallRayDistance 3.5, wallBoostImpulse 9.0, friction-based wall interaction |
-| Drift mechanics | `src/constants/vehicleTuning.ts` | driftFlowScale 0.18, driftTorqueScale 2.0, driftLateralRetention 0.92 |
+| Drift mechanics | `src/constants/vehicleTuning.ts` | driftFlowScale 0.18, driftTorqueScale 2.0 |
 | Camera dynamics | `src/constants/game.ts` | Velocity lag 0.15, lean factor 0.3, FOV speed scale 8 (75→90) |
 | Collision response | `src/constants/game.ts` | Elastic bounce (force 8), spin on impact (force 3), stun 0.3s |
 | Bank angle / slope detection | `src/vehicles/RunnerVehicle.tsx` | castRayAndGetNormal for trimesh normals, BANK_CONFIG for wall assist |
