@@ -28,7 +28,6 @@ export function resolveLeafPalette(biome: BiomeId | string | undefined): string[
 export default function FallingLeaves({
   transforms,
   biome = 'canyonSummer',
-  floating = false,
 }: FallingLeavesProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
@@ -39,7 +38,7 @@ export default function FallingLeaves({
     return geo;
   }, []);
 
-  const material = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffffff' }), [floating]);
+  const material = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffffff' }), []);
 
   useEffect(() => {
     const mesh = meshRef.current;

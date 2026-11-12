@@ -1,4 +1,5 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
+import { useReadOn } from '../hooks/useReadOn';
 import { Html } from '@react-three/drei';
 import GameHUD from '../components/GameHUD';
 import ForecastHUD from '../components/ForecastHUD';
@@ -94,7 +95,9 @@ export default function ExperienceUI({
   // launch hour against the other scouting hour (#397).
   // A player's river is the run map too (userRiverSession.ts): its events, not the backing map's.
   const userRiver = useSyncExternalStore(subscribeUserRiver, getActiveUserRiver, () => null);
-  const hydroEvents = useMemo(() => {
+  // getRunMap() reads the run session outside React; the run's map (its label, or
+  // the player's river) changing is when its hydro events can.
+  const hydroEvents = useReadOn(() => {
     try {
       return parseHydroEvents(getRunMap().levelData.hydroEvents);
     } catch {

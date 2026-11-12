@@ -17,11 +17,6 @@ import { createRng } from '../../math/random';
 import { pathLateral } from '../../utils/segmentSampler';
 
 // =============================================================================
-// TYPES
-// =============================================================================
-export type FloatingObjectType = 'log' | 'tire' | 'boat' | 'debris';
-
-// =============================================================================
 // GEOMETRY & MATERIAL
 // =============================================================================
 const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -70,7 +65,6 @@ export default function FloatingObjectManager({
       position: [number, number, number];
       rotation: [number, number, number];
       scale: [number, number, number];
-      type: FloatingObjectType;
     }> = [];
 
     const rng = createRng(segmentId * 7919);
@@ -88,30 +82,28 @@ export default function FloatingObjectManager({
       const position = point.clone().add(binormal.multiplyScalar(lateralOffset));
       position.y = waterLevel - 0.2;
 
-      // Randomize type
-      const typeRoll = rng();
-      let type: FloatingObjectType;
+      // The object kind (log / tire / boat / debris) picks the scale. Nothing reads the
+      // kind itself, so it is not handed to the body (#554 E): as an instance `type` it
+      // overrode RigidBodyProps.type with 'log' | …, which Rapier maps to no body type and
+      // so to Dynamic — the `type="dynamic"` below, which every body now gets by name.
+      const kindRoll = rng();
       let scale: [number, number, number];
 
-      if (typeRoll < 0.35) {
-        type = 'log';
+      if (kindRoll < 0.35) { // log
         scale = [0.35, 0.35, 1.8 + rng() * 0.4];
-      } else if (typeRoll < 0.55) {
-        type = 'tire';
+      } else if (kindRoll < 0.55) { // tire
         scale = [
           0.7 + rng() * 0.2,
           0.25,
           0.7 + rng() * 0.2,
         ];
-      } else if (typeRoll < 0.75) {
-        type = 'boat';
+      } else if (kindRoll < 0.75) { // boat
         scale = [
           0.9 + rng() * 0.3,
           0.35,
           1.4 + rng() * 0.4,
         ];
-      } else {
-        type = 'debris';
+      } else { // debris
         const s = 0.25 + rng() * 0.35;
         scale = [s, s, s];
       }
@@ -127,7 +119,6 @@ export default function FloatingObjectManager({
         position: [position.x, position.y, position.z],
         rotation,
         scale,
-        type,
       });
     }
 
@@ -232,8 +223,7 @@ export default function FloatingObjectManager({
   return (
     <InstancedRigidBodies
       ref={bodiesRef}
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each instance carries its prop `type` ('log' | …), which collides with RigidBodyProps.type; renaming it is a behaviour change (#535).
-      instances={instances as any}
+      instances={instances}
       type="dynamic"
       colliders="cuboid"
       mass={FLOATING_OBJECT.DEBRIS_DENSITY * FLOATING_OBJECT.DEBRIS_VOLUME * 0.001}

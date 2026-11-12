@@ -97,9 +97,9 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
         );
       })
       .catch((error: unknown) => console.warn('[ShaderWarmup] warm-up chunk failed to load', error));
-    // quality / scene / camera seed the one warm-up per renderer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eligible, gl]);
+    // quality / scene / camera seed the one warm-up per renderer: a change to them
+    // re-runs this effect, and the `started` guard returns before a second warm-up.
+  }, [eligible, gl, scene, camera, quality]);
 
   useEffect(() => {
     runWindow.current = worldEnabled

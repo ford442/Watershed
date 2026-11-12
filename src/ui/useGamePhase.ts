@@ -73,9 +73,12 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
   }, [selectedMapId]);
   const [activeLaunchHour, setActiveLaunchHour] = useState(() => getLaunchHour());
 
+  // The map the page booted on. Persistence binds to it once at mount; a later pick
+  // re-syncs the URL in its own handler and hydrates per run.
+  const bootMapIdRef = useRef(selectedMapId);
   useEffect(() => {
-    initPersistence(getActiveRunKey(selectedMapId));
-    syncMapUrl(selectedMapId);
+    initPersistence(getActiveRunKey(bootMapIdRef.current));
+    syncMapUrl(bootMapIdRef.current);
   }, []);
 
   // Client-only rehydration of persisted settings (skipHydration in the store).

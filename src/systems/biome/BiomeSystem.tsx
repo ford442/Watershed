@@ -228,10 +228,11 @@ export const BiomeProvider: React.FC<BiomeProviderProps> = ({
   );
 
   // Sync initial biome id to Zustand store so all consumers start in agreement.
+  // The mount's value, held in state: a later `initialBiome` prop is not a transition.
+  const [mountBiomeId] = useState(() => getBiomePalette(initialBiome).id);
   useEffect(() => {
-    useGameStore.setState({ currentBiome: getBiomePalette(initialBiome).id });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    useGameStore.setState({ currentBiome: mountBiomeId });
+  }, [mountBiomeId]);
 
   // Advance the cross-fade on sim time: one store write per progress step.
   useFrame((_, delta) => biome.advance(delta));

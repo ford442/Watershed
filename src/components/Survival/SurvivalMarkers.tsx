@@ -46,10 +46,10 @@ import {
 import { awardCacheRetrievalBonus } from '../../systems/score/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import {
-  getSegmentFrame,
-  getSegmentFramesVersion,
+  getSegmentFrames,
   resolveSegmentAnchor,
   subscribeSegmentFrames,
+  type SegmentFrame,
 } from '../../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from '../../experience/types';
 
@@ -72,19 +72,24 @@ interface MarkerVisual {
   label: string;
 }
 
-/** Anchor → world position on the live segment, or null while it is off the treadmill. */
-function resolveAnchorOnTrack(
-  segmentIndex: number,
-  anchor: WaypointAnchor,
-): [number, number, number] | null {
-  const frame = getSegmentFrame(segmentIndex);
-  return frame ? resolveSegmentAnchor(frame, anchor) : null;
+/**
+ * Anchor → world position on one published frame set, or null while the anchor's
+ * segment is off the treadmill. `publishSegmentFrames` replaces the array on every
+ * publish, so the set's identity is what the waypoint memos key on.
+ */
+function anchorResolverFor(frames: ReadonlyArray<SegmentFrame>) {
+  return (segmentIndex: number, anchor: WaypointAnchor): [number, number, number] | null => {
+    const frame = frames.find((entry) => entry.index === segmentIndex);
+    return frame ? resolveSegmentAnchor(frame, anchor) : null;
+  };
 }
 
 export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
   const session = getRunSession();
   const mapId = session?.mapId;
-  const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  // Subscribed for the re-render only: entering a segment is when the run session's
+  // portage state (read below, outside React) changes what a route owes.
+  useGameStore((s) => s.currentSegmentIndex);
 
   const metadata = useMemo(
     () => (mapId ? getMapSurvivalMetadata(mapId) : {}),
@@ -93,10 +98,10 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
 
   // Anchored waypoints follow the live segment geometry, so re-resolve
   // whenever the treadmill republishes its frames.
-  const framesVersion = useSyncExternalStore(
+  const frames = useSyncExternalStore(
     subscribeSegmentFrames,
-    getSegmentFramesVersion,
-    getSegmentFramesVersion,
+    getSegmentFrames,
+    getSegmentFrames,
   );
 
   /** Spatial waypoints whose segment is on the treadmill, in world space. */
@@ -104,20 +109,17 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     () =>
       resolveWaypointPositions(
         (metadata.cacheSlots ?? []).filter(isSpatialWaypoint),
-        resolveAnchorOnTrack,
+        anchorResolverFor(frames),
       ),
-    // framesVersion: anchors resolve against the frames it versions.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [metadata, framesVersion],
+    [metadata, frames],
   );
   const spatialRoutes = useMemo<PortageRouteDefinition[]>(
     () =>
       resolveWaypointPositions(
         (metadata.portageRoutes ?? []).filter(isSpatialWaypoint),
-        resolveAnchorOnTrack,
+        anchorResolverFor(frames),
       ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [metadata, framesVersion],
+    [metadata, frames],
   );
 
   /**
@@ -192,8 +194,11 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     }
   });
 
+  // The reducer replaces the portage state on every event, so its identity is the
+  // markers' key; reading it each render is a field load.
+  const portageState = getPortageCacheState();
   const markers = useMemo<MarkerVisual[]>(() => {
-    const runState = getPortageCacheState();
+    const runState = portageState;
     const visuals: MarkerVisual[] = [];
 
     for (const slot of spatialCaches) {
@@ -226,7 +231,7 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     }
 
     return visuals;
-  }, [spatialCaches, spatialRoutes, slotStatuses, currentSegmentIndex]);
+  }, [spatialCaches, spatialRoutes, slotStatuses, portageState]);
 
   if (markers.length === 0) return null;
 

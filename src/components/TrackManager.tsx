@@ -7,6 +7,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import * as THREE from 'three';
+import { useReadOn } from '../hooks/useReadOn';
 import { useFrame, useThree } from '@react-three/fiber';
 import {
   applyRockSampling,
@@ -560,7 +561,9 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     }
   });
 
-  const renderedSlots = useMemo(() => {
+  // The ChunkManager mutates its pool outside React; every mutation site bumps
+  // poolVersion, and the slots are re-read on the render that follows.
+  const renderedSlots = useReadOn(() => {
     if (!chunkManagerRef.current?.isInitialized()) {
       return [];
     }
@@ -569,7 +572,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     );
   }, [poolVersion]);
 
-  const activeSegments = useMemo(() => {
+  const activeSegments = useReadOn((): SegmentData[] => {
     if (!chunkManagerRef.current?.isInitialized()) {
       return [];
     }
@@ -581,7 +584,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
     setObstaclePoolVersion((v) => v + 1);
   }, [activeSegments]);
 
-  const pooledObstacleSlots = useMemo(
+  const pooledObstacleSlots = useReadOn(
     () => obstaclePoolRef.current.getSnapshot(),
     [obstaclePoolVersion]
   );

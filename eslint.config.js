@@ -101,6 +101,9 @@ export default tseslint.config(
       // Hook order and stale-closure bugs are the single most common React
       // failure mode in this codebase's frame-driven components.
       'react-hooks/rules-of-hooks': 'error',
+      // At zero, with no disables (#554 E). A memo keyed on a version its body
+      // does not read is useReadOn (src/hooks/useReadOn.ts); a value that seeds
+      // construction only is a ref; a stable holder is listed as a dependency.
       'react-hooks/exhaustive-deps': 'warn',
       // --- warnings: a real backlog, not a style opinion --------------------
       // R3F's allocation rules are the right rules — `new`/`.clone()` inside a

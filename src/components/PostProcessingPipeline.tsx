@@ -639,15 +639,17 @@ export function PostProcessingPipeline({
     if (wantsSmaa) void smaaPassModule.load().catch(() => {});
   }, [gl, wantsSsao, wantsSmaa]);
 
+  // tuning seeds construction only; per-frame values flow through apply(). A ref, so a
+  // tuning change never rebuilds the driver while a rebuild still seeds the latest.
+  const constructionTuning = useRef(tuning);
+  constructionTuning.current = tuning;
   const driver = useMemo((): PostDriver | null => {
     if (!gl || !scene || !camera) return null;
     if (isNodeRenderer(gl)) {
       return createNodeDriver(gl, scene, camera, initialStructure.current);
     }
     const { width, height } = constructionSize.current;
-    return createComposerDriver(gl, scene, camera, width, height, tuning);
-    // tuning seeds construction only; per-frame values flow through apply().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return createComposerDriver(gl, scene, camera, width, height, constructionTuning.current);
   }, [gl, scene, camera]);
 
   // Follow CSS size *and* DPR. `viewport.dpr` is what R3F's setDpr writes —

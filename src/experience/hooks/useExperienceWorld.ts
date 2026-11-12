@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
+import { useReadOn } from '../../hooks/useReadOn';
 import type { FlowForecastSample } from '../../components/FlowForecast';
 import { PLAYER_SPAWN } from '../../constants/game';
 import { useBiomeSetters } from '../../systems/biome/BiomeSystem';
@@ -160,7 +161,8 @@ export function useExperienceWorld({
       ? `CONTINUE TO ${journeyDecision.nextLabel.toUpperCase()}`
       : undefined;
   const isFinalMap = journeyDecision.kind === 'summary';
-  const ghostBestScore = useMemo(
+  // Saved progress, read outside React: finishing the journey is when it is written.
+  const ghostBestScore = useReadOn(
     () => (isFinalMap ? getGhostBestScoreForMap(activeDefaultMapId) : 0),
     [activeDefaultMapId, isFinalMap, isJourneyComplete],
   );

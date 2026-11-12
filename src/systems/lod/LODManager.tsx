@@ -201,12 +201,13 @@ export const LODProvider: React.FC<LODProviderProps> = ({
 
   const config = QUALITY_SETTINGS[quality];
 
-  // Keep local quality in sync with store
+  // Keep local quality in sync with store. `setQuality` writes both, so the only
+  // divergence this ever repairs is a store write from elsewhere (Options, debug).
   useEffect(() => {
     if (storeQuality !== quality) {
       setQualityState(storeQuality);
     }
-  }, [storeQuality]);
+  }, [storeQuality, quality]);
 
   const setQuality = (q: QualityLevel) => {
     setQualityState(q);
