@@ -30,6 +30,7 @@
 import * as THREE from 'three';
 import { telemetryNowMs } from '../utils/wallClock';
 import { shadowMapTypeFor, type ShadowMode } from './deriveRendererContextOptions';
+import { liveProgramCount } from './programCount';
 
 /** One material variant, built fresh for each shadow variant. */
 export interface ShaderWarmupRecipe {
@@ -61,7 +62,10 @@ export interface ShaderWarmupResult {
   objects: number;
   /** Recipes that threw while building (skipped, not fatal). */
   failed: string[];
-  /** `info.programs.length` before / after; null where the renderer does not list them. */
+  /**
+   * Live programs before / after (`liveProgramCount`: GLSL `info.programs`, node
+   * pipelines); null where the renderer does not list them.
+   */
   programsBefore: number | null;
   programsAfter: number | null;
   ms: number;
@@ -111,10 +115,6 @@ export function warmupShadowModes(quality: 'low' | 'medium' | 'high' | 'ultra'):
   return ladder[quality];
 }
 
-function programCount(renderer: WarmupRenderer): number | null {
-  const programs = renderer.info?.programs;
-  return Array.isArray(programs) ? programs.length : null;
-}
 
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
@@ -140,7 +140,7 @@ export async function warmShaderPrograms(
   options: ShaderWarmupOptions,
 ): Promise<ShaderWarmupResult> {
   const started = telemetryNowMs();
-  const programsBefore = programCount(renderer);
+  const programsBefore = liveProgramCount(renderer);
   const variants: { mode: ShadowMode; root: THREE.Group }[] = [];
   const held: (() => void)[] = [];
   const failed = new Set<string>();
@@ -200,7 +200,7 @@ export async function warmShaderPrograms(
     objects,
     failed: [...failed],
     programsBefore,
-    programsAfter: programCount(renderer),
+    programsAfter: liveProgramCount(renderer),
     ms: telemetryNowMs() - started,
     variants,
     hold(release) {

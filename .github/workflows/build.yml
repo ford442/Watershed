@@ -132,7 +132,9 @@ jobs:
   # Headless WebGL visual smoke (SwiftShader). Required: a best-effort shot's
   # pixel diff is informational (SwiftShader in-run frames vary), but the
   # harness fails on the required start-menu shot, a missing baseline, a
-  # native module fetched twice, or hard page errors (#518 C).
+  # native module fetched twice, or hard page errors (#518 C). Runs once per
+  # material backend (#555 A): GLSL, then `?material=tsl`, then the GLSL vs
+  # TSL parity scenes and the warm-up report.
   visual-smoke:
     name: Visual smoke (WebGL)
     runs-on: ubuntu-latest
@@ -188,6 +190,33 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
+      # #555 A.1: the node material path, gated like the default one. Same
+      # shots against the `__material-tsl` baselines committed beside the GLSL
+      # ones (verification/baselines/visual-smoke/README.md).
+      - name: Run visual smoke harness (?material=tsl)
+        if: success() || failure()
+        env:
+          VISUAL_BOOT_RETRIES: "2"
+        run: pnpm test:visual-smoke:tsl
+        timeout-minutes: 25
+
+      # #466 A / #555 A.2: the post chain and one scene per dual material host,
+      # GLSL vs TSL on SwiftShader. Brings up its own Vite dev server.
+      - name: GLSL vs TSL parity (post chain + every dual host)
+        if: success() || failure()
+        env:
+          POST_PARITY_SHOTS: verification/output/post-parity
+        run: pnpm test:post-parity
+        timeout-minutes: 10
+
+      # #555 A.3: the boot shader warm-up on both backends — programs the
+      # warm-up compiled and the first 3 s of the run still had to. Fails only
+      # when a backend cannot be measured; the counts are a report.
+      - name: Shader warm-up report (GLSL + TSL)
+        if: success() || failure()
+        run: pnpm test:warmup-report
+        timeout-minutes: 15
+
       - name: Upload visual-smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -195,6 +224,8 @@ jobs:
           name: visual-smoke-output
           path: |
             verification/output/visual-smoke/
+            verification/output/post-parity/
+            verification/output/shader-warmup/
           if-no-files-found: warn
           retention-days: 14
 

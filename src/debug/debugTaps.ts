@@ -51,6 +51,18 @@ export interface PhysicsWorkerTap {
   tickOrder: string[];
 }
 
+/** The boot shader warm-up and what the run still compiled after it (#555 A.3). */
+export interface ShaderWarmupTap {
+  /** `'glsl'` (WebGLRenderer) or `'tsl'` (node renderer). */
+  backend: string;
+  /** null until the warm-up has compiled; `objects` / `programs` are what it built. */
+  warm: { objects: number; programs: number | null; ms: number; failed: string[] } | null;
+  /** Programs the warm frame added (GLSL only: post chain, shadow depth, menu scene). */
+  warmFrame: number | null;
+  /** Programs compiled in the first 3 s of sim time after Start; null until measured. */
+  firstRun: number | null;
+}
+
 export interface DebugTaps {
   /** The runner's last physics step (RunnerPhysicsStep, PhysicsDebugOverlay). */
   physicsDebug?: PhysicsDebugSnapshot;
@@ -68,6 +80,8 @@ export interface DebugTaps {
   loseGpu?: () => string | null;
   /** WasmWaterForceTest's probe body. */
   wasmWaterTest?: unknown;
+  /** ShaderWarmup's compile and first-3-s program counts. */
+  shaderWarmup?: ShaderWarmupTap;
 }
 
 const taps: DebugTaps = {};

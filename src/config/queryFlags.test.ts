@@ -21,6 +21,12 @@ describe('queryFlags (#521 E)', () => {
     expect(parseQueryFlags('?map=meander').noPointerLock).toBe(false);
   });
 
+  it('?warmup=1 opts the shader warm-up back in (scripted pages skip it otherwise)', () => {
+    expect(parseQueryFlags('?warmup=1').warmup).toBe(true);
+    expect(parseQueryFlags('?warmup=0').warmup).toBe(false);
+    expect(parseQueryFlags('?input=script:/x.json').warmup).toBe(false);
+  });
+
   it('returns a frozen object', () => {
     const flags = parseQueryFlags('?map=delta&vehicle=raft');
     expect(Object.isFrozen(flags)).toBe(true);

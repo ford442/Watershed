@@ -17,7 +17,6 @@
  * target), which no per-pass test could see.
  */
 import * as THREE from 'three';
-import { WebGPURenderer } from 'three/webgpu';
 import { createComposerDriver } from '../components/PostProcessingPipeline';
 import { createNodePostPipeline } from '../components/postProcessing/nodePostPipeline';
 import {
@@ -25,10 +24,18 @@ import {
   linearVignetteDarkness,
   type PostFrameParams,
 } from '../components/postProcessing/postFrameParams';
-import { DEFAULT_TONE_MAPPING_EXPOSURE } from '../rendering/deriveRendererContextOptions';
+import {
+  FrameReadback,
+  PARITY_HEIGHT,
+  PARITY_WIDTH,
+  applyGrade,
+  createGlslParityRenderer,
+  createNodeParityRenderer,
+  settle,
+} from './parityFrame';
 
-export const PARITY_WIDTH = 320;
-export const PARITY_HEIGHT = 180;
+/** The dual host these scenarios gate (scripts/check-glsl-hosts.mjs reads it). */
+export const POST_PARITY_HOSTS = ['src/components/PostProcessingPipeline.tsx'] as const;
 
 export interface ParityScenario {
   name: string;
@@ -138,80 +145,16 @@ function paramsFor(s: ParityScenario): PostFrameParams {
   };
 }
 
-/** The renderer grade every preset uses (`deriveRendererContextOptions`). */
-function applyGrade(renderer: { toneMapping: THREE.ToneMapping; toneMappingExposure: number; outputColorSpace: string }) {
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = DEFAULT_TONE_MAPPING_EXPOSURE;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-}
-
-const readback = document.createElement('canvas');
-readback.width = PARITY_WIDTH;
-readback.height = PARITY_HEIGHT;
-const readbackCtx = readback.getContext('2d', { willReadFrequently: true })!;
-
-interface FrameStats {
-  /** Mean Rec.709 luma, 0..1. */
-  luma: number;
-  /** Mean |Δluma| between horizontal neighbours, 0..1 — aliasing raises it. */
-  edge: number;
-}
-
-/**
- * Stats of what the canvas presents, read in the same task as the render so
- * the drawing buffer is still intact.
- */
-function frameStats(canvas: HTMLCanvasElement): FrameStats {
-  readbackCtx.clearRect(0, 0, PARITY_WIDTH, PARITY_HEIGHT);
-  readbackCtx.drawImage(canvas, 0, 0, PARITY_WIDTH, PARITY_HEIGHT);
-  const { data } = readbackCtx.getImageData(0, 0, PARITY_WIDTH, PARITY_HEIGHT);
-  let sum = 0;
-  let edge = 0;
-  let prev = 0;
-  for (let i = 0, px = 0; i < data.length; i += 4, px += 1) {
-    const y = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
-    sum += y;
-    if (px % PARITY_WIDTH !== 0) edge += Math.abs(y - prev);
-    prev = y;
-  }
-  const n = data.length / 4;
-  return { luma: sum / n / 255, edge: edge / n / 255 };
-}
-
-/**
- * SMAA (both implementations) decodes its area/search lookup textures from
- * data-URI images asynchronously; until they land it blends with zero weights.
- * Render once, let decodes finish, then measure.
- */
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 250));
-
-function makeCanvas(): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = PARITY_WIDTH;
-  canvas.height = PARITY_HEIGHT;
-  document.body.appendChild(canvas);
-  return canvas;
-}
-
 export async function runPostParity(): Promise<ParityResult[]> {
   const { scene, camera } = buildScene();
 
-  const glsl = new THREE.WebGLRenderer({
-    canvas: makeCanvas(),
-    antialias: false,
-    preserveDrawingBuffer: true,
-    // As createGameRenderer builds it: the post chain is `setEffects` over three's HDR output.
-    outputBufferType: THREE.HalfFloatType,
-  });
-  glsl.setPixelRatio(1);
-  glsl.setSize(PARITY_WIDTH, PARITY_HEIGHT, false);
-  applyGrade(glsl);
-
-  const node = new WebGPURenderer({ canvas: makeCanvas(), antialias: false, forceWebGL: true });
-  await node.init();
-  node.setPixelRatio(1);
-  node.setSize(PARITY_WIDTH, PARITY_HEIGHT, false);
-  applyGrade(node);
+  const glsl = createGlslParityRenderer();
+  const node = await createNodeParityRenderer();
+  const readback = new FrameReadback();
+  const frameStats = (canvas: HTMLCanvasElement) => {
+    readback.capture(canvas);
+    return readback.stats();
+  };
 
   const results: ParityResult[] = [];
   for (const scenario of PARITY_SCENARIOS) {
@@ -224,7 +167,7 @@ export async function runPostParity(): Promise<ParityResult[]> {
     await settle();
     driver.render();
     const glslStats = frameStats(glsl.domElement);
-    const glslPng = readback.toDataURL('image/png');
+    const glslPng = readback.png();
 
     // three's final blit with no grade: tone map off, linear output — the pre-#466 image.
     glsl.toneMapping = THREE.NoToneMapping;
@@ -246,7 +189,7 @@ export async function runPostParity(): Promise<ParityResult[]> {
     await settle();
     pipeline.render();
     const nodeStats = frameStats(node.domElement);
-    const nodePng = readback.toDataURL('image/png');
+    const nodePng = readback.png();
     pipeline.dispose();
 
     results.push({

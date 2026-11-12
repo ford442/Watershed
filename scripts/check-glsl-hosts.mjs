@@ -10,6 +10,11 @@
  *
  * New construction sites fail CI unless added to the allowlist. Tests and
  * comment-only mentions are ignored.
+ *
+ * Parity coverage (#555 A.2): every `dual` host must be named by a GLSL vs TSL
+ * parity scene — a `hosts` entry in src/debug/hostParity.ts, or the post
+ * chain's POST_PARITY_HOSTS in src/debug/postParity.ts — so `pnpm
+ * test:post-parity` renders it through both backends.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -75,6 +80,16 @@ for (const path of hits) {
 for (const path of byPath.keys()) {
   if (!hitSet.has(path)) {
     errors.push(`allowlist entry no longer constructs ShaderMaterial/onBeforeCompile (remove it): ${path}`);
+  }
+}
+
+// Every dual host has a parity scene (the quoted path appears in a harness).
+const PARITY_SOURCES = ['src/debug/hostParity.ts', 'src/debug/postParity.ts'];
+const paritySource = PARITY_SOURCES.map((p) => stripComments(readFileSync(join(root, p), 'utf8'))).join('\n');
+for (const entry of hosts) {
+  if (entry?.kind !== 'dual') continue;
+  if (!paritySource.includes(`'${entry.path}'`)) {
+    errors.push(`dual host has no GLSL vs TSL parity scene (add one to src/debug/hostParity.ts): ${entry.path}`);
   }
 }
 

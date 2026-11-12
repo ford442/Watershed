@@ -444,6 +444,11 @@ PR CI runs a headless capture path (no manual steps) in `.github/workflows/build
 1. `pnpm build` (Emscripten **not** required — `vite build` alone, shipping the committed WASM pair; `pnpm build:full` recompiles it first)
 2. `vite preview` on `127.0.0.1:4173`
 3. `pnpm test:visual-smoke` → `verification/visual_smoke.mjs`
+4. `pnpm test:visual-smoke:tsl` — the same shots with `?material=tsl`, against the `__material-tsl` baselines (#555 A.1)
+5. `pnpm test:post-parity` — GLSL vs TSL: the post chain, and one scene per dual material host with its own pixelmatch budget (#555 A.2; [`RENDERER.md`](./RENDERER.md#per-host-parity-555-a2))
+6. `pnpm test:warmup-report` — the boot shader warm-up's program counts on both backends; fails only when a backend cannot be measured (#555 A.3)
+
+Steps 4–6 run even when an earlier one failed, so one red step does not hide the others. The artifact carries `verification/output/{visual-smoke,post-parity,shader-warmup}/`.
 
 The harness opens Chromium with SwiftShader, hits `?cleanTest=1&renderer=webgl&screenshot=1`, and captures:
 

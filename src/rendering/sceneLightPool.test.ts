@@ -54,6 +54,8 @@ const SESSION_LIGHTS = new Set([
   'components/LevelEditor/LevelEditor.tsx',
   // Its own offscreen scene (post-processing parity harness).
   'debug/postParity.ts',
+  // Its own offscreen scenes (per-host material parity harness).
+  'debug/hostParity.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

@@ -14,6 +14,11 @@ Committed reference PNGs for `verification/visual_smoke.mjs` (CI job `visual-smo
 | `11_glacial_hour06.png` / `12_glacial_hour14.png` | Glacial start segment at a 06:00 / 14:00 launch (the sun moves) | Best-effort |
 | `13_meander_hour06.png` / `14_meander_hour14.png` | Meander segment 2 at a 06:00 / 14:00 launch | Best-effort |
 
+**`__material-tsl` twins** (#555 A.1): every row above also has a `<label>__material-tsl.png`,
+captured with `?material=tsl` (`pnpm test:visual-smoke:tsl`, a required CI step since #555 A). The
+gate is the same. The node boot is slower on SwiftShader, so its top-down teleports soft-skip more
+often than the GLSL ones; each TSL baseline was captured from a run where the teleport landed.
+
 **Gate** (#518 C): a best-effort shot over threshold is informational. The run fails on the
 required shot (structural or over threshold), on any shot that captured with **no baseline here**
 (a new shot lands with its PNG), on a native module fetched twice, and on hard page errors on a
@@ -27,6 +32,12 @@ Top-down baselines were seeded from historical `verification/webgl/*` captures. 
 pnpm build
 pnpm preview --host 127.0.0.1 --port 4173 &
 UPDATE_BASELINES=1 WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke:update
+```
+
+The TSL set, one or more labels at a time (`VISUAL_ONLY` takes a comma list):
+
+```bash
+UPDATE_BASELINES=1 WATERSHED_URL=http://127.0.0.1:4173 VISUAL_ONLY=01_spawn_topdown pnpm test:visual-smoke:tsl:update
 ```
 
 Or against the dev server:

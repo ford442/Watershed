@@ -284,9 +284,18 @@ While the menu is up, `experience/ShaderWarmup.tsx` compiles the programs the fi
 1. `compileAsync` of one object per material variant (`shaderWarmupRecipes.ts`: canyon floor / wall river extensions, river / rock / tree prop extensions, water with and without the SWE flow map, weather, splash bow wave, standard and basic shapes) against a warm target scene — the live scene's lights, cloned, and the run's linear fog. The menu has no scene fog, and fog is baked into every program that reads it.
 2. One warm frame through a throwaway effect chain (detached from the renderer right after its draw, since a renderer holds one effect list for every canvas render), drawn from a `useFrame` so R3F's own menu render overwrites it before it is presented: the post passes, the shadow pass's depth materials, and the post-target variants of the menu's own objects (cloned).
 
-Both run under a render target (three bakes `NoToneMapping` + linear output into anything drawn into a target, which is every scene draw on the post path) and once per shadow mode the preset can reach in one adaptive step (`warmupShadowModes`: High warms `soft` and `basic`). The warm objects and effect chains are held for the session — three refcounts programs per material, and dropping the last holder destroys the program. Off under scripted input.
+Both run under a render target (three bakes `NoToneMapping` + linear output into anything drawn into a target, which is every scene draw on the post path) and once per shadow mode the preset can reach in one adaptive step (`warmupShadowModes`: High warms `soft` and `basic`). The warm objects and effect chains are held for the session — three refcounts programs per material, and dropping the last holder destroys the program. Off under scripted input unless `?warmup=1`.
 
 Measured on headless Chromium / SwiftShader, default map, High: the first 3 s after Start compiled **65 programs before, 19–20 after** (58 programs in the compile step, 57 more in the warm frame, ~180 ms in the menu). `?debug=1` logs the leftovers by name or key; they are the long tail of per-prop variants (rock / tree extension instancing variants, a few VFX `ShaderMaterial`s and their shadow-depth twins).
+
+**Both backends (#555 A.3).** The count goes through `rendering/programCount.ts`: `info.programs` on `WebGLRenderer`, the pipeline cache on the node renderer (three keeps no program list there; on the WebGL2 backend each render pipeline is exactly one `createProgram` + `linkProgram`, so the units match — `info.memory.programs` counts shader stages and is not used). The numbers land in the `shaderWarmup` debug tap (`window.__watershed.shaderWarmup` under `?screenshot` / `?debug`). `pnpm test:warmup-report` (`verification/shader_warmup_report.mjs`, in the `visual-smoke` CI job) boots the scripted meander run per backend with `?warmup=1` — scripted pages skip the warm-up otherwise, and under `frameloop="never"` the GLSL warm frame is drawn as soon as the compile lands — clicks Start, steps 3 s of sim time (a frame drawn every 6 sim frames), and fails only if a backend cannot be measured. First measurement (SwiftShader, meander, default quality):
+
+| Backend | Warm objects | Warm programs | Warm ms | Warm frame | First 3 s |
+|---|---|---|---|---|---|
+| GLSL | 62 | 58 | 306 | 116 | **53** |
+| TSL (WebGL2) | 62 | 40 | 10,067 | — (node path has no warm frame) | **731** |
+
+The TSL number is the cost Phase B moves onto every boot: the node renderer builds a pipeline per material × render-state variant, its warm-up covers few of them, and its post pipeline is not warmed at all.
 
 `soft` shadows are `PCFShadowMap` now (`shadowMapTypeFor`): r185 deprecates `PCFSoftShadowMap` and rewrites it to PCF, with a warning, on every shadow pass that finds it — the image was already PCF. Asking for it also meant anything compiled outside `render()` saw a type no frame uses.
 
@@ -362,10 +371,33 @@ Scene-wide:
 pnpm build && pnpm preview --port 4173
 pnpm test:visual-smoke            # default GLSL baselines
 pnpm test:visual-smoke:tsl        # ?material=tsl, baselines suffixed __material-tsl
-pnpm test:post-parity             # one fixed frame, GLSL vs node driver, Δ mean luma < 2% (own Vite server)
+pnpm test:post-parity             # post chain (Δ mean luma < 2%) + one scene per dual host (own Vite server)
+pnpm test:warmup-report           # shader warm-up program counts, GLSL and TSL (needs the preview)
 ```
 
-`VISUAL_EXTRA_QUERY` appends a query to every shot and namespaces the captures, so a TSL run can never overwrite GLSL baselines.
+`VISUAL_EXTRA_QUERY` appends a query to every shot and namespaces the captures, so a TSL run can never overwrite GLSL baselines. All four run in the required `visual-smoke` CI job since #555 A; before it, the TSL path was opt-in and nothing stopped it regressing.
+
+### Per-host parity (#555 A.2)
+
+`pnpm test:post-parity` also renders one scene per dual host in `scripts/glsl-hosts-allowlist.json` (`src/debug/hostParity.ts`): the host's own factory, called with `'glsl'` on `THREE.WebGLRenderer` (HalfFloat output, as `createGameRenderer` builds it) and with `'tsl'` on `WebGPURenderer({ forceWebGL: true })`, both graded the same, at sim time 2 s. `verification/post_parity.mjs` pixelmatches the two frames (threshold 0.15) and fails a scene over its `maxMismatch`, or one whose TSL draw built a GLSL material (a twin that threw and fell back). `scripts/check-glsl-hosts.mjs` (in `pnpm typecheck`) fails when a dual host has no scene. `POST_PARITY_SHOTS=<dir>` writes both frames and the diff; `POST_PARITY_ONLY=hosts` skips the post half.
+
+The budgets are a ratchet set just above SwiftShader's measurement when the scenes landed — lower one when a twin is brought closer, never raise one to land a look change on one backend:
+
+| Scene | Host | Mismatch | Budget | What differs |
+|---|---|---|---|---|
+| canyon wall | `CanyonMaterial.ts` | 0.00% | 0.5% | — |
+| river bank | `RiverShader.ts` | 0.00% | 0.5% | — |
+| rocks | `RockShader.ts` | 13.79% | 15.5% | the TSL rock twin's `colorNode` replaces the albedo map: untextured grey |
+| trees | `TreeShader.ts` | 0.51% | 1% | silhouette edges (wind sway terms) |
+| vegetation | `VegetationShader.ts` | 2.11% | 3% | blade tips (sway phase) |
+| water | `createWaterMaterial.ts` | 0.00% | 0.5% | streak detail, under the pixel threshold |
+| sky | `createSkyMaterials.ts` | 1.55% | 2.5% | TSL stars draw no visible points |
+| weather | `createWeatherParticleMaterial.ts` | 61.06% | 66% | the TSL twin has no point-size attenuation and no camera wrap: no visible rain / snow / splash |
+| critters | `createCritterMaterials.ts` | 0.24% | 1% | wing flap (the TSL twin builds `flapAngle` and never applies it) |
+| vfx | `vfxDualFactory.ts` | 7.91% | 9% | TSL mist draws nothing; the TSL rainbow has no fresnel falloff |
+| post chain | `PostProcessingPipeline.tsx` | Δ luma ≤ 0.19% | 2% | (the existing #466 scenarios) |
+
+Phase B of #555 makes TSL the default, so the rock, weather, sky and VFX gaps above are what B has to close first.
 
 ## Why the default path still has no live WebGPU renderer
 

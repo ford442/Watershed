@@ -1,7 +1,8 @@
 <!doctype html>
 <!--
-  GLSL vs TSL post parity harness (#466 Phase A). Driven by
-  verification/post_parity.mjs; served by a Vite dev server.
+  GLSL vs TSL parity harness: the post chain (#466 Phase A) and one scene per
+  dual material host (#555 Phase A). Driven by verification/post_parity.mjs;
+  served by a Vite dev server. `?only=post` / `?only=hosts` runs one half.
 -->
 <html>
   <head><meta charset="utf-8" /><title>Post parity</title></head>
@@ -9,12 +10,19 @@
     <pre id="out" style="color:#ccc">running…</pre>
     <script type="module">
       import { runPostParity } from '/src/debug/postParity.ts';
+      import { runHostParity } from '/src/debug/hostParity.ts';
 
       const out = document.getElementById('out');
+      const only = new URLSearchParams(location.search).get('only');
       try {
-        const results = await runPostParity();
-        window.__postParity = { results };
-        out.textContent = JSON.stringify(results, null, 2);
+        const results = only === 'hosts' ? [] : await runPostParity();
+        const hosts = only === 'post' ? [] : await runHostParity();
+        window.__postParity = { results, hosts };
+        out.textContent = JSON.stringify(
+          { results: results.map((r) => r.scenario), hosts: hosts.map((h) => h.scene) },
+          null,
+          2,
+        );
       } catch (error) {
         window.__postParity = { error: String((error && error.stack) || error) };
         out.textContent = window.__postParity.error;
