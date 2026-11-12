@@ -1,4 +1,37 @@
 # Swarm state — atomic deploy + build identity (#416)
+
+## #556 B.3 — 2026-11-12 — green, PR open
+
+**Objective:** the `campaign` vitest project + `pnpm test:campaign` (landed with B.1: the tests need it to run at all) and its own CI job, the docs, and the save-state for what comes next.
+
+### Files changed
+| File | Change |
+|---|---|
+| `.github/workflows/build.yml` | job `Headless campaign`: checkout, pnpm, Node 22, `pnpm install --frozen-lockfile`, `pnpm test:campaign` (10 min cap; ~6 s of tests). No browser, no emsdk, no build |
+| `docs/reference/TESTING.md` | "Headless campaign" section: what it is, how the page's side is recorded, what it does not do |
+| `CLAUDE.md` | `pnpm test:campaign` in Quick Start and Testing; `src/sim/headless/` in the directory map |
+| `SYSTEMS.md` | (B.2) the harness paragraph |
+
+### Checks (final tree)
+typecheck (guards + knip), typecheck:test, lint `--max-warnings 0`, `pnpm test`, `pnpm test:perf`, `pnpm test:campaign` green; the build's file list and every chunk size equal B.1's (76 entries; hashes differ build to build by design), and the three browser smokes were re-run on the final build: input and gamepad splits 11400 / 15400 / 19500 / 23500 ms with all 38 per-second pose lines equal to base's, replay checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` for the recording and both replays.
+
+### Not done / BLOCKED
+- **A.2 for the raft** (the brief's RAFT RULE): the raft step stays a `useFrame`; the harness is runner-only.
+- **Phases C–E.** The harness runs a whole map (84 sim seconds of the meander in 4.4 s wall) but only the first 24 s are pinned to anything (the browser stops there).
+- **Components untouched** (off limits), so three things stay as copies in the harness and one stays a bug: TrackSegment's prop derivation (`segmentWorld.ts`), WaterForceSystem's / SplashSystem's frame (`headlessWater.ts`), VehicleTuner's frame (`vehicleTunerFrame.ts`); and the spare-slot bed bug (B.2, item 3). Suggested follow-ups, each small: (1) `TrackManager` renders spare slots with `active={false}` and no `segmentId`; `TrackSegment` / `useGeometries` should skip the bathymetry effect when `!active` (fixes the bug; the pin then fails: flip `pageQuirks.spareSlotsDropBedZero`, re-record); (2) move the three component bodies into plain modules the components call and the harness imports; (3) #554 A.2: VehicleTuner as a SimSystem, then delete `vehicleTunerFrame.ts`.
+- `CLOSURE_ALLOW` in `scripts/check-dependency-direction.mjs` still lists `InputHub -> zustand` (the ghost recorder reads the hub's latch); the issue's "ghost recorder gets the frame through ctx" is C's.
+- 13 files under `src/vehicles`, `src/systems`, `src/sim` still mention `useGameStore` (list in the A.1 section): none is in the guard's runtime closure from the SimCore entries, and the harness binds the same store they read.
+
+### Next — Phase C plan (pilots), not started
+1. `src/sim/headless/pilots/pilot.ts`: a pilot is a `HeadlessInput` (`{ source: InputSource, look() }`, what `stepHeadless` already takes) built over a `HeadlessRun`: it reads `run.body`, `getSegmentFrames()` (`systems/map/segmentFrames.ts`) and the store, and writes `moveX` / `moveY` / buttons per `poll`, plus the camera yaw through `look()` (the runner's movement is camera-relative; the script's `headingYaw` is the hook).
+2. `centreline`: pure pursuit on a lookahead point of the current segment frame's sampled centreline (`FRAME_SAMPLES` = 32 per segment) at a target speed (sprint on `RB` / stamina). `riskyLine`: the same on wall-ride, vortex and `openFloor` tags — needs placement colliders (below). `ghost`: `scriptedHeadlessInput(replayPlanFromFile(file).script)`, which is `replay.ts`'s conversion already.
+3. `runUntil(run, pilot, { maxFrames, until })` in 60-frame batches, stopping on `run.finish` or `isWipeout`. A run with the script alone ends in a wipeout in segment 18 (B.2): that is the first thing a centreline pilot must fix, and the first acceptance test (every map finishable).
+4. Pilots that touch things need them mounted: `terrain/placement.ts` already builds each segment's props as one buffer (`buildSegmentPlacements`); mount the colliders of the categories that have one (rocks, pillars, trestle) in `segmentWorld.ts`, behind an option so the B pin (which touches none) is unchanged.
+5. The raft pilot needs the raft step on SimCore first (A follow-up).
+6. D's `RunReport` reads what is already there: splits + checksums (`SplitRecorder`), stamina / wetness / chill per step (`ctx.game` and `getActiveSurvivalState()`), the hazard log (`getRecordedHazardLog`), flow at the vehicle (`run.water.lastFlow`). Its header must carry the page quirks the run used.
+
+---
+
 ## #556 B.2 — 2026-11-12 — green, committed
 
 **Objective:** `stepHeadless(run, frames, input)` = `stepScripted`'s frame without R3F, and the pin that makes a headless run the page's run (#556 B.2).
@@ -31,7 +64,7 @@
 |---|---|
 | typecheck / typecheck:test / lint `--max-warnings 0` | green |
 | test:campaign | 10 passed (5 structure + 5 pin), ~6 s wall |
-| bundle | no app file changed since B.1: `build/` hashes equal B.1's (smokes identical by construction) |
+| bundle | no app file changed since B.1: the build's 76-entry file list and every size equal B.1's (hashes differ build to build: `BUILD_IDENTITY` carries a timestamp and a random byte); the three smokes re-run on this final build too |
 
 ### Measured, for the C plan
 The keyboard script (hold forward, never steer) through the whole meander headless: segment 17 at 80 s of sim time on `x = 0.0`, then out of bounds in segment 18 at 84 s (`isWipeout`, runner at `(352.8, -768, -1375)`; cause not investigated); 84 sim seconds take 4.4 s of wall time. So a script does not finish the map, and a `centreline` pilot is what will.

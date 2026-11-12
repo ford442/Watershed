@@ -179,6 +179,37 @@ Host C++ (`watershed_host_smoke`) covers buoyancy, one `calculateWaterForce` fix
 
 176 tests across 17 suites (components, systems, rendering, validators). See **2026-06 Live Test Gate** below for the full verification matrix.
 
+### Headless campaign (`pnpm test:campaign`, #556 B)
+
+Whole runs through the real sim in Node — `SimCore` with the page's systems list, a Rapier world, the
+treadmill, and the shipped `watershed_native` pair — with no browser, no three scene and no React
+(`src/sim/headless/`; how it is built: SYSTEMS.md, "The sim core"). A vitest project of its own
+(`campaign`, environment `node`, `src/**/*.campaign.test.ts`), so it stays out of `pnpm test`, and its
+own CI job (`Headless campaign`), because a run is seconds of CPU, not milliseconds.
+
+```bash
+pnpm test:campaign
+```
+
+`headless.campaign.test.ts` is what makes a headless run worth trusting: it compares one against what
+the page prints, with `===`. The page's side is committed under `verification/fixtures/headless/`:
+
+- `meander_trace.json` — the input smoke's scripted meander in Chromium: every 10th frame the runner's
+  position and the water's flow at it, then the splits (seg 0..3 at 11400 / 15400 / 19500 / 23500 ms)
+  and the SWE state checksum at each. Re-record with `node verification/headless_trace.mjs` against
+  `pnpm build && pnpm preview` (about ten minutes: SwiftShader renders one frame in ten).
+- `meander_run.wsghost` — the ghost the replay smoke recorded from that script (`pnpm test:replay-smoke`),
+  replayed headless through `replayPlanFromFile`; checksums `9a1952b8 36bb12c6 6280ddeb a4da233b`.
+
+The 24 simulated seconds take about a second of wall time. When the page's gameplay changes on purpose,
+this test fails next to the browser smokes: re-record both sides and say why in the PR. A headless run
+reproduces one page bug on purpose (no SWE bed under segment 0: the pool's spare slots default their
+`segmentId` to 0 and unregister it; `pageQuirks.spareSlotsDropBedZero`); the test shows what the run reads
+without it.
+
+What the harness does not do: mount decorations, pooled obstacles or pillars (their colliders), and the
+raft is not on it (its step is still a `useFrame`). Pilots, run reports and baselines (#556 C–E) are later.
+
 ### Visual Regression Testing
 
 Using the provided `verification/verify_player.py` script:
