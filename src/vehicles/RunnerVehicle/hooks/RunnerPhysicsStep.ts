@@ -6,7 +6,7 @@
  * applied, so a stage never moves:
  *
  *   checkBodySanity → sampleGround → applyTerrainResponse → applyInput →
- *   integrate → applyWaterForces → applyCamera → writeTelemetry
+ *   integrate → applyWaterForces → markCameraFollow → writeTelemetry
  *
  * Every stage works on the runner's reused scratch (`runnerStepScratch.ts`):
  * steady-state running allocates nothing of ours (#521 D;
@@ -14,6 +14,13 @@
  * global are built only on a `?debug` / `?physicsDebug` / `?screenshot` page.
  * Survival is integrated by SimCore's `survival` system; the step reads its
  * modifiers (sprint).
+ *
+ * Headless-safe (#556 A): the step is SimCore's `vehicle-runner` system
+ * (runnerSimSystem.ts). It reads and writes the run through `args.game`
+ * (ctx.game), never the Zustand store; sounds, shake and collision bursts go
+ * out as `vehicle-*` cues; and the camera's follow / FOV kick are the R3F
+ * host's (runnerCameraSync.ts) — the step reads the camera's orientation for
+ * camera-relative movement and only flags whether the camera may follow.
  */
 import { handleDodgeAndCollision, sampleSlope, calculateSlopeMultiplier } from './RunnerPhysicsHelpers';
 import {
@@ -36,18 +43,14 @@ import {
   tickSprintStamina,
   tickJumpStateMachine,
   tickFootstepAudio,
-  applyRunnerCameraFollow,
-  updateRunnerFovKick,
 } from './runnerAirControl';
 import * as THREE from 'three';
 import { WATER_LEVEL, PLAYER_SPAWN, MOVEMENT, PHYSICS } from '../../../constants/game';
 import { VEHICLE_TUNING } from '../../../constants/vehicleTuning';
 import { isFloatingPlatform } from '../../../systems/pools/FloatingObjectRegistry';
-import { useGameStore } from '../../../systems/GameState';
+import type { SimGamePort } from '../../../sim/core/simGame';
 import { RUNNER_CONTACT_FRICTION } from '../../../systems/vehicle/VehicleSystem';
 import { SMOOTHING_FACTOR, DEG_TO_RAD, BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
-import { playJumpSound } from '../audio';
-import { triggerCameraShake } from '../../../hooks/useCameraShake';
 import {
   tryFireShelfLaunch,
   getShelfDownstreamSpeed,
@@ -57,8 +60,8 @@ import {
 import { tickLaunchScoring, hasActiveLaunch } from '../../../systems/score/LaunchScoringSession';
 import { gameEvents } from '../../../systems/events/GameEvents';
 import { bodyUserData as userDataOf, type RapierBody, type RapierNamespace, type RapierWorld } from '../../../physics/rapierTypes';
-import type { PlayerControls } from '../../../hooks/usePlayerControls';
-import type { RunnerPhysicsState } from './useRunnerPhysics';
+import type { PlayerControls } from '../../../input/playerControls';
+import type { RunnerPhysicsState } from './runnerPhysicsState';
 import {
   RUNNER_IMPULSE_TAGS,
   resetImpulseTally,
@@ -71,6 +74,8 @@ type Vec3 = { x: number; y: number; z: number };
 
 export interface RunnerPhysicsStepArgs {
   delta: number;
+  /** The run's state (ctx.game): stamina, segment, spawn points, wipeout latch. */
+  game: SimGamePort;
   world: RapierWorld;
   body: RapierBody;
   rapier: RapierNamespace;
@@ -134,7 +139,7 @@ export function updateRunnerPhysics(args: RunnerPhysicsStepArgs): void {
   applyInput(f);
   integrate(f);
   applyWaterForces(f);
-  applyCamera(f);
+  f.s.followCamera = true;
   writeTelemetry(f);
 }
 
@@ -146,7 +151,7 @@ function holdAtSpawn(f: StepFrame, envelope: RunnerStepScratch['envelope'] | nul
   const latched = f.userData.__holdTarget as Vec3 | undefined;
   const respawnPoint =
     latched ??
-    (envelope?.respawnAt !== undefined ? useGameStore.getState().spawnPoints[envelope.respawnAt] : undefined);
+    (envelope?.respawnAt !== undefined ? f.args.game.state().spawnPoints[envelope.respawnAt] : undefined);
   holdBodyAtSpawn(f.args.body, respawnPoint);
 }
 
@@ -161,6 +166,7 @@ function checkBodySanity(f: StepFrame): boolean {
   s.body = body;
   // F-8: defer gameplay impulses until body, camera, terrain, and velocity are sane.
   s.physicsWarm = false;
+  s.followCamera = false;
   resetImpulseTally(s);
 
   const pos = body.translation();
@@ -206,8 +212,8 @@ function checkBodySanity(f: StepFrame): boolean {
       f.userData.__terrainReady === true &&
       isPositionSane(pos, { ...bounds, yMin: -Infinity, yMax: Infinity });
     if (verticalOob && envelope) {
-      triggerOutOfBoundsWipeout(envelope);
-      const game = useGameStore.getState();
+      triggerOutOfBoundsWipeout(args.game.state(), envelope);
+      const game = args.game.state();
       const target = game.spawnPoints[envelope.respawnAt ?? game.respawnSegmentIndex];
       if (target) f.userData.__holdTarget = { x: target.x, y: target.y, z: target.z };
     }
@@ -373,7 +379,7 @@ function applyTerrainResponse(f: StepFrame): void {
   // === GRAVITY MULTIPLIER (waterfall / steep rapids) ===
   // The store's waterfallGravityMultiplier onto the Rapier world, read without
   // subscribing (no re-render) and written only on change, in place.
-  f.gravMult = useGameStore.getState().waterfallGravityMultiplier;
+  f.gravMult = args.game.state().waterfallGravityMultiplier;
   if (f.gravMult !== vehicleState.appliedGravMultRef.current) {
     vehicleState.appliedGravMultRef.current = f.gravMult;
     world.gravity.x = 0;
@@ -385,7 +391,7 @@ function applyTerrainResponse(f: StepFrame): void {
   // One-shot launch when crossing the authored slab shelf at speed.
   try {
     const sa = shelfArgs;
-    sa.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
+    sa.currentSegmentIndex = args.game.state().currentSegmentIndex;
     sa.position = pos;
     sa.velocity = vel;
     sa.trigger = shelfTriggerRef.current;
@@ -393,8 +399,8 @@ function applyTerrainResponse(f: StepFrame): void {
     const launch = tryFireShelfLaunch(sa);
     if (launch) {
       s.applyImpulse('shelfLaunch', launch.impulse);
-      triggerCameraShake(0.45, 0.25);
-      playJumpSound(Math.sqrt(vel.x * vel.x + vel.z * vel.z));
+      gameEvents.emit('vehicle-shake', { vehicle: 'runner', intensity: 0.45, duration: 0.25 });
+      gameEvents.emit('vehicle-jump', { speed: Math.sqrt(vel.x * vel.x + vel.z * vel.z), double: false });
       gameEvents.emit('shelfLaunch', {
         bodyHandle: body.handle,
         launchPos: pos,
@@ -441,6 +447,7 @@ function tickInputMachines(f: StepFrame): PlayerControls {
   sp.sprint = sprint;
   sp.jumpState = js;
   sp.sprintLockedRef = vehicleState.sprintLockedRef;
+  sp.game = args.game.state();
   tickSprintStamina(sp, s.sprint);
 
   const ja = jumpArgs;
@@ -459,6 +466,7 @@ function tickInputMachines(f: StepFrame): PlayerControls {
   tickJumpStateMachine(ja);
 
   const da = dodgeArgs;
+  da.game = args.game.state();
   da.dodgeState = dodgeState;
   da.dodgeJustPressed = dodgeJustPressed;
   da.isGrounded = isGrounded;
@@ -472,7 +480,6 @@ function tickInputMachines(f: StepFrame): PlayerControls {
   da.vel = vel;
   da.prevFrame = prevFrame;
   da.vehicle = vehicleState.vehicle;
-  da.collisionState = vehicleState.collisionState;
   da.debugState = vehicleState.debugState;
   da.now = f.now;
   da.applyImpulseWithDebugTracking = s.applyImpulse;
@@ -670,25 +677,6 @@ function applyWaterForces(f: StepFrame): void {
   }
 }
 
-/** First-person follow (or the top-down harness view) and the speed FOV kick. */
-function applyCamera(f: StepFrame): void {
-  const { args, dt, pos, vel } = f;
-  const ca = cameraArgs;
-  ca.camera = args.camera;
-  ca.pos = pos;
-  ca.posOk = f.posOk;
-  ca.noPointerLock = f.noPointerLock;
-  applyRunnerCameraFollow(ca);
-
-  const fa = fovArgs;
-  fa.camera = args.camera;
-  fa.vel = vel;
-  fa.dt = dt;
-  fa.fovState = args.vehicleState.fovState;
-  fa.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
-  updateRunnerFovKick(fa);
-}
-
 /** Keep the newest `max` entries no older than `windowMs`, in place. */
 function pruneWindow<T extends { at: number }>(list: T[], now: number, windowMs: number, max: number): void {
   let w = 0;
@@ -735,7 +723,7 @@ function writeTelemetry(f: StepFrame): void {
   snapshot.waterfallGravityMultiplier = f.gravMult;
   snapshot.effectiveG = PHYSICS.GRAVITY * f.gravMult;
   snapshot.extraGravity = PHYSICS.GRAVITY * (f.gravMult - 1);
-  snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
+  snapshot.currentSegmentIndex = args.game.state().currentSegmentIndex;
   const ground = s.ground;
   setVec(snapshot.groundRay.origin, ground.origin.x, ground.origin.y, ground.origin.z);
   snapshot.groundRay.hitPoint = ground.hitPoint
@@ -762,7 +750,7 @@ function publishSnapshotPose(f: StepFrame, px: number, py: number, pz: number, v
   const snapshot = f.args.vehicleState.debugSnapshotRef.current;
   setVec(snapshot.position, px, py, pz);
   setVec(snapshot.linearVelocity, vx, vy, vz);
-  snapshot.currentSegmentIndex = useGameStore.getState().currentSegmentIndex;
+  snapshot.currentSegmentIndex = f.args.game.state().currentSegmentIndex;
   setDebugTap('physicsDebug', snapshot);
 }
 
@@ -786,5 +774,3 @@ const sprintArgs = {} as Parameters<typeof tickSprintStamina>[0];
 const jumpArgs = {} as Parameters<typeof tickJumpStateMachine>[0];
 const dodgeArgs = {} as Parameters<typeof handleDodgeAndCollision>[0];
 const footstepArgs = {} as Parameters<typeof tickFootstepAudio>[0];
-const cameraArgs = {} as Parameters<typeof applyRunnerCameraFollow>[0];
-const fovArgs = {} as Parameters<typeof updateRunnerFovKick>[0];

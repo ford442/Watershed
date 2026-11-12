@@ -28,6 +28,7 @@ import { weatherScriptHasWeather } from '../systems/weather/weatherScript';
 import { WeatherDirectorTick } from '../systems/weather/WeatherDirectorTick';
 import { SkyClockTick } from '../systems/sky/SkyClockTick';
 import { SimCoreTick } from './SimCoreTick';
+import { RapierSimStep } from './RapierSimStep';
 import type { InnerExperienceProps } from './types';
 import { InputHubTick } from '../input/InputHubTick';
 import { isTouchInputMode } from '../input/touchMode';
@@ -104,7 +105,9 @@ export default function InnerExperience({
       )}
 
       {worldEnabled && debug.isStageEnabled('physics') && (
-        <Physics debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
+        <Physics paused debug={state.isDebug || state.physicsDebugEnabled} gravity={[0, PHYSICS.GRAVITY, 0]}>
+          {/* paused: SimCore steps the world (`physics-world`, #556 A), not the library's frame loop. */}
+          <RapierSimStep />
           {(debug.debugEnabled || isCleanTestMode()) && (
             <Suspense fallback={null}>
               <PhysicsPerfMonitor />

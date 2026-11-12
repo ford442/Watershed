@@ -22,7 +22,7 @@
  * A run reset snaps: the first step of a run takes its target outright.
  */
 import type { SimSystem } from '../../sim/core/SimCore';
-import { useGameStore } from '../GameState';
+import type { SimGameView } from '../../sim/core/simGame';
 import { getLiveChunkManager } from '../map/ChunkManager';
 import { publishActiveGameplayProfile } from './activeGameplayProfile';
 import {
@@ -40,8 +40,8 @@ export const GAMEPLAY_PROFILE_SIM_ORDER = 35;
 export const GAMEPLAY_PROFILE_BLEND_SEC = 0;
 
 /** The profile the player is heading for this step. */
-function resolveTarget(): Readonly<GameplayProfile> {
-  const storeBiome = useGameStore.getState().currentBiome;
+function resolveTarget(game: SimGameView): Readonly<GameplayProfile> {
+  const storeBiome = game.currentBiome;
   const manager = getLiveChunkManager();
   if (manager && manager.getCurrentBiome() === storeBiome) return manager.getCommittedGameplay();
   return gameplayProfileForBiome(storeBiome);
@@ -65,8 +65,8 @@ export function createGameplayProfileSimSystem({
   return {
     id: 'gameplay-profile',
     order: GAMEPLAY_PROFILE_SIM_ORDER,
-    step(_ctx, dt) {
-      const target = resolveTarget();
+    step(ctx, dt) {
+      const target = resolveTarget(ctx.game.state());
       if (snap || (blendSec <= 0 && !gameplayProfilesEqual(target, to))) {
         snap = false;
         blending = false;

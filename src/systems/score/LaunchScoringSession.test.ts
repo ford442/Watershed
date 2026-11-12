@@ -26,6 +26,7 @@ import {
   type ContactSurface,
 } from './LaunchScoringSession';
 import { resetPersistenceForTests } from '../persistence/PersistenceSystem';
+import { initLaunchRewardListener, resetLaunchRewardListenerForTests } from './launchRewards';
 import { getActiveRunKey } from '../../utils/runContext';
 
 const BODY_HANDLE = 42;
@@ -124,6 +125,12 @@ describe('LaunchScoringSession', () => {
     resetStore();
     localStorage.clear();
     resetPersistenceForTests();
+    // The session emits; the store / persistence half is launchRewards.ts (#556 A).
+    initLaunchRewardListener();
+  });
+
+  afterEach(() => {
+    resetLaunchRewardListenerForTests();
   });
 
   describe('ascent gate', () => {

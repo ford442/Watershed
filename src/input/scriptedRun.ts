@@ -3,9 +3,9 @@
  *
  * With a script in the URL the Canvas boots `frameloop="never"` (App.tsx), and
  * the only thing that advances the sim is `stepScripted(n)`: n sim frames at
- * the fixed 1/60 s dt through R3F's `advance()` — hub tick, every useFrame
- * subscriber, the Rapier step — with the renderer stubbed out on all but the
- * last frame. Not rendering 59 of every 60 frames is what turns a ~40 s
+ * the fixed 1/60 s dt through R3F's `advance()` — hub tick, SimCore (which
+ * steps the Rapier world and the runner, #556 A), every other useFrame
+ * subscriber — with the renderer stubbed out on all but the last frame. Not rendering 59 of every 60 frames is what turns a ~40 s
  * SwiftShader run into seconds.
  *
  * Timestamps are sim time (`frame × dt`), never wall time, so two runs of one
@@ -26,9 +26,10 @@ import { currentSearch } from '../config/queryFlags';
 const SCRIPT_PREFIX = 'script:';
 
 /**
- * A hair over zero so the first frame's delta is dt + ε: Rapier's fixed-step
- * accumulator then steps exactly once per frame instead of skipping one on a
- * float round-down and doubling up the next.
+ * A hair over zero so the first frame's delta is dt + ε: a fixed-step
+ * accumulator fed the frame delta steps exactly once per frame instead of
+ * skipping one on a float round-down and doubling up the next. (Rapier's was
+ * the reason; SimCore steps the world now, but frame-delta readers remain.)
  */
 const ACCUMULATOR_BIAS_SEC = 1e-6;
 

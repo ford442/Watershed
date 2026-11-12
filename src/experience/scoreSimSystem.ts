@@ -13,7 +13,6 @@
  */
 import type { DebugStageController } from '../debug/debugStages';
 import type { SimSystem } from '../sim/core/SimCore';
-import { useGameStore } from '../systems/GameState';
 import { tickGhostRecording } from '../systems/ghost/GhostRecorder';
 import { tickScoreSystem } from '../systems/score/ScoreSystem';
 
@@ -30,7 +29,7 @@ export function createScoreSimSystem(debug: DebugStageController): SimSystem {
       try {
         tickScoreSystem(dt, Math.sqrt(v.vx * v.vx + v.vz * v.vz));
 
-        const game = useGameStore.getState();
+        const game = ctx.game.state();
         if (!game.isPaused && !game.isWipeout && v.posOk) {
           tickGhostRecording(dt, { px: v.x, py: v.y, pz: v.z, qx: v.qx, qy: v.qy, qz: v.qz, qw: v.qw });
         }

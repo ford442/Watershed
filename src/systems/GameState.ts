@@ -20,6 +20,7 @@ import { create } from 'zustand';
 import type { BiomeId } from '../configs/biomes';
 import { DEFAULT_BIOME_ID } from '../configs/biomes';
 import { RENDER_SCALE_MAX, clampRenderScale } from '../rendering/renderScale';
+import type { WeatherBroadcast } from './weather/weatherBroadcast';
 
 // =============================================================================
 // TYPES
@@ -44,15 +45,6 @@ export interface SpawnPoint {
  * visual weather changes — about every 1% of a ramp); a run reset clears it. Subscribe to `weather.type` (it
  * changes rarely); read the rest with getState() where it is used per frame.
  */
-export interface WeatherBroadcast {
-  type: string;
-  intensity: number;
-  /** 0–1 progress of the transition into `type`. */
-  transition: number;
-  /** Water-surface ripple strength (0 = calm). */
-  rippleStrength: number;
-}
-
 export const CLEAR_WEATHER: WeatherBroadcast = { type: 'clear', intensity: 0, transition: 1, rippleStrength: 0 };
 
 export interface GameState {

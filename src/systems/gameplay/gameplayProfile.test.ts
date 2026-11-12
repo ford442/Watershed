@@ -30,6 +30,7 @@ vi.mock('../map/ChunkManager', async (importOriginal) => ({
 }));
 
 import { createGameplayProfileSimSystem, GAMEPLAY_PROFILE_BLEND_SEC } from './gameplaySimSystem';
+import { createStoreSimCore } from '../../testing/storeSimCore';
 
 /** The live treadmill committed `biome` with `gameplay` (the store follows, as BiomeProvider does). */
 function commit(biome: string, gameplay: unknown = BIOME_GAMEPLAY_PROFILES[biome as keyof typeof BIOME_GAMEPLAY_PROFILES]) {
@@ -83,7 +84,7 @@ describe('gameplay-profile sim system', () => {
     resetActiveGameplayProfileForTests();
     live.manager = null;
     useGameStore.setState({ currentBiome: 'canyonSummer' });
-    core = new SimCore();
+    core = createStoreSimCore();
     core.register(createGameplayProfileSimSystem());
   });
 
@@ -122,7 +123,7 @@ describe('gameplay-profile sim system', () => {
   it('blends in sim time when given a window, the same at any frame rate', () => {
     const sample = (frameDelta: number) => {
       resetActiveGameplayProfileForTests();
-      const c = new SimCore();
+      const c = createStoreSimCore();
       c.register(createGameplayProfileSimSystem({ blendSec: 1 }));
       commit('canyonSummer');
       c.step();
@@ -146,7 +147,7 @@ describe('gameplay-profile sim system', () => {
   });
 
   it('snaps after a run reset, even with a blend window', () => {
-    const c = new SimCore();
+    const c = createStoreSimCore();
     c.register(createGameplayProfileSimSystem({ blendSec: 1 }));
     commit('glacier');
     c.step();

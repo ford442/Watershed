@@ -14,7 +14,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { isAutumnLike } from '../../configs/biomes';
-import { useGameStore, type WeatherBroadcast } from '../../systems/GameState';
+import { useGameStore } from '../../systems/GameState';
+import type { WeatherBroadcast } from '../../systems/weather/weatherBroadcast';
 import { resolveLeafPalette } from './FallingLeaves';
 import { createRng } from '../../math/random';
 

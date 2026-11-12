@@ -3,13 +3,12 @@
  * jump → airborne, typed against RapierBody / RapierWorld (#503 D) so no
  * Rapier WASM is needed.
  */
-import { renderHook } from '@testing-library/react';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { updateRunnerPhysics } from './RunnerPhysicsStep';
-import { useRunnerPhysicsState } from './useRunnerPhysics';
+import { createRunnerPhysicsState } from './runnerPhysicsState';
 import { JUMP_CONFIG } from '../constants';
-import type { PlayerControls } from '../../../hooks/usePlayerControls';
+import type { PlayerControls } from '../../../input/playerControls';
 import type { QuatLike, RapierBody, RapierRay, RapierWorld, Vec3Like } from '../../../physics/rapierTypes';
 import { useGameStore } from '../../../systems/GameState';
 
@@ -67,12 +66,13 @@ describe('updateRunnerPhysics state machine', () => {
   let body: StubBody;
   let ground: { groundToi: number | null };
   let controls: PlayerControls;
-  let vehicleState: ReturnType<typeof useRunnerPhysicsState>;
+  let vehicleState: ReturnType<typeof createRunnerPhysicsState>;
   const camera = new THREE.PerspectiveCamera();
 
   const step = () =>
     updateRunnerPhysics({
       delta: 1 / 60,
+      game: { state: () => useGameStore.getState() },
       world: stubWorld(ground),
       body,
       rapier,
@@ -88,7 +88,7 @@ describe('updateRunnerPhysics state machine', () => {
     body = new StubBody();
     ground = { groundToi: 1.0 };
     controls = idleControls();
-    vehicleState = renderHook(() => useRunnerPhysicsState()).result.current;
+    vehicleState = createRunnerPhysicsState();
     camera.position.set(0, -4.35, -10);
     camera.updateMatrixWorld(true);
   });

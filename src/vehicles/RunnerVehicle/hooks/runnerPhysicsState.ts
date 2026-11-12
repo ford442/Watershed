@@ -1,10 +1,12 @@
-import { useState } from 'react';
+/**
+ * runnerPhysicsState.ts — what the runner's physics step reads and writes,
+ * built once per runner. No React and no presentation (#556 A): the collision
+ * particles, sounds and camera shake are the R3F host's, fed by vehicle cues.
+ */
 import * as THREE from 'three';
 import { type JumpState, type DodgeState, type DebugImpulse, type DebugContact, type PhysicsDebugSnapshot } from '../constants';
 import { createCollisionTracker, RUNNER_CONTACT_FRICTION } from '../../../systems/vehicle/VehicleSystem';
 import { PHYSICS } from '../../../constants/game';
-import { ParticlePool } from '../../../components/particlePool';
-import { COLLISION_PARTICLE_CAPACITY } from '../../../components/CollisionParticles';
 import { createRunnerStepScratch } from './runnerStepScratch';
 
 /** A ref-shaped holder (the step mutates `.current`, as it did on `useRef`s). */
@@ -111,9 +113,8 @@ export function createRunnerPhysicsState() {
       velocity: new THREE.Vector3(),
     }),
     collisionState: ref({
+      /** Footstep timbre (moss / rock); RunnerVehicle keeps it on the biome. */
       currentBiome: 'canyonSummer' as string,
-      /** Collision bursts, drawn by ParticlePoolMesh in RunnerVehicle. */
-      particles: new ParticlePool(COLLISION_PARTICLE_CAPACITY),
     }),
     fovState: { fov: 75 },
     debugState: ref({
@@ -127,11 +128,6 @@ export function createRunnerPhysicsState() {
     /** The physics step's reused per-step scratch (runnerStepScratch.ts). */
     stepScratch: createRunnerStepScratch(),
   };
-}
-
-export function useRunnerPhysicsState() {
-  const [state] = useState(createRunnerPhysicsState);
-  return state;
 }
 
 export type RunnerPhysicsState = ReturnType<typeof createRunnerPhysicsState>;

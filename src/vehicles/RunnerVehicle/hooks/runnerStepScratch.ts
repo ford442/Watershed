@@ -48,6 +48,12 @@ export interface RunnerStepScratch {
   body: RapierBody | null;
   /** Gameplay impulses / velocity writes are let through only once everything is sane (F-8). */
   physicsWarm: boolean;
+  /**
+   * The last step ran to its camera stage (body and camera sane): the R3F
+   * host's camera may follow the body (#556 A — the step no longer moves the
+   * camera itself; `runnerCameraSync.ts`). False after an early-out step.
+   */
+  followCamera: boolean;
   /** Per-tag impulse sums for this step, and whether the tag fired. */
   impulseTotals: Record<RunnerImpulseTag, Vec3>;
   impulseUsed: Record<RunnerImpulseTag, boolean>;
@@ -91,6 +97,7 @@ export function createRunnerStepScratch(): RunnerStepScratch {
     debugGlobals: flags.debugGlobals,
     body: null,
     physicsWarm: false,
+    followCamera: false,
     impulseTotals,
     impulseUsed,
     applyImpulse: (tag, impulse) => {

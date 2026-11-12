@@ -7,14 +7,11 @@
  * runs it first (order 10), ahead of every default-priority subscriber, so the
  * water, the hull and WeatherSystem all read this frame's weather.
  */
-import { useGameStore, type WeatherBroadcast } from '../GameState';
+import type { WeatherBroadcast } from './weatherBroadcast';
 import { getRunMap } from '../journey/runSession';
-import type { RunWeather } from '../map/weatherInflow';
 import type { SimSystem } from '../../sim/core/SimCore';
 import {
-  biomeAmbientWeather,
   getWeatherDirector,
-  setWeatherDirectorAmbient,
   tickWeatherDirector,
   weatherBroadcastOf,
 } from './weatherDirector';
@@ -25,20 +22,8 @@ export const WEATHER_SIM_ORDER = 10;
 /** Store writes skip changes smaller than this (a ramp still lands every ~1%). */
 const BROADCAST_EPSILON = 0.005;
 
-let reachAmbient: RunWeather | null = null;
 // Step scratch: the broadcast is built here and copied into the store only when it changed.
 const NEXT_BROADCAST: WeatherBroadcast = { type: 'clear', intensity: 0, transition: 1, rippleStrength: 0 };
-
-/** A reach manifest's weather, shown when the run's own weather is clear (null clears it). */
-export function setReachAmbientWeather(weather: RunWeather | null): void {
-  reachAmbient = weather;
-  setWeatherDirectorAmbient(reachAmbient ?? biomeAmbientWeather(useGameStore.getState().currentBiome));
-}
-
-/** The ambient weather for a biome, unless a reach manifest has set its own. */
-export function applyAmbientWeatherForBiome(biome: string): void {
-  setWeatherDirectorAmbient(reachAmbient ?? biomeAmbientWeather(biome));
-}
 
 function broadcastChanged(prev: WeatherBroadcast, next: WeatherBroadcast): boolean {
   return (
@@ -55,13 +40,13 @@ export function createWeatherSimSystem(): SimSystem {
   return {
     id: 'weather-director',
     order: WEATHER_SIM_ORDER,
-    step(_ctx, dt) {
-      const store = useGameStore.getState();
-      if (!store.isPaused) {
-        tickWeatherDirector(mapReachFraction(getRunMap(), store.currentSegmentIndex), dt);
+    step(ctx, dt) {
+      const game = ctx.game.state();
+      if (!game.isPaused) {
+        tickWeatherDirector(mapReachFraction(getRunMap(), game.currentSegmentIndex), dt);
       }
       const next = weatherBroadcastOf(getWeatherDirector(), NEXT_BROADCAST);
-      if (broadcastChanged(store.weather, next)) store.setWeather({ ...next });
+      if (broadcastChanged(game.weather, next)) game.setWeather({ ...next });
     },
   };
 }
