@@ -19,6 +19,7 @@ export interface WatershedDebugApi {
   readonly obstaclePool: DebugTaps['obstaclePool'];
   readonly cameraDiag: DebugTaps['cameraDiag'];
   readonly wasmWaterTest: DebugTaps['wasmWaterTest'];
+  readonly shaderWarmup: DebugTaps['shaderWarmup'];
   /** The entered segment's flow multiplier / slipperiness (systems/water/segmentFlow.ts). */
   readonly flowSpeed: number;
   readonly slipperiness: number;
@@ -41,6 +42,7 @@ export function createDebugApi(): WatershedDebugApi {
     get obstaclePool() { return getDebugTap('obstaclePool'); },
     get cameraDiag() { return getDebugTap('cameraDiag'); },
     get wasmWaterTest() { return getDebugTap('wasmWaterTest'); },
+    get shaderWarmup() { return getDebugTap('shaderWarmup'); },
     get flowSpeed() { return getSegmentFlowSpeed(); },
     get slipperiness() { return getSegmentSlipperiness(); },
     loseGpu() {

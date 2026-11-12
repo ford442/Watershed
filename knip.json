@@ -4,6 +4,7 @@
     "src/**/*.test.{ts,tsx}",
     "src/**/*.perf.test.{ts,tsx}",
     "src/debug/postParity.ts",
+    "src/debug/hostParity.ts",
     "src/systems/water/sweParity.ts",
     "scripts/generate-sounds.mjs",
     "scripts/author/raft-hull.mjs"

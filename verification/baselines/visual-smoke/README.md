@@ -14,6 +14,23 @@ Committed reference PNGs for `verification/visual_smoke.mjs` (CI job `visual-smo
 | `11_glacial_hour06.png` / `12_glacial_hour14.png` | Glacial start segment at a 06:00 / 14:00 launch (the sun moves) | Best-effort |
 | `13_meander_hour06.png` / `14_meander_hour14.png` | Meander segment 2 at a 06:00 / 14:00 launch | Best-effort |
 
+**`__material-tsl` twins** (#555 A.1): every row above also has a `<label>__material-tsl.png`,
+captured with `?material=tsl` (`pnpm test:visual-smoke:tsl`, a required CI step since #555 A). The
+gate is the same. The node boot is slower on SwiftShader, so its top-down teleports soft-skip more
+often than the GLSL ones; each TSL baseline was captured from a run where the teleport landed
+(13/14 only with `VISUAL_TELEPORT_TIMEOUT_MS=120000 VISUAL_SCREENSHOT_TIMEOUT_MS=120000`: the first
+frame after the meander teleport takes longer than CI's 15 s screenshot limit, so CI soft-skips them).
+
+**What the TSL set shows (2026-11-12) — record of today's node path, not a look to keep.** Phase B
+of #555 re-blesses these once the node path draws the scene:
+
+- `01_spawn_topdown`, `13_meander_hour06`, `14_meander_hour14` — **no canyon**: fog colour, the runner
+  marker and a few birds. GLSL draws the channel, rocks, trees and planks in the same frames.
+- `11` / `12` glacial hours — the waterline band only; the walls above it are missing on TSL too.
+- `02_waterfall_topdown` / `03_slot_topdown` — the WIPEOUT overlay (the teleport lands off-track),
+  as `03` does on GLSL; `05_delta_beach` — the "Campaign Complete" overlay.
+- `04_delta_open_water` — fog/bloom-heavy, like its GLSL twin.
+
 **Gate** (#518 C): a best-effort shot over threshold is informational. The run fails on the
 required shot (structural or over threshold), on any shot that captured with **no baseline here**
 (a new shot lands with its PNG), on a native module fetched twice, and on hard page errors on a
@@ -27,6 +44,12 @@ Top-down baselines were seeded from historical `verification/webgl/*` captures. 
 pnpm build
 pnpm preview --host 127.0.0.1 --port 4173 &
 UPDATE_BASELINES=1 WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke:update
+```
+
+The TSL set, one or more labels at a time (`VISUAL_ONLY` takes a comma list):
+
+```bash
+UPDATE_BASELINES=1 WATERSHED_URL=http://127.0.0.1:4173 VISUAL_ONLY=01_spawn_topdown pnpm test:visual-smoke:tsl:update
 ```
 
 Or against the dev server:

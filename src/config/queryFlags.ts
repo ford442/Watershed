@@ -57,6 +57,11 @@ export interface QueryFlags {
   /** `?spawnProfile=1` — segment-mount timing marks. */
   readonly spawnProfile: boolean;
   /**
+   * `?warmup=1` — run the boot shader warm-up even under scripted input, which
+   * normally skips it (verification/shader_warmup_report.mjs measures it there).
+   */
+  readonly warmup: boolean;
+  /**
    * Publish the per-step debug snapshots (`window.__watershed*`, the physics
    * overlay's body snapshot): `?debug`, `?physicsDebug` or a `?screenshot`
    * harness (the visual / diag scripts read them). Off for a player, so the
@@ -130,6 +135,7 @@ export function parseQueryFlags(search: string): QueryFlags {
     river: p.get('river'),
     seed: p.get('seed'),
     spawnProfile: p.get('spawnProfile') === '1',
+    warmup: p.get('warmup') === '1',
     debugGlobals: debug || physicsDebug || screenshot,
   });
 }

@@ -18,6 +18,8 @@
  *   VISUAL_MAX_DIFF_RATIO  Max mismatched pixel ratio (default 0.05)
  *   VISUAL_THRESHOLD       pixelmatch threshold 0–1 (default 0.15)
  *   VISUAL_BOOT_RETRIES    Boot attempts per topdown shot (default 3)
+ *   VISUAL_TELEPORT_TIMEOUT_MS  How long a top-down shot waits for its teleport to land (default 30000)
+ *   VISUAL_SCREENSHOT_TIMEOUT_MS  How long one capture may take (default 15000)
  *   VISUAL_ONLY            Comma-separated shot labels to run (e.g. 10_touch_layout)
  *   PUPPETEER_EXECUTABLE_PATH  Optional Chrome binary override
  *
@@ -52,6 +54,9 @@ const UPDATE_BASELINES = process.env.UPDATE_BASELINES === '1' || process.env.UPD
 const MAX_DIFF_RATIO = Number(process.env.VISUAL_MAX_DIFF_RATIO ?? '0.05');
 const PIXEL_THRESHOLD = Number(process.env.VISUAL_THRESHOLD ?? '0.15');
 const BOOT_RETRIES = Math.max(1, Number(process.env.VISUAL_BOOT_RETRIES ?? '3'));
+/** The node boot is slower on SwiftShader; a TSL baseline capture may need longer than CI waits. */
+const SCREENSHOT_TIMEOUT_MS = Math.max(1_000, Number(process.env.VISUAL_SCREENSHOT_TIMEOUT_MS ?? '15000'));
+const TELEPORT_TIMEOUT_MS = Math.max(1_000, Number(process.env.VISUAL_TELEPORT_TIMEOUT_MS ?? '30000'));
 /**
  * Extra query appended to every shot, e.g. VISUAL_EXTRA_QUERY='material=tsl' for
  * the #256 path A matrix. Capture/baseline names get a suffix so a TSL run never
@@ -339,7 +344,7 @@ async function launchBrowser() {
 async function capturePng(page, outPath) {
   await Promise.race([
     page.screenshot({ path: outPath, fullPage: false, type: 'png' }),
-    sleep(15_000).then(() => {
+    sleep(SCREENSHOT_TIMEOUT_MS).then(() => {
       throw new Error('page.screenshot timed out');
     }),
   ]);
@@ -499,7 +504,7 @@ async function attemptTopdown(shot) {
       const moved = await page
         .waitForFunction(
           (seg) => window.__watershedScreenshot.teleportToSegment(seg) === true,
-          { timeout: 30_000, polling: 250 },
+          { timeout: TELEPORT_TIMEOUT_MS, polling: 250 },
           shot.segment,
         )
         .then(() => true)
