@@ -28,7 +28,6 @@ export function resolveLeafPalette(biome: BiomeId | string | undefined): string[
 export default function FallingLeaves({
   transforms,
   biome = 'canyonSummer',
-  floating = false,
 }: FallingLeavesProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
@@ -39,7 +38,9 @@ export default function FallingLeaves({
     return geo;
   }, []);
 
-  const material = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffffff' }), [floating]);
+  // Built once: nothing in it depends on `floating`. It used to be keyed on it, so a
+  // prop change built a second material and dropped the first undisposed.
+  const material = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ffffff' }), []);
 
   useEffect(() => {
     const mesh = meshRef.current;

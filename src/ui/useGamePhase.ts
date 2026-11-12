@@ -66,7 +66,9 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
   useEffect(() => {
     settingsOpenRef.current = settingsOpen;
   }, [settingsOpen]);
-  const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(() => getActiveMapId());
+  // The map the page booted on, read once; the pick below starts there and moves.
+  const [bootMapId] = useState<MapRegistryId>(() => getActiveMapId());
+  const [selectedMapId, setSelectedMapId] = useState<MapRegistryId>(bootMapId);
   // The raft is its own chunk: a map that starts on it fetches it while the menu is up.
   useEffect(() => {
     if (resolveInitialVehicle(selectedMapId) === 'raft') prefetchRaftVehicle();
@@ -74,9 +76,10 @@ export function useGamePhase(debug: DebugStageController, bootReady: boolean) {
   const [activeLaunchHour, setActiveLaunchHour] = useState(() => getLaunchHour());
 
   useEffect(() => {
-    initPersistence(getActiveRunKey(selectedMapId));
-    syncMapUrl(selectedMapId);
-  }, []);
+    // Once, for the boot map. A later pick re-syncs the URL itself (onMapSelect).
+    initPersistence(getActiveRunKey(bootMapId));
+    syncMapUrl(bootMapId);
+  }, [bootMapId]);
 
   // Client-only rehydration of persisted settings (skipHydration in the store).
   // Flips `_hasHydrated`, which gates the panel + all setting application.

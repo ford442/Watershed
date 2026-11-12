@@ -46,10 +46,10 @@ import {
 import { awardCacheRetrievalBonus } from '../../systems/score/ScoreSystem';
 import { useGameStore } from '../../systems/GameState';
 import {
-  getSegmentFrame,
-  getSegmentFramesVersion,
+  getSegmentFrames,
   resolveSegmentAnchor,
   subscribeSegmentFrames,
+  type SegmentFrame,
 } from '../../systems/map/segmentFrames';
 import type { VehicleRigidBodyRef } from '../../experience/types';
 
@@ -72,19 +72,20 @@ interface MarkerVisual {
   label: string;
 }
 
-/** Anchor → world position on the live segment, or null while it is off the treadmill. */
-function resolveAnchorOnTrack(
-  segmentIndex: number,
-  anchor: WaypointAnchor,
-): [number, number, number] | null {
-  const frame = getSegmentFrame(segmentIndex);
-  return frame ? resolveSegmentAnchor(frame, anchor) : null;
+/** Anchor → world position on a live segment of `frames`, or null while it is off the treadmill. */
+function anchorResolverFor(frames: ReadonlyArray<SegmentFrame>) {
+  return (segmentIndex: number, anchor: WaypointAnchor): [number, number, number] | null => {
+    const frame = frames.find((f) => f.index === segmentIndex);
+    return frame ? resolveSegmentAnchor(frame, anchor) : null;
+  };
 }
 
 export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
   const session = getRunSession();
   const mapId = session?.mapId;
-  const currentSegmentIndex = useGameStore((s) => s.currentSegmentIndex);
+  // Re-render on a segment change: the portage / cache run state below is a plain
+  // module snapshot (replaced, never mutated, on each dispatch) and is re-read then.
+  useGameStore((s) => s.currentSegmentIndex);
 
   const metadata = useMemo(
     () => (mapId ? getMapSurvivalMetadata(mapId) : {}),
@@ -92,32 +93,26 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
   );
 
   // Anchored waypoints follow the live segment geometry, so re-resolve
-  // whenever the treadmill republishes its frames.
-  const framesVersion = useSyncExternalStore(
-    subscribeSegmentFrames,
-    getSegmentFramesVersion,
-    getSegmentFramesVersion,
-  );
+  // whenever the treadmill republishes its frames. Each publish is a new array,
+  // so the array itself is the snapshot.
+  const frames = useSyncExternalStore(subscribeSegmentFrames, getSegmentFrames, getSegmentFrames);
 
   /** Spatial waypoints whose segment is on the treadmill, in world space. */
   const spatialCaches = useMemo<CacheSlotDefinition[]>(
     () =>
       resolveWaypointPositions(
         (metadata.cacheSlots ?? []).filter(isSpatialWaypoint),
-        resolveAnchorOnTrack,
+        anchorResolverFor(frames),
       ),
-    // framesVersion: anchors resolve against the frames it versions.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [metadata, framesVersion],
+    [metadata, frames],
   );
   const spatialRoutes = useMemo<PortageRouteDefinition[]>(
     () =>
       resolveWaypointPositions(
         (metadata.portageRoutes ?? []).filter(isSpatialWaypoint),
-        resolveAnchorOnTrack,
+        anchorResolverFor(frames),
       ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [metadata, framesVersion],
+    [metadata, frames],
   );
 
   /**
@@ -192,13 +187,13 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     }
   });
 
+  const portageState = getPortageCacheState();
   const markers = useMemo<MarkerVisual[]>(() => {
-    const runState = getPortageCacheState();
     const visuals: MarkerVisual[] = [];
 
     for (const slot of spatialCaches) {
       const status = slotStatuses[slot.id]
-        ?? runState?.cacheSlots.find((entry) => entry.id === slot.id)?.status
+        ?? portageState?.cacheSlots.find((entry) => entry.id === slot.id)?.status
         ?? 'unplaced';
       // Retrieved and lost caches leave nothing behind to walk to.
       if (status !== 'unplaced' && status !== 'placed') continue;
@@ -212,7 +207,7 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     }
 
     for (const route of spatialRoutes) {
-      const status = portageRouteStatus(runState ?? { cacheSlots: [], portageRoutes: [] }, route.segmentIndex);
+      const status = portageRouteStatus(portageState ?? { cacheSlots: [], portageRoutes: [] }, route.segmentIndex);
       // Only draw a portage line the player currently owes — an idle route would
       // read as "go this way" on a segment that is perfectly runnable.
       if (status !== 'required' && status !== 'in_progress') continue;
@@ -226,7 +221,7 @@ export function SurvivalMarkers({ vehicleRef }: SurvivalMarkersProps) {
     }
 
     return visuals;
-  }, [spatialCaches, spatialRoutes, slotStatuses, currentSegmentIndex]);
+  }, [spatialCaches, spatialRoutes, slotStatuses, portageState]);
 
   if (markers.length === 0) return null;
 

@@ -153,7 +153,6 @@ export interface TrackSegmentConfig {
 export interface UseGeometriesParams {
   active: boolean;
   segmentPath: THREE.CatmullRomCurve3 | null | undefined;
-  pathLength: number;
   segmentId: number;
   type: SegmentKind | string;
   channelProfile: readonly ChannelProfileSample[];

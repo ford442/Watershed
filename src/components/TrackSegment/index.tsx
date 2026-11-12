@@ -73,7 +73,6 @@ export default function TrackSegment({
   } = useGeometries({
     active,
     segmentPath,
-    pathLength,
     segmentId,
     type: segmentType,
     channelProfile,

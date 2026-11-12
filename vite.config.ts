@@ -182,14 +182,7 @@ function rapierWasmAssetPlugin(): Plugin {
  *  download starts with the HTML instead of after the entry chunk has run. The
  *  loader's `fetch(url)` is a same-origin CORS-mode request, which is what
  *  `crossorigin` (anonymous) preloads, so the preload is actually consumed.
- *
- *  `watershed_native.wasm` is deliberately NOT preloaded: its consumer is the
- *  sim worker, and a worker's fetch is not matched against the document's
- *  preload list, so the preload was a second download of the same bytes —
- *  which visual_smoke's #467 "fetched once per session" gate catches. Starting
- *  it from index.html needs the main thread to fetch and transfer the bytes in
- *  INIT; until then, the stamped URL's immutable cache policy (public/.htaccess)
- *  is what makes repeat visits free. */
+ *  `watershed_native.wasm` has its own preload (nativeWasmPreloadPlugin). */
 function rapierWasmPreloadPlugin(): Plugin {
   return {
     name: 'watershed-rapier-wasm-preload',
@@ -203,6 +196,43 @@ function rapierWasmPreloadPlugin(): Plugin {
           {
             tag: 'link',
             attrs: { rel: 'preload', as: 'fetch', type: 'application/wasm', crossorigin: '', href: `./${wasm}` },
+            injectTo: 'head',
+          },
+        ];
+      },
+    },
+  };
+}
+
+/** `<link rel="preload" as="fetch" crossorigin>` for watershed_native.wasm
+ *  (#554 B.4), so its download starts with the HTML too. Its consumer is the sim
+ *  worker, and a worker's fetch is not matched against the document's preload
+ *  list — preloading alone was a second download (#467). So the entry consumes
+ *  the preload with one main-thread fetch of the same URL
+ *  (`startNativeWasmPrefetch`, wasmLoader.ts) and the bytes are transferred to
+ *  the worker in INIT. The href must be the URL `resolvePublicAsset` builds:
+ *  the page-relative public/ path plus the pair stamp as `?v=`, read from the
+ *  committed wasmArtifactStamp.ts that build.sh writes. */
+function nativeWasmPreloadPlugin(): Plugin {
+  return {
+    name: 'watershed-native-wasm-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler() {
+        const stampSource = fs.readFileSync(path.resolve('src/systems/water/wasmArtifactStamp.ts'), 'utf8');
+        const stamp = /WASM_ARTIFACT_STAMP\s*=\s*'([0-9a-f]+)'/.exec(stampSource)?.[1];
+        if (!stamp) throw new Error('watershed-native-wasm-preload: no WASM_ARTIFACT_STAMP in wasmArtifactStamp.ts');
+        return [
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              as: 'fetch',
+              type: 'application/wasm',
+              crossorigin: '',
+              href: `./watershed_native.wasm?v=${stamp}`,
+            },
             injectTo: 'head',
           },
         ];
@@ -248,6 +278,7 @@ export default defineConfig({
     devIsolationOptInPlugin(),
     rapierWasmAssetPlugin(),
     rapierWasmPreloadPlugin(),
+    nativeWasmPreloadPlugin(),
     ...analyzePlugins,
   ],
   resolve: {

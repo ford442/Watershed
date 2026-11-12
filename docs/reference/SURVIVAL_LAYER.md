@@ -133,9 +133,11 @@ mesh, not just water drag. Ownership, which must not be double-counted:
 | System | Owns | Reads slipperiness? |
 |--------|------|---------------------|
 | `surfaceFriction.ts` → `TrackSegmentMeshes` | Solid contact (feet on floor, hull on wall) | Yes |
-| `WaterFlowForces` | Water-borne lateral drag + downstream slide bias | Yes |
+| `WaterForceSystem` (SWE field) | Water-borne drag on floating bodies | No |
 
-They act on disjoint interactions (contact vs fluid), so both may read the same value.
+They act on disjoint interactions (contact vs fluid). The segment-spline `WaterFlowForces`
+that used to scale lateral drag by `slipperiness` never ran (its guard skipped every
+segment) and was deleted when the SWE field became the raft's one water model.
 What must not happen is a second contact-friction scaler elsewhere, or a fluid-drag
 term inside `surfaceFriction.ts`.
 

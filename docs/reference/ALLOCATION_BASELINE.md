@@ -156,7 +156,7 @@ vars, which has nothing to do with allocation.
 | 21 | `src/systems/water/SplashSystem.tsx` — 16 of them load-bearing, see below |
 | 14 | `src/vehicles/RaftVehicle/hooks/useRaftControls.ts` |
 | 7 | `src/components/VehicleTuner.tsx` |
-| 6 | `src/components/WaterFlowForces.tsx` |
+| 6 | `WaterFlowForces.tsx` (deleted in #554 — never ran, superseded by `WaterForceSystem`) |
 | 6 | `src/components/WaterReflection.tsx` |
 | 5 | `src/components/WeatherSystem.tsx` |
 | 4 | `FloatingDebris.tsx` (deleted in #465 — had no importer) |
@@ -187,13 +187,15 @@ the frame callback.
 
 ## The ratchet
 
-`.github/workflows/build.yml` runs `pnpm lint --max-warnings 19` (280 when it
-was introduced — 296 minus the 16 warnings the #415 annotations suppress —
-then 249, 150 after #503, 138, and 19 after #521 F, which left no R3F
-allocation warning anywhere). Errors still fail the build,
-and so does any *new* warning; the existing backlog stays non-blocking.
+`.github/workflows/build.yml` runs `pnpm lint --max-warnings 0` (280 when the
+ratchet was introduced — 296 minus the 16 warnings the #415 annotations
+suppress — then 249, 150 after #503, 138, 19 after #521 F, which left no R3F
+allocation warning anywhere, 18 after #535, and 0 after #554 E, which
+triaged the last `react-hooks/exhaustive-deps` warnings and removed every
+`eslint-disable` for that rule). Any warning now fails the build.
 
-Lower the number whenever the count drops, never raise it. It covers every
+Never raise it: fix the warning, or scope the rule off in `eslint.config.js`
+with the reason. It covers every
 rule in the backlog rather than just the two R3F ones, and needs no
 commit-hook infrastructure and no per-directory severity overrides in
 `eslint.config.js`.
@@ -210,6 +212,16 @@ Computed from dimensions × the GPU format three uploads (all maps 1024², full 
 | KTX2, ASTC (UASTC → ASTC 4×4; ETC1S → ETC1 RGB) | 1 / 0.5 B/px | 1.40 / 0.70 MB | **4.89 MB** | 2.8 MB |
 
 KTX2 also removes the JPG decode, and the full-resolution RGBA staging copy, from segment streaming. Choice and fallback: `src/rendering/ktx2Textures.ts`. Encoder: `scripts/build-textures.mjs`, which needs KTX-Software `ktx` ≥ 4.3 and is dev-only. Re-measure on a real GPU with the Chrome task manager "GPU memory" column if the set grows.
+
+## #554 B.1 — SWE textures as half floats (2026-11-11)
+
+| Path | Before | After |
+|---|---|---|
+| SWE η + surface upload (`sweHost.uploadHeightTexture`) | zero-copy: the textures' `image.data` aliased the sim's `Float32Array`s (`FloatType`, unfilterable without `OES_texture_float_linear`) | one `Uint16Array` per texture, allocated with it in `WaterForceSystem` and reused for the sim's life; `packHalfFloats` (`systems/water/halfFloatPack.ts`) writes them in place on each new `fieldVersion` — **0 bytes per frame** |
+| Cost per upload, 128 × 80 window (51,200 values: η + 4 surface channels) | none on this thread | ~0.12 ms in Node / V8 (the bulk table pass over the source's bits); `THREE.DataUtils.toHalfFloat` per value was ~0.6 ms, which is why it is not used |
+| Bytes handed to `texImage2D` per upload | 204,800 | 102,400 |
+
+The test that pins it: `WaterForceSystem.scroll.test.tsx` asserts the flow texture's `image.data` is the same array across step and no-step frames, and that both textures are `HalfFloatType` + `LinearFilter`.
 
 ## #503 B — hidden allocations hoisted (2026-10-21)
 

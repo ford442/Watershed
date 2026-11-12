@@ -134,10 +134,16 @@ async function mount() {
   return { ...stub, ...v };
 }
 
+/** A half-float texture's values, decoded (the SWE textures are HalfFloatType, #554 B.1). */
+function decodeHalf(texture: unknown): Float32Array {
+  const raw = (texture as THREE.DataTexture).image.data as unknown as Uint16Array;
+  return Float32Array.from(raw, (h) => THREE.DataUtils.fromHalfFloat(h));
+}
+
 /** Peak η of the uploaded height texture, as a world position via the snapshot origin. */
 function texturePeak() {
   const snap = getSWEHeightFieldSnapshot();
-  const data = (snap.texture as THREE.DataTexture).image.data as unknown as Float32Array;
+  const data = decodeHalf(snap.texture);
   let best = -Infinity;
   let idx = 0;
   for (let i = 0; i < data.length; i += 1) {
@@ -232,7 +238,8 @@ describe('WaterForceSystem window scroll', () => {
       // Data and origin describe the same world: the splash has not moved...
       expect(peak.x, `frame ${f} x`).toBe(bump.x);
       expect(peak.z, `frame ${f} z`).toBe(bump.z);
-      expect(peak.eta, `frame ${f} η`).toBeCloseTo(0.4, 5);
+      // Half precision: 0.4 packs to 0.39990234.
+      expect(peak.eta, `frame ${f} η`).toBeCloseTo(0.4, 3);
       // ...and the window origin is what the component reports and sits on the lattice.
       const reported = getDebugTap('waterForce')?.origin;
       expect(reported).toBeTruthy();
@@ -250,7 +257,11 @@ describe('WaterForceSystem window scroll', () => {
     const flow = first.flowTexture as THREE.DataTexture;
     expect(flow).toBeTruthy();
     expect(flow.format).toBe(THREE.RGBAFormat);
-    expect(flow.type).toBe(THREE.FloatType);
+    // Half floats: filterable on every WebGL2 GPU (#554 B.1).
+    expect(flow.type).toBe(THREE.HalfFloatType);
+    expect(flow.minFilter).toBe(THREE.LinearFilter);
+    expect(flow.magFilter).toBe(THREE.LinearFilter);
+    expect((first.texture as THREE.DataTexture).type).toBe(THREE.HalfFloatType);
     expect(flow.image.width).toBe(BUDGET.width);
     expect(flow.image.height).toBe(BUDGET.height);
 
@@ -261,7 +272,8 @@ describe('WaterForceSystem window scroll', () => {
     frame(STEP);
 
     const snap = getSWEHeightFieldSnapshot();
-    const data = (snap.flowTexture as THREE.DataTexture).image.data as unknown as Float32Array;
+    const raw = (snap.flowTexture as THREE.DataTexture).image.data;
+    const data = decodeHalf(snap.flowTexture);
     expect(data[cell * 4]).toBeCloseTo(1.5);
     expect(data[cell * 4 + 1]).toBeCloseTo(-0.75);
     // The mocked bed is 0.25 m under a still surface: depth = mean 1.0 - 0.25.
@@ -273,7 +285,8 @@ describe('WaterForceSystem window scroll', () => {
       frame(f % 2 === 0 ? STEP : NO_STEP);
       const s = getSWEHeightFieldSnapshot();
       expect(s.flowTexture).toBe(flow);
-      expect((s.flowTexture as THREE.DataTexture).image.data).toBe(data);
+      // One packed array per texture for the session: no per-frame allocation.
+      expect((s.flowTexture as THREE.DataTexture).image.data).toBe(raw);
       expect((s.flowTexture as THREE.DataTexture).version).toBe((s.texture as THREE.DataTexture).version);
     }
   });
@@ -287,7 +300,7 @@ describe('WaterForceSystem window scroll', () => {
     frame(STEP);
     expect(h.calls.some((c) => /^scroll\((-?\d+),(-?\d+)\)$/.test(c))).toBe(true);
     const snap = getSWEHeightFieldSnapshot();
-    const data = (snap.texture as THREE.DataTexture).image.data as unknown as Float32Array;
+    const data = decodeHalf(snap.texture);
     expect(Array.from(data).every((v) => v === 0)).toBe(true);
     expect(snap.originX).toBeGreaterThan(300);
   });

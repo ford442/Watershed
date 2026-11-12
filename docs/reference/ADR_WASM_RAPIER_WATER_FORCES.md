@@ -260,7 +260,7 @@ one growing translation unit:
 
 Gameplay water-force integration is **one function**: `calculateWaterForce` / `computeWaterForcesBatch` (C++) and `calculateWaterForceFallback` (TS). Since #467 there are exactly two paths (`waterForceAuthority.ts`): forces.cpp in the sim worker (`resolveWaterForceOwner` → `'sim-worker'`; the Rapier worker's raft over the hull link), or the TS mirror on the main thread (`'ts-mirror'`; a Rapier-worker raft receives it with its step and applies it only when the hull link has no fresh force — `pickHullForce`). The main thread never calls forces.cpp, the raft never applies its own force, and the Rapier worker computes none. `physics/WaterForces.ts` is a flow-map **sampler** only — it must not apply impulses.
 
-Authored segment currents (`WaterFlowForces`) and vortex fields stay separate gameplay systems; they are not this ABI and were not ported to C++.
+Vortex fields stay a separate gameplay system; they are not this ABI and were not ported to C++. (Authored segment currents, `WaterFlowForces`, were deleted: the component never ran, and the SWE field is the raft's one water model.)
 
 All compile/link flags stay in `CMakeLists.txt`. The default target does not set
 `-pthread` or `SHARED_MEMORY`.

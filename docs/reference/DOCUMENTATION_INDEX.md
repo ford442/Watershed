@@ -21,6 +21,7 @@
 
 | Doc | When to read |
 |-----|----------------|
+| [`BOARD.md`](./BOARD.md) | The live issue board and the remainder of closed ones (one screen) |
 | [`TESTING.md`](./TESTING.md) | CI, harnesses, known friction log |
 | [`DEPLOY_AUDIT.md`](./DEPLOY_AUDIT.md) | Live-vs-build provenance; DirectoryIndex shadow; `verify:deploy` |
 | [`BUILD_HYGIENE.md`](./BUILD_HYGIENE.md) | Build determinism; the unhashed-passenger manifest contract; `check-build-manifest.mjs` |
@@ -77,7 +78,9 @@ Point-in-time write-ups. Useful for archaeology; **not** authoritative for curre
 | [`LEVEL_AUTHORING_SUMMARY.md`](../archive/LEVEL_AUTHORING_SUMMARY.md) | Early level-authoring summary |
 | [`IMPROVEMENT_PLAN.md`](../archive/IMPROVEMENT_PLAN.md) | Engineering backlog draft (aspirational) |
 | [`plan-dec-25.md`](../archive/plan-dec-25.md) | December 2025 planning draft |
-| [`.swarm-state.md`](../archive/.swarm-state.md) | Agent session state artifact |
+| [`.swarm-state.md`](../archive/.swarm-state.md) | Agent session state artifact (April 2026) |
+| [`swarm/weekly_plan.md`](../archive/swarm/weekly_plan.md) | Daily board history since 2026-08 (was the root `weekly_plan.md`) |
+| [`swarm/swarm-state.md`](../archive/swarm/swarm-state.md) | Per-PR swarm journal (was the root `.swarm-state.md`) |
 
 ---
 

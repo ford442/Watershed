@@ -12,6 +12,7 @@ import {
   resolvePublicAsset,
   resolveWasmInitTimeoutMs,
   retryBudgetMs,
+  takeNativeWasmBytes,
 } from '../systems/water/wasmLoader';
 import { wantsWasmTrapTest } from '../systems/water/wasmTrapMarker';
 import type { SimFrame, SimFrameHeader } from './SimFrame';
@@ -122,7 +123,12 @@ export class SimWorkerProxy {
    * `wasmTimeoutMs` is the in-worker load deadline (sent in INIT); `timeoutMs`
    * bounds the whole handshake and must cover the worker's one retry.
    */
-  ready(timeoutMs: number, wasmTimeoutMs = resolveWasmInitTimeoutMs(), trapTest = false): Promise<number> {
+  ready(
+    timeoutMs: number,
+    wasmTimeoutMs = resolveWasmInitTimeoutMs(),
+    trapTest = false,
+    wasmBytes: ArrayBuffer | null = null,
+  ): Promise<number> {
     if (this.failure) return Promise.reject(new Error(this.failure));
     const handshake = new Promise<number>((resolve, reject) => {
       this.readyResolve = resolve;
@@ -136,7 +142,9 @@ export class SimWorkerProxy {
       },
       timeoutMs: wasmTimeoutMs,
       trapTest,
-    });
+      // Transferred, not copied (#554 B.4): the page's prefetch is the worker's now.
+      ...(wasmBytes ? { wasmBytes } : {}),
+    }, wasmBytes ? [wasmBytes] : []);
     return raceWithDeadline(
       handshake,
       timeoutMs,
@@ -304,10 +312,13 @@ export function getSimWorkerProxy(factory: SimWorkerFactory = defaultFactory): P
       const search = currentSearch();
       const wasmTimeoutMs = resolveWasmInitTimeoutMs(search);
       try {
+        // The page's boot fetch of the wasm (#554 B.4), handed over in INIT.
+        const wasmBytes = await takeNativeWasmBytes(wasmTimeoutMs);
         await proxy.ready(
           retryBudgetMs(wasmTimeoutMs) + HANDSHAKE_SLACK_MS,
           wasmTimeoutMs,
           wantsWasmTrapTest(search),
+          wasmBytes,
         );
       } catch (error) {
         proxy.dispose();

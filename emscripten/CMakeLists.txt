@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(WatershedNative CXX)
 
-# C++20 (#467): std::span / std::bit_cast / [[likely]]. emcc 3.1.56's clang
+# C++20 (#467): std::span / std::bit_cast / [[likely]]. The pinned emcc's clang
 # and the host toolchains in CI both support it.
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,7 +32,7 @@ if(EMSCRIPTEN)
         set(CMAKE_BUILD_TYPE Release)
     endif()
 
-    # Stack (#502): emcc 3.1.56 defaults to a 64 KiB stack. Release names it so
+    # Stack (#502): emcc 3.1.56 defaulted to a 64 KiB stack. Release names it so
     # the budget is visible here; Debug gets 256 KiB (-O0 frames are several
     # times larger) and STACK_OVERFLOW_CHECK=2, which checks the stack pointer
     # on every function entry, so an overflow is a named abort instead of the
@@ -79,12 +79,12 @@ if(EMSCRIPTEN)
         target_compile_definitions(watershed_native PRIVATE WATERSHED_TRAP_TEST=1)
         # libc++ hardening: every std::span / std::vector index and every
         # subspan is bounds-checked in the wasm32 build, the one the host
-        # _GLIBCXX_ASSERTIONS builds stand in for. emcc 3.1.56 ships libc++ 17,
-        # whose all-checks mode is _LIBCPP_ENABLE_DEBUG_MODE; from libc++ 18 it
-        # is -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE (switch
-        # at the next emcc pin bump). A failed check is a named abort.
-        target_compile_definitions(watershed_compute PRIVATE _LIBCPP_ENABLE_DEBUG_MODE=1)
-        target_compile_definitions(watershed_native PRIVATE _LIBCPP_ENABLE_DEBUG_MODE=1)
+        # _GLIBCXX_ASSERTIONS builds stand in for. emcc 4.x ships a libc++ past
+        # 18, where the old _LIBCPP_ENABLE_DEBUG_MODE (libc++ 17, emcc 3.1.56)
+        # is gone and the all-checks-but-ABI-changing mode is EXTENSIVE (#554 C).
+        # A failed check is a named abort.
+        target_compile_definitions(watershed_compute PRIVATE _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+        target_compile_definitions(watershed_native PRIVATE _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
     else()
         # Every TU, bindings.cpp included, is -fno-rtti / -fno-exceptions:
         # the C ABI (#467) has no Embind typeid to match, so nothing needs RTTI.
@@ -164,8 +164,8 @@ if(EMSCRIPTEN)
     # claim (script-src 'self' 'wasm-unsafe-eval', WASM.md) checked at link
     # time. SUPPORT_LONGJMP=0: no setjmp, so no longjmp runtime can be linked.
     # Both are byte-for-byte no-ops on today's pair; they make a future need
-    # for either a link error instead of a silent change. (SUPPORT_ERRNO=0 is
-    # deprecated and a no-op in emcc 3.1.56: its setErrNo library is gone.)
+    # for either a link error instead of a silent change. (SUPPORT_ERRNO=0 was
+    # deprecated and a no-op from emcc 3.1.56: its setErrNo library is gone.)
     target_link_options(watershed_native PRIVATE
         "SHELL:${EM_OPT_FLAGS}"
         "SHELL:-s WASM_BIGINT=1"

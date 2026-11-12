@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useLOD } from '../systems/lod/LODManager';
 import { useSunPosition } from '../systems/lighting/SunPositionSystem';
-import { deriveRendererContextOptions } from '../rendering';
+import { deriveRendererContextOptions } from '../rendering/deriveRendererContextOptions';
 import { BIOME_LIGHTING } from './constants';
 import { SceneLightPool } from '../rendering/sceneLightPool';
 import { gameEvents } from '../systems/events/GameEvents';

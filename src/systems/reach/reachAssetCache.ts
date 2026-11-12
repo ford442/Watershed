@@ -2,7 +2,7 @@
  * reachAssetCache.ts — the process-wide cache of streamed Reach assets.
  *
  * Split from ReachStreamer so the track and audio code that only *reads* the cache
- * (TrackManager, WaterFlowForces, ReactiveAudio) does not pull the streamer, its
+ * (TrackManager, ReactiveAudio) does not pull the streamer, its
  * fetch/validate machinery and the manifest loaders into the entry chunk; the
  * streamer loads with the first Reach (`?reach=`) or reach prefetch.
  */

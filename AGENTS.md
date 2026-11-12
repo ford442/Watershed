@@ -36,7 +36,7 @@ App.tsx
             └─ PostProcessingPipeline.tsx
 ```
 
-Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.tsx`**. Water forces live in **`WaterForceSystem`** (`src/systems/water/`) / **`WaterFlowForces.tsx`**, and in the sim worker on the `wasm-worker` backend (`physicsWorkerWaterForces.ts`).
+Player movement lives in **`src/vehicles/`**, not a top-level `Player` component. Post-processing live path is **`PostProcessingPipeline.tsx`**. Water forces live in **`WaterForceSystem`** (`src/systems/water/`) (the SWE field is the one water model; the segment-spline `WaterFlowForces.tsx` was deleted), and in the sim worker on the `wasm-worker` backend (`physicsWorkerWaterForces.ts`).
 
 CI path check: `node scripts/validate-markdown-paths.js` (living markdown only; bans renamed/deleted dual stems — see the script).
 
@@ -107,7 +107,6 @@ src/
 │   ├── PostProcessingPipeline.jsx
 │   ├── EnhancedSky.jsx          # biome store sky / fog
 │   ├── WaterReflection.jsx
-│   ├── WaterFlowForces.tsx      # Segment flow samples → raft impulses
 │   ├── Environment/             # 25+ biome decorations
 │   ├── Obstacles/ / VFX/ / LevelEditor/
 │   └── GameHUD.tsx / Loader.tsx / …

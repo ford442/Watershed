@@ -8,7 +8,8 @@
 import { useCallback } from 'react';
 import DebugPanel from '../components/DebugPanel';
 import SWEBedDebugOverlay from '../components/SWEBedDebugOverlay';
-import { persistRendererPreference, type RendererPreference } from '../rendering';
+import { persistRendererPreference } from '../rendering/rendererConfig';
+import type { RendererPreference } from '../rendering/types';
 import { persistMaterialBackend, type MaterialBackend } from '../rendering/materialBackend';
 import { setCleanTestMode } from '../utils/cleanTestMode';
 import { useDebugHotkeys } from '../debug/useDebugHotkeys';

@@ -442,7 +442,10 @@ export const useSettingsStore = create<SettingsStore>()(
  * Safe to call more than once. Flips `_hasHydrated` via onRehydrateStorage.
  */
 export function rehydrateSettings(): void {
-  const result = useSettingsStore.persist?.rehydrate?.();
+  // `unknown`, not zustand's `Promise<void>`: with no persist API the optional
+  // chain yields undefined, and for a synchronous storage zustand hands back its
+  // own thenable rather than a real Promise — so duck-type it.
+  const result: unknown = useSettingsStore.persist?.rehydrate?.();
   // If rehydrate returned a promise, mark hydrated on settle as a belt-and-braces
   // guard (older zustand may skip onRehydrateStorage when there is nothing stored).
   if (result && typeof (result as Promise<unknown>).then === 'function') {

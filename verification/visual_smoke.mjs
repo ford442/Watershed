@@ -823,7 +823,10 @@ async function captureShot(shot, report) {
  */
 async function checkNativeFetchedOnce(report) {
   const NATIVE_DEADLINE_MS = 150_000;
-  const result = { glue: 0, wasm: 0, outcome: 'pending', status: 'pending' };
+  // wasmInitiator (#554 B.4): who started the one wasm request. index.html's
+  // preload makes it the parser, i.e. before the entry chunk runs; 'script'
+  // means the preload is gone or was not consumed and a loader fetched it late.
+  const result = { glue: 0, wasm: 0, wasmInitiator: null, outcome: 'pending', status: 'pending' };
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
@@ -831,7 +834,10 @@ async function checkNativeFetchedOnce(report) {
     page.on('request', (r) => {
       const name = new URL(r.url()).pathname.split('/').pop();
       if (name === 'watershed_native.js') result.glue += 1;
-      if (name === 'watershed_native.wasm') result.wasm += 1;
+      if (name === 'watershed_native.wasm') {
+        result.wasm += 1;
+        result.wasmInitiator ??= r.initiator()?.type ?? 'unknown';
+      }
     });
     page.on('console', (m) => {
       const hit = /\[Watershed WASM\] (ready|failed|timed-out|provenance-mismatch)/.exec(m.text());
@@ -853,11 +859,12 @@ async function checkNativeFetchedOnce(report) {
     await browser.close().catch(() => {});
   }
   if (result.glue > 1 || result.wasm > 1) result.status = 'fail-refetch';
+  else if (result.wasm === 1 && result.wasmInitiator !== 'parser' && result.wasmInitiator !== 'preload') result.status = 'fail-late-request';
   else if (result.outcome === 'ready') result.status = result.glue === 1 && result.wasm === 1 ? 'pass' : 'fail-missing-request';
   else if (result.outcome === 'pending') result.status = 'skipped-never-settled';
   else result.status = `fail-${result.outcome}`;
   report.nativeFetch = result;
-  console.log(`[native-once] glue=${result.glue} wasm=${result.wasm} outcome=${result.outcome} → ${result.status}`);
+  console.log(`[native-once] glue=${result.glue} wasm=${result.wasm} (initiator ${result.wasmInitiator}) outcome=${result.outcome} → ${result.status}`);
   return !result.status.startsWith('fail');
 }
 
@@ -877,7 +884,7 @@ async function run() {
     pageErrors: [],
     parityNotes: [
       'Required gate: 00_start_menu (prestart canyon + UI) via ?cleanTest=1&renderer=webgl&screenshot=1.',
-      'Required gate (#467): watershed_native.js and .wasm are each fetched once per session (report.nativeFetch); a load that never settles on SwiftShader is skipped, not failed.',
+      'Required gate (#467): watershed_native.js and .wasm are each fetched once per session (report.nativeFetch); a load that never settles on SwiftShader is skipped, not failed. #554 B.4: the one .wasm request must be parser-initiated (index.html preload), i.e. start before the entry chunk executes.',
       'Best-effort: top-down in-run shots (?no-pointer-lock=1). Skipped on F-8 — not treated as sky-only (F-1).',
       'First-person post-start SwiftShader frames are sky-only — never gate on them.',
       'Force ?renderer=webgl; WebGPU errors under SwiftShader (lightNodeClass).',

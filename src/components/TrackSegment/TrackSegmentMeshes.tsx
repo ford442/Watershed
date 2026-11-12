@@ -333,6 +333,10 @@ export function TrackSegmentMeshes({
         return THREE.MathUtils.clamp(0.45 * daytimeFactor * mistFactor, 0, 0.45);
     }, [isNight, particleDensity, timeOfDay, type]);
 
+    // The sun vector is one shared, mutated object: read the horizontal parts as
+    // values so the placement re-runs when the sun moves (its height is unused).
+    const sunX = sunDirection.x;
+    const sunZ = sunDirection.z;
     const rainbowPlacement = useMemo(() => {
         if (type !== 'splash' || !segmentPath) return null;
         try {
@@ -343,8 +347,7 @@ export function TrackSegmentMeshes({
 
             // The bow faces the sunward side of the path lateral (the one sign, #535 B).
             const lateral = pathLateral(tangent, new THREE.Vector3());
-            const toSun = new THREE.Vector3().copy(sunDirection);
-            toSun.y = 0;
+            const toSun = new THREE.Vector3(sunX, 0, sunZ);
             if (toSun.lengthSq() > 0.0001) {
                 toSun.normalize();
                 if (lateral.dot(toSun) < 0) lateral.multiplyScalar(-1);
@@ -359,7 +362,7 @@ export function TrackSegmentMeshes({
             console.warn(`[TrackSegment ${segmentId}] Failed to compute rainbow placement`, error);
             return null;
         }
-    }, [segmentId, segmentPath, sunDirection.x, sunDirection.y, sunDirection.z, type]);
+    }, [segmentId, segmentPath, sunX, sunZ, type]);
 
     const sandBarGeometry = useMemo(() => {
         if (!isSummerLike(biome) || !Array.isArray(placementData.sandBars) || placementData.sandBars.length === 0) {
@@ -436,7 +439,9 @@ export function TrackSegmentMeshes({
                 parallaxScale: 0.025,
                 flowSpeed,
                 mossCoverage: 1.0,
-                highWaterMark: segmentState === 'WashedOut' ? 0.42 : segmentState === 'Flooded' ? 0.35 : segmentState === 'HighFlow' ? 0.25 : 0.15,
+                // The memo's value: the useFrame below writes it every frame anyway, so
+                // building with a second table (0.35 / 0.25) only showed for one frame.
+                highWaterMark,
                 highWaterIntensity,
                 strata: SLOT_CANYON_STRATA,
             }) as WallMaterial;
@@ -449,7 +454,7 @@ export function TrackSegmentMeshes({
             waterLevel: WALL_WATERLINE_Y,
             wetnessRange: type === 'waterfall' || type === 'splash' ? 7.5 : 4.0
         }) as WallMaterial;
-    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type, segmentState]);
+    }, [biomeProfile.wallHeight, flowSpeed, highWaterIntensity, highWaterMark, isSlotCanyon, rockMaterial, type]);
 
     wallMaterialRef.current = wallMaterial;
 

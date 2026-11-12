@@ -70,7 +70,13 @@ export default function FloatingObjectManager({
       position: [number, number, number];
       rotation: [number, number, number];
       scale: [number, number, number];
-      type: FloatingObjectType;
+      /**
+       * What the object is. Not `type`: InstancedRigidBodies spreads each instance
+       * over the RigidBody props, so a `type: 'log'` used to replace
+       * `type="dynamic"` with a string Rapier does not know (it mapped to
+       * undefined, i.e. body type 0 = dynamic — the same body as now).
+       */
+      kind: FloatingObjectType;
     }> = [];
 
     const rng = createRng(segmentId * 7919);
@@ -127,7 +133,7 @@ export default function FloatingObjectManager({
         position: [position.x, position.y, position.z],
         rotation,
         scale,
-        type,
+        kind: type,
       });
     }
 
@@ -232,8 +238,7 @@ export default function FloatingObjectManager({
   return (
     <InstancedRigidBodies
       ref={bodiesRef}
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each instance carries its prop `type` ('log' | …), which collides with RigidBodyProps.type; renaming it is a behaviour change (#535).
-      instances={instances as any}
+      instances={instances}
       type="dynamic"
       colliders="cuboid"
       mass={FLOATING_OBJECT.DEBRIS_DENSITY * FLOATING_OBJECT.DEBRIS_VOLUME * 0.001}

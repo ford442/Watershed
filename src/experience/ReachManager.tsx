@@ -74,6 +74,12 @@ export default function ReachManager({
   }, [error, onError]);
 
   // Load the Reach on mount / reachId change (initial load only — handoffs append)
+  // Forecast samples are applied live via TrackManager.setForecastByIndex, so a
+  // forecast change must not re-fetch the reach: the load reads the latest
+  // samples through a ref when its manifest lands.
+  const forecastSamplesRef = useRef(forecastSamples);
+  forecastSamplesRef.current = forecastSamples;
+
   useEffect(() => {
     if (!reachId) {
       setLoading(false);
@@ -98,6 +104,7 @@ export default function ReachManager({
         const result = await ReachStreamer.preloadReach(reachId);
         if (cancelled) return;
 
+        const forecastSamples = forecastSamplesRef.current;
         const forecastByIndex = samplesToForecastByIndex(forecastSamples);
         const segments = normalizeReachManifest(result.manifest, undefined, {
           forecastByIndex,
@@ -132,9 +139,6 @@ export default function ReachManager({
     return () => {
       cancelled = true;
     };
-    // Forecast samples are applied live via TrackManager.setForecastByIndex;
-    // do not re-fetch the reach when only the forecast changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reachId, onBiomeChange, retryKey]);
 
   const performReachHandoff = useCallback(

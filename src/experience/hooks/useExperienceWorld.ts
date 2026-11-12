@@ -160,8 +160,10 @@ export function useExperienceWorld({
       ? `CONTINUE TO ${journeyDecision.nextLabel.toUpperCase()}`
       : undefined;
   const isFinalMap = journeyDecision.kind === 'summary';
+  // Shown only on the journey-complete overlay, so it is read when the journey
+  // completes — after this run's best has been saved — and not before.
   const ghostBestScore = useMemo(
-    () => (isFinalMap ? getGhostBestScoreForMap(activeDefaultMapId) : 0),
+    () => (isFinalMap && isJourneyComplete ? getGhostBestScoreForMap(activeDefaultMapId) : 0),
     [activeDefaultMapId, isFinalMap, isJourneyComplete],
   );
 

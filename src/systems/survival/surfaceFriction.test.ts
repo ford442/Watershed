@@ -2,7 +2,7 @@
  * Slipperiness → Rapier contact friction (survival v2 phase B).
  *
  * These lock the mapping the canyon collision mesh uses. The companion rule —
- * that water-borne lateral drag stays in WaterFlowForces and is NOT re-applied
+ * that water-borne drag stays with WaterForceSystem (the SWE field) and is NOT re-applied
  * here — is documented in surfaceFriction.ts and enforced by review, not code.
  */
 

@@ -49,7 +49,7 @@ emscripten/
 ├── routing_fuzz.cpp  # libFuzzer: routing, special scalars (NaN / ±inf / denormals)
 ├── watershed_native.symbols # `N:name` symbol map of the committed wasm (build.sh; never in public/)
 ├── build.sh          # Thin WASM wrapper (flags live in CMake); enforces the emcc pin
-├── EMCC_VERSION      # The pinned emcc (3.1.56) — read by build.sh and scripts/emsdk-pinned.sh
+├── EMCC_VERSION      # The pinned emcc (4.0.23) — read by build.sh and scripts/emsdk-pinned.sh
 └── CMakeLists.txt    # Compute static lib + WASM exe + host smoke; compile_commands ON
 
 src/systems/water/
@@ -84,13 +84,13 @@ public/               # COMMITTED build artefacts — the shipped pair
 
 ### Toolchain pin (#467)
 
-The shipped pair must come from the emcc named in `emscripten/EMCC_VERSION` (**3.1.56**,
+The shipped pair must come from the emcc named in `emscripten/EMCC_VERSION` (**4.0.23**,
 the same version CI's `setup-emsdk` installs). Install it once, into the repo-local
 (git-ignored) `./emsdk`, without touching any system emsdk:
 
 ```bash
 bash scripts/emsdk-pinned.sh                                   # → ./emsdk
-WATERSHED_EMSDK_DIR=/opt/emsdk-3.1.56 bash scripts/emsdk-pinned.sh   # or anywhere else
+WATERSHED_EMSDK_DIR=/opt/emsdk-4.0.23 bash scripts/emsdk-pinned.sh   # or anywhere else
 ```
 
 `build.sh` uses an `emcc` already on `PATH` if it is at the pin; otherwise it sources the
@@ -111,6 +111,11 @@ asserts this with `git diff --exit-code`), so a matching stamp is good evidence 
 toolchain is right. Since the plain C ABI (ABI 12) the pin is a **reproducibility** choice,
 not a crash guard: any emcc ≥ 3.1.56 (6.x included) builds the same `_ws_*` export list, and
 CI's informational *WASM exports on current emsdk* job checks that on every PR.
+
+| Pin | Pair stamp (wasm sha) | wasm / glue bytes | Notes |
+|-----|-----------------------|-------------------|-------|
+| 3.1.56 | `da29e1786a1939b6` (`191f66957cab62cc`) | 38,733 / 4,764 | libc++ 17: Debug hardening spelled `_LIBCPP_ENABLE_DEBUG_MODE=1` |
+| **4.0.23** (#554 C, 2026-11-11) | `1e884f8a06b365f5` (`02de0f1a8c20811e`) | 38,041 / 3,058 | Debug hardening → `_LIBCPP_HARDENING_MODE_EXTENSIVE`. Every `-s` flag passes `STRICT=1` unchanged, no warnings. The glue detects a worker with `globalThis.WorkerGlobalScope` instead of `typeof importScripts` (`smoke_test.mjs` accepts both) and still reads `wasmBinary` (named in `INCOMING_MODULE_JS_API`), so the loader's verified bytes are the ones that run. `nativeDigest.integration.test.ts` and `host_smoke` goldens unchanged: no FP flag moved a bit. |
 
 ### pnpm scripts
 
@@ -211,6 +216,17 @@ Release builds use `-s ASSERTIONS=0` for size; Debug builds enable `ASSERTIONS=2
 `loadWatershedNative()`:
 
 1. `import(glue)` and `fetch(wasm)` in parallel — each file is requested **once** per session.
+   Since #554 B.4 the wasm fetch is usually already done: `index.html` preloads the stamped
+   URL (`<link rel="preload" as="fetch" crossorigin>`, `nativeWasmPreloadPlugin` in
+   `vite.config.ts`), the entry consumes that preload with one main-thread fetch
+   (`startNativeWasmPrefetch`, `src/index.tsx`), and the first owner takes the bytes
+   (`takeNativeWasmBytes`) — the sim worker gets them **transferred** in `INIT.wasmBytes`, a
+   main-thread owner reads them in place — and passes them as `wasmBytes`, so step 1 skips
+   its fetch. The request now starts with the HTML (parser-initiated, ~70 ms into a local
+   boot) instead of after the worker boots (~1.7 s). No prefetch, a failed one, or one that
+   misses the deadline hands over `null` and the owner fetches by URL as before; a retry
+   always fetches by URL. visual-smoke's native-once gate fails a second request
+   (`fail-refetch`) and a script-initiated one (`fail-late-request`).
 2. `sha256(wasm bytes)[:16]` must equal `WASM_BINARY_SHA`, and the glue's own
    `WATERSHED_WASM_SHA` export (appended by `build.sh`) must name the same wasm. Either
    mismatch rejects with `WasmProvenanceMismatchError` before anything is instantiated.
@@ -314,8 +330,8 @@ the shipped pair, the table or the version). With a Debug pair in `public/` (not
 | Variant | Flags |
 |---------|-------|
 | Release | `-s STACK_SIZE=64KB` (the emcc 3.1.56 default, named), `-s STRICT=1` (+ `--no-entry`: STRICT stops assuming a `main`), `--emit-symbol-map` |
-| Debug | `-s STACK_SIZE=256KB -s STACK_OVERFLOW_CHECK=2`, `-fno-exceptions -fno-rtti` at compile as in Release, `--emit-symbol-map`, `ENVIRONMENT='web,worker,node'` (so vitest can load it), `WATERSHED_TRAP_TEST`, libc++ hardening (`_LIBCPP_ENABLE_DEBUG_MODE=1`: every `std::span` / `std::vector` index and subspan checked; emcc 3.1.56 ships libc++ 17, so this is the pre-18 spelling of `_LIBCPP_HARDENING_MODE_EXTENSIVE` — switch at the next pin bump) |
-| Both | `-s DYNAMIC_EXECUTION=0` (the glue may not `eval` / `new Function`: the CSP claim, enforced at link), `-s SUPPORT_LONGJMP=0`. Both are byte-for-byte no-ops on today's pair; they turn a future need for either into a link error. (`SUPPORT_ERRNO` is deprecated and a no-op in 3.1.56.) |
+| Debug | `-s STACK_SIZE=256KB -s STACK_OVERFLOW_CHECK=2`, `-fno-exceptions -fno-rtti` at compile as in Release, `--emit-symbol-map`, `ENVIRONMENT='web,worker,node'` (so vitest can load it), `WATERSHED_TRAP_TEST`, libc++ hardening (`_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE`: every `std::span` / `std::vector` index and subspan checked; until emcc 3.1.56 / libc++ 17 this was `_LIBCPP_ENABLE_DEBUG_MODE=1`, switched with the 4.0.23 pin, #554 C) |
+| Both | `-s DYNAMIC_EXECUTION=0` (the glue may not `eval` / `new Function`: the CSP claim, enforced at link), `-s SUPPORT_LONGJMP=0`. Both are byte-for-byte no-ops on today's pair; they turn a future need for either into a link error. (`SUPPORT_ERRNO` was deprecated and a no-op from 3.1.56; it is not passed.) |
 
 CI's `wasm-debug` job builds the Debug pair aside and runs `smoke_test.mjs`, `pnpm test:wasm`,
 `pnpm test:wasm:parity`, `wasmSentinels.test.ts` and `wasmTrap.test.ts` against it, with
@@ -389,7 +405,7 @@ cannot see. One number, checked for equality, says what the table says. Chore ke
 `emscripten/chores.cpp` and are **not** SWE.
 
 > **`public/watershed_native.{js,wasm}` are committed build artifacts.** Rebuild
-> both from the same pinned emcc (**3.1.56**, matching CI) via `pnpm build:wasm`
+> both from the same pinned emcc (**4.0.23**, matching CI) via `pnpm build:wasm`
 > (`build.sh` refuses any other emcc)
 > and commit the pair together plus `src/systems/water/wasmArtifactStamp.ts`.
 > Under Embind (ABI ≤ 11), mixing glue and wasm from different emcc versions threw at

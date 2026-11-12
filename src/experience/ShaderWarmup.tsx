@@ -67,16 +67,24 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
     };
   }, [gl]);
 
+  // quality / scene / camera seed the one warm-up per renderer: read through a ref
+  // (the latest render's values) so a change to one does not re-run it.
+  const seed = useRef({ scene, camera, quality });
+  seed.current.scene = scene;
+  seed.current.camera = camera;
+  seed.current.quality = quality;
+
   useEffect(() => {
     if (!eligible || started.current === gl) return;
+    const { scene: warmScene, camera: warmCamera, quality: warmQuality } = seed.current;
     started.current = gl;
     const owner = gl;
     const renderer = gl as unknown as WarmupRenderer;
     void warmupModule
       .load()
       .then(async ({ runShaderWarmup, preloadWarmPasses }) => {
-        const session = await runShaderWarmup(renderer, scene, camera, quality);
-        await preloadWarmPasses(quality);
+        const session = await runShaderWarmup(renderer, warmScene, warmCamera, warmQuality);
+        await preloadWarmPasses(warmQuality);
         return session;
       })
       .then((session) => {
@@ -97,8 +105,6 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
         );
       })
       .catch((error: unknown) => console.warn('[ShaderWarmup] warm-up chunk failed to load', error));
-    // quality / scene / camera seed the one warm-up per renderer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eligible, gl]);
 
   useEffect(() => {

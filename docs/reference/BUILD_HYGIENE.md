@@ -306,7 +306,7 @@ exists, and nothing under the source tree fetches a `.wgsl`. The only WGSL left 
 Guard assertion 6 keeps it that way.
 
 Two documentation drifts, noted not fixed: `CLAUDE.md`'s directory map still lists
-a source-side `shaders/HeightmapFlow.ts`, and `weekly_plan.md:213` still describes
+a source-side `shaders/HeightmapFlow.ts`, and `weekly_plan.md:213` (now `docs/archive/swarm/weekly_plan.md`) still describes
 `public/shaders/heightmap_flow.wgsl` as existing and fetched.
 
 ---

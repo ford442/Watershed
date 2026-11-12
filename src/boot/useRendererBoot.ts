@@ -9,19 +9,15 @@
  */
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useProgress } from '@react-three/drei';
+import { beginBootAttempt, recordBootFailure, type BootFailureRecord } from '../rendering/bootCrashGuard';
 import {
-  beginBootAttempt,
   buildCanvasIdentityKey,
   deriveRendererContextOptions,
-  isSoftwareRendererAllowed,
-  negotiateBootGraphics,
-  parseRendererPreference,
-  recordBootFailure,
-  type BootFailureRecord,
-  type GraphicsCapability,
   type RendererContextOptions,
-  type RendererPreference,
-} from '../rendering';
+} from '../rendering/deriveRendererContextOptions';
+import { isSoftwareRendererAllowed, parseRendererPreference } from '../rendering/rendererConfig';
+import { negotiateBootGraphics, type GraphicsCapability } from '../rendering/probeGraphicsCapability';
+import type { RendererPreference } from '../rendering/types';
 import { requestedMaterialBackend, type MaterialBackend } from '../rendering/materialBackend';
 import { attachGpuLossHandlers, isGpuLossDebugEnabled, simulateGpuLoss } from '../rendering/gpuLossRecovery';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';

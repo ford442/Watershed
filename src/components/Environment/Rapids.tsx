@@ -7,7 +7,7 @@ const DUMMY_OBJ = new THREE.Object3D();
 const DEFAULT_ROTATION = new THREE.Euler();
 const DEFAULT_SCALE = new THREE.Vector3(1, 1, 1);
 
-export default function Rapids({ transforms, flowSpeed = 1.0 }: BiomeDecorationProps) {
+export default function Rapids({ transforms }: BiomeDecorationProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const geometry = useMemo(() => new THREE.IcosahedronGeometry(0.3, 0), []);
@@ -21,7 +21,9 @@ export default function Rapids({ transforms, flowSpeed = 1.0 }: BiomeDecorationP
       opacity: 0.85,
     });
     return mat;
-  }, [flowSpeed]);
+    // Built once: the material does not read flowSpeed (keying on it rebuilt it and
+    // leaked the old one on every flow change).
+  }, []);
 
   useEffect(() => {
     const mesh = meshRef.current;

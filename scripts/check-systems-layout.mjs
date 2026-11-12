@@ -10,12 +10,25 @@
  * allowed those three is gone on purpose: it was the only thing keeping the
  * rule from being "no root modules", and a permanent exception list is how a
  * layout rule stops being a rule.
+ *
+ * Also: `src/rendering/index.ts` must not return (#554 F.2). It re-exported ~80
+ * names from 12 modules for six importers, so every one of them pulled the whole
+ * renderer surface into its module graph; importers name the module instead.
  */
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const systemsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'systems');
+const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
+const systemsDir = join(srcDir, 'systems');
+
+for (const name of ['index.ts', 'index.tsx']) {
+  if (existsSync(join(srcDir, 'rendering', name))) {
+    console.error(`[systems-layout] src/rendering/${name} is a barrel and was removed (#554 F.2).`);
+    console.error("  Import from the module itself, e.g. '../rendering/deriveRendererContextOptions'.");
+    process.exit(1);
+  }
+}
 
 const ALLOWED_ROOT_TS = new Set(['GameState.ts']);
 
@@ -40,5 +53,5 @@ if (rootTsx.length > 0) {
 }
 
 console.log(
-  `[systems-layout] ok — root ts: ${rootTs.join(', ') || '(none)'}; root tsx: (none)`,
+  `[systems-layout] ok — root ts: ${rootTs.join(', ') || '(none)'}; root tsx: (none); no rendering barrel`,
 );

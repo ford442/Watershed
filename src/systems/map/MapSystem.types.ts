@@ -320,11 +320,10 @@ export interface SegmentProgressionConfig {
   /**
    * Surface slipperiness 0–1. 0 = normal grip, 1 = frictionless ice.
    *
-   * Two consumers, on disjoint interactions (never double-count them):
-   * - WaterFlowForces / RaftVehicle — reduces water lateral drag and adds a
-   *   downstream slide bias.
-   * - systems/surfaceFriction.ts — sets Rapier contact friction on the segment
-   *   collision mesh, so wall and floor impacts feel slippery too.
+   * Consumed by systems/survival/surfaceFriction.ts, which sets Rapier contact
+   * friction on the segment collision mesh, so wall and floor impacts feel
+   * slippery. Water-borne drag is the SWE field's (WaterForceSystem) and does not
+   * read it — never add a second, fluid-side scaler.
    */
   slipperiness?: number;
   /**
