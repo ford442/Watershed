@@ -1,4 +1,49 @@
 # Swarm state — atomic deploy + build identity (#416)
+## #556 B.2 — 2026-11-12 — green, committed
+
+**Objective:** `stepHeadless(run, frames, input)` = `stepScripted`'s frame without R3F, and the pin that makes a headless run the page's run (#556 B.2).
+
+### The frame (`src/sim/headless/stepHeadless.ts`)
+−100 hub tick + the script's camera look · −90 `sampleSimContext` + one fixed `simCore` step (scripted mode) · priority 0 in the page's mount order: the runner's camera follow, the water (`sweHostFrame` + forces, then the splash disturbances), VehicleTuner's frame, `ChunkManager.update` on the followed camera, the lifecycle's HUD mirror and OOB check. R3F's clock is reproduced: timestamp `simTimeSec + 1e-6`, delta = consecutive timestamps, `elapsedTime` = timestamp (the SWE step's dt and the force turbulence read them). `commitEvery` (default 1) says when React would have committed treadmill mounts / erosion remeshes; the browser smokes step 60 frames per task, so they commit every 60.
+
+### The pin (`headless.campaign.test.ts`, 5 tests, ~4 s) — `===`, no tolerance
+- **The committed ghost** (`verification/fixtures/headless/meander_run.wsghost`, what `pnpm test:replay-smoke` records) replayed headless through `replayPlanFromFile`: splits seg 0..3 at 11400 / 15400 / 19500 / 23500 ms and SWE checksums `9a1952b8 36bb12c6 6280ddeb a4da233b` = the smoke's.
+- **The scripted meander frame by frame** against `verification/fixtures/headless/meander_trace.json` (recorded by the new `verification/headless_trace.mjs`, 150 rows, every 10th frame to 1500): the runner's position, speed, segment, and the water's flow at it (window origin, sampled speed, stage), then splits and checksums. While building the harness the first 700 frames were also compared every frame: positions bit-exact, flow identical.
+- The **600-frame mark** is the 10 s row of that trace. The brief asked for "a 600-frame headless run reproduces the browser replay's SWE checksums and splits exactly"; no split lands inside 600 frames (the first, segment 0, is at 11.4 s = frame 684: the runner starts in the lead-in at segment −3 and the first `segment-enter` is segment 0), so the splits and checksums are pinned over the whole 24 s run and the 600-frame mark by pose + flow.
+- Same numbers with `commitEvery` 1 and 60; a second run in the same process reads the same numbers; and what the run reads without the page quirk below.
+
+### What it took to match (things the page does that are not in the files the brief named)
+1. **`VehicleTuner` shapes the runner.** TrackManager mounts it with `raftRef={vehicleRef}`, so on the page the runner's water damping lerps to `linearDampingWater` (2.2), a wall ray applies friction, a speed cap clamps — every frame, from a component, outside SimCore. Without it the runner is at 32 m/s at t=1 s instead of 22 (`vehicleTunerFrame.ts` is a copy; #554 A.2's decision should be: register it as a SimSystem, then delete the copy).
+2. **The forecast is baked into the pool.** The 24 h forecast from the launch hour floods segments 0..6 at hour 6 (`typeOverride: 'pond'`, wider water, a pond floor box under each): the harness builds the treadmill with it, as TrackManager does.
+3. **A page bug: no SWE bed under segment 0.** The pool renders 10 `TrackSegment` slots for 7 live segments; the 3 spare ones get no `segmentId`, TrackSegment defaults it to 0, and their `useGeometries` effect (no meshes → no bed) runs `unregisterSegmentBathymetry(0)`. Segment 0's hull still collides, but the SWE sees no floor there, on a fresh pool, in every run. Found because the headless checksums matched at segments 2 and 3 and not at 0 and 1; flow at the runner matched for 679 frames and diverged exactly where segment 0 starts; omitting only segment 0's bed reproduced all four checksums. Reproduced on purpose (`pageQuirks.spareSlotsDropBedZero`, default on); the test shows the run without it (`65fcb57e 118b1329 6280ddeb a4da233b`). Fix is in `components/` (off limits here): pass a segment id only for live slots, or skip the effect when `active` is false. The pin fails the day the page is fixed; flip the quirk's default, re-record (`verification/headless_trace.mjs`, `pnpm test:replay-smoke`).
+4. The SWE disturbance order matters (splash after the water frame, as mounted); the first R3F delta is `dt + 1e-6`; the segment-flow module default is 1 on a first run (`resetRunSession` only runs on a restart).
+
+### Files changed
+| File | Change |
+|---|---|
+| `src/sim/headless/stepHeadless.ts`, `headless.campaign.test.ts` | new |
+| `verification/fixtures/headless/{meander_trace.json,meander_run.wsghost}`, `verification/headless_trace.mjs` | the browser's side of the pin and the script that records it |
+| `scripts/strict-buffers.json` | + stepHeadless |
+| `SYSTEMS.md` | "The headless harness" in the sim-core section; the `ctx.game` paragraph says the harness uses the store |
+
+### Checks
+| Check | Result |
+|---|---|
+| typecheck / typecheck:test / lint `--max-warnings 0` | green |
+| test:campaign | 10 passed (5 structure + 5 pin), ~6 s wall |
+| bundle | no app file changed since B.1: `build/` hashes equal B.1's (smokes identical by construction) |
+
+### Measured, for the C plan
+The keyboard script (hold forward, never steer) through the whole meander headless: segment 17 at 80 s of sim time on `x = 0.0`, then out of bounds in segment 18 at 84 s (`isWipeout`, runner at `(352.8, -768, -1375)`; cause not investigated); 84 sim seconds take 4.4 s of wall time. So a script does not finish the map, and a `centreline` pilot is what will.
+
+### Not done / BLOCKED
+- Pin covers the first 24 s of one map (the browser cannot go further in SwiftShader today: #556's premise). The rest of the harness runs (the meander to segment 18 above) but is not pinned against anything.
+- Obstacles / pillars / decorations are not mounted; the raft is not on the harness.
+
+### Next
+B.3: the CI job and the docs.
+
+---
 
 ## #556 B.1 — 2026-11-12 — green, committed
 

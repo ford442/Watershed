@@ -614,9 +614,12 @@ n steps whatever the deltas' float residue (`SimCore.test.ts` pins the parity).
 stage η from `sweStageProbe.ts`, null outside the window or at Low quality) and `game` (#556 A: the
 run state systems read and write — `ctx.game.state()` is a `SimGameView` (`sim/core/simGame.ts`):
 paused / wipeout, segment, biome, stamina, gravity scale, spawn points, weather, and their setters.
-`SimCoreTick` binds the Zustand store (`experience/simGameBinding.ts`); a headless run binds
-`createPlainSimGame()`; a fresh core holds a plain one, and tests that stage the store build
-theirs with `testing/storeSimCore.ts`).
+`SimCoreTick` binds the Zustand store (`experience/simGameBinding.ts`) and its debug sink
+(`ctx.debug`, #556 A.1: the runner step's snapshot goes to the harness taps through it, nothing
+imports `debug/`); the headless harness binds the same store (ScoreSystem, the split recorder and
+the survival layer read it directly, so a headless run has one source of truth, not two); a fresh core
+holds a plain view and the silent sink, and tests that stage the store build theirs with
+`testing/storeSimCore.ts`).
 
 **Systems (order bands):** 10 `weather-director` · 20 `sky-clock` · 30 `chunk-biome` (ChunkManager's
 biome detection and its 0.4 s sim-time debounce, which also commits the segment's `GameplayProfile`)
@@ -654,6 +657,40 @@ last step left it (what the vehicle reads at the top of its step). The raft is s
 `useFrame` (its step, camera, foam and the worker hull path move in a #556 A follow-up), and so are
 TrackManager's treadmill and the water forces. On a display faster than 60 Hz the world, and the
 meshes `<Physics>` syncs, now move at the sim rate (the library's own loop interpolated them).
+
+**The headless harness (#556 B, `src/sim/headless/`):** the same step with no browser.
+`createHeadlessRun({ mapId, launchHour?, seed?, conditions?, quality? })` builds, in Node, what the page
+builds for the runner: `simCore` with the page's own systems list (`experience/simSystems.ts`), the
+world step (92) over a `@dimforge/rapier3d-compat` world with the page's `<Physics>` settings, the
+runner (95) on the capsule `RunnerVehicle` mounts, the chunk treadmill (`MapSystem` + `ChunkManager`) with
+each segment's hull built by `segmentMeshBuild` and mounted as a fixed trimesh body, its bed registered
+with `bathymetrySampler` and its erosion plane with `erosionField` (`segmentWorld.ts`), and the SWE
+field on the shipped `watershed_native` pair (`nativeNode.ts`: `fs` bytes as `wasmBinary`, the browser's
+loader, the glue's `ENVIRONMENT` untouched) with its router (`headlessWater.ts`). No three scene, no
+React; `three` is used only for math and the camera object the runner steers by.
+`stepHeadless(run, frames, input?, { commitEvery? })` is `stepScripted`'s frame without R3F — hub tick
+(−100), SimCore (−90), then the priority-0 work in the order the page mounts it: the runner's camera
+follow, the water (`sweHostFrame` + `applyWaterForces` = WaterForceSystem's body; SplashSystem's
+disturbance gates), VehicleTuner's frame (`vehicleTunerFrame.ts`), the treadmill's
+`ChunkManager.update`, the lifecycle's HUD mirror and out-of-bounds check — on R3F's clock (timestamp
+`simTimeSec + 1e-6`, delta = consecutive timestamps), which is what the SWE step and the force
+turbulence read. `scriptedHeadlessInput(script)` wraps a `?input=script:` / `?replay=` script.
+One process holds one run (the sim's modules keep module-level state); `run.dispose()` releases it.
+The page's React commits between 60-frame `stepScripted` batches, not between frames; `commitEvery: 60`
+reproduces that cadence for treadmill mounts and erosion remeshes (default 1, a real 60 Hz game).
+**What a headless run does not mount:** decorations, pooled obstacles and their colliders, pillars, water
+meshes — a run through the centreline touches none of them; a pilot that drives into a rock will not
+collide with it. **Copies of component bodies** (a headless run cannot mount a component; the pin below
+fails when one drifts from the page): `segmentWorld.ts` (TrackSegment's prop derivations),
+`headlessWater.ts` (WaterForceSystem's and SplashSystem's frame), `vehicleTunerFrame.ts`
+(VehicleTuner, which the page mounts for the runner too: water damping, wall friction, speed cap — it
+leaves the keyboard-only drift / wall boost / Space boost out). The run's store is the real Zustand store
+(`systems/GameState`): ScoreSystem, SplitRecorder and the survival layer still read it directly.
+`scripts/check-dependency-direction.mjs` lets `src/sim/headless/` import any layer and lets nothing but
+tests import it; it is Node-only (`tsconfig.test.json` typechecks it, `check-orphans` skips it).
+`pnpm test:campaign` (vitest project `campaign`, environment `node`, `src/**/*.campaign.test.ts`) runs
+it; `headless.campaign.test.ts` pins a headless run of the committed meander ghost
+(`verification/fixtures/headless/meander_run.wsghost`) against what the browser replay smoke prints.
 
 ---
 

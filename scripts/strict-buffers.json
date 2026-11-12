@@ -11,6 +11,7 @@
   "src/sim/headless/headlessWater.ts",
   "src/sim/headless/nativeNode.ts",
   "src/sim/headless/segmentWorld.ts",
+  "src/sim/headless/stepHeadless.ts",
   "src/sim/headless/vehicleTunerFrame.ts",
   "src/sim/hullLinkProtocol.ts",
   "src/sim/linkPhysicsToSim.ts",
