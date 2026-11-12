@@ -11,7 +11,7 @@ Last updated: 2026-11-12. Update this table when an epic opens, closes, or lands
 
 | Issue | Priority | What | State |
 |---|---|---|---|
-| #554 | P1 | Foundation before the next content round | A.1 + E + F + B.1 landed on `claude/laughing-bohr-0qyiqm`; A.2, B.2–B.4, C, D open (see below) |
+| #554 | P1 | Foundation before the next content round | A.1, B.1, E, F in one PR (`claude/laughing-bohr-0qyiqm`); A.2, B.2–B.4, C, D open (see below) |
 | #555 | P1 | Rendering: one material language (TSL default, GLSL dual hosts deleted) | open |
 | #556 | P1 | Testing: the campaign without a browser (Node harness on SimCore) | open |
 | #558 | P1 | Access: i18n, UI scale, captions, assists, axe in CI | open |
@@ -36,5 +36,5 @@ Last updated: 2026-11-12. Update this table when an epic opens, closes, or lands
 | #522 | B–F (hazards in maps, challenges) | Re-cut as #553 A; #553 closed 2026-11-12 without a PR — not on `main` |
 | #536 | B–E (per-biome packs, PWA, river voice) | Re-cut as #553 B, D, E; same — not on `main` |
 | #533 | D (emsdk 4.x pin bump) | #554 C |
-| #519 | C (render scale as viewport, one shadow type), D (half-float SWE textures) | #554 B.2, B.3, B.1 |
+| #519 | C (render scale as viewport, one shadow type), D (half-float SWE textures) | #554 B.2, B.3 open; B.1 landed as half-float only where 32-bit floats cannot be filtered |
 | #534 | D.2 (wasm preload, main-thread fetch) | #554 B.4 |
