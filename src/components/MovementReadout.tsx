@@ -1,7 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { queryFlags } from '../config/queryFlags';
 import { lazyComponent } from '../utils/lazyComponent';
-import { toggleTraceRecording, traceControlsEnabled } from './TraceRecordButton';
 
 /**
  * Movement verification readout — F3 toggles it, `?debug=1` opens it at boot.
@@ -60,7 +59,8 @@ export const MovementReadout: React.FC = () => {
       e.preventDefault(); // F3 is the browser's find-next
       // Shift+F3 records a trace (#559 D) instead of toggling the panel.
       if (e.shiftKey) {
-        if (traceControlsEnabled()) toggleTraceRecording();
+        const flags = queryFlags();
+        if (flags.debug || flags.trace) void import('../debug/trace/traceControl').then((m) => m.recordAndSave());
         return;
       }
       setOpen((prev) => {
