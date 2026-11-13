@@ -285,7 +285,7 @@ describe('migration v1 → v2', () => {
 
   it('persists under the same key with the version bumped and rehydrates a v1 blob', async () => {
     const { rehydrateSettings, SETTINGS_VERSION } = await import('./useSettingsStore');
-    expect(SETTINGS_VERSION).toBe(3);
+    expect(SETTINGS_VERSION).toBe(4);
     window.localStorage.setItem(
       'watershed-settings',
       JSON.stringify({ state: { masterVolume: 0.2, quality: 'med' }, version: 1 }),
@@ -313,10 +313,50 @@ describe('migration v1 → v2', () => {
     const raw = window.localStorage.getItem('watershed-settings');
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw as string);
-    expect(parsed.version).toBe(3);
+    expect(parsed.version).toBe(4);
     expect(parsed.state.fov).toBe(95);
     expect(parsed.state.leftHanded).toBe(true);
     expect(parsed.state._hasHydrated).toBeUndefined();
+    window.localStorage.removeItem('watershed-settings');
+  });
+
+  it('migrates a v3 blob to v4 (#558): access + assist fields backfill, stored ones are clamped, junk is dropped', () => {
+    const v3 = migrateSettings({ locale: 'es', fov: 90 }, 3);
+    expect(v3.locale).toBe('es');
+    expect(v3.uiScale).toBe(1);
+    expect(v3.colorVision).toBe('off');
+    expect(v3.captions).toBe(false);
+    expect(v3.gameSpeed).toBe(1);
+    expect(v3.nonLethal).toBe(false);
+    expect(v3.sprintMode).toBe('hold');
+    const v4 = migrateSettings(
+      { uiScale: 9, colorVision: 'tritanopia', captions: true, gameSpeed: 0.1, autoJump: true, brakeMode: 'toggle' },
+      4,
+    );
+    expect(v4.uiScale).toBe(2);
+    expect(v4.colorVision).toBe('tritanopia');
+    expect(v4.captions).toBe(true);
+    expect(v4.gameSpeed).toBe(0.7);
+    expect(v4.autoJump).toBe(true);
+    expect(v4.brakeMode).toBe('toggle');
+    const junk = migrateSettings({ colorVision: 'sepia', paddleMode: 'sometimes', nonLethal: 'yes' }, 4);
+    expect(junk.colorVision).toBe('off');
+    expect(junk.paddleMode).toBe('hold');
+    expect(junk.nonLethal).toBe(false);
+  });
+
+  it('resetToDefaults puts the access and assist fields back too', () => {
+    const s = useSettingsStore.getState();
+    s.setUiScale(1.5);
+    s.setGameSpeed(0.8);
+    s.setHoldMode('sprint', 'toggle');
+    s.setColorVision('highContrast');
+    useSettingsStore.getState().resetToDefaults();
+    const after = useSettingsStore.getState();
+    expect(after.uiScale).toBe(1);
+    expect(after.gameSpeed).toBe(1);
+    expect(after.sprintMode).toBe('hold');
+    expect(after.colorVision).toBe('off');
     window.localStorage.removeItem('watershed-settings');
   });
 });

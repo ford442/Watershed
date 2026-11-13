@@ -23,7 +23,7 @@ import { GENERATION, PHYSICS, PLAYER_SPAWN } from '../../constants/game';
 import { getMapDefinition, type MapRegistryId } from '../../maps/registry';
 import { ProceduralMapManager } from '../../systems/map/MapSystem';
 import { ChunkManager } from '../../systems/map/ChunkManager';
-import { buildSegmentFrame, clearSegmentFrames, publishSegmentFrames } from '../../systems/map/segmentFrames';
+import { buildSegmentFrame, authoredGapT, clearSegmentFrames, publishSegmentFrames } from '../../systems/map/segmentFrames';
 import { gameEvents } from '../../systems/events/GameEvents';
 import { useGameStore, type QualityPreset } from '../../systems/GameState';
 import {
@@ -247,7 +247,12 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
   };
   const publishFrames = () => {
     publishSegmentFrames(
-      chunk.getActiveSegments().map((s) => buildSegmentFrame(s.id, s.segmentPath, mapManager.getChunkConfig?.(s.id)?.safeZone)),
+      chunk.getActiveSegments().map((s) => buildSegmentFrame(
+          s.id,
+          s.segmentPath,
+          mapManager.getChunkConfig?.(s.id)?.safeZone,
+          authoredGapT(mapManager.getChunkConfig?.(s.id)),
+        )),
     );
   };
 

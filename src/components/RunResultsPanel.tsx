@@ -33,6 +33,7 @@ import {
   type HydroFairnessDiff,
 } from '../systems/ghost/hydroFairness';
 import { currentRunFairness, hydroEventsForMap, judgeStoredRival } from '../systems/ghost/raceFairness';
+import { getRunAssistBits } from '../systems/settings/accessRuntime';
 import { useT } from '../i18n/useT';
 import type { TFunction } from '../i18n/i18n';
 import { formatFixed, formatLaunchHour } from '../i18n/format';
@@ -66,6 +67,8 @@ function buildSplitRows(thisRun: RunSplitEntry[], reference?: RunSplitEntry[]): 
       return { segmentIndex: entry.segmentIndex, tMs: entry.tMs, deltaMs, tier };
     });
 }
+
+const SPLIT_TIER_GLYPH: Record<SplitRow['tier'], string> = { gold: '▼', green: '=', red: '▲', neutral: '' };
 
 function formatSignedMs(deltaMs: number): string {
   const sign = deltaMs <= 0 ? '−' : '+';
@@ -142,6 +145,8 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
     ? t('results.splitBlame', { seconds: formatFixed(blame.seconds, 1), event: blame.eventId })
     : null;
 
+  const assists = getRunAssistBits();
+
   if (thisRunSplits.length === 0) return null;
 
   const handleExport = () => {
@@ -161,6 +166,7 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
         vehicle: useGameStore.getState().vehicleType,
         conditions: getActiveConditions(),
         hazards: getRecordedHazardLog(),
+        assists,
       },
     );
   };
@@ -228,6 +234,12 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
         })}
       </div>
 
+      {assists !== 0 && (
+        <div className="run-results-panel__assisted" data-testid="results-assisted">
+          {t('results.assisted')}
+        </div>
+      )}
+
       {(fairnessNote || hydroBlame) && (
         <div className="run-results-panel__fairness">
           {fairnessNote && <div>{fairnessNote}</div>}
@@ -246,7 +258,8 @@ export default function RunResultsPanel({ outcome }: RunResultsPanelProps) {
             </span>
             <span className="run-results-panel__split-time">{formatRaceTimeMs(row.tMs)}</span>
             <span className="run-results-panel__split-delta">
-              {row.deltaMs === null ? '—' : formatSignedMs(row.deltaMs)}
+              {/* Shape as well as colour (#558 C.1): ▼ faster, = even, ▲ slower. */}
+              {row.deltaMs === null ? '—' : `${SPLIT_TIER_GLYPH[row.tier]} ${formatSignedMs(row.deltaMs)}`}
             </span>
           </div>
         ))}

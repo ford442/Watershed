@@ -49,11 +49,23 @@ const HYDRO_KIND_EFFECTS = {
   surge: 'hydro.effectSurge',
 } as const satisfies Record<HydroEventKind, MessageKey>;
 
-const STATE_COLORS: Record<FlowForecastState, string> = {
-  [FLOW_FORECAST_STATES.NORMAL]: '#89d18b',
-  [FLOW_FORECAST_STATES.HIGH_FLOW]: '#f3c969',
-  [FLOW_FORECAST_STATES.FLOODED]: '#ff7f6e',
-  [FLOW_FORECAST_STATES.WASHED_OUT]: '#c44bff',
+/**
+ * Each state's colour (an access-palette custom property, #558 C.2) *and* its
+ * shape (C.1): the strip reads without colour, and the colour follows the
+ * player's colour-vision mode.
+ */
+const STATE_CLASS: Record<FlowForecastState, string> = {
+  [FLOW_FORECAST_STATES.NORMAL]: 'normal',
+  [FLOW_FORECAST_STATES.HIGH_FLOW]: 'high',
+  [FLOW_FORECAST_STATES.FLOODED]: 'flood',
+  [FLOW_FORECAST_STATES.WASHED_OUT]: 'washout',
+};
+
+const STATE_GLYPH: Record<FlowForecastState, string> = {
+  [FLOW_FORECAST_STATES.NORMAL]: '●',
+  [FLOW_FORECAST_STATES.HIGH_FLOW]: '▲',
+  [FLOW_FORECAST_STATES.FLOODED]: '◆',
+  [FLOW_FORECAST_STATES.WASHED_OUT]: '✖',
 };
 
 export default function ForecastHUD({
@@ -118,88 +130,63 @@ export default function ForecastHUD({
   const nextHazard = riskStrip.find((sample, index) => index > 0 && isElevatedRisk(sample.state));
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 16,
-        left: 16,
-        zIndex: 20,
-        fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
-        color: '#f4efe3',
-        width: 280,
-        textShadow: '0 1px 2px rgba(0,0,0,0.45)',
-        pointerEvents: 'none',
-      }}
-    >
-      <div
-        style={{
-          background: 'rgba(15, 24, 28, 0.72)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 12,
-          padding: '12px 14px',
-          backdropFilter: 'blur(10px)',
-        }}
-      >
-        <div style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.8 }}>
-          {t('forecast.title')}
-        </div>
-        <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
+    <div className="forecast-hud">
+      <div className="forecast-hud__card">
+        <div className="forecast-hud__title">{t('forecast.title')}</div>
+        <div className="forecast-hud__launch">
           {t('forecast.launch', { hour: formatLaunchHour(launchHour ?? samples[0]?.hour ?? 0) })}
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: STATE_COLORS[summary.current],
-              boxShadow: `0 0 12px ${STATE_COLORS[summary.current]}`,
-            }}
-          />
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{t(STATE_LABELS[summary.current])}</div>
-          <div style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.7 }}>
+        <div className="forecast-hud__state">
+          <span
+            className={`forecast-hud__dot forecast-risk--${STATE_CLASS[summary.current]}`}
+            aria-hidden="true"
+          >
+            {STATE_GLYPH[summary.current]}
+          </span>
+          <div className="forecast-hud__state-label">{t(STATE_LABELS[summary.current])}</div>
+          <div className="forecast-hud__seg">
             {t('forecast.seg', { index: String(currentSegmentIndex) })}
           </div>
         </div>
 
         {/* Next-N segment risk strip */}
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase', opacity: 0.65, marginBottom: 6 }}>
+        <div className="forecast-hud__strip-wrap">
+          <div className="forecast-hud__caption">
             {t('forecast.nextSegments', { count: riskStrip.length })}
           </div>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div className="forecast-hud__strip">
             {riskStrip.map((sample, index) => {
               const isCurrent = index === 0;
+              const label = t('forecast.segTooltip', {
+                index: String(currentSegmentIndex + index),
+                state: t(STATE_LABELS[sample.state]),
+                flow: formatFixed(sample.flowRate, 2),
+              });
               return (
                 <div
                   key={`risk-${sample.hour}-${index}`}
-                  title={t('forecast.segTooltip', {
-                    index: String(currentSegmentIndex + index),
-                    state: t(STATE_LABELS[sample.state]),
-                    flow: formatFixed(sample.flowRate, 2),
-                  })}
-                  style={{
-                    flex: 1,
-                    height: isCurrent ? 18 : 14,
-                    borderRadius: 4,
-                    background: STATE_COLORS[sample.state],
-                    opacity: isCurrent ? 1 : 0.85,
-                    outline: isCurrent ? '1px solid rgba(255,255,255,0.55)' : 'none',
-                    boxShadow: isElevatedRisk(sample.state)
-                      ? `0 0 8px ${STATE_COLORS[sample.state]}88`
-                      : 'none',
-                  }}
-                />
+                  title={label}
+                  aria-label={label}
+                  role="img"
+                  className={[
+                    'forecast-hud__cell',
+                    `forecast-risk--${STATE_CLASS[sample.state]}`,
+                    isCurrent ? 'forecast-hud__cell--current' : '',
+                    isElevatedRisk(sample.state) ? 'forecast-hud__cell--elevated' : '',
+                  ].join(' ')}
+                >
+                  {STATE_GLYPH[sample.state]}
+                </div>
               );
             })}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, opacity: 0.65 }}>
+          <div className="forecast-hud__strip-ends">
             <span>{t('forecast.now')}</span>
             <span>+{Math.max(0, riskStrip.length - 1)}</span>
           </div>
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.88 }}>
+        <div className="forecast-hud__summary">
           {[
             t('forecast.peak', { flow: formatFixed(summary.maxFlow, 2) }),
             t('forecast.riskyHours', { count: summary.highRiskHours }),
@@ -211,34 +198,18 @@ export default function ForecastHUD({
         </div>
 
         {(hydroBoard.rows.length > 0 || contrastLine) && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: '8px 10px',
-              borderRadius: 8,
-              background: 'rgba(90, 190, 255, 0.12)',
-              border: '1px solid rgba(90, 190, 255, 0.32)',
-              fontSize: 12,
-            }}
-          >
-            <div style={{ letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 10, opacity: 0.8 }}>
+          <div className="forecast-hud__box forecast-hud__box--hydro">
+            <div className="forecast-hud__box-title">
               {t('forecast.waterAt', { hour: formatLaunchHour(hydroBoard.launchHour) })}
             </div>
             {hydroBoard.rows.length === 0 ? (
-              <div style={{ marginTop: 3, opacity: 0.8 }}>{t('forecast.baseline')}</div>
+              <div className="forecast-hud__row forecast-hud__row--dim">{t('forecast.baseline')}</div>
             ) : (
               hydroBoard.rows.map((row) => (
-                <div
-                  key={row.id}
-                  style={{
-                    marginTop: 3,
-                    fontWeight: row.here ? 700 : 500,
-                    opacity: row.here ? 1 : 0.85,
-                  }}
-                >
+                <div key={row.id} className={`forecast-hud__row ${row.here ? 'forecast-hud__row--here' : ''}`}>
                   {row.here ? '▶ ' : '· '}
                   {t(HYDRO_KIND_LABELS[row.kind])}{' '}
-                  <span style={{ opacity: 0.7 }}>
+                  <span className="forecast-hud__row-detail">
                     {t('forecast.rowDetail', {
                       index: String(row.segmentIndex),
                       effect: t(HYDRO_KIND_EFFECTS[row.kind]),
@@ -247,31 +218,18 @@ export default function ForecastHUD({
                 </div>
               ))
             )}
-            {contrastLine && (
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.72 }}>{contrastLine}</div>
-            )}
+            {contrastLine && <div className="forecast-hud__contrast">{contrastLine}</div>}
           </div>
         )}
 
         {damCountdown && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: '8px 10px',
-              borderRadius: 8,
-              background: 'rgba(255, 140, 80, 0.14)',
-              border: '1px solid rgba(255, 140, 80, 0.35)',
-              fontSize: 12,
-            }}
-          >
-            <div style={{ letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 10, opacity: 0.8 }}>
-              {t('forecast.damRelease')}
-            </div>
-            <div style={{ marginTop: 2, fontWeight: 600 }}>
+          <div className="forecast-hud__box forecast-hud__box--dam">
+            <div className="forecast-hud__box-title">{t('forecast.damRelease')}</div>
+            <div className="forecast-hud__dam">
               {damCountdown.hoursUntil === 0
                 ? t('forecast.releasingNow')
                 : t('forecast.releaseIn', { hours: damCountdown.hoursUntil })}{' '}
-              <span style={{ opacity: 0.75, fontWeight: 400 }}>
+              <span className="forecast-hud__dam-detail">
                 {t('forecast.releaseDetail', {
                   release: formatFixed(damCountdown.release, 2),
                   hour: String(damCountdown.hour % 24),

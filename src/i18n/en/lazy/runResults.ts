@@ -28,4 +28,7 @@ export const runResults = {
   'results.copyLink': 'COPY LINK',
   'results.linkCopied': 'LINK COPIED!',
   'results.copyLinkTitle': 'Link races this ghost at the same hour — host the exported file next to the game',
+
+  // --- Access (#558) ---
+  'results.assisted': "Assisted run — kept out of ghost and Daily River comparisons",
 } as const;

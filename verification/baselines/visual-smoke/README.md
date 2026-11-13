@@ -11,6 +11,7 @@ Committed reference PNGs for `verification/visual_smoke.mjs` (CI job `visual-smo
 | `04_delta_open_water.png` | Delta open water (`?map=delta&vehicle=raft`, segment 6) | Best-effort |
 | `05_delta_beach.png` | Delta beach landing (`?map=delta&vehicle=raft`, segment 21) | Best-effort |
 | `10_touch_layout.png` | Touch controls at 390×844 (`?input=touch`) | Best-effort |
+| `00_start_menu_ui200.png` / `10_touch_layout_ui200.png` | The start menu and the touch layout at 200 % UI scale (`?uiScale=2`, #558 B.3) | Best-effort |
 | `11_glacial_hour06.png` / `12_glacial_hour14.png` | Glacial start segment at a 06:00 / 14:00 launch (the sun moves) | Best-effort |
 | `13_meander_hour06.png` / `14_meander_hour14.png` | Meander segment 2 at a 06:00 / 14:00 launch | Best-effort |
 

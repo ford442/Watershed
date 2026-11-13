@@ -9,6 +9,8 @@ import { buildRunKey, getLastMapId } from '../systems/persistence/PersistenceSys
 import { getRunSession } from '../systems/journey/runSession';
 import { getActiveUserRiver, userRiverRunKeyId } from '../systems/map/userRiverSession';
 import { queryFlags } from '../config/queryFlags';
+import { getRunAssistBits } from '../systems/settings/accessRuntime';
+import { assistRunKeyTag } from '../systems/settings/access';
 
 /** Parse `?seed=` from the URL; returns null when absent or invalid. */
 export function parseUrlSeed(): number | null {
@@ -88,12 +90,15 @@ export function dailyRunKey(mapId: MapRegistryId, dateKey: string): string {
 /**
  * Persistence key for the active map + seed (`meander:12345`), the day's key
  * on a Daily River run, or the river's (`river-<hash>:12345`) on a player river.
+ * An assisted run (#558 D.2) keys apart (`meander~a3:12345`): its bests, splits
+ * and PB ghost never meet an unassisted run's, nor the Daily River card's.
  */
 export function getActiveRunKey(mapId: MapRegistryId = getActiveMapId()): string {
+  const tag = assistRunKeyTag(getRunAssistBits());
   // A player's river keeps its own bests, keyed by its content hash.
   const river = getActiveUserRiver();
-  if (river) return buildRunKey(userRiverRunKeyId(river), getProceduralBaseSeed());
+  if (river) return buildRunKey(`${userRiverRunKeyId(river)}${tag}`, getProceduralBaseSeed());
   const dailyKey = getRunSession()?.conditions.dailyKey;
-  if (dailyKey) return dailyRunKey(mapId, dailyKey);
-  return buildRunKey(mapId, getProceduralBaseSeed());
+  if (dailyKey) return buildRunKey(`${mapId}${tag}@${dailyKey}`, getProceduralBaseSeed());
+  return buildRunKey(`${mapId}${tag}`, getProceduralBaseSeed());
 }

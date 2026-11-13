@@ -12,11 +12,14 @@ import type { QualityPreset } from '../GameState';
 import type { HydroEvent } from '../water/hydroEvents';
 import { hashHydroEvents, eventsActiveAtHour } from '../water/hydroEvents';
 import { weatherFairnessKey, type RunWeather } from '../map/weatherInflow';
+import { sanitizeAssistBits } from '../settings/access';
 
 export interface GhostHydroFairness {
   launchHour?: number;
   hydroEventHash?: string;
   qualityPreset?: QualityPreset;
+  /** Assists bitfield (#558 D.2); absent / 0 = unassisted. Runs with different assists never race. */
+  assists?: number;
 }
 
 export function buildGhostHydroFairness(input: {
@@ -30,12 +33,15 @@ export function buildGhostHydroFairness(input: {
    * `runConditionsFairnessKey`); wins over `weather`. '' for a clear default day.
    */
   conditionsKey?: string;
+  /** The run's assists bits; 0 / absent adds nothing (an unassisted run is unchanged). */
+  assists?: number;
 }): GhostHydroFairness {
   const key = input.conditionsKey ?? weatherFairnessKey(input.weather);
   return {
     launchHour: input.launchHour,
     hydroEventHash: hashHydroEvents(input.events, input.launchHour, key),
     qualityPreset: input.qualityPreset,
+    ...(input.assists ? { assists: input.assists } : {}),
   };
 }
 
@@ -56,7 +62,7 @@ export type GhostFairnessVerdict =
   | { kind: 'match' }
   /** Ghost predates codec v3 (no hour/hash) — raced, but labeled. */
   | { kind: 'unverified'; message: string }
-  | { kind: 'refused'; reason: 'hour_mismatch' | 'hydro_mismatch'; message: string };
+  | { kind: 'refused'; reason: 'hour_mismatch' | 'hydro_mismatch' | 'assist_mismatch'; message: string };
 
 /**
  * Decide whether `ghost` may be raced under `current` conditions. Hour or
@@ -70,6 +76,19 @@ export function judgeGhostFairness(
 ): GhostFairnessVerdict {
   const ghostHour = ghost?.launchHour;
   const ghostHash = ghost?.hydroEventHash;
+  // An assisted run and an unassisted one (or two different assist sets) are not
+  // the same race (#558 D.2) — refused like a different river.
+  const ghostAssists = ghost?.assists ?? 0;
+  const currentAssists = current.assists ?? 0;
+  if (ghostAssists !== currentAssists) {
+    return {
+      kind: 'refused',
+      reason: 'assist_mismatch',
+      message: ghostAssists
+        ? `${label} was an assisted run — this run is ${currentAssists ? 'assisted differently' : 'unassisted'}`
+        : `${label} was unassisted — this run is assisted`,
+    };
+  }
   if (ghostHour !== undefined && current.launchHour !== undefined && ghostHour !== current.launchHour) {
     return {
       kind: 'refused',
@@ -101,6 +120,7 @@ export function hydroFairnessDiffers(a?: GhostHydroFairness | null, b?: GhostHyd
   if (hourA !== undefined && hourB !== undefined && hourA !== hourB) return true;
   if (hashA && hashB && hashA !== hashB) return true;
   if (qualityA && qualityB && qualityA !== qualityB) return true;
+  if ((a?.assists ?? 0) !== (b?.assists ?? 0)) return true;
   return false;
 }
 
@@ -172,10 +192,12 @@ export function fairnessFromGhostFile(file: {
   launchHour?: number;
   hydroEventHash?: string;
   qualityPreset?: QualityPreset;
+  assists?: number;
 }): GhostHydroFairness {
   return {
     launchHour: file.launchHour,
     hydroEventHash: file.hydroEventHash,
     qualityPreset: file.qualityPreset,
+    ...(file.assists ? { assists: sanitizeAssistBits(file.assists) } : {}),
   };
 }

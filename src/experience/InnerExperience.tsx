@@ -16,6 +16,7 @@ import VehicleMount from './VehicleMount';
 import PillarDustVFX from '../components/Obstacles/PillarDustVFX';
 import WindLeaves from '../components/Environment/WindLeaves';
 import SurvivalMarkers from '../components/Survival/SurvivalMarkers';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
 import PillarFragmentPool from '../components/Obstacles/PillarFragmentPool';
 import GhostReplayer from '../components/GhostReplayer';
 import { WaterReflectionLayer, WaterPhysicsEffects } from './WaterStack';
@@ -45,6 +46,8 @@ const PhysicsPerfMonitor = lazy(() => import('../debug/PhysicsPerfMonitor'));
 // HUD keep running while the chunk lands.
 const LevelLoader = lazy(() => import('./LevelLoader'));
 const ReachManager = lazy(() => import('./ReachManager'));
+// The centreline guide assist (#558 D.1): its own chunk, fetched only when on.
+const GuideRibbon = lazy(() => import('../components/GuideRibbon'));
 
 /**
  * InnerExperience — game scene composition (providers are mounted in Experience.tsx).
@@ -70,6 +73,7 @@ export default function InnerExperience({
     launchHour,
   });
   const { config: lodConfig, quality: lodQuality } = useLOD();
+  const guideRibbon = useSettingsStore((s) => s.guideRibbon && s._hasHydrated);
 
   // The day's conditions are fixed at launch with the hour; the director steps the weather script.
   const conditions = getActiveConditions();
@@ -140,6 +144,11 @@ export default function InnerExperience({
 
           {/* Spatial portage / cache markers for the active map (survival v2). */}
           <SurvivalMarkers vehicleRef={state.vehicleRef} />
+          {guideRibbon && (
+            <Suspense fallback={null}>
+              <GuideRibbon />
+            </Suspense>
+          )}
 
           <PillarFragmentPool castShadow={lodQuality !== 'high'} />
           <PillarDustVFX />

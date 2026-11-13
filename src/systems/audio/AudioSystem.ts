@@ -29,6 +29,7 @@ import {
   type RoutableAudio,
 } from './acousticRouting';
 import { createSynthBuffers, type SynthBuffers } from './synthBuffers';
+import { getSoundCaptioner } from '../settings/accessRuntime';
 
 export { SoundCategory } from './soundDefs';
 export type { AcousticStem } from './acousticRouting';
@@ -122,6 +123,8 @@ export class AudioManager {
     pitch: number = 1.0,
     position?: THREE.Vector3
   ): string | null {
+    // Captions (#558 C.3): the lazy caption layer hooks in while it is up.
+    getSoundCaptioner()?.(name, this.listener, position);
     return this.voices.play(name, volume, pitch, position);
   }
 

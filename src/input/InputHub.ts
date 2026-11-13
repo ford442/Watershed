@@ -26,6 +26,8 @@ import {
   type InputFrame,
   type InputSourceId,
 } from './InputFrame';
+import { applyHoldToggle, createHoldToggleState } from './holdToggle';
+import { getHoldModes } from '../systems/settings/accessRuntime';
 
 /** What one device reports for one tick. Cleared by the hub after every merge. */
 export interface InputDeviceScratch {
@@ -90,6 +92,7 @@ export class InputHub {
   private readonly sources: (InputSource | null)[] = [];
   private readonly scratches: InputDeviceScratch[] = [];
   private readonly frame: InputFrame = createInputFrame();
+  private readonly holdToggle = createHoldToggleState();
   /** Slot of the device that last produced non-neutral input; −1 = none yet. */
   private activeSlot = -1;
 
@@ -198,6 +201,10 @@ export class InputHub {
     }
 
     for (let i = 0; i < n; i += 1) clearScratch(scratches[i]);
+
+    // Hold vs toggle (#558 D.1), once for every device. A scripted run's frames
+    // are the recorded result already, so they pass through untouched.
+    if (!this.hasSource('scripted')) applyHoldToggle(f, getHoldModes(), this.holdToggle);
 
     this.latchForGhost();
     if (prevActive !== this.activeSlot) this.publishUiState();

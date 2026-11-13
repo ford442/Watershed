@@ -89,6 +89,22 @@ export interface HazardPhaseDetail {
   phase: HazardPhase;
   /** Anchor in world space as the step saw it (null when its segment was not live). */
   anchor: Vec3Like | null;
+  /** On `telegraph`: seconds until it turns active (the caption's countdown, #558 C.3). */
+  warnSeconds?: number;
+}
+
+/**
+ * A caption for a gameplay-relevant sound (#558 C.3). `id` is the catalog key's
+ * tail (`caption.<id>`); the layer words it. Direction is where the sound is
+ * relative to the player's view: −1 left, 0 ahead / unknown, 1 right.
+ */
+export interface CaptionDetail {
+  id: string;
+  direction: -1 | 0 | 1;
+  /** Higher wins when the layer is full (hazards 3, impacts 2, splashes 1). */
+  priority: number;
+  /** Interpolated into the message (`{seconds}`). */
+  seconds?: number;
 }
 
 /** An active hazard reached the player and its consequence was applied (#522). */
@@ -161,6 +177,8 @@ export interface GameEventMap {
   /** Continuous low rumble level (0 = off); replaces, does not stack. */
   'camera-rumble': { intensity: number };
   'camera-shake': CameraShakeDetail;
+  /** A gameplay sound, as text (captions; off unless the player turns them on). */
+  caption: CaptionDetail;
   /** A vehicle or a breaking prop hit a surface hard enough to be heard. */
   'collision-sound': { material: SurfaceMaterial; force: number; point: Vec3Like };
   'hazard-hit': HazardHitDetail;

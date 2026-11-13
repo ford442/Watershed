@@ -16,6 +16,7 @@ import { BANK_CONFIG, JUMP_CONFIG, RUNNER_SPRINT } from '../constants';
 import { gameEvents, type VehicleFootstepDetail } from '../../../systems/events/GameEvents';
 import type { RapierBody } from '../../../physics/rapierTypes';
 import type { RunnerJumpData } from './runnerPhysicsState';
+import { getLiveAssists } from '../../../systems/settings/accessRuntime';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -257,6 +258,8 @@ export function tickSprintStamina(
   } else {
     stamina = Math.min(1, stamina + RUNNER_SPRINT.REGEN_GROUNDED * staminaRegenMul * dt);
   }
+  // Non-lethal survival (#558 D.1): sprint never runs dry, so it never locks.
+  if (getLiveAssists().nonLethal) stamina = Math.max(stamina, RUNNER_SPRINT.RECOVERY_THRESHOLD);
   // A write only on change: a store set builds a new state object, and full
   // stamina while running is the steady state.
   if (stamina !== game.sprintStamina) game.setSprintStamina(stamina);

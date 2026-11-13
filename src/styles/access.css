@@ -1,0 +1,339 @@
+/*
+ * Access (#558): the palette custom properties, the HUD states that are shape +
+ * word + colour, captions, the forecast panel, and the contrast themes.
+ *
+ * The --a11y-* properties are written onto <html> by SettingsSync from one
+ * palette module (src/systems/settings/access.ts); the defaults below are the
+ * authored palette, for the first frame and for a page with no settings.
+ */
+
+:root {
+  --a11y-ok: #86efac;
+  --a11y-warn: #fbbf24;
+  --a11y-bad: #ef4444;
+  --a11y-neutral: #f8fafc;
+  --a11y-wet-low: #94a3b8;
+  --a11y-wet-mid: #7dd3fc;
+  --a11y-wet-high: #38bdf8;
+  --a11y-ahead: #4cff7c;
+  --a11y-behind: #ff4c4c;
+  --a11y-risk-normal: #89d18b;
+  --a11y-risk-high: #f3c969;
+  --a11y-risk-flood: #ff7f6e;
+  --a11y-risk-washout: #c44bff;
+  --a11y-focus: #4fd1c7;
+}
+
+/* ---- HUD bars: colour from the grade, shape + word in the label --------- */
+
+.stamina-bar[data-grade='ok'] .stamina-fill { background-color: var(--a11y-neutral); }
+.stamina-bar[data-grade='warn'] .stamina-fill { background-color: var(--a11y-warn); }
+.stamina-bar[data-grade='bad'] .stamina-fill { background-color: var(--a11y-bad); }
+
+.survival-bar--exposure[data-grade='ok'] .survival-fill { background-color: var(--a11y-ok); }
+.survival-bar--exposure[data-grade='warn'] .survival-fill { background-color: var(--a11y-warn); }
+.survival-bar--exposure[data-grade='bad'] .survival-fill { background-color: var(--a11y-bad); }
+
+.survival-bar--wet[data-grade='dry'] .survival-fill { background-color: var(--a11y-wet-low); }
+.survival-bar--wet[data-grade='damp'] .survival-fill { background-color: var(--a11y-wet-mid); }
+.survival-bar--wet[data-grade='soaked'] .survival-fill { background-color: var(--a11y-wet-high); }
+
+.hud-bar-state {
+  margin-left: 0.35em;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.72);
+}
+[data-grade='warn'] > * > .hud-bar-state { color: var(--a11y-warn); }
+[data-grade='bad'] > * > .hud-bar-state { color: var(--a11y-bad); }
+
+.hud-assisted-badge,
+.run-results-panel__assisted {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  color: var(--a11y-warn);
+  text-transform: uppercase;
+}
+.run-results-panel__assisted {
+  display: block;
+  margin: 0.5rem 0;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+/* ---- Captions (#558 C.3) -------------------------------------------------- */
+
+.caption-layer {
+  position: fixed;
+  left: 50%;
+  bottom: 18%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: min(36rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.caption-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font: 600 1rem/1.35 system-ui, sans-serif;
+  text-align: center;
+}
+.caption-line--p3 { color: var(--a11y-warn); }
+.caption-arrow { font-size: 0.9em; }
+
+/* ---- Forecast panel (was inline px; rem now so it scales) ----------------- */
+
+.forecast-hud {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 20;
+  width: 17.5rem;
+  max-width: calc(100vw - 2rem);
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  color: #f4efe3;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.forecast-hud__card {
+  background: rgba(15, 24, 28, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  backdrop-filter: blur(10px);
+}
+.forecast-hud__title {
+  font-size: 0.6875rem;
+  letter-spacing: 0.125rem;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.forecast-hud__launch { font-size: 0.6875rem; opacity: 0.75; margin-top: 0.25rem; }
+.forecast-hud__state { display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.375rem; }
+.forecast-hud__dot { font-size: 0.8125rem; line-height: 1; }
+.forecast-hud__state-label { font-size: 1.125rem; font-weight: 700; }
+.forecast-hud__seg { margin-left: auto; font-size: 0.6875rem; opacity: 0.7; }
+.forecast-hud__strip-wrap { margin-top: 0.625rem; }
+.forecast-hud__caption {
+  font-size: 0.625rem;
+  letter-spacing: 0.0875rem;
+  text-transform: uppercase;
+  opacity: 0.65;
+  margin-bottom: 0.375rem;
+}
+.forecast-hud__strip { display: flex; gap: 0.25rem; }
+.forecast-hud__cell {
+  flex: 1;
+  height: 0.875rem;
+  border-radius: 0.25rem;
+  opacity: 0.85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5625rem;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.75);
+  text-shadow: none;
+}
+.forecast-hud__cell--current { height: 1.125rem; opacity: 1; outline: 1px solid rgba(255, 255, 255, 0.55); }
+.forecast-hud__cell--elevated { box-shadow: 0 0 8px currentColor; } /* px-ok: glow */
+.forecast-hud__strip-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: 0.625rem;
+  opacity: 0.65;
+}
+.forecast-hud__summary { margin-top: 0.5rem; font-size: 0.75rem; opacity: 0.88; }
+.forecast-hud__box { margin-top: 0.625rem; padding: 0.5rem 0.625rem; border-radius: 0.5rem; font-size: 0.75rem; }
+.forecast-hud__box--hydro { background: rgba(90, 190, 255, 0.12); border: 1px solid rgba(90, 190, 255, 0.32); }
+.forecast-hud__box--dam { background: rgba(255, 140, 80, 0.14); border: 1px solid rgba(255, 140, 80, 0.35); }
+.forecast-hud__box-title { letter-spacing: 0.075rem; text-transform: uppercase; font-size: 0.625rem; opacity: 0.8; }
+.forecast-hud__row { margin-top: 0.1875rem; font-weight: 500; opacity: 0.85; }
+.forecast-hud__row--here { font-weight: 700; opacity: 1; }
+.forecast-hud__row--dim { opacity: 0.8; }
+.forecast-hud__row-detail { opacity: 0.7; }
+.forecast-hud__contrast { margin-top: 0.375rem; font-size: 0.6875rem; opacity: 0.72; }
+.forecast-hud__dam { margin-top: 0.125rem; font-weight: 600; }
+.forecast-hud__dam-detail { opacity: 0.75; font-weight: 400; }
+
+.forecast-risk--normal { background: var(--a11y-risk-normal); }
+.forecast-risk--high { background: var(--a11y-risk-high); }
+.forecast-risk--flood { background: var(--a11y-risk-flood); }
+.forecast-risk--washout { background: var(--a11y-risk-washout); color: #fff; }
+.forecast-hud__dot.forecast-risk--normal { background: none; color: var(--a11y-risk-normal); }
+.forecast-hud__dot.forecast-risk--high { background: none; color: var(--a11y-risk-high); }
+.forecast-hud__dot.forecast-risk--flood { background: none; color: var(--a11y-risk-flood); }
+.forecast-hud__dot.forecast-risk--washout { background: none; color: var(--a11y-risk-washout); }
+
+/* ---- Run results splits: palette colours (the glyph is in the text) ------- */
+
+.run-results-panel__split-row--gold .run-results-panel__split-delta { color: var(--a11y-warn); }
+.run-results-panel__split-row--green .run-results-panel__split-delta { color: var(--a11y-ok); }
+.run-results-panel__split-row--red .run-results-panel__split-delta { color: var(--a11y-bad); }
+
+/* ---- Focus: always visible for keyboard and gamepad ---------------------- */
+
+:where(button, [role='tab'], [role='radio'], [role='switch'], input, select, a):focus-visible {
+  outline: 2px solid var(--a11y-focus);
+  outline-offset: 2px;
+}
+
+/* ---- Contrast (#558 B.2) --------------------------------------------------
+ * `prefers-contrast: more` from the OS, or the High contrast colour mode
+ * (`data-contrast="more"` on <html>): opaque panels, solid borders, full-white
+ * text, no translucent glass. Same rules for both, so they live in one block
+ * each and differ only in their gate.
+ */
+
+@media (prefers-contrast: more) {
+  :root {
+    --hud-dim: #fff;
+  }
+  .ui-card,
+  .start-menu-card,
+  .pause-menu-card,
+  .settings-panel,
+  .hud-overlay__card,
+  .run-results-panel,
+  .hud-readout,
+  .forecast-hud__card,
+  .caption-line {
+    background: #000 !important;
+    border: 2px solid #fff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    color: #fff;
+    text-shadow: none;
+  }
+  .stamina-bar__label,
+  .survival-bar__label,
+  .survival-loadout-badge,
+  .hud-biome,
+  .settings-panel-note,
+  .hud-overlay__hint,
+  .hud-bar-state {
+    color: #fff;
+    opacity: 1;
+  }
+  .stamina-bar__track,
+  .survival-bar__track {
+    outline: 1px solid #fff;
+    background: #000;
+  }
+  button {
+    border: 2px solid currentColor !important;
+  }
+}
+
+:root[data-contrast='more'] {
+  --hud-dim: #fff;
+}
+:root[data-contrast='more'] :is(
+    .ui-card,
+    .start-menu-card,
+    .pause-menu-card,
+    .settings-panel,
+    .hud-overlay__card,
+    .run-results-panel,
+    .hud-readout,
+    .forecast-hud__card,
+    .caption-line
+  ) {
+  background: #000 !important;
+  border: 2px solid #fff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: #fff;
+  text-shadow: none;
+}
+:root[data-contrast='more'] :is(
+    .stamina-bar__label,
+    .survival-bar__label,
+    .survival-loadout-badge,
+    .hud-biome,
+    .settings-panel-note,
+    .hud-overlay__hint,
+    .hud-bar-state
+  ) {
+  color: #fff;
+  opacity: 1;
+}
+:root[data-contrast='more'] :is(.stamina-bar__track, .survival-bar__track) {
+  outline: 1px solid #fff;
+  background: #000;
+}
+:root[data-contrast='more'] button {
+  border: 2px solid currentColor !important;
+}
+
+/* ---- Forced colours (Windows High Contrast) ------------------------------
+ * The browser repaints with system colours; keep the meaning: bar fills and
+ * strip cells would vanish as backgrounds, so they draw in Highlight, and every
+ * panel and control gets a system-colour border.
+ */
+
+@media (forced-colors: active) {
+  .ui-card,
+  .start-menu-card,
+  .pause-menu-card,
+  .settings-panel,
+  .hud-overlay__card,
+  .run-results-panel,
+  .hud-readout,
+  .forecast-hud__card,
+  .caption-line {
+    border: 2px solid CanvasText;
+  }
+  .stamina-fill,
+  .survival-fill {
+    forced-color-adjust: none;
+    background-color: Highlight !important;
+  }
+  .stamina-bar__track,
+  .survival-bar__track,
+  .forecast-hud__cell {
+    border: 1px solid CanvasText;
+  }
+  .forecast-hud__cell {
+    forced-color-adjust: none;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
+  .forecast-hud__cell--elevated {
+    background: Highlight !important;
+    color: HighlightText !important;
+  }
+  button,
+  [role='tab'],
+  [role='radio'],
+  [role='switch'] {
+    border: 1px solid ButtonText;
+  }
+  button[aria-pressed='true'],
+  [aria-selected='true'],
+  [aria-checked='true'] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+  :where(button, [role='tab'], [role='radio'], [role='switch'], input, select, a):focus-visible {
+    outline: 2px solid Highlight;
+  }
+}

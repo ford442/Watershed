@@ -227,6 +227,8 @@ Pure `ShaderMaterial`. Two-layer fbm foam, Fresnel highlight, depth gradient, cu
 
 **Comfort & Devices** (Options page, `useSettingsStore` v2): FOV 70–110, sprint FOV kick, camera shake %, vignette, speed blur / chromatic, reduced motion (`system` follows `prefers-reduced-motion`, which turns shake, FOV kick and speed effects off), left-handed touch, vibration + strength, gamepad dead zone + response curve. Consumers read the live, cached `getComfort()` (`systems/settings/comfortRuntime.ts`) — no re-render, no per-frame allocation.
 
+**Accessibility & Assist** (Options pages, settings store v4, #558 — [`docs/reference/ACCESS.md`](./docs/reference/ACCESS.md)): UI scale 75–200 % (`--ui-scale`; UI CSS is rem, `scripts/px-to-rem.mjs --check`), colour-vision palettes, captions; assists (game speed, non-lethal survival, centreline guide, auto-jump) and hold / toggle. Every coloured HUD state also has a glyph and a word. Assisted runs key apart (`meander~a3:seed`), carry `assists` in the `.wsghost` and never race unassisted ghosts. The sim reads assists from the store-free `systems/settings/accessRuntime.ts`.
+
 ---
 
 ## Visual Target
@@ -316,6 +318,7 @@ pnpm test:input-smoke:gamepad     # the same with a gamepad-shaped (analog) scri
 pnpm test:replay-smoke            # that run saved as a .wsghost, ?replay= twice: identical splits + SWE checksums (needs `pnpm preview`)
 pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 pnpm test:visual-smoke:tsl        # the same gate on the `?material=tsl` backend (needs `pnpm preview`)
+pnpm test:a11y                    # axe-core on every menu screen + clipped-control check at 100–200 % UI scale (needs `pnpm preview`)
 ```
 
 **Sim time.** Gameplay under `src/systems`, `src/vehicles`, `src/physics`, `src/sim` and `src/components/Obstacles` runs on the frame delta / R3F clock, never the wall clock — ESLint bans `setTimeout`, `setInterval`, `requestAnimationFrame`, `performance.now` and `Date.now` there (allowlist with reasons in `eslint.config.js`; metadata stamps and telemetry use `src/utils/wallClock.ts`). That is what keeps the input / replay smokes identical under load.

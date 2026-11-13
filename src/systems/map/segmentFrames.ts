@@ -48,6 +48,24 @@ export interface SegmentFrame extends ZSpan {
   samples: ReadonlyArray<Vec3Tuple>;
   /** Authored envelope, segment-relative (see SafeZoneConfig). */
   safeZone?: SafeZoneConfig;
+  /**
+   * Where an authored gap's take-off is, as path t (0 = segment start): an
+   * `openFloor` segment's lip, or a `launchShelf` rock. The auto-jump assist
+   * (#558 D.1) jumps there. Absent on a segment with no authored gap.
+   */
+  gapT?: number;
+}
+
+/** The take-off t of a segment's authored gap, or null (see SegmentFrame.gapT). */
+export function authoredGapT(config: {
+  openFloor?: boolean;
+  launchShelf?: { rockRef: { localZ: number } };
+} | null | undefined): number | null {
+  if (!config) return null;
+  // The shelf rock sits at t = 0.5 + localZ / 100 (shelfLaunch.ts).
+  if (config.launchShelf) return Math.min(1, Math.max(0, 0.5 + config.launchShelf.rockRef.localZ / 100));
+  if (config.openFloor) return 0;
+  return null;
 }
 
 /** Anything with a Catmull-Rom style `getPoint(t)` — THREE.Curve satisfies it. */
@@ -59,6 +77,7 @@ export function buildSegmentFrame(
   index: number,
   curve: CurveLike,
   safeZone?: SafeZoneConfig | null,
+  gapT?: number | null,
 ): SegmentFrame {
   const samples: Vec3Tuple[] = [];
   let pathYMin = Infinity;
@@ -77,6 +96,7 @@ export function buildSegmentFrame(
     pathYMax,
     samples,
     ...(safeZone ? { safeZone } : {}),
+    ...(gapT !== null && gapT !== undefined ? { gapT } : {}),
   };
 }
 

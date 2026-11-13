@@ -34,28 +34,28 @@
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 16px;
-  padding: 40px 32px;
-  max-width: 420px;
+  padding: 2.5rem 2rem;
+  max-width: 26.25rem;
   width: 90%;
   text-align: center;
   box-shadow: 0 20px 40px rgba(0,0,0,0.5);
 }
 
 .ui-card h1 {
-  font-size: clamp(28px, 5vw, 48px);
+  font-size: clamp(1.75rem, 5vw, 3rem);
   font-weight: 800;
   background: linear-gradient(135deg, #4fd1c7, #3b82f6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0 0 12px 0;
+  margin: 0 0 0.75rem 0;
   letter-spacing: -0.02em;
 }
 
 .loader-text {
-  font-size: 16px;
+  font-size: 1rem;
   opacity: 0.9;
-  margin-bottom: 24px;
+  margin-bottom: 1.5rem;
   font-weight: 500;
 }
 
@@ -63,8 +63,8 @@
 .button-group {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin: 24px 0;
+  gap: 1rem;
+  margin: 1.5rem 0;
 }
 
 .start-button,
@@ -73,8 +73,8 @@
 .confirm-no {
   border: none;
   border-radius: 12px;
-  padding: 16px 32px;
-  font-size: 18px;
+  padding: 1rem 2rem;
+  font-size: 1.125rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;  /* Faster */
@@ -82,8 +82,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 56px;
+  gap: 0.5rem;
+  min-height: 3.5rem;
 }
 
 .start-button {
@@ -117,24 +117,24 @@
 .confirm-group {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1rem;
 }
 
 .confirm-text {
-  font-size: 24px;
+  font-size: 1.5rem;
   font-weight: 700;
   margin: 0;
 }
 
 .confirm-subtext {
-  font-size: 16px;
+  font-size: 1rem;
   opacity: 0.8;
-  margin: 0 0 20px 0;
+  margin: 0 0 1.25rem 0;
 }
 
 .confirm-buttons {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
   justify-content: center;
 }
 
@@ -143,7 +143,7 @@
   color: white;
   box-shadow: 0 8px 24px rgba(239,68,68,0.4);
   flex: 1;
-  max-width: 140px;
+  max-width: 8.75rem;
 }
 
 .confirm-yes:hover {
@@ -157,7 +157,7 @@
   border: 2px solid #4b5563;
   box-shadow: none;
   flex: 1;
-  max-width: 140px;
+  max-width: 8.75rem;
 }
 
 .confirm-no:hover {
@@ -168,7 +168,7 @@
 
 /* Controls */
 .controls-section {
-  margin-top: 32px;
+  margin-top: 2rem;
   opacity: 0.9;
 }
 
@@ -176,25 +176,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  margin-bottom: 12px;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .keys {
   display: flex;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 .key {
-  width: 44px;
-  height: 44px;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: 8px;
   background: rgba(255,255,255,0.1);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   border: 2px solid rgba(255,255,255,0.2);
   box-shadow: 0 2px 0 rgba(0,0,0,0.3);  /* Lighter */
@@ -202,7 +202,7 @@
 }
 
 .key-wide {
-  width: 68px;
+  width: 4.25rem;
 }
 
 .key.pressed {
@@ -212,12 +212,12 @@
 }
 
 .action {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
-  min-width: 80px;
+  min-width: 5rem;
 }
 
 .mini-key {
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.8;
 }

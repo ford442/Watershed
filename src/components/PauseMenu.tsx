@@ -143,19 +143,20 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               ref={resumeRef}
               className="pause-menu-resume-btn"
               onClick={onResume}
-              aria-label={t('pause.resumeLabel')}
+              aria-label={`${t('pause.resume')} — ${t('pause.resumeLabel')}`}
             >
               {t('pause.resume')}
-              <span className="pause-menu-keyhint">{t('pause.keyEnter')}</span>
+              {/* The key hint is for sighted keyboard players; the name already says it (WCAG 2.5.3). */}
+              <span className="pause-menu-keyhint" aria-hidden="true">{t('pause.keyEnter')}</span>
             </button>
 
             <button
               className="pause-menu-restart-btn"
               onClick={() => setConfirmRestart(true)}
-              aria-label={t('pause.restartLabel')}
+              aria-label={`${t('pause.restart')} — ${t('pause.restartLabel')}`}
             >
               {t('pause.restart')}
-              <span className="pause-menu-keyhint">{/* the physical key, not a word */ 'R'}</span>
+              <span className="pause-menu-keyhint" aria-hidden="true">{/* the physical key, not a word */ 'R'}</span>
             </button>
 
             <button
@@ -170,7 +171,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               className={`pause-menu-ghost-btn ${ghostEnabled ? 'active' : ''}`}
               onClick={() => setGhostEnabled(!ghostEnabled)}
               aria-pressed={ghostEnabled}
-              aria-label={ghostEnabled ? t('pause.ghostHide') : t('pause.ghostShow')}
+              aria-label={`${ghostEnabled ? t('pause.ghostOn') : t('pause.ghostOff')} — ${
+                ghostEnabled ? t('pause.ghostHide') : t('pause.ghostShow')
+              }`}
             >
               {ghostEnabled ? t('pause.ghostOn') : t('pause.ghostOff')}
             </button>
@@ -191,7 +194,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onRestart, onQui
               onClick={() =>
                 rivalLoaded ? handleClearRival() : rivalFileInputRef.current?.click()
               }
-              aria-label={rivalLoaded ? t('pause.rivalClearLabel') : t('pause.rivalLoadLabel')}
+              aria-label={`${rivalLoaded ? t('pause.rivalClear') : t('pause.rivalLoad')} — ${
+                rivalLoaded ? t('pause.rivalClearLabel') : t('pause.rivalLoadLabel')
+              }`}
             >
               {rivalStatus || (rivalLoaded ? t('pause.rivalClear') : t('pause.rivalLoad'))}
             </button>

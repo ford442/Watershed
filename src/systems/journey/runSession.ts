@@ -5,6 +5,7 @@
  * StartMenu choices, then read by forecast / scoring / physics systems.
  */
 
+import { beginRunAssists, getLiveAssists } from '../settings/accessRuntime';
 import { wallClockEpochMs } from '../../utils/wallClock';
 import { ACTIVE_MAP_ID, getMapDefinition, type MapDefinition, type MapRegistryId } from '../../maps/registry';
 import { getMapSurvivalMetadata } from '../../maps/survivalMetadata';
@@ -171,6 +172,8 @@ export function initRunSession(options: {
 
   const survival = getMapSurvivalMetadata(startMapId);
   const launchHour = normalizeHour(options.launchHour ?? getLaunchHour());
+  // Assists are sticky per run (#558 D.2): start from what is on now.
+  beginRunAssists();
   const conditions: RunConditions = {
     weatherScript:
       options.conditions?.weatherScript ?? constantWeatherScript(options.weather ?? getLaunchWeather()),
@@ -306,10 +309,25 @@ const activeModifiers: SurvivalModifiers = {
 };
 
 /** What `activeModifiers` was computed from (an object field, so the double is not boxed). */
-const activeModifiersKey: { survival: SurvivalState | null; ambientTemp: number; loadoutId: string } = {
+/**
+ * Non-lethal survival (#558 D.1): stamina, cold and wetness still show on the
+ * HUD (exposureStress stays), but none of them costs the player anything —
+ * every multiplier is clamped to its neutral side. In place, on the shared object.
+ */
+function clampNonLethal(mods: SurvivalModifiers): SurvivalModifiers {
+  mods.staminaDrainMultiplier = Math.min(mods.staminaDrainMultiplier, 1);
+  mods.staminaRegenMultiplier = Math.max(mods.staminaRegenMultiplier, 1);
+  mods.movementMultiplier = Math.max(mods.movementMultiplier, 1);
+  mods.paddleCostMultiplier = Math.min(mods.paddleCostMultiplier, 1);
+  mods.paddleRegenMultiplier = Math.max(mods.paddleRegenMultiplier, 1);
+  return mods;
+}
+
+const activeModifiersKey: { survival: SurvivalState | null; ambientTemp: number; loadoutId: string; nonLethal: boolean } = {
   survival: null,
   ambientTemp: -1,
   loadoutId: '',
+  nonLethal: false,
 };
 
 /**
@@ -326,12 +344,15 @@ export function getActiveSurvivalModifiers(): SurvivalModifiers | null {
   if (
     key.survival !== activeSession.survival ||
     key.ambientTemp !== climate.ambientTemp ||
-    key.loadoutId !== activeSession.loadoutId
+    key.loadoutId !== activeSession.loadoutId ||
+    key.nonLethal !== getLiveAssists().nonLethal
   ) {
     key.survival = activeSession.survival;
     key.ambientTemp = climate.ambientTemp;
     key.loadoutId = activeSession.loadoutId;
+    key.nonLethal = getLiveAssists().nonLethal;
     getSurvivalModifiers(activeSession.survival, climate, getLoadoutDefinition(activeSession.loadoutId), activeModifiers);
+    if (key.nonLethal) clampNonLethal(activeModifiers);
   }
   return activeModifiers;
 }
@@ -356,6 +377,7 @@ export function stepRunSurvival(input: Omit<SurvivalTickInput, 'launchHour'>): S
     peakWetness: Math.max(activeSession.peakWetness, survival.wetness),
   };
   const mods = getSurvivalModifiers(activeSession.survival, input.climate, loadout);
+  if (getLiveAssists().nonLethal) clampNonLethal(mods);
   // Wetness SFX muffling (#301 leftover): the modifier has been derived here
   // all along; this is the one line that lets the mixer hear it.
   setSfxWetnessMultiplier(mods.sfxWetnessMultiplier);

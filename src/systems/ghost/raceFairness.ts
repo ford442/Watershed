@@ -17,6 +17,7 @@ import { getQualityPresetNow } from '../GameState';
 import { parseHydroEvents, type HydroEvent } from '../water/hydroEvents';
 import { getActiveUserRiver, userRiverFairnessPart } from '../map/userRiverSession';
 import { getRivalGhost, getRunBest } from '../persistence/PersistenceSystem';
+import { getRunAssistBits } from '../settings/accessRuntime';
 import type { WsGhostFile } from './ghostExport';
 import {
   buildGhostHydroFairness,
@@ -43,6 +44,7 @@ export function currentRunFairness(mapId: MapRegistryId = getActiveMapId()): Gho
     events: hydroEventsForMap(mapId),
     qualityPreset: getQualityPresetNow(),
     conditionsKey: withRiverPart(runConditionsFairnessKey(getActiveConditions())),
+    assists: getRunAssistBits(),
   });
 }
 
@@ -74,7 +76,8 @@ export function judgeStoredPB(mapId: MapRegistryId = getActiveMapId()): GhostFai
   if (!pb.ghostData) return null;
   return judgeGhostFairness(
     currentRunFairness(mapId),
-    { launchHour: pb.launchHour, hydroEventHash: pb.hydroEventHash },
+    // The PB lives under this run's key, which carries the assists tag: same assists.
+    { launchHour: pb.launchHour, hydroEventHash: pb.hydroEventHash, assists: getRunAssistBits() },
     'PB',
   );
 }

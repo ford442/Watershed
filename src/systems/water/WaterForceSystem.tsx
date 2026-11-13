@@ -61,6 +61,7 @@ import { createSweHostState, disposeSweHostRouters, resetSweHostForGrid, sweHost
 import { applyWaterForces, type ForceTarget } from './waterForceBridge';
 import type { VehicleRigidBodyRef, VehicleType } from '../../experience/types';
 import { setDebugTap } from '../../debug/debugTaps';
+import { getLiveAssists } from '../settings/accessRuntime';
 
 interface WaterForceSystemProps {
   vehicleRef: React.RefObject<VehicleRigidBodyRef | null>;
@@ -341,7 +342,8 @@ export function WaterForceSystem({
     const bodies = collectWaterForceBodies();
     if (bodies.length === 0) return;
 
-    const dt = Math.min(delta, 0.05);
+    // Game speed (#558 D.1): the water field slows with SimCore.
+    const dt = Math.min(delta, 0.05) * getLiveAssists().gameSpeed;
     const timeSeconds = state.clock.elapsedTime;
     const workerOwnsVehicleForces = isPhysicsWorkerActive();
     // Snow thickens the water the hull is in (#464): a lower flow cap on every

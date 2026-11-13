@@ -17,7 +17,7 @@ _Last updated: 2026-11-12._
 | #555 | P1 | Rendering: one material language (TSL default) | **A** in a PR (TSL smoke + parity + warm-up report in CI); B–E open. The parity scenes and warm-up report name what B has to fix first: TSL top-downs draw no canyon (glacial spawn, meander), TSL weather / mist / stars / rock albedo, and node pipeline count (731 vs 53 programs in the first 3 s) |
 | #556 | P1 | Testing: the campaign without a browser | **A** on `main` (#565); **A.1 + B in a PR**: `src/sim/headless` (`createHeadlessRun`, `stepHeadless`, `pnpm test:campaign` + its CI job) reproduces the browser's meander run exactly (splits, runner positions, flow at the runner, the four SWE checksums). Found on the way: the page has no SWE bed under segment 0 (spare pool slots default `segmentId` to 0). **Open:** the raft step on SimCore, C (pilots — plan in the save-state file), D, E |
 | #557 | P2 | Creator tools: River Workshop | Open |
-| #558 | P1 | Access: i18n, UI scale, captions, assists | Open |
+| #558 | P1 | Access: i18n, UI scale, captions, assists | **A** on `main` (#566); **B–E in a PR** ([`ACCESS.md`](./ACCESS.md)): rem UI + `--ui-scale`, contrast / forced-colours, shape + word on every coloured HUD state, colour-vision palettes, captions, assists marked and kept out of ghost / daily comparison, axe audit + traversal test. **Open:** in-world telegraph colours wait for #553's telegraph renderer (palette keys are ready) |
 | #559 | P1 | Code health: native as strict as TS, god modules split | Open |
 
 ## Remainder carried from closed boards

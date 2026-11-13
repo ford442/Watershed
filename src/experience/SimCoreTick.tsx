@@ -32,6 +32,7 @@ import type { VehicleRigidBodyRef } from './types';
 import { createSimSystems } from './simSystems';
 import { storeSimGame, tapSimDebug } from './simGameBinding';
 import { sampleSimContext, type SimSampleInputs } from './simContextSample';
+import { getLiveAssists } from '../systems/settings/accessRuntime';
 
 export const SIM_CORE_PRIORITY = -90;
 
@@ -65,7 +66,10 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
     sample.camera = state.camera;
     sample.body = vehicleRef.current;
     sampleSimContext(simCore.ctx, sample);
-    simCore.advance(delta);
+    // Game speed (#558 D.1): SimCore's fixed step stays 1/60 s; a slower game
+    // feeds it less time per frame. Scripted / replay runs step once per frame
+    // whatever the delta, so they are untouched.
+    simCore.advance(delta * getLiveAssists().gameSpeed);
   }, SIM_CORE_PRIORITY);
 
   return null;

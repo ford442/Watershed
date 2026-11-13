@@ -10,7 +10,10 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* Taller than the window (a 720 px screen, or any at 200 % UI scale): scroll,
+     and never centre the top of the menu out of reach (#558 B.3). */
+  justify-content: safe center;
+  overflow-y: auto;
   align-items: center;
   background: linear-gradient(135deg, rgba(0,10,25,0.98) 0%, rgba(0,5,15,1) 100%);
   z-index: 200;
@@ -23,41 +26,42 @@
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px;
-  padding: 48px 36px;
-  max-width: 440px;
+  padding: 3rem 2.25rem;
+  max-width: 27.5rem;
   width: 90%;
   text-align: center;
   box-shadow: 0 24px 48px rgba(0,0,0,0.6);
 }
 
 .start-menu-card--wide {
-  max-width: 560px;
+  max-width: 35rem;
 }
 
 .start-menu-map-select {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
   text-align: left;
 }
 
 .start-menu-map-select-label {
-  font-size: 11px;
+  font-size: 0.6875rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.45);
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 
 .start-menu-mode-select {
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
   text-align: left;
 }
 
 .start-menu-mode-row {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .start-menu-mode-option {
@@ -66,8 +70,8 @@
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.85);
   border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
@@ -90,33 +94,33 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .start-menu-journey-step {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.03);
 }
 
 .start-menu-journey-index {
-  width: 22px;
-  height: 22px;
+  width: 1.375rem;
+  height: 1.375rem;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   background: rgba(79, 209, 199, 0.2);
   color: #9fe8e0;
 }
 
 .start-menu-journey-label {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: #fff;
 }
 
@@ -124,13 +128,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 0.75rem;
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.03);
   color: #fff;
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 0.75rem 0.875rem;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
@@ -158,12 +162,12 @@
 }
 
 .start-menu-map-option-title {
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 700;
 }
 
 .start-menu-map-option-meta {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.45);
 }
 
@@ -171,15 +175,15 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 0.25rem;
   flex-shrink: 0;
 }
 
 .start-menu-map-badge {
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 2px 6px;
+  padding: 2px 0.375rem;
   border-radius: 999px;
   background: rgba(79, 209, 199, 0.2);
   color: #9ae6d8;
@@ -191,31 +195,31 @@
 }
 
 .start-menu-map-best {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: rgba(110, 231, 183, 0.9);
 }
 
 .start-menu-map-hint {
-  margin: 4px 0 8px;
-  font-size: 11px;
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.35);
   line-height: 1.4;
 }
 
 .start-menu-launch-hour {
   width: 100%;
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .start-menu-launch-hour-value {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: rgba(255, 255, 255, 0.82);
-  margin: 6px 0 10px;
+  margin: 0.375rem 0 0.625rem;
 }
 
 .start-menu-launch-hour-slider {
@@ -225,12 +229,12 @@
 .start-menu-launch-hour-strip {
   display: grid;
   grid-template-columns: repeat(24, minmax(0, 1fr));
-  gap: 3px;
-  margin-top: 10px;
+  gap: 0.1875rem;
+  margin-top: 0.625rem;
 }
 
 .start-menu-launch-hour-tick {
-  height: 14px;
+  height: 0.875rem;
   border: none;
   border-radius: 3px;
   padding: 0;
@@ -246,8 +250,8 @@
 /* Today's River (the Daily River card, above the play mode). */
 .start-menu-daily {
   width: 100%;
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(79, 209, 199, 0.1), rgba(59, 130, 246, 0.08));
   border: 1px solid rgba(79, 209, 199, 0.35);
@@ -261,21 +265,21 @@
 }
 
 .start-menu-daily-date {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.45);
 }
 
 .start-menu-daily-title {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: rgba(255, 255, 255, 0.9);
-  margin: 6px 0 8px;
+  margin: 0.375rem 0 0.5rem;
 }
 
 .start-menu-daily-weather {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.75);
 }
 
@@ -295,8 +299,8 @@
 
 .start-menu-daily-btn {
   width: 100%;
-  min-height: 40px;
-  margin-top: 4px;
+  min-height: 2.5rem;
+  margin-top: 0.25rem;
   border: 1px solid rgba(79, 209, 199, 0.6);
   border-radius: 10px;
   background: rgba(79, 209, 199, 0.15);
@@ -317,8 +321,8 @@
 
 .start-menu-cache-panel {
   width: 100%;
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
   border-radius: 10px;
   background: rgba(255, 140, 80, 0.06);
   border: 1px solid rgba(255, 140, 80, 0.18);
@@ -329,9 +333,9 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 10px 12px;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.18);
@@ -351,19 +355,19 @@
 }
 
 .start-menu-cache-option-title {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
 .start-menu-cache-option-meta {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.55);
 }
 
 .start-menu-loadout-panel {
   width: 100%;
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
   border-radius: 10px;
   background: rgba(120, 180, 255, 0.06);
   border: 1px solid rgba(120, 180, 255, 0.18);
@@ -374,9 +378,9 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 10px 12px;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.18);
@@ -391,41 +395,41 @@
 }
 
 .start-menu-loadout-option-title {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
 .start-menu-loadout-option-meta {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.55);
 }
 
 .start-menu-title-group {
-  margin-bottom: 32px;
+  margin-bottom: 2rem;
 }
 
 .start-menu-title {
-  font-size: clamp(36px, 6vw, 56px);
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
   font-weight: 900;
   background: linear-gradient(135deg, #4fd1c7, #3b82f6, #60a5fa);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0 0 8px 0;
+  margin: 0 0 0.5rem 0;
   letter-spacing: -0.03em;
   line-height: 1.1;
 }
 
 .start-menu-tagline {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: rgba(255,255,255,0.5);
   margin: 0;
   letter-spacing: 0.05em;
 }
 
 .start-menu-boot-status {
-  margin: 12px 0 0;
-  font-size: 12px;
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 200, 120, 0.85);
@@ -448,8 +452,8 @@
 .start-menu-buttons {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 28px;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
 }
 
 .start-menu-start-btn,
@@ -457,16 +461,16 @@
 .start-menu-back-btn {
   border: none;
   border-radius: 12px;
-  padding: 16px 28px;
-  font-size: 17px;
+  padding: 1rem 1.75rem;
+  font-size: 1.0625rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  min-height: 54px;
+  gap: 0.625rem;
+  min-height: 3.375rem;
   width: 100%;
 }
 
@@ -496,55 +500,55 @@
 }
 
 .start-menu-keyhint {
-  font-size: 11px;
+  font-size: 0.6875rem;
   opacity: 0.7;
   font-weight: 500;
   background: rgba(0,0,0,0.25);
-  padding: 2px 8px;
+  padding: 2px 0.5rem;
   border-radius: 6px;
 }
 
 /* Settings panel inside start menu */
 .start-menu-settings {
   text-align: left;
-  margin-bottom: 24px;
+  margin-bottom: 1.5rem;
 }
 
 .start-menu-settings-title {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 700;
-  margin: 0 0 20px 0;
+  margin: 0 0 1.25rem 0;
   text-align: center;
   color: white;
 }
 
 .start-menu-setting-row {
-  margin-bottom: 20px;
+  margin-bottom: 1.25rem;
 }
 
 .start-menu-setting-label {
   display: block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: rgba(255,255,255,0.6);
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .start-menu-quality-buttons {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .start-menu-quality-btn {
   flex: 1;
-  padding: 10px 8px;
+  padding: 0.625rem 0.5rem;
   border-radius: 8px;
   border: 1.5px solid rgba(255,255,255,0.12);
   background: transparent;
   color: rgba(255,255,255,0.6);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -563,7 +567,7 @@
 
 .start-menu-slider {
   width: 100%;
-  height: 4px;
+  height: 0.25rem;
   border-radius: 2px;
   -webkit-appearance: none;
   appearance: none;
@@ -574,8 +578,8 @@
 .start-menu-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
   border-radius: 50%;
   background: #4fd1c7;
   cursor: pointer;
@@ -583,8 +587,8 @@
 }
 
 .start-menu-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
   border-radius: 50%;
   background: #4fd1c7;
   cursor: pointer;
@@ -595,32 +599,32 @@
 .start-menu-volume-value {
   display: block;
   text-align: right;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: rgba(255,255,255,0.5);
-  margin-top: 4px;
+  margin-top: 0.25rem;
 }
 
 .start-menu-controls-hint {
   border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 20px;
+  padding-top: 1.25rem;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 24px;
+  gap: 0.5rem 1.5rem;
 }
 
 .start-menu-hint-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .start-menu-hint-key {
   background: rgba(255,255,255,0.08);
-  padding: 4px 10px;
+  padding: 0.25rem 0.625rem;
   border-radius: 6px;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: rgba(255,255,255,0.7);
 }
 
@@ -632,8 +636,8 @@
 .user-river-paste {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
 }
 
 .user-river-paste-text {
@@ -644,13 +648,13 @@
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.35);
   color: rgba(255, 255, 255, 0.85);
-  font: 12px/1.4 ui-monospace, monospace;
-  padding: 8px;
+  font: 0.75rem/1.4 ui-monospace, monospace;
+  padding: 0.5rem;
 }
 
 .user-river-error {
-  margin: 6px 0;
-  font-size: 12px;
+  margin: 0.375rem 0;
+  font-size: 0.75rem;
   color: #ff9f8e;
   white-space: pre-wrap;
   max-height: 8em;

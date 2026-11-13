@@ -36,6 +36,7 @@ import { ChunkManager } from '../systems/map/ChunkManager';
 import type { SegmentData } from '../systems/map/ChunkManager';
 import {
   buildSegmentFrame,
+  authoredGapT,
   clearSegmentFrames,
   publishSegmentFrames,
 } from '../systems/map/segmentFrames';
@@ -446,6 +447,7 @@ const TrackManager = forwardRef<TrackManagerRef, TrackManagerProps>(function Tra
             segment.id,
             segment.segmentPath,
             mapManagerRef.current?.getChunkConfig?.(segment.id)?.safeZone,
+            authoredGapT(mapManagerRef.current?.getChunkConfig?.(segment.id)),
           ),
         ),
       );

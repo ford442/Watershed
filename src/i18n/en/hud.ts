@@ -108,4 +108,18 @@ export const hud = {
   'score.portageFailed': 'PORTAGE FAILED',
   'score.floodSurvive': 'FLOOD SURVIVE',
   'score.floodSurviveMultiplier': 'FLOOD SURVIVE x{multiplier}',
+
+  // --- Access (#558) ---
+  'hud.stamina.ok': "OK",
+  'hud.stamina.warn': "LOW",
+  'hud.stamina.bad': "EMPTY",
+  'hud.wet.dry': "DRY",
+  'hud.wet.damp': "DAMP",
+  'hud.wet.soaked': "SOAKED",
+  'hud.exposure.ok': "MILD",
+  'hud.exposure.warn': "CHILLED",
+  'hud.exposure.bad': "SEVERE",
+  'hud.ghostAhead': "AHEAD",
+  'hud.ghostBehind': "BEHIND",
+  'hud.assisted': "ASSISTED",
 } as const;

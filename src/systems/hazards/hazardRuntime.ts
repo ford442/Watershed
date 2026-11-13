@@ -26,6 +26,7 @@ import {
   type HazardRuntime,
   type HazardStepInput,
 } from './hazardLifecycle';
+import { HAZARD_DEFAULT_TELEGRAPH_SECONDS, HAZARD_MIN_TELEGRAPH_SECONDS } from './hazardTypes';
 import { parseHazards } from './parseHazards';
 import { initHazardLogListener } from './hazardLog';
 
@@ -100,6 +101,14 @@ export function createHazardStepper(): HazardStepper {
             segmentIndex: c.segmentIndex,
             phase: event,
             anchor: anchor ? { x: anchor[0], y: anchor[1], z: anchor[2] } : null,
+            ...(event === 'telegraph'
+              ? {
+                  warnSeconds: Math.max(
+                    HAZARD_MIN_TELEGRAPH_SECONDS,
+                    c.telegraphSeconds ?? HAZARD_DEFAULT_TELEGRAPH_SECONDS,
+                  ),
+                }
+              : {}),
           });
         }
       }

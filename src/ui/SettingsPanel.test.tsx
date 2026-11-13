@@ -163,8 +163,8 @@ describe('SettingsPanel — Comfort & Devices page (#486 D)', () => {
 describe('SettingsPanel — gamepad rebinding (#486 B)', () => {
   it('shows each action\'s gamepad binding by name next to the keyboard one', () => {
     render(<SettingsPanel onClose={() => {}} />);
-    expect(screen.getByRole('button', { name: /Gamepad button for Jump \(currently A\)/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Gamepad button for Forward \(currently Left Stick ↑\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^A — gamepad button for Jump$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Left Stick ↑ — gamepad button for Forward$/ })).toBeInTheDocument();
   });
 
   it('captures the next gamepad button after the pad is released, and binds it', async () => {
@@ -179,7 +179,7 @@ describe('SettingsPanel — gamepad rebinding (#486 B)', () => {
     Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad()] });
 
     render(<SettingsPanel onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /Gamepad button for Dodge/ }));
+    fireEvent.click(screen.getByRole('button', { name: /— gamepad button for Dodge$/ }));
     // Button 3 is still held from the click: not a capture.
     await vi.advanceTimersByTimeAsync(64);
     expect(useSettingsStore.getState().padBindings.dodge.code).toBe('Button2');

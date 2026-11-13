@@ -7,15 +7,15 @@
   z-index: 40;
   display: flex;
   align-items: flex-start;
-  gap: clamp(6px, 1.4vw, 12px);
-  max-width: min(560px, calc(100vw - 1.5rem));
-  padding: clamp(6px, 1.2vw, 10px) clamp(8px, 1.4vw, 12px);
+  gap: clamp(0.375rem, 1.4vw, 0.75rem);
+  max-width: min(35rem, calc(100vw - 1.5rem));
+  padding: clamp(0.375rem, 1.2vw, 0.625rem) clamp(0.5rem, 1.4vw, 0.75rem);
   background: rgba(127, 29, 29, 0.92);
   color: #fecaca;
   border: 1px solid rgba(248, 113, 113, 0.55);
   border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(9px, 1.5vw, 11px);
+  font-size: clamp(0.5625rem, 1.5vw, 0.6875rem);
   line-height: 1.4;
   pointer-events: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -27,8 +27,8 @@
 
 .wasm-init-banner__body strong {
   display: block;
-  margin-bottom: 4px;
-  font-size: clamp(10px, 1.6vw, 12px);
+  margin-bottom: 0.25rem;
+  font-size: clamp(0.625rem, 1.6vw, 0.75rem);
   color: #fee2e2;
 }
 
@@ -41,7 +41,7 @@
 
 .wasm-init-banner__dismiss {
   flex-shrink: 0;
-  padding: 4px 8px;
+  padding: 0.25rem 0.5rem;
   background: #fecaca;
   color: #7f1d1d;
   border: none;
@@ -68,7 +68,7 @@
   left: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 0.1875rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -87,8 +87,8 @@
 }
 
 .stamina-bar__track {
-  width: clamp(72px, 14vw, 120px);
-  height: 4px;
+  width: clamp(4.5rem, 14vw, 7.5rem);
+  height: 0.25rem;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
   overflow: hidden;
@@ -118,7 +118,7 @@
   left: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -134,7 +134,7 @@
 }
 
 .survival-loadout-badge {
-  margin-top: 6px;
+  margin-top: 0.375rem;
   font-size: 0.55rem;
   letter-spacing: 0.14em;
   color: rgba(255, 255, 255, 0.38);
@@ -143,7 +143,7 @@
 .survival-bar {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 0.1875rem;
 }
 
 .survival-bar__label {
@@ -154,8 +154,8 @@
 }
 
 .survival-bar__track {
-  width: clamp(72px, 14vw, 120px);
-  height: 3px;
+  width: clamp(4.5rem, 14vw, 7.5rem);
+  height: 0.1875rem;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
   overflow: hidden;
