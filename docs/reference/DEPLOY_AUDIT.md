@@ -355,3 +355,24 @@ asking a single thing to fetch and compare:
 
 This is a recommendation, not a patch — no code was changed as part of this audit, per the task's
 scope lock on `deploy.py`, `build_and_patch.py`, and `verification/`.
+
+---
+
+## Rehearsal 2026-11-11
+
+Run 2026-11-13 on `372cf05` (main after #560/#554). No `DEPLOY_TOKEN` was set, asked for or printed. Live site not contacted.
+
+- **Sizes:** `build/` 15.6 MB, 122 files (75 hashed, 47 unhashed); zip 11,140 KB; `index.html` 1,251 B (UTF-8); entry 757 kB, boot JS 2,096 kB, total JS 3,970 kB; unique wasm 2,135 kB.
+- **Committed pair ships:** `public/` and `build/` `watershed_native.{js,wasm}` are sha256-identical (js `61886991…f093`, wasm `02de0f1a…2c06`); sha256(glue‖wasm)[:16] = `1e884f8a06b365f5` = `WASM_ARTIFACT_STAMP`; wasm[:16] = `02de0f1a8c20811e` = `WASM_BINARY_SHA`. PASS.
+- **Preload:** `build/index.html` preloads `./watershed_native.wasm?v=1e884f8a06b365f5` and `./assets/rapier_wasm3d_bg-Dl0GQskJ.wasm`; `resolvePublicAsset()` + `withArtifactStamp()` (wasmLoader.ts:164, 397) build the same stamped URL, and the entry declares the stamp (checked by `verify_deploy`). PASS.
+- **One copy of each wasm** (`check-build-manifest.mjs --budget`): `basis_transcoder-VXdx5NbI` 527 kB, `rapier_wasm3d_bg-Dl0GQskJ` 1,569 kB, `watershed_native` 38 kB; 45/45 passengers byte-identical to `public/`. PASS.
+- **`pnpm build:wasm` (emcc 4.0.23 via `scripts/emsdk-pinned.sh`):** reproduces the committed js, wasm and stamp byte for byte; `git status` clean afterwards. PASS. Nothing rebuilt was committed.
+- **`pnpm deploy:rehearse`:** build, manifest, local `verify:deploy` (`VERDICT: LIVE`, headless render), `deploy.py --dry-run --offline` (122 files; wasm pair before `index.html`, then `BUILD_ID` last) all exit 0. PASS.
+- **`public/.htaccess` (read-and-reason; the local server does not run it):**
+  - immutable: l.61-62 `-[A-Za-z0-9_-]{8}\.(js|css|wasm)$` matches all 75 `build/assets/*` names (checked by script, 0 misses); l.70-71 `<If>` makes `watershed_native.{js,wasm}?v=<16 hex>` immutable (the preload href matches; it is merged after `<FilesMatch>`, l.48).
+  - no-cache: l.64-65 `^(index\.html|BUILD_ID|watershed_native\..*)$`; none of these match the immutable regex. Bare `watershed_native.*` stays no-cache.
+  - charset: l.22-23 `AddDefaultCharset UTF-8` + `AddCharset UTF-8 .html .js .wasm`; l.17 `DirectoryIndex index.html`. UTF-8 is declared; `.css` relies on `AddDefaultCharset` (text/plain, text/html) or the document charset. The wasm is read as bytes, so its label does not matter.
+  - **Unproven until live:** `<If>` ordering and `AllowOverride` (a forbidden class means HTTP 500 for the directory). Only runbook step 4 (`pnpm verify:deploy` on the live URL) proves them.
+- **Not proven here:** the server's zip extraction order; `--prune-orphans` (needs the token).
+
+**GO** for the owner runbook: steps 1–5 may run in order. No failing step. If step 4 is not `VERDICT: LIVE`, delete the remote `.htaccess` (its documented rollback) and re-run step 4.
