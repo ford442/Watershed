@@ -324,6 +324,83 @@ jobs:
             kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
           fi
 
+  # #559 E: the one timeline as a regression gate. The scripted meander under
+  # `?trace=1` (plus 32 treadmill appends), per-span p95s against
+  # verification/perf-baselines/meander.json: sim step, segment build and mount
+  # fail past tolerance.json, calibration-normalised; render / post spans are
+  # reported only (SwiftShader). A live raft phase gates the timeline itself —
+  # main, sim-worker and Rapier-worker tracks aligned within 1 ms. The traces
+  # and this runner's candidate baselines are uploaded either way: refresh a
+  # baseline from them when the runner image changes.
+  perf-trace:
+    name: Perf trace baseline
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Puppeteer
+        run: pnpm exec puppeteer browsers install chrome
+
+      - name: Build production bundle (no Emscripten required)
+        run: pnpm build
+
+      - name: Start Vite preview
+        run: |
+          pnpm exec vite preview --host 127.0.0.1 --port 4173 &
+          echo $! > /tmp/vite-preview.pid
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+              echo "preview ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "preview failed to start"
+          exit 1
+
+      - name: Trace the scripted meander against its baseline
+        run: pnpm test:perf-trace
+        timeout-minutes: 20
+
+      # The SWE stepper on the shipped wasm, in Node; only a large Ultra-grid
+      # regression fails (tolerance.json `swe`), the rest is reported.
+      - name: SWE step bench against its baseline
+        run: |
+          mkdir -p verification/output
+          pnpm profile:swe --json verification/output/swe.json
+          node verification/perf_compare.mjs swe verification/output/swe.json
+
+      - name: Upload traces and candidate baselines
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-trace
+          path: verification/output/
+          if-no-files-found: ignore
+
+      - name: Stop Vite preview
+        if: always()
+        run: |
+          if [ -f /tmp/vite-preview.pid ]; then
+            kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
+          fi
+
   # #556 B: whole runs through SimCore in Node — the page's systems list, a
   # Rapier world, the treadmill and the committed watershed_native pair, no
   # browser, no Emscripten, no build. headless.campaign.test.ts pins a headless

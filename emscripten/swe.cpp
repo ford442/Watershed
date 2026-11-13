@@ -423,14 +423,14 @@ inline float ghostWaveSpeed(const GhostCell& c, float g) {
 namespace {
 
 /** Store one scalar interface flux into the SoA face planes at `at`. */
-inline void storeFace(const FaceRow& out, int at, const InterfaceFlux& f) {
+inline void storeFace(const FaceRow& out, std::size_t at, const InterfaceFlux& f) {
     out.mass[at] = f.mass;
     out.momL[at] = f.momL;
     out.momR[at] = f.momR;
     out.trans[at] = f.trans;
 }
 
-inline void storeFace4(const FaceRow& out, int at, const InterfaceFlux4& f) {
+inline void storeFace4(const FaceRow& out, std::size_t at, const InterfaceFlux4& f) {
     f32x4_store(&out.mass[at], f.mass);
     f32x4_store(&out.momL[at], f.momL);
     f32x4_store(&out.momR[at], f.momR);
@@ -444,34 +444,34 @@ inline void storeFace4(const FaceRow& out, int at, const InterfaceFlux4& f) {
  */
 void xFaceRow(std::span<const float> d, std::span<const float> qx, std::span<const float> qz,
               std::span<const float> vx, std::span<const float> vz, std::span<const float> b,
-              int width, int row, const FluxConsts& k, float g, const FaceRow& out) {
+              std::size_t width, std::size_t row, const FluxConsts& k, float g, const FaceRow& out) {
     storeFace(out, 0,
               reconstructedFlux(d[row], qx[row], qz[row], b[row],
                                 d[row], qx[row], qz[row], b[row], g));
     // Interior faces 1..width-1. When the count is not a multiple of four the
     // last group starts at width - 4 and recomputes a few faces instead of
     // dropping to the scalar HLL: same inputs, same values, idempotent store.
-    const auto group = [&](int xf) {
-        const int iL = row + xf - 1;
-        const int iR = row + xf;
+    const auto group = [&](std::size_t xf) {
+        const std::size_t iL = row + xf - 1;
+        const std::size_t iR = row + xf;
         storeFace4(out, xf,
                    reconstructedFlux4(f32x4_load(&d[iL]), f32x4_load(&vx[iL]), f32x4_load(&vz[iL]), f32x4_load(&b[iL]),
                                       f32x4_load(&d[iR]), f32x4_load(&vx[iR]), f32x4_load(&vz[iR]), f32x4_load(&b[iR]),
                                       k));
     };
-    int xf = 1;
+    std::size_t xf = 1;
     if (width - 1 >= 4) {
         for (; xf + 4 <= width; xf += 4) group(xf);
         if (xf < width) group(width - 4);
         xf = width;
     }
     for (; xf < width; ++xf) {
-        const int iL = row + xf - 1;
-        const int iR = row + xf;
+        const std::size_t iL = row + xf - 1;
+        const std::size_t iR = row + xf;
         storeFace(out, xf,
                   reconstructedFlux(d[iL], qx[iL], qz[iL], b[iL], d[iR], qx[iR], qz[iR], b[iR], g));
     }
-    const int last = row + width - 1;
+    const std::size_t last = row + width - 1;
     storeFace(out, width,
               reconstructedFlux(d[last], qx[last], qz[last], b[last],
                                 d[last], qx[last], qz[last], b[last], g));
@@ -485,13 +485,11 @@ void xFaceRow(std::span<const float> d, std::span<const float> qx, std::span<con
  */
 void zFaceRow(const Scratch& s, std::span<const float> d, std::span<const float> vx,
               std::span<const float> vz, std::span<const float> b,
-              int width, int height, bool edgeInflow, int zf, const FluxConsts& k, float g,
-              const FaceRow& out) {
+              std::size_t width, std::size_t height, bool edgeInflow, std::size_t zf, const FluxConsts& k,
+              float g, const FaceRow& out) {
     using Row = std::span<const float>;
-    const int rowLeft = ((zf == 0) ? 0 : zf - 1) * width;
-    const int rowRight = ((zf == height) ? height - 1 : zf) * width;
-    const auto rowL = static_cast<std::size_t>(rowLeft);
-    const auto rowR = static_cast<std::size_t>(rowRight);
+    const std::size_t rowL = ((zf == 0) ? 0 : zf - 1) * width;
+    const std::size_t rowR = ((zf == height) ? height - 1 : zf) * width;
     const bool ghostR = edgeInflow && zf == height;
     const Row qx(s.qx);
     const Row qz(s.qz);
@@ -507,13 +505,13 @@ void zFaceRow(const Scratch& s, std::span<const float> d, std::span<const float>
     const Row unL = vz.subspan(rowL);
     const Row utL = vx.subspan(rowL);
     const Row bL  = b.subspan(rowL);
-    const auto group = [&](int x) {
+    const auto group = [&](std::size_t x) {
         storeFace4(out, x,
                    reconstructedFlux4(f32x4_load(&dL[x]), f32x4_load(&unL[x]), f32x4_load(&utL[x]), f32x4_load(&bL[x]),
                                       f32x4_load(&dR[x]), f32x4_load(&unR[x]), f32x4_load(&utR[x]), f32x4_load(&bR[x]),
                                       k));
     };
-    int x = 0;
+    std::size_t x = 0;
     if (width >= 4) {  // overlapping last group, as in xFaceRow
         for (; x + 4 <= width; x += 4) group(x);
         if (x < width) group(width - 4);
@@ -550,10 +548,10 @@ constexpr int kMaxSubsteps = 4;
  * grid is dry (nothing moves, so any dt is exact).
  */
 float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<float> w,
-               std::span<const float> b, int width, int height,
+               std::span<const float> b, std::size_t width, std::size_t height,
                float dt, float g, float dx, float H,
                bool edgeInflow, float edgeEta) {
-    const int N = width * height;
+    const std::size_t N = width * height;
 
     const std::span<float> d(s.d);
     const std::span<float> qx(s.qx);
@@ -563,7 +561,7 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
 
     // --- Lift (η, u, w) into conserved (d, d·u, d·w), and the CFL max ---
     float maxWaveSpeed = 0.f;
-    int i = 0;
+    std::size_t i = 0;
     const f32x4 vH = f32x4_splat(H);
     const f32x4 vZero = f32x4_splat(0.f);
     const f32x4 vDry = f32x4_splat(SWE_DRY_DEPTH);
@@ -616,9 +614,9 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
     // Upstream-edge ghosts, from the lifted top row, before the CFL clamp so an
     // incoming stage can never outrun the step.
     if (edgeInflow) {
-        const int top = (height - 1) * width;
-        for (int x = 0; x < width; ++x) {
-            const int iI = top + x;
+        const std::size_t top = (height - 1) * width;
+        for (std::size_t x = 0; x < width; ++x) {
+            const std::size_t iI = top + x;
             const GhostCell c = upstreamGhost(d[iI], h[iI], qz[iI], qx[iI], edgeEta, g);
             s.ghostD[x] = c.d;
             s.ghostQz[x] = c.qz;
@@ -632,7 +630,7 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
 
     // Everything is dry — nothing to advance, but still write back the clamp.
     if (maxWaveSpeed <= 0.f) {
-        for (int k = 0; k < N; ++k) {
+        for (std::size_t k = 0; k < N; ++k) {
             h[k] = d[k] + b[k] - H;
             u[k] = 0.f;
             w[k] = 0.f;
@@ -661,8 +659,8 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
     const float damp = sweExpNeg(safeDt * DAMPING_COEFF);
     const f32x4 vDtdx = f32x4_splat(dtdx);
     const f32x4 vDamp = f32x4_splat(damp);
-    for (int z = 0; z < height; ++z) {
-        const int row = z * width;
+    for (std::size_t z = 0; z < height; ++z) {
+        const std::size_t row = z * width;
         xFaceRow(d, qx, qz, vx, vz, b, width, row, k, g, xFaces);
         zFaceRow(s, d, vx, vz, b, width, height, edgeInflow, z + 1, k, g, zAbove);
 
@@ -672,8 +670,8 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
         // fused into the write-back.
         // Vector groups; a ragged width ends with an overlapping group (the
         // cells it recomputes read only lifted state, so the rewrite is exact).
-        const auto cellGroup = [&](int x) {
-            const int c = row + x;
+        const auto cellGroup = [&](std::size_t x) {
+            const std::size_t c = row + x;
             const auto gather = [&](std::span<const float> xin, std::span<const float> xout,
                                     std::span<const float> zin, std::span<const float> zout) {
                 f32x4 acc = f32x4_add(vZero, f32x4_mul(vDtdx, f32x4_load(&xin[x])));
@@ -697,14 +695,14 @@ float stepOnce(Scratch& s, std::span<float> h, std::span<float> u, std::span<flo
             f32x4_store(&u[c], f32x4_mul(f32x4_select(dry, vZero, f32x4_div(nqx, depth)), vDamp));
             f32x4_store(&w[c], f32x4_mul(f32x4_select(dry, vZero, f32x4_div(nqz, depth)), vDamp));
         };
-        int x = 0;
+        std::size_t x = 0;
         if (width >= 4) {
             for (; x + 4 <= width; x += 4) cellGroup(x);
             if (x < width) cellGroup(width - 4);
             x = width;
         }
         for (; x < width; ++x) {
-            const int c = row + x;
+            const std::size_t c = row + x;
             const auto gather = [&](std::span<const float> xin, std::span<const float> xout,
                                     std::span<const float> zin, std::span<const float> zout) {
                 float acc = 0.f + dtdx * xin[x];
@@ -759,21 +757,22 @@ float stepShallowWaterImpl(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintp
 
     Scratch& s = g_scratch;
     s.resize(width, height);
-    const int N = width * height;
+    const auto cols = static_cast<std::size_t>(width);
+    const auto rows = static_cast<std::size_t>(height);
 
     const std::span<float> h = heapPlane(hPtr, width, height);
     const std::span<float> u = heapPlane(uPtr, width, height);
     const std::span<float> w = heapPlane(wPtr, width, height);
     // A missing bed reads the zero plane: a flat bed, no per-cell branch.
-    const std::span<const float> b = bPtr
+    const std::span<const float> b = bPtr != 0
         ? std::span<const float>(heapPlane(bPtr, width, height))
-        : std::span<const float>(s.zeroBed).first(static_cast<std::size_t>(N));
+        : std::span<const float>(s.zeroBed).first(cols * rows);
 
     // `remaining` is exact: each sub-step takes min(remaining, CFL), so the
     // last one takes all of it and leaves 0 — the call then returns dt itself.
     float remaining = dt;
     for (int iter = 0; iter < kMaxSubsteps && remaining > 0.f; ++iter) {
-        remaining -= stepOnce(s, h, u, w, b, width, height, remaining, g, dx, H, edgeInflow, edgeEta);
+        remaining -= stepOnce(s, h, u, w, b, cols, rows, remaining, g, dx, H, edgeInflow, edgeEta);
     }
     return remaining > 0.f ? dt - remaining : dt;
 }
@@ -857,7 +856,9 @@ int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr
             if (d2 > r2) continue;
             const float dist = std::sqrt(d2);
             const float wgt = 1.f - dist / r;
-            const std::size_t idx = static_cast<std::size_t>(j) * width + i;
+            // j, i are in [0, extent) here: cellRange clamps them.
+            const std::size_t idx = static_cast<std::size_t>(j) * static_cast<std::size_t>(width)
+                                    + static_cast<std::size_t>(i);
             if (kind == 0) {
                 h[idx] += mag * step * wgt;
                 // Downstream is -Z; the released volume arrives moving.
@@ -926,9 +927,11 @@ void scrollPlane(std::span<float> plane, std::span<float> tmp, int width, int he
         if (!rowInRange || x1 <= x0) {
             // Whole row from the edge (clampEdge) — the clamped source column.
             for (int x = 0; x < width; ++x) {
+                // x, sx and the clamped column are all in [0, width) where they index.
                 const int sx = x - shiftX;
-                dst[x] = (sx >= 0 && sx < width && rowInRange) ? src[sx]
-                       : clampEdge ? src[std::clamp(sx, 0, width - 1)] : fill;
+                dst[static_cast<std::size_t>(x)] =
+                    (sx >= 0 && sx < width && rowInRange) ? src[static_cast<std::size_t>(sx)]
+                    : clampEdge ? src[static_cast<std::size_t>(std::clamp(sx, 0, width - 1))] : fill;
             }
             continue;
         }

@@ -200,6 +200,44 @@ After clone, `pnpm test:native` configures + builds the host tree (`emscripten/b
 
 The repo-root `.clangd` reads that host database for every file under `emscripten/`, then adds `--target=wasm32-unknown-emscripten -msimd128 -mbulk-memory` and the pinned emsdk's sysroot for the TUs that ship in the wasm. The editor therefore sees the `wasm_simd128` branch of `simdf32.h` (the shipped one, not the host's SSE2 branch) and wasm32's 32-bit `size_t`. Host-only sources (`host_smoke.cpp`, `*_fuzz.cpp`, `fuzz_input.h`, `*_goldens.h`, `native_digest.h`) keep the host flags. The sysroot is `./emsdk`, where `bash scripts/emsdk-pinned.sh` installs it; without it, clangd cannot find the C++ headers for the shipped TUs. Host smoke pins buoyancy, one `calculateWaterForce` fixture, and a 32×24 SWE step (CFL clamp + damping + bump golden).
 
+### Warnings (#559 B)
+
+One list, `WATERSHED_WARNINGS` in `CMakeLists.txt`, on every native target of both
+branches: `watershed_compute`, `watershed_native` (`bindings.cpp`), `watershed_host_smoke`
+and the fuzz targets.
+
+```
+-Wall -Wextra -Wpedantic -Wshadow -Wdouble-promotion -Wimplicit-float-conversion
+-Wimplicit-int-conversion -Wsign-conversion -Wshorten-64-to-32 -Wcast-align
+-Wnull-dereference -Werror
+```
+
+- **`-Werror` on host and wasm32 alike.** The wasm32 build is the one that ships and the one
+  where `size_t` is 32-bit, so it is held to at least the host's bar. Release and Debug
+  (`pnpm build:wasm`, `pnpm build:wasm:debug`) and the host smoke on clang and GCC all build
+  with zero warnings.
+- **GCC.** CI's host smoke (`pnpm test:native`) uses the runner's default `c++`, which is
+  GCC: it has no `-Wimplicit-float-conversion` / `-Wimplicit-int-conversion` /
+  `-Wshorten-64-to-32`, so on a non-Clang compiler those three are swapped for
+  `-Wconversion` (their union there). emcc is clang and gets the list as written.
+- **Index types.** Grid and SoA loops index spans with `std::size_t`; an `int` from the C ABI
+  (an extent, a count) is converted once, after validation. Where a signed index is
+  genuinely needed (the scroll shift, an event's clamped bounding box), it is cast at the
+  index with a comment saying why it is in range. None of this moved a bit: the goldens,
+  `native_digest.h` and the shipped pair were unchanged by the cleanup (only the symbol
+  map's demangled signatures changed). One splash loop keeps an `int` bound because the
+  unsigned compare is a different instruction (`particles.cpp`).
+- **`-Wdouble-promotion` / `-Wimplicit-float-conversion`** guard *One set of numbers*: a
+  float -> double -> float round trip in a kernel changes bits without a sound. Every
+  promotion left is an explicit `static_cast<double>`, all of them in the test harnesses
+  (`printf` arguments, volume sums); no kernel had one.
+
+Editors see CI's flags through the host compile database:
+`cmake --build emscripten/build-host --target sync_compile_commands` re-runs the configure
+when `CMakeLists.txt` changed (so `emscripten/build-host/compile_commands.json` carries the
+list) and refreshes its `emscripten/compile_commands.json` copy (`pnpm test:native` and
+`pnpm lint:native` do it too). clangd reads it through `.clangd`.
+
 ### Linear memory budget
 
 | Flag | Value | Rationale |
@@ -826,8 +864,10 @@ at test time.
 - **Host checks:** `pnpm test:native:sanitize` (host smoke under ASan + UBSan, span
   bounds via `_GLIBCXX_ASSERTIONS`), `pnpm test:native:fuzz` (libFuzzer over
   step / inflow step / events / scroll with random-but-valid grids; clang), and
-  `pnpm lint:native` (clang-tidy `bugprone-*`, `performance-*`, and
-  `cppcoreguidelines-init-variables` / `-pro-bounds-pointer-arithmetic` / `-macro-usage`). CI runs all three.
+  `pnpm lint:native` (clang-tidy `bugprone-*`, `performance-*`,
+  `cppcoreguidelines-init-variables` / `-pro-bounds-pointer-arithmetic` / `-macro-usage` /
+  `-narrowing-conversions`, and `readability-implicit-bool-conversion`). CI runs all three.
+  The compiler side is *Warnings* above.
 
 ---
 

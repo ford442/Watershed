@@ -55,6 +55,9 @@ float storageFor(float Q, float alpha) {
     return alpha * std::pow(atLeast(Q, 0.f), 0.6f);
 }
 
+/** ROUTING_SUBREACHES as a span index (#559 B). */
+constexpr auto kSubreaches = static_cast<std::size_t>(ROUTING_SUBREACHES);
+
 /** A segment count from JS: [1, ROUTING_MAX_SEGMENTS]. */
 bool validSegments(int nSeg) {
     return nSeg > 0 && nSeg <= ROUTING_MAX_SEGMENTS;
@@ -68,7 +71,7 @@ std::span<T> segmentPlane(uintptr_t ptr, int nSeg) {
 
 /** The nSeg * ROUTING_SUBREACHES reservoir storage at `ptr`. */
 std::span<float> storagePlane(uintptr_t ptr, int nSeg) {
-    return heapSpan<float>(ptr, static_cast<std::size_t>(nSeg) * ROUTING_SUBREACHES);
+    return heapSpan<float>(ptr, static_cast<std::size_t>(nSeg) * kSubreaches);
 }
 
 /** Inverse of storageFor: Q = (S / α)^(5/3). */
@@ -93,11 +96,11 @@ int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widths
     const std::span<float> outflow = segmentPlane<float>(outflowPtr, nSeg);
     const float q = atLeast(Q, 0.f);
 
-    for (int k = 0; k < nSeg; ++k) {
+    for (std::size_t k = 0; k < L.size(); ++k) {
         const float l = atLeast(L[k], 1e-3f) / static_cast<float>(ROUTING_SUBREACHES);
         const float alpha = volumeCoeff(l, B[k], slope[k]);
-        for (int j = 0; j < ROUTING_SUBREACHES; ++j) {
-            storage[static_cast<std::size_t>(k) * ROUTING_SUBREACHES + static_cast<std::size_t>(j)] = storageFor(q, alpha);
+        for (std::size_t j = 0; j < kSubreaches; ++j) {
+            storage[k * kSubreaches + j] = storageFor(q, alpha);
         }
         outflow[k] = q;
     }
@@ -126,13 +129,13 @@ int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t width
 
     // Mean inflow to the next reservoir over this step.
     float inflow = atLeast(inflowQ, 0.f);
-    for (int k = 0; k < nSeg; ++k) {
+    for (std::size_t k = 0; k < L.size(); ++k) {
         // Rain over this reach joins at its top (a non-finite or negative entry adds nothing).
         if (!lateral.empty() && lateral[k] > 0.f && std::isfinite(lateral[k])) inflow += lateral[k];
         const float l = atLeast(L[k], 1e-3f) / static_cast<float>(ROUTING_SUBREACHES);
         const float alpha = volumeCoeff(l, B[k], slope[k]);
-        for (int j = 0; j < ROUTING_SUBREACHES; ++j) {
-            float& S = storage[static_cast<std::size_t>(k) * ROUTING_SUBREACHES + static_cast<std::size_t>(j)];
+        for (std::size_t j = 0; j < kSubreaches; ++j) {
+            float& S = storage[k * kSubreaches + j];
             // Linearise Q(S) about the current state for the step:
             //   Q ≈ Q0 + (S − S0) / Kc,   Kc = dS/dQ = 0.6 S / Q = l / c(Q)
             // so a disturbance crosses the reservoir at the kinematic celerity.
@@ -161,7 +164,7 @@ int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t wi
     const float q = atLeast(Q, ROUTING_MIN_DISCHARGE);
 
     float total = 0.f;
-    for (int k = 0; k < nSeg; ++k) {
+    for (std::size_t k = 0; k < L.size(); ++k) {
         total += atLeast(L[k], 1e-3f) / routingCelerity(q, B[k], slope[k]);
         lag[k] = total;
     }

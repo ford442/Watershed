@@ -1,4 +1,5 @@
 import { queryFlags } from '../config/queryFlags';
+import { traceName, traceRecording, traceSpanAt } from '../debug/trace/traceProbe';
 /**
  * spawnTiming — user-timing measures around a treadmill segment's mount (#487 Phase B).
  *
@@ -14,6 +15,9 @@ import { queryFlags } from '../config/queryFlags';
  *                  React runs after every descendant's effects — so the whole
  *                  subtree's render, commit, and effects (Rapier collider
  *                  creation, decoration instancing) are inside it.
+ *
+ * While a trace records (#559 D) the same two spans land on the timeline's
+ * `segments` track (their own row: a mount straddles frames), measured or not.
  */
 
 export interface SpawnTimingDetail {
@@ -47,23 +51,32 @@ interface Pending {
 
 const pending = new WeakMap<object, Pending>();
 
-/** `performance.now()` when profiling, else 0 (no clock read on the hot path). */
+const BUILD_SPAN = traceName('segment-build', 'segments');
+const MOUNT_SPAN = traceName('segment-mount', 'segments');
+
+const timing = () => enabled || traceRecording();
+
+/** `performance.now()` when profiling or tracing, else 0 (no clock read on the hot path). */
 export function spawnTimingStart(): number {
-  return enabled ? performance.now() : 0;
+  return timing() ? performance.now() : 0;
 }
 
 /** After the render that built `key`'s geometry. Once per key. */
 export function noteSegmentBuilt(key: object | null | undefined, start: number, detail: SpawnTimingDetail): void {
-  if (!enabled || !key || pending.has(key)) return;
+  if (!timing() || !key || start <= 0 || pending.has(key)) return;
   pending.set(key, { start, detail, mounted: false });
-  performance.measure('segment-build', { start, end: performance.now(), detail });
+  const end = performance.now();
+  if (enabled) performance.measure('segment-build', { start, end, detail });
+  traceSpanAt(BUILD_SPAN, start, end);
 }
 
 /** From TrackSegment's passive effect, once the subtree for `key` committed. */
 export function noteSegmentMounted(key: object | null | undefined): void {
-  if (!enabled || !key) return;
+  if (!timing() || !key) return;
   const entry = pending.get(key);
   if (!entry || entry.mounted) return;
   entry.mounted = true;
-  performance.measure('segment-mount', { start: entry.start, end: performance.now(), detail: entry.detail });
+  const end = performance.now();
+  if (enabled) performance.measure('segment-mount', { start: entry.start, end, detail: entry.detail });
+  traceSpanAt(MOUNT_SPAN, entry.start, end);
 }

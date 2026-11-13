@@ -317,6 +317,17 @@ console.log('WebAssembly:', typeof WebAssembly !== 'undefined' ? 'Supported' : '
 
 ### Profiling
 
+#### The one timeline (`?trace=1`, #559)
+Open the game with `?debug=1` and press F3 → **Record 10 s trace** (or Shift+F3),
+or open it with `?trace=1` to record from boot. The download opens in
+[ui.perfetto.dev](https://ui.perfetto.dev). It has main-thread frame phases, every
+SimSystem, the post passes, segment mounts, the sim and Rapier workers on the same
+clock, GPU frame time and the JS heap. See [`TRACE.md`](./TRACE.md).
+
+`pnpm test:perf-trace` (CI job "Perf trace baseline", needs `pnpm preview`) records the
+scripted meander and fails a sim-step / segment build / mount p95 regression
+against `verification/perf-baselines/`.
+
 #### Chrome DevTools
 1. Open DevTools (F12)
 2. Go to Performance tab

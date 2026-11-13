@@ -47,13 +47,15 @@ void requireConsumed(float consumed, float dt, float g, float dxs, float Hs, int
         && dxs > 0.f && std::isfinite(dxs) && Hs > 0.f && std::isfinite(Hs);
     const bool ok = valid ? (consumed >= 0.f && consumed <= dt) : consumed == 0.f;
     if (!ok) {
-        std::fprintf(stderr, "op %d: step(dt %g) returned %g (valid %d)\n", step, dt, consumed, valid ? 1 : 0);
+        std::fprintf(stderr, "op %d: step(dt %g) returned %g (valid %d)\n", step, static_cast<double>(dt),
+                     static_cast<double>(consumed), valid ? 1 : 0);
         std::abort();
     }
     // The damping factor for any dt the fuzzer draws is in (0, 1].
     const float damp = sweExpNeg(dt * DAMPING_COEFF);
     if (!(damp > 0.f && damp <= 1.f)) {
-        std::fprintf(stderr, "op %d: damp(dt %g) = %g outside (0, 1]\n", step, dt, damp);
+        std::fprintf(stderr, "op %d: damp(dt %g) = %g outside (0, 1]\n", step, static_cast<double>(dt),
+                     static_cast<double>(damp));
         std::abort();
     }
 }
@@ -61,7 +63,8 @@ void requireConsumed(float consumed, float dt, float g, float dxs, float Hs, int
 void requireFinite(const std::vector<float>& v, const char* name, int step) {
     for (std::size_t i = 0; i < v.size(); ++i) {
         if (!std::isfinite(v[i])) {
-            std::fprintf(stderr, "non-finite %s[%zu] = %g after op %d from a finite field\n", name, i, v[i], step);
+            std::fprintf(stderr, "non-finite %s[%zu] = %g after op %d from a finite field\n", name, i,
+                         static_cast<double>(v[i]), step);
             std::abort();
         }
     }

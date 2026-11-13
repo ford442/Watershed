@@ -101,6 +101,7 @@ const DEV_OVERLAYS = [
   'src/components/AudioDiagnosticsOverlay.tsx',
   'src/components/MovementReadout.tsx',
   'src/components/MovementReadoutPanel.tsx',
+  'src/components/TraceRecordButton.tsx',
   'src/components/PhysicsDebugOverlay.tsx',
   'src/components/VehicleTuner.tsx',
   'src/components/WasmWaterForceTest.tsx',

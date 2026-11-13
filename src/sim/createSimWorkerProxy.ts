@@ -27,6 +27,7 @@ import type {
   SimWorkerResponse,
 } from './simWorkerProtocol';
 import { currentSearch } from '../config/queryFlags';
+import { registerTraceWorker } from '../debug/trace/traceWorkers';
 
 /** Slack over the in-worker WASM deadline for the worker script itself to load. */
 const HANDSHAKE_SLACK_MS = 2000;
@@ -111,11 +112,15 @@ export class SimWorkerProxy {
     this.fail('sim worker sent a message that could not be deserialized');
   };
 
+  /** The trace registration (#559 D): a recording hands the worker a trace port through it. */
+  private readonly untrace: () => void;
+
   constructor(worker: SimWorkerLike) {
     this.worker = worker;
     worker.addEventListener('message', this.onMessage);
     worker.addEventListener('error', this.onError);
     worker.addEventListener('messageerror', this.onMessageError);
+    this.untrace = registerTraceWorker('sim worker', (port) => this.post({ type: 'TRACE_CONNECT', port }, [port]));
   }
 
   /**
@@ -269,6 +274,7 @@ export class SimWorkerProxy {
     this.forceListener = null;
     this.particleListeners.clear();
     this.settlePending();
+    this.untrace();
     this.worker.terminate?.();
   }
 
@@ -288,6 +294,7 @@ export class SimWorkerProxy {
     console.error('[sim worker] fatal:', error);
     this.settlePending();
     for (const listener of this.fatalListeners) listener(error);
+    this.untrace();
     this.worker.terminate?.();
   }
 }

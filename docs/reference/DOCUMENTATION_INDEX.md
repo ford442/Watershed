@@ -29,6 +29,7 @@
 | [`STARTUP_DIAGNOSTICS.md`](./STARTUP_DIAGNOSTICS.md) | Blank scene / shader / load failures |
 | [`CODE_HEALTH_GUIDE.md`](./CODE_HEALTH_GUIDE.md) | Shader injection, geometry validation, red flags |
 | [`ALLOCATION_BASELINE.md`](./ALLOCATION_BASELINE.md) | Per-frame allocation profile, lint inventory, CI warning ratchet |
+| [`TRACE.md`](./TRACE.md) | `?trace=1` / F3 → Record: one Perfetto timeline over every thread; the `test:perf-trace` p95 gate |
 
 ### Rendering & WASM
 

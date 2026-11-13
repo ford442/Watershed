@@ -18,6 +18,7 @@
  * `?warmup=1` (the one way to run the warm-up under scripted input).
  */
 import { useEffect, useRef } from 'react';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useProgress } from '@react-three/drei';
 import { isScriptedInputMode } from '../input/scriptedRun';
@@ -33,6 +34,13 @@ import { lazyModule } from '../utils/lazyModule';
 
 /** The core + recipes + the factories they call: fetched while the menu is up. */
 const warmupModule = lazyModule(() => import('./shaderWarmupRun'));
+
+/**
+ * The trace timeline (#559 D): the async compile on its own track (it spans
+ * many frames), the warm frame on the main thread's.
+ */
+const WARMUP_SPAN = traceName('shader-warmup', 'warmup');
+const WARM_FRAME_SPAN = traceName('shader-warm-frame');
 
 /** Sim seconds after Start over which the leftover compiles are counted. */
 const RUN_PROGRAM_WINDOW_S = 3;
@@ -51,7 +59,9 @@ function drawWarmFrame(
   const mod = warmupModule.get();
   if (!mod) return;
   const before = liveProgramCount(gl);
+  const traced = traceStart();
   mod.renderShaderWarmup(gl as THREE.WebGLRenderer, session, camera, quality);
+  traceEnd(WARM_FRAME_SPAN, traced);
   const after = liveProgramCount(gl);
   if (before !== null && after !== null) {
     if (tap) tap.warmFrame = after - before;
@@ -111,11 +121,13 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
     const owner = gl;
     const renderer = gl as unknown as WarmupRenderer;
     tap.current = warmupTap();
+    const traced = traceStart();
     void warmupModule
       .load()
       .then(async ({ runShaderWarmup, preloadWarmPasses }) => {
         const session = await runShaderWarmup(renderer, warmScene, warmCamera, warmQuality);
         await preloadWarmPasses(warmQuality);
+        traceEnd(WARMUP_SPAN, traced);
         return session;
       })
       .then((session) => {

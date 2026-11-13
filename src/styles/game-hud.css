@@ -327,6 +327,20 @@
   color: var(--hud-dim);
 }
 
+/* The trace control (#559 D, ?debug=1 / ?trace=1): the one clickable part of the readout. */
+.move-readout__trace {
+  margin-top: 0.5rem;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  color: var(--hud-ink);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
 .move-readout__keys {
   display: flex;
   flex-wrap: wrap;

@@ -31,6 +31,10 @@ import { createInputFrame, type InputFrame } from '../../input/InputFrame';
 import type { SegmentFrame } from '../../systems/map/segmentFrames';
 import type { HydroEvent } from '../../systems/water/hydroEvents';
 import { createPlainSimGame, type SimGamePort } from './simGame';
+import { traceEnd, traceName, traceRecording, traceStart } from '../../debug/trace/traceProbe';
+
+/** One fixed step on the trace timeline (#559 D); each system is a child span. */
+const SIM_STEP_SPAN = traceName('sim-step');
 
 /** The fixed sim step, seconds. Matches `INPUT_FIXED_DT_MS`. */
 export const SIM_DT = 1 / 60;
@@ -161,6 +165,8 @@ export class SimCore {
   private scripted = false;
   private seed = SIM_RNG_SEED;
   private stream: Rng;
+  /** Trace name per system id (#559 D), interned on its first traced step. */
+  private readonly systemSpans = new Map<string, number>();
 
   constructor() {
     this.stream = createRng(this.seed);
@@ -237,7 +243,36 @@ export class SimCore {
     const { ctx, systems } = this;
     ctx.time += SIM_DT;
     ctx.stepIndex += 1;
+    if (traceRecording()) {
+      this.stepTraced();
+      return;
+    }
     for (let i = 0; i < systems.length; i += 1) systems[i]!.step(ctx, SIM_DT);
+  }
+
+  /**
+   * The same step with one trace span per system inside a `sim-step` span
+   * (#559 D). Only while a recording runs: the plain loop above reads no clock.
+   */
+  private stepTraced(): void {
+    const { ctx, systems } = this;
+    const stepStart = traceStart();
+    for (let i = 0; i < systems.length; i += 1) {
+      const system = systems[i]!;
+      const start = traceStart();
+      system.step(ctx, SIM_DT);
+      traceEnd(this.systemSpan(system.id), start);
+    }
+    traceEnd(SIM_STEP_SPAN, stepStart);
+  }
+
+  private systemSpan(id: string): number {
+    let span = this.systemSpans.get(id);
+    if (span === undefined) {
+      span = traceName(`sim:${id}`);
+      this.systemSpans.set(id, span);
+    }
+    return span;
   }
 
   /** Start of a run: clock to zero, the stream back to its seed, every system told. */

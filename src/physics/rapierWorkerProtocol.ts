@@ -133,7 +133,12 @@ export type RapierWorkerCommand =
   | { id: number; type: 'REMOVE_STATIC_COLLIDER'; handle: number }
   | { id: number; type: 'CLEAR_STATIC_COLLIDERS' }
   /** One end of the hull link to the sim worker (src/sim/hullLinkProtocol.ts). Transferred. */
-  | { id: number; type: 'CONNECT_SIM'; port: MessagePort };
+  | { id: number; type: 'CONNECT_SIM'; port: MessagePort }
+  /**
+   * One end of the trace channel (#559 D, debug/trace/traceWorkerSide.ts).
+   * Handled before the command queue and never answered (`id` is unused).
+   */
+  | { id: number; type: 'TRACE_CONNECT'; port: MessagePort };
 
 /**
  * Wire version of this protocol. Bump on any change to a command or response
@@ -141,7 +146,7 @@ export type RapierWorkerCommand =
  * (a stale cached worker chunk next to a fresh main bundle), the way the sim
  * worker's READY carries its `abi`.
  */
-export const RAPIER_WORKER_PROTOCOL_VERSION = 2;
+export const RAPIER_WORKER_PROTOCOL_VERSION = 3;
 
 export type RapierWorkerResponse =
   | {

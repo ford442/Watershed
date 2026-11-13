@@ -68,6 +68,9 @@ import { createWeatherSurgeState, resetWeatherSurge, stepWeatherSurge, type Weat
 import { accumulateFieldErosion } from './erosionField';
 import type { ErosionFieldView } from '../../terrain/erosion';
 import { launchWeatherOf } from '../weather/weatherScript';
+import { traceEnd, traceName, traceStart } from '../../debug/trace/traceProbe';
+
+const SWE_STEP_SPAN = traceName('swe-step');
 
 function worldToGridIndex(
   worldX: number,
@@ -609,7 +612,12 @@ export function sweHostFrame(
       };
       // The worker's router advances by the same new time the clocks did.
       if (remote) remote.stepRouted(stepInput, clockDt === stepDt ? { chainIndex, weather } : { chainIndex, weather, advance: clockDt });
-      else grid.step(stepInput);
+      else {
+        // On this thread (wasm-main / wgsl): its own span; a worker's is the sim worker's STEP (#559 D).
+        const traced = traceStart();
+        grid.step(stepInput);
+        traceEnd(SWE_STEP_SPAN, traced);
+      }
       // The river works its bed (#487 E). On this thread the field just
       // stepped; a worker's lands a message later, below.
       if (!remote) erodeUnder(state, grid, originX, originZ, stepDt);

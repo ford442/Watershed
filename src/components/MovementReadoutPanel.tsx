@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore, type GameStore } from '../systems/GameState';
+import TraceRecordButton from './TraceRecordButton';
 
 /** The F3 movement readout's panel (MovementReadout.tsx holds the toggle; this loads on first open). */
 
@@ -114,50 +115,53 @@ export default function MovementReadoutPanel() {
   }, []);
 
   return (
-    <div className="move-readout" data-testid="move-readout" aria-hidden="true">
-      <div className="move-readout__title">MOVEMENT · F3 TO HIDE</div>
-      <div className="move-readout__row">
-        <span>POS x</span>
-        <span><Leaf select={selectX} /></span>
+    <div className="move-readout" data-testid="move-readout">
+      <div aria-hidden="true">
+        <div className="move-readout__title">MOVEMENT · F3 TO HIDE</div>
+        <div className="move-readout__row">
+          <span>POS x</span>
+          <span><Leaf select={selectX} /></span>
+        </div>
+        <div className="move-readout__row">
+          <span>POS y</span>
+          <span><Leaf select={selectY} /></span>
+        </div>
+        <div className="move-readout__row">
+          <span>POS z</span>
+          <span><Leaf select={selectZ} /></span>
+        </div>
+        <div className="move-readout__row">
+          <span>SPEED m/s</span>
+          <span><Leaf select={selectSpeed} /></span>
+        </div>
+        <div className="move-readout__row">
+          <span>DIST m</span>
+          <span><Leaf select={selectDistance} /></span>
+        </div>
+        <div className="move-readout__row">
+          <span>POINTER</span>
+          <span ref={lockRef}>—</span>
+        </div>
+        <div className="move-readout__row">
+          <span>MOUSE Δ</span>
+          <span ref={mouseRef}>0, 0</span>
+        </div>
+        <div className="move-readout__keys">
+          {KEY_CHIPS.map((chip) => (
+            <span
+              key={chip.label}
+              className="move-readout__key"
+              ref={(el) => {
+                if (el) chipRefs.current.set(chip.label, el);
+                else chipRefs.current.delete(chip.label);
+              }}
+            >
+              {chip.label}
+            </span>
+          ))}
+        </div>
       </div>
-      <div className="move-readout__row">
-        <span>POS y</span>
-        <span><Leaf select={selectY} /></span>
-      </div>
-      <div className="move-readout__row">
-        <span>POS z</span>
-        <span><Leaf select={selectZ} /></span>
-      </div>
-      <div className="move-readout__row">
-        <span>SPEED m/s</span>
-        <span><Leaf select={selectSpeed} /></span>
-      </div>
-      <div className="move-readout__row">
-        <span>DIST m</span>
-        <span><Leaf select={selectDistance} /></span>
-      </div>
-      <div className="move-readout__row">
-        <span>POINTER</span>
-        <span ref={lockRef}>—</span>
-      </div>
-      <div className="move-readout__row">
-        <span>MOUSE Δ</span>
-        <span ref={mouseRef}>0, 0</span>
-      </div>
-      <div className="move-readout__keys">
-        {KEY_CHIPS.map((chip) => (
-          <span
-            key={chip.label}
-            className="move-readout__key"
-            ref={(el) => {
-              if (el) chipRefs.current.set(chip.label, el);
-              else chipRefs.current.delete(chip.label);
-            }}
-          >
-            {chip.label}
-          </span>
-        ))}
-      </div>
+      <TraceRecordButton />
     </div>
   );
 }

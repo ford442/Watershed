@@ -57,6 +57,12 @@ export interface QueryFlags {
   /** `?spawnProfile=1` — segment-mount timing marks. */
   readonly spawnProfile: boolean;
   /**
+   * `?trace=1` — record the one timeline from boot (#559 D, `debug/trace/`):
+   * every thread's spans into a ring, saved as Perfetto JSON from the F3 panel
+   * or `window.__watershed.trace.stop()` (harness/debugApi.ts).
+   */
+  readonly trace: boolean;
+  /**
    * `?warmup=1` — run the boot shader warm-up even under scripted input, which
    * normally skips it (verification/shader_warmup_report.mjs measures it there).
    */
@@ -135,6 +141,7 @@ export function parseQueryFlags(search: string): QueryFlags {
     river: p.get('river'),
     seed: p.get('seed'),
     spawnProfile: p.get('spawnProfile') === '1',
+    trace: isOnValue(p.get('trace')),
     warmup: p.get('warmup') === '1',
     debugGlobals: debug || physicsDebug || screenshot,
   });

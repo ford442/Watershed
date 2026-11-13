@@ -1,0 +1,36 @@
+{
+  "$comment": "#559 E — the gate must fail a >= 20 % p95 rise (acceptance) yet pass run-to-run noise: three local runs moved segment-build -2..+12 %, mount up to +10 %, sim-step one 0.1 ms clock step (~8 %; the timer is coarsened without cross-origin isolation, hence its floor). perfBaseline.mjs. A gated metric fails when its calibration-normalised p95 rises more than maxRegression above the baseline AND its raw p95 grew by more than floorMs. Metrics not listed are reported only (render / post spans: SwiftShader numbers are not GPU numbers). Refresh a baseline from CI's perf-trace artifact (<suite>.candidate.json) when the runner changes.",
+  "default": {
+    "maxRegression": 0.18,
+    "floorMs": 0.1
+  },
+  "suites": {
+    "meander": {
+      "gated": {
+        "main/sim-step": {
+          "floorMs": 0.15
+        },
+        "main: segments/segment-build": {
+          "floorMs": 0.5
+        },
+        "main: segments/segment-mount": {
+          "maxRegression": 0.3,
+          "floorMs": 2
+        }
+      }
+    },
+    "swe": {
+      "$comment": "Node wasm bench: two back-to-back runs moved the 128x80 p95 by 40 %, so only a large regression on the Ultra grid fails; the small grids are reported.",
+      "gated": {
+        "swe-step/128x80": {
+          "maxRegression": 0.6,
+          "floorMs": 0.05
+        }
+      }
+    },
+    "spawn": {
+      "$comment": "SwiftShader mounts: reported only; the meander suite gates segment build / mount.",
+      "gated": {}
+    }
+  }
+}

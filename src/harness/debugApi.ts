@@ -10,6 +10,8 @@
  */
 import { getDebugTap, type DebugTaps } from '../debug/debugTaps';
 import { getSegmentFlowSpeed, getSegmentSlipperiness } from '../systems/water/segmentFlow';
+import { isTraceRecording, startTrace, stopTrace } from '../debug/trace/traceControl';
+import type { PerfettoTrace } from '../debug/trace/exportPerfetto';
 
 export interface WatershedDebugApi {
   readonly physicsDebug: DebugTaps['physicsDebug'];
@@ -25,6 +27,16 @@ export interface WatershedDebugApi {
   readonly slipperiness: number;
   /** `?debugGpuLoss` only: force a context / device loss; null when not armed. */
   loseGpu(): string | null;
+  /**
+   * The one timeline (#559 D): `stop()` resolves to the Perfetto trace object
+   * (null when nothing was recording). `?trace=1` starts it at boot;
+   * verification/perf_trace_smoke.mjs stops it after the scripted run.
+   */
+  readonly trace: {
+    start(): Promise<void>;
+    stop(): Promise<PerfettoTrace | null>;
+    recording(): boolean;
+  };
 }
 
 declare global {
@@ -48,6 +60,7 @@ export function createDebugApi(): WatershedDebugApi {
     loseGpu() {
       return getDebugTap('loseGpu')?.() ?? null;
     },
+    trace: { start: startTrace, stop: stopTrace, recording: isTraceRecording },
   };
 }
 

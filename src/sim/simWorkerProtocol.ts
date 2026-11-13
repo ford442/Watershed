@@ -186,7 +186,13 @@ export type SimWorkerCommand =
   /** Heightfield chore summary (gpuChores/heightfieldSummary.ts) of grid `gridId`'s live h. */
   | { type: 'CHORES'; seq: number; gridId: number; thumbWidth: number; thumbHeight: number }
   /** Build a segment's canyon / collision / wall / water meshes on the worker's terrain tile (#487 B). */
-  | { type: 'BUILD_TILE'; seq: number; spec: SegmentMeshSpec };
+  | { type: 'BUILD_TILE'; seq: number; spec: SegmentMeshSpec }
+  /**
+   * One end of the trace channel (#559 D, debug/trace/traceWorkerSide.ts):
+   * handled by simWorker.ts before the core — even while the module boots, so
+   * a `?trace=1` page aligns the worker's clock from the start.
+   */
+  | { type: 'TRACE_CONNECT'; port: MessagePort };
 
 /** Planes per particle on the wire (SPLASH_WIRE_PLANES for splash, WATERFALL_WIRE_PLANES for waterfall). */
 export const SPLASH_WIRE_PLANES = 8;

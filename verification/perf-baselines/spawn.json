@@ -1,0 +1,27 @@
+{
+  "calibrationMs": 7.8811,
+  "recordedAt": "2026-11-13T11:47:15.927Z",
+  "note": "spawn profile report, calibrated in Node on the same box",
+  "metrics": {
+    "spawn/med/segment-build": {
+      "n": 26,
+      "p50": 0.3,
+      "p95": 2.95
+    },
+    "spawn/med/segment-mount": {
+      "n": 26,
+      "p50": 62.75,
+      "p95": 97.75
+    },
+    "spawn/high/segment-build": {
+      "n": 26,
+      "p50": 0.3,
+      "p95": 1.1
+    },
+    "spawn/high/segment-mount": {
+      "n": 26,
+      "p50": 66.8,
+      "p95": 97.175
+    }
+  }
+}

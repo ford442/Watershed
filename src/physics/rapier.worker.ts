@@ -8,6 +8,7 @@
  */
 
 import { telemetryNowMs } from '../utils/wallClock';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   DEFAULT_RAFT_WORKER_INIT,
@@ -162,6 +163,10 @@ const applyWaterForcesBeforeStep = (
   return diagnostics;
 };
 
+/** The Rapier step on the trace timeline (#559 D); water forces and impulses are outside it. */
+const WORLD_STEP_SPAN = traceName('world.step');
+const STEP_COMMAND_SPAN = traceName('STEP');
+
 const stepWorld = (
   delta: number,
   impulses: Vec3Tuple[] = [],
@@ -178,7 +183,9 @@ const stepWorld = (
   }
 
   world.timestep = clampedDelta;
+  const traced = traceStart();
   world.step();
+  traceEnd(WORLD_STEP_SPAN, traced);
 
   if (hullLink && waterForce?.enabled && waterForce.simFlow) {
     hullLink.postHull(serializeState(), waterForce);
@@ -201,6 +208,11 @@ let commandQueue: Promise<void> = Promise.resolve();
 ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
   const receivedAt = telemetryNowMs();
   const command = event.data;
+  if (command.type === 'TRACE_CONNECT') {
+    const { port } = command;
+    void import('../debug/trace/traceWorkerSide').then((m) => m.attachWorkerTrace(port));
+    return;
+  }
 
   const run = async () => {
     switch (command.type) {
@@ -215,7 +227,9 @@ ctx.addEventListener('message', (event: MessageEvent<RapierWorkerCommand>) => {
         });
         return;
       case 'STEP': {
+        const traced = traceStart();
         const diagnostics = stepWorld(command.delta, command.impulses ?? [], command.waterForce);
+        traceEnd(STEP_COMMAND_SPAN, traced);
         respond({
           id: command.id,
           type: 'STATE',

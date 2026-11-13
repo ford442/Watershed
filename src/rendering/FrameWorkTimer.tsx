@@ -13,6 +13,11 @@ import { createGpuTimer } from './gpuTimer';
 import { attachGpuTimer, beginFrameWork, endFrameWork, getFrameWork } from './frameWork';
 import { updatePerfMetrics } from '../debug/perfMetrics';
 import { attachFrameRenderInfo, type RendererInfoLike } from './frameRenderInfo';
+import { traceCounter, traceName, traceRecording, traceSpanAt } from '../debug/trace/traceProbe';
+
+/** The whole frame's CPU work, and the GPU frame time as a counter track (#559 D). */
+const FRAME_SPAN = traceName('frame');
+const GPU_COUNTER = traceName('gpu frame ms');
 
 /** Frames between debug-panel pushes (matches PerfCheckpointMonitor). */
 const PUBLISH_INTERVAL = 30;
@@ -28,10 +33,20 @@ export default function FrameWorkTimer() {
     let frames = 0;
     let cpuSum = 0;
     // Both global effects receive the same rAF timestamp, so time with now().
-    const removeBefore = addEffect(() => beginFrameWork(performance.now()));
+    let frameStart = 0;
+    const removeBefore = addEffect(() => {
+      frameStart = performance.now();
+      beginFrameWork(frameStart);
+    });
     const removeAfter = addAfterEffect(() => {
-      endFrameWork(performance.now());
+      const end = performance.now();
+      endFrameWork(end);
       const s = getFrameWork();
+      if (traceRecording()) {
+        traceSpanAt(FRAME_SPAN, frameStart, end);
+        // Resolved 2–4 frames late (gpuTimer.ts): the counter lags its frame by that much.
+        if (s.gpuMs !== null) traceCounter(GPU_COUNTER, s.gpuMs);
+      }
       cpuSum += s.cpuWorkMs;
       frames += 1;
       if (frames >= PUBLISH_INTERVAL) {

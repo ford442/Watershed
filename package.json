@@ -44,6 +44,7 @@
     "test:input-smoke:gamepad": "INPUT_SCRIPT=/verification/fixtures/input/meander_run_gamepad.json node verification/input_script_smoke.mjs",
     "test:replay-smoke": "node verification/replay_smoke.mjs",
     "test:a11y": "node verification/a11y_audit.mjs",
+    "test:perf-trace": "node verification/perf_trace_smoke.mjs",
     "test:wasm": "WATERSHED_WASM_INTEGRATION=1 vitest run src/systems/water/WatershedWasm.integration.test.ts src/systems/water/sweScroll.integration.test.ts src/systems/water/hydroContrast.test.ts src/rendering/gpuChores/watershedHost.integration.test.ts src/sim/simWorker.integration.test.ts src/terrain/__tests__/terrainParity.test.ts src/systems/water/nativeDigest.integration.test.ts",
     "build:wasm": "cd emscripten && bash build.sh",
     "build:wasm:debug": "cd emscripten && bash build.sh --debug",
@@ -61,6 +62,7 @@
     "compile:validators": "node scripts/compile-validators.mjs",
     "profile:swe": "node verification/swe_step_bench.mjs",
     "profile:spawn": "node verification/spawn_profile.mjs",
+    "perf:compare": "node verification/perf_compare.mjs",
     "verify:deploy": "node verification/verify_deploy.mjs",
     "deploy:rehearse": "node scripts/deploy-rehearse.mjs"
   },

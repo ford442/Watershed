@@ -20,9 +20,39 @@ set(COMPUTE_SOURCES
 add_library(watershed_compute STATIC ${COMPUTE_SOURCES})
 target_include_directories(watershed_compute PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# One warning set for both branches (#559 B): the wasm32 build is the one that
+# ships, and it is where size_t is 32-bit (the #520 overflow class), so it is
+# held to at least the host's bar. -Wdouble-promotion / -Wimplicit-float-
+# conversion guard the "one set of numbers" contract (native_digest.h): an
+# accidental float -> double -> float round trip in a kernel changes bits
+# without a sound. -Werror on both: a new warning is a red build, not noise.
+set(WATERSHED_WARNINGS
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wshadow
+    -Wdouble-promotion
+    -Wimplicit-float-conversion
+    -Wimplicit-int-conversion
+    -Wsign-conversion
+    -Wshorten-64-to-32
+    -Wcast-align
+    -Wnull-dereference
+    -Werror
+)
+# The host smoke in CI also builds with the runner's GCC, which has no
+# -Wimplicit-*-conversion / -Wshorten-64-to-32: its -Wconversion is the
+# union of the three (and -Wsign-conversion stays explicit). emcc is clang.
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(REMOVE_ITEM WATERSHED_WARNINGS -Wimplicit-float-conversion -Wimplicit-int-conversion -Wshorten-64-to-32)
+    list(APPEND WATERSHED_WARNINGS -Wconversion)
+endif()
+target_compile_options(watershed_compute PRIVATE ${WATERSHED_WARNINGS})
+
 if(EMSCRIPTEN)
     add_executable(watershed_native bindings.cpp)
     target_link_libraries(watershed_native PRIVATE watershed_compute)
+    target_compile_options(watershed_native PRIVATE ${WATERSHED_WARNINGS})
 
     set_target_properties(watershed_native PROPERTIES
         SUFFIX ".js"
@@ -204,8 +234,8 @@ else()
     # on the Emscripten branch above (#404).
     add_executable(watershed_host_smoke host_smoke.cpp)
     target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
-    target_compile_options(watershed_compute PRIVATE -O2 -Wall -Wextra -ffp-contract=off)
-    target_compile_options(watershed_host_smoke PRIVATE -O2 -Wall -Wextra -ffp-contract=off)
+    target_compile_options(watershed_compute PRIVATE -O2 -ffp-contract=off)
+    target_compile_options(watershed_host_smoke PRIVATE -O2 -ffp-contract=off ${WATERSHED_WARNINGS})
 
     # #467: the C ABI trusts JS for every pointer and width * height. Host-only
     # checks for that trust:
@@ -233,7 +263,7 @@ else()
             add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
             target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
             target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE
-                -O1 -ffp-contract=off -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
+                -O1 -ffp-contract=off -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS} ${WATERSHED_WARNINGS})
             target_link_options(watershed_${fuzz_target}_fuzz PRIVATE -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
         endforeach()
     endif()

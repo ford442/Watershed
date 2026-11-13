@@ -1,0 +1,152 @@
+{
+  "calibrationMs": 8,
+  "recordedAt": "2026-11-13T11:36:51.151Z",
+  "note": "scripted meander, 30 sim s, min of 3 runs; SwiftShader (render spans are not GPU numbers)",
+  "metrics": {
+    "main: assets/parse-glb": {
+      "n": 1,
+      "p50": 3.5,
+      "p95": 3.5
+    },
+    "main: longtask/longtask": {
+      "n": 76,
+      "p50": 108.5,
+      "p95": 366
+    },
+    "main: segments/segment-build": {
+      "n": 35,
+      "p50": 4,
+      "p95": 14.01
+    },
+    "main: segments/segment-mount": {
+      "n": 35,
+      "p50": 47.4,
+      "p95": 71.01
+    },
+    "main/frame": {
+      "n": 1800,
+      "p50": 3.3,
+      "p95": 5.9
+    },
+    "main/input-hub": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/post:bloom": {
+      "n": 30,
+      "p50": 0.2,
+      "p95": 0.3
+    },
+    "main/post:chromatic": {
+      "n": 30,
+      "p50": 0,
+      "p95": 0.1
+    },
+    "main/post:display": {
+      "n": 30,
+      "p50": 0,
+      "p95": 0.1
+    },
+    "main/post:hue-sat": {
+      "n": 30,
+      "p50": 0,
+      "p95": 0.1
+    },
+    "main/post:rainbow": {
+      "n": 30,
+      "p50": 0,
+      "p95": 0.1
+    },
+    "main/post:scene": {
+      "n": 30,
+      "p50": 2.55,
+      "p95": 7.78
+    },
+    "main/post:smaa": {
+      "n": 30,
+      "p50": 0,
+      "p95": 1.035
+    },
+    "main/post:ssao": {
+      "n": 30,
+      "p50": 2,
+      "p95": 3.075
+    },
+    "main/post:vignette": {
+      "n": 30,
+      "p50": 0,
+      "p95": 0.1
+    },
+    "main/render": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0.1
+    },
+    "main/sim-core": {
+      "n": 1800,
+      "p50": 0.7,
+      "p95": 1.3
+    },
+    "main/sim-step": {
+      "n": 1800,
+      "p50": 0.7,
+      "p95": 1.3
+    },
+    "main/sim:chunk-biome": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/sim:gameplay-profile": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/sim:hazards": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/sim:physics-world": {
+      "n": 1800,
+      "p50": 0.2,
+      "p95": 0.3
+    },
+    "main/sim:pillars": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/sim:score": {
+      "n": 1800,
+      "p50": 0.4,
+      "p95": 1
+    },
+    "main/sim:sky-clock": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/sim:survival": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/sim:vehicle-runner": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0.2
+    },
+    "main/sim:weather-director": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0
+    },
+    "main/swe-step": {
+      "n": 1800,
+      "p50": 0,
+      "p95": 0.1
+    }
+  }
+}
