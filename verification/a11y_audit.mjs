@@ -252,6 +252,7 @@ async function inRunScreensOnce(browser, last) {
     await audit(page, 'wipeout_results');
   } catch (err) {
     report.skipped.push(`in-run screens: ${err.message}`);
+    if (process.env.A11Y_DEBUG) console.warn(err.stack);
     if (last) console.warn(`  ⚠ in-run screens skipped (SwiftShader / F-8): ${err.message}`);
   }
   await page.close();
@@ -280,13 +281,16 @@ async function main() {
   console.log(`a11y audit against ${BASE_URL}`);
   const browser = await launch();
   try {
-    for (const scale of [1, 2]) {
+    const only = process.env.A11Y_ONLY ?? '';
+    for (const scale of only && only !== 'menus' ? [] : [1, 2]) {
       console.log(`\n[menus @ ${scale * 100} %]`);
       await menuScreens(browser, scale);
     }
-    console.log('\n[in-run]');
-    await inRunScreens(browser);
-    for (const scale of [1, 1.5, 2]) {
+    if (!only || only === 'inrun') {
+      console.log('\n[in-run]');
+      await inRunScreens(browser);
+    }
+    for (const scale of only && only !== 'touch' ? [] : [1, 1.5, 2]) {
       console.log(`\n[touch @ ${scale * 100} %]`);
       await touchScreens(browser, scale);
     }
