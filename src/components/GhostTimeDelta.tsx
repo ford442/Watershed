@@ -2,7 +2,8 @@
  * GhostTimeDelta.tsx — HUD overlay showing time delta between the current run
  * and the personal-best ghost at the moment of a checkpoint or finish.
  *
- * Positive delta = behind PB (red). Negative = ahead of PB (green).
+ * Positive delta = behind PB, negative = ahead. The state is a colour from the
+ * access palette *and* a shape and a word (▼ AHEAD / ▲ BEHIND, #558 C.1).
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -47,11 +48,13 @@ export const GhostTimeDelta: React.FC<GhostTimeDeltaProps> = ({
   if (!visible || deltaSeconds === null) return null;
 
   const ahead = deltaSeconds < 0;
-  const color = ahead ? '#4cff7c' : '#ff4c4c';
+  const color = ahead ? 'var(--a11y-ahead, #4cff7c)' : 'var(--a11y-behind, #ff4c4c)';
+  const word = ahead ? t('hud.ghostAhead') : t('hud.ghostBehind');
 
   return (
     <div
       className={className}
+      data-state={ahead ? 'ahead' : 'behind'}
       style={{
         position: 'fixed',
         top: '18%',
@@ -69,7 +72,9 @@ export const GhostTimeDelta: React.FC<GhostTimeDeltaProps> = ({
       aria-live="polite"
       aria-label={t('hud.ghostDelta', { delta: formatSplit(deltaSeconds) })}
     >
+      <span aria-hidden="true">{ahead ? '▼' : '▲'} </span>
       {formatSplit(deltaSeconds)}
+      <span style={{ fontSize: '0.55em', marginLeft: '0.5em', letterSpacing: '0.12em' }}>{word}</span>
     </div>
   );
 };

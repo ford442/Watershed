@@ -28,6 +28,7 @@ import { recordUprightDistance } from '../../../systems/journey/runSession';
 import type { PlayerControls } from '../../../input/playerControls';
 import type { RapierBody, Vec3Like } from '../../../physics/rapierTypes';
 import type { ParticlePool } from '../../../components/particlePool';
+import { getLiveAssists } from '../../../systems/settings/accessRuntime';
 
 // Per-step scratch (#503 B).
 const _quat = new THREE.Quaternion();
@@ -383,6 +384,7 @@ export function useRaftControls(params: UseRaftControlsParams) {
   useFrame((_state, delta) => {
     const runtime = runtimeRef.current;
     if (!runtime || !params.bodyRef.current) return;
-    stepRaftFrame(params, runtime, params.bodyRef.current, delta, timeRef, shedTimer);
+    // Game speed (#558 D.1): the raft steps on the frame clock, so it scales here.
+    stepRaftFrame(params, runtime, params.bodyRef.current, delta * getLiveAssists().gameSpeed, timeRef, shedTimer);
   });
 }

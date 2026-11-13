@@ -33,6 +33,7 @@ import { setDebugTap } from '../debug/debugTaps';
 import { useAssetInstance } from '../assets/useAssetInstance';
 import { requestAsset } from '../assets/AssetRegistry';
 import { buildRaftHullPrimitive, RAFT_HULL_COLLIDERS } from './RaftVehicle/raftHull';
+import { getLiveAssists } from '../systems/settings/accessRuntime';
 
 /** Mirror the worker's post-step raft state onto the main-thread body. */
 function syncBodyFromWorkerState(body: RapierBody | null, workerState: WorkerRaftState | null) {
@@ -79,7 +80,7 @@ function stepRaftWorker(refs: RaftWorkerStepRefs, body: RapierBody, delta: numbe
     ),
   };
 
-  proxy.step(delta, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
+  proxy.step(delta * getLiveAssists().gameSpeed, { impulses, waterForce }).then(({ state: workerState, waterForce: diagnostics }) => {
     if (workerState) syncBodyFromWorkerState(refs.bodyRef.current, workerState);
     if (diagnostics) {
       setPhysicsWorkerDiagnostics(diagnostics);

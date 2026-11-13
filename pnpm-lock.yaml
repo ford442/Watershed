@@ -42,6 +42,9 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/react@19.3.0)(immer@9.0.21)(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1))
     devDependencies:
+      '@axe-core/puppeteer':
+        specifier: 4.14.0
+        version: 4.14.0(puppeteer@24.40.0(typescript@5.9.3))
       '@breezystack/lamejs':
         specifier: 1.2.7
         version: 1.2.7
@@ -146,6 +149,12 @@ packages:
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
+
+  '@axe-core/puppeteer@4.14.0':
+    resolution: {integrity: sha512-EWAKemFmYfdzZx+xt2QZ/gCp2jaysfZEYbYgLqTDd2JUC4jBLYz+oSCzPT/sySLr5tcI/++CKDYUPQsf7Lr1xA==}
+    engines: {node: '>=22.12.0'}
+    peerDependencies:
+      puppeteer: '>=1.10.0'
 
   '@babel/code-frame@7.27.1':
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
@@ -1332,6 +1341,10 @@ packages:
 
   ast-types@0.13.4:
     resolution: {integrity: sha512-x1FCFnFifvYDDzTaLII71vG5uvDwgtmDTEVWAxrgeiR8VjMONcCXJx7E+USjDtHlwFmt9MysbqgF9b9Vjr6w+w==}
+    engines: {node: '>=4'}
+
+  axe-core@4.14.0:
+    resolution: {integrity: sha512-9WTZxEjsZ7b13TH8JPmbV2z8CHbl80/2hm3XPEG4JgNdQLK81IBRXmSxHfMAOkSqQeRxT/0dwNDz2GOm3zzpcQ==}
     engines: {node: '>=4'}
 
   b4a@1.7.3:
@@ -2932,6 +2945,11 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.4
       lru-cache: 10.4.3
 
+  '@axe-core/puppeteer@4.14.0(puppeteer@24.40.0(typescript@5.9.3))':
+    dependencies:
+      axe-core: 4.14.0
+      puppeteer: 24.40.0(typescript@5.9.3)
+
   '@babel/code-frame@7.27.1':
     dependencies:
       '@babel/helper-validator-identifier': 7.28.5
@@ -4020,6 +4038,8 @@ snapshots:
   ast-types@0.13.4:
     dependencies:
       tslib: 2.8.1
+
+  axe-core@4.14.0: {}
 
   b4a@1.7.3: {}
 

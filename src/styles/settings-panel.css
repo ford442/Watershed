@@ -6,10 +6,10 @@
   inset: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   background: linear-gradient(135deg, rgba(0,10,25,0.92) 0%, rgba(0,5,15,0.96) 100%);
   z-index: 200;
-  padding: 24px;
+  padding: 1.5rem;
   overflow-y: auto;
 }
 
@@ -19,8 +19,8 @@
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px;
-  padding: 28px 28px 20px;
-  max-width: 560px;
+  padding: 1.75rem 1.75rem 1.25rem;
+  max-width: 35rem;
   width: 100%;
   max-height: 88vh;
   overflow-y: auto;
@@ -31,13 +31,13 @@
 .settings-panel-loading {
   text-align: center;
   color: #9ca3af;
-  padding: 24px;
+  padding: 1.5rem;
 }
 
 .settings-panel-title {
-  font-size: clamp(22px, 3.5vw, 30px);
+  font-size: clamp(1.375rem, 3.5vw, 1.875rem);
   font-weight: 800;
-  margin: 0 0 18px 0;
+  margin: 0 0 1.125rem 0;
   background: linear-gradient(135deg, #4fd1c7, #3b82f6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -45,49 +45,49 @@
 }
 
 .settings-panel-section {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .settings-panel-section-title {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #7ec8ff;
-  margin: 0 0 12px 0;
+  margin: 0 0 0.75rem 0;
 }
 
 .settings-panel-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 .settings-panel-label {
-  flex: 0 0 150px;
-  font-size: 14px;
+  flex: 0 0 9.375rem;
+  font-size: 0.875rem;
   color: #cbd5e1;
 }
 
 .settings-panel-slider {
   flex: 1;
-  min-width: 80px;
+  min-width: 5rem;
   accent-color: #4fd1c7;
 }
 
 .settings-panel-value {
-  flex: 0 0 52px;
+  flex: 0 0 3.25rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: #9ca3af;
 }
 
 .settings-panel-toggle {
-  padding: 6px 16px;
+  padding: 0.375rem 1rem;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.14);
   background: transparent;
@@ -104,12 +104,14 @@
 
 .settings-panel-quality-buttons {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   flex: 1;
+  min-width: 0;
 }
 .settings-panel-quality-btn {
   flex: 1;
-  padding: 8px 10px;
+  padding: 0.5rem 0.625rem;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.12);
   background: transparent;
@@ -125,44 +127,44 @@
 }
 
 .settings-panel-note {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #6b7280;
-  margin: 6px 0 0;
+  margin: 0.375rem 0 0;
 }
 
 .settings-panel-bindings {
-  margin-top: 8px;
+  margin-top: 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .settings-panel-binding-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 .settings-panel-binding-label {
-  flex: 0 0 150px;
-  font-size: 14px;
+  flex: 0 0 9.375rem;
+  font-size: 0.875rem;
   color: #cbd5e1;
 }
 .settings-panel-binding-controls {
   display: flex;
-  gap: 6px;
+  gap: 0.375rem;
   flex: 1;
 }
 .settings-panel-binding-btn {
   flex: 1;
-  min-width: 120px;
-  padding: 8px 12px;
+  min-width: 7.5rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.03);
   color: #e5e7eb;
   font-family: ui-monospace, monospace;
-  font-size: 13px;
+  font-size: 0.8125rem;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -176,7 +178,7 @@
 }
 .settings-panel-unbind-btn {
   flex: 0 0 auto;
-  padding: 8px 12px;
+  padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 2px solid rgba(255,255,255,0.12);
   background: transparent;
@@ -189,19 +191,19 @@
 }
 .settings-panel-binding-error {
   flex: 1 0 100%;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #f87171;
 }
 
 .settings-panel-footer {
   display: flex;
-  gap: 10px;
-  margin-top: 8px;
+  gap: 0.625rem;
+  margin-top: 0.5rem;
 }
 .settings-panel-reset-btn,
 .settings-panel-close-btn {
   flex: 1;
-  padding: 12px 20px;
+  padding: 0.75rem 1.25rem;
   border-radius: 10px;
   font-weight: 700;
   cursor: pointer;

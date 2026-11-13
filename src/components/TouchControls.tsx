@@ -100,8 +100,8 @@ export const TouchControls: React.FC = () => {
       </div>
 
       <button type="button" className="touch-btn touch-btn--pause" data-touch="pause" aria-label={t('touch.pause')}>
-        {/* eslint-disable-next-line no-restricted-syntax -- a pause glyph (aria-hidden), not a word */}
-        <span aria-hidden="true">{'II'}</span>
+        {/* Two bars drawn in CSS, not the letters "II": the button's name is its aria-label alone (WCAG 2.5.3). */}
+        <span className="touch-pause-glyph" aria-hidden="true" />
       </button>
 
       <div className="touch-actions">

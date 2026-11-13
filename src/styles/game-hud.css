@@ -33,7 +33,7 @@
   position: fixed;
   top: 1rem;
   right: 1rem;
-  min-width: clamp(150px, 22vw, 220px);
+  min-width: clamp(9.375rem, 22vw, 13.75rem);
   padding: 0.75rem 1rem;
   text-align: right;
   font-family: var(--hud-mono);
@@ -149,7 +149,7 @@
   z-index: 50;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.9);
   backdrop-filter: blur(4px);

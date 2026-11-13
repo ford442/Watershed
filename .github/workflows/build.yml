@@ -190,6 +190,14 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
+      # #558 E: axe-core over the start menu, every Options page, pause, the
+      # wipeout results and the touch layout (100 / 150 / 200 % UI scale), plus
+      # a clipped-control check. Serious / critical violations fail the job.
+      - name: Accessibility audit (axe-core + UI-scale clip check)
+        if: success() || failure()
+        run: pnpm test:a11y
+        timeout-minutes: 15
+
       # #555 A.1: the node material path, gated like the default one. Same
       # shots against the `__material-tsl` baselines committed beside the GLSL
       # ones (verification/baselines/visual-smoke/README.md).
@@ -224,6 +232,7 @@ jobs:
           name: visual-smoke-output
           path: |
             verification/output/visual-smoke/
+            verification/output/a11y/
             verification/output/post-parity/
             verification/output/shader-warmup/
           if-no-files-found: warn

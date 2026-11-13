@@ -30,7 +30,7 @@
     "build:full": "pnpm build:wasm && pnpm build",
     "build:analyze": "node scripts/build-assets.mjs && ANALYZE=1 vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit && node scripts/check-strict-buffers.mjs && node scripts/check-typecheck-surface.mjs && node scripts/check-systems-layout.mjs && node scripts/check-dependency-direction.mjs && node scripts/check-glsl-hosts.mjs && node scripts/check-fixed-heap.mjs && node scripts/check-orphans.mjs && node scripts/check-tracked-junk.mjs && knip --no-progress",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit && node scripts/check-strict-buffers.mjs && node scripts/check-typecheck-surface.mjs && node scripts/check-systems-layout.mjs && node scripts/check-dependency-direction.mjs && node scripts/check-glsl-hosts.mjs && node scripts/check-fixed-heap.mjs && node scripts/check-orphans.mjs && node scripts/check-tracked-junk.mjs && node scripts/px-to-rem.mjs --check && knip --no-progress",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -43,6 +43,7 @@
     "test:input-smoke": "node verification/input_script_smoke.mjs",
     "test:input-smoke:gamepad": "INPUT_SCRIPT=/verification/fixtures/input/meander_run_gamepad.json node verification/input_script_smoke.mjs",
     "test:replay-smoke": "node verification/replay_smoke.mjs",
+    "test:a11y": "node verification/a11y_audit.mjs",
     "test:wasm": "WATERSHED_WASM_INTEGRATION=1 vitest run src/systems/water/WatershedWasm.integration.test.ts src/systems/water/sweScroll.integration.test.ts src/systems/water/hydroContrast.test.ts src/rendering/gpuChores/watershedHost.integration.test.ts src/sim/simWorker.integration.test.ts src/terrain/__tests__/terrainParity.test.ts src/systems/water/nativeDigest.integration.test.ts",
     "build:wasm": "cd emscripten && bash build.sh",
     "build:wasm:debug": "cd emscripten && bash build.sh --debug",
@@ -81,6 +82,7 @@
     }
   },
   "devDependencies": {
+    "@axe-core/puppeteer": "4.14.0",
     "@breezystack/lamejs": "1.2.7",
     "@eslint/js": "^10.0.1",
     "@gltf-transform/core": "4.5.1",

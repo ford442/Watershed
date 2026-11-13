@@ -160,6 +160,24 @@ const SHOTS = [
     // A 390×844 frame is a fifth the pixels of the 1280×720 shots.
     minBytes: 12_000,
   },
+  // #558 B.3: the UI scale's worst case. The start menu and the touch layout at
+  // 200 % (`?uiScale=2`): a control cut off or a layout pushed off the side
+  // shows here as a baseline diff; verification/a11y_audit.mjs checks the same
+  // screens for clipped controls by geometry.
+  {
+    label: '00_start_menu_ui200',
+    mode: 'prestart',
+    required: false,
+    query: 'cleanTest=1&renderer=webgl&screenshot=1&uiScale=2',
+  },
+  {
+    label: '10_touch_layout_ui200',
+    mode: 'touch',
+    required: false,
+    query: 'cleanTest=1&renderer=webgl&screenshot=1&input=touch&uiScale=2',
+    touchViewport: { width: 390, height: 844 },
+    minBytes: 12_000,
+  },
   {
     label: '06_lumber_trestle_dawn',
     mode: 'topdown',

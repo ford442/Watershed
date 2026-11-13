@@ -45,6 +45,8 @@ export interface WsGhostFile {
   conditions?: RunConditions;
   /** Each hazard's phase changes and hits on the ghost clock (codecVersion >= 5, #522 A). */
   hazards?: HazardLogEntry[];
+  /** Assists the run used (`access.ts` bits, #558 D.2); absent = none. */
+  assists?: number;
 }
 
 /** What a ghost needs, beyond its river's fairness, to be replayed on the same river. */
@@ -54,12 +56,14 @@ export interface GhostRunMeta {
   conditions?: RunConditions;
   /** The run's hazard log (hazardLog.ts); an empty log is left out of the file. */
   hazards?: HazardLogEntry[];
+  /** The run's assists bitfield; 0 is left out of the file. */
+  assists?: number;
 }
 
 export type GhostImportResult =
   | { ok: true; file: WsGhostFile }
   | { ok: false; reason: 'invalid_json' | 'invalid_format' | 'version_mismatch' | 'map_mismatch' }
-  | { ok: false; reason: 'hour_mismatch' | 'hydro_mismatch'; message: string };
+  | { ok: false; reason: 'hour_mismatch' | 'hydro_mismatch' | 'assist_mismatch'; message: string };
 
 /**
  * Serialise a ghost payload to a downloadable WsGhostFile JSON string.
@@ -86,6 +90,7 @@ export function exportGhostToJson(
     ...(run?.vehicle ? { vehicle: run.vehicle } : {}),
     ...(run?.conditions ? { conditions: run.conditions } : {}),
     ...(run?.hazards && run.hazards.length > 0 ? { hazards: run.hazards } : {}),
+    ...(run?.assists ? { assists: run.assists } : {}),
   };
   return JSON.stringify(file, null, 2);
 }
@@ -193,6 +198,7 @@ function isWsGhostFile(value: unknown): value is WsGhostFile {
   // The same check the save applies: an imported rival is stored as it came.
   if (v.conditions !== undefined && !isRunConditionsShape(v.conditions)) return false;
   if (v.hazards !== undefined && !isHazardLogShape(v.hazards)) return false;
+  if (v.assists !== undefined && (!Number.isInteger(v.assists) || (v.assists as number) < 0)) return false;
   return true;
 }
 

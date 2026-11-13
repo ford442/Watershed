@@ -69,6 +69,11 @@ import {
   type RunnerStepScratch,
 } from './runnerStepScratch';
 import { getSegmentFlowSpeed } from '../../../systems/water/segmentFlow';
+import { getLiveAssists } from '../../../systems/settings/accessRuntime';
+import { autoJumpDue, createAutoJumpState } from '../../../systems/map/autoJump';
+
+/** The auto-jump assist's per-page state (which gap it last jumped). */
+const autoJumpState = createAutoJumpState();
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -440,7 +445,13 @@ function tickInputMachines(f: StepFrame): PlayerControls {
   const input = controls.getControls();
   f.controls = input;
   const { jump, leftward, rightward, dodge, sprint, backward } = input;
-  const jumpJustPressed = jump && !prevFrame.current.jumpPressed;
+  // Auto-jump assist (#558 D.1): a press of its own just before an authored gap.
+  let autoJump = false;
+  if (getLiveAssists().autoJump && js.state !== 'airborne') {
+    const at = body.translation();
+    autoJump = autoJumpDue(autoJumpState, args.game.state().currentSegmentIndex, at.x, at.z);
+  }
+  const jumpJustPressed = (jump && !prevFrame.current.jumpPressed) || autoJump;
   const dodgeJustPressed = dodge && !prevFrame.current.dodgePressed;
 
   // === SPRINT STAMINA (Zustand-backed, no stale closures) ===

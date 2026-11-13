@@ -12,7 +12,7 @@ html.touch-input canvas {
 
 /* Handheld envelope: every rem-sized HUD and menu element follows the viewport. */
 html.touch-input {
-  font-size: calc(16px * var(--hud-scale, 1));
+  font-size: calc(16px * var(--hud-scale, 1) * var(--ui-scale, 1));
 }
 
 /* Menus still scroll with a finger. */
@@ -149,4 +149,15 @@ html.touch-input .settings-panel-overlay {
 
 html.touch-input[data-orientation='portrait'] .landscape-hint {
   display: block;
+}
+
+/* The pause button's two bars (#558 E: no letters, so the name is the label). */
+.touch-pause-glyph {
+  display: inline-block;
+  width: 12px;
+  height: 14px;
+  border-left: 4px solid currentColor;
+  border-right: 4px solid currentColor;
+  box-sizing: border-box;
+  vertical-align: middle;
 }

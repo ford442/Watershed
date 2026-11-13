@@ -9,9 +9,10 @@
  *   lives in the store *actions*, not in structure.
  *
  * PERSISTENCE:
- * - Persisted to localStorage under 'watershed-settings' (version 3 — #486 D added
- *   comfort / haptics / gamepad / touch, #566 the UI language; an older file
- *   migrates by backfilling defaults).
+ * - Persisted to localStorage under 'watershed-settings' (version 4 — #486 D added
+ *   comfort / haptics / gamepad / touch, #566 the UI language, #558 UI scale,
+ *   colour vision, captions and the assists; an older file migrates by
+ *   backfilling defaults).
  * - migrate() MERGES persisted state OVER DEFAULT_SETTINGS so a newly-added
  *   action/setting is backfilled instead of dropped.
  * - skipHydration + an explicit rehydrate() at app root, with a `_hasHydrated`
@@ -36,12 +37,22 @@ import {
 import type { PhysicsWorkerPreference } from '../../utils/physicsWorkerFlag';
 import { FOV_DEFAULT, FOV_MAX, FOV_MIN, type ReducedMotionPref } from './comfort';
 import { isLocaleId, type LocalePref } from '../../i18n/types';
+import {
+  COLOR_VISION_MODES,
+  GAME_SPEED_MAX,
+  GAME_SPEED_MIN,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+  type ColorVisionMode,
+  type HoldMode,
+} from './access';
 
 /**
  * Persisted shape version. v2 (#486 D) adds the comfort / haptics / gamepad / touch
- * fields; v3 (#566) adds `locale`.
+ * fields; v3 (#566) adds `locale`; v4 (#558) the UI scale, colour vision,
+ * captions and the assists.
  */
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 import { clamp } from '../../math/scalar';
 
 // ---------------------------------------------------------------------------
@@ -99,6 +110,27 @@ export interface SettingsState {
   /** UI language; 'system' follows navigator.languages. */
   locale: LocalePref;
 
+  // --- Access (#558) ---
+  /** Root UI scale, 0.75–2 (multiplies the browser's own text size). */
+  uiScale: number;
+  /** HUD + telegraph palette remap; 'off' is the authored palette. */
+  colorVision: ColorVisionMode;
+  /** Captions for gameplay-relevant sounds. */
+  captions: boolean;
+
+  // --- Assists (#558 D) — any of these marks a run "Assisted" ---
+  /** Sim speed, 0.7–1 (SimCore's fixed-step scale). */
+  gameSpeed: number;
+  /** Stamina, wetness and cold never end or cap a run. */
+  nonLethal: boolean;
+  /** A ribbon along the centreline ahead. */
+  guideRibbon: boolean;
+  /** Jump on its own at an authored gap. */
+  autoJump: boolean;
+  sprintMode: HoldMode;
+  brakeMode: HoldMode;
+  paddleMode: HoldMode;
+
   /** Flipped true once persisted state has rehydrated (or confirmed absent). */
   _hasHydrated: boolean;
 }
@@ -130,6 +162,14 @@ export interface SettingsActions {
   setGamepadDeadzone: (value: number) => void;
   setGamepadCurve: (value: number) => void;
   setLocale: (value: LocalePref) => void;
+  setUiScale: (value: number) => void;
+  setColorVision: (value: ColorVisionMode) => void;
+  setCaptions: (value: boolean) => void;
+  setGameSpeed: (value: number) => void;
+  setNonLethal: (value: boolean) => void;
+  setGuideRibbon: (value: boolean) => void;
+  setAutoJump: (value: boolean) => void;
+  setHoldMode: (input: 'sprint' | 'brake' | 'paddle', value: HoldMode) => void;
   resetToDefaults: () => void;
   setHasHydrated: (value: boolean) => void;
 }
@@ -165,8 +205,28 @@ export const DEFAULT_SETTINGS: SettingsState = {
   gamepadDeadzone: 0.15,
   gamepadCurve: 1,
   locale: 'system',
+  uiScale: 1,
+  colorVision: 'off',
+  captions: false,
+  gameSpeed: 1,
+  nonLethal: false,
+  guideRibbon: false,
+  autoJump: false,
+  sprintMode: 'hold',
+  brakeMode: 'hold',
+  paddleMode: 'hold',
   _hasHydrated: false,
 };
+
+/** The persisted fields (everything but the hydration flag), in one list. */
+type PersistedKey = Exclude<keyof SettingsState, '_hasHydrated'>;
+const PERSISTED_KEYS = Object.keys(DEFAULT_SETTINGS).filter(
+  (k): k is PersistedKey => k !== '_hasHydrated',
+);
+
+const holdMode = (v: unknown, fallback: HoldMode): HoldMode =>
+  v === 'hold' || v === 'toggle' ? v : fallback;
+const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
 
 // ---------------------------------------------------------------------------
 // Storage wrapper — degrade to in-memory on a throwing setItem.
@@ -298,6 +358,18 @@ export function migrateSettings(
     gamepadDeadzone: num(p.gamepadDeadzone, 0, 0.5, base.gamepadDeadzone),
     gamepadCurve: num(p.gamepadCurve, 1, 3, base.gamepadCurve),
     locale: p.locale === 'system' || isLocaleId(p.locale) ? p.locale : base.locale,
+    uiScale: num(p.uiScale, UI_SCALE_MIN, UI_SCALE_MAX, base.uiScale),
+    colorVision: (COLOR_VISION_MODES as readonly unknown[]).includes(p.colorVision)
+      ? (p.colorVision as ColorVisionMode)
+      : base.colorVision,
+    captions: bool(p.captions, base.captions),
+    gameSpeed: num(p.gameSpeed, GAME_SPEED_MIN, GAME_SPEED_MAX, base.gameSpeed),
+    nonLethal: bool(p.nonLethal, base.nonLethal),
+    guideRibbon: bool(p.guideRibbon, base.guideRibbon),
+    autoJump: bool(p.autoJump, base.autoJump),
+    sprintMode: holdMode(p.sprintMode, base.sprintMode),
+    brakeMode: holdMode(p.brakeMode, base.brakeMode),
+    paddleMode: holdMode(p.paddleMode, base.paddleMode),
     // Never trust a persisted hydration flag.
     _hasHydrated: false,
   };
@@ -377,31 +449,29 @@ export const useSettingsStore = create<SettingsStore>()(
       setGamepadDeadzone: (value) => set({ gamepadDeadzone: clamp(value, 0, 0.5) }),
       setGamepadCurve: (value) => set({ gamepadCurve: clamp(value, 1, 3) }),
       setLocale: (value) => set({ locale: value }),
+      setUiScale: (value) => set({ uiScale: clampSetting(value, UI_SCALE_MIN, UI_SCALE_MAX) }),
+      setColorVision: (value) => set({ colorVision: value }),
+      setCaptions: (value) => set({ captions: value }),
+      setGameSpeed: (value) => set({ gameSpeed: clampSetting(value, GAME_SPEED_MIN, GAME_SPEED_MAX) }),
+      setNonLethal: (value) => set({ nonLethal: value }),
+      setGuideRibbon: (value) => set({ guideRibbon: value }),
+      setAutoJump: (value) => set({ autoJump: value }),
+      setHoldMode: (input, value) =>
+        set(
+          input === 'sprint'
+            ? { sprintMode: value }
+            : input === 'brake'
+              ? { brakeMode: value }
+              : { paddleMode: value },
+        ),
 
-      resetToDefaults: () =>
-        set({
-          masterVolume: DEFAULT_SETTINGS.masterVolume,
-          musicVolume: DEFAULT_SETTINGS.musicVolume,
-          sfxVolume: DEFAULT_SETTINGS.sfxVolume,
-          mouseSensitivity: DEFAULT_SETTINGS.mouseSensitivity,
-          invertY: DEFAULT_SETTINGS.invertY,
-          quality: DEFAULT_SETTINGS.quality,
-          physicsWorker: DEFAULT_SETTINGS.physicsWorker,
-          bindings: { ...DEFAULT_BINDINGS },
-          padBindings: { ...DEFAULT_PAD_BINDINGS },
-          fov: DEFAULT_SETTINGS.fov,
-          fovKick: DEFAULT_SETTINGS.fovKick,
-          cameraShake: DEFAULT_SETTINGS.cameraShake,
-          speedEffects: DEFAULT_SETTINGS.speedEffects,
-          vignetteStrength: DEFAULT_SETTINGS.vignetteStrength,
-          reducedMotion: DEFAULT_SETTINGS.reducedMotion,
-          leftHanded: DEFAULT_SETTINGS.leftHanded,
-          hapticsEnabled: DEFAULT_SETTINGS.hapticsEnabled,
-          hapticsStrength: DEFAULT_SETTINGS.hapticsStrength,
-          gamepadDeadzone: DEFAULT_SETTINGS.gamepadDeadzone,
-          gamepadCurve: DEFAULT_SETTINGS.gamepadCurve,
-          locale: DEFAULT_SETTINGS.locale,
-        }),
+      resetToDefaults: () => {
+        const next: Partial<SettingsState> = {};
+        for (const key of PERSISTED_KEYS) {
+          (next as Record<string, unknown>)[key] = DEFAULT_SETTINGS[key];
+        }
+        set({ ...next, bindings: { ...DEFAULT_BINDINGS }, padBindings: { ...DEFAULT_PAD_BINDINGS } });
+      },
 
       setHasHydrated: (value) => set({ _hasHydrated: value }),
     }),
@@ -420,29 +490,11 @@ export const useSettingsStore = create<SettingsStore>()(
         ...migrateSettings(persisted, SETTINGS_VERSION),
       }),
       // Only persist the settings themselves, never the transient hydration flag.
-      partialize: (state) => ({
-        masterVolume: state.masterVolume,
-        musicVolume: state.musicVolume,
-        sfxVolume: state.sfxVolume,
-        mouseSensitivity: state.mouseSensitivity,
-        invertY: state.invertY,
-        quality: state.quality,
-        physicsWorker: state.physicsWorker,
-        bindings: state.bindings,
-        padBindings: state.padBindings,
-        fov: state.fov,
-        fovKick: state.fovKick,
-        cameraShake: state.cameraShake,
-        speedEffects: state.speedEffects,
-        vignetteStrength: state.vignetteStrength,
-        reducedMotion: state.reducedMotion,
-        leftHanded: state.leftHanded,
-        hapticsEnabled: state.hapticsEnabled,
-        hapticsStrength: state.hapticsStrength,
-        gamepadDeadzone: state.gamepadDeadzone,
-        gamepadCurve: state.gamepadCurve,
-        locale: state.locale,
-      }),
+      partialize: (state) => {
+        const out: Partial<SettingsState> = {};
+        for (const key of PERSISTED_KEYS) (out as Record<string, unknown>)[key] = state[key];
+        return out;
+      },
       onRehydrateStorage: () => (state) => {
         // Runs after rehydrate() resolves (success or failure).
         state?.setHasHydrated(true);

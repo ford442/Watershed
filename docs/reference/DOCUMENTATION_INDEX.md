@@ -49,6 +49,7 @@
 | [`PHYSICS_CONSTANTS.md`](./PHYSICS_CONSTANTS.md) | Tunable physics values |
 | [`MAPSYSTEM_STEP5_CONTRACT.md`](./MAPSYSTEM_STEP5_CONTRACT.md) | MapSystem ↔ TrackManager contract |
 | [`SURVIVAL_LAYER.md`](./SURVIVAL_LAYER.md) | Wetness, exposure, loadout, checkpoints (Track A) |
+| [`ACCESS.md`](./ACCESS.md) | UI scale, contrast, colour-vision palettes, captions, assists and their fairness, the a11y audit (#558) |
 | [`GHOST_LEAGUE.md`](./GHOST_LEAGUE.md) | Checkpoint splits, `.wsghost` v3 fairness, rival ghost, `?ghost=` 404-silent (#375 / #391) |
 | [`IMPROVEMENT_PLAN.md`](../archive/IMPROVEMENT_PLAN.md) | Longer-term engineering backlog (aspirational) |
 | [`plan.md`](./plan.md) | Biome / feature roadmap |

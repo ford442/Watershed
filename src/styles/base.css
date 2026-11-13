@@ -2,6 +2,15 @@
   box-sizing: border-box;
 }
 
+/*
+ * UI scale (#558 B.1): every rem in the UI follows the root, and the root is the
+ * browser's own text size (zoom, OS text size) times the Options slider. The
+ * HUD and menus are rem throughout (scripts/px-to-rem.mjs --check keeps them so).
+ */
+html {
+  font-size: calc(100% * var(--ui-scale, 1));
+}
+
 body {
   margin: 0;
   padding: 0;

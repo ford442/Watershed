@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { usePlayerBiome, useGameStore, type GameStore } from '../systems/GameState';
 import { getActiveLaunchAirSeconds } from '../systems/score/LaunchScoringSession';
 import {
@@ -21,10 +21,33 @@ import { getLocale, type PlainKey } from '../i18n/i18n';
 import { formatLaunchHour, formatNumber, formatPercent } from '../i18n/format';
 import type { LoadoutId } from '../systems/survival';
 import { airTimeParts, writeAirTime, type AirTimeWriter } from './hudAirTime';
+import {
+  GRADE_GLYPH,
+  WET_GLYPH,
+  exposureGrade,
+  multiplierGrade,
+  staminaGrade,
+  wetnessStep,
+} from '../systems/settings/access';
+import { getRunAssistBits, subscribeAccess } from '../systems/settings/accessRuntime';
+import { useSettingsStore } from '../systems/settings/useSettingsStore';
+
+/**
+ * Write a bar's state (#558 C.1): `data-grade` picks the palette colour in CSS,
+ * and the label carries a shape and a word, so the state never rests on colour.
+ * Touches the DOM only when the state changes.
+ */
+function writeBarState(bar: HTMLElement | null, label: HTMLElement | null, grade: string, text: string): void {
+  if (!bar || bar.dataset.grade === grade) return;
+  bar.dataset.grade = grade;
+  if (label) label.textContent = text;
+}
 
 // The end-of-run summary only mounts on a wipeout / finish; the HUD preloads it at idle.
 const RunResultsChunk = lazyComponent(() => import('./RunResultsPanel'));
 const RunResultsPanel = RunResultsChunk.Component;
+// Captions (#558 C.3) are their own chunk, fetched only once the player turns them on.
+const CaptionLayer = lazyComponent(() => import('./CaptionLayer')).Component;
 
 /*
  * Per-frame readouts (#465 C4). The store gets speed, distance and score every
@@ -118,14 +141,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const isNewHighScore = useGameStore((s) => s.score >= s.highScore && s.score > 0);
   const isJourneyComplete = useGameStore((s) => s.isJourneyComplete);
   const vehicleType = useGameStore((s) => s.vehicleType);
+  const captionsOn = useSettingsStore((st) => st.captions && st._hasHydrated);
+  // Sticky per run: turning an assist on mid-run marks the run there and then.
+  const assisted = useSyncExternalStore(subscribeAccess, getRunAssistBits, getRunAssistBits) !== 0;
 
   // Stamina bar — imperative DOM mutation; no per-frame re-render
   const staminaFillRef = useRef<HTMLDivElement>(null);
   const staminaBarRef = useRef<HTMLDivElement>(null);
   const exhaustedRef = useRef(false);
 
+  const staminaStateRef = useRef<HTMLSpanElement>(null);
   const wetnessFillRef = useRef<HTMLDivElement>(null);
   const exposureFillRef = useRef<HTMLDivElement>(null);
+  const wetnessBarRef = useRef<HTMLDivElement>(null);
+  const exposureBarRef = useRef<HTMLDivElement>(null);
+  const wetnessStateRef = useRef<HTMLSpanElement>(null);
+  const exposureStateRef = useRef<HTMLSpanElement>(null);
   const loadoutLabelRef = useRef<HTMLSpanElement>(null);
 
   // Shelf launch popups — imperative DOM + CSS animation; no per-frame React state.
@@ -141,7 +172,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     tRef.current = t;
     airWriterRef.current = { parts: airTimeParts(t), bucket: -1 };
     loadoutTextRef.current = { id: null, text: '' };
+    // A language change rewrites every bar's word on its next tick.
+    for (const bar of [staminaBarRef.current, wetnessBarRef.current, exposureBarRef.current]) {
+      if (bar) delete bar.dataset.grade;
+    }
+    prevStaminaGradeRef.current = null;
   }, [t]);
+  const prevStaminaGradeRef = useRef<string | null>(null);
   const showTransientPopup = (
     element: HTMLDivElement | null,
     timerRef: { current: number | null },
@@ -242,15 +279,25 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       if (survival && wetFill) {
         wetFill.style.width = `${Math.round(survival.wetness * 100)}%`;
-        wetFill.style.backgroundColor =
-          survival.wetness > 0.65 ? '#38bdf8' : survival.wetness > 0.3 ? '#7dd3fc' : '#94a3b8';
+        const step = wetnessStep(survival.wetness);
+        writeBarState(
+          wetnessBarRef.current,
+          wetnessStateRef.current,
+          step,
+          `${WET_GLYPH[step]} ${tRef.current(`hud.wet.${step}`)}`,
+        );
       }
 
       if (mods && exposureFill) {
         const stress = mods.exposureStress;
         exposureFill.style.width = `${Math.round(stress * 100)}%`;
-        exposureFill.style.backgroundColor =
-          stress > 0.6 ? '#ef4444' : stress > 0.3 ? '#fbbf24' : '#86efac';
+        const grade = exposureGrade(stress);
+        writeBarState(
+          exposureBarRef.current,
+          exposureStateRef.current,
+          grade,
+          `${GRADE_GLYPH[grade]} ${tRef.current(`hud.exposure.${grade}`)}`,
+        );
       }
 
       raf = window.requestAnimationFrame(tick);
@@ -272,16 +319,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       if (!fill || !bar) return;
 
       fill.style.width = `${Math.round(stamina * 100)}%`;
-
-      let color: string;
-      if (stamina >= 0.5) {
-        color = '#f8fafc';
-      } else if (stamina >= 0.25) {
-        color = '#fbbf24';
-      } else {
-        color = '#ef4444';
+      const grade = staminaGrade(stamina);
+      if (grade !== prevStaminaGradeRef.current) {
+        prevStaminaGradeRef.current = grade;
+        writeBarState(bar, staminaStateRef.current, grade, `${GRADE_GLYPH[grade]} ${tRef.current(`hud.stamina.${grade}`)}`);
       }
-      fill.style.backgroundColor = color;
 
       const nowExhausted = stamina === 0;
       if (nowExhausted !== exhaustedRef.current) {
@@ -504,7 +546,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     );
   }
 
-  const multiplierColor = multiplier >= 7 ? '#ef4444' : multiplier >= 3 ? '#fbbf24' : '#f8fafc';
+  const multiplierTier = multiplierGrade(multiplier);
+  const multiplierColor =
+    multiplierTier === 'bad'
+      ? 'var(--a11y-bad, #ef4444)'
+      : multiplierTier === 'warn'
+        ? 'var(--a11y-warn, #fbbf24)'
+        : 'var(--a11y-neutral, #f8fafc)';
 
   return (
     <>
@@ -544,6 +592,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       )}
       <div className="hud-biome">
         <div>{biomeLabel}</div>
+        {assisted && (
+          <div className="hud-assisted-badge" data-testid="hud-assisted">
+            {t('hud.assisted')}
+          </div>
+        )}
         <div className="survival-loadout-badge">
           {t('hud.loadoutBadge')} <span ref={loadoutLabelRef}>—</span>
         </div>
@@ -575,7 +628,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         <div
           className="hud-combo"
           style={{
-            color: '#fbbf24',
+            color: 'var(--a11y-warn, #fbbf24)',
             fontSize: '1.1rem',
             textShadow: '0 0 12px rgba(251,191,36,0.6)',
           }}
@@ -616,23 +669,32 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {vehicleType === 'runner' && (
         <div className="survival-hud-stack">
-          <div className="stamina-bar" ref={staminaBarRef}>
-            <div className="stamina-bar__label">{t('hud.sprint')}</div>
+          <div className="stamina-bar" ref={staminaBarRef} data-grade="ok">
+            <div className="stamina-bar__label">
+              {t('hud.sprint')}{' '}
+              <span className="hud-bar-state" ref={staminaStateRef}>
+                {GRADE_GLYPH.ok} {t('hud.stamina.ok')}
+              </span>
+            </div>
             <div className="stamina-bar__track">
-              <div className="stamina-fill" ref={staminaFillRef} style={{ width: '100%', backgroundColor: '#f8fafc' }} />
+              <div className="stamina-fill" ref={staminaFillRef} style={{ width: '100%' }} />
             </div>
           </div>
 
           {getRunSession() && (
             <>
-              <div className="survival-bar">
-                <div className="survival-bar__label">{t('hud.wet')}</div>
+              <div className="survival-bar survival-bar--wet" ref={wetnessBarRef}>
+                <div className="survival-bar__label">
+                  {t('hud.wet')} <span className="hud-bar-state" ref={wetnessStateRef} />
+                </div>
                 <div className="survival-bar__track">
                   <div className="survival-fill" ref={wetnessFillRef} style={{ width: '0%' }} />
                 </div>
               </div>
-              <div className="survival-bar">
-                <div className="survival-bar__label">{t('hud.exposure')}</div>
+              <div className="survival-bar survival-bar--exposure" ref={exposureBarRef}>
+                <div className="survival-bar__label">
+                  {t('hud.exposure')} <span className="hud-bar-state" ref={exposureStateRef} />
+                </div>
                 <div className="survival-bar__track">
                   <div className="survival-fill" ref={exposureFillRef} style={{ width: '0%' }} />
                 </div>
@@ -640,6 +702,12 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </>
           )}
         </div>
+      )}
+
+      {captionsOn && (
+        <React.Suspense fallback={null}>
+          <CaptionLayer />
+        </React.Suspense>
       )}
     </>
   );

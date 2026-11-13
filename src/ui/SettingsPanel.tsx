@@ -33,9 +33,17 @@ import {
 } from '../systems/settings/settingsDerive';
 import type { PhysicsWorkerPreference } from '../utils/physicsWorkerFlag';
 import { useT } from '../i18n/useT';
-import type { MessageKey, TFunction } from '../i18n/i18n';
+import type { MessageKey, PlainKey, TFunction } from '../i18n/i18n';
 import { formatFixed, formatNumber, formatPercent } from '../i18n/format';
 import type { LocalePref } from '../i18n/types';
+import {
+  GAME_SPEED_MAX,
+  GAME_SPEED_MIN,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+  type ColorVisionMode,
+  type HoldMode,
+} from '../systems/settings/access';
 import { registerEnglish } from '../i18n/i18n';
 import { settingsPanel } from '../i18n/en/lazy/settingsPanel';
 
@@ -183,7 +191,14 @@ const BindingRow: React.FC<{
         onClick={onBeginPadCapture}
         aria-label={t('settings.bind.padRebind', { action: actionLabel, binding: padLabel })}
       >
-        {capturingPad ? t('settings.bind.capturingPad') : t('settings.bind.padLabel', { binding: padLabel })}
+        {capturingPad ? (
+          t('settings.bind.capturingPad')
+        ) : (
+          <>
+            {/* The pad glyph is decoration: the accessible name holds the binding (WCAG 2.5.3). */}
+            <span aria-hidden="true">{t('settings.bind.padGlyph')}</span> {padLabel}
+          </>
+        )}
       </button>
       <button
         type="button"
@@ -274,9 +289,68 @@ const PHYSICS_WORKER_LABELS = [
 const PAGES = [
   ['general', 'settings.page.general'],
   ['comfort', 'settings.page.comfort'],
+  ['access', 'settings.page.access'],
+  ['assist', 'settings.page.assist'],
 ] as const satisfies readonly (readonly [SettingsPage, MessageKey])[];
 
-type SettingsPage = 'general' | 'comfort';
+type SettingsPage = 'general' | 'comfort' | 'access' | 'assist';
+
+const COLOR_VISION_LABELS = [
+  ['off', 'settings.cvd.off'],
+  ['deuteranopia', 'settings.cvd.deuteranopia'],
+  ['protanopia', 'settings.cvd.protanopia'],
+  ['tritanopia', 'settings.cvd.tritanopia'],
+  ['highContrast', 'settings.cvd.highContrast'],
+] as const satisfies readonly (readonly [ColorVisionMode, MessageKey])[];
+
+const HOLD_INPUTS = [
+  ['sprint', 'settings.hold.sprint'],
+  ['brake', 'settings.hold.brake'],
+  ['paddle', 'settings.hold.paddle'],
+] as const satisfies readonly (readonly ['sprint' | 'brake' | 'paddle', MessageKey])[];
+
+const HOLD_LABELS = [
+  ['hold', 'settings.hold.hold'],
+  ['toggle', 'settings.hold.toggle'],
+] as const satisfies readonly (readonly [HoldMode, MessageKey])[];
+
+/** A row of mutually exclusive buttons (radio group), labelled. */
+function ChoiceRow<V extends string>({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  options: readonly (readonly [V, PlainKey])[];
+  value: V;
+  onChange: (v: V) => void;
+}): React.ReactElement {
+  const t = useT();
+  return (
+    <div className="settings-panel-row">
+      <span className="settings-panel-label" id={`${id}-label`}>
+        {label}
+      </span>
+      <div className="settings-panel-quality-buttons" role="radiogroup" aria-labelledby={`${id}-label`}>
+        {options.map(([v, key]) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            className={`settings-panel-quality-btn ${value === v ? 'active' : ''}`}
+            onClick={() => onChange(v)}
+            aria-checked={value === v}
+          >
+            {t(key)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const t = useT();
@@ -325,6 +399,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const resetToDefaults = useSettingsStore((s) => s.resetToDefaults);
   const locale = useSettingsStore((s) => s.locale);
   const setLocale = useSettingsStore((s) => s.setLocale);
+  const uiScale = useSettingsStore((s) => s.uiScale);
+  const setUiScale = useSettingsStore((s) => s.setUiScale);
+  const colorVision = useSettingsStore((s) => s.colorVision);
+  const setColorVision = useSettingsStore((s) => s.setColorVision);
+  const captions = useSettingsStore((s) => s.captions);
+  const setCaptions = useSettingsStore((s) => s.setCaptions);
+  const gameSpeed = useSettingsStore((s) => s.gameSpeed);
+  const setGameSpeed = useSettingsStore((s) => s.setGameSpeed);
+  const nonLethal = useSettingsStore((s) => s.nonLethal);
+  const setNonLethal = useSettingsStore((s) => s.setNonLethal);
+  const guideRibbon = useSettingsStore((s) => s.guideRibbon);
+  const setGuideRibbon = useSettingsStore((s) => s.setGuideRibbon);
+  const autoJump = useSettingsStore((s) => s.autoJump);
+  const setAutoJump = useSettingsStore((s) => s.setAutoJump);
+  const holdModes = {
+    sprint: useSettingsStore((s) => s.sprintMode),
+    brake: useSettingsStore((s) => s.brakeMode),
+    paddle: useSettingsStore((s) => s.paddleMode),
+  };
+  const setHoldMode = useSettingsStore((s) => s.setHoldMode);
 
   const [page, setPage] = useState<SettingsPage>('general');
   const [capturing, setCapturing] = useState<SettingsAction | null>(null);
@@ -472,7 +566,77 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         ))}
       </div>
 
-      {page === 'general' ? (
+      {page === 'access' && (
+        <>
+          <section className="settings-panel-section" aria-label={t('settings.access.section')}>
+            <h3 className="settings-panel-section-title">{t('settings.access.section')}</h3>
+            <SliderRow
+              id="access-ui-scale"
+              label={t('settings.access.uiScale')}
+              min={UI_SCALE_MIN}
+              max={UI_SCALE_MAX}
+              step={0.05}
+              value={uiScale}
+              format={percent}
+              onChange={setUiScale}
+            />
+            <p className="settings-panel-note">{t('settings.access.uiScaleNote')}</p>
+            <ChoiceRow
+              id="access-cvd"
+              label={t('settings.access.colorVision')}
+              options={COLOR_VISION_LABELS}
+              value={colorVision}
+              onChange={setColorVision}
+            />
+            <p className="settings-panel-note">{t('settings.access.colorVisionNote')}</p>
+            <ToggleRow id="access-captions" label={t('settings.access.captions')} value={captions} onChange={setCaptions} />
+            <p className="settings-panel-note">{t('settings.access.captionsNote')}</p>
+          </section>
+        </>
+      )}
+
+      {page === 'assist' && (
+        <>
+          <section className="settings-panel-section" aria-label={t('settings.assist.section')}>
+            <h3 className="settings-panel-section-title">{t('settings.assist.section')}</h3>
+            <SliderRow
+              id="assist-game-speed"
+              label={t('settings.assist.gameSpeed')}
+              min={GAME_SPEED_MIN}
+              max={GAME_SPEED_MAX}
+              step={0.05}
+              value={gameSpeed}
+              format={percent}
+              onChange={setGameSpeed}
+            />
+            <ToggleRow id="assist-non-lethal" label={t('settings.assist.nonLethal')} value={nonLethal} onChange={setNonLethal} />
+            <ToggleRow
+              id="assist-guide-ribbon"
+              label={t('settings.assist.guideRibbon')}
+              value={guideRibbon}
+              onChange={setGuideRibbon}
+            />
+            <ToggleRow id="assist-auto-jump" label={t('settings.assist.autoJump')} value={autoJump} onChange={setAutoJump} />
+            <p className="settings-panel-note">{t('settings.assist.note')}</p>
+          </section>
+          <section className="settings-panel-section" aria-label={t('settings.hold.section')}>
+            <h3 className="settings-panel-section-title">{t('settings.hold.section')}</h3>
+            {HOLD_INPUTS.map(([input, label]) => (
+              <ChoiceRow
+                key={input}
+                id={`hold-${input}`}
+                label={t(label)}
+                options={HOLD_LABELS}
+                value={holdModes[input]}
+                onChange={(v) => setHoldMode(input, v)}
+              />
+            ))}
+            <p className="settings-panel-note">{t('settings.hold.note')}</p>
+          </section>
+        </>
+      )}
+
+      {page === 'access' || page === 'assist' ? null : page === 'general' ? (
         <>
 
       <section className="settings-panel-section" aria-label={t('settings.language.section')}>
