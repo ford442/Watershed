@@ -33,3 +33,9 @@ build-analyze/
 
 # Local agent worktrees (Claude Code)
 .claude/worktrees/
+
+# Tool droppings (#559 A.1): Playwright MCP logs/snapshots, JetBrains project files, Jules notes.
+# scripts/check-tracked-junk.mjs (in `pnpm typecheck`) fails if any of these is tracked again.
+.playwright-mcp/
+.idea/
+.Jules/

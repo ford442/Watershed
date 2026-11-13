@@ -259,7 +259,8 @@ if (!shader.fragmentShader.includes('Your custom code')) {
 
 4. **Visual Regression**
    ```bash
-   python3 verify_visuals_playwright.py
+   pnpm preview --host 127.0.0.1 --port 4173 &   # then, in another shell:
+   WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke
    ```
 
 ### Automated Tests to Add
