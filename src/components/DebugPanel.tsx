@@ -1,216 +1,27 @@
-import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
-import { type DebugStageController, type DebugStageId, type DebugStageStatus } from '../debug/debugStages';
+/**
+ * DebugPanel — the `?debug=1` perf diagnostics panel.
+ *
+ * This file is the shell — the frame, the header (Clean / minimise) and the
+ * section order; each section is its own component under `debugPanel/`
+ * (#559 C) and subscribes to its own diagnostics store. The perf metrics feed
+ * three sections, so they are read once here; the load-stage list's open
+ * state is held here so it survives minimising.
+ */
+import React, { useState, useSyncExternalStore } from 'react';
+import type { DebugStageController } from '../debug/debugStages';
 import { getPerfMetrics, subscribePerfMetrics } from '../debug/perfMetrics';
-import { getPhysicsPerfMetrics, subscribePhysicsPerfMetrics } from '../debug/physicsPerfMetrics';
-import { getRendererDiagnostics, subscribeRendererDiagnostics } from '../rendering/rendererState';
-import {
-  getPhysicsWorkerStatus,
-  subscribePhysicsWorkerStatus,
-} from '../physics/physicsWorkerRegistry';
-import { PHYSICS_WORKER_REASON_LABELS } from '../utils/physicsWorkerFlag';
 import type { RendererPreference } from '../rendering/types';
-import {
-  MATERIAL_BACKEND_REASON_LABELS,
-  requestedMaterialBackend,
-  type MaterialBackend,
-} from '../rendering/materialBackend';
-import { getGpuChoreStats, subscribeGpuChoreStats } from '../rendering/gpuChores';
-import { GPU_TIMER_SOURCE_LABELS } from '../rendering/gpuTimer';
-import { useQualityPreset, useRenderScale } from '../systems/GameState';
-import { RENDER_SCALE_MAX } from '../rendering/renderScale';
-import { canvasDprRange, deriveRendererContextOptions } from '../rendering/deriveRendererContextOptions';
-
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
-const STATUS_STYLES: Record<DebugStageStatus, { icon: string; color: string }> = {
-  idle:     { icon: '○', color: '#9e9e9e' },
-  loading:  { icon: '⏳', color: '#f5c542' },
-  success:  { icon: '✓', color: '#6dde7a' },
-  failure:  { icon: '✗', color: '#ff6b6b' },
-  disabled: { icon: '—', color: '#6f6f6f' },
-};
-
-type Tier = 'ok' | 'warn' | 'fail';
-
-function tier(value: number, warnAt: number, failAt: number, invert = false): Tier {
-  if (!invert) {
-    if (value >= failAt) return 'fail';
-    if (value >= warnAt) return 'warn';
-    return 'ok';
-  } else {
-    // invert: high is good (e.g. FPS)
-    if (value < failAt) return 'fail';
-    if (value < warnAt) return 'warn';
-    return 'ok';
-  }
-}
-
-const TIER_COLOR: Record<Tier, string> = {
-  ok:   '#6dde7a',
-  warn: '#f5c542',
-  fail: '#ff6b6b',
-};
-
-const TIER_BG: Record<Tier, string> = {
-  ok:   'rgba(109,222,122,0.08)',
-  warn: 'rgba(245,197,66,0.10)',
-  fail: 'rgba(255,107,107,0.12)',
-};
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontWeight: 700,
-      fontSize: 11,
-      letterSpacing: '0.08em',
-      color: '#9fd6ff',
-      marginBottom: 6,
-      marginTop: 4,
-      textTransform: 'uppercase',
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function Divider() {
-  return <div style={{ borderTop: '1px solid rgba(255,255,255,0.10)', margin: '8px 0' }} />;
-}
-
-interface MetricRowProps {
-  label: string;
-  value: string;
-  t: Tier;
-  hint?: string;
-}
-
-function formatHeight(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return value.toFixed(3);
-}
-
-function SweHeightThumb() {
-  const stats = useSyncExternalStore(subscribeGpuChoreStats, getGpuChoreStats, getGpuChoreStats);
-  const thumbRef = useRef<HTMLCanvasElement>(null);
-  const histRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = thumbRef.current;
-    const thumb = stats.thumb;
-    if (!canvas || !thumb) return;
-    canvas.width = thumb.width;
-    canvas.height = thumb.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const image = ctx.createImageData(thumb.width, thumb.height);
-    const lo = stats.min ?? 0;
-    const hi = stats.max ?? 1;
-    const span = hi - lo || 1;
-    for (let i = 0; i < thumb.values.length; i += 1) {
-      const t = (thumb.values[i] - lo) / span;
-      const g = Math.round(Math.max(0, Math.min(1, t)) * 255);
-      const p = i * 4;
-      image.data[p] = Math.round(g * 0.35);
-      image.data[p + 1] = Math.round(g * 0.75);
-      image.data[p + 2] = 180 + Math.round(g * 0.25);
-      image.data[p + 3] = 255;
-    }
-    ctx.putImageData(image, 0, 0);
-  }, [stats.thumb, stats.min, stats.max]);
-
-  useEffect(() => {
-    const canvas = histRef.current;
-    const bins = stats.histogram;
-    if (!canvas || !bins) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, w, h);
-    let peak = 1;
-    for (let i = 0; i < bins.length; i += 1) {
-      if (bins[i] > peak) peak = bins[i];
-    }
-    ctx.fillStyle = 'rgba(110, 200, 255, 0.85)';
-    const barW = w / bins.length;
-    for (let i = 0; i < bins.length; i += 1) {
-      const bh = (bins[i] / peak) * (h - 1);
-      ctx.fillRect(i * barW, h - bh, Math.max(1, barW), bh);
-    }
-  }, [stats.histogram]);
-
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <MetricRow
-        label="SWE height"
-        value={
-          stats.min == null
-            ? '—'
-            : `${formatHeight(stats.min)} / ${formatHeight(stats.mean)} / ${formatHeight(stats.max)}`
-        }
-        t="ok"
-        hint="min / mean / max via gpu-chores"
-      />
-      <MetricRow
-        label="Chores"
-        value={stats.backend ?? '—'}
-        t={stats.backend ? 'ok' : 'warn'}
-        hint={stats.reason ?? undefined}
-      />
-      <div style={{ display: 'flex', gap: 6, alignItems: 'stretch', marginTop: 4 }}>
-        <canvas
-          ref={thumbRef}
-          width={32}
-          height={20}
-          style={{
-            width: 96,
-            height: 60,
-            imageRendering: 'pixelated',
-            borderRadius: 3,
-            background: 'rgba(0,0,0,0.35)',
-            flex: '0 0 auto',
-          }}
-        />
-        <canvas
-          ref={histRef}
-          width={128}
-          height={40}
-          style={{
-            flex: 1,
-            height: 60,
-            borderRadius: 3,
-            background: 'rgba(0,0,0,0.35)',
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function MetricRow({ label, value, t, hint }: MetricRowProps) {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      background: t !== 'ok' ? TIER_BG[t] : undefined,
-      borderRadius: 4,
-      padding: '3px 4px',
-      marginBottom: 4,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ color: '#d0d0d0' }}>{label}</span>
-        <span style={{ color: TIER_COLOR[t], fontWeight: 600 }}>{value}</span>
-      </div>
-      {t !== 'ok' && hint && (
-        <div style={{ color: TIER_COLOR[t], fontSize: 10, marginTop: 2, opacity: 0.85 }}>
-          ↳ {hint}
-        </div>
-      )}
-    </div>
-  );
-}
+import type { MaterialBackend } from '../rendering/materialBackend';
+import { Divider } from './debugPanel/primitives';
+import { GpuSection } from './debugPanel/GpuSection';
+import { PhysicsWorkerSection } from './debugPanel/PhysicsWorkerSection';
+import { MaterialsSection } from './debugPanel/MaterialsSection';
+import { RendererSection } from './debugPanel/RendererSection';
+import { PhysicsDebugSection } from './debugPanel/PhysicsDebugSection';
+import { PhysicsStepSection } from './debugPanel/PhysicsStepSection';
+import { FrameBudgetSection } from './debugPanel/FrameBudgetSection';
+import { FillRateSection } from './debugPanel/FillRateSection';
+import { LoadStagesSection } from './debugPanel/LoadStagesSection';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -245,38 +56,11 @@ export function DebugPanel({
 }: DebugPanelProps) {
   const [stagesOpen, setStagesOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const qualityPreset = useQualityPreset();
-  const renderScale = useRenderScale();
 
   // Subscribe to live perf metrics from PerfCheckpointMonitor (inside Canvas)
   const metrics = useSyncExternalStore(subscribePerfMetrics, getPerfMetrics);
-  const rendererDiagnostics = useSyncExternalStore(subscribeRendererDiagnostics, getRendererDiagnostics);
-  // Re-read on every diagnostics change: a renderer fallback pins the session
-  // to glsl just before it publishes `materialBackend: 'glsl'`.
-  const requestedBackend = requestedMaterialBackend();
-  const physicsWorker = useSyncExternalStore(
-    subscribePhysicsWorkerStatus,
-    getPhysicsWorkerStatus,
-    getPhysicsWorkerStatus,
-  );
-  const physicsPerf = useSyncExternalStore(
-    subscribePhysicsPerfMetrics,
-    getPhysicsPerfMetrics,
-    getPhysicsPerfMetrics,
-  );
 
   if (!debug.debugEnabled) return null;
-
-  const stageIds = Object.keys(debug.stageConfig) as DebugStageId[];
-  const failCount = stageIds.filter(
-    (id) => debug.stageRuntime[id]?.status === 'failure'
-  ).length;
-
-  // Tier calculations
-  const drawTier   = tier(metrics.drawCalls, 300, 500);
-  const ftTier     = tier(metrics.frameTimeMs, 12, 16.67);
-  const fpsTier    = tier(metrics.fps, 45, 30, true);
-  const memTier    = tier(metrics.memoryMB, 200, 300);
 
   return (
     <div
@@ -345,351 +129,33 @@ export function DebugPanel({
       </div>
 
       {minimized ? null : (
-      <>
-      <SectionTitle>CP1 · GPU — Draw Calls</SectionTitle>
-      <MetricRow
-        label="Draw calls / frame"
-        value={metrics.drawCalls === 0 ? '—' : String(metrics.drawCalls)}
-        t={drawTier}
-        hint="Use <Instances> or InstancedMesh — bundle env objects into 1 draw call"
-      />
-      <MetricRow
-        label="Triangles"
-        value={metrics.triangles === 0 ? '—' : metrics.triangles.toLocaleString()}
-        t="ok"
-      />
-      <MetricRow
-        label="Geometries (GPU)"
-        value={metrics.geometries === 0 ? '—' : String(metrics.geometries)}
-        t="ok"
-      />
-      <MetricRow
-        label="Textures (GPU)"
-        value={metrics.textures === 0 ? '—' : String(metrics.textures)}
-        t="ok"
-      />
-
-      <Divider />
-
-      {/* ── Physics worker / native water ───────────────────────────────── */}
-      <SectionTitle>Physics worker — Rapier + watershed_native</SectionTitle>
-      <MetricRow
-        label="Worker"
-        value={
-          physicsWorker.active
-            ? 'active'
-            : physicsWorker.enabled
-              ? 'starting'
-              : 'off'
-        }
-        t={physicsWorker.enabled ? (physicsWorker.active ? 'ok' : 'warn') : 'warn'}
-        hint={
-          physicsWorker.reason
-            ? PHYSICS_WORKER_REASON_LABELS[physicsWorker.reason]
-            : 'no vehicle mounted yet'
-        }
-      />
-      <MetricRow
-        label="Force path"
-        value={physicsWorker.path}
-        t={physicsWorker.path === 'fallback' ? 'warn' : 'ok'}
-        hint={
-          physicsWorker.path === 'fallback'
-            ? 'watershed_native.wasm did not load — TypeScript force math in use'
-            : undefined
-        }
-      />
-      <MetricRow
-        label="Last batch"
-        value={
-          physicsWorker.lastBatchMicros == null
-            ? '—'
-            : `${physicsWorker.lastBatchMicros} µs`
-        }
-        t="ok"
-      />
-      <MetricRow
-        label="SWE displacement"
-        value={physicsWorker.sweEnabled ? (physicsWorker.sweGrid ?? 'on') : 'off (quality)'}
-        t="ok"
-      />
-      <SweHeightThumb />
-
-      <Divider />
-
-      {/* ── Material backend toggle (#256 path A) ───────────────────────── */}
-      <SectionTitle>Materials — GLSL (live) / TSL (migration)</SectionTitle>
-      <MetricRow
-        label="Active backend"
-        value={rendererDiagnostics.materialBackend}
-        t={rendererDiagnostics.materialBackend === requestedBackend.backend ? 'ok' : 'warn'}
-        hint={
-          rendererDiagnostics.materialBackend === requestedBackend.backend
-            ? MATERIAL_BACKEND_REASON_LABELS[requestedBackend.reason]
-            : 'requested TSL but the node renderer or material could not be built'
-        }
-      />
-      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-        {(['glsl', 'tsl'] as MaterialBackend[]).map((backend) => (
-          <button
-            key={backend}
-            type="button"
-            onClick={() => onMaterialBackendChange?.(backend)}
-            style={{
-              flex: 1,
-              padding: '4px 6px',
-              borderRadius: 4,
-              border: materialBackend === backend
-                ? '1px solid #6dde7a'
-                : '1px solid rgba(255,255,255,0.18)',
-              background: materialBackend === backend
-                ? 'rgba(109,222,122,0.15)'
-                : 'rgba(255,255,255,0.04)',
-              color: materialBackend === backend ? '#6dde7a' : '#ccc',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: 11,
-            }}
-          >
-            {backend.toUpperCase()}
-          </button>
-        ))}
-      </div>
-      <div style={{ fontSize: 10, color: '#888', marginBottom: 6 }}>
-        URL: <code>?material=glsl</code> (live) or <code>?material=tsl</code> (NodeMaterial;
-        remounts the Canvas onto WebGPURenderer with a WebGL2 backend)
-      </div>
-
-      <Divider />
-
-      {/* ── Renderer backend toggle ─────────────────────────────────────── */}
-      <SectionTitle>Renderer — WebGL2 (WebGPU experimental / no-op)</SectionTitle>
-      <div style={{ marginBottom: 6, color: '#d0d0d0' }}>
-        Active: <span style={{ color: '#9fd6ff' }}>{rendererDiagnostics.rendererName}</span>
-      </div>
-      {/* The valve is the only graphics knob that moves on its own while the
-          player is not looking at a menu — make it legible. */}
-      <MetricRow
-        label="Render scale"
-        value={`${renderScale.toFixed(2)}x · DPR ≤ ${
-          canvasDprRange(
-            deriveRendererContextOptions(qualityPreset, {
-              devicePixelRatio: typeof window !== 'undefined' ? window.devicePixelRatio : 1,
-              renderScale,
-            }).dprMax,
-          )[1]
-        } (${qualityPreset})`}
-        t={renderScale >= RENDER_SCALE_MAX ? 'ok' : 'warn'}
-        hint="adaptive valve closed — frame time is over budget, resolution traded for headroom"
-      />
-      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-        {(['webgpu', 'webgl'] as RendererPreference[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onRendererPreferenceChange?.(mode)}
-            style={{
-              flex: 1,
-              padding: '4px 6px',
-              borderRadius: 4,
-              border: rendererPreference === mode
-                ? '1px solid #6dde7a'
-                : '1px solid rgba(255,255,255,0.18)',
-              background: rendererPreference === mode
-                ? 'rgba(109,222,122,0.15)'
-                : 'rgba(255,255,255,0.04)',
-              color: rendererPreference === mode ? '#6dde7a' : '#ccc',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: 11,
-            }}
-          >
-            {mode === 'webgpu' ? 'WebGPU' : 'WebGL2'}
-          </button>
-        ))}
-      </div>
-      <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>
-        URL: <code>?renderer=webgl</code> (live) or <code>?renderer=webgpu</code> (falls back to WebGL2)
-      </div>
-
-      <Divider />
-
-      {/* ── CP2: Physics debug ──────────────────────────────────────────── */}
-      <SectionTitle>CP2 · CPU — Physics Colliders</SectionTitle>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={physicsDebug}
-          onChange={(e) => onTogglePhysicsDebug?.(e.target.checked)}
-        />
-        <span style={{ color: physicsDebug ? '#6dde7a' : '#d0d0d0' }}>
-          Show physics HUD + collider wireframes (F)
-        </span>
-      </label>
-      {physicsDebug && (
-        <div style={{ color: '#f5c542', fontSize: 10, marginBottom: 4 }}>
-          ↳ Press P to log current physics snapshot in the console
-        </div>
-      )}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, marginBottom: 4, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={wireframeDebug}
-          onChange={(e) => onToggleWireframeDebug?.(e.target.checked)}
-        />
-        <span style={{ color: wireframeDebug ? '#6dde7a' : '#d0d0d0' }}>
-          Wireframe geometry overlay (G)
-        </span>
-      </label>
-
-      <Divider />
-
-      {/* ── Physics step timing — Rapier world.step() ───────────────────── */}
-      <SectionTitle>Physics step — Rapier world.step()</SectionTitle>
-      <MetricRow
-        label="Avg step"
-        value={physicsPerf.sampleCount === 0 ? '—' : `${physicsPerf.avgStepMs.toFixed(2)} ms`}
-        t={tier(physicsPerf.avgStepMs, 4, 8)}
-      />
-      <MetricRow
-        label="P95 step"
-        value={physicsPerf.sampleCount === 0 ? '—' : `${physicsPerf.p95StepMs.toFixed(2)} ms`}
-        t={tier(physicsPerf.p95StepMs, 6, 12)}
-      />
-      <MetricRow
-        label="Max step"
-        value={physicsPerf.sampleCount === 0 ? '—' : `${physicsPerf.maxStepMs.toFixed(2)} ms`}
-        t={tier(physicsPerf.maxStepMs, 8, 16)}
-      />
-      <MetricRow
-        label="Rigid bodies"
-        value={String(physicsPerf.rigidBodyCount)}
-        t="ok"
-      />
-      <MetricRow
-        label="Colliders"
-        value={String(physicsPerf.colliderCount)}
-        t="ok"
-      />
-      <MetricRow
-        label="Active trimesh triangles"
-        value={physicsPerf.activeCollisionTriangles.toLocaleString()}
-        t="ok"
-      />
-      <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>
-        ↳ Press O to log current physics-step snapshot in the console
-      </div>
-
-      <Divider />
-
-      {/* ── CP3: Frame budget (React/JS) ────────────────────────────────── */}
-      <SectionTitle>CP3 · React — Frame Budget</SectionTitle>
-      <MetricRow
-        label="Avg frame time"
-        value={metrics.frameTimeMs === 0 ? '—' : `${metrics.frameTimeMs} ms`}
-        t={ftTier}
-        hint="Check useFrame in TrackManager/Player for setState or new object creation"
-      />
-      <MetricRow
-        label="CPU work / frame"
-        value={metrics.cpuWorkMs === 0 ? '—' : `${metrics.cpuWorkMs} ms`}
-        t={metrics.cpuWorkMs > 12 ? 'warn' : 'ok'}
-        hint="First useFrame callback → last render, excluding vsync idle — half of what the render-scale valve reads"
-      />
-      <MetricRow
-        label={GPU_TIMER_SOURCE_LABELS[metrics.gpuTimerSource]}
-        value={metrics.gpuMs === null ? '— (no GPU timer)' : `${metrics.gpuMs} ms`}
-        t={metrics.gpuMs !== null && metrics.gpuMs > 14 ? 'warn' : 'ok'}
-        hint="GPU frame time; the valve acts on max(GPU, CPU work). Without a GPU timer it uses CPU work, or rAF time when frames miss vsync"
-      />
-
-      <Divider />
-
-      {/* ── CP4: FPS / Fill rate ────────────────────────────────────────── */}
-      <SectionTitle>CP4 · Shader — Fill Rate</SectionTitle>
-      <MetricRow
-        label="FPS (30-frame avg)"
-        value={metrics.fps === 0 ? '—' : `${metrics.fps}`}
-        t={fpsTier}
-        hint="Resize window smaller — if FPS jumps, shaders are fill-rate bound → lower pixelRatio"
-      />
-      <MetricRow
-        label="JS Heap"
-        value={metrics.memoryMB === 0 ? '— (non-Chrome)' : `${metrics.memoryMB} MB`}
-        t={memTier}
-        hint="High GC pressure — check for new arrays/objects created per frame in useFrame"
-      />
-
-      <Divider />
-
-      {/* ── Load stages (collapsible) ────────────────────────────────────── */}
-      <button
-        onClick={() => setStagesOpen((o) => !o)}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#9fd6ff',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          fontSize: 11,
-          fontWeight: 700,
-          padding: '2px 0',
-          letterSpacing: '0.06em',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          textTransform: 'uppercase',
-        }}
-      >
-        {stagesOpen ? '▾' : '▸'} LOAD STAGES
-        {failCount > 0 && (
-          <span style={{
-            background: '#ff6b6b',
-            color: '#fff',
-            borderRadius: 10,
-            padding: '0 5px',
-            fontSize: 10,
-            fontWeight: 700,
-          }}>
-            {failCount}
-          </span>
-        )}
-      </button>
-
-      {stagesOpen && (
-        <div style={{ marginTop: 6 }}>
-          {stageIds.map((stageId) => {
-            const runtime = debug.stageRuntime[stageId];
-            const s = STATUS_STYLES[runtime?.status ?? 'idle'];
-            return (
-              <label
-                key={stageId}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginBottom: 5,
-                  paddingBottom: 5,
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={debug.enabledStages[stageId]}
-                  onChange={(e) => debug.setStageEnabled(stageId, e.target.checked)}
-                />
-                <span style={{ color: s.color, width: 14 }}>{s.icon}</span>
-                <span style={{ flex: 1, color: '#ccc' }}>{debug.stageConfig[stageId].label}</span>
-                {runtime?.durationMs !== undefined && (
-                  <span style={{ color: '#9fd6ff' }}>{runtime.durationMs}ms</span>
-                )}
-              </label>
-            );
-          })}
-        </div>
-      )}
-      </>
+        <>
+          <GpuSection metrics={metrics} />
+          <Divider />
+          <PhysicsWorkerSection />
+          <Divider />
+          <MaterialsSection materialBackend={materialBackend} onMaterialBackendChange={onMaterialBackendChange} />
+          <Divider />
+          <RendererSection
+            rendererPreference={rendererPreference}
+            onRendererPreferenceChange={onRendererPreferenceChange}
+          />
+          <Divider />
+          <PhysicsDebugSection
+            physicsDebug={physicsDebug}
+            onTogglePhysicsDebug={onTogglePhysicsDebug}
+            wireframeDebug={wireframeDebug}
+            onToggleWireframeDebug={onToggleWireframeDebug}
+          />
+          <Divider />
+          <PhysicsStepSection />
+          <Divider />
+          <FrameBudgetSection metrics={metrics} />
+          <Divider />
+          <FillRateSection metrics={metrics} />
+          <Divider />
+          <LoadStagesSection debug={debug} stagesOpen={stagesOpen} setStagesOpen={setStagesOpen} />
+        </>
       )}
     </div>
   );

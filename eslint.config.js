@@ -97,6 +97,7 @@ const UI_LITERALS = [
  */
 const DEV_OVERLAYS = [
   'src/components/DebugPanel.tsx',
+  'src/components/debugPanel/**',
   'src/components/SWEBedDebugOverlay.tsx',
   'src/components/AudioDiagnosticsOverlay.tsx',
   'src/components/MovementReadout.tsx',
