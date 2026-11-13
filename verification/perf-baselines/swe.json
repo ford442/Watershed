@@ -1,0 +1,22 @@
+{
+  "calibrationMs": 7.8576,
+  "recordedAt": "2026-11-13T11:42:08.039Z",
+  "note": "swe profile report, calibrated in Node on the same box",
+  "metrics": {
+    "swe-step/32x24": {
+      "n": 1000,
+      "p50": 0.0088,
+      "p95": 0.0125
+    },
+    "swe-step/48x32": {
+      "n": 1000,
+      "p50": 0.0164,
+      "p95": 0.0187
+    },
+    "swe-step/128x80": {
+      "n": 1000,
+      "p50": 0.1368,
+      "p95": 0.1788
+    }
+  }
+}

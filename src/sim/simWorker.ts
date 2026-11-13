@@ -9,6 +9,7 @@ import { getWorkerWasm, peekWorkerWasmInitError } from './workerWasm';
 import { createSimWorkerCore, type SimWorkerCore } from './simWorkerCore';
 import type { SimWorkerCommand, SimWorkerResponse } from './simWorkerProtocol';
 import { withTrapFunction } from '../systems/water/wasmTrap';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
 
 const ctx = self as DedicatedWorkerGlobalScope;
 
@@ -20,7 +21,19 @@ const post = (response: SimWorkerResponse, transfer: Transferable[] = []) => {
   ctx.postMessage(response, transfer);
 };
 
+/** One trace span per command (#559 D): STEP, BUILD_TILE, FORCES, … interned on first use. */
+const commandSpans = new Map<string, number>();
+const commandSpan = (type: string): number => {
+  let id = commandSpans.get(type);
+  if (id === undefined) {
+    id = traceName(type);
+    commandSpans.set(type, id);
+  }
+  return id;
+};
+
 const run = (command: SimWorkerCommand) => {
+  const traced = traceStart();
   try {
     core!.handle(command);
   } catch (error) {
@@ -28,6 +41,7 @@ const run = (command: SimWorkerCommand) => {
     const named = withTrapFunction(error);
     post({ type: 'ERROR', error: named instanceof Error ? named.message : String(named), fatal: true });
   }
+  if (traced > 0) traceEnd(commandSpan(command.type), traced);
 };
 
 const boot = async (init: Extract<SimWorkerCommand, { type: 'INIT' }> | undefined) => {
@@ -55,6 +69,11 @@ const boot = async (init: Extract<SimWorkerCommand, { type: 'INIT' }> | undefine
 };
 
 ctx.addEventListener('message', (event: MessageEvent<SimWorkerCommand>) => {
+  if (event.data.type === 'TRACE_CONNECT') {
+    const { port } = event.data;
+    void import('../debug/trace/traceWorkerSide').then((m) => m.attachWorkerTrace(port));
+    return;
+  }
   if (core) {
     run(event.data);
     return;

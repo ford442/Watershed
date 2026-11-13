@@ -33,6 +33,10 @@ import { createSimSystems } from './simSystems';
 import { storeSimGame, tapSimDebug } from './simGameBinding';
 import { sampleSimContext, type SimSampleInputs } from './simContextSample';
 import { getLiveAssists } from '../systems/settings/accessRuntime';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
+
+/** The tick as a whole; each system's step is its own child span (SimCore.ts). */
+const SIM_TICK_SPAN = traceName('sim-core');
 
 export const SIM_CORE_PRIORITY = -90;
 
@@ -58,6 +62,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
   }, [debug]);
 
   useFrame((state, delta) => {
+    const traced = traceStart();
     const store = useGameStore.getState();
     sample.input = inputHub.readFrame();
     sample.isPaused = store.isPaused;
@@ -70,6 +75,7 @@ export function SimCoreTick({ debug, vehicleRef }: SimCoreTickProps): null {
     // feeds it less time per frame. Scripted / replay runs step once per frame
     // whatever the delta, so they are untouched.
     simCore.advance(delta * getLiveAssists().gameSpeed);
+    traceEnd(SIM_TICK_SPAN, traced);
   }, SIM_CORE_PRIORITY);
 
   return null;

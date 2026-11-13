@@ -1,4 +1,5 @@
 import { telemetryNowMs } from '../utils/wallClock';
+import { registerTraceWorker } from '../debug/trace/traceWorkers';
 import { raceWithDeadline, resolveWasmInitTimeoutMs } from '../systems/water/wasmLoader';
 import {
   DEFAULT_RAFT_WORKER_INIT,
@@ -118,7 +119,13 @@ export class RapierWorkerProxy {
     this.worker.addEventListener('message', this.onMessage);
     this.worker.addEventListener('error', this.onError);
     this.worker.addEventListener('messageerror', this.onMessageError);
+    // A recording hands the worker a trace port (#559 D). Fire-and-forget: no id, no reply.
+    this.untrace = registerTraceWorker('rapier worker', (port) =>
+      this.worker.postMessage({ id: -1, type: 'TRACE_CONNECT', port }, [port]),
+    );
   }
+
+  private readonly untrace: () => void;
 
   /** Non-null once the worker has died; it never recovers and every request rejects with it. */
   get failed(): RapierWorkerError | null {
@@ -249,6 +256,7 @@ export class RapierWorkerProxy {
   }
 
   private detach(): void {
+    this.untrace();
     this.worker.removeEventListener('message', this.onMessage);
     this.worker.removeEventListener('error', this.onError);
     this.worker.removeEventListener('messageerror', this.onMessageError);

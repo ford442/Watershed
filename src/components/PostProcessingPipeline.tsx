@@ -31,6 +31,11 @@ import {
 import { getLoadedNodePost } from './postProcessing/nodePostLoader';
 import { getComfort } from '../systems/settings/comfortRuntime';
 import { smaaPassModule, ssaoPassModule } from './postProcessing/composerPassModules';
+import { tracePass } from './postProcessing/tracePass';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
+
+/** `renderer.render` with the post chain, per frame (#559 D); the passes nest inside. */
+const RENDER_SPAN = traceName('render');
 import type { NodePostPipeline, NodePostStructure } from './postProcessing/nodePostPipeline';
 import { gameEvents } from '../systems/events/GameEvents';
 
@@ -370,6 +375,19 @@ export function createComposerDriver(
     effects.push(godRaysPass, bloomPass, hueSatPass, chromaticPass, vignettePass, rainbowPass);
     if (smaaPass) effects.push(displayPass, smaaPass);
     effectsDirty = true;
+    // One span per pass on the trace timeline (#559 D); idempotent per instance.
+    tracePass(scenePass, 'scene');
+    if (ssaoPass) tracePass(ssaoPass, 'ssao');
+    tracePass(godRaysPass, 'god-rays');
+    tracePass(bloomPass, 'bloom');
+    tracePass(hueSatPass, 'hue-sat');
+    tracePass(chromaticPass, 'chromatic');
+    tracePass(vignettePass, 'vignette');
+    tracePass(rainbowPass, 'rainbow');
+    if (smaaPass) {
+      tracePass(displayPass, 'display');
+      tracePass(smaaPass, 'smaa');
+    }
   };
   rebuildEffects();
 
@@ -668,7 +686,9 @@ export function PostProcessingPipeline({
   // Main render loop — priority 1 tells R3F to skip default gl.render()
   useFrame((state, delta) => {
     if (!driver) {
+      const traced = traceStart();
       gl.render(scene, camera);
+      traceEnd(RENDER_SPAN, traced);
       return;
     }
 
@@ -711,7 +731,9 @@ export function PostProcessingPipeline({
     );
 
     driver.apply(params);
+    const traced = traceStart();
     driver.render();
+    traceEnd(RENDER_SPAN, traced);
   }, 1);
 
   return null;

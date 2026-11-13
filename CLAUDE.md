@@ -220,7 +220,7 @@ Pure `ShaderMaterial`. Two-layer fbm foam, Fresnel highlight, depth gradient, cu
 | Enter | Start / Resume |
 | R | Open restart confirmation |
 | Arrow keys | Same as WASD (movement alternates, not rebindable) |
-| F3 | Movement readout: position, speed, live key/mouse input (`?debug=1` opens it at boot) |
+| F3 | Movement readout: position, speed, live key/mouse input (`?debug=1` opens it at boot). Shift+F3 / its button records a 10 s trace on `?debug=1` / `?trace=1` |
 | Gamepad (standard mapping) | Left stick move · right stick look · A jump · RB sprint · LB brake · X dodge · LT/RT raft paddles (analog) · Start pause. Menus: d-pad/stick + A/B/Start. Rebind in Options → General |
 | Touch (`(pointer: coarse)` or `?input=touch`) | Left half floating stick · right half look-drag · JUMP · pause · raft: L/R paddle buttons. Left-handed layout in Options → Comfort & Devices |
 | `F` `G` `P` `O` `N` | Developer toggles (collider draw, wireframes, snapshots, night) — **`?debug=1` only**; production never binds them |
@@ -319,7 +319,10 @@ pnpm test:replay-smoke            # that run saved as a .wsghost, ?replay= twice
 pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
 pnpm test:visual-smoke:tsl        # the same gate on the `?material=tsl` backend (needs `pnpm preview`)
 pnpm test:a11y                    # axe-core on every menu screen + clipped-control check at 100–200 % UI scale (needs `pnpm preview`)
+pnpm test:perf-trace              # scripted meander under ?trace=1: sim-step / segment build / mount p95 vs verification/perf-baselines/ (needs `pnpm preview`)
 ```
+
+**One timeline** (#559 D, [`docs/reference/TRACE.md`](./docs/reference/TRACE.md)): `?trace=1` records from boot, and on `?debug=1` F3 → **Record 10 s trace** (Shift+F3) downloads `watershed-<build>.trace.json` for ui.perfetto.dev. It covers main-thread frame phases, every SimSystem, the post passes, segment mounts, and the sim / Rapier workers aligned to one clock, plus GPU and heap counters. Instrument with `traceName` / `traceStart` / `traceEnd` from `src/debug/trace/traceProbe.ts`. Intern the name at module scope; when not recording, a probe is a null check.
 
 **Sim time.** Gameplay under `src/systems`, `src/vehicles`, `src/physics`, `src/sim` and `src/components/Obstacles` runs on the frame delta / R3F clock, never the wall clock — ESLint bans `setTimeout`, `setInterval`, `requestAnimationFrame`, `performance.now` and `Date.now` there (allowlist with reasons in `eslint.config.js`; metadata stamps and telemetry use `src/utils/wallClock.ts`). That is what keeps the input / replay smokes identical under load.
 

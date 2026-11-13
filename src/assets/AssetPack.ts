@@ -17,6 +17,7 @@ import type * as THREE from 'three';
 import type { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ktx2LoaderModule, configureKtx2Loader } from '../rendering/ktx2Textures';
 import { lazyModule } from '../utils/lazyModule';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
 import { parsePackManifest, packBaseUrl, packFileUrl, type PackAssetEntry, type PackId, type PackManifest } from './packManifest';
 
 /** One decoded asset: its manifest row and one subtree per LOD level (lod0 first). */
@@ -118,11 +119,16 @@ async function loadPackUncached(id: PackId, options: LoadPackOptions): Promise<L
     const [name, entry] = entries[i] as [string, PackAssetEntry];
     const bytes = buffers[i] as ArrayBuffer;
     await verifyAssetBytes(name, entry, bytes);
+    // On the trace's `assets` track (#559 D): the decode is async and spans frames.
+    const traced = traceStart();
     const gltf = await loader.parseAsync(bytes, packBaseUrl(id, base));
+    traceEnd(PARSE_GLB_SPAN, traced);
     assets.set(name, { name, entry, levels: levelsOf(name, entry, gltf.scene) });
   }
   return { manifest, assets };
 }
+
+const PARSE_GLB_SPAN = traceName('parse-glb', 'assets');
 
 const packs = new Map<PackId, Promise<LoadedPack>>();
 

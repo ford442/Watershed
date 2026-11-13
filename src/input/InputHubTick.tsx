@@ -34,6 +34,9 @@ import {
   stepRootFrames,
 } from './scriptedRun';
 import { useSettingsStore } from '../systems/settings/useSettingsStore';
+import { traceEnd, traceName, traceStart } from '../debug/trace/traceProbe';
+
+const INPUT_SPAN = traceName('input-hub');
 
 /** Ahead of every default-priority (0) subscriber — vehicles, Rapier stepper. */
 export const INPUT_HUB_PRIORITY = -100;
@@ -166,7 +169,9 @@ export function InputHubTick({ isRunLive = neverLive }: InputHubTickProps): Reac
 
   useFrame((state, delta) => {
     frameIdxRef.current += 1;
+    const traced = traceStart();
     inputHub.tick(delta * 1000, frameIdxRef.current);
+    traceEnd(INPUT_SPAN, traced);
 
     const buttons = inputHub.readFrame().buttons;
     // Only a running game pauses. While paused or in a menu the same Start press

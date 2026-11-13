@@ -18,6 +18,15 @@ if (queryFlags().debugGlobals || queryFlags().wasmWaterTest || isGpuLossDebugEna
   );
 }
 
+// The one timeline (#559 D): `?trace=1` records from boot (lazy — the entry chunk
+// holds only the probes). `?debug=1` gets the F3 panel's Record button instead.
+if (queryFlags().trace) {
+  import('./debug/trace/traceControl').then(
+    (m) => m.startBootTrace(),
+    (error: unknown) => console.warn('[index] trace chunk failed to load', error),
+  );
+}
+
 // Global error handlers to catch silent failures
 window.onerror = (message, source, lineno, colno, error) => {
   console.error('[Global Error Handler]', {
