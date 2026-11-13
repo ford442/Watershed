@@ -34,10 +34,10 @@ import {
   segmentMeshSpec,
   type GeometryBuildContext,
 } from '../segmentMeshBuild';
+import { buildSegmentPlacements } from '../placement';
 import {
   auxAnchor,
   auxBand,
-  buildSegmentPlacements,
   categoryRange,
   PLACEMENT_CATEGORIES,
   PLACEMENT_STRIDE,
@@ -45,8 +45,8 @@ import {
   PlacementField as F,
   readPlacements,
   type PlacementCategory,
-  type SegmentPlacementInput,
-} from '../placement';
+} from '../placement/format';
+import type { SegmentPlacementInput } from '../placement/inputs';
 import { createTileSample, sampleTile, TerrainBand, TileBranch } from '../terrainTile';
 
 interface BuiltSegment {

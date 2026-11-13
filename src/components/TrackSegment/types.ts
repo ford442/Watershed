@@ -4,7 +4,7 @@ import type { BiomeId } from '../../configs/biomes';
 import type { TrackBiomeProfile, TreeSpeciesId } from '../../configs/TrackBiomes';
 import type { FlowForecastState } from '../../constants/game';
 import type { DecorationPlacement } from '../../systems/map/MapSystem';
-import type { SegmentPlacementInput } from '../../terrain/placement';
+import type { SegmentPlacementInput } from '../../terrain/placement/inputs';
 import type { ChannelProfileSample, ChannelShape } from '../../terrain/types';
 
 /** Segment kind used by TrackSegment geometry and placement. */

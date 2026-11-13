@@ -23,10 +23,8 @@ import {
   PlacementField as F,
   readPlacements,
   type PlacementCategory,
-  type PlacementOverride,
-  type PropLayoutSpec,
-  type SegmentPlacementInput,
-} from '../../../terrain/placement';
+} from '../../../terrain/placement/format';
+import type { PlacementOverride, PropLayoutSpec, SegmentPlacementInput } from '../../../terrain/placement/inputs';
 import { createFlowerPayload, createRockPayload, pickTreeSpecies } from '../utils';
 import type {
   PlacementBiomeProfile,

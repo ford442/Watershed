@@ -45,6 +45,16 @@
   "src/systems/pools/ParticlePool.ts",
   "src/systems/pools/PillarFragmentRegistry.ts",
   "src/terrain/erosionCodec.ts",
+  "src/terrain/placement.ts",
+  "src/terrain/placement/atmosphere.ts",
+  "src/terrain/placement/authored.ts",
+  "src/terrain/placement/fauna.ts",
+  "src/terrain/placement/frame.ts",
+  "src/terrain/placement/glacial.ts",
+  "src/terrain/placement/inputs.ts",
+  "src/terrain/placement/rocks.ts",
+  "src/terrain/placement/row.ts",
+  "src/terrain/placement/vegetation.ts",
   "src/terrain/spawnTiming.ts",
   "src/terrain/types.ts"
 ]
