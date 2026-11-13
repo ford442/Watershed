@@ -211,8 +211,8 @@ npm start
 # Build and check for errors
 npm run build
 
-# Run visual regression test
-python3 verify_visuals_playwright.py
+# Run visual regression test (needs `pnpm preview --host 127.0.0.1 --port 4173` running)
+WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke
 
 # Check for shader syntax
 grep -n "onBeforeCompile" src/**/*.{js,jsx}

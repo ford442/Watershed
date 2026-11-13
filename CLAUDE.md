@@ -13,7 +13,7 @@ pnpm test          # unit tests (Vitest + Testing Library) — behaviour only
 pnpm test:perf     # wall-time / heap budgets (*.perf.test.ts), its own CI step
 pnpm test:campaign # whole runs through SimCore in Node, no browser (src/sim/headless, #556 B), its own CI job
 pnpm lint          # ESLint (flat config, TS + react-hooks + R3F rules)
-pnpm typecheck     # tsc --noEmit + the strict-buffers ratchet + the layout/dependency-direction/GLSL/typecheck-surface/orphan guards + knip (unused files / exports / deps)
+pnpm typecheck     # tsc --noEmit + the strict-buffers ratchet + the layout/dependency-direction/GLSL/typecheck-surface/orphan/tracked-junk guards + knip (unused files / exports / deps)
 pnpm typecheck:test  # tsc over the tests too (tsconfig.test.json; tsconfig.json has no vitest globals)
 pnpm build         # production build → build/ (hidden sourcemaps → build-sourcemaps/); no emcc needed — ships the committed WASM pair
 pnpm build:full    # build:wasm, then build — the deploy path (build_and_patch.py); needs the pinned emcc
@@ -308,14 +308,14 @@ pnpm test                         # unit tests (Vitest), behaviour only
 pnpm test:perf                    # wall-time / heap budgets, retried (*.perf.test.ts)
 pnpm test:campaign                # headless runs in Node (SimCore + Rapier + the shipped WASM) pinned to the browser's splits / SWE checksums (*.campaign.test.ts)
 pnpm lint                         # ESLint — CI runs it with --max-warnings 0: no errors, no warnings
-pnpm typecheck                    # tsc + repo layout guards + knip
+pnpm typecheck                    # tsc + repo layout / tracked-junk guards + knip
 pnpm typecheck:test               # tsc over test files (tsconfig.test.json)
 pnpm test:visual-smoke            # headless WebGL pixel gate (needs `pnpm preview`); includes the 390×844 touch layout (10_touch_layout)
 pnpm test:input-smoke             # scripted keyboard-shaped run reaches segment 3, deterministic (needs `pnpm preview`)
 pnpm test:input-smoke:gamepad     # the same with a gamepad-shaped (analog) script
 pnpm test:replay-smoke            # that run saved as a .wsghost, ?replay= twice: identical splits + SWE checksums (needs `pnpm preview`)
 pnpm test:wgsl                    # WGSL SWE twin vs C++ WASM parity (headless Chromium WebGPU)
-python3 src/verify_visuals.py     # visual regression (needs dev server)
+pnpm test:visual-smoke:tsl        # the same gate on the `?material=tsl` backend (needs `pnpm preview`)
 ```
 
 **Sim time.** Gameplay under `src/systems`, `src/vehicles`, `src/physics`, `src/sim` and `src/components/Obstacles` runs on the frame delta / R3F clock, never the wall clock — ESLint bans `setTimeout`, `setInterval`, `requestAnimationFrame`, `performance.now` and `Date.now` there (allowlist with reasons in `eslint.config.js`; metadata stamps and telemetry use `src/utils/wallClock.ts`). That is what keeps the input / replay smokes identical under load.

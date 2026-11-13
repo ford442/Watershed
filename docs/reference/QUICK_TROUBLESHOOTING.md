@@ -60,8 +60,8 @@ pnpm start
 # 3. Check build
 pnpm build
 
-# 4. Visual test (requires Playwright)
-python3 verify_visuals_playwright.py
+# 4. Visual test (Puppeteer; serve the build first: pnpm preview --host 127.0.0.1 --port 4173)
+WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke
 ```
 
 ---

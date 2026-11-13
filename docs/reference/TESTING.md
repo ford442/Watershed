@@ -212,25 +212,22 @@ raft is not on it (its step is still a `useFrame`). Pilots, run reports and base
 
 ### Visual Regression Testing
 
-Using the provided `verification/verify_player.py` script:
+Puppeteer is the one browser-automation stack (the Python Playwright scripts were retired, #559 A.3).
+`verification/visual_smoke.mjs` is the gate; it needs a build served by `pnpm preview`:
 
 ```bash
-# Install dependencies
-pip install playwright
-playwright install chromium
-
-# Run verification
-python verification/verify_player.py
+pnpm build
+pnpm preview --host 127.0.0.1 --port 4173 &
+WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke        # + :tsl for the ?material=tsl backend
+UPDATE_BASELINES=1 WATERSHED_URL=http://127.0.0.1:4173 pnpm test:visual-smoke:update   # refresh baselines on purpose
 ```
 
-This will:
-1. Launch headless browser
-2. Navigate to localhost:3000
-3. Wait for scene to render
-4. Take screenshot
-5. Save to `verification/player_view.png`
+It captures the start menu (hard gate) and top-down in-run beats, pixelmatches them against
+`verification/baselines/visual-smoke/`, and writes actuals and diffs under `verification/output/visual-smoke/`
+(see that folder's README and the header of `visual_smoke.mjs` for the environment variables).
 
-**Note**: Headless browsers have limited WebGL support and may show black screen. This doesn't indicate a problem with the actual application.
+**Note**: Headless browsers have limited WebGL support; first-person in-run frames are sky-only under
+SwiftShader (F-1), which is why the gate uses the start menu and `?no-pointer-lock=1` top-down shots.
 
 ## Debugging Tips
 
@@ -517,7 +514,7 @@ Commit the updated PNGs only when the visual change is intentional. See `verific
 | WebGPU default throws under SwiftShader (`lightNodeClass`) | Always force `?renderer=webgl` |
 | Pixel variance across runners | Tolerant pixelmatch ratio; refresh baselines deliberately |
 
-`verification/webgl_screenshots.mjs` remains useful telemetry (fails only on page errors / missing WebGL). It is **not** the visual gate. `verification/webgl_capture.py` is the Playwright sibling of the same top-down approach.
+`verification/webgl_screenshots.mjs` remains useful telemetry (fails only on page errors / missing WebGL). It is **not** the visual gate.
 
 ### Manual tester script (real Chrome, decent GPU)
 
@@ -532,7 +529,7 @@ Commit the updated PNGs only when the visual change is intentional. See `verific
    - Rapids / slot **19–22** (narrow, high rocks)
    - Later falls **28–29**, delta approach, **journey complete at 38**
 6. On **Journey Complete**: press **Enter** (or click) → should loop/teleport to glacier prelude and remount the track treadmill.
-7. Capture screenshots at representative points; store under `verification/` (examples: `firstmap-waterfall-webgl.png`, `firstmap-splash-webgl.png`).
+7. Capture screenshots at representative points; store under `verification/output/` (git-ignored; attach them to the PR). The 2026-06-15 examples live in `docs/images/` (`firstmap-waterfall-webgl.png`, `firstmap-splash-webgl.png`).
 
 #### Success criteria
 
@@ -567,14 +564,14 @@ Also exercise: pause/resume, respawn on wipeout, runner vehicle feel (default).
 | Journey Complete via gameplay | **Not verified** | Teleport harness does not fire `ChunkManager.onSegmentEnter` |
 | Pause (Esc) in headless | **Not detected** | Likely needs real pointer-lock lifecycle |
 
-**Screenshots captured:** `verification/firstmap-*.png` and `verification/webgl/capture_report.json`.
+**Screenshots captured:** `docs/images/firstmap-*.png` (moved from `verification/`; the `capture_report.json` that described them was a stale artifact and is gone).
 
 Representative captures with usable canyon content (from longer top-down / timed runs):
 
-- `verification/firstmap-waterfall-webgl.png` (~153 KB)
-- `verification/firstmap-splash-webgl.png` (~149 KB)
+- [`docs/images/firstmap-waterfall-webgl.png`](../images/firstmap-waterfall-webgl.png) (~153 KB)
+- [`docs/images/firstmap-splash-webgl.png`](../images/firstmap-splash-webgl.png) (~149 KB)
 
-Most recent first-person SwiftShader captures (`firstmap-glacier-webgl.png`, etc.) are **sky-only** and must not be used as the visual gate.
+Most recent first-person SwiftShader captures ([`firstmap-glacier-webgl.png`](../images/firstmap-glacier-webgl.png), etc.) are **sky-only** and must not be used as the visual gate.
 
 ### Known blockers / follow-ups
 
@@ -620,7 +617,7 @@ Copy into PR / release notes when complete:
 - [ ] Esc pause / resume works
 - [ ] Wipeout + respawn works
 - [ ] FPS ≥ 30 on target hardware after LOD settles
-- [ ] Screenshots attached (`verification/firstmap-*.png`)
+- [ ] Screenshots attached (see `docs/images/firstmap-*.png` for the 2026-06-15 set)
 
 ---
 
