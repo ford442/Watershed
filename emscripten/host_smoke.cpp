@@ -49,7 +49,8 @@ void checkClose(float actual, float expected, float relEps, const char* label) {
     const float tol = std::max(std::abs(expected) * relEps, 1e-4f);
     if (std::abs(actual - expected) > tol) {
         std::fprintf(stderr, "FAIL  %s: expected %g, got %g (tol %g)\n",
-                     label, expected, actual, tol);
+                     label, static_cast<double>(expected), static_cast<double>(actual),
+                     static_cast<double>(tol));
         ++g_failures;
     }
 }
@@ -95,7 +96,7 @@ int main() {
     constexpr float kG = 9.80665f;
     constexpr float kH = 1.f;
     constexpr float kDt = 1.f;  // well above CFL
-    const int n = kWidth * kHeight;
+    constexpr auto n = static_cast<std::size_t>(kWidth * kHeight);
 
     auto stepFlat = [&](std::vector<float>& h, std::vector<float>& u,
                         std::vector<float>& w, float dt) {
@@ -121,9 +122,9 @@ int main() {
     //     above 4 CFL steps, so the sub-step cap is hit and the step reports
     //     the time it did integrate (#533).
     {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 1.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 1.f);
+        std::vector<float> h(n, 0.f);
+        std::vector<float> u(n, 1.f);
+        std::vector<float> w(n, 1.f);
 
         // Mirror the solver's sub-step rule so the fixture stays honest if it changes.
         float vel = 1.f;
@@ -155,9 +156,9 @@ int main() {
     {
         const float cflDt = 0.4f * kDx / (std::sqrt(2.f) + std::sqrt(kG * kH));
         const float dt = 2.5f * cflDt;
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 1.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 1.f);
+        std::vector<float> h(n, 0.f);
+        std::vector<float> u(n, 1.f);
+        std::vector<float> w(n, 1.f);
         for (int z = 0; z < kHeight; ++z) h[static_cast<std::size_t>(z * kWidth + kWidth / 2)] = 0.05f;
         std::vector<float> h2 = h, u2 = u, w2 = w;
         const float consumed = stepFlat(h, u, w, dt);
@@ -195,7 +196,7 @@ int main() {
             monotone = monotone && e <= prev;
             prev = e;
             const double ref = std::exp(-static_cast<double>(std::min(x, 87.f)));
-            worst = std::max(worst, static_cast<float>(std::abs(e - ref) / ref));
+            worst = std::max(worst, static_cast<float>(std::abs(static_cast<double>(e) - ref) / ref));
         }
         check(inRange, "sweExpNeg: always in (0, 1]");
         check(monotone, "sweExpNeg: non-increasing");
@@ -213,10 +214,10 @@ int main() {
     //     The pre-ABI-6 linearised stepper could not express this at all: it had
     //     no bed term, so every bump was invisible to it.
     {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> h(n, 0.f);
+        std::vector<float> u(n, 0.f);
+        std::vector<float> w(n, 0.f);
+        std::vector<float> b(n, 0.f);
 
         // Smooth bed bump rising to 60% of the still-water depth, plus a
         // channel-shaped bank profile so both axes are exercised.
@@ -233,7 +234,7 @@ int main() {
         float maxSurfaceDrift = 0.f;
         for (int step = 0; step < 50; ++step) {
             stepBed(h, u, w, b, 0.01f);
-            for (int i = 0; i < n; ++i) {
+            for (std::size_t i = 0; i < n; ++i) {
                 // Only wet cells carry a meaningful surface; dry ones are pinned
                 // to the bed by construction.
                 if (kH + h[i] - b[i] <= 1e-4f) continue;
@@ -252,10 +253,10 @@ int main() {
     // 3c. Wetting/drying — a bank above the free surface stays dry, and stays
     //     dry after a disturbance passes next to it.
     {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> h(n, 0.f);
+        std::vector<float> u(n, 0.f);
+        std::vector<float> w(n, 0.f);
+        std::vector<float> b(n, 0.f);
 
         // Left three columns are a bank standing well above the water line.
         const float bankHeight = kH * 1.5f;
@@ -285,9 +286,9 @@ int main() {
     //     downstream and interior mass must be conserved while the wave is away
     //     from the transmissive boundaries.
     {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> h(n, 0.f);
+        std::vector<float> u(n, 0.f);
+        std::vector<float> w(n, 0.f);
 
         const int dam = kWidth / 2;
         for (int z = 0; z < kHeight; ++z) {
@@ -298,7 +299,7 @@ int main() {
 
         auto totalDepth = [&]() {
             double sum = 0.0;
-            for (int i = 0; i < n; ++i) sum += static_cast<double>(kH + h[i]);
+            for (std::size_t i = 0; i < n; ++i) sum += static_cast<double>(kH + h[i]);
             return sum;
         };
         const double massBefore = totalDepth();
@@ -328,10 +329,10 @@ int main() {
     //      wide flanked by banks standing well above the free surface. The bed
     //      must hold the water in the channel and stay well-balanced there.
     {
-        std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-        std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+        std::vector<float> h(n, 0.f);
+        std::vector<float> u(n, 0.f);
+        std::vector<float> w(n, 0.f);
+        std::vector<float> b(n, 0.f);
 
         // Channel runs along +z (downstream), centred on the middle column.
         const int centre = kWidth / 2;
@@ -442,12 +443,12 @@ int main() {
             w, h, 1.f, 0.f, 0.f, 1.2f,
             0, 3.5f, 3.5f, 4.f, 8.f, 0.05f);
         float maxCtl = 0.f, maxPulse = 0.f;
-        for (int i = 0; i < N; ++i) {
+        for (std::size_t i = 0; i < N; ++i) {
             maxCtl = std::max(maxCtl, std::abs(hCtl[i]));
             maxPulse = std::max(maxPulse, hPulse[i]);
         }
         float minW = 0.f;
-        for (int i = 0; i < N; ++i) minW = std::min(minW, wPulse[i]);
+        for (std::size_t i = 0; i < N; ++i) minW = std::min(minW, wPulse[i]);
         check(maxCtl < 1e-6f, "control hour eta stays at rest");
         check(maxPulse > 0.05f, "inflow pulse raises eta vs control");
         check(minW < -0.02f, "inflow pulse carries downstream momentum");
@@ -471,12 +472,12 @@ int main() {
         std::vector<float> bOnce = bB;
         for (int k = 0; k < 8; ++k) braid();
         float bedDrift = 0.f, maxBed = 0.f, leftPush = 0.f, rightPush = 0.f;
-        for (int i = 0; i < N; ++i) {
+        for (std::size_t i = 0; i < N; ++i) {
             bedDrift = std::max(bedDrift, std::abs(bB[i] - bOnce[i]));
             maxBed = std::max(maxBed, bB[i]);
         }
-        for (int j = 0; j < h; ++j) {
-            for (int i = 0; i < w; ++i) {
+        for (std::size_t j = 0; j < h; ++j) {
+            for (std::size_t i = 0; i < w; ++i) {
                 const float ddx = static_cast<float>(i) - 3.5f;
                 const float val = uB[j * w + i];
                 if (ddx > 0.f) rightPush = std::max(rightPush, val);
@@ -607,10 +608,10 @@ int main() {
             auto sloped = [](float wx, float wz) {
                 return 0.4f + 0.3f * std::sin(0.3f * wx + 0.2f * wz);
             };
-            std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> h(n, 0.f);
+            std::vector<float> u(n, 0.f);
+            std::vector<float> w(n, 0.f);
+            std::vector<float> b(n, 0.f);
             float ox = 0.f, oz = 0.f;
             auto rewrite = [&]() {
                 for (int z = 0; z < kHeight; ++z)
@@ -624,7 +625,7 @@ int main() {
             auto stepAndMeasure = [&](int steps) {
                 for (int s = 0; s < steps; ++s) {
                     stepBed(h, u, w, b, 0.01f);
-                    for (int i = 0; i < n; ++i) {
+                    for (std::size_t i = 0; i < n; ++i) {
                         if (kH + h[i] - b[i] <= 1e-4f) continue;
                         maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
                         maxDrift = std::max(maxDrift, std::abs(h[i]));
@@ -649,15 +650,15 @@ int main() {
         //      the same surface — that is what the explicit inflow argument is for.
         {
             constexpr float kEta = 0.05f;
-            std::vector<float> h(static_cast<std::size_t>(n), kEta);
-            std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> h(n, kEta);
+            std::vector<float> u(n, 0.f);
+            std::vector<float> w(n, 0.f);
+            std::vector<float> b(n, 0.f);
             scroll(h, u, w, &b, kWidth, kHeight, 3, -2, kEta);
             float maxVel = 0.f, maxDrift = 0.f;
             for (int s = 0; s < 30; ++s) {
                 stepBed(h, u, w, b, 0.01f);
-                for (int i = 0; i < n; ++i) {
+                for (std::size_t i = 0; i < n; ++i) {
                     maxVel = std::max(maxVel, std::max(std::abs(u[i]), std::abs(w[i])));
                     maxDrift = std::max(maxDrift, std::abs(h[i] - kEta));
                 }
@@ -679,10 +680,10 @@ int main() {
                 const float r = offsetCells / static_cast<float>(halfChannel);
                 return 0.9f * kH * r * r;
             };
-            std::vector<float> h(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> u(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> w(static_cast<std::size_t>(n), 0.f);
-            std::vector<float> b(static_cast<std::size_t>(n), 0.f);
+            std::vector<float> h(n, 0.f);
+            std::vector<float> u(n, 0.f);
+            std::vector<float> w(n, 0.f);
+            std::vector<float> b(n, 0.f);
             float ox = 0.f;
             auto rewrite = [&]() {
                 for (int z = 0; z < kHeight; ++z)
@@ -728,7 +729,7 @@ int main() {
         //     cells. In world space the bump must stay where it is and evolve the
         //     same, so away from the edges the two agree to round-off.
         {
-            std::vector<float> hR(static_cast<std::size_t>(n), 0.f), uR = hR, wR = hR;
+            std::vector<float> hR(n, 0.f), uR = hR, wR = hR;
             std::vector<float> hS = hR, uS = hR, wS = hR;
             const int cx = 16, cz = 12;  // splash cell in the FIXED grid's frame
             for (int dz = -3; dz <= 3; ++dz) {
@@ -787,7 +788,7 @@ int main() {
         constexpr float kRelease = 14.f;     // dam release on top (0.35 × base)
         constexpr float kRouteDt = 1.f;
         std::vector<float> L(kSeg), S(kSeg), B(kSeg);
-        for (int k = 0; k < kSeg; ++k) {
+        for (std::size_t k = 0; k < kSeg; ++k) {
             L[k] = 95.f + 2.f * static_cast<float>(k % 5);
             S[k] = 0.03f + 0.005f * static_cast<float>(k % 3);
             B[k] = 10.f + static_cast<float>(k % 4);
@@ -796,7 +797,7 @@ int main() {
         auto P = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
         auto totalStorage = [&]() {
             double s = 0.0;
-            for (float v : storage) s += v;
+            for (float v : storage) s += static_cast<double>(v);
             return s;
         };
 
@@ -810,7 +811,7 @@ int main() {
         routeReachTravelTime(P(L), P(S), P(B), kSeg, kQ0, P(lag));
         const float lagFar = lag[kSeg - 1];
         check(lagFar > 60.f && lagFar < 1200.f, "routing: 2 km travel time is minutes, not hours or zero");
-        for (int k = 1; k < kSeg; ++k) check(lag[k] > lag[k - 1], "routing: lag grows downstream");
+        for (std::size_t k = 1; k < kSeg; ++k) check(lag[k] > lag[k - 1], "routing: lag grows downstream");
         routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
         float riseAtHalfLag = -1.f, riseAtLag = -1.f, riseLate = -1.f;
         const int steps = static_cast<int>(3.f * lagFar / kRouteDt);
@@ -833,8 +834,8 @@ int main() {
         for (int t = 0; t < 4000; ++t) {
             const float q = (t < 300) ? kQ0 + kRelease : kQ0;
             routeReach(P(L), P(S), P(B), kSeg, q, kRouteDt, P(storage), P(outflow));
-            in += static_cast<double>(q) * kRouteDt;
-            out += static_cast<double>(outflow[kSeg - 1]) * kRouteDt;
+            in += static_cast<double>(q) * static_cast<double>(kRouteDt);
+            out += static_cast<double>(outflow[kSeg - 1]) * static_cast<double>(kRouteDt);
         }
         const double balance = in - out - (totalStorage() - s0);
         check(std::abs(balance) < 1e-4 * in, "routing: volume in = out + stored (1e-4 of throughput)");
@@ -859,14 +860,14 @@ int main() {
         //     the transmissive solver, still inside the 3b tolerance.
         {
             std::vector<float> h(n, 0.f), u(n, 0.f), w(n, 0.f), b(n, 0.f);
-            for (int z = 0; z < kHeight; ++z) {
-                for (int x = 0; x < kWidth; ++x) {
+            for (std::size_t z = 0; z < kHeight; ++z) {
+                for (std::size_t x = 0; x < kWidth; ++x) {
                     const float r = std::hypot(static_cast<float>(x) - 16.f, static_cast<float>(z) - 22.f);
                     b[z * kWidth + x] = std::max(0.f, 1.4f - 0.15f * r);  // bump through the top edge
                     if (x < 3) b[z * kWidth + x] = 1.6f;                  // dry bank column
                 }
             }
-            for (int i = 0; i < n; ++i) if (b[i] > kH) h[i] = b[i] - kH;  // dry: surface pinned to bed
+            for (std::size_t i = 0; i < n; ++i) if (b[i] > kH) h[i] = b[i] - kH;  // dry: surface pinned to bed
             std::vector<float> hT = h, uT = u, wT = w;
             for (int t = 0; t < 400; ++t) {
                 stepEdge(h, u, w, &b, 1.f / 60.f, rest.eta);
@@ -877,7 +878,7 @@ int main() {
             // float residue (~1e-7 m/s) reaches the edge characteristics.
             bool sameEta = true;
             float maxVel = 0.f, dVel = 0.f;
-            for (int i = 0; i < n; ++i) {
+            for (std::size_t i = 0; i < n; ++i) {
                 sameEta = sameEta && h[i] == hT[i];
                 maxVel = std::max({maxVel, std::abs(u[i]), std::abs(w[i])});
                 dVel = std::max({dVel, std::abs(u[i] - uT[i]), std::abs(w[i] - wT[i])});
@@ -900,7 +901,7 @@ int main() {
             check(std::abs(u[(kHeight - 1) * kWidth + mid]) < 1e-5f, "edge stage: no lateral current from a uniform edge");
             for (int t = 0; t < 1200; ++t) stepEdge(h, u, w, nullptr, 1.f / 60.f, eta);
             float lo = 1e9f, hi = -1e9f;
-            for (int i = 0; i < n; ++i) { lo = std::min(lo, h[i]); hi = std::max(hi, h[i]); }
+            for (std::size_t i = 0; i < n; ++i) { lo = std::min(lo, h[i]); hi = std::max(hi, h[i]); }
             check(lo > 0.5f * eta && hi < 1.5f * eta, "edge stage: the window fills to the routed stage, no runaway");
         }
 
@@ -940,21 +941,21 @@ int main() {
             for (int t = 0; t < 50; ++t) {
                 routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow));
                 routeReachLateral(P(L), P(S), P(B), kSeg, kQ0 + kRelease, P(lateral), kRouteDt, P(storageA), P(outflowA));
-                for (int k = 0; k < kSeg; ++k) same = same && outflow[k] == outflowA[k];
+                for (std::size_t k = 0; k < kSeg; ++k) same = same && outflow[k] == outflowA[k];
             }
             check(same, "lateral: all-zero lateral routes bit for bit like routeReach");
 
             routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow));
             lateral[kStorm] = kRelease;
-            const double s0 = totalStorage();
-            double in = 0.0, out = 0.0;
+            const double stormS0 = totalStorage();
+            double stormIn = 0.0, stormOut = 0.0;
             float firstAt2 = -1.f, firstAt0 = -1.f, firstAtLast = -1.f;
             for (int t = 1; t <= 4000; ++t) {
                 const bool raining = t <= 300;
                 lateral[kStorm] = raining ? kRelease : 0.f;
                 routeReachLateral(P(L), P(S), P(B), kSeg, kQ0, P(lateral), kRouteDt, P(storage), P(outflow));
-                in += static_cast<double>(kQ0 + (raining ? kRelease : 0.f)) * kRouteDt;
-                out += static_cast<double>(outflow[kSeg - 1]) * kRouteDt;
+                stormIn += static_cast<double>(kQ0 + (raining ? kRelease : 0.f)) * static_cast<double>(kRouteDt);
+                stormOut += static_cast<double>(outflow[kSeg - 1]) * static_cast<double>(kRouteDt);
                 const float time = static_cast<float>(t) * kRouteDt;
                 // Stage into a reach = what joins it: the outflow above (head
                 // for reach 0) plus its own lateral.
@@ -966,8 +967,8 @@ int main() {
             check(firstAt2 > 0.f && firstAt2 <= kRouteDt, "lateral: rain over reach 2 raises reach 2 at once");
             check(firstAt0 < 0.f, "lateral: the reaches above the storm never see it");
             check(firstAtLast > firstAt2 + 0.5f * (lag[kSeg - 1] - lag[kStorm]), "lateral: the reaches below hear it after the lag");
-            const double balance = in - out - (totalStorage() - s0);
-            check(std::abs(balance) < 1e-4 * in, "lateral: volume in (head + lateral) = out + stored");
+            const double stormBalance = stormIn - stormOut - (totalStorage() - stormS0);
+            check(std::abs(stormBalance) < 1e-4 * stormIn, "lateral: volume in (head + lateral) = out + stored");
         }
     }
 
@@ -988,7 +989,7 @@ int main() {
         };
         for (int t = 0; t < 60; ++t) surge(10.f);
         float edgeLo = 1e9f, centre = 0.f, offBand = 0.f, minW = 0.f;
-        for (int i = 0; i < w; ++i) {
+        for (std::size_t i = 0; i < w; ++i) {
             edgeLo = std::min(edgeLo, hS[10 * w + i]);
             centre = std::max(centre, hS[10 * w + i]);
             offBand = std::max({offBand, std::abs(hS[2 * w + i]), std::abs(wS[2 * w + i])});

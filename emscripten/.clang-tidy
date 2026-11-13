@@ -1,6 +1,10 @@
 # Host-side static checks for the compute TUs and the fuzz target (#467), with
 # the host compile database:  pnpm lint:native  (CI: "Native sanitizers, fuzz,
 # tidy"). host_smoke.cpp is a test harness and is not part of the run.
+# The compiler warnings (WATERSHED_WARNINGS, -Werror) live in CMakeLists.txt
+# (#559 B). cppcoreguidelines-narrowing-conversions is bugprone-narrowing-
+# conversions under its guideline name: listed so it survives a narrower
+# bugprone-* list.
 #
 # Disabled, with reasons:
 #   bugprone-easily-swappable-parameters  The ABI is long runs of floats by
@@ -16,6 +20,8 @@ Checks: >
   -performance-no-int-to-ptr,
   cppcoreguidelines-init-variables,
   cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  cppcoreguidelines-macro-usage
+  cppcoreguidelines-macro-usage,
+  cppcoreguidelines-narrowing-conversions,
+  readability-implicit-bool-conversion
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'emscripten/[a-z_0-9]+\.h$'

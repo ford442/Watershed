@@ -45,9 +45,9 @@ float rand01(uint32_t& s) {
 // n <= every plane's size (the callers clamp it to capacity).
 void euler4(std::span<float> px, std::span<float> py, std::span<float> pz,
             std::span<const float> vx, std::span<const float> vy, std::span<const float> vz,
-            int n, float dt) {
+            std::size_t n, float dt) {
     const f32x4 vdt = f32x4_splat(dt);
-    int i = 0;
+    std::size_t i = 0;
     for (; i + 4 <= n; i += 4) {
         f32x4_store(&px[i], f32x4_add(f32x4_load(&px[i]), f32x4_mul(f32x4_load(&vx[i]), vdt)));
         f32x4_store(&py[i], f32x4_add(f32x4_load(&py[i]), f32x4_mul(f32x4_load(&vy[i]), vdt)));
@@ -96,9 +96,10 @@ uint32_t initWaterfallParticles(uintptr_t base, int capacity, int active,
     const std::span<float> maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
     const std::span<float> scale = plane(base, PARTICLE_SCALE, capacity);
 
-    uint32_t s = seed ? seed : 0x9e3779b9u;
+    uint32_t s = seed != 0u ? seed : 0x9e3779b9u;
     constexpr float kHz = 60.f;
-    for (int i = 0; i < active; ++i) {
+    const auto n = static_cast<std::size_t>(active);
+    for (std::size_t i = 0; i < n; ++i) {
         px[i] = (rand01(s) - 0.5f) * width;
         py[i] = rand01(s) * height;
         pz[i] = (rand01(s) - 0.5f) * depthZ;
@@ -137,10 +138,11 @@ uint32_t stepWaterfallParticles(uintptr_t base, int capacity, int active,
     const std::span<const float> vy = plane(base, PARTICLE_VY, capacity);
     const std::span<const float> vz = plane(base, PARTICLE_VZ, capacity);
 
-    euler4(px, py, pz, vx, vy, vz, active, dt);
+    const auto n = static_cast<std::size_t>(active);
+    euler4(px, py, pz, vx, vy, vz, n, dt);
 
-    uint32_t s = seed ? seed : 0x9e3779b9u;
-    for (int i = 0; i < active; ++i) {
+    uint32_t s = seed != 0u ? seed : 0x9e3779b9u;
+    for (std::size_t i = 0; i < n; ++i) {
         if (py[i] < 0.f) {
             py[i] = height;
             px[i] = (rand01(s) - 0.5f) * width;
@@ -166,27 +168,32 @@ int stepSplashParticles(uintptr_t base, int capacity, int count,
     const std::span<float> life = plane(base, PARTICLE_LIFE, capacity);
     const std::span<const float> maxLife = plane(base, PARTICLE_MAXLIFE, capacity);
 
-    euler4(px, py, pz, vx, vy, vz, count, dt);
+    const auto n = static_cast<std::size_t>(count);
+    euler4(px, py, pz, vx, vy, vz, n, dt);
 
     const f32x4 vdt = f32x4_splat(dt);
     const f32x4 vg = f32x4_splat(gravityY);
     const f32x4 vd = f32x4_splat(damp);
-    int i = 0;
-    for (; i + 4 <= count; i += 4) {
+    // The group counter stays int (#559 B): a size_t one compiles this bound
+    // to i32.le_u instead of i32.le_s. Same groups (count <= capacity), but a
+    // different shipped binary; the signed bound keeps the pair byte-identical.
+    int group = 0;
+    for (; group + 4 <= count; group += 4) {
+        const auto i = static_cast<std::size_t>(group);
         f32x4_store(&vy[i], f32x4_add(f32x4_load(&vy[i]), f32x4_mul(vg, vdt)));
         f32x4_store(&vx[i], f32x4_mul(f32x4_load(&vx[i]), vd));
         f32x4_store(&vy[i], f32x4_mul(f32x4_load(&vy[i]), vd));
         f32x4_store(&vz[i], f32x4_mul(f32x4_load(&vz[i]), vd));
         f32x4_store(&life[i], f32x4_add(f32x4_load(&life[i]), vdt));
     }
-    for (; i < count; ++i) {
+    for (auto i = static_cast<std::size_t>(group); i < n; ++i) {
         vy[i] += gravityY * dt;
         vx[i] *= damp;
         vy[i] *= damp;
         vz[i] *= damp;
         life[i] += dt;
     }
-    for (int j = 0; j < count; ++j) {
+    for (std::size_t j = 0; j < n; ++j) {
         if (life[j] >= maxLife[j]) life[j] = -1.f;
     }
     return WS_OK;

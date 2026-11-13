@@ -25,6 +25,7 @@
 #include "routing.h"
 #include "swe.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -71,13 +72,13 @@ inline uintptr_t at(std::vector<T>& v) { return reinterpret_cast<uintptr_t>(v.da
 inline uint32_t sweDigest() {
     constexpr int W = 40;
     constexpr int Z = 24;
-    constexpr int N = W * Z;
+    constexpr auto N = static_cast<std::size_t>(W * Z);
     constexpr float kDx = 0.5f;
     constexpr float kG = 9.80665f;
     constexpr float kH = 1.f;
     std::vector<float> h(N), u(N), w(N), b(N);
     uint32_t s = 0x9e3779b9u;
-    for (int i = 0; i < N; ++i) {
+    for (std::size_t i = 0; i < N; ++i) {
         const uint32_t r = xorshift(s);
         b[i] = static_cast<float>(r & 0xffu) * 0x1p-9f;
         h[i] = (static_cast<float>((r >> 8) & 0xfffu) - 2048.f) * 0x1p-14f;
@@ -118,7 +119,7 @@ inline uint32_t sweDigest() {
 inline uint32_t routingDigest() {
     constexpr int kSeg = 20;
     std::vector<float> L(kSeg), S(kSeg), B(kSeg), lateral(kSeg);
-    for (int k = 0; k < kSeg; ++k) {
+    for (std::size_t k = 0; k < L.size(); ++k) {
         L[k] = 95.f + 2.f * static_cast<float>(k % 5);
         S[k] = static_cast<float>(6 + k % 3) * 0x1p-8f;
         B[k] = 10.f + static_cast<float>(k % 4);

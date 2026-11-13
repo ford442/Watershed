@@ -110,9 +110,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             const int cw = dw < 1 ? 1 : dw;
             const int ch = dh < 1 ? 1 : dh;
             const bool valid = validExtent(sw) && validExtent(sh) && validExtent(cw) && validExtent(ch);
-            std::vector<float> src(validExtent(sw) && validExtent(sh) ? static_cast<size_t>(sw) * sh : 0);
+            std::vector<float> src(validExtent(sw) && validExtent(sh) ? static_cast<size_t>(sw) * static_cast<size_t>(sh) : 0);
             for (float& v : src) v = value();
-            std::vector<float> dst(valid ? static_cast<size_t>(cw) * ch : 1, kUntouched);
+            std::vector<float> dst(valid ? static_cast<size_t>(cw) * static_cast<size_t>(ch) : 1, kUntouched);
             downsampleF32(ptr(src), sw, sh, ptr(dst), dw, dh);
             if (!valid) require(untouched(dst), "rejected downsample wrote its output");
             break;
@@ -121,7 +121,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             const int w = extent(in);
             const int h = extent(in);
             const bool valid = validExtent(w) && validExtent(h);
-            const size_t n = valid ? static_cast<size_t>(w) * h : 0;
+            const size_t n = valid ? static_cast<size_t>(w) * static_cast<size_t>(h) : 0;
             std::vector<float> src(n);
             bool finite = true;
             for (float& v : src) {
