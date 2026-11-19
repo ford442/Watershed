@@ -17,11 +17,13 @@
  *   into each program, and uses `NoToneMapping` + linear output whenever it
  *   renders into a target. Every scene draw goes through the post chain's
  *   targets, so the GLSL compile runs with a throwaway target bound.
- * - **Shadow map type.** Baked in as `SHADOWMAP_TYPE_*`. A High → Medium drop
- *   flips `soft` → `basic`, which used to recompile every lit program on the
- *   frame the valve moved — exactly when frame time was already bad. Each
- *   requested shadow variant gets its own material instances (a material holds
- *   one program; recompiling it under another type would release the first).
+ * - **Shadow map type.** Baked in as `SHADOWMAP_TYPE_*`. Every preset uses the
+ *   same type since #574 E.2 (a High → Medium drop used to flip `soft` →
+ *   `basic` and recompile every lit program on the frame the valve moved), so
+ *   one variant is warmed. The per-mode loop stays for callers that ask for
+ *   more than one: each requested shadow variant gets its own material
+ *   instances (a material holds one program; recompiling it under another type
+ *   would release the first).
  *
  * The warm objects stay alive until `dispose()`: three refcounts programs per
  * material, and dropping the last holder destroys the program before the run
@@ -29,7 +31,11 @@
  */
 import * as THREE from 'three';
 import { telemetryNowMs } from '../utils/wallClock';
-import { shadowMapTypeFor, type ShadowMode } from './deriveRendererContextOptions';
+import {
+  deriveRendererContextOptions,
+  shadowMapTypeFor,
+  type ShadowMode,
+} from './deriveRendererContextOptions';
 import { liveProgramCount } from './programCount';
 
 /** One material variant, built fresh for each shadow variant. */
@@ -102,17 +108,19 @@ export function shadowStateFor(mode: ShadowMode): { enabled: boolean; type: THRE
 }
 
 /**
- * The shadow modes worth warming for a preset: its own, then the next preset
- * down's — the one step the adaptive valve takes under load.
+ * The shadow modes worth warming for a preset: its own, plus the next preset
+ * down's when that differs — the one step the adaptive valve takes under load.
+ * Since #574 E.2 every preset is `soft`, so this is one mode everywhere.
  */
 export function warmupShadowModes(quality: 'low' | 'medium' | 'high' | 'ultra'): ShadowMode[] {
-  const ladder: Record<typeof quality, ShadowMode[]> = {
-    ultra: ['soft'],
-    high: ['soft', 'basic'],
-    medium: ['basic', 'off'],
-    low: ['off'],
+  const down: Record<typeof quality, typeof quality> = {
+    ultra: 'high',
+    high: 'medium',
+    medium: 'low',
+    low: 'low',
   };
-  return ladder[quality];
+  const modes = [quality, down[quality]].map((q) => deriveRendererContextOptions(q).shadowMode);
+  return [...new Set(modes)];
 }
 
 

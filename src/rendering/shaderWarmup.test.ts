@@ -61,12 +61,12 @@ describe('warmShaderPrograms', () => {
       targetScene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(),
       recipes: [recipe('a'), recipe('b')],
-      shadowModes: ['soft', 'basic', 'basic'],
+      shadowModes: ['soft', 'off', 'off'],
     });
     expect(seen).toHaveLength(2);
     expect(seen[0]).toMatchObject({ shadowEnabled: true, shadowType: THREE.PCFShadowMap });
-    expect(seen[1]).toMatchObject({ shadowEnabled: true, shadowType: THREE.BasicShadowMap });
-    // A material holds one program: the basic variant cannot reuse the soft one's instances.
+    expect(seen[1]).toMatchObject({ shadowEnabled: false });
+    // A material holds one program: the shadowless variant cannot reuse the soft one's instances.
     expect(seen[1].materials.some((m) => seen[0].materials.includes(m))).toBe(false);
     expect(renderer.shadowMap).toEqual({ enabled: true, type: THREE.PCFShadowMap });
     expect(result).toMatchObject({ objects: 4, programsBefore: 0, programsAfter: 4, failed: [] });
@@ -117,11 +117,11 @@ describe('warmShaderPrograms', () => {
 });
 
 describe('warmup shadow modes', () => {
-  it('warms the preset and the one step the adaptive valve takes down', () => {
-    expect(warmupShadowModes('high')).toEqual(['soft', 'basic']);
-    expect(warmupShadowModes('medium')).toEqual(['basic', 'off']);
-    expect(warmupShadowModes('low')).toEqual(['off']);
+  it('warms one mode on every preset: the adaptive step down shares its shadow type (#574 E.2)', () => {
+    for (const q of ['low', 'medium', 'high', 'ultra'] as const) {
+      expect(warmupShadowModes(q)).toEqual(['soft']);
+    }
     expect(shadowStateFor('off')).toEqual({ enabled: false, type: null });
-    expect(shadowStateFor('basic')).toEqual({ enabled: true, type: THREE.BasicShadowMap });
+    expect(shadowStateFor('soft')).toEqual({ enabled: true, type: THREE.PCFShadowMap });
   });
 });

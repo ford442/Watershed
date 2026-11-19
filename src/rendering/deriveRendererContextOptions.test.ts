@@ -35,19 +35,19 @@ describe('deriveRendererContextOptions', () => {
     const opts = deriveRendererContextOptions('low');
     expect(opts).toMatchObject({
       dprMax: 1.0,
-      shadowMode: 'off',
-      shadowMapSize: null,
+      shadowMode: 'soft',
+      shadowMapSize: 512,
       outputColorSpace: THREE.SRGBColorSpace,
       toneMapping: THREE.ACESFilmicToneMapping,
       toneMappingExposure: DEFAULT_TONE_MAPPING_EXPOSURE,
     });
   });
 
-  it('maps medium preset to basic shadows and capped DPR', () => {
+  it('maps medium preset to PCF shadows and capped DPR', () => {
     const opts = deriveRendererContextOptions('medium');
     expect(opts).toMatchObject({
       dprMax: 1.25,
-      shadowMode: 'basic',
+      shadowMode: 'soft',
       shadowMapSize: 1024,
     });
   });
@@ -164,8 +164,25 @@ describe('LOD ↔ renderer shadow map contract', () => {
     expect(QUALITY_SETTINGS.ultra.shadowMapSize).toBe(
       deriveRendererContextOptions('ultra', { devicePixelRatio: 2 }).shadowMapSize
     );
-    expect(deriveRendererContextOptions('low').shadowMapSize).toBeNull();
-    expect(QUALITY_SETTINGS.low.shadowMapSize).toBe(1024);
+    expect(QUALITY_SETTINGS.low.shadowMapSize).toBe(
+      deriveRendererContextOptions('low').shadowMapSize
+    );
+  });
+});
+
+describe('one shadow map type on every tier (#574 E.2)', () => {
+  it('derives the same shadow mode and three type for every preset, so a preset change recompiles nothing', () => {
+    const modes = ALL_PRESETS.map((q) => deriveRendererContextOptions(q, { devicePixelRatio: 2 }).shadowMode);
+    expect(new Set(modes)).toEqual(new Set(['soft']));
+    for (const mode of modes) {
+      if (mode === 'off') throw new Error('a preset turned shadows off');
+      expect(shadowMapTypeFor(mode)).toBe(THREE.PCFShadowMap);
+    }
+  });
+
+  it('tiers by map size only', () => {
+    const sizes = ALL_PRESETS.map((q) => deriveRendererContextOptions(q, { devicePixelRatio: 2 }).shadowMapSize);
+    expect(sizes).toEqual([512, 1024, 2048, 4096]);
   });
 });
 
@@ -174,15 +191,13 @@ describe('shadowModeToCanvasProp', () => {
     expect(shadowModeToCanvasProp('off')).toBe(false);
   });
 
-  it('returns basic, and percentage (PCF) for soft', () => {
-    expect(shadowModeToCanvasProp('basic')).toBe('basic');
+  it('returns percentage (PCF) for soft', () => {
     // r185 deprecates PCFSoftShadowMap and rewrites it to PCF on every shadow pass.
     expect(shadowModeToCanvasProp('soft')).toBe('percentage');
   });
 
   it('never asks three for the deprecated PCFSoftShadowMap', () => {
     expect(shadowMapTypeFor('soft')).toBe(THREE.PCFShadowMap);
-    expect(shadowMapTypeFor('basic')).toBe(THREE.BasicShadowMap);
   });
 });
 
@@ -332,7 +347,7 @@ describe('rendererContextCreationKey — what forces a Canvas remount', () => {
       deriveRendererContextOptions('ultra', { devicePixelRatio: 2 })
     );
     expect(at1x).toBe(at2x);
-    expect(keyFor('medium')).toBe(keyFor('high')); // basic vs soft shadows
+    expect(keyFor('low')).toBe(keyFor('high')); // shadow map size differs
   });
 
   it('is UNCHANGED across the whole render-scale band', () => {

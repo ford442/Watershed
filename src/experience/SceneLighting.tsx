@@ -60,7 +60,7 @@ export default function SceneLighting({
   // the run instead of staying at the origin; the sky clock's sun sets the angle.
   const keyTarget = useMemo(() => new THREE.Object3D(), []);
 
-  // Prefer the renderer quality contract (DPR-aware ultra map size; shadows off on low).
+  // Prefer the renderer quality contract (DPR-aware ultra map size; one shadow type on every tier, #574 E.2).
   const shadowContract = useMemo(
     () =>
       deriveRendererContextOptions(quality, {

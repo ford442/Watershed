@@ -72,8 +72,8 @@ export interface LODConfig {
 export const QUALITY_SETTINGS: Record<QualityLevel, LODConfig> = {
   low: {
     particleDensity: 0.4,
-    // Shadows off at Canvas for low; size retained for adaptive upgrades.
-    shadowMapSize: 1024,
+    // Same shadow type as every tier, smallest map (#574 E.2).
+    shadowMapSize: 512,
     shadowBias: -0.0015,
     shadowNormalBias: 0.025,
     enableReflections: false,

@@ -14,13 +14,21 @@ Derived by the pure function `deriveRendererContextOptions()` in `src/rendering/
 
 | Preset | DPR ceiling `[1, max]` | Shadows | Shadow map size | Notes |
 |--------|------------------------|---------|-----------------|-------|
-| `low` | `1.0` | off | — | Minimal GPU cost |
-| `medium` | `1.25` | basic | 1024 | |
+| `low` | `1.0` | soft (PCF) | 512 | Minimal GPU cost — shadows stay on at the smallest map (#574 E.2) |
+| `medium` | `1.25` | soft (PCF) | 1024 | |
 | `high` | `2` | soft (PCF) | 2048 | **Default look** — matches pre-contract Canvas defaults (`dpr [1,2]`, `shadows="soft"`) |
 | `ultra` | `min(devicePixelRatio, 2.0)` | soft (PCF) | 2048 (1×) / 4096 (≥2×) | Native DPR up to the `ULTRA_DPR_CEILING` |
 
 The DPR column is the **ceiling**. The live `dprMax` is that ceiling times the
 adaptive **render scale** (0.5–1.0) — see [Adaptive render scale](#adaptive-render-scale).
+
+**One shadow type (#574 E.2).** Every preset draws `PCFShadowMap`; tiers differ
+by map size only. `USE_SHADOWMAP` and `SHADOWMAP_TYPE_*` are baked into every lit
+program, so `low`'s old "off" and `medium`'s old `BasicShadowMap` each meant a
+recompile of the scene on the frame the preset moved (21–24 programs on High →
+Medium, below). A preset change now reallocates one shadow map and links nothing
+for the shadow configuration; `applyRendererQualityUpdate` still handles a
+shadowless context for surfaces that are not a preset.
 
 Antialias, `powerPreference`, and `failIfMajorPerformanceCaveat` are deliberately **not** in this table. They are creation-time attributes: negotiated once at boot, frozen for the session, identical for every preset — see [Boot-time graphics negotiation](#boot-time-graphics-negotiation).
 
@@ -83,7 +91,7 @@ The obvious alternative ("catch the constructor throw, retry once at `low`") is 
 
 `antialias`, `powerPreference`, and `failIfMajorPerformanceCaveat` come from the frozen envelope, so `rendererContextCreationKey()` is **identical for all four presets** and a quality change cannot remount the Canvas. That is pinned by a test. The remount machinery stays for the cases that genuinely need it: a different envelope (capture harness / `?softwareGl=1`), a renderer-class or material-backend change, and the context-loss epoch.
 
-The visible trade: `low` no longer turns MSAA off, because MSAA cannot be toggled on a live context. `low` still drops DPR to 1.0 and shadows to off, which is the larger share of its cost. The honest fix for MSAA cost on a weak machine is a render scale, not a context teardown.
+The visible trade: `low` no longer turns MSAA off, because MSAA cannot be toggled on a live context. `low` still drops DPR to 1.0 and the shadow map to 512, which is the larger share of its cost. The honest fix for MSAA cost on a weak machine is a render scale, not a context teardown.
 
 ### Capture harness
 
@@ -133,7 +141,7 @@ Changing quality used to remount the Canvas, which tore down Rapier, the track t
 
 **Consequence:** **every** quality transition applies live — `low` ↔ `ultra` included. No spawn pop, no WASM reload, no lost wipeout/ghost state, no context teardown. The player's only performance lever no longer costs them their run, which is the whole point.
 
-**Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) still stays inside the `medium` / `high` / `ultra` band and never auto-selects `low`, but the reason has changed. It used to be a hard constraint: auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. That cannot happen any more. What remains is a design call — `low` turns shadows off and drops DPR to 1.0, a visible change of look rather than a tuning step, and the game should not choose it for the player during a rough patch. Widening the band is now a decision, not a repair.
+**Adaptive LOD** (`systems/lod/adaptiveQuality.ts` / `stepAdaptiveQuality`) still stays inside the `medium` / `high` / `ultra` band and never auto-selects `low`, but the reason has changed. It used to be a hard constraint: auto-dropping to `low` remounted the Canvas during the start menu, fired `webglcontextlost` without a restore on the new element, and left the UI stuck on “Graphics paused — recovering…”. That cannot happen any more. What remains is a design call — `low` drops DPR to 1.0 and the shadow map to 512 (and LOD to its smallest budgets), a visible change of look rather than a tuning step, and the game should not choose it for the player during a rough patch. Widening the band is now a decision, not a repair.
 
 The knob adaptive quality *does* get to move freely is the render scale, because it trades sharpness rather than lighting. The preset ladder now defers to it: it steps down only once the valve is floored, and up only once the valve is back at its ceiling.
 
@@ -141,7 +149,7 @@ The knob adaptive quality *does* get to move freely is the render scale, because
 
 ### Why a scene walk on shadow changes
 
-`RendererQualitySync` does more than assign `shadowMap.type`. THREE bakes the `SHADOWMAP_TYPE_*` define into each compiled program, and its `needsProgramChange` check in `setProgram` does **not** include the shadow map type — so flipping `basic` ↔ `soft` keeps rendering the old programs. `shadowMap.needsUpdate` only re-renders the shadow *maps*; it recompiles nothing. `applyRendererQualityUpdate()` therefore walks the scene and marks every material `needsUpdate` when the shadow configuration (or tone mapping) actually changed — and skips the walk when only DPR moved.
+`RendererQualitySync` does more than assign `shadowMap.type`. THREE bakes the `SHADOWMAP_TYPE_*` define into each compiled program, and its `needsProgramChange` check in `setProgram` does **not** include the shadow map type — so flipping shadows on ↔ off (or, before #574 E.2, `basic` ↔ `soft`) keeps rendering the old programs. `shadowMap.needsUpdate` only re-renders the shadow *maps*; it recompiles nothing. `applyRendererQualityUpdate()` therefore walks the scene and marks every material `needsUpdate` when the shadow configuration (or tone mapping) actually changed — and skips the walk when only DPR moved.
 
 Per-light shadow map size has the same class of problem: `light.shadow.mapSize` is inert once the render target exists, because THREE allocates it on the first shadow pass and never reallocates. `SceneLighting` disposes the old map so the next pass rebuilds it at the new size.
 
@@ -271,7 +279,9 @@ The GLSL driver (`createComposerDriver`, `PostProcessingPipeline.tsx`) no longer
 
 `pnpm test:post-parity` is identical to four decimals before and after (grade 0.4509, bloom 0.5786, grade+smaa 0.5786, god rays 0.4682; scene under god rays 0.4509 → 0.4682). Entry chunk 746,342 → 742,987 B (the `EffectComposer` left it); total JS 3,744 → 3,741 kB.
 
-### High → Medium drop: measured, not fixed
+### High → Medium drop: measured, then removed at the source (#574 E.2)
+
+Everything in this section describes the tiered shadow types before #574 E.2. Medium now uses the same `PCFShadowMap` as High, so the drop no longer changes `SHADOWMAP_TYPE_*` and the 21–24 `SHADOWMAP_TYPE_BASIC` links below have no cause left. Same trace, same box (headless SwiftShader, 480×270), 2026-11-19: `main` @ ff6a7ce linked **17** programs on the drop, all `SHADOWMAP_TYPE_BASIC`, and drew no frame in the 6 s window after it; with E.2 the drop links **6**, all `SHADOWMAP_TYPE_PCF` — the same count as the steady-High window before it (segment streaming, not the preset). The history stays because the prelink finding (program keys that differ where the source does not) is still unexplained.
 
 `verification/quality_drop_trace.mjs` (needs `pnpm preview`) boots a live run at High with the adaptive step-down off (`?spawnProfile=1`), lets the menu warm-up run, then writes `medium` through the screenshot harness's `setQuality` — what the adaptive ladder writes — and records every `linkProgram` and rAF interval. Headless SwiftShader (no `KHR_parallel_shader_compile`), three runs each, `main` and #534 E alike: the drop links **21–24 programs**, all `SHADOWMAP_TYPE_BASIC`, inside **one 5–7 s frame**; no program is deleted around it. Phase E does not change this — it rebuilt the post chain, not the shadow-type switch.
 
@@ -284,7 +294,7 @@ While the menu is up, `experience/ShaderWarmup.tsx` compiles the programs the fi
 1. `compileAsync` of one object per material variant (`shaderWarmupRecipes.ts`: canyon floor / wall river extensions, river / rock / tree prop extensions, water with and without the SWE flow map, weather, splash bow wave, standard and basic shapes) against a warm target scene — the live scene's lights, cloned, and the run's linear fog. The menu has no scene fog, and fog is baked into every program that reads it.
 2. One warm frame through a throwaway effect chain (detached from the renderer right after its draw, since a renderer holds one effect list for every canvas render), drawn from a `useFrame` so R3F's own menu render overwrites it before it is presented: the post passes, the shadow pass's depth materials, and the post-target variants of the menu's own objects (cloned).
 
-Both run under a render target (three bakes `NoToneMapping` + linear output into anything drawn into a target, which is every scene draw on the post path) and once per shadow mode the preset can reach in one adaptive step (`warmupShadowModes`: High warms `soft` and `basic`). The warm objects and effect chains are held for the session — three refcounts programs per material, and dropping the last holder destroys the program. Off under scripted input unless `?warmup=1`.
+Both run under a render target (three bakes `NoToneMapping` + linear output into anything drawn into a target, which is every scene draw on the post path) and once per shadow mode the preset can reach in one adaptive step (`warmupShadowModes`: one mode on every preset since #574 E.2, as every tier and its adaptive step down share `soft`). The warm objects and effect chains are held for the session — three refcounts programs per material, and dropping the last holder destroys the program. Off under scripted input unless `?warmup=1`.
 
 Measured on headless Chromium / SwiftShader, default map, High: the first 3 s after Start compiled **65 programs before, 19–20 after** (58 programs in the compile step, 57 more in the warm frame, ~180 ms in the menu). `?debug=1` logs the leftovers by name or key; they are the long tail of per-prop variants (rock / tree extension instancing variants, a few VFX `ShaderMaterial`s and their shadow-depth twins).
 

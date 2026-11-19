@@ -35,7 +35,6 @@ that owns it now.
 | From | Remainder | Now owned by |
 |---|---|---|
 | #554 B.2 · #519 C.3 | Viewport render scale: targets allocated once at `dprMax`, the valve moves the viewport (`RendererQualitySync.tsx` still calls `setDpr`) | #574 E.1 |
-| #554 B.3 · #519 C.2 | One shadow map type on every tier (`deriveRendererContextOptions.ts` still tiers Basic / PCF) | #574 E.2 |
 | #554 A.2 · #535 | `VehicleTuner` liveness / home | #577 |
 | #559 C | God modules: split in #579 (placement, settings, debug panel; 600 / 900-line ceiling in `check-systems-layout.mjs`). Left: `placement/format.ts`, `placement/writer.ts`, `segmentMeshBuild.ts`, `terrainTile.ts` onto the strict-buffers ratchet | #574 D.4 |
 | #559 E.3 | `profile:spawn` compared in CI | #574 B.4 (report only) |
