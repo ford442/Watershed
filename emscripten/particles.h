@@ -46,14 +46,12 @@ void freeParticleSoA(uintptr_t ptr);
  * this returned the seed, and a rejection returned the input seed — which
  * read exactly like a successful call.
  */
-[[nodiscard]] int initWaterfallParticles(uintptr_t base, int capacity, int active,
-                                         float width, float height, float depthZ,
-                                         float fanSpreadRad, uint32_t seed, uintptr_t seedOut);
+[[nodiscard]] int initWaterfallParticles(uintptr_t base, int capacity, int active, float width, float height,
+                                         float depthZ, float fanSpreadRad, uint32_t seed, uintptr_t seedOut);
 
 /** Age / Euler / chute recycle for [0, active); status and `seedOut` as initWaterfallParticles. */
-[[nodiscard]] int stepWaterfallParticles(uintptr_t base, int capacity, int active,
-                                         float dt, float width, float height, float depthZ,
-                                         uint32_t seed, uintptr_t seedOut);
+[[nodiscard]] int stepWaterfallParticles(uintptr_t base, int capacity, int active, float dt, float width, float height,
+                                         float depthZ, uint32_t seed, uintptr_t seedOut);
 
 /**
  * Euler + gravity + velocity damp + age for dense slots [0, count).
@@ -66,7 +64,6 @@ void freeParticleSoA(uintptr_t ptr);
  * Returns WS_OK (count 0 included), or WS_REJECTED for a null base, a bad
  * capacity, a negative count, or a non-finite / non-positive dt.
  */
-[[nodiscard]] int stepSplashParticles(uintptr_t base, int capacity, int count,
-                        float dt, float gravityY, float damp);
+[[nodiscard]] int stepSplashParticles(uintptr_t base, int capacity, int count, float dt, float gravityY, float damp);
 
 #endif  // WATERSHED_PARTICLES_H

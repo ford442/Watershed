@@ -41,10 +41,14 @@ bool untouched(const std::vector<float>& v) {
 /** An extent JS might send: usually valid, sometimes zero, negative or past the cap. */
 int extent(fuzz::Input& in) {
     switch (in.u32() % 8u) {
-        case 0: return 0;
-        case 1: return -in.pick(1, 1 << 20);
-        case 2: return SWE_MAX_GRID_EXTENT + in.pick(1, 1 << 20);
-        default: return in.pick(1, 40);
+        case 0:
+            return 0;
+        case 1:
+            return -in.pick(1, 1 << 20);
+        case 2:
+            return SWE_MAX_GRID_EXTENT + in.pick(1, 1 << 20);
+        default:
+            return in.pick(1, 40);
     }
 }
 
@@ -67,9 +71,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             std::vector<float> out(3, kUntouched);
             const bool nullSrc = in.coin() && count > 0;
             (void)reduceF32Grid(nullSrc ? 0 : ptr(src), count, ptr(out));
-            if (!valid || nullSrc) require(untouched(out), "rejected reduce wrote its output");
-            else require(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]),
-                         "reduce produced a non-finite summary");
+            if (!valid || nullSrc)
+                require(untouched(out), "rejected reduce wrote its output");
+            else
+                require(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]),
+                        "reduce produced a non-finite summary");
             break;
         }
         case 1: {
@@ -110,7 +116,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             const int cw = dw < 1 ? 1 : dw;
             const int ch = dh < 1 ? 1 : dh;
             const bool valid = validExtent(sw) && validExtent(sh) && validExtent(cw) && validExtent(ch);
-            std::vector<float> src(validExtent(sw) && validExtent(sh) ? static_cast<size_t>(sw) * static_cast<size_t>(sh) : 0);
+            std::vector<float> src(
+                validExtent(sw) && validExtent(sh) ? static_cast<size_t>(sw) * static_cast<size_t>(sh) : 0);
             for (float& v : src) v = value();
             std::vector<float> dst(valid ? static_cast<size_t>(cw) * static_cast<size_t>(ch) : 1, kUntouched);
             (void)downsampleF32(ptr(src), sw, sh, ptr(dst), dw, dh);
@@ -130,7 +137,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             }
             std::vector<float> dst(valid ? n : 1, kUntouched);
             (void)blurSeparableF32(ptr(src), ptr(dst), w, h);
-            if (!valid) require(untouched(dst), "rejected blur wrote its output");
+            if (!valid)
+                require(untouched(dst), "rejected blur wrote its output");
             else if (finite) {
                 for (float v : dst) require(std::isfinite(v), "blur of finite input is non-finite");
             }

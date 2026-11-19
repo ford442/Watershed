@@ -23,24 +23,15 @@ struct WaterForceResult {
 };
 
 /** Archimedes buoyancy: F_b = ρ · V_displaced · g (N). */
-[[nodiscard]] float computeBuoyancy(float submergedVolume,
-                      float waterDensity,
-                      float gravity) noexcept;
+[[nodiscard]] float computeBuoyancy(float submergedVolume, float waterDensity, float gravity) noexcept;
 
 /** Full water-force solve for a single body (buoyancy + flow + drag + turbulence). */
-[[nodiscard]] WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
-                                     float velX, float velY, float velZ,
-                                     float flowDirX, float flowDirZ,
-                                     float flowSpeed,
-                                     float waterLevel,
-                                     float raftMass,
-                                     float raftVolume,
-                                     float dragCoefficient,
-                                     float frontalArea,
-                                     float sideArea,
-                                     float timeSeconds,
-                                     float turbulenceStrength,
-                                     float turbulenceFrequency) noexcept;
+[[nodiscard]] WaterForceResult calculateWaterForce(float posX, float posY, float posZ, float velX, float velY,
+                                                   float velZ, float flowDirX, float flowDirZ, float flowSpeed,
+                                                   float waterLevel, float raftMass, float raftVolume,
+                                                   float dragCoefficient, float frontalArea, float sideArea,
+                                                   float timeSeconds, float turbulenceStrength,
+                                                   float turbulenceFrequency) noexcept;
 
 /**
  * Batch ABI for workers.
@@ -59,19 +50,10 @@ struct WaterForceResult {
  * sampleCount outside [1, WATER_FORCE_MAX_SAMPLES], or a non-finite config
  * scalar (it would refuse every row).
  */
-[[nodiscard]] int computeWaterForcesBatch(uintptr_t inputPtr,
-                            uintptr_t outputPtr,
-                            uintptr_t refusedPtr,
-                            int sampleCount,
-                            float flowSpeed,
-                            float waterLevel,
-                            float raftMass,
-                            float raftVolume,
-                            float dragCoefficient,
-                            float frontalArea,
-                            float sideArea,
-                            float timeSeconds,
-                            float turbulenceStrength,
-                            float turbulenceFrequency) noexcept;
+[[nodiscard]] int computeWaterForcesBatch(uintptr_t inputPtr, uintptr_t outputPtr, uintptr_t refusedPtr,
+                                          int sampleCount, float flowSpeed, float waterLevel, float raftMass,
+                                          float raftVolume, float dragCoefficient, float frontalArea, float sideArea,
+                                          float timeSeconds, float turbulenceStrength,
+                                          float turbulenceFrequency) noexcept;
 
 #endif  // WATERSHED_FORCES_H

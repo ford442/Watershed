@@ -62,7 +62,9 @@ inline uint32_t xorshift(uint32_t& s) {
 }
 
 template <typename T>
-inline uintptr_t at(std::vector<T>& v) { return reinterpret_cast<uintptr_t>(v.data()); }
+inline uintptr_t at(std::vector<T>& v) {
+    return reinterpret_cast<uintptr_t>(v.data());
+}
 
 /**
  * 40 x 24 cells over a random bed: 30 steps alternating the routed-edge and
@@ -95,7 +97,7 @@ inline uint32_t sweDigest() {
         if (k == 8) {
             for (int kind = 0; kind <= 4; ++kind) {
                 (void)applySWEEvent(at(h), at(u), at(w), at(b), W, Z, kDx, -10.f, -6.f, kH, kind,
-                              -6.f + 3.f * static_cast<float>(kind), 0.f, 2.5f, 0.75f, 0.02f);
+                                    -6.f + 3.f * static_cast<float>(kind), 0.f, 2.5f, 0.75f, 0.02f);
             }
         }
         if (k == 16) (void)scrollShallowWater(at(h), at(u), at(w), at(b), W, Z, 1, -2, 0.0625f, 0.125f, -0.25f);

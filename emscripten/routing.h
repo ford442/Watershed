@@ -79,16 +79,16 @@ struct RoutedEdge {
 [[nodiscard]] float routingCelerity(float Q, float width, float slope);
 
 /** Fill storage / outflow with the steady state that carries Q through every segment. */
-[[nodiscard]] int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                     float Q, uintptr_t storagePtr, uintptr_t outflowPtr);
+[[nodiscard]] int routeReachSteady(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg, float Q,
+                                   uintptr_t storagePtr, uintptr_t outflowPtr);
 
 /**
  * Advance the chain by dt seconds with `inflowQ` entering the head segment.
  * Reservoirs are visited upstream → downstream, so a step's outflow feeds the
  * next reservoir as its mean inflow over the same step.
  */
-[[nodiscard]] int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-               float inflowQ, float dt, uintptr_t storagePtr, uintptr_t outflowPtr);
+[[nodiscard]] int routeReach(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg, float inflowQ,
+                             float dt, uintptr_t storagePtr, uintptr_t outflowPtr);
 
 /**
  * routeReach with lateral inflow (ABI 14): lateral[nSeg] (m³/s, ≥ 0) joins
@@ -101,8 +101,8 @@ struct RoutedEdge {
  * All-zero lateral is routeReach bit for bit (routeReach calls this with none).
  */
 [[nodiscard]] int routeReachLateral(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                      float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
-                      uintptr_t outflowPtr);
+                                    float inflowQ, uintptr_t lateralPtr, float dt, uintptr_t storagePtr,
+                                    uintptr_t outflowPtr);
 
 /**
  * Cumulative kinematic travel time (s) from the chain head to the downstream
@@ -110,7 +110,7 @@ struct RoutedEdge {
  * change at the head takes to reach segment k's outflow.
  */
 [[nodiscard]] int routeReachTravelTime(uintptr_t lengthsPtr, uintptr_t slopesPtr, uintptr_t widthsPtr, int nSeg,
-                         float Q, uintptr_t lagPtr);
+                                       float Q, uintptr_t lagPtr);
 
 /**
  * Edge state for a routed discharge, relative to the reference discharge Qref

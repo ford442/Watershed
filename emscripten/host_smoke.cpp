@@ -67,9 +67,8 @@ void requireOk(int status, const char* label) {
 void checkClose(float actual, float expected, float relEps, const char* label) {
     const float tol = std::max(std::abs(expected) * relEps, 1e-4f);
     if (std::abs(actual - expected) > tol) {
-        std::fprintf(stderr, "FAIL  %s: expected %g, got %g (tol %g)\n",
-                     label, static_cast<double>(expected), static_cast<double>(actual),
-                     static_cast<double>(tol));
+        std::fprintf(stderr, "FAIL  %s: expected %g, got %g (tol %g)\n", label, static_cast<double>(expected),
+                     static_cast<double>(actual), static_cast<double>(tol));
         ++g_failures;
     }
 }
@@ -83,20 +82,8 @@ int main() {
 
     // 2. calculateWaterForce — first committed fixture
     //    "raft fully submerged, straight downstream flow"
-    const WaterForceResult force = calculateWaterForce(
-        0.f, 0.2f, -10.f,
-        0.2f, 0.f, -1.4f,
-        0.f, -1.f,
-        4.5f,
-        0.5f,
-        150.f,
-        1.2f,
-        0.47f,
-        1.05f,
-        0.7f,
-        12.5f,
-        0.f,
-        2.4f);
+    const WaterForceResult force = calculateWaterForce(0.f, 0.2f, -10.f, 0.2f, 0.f, -1.4f, 0.f, -1.f, 4.5f, 0.5f, 150.f,
+                                                       1.2f, 0.47f, 1.05f, 0.7f, 12.5f, 0.f, 2.4f);
     checkClose(force.forceX, -239.3792f, 1e-3f, "fixture0.forceX");
     checkClose(force.forceY, 11253.1309f, 1e-3f, "fixture0.forceY");
     checkClose(force.forceZ, -1773.6646f, 1e-3f, "fixture0.forceZ");
@@ -117,23 +104,17 @@ int main() {
     constexpr float kDt = 1.f;  // well above CFL
     constexpr auto n = static_cast<std::size_t>(kWidth * kHeight);
 
-    auto stepFlat = [&](std::vector<float>& h, std::vector<float>& u,
-                        std::vector<float>& w, float dt) {
-        return stepShallowWater(
-            reinterpret_cast<uintptr_t>(h.data()),
-            reinterpret_cast<uintptr_t>(u.data()),
-            reinterpret_cast<uintptr_t>(w.data()),
-            0,  // flat bed
-            kWidth, kHeight, dt, kG, kDx, kH);
+    auto stepFlat = [&](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w, float dt) {
+        return stepShallowWater(reinterpret_cast<uintptr_t>(h.data()), reinterpret_cast<uintptr_t>(u.data()),
+                                reinterpret_cast<uintptr_t>(w.data()),
+                                0,  // flat bed
+                                kWidth, kHeight, dt, kG, kDx, kH);
     };
-    auto stepBed = [&](std::vector<float>& h, std::vector<float>& u,
-                       std::vector<float>& w, std::vector<float>& b, float dt) {
-        (void)stepShallowWater(
-            reinterpret_cast<uintptr_t>(h.data()),
-            reinterpret_cast<uintptr_t>(u.data()),
-            reinterpret_cast<uintptr_t>(w.data()),
-            reinterpret_cast<uintptr_t>(b.data()),
-            kWidth, kHeight, dt, kG, kDx, kH);
+    auto stepBed = [&](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w, std::vector<float>& b,
+                       float dt) {
+        (void)stepShallowWater(reinterpret_cast<uintptr_t>(h.data()), reinterpret_cast<uintptr_t>(u.data()),
+                               reinterpret_cast<uintptr_t>(w.data()), reinterpret_cast<uintptr_t>(b.data()), kWidth,
+                               kHeight, dt, kG, kDx, kH);
     };
 
     // 3a. Uniform flow over a flat bed: fluxes are identical at every face, so
@@ -165,8 +146,7 @@ int main() {
         checkClose(u[n / 2], vel, 1e-5f, "uniform flow: u damped only, exp(-k dt) per sub-step");
         checkClose(w[n / 2], vel, 1e-5f, "uniform flow: w damped only, exp(-k dt) per sub-step");
         checkClose(h[n / 2], 0.f, 1e-4f, "uniform flow: surface stays flat");
-        check(std::abs(u[n / 2]) > 0.5f,
-              "CFL clamp must not use unclamped dt (would zero velocities)");
+        check(std::abs(u[n / 2]) > 0.5f, "CFL clamp must not use unclamped dt (would zero velocities)");
     }
 
     // 3a'. Sub-cycling (#533): a dt above the CFL limit but within 4 sub-steps
@@ -220,9 +200,9 @@ int main() {
         check(inRange, "sweExpNeg: always in (0, 1]");
         check(monotone, "sweExpNeg: non-increasing");
         check(worst < 2e-7f, "sweExpNeg: within 2e-7 relative of exp(-x)");
-        check(sweExpNeg(0.f) == 1.f && sweExpNeg(-3.f) == 1.f
-                  && sweExpNeg(std::numeric_limits<float>::quiet_NaN()) == 1.f
-                  && sweExpNeg(std::numeric_limits<float>::infinity()) > 0.f,
+        check(sweExpNeg(0.f) == 1.f && sweExpNeg(-3.f) == 1.f &&
+                  sweExpNeg(std::numeric_limits<float>::quiet_NaN()) == 1.f &&
+                  sweExpNeg(std::numeric_limits<float>::infinity()) > 0.f,
               "sweExpNeg: x <= 0 and NaN are 1, +inf is the smallest factor, not 0");
         // The issue's case: one cell at depth ~1e-4 over dx = 2 → safeDt ≈ 25 s.
         check(sweExpNeg(25.f * DAMPING_COEFF) > 0.f, "sweExpNeg: a 25 s barely-wet step damps, never flips sign");
@@ -244,8 +224,7 @@ int main() {
             for (int x = 0; x < kWidth; ++x) {
                 const float fx = static_cast<float>(x - kWidth / 2) / 6.f;
                 const float fz = static_cast<float>(z - kHeight / 2) / 5.f;
-                b[static_cast<std::size_t>(z * kWidth + x)] =
-                    0.6f * kH * std::exp(-(fx * fx + fz * fz));
+                b[static_cast<std::size_t>(z * kWidth + x)] = 0.6f * kH * std::exp(-(fx * fx + fz * fz));
             }
         }
 
@@ -332,15 +311,12 @@ int main() {
         const int probeRow = kHeight / 2;
         auto at = [&](int x) { return static_cast<std::size_t>(probeRow * kWidth + x); };
 
-        check(std::abs(massAfter - massBefore) / massBefore < 1e-5,
-              "dam break conserves interior mass");
+        check(std::abs(massAfter - massBefore) / massBefore < 1e-5, "dam break conserves interior mass");
         check(h[at(dam)] > 1e-3f, "dam break wets the cell just downstream");
         check(h[at(dam - 1)] < 0.5f, "dam break draws down the reservoir side");
         check(u[at(dam)] > 0.f, "dam break drives flow downstream (+x)");
-        check(std::abs(h[at(0)]) < 1e-3f || h[at(0)] > 0.4f,
-              "far upstream is still undisturbed this early");
-        check(std::abs(w[at(dam)]) < 1e-6f,
-              "1D dam break generates no transverse velocity");
+        check(std::abs(h[at(0)]) < 1e-3f || h[at(0)] > 0.4f, "far upstream is still undisturbed this early");
+        check(std::abs(w[at(dam)]) < 1e-6f, "1D dam break generates no transverse velocity");
     }
 
     // 3e. Sampled canyon U-channel (#374 Phase 2). The TS bathymetry sampler
@@ -428,7 +404,8 @@ int main() {
         const uintptr_t base = allocateParticleSoA(kCap);
         check(base != 0, "allocateParticleSoA");
         uint32_t seed = 0;
-        requireOk(initWaterfallParticles(base, kCap, kN, kW, kHgt, kD, 0.f, 0xC0FFEEu, seedAt(seed)), "initWaterfallParticles");
+        requireOk(initWaterfallParticles(base, kCap, kN, kW, kHgt, kD, 0.f, 0xC0FFEEu, seedAt(seed)),
+                  "initWaterfallParticles");
         for (int step = 0; step < 60; ++step) {
             requireOk(stepWaterfallParticles(base, kCap, kN, 1.f / 60.f, kW, kHgt, kD, seed, seedAt(seed)),
                       "stepWaterfallParticles");
@@ -456,13 +433,10 @@ int main() {
         const int w = 8, h = 8, N = w * h;
         std::vector<float> hCtl(N, 0.f), uCtl(N, 0.f), wCtl(N, 0.f), bCtl(N, 0.f);
         std::vector<float> hPulse = hCtl, uPulse = uCtl, wPulse = wCtl, bPulse = bCtl;
-        requireOk(applySWEEvent(
-            reinterpret_cast<uintptr_t>(hPulse.data()),
-            reinterpret_cast<uintptr_t>(uPulse.data()),
-            reinterpret_cast<uintptr_t>(wPulse.data()),
-            reinterpret_cast<uintptr_t>(bPulse.data()),
-            w, h, 1.f, 0.f, 0.f, 1.2f,
-            0, 3.5f, 3.5f, 4.f, 8.f, 0.05f), "applySWEEvent");
+        requireOk(applySWEEvent(reinterpret_cast<uintptr_t>(hPulse.data()), reinterpret_cast<uintptr_t>(uPulse.data()),
+                                reinterpret_cast<uintptr_t>(wPulse.data()), reinterpret_cast<uintptr_t>(bPulse.data()),
+                                w, h, 1.f, 0.f, 0.f, 1.2f, 0, 3.5f, 3.5f, 4.f, 8.f, 0.05f),
+                  "applySWEEvent");
         float maxCtl = 0.f, maxPulse = 0.f;
         for (std::size_t i = 0; i < N; ++i) {
             maxCtl = std::max(maxCtl, std::abs(hCtl[i]));
@@ -481,13 +455,10 @@ int main() {
         const int w = 8, h = 8, N = w * h;
         std::vector<float> hB(N, 0.f), uB(N, 0.f), wB(N, 0.f), bB(N, 0.f);
         auto braid = [&]() {
-            requireOk(applySWEEvent(
-                reinterpret_cast<uintptr_t>(hB.data()),
-                reinterpret_cast<uintptr_t>(uB.data()),
-                reinterpret_cast<uintptr_t>(wB.data()),
-                reinterpret_cast<uintptr_t>(bB.data()),
-                w, h, 1.f, 0.f, 0.f, 1.2f,
-                2, 3.5f, 3.5f, 4.f, 1.5f, 0.05f), "applySWEEvent");
+            requireOk(applySWEEvent(reinterpret_cast<uintptr_t>(hB.data()), reinterpret_cast<uintptr_t>(uB.data()),
+                                    reinterpret_cast<uintptr_t>(wB.data()), reinterpret_cast<uintptr_t>(bB.data()), w,
+                                    h, 1.f, 0.f, 0.f, 1.2f, 2, 3.5f, 3.5f, 4.f, 1.5f, 0.05f),
+                      "applySWEEvent");
         };
         braid();
         std::vector<float> bOnce = bB;
@@ -518,15 +489,13 @@ int main() {
     //    frame, so a window travelling downstream (-Z) has a POSITIVE shiftZ.
     // ------------------------------------------------------------------
     {
-        auto scroll = [](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w,
-                         std::vector<float>* b, int width, int height, int sx, int sz,
-                         float eta = 0.f, float uIn = 0.f, float wIn = 0.f) {
-            requireOk(scrollShallowWater(
-                reinterpret_cast<uintptr_t>(h.data()),
-                reinterpret_cast<uintptr_t>(u.data()),
-                reinterpret_cast<uintptr_t>(w.data()),
-                b ? reinterpret_cast<uintptr_t>(b->data()) : 0,
-                width, height, sx, sz, eta, uIn, wIn), "scrollShallowWater");
+        auto scroll = [](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w, std::vector<float>* b,
+                         int width, int height, int sx, int sz, float eta = 0.f, float uIn = 0.f, float wIn = 0.f) {
+            requireOk(scrollShallowWater(reinterpret_cast<uintptr_t>(h.data()), reinterpret_cast<uintptr_t>(u.data()),
+                                         reinterpret_cast<uintptr_t>(w.data()),
+                                         b ? reinterpret_cast<uintptr_t>(b->data()) : 0, width, height, sx, sz, eta,
+                                         uIn, wIn),
+                      "scrollShallowWater");
         };
 
         // 7a. Kernel semantics on a small grid with a distinct value per cell.
@@ -558,8 +527,8 @@ int main() {
                     } else {
                         filled = filled && h[i] == 0.05f && u[i] == 0.1f && w[i] == -0.2f;
                     }
-                    bedExt = bedExt && b[i] == b0[at(std::min(std::max(sx, 0), W - 1),
-                                                     std::min(std::max(sz, 0), Hh - 1))];
+                    bedExt =
+                        bedExt && b[i] == b0[at(std::min(std::max(sx, 0), W - 1), std::min(std::max(sz, 0), Hh - 1))];
                 }
             }
             check(moved, "scroll: surviving cells take dst[x,z] = src[x-shiftX, z-shiftZ] exactly");
@@ -606,7 +575,8 @@ int main() {
                 for (float v : h) allRest = allRest && v == 0.f;
                 check(allRest, "scroll: |shift| >= extent replaces every cell");
                 for (std::size_t i = 0; i < sn; ++i) {
-                    if (!(std::abs(b[i] - b0[shift > 0 ? at(0, static_cast<int>(i) / W) : at(W - 1, static_cast<int>(i) / W)]) == 0.f)) {
+                    if (!(std::abs(b[i] - b0[shift > 0 ? at(0, static_cast<int>(i) / W)
+                                                       : at(W - 1, static_cast<int>(i) / W)]) == 0.f)) {
                         check(false, "scroll: saturated bed extends the edge it left through");
                         break;
                     }
@@ -614,7 +584,10 @@ int main() {
             }
 
             // Zero shift is a bitwise no-op; a null bed leaves the bed alone.
-            h = h0; u = u0; w = w0; b = b0;
+            h = h0;
+            u = u0;
+            w = w0;
+            b = b0;
             scroll(h, u, w, &b, W, Hh, 0, 0, 9.f, 9.f, 9.f);
             check(h == h0 && u == u0 && w == w0 && b == b0, "scroll: zero shift changes nothing");
             scroll(h, u, w, nullptr, W, Hh, 2, 1);
@@ -626,9 +599,7 @@ int main() {
         //     then the solver steps. The bed is world-fixed, so a flat free
         //     surface must generate no current however the window moves.
         {
-            auto sloped = [](float wx, float wz) {
-                return 0.4f + 0.3f * std::sin(0.3f * wx + 0.2f * wz);
-            };
+            auto sloped = [](float wx, float wz) { return 0.4f + 0.3f * std::sin(0.3f * wx + 0.2f * wz); };
             std::vector<float> h(n, 0.f);
             std::vector<float> u(n, 0.f);
             std::vector<float> w(n, 0.f);
@@ -655,7 +626,7 @@ int main() {
             };
             stepAndMeasure(5);
             // Includes the 3-cell scroll the contract calls out, on each axis and diagonally.
-            const int moves[][2] = { {3, 0}, {0, -3}, {-2, 2}, {3, 3} };
+            const int moves[][2] = {{3, 0}, {0, -3}, {-2, 2}, {3, 3}};
             for (const auto& m : moves) {
                 ox -= static_cast<float>(m[0]) * kDx;
                 oz -= static_cast<float>(m[1]) * kDx;
@@ -717,7 +688,7 @@ int main() {
 
             float maxVel = 0.f, maxDrift = 0.f;
             bool bankDry = true, thalwegWet = true;
-            const int moves[][2] = { {0, 3}, {2, 0}, {-3, -1}, {0, 5} };
+            const int moves[][2] = {{0, 3}, {2, 0}, {-3, -1}, {0, 5}};
             for (const auto& m : moves) {
                 ox -= static_cast<float>(m[0]) * kDx;
                 scroll(h, u, w, &b, kWidth, kHeight, m[0], m[1]);
@@ -788,8 +759,13 @@ int main() {
                     if (fi < 4 || fi >= kWidth - 4 || fj < 4 || fj >= kHeight - 4) continue;
                     const std::size_t s = static_cast<std::size_t>(j * kWidth + i);
                     const std::size_t r = static_cast<std::size_t>(fj * kWidth + fi);
-                    worst = std::max({worst, std::abs(hS[s] - hR[r]), std::abs(uS[s] - uR[r]), std::abs(wS[s] - wR[r])});
-                    if (hS[s] > peak) { peak = hS[s]; peakX = i + cellX; peakZ = j + cellZ; }
+                    worst =
+                        std::max({worst, std::abs(hS[s] - hR[r]), std::abs(uS[s] - uR[r]), std::abs(wS[s] - wR[r])});
+                    if (hS[s] > peak) {
+                        peak = hS[s];
+                        peakX = i + cellX;
+                        peakZ = j + cellZ;
+                    }
                 }
             }
             check(peak > 0.02f, "fixture: the splash is still there after the scrolls");
@@ -805,8 +781,8 @@ int main() {
     // ------------------------------------------------------------------
     {
         constexpr int kSeg = 20;
-        constexpr float kQ0 = 40.f;          // base discharge (m³/s)
-        constexpr float kRelease = 14.f;     // dam release on top (0.35 × base)
+        constexpr float kQ0 = 40.f;       // base discharge (m³/s)
+        constexpr float kRelease = 14.f;  // dam release on top (0.35 × base)
         constexpr float kRouteDt = 1.f;
         std::vector<float> L(kSeg), S(kSeg), B(kSeg);
         for (std::size_t k = 0; k < kSeg; ++k) {
@@ -824,7 +800,8 @@ int main() {
 
         // 8a. Steady state carries its discharge through unchanged.
         requireOk(routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow)), "routeReachSteady");
-        for (int t = 0; t < 200; ++t) requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0, kRouteDt, P(storage), P(outflow)), "routeReach");
+        for (int t = 0; t < 200; ++t)
+            requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0, kRouteDt, P(storage), P(outflow)), "routeReach");
         checkClose(outflow[kSeg - 1], kQ0, 1e-4f, "routing: steady discharge stays steady");
 
         // 8b. Step release at the head: the far segment only answers after the
@@ -837,7 +814,8 @@ int main() {
         float riseAtHalfLag = -1.f, riseAtLag = -1.f, riseLate = -1.f;
         const int steps = static_cast<int>(3.f * lagFar / kRouteDt);
         for (int t = 1; t <= steps; ++t) {
-            requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow)), "routeReach");
+            requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow)),
+                      "routeReach");
             const float time = static_cast<float>(t) * kRouteDt;
             const float rise = (outflow[kSeg - 1] - kQ0) / kRelease;
             if (riseAtHalfLag < 0.f && time >= 0.5f * lagFar) riseAtHalfLag = rise;
@@ -866,14 +844,15 @@ int main() {
         const RoutedEdge rest = routedEdgeState(kQ0, kQ0, kH, kG);
         check(rest.eta == 0.f && rest.speed == 0.f, "routedEdgeState: Qref is exactly rest");
         const RoutedEdge high = routedEdgeState(kQ0 + kRelease, kQ0, kH, kG);
-        checkClose(high.eta, kH * (std::pow((kQ0 + kRelease) / kQ0, 0.6f) - 1.f), 1e-5f, "routedEdgeState: Manning rating");
+        checkClose(high.eta, kH * (std::pow((kQ0 + kRelease) / kQ0, 0.6f) - 1.f), 1e-5f,
+                   "routedEdgeState: Manning rating");
         check(high.speed > 0.f, "routedEdgeState: a raised stage moves downstream");
 
         auto P2 = [](std::vector<float>& v) { return reinterpret_cast<uintptr_t>(v.data()); };
-        auto stepEdge = [&](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w,
-                            std::vector<float>* b, float dt, float edgeEta) {
-            (void)stepShallowWaterInflow(P2(h), P2(u), P2(w), b ? P2(*b) : 0,
-                                   kWidth, kHeight, dt, kG, kDx, kH, edgeEta);
+        auto stepEdge = [&](std::vector<float>& h, std::vector<float>& u, std::vector<float>& w, std::vector<float>* b,
+                            float dt, float edgeEta) {
+            (void)stepShallowWaterInflow(P2(h), P2(u), P2(w), b ? P2(*b) : 0, kWidth, kHeight, dt, kG, kDx, kH,
+                                         edgeEta);
         };
 
         // 8e. Lake at rest with the edge on: the reference discharge over a
@@ -888,7 +867,8 @@ int main() {
                     if (x < 3) b[z * kWidth + x] = 1.6f;                  // dry bank column
                 }
             }
-            for (std::size_t i = 0; i < n; ++i) if (b[i] > kH) h[i] = b[i] - kH;  // dry: surface pinned to bed
+            for (std::size_t i = 0; i < n; ++i)
+                if (b[i] > kH) h[i] = b[i] - kH;  // dry: surface pinned to bed
             std::vector<float> hT = h, uT = u, wT = w;
             for (int t = 0; t < 400; ++t) {
                 stepEdge(h, u, w, &b, 1.f / 60.f, rest.eta);
@@ -919,10 +899,14 @@ int main() {
             check(h[(kHeight - 1) * kWidth + mid] > 0.5f * eta, "edge stage: top row rises toward the routed stage");
             check(w[(kHeight - 1) * kWidth + mid] < 0.f, "edge stage: the inflow moves downstream (−Z)");
             check(std::abs(h[0 * kWidth + mid]) < 1e-4f, "edge stage: the far edge has not heard of it yet");
-            check(std::abs(u[(kHeight - 1) * kWidth + mid]) < 1e-5f, "edge stage: no lateral current from a uniform edge");
+            check(std::abs(u[(kHeight - 1) * kWidth + mid]) < 1e-5f,
+                  "edge stage: no lateral current from a uniform edge");
             for (int t = 0; t < 1200; ++t) stepEdge(h, u, w, nullptr, 1.f / 60.f, eta);
             float lo = 1e9f, hi = -1e9f;
-            for (std::size_t i = 0; i < n; ++i) { lo = std::min(lo, h[i]); hi = std::max(hi, h[i]); }
+            for (std::size_t i = 0; i < n; ++i) {
+                lo = std::min(lo, h[i]);
+                hi = std::max(hi, h[i]);
+            }
             check(lo > 0.5f * eta && hi < 1.5f * eta, "edge stage: the window fills to the routed stage, no runaway");
         }
 
@@ -933,7 +917,8 @@ int main() {
             requireOk(routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storage), P(outflow)), "routeReachSteady");
             float early = -1.f, late = -1.f;
             for (int t = 1; t <= steps; ++t) {
-                requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow)), "routeReach");
+                requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow)),
+                          "routeReach");
                 const float time = static_cast<float>(t) * kRouteDt;
                 const float eta = routedEdgeState(outflow[k], kQ0, kH, kG).eta;
                 if (early < 0.f && time >= 0.5f * lag[k]) early = eta;
@@ -960,8 +945,11 @@ int main() {
             requireOk(routeReachSteady(P(L), P(S), P(B), kSeg, kQ0, P(storageA), P(outflowA)), "routeReachSteady");
             bool same = true;
             for (int t = 0; t < 50; ++t) {
-                requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow)), "routeReach");
-                requireOk(routeReachLateral(P(L), P(S), P(B), kSeg, kQ0 + kRelease, P(lateral), kRouteDt, P(storageA), P(outflowA)), "routeReachLateral");
+                requireOk(routeReach(P(L), P(S), P(B), kSeg, kQ0 + kRelease, kRouteDt, P(storage), P(outflow)),
+                          "routeReach");
+                requireOk(routeReachLateral(P(L), P(S), P(B), kSeg, kQ0 + kRelease, P(lateral), kRouteDt, P(storageA),
+                                            P(outflowA)),
+                          "routeReachLateral");
                 for (std::size_t k = 0; k < kSeg; ++k) same = same && outflow[k] == outflowA[k];
             }
             check(same, "lateral: all-zero lateral routes bit for bit like routeReach");
@@ -974,7 +962,8 @@ int main() {
             for (int t = 1; t <= 4000; ++t) {
                 const bool raining = t <= 300;
                 lateral[kStorm] = raining ? kRelease : 0.f;
-                requireOk(routeReachLateral(P(L), P(S), P(B), kSeg, kQ0, P(lateral), kRouteDt, P(storage), P(outflow)), "routeReachLateral");
+                requireOk(routeReachLateral(P(L), P(S), P(B), kSeg, kQ0, P(lateral), kRouteDt, P(storage), P(outflow)),
+                          "routeReachLateral");
                 stormIn += static_cast<double>(kQ0 + (raining ? kRelease : 0.f)) * static_cast<double>(kRouteDt);
                 stormOut += static_cast<double>(outflow[kSeg - 1]) * static_cast<double>(kRouteDt);
                 const float time = static_cast<float>(t) * kRouteDt;
@@ -987,7 +976,8 @@ int main() {
             }
             check(firstAt2 > 0.f && firstAt2 <= kRouteDt, "lateral: rain over reach 2 raises reach 2 at once");
             check(firstAt0 < 0.f, "lateral: the reaches above the storm never see it");
-            check(firstAtLast > firstAt2 + 0.5f * (lag[kSeg - 1] - lag[kStorm]), "lateral: the reaches below hear it after the lag");
+            check(firstAtLast > firstAt2 + 0.5f * (lag[kSeg - 1] - lag[kStorm]),
+                  "lateral: the reaches below hear it after the lag");
             const double stormBalance = stormIn - stormOut - (totalStorage() - stormS0);
             check(std::abs(stormBalance) < 1e-4 * stormIn, "lateral: volume in (head + lateral) = out + stored");
         }
@@ -1000,13 +990,10 @@ int main() {
         const int w = 8, h = 16, N = w * h;
         std::vector<float> hS(N, 0.f), uS(N, 0.f), wS(N, 0.f), bS(N, 0.f);
         auto surge = [&](float cz) {
-            requireOk(applySWEEvent(
-                reinterpret_cast<uintptr_t>(hS.data()),
-                reinterpret_cast<uintptr_t>(uS.data()),
-                reinterpret_cast<uintptr_t>(wS.data()),
-                reinterpret_cast<uintptr_t>(bS.data()),
-                w, h, 1.f, 0.f, 0.f, 1.2f,
-                4, 3.5f, cz, 2.f, 0.3f, 1.f / 60.f), "applySWEEvent");
+            requireOk(applySWEEvent(reinterpret_cast<uintptr_t>(hS.data()), reinterpret_cast<uintptr_t>(uS.data()),
+                                    reinterpret_cast<uintptr_t>(wS.data()), reinterpret_cast<uintptr_t>(bS.data()), w,
+                                    h, 1.f, 0.f, 0.f, 1.2f, 4, 3.5f, cz, 2.f, 0.3f, 1.f / 60.f),
+                      "applySWEEvent");
         };
         for (int t = 0; t < 60; ++t) surge(10.f);
         float edgeLo = 1e9f, centre = 0.f, offBand = 0.f, minW = 0.f;
@@ -1024,7 +1011,6 @@ int main() {
         surge(10.f);
         check(hS[10 * w + 3] == 0.6f, "surge: water above the step is left alone");
     }
-
 
     // ------------------------------------------------------------------
     // Non-finite scalars: a NaN slips past `x <= 0` and `std::max(x, lo)`
@@ -1060,15 +1046,23 @@ int main() {
               "swe: dt = +inf is rejected (returns 0, steps nothing)");
         check(stepShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0.01f, kG, kDx, kH) == 0.01f && h != h0,
               "swe: a finite dt within the CFL limit returns itself");
-        requireRejected(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f), "applySWEEvent");
-        requireRejected(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, kInf), "applySWEEvent");
-        requireOk(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kInf, 0, 4.f, 4.f, 2.f, 1.f, 0.016f), "applySWEEvent");
+        requireRejected(
+            applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f),
+            "applySWEEvent");
+        requireRejected(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, kInf),
+                        "applySWEEvent");
+        requireOk(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kInf, 0, 4.f, 4.f, 2.f, 1.f, 0.016f),
+                  "applySWEEvent");
         requireOk(scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 2, -3, kNaN, kInf, -kInf), "scrollShallowWater");
-        check(finite(h) && finite(u) && finite(w) && finite(b), "swe: NaN / inf event and inflow scalars stay out of the field");
-        check(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f) == WS_REJECTED
-                  && applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, 0.016f) == WS_OK
-                  && scrollShallowWater(P(h), P(u), P(w), P(b), SWE_MAX_GRID_EXTENT + 1, kZ, 1, 0, 0.f, 0.f, 0.f) == WS_REJECTED
-                  && scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0, 0, 0.f, 0.f, 0.f) == WS_OK,
+        check(finite(h) && finite(u) && finite(w) && finite(b),
+              "swe: NaN / inf event and inflow scalars stay out of the field");
+        check(applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, kInf, 0.016f) ==
+                      WS_REJECTED &&
+                  applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, kDx, 0.f, 0.f, kH, 0, 4.f, 4.f, 2.f, 1.f, 0.016f) ==
+                      WS_OK &&
+                  scrollShallowWater(P(h), P(u), P(w), P(b), SWE_MAX_GRID_EXTENT + 1, kZ, 1, 0, 0.f, 0.f, 0.f) ==
+                      WS_REJECTED &&
+                  scrollShallowWater(P(h), P(u), P(w), P(b), kW, kZ, 0, 0, 0.f, 0.f, 0.f) == WS_OK,
               "swe: applySWEEvent / scrollShallowWater report WS_REJECTED / WS_OK");
 
         // A NaN (or inf) in one velocity cell (#533): the lift reads it as 0,
@@ -1107,11 +1101,13 @@ int main() {
         requireRejected(routeReach(P(L), P(S), P(B), kSegs, 5.f, 1e-40f, P(storage), P(outflow)), "routeReach");
         L[1] = kNaN;
         B[2] = kNaN;
-        requireOk(routeReachLateral(P(L), P(S), P(B), kSegs, 5.f, P(lateral), 1.f, P(storage), P(outflow)), "routeReachLateral");
+        requireOk(routeReachLateral(P(L), P(S), P(B), kSegs, 5.f, P(lateral), 1.f, P(storage), P(outflow)),
+                  "routeReachLateral");
         requireOk(routeReachTravelTime(P(L), P(S), P(B), kSegs, kNaN, P(lag)), "routeReachTravelTime");
         requireOk(routeReachSteady(P(L), P(S), P(B), kSegs, kNaN, P(storage), P(outflow)), "routeReachSteady");
         requireOk(routeReach(P(L), P(S), P(B), kSegs, 5.f, 1.f, P(storage), P(outflow)), "routeReach");
-        check(finite(storage) && finite(outflow) && finite(lag), "routing: NaN / inf head discharge, dt, length or width stays finite");
+        check(finite(storage) && finite(outflow) && finite(lag),
+              "routing: NaN / inf head discharge, dt, length or width stays finite");
         const RoutedEdge inf = routedEdgeState(6.f, 5.f, kInf, kG);
         check(inf.eta == 0.f && inf.speed == 0.f, "routedEdgeState: an infinite H is rest");
 
@@ -1120,12 +1116,13 @@ int main() {
         uint32_t seed = 7u;
         check(initWaterfallParticles(soa, 8, 8, kNaN, 10.f, 1.f, 0.5f, seed, seedAt(seed)) == WS_REJECTED && seed == 7u,
               "particles: a NaN chute is rejected and leaves the seed alone (#575: a status, not the input seed)");
-        requireOk(initWaterfallParticles(soa, 8, 8, 4.f, 10.f, 1.f, 0.5f, seed, seedAt(seed)), "initWaterfallParticles");
+        requireOk(initWaterfallParticles(soa, 8, 8, 4.f, 10.f, 1.f, 0.5f, seed, seedAt(seed)),
+                  "initWaterfallParticles");
         check(seed != 7u, "particles: an accepted init writes the advanced seed through seedOut");
         const uint32_t before = seed;
-        check(stepWaterfallParticles(soa, 8, 8, kNaN, 4.f, 10.f, 1.f, seed, seedAt(seed)) == WS_REJECTED
-                  && stepWaterfallParticles(soa, 8, 8, 0.016f, kInf, 10.f, 1.f, seed, seedAt(seed)) == WS_REJECTED
-                  && seed == before,
+        check(stepWaterfallParticles(soa, 8, 8, kNaN, 4.f, 10.f, 1.f, seed, seedAt(seed)) == WS_REJECTED &&
+                  stepWaterfallParticles(soa, 8, 8, 0.016f, kInf, 10.f, 1.f, seed, seedAt(seed)) == WS_REJECTED &&
+                  seed == before,
               "particles: rejected steps return WS_REJECTED and write no seed");
         check(stepWaterfallParticles(soa, 8, 8, 0.016f, 4.f, 10.f, 1.f, seed, 0) == WS_REJECTED,
               "particles: a null seedOut is rejected");
@@ -1152,8 +1149,8 @@ int main() {
         in[1 * 8 + 1] = kNaN;
         in[2 * 8 + 3] = kInf;
         in[3 * 8 + 3] = 3e19f;
-        const int status = computeWaterForcesBatch(P(in), P(out), P(refused), 5, 4.5f, 0.5f, 150.f, 1.2f, 0.47f,
-                                                   1.05f, 0.7f, 12.5f, 0.12f, 2.4f);
+        const int status = computeWaterForcesBatch(P(in), P(out), P(refused), 5, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f,
+                                                   0.7f, 12.5f, 0.12f, 2.4f);
         check(status == WS_PARTIAL, "forces: a batch with non-finite rows returns WS_PARTIAL");
         check(std::all_of(out.begin(), out.end(), [](float x) { return std::isfinite(x); }),
               "forces: no output float is non-finite");
@@ -1169,12 +1166,12 @@ int main() {
         requireOk(computeWaterForcesBatch(P(oneIn), P(one), 0, 1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f, 12.5f,
                                           0.12f, 2.4f),
                   "computeWaterForcesBatch (one ordinary row, no flag plane)");
-        check(std::memcmp(one.data(), out.data(), sizeof(float) * 8) == 0
-                  && std::memcmp(one.data(), out.data() + 32, sizeof(float) * 8) == 0,
+        check(std::memcmp(one.data(), out.data(), sizeof(float) * 8) == 0 &&
+                  std::memcmp(one.data(), out.data() + 32, sizeof(float) * 8) == 0,
               "forces: ordinary rows of a partial batch are bit-identical to a clean call");
         std::vector<float> guard(5 * WATER_FORCE_OUTPUT_STRIDE, 7.f);
-        requireRejected(computeWaterForcesBatch(P(oneIn), P(guard), 0, 1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f,
-                                                0.7f, kNaN, 0.12f, 2.4f),
+        requireRejected(computeWaterForcesBatch(P(oneIn), P(guard), 0, 1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f,
+                                                kNaN, 0.12f, 2.4f),
                         "computeWaterForcesBatch (NaN config)");
         check(std::all_of(guard.begin(), guard.end(), [](float x) { return x == 7.f; }),
               "forces: a non-finite config writes nothing");
@@ -1184,8 +1181,8 @@ int main() {
         constexpr int kZ = 10;
         std::vector<float> h(kW * kZ, 0.f), u(kW * kZ, 0.f), w(kW * kZ, 0.f), b(kW * kZ, 0.f);
         const auto event = [&](int kind, float cz, float radius, float strength, float dt) {
-            return applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, 0.5f, 0.f, 0.f, 1.2f, kind, 3.f, cz, radius,
-                                 strength, dt);
+            return applySWEEvent(P(h), P(u), P(w), P(b), kW, kZ, 0.5f, 0.f, 0.f, 1.2f, kind, 3.f, cz, radius, strength,
+                                 dt);
         };
         const auto finiteField = [&]() {
             for (const auto* v : {&h, &u, &w, &b}) {
@@ -1211,7 +1208,8 @@ int main() {
         bool atMax = true;
         for (int kind = 0; kind <= 4; ++kind) {
             atMax = atMax && event(kind, 2.f, SWE_EVENT_MAX_RADIUS, SWE_EVENT_MAX_STRENGTH, SWE_EVENT_MAX_DT) == WS_OK;
-            atMax = atMax && event(kind, 3e38f, SWE_EVENT_MAX_RADIUS, SWE_EVENT_MAX_STRENGTH, SWE_EVENT_MAX_DT) == WS_OK;
+            atMax =
+                atMax && event(kind, 3e38f, SWE_EVENT_MAX_RADIUS, SWE_EVENT_MAX_STRENGTH, SWE_EVENT_MAX_DT) == WS_OK;
         }
         check(atMax && finiteField(), "swe: applySWEEvent at the maxima (even far away) is WS_OK and finite");
     }
@@ -1272,37 +1270,44 @@ int main() {
         check(untouched(guard), "chores: blurSeparableF32 rejects null / non-positive / oversized");
 
         check(computeWaterForcesBatch(at(src), at(guard), 0, WATER_FORCE_MAX_SAMPLES + 1, 4.5f, 0.5f, 150.f, 1.2f,
-                                      0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f) == WS_REJECTED
-                  && computeWaterForcesBatch(at(src), at(guard), 0, -1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f,
-                                             0.f, 0.f, 2.4f) == WS_REJECTED,
+                                      0.47f, 1.05f, 0.7f, 0.f, 0.f, 2.4f) == WS_REJECTED &&
+                  computeWaterForcesBatch(at(src), at(guard), 0, -1, 4.5f, 0.5f, 150.f, 1.2f, 0.47f, 1.05f, 0.7f, 0.f,
+                                          0.f, 2.4f) == WS_REJECTED,
               "forces: a negative / oversized batch returns WS_REJECTED");
         check(untouched(guard), "forces: computeWaterForcesBatch rejects negative / oversized counts");
         check(blurSeparableF32(0, at(guard), 4, 4) == WS_REJECTED && reduceF32Grid(0, 4, at(guard)) == WS_REJECTED,
               "chores: rejected calls return WS_REJECTED");
 
         std::vector<float> storage(16, 7.f);
-        requireRejected(routeReach(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, 1.f, at(storage), at(guard)), "routeReach");
+        requireRejected(
+            routeReach(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, 1.f, at(storage), at(guard)),
+            "routeReach");
         requireRejected(routeReach(at(src), at(src), at(src), -2, 1.f, 1.f, at(storage), at(guard)), "routeReach");
-        requireRejected(routeReachSteady(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(storage), at(guard)), "routeReachSteady");
-        requireRejected(routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard)), "routeReachTravelTime");
+        requireRejected(
+            routeReachSteady(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(storage), at(guard)),
+            "routeReachSteady");
+        requireRejected(routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard)),
+                        "routeReachTravelTime");
         check(untouched(guard) && untouched(storage), "routing: oversized / negative chains are rejected");
-        check(routeReach(at(src), at(src), at(src), -2, 1.f, 1.f, at(storage), at(guard)) == WS_REJECTED
-                  && routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard)) == WS_REJECTED,
+        check(routeReach(at(src), at(src), at(src), -2, 1.f, 1.f, at(storage), at(guard)) == WS_REJECTED &&
+                  routeReachTravelTime(at(src), at(src), at(src), ROUTING_MAX_SEGMENTS + 1, 1.f, at(guard)) ==
+                      WS_REJECTED,
               "routing: rejected chains return WS_REJECTED");
 
         check(allocateParticleSoA(PARTICLE_MAX_CAPACITY + 1) == 0, "particles: oversized capacity is rejected");
         check(allocateParticleSoA(-1) == 0, "particles: negative capacity is rejected");
         uint32_t seedOut = 42u;
-        check(stepWaterfallParticles(at(guard), PARTICLE_MAX_CAPACITY + 1, 4, 0.1f, 1.f, 1.f, 1.f, 42u, seedAt(seedOut))
-                      == WS_REJECTED
-                  && seedOut == 42u && untouched(guard),
+        check(stepWaterfallParticles(at(guard), PARTICLE_MAX_CAPACITY + 1, 4, 0.1f, 1.f, 1.f, 1.f, 42u,
+                                     seedAt(seedOut)) == WS_REJECTED &&
+                  seedOut == 42u && untouched(guard),
               "particles: oversized capacity steps nothing");
         check(allocateGrid(0) == 0 && allocateGrid(-5) == 0, "swe: allocateGrid(<= 0) returns 0");
         // wasm32 size_t: emmalloc's calloc does not check num * size, so
         // the cap and the overflow check must hold in a 32-bit size_t too.
         check(allocBytes<uint32_t>(1 << 30, 4u) == 0, "allocBytes: 2^30 floats are rejected in a 32-bit size_t");
         check(allocBytes<uint32_t>(WS_MAX_ELEMENTS + 1, 4u) == 0, "allocBytes: past WS_MAX_ELEMENTS is rejected");
-        check(allocBytes<uint32_t>(WS_MAX_ELEMENTS, 1u << 9) == 0, "allocBytes: a product past 2^32 is rejected, not wrapped");
+        check(allocBytes<uint32_t>(WS_MAX_ELEMENTS, 1u << 9) == 0,
+              "allocBytes: a product past 2^32 is rejected, not wrapped");
         check(allocBytes<uint32_t>(128 * 80, 4u) == 128u * 80u * 4u, "allocBytes: an SWE grid is its byte count");
         check(allocateGrid(1 << 30) == 0 && allocateGrid(WS_MAX_ELEMENTS + 1) == 0,
               "swe: allocateGrid rejects counts past WS_MAX_ELEMENTS");
@@ -1344,12 +1349,19 @@ int main() {
                             const int zHi = z < height - 1 ? z + 1 : z;
                             const float spanX = static_cast<float>(xHi - xLo) * kDxs;
                             const float spanZ = static_cast<float>(zHi - zLo) * kDxs;
-                            if (spanX > 0.f) div += (u[static_cast<std::size_t>(z * width + xHi)] - u[static_cast<std::size_t>(z * width + xLo)]) / spanX;
-                            if (spanZ > 0.f) div += (w[static_cast<std::size_t>(zHi * width + x)] - w[static_cast<std::size_t>(zLo * width + x)]) / spanZ;
+                            if (spanX > 0.f)
+                                div += (u[static_cast<std::size_t>(z * width + xHi)] -
+                                        u[static_cast<std::size_t>(z * width + xLo)]) /
+                                       spanX;
+                            if (spanZ > 0.f)
+                                div += (w[static_cast<std::size_t>(zHi * width + x)] -
+                                        w[static_cast<std::size_t>(zLo * width + x)]) /
+                                       spanZ;
                         }
                         const float want[4] = {u[i], w[i], depth, div};
                         for (int c = 0; c < 4; ++c) {
-                            exact = exact && std::memcmp(&out[i * 4 + static_cast<std::size_t>(c)], &want[c], sizeof(float)) == 0;
+                            exact = exact && std::memcmp(&out[i * 4 + static_cast<std::size_t>(c)], &want[c],
+                                                         sizeof(float)) == 0;
                         }
                     }
                 }
@@ -1358,10 +1370,11 @@ int main() {
         check(exact, "packSurfaceField: SIMD groups == the per-cell stencil, bit for bit");
         std::vector<float> one(4), guard4(4, 3.f);
         const auto P = [](auto& v) { return reinterpret_cast<uintptr_t>(v.data()); };
-        check(packSurfaceField(P(one), P(one), P(one), 0, 1, 1, kHs, 0.f, P(guard4)) == WS_REJECTED
-                  && packSurfaceField(P(one), P(one), 0, 0, 1, 1, kHs, kDxs, P(guard4)) == WS_REJECTED
-                  && packSurfaceField(P(one), P(one), P(one), 0, 1, 1, std::numeric_limits<float>::quiet_NaN(), kDxs, P(guard4)) == WS_REJECTED
-                  && guard4 == std::vector<float>(4, 3.f),
+        check(packSurfaceField(P(one), P(one), P(one), 0, 1, 1, kHs, 0.f, P(guard4)) == WS_REJECTED &&
+                  packSurfaceField(P(one), P(one), 0, 0, 1, 1, kHs, kDxs, P(guard4)) == WS_REJECTED &&
+                  packSurfaceField(P(one), P(one), P(one), 0, 1, 1, std::numeric_limits<float>::quiet_NaN(), kDxs,
+                                   P(guard4)) == WS_REJECTED &&
+                  guard4 == std::vector<float>(4, 3.f),
               "packSurfaceField: bad dx / null plane / NaN H is rejected and writes nothing");
         check(packSurfaceField(P(one), P(one), P(one), 0, 1, 1, kHs, kDxs, P(guard4)) == WS_OK && guard4[2] == kHs,
               "packSurfaceField: bPtr 0 is a flat bed");

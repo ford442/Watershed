@@ -41,7 +41,7 @@
  * not alias the inputs. Returns WS_OK, or WS_REJECTED (nothing written) for a
  * bad extent, a null plane, a non-finite H, or dx not finite and > 0.
  */
-[[nodiscard]] int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                     int width, int height, float H, float dx, uintptr_t outRgba);
+[[nodiscard]] int packSurfaceField(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                   int height, float H, float dx, uintptr_t outRgba);
 
 #endif  // WATERSHED_CHORES_H

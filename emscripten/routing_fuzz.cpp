@@ -40,10 +40,14 @@ void require(bool ok, const char* what) {
 /** A chain length JS might send: usually small and valid, sometimes zero, negative or past the cap. */
 int segmentCount(fuzz::Input& in) {
     switch (in.u32() % 8u) {
-        case 0: return 0;
-        case 1: return -in.pick(1, 1 << 20);
-        case 2: return ROUTING_MAX_SEGMENTS + in.pick(1, 1 << 20);
-        default: return in.pick(1, 40);
+        case 0:
+            return 0;
+        case 1:
+            return -in.pick(1, 1 << 20);
+        case 2:
+            return ROUTING_MAX_SEGMENTS + in.pick(1, 1 << 20);
+        default:
+            return in.pick(1, 40);
     }
 }
 
@@ -59,9 +63,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     const Kind kind = static_cast<Kind>(in.u32() % 3u);
     const auto value = [&](float lo, float hi) {
         switch (kind) {
-            case Kind::Physical: return in.range(lo, hi);
-            case Kind::Special: return in.scalar(lo, hi);
-            default: return in.raw();
+            case Kind::Physical:
+                return in.range(lo, hi);
+            case Kind::Special:
+                return in.scalar(lo, hi);
+            default:
+                return in.raw();
         }
     };
 
@@ -80,10 +87,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     for (int s = 0; s < steps; ++s) {
         if (in.coin()) {
             (void)routeReach(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), value(0.01f, 30.f),
-                       ptr(storage), ptr(outflow));
+                             ptr(storage), ptr(outflow));
         } else {
             (void)routeReachLateral(ptr(lengths), ptr(slopes), ptr(widths), nSeg, value(0.f, 400.f), ptr(lateral),
-                              value(0.01f, 30.f), ptr(storage), ptr(outflow));
+                                    value(0.01f, 30.f), ptr(storage), ptr(outflow));
         }
     }
     (void)routeReachTravelTime(ptr(lengths), ptr(slopes), ptr(widths), nSeg, q, ptr(lag));

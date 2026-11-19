@@ -136,7 +136,5 @@ inline void writeOut(uintptr_t outPtr, const T& value) noexcept {
  * ?wasmTrapTest=1 can prove a RuntimeError is mapped to a function name
  * (wasmTrap.ts, #502).
  */
-WS_EXPORT void ws_trapTest() noexcept {
-    __builtin_trap();
-}
+WS_EXPORT void ws_trapTest() noexcept { __builtin_trap(); }
 #endif

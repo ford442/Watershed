@@ -19,8 +19,8 @@
 // Compile-time constants
 // ---------------------------------------------------------------------------
 inline constexpr float WATER_DENSITY_DEFAULT = 1000.0f;  // kg/m³  (fresh water)
-inline constexpr float GRAVITY_DEFAULT       = 9.80665f; // m/s² (standard gravity)
-inline constexpr float DAMPING_COEFF         = 0.1f;     // velocity damping rate (1/s): v *= exp(-DAMPING_COEFF·dt)
+inline constexpr float GRAVITY_DEFAULT = 9.80665f;       // m/s² (standard gravity)
+inline constexpr float DAMPING_COEFF = 0.1f;             // velocity damping rate (1/s): v *= exp(-DAMPING_COEFF·dt)
 
 // The ABI's constants — WS_OK / WS_REJECTED / WS_PARTIAL / WS_BAD_ARG, the
 // force batch strides and cap, PARTICLE_SOA_PLANES, ROUTING_SUBREACHES, the
@@ -74,9 +74,7 @@ static_assert(allocBytes<std::uint32_t>(WS_MAX_ELEMENTS, 4) == 4u * WS_MAX_ELEME
 // ---------------------------------------------------------------------------
 // Math helpers
 // ---------------------------------------------------------------------------
-inline float clampf(float v, float lo, float hi) noexcept {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
+inline float clampf(float v, float lo, float hi) noexcept { return v < lo ? lo : (v > hi ? hi : v); }
 
 /**
  * exp(−x) for the SWE velocity damping, from +, −, ×, an exact floor and an

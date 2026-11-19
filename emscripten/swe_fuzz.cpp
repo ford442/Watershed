@@ -43,8 +43,8 @@ std::size_t nonFinite(const std::vector<float>& v) {
  * but degenerate scalar (a denormal dx or g) can make the CFL limit itself 0.
  */
 void requireConsumed(float consumed, float dt, float g, float dxs, float Hs, int step) {
-    const bool valid = dt > 0.f && std::isfinite(dt) && g > 0.f && std::isfinite(g)
-        && dxs > 0.f && std::isfinite(dxs) && Hs > 0.f && std::isfinite(Hs);
+    const bool valid = dt > 0.f && std::isfinite(dt) && g > 0.f && std::isfinite(g) && dxs > 0.f &&
+                       std::isfinite(dxs) && Hs > 0.f && std::isfinite(Hs);
     const bool ok = valid ? (consumed >= 0.f && consumed <= dt) : consumed == 0.f;
     if (!ok) {
         std::fprintf(stderr, "op %d: step(dt %g) returned %g (valid %d)\n", step, static_cast<double>(dt),
@@ -117,8 +117,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 const float g = in.orSpecial(9.80665f);
                 const float dxs = in.orSpecial(dx);
                 const float Hs = in.orSpecial(H);
-                requireConsumed(stepShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height, dt, g, dxs, Hs),
-                                dt, g, dxs, Hs, op);
+                requireConsumed(stepShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height, dt, g, dxs, Hs), dt, g,
+                                dxs, Hs, op);
                 break;
             }
             case 1: {
@@ -152,8 +152,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                                                  huge(in.scalar(-50.f, 50.f)), huge(in.scalar(-50.f, 50.f)),
                                                  huge(in.orSpecial(H)), in.pick(0, 4), huge(in.scalar(-60.f, 60.f)),
                                                  huge(in.scalar(-60.f, 60.f)), radius, strength, dt);
-                const bool pastMax = std::isfinite(radius) && std::isfinite(strength) && std::isfinite(dt)
-                    && (radius > SWE_EVENT_MAX_RADIUS || strength > SWE_EVENT_MAX_STRENGTH || dt > SWE_EVENT_MAX_DT);
+                const bool pastMax =
+                    std::isfinite(radius) && std::isfinite(strength) && std::isfinite(dt) &&
+                    (radius > SWE_EVENT_MAX_RADIUS || strength > SWE_EVENT_MAX_STRENGTH || dt > SWE_EVENT_MAX_DT);
                 if (pastMax && status == WS_OK) {
                     std::fprintf(stderr, "op %d: applySWEEvent past its maxima returned WS_OK\n", op);
                     std::abort();
@@ -161,9 +162,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
                 break;
             }
             default:
-                (void)scrollShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height,
-                                   in.pick(-2 * width, 2 * width), in.pick(-2 * height, 2 * height),
-                                   in.scalar(-H, H), in.scalar(-2.f, 2.f), in.scalar(-2.f, 2.f));
+                (void)scrollShallowWater(ptr(h), ptr(u), ptr(w), bPtr, width, height, in.pick(-2 * width, 2 * width),
+                                         in.pick(-2 * height, 2 * height), in.scalar(-H, H), in.scalar(-2.f, 2.f),
+                                         in.scalar(-2.f, 2.f));
                 break;
         }
         requireFinite(b, "b", op);

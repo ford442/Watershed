@@ -50,9 +50,8 @@
  * @param H      Still-water depth over a zero bed (m)
  * @returns      Time integrated (s), in [0, dt]
  */
-[[nodiscard]] float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                       int width, int height,
-                       float dt, float g, float dx, float H);
+[[nodiscard]] float stepShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                     int height, float dt, float g, float dx, float H);
 
 /**
  * stepShallowWater with the upstream edge driven by routed discharge (ABI 10,
@@ -72,9 +71,8 @@
  *
  * Returns the time integrated, as stepShallowWater.
  */
-[[nodiscard]] float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                             int width, int height,
-                             float dt, float g, float dx, float H, float edgeEta);
+[[nodiscard]] float stepShallowWaterInflow(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                           int height, float dt, float g, float dx, float H, float edgeEta);
 
 /**
  * Authored hydro event source term (ABI 8, additive).
@@ -96,9 +94,9 @@
  * Returns WS_OK; WS_BAD_ARG as above; or WS_REJECTED (nothing written) for a
  * bad extent, a null plane, dx ≤ 0, or a non-finite placement / strength / dt.
  */
-[[nodiscard]] int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                  int width, int height, float dx, float originX, float originZ, float H,
-                  int kind, float cx, float cz, float radius, float strength, float dt);
+[[nodiscard]] int applySWEEvent(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width, int height,
+                                float dx, float originX, float originZ, float H, int kind, float cx, float cz,
+                                float radius, float strength, float dt);
 
 /**
  * Scroll the whole field through the grid's index frame by whole cells
@@ -137,9 +135,8 @@
  * @param bPtr  Bed plane, or 0 to leave the bed alone (flat bed)
  * @returns     WS_OK (a zero shift included), or WS_REJECTED for a bad extent / null plane
  */
-[[nodiscard]] int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr,
-                       int width, int height, int shiftX, int shiftZ,
-                       float inflowEta, float inflowU, float inflowW);
+[[nodiscard]] int scrollShallowWater(uintptr_t hPtr, uintptr_t uPtr, uintptr_t wPtr, uintptr_t bPtr, int width,
+                                     int height, int shiftX, int shiftZ, float inflowEta, float inflowU, float inflowW);
 
 /**
  * Size the solver's reused scratch (step, upstream-edge ghosts, scroll temp)

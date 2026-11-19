@@ -38,8 +38,15 @@ struct Input {
      */
     float special() {
         static constexpr float kSpecial[] = {
-            __builtin_nanf(""), -__builtin_nanf(""), __builtin_inff(), -__builtin_inff(),
-            1e-40f, -1e-40f, 1.4e-45f, 0.f, -0.f,
+            __builtin_nanf(""),
+            -__builtin_nanf(""),
+            __builtin_inff(),
+            -__builtin_inff(),
+            1e-40f,
+            -1e-40f,
+            1.4e-45f,
+            0.f,
+            -0.f,
         };
         return kSpecial[u32() % (sizeof kSpecial / sizeof kSpecial[0])];
     }
@@ -72,7 +79,9 @@ struct Field {
 };
 
 template <typename T>
-inline uintptr_t ptr(std::vector<T>& v) { return reinterpret_cast<uintptr_t>(v.data()); }
+inline uintptr_t ptr(std::vector<T>& v) {
+    return reinterpret_cast<uintptr_t>(v.data());
+}
 /** One scalar's address: an out-pointer (a particle seed, ABI 18). */
 inline uintptr_t ptr(uint32_t& v) { return reinterpret_cast<uintptr_t>(&v); }
 

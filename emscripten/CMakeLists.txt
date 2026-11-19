@@ -235,8 +235,8 @@ if(EMSCRIPTEN)
         "SHELL:-s MODULARIZE=1"
         "SHELL:-s EXPORT_NAME='createWatershedNative'"
         # No --bind (#467): the ws_* exports are EMSCRIPTEN_KEEPALIVE C functions,
-        # bound in TS from the wasmAbi.ts table. -fno-rtti at link too.
-        "SHELL:-fno-rtti"
+        # bound in TS from the generated WASM_ABI table (abi.def, #575). RTTI is a
+        # compile-time flag (above); there is no link-time -fno-rtti.
         # Both build types (#502): Debug's own map lets the symbolicate path be
         # tested against a binary that really traps (ws_trapTest).
         "SHELL:--emit-symbol-map"
@@ -252,10 +252,17 @@ else()
     # -ffp-contract=off keeps FMA contraction out of the golden path so
     # host_smoke.cpp results stay bit-reproducible; see the FP contract note
     # on the Emscripten branch above (#404).
+    #
+    # Same language as the wasm (#575): -fno-exceptions -fno-rtti on every host
+    # target too, so the smoke, the sanitizers and the fuzzers test the dialect
+    # that ships (a throw or a typeid that compiled on the host used to be a
+    # wasm-only error). The optimisation level stays -O2 here, -O3 there: the
+    # digest (native_digest.h) pins that both compute the same bits.
+    set(WATERSHED_HOST_LANG -fno-exceptions -fno-rtti)
     add_executable(watershed_host_smoke host_smoke.cpp)
     target_link_libraries(watershed_host_smoke PRIVATE watershed_compute)
-    target_compile_options(watershed_compute PRIVATE -O2 -ffp-contract=off)
-    target_compile_options(watershed_host_smoke PRIVATE -O2 -ffp-contract=off ${WATERSHED_WARNINGS})
+    target_compile_options(watershed_compute PRIVATE -O2 -ffp-contract=off ${WATERSHED_HOST_LANG})
+    target_compile_options(watershed_host_smoke PRIVATE -O2 -ffp-contract=off ${WATERSHED_HOST_LANG} ${WATERSHED_WARNINGS})
 
     # #467: the C ABI trusts JS for every pointer and width * height. Host-only
     # checks for that trust:
@@ -283,7 +290,7 @@ else()
             add_executable(watershed_${fuzz_target}_fuzz ${fuzz_target}_fuzz.cpp)
             target_link_libraries(watershed_${fuzz_target}_fuzz PRIVATE watershed_compute)
             target_compile_options(watershed_${fuzz_target}_fuzz PRIVATE
-                -O1 -ffp-contract=off -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS} ${WATERSHED_WARNINGS})
+                -O1 -ffp-contract=off ${WATERSHED_HOST_LANG} -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS} ${WATERSHED_WARNINGS})
             target_link_options(watershed_${fuzz_target}_fuzz PRIVATE -fsanitize=fuzzer ${WATERSHED_SAN_FLAGS})
         endforeach()
     endif()

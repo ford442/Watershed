@@ -49,8 +49,7 @@ inline f32x4 f32x4_or(f32x4 a, f32x4 b) { return wasm_v128_or(a, b); }
 /** mask ? a : b, per lane. */
 inline f32x4 f32x4_select(f32x4 mask, f32x4 a, f32x4 b) { return wasm_v128_bitselect(a, b, mask); }
 
-#elif defined(__SSE2__) || defined(_M_X64) || defined(_M_AMD64) \
-    || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#elif defined(__SSE2__) || defined(_M_X64) || defined(_M_AMD64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #include <emmintrin.h>
 
 using f32x4 = __m128;
@@ -120,12 +119,8 @@ inline f32x4 f32x4_gt(f32x4 a, f32x4 b) { return f32x4_from_bits(vcgtq_f32(a, b)
 inline f32x4 f32x4_ge(f32x4 a, f32x4 b) { return f32x4_from_bits(vcgeq_f32(a, b)); }
 inline f32x4 f32x4_lt(f32x4 a, f32x4 b) { return f32x4_from_bits(vcltq_f32(a, b)); }
 inline f32x4 f32x4_le(f32x4 a, f32x4 b) { return f32x4_from_bits(vcleq_f32(a, b)); }
-inline f32x4 f32x4_and(f32x4 a, f32x4 b) {
-    return f32x4_from_bits(vandq_u32(f32x4_bits(a), f32x4_bits(b)));
-}
-inline f32x4 f32x4_or(f32x4 a, f32x4 b) {
-    return f32x4_from_bits(vorrq_u32(f32x4_bits(a), f32x4_bits(b)));
-}
+inline f32x4 f32x4_and(f32x4 a, f32x4 b) { return f32x4_from_bits(vandq_u32(f32x4_bits(a), f32x4_bits(b))); }
+inline f32x4 f32x4_or(f32x4 a, f32x4 b) { return f32x4_from_bits(vorrq_u32(f32x4_bits(a), f32x4_bits(b))); }
 inline f32x4 f32x4_select(f32x4 mask, f32x4 a, f32x4 b) { return vbslq_f32(f32x4_bits(mask), a, b); }
 
 #else
@@ -164,19 +159,19 @@ inline f32x4 f32x4_splat(float x) { return {{x, x, x, x}}; }
 // take the expression, and #undef'd below. (Only parsed on a host with no
 // SSE2 / NEON, so lint:native on x86_64 / arm64 never sees it.)
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define WATERSHED_F32X4_LANEWISE(name, expr)                    \
-    inline f32x4 name(f32x4 a, f32x4 b) {                       \
-        f32x4 r;                                                \
-        for (int i = 0; i < 4; ++i) {                           \
-            const float x = a.v[i];                             \
-            const float y = b.v[i];                             \
-            r.v[i] = (expr);                                    \
-        }                                                       \
-        return r;                                               \
+#define WATERSHED_F32X4_LANEWISE(name, expr) \
+    inline f32x4 name(f32x4 a, f32x4 b) {    \
+        f32x4 r;                             \
+        for (int i = 0; i < 4; ++i) {        \
+            const float x = a.v[i];          \
+            const float y = b.v[i];          \
+            r.v[i] = (expr);                 \
+        }                                    \
+        return r;                            \
     }
 WATERSHED_F32X4_LANEWISE(f32x4_add, x + y)
 WATERSHED_F32X4_LANEWISE(f32x4_sub, x - y)
-WATERSHED_F32X4_LANEWISE(f32x4_mul, x * y)
+WATERSHED_F32X4_LANEWISE(f32x4_mul, x* y)
 WATERSHED_F32X4_LANEWISE(f32x4_div, x / y)
 WATERSHED_F32X4_LANEWISE(f32x4_max, x < y ? y : x)
 WATERSHED_F32X4_LANEWISE(f32x4_min, y < x ? y : x)
@@ -184,10 +179,8 @@ WATERSHED_F32X4_LANEWISE(f32x4_gt, simdf32_detail::mask(x > y))
 WATERSHED_F32X4_LANEWISE(f32x4_ge, simdf32_detail::mask(x >= y))
 WATERSHED_F32X4_LANEWISE(f32x4_lt, simdf32_detail::mask(x < y))
 WATERSHED_F32X4_LANEWISE(f32x4_le, simdf32_detail::mask(x <= y))
-WATERSHED_F32X4_LANEWISE(f32x4_and,
-    simdf32_detail::from_bits(simdf32_detail::bits(x) & simdf32_detail::bits(y)))
-WATERSHED_F32X4_LANEWISE(f32x4_or,
-    simdf32_detail::from_bits(simdf32_detail::bits(x) | simdf32_detail::bits(y)))
+WATERSHED_F32X4_LANEWISE(f32x4_and, simdf32_detail::from_bits(simdf32_detail::bits(x) & simdf32_detail::bits(y)))
+WATERSHED_F32X4_LANEWISE(f32x4_or, simdf32_detail::from_bits(simdf32_detail::bits(x) | simdf32_detail::bits(y)))
 #undef WATERSHED_F32X4_LANEWISE
 
 inline f32x4 f32x4_sqrt(f32x4 a) {
@@ -197,8 +190,7 @@ inline f32x4 f32x4_select(f32x4 mask, f32x4 a, f32x4 b) {
     f32x4 r;
     for (int i = 0; i < 4; ++i) {
         const unsigned m = simdf32_detail::bits(mask.v[i]);
-        r.v[i] = simdf32_detail::from_bits((simdf32_detail::bits(a.v[i]) & m)
-                                           | (simdf32_detail::bits(b.v[i]) & ~m));
+        r.v[i] = simdf32_detail::from_bits((simdf32_detail::bits(a.v[i]) & m) | (simdf32_detail::bits(b.v[i]) & ~m));
     }
     return r;
 }

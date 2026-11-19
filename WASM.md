@@ -189,7 +189,7 @@ since ABI 16 — see *Terrain tiles*.)
 
 ### Host (clangd / smoke, no Emscripten)
 
-Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`) compile with a plain host compiler (C++20). `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs.
+Compute TUs (`forces.cpp`, `swe.cpp`, `chores.cpp`, `particles.cpp`, `routing.cpp`) compile with a plain host compiler (C++20) — with `-fno-exceptions -fno-rtti` like the wasm (#575), so the host smoke, sanitizers and fuzzers test the dialect that ships. `bindings.cpp` is WASM-only — never `#include <emscripten/emscripten.h>` from compute TUs. Every CMake build first runs `gen-abi --check` (target `abi_check`; needs `node`, skipped with a warning without it).
 
 ```bash
 cmake -S emscripten -B emscripten/build-host
@@ -304,7 +304,11 @@ Every pointer and extent arrives from JavaScript. In wasm, address 0 is **writab
 null out-pointer is silent corruption of low memory, not a crash (SAFE_HEAP is Debug only).
 Every `ws_*` entry point therefore returns early on bad input; `std::span` views
 (`heapSpan` / `heapPlane` in `common.h`, the only pointer → view path) carry the bounds so
-`-D_GLIBCXX_ASSERTIONS` checks indexing in the sanitizer and fuzz builds.
+`-D_GLIBCXX_ASSERTIONS` checks indexing in the sanitizer and fuzz builds. The solver's own
+scratch is grow-only, so its views are cut to the grid being stepped (`.first(N)`, a row's
+`subspan(row, width)`, the ghost and face rows `.first(width)`; #575): after a larger grid has
+been stepped, an overrun on a smaller one is a hardening / assertion trap instead of a silent
+read of the larger grid's leftovers. The bounds moved no bit (`native_digest.h`).
 
 | TU | Rejected (no write) | Sentinel |
 |----|---------------------|----------|
@@ -403,9 +407,30 @@ null arguments, and check that rejected calls write nothing. Scalars are also dr
 physical values, the SWE field, the routed chain and the particle SoA must stay finite.
 `FUZZ_TARGETS="chores routing"`
 runs a subset. Needs clang with compiler-rt (`libclang-rt-18-dev` on Ubuntu).
-`pnpm lint:native` runs clang-tidy over every TU, `bindings.cpp` and the fuzz targets
-included (a host fallback for `EMSCRIPTEN_KEEPALIVE` keeps `bindings.cpp` parseable without
-the Emscripten sysroot).
+
+**Finite or refused, checked (#575).** `forces_fuzz.cpp` has the finiteness oracle the other
+three targets had: whatever bit pattern the 8 inputs and the config hold, a `WS_OK` /
+`WS_PARTIAL` batch is finite, every refused row is zeros and flagged, every other row is
+bit-identical to `calculateWaterForce`, and a rejected call writes nothing. `swe_fuzz.cpp` draws
+huge-but-finite event scalars (radius, strength, placement up to ±3e38) and fails on a `WS_OK`
+past `SWE_EVENT_MAX_*`; the particle half checks the waterfall statuses and that a refusal leaves
+the seed alone.
+
+**A corpus that grows (#575).** Each target's corpus lives in
+`emscripten/build-fuzz/corpus/<target>`; CI (`native-sanitizers`) restores that directory from
+an `actions/cache` keyed by ISO week (the newest run of the week, else the newest of any week)
+and saves it after the run, so a run starts where the last one finished rather than from
+nothing. `native-fuzz.sh` also passes the committed seeds in `emscripten/fuzz-seeds/<target>`
+(one per finite-or-refused case, written by `scripts/fuzz-seeds.mjs`, `--check`ed in
+`pnpm typecheck`) read-only, then minimises the corpus with `-merge=1` before it is saved. Its
+summary prints, per target, the inputs restored and the edges covered at start and at the end:
+measured locally at 10 s, `forces` went 148 → 361 edges from cold and started at 361 warm.
+
+`pnpm lint:native` runs `clang-format --dry-run --Werror` (`emscripten/.clang-format`; the
+generated `abi_generated.h` is gen-abi's) and clang-tidy over every TU, `bindings.cpp` and the
+fuzz targets included (a host fallback for `EMSCRIPTEN_KEEPALIVE` keeps `bindings.cpp`
+parseable without the Emscripten sysroot). Formatting the tree was whitespace only: the
+formatted HEAD rebuilds to the same wasm bytes.
 
 ---
 

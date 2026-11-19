@@ -23,26 +23,15 @@
 //    @param gravity          Gravitational acceleration (m/s²) — pass GRAVITY_DEFAULT
 //    @returns Upward buoyancy force (N)
 // ---------------------------------------------------------------------------
-float computeBuoyancy(float submergedVolume,
-                      float waterDensity,
-                      float gravity) noexcept {
+float computeBuoyancy(float submergedVolume, float waterDensity, float gravity) noexcept {
     if (submergedVolume <= 0.f) return 0.f;
     return waterDensity * submergedVolume * gravity;
 }
 
-WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
-                                     float velX, float velY, float velZ,
-                                     float flowDirX, float flowDirZ,
-                                     float flowSpeed,
-                                     float waterLevel,
-                                     float raftMass,
-                                     float raftVolume,
-                                     float dragCoefficient,
-                                     float frontalArea,
-                                     float sideArea,
-                                     float timeSeconds,
-                                     float turbulenceStrength,
-                                     float turbulenceFrequency) noexcept {
+WaterForceResult calculateWaterForce(float posX, float posY, float posZ, float velX, float velY, float velZ,
+                                     float flowDirX, float flowDirZ, float flowSpeed, float waterLevel, float raftMass,
+                                     float raftVolume, float dragCoefficient, float frontalArea, float sideArea,
+                                     float timeSeconds, float turbulenceStrength, float turbulenceFrequency) noexcept {
     WaterForceResult result;
 
     const float raftHeight = 0.35f;
@@ -69,11 +58,9 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
     const float relSpeedSq = relX * relX + relZ * relZ;
     if (relSpeedSq > 0.000001f) {
         const float relSpeed = std::sqrt(relSpeedSq);
-        const float projectedArea =
-            frontalArea * std::abs(flowDirZ) +
-            sideArea * std::abs(flowDirX);
-        result.flow = 0.5f * WATER_DENSITY_DEFAULT * relSpeedSq *
-            dragCoefficient * std::max(0.f, projectedArea) * result.submergedRatio;
+        const float projectedArea = frontalArea * std::abs(flowDirZ) + sideArea * std::abs(flowDirX);
+        result.flow = 0.5f * WATER_DENSITY_DEFAULT * relSpeedSq * dragCoefficient * std::max(0.f, projectedArea) *
+                      result.submergedRatio;
         result.forceX += relX / relSpeed * result.flow;
         result.forceZ += relZ / relSpeed * result.flow;
     }
@@ -82,8 +69,8 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
     if (speedSq > 0.000001f) {
         const float speed = std::sqrt(speedSq);
         const float dragArea = frontalArea + sideArea * 0.35f;
-        result.drag = 0.5f * WATER_DENSITY_DEFAULT * speedSq *
-            dragCoefficient * std::max(0.f, dragArea) * result.submergedRatio;
+        result.drag =
+            0.5f * WATER_DENSITY_DEFAULT * speedSq * dragCoefficient * std::max(0.f, dragArea) * result.submergedRatio;
         result.forceX -= velX / speed * result.drag;
         result.forceY -= velY / speed * result.drag * 0.2f;
         result.forceZ -= velZ / speed * result.drag;
@@ -92,8 +79,7 @@ WaterForceResult calculateWaterForce(float posX, float posY, float posZ,
     if (turbulenceStrength > 0.f) {
         const float turbX = std::sin(timeSeconds * turbulenceFrequency + posZ * 0.37f);
         const float turbZ = std::cos(timeSeconds * turbulenceFrequency * 1.31f + posX * 0.29f);
-        result.turbulence = turbulenceStrength * WATER_DENSITY_DEFAULT *
-            result.submergedRatio;
+        result.turbulence = turbulenceStrength * WATER_DENSITY_DEFAULT * result.submergedRatio;
         result.forceX += turbX * result.turbulence;
         result.forceZ += turbZ * result.turbulence;
     }
@@ -115,23 +101,14 @@ bool allFinite(const WaterForceResult& r) noexcept {
 }  // namespace
 
 // Batch ABI for workers — strides documented in common.h, the refusal rule in forces.h.
-int computeWaterForcesBatch(uintptr_t inputPtr,
-                            uintptr_t outputPtr,
-                            uintptr_t refusedPtr,
-                            int sampleCount,
-                            float flowSpeed,
-                            float waterLevel,
-                            float raftMass,
-                            float raftVolume,
-                            float dragCoefficient,
-                            float frontalArea,
-                            float sideArea,
-                            float timeSeconds,
-                            float turbulenceStrength,
+int computeWaterForcesBatch(uintptr_t inputPtr, uintptr_t outputPtr, uintptr_t refusedPtr, int sampleCount,
+                            float flowSpeed, float waterLevel, float raftMass, float raftVolume, float dragCoefficient,
+                            float frontalArea, float sideArea, float timeSeconds, float turbulenceStrength,
                             float turbulenceFrequency) noexcept {
-    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0 || sampleCount > WATER_FORCE_MAX_SAMPLES) return WS_REJECTED;
-    const float config[] = {flowSpeed, waterLevel, raftMass, raftVolume, dragCoefficient,
-                            frontalArea, sideArea, timeSeconds, turbulenceStrength, turbulenceFrequency};
+    if (inputPtr == 0 || outputPtr == 0 || sampleCount <= 0 || sampleCount > WATER_FORCE_MAX_SAMPLES)
+        return WS_REJECTED;
+    const float config[] = {flowSpeed,   waterLevel, raftMass,    raftVolume,         dragCoefficient,
+                            frontalArea, sideArea,   timeSeconds, turbulenceStrength, turbulenceFrequency};
     if (!allFinite(std::span<const float>(config))) return WS_REJECTED;
 
     const std::size_t n = static_cast<std::size_t>(sampleCount);
@@ -146,21 +123,9 @@ int computeWaterForcesBatch(uintptr_t inputPtr,
         WaterForceResult r;
         bool ok = allFinite(s);
         if (ok) {
-            r = calculateWaterForce(
-                s[0], s[1], s[2],
-                s[3], s[4], s[5],
-                s[6], s[7],
-                flowSpeed,
-                waterLevel,
-                raftMass,
-                raftVolume,
-                dragCoefficient,
-                frontalArea,
-                sideArea,
-                timeSeconds,
-                turbulenceStrength,
-                turbulenceFrequency
-            );
+            r = calculateWaterForce(s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], flowSpeed, waterLevel, raftMass,
+                                    raftVolume, dragCoefficient, frontalArea, sideArea, timeSeconds, turbulenceStrength,
+                                    turbulenceFrequency);
             ok = allFinite(r);
         }
         if (!ok) {

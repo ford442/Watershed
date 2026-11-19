@@ -28,13 +28,9 @@ std::span<float> plane(uintptr_t base, int which, int capacity) {
 }
 
 /** The advanced xorshift state, through the caller's out-pointer (memcpy: it is a float block to the allocator). */
-void writeSeed(uintptr_t seedOut, uint32_t s) {
-    std::memcpy(reinterpret_cast<void*>(seedOut), &s, sizeof s);
-}
+void writeSeed(uintptr_t seedOut, uint32_t s) { std::memcpy(reinterpret_cast<void*>(seedOut), &s, sizeof s); }
 
-bool validCapacity(int capacity) {
-    return capacity > 0 && capacity <= PARTICLE_MAX_CAPACITY;
-}
+bool validCapacity(int capacity) { return capacity > 0 && capacity <= PARTICLE_MAX_CAPACITY; }
 
 uint32_t xorshift32(uint32_t& s) {
     s ^= s << 13;
@@ -44,14 +40,11 @@ uint32_t xorshift32(uint32_t& s) {
     return s;
 }
 
-float rand01(uint32_t& s) {
-    return static_cast<float>(xorshift32(s) >> 8) * (1.f / 16777216.f);
-}
+float rand01(uint32_t& s) { return static_cast<float>(xorshift32(s) >> 8) * (1.f / 16777216.f); }
 
 // n <= every plane's size (the callers clamp it to capacity).
-void euler4(std::span<float> px, std::span<float> py, std::span<float> pz,
-            std::span<const float> vx, std::span<const float> vy, std::span<const float> vz,
-            std::size_t n, float dt) {
+void euler4(std::span<float> px, std::span<float> py, std::span<float> pz, std::span<const float> vx,
+            std::span<const float> vy, std::span<const float> vz, std::size_t n, float dt) {
     const f32x4 vdt = f32x4_splat(dt);
     std::size_t i = 0;
     for (; i + 4 <= n; i += 4) {
@@ -79,16 +72,13 @@ uintptr_t allocateParticleSoA(int capacity) {
     return reinterpret_cast<uintptr_t>(ptr);
 }
 
-void freeParticleSoA(uintptr_t ptr) {
-    std::free(reinterpret_cast<void*>(ptr));
-}
+void freeParticleSoA(uintptr_t ptr) { std::free(reinterpret_cast<void*>(ptr)); }
 
-int initWaterfallParticles(uintptr_t base, int capacity, int active,
-                           float width, float height, float depthZ,
+int initWaterfallParticles(uintptr_t base, int capacity, int active, float width, float height, float depthZ,
                            float fanSpreadRad, uint32_t seed, uintptr_t seedOut) {
     if (base == 0 || seedOut == 0 || !validCapacity(capacity)) return WS_REJECTED;
-    if (!std::isfinite(width) || !std::isfinite(height) || !std::isfinite(depthZ)
-        || !std::isfinite(fanSpreadRad)) return WS_REJECTED;
+    if (!std::isfinite(width) || !std::isfinite(height) || !std::isfinite(depthZ) || !std::isfinite(fanSpreadRad))
+        return WS_REJECTED;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
@@ -127,14 +117,13 @@ int initWaterfallParticles(uintptr_t base, int capacity, int active,
     return WS_OK;
 }
 
-int stepWaterfallParticles(uintptr_t base, int capacity, int active,
-                           float dt, float width, float height, float depthZ,
+int stepWaterfallParticles(uintptr_t base, int capacity, int active, float dt, float width, float height, float depthZ,
                            uint32_t seed, uintptr_t seedOut) {
     if (base == 0 || seedOut == 0 || !validCapacity(capacity)) return WS_REJECTED;
     // !(dt > 0) also rejects NaN; a non-finite scalar would be integrated into
     // every live particle (and respawned into new ones) for good.
-    if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(width) || !std::isfinite(height)
-        || !std::isfinite(depthZ)) return WS_REJECTED;
+    if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(width) || !std::isfinite(height) || !std::isfinite(depthZ))
+        return WS_REJECTED;
     if (active < 0) active = 0;
     if (active > capacity) active = capacity;
 
@@ -160,8 +149,7 @@ int stepWaterfallParticles(uintptr_t base, int capacity, int active,
     return WS_OK;
 }
 
-int stepSplashParticles(uintptr_t base, int capacity, int count,
-                        float dt, float gravityY, float damp) {
+int stepSplashParticles(uintptr_t base, int capacity, int count, float dt, float gravityY, float damp) {
     if (base == 0 || !validCapacity(capacity) || count < 0) return WS_REJECTED;
     if (count == 0) return WS_OK;
     if (!(dt > 0.f) || !std::isfinite(dt) || !std::isfinite(gravityY) || !std::isfinite(damp)) return WS_REJECTED;

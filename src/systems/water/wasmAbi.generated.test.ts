@@ -32,7 +32,8 @@ describe('watershed_native ABI: abi.def is the one source (#575)', () => {
     const model = parseDef(def);
     const swapped = (h: string) => {
       const text = readFileSync(resolve(root, 'emscripten', h), 'utf8');
-      return h === 'routing.h' ? text.replace('float inflowQ, float dt, uintptr_t storagePtr', 'float dt, float inflowQ, uintptr_t storagePtr') : text;
+      // routeReach's (…, float inflowQ, float dt, …): the first such pair in routing.h.
+      return h === 'routing.h' ? text.replace(/float inflowQ,(\s*)float dt,/, 'float dt,$1float inflowQ,') : text;
     };
     const problems = checkImplementations(model, swapped);
     expect(problems.join('\n')).toMatch(/routing\.h: routeReach\(.*float dt, float inflowQ/);
