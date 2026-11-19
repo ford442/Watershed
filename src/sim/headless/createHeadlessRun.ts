@@ -55,7 +55,7 @@ import { setActiveUserRiver } from '../../systems/map/userRiverSession';
 import { simCore } from '../core/SimCore';
 import type { RapierBody, RapierNamespace, RapierWorld } from '../../physics/rapierTypes';
 import { loadHeadlessNative } from './nativeNode';
-import { SegmentWorld } from './segmentWorld';
+import { ObstacleWorld, SegmentWorld } from './segmentWorld';
 import { createHeadlessWater, type HeadlessWater } from './headlessWater';
 import { createHeadlessVehicleTuner, type HeadlessVehicleTuner } from './vehicleTunerFrame';
 import type { WatershedNativeModule } from '../../systems/water/wasmAbi';
@@ -73,6 +73,12 @@ export interface HeadlessRunOptions {
   quality?: QualityPreset;
   /** The WASM module, when the caller already holds one. */
   native?: WatershedNativeModule;
+  /**
+   * Mount the page's static obstacle colliders (the pooled rocks and logs, `ObstacleWorld`).
+   * Default off: the B pin touches none, and a run through the authored centreline does not
+   * reach them. A pilot that leaves the centreline does.
+   */
+  obstacleColliders?: boolean;
   /**
    * Behaviours of the page that are bugs, reproduced so a headless run matches it. Each defaults ON:
    * the point of the harness is the page's own numbers, and the browser smokes (and this pin) fail
@@ -106,6 +112,8 @@ export interface HeadlessRun {
   readonly camera: THREE.PerspectiveCamera;
   readonly chunk: ChunkManager;
   readonly segmentWorld: SegmentWorld;
+  /** The static obstacle colliders, when `obstacleColliders` is on. */
+  readonly obstacles: ObstacleWorld | null;
   readonly water: HeadlessWater;
   readonly tuner: HeadlessVehicleTuner;
   readonly native: WatershedNativeModule;
@@ -225,6 +233,7 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
   const camera = createCamera();
   const runnerState = createRunnerPhysicsState();
   const segmentWorld = new SegmentWorld(world, RAPIER);
+  const obstacles = options.obstacleColliders ? new ObstacleWorld(world, RAPIER) : null;
 
   // --- The treadmill ------------------------------------------------------
   const mapManager = new ProceduralMapManager(map.levelData, map.fallbackProgression, {}, map.continuation ?? null);
@@ -244,6 +253,8 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
       const slipperiness = (mapManager.getChunkConfig?.(segment.id)?.slipperiness ?? 0) + (segment.slipperinessAdd ?? 0);
       segmentWorld.mount(segment, slipperiness);
     }
+    // TrackManager's effect on the active set: the pooled obstacles follow the live segments.
+    obstacles?.sync(active);
   };
   const publishFrames = () => {
     publishSegmentFrames(
@@ -391,6 +402,7 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
     camera,
     chunk,
     segmentWorld,
+    obstacles,
     water,
     tuner: createHeadlessVehicleTuner(world, RAPIER),
     native,
@@ -419,6 +431,7 @@ export async function createHeadlessRun(options: HeadlessRunOptions): Promise<He
     dispose() {
       for (const off of offs) off();
       water.dispose();
+      obstacles?.dispose();
       segmentWorld.dispose();
       chunk.dispose();
       clearSegmentFrames();

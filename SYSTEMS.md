@@ -678,9 +678,18 @@ turbulence read. `scriptedHeadlessInput(script)` wraps a `?input=script:` / `?re
 One process holds one run (the sim's modules keep module-level state); `run.dispose()` releases it.
 The page's React commits between 60-frame `stepScripted` batches, not between frames; `commitEvery: 60`
 reproduces that cadence for treadmill mounts and erosion remeshes (default 1, a real 60 Hz game).
-**What a headless run does not mount:** decorations, pooled obstacles and their colliders, pillars, water
-meshes — a run through the centreline touches none of them; a pilot that drives into a rock will not
-collide with it. **Copies of component bodies** (a headless run cannot mount a component; the pin below
+**What a headless run does not mount:** decorations, crumbling pillars, the lumber trestle, water meshes.
+The static rocks and logs a runner can hit are the page's `ObstaclePool` cuboids (TrackManager renders
+every segment with `usePooledStaticObstacles`, so `placement.rocks` have no mesh or collider on the page,
+and the headless run does not invent one): `obstacleColliders: true` mounts them (`ObstacleWorld` in
+`segmentWorld.ts`; default off, so the B pin is unchanged). **Pilots (#556 C, `src/sim/headless/pilots/`):**
+a pilot is a `HeadlessInput` that reads the run (`run.body`, `getSegmentFrames()`, the store) and writes
+the frame's `moveX` / `moveY` / buttons and the camera yaw (the runner steers by looking; the hub's axes
+are digital): `centrelinePilot` (pure pursuit on the segments' sampled centreline, sprint on stamina, a
+slower line in the air, a jump when wedged), `ghostPilot` (a `.wsghost` as a script), and
+`runUntil(run, pilot, { maxFrames, until })` (60-frame batches; stops on `run.finish`, a wipeout, `until`
+or the cap; the result carries frames, finished, the wipeout's segment / position / cause and the splits).
+**Copies of component bodies** (a headless run cannot mount a component; the pin below
 fails when one drifts from the page): `segmentWorld.ts` (TrackSegment's prop derivations),
 `headlessWater.ts` (WaterForceSystem's and SplashSystem's frame), `vehicleTunerFrame.ts`
 (VehicleTuner, which the page mounts for the runner too: water damping, wall friction, speed cap — it
