@@ -257,15 +257,17 @@ export function buildCanyonBuffers(ctx: GeometryBuildContext): GeometryBuffers |
   const color: Rgb = { r: 1, g: 1, b: 1 };
   const palette = floorPalette(biome, isSlotCanyon, isGlacier);
 
+  // planeGrid gives count × 3 positions, the tile's planes count values, and
+  // rowPoints / rowFloorDepth one entry per row (segmentsZ + 1): every read below is in range.
   for (let i = 0; i < count; i++) {
-    const xLocal = positions[i * 3];
-    const zLocal = positions[i * 3 + 2];
+    const xLocal = positions[i * 3]!;
+    const zLocal = positions[i * 3 + 2]!;
     const row = Math.floor(i / (segmentsX + 1));
     // The tile is already folded, so the crown is tinted by the height it ends
     // up at rather than the open-canyon wall height it would have had.
-    const yHeight = tile.h[i];
+    const yHeight = tile.h[i]!;
 
-    const depthTint = clamp(-rowFloorDepth[row] * 0.25, 0, 0.2);
+    const depthTint = clamp(-rowFloorDepth[row]! * 0.25, 0, 0.2);
     const dryness = Math.min(1.0, Math.max(0.0, (yHeight - 0.2 + depthTint) / 2.5));
     if (dryness < 0.2) {
       lerpRgb(copyRgb(color, palette.wet), palette.shore, dryness / 0.2);
@@ -285,7 +287,7 @@ export function buildCanyonBuffers(ctx: GeometryBuildContext): GeometryBuffers |
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
 
-    setTileVertex(positions, i, rowPoints[row], tile.x[i], yHeight);
+    setTileVertex(positions, i, rowPoints[row]!, tile.x[i]!, yHeight);
   }
 
   if (!sanitizePositions(positions)) computeVertexNormals(positions, grid.index, grid.normals);
@@ -345,8 +347,9 @@ function collisionFromHull(ctx: GeometryBuildContext, hull: HullTile): GeometryB
   const grid = planeGrid(ctx.canyonWidth, len, segmentsX, segmentsZ);
   const { positions, count } = grid;
 
+  // One row point per grid row and one tile value per vertex, as in buildCanyonBuffers.
   for (let i = 0; i < count; i++) {
-    setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))], tile.x[i], tile.h[i]);
+    setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))]!, tile.x[i]!, tile.h[i]!);
   }
 
   // No uv: the mesh is invisible and Rapier only needs positions + indices.
@@ -430,12 +433,13 @@ export function buildWallShellBuffers(ctx: GeometryBuildContext): GeometryBuffer
   const rimGrey = rgb('#9a948b');
   const c: Rgb = { r: 1, g: 1, b: 1 };
 
+  // count × 3 positions, count shell heights, segmentsZ + 1 row points: in range.
   for (let i = 0; i < count; i++) {
-    const xLocal = positions[i * 3];
-    const zLocal = positions[i * 3 + 2];
+    const xLocal = positions[i * 3]!;
+    const zLocal = positions[i * 3 + 2]!;
 
     // Wall height above the path point: terrainTile.ts buildWallShellHeights (#487).
-    const localY = shellHeights[i];
+    const localY = shellHeights[i]!;
     const strataWarp =
       Math.sin(zLocal * 0.14 + xLocal * 0.06 + segmentId * 0.17) * (isSlotCanyon ? 1.6 : 1.1) +
       Math.cos(zLocal * 0.22 - xLocal * 0.09) * (isSlotCanyon ? 0.8 : 0.55);
@@ -486,14 +490,14 @@ export function buildWallShellBuffers(ctx: GeometryBuildContext): GeometryBuffer
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
 
-    setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))], xLocal, localY, 10);
+    setTileVertex(positions, i, rowPoints[Math.floor(i / (segmentsX + 1))]!, xLocal, localY, 10);
   }
 
   const uv2 = new Float32Array(count * 2);
   for (let i = 0; i < count; i++) {
-    const wx = positions[i * 3];
-    const wy = positions[i * 3 + 1];
-    const wz = positions[i * 3 + 2];
+    const wx = positions[i * 3]!;
+    const wy = positions[i * 3 + 1]!;
+    const wz = positions[i * 3 + 2]!;
     const scale = 0.07;
     const triplanarBlend = Math.abs(wy - WALL_WATERLINE_Y) / 12;
     const u1 = wx * scale;
@@ -537,8 +541,8 @@ export function buildWaterBuffers(ctx: GeometryBuildContext): GeometryBuffers | 
   const { positions, count } = grid;
 
   for (let i = 0; i < count; i++) {
-    const x = positions[i * 3];
-    const z = positions[i * 3 + 2];
+    const x = positions[i * 3]!;
+    const z = positions[i * 3 + 2]!;
     const t = (z + len / 2) / len;
     const safeT = Math.max(0, Math.min(1, t));
     const channelShape = sampleChannelShape(channelProfile, waterWidth, safeT);
@@ -642,7 +646,7 @@ export function segmentPathSpec(curve: SegmentPath): SegmentPathSpec {
 export function curveFromSpec(spec: SegmentPathSpec): CatmullRomPath {
   const points: Vec3[] = [];
   for (let i = 0; i + 2 < spec.points.length; i += 3) {
-    points.push({ x: spec.points[i], y: spec.points[i + 1], z: spec.points[i + 2] });
+    points.push({ x: spec.points[i]!, y: spec.points[i + 1]!, z: spec.points[i + 2]! });
   }
   return new CatmullRomPath(points, spec.closed, spec.curveType, spec.tension);
 }

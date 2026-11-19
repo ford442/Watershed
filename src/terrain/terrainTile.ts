@@ -203,8 +203,9 @@ export function sampleChannelShape(
   const lower = Math.floor(scaled);
   const upper = Math.min(channelProfile.length - 1, lower + 1);
   const alpha = scaled - lower;
-  const from = channelProfile[lower];
-  const to = channelProfile[upper];
+  // The profile is non-empty and t is clamped, so 0 ≤ lower ≤ upper ≤ length − 1.
+  const from = channelProfile[lower]!;
+  const to = channelProfile[upper]!;
   return {
     leftHalfWidth: lerp(from.leftHalfWidth, to.leftHalfWidth, alpha),
     rightHalfWidth: lerp(from.rightHalfWidth, to.rightHalfWidth, alpha),
@@ -229,16 +230,17 @@ export function samplePackedChannelShape(channel: Float32Array, waterWidth: numb
   const a = lower * TERRAIN_CHANNEL_STRIDE;
   const b = upper * TERRAIN_CHANNEL_STRIDE;
   const side = (v: number): 1 | -1 => (v < 0 ? -1 : 1);
+  // upper ≤ count − 1 and count = ⌊length / STRIDE⌋, so b + 8 < length.
   return {
-    leftHalfWidth: lerp(channel[a], channel[b], alpha),
-    rightHalfWidth: lerp(channel[a + 1], channel[b + 1], alpha),
-    corridorHalfWidth: lerp(channel[a + 2], channel[b + 2], alpha),
-    floorDepth: lerp(channel[a + 3], channel[b + 3], alpha),
-    floorWave: lerp(channel[a + 4], channel[b + 4], alpha),
-    riffleStrength: lerp(channel[a + 5], channel[b + 5], alpha),
-    gravelBarSide: side(alpha < 0.5 ? channel[a + 6] : channel[b + 6]),
-    undercutSide: side(alpha < 0.5 ? channel[a + 7] : channel[b + 7]),
-    flowScale: lerp(channel[a + 8], channel[b + 8], alpha),
+    leftHalfWidth: lerp(channel[a]!, channel[b]!, alpha),
+    rightHalfWidth: lerp(channel[a + 1]!, channel[b + 1]!, alpha),
+    corridorHalfWidth: lerp(channel[a + 2]!, channel[b + 2]!, alpha),
+    floorDepth: lerp(channel[a + 3]!, channel[b + 3]!, alpha),
+    floorWave: lerp(channel[a + 4]!, channel[b + 4]!, alpha),
+    riffleStrength: lerp(channel[a + 5]!, channel[b + 5]!, alpha),
+    gravelBarSide: side(alpha < 0.5 ? channel[a + 6]! : channel[b + 6]!),
+    undercutSide: side(alpha < 0.5 ? channel[a + 7]! : channel[b + 7]!),
+    flowScale: lerp(channel[a + 8]!, channel[b + 8]!, alpha),
   };
 }
 
@@ -409,8 +411,9 @@ function fillSlopes(tile: TerrainTile, cellX: number, cellZ: number): void {
       const x0 = Math.max(0, ix - 1);
       const x1 = Math.min(segmentsX, ix + 1);
       const i = iz * cols + ix;
-      tile.slopeX[i] = (h[iz * cols + x1] - h[iz * cols + x0]) / ((x1 - x0) * cellX);
-      tile.slopeZ[i] = (h[z1 * cols + ix] - h[z0 * cols + ix]) / ((z1 - z0) * cellZ);
+      // x0, x1 ∈ [0, segmentsX] and z0, z1 ∈ [0, segmentsZ]: inside the (segmentsX + 1) × (segmentsZ + 1) plane.
+      tile.slopeX[i] = (h[iz * cols + x1]! - h[iz * cols + x0]!) / ((x1 - x0) * cellX);
+      tile.slopeZ[i] = (h[z1 * cols + ix]! - h[z0 * cols + ix]!) / ((z1 - z0) * cellZ);
     }
   }
 }
@@ -548,7 +551,8 @@ export function createTileSample(): TileSample {
 /** Metres between rows: the UV_V plane is metres downstream. */
 function tileCellZ(tile: TerrainTile): number {
   const cols = tile.segmentsX + 1;
-  const d = tile.uvV[cols] - tile.uvV[0];
+  // A tile has at least two rows (segmentsZ ≥ 1), so row 1's first vertex exists.
+  const d = tile.uvV[cols]! - tile.uvV[0]!;
   return d > 0 ? d : 1;
 }
 
@@ -593,11 +597,17 @@ export function sampleTile(
   let hiIx = -1;
   let hiA = 0;
   let hiH = -Infinity;
-  let xa = x[o0] + (x[o1] - x[o0]) * fz;
-  let ha = h[o0] + (h[o1] - h[o0]) * fz;
+  // 0 ≤ iz0 ≤ segmentsZ − 1, so rows o0 and o1 (and every column ≤ segmentsX in them)
+  // are inside the tile's (segmentsX + 1) × (segmentsZ + 1) planes: the reads below are in range.
+  const xa0 = x[o0]!;
+  const ha0 = h[o0]!;
+  let xa = xa0 + (x[o1]! - xa0) * fz;
+  let ha = ha0 + (h[o1]! - ha0) * fz;
   for (let ix = 0; ix < segmentsX; ix += 1) {
-    const xb = x[o0 + ix + 1] + (x[o1 + ix + 1] - x[o0 + ix + 1]) * fz;
-    const hb = h[o0 + ix + 1] + (h[o1 + ix + 1] - h[o0 + ix + 1]) * fz;
+    const xb0 = x[o0 + ix + 1]!;
+    const hb0 = h[o0 + ix + 1]!;
+    const xb = xb0 + (x[o1 + ix + 1]! - xb0) * fz;
+    const hb = hb0 + (h[o1 + ix + 1]! - hb0) * fz;
     const lo = xa < xb ? xa : xb;
     const hi = xa < xb ? xb : xa;
     if (lateral >= lo && lateral <= hi) {
@@ -634,15 +644,20 @@ export function sampleTile(
   const i1 = bestIx + 1;
   const a = bestA;
   // Across: the blended cell edge. Along: the column pair's row-to-row change, at `a`.
-  const x0 = x[o0 + i0] + (x[o1 + i0] - x[o0 + i0]) * fz;
-  const x1 = x[o0 + i1] + (x[o1 + i1] - x[o0 + i1]) * fz;
-  const h0 = h[o0 + i0] + (h[o1 + i0] - h[o0 + i0]) * fz;
-  const h1 = h[o0 + i1] + (h[o1 + i1] - h[o0 + i1]) * fz;
+  // i1 = bestIx + 1 ≤ segmentsX (bestIx came from the loop above).
+  const dx0 = x[o1 + i0]! - x[o0 + i0]!;
+  const dx1 = x[o1 + i1]! - x[o0 + i1]!;
+  const dh0 = h[o1 + i0]! - h[o0 + i0]!;
+  const dh1 = h[o1 + i1]! - h[o0 + i1]!;
+  const x0 = x[o0 + i0]! + dx0 * fz;
+  const x1 = x[o0 + i1]! + dx1 * fz;
+  const h0 = h[o0 + i0]! + dh0 * fz;
+  const h1 = h[o0 + i1]! + dh1 * fz;
   const cellZ = tileCellZ(tile);
   const ax = x1 - x0;
   const ay = h1 - h0;
-  const bx = ((x[o1 + i0] - x[o0 + i0]) * (1 - a) + (x[o1 + i1] - x[o0 + i1]) * a) / cellZ;
-  const by = ((h[o1 + i0] - h[o0 + i0]) * (1 - a) + (h[o1 + i1] - h[o0 + i1]) * a) / cellZ;
+  const bx = (dx0 * (1 - a) + dx1 * a) / cellZ;
+  const by = (dh0 * (1 - a) + dh1 * a) / cellZ;
 
   // n = along × across, with along = (bx, by, 1), across = (ax, ay, 0).
   let nx = -ay;
@@ -664,8 +679,10 @@ export function sampleTile(
   if (upper) band = TerrainBand.CROWN;
   else if (tile.surface === 'shell' || i0 === 0 || i1 === segmentsX) band = TerrainBand.RIM;
   else {
-    const b0 = bank[o0 + i0] + (bank[o1 + i0] - bank[o0 + i0]) * fz;
-    const b1 = bank[o0 + i1] + (bank[o1 + i1] - bank[o0 + i1]) * fz;
+    const b00 = bank[o0 + i0]!;
+    const b01 = bank[o0 + i1]!;
+    const b0 = b00 + (bank[o1 + i0]! - b00) * fz;
+    const b1 = b01 + (bank[o1 + i1]! - b01) * fz;
     const wet = b0 + (b1 - b0) * a < 0.5;
     if (wet) band = TerrainBand.FLOOR;
     else band = Math.abs(ay) > TERRAIN_WALL_SLOPE[tile.profile] * Math.abs(ax) ? TerrainBand.WALL : TerrainBand.BANK;

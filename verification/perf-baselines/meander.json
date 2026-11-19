@@ -1,32 +1,32 @@
 {
-  "calibrationMs": 8,
-  "recordedAt": "2026-11-13T11:36:51.151Z",
-  "note": "scripted meander, 30 sim s, min of 3 runs; SwiftShader (render spans are not GPU numbers)",
+  "calibrationMs": 11.8,
+  "recordedAt": "2026-11-19T04:16:25.701Z",
+  "note": "scripted meander, 30 sim s, min of 3 runs, recorded on the CI perf-trace job (ubuntu-latest, run 44456711297 @ 9cdbb55) \u2014 not a dev box; SwiftShader (render spans are not GPU numbers). See README.md.",
   "metrics": {
     "main: assets/parse-glb": {
       "n": 1,
-      "p50": 3.5,
-      "p95": 3.5
+      "p50": 6.2,
+      "p95": 6.2
     },
     "main: longtask/longtask": {
-      "n": 76,
-      "p50": 108.5,
-      "p95": 366
+      "n": 156,
+      "p50": 100,
+      "p95": 514
     },
     "main: segments/segment-build": {
       "n": 35,
-      "p50": 4,
-      "p95": 14.01
+      "p50": 7.8,
+      "p95": 33.7
     },
     "main: segments/segment-mount": {
       "n": 35,
-      "p50": 47.4,
-      "p95": 71.01
+      "p50": 94.9,
+      "p95": 139.29
     },
     "main/frame": {
       "n": 1800,
-      "p50": 3.3,
-      "p95": 5.9
+      "p50": 5.6,
+      "p95": 12.2
     },
     "main/input-hub": {
       "n": 1800,
@@ -35,13 +35,13 @@
     },
     "main/post:bloom": {
       "n": 30,
-      "p50": 0.2,
-      "p95": 0.3
+      "p50": 0.3,
+      "p95": 0.72
     },
     "main/post:chromatic": {
       "n": 30,
       "p50": 0,
-      "p95": 0.1
+      "p95": 0.155
     },
     "main/post:display": {
       "n": 30,
@@ -60,18 +60,18 @@
     },
     "main/post:scene": {
       "n": 30,
-      "p50": 2.55,
-      "p95": 7.78
+      "p50": 4.25,
+      "p95": 13.87
     },
     "main/post:smaa": {
       "n": 30,
-      "p50": 0,
-      "p95": 1.035
+      "p50": 0.1,
+      "p95": 1.465
     },
     "main/post:ssao": {
       "n": 30,
-      "p50": 2,
-      "p95": 3.075
+      "p50": 3.2,
+      "p95": 7.085
     },
     "main/post:vignette": {
       "n": 30,
@@ -85,13 +85,13 @@
     },
     "main/sim-core": {
       "n": 1800,
-      "p50": 0.7,
-      "p95": 1.3
+      "p50": 0.8,
+      "p95": 1.5
     },
     "main/sim-step": {
       "n": 1800,
-      "p50": 0.7,
-      "p95": 1.3
+      "p50": 0.8,
+      "p95": 1.5
     },
     "main/sim:chunk-biome": {
       "n": 1800,
@@ -110,8 +110,8 @@
     },
     "main/sim:physics-world": {
       "n": 1800,
-      "p50": 0.2,
-      "p95": 0.3
+      "p50": 0.3,
+      "p95": 0.5
     },
     "main/sim:pillars": {
       "n": 1800,
@@ -121,7 +121,7 @@
     "main/sim:score": {
       "n": 1800,
       "p50": 0.4,
-      "p95": 1
+      "p95": 0.9
     },
     "main/sim:sky-clock": {
       "n": 1800,

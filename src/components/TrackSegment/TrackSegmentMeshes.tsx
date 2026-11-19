@@ -53,6 +53,9 @@ import { getActiveWeather } from '../../systems/journey/runSession';
 import { weatherSlushiness } from '../../systems/map/weatherInflow';
 import { pathLateral } from '../../utils/segmentSampler';
 
+/** Seconds between samples of the player's speed for the segment's particle effects. */
+const PARTICLE_SAMPLE_INTERVAL = 0.12;
+
 type WallMaterial = THREE.Material & {
   uniforms?: Record<string, { value: unknown }>;
 };
@@ -231,8 +234,13 @@ export function TrackSegmentMeshes({
 
     // Track player velocity via ref for shader-driven effects without per-frame re-rendering.
     const playerVelocityRef = useRef(0);
-    const [playerVelocityForParticles, setPlayerVelocityForParticles] = useState(0);
-    const playerVelocitySyncAccumulator = useRef(0);
+    // The particle effects' inputs, sampled every PARTICLE_SAMPLE_INTERVAL s into refs
+    // their own useFrame reads — never React state, so no segment re-renders on the
+    // timer (#574 E.3). Starting the accumulator full samples on the first frame.
+    const particleVelocityRef = useRef(0);
+    const iceSprayIntensityRef = useRef(0);
+    const iceSprayActiveRef = useRef(false);
+    const playerVelocitySyncAccumulator = useRef(PARTICLE_SAMPLE_INTERVAL);
     const [canyonRockFoam, setCanyonRockFoam] = useState<
       Array<{ position: THREE.Vector3; rotation: THREE.Euler; scale: THREE.Vector3 }>
     >([]);
@@ -269,9 +277,12 @@ export function TrackSegmentMeshes({
         }
 
         playerVelocitySyncAccumulator.current += delta;
-        if (playerVelocitySyncAccumulator.current >= 0.12) {
+        if (playerVelocitySyncAccumulator.current >= PARTICLE_SAMPLE_INTERVAL) {
             playerVelocitySyncAccumulator.current = 0;
-            setPlayerVelocityForParticles(playerVelocityRef.current);
+            const velocity = playerVelocityRef.current;
+            particleVelocityRef.current = velocity;
+            iceSprayIntensityRef.current = Math.min(1, velocity / 8);
+            iceSprayActiveRef.current = vehiclePos.distanceTo(segmentCenterRef.current) < 60;
         }
 
         // Goal 3: Pond draw distance — hide vegetation beyond 50m
@@ -566,8 +577,8 @@ export function TrackSegmentMeshes({
                 <Suspense fallback={null}>
                     <IceSpray
                         origin={vehiclePos}
-                        intensity={Math.min(1, playerVelocityForParticles / 8)}
-                        active={vehiclePos.distanceTo(segmentCenterRef.current) < 60}
+                        intensityRef={iceSprayIntensityRef}
+                        activeRef={iceSprayActiveRef}
                     />
                 </Suspense>
             )}
@@ -587,7 +598,7 @@ export function TrackSegmentMeshes({
                             flowSpeed={flowSpeed * (type === 'waterfall' ? 1.4 : 1.05)}
                             intensity={plungeImpactPlacement.intensity}
                             particleDensity={particleDensity}
-                            playerVelocity={playerVelocityForParticles}
+                            playerVelocityRef={particleVelocityRef}
                         />
                     </Suspense>
                 </group>
@@ -672,7 +683,7 @@ export function TrackSegmentMeshes({
                             count={particleCount || 300}
                             width={waterWidth}
                             height={20}
-                            playerVelocity={playerVelocityForParticles}
+                            playerVelocityRef={particleVelocityRef}
                             particleDensity={particleDensity}
                             fanAngle={waterfallFanAngle}
                         />

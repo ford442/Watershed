@@ -1,4 +1,3 @@
-import type { Mock } from 'vitest';
 import * as THREE from 'three';
 
 import {
@@ -29,21 +28,9 @@ import { createRiverNodeMaterial } from '../materials/RiverNodeMaterial';
 import { createWaterMaterial } from '../materials/water/createWaterMaterial';
 import { getRendererDiagnostics } from './rendererState';
 
-vi.mock('./cspProbe', () => ({
-  isDataUrlConnectAllowed: vi.fn(),
-}));
-
 vi.mock('./rendererConfig', () => ({
   persistRendererPreference: vi.fn(),
 }));
-
-import { isDataUrlConnectAllowed } from './cspProbe';
-
-beforeEach(() => {
-  // Vitest may reset mock implementations between tests. Re-apply the CSP
-  // probe mock before every test.
-  (isDataUrlConnectAllowed as Mock).mockResolvedValue(true);
-});
 
 // A fallback pins the session to glsl; one test's fallback must not leak.
 afterEach(() => {
@@ -401,7 +388,7 @@ describe('createGameRenderer', () => {
     });
 
     expect(requested.length).toBeGreaterThan(0);
-    // THREE r178 builds its own attribute object; these are the entries it
+    // THREE r185 builds its own attribute object; these are the entries it
     // forwards from the constructor parameters we pass.
     expect(requested[0]).toMatchObject({
       antialias: false,

@@ -32,7 +32,7 @@ pnpm check:assets  # CI: public/packs/ must be byte-identical to what assets/src
 | What | How |
 |------|-----|
 | Framework | React 19 + TypeScript |
-| 3D rendering | Three.js 0.185 + React Three Fiber 9.4 |
+| 3D rendering | Three.js 0.185 + React Three Fiber 9.8 |
 | Physics | Rapier 0.19 (WASM) via @react-three/rapier |
 | Build | Vite 7 |
 | Shaders | GLSL (injected via `onBeforeCompile`) by default; opt-in NodeMaterial/TSL backend via `?material=tsl` (#256 path A) |
@@ -161,7 +161,7 @@ extended docs in **[`docs/reference/DOCUMENTATION_INDEX.md`](./docs/reference/DO
 - 7 active segments max, 10-slot pool (ID % 10 = pool index)
 - Generates next segment when camera is within 150 units of the last point
 - Each segment is 4 CatmullRom control points (~90–120 units long)
-- `getSegmentConfig(id)` maps segment IDs to the scripted level progression
+- `MapSystem`'s `getChunkConfig(id)` maps segment IDs to the active map's authored progression (procedural past its end)
 
 **Level script:**
 
@@ -199,7 +199,7 @@ In `Experience.tsx` / `InnerExperience.tsx`, switch `vehicleType` via props or U
 
 ### Water Shader (`FlowingWater.tsx`)
 
-Pure `ShaderMaterial`. Two-layer fbm foam, Fresnel highlight, depth gradient, current streaks. Uniforms: `time`, `flowSpeed`, `waterColor`, `deepColor`, `foamColor`, `edgeHighlight`.
+Built by `createWaterMaterial` (`src/materials/water/`), which picks the GLSL `ShaderMaterial` or the TSL node material per `?material=`. Two-layer fbm foam, Fresnel highlight, depth gradient, current streaks. Uniforms: `time`, `flowSpeed`, `waterColor`, `deepColor`, `foamColor`, `edgeHighlight`.
 
 ### Material Extensions (`RiverShader.ts`)
 

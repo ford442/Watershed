@@ -90,7 +90,8 @@ export interface WaterfallParticlesProps {
   count?: number;
   width?: number;
   height?: number;
-  playerVelocity?: number;
+  /** Player speed (m/s), read inside useFrame: a speed change never re-renders (#574 E.3). */
+  playerVelocityRef?: { readonly current: number };
   particleDensity?: number;
   fanAngle?: number;
 }
@@ -100,7 +101,8 @@ export interface WaterfallImpactZoneProps {
   flowSpeed?: number;
   intensity?: number;
   particleDensity?: number;
-  playerVelocity?: number;
+  /** Player speed (m/s), read inside useFrame: a speed change never re-renders (#574 E.3). */
+  playerVelocityRef?: { readonly current: number };
 }
 
 export interface RainbowProps {
@@ -110,8 +112,9 @@ export interface RainbowProps {
 
 export interface IceSprayProps {
   origin: THREE.Vector3;
-  intensity?: number;
-  active?: boolean;
+  /** Burst intensity 0..1 and whether the player is near, both read inside useFrame (#574 E.3). */
+  intensityRef: { readonly current: number };
+  activeRef: { readonly current: boolean };
 }
 
 export interface CanyonBackgroundProps {

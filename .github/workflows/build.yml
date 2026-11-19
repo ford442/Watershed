@@ -56,6 +56,10 @@ jobs:
       - name: Lint
         run: pnpm lint --max-warnings 0
 
+  # The one production build of the no-emcc path (#574 B). Everything that
+  # needs the bundle — visual smoke on both backends, a11y, determinism, the
+  # perf trace — downloads this job's `build/` artifact instead of rebuilding it.
+  # The name stays "Build without Emscripten" so branch protection does not move.
   build-without-emscripten:
     name: Build without Emscripten
     runs-on: ubuntu-latest
@@ -85,6 +89,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `tee` keeps the full vite log for the chunk guard below (#485 A): pipefail
+      # makes a failed build still fail this step. First, so the browser jobs
+      # waiting on the artifact start as early as they can.
+      - name: Build production bundle
+        shell: bash
+        run: pnpm build 2>&1 | tee build.log
+
+      - name: Assert build output exists
+        run: test -f build/index.html
+
+      - name: Upload the production bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Chunk guard (no node stack in the GLSL entry)
+        run: node scripts/check-build-manifest.mjs --chunks --build-log build.log
+
+      # Prints the chunk table and fails on a ceiling in build-budget.json (#485 D).
+      - name: Payload budget
+        run: node scripts/check-build-manifest.mjs --budget
+
       - name: Validate documentation paths
         run: node scripts/validate-markdown-paths.js
 
@@ -104,21 +133,51 @@ jobs:
       - name: Asset packs match their sources
         run: pnpm check:assets
 
-      # `tee` keeps the full vite log for the chunk guard below (#485 A): pipefail
-      # makes a failed build still fail this step.
-      - name: Build production bundle
-        shell: bash
-        run: pnpm build 2>&1 | tee build.log
+  # #574 C: docs/reference/BOARD.md's issue table is generated from the issue
+  # list (`node scripts/board.mjs`); a hand edit or a stale table fails here.
+  # Its own job, not a step of the build: opening or closing an issue makes it
+  # red until the table is regenerated, and that must not read as a broken
+  # bundle. Skipped without a token — the script says so and exits 0.
+  board:
+    name: Board matches the issue list
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Board matches the issue list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/board.mjs --check
 
-      - name: Assert build output exists
-        run: test -f build/index.html
+  # `pnpm test` on its own runner, not behind the build (#574 B.2).
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      PUPPETEER_SKIP_DOWNLOAD: true
 
-      - name: Chunk guard (no node stack in the GLSL entry)
-        run: node scripts/check-build-manifest.mjs --chunks --build-log build.log
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      # Prints the chunk table and fails on a ceiling in build-budget.json (#485 D).
-      - name: Payload budget
-        run: node scripts/check-build-manifest.mjs --budget
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Run test suite
         run: pnpm test
@@ -129,14 +188,15 @@ jobs:
       - name: Perf budgets
         run: pnpm test:perf
 
-  # Headless WebGL visual smoke (SwiftShader). Required: a best-effort shot's
-  # pixel diff is informational (SwiftShader in-run frames vary), but the
-  # harness fails on the required start-menu shot, a missing baseline, a
-  # native module fetched twice, or hard page errors (#518 C). Runs once per
-  # material backend (#555 A): GLSL, then `?material=tsl`, then the GLSL vs
-  # TSL parity scenes and the warm-up report.
+  # Headless WebGL visual smoke (SwiftShader), GLSL backend. Required: a
+  # best-effort shot's pixel diff is informational (SwiftShader in-run frames
+  # vary), but the harness fails on the required start-menu shot, a missing
+  # baseline, a native module fetched twice, or hard page errors (#518 C).
+  # The TSL pass, a11y and the parity / warm-up reports used to run after it
+  # in this job (~24 min); each is its own job now, on the same artifact.
   visual-smoke:
     name: Visual smoke (WebGL)
+    needs: build-without-emscripten
     runs-on: ubuntu-latest
     env:
       CI: true
@@ -145,44 +205,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Confirm Emscripten is absent
-        run: |
-          if command -v emcc >/dev/null 2>&1; then
-            echo "emcc is unexpectedly available on this runner"
-            exit 1
-          fi
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Chromium for Puppeteer
-        run: pnpm exec puppeteer browsers install chrome
-
-      - name: Build production bundle (no Emscripten required)
-        run: pnpm build
-
-      - name: Start Vite preview
-        run: |
-          pnpm exec vite preview --host 127.0.0.1 --port 4173 &
-          echo $! > /tmp/vite-preview.pid
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
-              echo "preview ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "preview failed to start"
-          exit 1
+      - name: Browser suite setup
+        uses: ./.github/actions/browser-suite
 
       - name: Run visual smoke harness
         env:
@@ -190,67 +214,21 @@ jobs:
         run: pnpm test:visual-smoke
         timeout-minutes: 20
 
-      # #558 E: axe-core over the start menu, every Options page, pause, the
-      # wipeout results and the touch layout (100 / 150 / 200 % UI scale), plus
-      # a clipped-control check. Serious / critical violations fail the job.
-      - name: Accessibility audit (axe-core + UI-scale clip check)
-        if: success() || failure()
-        run: pnpm test:a11y
-        timeout-minutes: 15
-
-      # #555 A.1: the node material path, gated like the default one. Same
-      # shots against the `__material-tsl` baselines committed beside the GLSL
-      # ones (verification/baselines/visual-smoke/README.md).
-      - name: Run visual smoke harness (?material=tsl)
-        if: success() || failure()
-        env:
-          VISUAL_BOOT_RETRIES: "2"
-        run: pnpm test:visual-smoke:tsl
-        timeout-minutes: 25
-
-      # #466 A / #555 A.2: the post chain and one scene per dual material host,
-      # GLSL vs TSL on SwiftShader. Brings up its own Vite dev server.
-      - name: GLSL vs TSL parity (post chain + every dual host)
-        if: success() || failure()
-        env:
-          POST_PARITY_SHOTS: verification/output/post-parity
-        run: pnpm test:post-parity
-        timeout-minutes: 10
-
-      # #555 A.3: the boot shader warm-up on both backends — programs the
-      # warm-up compiled and the first 3 s of the run still had to. Fails only
-      # when a backend cannot be measured; the counts are a report.
-      - name: Shader warm-up report (GLSL + TSL)
-        if: success() || failure()
-        run: pnpm test:warmup-report
-        timeout-minutes: 15
-
       - name: Upload visual-smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: visual-smoke-output
-          path: |
-            verification/output/visual-smoke/
-            verification/output/a11y/
-            verification/output/post-parity/
-            verification/output/shader-warmup/
+          path: verification/output/visual-smoke/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Stop Vite preview
-        if: always()
-        run: |
-          if [ -f /tmp/vite-preview.pid ]; then
-            kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
-          fi
-
-  # The determinism gates (#518 C), required. They used to ride in the soft
-  # visual-smoke job, so none of them had ever blocked a merge. Gameplay runs
-  # on sim time (eslint "sim time" rule), so these must give the same splits
-  # on any runner under any load.
-  determinism:
-    name: Determinism smoke
+  # #555 A.1: the node material path, gated like the default one. Same shots
+  # against the `__material-tsl` baselines committed beside the GLSL ones
+  # (verification/baselines/visual-smoke/README.md).
+  visual-smoke-tsl:
+    name: Visual smoke (?material=tsl)
+    needs: build-without-emscripten
     runs-on: ubuntu-latest
     env:
       CI: true
@@ -259,37 +237,111 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Browser suite setup
+        uses: ./.github/actions/browser-suite
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Run visual smoke harness (?material=tsl)
+        env:
+          VISUAL_BOOT_RETRIES: "2"
+        run: pnpm test:visual-smoke:tsl
+        timeout-minutes: 25
+
+      - name: Upload visual-smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          node-version: 22
-          cache: pnpm
+          name: visual-smoke-tsl-output
+          path: verification/output/visual-smoke/
+          if-no-files-found: warn
+          retention-days: 14
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+  # #558 E: axe-core over the start menu, every Options page, pause, the
+  # wipeout results and the touch layout (100 / 150 / 200 % UI scale), plus a
+  # clipped-control check. Serious / critical violations fail the job.
+  a11y:
+    name: Accessibility audit
+    needs: build-without-emscripten
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_URL: http://127.0.0.1:4173
 
-      - name: Install Chromium for Puppeteer
-        run: pnpm exec puppeteer browsers install chrome
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Browser suite setup
+        uses: ./.github/actions/browser-suite
 
-      - name: Build production bundle (no Emscripten required)
-        run: pnpm build
+      - name: Accessibility audit (axe-core + UI-scale clip check)
+        run: pnpm test:a11y
+        timeout-minutes: 15
 
-      - name: Start Vite preview
-        run: |
-          pnpm exec vite preview --host 127.0.0.1 --port 4173 &
-          echo $! > /tmp/vite-preview.pid
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
-              echo "preview ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "preview failed to start"
-          exit 1
+      - name: Upload a11y report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-output
+          path: verification/output/a11y/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # #466 A / #555 A.2: the post chain and one scene per dual material host,
+  # GLSL vs TSL on SwiftShader (its own Vite dev server); then #555 A.3, the
+  # boot shader warm-up on both backends against the preview — programs the
+  # warm-up compiled and the first 3 s of the run still had to. The warm-up
+  # fails only when a backend cannot be measured; the counts are a report.
+  render-parity:
+    name: GLSL vs TSL parity + warm-up report
+    needs: build-without-emscripten
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Browser suite setup
+        uses: ./.github/actions/browser-suite
+
+      - name: GLSL vs TSL parity (post chain + every dual host)
+        env:
+          POST_PARITY_SHOTS: verification/output/post-parity
+        run: pnpm test:post-parity
+        timeout-minutes: 10
+
+      - name: Shader warm-up report (GLSL + TSL)
+        if: success() || failure()
+        run: pnpm test:warmup-report
+        timeout-minutes: 15
+
+      - name: Upload parity + warm-up output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-parity-output
+          path: |
+            verification/output/post-parity/
+            verification/output/shader-warmup/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # The determinism gates (#518 C), required. Gameplay runs on sim time
+  # (eslint "sim time" rule), so these must give the same splits on any runner
+  # under any load.
+  determinism:
+    name: Determinism smoke
+    needs: build-without-emscripten
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      WATERSHED_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Browser suite setup
+        uses: ./.github/actions/browser-suite
 
       # #486 A: a scripted meander run stepped headlessly at a fixed 1/60 s
       # (frameloop="never"); gates on the segment-3 split and on two runs
@@ -317,23 +369,18 @@ jobs:
         run: pnpm test:wgsl
         timeout-minutes: 10
 
-      - name: Stop Vite preview
-        if: always()
-        run: |
-          if [ -f /tmp/vite-preview.pid ]; then
-            kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
-          fi
-
   # #559 E: the one timeline as a regression gate. The scripted meander under
   # `?trace=1` (plus 32 treadmill appends), per-span p95s against
   # verification/perf-baselines/meander.json: sim step, segment build and mount
   # fail past tolerance.json, calibration-normalised; render / post spans are
   # reported only (SwiftShader). A live raft phase gates the timeline itself —
   # main, sim-worker and Rapier-worker tracks aligned within 1 ms. The traces
-  # and this runner's candidate baselines are uploaded either way: refresh a
-  # baseline from them when the runner image changes.
+  # and this runner's candidate baselines are uploaded either way. The
+  # baselines are recorded on this job's runner class, not a dev box
+  # (verification/perf-baselines/README.md: why, and how to refresh them).
   perf-trace:
     name: Perf trace baseline
+    needs: build-without-emscripten
     runs-on: ubuntu-latest
     env:
       CI: true
@@ -342,37 +389,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Chromium for Puppeteer
-        run: pnpm exec puppeteer browsers install chrome
-
-      - name: Build production bundle (no Emscripten required)
-        run: pnpm build
-
-      - name: Start Vite preview
-        run: |
-          pnpm exec vite preview --host 127.0.0.1 --port 4173 &
-          echo $! > /tmp/vite-preview.pid
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:4173/ >/dev/null; then
-              echo "preview ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "preview failed to start"
-          exit 1
+      - name: Browser suite setup
+        uses: ./.github/actions/browser-suite
 
       - name: Trace the scripted meander against its baseline
         run: pnpm test:perf-trace
@@ -381,10 +399,21 @@ jobs:
       # The SWE stepper on the shipped wasm, in Node; only a large Ultra-grid
       # regression fails (tolerance.json `swe`), the rest is reported.
       - name: SWE step bench against its baseline
+        if: success() || failure()
         run: |
           mkdir -p verification/output
           pnpm profile:swe --json verification/output/swe.json
           node verification/perf_compare.mjs swe verification/output/swe.json
+
+      # #559 E.3: treadmill appends at Medium and High against
+      # perf-baselines/spawn.json. Reported only (tolerance.json `spawn` gates
+      # nothing) until a few runs on this runner say how noisy it is.
+      - name: Spawn profile against its baseline (report only)
+        if: success() || failure()
+        run: |
+          pnpm profile:spawn
+          node verification/perf_compare.mjs spawn verification/output/spawn-profile/spawn-profile-default.json
+        timeout-minutes: 15
 
       - name: Upload traces and candidate baselines
         if: always()
@@ -393,13 +422,6 @@ jobs:
           name: perf-trace
           path: verification/output/
           if-no-files-found: ignore
-
-      - name: Stop Vite preview
-        if: always()
-        run: |
-          if [ -f /tmp/vite-preview.pid ]; then
-            kill "$(cat /tmp/vite-preview.pid)" 2>/dev/null || true
-          fi
 
   # #556 B: whole runs through SimCore in Node — the page's systems list, a
   # Rapier world, the treadmill and the committed watershed_native pair, no

@@ -34,12 +34,13 @@ const MAX_POOL_JS = 500;
  *  Ultra (`maxParticles >= 2000`) may simulate up to 1000 only on that path. */
 const MAX_POOL = 1000;
 const DEPTH_Z = 5;
+const ZERO_VELOCITY = { current: 0 } as const;
 
 export default function WaterfallParticles({
   count: baseCount = 300,
   width = 15,
   height = 25,
-  playerVelocity = 0,
+  playerVelocityRef = ZERO_VELOCITY,
   particleDensity = 1.0,
   fanAngle = 0,
 }: WaterfallParticlesProps) {
@@ -55,12 +56,10 @@ export default function WaterfallParticles({
   const seedRef = useRef(0xC0FFEE ^ (baseCount * 17));
   const [nativeLive, setNativeLive] = useState(false);
 
-  const calculatedCount = useMemo(() => {
+  // The count at cruise and above 20 m/s. Speed is read per frame from the ref
+  // (useFrame below picks one), so a speed change never re-renders (#574 E.3).
+  const targetCounts = useMemo(() => {
     const densityBase = 100 + (particleDensity * 300);
-    let velocityMultiplier = 1.0;
-    if (playerVelocity > 20) {
-      velocityMultiplier = 1.5;
-    }
 
     let lodMultiplier = 1.0;
     const maxParticles = lodConfig?.maxParticles ?? 500;
@@ -70,18 +69,14 @@ export default function WaterfallParticles({
       lodMultiplier = 0.6;
     }
 
-    let finalCount = Math.floor(densityBase * velocityMultiplier * lodMultiplier);
     const absoluteMax = maxParticles <= 200
       ? 100
       : (nativeLive && maxParticles >= 2000 ? 1000 : MAX_POOL_JS);
-    finalCount = Math.min(absoluteMax, finalCount);
+    const countAt = (velocityMultiplier: number) =>
+      Math.min(absoluteMax, Math.floor(densityBase * velocityMultiplier * lodMultiplier));
 
-    return finalCount;
-  }, [particleDensity, playerVelocity, lodConfig, nativeLive]);
-
-  useEffect(() => {
-    targetCountRef.current = calculatedCount;
-  }, [calculatedCount]);
+    return { cruise: countAt(1.0), fast: countAt(1.5) };
+  }, [particleDensity, lodConfig, nativeLive]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +137,8 @@ export default function WaterfallParticles({
     const mesh = meshRef.current;
     if (!mesh) return;
 
+    const playerVelocity = playerVelocityRef.current;
+    targetCountRef.current = playerVelocity > 20 ? targetCounts.fast : targetCounts.cruise;
     const countDiff = targetCountRef.current - currentCountRef.current;
     if (Math.abs(countDiff) > 1) {
       const change = Math.sign(countDiff) * Math.min(50, Math.abs(countDiff) * delta * 5);

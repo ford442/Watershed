@@ -1,0 +1,70 @@
+name: Browser suite setup
+description: >
+  Shared setup for every job that drives the production bundle in headless
+  Chrome (#574 B). Installs dependencies, restores the Puppeteer browser from a
+  cache keyed by the Puppeteer version, downloads the `build/` the
+  "Build without Emscripten" job made, and starts `vite preview` on 4173.
+  Expects actions/checkout to have run. Stop the preview with
+  `kill "$(cat /tmp/vite-preview.pid)"`.
+
+inputs:
+  preview:
+    description: Start `vite preview` on 127.0.0.1:4173 (false for suites that bring up their own server)
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+      env:
+        PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+    - name: Puppeteer version
+      id: puppeteer
+      shell: bash
+      run: echo "version=$(node -p "require('puppeteer/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - name: Cache the Puppeteer browser
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/puppeteer
+        key: puppeteer-${{ runner.os }}-${{ steps.puppeteer.outputs.version }}
+
+    # A no-op when the cache hit: `browsers install` finds the build in place.
+    - name: Install Chromium for Puppeteer
+      shell: bash
+      run: pnpm exec puppeteer browsers install chrome
+
+    - name: Download the production bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: build
+        path: build
+
+    - name: Start Vite preview
+      if: inputs.preview == 'true'
+      shell: bash
+      run: |
+        test -f build/index.html
+        pnpm exec vite preview --host 127.0.0.1 --port 4173 &
+        echo $! > /tmp/vite-preview.pid
+        for i in $(seq 1 60); do
+          if curl -sf http://127.0.0.1:4173/ >/dev/null; then
+            echo "preview ready"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "preview failed to start"
+        exit 1
