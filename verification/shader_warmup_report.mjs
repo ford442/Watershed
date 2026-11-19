@@ -10,7 +10,8 @@
  * `shaderWarmup` debug tap (`src/experience/ShaderWarmup.tsx`):
  *
  *   warm      objects / programs the warm-up compiled, and how long it took
- *   warmFrame programs the GLSL warm frame added (post chain, shadow depth, sky)
+ *   warmFrame programs the warm frame added (post chain, shadow depth, scene
+ *             targets, sky)
  *   firstRun  programs the first 3 s after Start still had to compile — the
  *             number the warm-up exists to drive down
  *
@@ -20,9 +21,17 @@
  * only in view between two drawn frames is not counted; the batch is the same
  * for both backends.
  *
- * Gate: each backend must report `warm` and `firstRun` (the harness fails if
- * either is not measured). The numbers themselves are a report, printed and
- * written to verification/output/shader-warmup/report.json.
+ * Gate (#576 A.2): each backend must report `warm` and `firstRun`, `firstRun`
+ * must be at most MAX_FIRST_RUN programs on every backend, and the node
+ * renderer's compile step must land within MAX_WARM_MS_TSL. The numbers are
+ * also printed and written to verification/output/shader-warmup/report.json.
+ *
+ * `warm ms` is not comparable across backends on a driver without
+ * KHR_parallel_shader_compile (SwiftShader): WebGLRenderer marks a program
+ * ready at once and pays its link on first draw, while the node WebGL2 backend
+ * reads LINK_STATUS inside `compileAsync`, so the TSL number includes every
+ * link and the GLSL number none. The TSL ceiling is a regression guard (the
+ * step took 10 s before #576 A), not a target.
  *
  * Usage:
  *   pnpm build && pnpm preview --host 127.0.0.1 --port 4173
@@ -32,6 +41,8 @@
  *   WATERSHED_URL              Base URL (default http://127.0.0.1:4173)
  *   WARMUP_BACKENDS            Comma list (default glsl,tsl)
  *   WARMUP_STEP_BATCH          Sim frames per drawn frame (default 6)
+ *   WARMUP_MAX_FIRST_RUN       Programs allowed in the first 3 s, per backend (default 80)
+ *   WARMUP_MAX_WARM_MS_TSL     The node compile step's ceiling in ms (default 5000)
  *   PUPPETEER_EXECUTABLE_PATH  Optional Chrome binary override
  */
 
@@ -47,6 +58,8 @@ const BASE_URL = (process.env.WATERSHED_URL ?? 'http://127.0.0.1:4173').replace(
 const SCRIPT_PATH = '/verification/fixtures/input/meander_run.json';
 const BACKENDS = (process.env.WARMUP_BACKENDS ?? 'glsl,tsl').split(',').map((b) => b.trim()).filter(Boolean);
 const STEP_BATCH = Math.max(1, Number(process.env.WARMUP_STEP_BATCH ?? '6'));
+const MAX_FIRST_RUN = Number(process.env.WARMUP_MAX_FIRST_RUN ?? '80');
+const MAX_WARM_MS_TSL = Number(process.env.WARMUP_MAX_WARM_MS_TSL ?? '5000');
 /** Sim frames stepped before giving up on the 3 s window (it closes at 180). */
 const MAX_FRAMES = 240;
 
@@ -109,6 +122,37 @@ async function until(page, fn, timeoutMs, what, arg) {
   }
 }
 
+/**
+ * Click Start once it is armed, and confirm the menu left. Start is gated on
+ * the loading manager (`bootReady`), and the warm frame can start a load of its
+ * own after the button first armed: a click in that window is ignored, which
+ * reads as a run that never goes live.
+ */
+async function clickStart(page) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    if (await page.evaluate(() => document.querySelector('.start-menu-start-btn')?.disabled === true)) {
+      console.log('  [warmup-report] Start is disarmed after the warm-up (a load in flight); waiting for it');
+    }
+    await until(
+      page,
+      () => {
+        const btn = document.querySelector('.start-menu-start-btn');
+        return !!btn && !btn.disabled;
+      },
+      120_000,
+      'the start button to re-arm',
+    );
+    await page.evaluate(() => document.querySelector('.start-menu-start-btn').click());
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (!(await page.evaluate(() => !!document.querySelector('.start-menu-start-btn')))) return;
+      await sleep(250);
+    }
+    console.log(`  [warmup-report] Start click ${attempt} did not leave the menu; retrying`);
+  }
+  throw new Error('Start never left the menu');
+}
+
 async function measure(backend) {
   const query = `map=meander&cleanTest=1&renderer=webgl&screenshot=1&warmup=1&material=${backend}&input=script:${SCRIPT_PATH}`;
   const pageErrors = [];
@@ -144,13 +188,13 @@ async function measure(backend) {
       'the start button to arm',
     );
     // The warm-up runs at the menu; Start before it lands would measure a cold run.
-    // GLSL also draws its warm frame (immediately, under frameloop="never").
+    // Both backends then draw the warm frame (immediately, under frameloop="never").
     const tap = await until(
       page,
       () => {
         const t = window.__watershed?.shaderWarmup;
         if (!t?.warm) return null;
-        if (t.backend === 'glsl' && t.warmFrame === null) return null;
+        if (t.warmFrame === null) return null;
         return JSON.parse(JSON.stringify(t));
       },
       180_000,
@@ -159,7 +203,7 @@ async function measure(backend) {
     if (tap.backend !== backend) throw new Error(`asked for ?material=${backend}, the page built ${tap.backend}`);
     const warmMs = Date.now() - wallStart;
 
-    await page.evaluate(() => document.querySelector('.start-menu-start-btn').click());
+    await clickStart(page);
     await until(page, () => !!window.__watershedScreenshot?.stepScripted, 60_000, 'the screenshot API');
     await until(page, () => window.__watershedScreenshot.isScriptedReady(), 120_000, 'the scripted run to go live');
 
@@ -223,6 +267,19 @@ async function main() {
     process.exit(1);
   }
   console.log('[warmup-report] ✓ measured on every backend');
+
+  const over = [];
+  for (const r of results) {
+    if (r.firstRun > MAX_FIRST_RUN) over.push(`${r.backend}: ${r.firstRun} programs in the first 3 s (max ${MAX_FIRST_RUN})`);
+    if (r.backend === 'tsl' && r.warm.ms > MAX_WARM_MS_TSL) {
+      over.push(`tsl: compile step ${Math.round(r.warm.ms)} ms (max ${MAX_WARM_MS_TSL})`);
+    }
+  }
+  if (over.length > 0) {
+    for (const line of over) console.error(`[warmup-report] ✗ ${line}`);
+    process.exit(1);
+  }
+  console.log(`[warmup-report] ✓ within budget (first 3 s <= ${MAX_FIRST_RUN} programs; tsl compile <= ${MAX_WARM_MS_TSL} ms)`);
 }
 
 main().catch((err) => {

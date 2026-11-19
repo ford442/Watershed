@@ -130,7 +130,7 @@ export class WebGPURenderer extends THREE.WebGLRenderer {
   static lastParameters: Record<string, unknown> | null = null;
 
   isWebGPURenderer = true;
-  backend: { isWebGPUBackend: boolean };
+  backend: { isWebGPUBackend: boolean; capabilities: { getUniformBufferLimit(): number } };
 
   constructor(parameters: THREE.WebGLRendererParameters & { forceWebGL?: boolean } = {}) {
     WebGPURenderer.lastParameters = { ...parameters };
@@ -138,7 +138,8 @@ export class WebGPURenderer extends THREE.WebGLRenderer {
     // double, like the real WebGL2 backend, never calls getContext itself.
     const { forceWebGL, ...rest } = parameters;
     super(rest);
-    this.backend = { isWebGPUBackend: !forceWebGL };
+    // MAX_UNIFORM_BLOCK_SIZE's WebGL2 floor: what r185 reads to size instance-matrix blocks.
+    this.backend = { isWebGPUBackend: !forceWebGL, capabilities: { getUniformBufferLimit: () => 16384 } };
   }
 
   async init(): Promise<void> {

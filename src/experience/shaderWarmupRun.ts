@@ -12,13 +12,18 @@
  *    none (EnhancedSky's `<fog>` attaches to its group; TrackManager sets the
  *    scene's linear `THREE.Fog` at Start), and fog is baked into every program
  *    that reads it, so warming against the menu scene compiled the wrong ones.
- * 2. `renderShaderWarmup` — one frame drawn through a throwaway effect chain
- *    (`createComposerDriver`, same passes as the run, detached after the draw), called from a `useFrame`
- *    so R3F's own menu render overwrites the canvas before it is presented.
- *    That is what reaches the programs `compile()` cannot: every post pass
- *    (bloom mips, SSAO and its normal pass, SMAA, the shader passes, OutputPass),
- *    the shadow pass's depth materials, and the post-target variants of the
- *    menu's own objects (the sky), cloned so the live ones keep theirs.
+ * 2. `renderShaderWarmup` — one frame drawn through a throwaway post chain with
+ *    the run's passes, called from a `useFrame` so R3F's own menu render
+ *    overwrites the canvas before it is presented. GLSL: an effect chain
+ *    (`createComposerDriver`, detached after the draw). Node renderer: a node
+ *    `RenderPipeline` (`createNodeDriver`, #576 A.3). That is what reaches the
+ *    programs `compile()` cannot: every post pass (bloom mips, SSAO / GTAO, SMAA,
+ *    the shader passes, the output transform), the shadow pass's depth
+ *    materials, and the post-target variants of the recipes and of the menu's
+ *    own objects (the sky), cloned so the live ones keep theirs. Before the
+ *    node warm frame (#576 A.3) the TSL run compiled its whole post pipeline
+ *    and every shadow depth material on its first frames: measured on the
+ *    scripted meander, the frame adds 30 programs and the first 3 s drop 57 → 46.
  */
 import * as THREE from 'three';
 import { resolveMaterialBackend } from '../rendering/materialBackend';
@@ -31,7 +36,8 @@ import {
   type WarmupRenderer,
 } from '../rendering/shaderWarmup';
 import type { QualityPreset } from '../systems/GameState';
-import { createComposerDriver } from '../components/PostProcessingPipeline';
+import { createComposerDriver, createNodeDriver, nodeStructureFor } from '../components/PostProcessingPipeline';
+import type { WebGPURenderer } from 'three/webgpu';
 import {
   DEFAULT_POST_TUNING,
   aaTierFor,
@@ -51,6 +57,16 @@ const WARM_FRAME_SIZE = 64;
 export interface ShaderWarmupSession {
   readonly warm: ShaderWarmupResult;
   readonly targetScene: THREE.Scene;
+  /**
+   * Node renderer: releases the warm frame's `RenderPipeline` (its targets are
+   * canvas-sized, unlike the GLSL chain's 64 px). Safe once the run's own
+   * pipeline has drawn: node programs are shared by source, so the run's
+   * materials already hold every program the warm one built. Idempotent; also
+   * runs with `warm.dispose()`.
+   */
+  releaseFrame(): void;
+  /** Hold something until `releaseFrame()` (the node warm frame's pipeline). */
+  holdFrame(release: () => void): void;
 }
 
 /** Lights (cloned) and fog as the run will have them; nothing drawable. */
@@ -106,7 +122,12 @@ export async function runShaderWarmup(
     recipes: [...shaderWarmupRecipes(resolveMaterialBackend().backend), menuSceneRecipe(scene)],
     shadowModes: warmupShadowModes(quality),
   });
-  return { warm, targetScene };
+  const frameHolds: (() => void)[] = [];
+  const releaseFrame = () => {
+    for (const release of frameHolds.splice(0)) release();
+  };
+  warm.hold(releaseFrame);
+  return { warm, targetScene, releaseFrame, holdFrame: (release) => frameHolds.push(release) };
 }
 
 /**
@@ -121,14 +142,21 @@ export async function preloadWarmPasses(quality: QualityPreset): Promise<void> {
   ]);
 }
 
+/** The renderer's bound target now, and a function that binds it again. */
+function keepRenderTarget<T>(renderer: { getRenderTarget(): T; setRenderTarget(target: T): void }): () => void {
+  const bound = renderer.getRenderTarget();
+  return () => renderer.setRenderTarget(bound);
+}
+
 /**
- * Draw each shadow variant once through its own throwaway composer. GLSL
- * renderer only (the node path has its own pipeline). Call from a `useFrame`
- * that R3F's own render follows. The composers are held by `warm` and
- * released with it — dropping a pass material would release its program.
+ * Draw each shadow variant once through its own throwaway post chain: three's
+ * effect list on `WebGLRenderer`, a node `RenderPipeline` on the node renderer.
+ * Call from a `useFrame` that R3F's own render follows. GLSL chains are held by
+ * `warm` and released with it — dropping a pass material would release its
+ * program; node pipelines until `releaseFrame()`.
  */
 export function renderShaderWarmup(
-  gl: THREE.WebGLRenderer,
+  gl: THREE.WebGLRenderer | WebGPURenderer,
   session: ShaderWarmupSession,
   camera: THREE.Camera,
   quality: QualityPreset,
@@ -163,15 +191,27 @@ export function renderShaderWarmup(
   // Warm every pass the preset may switch on, not only this frame's mood.
   params.godRays.enabled = params.godRays.allowed;
 
-  const previousTarget = gl.getRenderTarget();
+  const isNode = (gl as { isWebGPURenderer?: boolean }).isWebGPURenderer === true;
+  const restoreTarget = isNode ? keepRenderTarget(gl as WebGPURenderer) : keepRenderTarget(gl as THREE.WebGLRenderer);
   for (const { mode, root } of warm.variants) {
     targetScene.add(root);
     try {
       withShadowMode(gl, mode, () => {
-        const driver = createComposerDriver(gl, targetScene, camera, WARM_FRAME_SIZE, WARM_FRAME_SIZE, DEFAULT_POST_TUNING);
+        if (isNode) {
+          // Built against the warm target scene, so its scene pass draws the
+          // recipes (and the cloned menu objects) into the run's scene target.
+          const node = createNodeDriver(gl as WebGPURenderer, targetScene, camera, nodeStructureFor(params));
+          if (!node) return;
+          session.holdFrame(() => node.dispose());
+          node.apply(params);
+          node.render();
+          return;
+        }
+        const webgl = gl as THREE.WebGLRenderer;
+        const driver = createComposerDriver(webgl, targetScene, camera, WARM_FRAME_SIZE, WARM_FRAME_SIZE, DEFAULT_POST_TUNING);
         warm.hold(() => driver.dispose());
         driver.apply(params);
-        gl.shadowMap.needsUpdate = true;
+        webgl.shadowMap.needsUpdate = true;
         driver.render();
         // The renderer holds one effect list for every canvas render: the menu's
         // own frame must not run through this throwaway chain.
@@ -181,7 +221,7 @@ export function renderShaderWarmup(
       console.warn(`[ShaderWarmup] warm frame (${mode} shadows) failed`, error);
     } finally {
       targetScene.remove(root);
-      gl.setRenderTarget(previousTarget);
+      restoreTarget();
     }
   }
   // The cloned lights' shadow maps were only for this frame.

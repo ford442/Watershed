@@ -5,7 +5,8 @@
  * Starts once per renderer when the loader is idle and the world is not yet
  * mounted (the menu): `compileAsync` of the recipes against the live scene's
  * (cloned) pooled lights and the run's fog, then one warm frame through a
- * throwaway composer on the next `useFrame` (`shaderWarmupRun.ts`). Off under
+ * throwaway post chain on the next `useFrame` (`shaderWarmupRun.ts`): three's
+ * effect list on GLSL, a node `RenderPipeline` on the node renderer (#576 A.3). Off under
  * scripted input (`?input=script:` / `?replay=`): the deterministic smokes run
  * with `frameloop="never"` and must not gain a compile pass.
  *
@@ -46,8 +47,8 @@ const WARM_FRAME_SPAN = traceName('shader-warm-frame');
 const RUN_PROGRAM_WINDOW_S = 3;
 
 /**
- * Draw the warm frame (GLSL only) and record what it compiled. The warm-up
- * module is loaded by the time a session exists.
+ * Draw the warm frame and record what it compiled. The warm-up module is loaded
+ * by the time a session exists.
  */
 function drawWarmFrame(
   gl: unknown,
@@ -60,12 +61,12 @@ function drawWarmFrame(
   if (!mod) return;
   const before = liveProgramCount(gl);
   const traced = traceStart();
-  mod.renderShaderWarmup(gl as THREE.WebGLRenderer, session, camera, quality);
+  mod.renderShaderWarmup(gl as Parameters<typeof mod.renderShaderWarmup>[0], session, camera, quality);
   traceEnd(WARM_FRAME_SPAN, traced);
   const after = liveProgramCount(gl);
   if (before !== null && after !== null) {
     if (tap) tap.warmFrame = after - before;
-    console.info(`[ShaderWarmup] warm frame compiled ${after - before} more programs (post chain, shadow depth, menu scene)`);
+    console.info(`[ShaderWarmup] warm frame compiled ${after - before} more programs (post chain, shadow depth, scene targets, menu scene)`);
   }
 }
 
@@ -84,7 +85,7 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
   const loading = useProgress((s) => s.active);
   const quality = useGameStore((s) => s.settings.quality);
   const result = useRef<ShaderWarmupSession | null>(null);
-  /** Set once the compile has landed: the next frame draws the warm frame (GLSL only). */
+  /** Set once the compile has landed: the next frame draws the warm frame. */
   const pendingFrame = useRef(false);
   const started = useRef<object | null>(null);
   const runWindow = useRef<{ at: number | null; before: Set<unknown>; elapsed: number } | null>(null);
@@ -137,7 +138,7 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
           return;
         }
         result.current = session;
-        pendingFrame.current = !renderer.isWebGPURenderer;
+        pendingFrame.current = true;
         if (tap.current) {
           tap.current.warm = {
             objects: warm.objects,
@@ -204,6 +205,9 @@ export function ShaderWarmup({ worldEnabled }: { worldEnabled: boolean }) {
       }
     }
     runWindow.current = null;
+    // The run's own post pipeline has drawn by now and holds every program the
+    // node warm frame built; its canvas-sized targets can go.
+    result.current?.releaseFrame();
   });
 
   return null;

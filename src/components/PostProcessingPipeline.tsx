@@ -523,7 +523,7 @@ export function createComposerDriver(
   return driver;
 }
 
-function nodeStructureFor(p: PostFrameParams): NodePostStructure {
+export function nodeStructureFor(p: PostFrameParams): NodePostStructure {
   return {
     bloom: p.bloom.enabled,
     ssao: p.ssao.enabled,
@@ -533,8 +533,11 @@ function nodeStructureFor(p: PostFrameParams): NodePostStructure {
   };
 }
 
-/** TSL path: three's node RenderPipeline (epic #434 B2). Null if the module isn't loaded. */
-function createNodeDriver(
+/**
+ * TSL path: three's node RenderPipeline (epic #434 B2). Null if the module isn't
+ * loaded. Exported for the shader warm-up's node warm frame (#576 A.3).
+ */
+export function createNodeDriver(
   gl: WebGPURenderer,
   scene: THREE.Scene,
   camera: THREE.Camera,
