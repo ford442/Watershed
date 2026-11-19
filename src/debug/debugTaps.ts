@@ -57,7 +57,7 @@ export interface ShaderWarmupTap {
   backend: string;
   /** null until the warm-up has compiled; `objects` / `programs` are what it built. */
   warm: { objects: number; programs: number | null; ms: number; failed: string[] } | null;
-  /** Programs the warm frame added (GLSL only: post chain, shadow depth, menu scene). */
+  /** Programs the warm frame added (post chain, shadow depth, scene-target variants, menu scene). */
   warmFrame: number | null;
   /** Programs compiled in the first 3 s of sim time after Start; null until measured. */
   firstRun: number | null;

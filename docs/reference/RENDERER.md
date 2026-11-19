@@ -292,7 +292,7 @@ A prelink was tried and measured before being dropped: `compileAsync` of the liv
 While the menu is up, `experience/ShaderWarmup.tsx` compiles the programs the first seconds of a run need (code in the lazy `shaderWarmupRun` chunk):
 
 1. `compileAsync` of one object per material variant (`shaderWarmupRecipes.ts`: canyon floor / wall river extensions, river / rock / tree prop extensions, water with and without the SWE flow map, weather, splash bow wave, standard and basic shapes) against a warm target scene — the live scene's lights, cloned, and the run's linear fog. The menu has no scene fog, and fog is baked into every program that reads it.
-2. One warm frame through a throwaway effect chain (detached from the renderer right after its draw, since a renderer holds one effect list for every canvas render), drawn from a `useFrame` so R3F's own menu render overwrites it before it is presented: the post passes, the shadow pass's depth materials, and the post-target variants of the menu's own objects (cloned).
+2. One warm frame through a throwaway post chain, drawn from a `useFrame` so R3F's own menu render overwrites it before it is presented: the post passes, the shadow pass's depth materials, and the post-target variants of the recipes and of the menu's own objects (cloned). On `WebGLRenderer` the chain is an effect list (detached from the renderer right after its draw, since a renderer holds one effect list for every canvas render); on the node renderer it is a node `RenderPipeline` from the same `createNodeDriver` the run uses (#576 A.3), released once the run's own pipeline has drawn (the 3 s window below closes) because its targets are canvas-sized.
 
 Both run under a render target (three bakes `NoToneMapping` + linear output into anything drawn into a target, which is every scene draw on the post path) and once per shadow mode the preset can reach in one adaptive step (`warmupShadowModes`: one mode on every preset since #574 E.2, as every tier and its adaptive step down share `soft`). The warm objects and effect chains are held for the session — three refcounts programs per material, and dropping the last holder destroys the program. Off under scripted input unless `?warmup=1`.
 
@@ -306,6 +306,29 @@ Measured on headless Chromium / SwiftShader, default map, High: the first 3 s af
 | TSL (WebGL2) | 62 | 40 | 10,067 | — (node path has no warm frame) | **731** |
 
 The TSL number is the cost Phase B moves onto every boot: the node renderer builds a pipeline per material × render-state variant, its warm-up covers few of them, and its post pipeline is not warmed at all.
+
+### Where the 731 came from (#576 A)
+
+Measured by recording every `linkProgram` (with its vertex and fragment source) and every new node pipeline (with its material, object and render target) on the same scripted meander, SwiftShader, `?material=tsl`. The first 3 s linked 743 programs: **730 distinct vertex shaders over 57 fragment shaders**.
+
+1. **One program per `InstancedMesh` (674 of them).** r185's `createInstanceMatrixNode` (`nodes/accessors/Instance.js`) puts an InstancedMesh's matrices in a uniform buffer whenever `count × 64 B` fits under `getUniformBufferLimit()` — every decoration layer here — and `GLSLNodeBuilder` names that block after the buffer node's id (`uniform NodeBuffer_120884 { mat4 buffer120884[49]; }`). Two meshes sharing one material emit different vertex source, so the node renderer, whose pipeline cache is keyed by source, compiled each mesh on its own. With the block name and size taken out of the source the 743 links are 58 distinct programs. Fix: `rendering/sharedInstancePrograms.ts` reports a limit of 0 on the node renderer, so every InstancedMesh takes three's other path, the matrices as four interleaved instanced `vec4` attributes named by index — what `THREE.WebGLRenderer` does for every InstancedMesh. In r185 the limit has three readers, all instancing size switches (`Instance.js` twice, `RangeNode.js`); `sharedInstancePrograms.test.ts` pins that against the real bundle. **731 → 57.**
+2. **No warm frame on the node renderer.** The post pipeline (GTAO, bloom high pass / blurs / composite, the RTT copies, SMAA's three passes, the output quad) and the shadow pass's depth materials were first built by the run. Fix: the node renderer draws the warm frame through a real `RenderPipeline` (step 2 above): +30 programs at the menu. **57 → 46.**
+
+What is left (46, against GLSL's 42 on the same run):
+
+- **Same material, different uniform layout.** Every one of the leftovers sampled (four) is a program for a material the warm-up did build, whose source differs only in uniform numbering and order: the run's declares an extra `vec3` uniform ahead of the matrices (`vec3 nodeUniform91` where the warm program has `mat4 nodeUniform30`), and the lights node's cache key differs between the warm target scene and the run (`LightsNode.getCacheKey()` 7704778411381008 vs 7749388727605348). The likely cause is the light set: the warm target clones the menu's lights, the run has the pooled scene lights (`sceneLightPool.tsx`) — the issue's second hypothesis. Matching the warm target's lights to the run's pool is the next step.
+- **Materials the recipes do not build** (critters, mist, foliage cards with their own attribute sets) — the same long tail GLSL has.
+- **One rebuild of the post chain** when the adaptive valve steps the preset down on SwiftShader. This one has no GLSL equivalent: `BloomNode` and `DenoiseNode` each carry `uniformArray`s, which compile to uniform blocks named by node id like the instance matrices, so a fresh pass node means fresh source for every pass downstream of it (about a dozen programs). A shared kernel per pass, or stable buffer names in the GLSL builder, would remove it.
+
+| Backend | Warm programs | Warm ms | Warm frame | First 3 s |
+|---|---|---|---|---|
+| GLSL | 29 | 78 | 61 | **42** |
+| TSL (WebGL2), before | 27 | 1,307–1,527 | — | **731** |
+| TSL (WebGL2), after | 27 | 1,151–1,408 | 30 | **46** |
+
+`test:warmup-report` now fails when either backend compiles more than 80 programs in the first 3 s, or when the node compile step takes over 5 s. **Warm ms is not comparable across the two rows.** Without `KHR_parallel_shader_compile` (SwiftShader has none), `WebGLRenderer` marks a program ready at once and pays the link on its first draw (`WebGLProgram.isReady`), while the node WebGL2 backend reads `LINK_STATUS` inside `compileAsync` (`WebGLBackend._completeCompile`). The TSL figure is the link time of its 27 programs; a CPU profile of the window puts the node builder's JS at a few hundred ms and the rest in the driver. The issue's < 1 s target is not met on SwiftShader; the 5 s ceiling is a regression guard against the 10 s this step used to take.
+
+The harness also waits for Start to re-arm before clicking it: the node warm frame can start a load after the button first armed, and Start is gated on the loading manager (`bootReady`), so a click in that window was silently dropped (about half the runs on this box before the wait).
 
 `soft` shadows are `PCFShadowMap` now (`shadowMapTypeFor`): r185 deprecates `PCFSoftShadowMap` and rewrites it to PCF, with a warning, on every shadow pass that finds it — the image was already PCF. Asking for it also meant anything compiled outside `render()` saw a type no frame uses.
 
@@ -347,7 +370,7 @@ CI tracks leftover construction sites in [`scripts/glsl-hosts-allowlist.json`](.
 
 Every host takes the backend as its first argument, never throws, and reports the backend it actually produced — a TSL failure (module not loaded, TSL surface drift) degrades to GLSL instead of taking the Canvas down.
 
-`createGameRenderer` `import()`s `three/webgpu` and awaits `materials/nodeMaterials.ts` while building the node renderer, but that import does **not** split the node library out of the entry chunk: `createVfxMaterials.ts` imports `VfxNodeMaterials.ts` statically, which imports `three/webgpu` statically, so Rollup keeps it in `index-*.js` on every backend (the build's "dynamically imported … but also statically imported" warning says exactly this). The default backend downloads it but never constructs a `WebGPURenderer`. Since r178 the cost is lower: `three.webgpu.js` imports the same `three.core.js` as `three`, so the shipped bundle carries one core instead of two — measured at the bump, `index` went from 1,814.6 kB to 1,564.8 kB and `vendor-three` from 1,068.8 kB to 1,088.7 kB (−230 kB total, minified). The r185 bump (epic #434 B2) moved them to 1,682.0 kB and 1,124.3 kB (+153 kB, minified); the node post graph itself is a separate 18.4 kB chunk loaded only by the node renderer.
+`createGameRenderer` `import()`s `three/webgpu` and awaits `materials/nodeMaterials.ts` while building the node renderer, and that import is the only way in: `three.webgpu-*.js` (673 kB minified at r185) is a lazy chunk, not modulepreloaded, and a GLSL boot never fetches it. `createVfxMaterials.ts` reads `VfxNodeMaterials.ts` from the lazy `nodeMaterials` cache rather than importing it (#485 A) — the static import that used to keep the node library in `index-*.js` is gone; checked again for #576 A.4 (the entry imports `three.webgpu` only through `import()`). Since r178 `three.webgpu.js` imports the same `three.core.js` as `three`, so a TSL session carries one core, not two. The node post graph is its own chunk (`nodePostPipeline-*.js`), loaded only by the node renderer.
 
 ### Known gaps on `?material=tsl`
 

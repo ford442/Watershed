@@ -291,7 +291,7 @@ type LooseGetContext = (
 interface RendererBrand {
   isWebGLRenderer?: boolean;
   isWebGPURenderer?: boolean;
-  backend?: { isWebGPUBackend?: boolean };
+  backend?: { isWebGPUBackend?: boolean; capabilities?: { getUniformBufferLimit(): number } };
 }
 function brandOf(renderer: GameRenderer): RendererBrand {
   return renderer as RendererBrand;
@@ -641,6 +641,17 @@ describe('createGameRenderer material backend routing (#256 path A)', () => {
     expect(brandOf(renderer).isWebGPURenderer).toBe(true);
     // forceWebGL: WebGL2 on the wire, node materials above it.
     expect(brandOf(renderer).backend?.isWebGPUBackend).toBe(false);
+    renderer.dispose();
+  });
+
+  it('builds one program per material for every InstancedMesh on the node renderer (#576 A.1)', async () => {
+    const renderer = await createGameRenderer(
+      { canvas: document.createElement('canvas') },
+      { preference: 'webgl', materialBackend: 'tsl' }
+    );
+    // sharedInstancePrograms.ts: no instance-matrix uniform block fits, so the
+    // matrices are instanced attributes and the source is shared across meshes.
+    expect(brandOf(renderer).backend?.capabilities?.getUniformBufferLimit()).toBe(0);
     renderer.dispose();
   });
 

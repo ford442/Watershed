@@ -317,10 +317,13 @@ async function createNodeRenderer(
     // Load the node renderer, every TSL material module and the node post
     // pipeline together: the Canvas `gl` callback awaits this, so materials and
     // post built later in the scene can stay synchronous and find them resolved.
-    const [nodeModule] = await Promise.all([
+    // sharedInstancePrograms only matters to the node renderer: it rides this
+    // import rather than the entry chunk.
+    const [nodeModule, , , { shareInstancePrograms }] = await Promise.all([
       import('three/webgpu') as unknown as Promise<NodeRendererModule>,
       loadNodeMaterials(),
       loadNodePost(),
+      import('./sharedInstancePrograms'),
     ]);
     const { WebGPURenderer } = nodeModule;
     // `parameters` already carries the boot graphics contract (#463) and
@@ -333,6 +336,10 @@ async function createNodeRenderer(
     // `three/webgpu` share one core and this bridges nothing; it re-registers
     // what a later bump might split apart again. See nodeLibraryBridge.ts.
     bridgeCoreNodeClasses(renderer, nodeModule);
+
+    // Every InstancedMesh shares its material's program instead of compiling
+    // its own (instance matrices as attributes, not a per-mesh uniform block).
+    shareInstancePrograms(renderer);
 
     if (request.contextOptions) {
       applyRendererContextOptions(renderer, request.contextOptions);
