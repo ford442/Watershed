@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { RendererPreference } from './types';
-import { isDataUrlConnectAllowed } from './cspProbe';
 import { persistRendererPreference } from './rendererConfig';
 import { applyRendererContextOptions } from './applyRendererContextOptions';
 import {
@@ -187,16 +186,6 @@ export async function createGameRenderer(
   // WebGPURenderer is NOT instantiated because legacy GLSL materials crash
   // inside its NodeMaterial pipeline. Issue #256 path A will replace the
   // legacy materials with NodeMaterial/TSL before re-enabling WebGPURenderer.
-  const dataUrlsAllowed = await isDataUrlConnectAllowed();
-  if (!dataUrlsAllowed) {
-    console.warn(
-      '[Renderer] WebGPU preference is experimental/no-op and CSP blocks data: URLs — using WebGLRenderer. ' +
-        'Force the safe path with ?renderer=webgl.'
-    );
-    persistRendererPreference('webgl');
-    return createWebGLRenderer();
-  }
-
   console.warn(
     '[Renderer] WebGPU preference is experimental/no-op — Legacy GLSL materials are incompatible ' +
       'with WebGPURenderer, so the game falls back to WebGLRenderer. See docs/reference/RENDERER_CONTRACT.md.'
@@ -340,7 +329,7 @@ async function createNodeRenderer(
     await renderer.init();
     if (request.clearOpaque) renderer.setClearAlpha(1);
 
-    // Guard for the node library's class-identity lookups. At r178 `three` and
+    // Guard for the node library's class-identity lookups. At r185 `three` and
     // `three/webgpu` share one core and this bridges nothing; it re-registers
     // what a later bump might split apart again. See nodeLibraryBridge.ts.
     bridgeCoreNodeClasses(renderer, nodeModule);

@@ -18,10 +18,10 @@
  * minifier renames the class, so production builds logged `NodeMaterial:
  * Material "…" is not compatible.` and swapped in a blank `NodeMaterial`.
  *
- * AT r178 BOTH ARE FIXED UPSTREAM. `three.module.js` and `three.webgpu.js`
+ * SINCE r178 BOTH ARE FIXED UPSTREAM. `three.module.js` and `three.webgpu.js`
  * import one shared `three.core.js`, so the light classes are identical, and
  * `StandardNodeLibrary` registers materials by their type strings. The bridge
- * therefore bridges nothing on a healthy r178 renderer — `nodeLibraryBridge
+ * therefore bridges nothing on a healthy r185 renderer — `nodeLibraryBridge
  * .test.ts` pins that against the real bundle. It stays as the guard: if a
  * later bump reintroduces either split, it re-registers the missing entries
  * instead of the canvas going blank. Extend the pair tables below for any new
@@ -30,7 +30,7 @@
 
 import * as THREE from 'three';
 
-/** The slice of r178's `NodeLibrary` we depend on. */
+/** The slice of r185's `NodeLibrary` we depend on. */
 interface NodeLibraryLike {
   addLight(lightNodeClass: unknown, lightClass: unknown): void;
   addMaterial(materialNodeClass: unknown, materialType: string): void;
@@ -38,7 +38,7 @@ interface NodeLibraryLike {
   materialNodes?: Map<string, unknown>;
 }
 
-/** r178 hangs the library off the renderer itself (r168: `renderer.nodes`). */
+/** r185 hangs the library off the renderer itself (r168: `renderer.nodes`). */
 interface NodeRendererLike {
   library?: NodeLibraryLike;
 }
@@ -111,7 +111,7 @@ export interface BridgeResult {
  * Register `three`'s light classes and the core `material.type` strings with the
  * renderer's node library.
  *
- * @returns how many of each were bridged. All zeros is the healthy r178 answer
+ * @returns how many of each were bridged. All zeros is the healthy r185 answer
  *   (every entry was already registered); anything else means a split the
  *   header describes has come back.
  */
@@ -126,7 +126,7 @@ export function bridgeCoreNodeClasses(
   if (typeof library.addLight === 'function') {
     for (const [lightNodeClass, lightClass] of lightPairs(nodeExports)) {
       if (typeof lightNodeClass !== 'function' || typeof lightClass !== 'function') continue;
-      // Already known (r178's own registration, or a second Canvas on the same
+      // Already known (r185's own registration, or a second Canvas on the same
       // library) — adding again would only earn a "Redefinition of node" warning.
       if (library.lightNodes?.has(lightClass)) continue;
       try {

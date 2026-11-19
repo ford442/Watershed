@@ -8,7 +8,7 @@
  *    `NodeMaterial`, and only in minified builds, if the table is ever keyed on
  *    a class name again while the lookup uses a `type` string literal.
  *
- * The first block drives a stand-in library; the last one drives the REAL r178
+ * The first block drives a stand-in library; the last one drives the REAL r185
  * `three.webgpu.js` bundle, where both splits are fixed upstream.
  */
 
@@ -42,7 +42,7 @@ const NODE_EXPORTS = {
   PointsNodeMaterial,
 };
 
-/** Stand-in for r178's NodeLibrary — same keying, same lookup return values. */
+/** Stand-in for r185's NodeLibrary — same keying, same lookup return values. */
 function createLibrary() {
   const lightNodes = new WeakMap<object, unknown>();
   const materialNodes = new Map<string, unknown>();
@@ -53,7 +53,7 @@ function createLibrary() {
       if (lightNodes.has(lightClass as object)) throw new Error('Redefinition');
       lightNodes.set(lightClass as object, lightNodeClass);
     },
-    /** r178 takes the type string itself and refuses anything else. */
+    /** r185 takes the type string itself and refuses anything else. */
     addMaterial(materialNodeClass: unknown, materialType: unknown) {
       if (typeof materialType !== 'string') throw new Error('Base class is not a class');
       if (materialNodes.has(materialType)) throw new Error('Redefinition');
@@ -138,7 +138,7 @@ const REAL_WEBGPU_BUNDLE = resolve(
   '../../node_modules/three/build/three.webgpu.js',
 );
 
-describe('bridgeCoreNodeClasses against the real three r178 bundle', () => {
+describe('bridgeCoreNodeClasses against the real three r185 bundle', () => {
   async function loadRealRenderer(): Promise<{ real: any; renderer: any }> {
     const real = await import(/* @vite-ignore */ REAL_WEBGPU_BUNDLE);
     // Constructing is enough: the library exists before `init()` touches a context.
@@ -156,7 +156,7 @@ describe('bridgeCoreNodeClasses against the real three r178 bundle', () => {
     expect(real.MeshBasicMaterial).toBe(THREE.MeshBasicMaterial);
   });
 
-  it('has nothing to bridge on a healthy r178 renderer', async () => {
+  it('has nothing to bridge on a healthy r185 renderer', async () => {
     const { real, renderer } = await loadRealRenderer();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
