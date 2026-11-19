@@ -287,8 +287,10 @@ export const HOST_PARITY_SCENES: HostParityScene[] = [
   {
     name: 'rocks',
     hosts: ['src/utils/RockShader.ts'],
-    // SwiftShader at landing: 13.79% — the TSL rock twin drops the albedo map.
-    maxMismatch: 0.155,
+    // SwiftShader at landing: 13.79% (the TSL rock twin dropped the albedo map); 1.66% since #580
+    // (its colorNode builds on `materialColor`, i.e. colour × map). What is left: the GLSL-only
+    // wetness / streak / dust / rim terms.
+    maxMismatch: 0.025,
     camera: { position: [0, 2.6, 6], target: [0, 0.6, 0] },
     build(backend) {
       const material = createRockSurfaceMaterial(

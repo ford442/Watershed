@@ -5,6 +5,7 @@ import {
   clamp,
   cos,
   float,
+  materialColor,
   mix,
   positionLocal,
   positionWorld,
@@ -125,9 +126,10 @@ export function createRockNodeMaterial(
 ): MeshStandardNodeMaterial {
   const moss = uniform(options.mossStrength ?? 0.4);
   const material = copyStandard(source);
-  const baseColor = uniform(source.color.clone());
   const mossColor = uniform(new THREE.Color(options.mossColor ?? '#3f5c2a'));
-  material.colorNode = mix(baseColor, mossColor, moss.mul(0.35));
+  // `materialColor` is the source's `color × map` (MaterialNode COLOR scope). Assigning
+  // `colorNode` replaces that whole term, so a bare colour uniform here dropped the albedo map.
+  material.colorNode = mix(materialColor.rgb, mossColor, moss.mul(0.35));
   material.userData.uniforms = { uMossStrength: moss };
   material.userData.materialBackend = 'tsl';
   return material;

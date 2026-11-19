@@ -420,7 +420,7 @@ The budgets are a ratchet set just above SwiftShader's measurement when the scen
 |---|---|---|---|---|
 | canyon wall | `CanyonMaterial.ts` | 0.00% | 0.5% | — |
 | river bank | `RiverShader.ts` | 0.00% | 0.5% | — |
-| rocks | `RockShader.ts` | 13.79% | 15.5% | the TSL rock twin's `colorNode` replaces the albedo map: untextured grey |
+| rocks | `RockShader.ts` | 1.66% | 2.5% | the TSL twin has the albedo map (#580) but not the GLSL wetness / streak / dust / rim terms |
 | trees | `TreeShader.ts` | 0.51% | 1% | silhouette edges (wind sway terms) |
 | vegetation | `VegetationShader.ts` | 2.11% | 3% | blade tips (sway phase) |
 | water | `createWaterMaterial.ts` | 0.00% | 0.5% | streak detail, under the pixel threshold |
@@ -430,7 +430,7 @@ The budgets are a ratchet set just above SwiftShader's measurement when the scen
 | vfx | `vfxDualFactory.ts` | 7.91% | 9% | TSL mist draws nothing; the TSL rainbow has no fresnel falloff |
 | post chain | `PostProcessingPipeline.tsx` | Δ luma ≤ 0.19% | 2% | (the existing #466 scenarios) |
 
-Phase B of #555 makes TSL the default, so the rock, weather, sky and VFX gaps above are what B has to close first.
+Phase B of #555 makes TSL the default, so the weather, sky and VFX gaps above (the rock albedo closed in #580) are what B has to close first.
 
 ## Why the default path still has no live WebGPU renderer
 
